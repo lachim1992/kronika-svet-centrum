@@ -23,9 +23,10 @@ interface EventInputProps {
   player1Name: string;
   player2Name: string;
   currentTurn: number;
+  turnClosed: boolean;
 }
 
-const EventInput = ({ sessionId, player1Name, player2Name, currentTurn }: EventInputProps) => {
+const EventInput = ({ sessionId, player1Name, player2Name, currentTurn, turnClosed }: EventInputProps) => {
   const [eventType, setEventType] = useState("");
   const [player, setPlayer] = useState("");
   const [location, setLocation] = useState("");
@@ -47,11 +48,25 @@ const EventInput = ({ sessionId, player1Name, player2Name, currentTurn }: EventI
     toast.success("Událost zaznamenána");
   };
 
+  if (turnClosed) {
+    return (
+      <div className="space-y-4">
+        <h2 className="text-xl font-display font-semibold flex items-center gap-2">
+          <PenLine className="h-5 w-5 text-primary" />
+          Rok {currentTurn}
+        </h2>
+        <p className="text-muted-foreground text-center py-8 italic">
+          Čekáme na uzavření kola oběma hráči...
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-4">
       <h2 className="text-xl font-display font-semibold flex items-center gap-2">
         <PenLine className="h-5 w-5 text-primary" />
-        Zapsat událost
+        Rok {currentTurn} — Zapsat událost
       </h2>
 
       <Select value={eventType} onValueChange={setEventType}>

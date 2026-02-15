@@ -1,10 +1,10 @@
 import { useState } from "react";
-import { confirmEvent, addEventResponse } from "@/hooks/useGameSession";
+import { addEventResponse } from "@/hooks/useGameSession";
 import type { Tables } from "@/integrations/supabase/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Check, MessageSquare, Clock } from "lucide-react";
+import { MessageSquare, Clock } from "lucide-react";
 import { toast } from "sonner";
 
 type GameEvent = Tables<"game_events">;
@@ -25,16 +25,14 @@ interface EventTimelineProps {
   events: GameEvent[];
   responses: EventResponse[];
   currentPlayerName: string;
+  currentTurn: number;
 }
 
-const EventTimeline = ({ events, responses, currentPlayerName }: EventTimelineProps) => {
+const EventTimeline = ({ events, responses, currentPlayerName, currentTurn }: EventTimelineProps) => {
   const [replyingTo, setReplyingTo] = useState<string | null>(null);
   const [replyText, setReplyText] = useState("");
 
-  const handleConfirm = async (eventId: string) => {
-    await confirmEvent(eventId);
-    toast.success("Událost potvrzena jako oficiální dějiny");
-  };
+  const currentTurnEvents = events.filter((e) => e.turn_number === currentTurn);
 
   const handleReply = async (eventId: string) => {
     if (!replyText.trim()) return;
@@ -48,27 +46,25 @@ const EventTimeline = ({ events, responses, currentPlayerName }: EventTimelinePr
     <div className="space-y-4">
       <h2 className="text-xl font-display font-semibold flex items-center gap-2">
         <Clock className="h-5 w-5 text-primary" />
-        Časová osa
+        Události roku {currentTurn}
       </h2>
 
-      {events.length === 0 && (
-        <p className="text-muted-foreground text-center py-8 italic">Zatím žádné události...</p>
+      {currentTurnEvents.length === 0 && (
+        <p className="text-muted-foreground text-center py-8 italic">Zatím žádné události v tomto kole...</p>
       )}
 
       <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-1">
-        {events.map((event) => {
+        {currentTurnEvents.map((event) => {
           const eventResponses = responses.filter((r) => r.event_id === event.id);
           return (
             <div
               key={event.id}
-              className={`p-3 rounded-lg border animate-fade-in ${
-                event.confirmed ? "bg-card border-primary/30" : "bg-muted/50 border-border"
-              }`}
+              className="p-3 rounded-lg border animate-fade-in bg-card border-border"
             >
               <div className="flex items-start justify-between gap-2">
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <Badge variant={event.confirmed ? "default" : "secondary"} className="text-xs">
+                    <Badge variant="secondary" className="text-xs">
                       {EVENT_LABELS[event.event_type] || event.event_type}
                     </Badge>
                     <span className="text-sm font-semibold">{event.player}</span>
@@ -81,20 +77,13 @@ const EventTimeline = ({ events, responses, currentPlayerName }: EventTimelinePr
                   )}
                 </div>
 
-                <div className="flex gap-1 shrink-0">
-                  {!event.confirmed && (
-                    <Button size="sm" variant="ghost" onClick={() => handleConfirm(event.id)} title="Potvrdit">
-                      <Check className="h-4 w-4" />
-                    </Button>
-                  )}
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => setReplyingTo(replyingTo === event.id ? null : event.id)}
-                  >
-                    <MessageSquare className="h-4 w-4" />
-                  </Button>
-                </div>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => setReplyingTo(replyingTo === event.id ? null : event.id)}
+                >
+                  <MessageSquare className="h-4 w-4" />
+                </Button>
               </div>
 
               {eventResponses.map((r) => (
@@ -116,10 +105,6 @@ const EventTimeline = ({ events, responses, currentPlayerName }: EventTimelinePr
                     Odeslat
                   </Button>
                 </div>
-              )}
-
-              {event.confirmed && (
-                <div className="mt-1 text-xs text-primary font-display">✓ Oficiální dějiny</div>
               )}
             </div>
           );

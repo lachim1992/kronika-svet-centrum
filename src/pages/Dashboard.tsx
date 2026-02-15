@@ -17,7 +17,6 @@ const Dashboard = () => {
   const { session, events, memories, chronicles, cityStates, responses, loading } = useGameSession(sessionId || null);
 
   const currentPlayerName = localStorage.getItem("ch_playerName") || "Hráč";
-  const currentTurn = events.length > 0 ? Math.max(...events.map((e) => e.turn_number)) : 1;
 
   if (loading) {
     return (
@@ -41,6 +40,12 @@ const Dashboard = () => {
     );
   }
 
+  const currentTurn = session.current_turn;
+  const turnClosedP1 = session.turn_closed_p1;
+  const turnClosedP2 = session.turn_closed_p2;
+  const isPlayer1 = currentPlayerName === session.player1_name;
+  const myTurnClosed = isPlayer1 ? turnClosedP1 : turnClosedP2;
+
   const copyRoomCode = () => {
     navigator.clipboard.writeText(session.room_code);
     toast.success(`Kód místnosti ${session.room_code} zkopírován`);
@@ -54,6 +59,9 @@ const Dashboard = () => {
           <div className="flex items-center gap-3">
             <Scroll className="h-6 w-6 text-primary" />
             <h1 className="font-display font-bold text-lg">Chronicle Hub</h1>
+            <span className="text-sm font-display text-primary bg-primary/10 px-2 py-0.5 rounded">
+              Rok {currentTurn}
+            </span>
           </div>
 
           <div className="flex items-center gap-3">
@@ -103,6 +111,7 @@ const Dashboard = () => {
                 player1Name={session.player1_name}
                 player2Name={session.player2_name}
                 currentTurn={currentTurn}
+                turnClosed={myTurnClosed}
               />
             </div>
 
@@ -112,6 +121,7 @@ const Dashboard = () => {
                 events={events}
                 responses={responses}
                 currentPlayerName={currentPlayerName}
+                currentTurn={currentTurn}
               />
             </div>
 
@@ -124,6 +134,12 @@ const Dashboard = () => {
                   memories={memories}
                   chronicles={chronicles}
                   epochStyle={session.epoch_style}
+                  currentTurn={currentTurn}
+                  turnClosedP1={turnClosedP1}
+                  turnClosedP2={turnClosedP2}
+                  player1Name={session.player1_name}
+                  player2Name={session.player2_name}
+                  currentPlayerName={currentPlayerName}
                 />
               </div>
               <WorldMemoryPanel sessionId={session.id} memories={memories} />

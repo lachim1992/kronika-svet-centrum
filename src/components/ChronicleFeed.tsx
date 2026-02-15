@@ -1,9 +1,9 @@
 import { useState } from "react";
 import type { Tables } from "@/integrations/supabase/types";
 import { generateChronicle } from "@/lib/ai";
-import { addChronicleEntry, addWorldMemory } from "@/hooks/useGameSession";
+import { addChronicleEntry, addWorldMemory, closeTurnForPlayer, advanceTurn } from "@/hooks/useGameSession";
 import { Button } from "@/components/ui/button";
-import { BookOpen, Sparkles } from "lucide-react";
+import { BookOpen, Sparkles, Lock, CheckCircle2 } from "lucide-react";
 import { toast } from "sonner";
 
 type GameEvent = Tables<"game_events">;
@@ -16,6 +16,12 @@ interface ChronicleFeedProps {
   memories: WorldMemory[];
   chronicles: ChronicleEntry[];
   epochStyle: string;
+  currentTurn: number;
+  turnClosedP1: boolean;
+  turnClosedP2: boolean;
+  player1Name: string;
+  player2Name: string;
+  currentPlayerName: string;
 }
 
 const EPOCH_LABELS: Record<string, string> = {
@@ -24,21 +30,37 @@ const EPOCH_LABELS: Record<string, string> = {
   moderni: "Moderní zprávy",
 };
 
-const ChronicleFeed = ({ sessionId, events, memories, chronicles, epochStyle }: ChronicleFeedProps) => {
+const ChronicleFeed = ({
+  sessionId, events, memories, chronicles, epochStyle,
+  currentTurn, turnClosedP1, turnClosedP2,
+  player1Name, player2Name, currentPlayerName,
+}: ChronicleFeedProps) => {
   const [generating, setGenerating] = useState(false);
 
-  const handleGenerate = async () => {
-    const confirmedEvents = events.filter((e) => e.confirmed);
-    if (confirmedEvents.length === 0) {
-      toast.error("Nejdříve potvrďte některé události");
+  const currentTurnEvents = events.filter((e) => e.turn_number === currentTurn);
+  const isPlayer1 = currentPlayerName === player1Name;
+  const myTurnClosed = isPlayer1 ? turnClosedP1 : turnClosedP2;
+  const otherTurnClosed = isPlayer1 ? turnClosedP2 : turnClosedP1;
+  const bothClosed = turnClosedP1 && turnClosedP2;
+
+  const handleCloseTurn = async () => {
+    const playerNumber = isPlayer1 ? 1 : 2;
+    await closeTurnForPlayer(sessionId, playerNumber as 1 | 2);
+    toast.success("Vaše kolo uzavřeno. Čekáme na druhého hráče.");
+  };
+
+  const handleGenerateAndAdvance = async () => {
+    if (currentTurnEvents.length === 0) {
+      toast.error("V tomto kole nejsou žádné události");
       return;
     }
 
     setGenerating(true);
     try {
-      const result = await generateChronicle(confirmedEvents, memories, epochStyle);
+      // Mark all current turn events as confirmed
+      const result = await generateChronicle(currentTurnEvents, memories, epochStyle);
       if (result.chronicle) {
-        await addChronicleEntry(sessionId, result.chronicle, epochStyle);
+        await addChronicleEntry(sessionId, `📜 Rok ${currentTurn}\n\n${result.chronicle}`, epochStyle, currentTurn);
       }
       if (result.suggestedMemories?.length) {
         for (const mem of result.suggestedMemories) {
@@ -46,7 +68,9 @@ const ChronicleFeed = ({ sessionId, events, memories, chronicles, epochStyle }: 
         }
         toast.success(`Navrženo ${result.suggestedMemories.length} nových vzpomínek`);
       }
-      toast.success("Kronika vygenerována!");
+      // Advance to next turn
+      await advanceTurn(sessionId, currentTurn);
+      toast.success(`Kronika roku ${currentTurn} vygenerována! Pokračujeme rokem ${currentTurn + 1}.`);
     } catch {
       toast.error("Generování kroniky selhalo");
     }
@@ -67,19 +91,65 @@ const ChronicleFeed = ({ sessionId, events, memories, chronicles, epochStyle }: 
         </span>
       </h2>
 
-      <Button
-        onClick={handleGenerate}
-        disabled={generating}
-        className="w-full h-11 font-display"
-      >
-        <Sparkles className="mr-2 h-4 w-4" />
-        {generating ? "Generuji kroniku..." : "✅ Vygenerovat kroniku"}
-      </Button>
+      {/* Turn closure status */}
+      <div className="p-3 rounded-lg border border-border bg-muted/30 space-y-2">
+        <p className="text-sm font-display font-semibold">Rok {currentTurn} — Uzavření kola</p>
+        <div className="flex items-center gap-2 text-sm">
+          {turnClosedP1 ? (
+            <CheckCircle2 className="h-4 w-4 text-primary" />
+          ) : (
+            <Lock className="h-4 w-4 text-muted-foreground" />
+          )}
+          <span className={turnClosedP1 ? "text-primary" : "text-muted-foreground"}>
+            {player1Name}: {turnClosedP1 ? "Uzavřeno" : "Čeká"}
+          </span>
+        </div>
+        <div className="flex items-center gap-2 text-sm">
+          {turnClosedP2 ? (
+            <CheckCircle2 className="h-4 w-4 text-primary" />
+          ) : (
+            <Lock className="h-4 w-4 text-muted-foreground" />
+          )}
+          <span className={turnClosedP2 ? "text-primary" : "text-muted-foreground"}>
+            {player2Name}: {turnClosedP2 ? "Uzavřeno" : "Čeká"}
+          </span>
+        </div>
 
-      <div className="space-y-4 max-h-[50vh] overflow-y-auto pr-1">
+        {!myTurnClosed && (
+          <Button
+            onClick={handleCloseTurn}
+            variant="outline"
+            className="w-full h-10 font-display mt-2"
+            disabled={currentTurnEvents.length === 0}
+          >
+            <Lock className="mr-2 h-4 w-4" />
+            Uzavřít mé kolo
+          </Button>
+        )}
+
+        {myTurnClosed && !otherTurnClosed && (
+          <p className="text-xs text-muted-foreground italic text-center">
+            Čekáme na {isPlayer1 ? player2Name : player1Name}...
+          </p>
+        )}
+
+        {bothClosed && (
+          <Button
+            onClick={handleGenerateAndAdvance}
+            disabled={generating}
+            className="w-full h-11 font-display mt-2"
+          >
+            <Sparkles className="mr-2 h-4 w-4" />
+            {generating ? "Generuji kroniku..." : `✅ Vygenerovat kroniku roku ${currentTurn}`}
+          </Button>
+        )}
+      </div>
+
+      {/* Chronicle archive */}
+      <div className="space-y-4 max-h-[40vh] overflow-y-auto pr-1">
         {chronicles.length === 0 && (
-          <p className="text-muted-foreground text-center py-8 italic">
-            Kronika je prázdná... potvrďte události a vygenerujte první zápis.
+          <p className="text-muted-foreground text-center py-4 italic">
+            Kronika je prázdná... uzavřete první kolo a vygenerujte první zápis.
           </p>
         )}
         {[...chronicles].reverse().map((entry) => (
