@@ -33,7 +33,6 @@ export function useGameSession(sessionId: string | null) {
     if (sessRes.data) setSession(sessRes.data);
     if (evtRes.data) {
       setEvents(evtRes.data);
-      // Fetch responses for all events
       const eventIds = evtRes.data.map(e => e.id);
       if (eventIds.length > 0) {
         const respRes = await supabase.from("event_responses").select("*").in("event_id", eventIds).order("created_at", { ascending: true });
@@ -50,7 +49,6 @@ export function useGameSession(sessionId: string | null) {
     fetchAll();
   }, [fetchAll]);
 
-  // Realtime subscriptions
   useEffect(() => {
     if (!sessionId) return;
 
@@ -60,6 +58,7 @@ export function useGameSession(sessionId: string | null) {
       .on("postgres_changes", { event: "*", schema: "public", table: "world_memories", filter: `session_id=eq.${sessionId}` }, () => fetchAll())
       .on("postgres_changes", { event: "*", schema: "public", table: "chronicle_entries", filter: `session_id=eq.${sessionId}` }, () => fetchAll())
       .on("postgres_changes", { event: "*", schema: "public", table: "city_states", filter: `session_id=eq.${sessionId}` }, () => fetchAll())
+      .on("postgres_changes", { event: "*", schema: "public", table: "game_sessions", filter: `id=eq.${sessionId}` }, () => fetchAll())
       .subscribe();
 
     return () => { supabase.removeChannel(channel); };
@@ -111,7 +110,7 @@ export async function deleteMemory(memoryId: string) {
   if (error) console.error(error);
 }
 
-export async function addChronicleEntry(sessionId: string, text: string, epochStyle: string) {
+export async function addChronicleEntry(sessionId: string, text: string, epochStyle: string, turnNumber: number) {
   const { error } = await supabase.from("chronicle_entries").insert({ session_id: sessionId, text, epoch_style: epochStyle });
   if (error) console.error(error);
 }
@@ -128,5 +127,20 @@ export async function updateCityState(id: string, updates: { mood?: string; infl
 
 export async function updateEpochStyle(sessionId: string, epochStyle: string) {
   const { error } = await supabase.from("game_sessions").update({ epoch_style: epochStyle }).eq("id", sessionId);
+  if (error) console.error(error);
+}
+
+export async function closeTurnForPlayer(sessionId: string, playerNumber: 1 | 2) {
+  const field = playerNumber === 1 ? "turn_closed_p1" : "turn_closed_p2";
+  const { error } = await supabase.from("game_sessions").update({ [field]: true }).eq("id", sessionId);
+  if (error) console.error(error);
+}
+
+export async function advanceTurn(sessionId: string, currentTurn: number) {
+  const { error } = await supabase.from("game_sessions").update({
+    current_turn: currentTurn + 1,
+    turn_closed_p1: false,
+    turn_closed_p2: false,
+  }).eq("id", sessionId);
   if (error) console.error(error);
 }

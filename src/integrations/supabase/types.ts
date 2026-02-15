@@ -166,27 +166,36 @@ export type Database = {
       game_sessions: {
         Row: {
           created_at: string
+          current_turn: number
           epoch_style: string
           id: string
           player1_name: string
           player2_name: string
           room_code: string
+          turn_closed_p1: boolean
+          turn_closed_p2: boolean
         }
         Insert: {
           created_at?: string
+          current_turn?: number
           epoch_style?: string
           id?: string
           player1_name?: string
           player2_name?: string
           room_code: string
+          turn_closed_p1?: boolean
+          turn_closed_p2?: boolean
         }
         Update: {
           created_at?: string
+          current_turn?: number
           epoch_style?: string
           id?: string
           player1_name?: string
           player2_name?: string
           room_code?: string
+          turn_closed_p1?: boolean
+          turn_closed_p2?: boolean
         }
         Relationships: []
       }
