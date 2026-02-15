@@ -723,12 +723,15 @@ export type Database = {
       }
       great_persons: {
         Row: {
+          bio: string | null
           born_round: number
           city_id: string | null
           created_at: string
           died_round: number | null
           flavor_trait: string | null
           id: string
+          image_prompt: string | null
+          image_url: string | null
           is_alive: boolean
           name: string
           person_type: string
@@ -736,12 +739,15 @@ export type Database = {
           session_id: string
         }
         Insert: {
+          bio?: string | null
           born_round?: number
           city_id?: string | null
           created_at?: string
           died_round?: number | null
           flavor_trait?: string | null
           id?: string
+          image_prompt?: string | null
+          image_url?: string | null
           is_alive?: boolean
           name: string
           person_type?: string
@@ -749,12 +755,15 @@ export type Database = {
           session_id: string
         }
         Update: {
+          bio?: string | null
           born_round?: number
           city_id?: string | null
           created_at?: string
           died_round?: number | null
           flavor_trait?: string | null
           id?: string
+          image_prompt?: string | null
+          image_url?: string | null
           is_alive?: boolean
           name?: string
           person_type?: string
@@ -1074,6 +1083,62 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "trade_log_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      wiki_entries: {
+        Row: {
+          ai_description: string | null
+          created_at: string
+          entity_id: string | null
+          entity_name: string
+          entity_type: string
+          id: string
+          image_prompt: string | null
+          image_url: string | null
+          owner_player: string
+          session_id: string
+          summary: string | null
+          tags: string[] | null
+          updated_at: string
+        }
+        Insert: {
+          ai_description?: string | null
+          created_at?: string
+          entity_id?: string | null
+          entity_name: string
+          entity_type?: string
+          id?: string
+          image_prompt?: string | null
+          image_url?: string | null
+          owner_player: string
+          session_id: string
+          summary?: string | null
+          tags?: string[] | null
+          updated_at?: string
+        }
+        Update: {
+          ai_description?: string | null
+          created_at?: string
+          entity_id?: string | null
+          entity_name?: string
+          entity_type?: string
+          id?: string
+          image_prompt?: string | null
+          image_url?: string | null
+          owner_player?: string
+          session_id?: string
+          summary?: string | null
+          tags?: string[] | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "wiki_entries_session_id_fkey"
             columns: ["session_id"]
             isOneToOne: false
             referencedRelation: "game_sessions"

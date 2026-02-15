@@ -29,6 +29,7 @@ import SecretObjectivesPanel from "@/components/SecretObjectivesPanel";
 import WorldHistoryPanel from "@/components/WorldHistoryPanel";
 import PlayerChroniclePanel from "@/components/PlayerChroniclePanel";
 import DevModePanel from "@/components/DevModePanel";
+import WikiPanel from "@/components/WikiPanel";
 import { toast } from "sonner";
 
 const Dashboard = () => {
@@ -159,6 +160,9 @@ const Dashboard = () => {
           </TabsTrigger>
           <TabsTrigger value="citystates" className="font-display text-xs">
             <Building2 className="h-4 w-4 mr-1" />Městské státy
+          </TabsTrigger>
+          <TabsTrigger value="wiki" className="font-display text-xs">
+            <BookOpen className="h-4 w-4 mr-1" />📖 Wiki
           </TabsTrigger>
           <TabsTrigger value="devmode" className="font-display text-xs">
             <Bug className="h-4 w-4 mr-1" />Dev Mode
@@ -291,6 +295,18 @@ const Dashboard = () => {
 
         <TabsContent value="citystates">
           <CityStatesPanel sessionId={session.id} cityStates={cityStates} recentEvents={events} players={players} />
+        </TabsContent>
+
+        <TabsContent value="wiki" className="pb-6">
+          <WikiPanel
+            sessionId={session.id}
+            currentPlayerName={currentPlayerName}
+            cities={cities}
+            wonders={wonders}
+            greatPersons={greatPersons}
+            events={events}
+            onRefetch={refetch}
+          />
         </TabsContent>
 
         <TabsContent value="devmode" className="pb-6">
