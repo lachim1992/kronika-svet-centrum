@@ -14,7 +14,7 @@ import { toast } from "sonner";
 const Dashboard = () => {
   const { sessionId } = useParams<{ sessionId: string }>();
   const navigate = useNavigate();
-  const { session, events, memories, chronicles, cityStates, responses, loading } = useGameSession(sessionId || null);
+  const { session, events, memories, chronicles, cityStates, responses, loading, refetch } = useGameSession(sessionId || null);
 
   const currentPlayerName = localStorage.getItem("ch_playerName") || "Hráč";
 
@@ -112,6 +112,7 @@ const Dashboard = () => {
                 player2Name={session.player2_name}
                 currentTurn={currentTurn}
                 turnClosed={myTurnClosed}
+                onEventAdded={refetch}
               />
             </div>
 
