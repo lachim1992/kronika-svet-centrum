@@ -5,3 +5,6 @@ verify_jwt = false
 
 [functions.citystates]
 verify_jwt = false
+
+[functions.wonder]
+verify_jwt = false

@@ -410,6 +410,62 @@ export type Database = {
           },
         ]
       }
+      wonders: {
+        Row: {
+          bonus: string | null
+          city_name: string | null
+          created_at: string
+          description: string | null
+          era: string
+          id: string
+          image_prompt: string | null
+          memory_fact: string | null
+          name: string
+          owner_player: string
+          session_id: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          bonus?: string | null
+          city_name?: string | null
+          created_at?: string
+          description?: string | null
+          era?: string
+          id?: string
+          image_prompt?: string | null
+          memory_fact?: string | null
+          name: string
+          owner_player: string
+          session_id: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          bonus?: string | null
+          city_name?: string | null
+          created_at?: string
+          description?: string | null
+          era?: string
+          id?: string
+          image_prompt?: string | null
+          memory_fact?: string | null
+          name?: string
+          owner_player?: string
+          session_id?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "wonders_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       world_memories: {
         Row: {
           approved: boolean

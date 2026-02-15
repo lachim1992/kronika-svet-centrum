@@ -32,3 +32,21 @@ export async function generateCityStateActions(
 
   return data;
 }
+
+export async function generateWonder(
+  prompt: string,
+  city: string,
+  era: string,
+  worldFacts: string[]
+): Promise<{ wonderName: string; description: string; memoryFact: string; bonusEffect?: string; imagePrompt: string }> {
+  const { data, error } = await supabase.functions.invoke("wonder", {
+    body: { prompt, city, era, worldFacts },
+  });
+
+  if (error) {
+    console.error("Wonder generation error:", error);
+    return { wonderName: "Neznámý div", description: "Kronikář selhal...", memoryFact: "", imagePrompt: "" };
+  }
+
+  return data;
+}
