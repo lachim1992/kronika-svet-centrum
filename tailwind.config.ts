@@ -15,6 +15,7 @@ export default {
     extend: {
       fontFamily: {
         display: ["Cinzel", "serif"],
+        decorative: ["Cinzel Decorative", "serif"],
         body: ["Crimson Text", "serif"],
       },
       colors: {
@@ -65,6 +66,10 @@ export default {
           glow: "hsl(var(--gold-glow))",
         },
         ink: "hsl(var(--ink))",
+        illuminated: "hsl(var(--illuminated))",
+        "seal-red": "hsl(var(--seal-red))",
+        "royal-purple": "hsl(var(--royal-purple))",
+        "forest-green": "hsl(var(--forest-green))",
       },
       borderRadius: {
         lg: "var(--radius)",

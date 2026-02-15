@@ -56,6 +56,7 @@ export type Database = {
           name: string
           owner_player: string
           province: string | null
+          province_id: string | null
           session_id: string
           status: string
           tags: string[] | null
@@ -69,6 +70,7 @@ export type Database = {
           name: string
           owner_player: string
           province?: string | null
+          province_id?: string | null
           session_id: string
           status?: string
           tags?: string[] | null
@@ -82,11 +84,19 @@ export type Database = {
           name?: string
           owner_player?: string
           province?: string | null
+          province_id?: string | null
           session_id?: string
           status?: string
           tags?: string[] | null
         }
         Relationships: [
+          {
+            foreignKeyName: "cities_province_id_fkey"
+            columns: ["province_id"]
+            isOneToOne: false
+            referencedRelation: "provinces"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "cities_session_id_fkey"
             columns: ["session_id"]
@@ -130,6 +140,95 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "city_states_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      diplomacy_messages: {
+        Row: {
+          created_at: string
+          id: string
+          leak_chance: number
+          message_tag: string | null
+          message_text: string
+          room_id: string
+          secrecy: string
+          sender: string
+          sender_type: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          leak_chance?: number
+          message_tag?: string | null
+          message_text: string
+          room_id: string
+          secrecy?: string
+          sender: string
+          sender_type?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          leak_chance?: number
+          message_tag?: string | null
+          message_text?: string
+          room_id?: string
+          secrecy?: string
+          sender?: string
+          sender_type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "diplomacy_messages_room_id_fkey"
+            columns: ["room_id"]
+            isOneToOne: false
+            referencedRelation: "diplomacy_rooms"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      diplomacy_rooms: {
+        Row: {
+          created_at: string
+          id: string
+          npc_city_state_id: string | null
+          participant_a: string
+          participant_b: string
+          room_type: string
+          session_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          npc_city_state_id?: string | null
+          participant_a: string
+          participant_b: string
+          room_type?: string
+          session_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          npc_city_state_id?: string | null
+          participant_a?: string
+          participant_b?: string
+          room_type?: string
+          session_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "diplomacy_rooms_npc_city_state_id_fkey"
+            columns: ["npc_city_state_id"]
+            isOneToOne: false
+            referencedRelation: "city_states"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "diplomacy_rooms_session_id_fkey"
             columns: ["session_id"]
             isOneToOne: false
             referencedRelation: "game_sessions"
@@ -385,6 +484,48 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "player_resources_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      provinces: {
+        Row: {
+          capital_city_id: string | null
+          created_at: string
+          id: string
+          name: string
+          owner_player: string
+          session_id: string
+        }
+        Insert: {
+          capital_city_id?: string | null
+          created_at?: string
+          id?: string
+          name: string
+          owner_player: string
+          session_id: string
+        }
+        Update: {
+          capital_city_id?: string | null
+          created_at?: string
+          id?: string
+          name?: string
+          owner_player?: string
+          session_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "provinces_capital_city_id_fkey"
+            columns: ["capital_city_id"]
+            isOneToOne: false
+            referencedRelation: "cities"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "provinces_session_id_fkey"
             columns: ["session_id"]
             isOneToOne: false
             referencedRelation: "game_sessions"

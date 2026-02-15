@@ -11,3 +11,6 @@ verify_jwt = false
 
 [functions.cityprofile]
 verify_jwt = false
+
+[functions.diplomacy-reply]
+verify_jwt = false
