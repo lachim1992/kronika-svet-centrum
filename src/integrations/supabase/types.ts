@@ -431,6 +431,82 @@ export type Database = {
           },
         ]
       }
+      event_annotations: {
+        Row: {
+          author: string
+          created_at: string
+          event_id: string
+          id: string
+          note_text: string
+          visibility: string
+        }
+        Insert: {
+          author: string
+          created_at?: string
+          event_id: string
+          id?: string
+          note_text: string
+          visibility?: string
+        }
+        Update: {
+          author?: string
+          created_at?: string
+          event_id?: string
+          id?: string
+          note_text?: string
+          visibility?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "event_annotations_event_id_fkey"
+            columns: ["event_id"]
+            isOneToOne: false
+            referencedRelation: "game_events"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      event_narratives: {
+        Row: {
+          created_at: string
+          epoch_style: string
+          event_id: string
+          id: string
+          is_canon: boolean
+          key_quotes: string[] | null
+          narrative_text: string
+          version: number
+        }
+        Insert: {
+          created_at?: string
+          epoch_style?: string
+          event_id: string
+          id?: string
+          is_canon?: boolean
+          key_quotes?: string[] | null
+          narrative_text: string
+          version?: number
+        }
+        Update: {
+          created_at?: string
+          epoch_style?: string
+          event_id?: string
+          id?: string
+          is_canon?: boolean
+          key_quotes?: string[] | null
+          narrative_text?: string
+          version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "event_narratives_event_id_fkey"
+            columns: ["event_id"]
+            isOneToOne: false
+            referencedRelation: "game_events"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       event_responses: {
         Row: {
           created_at: string
@@ -465,51 +541,89 @@ export type Database = {
       }
       game_events: {
         Row: {
+          armies_involved: string[] | null
+          attacker_city_id: string | null
+          casualties: string | null
           city_id: string | null
           confirmed: boolean
           created_at: string
+          defender_city_id: string | null
+          devastation_duration: number | null
           event_type: string
           id: string
           location: string | null
           note: string | null
           player: string
+          result: string | null
           secondary_city_id: string | null
           session_id: string
+          terms_summary: string | null
+          treaty_type: string | null
           truth_state: string
           turn_number: number
         }
         Insert: {
+          armies_involved?: string[] | null
+          attacker_city_id?: string | null
+          casualties?: string | null
           city_id?: string | null
           confirmed?: boolean
           created_at?: string
+          defender_city_id?: string | null
+          devastation_duration?: number | null
           event_type: string
           id?: string
           location?: string | null
           note?: string | null
           player: string
+          result?: string | null
           secondary_city_id?: string | null
           session_id: string
+          terms_summary?: string | null
+          treaty_type?: string | null
           truth_state?: string
           turn_number?: number
         }
         Update: {
+          armies_involved?: string[] | null
+          attacker_city_id?: string | null
+          casualties?: string | null
           city_id?: string | null
           confirmed?: boolean
           created_at?: string
+          defender_city_id?: string | null
+          devastation_duration?: number | null
           event_type?: string
           id?: string
           location?: string | null
           note?: string | null
           player?: string
+          result?: string | null
           secondary_city_id?: string | null
           session_id?: string
+          terms_summary?: string | null
+          treaty_type?: string | null
           truth_state?: string
           turn_number?: number
         }
         Relationships: [
           {
+            foreignKeyName: "game_events_attacker_city_id_fkey"
+            columns: ["attacker_city_id"]
+            isOneToOne: false
+            referencedRelation: "cities"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "game_events_city_id_fkey"
             columns: ["city_id"]
+            isOneToOne: false
+            referencedRelation: "cities"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "game_events_defender_city_id_fkey"
+            columns: ["defender_city_id"]
             isOneToOne: false
             referencedRelation: "cities"
             referencedColumns: ["id"]

@@ -210,7 +210,7 @@ const Dashboard = () => {
               <EventInput sessionId={session.id} players={players} cities={cities} currentTurn={currentTurn} turnClosed={false} onEventAdded={refetch} />
             </div>
             <div className="manuscript-card p-5">
-              <EventTimeline events={events} responses={responses} currentPlayerName={currentPlayerName} currentTurn={currentTurn} />
+              <EventTimeline events={events} responses={responses} currentPlayerName={currentPlayerName} currentTurn={currentTurn} cities={cities} memories={memories} epochStyle={session.epoch_style} />
             </div>
           </div>
         </TabsContent>
