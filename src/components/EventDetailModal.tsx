@@ -167,6 +167,7 @@ const EventDetailModal = ({
 
   if (!event) return null;
 
+  const isEventOwner = event.player === currentPlayerName;
   const eventInfo = EVENT_LABELS[event.event_type] || { label: event.event_type.toUpperCase(), icon: <Scroll className="h-4 w-4" /> };
   const eventCity = cities.find(c => c.id === (event as any).city_id);
   const attackerCity = cities.find(c => c.id === (event as any).attacker_city_id);
@@ -326,31 +327,36 @@ const EventDetailModal = ({
             <p className="text-sm text-muted-foreground italic">Žádný narativ zatím nebyl vygenerován.</p>
           )}
 
-          <div className="flex gap-2 flex-wrap">
-            <Button
-              size="sm"
-              onClick={handleGenerateNarrative}
-              disabled={generating}
-              variant={latestNarrative ? "outline" : "default"}
-            >
-              {latestNarrative ? (
-                <><RefreshCw className={`h-3 w-3 mr-1 ${generating ? "animate-spin" : ""}`} /> 🔄 Regenerovat</>
-              ) : (
-                <><Sparkles className={`h-3 w-3 mr-1 ${generating ? "animate-pulse" : ""}`} /> ✨ Vygenerovat popis</>
-              )}
-            </Button>
-
-            {/* E) Canon Control */}
-            {latestNarrative && !latestNarrative.is_canon && (
+          {isEventOwner && (
+            <div className="flex gap-2 flex-wrap">
               <Button
                 size="sm"
-                variant="default"
-                onClick={() => handleConfirmCanon(latestNarrative.id)}
+                onClick={handleGenerateNarrative}
+                disabled={generating}
+                variant={latestNarrative ? "outline" : "default"}
               >
-                <CheckCircle2 className="h-3 w-3 mr-1" /> ✅ Potvrdit jako oficiální zápis
+                {latestNarrative ? (
+                  <><RefreshCw className={`h-3 w-3 mr-1 ${generating ? "animate-spin" : ""}`} /> 🔄 Regenerovat</>
+                ) : (
+                  <><Sparkles className={`h-3 w-3 mr-1 ${generating ? "animate-pulse" : ""}`} /> ✨ Vygenerovat popis</>
+                )}
               </Button>
-            )}
-          </div>
+
+              {/* E) Canon Control */}
+              {latestNarrative && !latestNarrative.is_canon && (
+                <Button
+                  size="sm"
+                  variant="default"
+                  onClick={() => handleConfirmCanon(latestNarrative.id)}
+                >
+                  <CheckCircle2 className="h-3 w-3 mr-1" /> ✅ Potvrdit jako oficiální zápis
+                </Button>
+              )}
+            </div>
+          )}
+          {!isEventOwner && !latestNarrative && (
+            <p className="text-xs text-muted-foreground italic">Narativ může vygenerovat pouze autor události.</p>
+          )}
 
           {narratives.length > 1 && (
             <details className="text-xs text-muted-foreground">
