@@ -11,6 +11,8 @@ type WorldMemory = Tables<"world_memories">;
 type ChronicleEntry = Tables<"chronicle_entries">;
 type GamePlayer = Tables<"game_players">;
 
+type City = Tables<"cities">;
+
 interface ChronicleFeedProps {
   sessionId: string;
   events: GameEvent[];
@@ -21,6 +23,7 @@ interface ChronicleFeedProps {
   players: GamePlayer[];
   currentPlayerName: string;
   entityTraits?: any[];
+  cities?: City[];
   onRefetch?: () => void;
 }
 
@@ -32,7 +35,7 @@ const EPOCH_LABELS: Record<string, string> = {
 
 const ChronicleFeed = ({
   sessionId, events, memories, chronicles, epochStyle,
-  currentTurn, players, currentPlayerName, entityTraits, onRefetch,
+  currentTurn, players, currentPlayerName, entityTraits, cities = [], onRefetch,
 }: ChronicleFeedProps) => {
   const [generating, setGenerating] = useState(false);
 
@@ -56,7 +59,19 @@ const ChronicleFeed = ({
 
     setGenerating(true);
     try {
-      const result = await generateChronicle(currentTurnEvents, memories, epochStyle, entityTraits);
+      // Gather city memories for cities involved in this turn's events
+      const involvedCityIds = new Set(
+        currentTurnEvents.map(e => (e as any).city_id).filter(Boolean)
+      );
+      const cityMemories = memories
+        .filter(m => m.approved && (m as any).city_id && involvedCityIds.has((m as any).city_id))
+        .map(m => ({
+          text: m.text,
+          category: (m as any).category,
+          cityName: cities.find(c => c.id === (m as any).city_id)?.name || "?",
+        }));
+
+      const result = await generateChronicle(currentTurnEvents, memories, epochStyle, entityTraits, cityMemories);
       if (result.chronicle) {
         await addChronicleEntry(sessionId, `📜 Rok ${currentTurn}\n\n${result.chronicle}`, epochStyle, currentTurn);
       }

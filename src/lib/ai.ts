@@ -4,10 +4,11 @@ export async function generateChronicle(
   events: any[],
   memories: any[],
   epochStyle: string,
-  entityTraits?: any[]
+  entityTraits?: any[],
+  cityMemories?: any[]
 ): Promise<{ chronicle: string; suggestedMemories: string[] }> {
   const { data, error } = await supabase.functions.invoke("chronicle", {
-    body: { events, memories, epochStyle, entityTraits: entityTraits || [] },
+    body: { events, memories, epochStyle, entityTraits: entityTraits || [], cityMemories: cityMemories || [] },
   });
 
   if (error) {
@@ -64,10 +65,12 @@ export async function generateCityProfile(
     ownerFlavorPrompt?: string | null;
   },
   confirmedCityEvents: any[],
-  approvedWorldFacts: string[]
+  approvedWorldFacts: string[],
+  cityMemories?: any[],
+  provinceMemories?: any[]
 ): Promise<{ introduction: string; historyRetelling: string; bulletFacts: string[]; debug?: any }> {
   const { data, error } = await supabase.functions.invoke("cityprofile", {
-    body: { city, confirmedCityEvents, approvedWorldFacts },
+    body: { city, confirmedCityEvents, approvedWorldFacts, cityMemories: cityMemories || [], provinceMemories: provinceMemories || [] },
   });
 
   if (error) {

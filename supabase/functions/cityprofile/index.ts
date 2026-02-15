@@ -9,7 +9,7 @@ serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response(null, { headers: corsHeaders });
 
   try {
-    const { city, confirmedCityEvents, approvedWorldFacts } = await req.json();
+    const { city, confirmedCityEvents, approvedWorldFacts, cityMemories, provinceMemories } = await req.json();
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
 
     if (!LOVABLE_API_KEY) {
@@ -31,7 +31,13 @@ PRAVIDLA:
 - Piš česky, vznešeným kronikářským stylem.
 - NEVYMÝŠLEJ události ani čísla. Pracuj POUZE s poskytnutými daty.
 - Pokud chybí informace, řekni že jsou neznámé.
-- Události převyprávěj objektivně.${flavorNote}`;
+- Události převyprávěj objektivně.
+- MUSÍŠ zapracovat lokální paměti města (tradice, jizvy, kulturní rysy) do představení.
+- Pokud město má tradici nebo pověst, zmiň ji přirozeně v textu.
+- Rysy města (emergentní vlastnosti) vyplývají z opakovaných pamětí.${flavorNote}`;
+
+    const cityMemsText = (cityMemories || []).map((m: any) => `[${m.category || "tradition"}] ${m.text}`).join("\n");
+    const provMemsText = (provinceMemories || []).map((m: any) => `[${m.category || "tradition"}] ${m.text}`).join("\n");
 
     const userContent = `Město: ${JSON.stringify(city, null, 2)}
 
@@ -39,7 +45,13 @@ Potvrzené události města (${confirmedCityEvents?.length || 0}):
 ${JSON.stringify(confirmedCityEvents || [], null, 2)}
 
 Schválené světové fakty:
-${JSON.stringify(approvedWorldFacts || [], null, 2)}`;
+${JSON.stringify(approvedWorldFacts || [], null, 2)}
+
+Lokální paměti města (tradice, jizvy, pověsti):
+${cityMemsText || "žádné"}
+
+Paměti provincie:
+${provMemsText || "žádné"}`;
 
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",

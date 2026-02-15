@@ -147,6 +147,56 @@ export type Database = {
           },
         ]
       }
+      council_evaluations: {
+        Row: {
+          created_at: string
+          id: string
+          minister_diplomacy: string | null
+          minister_interior: string | null
+          minister_trade: string | null
+          minister_war: string | null
+          player_name: string
+          round_number: number
+          round_summary: string
+          session_id: string
+          strategic_outlook: string | null
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          minister_diplomacy?: string | null
+          minister_interior?: string | null
+          minister_trade?: string | null
+          minister_war?: string | null
+          player_name: string
+          round_number: number
+          round_summary: string
+          session_id: string
+          strategic_outlook?: string | null
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          minister_diplomacy?: string | null
+          minister_interior?: string | null
+          minister_trade?: string | null
+          minister_war?: string | null
+          player_name?: string
+          round_number?: number
+          round_summary?: string
+          session_id?: string
+          strategic_outlook?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "council_evaluations_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       diplomacy_messages: {
         Row: {
           created_at: string
@@ -463,6 +513,53 @@ export type Database = {
         }
         Relationships: []
       }
+      intelligence_reports: {
+        Row: {
+          created_at: string
+          created_round: number
+          id: string
+          is_rumor_public: boolean
+          report_text: string
+          secrecy_level: string
+          session_id: string
+          source_type: string
+          target_entity: string
+          visible_to: string
+        }
+        Insert: {
+          created_at?: string
+          created_round?: number
+          id?: string
+          is_rumor_public?: boolean
+          report_text: string
+          secrecy_level?: string
+          session_id: string
+          source_type?: string
+          target_entity: string
+          visible_to: string
+        }
+        Update: {
+          created_at?: string
+          created_round?: number
+          id?: string
+          is_rumor_public?: boolean
+          report_text?: string
+          secrecy_level?: string
+          session_id?: string
+          source_type?: string
+          target_entity?: string
+          visible_to?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "intelligence_reports_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       military_capacity: {
         Row: {
           army_name: string
@@ -696,26 +793,52 @@ export type Database = {
       world_memories: {
         Row: {
           approved: boolean
+          category: string
+          city_id: string | null
           created_at: string
+          created_round: number
           id: string
+          province_id: string | null
           session_id: string
           text: string
         }
         Insert: {
           approved?: boolean
+          category?: string
+          city_id?: string | null
           created_at?: string
+          created_round?: number
           id?: string
+          province_id?: string | null
           session_id: string
           text: string
         }
         Update: {
           approved?: boolean
+          category?: string
+          city_id?: string | null
           created_at?: string
+          created_round?: number
           id?: string
+          province_id?: string | null
           session_id?: string
           text?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "world_memories_city_id_fkey"
+            columns: ["city_id"]
+            isOneToOne: false
+            referencedRelation: "cities"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "world_memories_province_id_fkey"
+            columns: ["province_id"]
+            isOneToOne: false
+            referencedRelation: "provinces"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "world_memories_session_id_fkey"
             columns: ["session_id"]
