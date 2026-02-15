@@ -5,10 +5,11 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { Landmark, Plus, Sparkles, Crown, Skull, Hammer, ImageIcon } from "lucide-react";
+import { Landmark, Plus, Sparkles, Crown, Skull, Hammer } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { addGameEvent, addWorldMemory } from "@/hooks/useGameSession";
+import WonderPortrait from "@/components/WonderPortrait";
 
 type Wonder = Tables<"wonders">;
 type City = Tables<"cities">;
@@ -218,6 +219,10 @@ const WondersPanel = ({ sessionId, wonders, cities, players, memories, currentPl
             wonder={w}
             isOwner={w.owner_player === currentPlayerName}
             onStatusChange={updateStatus}
+            currentPlayerName={currentPlayerName}
+            sessionId={sessionId}
+            currentTurn={currentTurn}
+            onRefetch={onRefetch}
           />
         ))}
       </div>
@@ -225,7 +230,10 @@ const WondersPanel = ({ sessionId, wonders, cities, players, memories, currentPl
   );
 };
 
-function WonderCard({ wonder, isOwner, onStatusChange }: { wonder: Wonder; isOwner: boolean; onStatusChange: (w: Wonder, status: string) => void }) {
+function WonderCard({ wonder, isOwner, onStatusChange, currentPlayerName, sessionId, currentTurn, onRefetch }: {
+  wonder: Wonder; isOwner: boolean; onStatusChange: (w: Wonder, status: string) => void;
+  currentPlayerName: string; sessionId: string; currentTurn: number; onRefetch?: () => void;
+}) {
   const statusFlow: Record<string, string[]> = {
     planned: ["under construction"],
     "under construction": ["completed"],
@@ -240,9 +248,20 @@ function WonderCard({ wonder, isOwner, onStatusChange }: { wonder: Wonder; isOwn
       wonder.status === "destroyed" ? "border-destructive/30 bg-card opacity-75" :
       "border-border bg-card"
     }`}>
-      {/* Image placeholder */}
-      <div className="h-32 bg-muted/50 flex items-center justify-center border-b border-border relative">
-        <ImageIcon className="h-10 w-10 text-muted-foreground/30" />
+      {/* Portrait section */}
+      <div className="relative">
+        <WonderPortrait
+          wonderId={wonder.id}
+          wonderName={wonder.name}
+          cityName={wonder.city_name}
+          imageUrl={(wonder as any).image_url || null}
+          imagePrompt={wonder.image_prompt}
+          ownerPlayer={wonder.owner_player}
+          currentPlayerName={currentPlayerName}
+          sessionId={sessionId}
+          currentTurn={currentTurn}
+          onRefetch={onRefetch}
+        />
         <div className="absolute top-2 right-2">
           <Badge variant={wonder.status === "completed" ? "default" : "secondary"} className="text-xs font-display">
             {STATUS_ICONS[wonder.status]}

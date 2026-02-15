@@ -734,6 +734,38 @@ export type Database = {
           },
         ]
       }
+      wonder_draft_images: {
+        Row: {
+          created_at: string
+          id: string
+          image_prompt: string | null
+          image_url: string
+          wonder_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          image_prompt?: string | null
+          image_url: string
+          wonder_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          image_prompt?: string | null
+          image_url?: string
+          wonder_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "wonder_draft_images_wonder_id_fkey"
+            columns: ["wonder_id"]
+            isOneToOne: false
+            referencedRelation: "wonders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       wonders: {
         Row: {
           bonus: string | null
@@ -743,6 +775,7 @@ export type Database = {
           era: string
           id: string
           image_prompt: string | null
+          image_url: string | null
           memory_fact: string | null
           name: string
           owner_player: string
@@ -758,6 +791,7 @@ export type Database = {
           era?: string
           id?: string
           image_prompt?: string | null
+          image_url?: string | null
           memory_fact?: string | null
           name: string
           owner_player: string
@@ -773,6 +807,7 @@ export type Database = {
           era?: string
           id?: string
           image_prompt?: string | null
+          image_url?: string | null
           memory_fact?: string | null
           name?: string
           owner_player?: string
