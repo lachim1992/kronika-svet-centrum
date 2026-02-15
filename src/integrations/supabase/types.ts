@@ -46,6 +46,47 @@ export type Database = {
           },
         ]
       }
+      cities: {
+        Row: {
+          created_at: string
+          id: string
+          level: string
+          name: string
+          owner_player: string
+          province: string | null
+          session_id: string
+          tags: string[] | null
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          level?: string
+          name: string
+          owner_player: string
+          province?: string | null
+          session_id: string
+          tags?: string[] | null
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          level?: string
+          name?: string
+          owner_player?: string
+          province?: string | null
+          session_id?: string
+          tags?: string[] | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cities_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       city_states: {
         Row: {
           created_at: string
@@ -163,12 +204,48 @@ export type Database = {
           },
         ]
       }
+      game_players: {
+        Row: {
+          created_at: string
+          id: string
+          player_name: string
+          player_number: number
+          session_id: string
+          turn_closed: boolean
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          player_name: string
+          player_number: number
+          session_id: string
+          turn_closed?: boolean
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          player_name?: string
+          player_number?: number
+          session_id?: string
+          turn_closed?: boolean
+        }
+        Relationships: [
+          {
+            foreignKeyName: "game_players_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       game_sessions: {
         Row: {
           created_at: string
           current_turn: number
           epoch_style: string
           id: string
+          max_players: number
           player1_name: string
           player2_name: string
           room_code: string
@@ -180,6 +257,7 @@ export type Database = {
           current_turn?: number
           epoch_style?: string
           id?: string
+          max_players?: number
           player1_name?: string
           player2_name?: string
           room_code: string
@@ -191,6 +269,7 @@ export type Database = {
           current_turn?: number
           epoch_style?: string
           id?: string
+          max_players?: number
           player1_name?: string
           player2_name?: string
           room_code?: string
@@ -198,6 +277,138 @@ export type Database = {
           turn_closed_p2?: boolean
         }
         Relationships: []
+      }
+      military_capacity: {
+        Row: {
+          army_name: string
+          army_type: string
+          created_at: string
+          id: string
+          iron_cost: number
+          player_name: string
+          session_id: string
+          status: string
+        }
+        Insert: {
+          army_name: string
+          army_type?: string
+          created_at?: string
+          id?: string
+          iron_cost?: number
+          player_name: string
+          session_id: string
+          status?: string
+        }
+        Update: {
+          army_name?: string
+          army_type?: string
+          created_at?: string
+          id?: string
+          iron_cost?: number
+          player_name?: string
+          session_id?: string
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "military_capacity_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      player_resources: {
+        Row: {
+          created_at: string
+          id: string
+          income: number
+          player_name: string
+          resource_type: string
+          session_id: string
+          stockpile: number
+          updated_at: string
+          upkeep: number
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          income?: number
+          player_name: string
+          resource_type: string
+          session_id: string
+          stockpile?: number
+          updated_at?: string
+          upkeep?: number
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          income?: number
+          player_name?: string
+          resource_type?: string
+          session_id?: string
+          stockpile?: number
+          updated_at?: string
+          upkeep?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "player_resources_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      trade_log: {
+        Row: {
+          amount: number
+          created_at: string
+          from_player: string
+          id: string
+          note: string | null
+          resource_type: string
+          session_id: string
+          to_player: string
+          trade_type: string
+          turn_number: number
+        }
+        Insert: {
+          amount: number
+          created_at?: string
+          from_player: string
+          id?: string
+          note?: string | null
+          resource_type: string
+          session_id: string
+          to_player: string
+          trade_type?: string
+          turn_number?: number
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          from_player?: string
+          id?: string
+          note?: string | null
+          resource_type?: string
+          session_id?: string
+          to_player?: string
+          trade_type?: string
+          turn_number?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "trade_log_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       world_memories: {
         Row: {

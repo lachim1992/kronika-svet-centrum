@@ -1,11 +1,14 @@
 import { useState } from "react";
 import { addGameEvent } from "@/hooks/useGameSession";
+import type { Tables } from "@/integrations/supabase/types";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { PenLine } from "lucide-react";
 import { toast } from "sonner";
+
+type City = Tables<"cities">;
+type GamePlayer = Tables<"game_players">;
 
 const EVENT_TYPES = [
   { value: "place_tile", label: "Položení dílku" },
@@ -16,18 +19,20 @@ const EVENT_TYPES = [
   { value: "battle", label: "Bitva" },
   { value: "diplomacy", label: "Diplomacie" },
   { value: "city_state_action", label: "Akce městského státu" },
+  { value: "trade", label: "Obchod" },
+  { value: "wonder", label: "Div světa" },
 ];
 
 interface EventInputProps {
   sessionId: string;
-  player1Name: string;
-  player2Name: string;
+  players: GamePlayer[];
+  cities: City[];
   currentTurn: number;
   turnClosed: boolean;
   onEventAdded?: () => void;
 }
 
-const EventInput = ({ sessionId, player1Name, player2Name, currentTurn, turnClosed, onEventAdded }: EventInputProps) => {
+const EventInput = ({ sessionId, players, cities, currentTurn, turnClosed, onEventAdded }: EventInputProps) => {
   const [eventType, setEventType] = useState("");
   const [player, setPlayer] = useState("");
   const [location, setLocation] = useState("");
@@ -42,10 +47,7 @@ const EventInput = ({ sessionId, player1Name, player2Name, currentTurn, turnClos
     setLoading(true);
     await addGameEvent(sessionId, eventType, player, location, note, currentTurn);
     setLoading(false);
-    setEventType("");
-    setPlayer("");
-    setLocation("");
-    setNote("");
+    setEventType(""); setPlayer(""); setLocation(""); setNote("");
     toast.success("Událost zaznamenána");
     onEventAdded?.();
   };
@@ -58,11 +60,14 @@ const EventInput = ({ sessionId, player1Name, player2Name, currentTurn, turnClos
           Rok {currentTurn}
         </h2>
         <p className="text-muted-foreground text-center py-8 italic">
-          Čekáme na uzavření kola oběma hráči...
+          Vaše kolo je uzavřeno. Čekáme na ostatní hráče...
         </p>
       </div>
     );
   }
+
+  // Build location options from cities
+  const cityNames = cities.map(c => c.name);
 
   return (
     <div className="space-y-4">
@@ -72,9 +77,7 @@ const EventInput = ({ sessionId, player1Name, player2Name, currentTurn, turnClos
       </h2>
 
       <Select value={eventType} onValueChange={setEventType}>
-        <SelectTrigger className="h-11">
-          <SelectValue placeholder="Typ události..." />
-        </SelectTrigger>
+        <SelectTrigger className="h-11"><SelectValue placeholder="Typ události..." /></SelectTrigger>
         <SelectContent>
           {EVENT_TYPES.map((et) => (
             <SelectItem key={et.value} value={et.value}>{et.label}</SelectItem>
@@ -83,22 +86,24 @@ const EventInput = ({ sessionId, player1Name, player2Name, currentTurn, turnClos
       </Select>
 
       <Select value={player} onValueChange={setPlayer}>
-        <SelectTrigger className="h-11">
-          <SelectValue placeholder="Hráč..." />
-        </SelectTrigger>
+        <SelectTrigger className="h-11"><SelectValue placeholder="Hráč..." /></SelectTrigger>
         <SelectContent>
-          <SelectItem value={player1Name}>{player1Name}</SelectItem>
-          <SelectItem value={player2Name}>{player2Name}</SelectItem>
+          {players.map(p => (
+            <SelectItem key={p.id} value={p.player_name}>{p.player_name}</SelectItem>
+          ))}
           <SelectItem value="NPC">NPC</SelectItem>
         </SelectContent>
       </Select>
 
-      <Input
-        placeholder="Místo / provincie (volitelné)"
-        value={location}
-        onChange={(e) => setLocation(e.target.value)}
-        className="h-11"
-      />
+      <Select value={location} onValueChange={setLocation}>
+        <SelectTrigger className="h-11"><SelectValue placeholder="Místo (volitelné)..." /></SelectTrigger>
+        <SelectContent>
+          <SelectItem value="">— Žádné —</SelectItem>
+          {cityNames.map(cn => (
+            <SelectItem key={cn} value={cn}>{cn}</SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
 
       <Textarea
         placeholder="Poznámka / flavor text (volitelné)"
