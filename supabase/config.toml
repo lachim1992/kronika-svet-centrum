@@ -29,3 +29,9 @@ verify_jwt = false
 
 [functions.event-narrative]
 verify_jwt = false
+
+[functions.world-history]
+verify_jwt = false
+
+[functions.player-chronicle]
+verify_jwt = false
