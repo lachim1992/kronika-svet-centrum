@@ -129,6 +129,8 @@ const DevModePanel = ({
   const [debugLog, setDebugLog] = useState<string[]>([]);
   const [simProgress, setSimProgress] = useState("");
   const [coverageReport, setCoverageReport] = useState<CoverageReport | null>(null);
+  const [generatingProfiles, setGeneratingProfiles] = useState(false);
+  const [profileProgress, setProfileProgress] = useState("");
 
   const log = (msg: string) => setDebugLog(prev => [...prev.slice(-200), `[${new Date().toLocaleTimeString("cs")}] ${msg}`]);
   const pick = <T,>(arr: T[]): T => arr[Math.floor(Math.random() * arr.length)];
@@ -651,6 +653,112 @@ const DevModePanel = ({
   };
 
   // ========================
+  // GENERATE AI CITY PROFILES + ILLUSTRATIONS FOR ALL CITIES
+  // ========================
+  const generateAllCityProfiles = async () => {
+    setGeneratingProfiles(true);
+    log("🎨 Generuji AI profily a ilustrace pro VŠECHNA města...");
+    let successCount = 0;
+    let failCount = 0;
+
+    try {
+      const { data: cities } = await supabase.from("cities").select("*").eq("session_id", sessionId);
+      const { data: allEvents } = await supabase.from("game_events").select("*").eq("session_id", sessionId).eq("confirmed", true);
+      const { data: allMemories } = await supabase.from("world_memories").select("*").eq("session_id", sessionId).eq("approved", true);
+
+      if (!cities?.length) {
+        toast.error("Žádná města k generování");
+        setGeneratingProfiles(false);
+        return;
+      }
+
+      for (let i = 0; i < cities.length; i++) {
+        const city = cities[i];
+        setProfileProgress(`${i + 1}/${cities.length}: ${city.name}`);
+        log(`🏙️ [${i + 1}/${cities.length}] Generuji profil pro ${city.name} (vlastník: ${city.owner_player})...`);
+
+        // 1) Generate AI city profile (intro + history)
+        try {
+          const cityEvents = (allEvents || []).filter(e => e.city_id === city.id);
+          const cityMems = (allMemories || []).filter(m => m.city_id === city.id).map(m => ({ text: m.text, category: m.category }));
+          const provMems = city.province_id
+            ? (allMemories || []).filter(m => m.province_id === city.province_id).map(m => ({ text: m.text, category: m.category }))
+            : [];
+          const approvedFacts = (allMemories || []).filter(m => !m.city_id).map(m => m.text);
+
+          const { data: profileData, error: profileErr } = await supabase.functions.invoke("cityprofile", {
+            body: {
+              city: {
+                name: city.name,
+                ownerName: city.owner_player,
+                level: city.level,
+                province: city.province || "",
+                tags: city.tags || [],
+                foundedRound: city.founded_round || 1,
+                status: city.status || "ok",
+                ownerFlavorPrompt: city.flavor_prompt || null,
+              },
+              confirmedCityEvents: cityEvents,
+              approvedWorldFacts: approvedFacts.slice(0, 20),
+              cityMemories: cityMems,
+              provinceMemories: provMems,
+            },
+          });
+
+          if (profileErr) throw profileErr;
+          log(`  ✅ Profil ${city.name}: intro ${(profileData?.introduction || "").length} znaků, sága ${(profileData?.historyRetelling || "").length} znaků`);
+        } catch (e: any) {
+          log(`  ⚠️ Profil ${city.name} selhal: ${e?.message || "unknown"}`);
+        }
+
+        // 2) Generate wiki entry with AI illustration
+        try {
+          const { data: wikiData, error: wikiErr } = await supabase.functions.invoke("wiki-generate", {
+            body: {
+              entityType: "city",
+              entityName: city.name,
+              entityId: city.id,
+              sessionId: sessionId,
+              ownerPlayer: city.owner_player,
+              context: {
+                level: city.level,
+                province: city.province,
+                status: city.status,
+                tags: city.tags,
+                foundedRound: city.founded_round,
+              },
+            },
+          });
+
+          if (wikiErr) throw wikiErr;
+
+          const hasImage = !!wikiData?.imageUrl;
+          log(`  ✅ Wiki ${city.name}: ${hasImage ? "🖼️ ilustrace OK" : "⚠️ bez ilustrace"}, popis ${(wikiData?.aiDescription || "").length} znaků`);
+          if (hasImage) successCount++;
+          else failCount++;
+        } catch (e: any) {
+          log(`  ⚠️ Wiki/ilustrace ${city.name} selhala: ${e?.message || "unknown"}`);
+          failCount++;
+        }
+
+        // Small delay to avoid rate limiting
+        if (i < cities.length - 1) {
+          await new Promise(r => setTimeout(r, 1500));
+        }
+      }
+
+      toast.success(`🎨 Profily hotovy: ${successCount} s ilustrací, ${failCount} bez`);
+      log(`🏁 Generování dokončeno: ${successCount} ilustrací OK, ${failCount} selhalo`);
+      onRefetch?.();
+    } catch (e: any) {
+      log("❌ " + (e?.message || "unknown"));
+      toast.error("Generování profilů selhalo");
+    }
+    setGeneratingProfiles(false);
+    setProfileProgress("");
+  };
+
+  // ========================
   // QA TEST
   // ========================
   const runQATest = async () => {
@@ -770,7 +878,7 @@ const DevModePanel = ({
       </div>
 
       {/* Actions */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         <Button onClick={seedExtremeWorld} disabled={seeding} className="h-14 font-display" variant="outline">
           {seeding ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Database className="h-4 w-4 mr-2" />}
           {seeding ? "Seeduji..." : "🌱 Seed 6-Player World"}
@@ -778,6 +886,10 @@ const DevModePanel = ({
         <Button onClick={runExtremeSimulation} disabled={simulating} className="h-14 font-display text-primary-foreground bg-primary hover:bg-primary/90">
           {simulating ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Zap className="h-4 w-4 mr-2" />}
           {simulating ? `Simuluji... ${simProgress}` : "🚀 Simulovat 20 let (6×5+)"}
+        </Button>
+        <Button onClick={generateAllCityProfiles} disabled={generatingProfiles} className="h-14 font-display bg-accent text-accent-foreground hover:bg-accent/80">
+          {generatingProfiles ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Sparkles className="h-4 w-4 mr-2" />}
+          {generatingProfiles ? `Generuji... ${profileProgress}` : "🎨 AI Profily + Ilustrace měst"}
         </Button>
         <Button onClick={runQATest} disabled={running} className="h-14 font-display">
           {running ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <FlaskConical className="h-4 w-4 mr-2" />}
