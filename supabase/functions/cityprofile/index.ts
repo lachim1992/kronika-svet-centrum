@@ -97,9 +97,12 @@ ${provMemsText || "žádné"}`;
         });
       }
       if (response.status === 402) {
-        return new Response(JSON.stringify({ error: "Kredit vyčerpán." }), {
-          status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" }
-        });
+        return new Response(JSON.stringify({
+          introduction: `${city.name} je ${city.level?.toLowerCase() || "město"} v provincii ${city.province || "neznámé"}. Město patří hráči ${city.ownerName || "neznámému"}.`,
+          historyRetelling: "Kronikář nemá v tuto chvíli prostředky k záznamu. (AI kredity vyčerpány)",
+          bulletFacts: [`${city.name} bylo založeno v roce ${city.foundedRound || 1}.`],
+          debug: { usedProvider: "fallback-402", eventCount: confirmedCityEvents?.length || 0 }
+        }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
       const t = await response.text();
       console.error("AI error:", response.status, t);
