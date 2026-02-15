@@ -1,0 +1,7 @@
+project_id = "kvzzfthrefdisuohzfws"
+
+[functions.chronicle]
+verify_jwt = false
+
+[functions.citystates]
+verify_jwt = false
