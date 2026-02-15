@@ -9,7 +9,7 @@ serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response(null, { headers: corsHeaders });
 
   try {
-    const { events, memories, epochStyle } = await req.json();
+    const { events, memories, epochStyle, entityTraits } = await req.json();
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
 
     if (!LOVABLE_API_KEY) {
@@ -25,11 +25,20 @@ serve(async (req) => {
       moderni: "Piš jako moderní novinář. Používej stručný, faktický styl zpravodajství. Události prezentuj jako novinové články s titulky.",
     };
 
+    const traitsContext = (entityTraits || [])
+      .filter((t: any) => t.is_active)
+      .map((t: any) => `${t.entity_name} (${t.entity_type}): [${t.trait_category}] ${t.trait_text}`)
+      .join("\n");
+
     const systemPrompt = `Jsi kronikář civilizační deskové hry. ${styleInstructions[epochStyle] || styleInstructions.kroniky}
 
 Tvým úkolem je:
 1. Převést potvrzené herní události do narativního textu kroniky (česky).
 2. Navrhnout 0-3 nové "vzpomínky světa" — trvalé fakty, tradice, nebo vtipné poznámky, které vyplývají z událostí.
+
+DŮLEŽITÉ: Při psaní kroniky MUSÍŠ zohlednit zaznamenané vlastnosti entit (přídomky, pověsti, tituly, vztahy).
+Používej přídomky a tituly vládců, zmiňuj pověsti měst, reflektuj zaznamenané vztahy mezi entitami.
+Např. pokud vládce má přídomek "Krutý", napiš "Lachimm Krutý přitáhl se svými legiemi..."
 
 Odpověz ve formátu JSON:
 {
@@ -37,7 +46,7 @@ Odpověz ve formátu JSON:
   "suggestedMemories": ["fakt 1", "fakt 2"]
 }`;
 
-    const userContent = `Potvrzené události:\n${JSON.stringify(events, null, 2)}\n\nExistující paměť světa:\n${JSON.stringify(memories, null, 2)}`;
+    const userContent = `Potvrzené události:\n${JSON.stringify(events, null, 2)}\n\nExistující paměť světa:\n${JSON.stringify(memories, null, 2)}\n\nVlastnosti entit (přídomky, pověsti, tituly):\n${traitsContext || "žádné"}`;
 
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",

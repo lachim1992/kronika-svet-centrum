@@ -4,7 +4,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Scroll, Copy, Settings, BookOpen, Castle, Swords, Building2, Crown, Users, Landmark, Trophy, MapPin, Feather } from "lucide-react";
+import { Scroll, Copy, Settings, BookOpen, Castle, Swords, Building2, Crown, Users, Landmark, Trophy, MapPin, Feather, ScrollText } from "lucide-react";
 import EventInput from "@/components/EventInput";
 import EventTimeline from "@/components/EventTimeline";
 import ChronicleFeed from "@/components/ChronicleFeed";
@@ -16,6 +16,7 @@ import WondersPanel from "@/components/WondersPanel";
 import LeaderboardsPanel from "@/components/LeaderboardsPanel";
 import CityDirectory from "@/components/CityDirectory";
 import DiplomacyPanel from "@/components/DiplomacyPanel";
+import EntityTraitsPanel from "@/components/EntityTraitsPanel";
 import { toast } from "sonner";
 
 const Dashboard = () => {
@@ -23,7 +24,7 @@ const Dashboard = () => {
   const navigate = useNavigate();
   const {
     session, events, memories, chronicles, cityStates, responses,
-    players, cities, resources, armies, trades, wonders,
+    players, cities, resources, armies, trades, wonders, entityTraits,
     loading, refetch,
   } = useGameSession(sessionId || null);
 
@@ -96,6 +97,9 @@ const Dashboard = () => {
           <TabsTrigger value="chronicle" className="font-display text-xs">
             <BookOpen className="h-4 w-4 mr-1" />Kronika
           </TabsTrigger>
+          <TabsTrigger value="traits" className="font-display text-xs">
+            <ScrollText className="h-4 w-4 mr-1" />Vlastnosti
+          </TabsTrigger>
           <TabsTrigger value="cities" className="font-display text-xs">
             <MapPin className="h-4 w-4 mr-1" />Města
           </TabsTrigger>
@@ -133,11 +137,23 @@ const Dashboard = () => {
               <ChronicleFeed
                 sessionId={session.id} events={events} memories={memories} chronicles={chronicles}
                 epochStyle={session.epoch_style} currentTurn={currentTurn} players={players}
-                currentPlayerName={currentPlayerName} onRefetch={refetch}
+                currentPlayerName={currentPlayerName} entityTraits={entityTraits} onRefetch={refetch}
               />
             </div>
             <div><WorldMemoryPanel sessionId={session.id} memories={memories} /></div>
           </div>
+        </TabsContent>
+
+        <TabsContent value="traits" className="pb-6">
+          <EntityTraitsPanel
+            sessionId={session.id}
+            traits={entityTraits}
+            cities={cities}
+            events={events}
+            players={players.map(p => p.player_name)}
+            currentTurn={currentTurn}
+            onRefetch={refetch}
+          />
         </TabsContent>
 
         <TabsContent value="cities" className="pb-6">
