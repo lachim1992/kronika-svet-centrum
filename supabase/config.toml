@@ -26,3 +26,6 @@ verify_jwt = false
 
 [functions.world-crisis]
 verify_jwt = false
+
+[functions.event-narrative]
+verify_jwt = false
