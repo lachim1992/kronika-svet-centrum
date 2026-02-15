@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import {
   Scroll, Copy, Settings, BookOpen, Castle, Swords, Building2, Crown, Users,
   Landmark, Trophy, MapPin, Feather, ScrollText, Star, Megaphone, Target, Sparkles,
+  Globe, BookMarked,
 } from "lucide-react";
 import EventInput from "@/components/EventInput";
 import EventTimeline from "@/components/EventTimeline";
@@ -25,6 +26,8 @@ import GreatPersonsPanel from "@/components/GreatPersonsPanel";
 import DeclarationsPanel from "@/components/DeclarationsPanel";
 import WarRoomPanel from "@/components/WarRoomPanel";
 import SecretObjectivesPanel from "@/components/SecretObjectivesPanel";
+import WorldHistoryPanel from "@/components/WorldHistoryPanel";
+import PlayerChroniclePanel from "@/components/PlayerChroniclePanel";
 import { toast } from "sonner";
 
 const Dashboard = () => {
@@ -104,7 +107,13 @@ const Dashboard = () => {
             <Crown className="h-4 w-4 mr-1" />Přehled
           </TabsTrigger>
           <TabsTrigger value="chronicle" className="font-display text-xs">
-            <BookOpen className="h-4 w-4 mr-1" />Kronika
+            <BookOpen className="h-4 w-4 mr-1" />📜 Rok v kronice
+          </TabsTrigger>
+          <TabsTrigger value="worldhistory" className="font-display text-xs">
+            <Globe className="h-4 w-4 mr-1" />🌍 Dějiny světa
+          </TabsTrigger>
+          <TabsTrigger value="playerchronicle" className="font-display text-xs">
+            <BookMarked className="h-4 w-4 mr-1" />👑 Moje kronika
           </TabsTrigger>
           <TabsTrigger value="civdna" className="font-display text-xs">
             <Sparkles className="h-4 w-4 mr-1" />Civilizace
@@ -166,6 +175,21 @@ const Dashboard = () => {
             </div>
             <div><WorldMemoryPanel sessionId={session.id} memories={memories} cities={cities} currentTurn={currentTurn} /></div>
           </div>
+        </TabsContent>
+
+        <TabsContent value="worldhistory" className="pb-6">
+          <WorldHistoryPanel
+            sessionId={session.id} events={events} memories={memories}
+            epochStyle={session.epoch_style} currentTurn={currentTurn}
+          />
+        </TabsContent>
+
+        <TabsContent value="playerchronicle" className="pb-6">
+          <PlayerChroniclePanel
+            sessionId={session.id} currentPlayerName={currentPlayerName}
+            events={events} memories={memories} cities={cities}
+            civilizations={civilizations} epochStyle={session.epoch_style} currentTurn={currentTurn}
+          />
         </TabsContent>
 
         <TabsContent value="civdna" className="pb-6">

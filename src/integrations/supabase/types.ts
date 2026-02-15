@@ -866,6 +866,50 @@ export type Database = {
           },
         ]
       }
+      player_chronicle_chapters: {
+        Row: {
+          chapter_text: string
+          chapter_title: string
+          created_at: string
+          epoch_style: string
+          from_turn: number
+          id: string
+          player_name: string
+          session_id: string
+          to_turn: number
+        }
+        Insert: {
+          chapter_text: string
+          chapter_title: string
+          created_at?: string
+          epoch_style?: string
+          from_turn?: number
+          id?: string
+          player_name: string
+          session_id: string
+          to_turn?: number
+        }
+        Update: {
+          chapter_text?: string
+          chapter_title?: string
+          created_at?: string
+          epoch_style?: string
+          from_turn?: number
+          id?: string
+          player_name?: string
+          session_id?: string
+          to_turn?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "player_chronicle_chapters_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       player_resources: {
         Row: {
           created_at: string
@@ -1168,6 +1212,47 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "world_crises_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      world_history_chapters: {
+        Row: {
+          chapter_text: string
+          chapter_title: string
+          created_at: string
+          epoch_style: string
+          from_turn: number
+          id: string
+          session_id: string
+          to_turn: number
+        }
+        Insert: {
+          chapter_text: string
+          chapter_title: string
+          created_at?: string
+          epoch_style?: string
+          from_turn?: number
+          id?: string
+          session_id: string
+          to_turn?: number
+        }
+        Update: {
+          chapter_text?: string
+          chapter_title?: string
+          created_at?: string
+          epoch_style?: string
+          from_turn?: number
+          id?: string
+          session_id?: string
+          to_turn?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "world_history_chapters_session_id_fkey"
             columns: ["session_id"]
             isOneToOne: false
             referencedRelation: "game_sessions"
