@@ -24,9 +24,10 @@ interface EventInputProps {
   player2Name: string;
   currentTurn: number;
   turnClosed: boolean;
+  onEventAdded?: () => void;
 }
 
-const EventInput = ({ sessionId, player1Name, player2Name, currentTurn, turnClosed }: EventInputProps) => {
+const EventInput = ({ sessionId, player1Name, player2Name, currentTurn, turnClosed, onEventAdded }: EventInputProps) => {
   const [eventType, setEventType] = useState("");
   const [player, setPlayer] = useState("");
   const [location, setLocation] = useState("");
@@ -46,6 +47,7 @@ const EventInput = ({ sessionId, player1Name, player2Name, currentTurn, turnClos
     setLocation("");
     setNote("");
     toast.success("Událost zaznamenána");
+    onEventAdded?.();
   };
 
   if (turnClosed) {
