@@ -13,6 +13,7 @@ type City = Tables<"cities">;
 type PlayerResource = Tables<"player_resources">;
 type MilitaryCapacity = Tables<"military_capacity">;
 type TradeLog = Tables<"trade_log">;
+type Wonder = Tables<"wonders">;
 
 export function useGameSession(sessionId: string | null) {
   const [session, setSession] = useState<GameSession | null>(null);
@@ -26,13 +27,14 @@ export function useGameSession(sessionId: string | null) {
   const [resources, setResources] = useState<PlayerResource[]>([]);
   const [armies, setArmies] = useState<MilitaryCapacity[]>([]);
   const [trades, setTrades] = useState<TradeLog[]>([]);
+  const [wonders, setWonders] = useState<Wonder[]>([]);
   const [loading, setLoading] = useState(true);
 
   const fetchAll = useCallback(async () => {
     if (!sessionId) return;
     setLoading(true);
 
-    const [sessRes, evtRes, memRes, chrRes, csRes, plRes, citRes, resRes, armRes, trdRes] = await Promise.all([
+    const [sessRes, evtRes, memRes, chrRes, csRes, plRes, citRes, resRes, armRes, trdRes, wndRes] = await Promise.all([
       supabase.from("game_sessions").select("*").eq("id", sessionId).single(),
       supabase.from("game_events").select("*").eq("session_id", sessionId).order("created_at", { ascending: true }),
       supabase.from("world_memories").select("*").eq("session_id", sessionId).order("created_at", { ascending: true }),
@@ -43,6 +45,7 @@ export function useGameSession(sessionId: string | null) {
       supabase.from("player_resources").select("*").eq("session_id", sessionId).order("player_name", { ascending: true }),
       supabase.from("military_capacity").select("*").eq("session_id", sessionId).order("created_at", { ascending: true }),
       supabase.from("trade_log").select("*").eq("session_id", sessionId).order("created_at", { ascending: true }),
+      supabase.from("wonders").select("*").eq("session_id", sessionId).order("created_at", { ascending: true }),
     ]);
 
     if (sessRes.data) setSession(sessRes.data);
@@ -62,6 +65,7 @@ export function useGameSession(sessionId: string | null) {
     if (resRes.data) setResources(resRes.data);
     if (armRes.data) setArmies(armRes.data);
     if (trdRes.data) setTrades(trdRes.data);
+    if (wndRes.data) setWonders(wndRes.data);
     setLoading(false);
   }, [sessionId]);
 
@@ -81,11 +85,12 @@ export function useGameSession(sessionId: string | null) {
       .on("postgres_changes", { event: "*", schema: "public", table: "player_resources", filter: `session_id=eq.${sessionId}` }, () => fetchAll())
       .on("postgres_changes", { event: "*", schema: "public", table: "military_capacity", filter: `session_id=eq.${sessionId}` }, () => fetchAll())
       .on("postgres_changes", { event: "*", schema: "public", table: "trade_log", filter: `session_id=eq.${sessionId}` }, () => fetchAll())
+      .on("postgres_changes", { event: "*", schema: "public", table: "wonders", filter: `session_id=eq.${sessionId}` }, () => fetchAll())
       .subscribe();
     return () => { supabase.removeChannel(channel); };
   }, [sessionId, fetchAll]);
 
-  return { session, events, memories, chronicles, cityStates, responses, players, cities, resources, armies, trades, loading, refetch: fetchAll };
+  return { session, events, memories, chronicles, cityStates, responses, players, cities, resources, armies, trades, wonders, loading, refetch: fetchAll };
 }
 
 // ---- Session Management ----
