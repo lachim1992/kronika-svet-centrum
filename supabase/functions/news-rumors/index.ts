@@ -103,7 +103,7 @@ ${diplomacyText || "žádné"}`;
 
     if (!response.ok) {
       if (response.status === 429) return new Response(JSON.stringify({ error: "Rate limit" }), { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-      if (response.status === 402) return new Response(JSON.stringify({ error: "Nedostatek kreditů" }), { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      if (response.status === 402) return new Response(JSON.stringify({ rumors: [{ text: `Rok ${round}: Zvědové nemají prostředky. (AI kredity vyčerpány)`, type: "rumor", sourceEventTypes: [] }] }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
       throw new Error("AI gateway error");
     }
 

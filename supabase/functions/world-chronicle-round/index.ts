@@ -109,7 +109,7 @@ ${memoriesText || "žádné paměti"}`;
         return new Response(JSON.stringify({ error: "Rate limit" }), { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
       if (response.status === 402) {
-        return new Response(JSON.stringify({ error: "Nedostatek kreditů" }), { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        return new Response(JSON.stringify({ chronicleText: `📜 Rok ${round} — Kronikář nemá prostředky k záznamu. (AI kredity vyčerpány)`, newSuggestedMemories: [], linkedCities: [] }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
       throw new Error("AI gateway error");
     }

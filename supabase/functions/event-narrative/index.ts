@@ -97,8 +97,8 @@ PRAVIDLA:
         });
       }
       if (response.status === 402) {
-        return new Response(JSON.stringify({ error: "Nedostatek kreditů." }), {
-          status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        return new Response(JSON.stringify({ narrativeText: "Kronikář nemá v tuto chvíli prostředky k záznamu. (AI kredity vyčerpány)", keyQuotes: [], debug: { provider: "fallback-402" } }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
       const t = await response.text();
