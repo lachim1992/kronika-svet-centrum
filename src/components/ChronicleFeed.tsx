@@ -20,6 +20,7 @@ interface ChronicleFeedProps {
   currentTurn: number;
   players: GamePlayer[];
   currentPlayerName: string;
+  entityTraits?: any[];
   onRefetch?: () => void;
 }
 
@@ -31,7 +32,7 @@ const EPOCH_LABELS: Record<string, string> = {
 
 const ChronicleFeed = ({
   sessionId, events, memories, chronicles, epochStyle,
-  currentTurn, players, currentPlayerName, onRefetch,
+  currentTurn, players, currentPlayerName, entityTraits, onRefetch,
 }: ChronicleFeedProps) => {
   const [generating, setGenerating] = useState(false);
 
@@ -55,7 +56,7 @@ const ChronicleFeed = ({
 
     setGenerating(true);
     try {
-      const result = await generateChronicle(currentTurnEvents, memories, epochStyle);
+      const result = await generateChronicle(currentTurnEvents, memories, epochStyle, entityTraits);
       if (result.chronicle) {
         await addChronicleEntry(sessionId, `📜 Rok ${currentTurn}\n\n${result.chronicle}`, epochStyle, currentTurn);
       }

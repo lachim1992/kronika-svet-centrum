@@ -14,3 +14,6 @@ verify_jwt = false
 
 [functions.diplomacy-reply]
 verify_jwt = false
+
+[functions.extract-traits]
+verify_jwt = false

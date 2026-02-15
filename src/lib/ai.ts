@@ -3,10 +3,11 @@ import { supabase } from "@/integrations/supabase/client";
 export async function generateChronicle(
   events: any[],
   memories: any[],
-  epochStyle: string
+  epochStyle: string,
+  entityTraits?: any[]
 ): Promise<{ chronicle: string; suggestedMemories: string[] }> {
   const { data, error } = await supabase.functions.invoke("chronicle", {
-    body: { events, memories, epochStyle },
+    body: { events, memories, epochStyle, entityTraits: entityTraits || [] },
   });
 
   if (error) {

@@ -236,6 +236,63 @@ export type Database = {
           },
         ]
       }
+      entity_traits: {
+        Row: {
+          created_at: string
+          entity_id: string | null
+          entity_name: string
+          entity_type: string
+          id: string
+          is_active: boolean
+          session_id: string
+          source_event_id: string | null
+          source_turn: number
+          trait_category: string
+          trait_text: string
+        }
+        Insert: {
+          created_at?: string
+          entity_id?: string | null
+          entity_name: string
+          entity_type: string
+          id?: string
+          is_active?: boolean
+          session_id: string
+          source_event_id?: string | null
+          source_turn?: number
+          trait_category: string
+          trait_text: string
+        }
+        Update: {
+          created_at?: string
+          entity_id?: string | null
+          entity_name?: string
+          entity_type?: string
+          id?: string
+          is_active?: boolean
+          session_id?: string
+          source_event_id?: string | null
+          source_turn?: number
+          trait_category?: string
+          trait_text?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "entity_traits_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "entity_traits_source_event_id_fkey"
+            columns: ["source_event_id"]
+            isOneToOne: false
+            referencedRelation: "game_events"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       event_responses: {
         Row: {
           created_at: string
