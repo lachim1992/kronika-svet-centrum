@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { createGameSession, joinGameSession } from "@/hooks/useGameSession";
 import { Button } from "@/components/ui/button";
@@ -13,6 +13,14 @@ const LandingPage = () => {
   const [mode, setMode] = useState<"menu" | "create" | "join">("menu");
   const [loading, setLoading] = useState(false);
 
+  // Restore last game session
+  useEffect(() => {
+    const lastGameId = localStorage.getItem("ch_lastGameId");
+    if (lastGameId) {
+      navigate(`/game/${lastGameId}`, { replace: true });
+    }
+  }, [navigate]);
+
   const handleCreate = async () => {
     if (!playerName.trim()) { toast.error("Zadejte jméno hráče"); return; }
     setLoading(true);
@@ -20,6 +28,7 @@ const LandingPage = () => {
     setLoading(false);
     if (session) {
       localStorage.setItem("ch_playerName", playerName.trim());
+      localStorage.setItem("ch_lastGameId", session.id);
       navigate(`/game/${session.id}`);
     } else {
       toast.error("Nepodařilo se vytvořit hru");
@@ -33,6 +42,7 @@ const LandingPage = () => {
     setLoading(false);
     if (session) {
       localStorage.setItem("ch_playerName", playerName.trim());
+      localStorage.setItem("ch_lastGameId", session.id);
       navigate(`/game/${session.id}`);
     } else {
       toast.error("Herní místnost nenalezena nebo je plná");

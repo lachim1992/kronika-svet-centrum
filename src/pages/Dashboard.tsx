@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import {
   Scroll, Copy, Settings, BookOpen, Castle, Swords, Building2, Crown, Users,
   Landmark, Trophy, MapPin, Feather, ScrollText, Star, Megaphone, Target, Sparkles,
-  Globe, BookMarked,
+  Globe, BookMarked, Bug,
 } from "lucide-react";
 import EventInput from "@/components/EventInput";
 import EventTimeline from "@/components/EventTimeline";
@@ -28,6 +28,7 @@ import WarRoomPanel from "@/components/WarRoomPanel";
 import SecretObjectivesPanel from "@/components/SecretObjectivesPanel";
 import WorldHistoryPanel from "@/components/WorldHistoryPanel";
 import PlayerChroniclePanel from "@/components/PlayerChroniclePanel";
+import DevModePanel from "@/components/DevModePanel";
 import { toast } from "sonner";
 
 const Dashboard = () => {
@@ -41,6 +42,11 @@ const Dashboard = () => {
   } = useGameSession(sessionId || null);
 
   const currentPlayerName = localStorage.getItem("ch_playerName") || "Hráč";
+
+  // Persist gameId for refresh restoration
+  if (sessionId) {
+    localStorage.setItem("ch_lastGameId", sessionId);
+  }
 
   if (loading) {
     return (
@@ -153,6 +159,9 @@ const Dashboard = () => {
           </TabsTrigger>
           <TabsTrigger value="citystates" className="font-display text-xs">
             <Building2 className="h-4 w-4 mr-1" />Městské státy
+          </TabsTrigger>
+          <TabsTrigger value="devmode" className="font-display text-xs">
+            <Bug className="h-4 w-4 mr-1" />Dev Mode
           </TabsTrigger>
         </TabsList>
 
@@ -282,6 +291,19 @@ const Dashboard = () => {
 
         <TabsContent value="citystates">
           <CityStatesPanel sessionId={session.id} cityStates={cityStates} recentEvents={events} players={players} />
+        </TabsContent>
+
+        <TabsContent value="devmode" className="pb-6">
+          <DevModePanel
+            sessionId={session.id}
+            currentPlayerName={currentPlayerName}
+            onRefetch={refetch}
+            citiesCount={cities.length}
+            eventsCount={events.length}
+            wondersCount={wonders.length}
+            memoriesCount={memories.length}
+            playersCount={players.length}
+          />
         </TabsContent>
       </Tabs>
     </div>

@@ -199,17 +199,21 @@ const CityDetailPanel = ({
           <Sparkles className="h-4 w-4 text-primary" />
           AI profil města
         </h3>
-        <div className="flex gap-2 flex-wrap">
-          <Button size="sm" onClick={() => handleGenerate("intro")} disabled={generating} className="font-display">
-            <BookOpen className="h-3 w-3 mr-1" />Představení města
-          </Button>
-          <Button size="sm" onClick={() => handleGenerate("history")} disabled={generating} className="font-display">
-            <Scroll className="h-3 w-3 mr-1" />Městská sága
-          </Button>
-          <Button size="sm" variant="outline" onClick={() => handleGenerate("both")} disabled={generating} className="font-display">
-            {generating ? "Generuji..." : "Obojí najednou"}
-          </Button>
-        </div>
+        {isOwner ? (
+          <div className="flex gap-2 flex-wrap">
+            <Button size="sm" onClick={() => handleGenerate("intro")} disabled={generating} className="font-display">
+              <BookOpen className="h-3 w-3 mr-1" />Představení města
+            </Button>
+            <Button size="sm" onClick={() => handleGenerate("history")} disabled={generating} className="font-display">
+              <Scroll className="h-3 w-3 mr-1" />Městská sága
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => handleGenerate("both")} disabled={generating} className="font-display">
+              {generating ? "Generuji..." : "Obojí najednou"}
+            </Button>
+          </div>
+        ) : (
+          <p className="text-xs text-muted-foreground italic">AI profil může generovat pouze majitel města.</p>
+        )}
 
         {introduction && (
           <div className="p-4 rounded-lg border border-border bg-muted/30 space-y-2">
