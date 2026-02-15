@@ -4,8 +4,10 @@ import type { Tables } from "@/integrations/supabase/types";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { PenLine } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { PenLine, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
+import { supabase } from "@/integrations/supabase/client";
 
 type City = Tables<"cities">;
 type GamePlayer = Tables<"game_players">;
@@ -23,6 +25,8 @@ const EVENT_TYPES = [
   { value: "wonder", label: "Div světa" },
 ];
 
+const DUAL_CITY_EVENTS = ["battle", "trade", "diplomacy"];
+
 interface EventInputProps {
   sessionId: string;
   players: GamePlayer[];
@@ -35,7 +39,8 @@ interface EventInputProps {
 const EventInput = ({ sessionId, players, cities, currentTurn, turnClosed, onEventAdded }: EventInputProps) => {
   const [eventType, setEventType] = useState("");
   const [player, setPlayer] = useState("");
-  const [location, setLocation] = useState("");
+  const [cityId, setCityId] = useState("");
+  const [secondaryCityId, setSecondaryCityId] = useState("");
   const [note, setNote] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -44,12 +49,37 @@ const EventInput = ({ sessionId, players, cities, currentTurn, turnClosed, onEve
       toast.error("Vyberte typ události a hráče");
       return;
     }
+    if (!cityId) {
+      toast.error("Vyberte město pro tuto událost");
+      return;
+    }
     setLoading(true);
-    await addGameEvent(sessionId, eventType, player, location, note, currentTurn);
+
+    const selectedCity = cities.find(c => c.id === cityId);
+    const locationName = selectedCity?.name || "";
+
+    // Insert event with city_id
+    const { error } = await supabase.from("game_events").insert({
+      session_id: sessionId,
+      event_type: eventType,
+      player,
+      location: locationName,
+      note: note || null,
+      turn_number: currentTurn,
+      city_id: cityId,
+      secondary_city_id: secondaryCityId || null,
+    } as any);
+
+    if (error) {
+      console.error(error);
+      toast.error("Chyba při zápisu události");
+    } else {
+      toast.success("Událost zaznamenána");
+      onEventAdded?.();
+    }
+
     setLoading(false);
-    setEventType(""); setPlayer(""); setLocation(""); setNote("");
-    toast.success("Událost zaznamenána");
-    onEventAdded?.();
+    setEventType(""); setPlayer(""); setCityId(""); setSecondaryCityId(""); setNote("");
   };
 
   if (turnClosed) {
@@ -66,8 +96,7 @@ const EventInput = ({ sessionId, players, cities, currentTurn, turnClosed, onEve
     );
   }
 
-  // Build location options from cities
-  const cityNames = cities.map(c => c.name);
+  const showSecondaryCity = DUAL_CITY_EVENTS.includes(eventType);
 
   return (
     <div className="space-y-4">
@@ -75,6 +104,13 @@ const EventInput = ({ sessionId, players, cities, currentTurn, turnClosed, onEve
         <PenLine className="h-5 w-5 text-primary" />
         Rok {currentTurn} — Zapsat událost
       </h2>
+
+      {cities.length === 0 && (
+        <div className="p-3 rounded-lg border border-yellow-500/50 bg-yellow-500/10 flex items-center gap-2 text-sm">
+          <AlertTriangle className="h-4 w-4 text-yellow-500 shrink-0" />
+          <span>Nejprve musíte založit město v záložce <strong>Města</strong>, než budete moci zapisovat události.</span>
+        </div>
+      )}
 
       <Select value={eventType} onValueChange={setEventType}>
         <SelectTrigger className="h-11"><SelectValue placeholder="Typ události..." /></SelectTrigger>
@@ -95,15 +131,27 @@ const EventInput = ({ sessionId, players, cities, currentTurn, turnClosed, onEve
         </SelectContent>
       </Select>
 
-      <Select value={location || "__none__"} onValueChange={(v) => setLocation(v === "__none__" ? "" : v)}>
-        <SelectTrigger className="h-11"><SelectValue placeholder="Místo (volitelné)..." /></SelectTrigger>
+      <Select value={cityId || "__none__"} onValueChange={v => setCityId(v === "__none__" ? "" : v)}>
+        <SelectTrigger className="h-11"><SelectValue placeholder="Město (povinné)..." /></SelectTrigger>
         <SelectContent>
-          <SelectItem value="__none__">— Žádné —</SelectItem>
-          {cityNames.map(cn => (
-            <SelectItem key={cn} value={cn}>{cn}</SelectItem>
+          <SelectItem value="__none__">— Vyberte město —</SelectItem>
+          {cities.map(c => (
+            <SelectItem key={c.id} value={c.id}>{c.name} ({c.owner_player})</SelectItem>
           ))}
         </SelectContent>
       </Select>
+
+      {showSecondaryCity && (
+        <Select value={secondaryCityId || "__none__"} onValueChange={v => setSecondaryCityId(v === "__none__" ? "" : v)}>
+          <SelectTrigger className="h-11"><SelectValue placeholder="Druhé město (volitelné)..." /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="__none__">— Žádné —</SelectItem>
+            {cities.filter(c => c.id !== cityId).map(c => (
+              <SelectItem key={c.id} value={c.id}>{c.name} ({c.owner_player})</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      )}
 
       <Textarea
         placeholder="Poznámka / flavor text (volitelné)"
@@ -112,7 +160,7 @@ const EventInput = ({ sessionId, players, cities, currentTurn, turnClosed, onEve
         rows={2}
       />
 
-      <Button onClick={handleSubmit} disabled={loading} className="w-full h-12 font-display text-base">
+      <Button onClick={handleSubmit} disabled={loading || cities.length === 0} className="w-full h-12 font-display text-base">
         {loading ? "Zapisuji..." : "✅ Zapsat událost"}
       </Button>
     </div>

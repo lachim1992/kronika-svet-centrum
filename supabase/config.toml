@@ -8,3 +8,6 @@ verify_jwt = false
 
 [functions.wonder]
 verify_jwt = false
+
+[functions.cityprofile]
+verify_jwt = false

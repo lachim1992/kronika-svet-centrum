@@ -49,32 +49,41 @@ export type Database = {
       cities: {
         Row: {
           created_at: string
+          flavor_prompt: string | null
+          founded_round: number
           id: string
           level: string
           name: string
           owner_player: string
           province: string | null
           session_id: string
+          status: string
           tags: string[] | null
         }
         Insert: {
           created_at?: string
+          flavor_prompt?: string | null
+          founded_round?: number
           id?: string
           level?: string
           name: string
           owner_player: string
           province?: string | null
           session_id: string
+          status?: string
           tags?: string[] | null
         }
         Update: {
           created_at?: string
+          flavor_prompt?: string | null
+          founded_round?: number
           id?: string
           level?: string
           name?: string
           owner_player?: string
           province?: string | null
           session_id?: string
+          status?: string
           tags?: string[] | null
         }
         Relationships: [
@@ -162,6 +171,7 @@ export type Database = {
       }
       game_events: {
         Row: {
+          city_id: string | null
           confirmed: boolean
           created_at: string
           event_type: string
@@ -169,10 +179,12 @@ export type Database = {
           location: string | null
           note: string | null
           player: string
+          secondary_city_id: string | null
           session_id: string
           turn_number: number
         }
         Insert: {
+          city_id?: string | null
           confirmed?: boolean
           created_at?: string
           event_type: string
@@ -180,10 +192,12 @@ export type Database = {
           location?: string | null
           note?: string | null
           player: string
+          secondary_city_id?: string | null
           session_id: string
           turn_number?: number
         }
         Update: {
+          city_id?: string | null
           confirmed?: boolean
           created_at?: string
           event_type?: string
@@ -191,10 +205,25 @@ export type Database = {
           location?: string | null
           note?: string | null
           player?: string
+          secondary_city_id?: string | null
           session_id?: string
           turn_number?: number
         }
         Relationships: [
+          {
+            foreignKeyName: "game_events_city_id_fkey"
+            columns: ["city_id"]
+            isOneToOne: false
+            referencedRelation: "cities"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "game_events_secondary_city_id_fkey"
+            columns: ["secondary_city_id"]
+            isOneToOne: false
+            referencedRelation: "cities"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "game_events_session_id_fkey"
             columns: ["session_id"]

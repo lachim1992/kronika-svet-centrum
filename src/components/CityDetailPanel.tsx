@@ -1,0 +1,295 @@
+import { useState } from "react";
+import type { Tables } from "@/integrations/supabase/types";
+import { updateCity } from "@/hooks/useGameSession";
+import { generateCityProfile } from "@/lib/ai";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Badge } from "@/components/ui/badge";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { ArrowLeft, MapPin, Sparkles, BookOpen, Shield, Flame, Crown, Scroll, Landmark } from "lucide-react";
+import { toast } from "sonner";
+import { supabase } from "@/integrations/supabase/client";
+
+type City = Tables<"cities">;
+type GameEvent = Tables<"game_events">;
+type GamePlayer = Tables<"game_players">;
+type WorldMemory = Tables<"world_memories">;
+type Wonder = Tables<"wonders">;
+
+const CITY_LEVELS = ["Osada", "Městečko", "Město", "Polis"];
+const EVENT_TYPE_LABELS: Record<string, string> = {
+  place_tile: "Položení dílku", found_settlement: "Založení osady", upgrade_city: "Upgrade města",
+  raid: "Nájezd", repair: "Oprava území", battle: "Bitva", diplomacy: "Diplomacie",
+  city_state_action: "Akce městského státu", trade: "Obchod", wonder: "Div světa",
+};
+const STATUSES = ["ok", "devastated", "besieged"];
+const STATUS_LABELS: Record<string, string> = { ok: "V pořádku", devastated: "Zpustošeno", besieged: "Obléháno" };
+
+interface CityDetailPanelProps {
+  city: City;
+  events: GameEvent[];
+  allEvents: GameEvent[];
+  memories: WorldMemory[];
+  wonders: Wonder[];
+  players: GamePlayer[];
+  currentPlayerName: string;
+  currentTurn: number;
+  onBack: () => void;
+  onRefetch?: () => void;
+}
+
+const CityDetailPanel = ({
+  city, events, memories, wonders, players,
+  currentPlayerName, currentTurn, onBack, onRefetch,
+}: CityDetailPanelProps) => {
+  const [generating, setGenerating] = useState(false);
+  const [introduction, setIntroduction] = useState<string | null>(null);
+  const [history, setHistory] = useState<string | null>(null);
+  const [bulletFacts, setBulletFacts] = useState<string[]>([]);
+  const [flavorPrompt, setFlavorPrompt] = useState((city as any).flavor_prompt || "");
+  const [editingFlavor, setEditingFlavor] = useState(false);
+
+  const isOwner = city.owner_player === currentPlayerName;
+  const confirmedEvents = events.filter(e => e.confirmed);
+  const approvedMemories = memories.filter(m => m.approved);
+
+  // Group events by turn
+  const eventsByTurn = confirmedEvents.reduce<Record<number, GameEvent[]>>((acc, e) => {
+    (acc[e.turn_number] = acc[e.turn_number] || []).push(e);
+    return acc;
+  }, {});
+  const sortedTurns = Object.keys(eventsByTurn).map(Number).sort((a, b) => b - a);
+
+  const handleSaveFlavor = async () => {
+    await supabase.from("cities").update({ flavor_prompt: flavorPrompt || null } as any).eq("id", city.id);
+    setEditingFlavor(false);
+    toast.success("Flavor prompt uložen");
+    onRefetch?.();
+  };
+
+  const handleGenerate = async (type: "intro" | "history" | "both") => {
+    setGenerating(true);
+    try {
+      const result = await generateCityProfile({
+        name: city.name,
+        ownerName: city.owner_player,
+        level: city.level,
+        province: city.province || "",
+        tags: city.tags || [],
+        foundedRound: (city as any).founded_round || 1,
+        status: (city as any).status || "ok",
+        ownerFlavorPrompt: (city as any).flavor_prompt || null,
+      }, confirmedEvents, approvedMemories.map(m => m.text));
+
+      if (type === "intro" || type === "both") setIntroduction(result.introduction);
+      if (type === "history" || type === "both") {
+        setHistory(result.historyRetelling);
+        setBulletFacts(result.bulletFacts || []);
+      }
+      toast.success("Profil města vygenerován");
+    } catch {
+      toast.error("Generování profilu selhalo");
+    }
+    setGenerating(false);
+  };
+
+  const handleUpdateStatus = async (newStatus: string) => {
+    await supabase.from("cities").update({ status: newStatus } as any).eq("id", city.id);
+    toast.success(`Status města změněn na ${STATUS_LABELS[newStatus]}`);
+    onRefetch?.();
+  };
+
+  return (
+    <div className="space-y-6 p-4">
+      {/* Header */}
+      <div className="flex items-start gap-4">
+        <Button variant="ghost" size="icon" onClick={onBack} className="mt-1">
+          <ArrowLeft className="h-5 w-5" />
+        </Button>
+        <div className="flex-1">
+          <div className="flex items-center gap-3 flex-wrap">
+            <h1 className="text-2xl font-display font-bold">{city.name}</h1>
+            <Badge variant="secondary" className="font-display">{city.level}</Badge>
+            {(city as any).status && (city as any).status !== "ok" && (
+              <Badge variant="destructive" className="flex items-center gap-1">
+                {(city as any).status === "devastated" ? <Flame className="h-3 w-3" /> : <Shield className="h-3 w-3" />}
+                {STATUS_LABELS[(city as any).status]}
+              </Badge>
+            )}
+          </div>
+          <div className="flex items-center gap-3 text-sm text-muted-foreground mt-1">
+            <span className="flex items-center gap-1"><Crown className="h-3 w-3" />{city.owner_player}</span>
+            {city.province && <span className="flex items-center gap-1"><MapPin className="h-3 w-3" />{city.province}</span>}
+            <span>Založeno v roce {(city as any).founded_round || 1}</span>
+          </div>
+          {city.tags && city.tags.length > 0 && (
+            <div className="flex gap-1 mt-2 flex-wrap">
+              {city.tags.map(t => <Badge key={t} variant="outline" className="text-xs">{t}</Badge>)}
+            </div>
+          )}
+        </div>
+        {isOwner && (
+          <Select value={(city as any).status || "ok"} onValueChange={handleUpdateStatus}>
+            <SelectTrigger className="w-36 h-8 text-xs"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              {STATUSES.map(s => <SelectItem key={s} value={s}>{STATUS_LABELS[s]}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        )}
+      </div>
+
+      {/* Level upgrade (owner only) */}
+      {isOwner && (
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-display">Úroveň:</span>
+          <Select value={city.level} onValueChange={v => { updateCity(city.id, { level: v }); onRefetch?.(); }}>
+            <SelectTrigger className="w-28 h-8 text-xs"><SelectValue /></SelectTrigger>
+            <SelectContent>{CITY_LEVELS.map(l => <SelectItem key={l} value={l}>{l}</SelectItem>)}</SelectContent>
+          </Select>
+        </div>
+      )}
+
+      {/* Flavor prompt */}
+      {isOwner && (
+        <div className="bg-card p-4 rounded-lg border border-border space-y-2">
+          <h3 className="font-display font-semibold text-sm flex items-center gap-2">
+            <Sparkles className="h-4 w-4 text-primary" />
+            Flavor prompt města
+          </h3>
+          <p className="text-xs text-muted-foreground">
+            Popište atmosféru a styl města. AI ho použije pro tón narativů (nebude vymýšlet fakta).
+          </p>
+          {editingFlavor ? (
+            <div className="space-y-2">
+              <Textarea
+                value={flavorPrompt}
+                onChange={e => setFlavorPrompt(e.target.value)}
+                placeholder="Např.: Petra má být popisována jako růžová mramorová citadela s hrdou elitou..."
+                rows={3}
+              />
+              <div className="flex gap-2">
+                <Button size="sm" onClick={handleSaveFlavor}>Uložit</Button>
+                <Button size="sm" variant="outline" onClick={() => setEditingFlavor(false)}>Zrušit</Button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex items-start gap-2">
+              <p className="text-sm italic flex-1">
+                {(city as any).flavor_prompt || "Žádný flavor prompt nastaven."}
+              </p>
+              <Button size="sm" variant="outline" onClick={() => setEditingFlavor(true)}>Upravit</Button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* AI Generation */}
+      <div className="bg-card p-4 rounded-lg border-2 border-primary/20 shadow-parchment space-y-3">
+        <h3 className="font-display font-semibold text-sm flex items-center gap-2">
+          <Sparkles className="h-4 w-4 text-primary" />
+          AI profil města
+        </h3>
+        <div className="flex gap-2 flex-wrap">
+          <Button size="sm" onClick={() => handleGenerate("intro")} disabled={generating} className="font-display">
+            <BookOpen className="h-3 w-3 mr-1" />Představení města
+          </Button>
+          <Button size="sm" onClick={() => handleGenerate("history")} disabled={generating} className="font-display">
+            <Scroll className="h-3 w-3 mr-1" />Městská sága
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => handleGenerate("both")} disabled={generating} className="font-display">
+            {generating ? "Generuji..." : "Obojí najednou"}
+          </Button>
+        </div>
+
+        {introduction && (
+          <div className="p-4 rounded-lg border border-border bg-muted/30 space-y-2">
+            <h4 className="font-display font-semibold text-sm">📜 Představení</h4>
+            <p className="text-sm leading-relaxed whitespace-pre-wrap">{introduction}</p>
+          </div>
+        )}
+
+        {history && (
+          <div className="p-4 rounded-lg border border-border bg-muted/30 space-y-2">
+            <h4 className="font-display font-semibold text-sm">📖 Městská sága</h4>
+            <p className="text-sm leading-relaxed whitespace-pre-wrap">{history}</p>
+            {bulletFacts.length > 0 && (
+              <ul className="text-sm space-y-1 mt-2">
+                {bulletFacts.map((f, i) => <li key={i} className="flex items-start gap-1"><span>•</span><span>{f}</span></li>)}
+              </ul>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Wonders in city */}
+      {wonders.length > 0 && (
+        <div className="bg-card p-4 rounded-lg border border-border space-y-2">
+          <h3 className="font-display font-semibold text-sm flex items-center gap-2">
+            <Landmark className="h-4 w-4 text-primary" />
+            Divy města ({wonders.length})
+          </h3>
+          <div className="space-y-2">
+            {wonders.map(w => (
+              <div key={w.id} className="p-3 rounded border border-border bg-muted/20">
+                <div className="flex items-center gap-2">
+                  <span className="font-display font-semibold text-sm">{w.name}</span>
+                  <Badge variant="secondary" className="text-xs">{w.status}</Badge>
+                  <Badge variant="outline" className="text-xs">{w.era}</Badge>
+                </div>
+                {w.description && <p className="text-xs text-muted-foreground mt-1">{w.description}</p>}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* City Timeline */}
+      <div className="bg-card p-4 rounded-lg border border-border space-y-3">
+        <h3 className="font-display font-semibold text-sm flex items-center gap-2">
+          <Scroll className="h-4 w-4 text-primary" />
+          Historie města ({confirmedEvents.length} potvrzených událostí)
+        </h3>
+
+        {confirmedEvents.length === 0 && (
+          <p className="text-xs text-muted-foreground italic py-4 text-center">
+            K tomuto městu zatím nejsou přiřazeny žádné potvrzené události.
+          </p>
+        )}
+
+        {sortedTurns.map(turn => (
+          <div key={turn} className="space-y-1">
+            <h4 className="font-display text-xs text-primary font-semibold">Rok {turn}</h4>
+            {eventsByTurn[turn].map(evt => (
+              <div key={evt.id} className="p-2 rounded bg-muted/30 text-sm flex items-center gap-2">
+                <Badge variant="outline" className="text-xs shrink-0">
+                  {EVENT_TYPE_LABELS[evt.event_type] || evt.event_type}
+                </Badge>
+                <span className="font-semibold text-xs">{evt.player}</span>
+                {evt.note && <span className="text-xs text-muted-foreground italic truncate">— {evt.note}</span>}
+              </div>
+            ))}
+          </div>
+        ))}
+
+        {/* Also show unconfirmed events */}
+        {events.filter(e => !e.confirmed).length > 0 && (
+          <div className="pt-2 border-t border-border">
+            <h4 className="font-display text-xs text-muted-foreground font-semibold mb-1">Nepotvrzené</h4>
+            {events.filter(e => !e.confirmed).map(evt => (
+              <div key={evt.id} className="p-2 rounded bg-muted/10 text-sm flex items-center gap-2 opacity-60">
+                <Badge variant="outline" className="text-xs shrink-0">
+                  {EVENT_TYPE_LABELS[evt.event_type] || evt.event_type}
+                </Badge>
+                <span className="font-semibold text-xs">{evt.player}</span>
+                {evt.note && <span className="text-xs text-muted-foreground italic truncate">— {evt.note}</span>}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+export default CityDetailPanel;
