@@ -255,7 +255,9 @@ const Dashboard = () => {
         <TabsContent value="declarations" className="pb-6">
           <DeclarationsPanel
             sessionId={session.id} currentPlayerName={currentPlayerName}
-            declarations={declarations} currentTurn={currentTurn} onRefetch={refetch}
+            declarations={declarations} currentTurn={currentTurn}
+            cities={cities} players={players} events={events} memories={memories}
+            onRefetch={refetch}
           />
         </TabsContent>
 

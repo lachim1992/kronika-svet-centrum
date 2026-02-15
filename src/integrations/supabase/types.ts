@@ -246,34 +246,61 @@ export type Database = {
       }
       declarations: {
         Row: {
+          ai_generated: boolean
           created_at: string
           declaration_type: string
+          effects: Json | null
           epic_text: string | null
           id: string
           original_text: string
           player_name: string
           session_id: string
+          source_notes: string | null
+          status: string
+          target_city_ids: string[] | null
+          target_empire_ids: string[] | null
+          title: string | null
+          tone: string
           turn_number: number
+          visibility: string
         }
         Insert: {
+          ai_generated?: boolean
           created_at?: string
           declaration_type?: string
+          effects?: Json | null
           epic_text?: string | null
           id?: string
           original_text: string
           player_name: string
           session_id: string
+          source_notes?: string | null
+          status?: string
+          target_city_ids?: string[] | null
+          target_empire_ids?: string[] | null
+          title?: string | null
+          tone?: string
           turn_number?: number
+          visibility?: string
         }
         Update: {
+          ai_generated?: boolean
           created_at?: string
           declaration_type?: string
+          effects?: Json | null
           epic_text?: string | null
           id?: string
           original_text?: string
           player_name?: string
           session_id?: string
+          source_notes?: string | null
+          status?: string
+          target_city_ids?: string[] | null
+          target_empire_ids?: string[] | null
+          title?: string | null
+          tone?: string
           turn_number?: number
+          visibility?: string
         }
         Relationships: [
           {
@@ -377,40 +404,52 @@ export type Database = {
       entity_traits: {
         Row: {
           created_at: string
+          description: string | null
           entity_id: string | null
           entity_name: string
           entity_type: string
           id: string
+          intensity: number
           is_active: boolean
           session_id: string
           source_event_id: string | null
+          source_id: string | null
           source_turn: number
+          source_type: string | null
           trait_category: string
           trait_text: string
         }
         Insert: {
           created_at?: string
+          description?: string | null
           entity_id?: string | null
           entity_name: string
           entity_type: string
           id?: string
+          intensity?: number
           is_active?: boolean
           session_id: string
           source_event_id?: string | null
+          source_id?: string | null
           source_turn?: number
+          source_type?: string | null
           trait_category: string
           trait_text: string
         }
         Update: {
           created_at?: string
+          description?: string | null
           entity_id?: string | null
           entity_name?: string
           entity_type?: string
           id?: string
+          intensity?: number
           is_active?: boolean
           session_id?: string
           source_event_id?: string | null
+          source_id?: string | null
           source_turn?: number
+          source_type?: string | null
           trait_category?: string
           trait_text?: string
         }

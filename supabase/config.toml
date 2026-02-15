@@ -41,3 +41,6 @@ verify_jwt = false
 
 [functions.wiki-generate]
 verify_jwt = false
+
+[functions.declaration-effects]
+verify_jwt = false
