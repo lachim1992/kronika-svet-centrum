@@ -17,3 +17,6 @@ verify_jwt = false
 
 [functions.extract-traits]
 verify_jwt = false
+
+[functions.wonder-portrait]
+verify_jwt = false
