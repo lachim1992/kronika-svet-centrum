@@ -95,10 +95,10 @@ const EventInput = ({ sessionId, players, cities, currentTurn, turnClosed, onEve
         </SelectContent>
       </Select>
 
-      <Select value={location} onValueChange={setLocation}>
+      <Select value={location || "__none__"} onValueChange={(v) => setLocation(v === "__none__" ? "" : v)}>
         <SelectTrigger className="h-11"><SelectValue placeholder="Místo (volitelné)..." /></SelectTrigger>
         <SelectContent>
-          <SelectItem value="">— Žádné —</SelectItem>
+          <SelectItem value="__none__">— Žádné —</SelectItem>
           {cityNames.map(cn => (
             <SelectItem key={cn} value={cn}>{cn}</SelectItem>
           ))}
