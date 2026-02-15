@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import type { Tables } from "@/integrations/supabase/types";
 
@@ -50,9 +50,11 @@ export function useGameSession(sessionId: string | null) {
   const [secretObjectives, setSecretObjectives] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
+  const initialLoadDone = useRef(false);
+
   const fetchAll = useCallback(async () => {
     if (!sessionId) return;
-    setLoading(true);
+    if (!initialLoadDone.current) setLoading(true);
 
     const [sessRes, evtRes, memRes, chrRes, csRes, plRes, citRes, resRes, armRes, trdRes, wndRes, trtRes,
       civRes, gpRes, declRes, crisisRes, objRes] = await Promise.all([
@@ -100,6 +102,7 @@ export function useGameSession(sessionId: string | null) {
     if (crisisRes.data) setWorldCrises(crisisRes.data);
     if (objRes.data) setSecretObjectives(objRes.data);
     setLoading(false);
+    initialLoadDone.current = true;
   }, [sessionId]);
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
