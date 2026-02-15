@@ -22,6 +22,7 @@ interface ChronicleFeedProps {
   player1Name: string;
   player2Name: string;
   currentPlayerName: string;
+  onRefetch?: () => void;
 }
 
 const EPOCH_LABELS: Record<string, string> = {
@@ -33,7 +34,7 @@ const EPOCH_LABELS: Record<string, string> = {
 const ChronicleFeed = ({
   sessionId, events, memories, chronicles, epochStyle,
   currentTurn, turnClosedP1, turnClosedP2,
-  player1Name, player2Name, currentPlayerName,
+  player1Name, player2Name, currentPlayerName, onRefetch,
 }: ChronicleFeedProps) => {
   const [generating, setGenerating] = useState(false);
 
@@ -47,6 +48,7 @@ const ChronicleFeed = ({
     const playerNumber = isPlayer1 ? 1 : 2;
     await closeTurnForPlayer(sessionId, playerNumber as 1 | 2);
     toast.success("Vaše kolo uzavřeno. Čekáme na druhého hráče.");
+    onRefetch?.();
   };
 
   const handleGenerateAndAdvance = async () => {
@@ -71,6 +73,7 @@ const ChronicleFeed = ({
       // Advance to next turn
       await advanceTurn(sessionId, currentTurn);
       toast.success(`Kronika roku ${currentTurn} vygenerována! Pokračujeme rokem ${currentTurn + 1}.`);
+      onRefetch?.();
     } catch {
       toast.error("Generování kroniky selhalo");
     }

@@ -141,6 +141,7 @@ const Dashboard = () => {
                   player1Name={session.player1_name}
                   player2Name={session.player2_name}
                   currentPlayerName={currentPlayerName}
+                  onRefetch={refetch}
                 />
               </div>
               <WorldMemoryPanel sessionId={session.id} memories={memories} />
