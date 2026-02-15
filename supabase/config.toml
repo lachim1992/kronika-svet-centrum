@@ -44,3 +44,9 @@ verify_jwt = false
 
 [functions.declaration-effects]
 verify_jwt = false
+
+[functions.world-chronicle-round]
+verify_jwt = false
+
+[functions.news-rumors]
+verify_jwt = false

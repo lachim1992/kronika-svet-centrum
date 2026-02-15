@@ -2,7 +2,7 @@ import type { Tables } from "@/integrations/supabase/types";
 import { Badge } from "@/components/ui/badge";
 import {
   Crown, Castle, Wheat, Trees, Mountain, Gem, Coins,
-  Swords, Landmark, AlertTriangle, Shield, Flame, MapPin, Scroll
+  Swords, Landmark, AlertTriangle, Shield, Flame, MapPin, Scroll, BookOpen
 } from "lucide-react";
 
 type GamePlayer = Tables<"game_players">;
@@ -11,6 +11,7 @@ type PlayerResource = Tables<"player_resources">;
 type MilitaryCapacity = Tables<"military_capacity">;
 type Wonder = Tables<"wonders">;
 type GameEvent = Tables<"game_events">;
+type ChronicleEntry = Tables<"chronicle_entries">;
 
 const RESOURCE_ICONS: Record<string, React.ReactNode> = {
   food: <Wheat className="h-4 w-4" />,
@@ -33,11 +34,12 @@ interface EmpireOverviewProps {
   events: GameEvent[];
   currentPlayerName: string;
   currentTurn: number;
+  chronicles?: ChronicleEntry[];
 }
 
 const EmpireOverview = ({
   players, cities, resources, armies, wonders, events,
-  currentPlayerName, currentTurn,
+  currentPlayerName, currentTurn, chronicles = [],
 }: EmpireOverviewProps) => {
   const myCities = cities.filter(c => c.owner_player === currentPlayerName);
   const myResources = resources.filter(r => r.player_name === currentPlayerName);
@@ -80,6 +82,22 @@ const EmpireOverview = ({
           {currentPlayerName} • Rok {currentTurn}
         </p>
       </div>
+
+      {/* Latest Chronicle Entry */}
+      {chronicles.length > 0 && (
+        <div className="manuscript-card p-4 border-l-4 border-l-primary">
+          <div className="flex items-center gap-2 mb-2">
+            <BookOpen className="h-5 w-5 text-primary" />
+            <h3 className="font-display font-semibold text-sm">📜 Poslední zápis v kronice</h3>
+          </div>
+          <p className="text-sm leading-relaxed whitespace-pre-wrap line-clamp-6">
+            {chronicles[chronicles.length - 1].text}
+          </p>
+          <p className="text-xs text-muted-foreground mt-2">
+            {new Date(chronicles[chronicles.length - 1].created_at).toLocaleString("cs-CZ")}
+          </p>
+        </div>
+      )}
 
       <div className="scroll-divider"><span>⚜</span></div>
 

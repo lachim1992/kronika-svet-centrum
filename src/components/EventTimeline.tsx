@@ -5,7 +5,9 @@ import type { Tables } from "@/integrations/supabase/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { MessageSquare, Clock, Sparkles, FileText } from "lucide-react";
+import { Textarea } from "@/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { MessageSquare, Clock, Sparkles, FileText, Send, PenLine } from "lucide-react";
 import { toast } from "sonner";
 import EventDetailModal from "@/components/EventDetailModal";
 
@@ -48,6 +50,10 @@ const EventTimeline = ({ events, responses, currentPlayerName, currentTurn, citi
   const [replyingTo, setReplyingTo] = useState<string | null>(null);
   const [replyText, setReplyText] = useState("");
   const [selectedEvent, setSelectedEvent] = useState<GameEvent | null>(null);
+  const [annotatingEvent, setAnnotatingEvent] = useState<string | null>(null);
+  const [annotationText, setAnnotationText] = useState("");
+  const [annotationVisibility, setAnnotationVisibility] = useState("public");
+  const [submittingAnnotation, setSubmittingAnnotation] = useState(false);
   const [narrativeFlags, setNarrativeFlags] = useState<Record<string, boolean>>({});
   const [annotationCounts, setAnnotationCounts] = useState<Record<string, number>>({});
 
@@ -83,6 +89,31 @@ const EventTimeline = ({ events, responses, currentPlayerName, currentTurn, citi
     setReplyText("");
     setReplyingTo(null);
     toast.success("Odpověď přidána");
+  };
+
+  const handleAddAnnotation = async (eventId: string) => {
+    if (!annotationText.trim()) return;
+    setSubmittingAnnotation(true);
+    const { error } = await supabase.from("event_annotations").insert({
+      event_id: eventId,
+      author: currentPlayerName,
+      note_text: annotationText.trim(),
+      visibility: annotationVisibility,
+    });
+    if (error) {
+      toast.error("Nepodařilo se uložit poznámku");
+    } else {
+      toast.success("📝 Poznámka přidána");
+      setAnnotationText("");
+      setAnnotatingEvent(null);
+      // Refresh annotation counts
+      const { data: annRes } = await supabase
+        .from("event_annotations").select("event_id").in("event_id", currentTurnEvents.map(e => e.id));
+      const annCounts: Record<string, number> = {};
+      annRes?.forEach(a => { annCounts[a.event_id] = (annCounts[a.event_id] || 0) + 1; });
+      setAnnotationCounts(annCounts);
+    }
+    setSubmittingAnnotation(false);
   };
 
   return (
@@ -143,13 +174,23 @@ const EventTimeline = ({ events, responses, currentPlayerName, currentTurn, citi
                     )}
                   </div>
 
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={(e) => { e.stopPropagation(); setReplyingTo(replyingTo === event.id ? null : event.id); }}
-                  >
-                    <MessageSquare className="h-4 w-4" />
-                  </Button>
+                  <div className="flex gap-1">
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={(e) => { e.stopPropagation(); setAnnotatingEvent(annotatingEvent === event.id ? null : event.id); }}
+                      title="Přidat poznámku hráče"
+                    >
+                      <PenLine className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={(e) => { e.stopPropagation(); setReplyingTo(replyingTo === event.id ? null : event.id); }}
+                    >
+                      <MessageSquare className="h-4 w-4" />
+                    </Button>
+                  </div>
                 </div>
 
                 {eventResponses.map((r) => (
@@ -157,6 +198,39 @@ const EventTimeline = ({ events, responses, currentPlayerName, currentTurn, citi
                     <span className="font-semibold">{r.player}:</span> {r.note}
                   </div>
                 ))}
+
+                {/* Player Annotation Form */}
+                {annotatingEvent === event.id && (
+                  <div className="mt-2 space-y-2 p-2 rounded border border-primary/20 bg-muted/20" onClick={(e) => e.stopPropagation()}>
+                    <p className="text-xs font-display font-semibold text-muted-foreground">📝 Přidat poznámku hráče</p>
+                    <Textarea
+                      placeholder="Vaše poznámka k události... (kontext, vtip, strategie, roleplay)"
+                      value={annotationText}
+                      onChange={(e) => setAnnotationText(e.target.value)}
+                      className="min-h-[50px] text-sm"
+                    />
+                    <div className="flex items-center gap-2">
+                      <Select value={annotationVisibility} onValueChange={setAnnotationVisibility}>
+                        <SelectTrigger className="w-32 h-7 text-xs">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="public">👁️ Veřejná</SelectItem>
+                          <SelectItem value="private">🔒 Soukromá</SelectItem>
+                          <SelectItem value="leakable">💧 Úniková</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <Button
+                        size="sm"
+                        onClick={() => handleAddAnnotation(event.id)}
+                        disabled={submittingAnnotation || !annotationText.trim()}
+                        type="button"
+                      >
+                        <Send className="h-3 w-3 mr-1" /> Uložit
+                      </Button>
+                    </div>
+                  </div>
+                )}
 
                 {replyingTo === event.id && (
                   <div className="mt-2 flex gap-2" onClick={(e) => e.stopPropagation()}>
@@ -167,7 +241,7 @@ const EventTimeline = ({ events, responses, currentPlayerName, currentTurn, citi
                       className="h-8 text-sm"
                       onKeyDown={(e) => e.key === "Enter" && handleReply(event.id)}
                     />
-                    <Button size="sm" onClick={() => handleReply(event.id)}>
+                    <Button size="sm" onClick={() => handleReply(event.id)} type="button">
                       Odeslat
                     </Button>
                   </div>

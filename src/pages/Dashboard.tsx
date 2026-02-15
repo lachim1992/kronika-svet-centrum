@@ -108,7 +108,7 @@ const Dashboard = () => {
         </div>
       </header>
 
-      <Tabs defaultValue="overview" className="max-w-[1600px] mx-auto">
+      <Tabs defaultValue="chronicle" className="max-w-[1600px] mx-auto">
         <TabsList className="m-4 bg-card border border-border flex-wrap h-auto gap-1 p-1 illuminated-border">
           <TabsTrigger value="overview" className="font-display text-xs">
             <Crown className="h-4 w-4 mr-1" />Přehled
@@ -173,7 +173,7 @@ const Dashboard = () => {
           <EmpireOverview
             players={players} cities={cities} resources={resources} armies={armies}
             wonders={wonders} events={events} currentPlayerName={currentPlayerName}
-            currentTurn={currentTurn}
+            currentTurn={currentTurn} chronicles={chronicles}
           />
         </TabsContent>
 
