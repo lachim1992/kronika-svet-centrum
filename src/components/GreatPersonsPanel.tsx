@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { Users, Plus, Skull, Star } from "lucide-react";
+import { Users, Plus, Skull, Star, Sparkles, Loader2, ImageIcon } from "lucide-react";
 import { toast } from "sonner";
 
 type City = Tables<"cities">;
@@ -35,6 +35,7 @@ const GreatPersonsPanel = ({ sessionId, currentPlayerName, greatPersons, cities,
   const [cityId, setCityId] = useState("");
   const [flavor, setFlavor] = useState("");
   const [adding, setAdding] = useState(false);
+  const [generatingId, setGeneratingId] = useState<string | null>(null);
 
   const myCities = cities.filter(c => c.owner_player === currentPlayerName);
 
@@ -56,6 +57,31 @@ const GreatPersonsPanel = ({ sessionId, currentPlayerName, greatPersons, cities,
     await supabase.from("great_persons").update({ is_alive: false, died_round: currentTurn }).eq("id", personId);
     toast.success(`${personName} padl/a v roce ${currentTurn}`);
     onRefetch?.();
+  };
+
+  const handleGeneratePortrait = async (person: any) => {
+    setGeneratingId(person.id);
+    try {
+      const city = cities.find(c => c.id === person.city_id);
+      const { data, error } = await supabase.functions.invoke("person-portrait", {
+        body: {
+          personId: person.id,
+          personName: person.name,
+          personType: person.person_type,
+          flavorTrait: person.flavor_trait,
+          cityName: city?.name || null,
+          playerName: person.player_name,
+        },
+      });
+      if (error) throw error;
+      if (data.error) { toast.error(data.error); return; }
+      toast.success(`🎨 Portrét a životopis ${person.name} vygenerován!`);
+      onRefetch?.();
+    } catch (e) {
+      console.error(e);
+      toast.error("Generování portrétu selhalo");
+    }
+    setGeneratingId(null);
   };
 
   const myPersons = greatPersons.filter((p: any) => p.player_name === currentPlayerName);
@@ -102,58 +128,112 @@ const GreatPersonsPanel = ({ sessionId, currentPlayerName, greatPersons, cities,
       <div className="space-y-3">
         <h3 className="font-display font-semibold text-sm">Vaše osobnosti ({myPersons.length})</h3>
         {myPersons.length === 0 && <p className="text-xs text-muted-foreground italic text-center py-4">Žádné velké osobnosti.</p>}
-        {myPersons.map((p: any) => {
-          const city = cities.find(c => c.id === p.city_id);
-          return (
-            <div key={p.id} className={`manuscript-card p-4 flex items-center gap-3 ${!p.is_alive ? "opacity-60" : ""}`}>
-              <div className="flex-1">
-                <p className="font-display font-bold text-sm">
-                  {p.name}
-                  {!p.is_alive && <Skull className="inline h-4 w-4 ml-1 text-muted-foreground" />}
-                </p>
-                <div className="flex items-center gap-2 mt-1 flex-wrap">
-                  <Badge variant="secondary" className="text-xs">{p.person_type}</Badge>
-                  {city && <span className="text-xs text-muted-foreground">📍 {city.name}</span>}
-                  {p.flavor_trait && <span className="text-xs italic text-muted-foreground">„{p.flavor_trait}"</span>}
-                  <span className="text-xs text-muted-foreground">
-                    Nar. rok {p.born_round}{p.died_round ? ` — † rok ${p.died_round}` : ""}
-                  </span>
-                </div>
-              </div>
-              {p.is_alive && (
-                <Button size="sm" variant="ghost" onClick={() => handleKill(p.id, p.name)} title="Zaznamenat smrt">
-                  <Skull className="h-4 w-4 text-destructive" />
-                </Button>
-              )}
-            </div>
-          );
-        })}
+        {myPersons.map((p: any) => (
+          <PersonCard
+            key={p.id}
+            person={p}
+            cities={cities}
+            isOwner={true}
+            generatingId={generatingId}
+            onKill={handleKill}
+            onGeneratePortrait={handleGeneratePortrait}
+          />
+        ))}
       </div>
 
       {/* Other players' persons */}
       {otherPersons.length > 0 && (
         <div className="space-y-3">
           <h3 className="font-display font-semibold text-sm">Osobnosti ostatních hráčů</h3>
-          {otherPersons.map((p: any) => {
-            const city = cities.find(c => c.id === p.city_id);
-            return (
-              <div key={p.id} className={`manuscript-card p-3 ${!p.is_alive ? "opacity-60" : ""}`}>
-                <p className="font-display font-semibold text-sm">
-                  {p.name} <span className="text-muted-foreground font-normal text-xs">({p.player_name})</span>
-                  {!p.is_alive && <Skull className="inline h-3 w-3 ml-1 text-muted-foreground" />}
-                </p>
-                <div className="flex items-center gap-2 mt-1 flex-wrap">
-                  <Badge variant="outline" className="text-xs">{p.person_type}</Badge>
-                  {city && <span className="text-xs text-muted-foreground">📍 {city.name}</span>}
-                  {p.flavor_trait && <span className="text-xs italic text-muted-foreground">„{p.flavor_trait}"</span>}
-                </div>
-              </div>
-            );
-          })}
+          {otherPersons.map((p: any) => (
+            <PersonCard
+              key={p.id}
+              person={p}
+              cities={cities}
+              isOwner={false}
+              generatingId={generatingId}
+              onKill={handleKill}
+              onGeneratePortrait={handleGeneratePortrait}
+            />
+          ))}
         </div>
       )}
     </div>
   );
 };
+
+function PersonCard({ person, cities, isOwner, generatingId, onKill, onGeneratePortrait }: {
+  person: any; cities: City[]; isOwner: boolean; generatingId: string | null;
+  onKill: (id: string, name: string) => void;
+  onGeneratePortrait: (person: any) => void;
+}) {
+  const city = cities.find(c => c.id === person.city_id);
+  const isGenerating = generatingId === person.id;
+
+  return (
+    <div className={`manuscript-card p-4 ${!person.is_alive ? "opacity-60" : ""}`}>
+      <div className="flex gap-4">
+        {/* Portrait */}
+        <div className="shrink-0 w-20 h-20 rounded-md overflow-hidden border border-border bg-muted/30">
+          {person.image_url ? (
+            <img src={person.image_url} alt={person.name} className="w-full h-full object-cover" />
+          ) : (
+            <div className="w-full h-full flex items-center justify-center">
+              <ImageIcon className="h-8 w-8 text-muted-foreground/30" />
+            </div>
+          )}
+        </div>
+
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center justify-between">
+            <p className="font-display font-bold text-sm">
+              {person.name}
+              {!person.is_alive && <Skull className="inline h-4 w-4 ml-1 text-muted-foreground" />}
+              {!isOwner && <span className="text-muted-foreground font-normal text-xs ml-1">({person.player_name})</span>}
+            </p>
+            <div className="flex gap-1">
+              {isOwner && person.is_alive && (
+                <Button size="sm" variant="ghost" onClick={() => onKill(person.id, person.name)} title="Zaznamenat smrt">
+                  <Skull className="h-4 w-4 text-destructive" />
+                </Button>
+              )}
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 mt-1 flex-wrap">
+            <Badge variant="secondary" className="text-xs">{person.person_type}</Badge>
+            {city && <span className="text-xs text-muted-foreground">📍 {city.name}</span>}
+            {person.flavor_trait && <span className="text-xs italic text-muted-foreground">„{person.flavor_trait}"</span>}
+            <span className="text-xs text-muted-foreground">
+              Nar. rok {person.born_round}{person.died_round ? ` — † rok ${person.died_round}` : ""}
+            </span>
+          </div>
+
+          {/* Bio */}
+          {person.bio && (
+            <p className="text-xs text-muted-foreground mt-2 italic leading-relaxed">{person.bio}</p>
+          )}
+
+          {/* Generate portrait button - owner only */}
+          {isOwner && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="mt-2 text-xs font-display"
+              disabled={isGenerating}
+              onClick={() => onGeneratePortrait(person)}
+            >
+              {isGenerating ? (
+                <><Loader2 className="h-3 w-3 mr-1 animate-spin" />Generuji portrét...</>
+              ) : (
+                <><Sparkles className="h-3 w-3 mr-1" />{person.image_url ? "Regenerovat portrét" : "Vygenerovat portrét a životopis"}</>
+              )}
+            </Button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export default GreatPersonsPanel;

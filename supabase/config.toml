@@ -35,3 +35,9 @@ verify_jwt = false
 
 [functions.player-chronicle]
 verify_jwt = false
+
+[functions.person-portrait]
+verify_jwt = false
+
+[functions.wiki-generate]
+verify_jwt = false
