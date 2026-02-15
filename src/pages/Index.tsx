@@ -12,14 +12,29 @@ const LandingPage = () => {
   const [roomCode, setRoomCode] = useState("");
   const [mode, setMode] = useState<"menu" | "create" | "join">("menu");
   const [loading, setLoading] = useState(false);
+  const [restoring, setRestoring] = useState(true);
 
-  // Restore last game session
+  // Restore last game session — show skeleton, not landing
   useEffect(() => {
     const lastGameId = localStorage.getItem("ch_lastGameId");
     if (lastGameId) {
       navigate(`/game/${lastGameId}`, { replace: true });
+    } else {
+      setRestoring(false);
     }
   }, [navigate]);
+
+  // Show loading skeleton while restoring
+  if (restoring) {
+    return (
+      <div className="min-h-screen flex items-center justify-center parchment-bg">
+        <div className="text-center animate-fade-in">
+          <Scroll className="h-12 w-12 text-primary mx-auto mb-4 animate-pulse" />
+          <p className="font-display text-lg text-muted-foreground">Obnovuji herní relaci...</p>
+        </div>
+      </div>
+    );
+  }
 
   const handleCreate = async () => {
     if (!playerName.trim()) { toast.error("Zadejte jméno hráče"); return; }
