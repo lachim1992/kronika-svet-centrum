@@ -9,6 +9,7 @@ import { toast } from "sonner";
 type GameEvent = Tables<"game_events">;
 type WorldMemory = Tables<"world_memories">;
 type ChronicleEntry = Tables<"chronicle_entries">;
+type GamePlayer = Tables<"game_players">;
 
 interface ChronicleFeedProps {
   sessionId: string;
@@ -17,10 +18,7 @@ interface ChronicleFeedProps {
   chronicles: ChronicleEntry[];
   epochStyle: string;
   currentTurn: number;
-  turnClosedP1: boolean;
-  turnClosedP2: boolean;
-  player1Name: string;
-  player2Name: string;
+  players: GamePlayer[];
   currentPlayerName: string;
   onRefetch?: () => void;
 }
@@ -33,21 +31,19 @@ const EPOCH_LABELS: Record<string, string> = {
 
 const ChronicleFeed = ({
   sessionId, events, memories, chronicles, epochStyle,
-  currentTurn, turnClosedP1, turnClosedP2,
-  player1Name, player2Name, currentPlayerName, onRefetch,
+  currentTurn, players, currentPlayerName, onRefetch,
 }: ChronicleFeedProps) => {
   const [generating, setGenerating] = useState(false);
 
   const currentTurnEvents = events.filter((e) => e.turn_number === currentTurn);
-  const isPlayer1 = currentPlayerName === player1Name;
-  const myTurnClosed = isPlayer1 ? turnClosedP1 : turnClosedP2;
-  const otherTurnClosed = isPlayer1 ? turnClosedP2 : turnClosedP1;
-  const bothClosed = turnClosedP1 && turnClosedP2;
+  const currentPlayer = players.find(p => p.player_name === currentPlayerName);
+  const myTurnClosed = currentPlayer?.turn_closed || false;
+  const allClosed = players.length > 0 && players.every(p => p.turn_closed);
 
   const handleCloseTurn = async () => {
-    const playerNumber = isPlayer1 ? 1 : 2;
-    await closeTurnForPlayer(sessionId, playerNumber as 1 | 2);
-    toast.success("Vaše kolo uzavřeno. Čekáme na druhého hráče.");
+    if (!currentPlayer) return;
+    await closeTurnForPlayer(sessionId, currentPlayer.player_number);
+    toast.success("Vaše kolo uzavřeno. Čekáme na ostatní hráče.");
     onRefetch?.();
   };
 
@@ -59,7 +55,6 @@ const ChronicleFeed = ({
 
     setGenerating(true);
     try {
-      // Mark all current turn events as confirmed
       const result = await generateChronicle(currentTurnEvents, memories, epochStyle);
       if (result.chronicle) {
         await addChronicleEntry(sessionId, `📜 Rok ${currentTurn}\n\n${result.chronicle}`, epochStyle, currentTurn);
@@ -70,7 +65,6 @@ const ChronicleFeed = ({
         }
         toast.success(`Navrženo ${result.suggestedMemories.length} nových vzpomínek`);
       }
-      // Advance to next turn
       await advanceTurn(sessionId, currentTurn);
       toast.success(`Kronika roku ${currentTurn} vygenerována! Pokračujeme rokem ${currentTurn + 1}.`);
       onRefetch?.();
@@ -97,26 +91,18 @@ const ChronicleFeed = ({
       {/* Turn closure status */}
       <div className="p-3 rounded-lg border border-border bg-muted/30 space-y-2">
         <p className="text-sm font-display font-semibold">Rok {currentTurn} — Uzavření kola</p>
-        <div className="flex items-center gap-2 text-sm">
-          {turnClosedP1 ? (
-            <CheckCircle2 className="h-4 w-4 text-primary" />
-          ) : (
-            <Lock className="h-4 w-4 text-muted-foreground" />
-          )}
-          <span className={turnClosedP1 ? "text-primary" : "text-muted-foreground"}>
-            {player1Name}: {turnClosedP1 ? "Uzavřeno" : "Čeká"}
-          </span>
-        </div>
-        <div className="flex items-center gap-2 text-sm">
-          {turnClosedP2 ? (
-            <CheckCircle2 className="h-4 w-4 text-primary" />
-          ) : (
-            <Lock className="h-4 w-4 text-muted-foreground" />
-          )}
-          <span className={turnClosedP2 ? "text-primary" : "text-muted-foreground"}>
-            {player2Name}: {turnClosedP2 ? "Uzavřeno" : "Čeká"}
-          </span>
-        </div>
+        {players.map(p => (
+          <div key={p.id} className="flex items-center gap-2 text-sm">
+            {p.turn_closed ? (
+              <CheckCircle2 className="h-4 w-4 text-primary" />
+            ) : (
+              <Lock className="h-4 w-4 text-muted-foreground" />
+            )}
+            <span className={p.turn_closed ? "text-primary" : "text-muted-foreground"}>
+              {p.player_name}: {p.turn_closed ? "Uzavřeno" : "Čeká"}
+            </span>
+          </div>
+        ))}
 
         {!myTurnClosed && (
           <Button
@@ -130,13 +116,13 @@ const ChronicleFeed = ({
           </Button>
         )}
 
-        {myTurnClosed && !otherTurnClosed && (
+        {myTurnClosed && !allClosed && (
           <p className="text-xs text-muted-foreground italic text-center">
-            Čekáme na {isPlayer1 ? player2Name : player1Name}...
+            Čekáme na ostatní hráče...
           </p>
         )}
 
-        {bothClosed && (
+        {allClosed && (
           <Button
             onClick={handleGenerateAndAdvance}
             disabled={generating}
