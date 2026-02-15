@@ -19,6 +19,15 @@ const EVENT_LABELS: Record<string, string> = {
   battle: "Bitva",
   diplomacy: "Diplomacie",
   city_state_action: "Akce městského státu",
+  trade: "Obchod",
+  wonder: "Div světa",
+  declaration: "Vyhlášení",
+};
+
+const TRUTH_LABELS: Record<string, { label: string; variant: "secondary" | "outline" | "destructive" }> = {
+  canon: { label: "📜 Kanonické", variant: "secondary" },
+  rumor: { label: "👂 Zvěst", variant: "outline" },
+  propaganda: { label: "📢 Propaganda", variant: "destructive" },
 };
 
 interface EventTimelineProps {
@@ -67,6 +76,13 @@ const EventTimeline = ({ events, responses, currentPlayerName, currentTurn }: Ev
                     <Badge variant="secondary" className="text-xs">
                       {EVENT_LABELS[event.event_type] || event.event_type}
                     </Badge>
+                    {(() => {
+                      const ts = (event as any).truth_state || "canon";
+                      const info = TRUTH_LABELS[ts];
+                      return info && ts !== "canon" ? (
+                        <Badge variant={info.variant} className="text-xs">{info.label}</Badge>
+                      ) : null;
+                    })()}
                     <span className="text-sm font-semibold">{event.player}</span>
                     {event.location && (
                       <span className="text-xs text-muted-foreground">📍 {event.location}</span>

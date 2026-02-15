@@ -23,6 +23,13 @@ const EVENT_TYPES = [
   { value: "city_state_action", label: "Akce městského státu" },
   { value: "trade", label: "Obchod" },
   { value: "wonder", label: "Div světa" },
+  { value: "declaration", label: "Vyhlášení" },
+];
+
+const TRUTH_STATES = [
+  { value: "canon", label: "📜 Kanonické (pravda)" },
+  { value: "rumor", label: "👂 Zvěst (nepotvrzené)" },
+  { value: "propaganda", label: "📢 Propaganda (spin)" },
 ];
 
 const DUAL_CITY_EVENTS = ["battle", "trade", "diplomacy"];
@@ -42,6 +49,7 @@ const EventInput = ({ sessionId, players, cities, currentTurn, turnClosed, onEve
   const [cityId, setCityId] = useState("");
   const [secondaryCityId, setSecondaryCityId] = useState("");
   const [note, setNote] = useState("");
+  const [truthState, setTruthState] = useState("canon");
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = async () => {
@@ -68,6 +76,7 @@ const EventInput = ({ sessionId, players, cities, currentTurn, turnClosed, onEve
       turn_number: currentTurn,
       city_id: cityId,
       secondary_city_id: secondaryCityId || null,
+      truth_state: truthState,
     } as any);
 
     if (error) {
@@ -79,7 +88,7 @@ const EventInput = ({ sessionId, players, cities, currentTurn, turnClosed, onEve
     }
 
     setLoading(false);
-    setEventType(""); setPlayer(""); setCityId(""); setSecondaryCityId(""); setNote("");
+    setEventType(""); setPlayer(""); setCityId(""); setSecondaryCityId(""); setNote(""); setTruthState("canon");
   };
 
   if (turnClosed) {
@@ -152,6 +161,15 @@ const EventInput = ({ sessionId, players, cities, currentTurn, turnClosed, onEve
           </SelectContent>
         </Select>
       )}
+
+      <Select value={truthState} onValueChange={setTruthState}>
+        <SelectTrigger className="h-11"><SelectValue placeholder="Stav pravdy..." /></SelectTrigger>
+        <SelectContent>
+          {TRUTH_STATES.map(ts => (
+            <SelectItem key={ts.value} value={ts.value}>{ts.label}</SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
 
       <Textarea
         placeholder="Poznámka / flavor text (volitelné)"

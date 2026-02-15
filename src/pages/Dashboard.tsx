@@ -4,7 +4,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Scroll, Copy, Settings, BookOpen, Castle, Swords, Building2, Crown, Users, Landmark, Trophy, MapPin, Feather, ScrollText } from "lucide-react";
+import {
+  Scroll, Copy, Settings, BookOpen, Castle, Swords, Building2, Crown, Users,
+  Landmark, Trophy, MapPin, Feather, ScrollText, Star, Megaphone, Target, Sparkles,
+} from "lucide-react";
 import EventInput from "@/components/EventInput";
 import EventTimeline from "@/components/EventTimeline";
 import ChronicleFeed from "@/components/ChronicleFeed";
@@ -17,6 +20,11 @@ import LeaderboardsPanel from "@/components/LeaderboardsPanel";
 import CityDirectory from "@/components/CityDirectory";
 import DiplomacyPanel from "@/components/DiplomacyPanel";
 import EntityTraitsPanel from "@/components/EntityTraitsPanel";
+import CivilizationDNA from "@/components/CivilizationDNA";
+import GreatPersonsPanel from "@/components/GreatPersonsPanel";
+import DeclarationsPanel from "@/components/DeclarationsPanel";
+import WarRoomPanel from "@/components/WarRoomPanel";
+import SecretObjectivesPanel from "@/components/SecretObjectivesPanel";
 import { toast } from "sonner";
 
 const Dashboard = () => {
@@ -25,6 +33,7 @@ const Dashboard = () => {
   const {
     session, events, memories, chronicles, cityStates, responses,
     players, cities, resources, armies, trades, wonders, entityTraits,
+    civilizations, greatPersons, declarations, worldCrises, secretObjectives,
     loading, refetch,
   } = useGameSession(sessionId || null);
 
@@ -97,8 +106,14 @@ const Dashboard = () => {
           <TabsTrigger value="chronicle" className="font-display text-xs">
             <BookOpen className="h-4 w-4 mr-1" />Kronika
           </TabsTrigger>
+          <TabsTrigger value="civdna" className="font-display text-xs">
+            <Sparkles className="h-4 w-4 mr-1" />Civilizace
+          </TabsTrigger>
           <TabsTrigger value="traits" className="font-display text-xs">
             <ScrollText className="h-4 w-4 mr-1" />Vlastnosti
+          </TabsTrigger>
+          <TabsTrigger value="persons" className="font-display text-xs">
+            <Star className="h-4 w-4 mr-1" />Osobnosti
           </TabsTrigger>
           <TabsTrigger value="cities" className="font-display text-xs">
             <MapPin className="h-4 w-4 mr-1" />Města
@@ -109,11 +124,20 @@ const Dashboard = () => {
           <TabsTrigger value="events" className="font-display text-xs">
             <Swords className="h-4 w-4 mr-1" />Události
           </TabsTrigger>
+          <TabsTrigger value="declarations" className="font-display text-xs">
+            <Megaphone className="h-4 w-4 mr-1" />Vyhlášení
+          </TabsTrigger>
+          <TabsTrigger value="warroom" className="font-display text-xs">
+            <Swords className="h-4 w-4 mr-1" />Válečná mapa
+          </TabsTrigger>
           <TabsTrigger value="wonders" className="font-display text-xs">
             <Landmark className="h-4 w-4 mr-1" />Divy světa
           </TabsTrigger>
           <TabsTrigger value="diplomacy" className="font-display text-xs">
             <Feather className="h-4 w-4 mr-1" />Diplomacie
+          </TabsTrigger>
+          <TabsTrigger value="destiny" className="font-display text-xs">
+            <Target className="h-4 w-4 mr-1" />Osud
           </TabsTrigger>
           <TabsTrigger value="leaderboards" className="font-display text-xs">
             <Trophy className="h-4 w-4 mr-1" />Žebříčky
@@ -144,15 +168,24 @@ const Dashboard = () => {
           </div>
         </TabsContent>
 
+        <TabsContent value="civdna" className="pb-6">
+          <CivilizationDNA
+            sessionId={session.id} playerName={currentPlayerName}
+            civilizations={civilizations} onRefetch={refetch}
+          />
+        </TabsContent>
+
         <TabsContent value="traits" className="pb-6">
           <EntityTraitsPanel
-            sessionId={session.id}
-            traits={entityTraits}
-            cities={cities}
-            events={events}
-            players={players.map(p => p.player_name)}
-            currentTurn={currentTurn}
-            onRefetch={refetch}
+            sessionId={session.id} traits={entityTraits} cities={cities} events={events}
+            players={players.map(p => p.player_name)} currentTurn={currentTurn} onRefetch={refetch}
+          />
+        </TabsContent>
+
+        <TabsContent value="persons" className="pb-6">
+          <GreatPersonsPanel
+            sessionId={session.id} currentPlayerName={currentPlayerName}
+            greatPersons={greatPersons} cities={cities} currentTurn={currentTurn} onRefetch={refetch}
           />
         </TabsContent>
 
@@ -182,6 +215,20 @@ const Dashboard = () => {
           </div>
         </TabsContent>
 
+        <TabsContent value="declarations" className="pb-6">
+          <DeclarationsPanel
+            sessionId={session.id} currentPlayerName={currentPlayerName}
+            declarations={declarations} currentTurn={currentTurn} onRefetch={refetch}
+          />
+        </TabsContent>
+
+        <TabsContent value="warroom" className="pb-6">
+          <WarRoomPanel
+            cities={cities} armies={armies} events={events} players={players}
+            currentTurn={currentTurn} worldCrises={worldCrises}
+          />
+        </TabsContent>
+
         <TabsContent value="wonders" className="px-4 pb-6">
           <WondersPanel
             sessionId={session.id} wonders={wonders} cities={cities} players={players}
@@ -191,10 +238,14 @@ const Dashboard = () => {
 
         <TabsContent value="diplomacy" className="pb-6">
           <DiplomacyPanel
-            sessionId={sessionId!}
-            players={players}
-            cityStates={cityStates}
-            currentPlayerName={currentPlayerName}
+            sessionId={sessionId!} players={players} cityStates={cityStates} currentPlayerName={currentPlayerName}
+          />
+        </TabsContent>
+
+        <TabsContent value="destiny" className="pb-6">
+          <SecretObjectivesPanel
+            sessionId={session.id} currentPlayerName={currentPlayerName}
+            secretObjectives={secretObjectives} currentTurn={currentTurn} onRefetch={refetch}
           />
         </TabsContent>
 
