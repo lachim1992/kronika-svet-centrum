@@ -137,10 +137,10 @@ const Dashboard = () => {
               <ChronicleFeed
                 sessionId={session.id} events={events} memories={memories} chronicles={chronicles}
                 epochStyle={session.epoch_style} currentTurn={currentTurn} players={players}
-                currentPlayerName={currentPlayerName} entityTraits={entityTraits} onRefetch={refetch}
+                currentPlayerName={currentPlayerName} entityTraits={entityTraits} cities={cities} onRefetch={refetch}
               />
             </div>
-            <div><WorldMemoryPanel sessionId={session.id} memories={memories} /></div>
+            <div><WorldMemoryPanel sessionId={session.id} memories={memories} cities={cities} currentTurn={currentTurn} /></div>
           </div>
         </TabsContent>
 

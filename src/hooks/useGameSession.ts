@@ -211,8 +211,21 @@ export async function addEventResponse(eventId: string, player: string, note: st
 
 // ---- Memories ----
 
-export async function addWorldMemory(sessionId: string, text: string, approved = false) {
-  const { error } = await supabase.from("world_memories").insert({ session_id: sessionId, text, approved });
+export async function addWorldMemory(
+  sessionId: string,
+  text: string,
+  approved = false,
+  cityId?: string,
+  provinceId?: string,
+  category?: string,
+  createdRound?: number
+) {
+  const record: any = { session_id: sessionId, text, approved };
+  if (cityId) record.city_id = cityId;
+  if (provinceId) record.province_id = provinceId;
+  if (category) record.category = category;
+  if (createdRound) record.created_round = createdRound;
+  const { error } = await supabase.from("world_memories").insert(record);
   if (error) console.error(error);
 }
 

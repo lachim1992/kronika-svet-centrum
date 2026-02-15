@@ -7,9 +7,10 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ArrowLeft, MapPin, Sparkles, BookOpen, Shield, Flame, Crown, Scroll, Landmark } from "lucide-react";
+import { ArrowLeft, MapPin, Sparkles, BookOpen, Shield, Flame, Crown, Scroll, Landmark, Brain } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
+import WorldMemoryPanel from "@/components/WorldMemoryPanel";
 
 type City = Tables<"cities">;
 type GameEvent = Tables<"game_events">;
@@ -71,6 +72,14 @@ const CityDetailPanel = ({
   const handleGenerate = async (type: "intro" | "history" | "both") => {
     setGenerating(true);
     try {
+      // Gather city-specific memories
+      const cityMems = memories
+        .filter(m => m.approved && (m as any).city_id === city.id)
+        .map(m => ({ text: m.text, category: (m as any).category }));
+      const provMems = city.province_id
+        ? memories.filter(m => m.approved && (m as any).province_id === city.province_id).map(m => ({ text: m.text, category: (m as any).category }))
+        : [];
+
       const result = await generateCityProfile({
         name: city.name,
         ownerName: city.owner_player,
@@ -80,7 +89,7 @@ const CityDetailPanel = ({
         foundedRound: (city as any).founded_round || 1,
         status: (city as any).status || "ok",
         ownerFlavorPrompt: (city as any).flavor_prompt || null,
-      }, confirmedEvents, approvedMemories.map(m => m.text));
+      }, confirmedEvents, approvedMemories.map(m => m.text), cityMems, provMems);
 
       if (type === "intro" || type === "both") setIntroduction(result.introduction);
       if (type === "history" || type === "both") {
@@ -243,6 +252,13 @@ const CityDetailPanel = ({
           </div>
         </div>
       )}
+
+      {/* City Memory (local identity layer) */}
+      <WorldMemoryPanel
+        sessionId={(city as any).session_id}
+        memories={memories}
+        filterCityId={city.id}
+      />
 
       {/* City Timeline */}
       <div className="bg-card p-4 rounded-lg border border-border space-y-3">
