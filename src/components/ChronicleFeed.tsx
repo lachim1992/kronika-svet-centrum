@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { Tables } from "@/integrations/supabase/types";
 import { generateChronicle } from "@/lib/ai";
 import { addChronicleEntry, addWorldMemory, closeTurnForPlayer, advanceTurn } from "@/hooks/useGameSession";
+import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { BookOpen, Sparkles, Lock, CheckCircle2 } from "lucide-react";
 import { toast } from "sonner";
@@ -81,6 +82,30 @@ const ChronicleFeed = ({
         }
         toast.success(`Navrženo ${result.suggestedMemories.length} nových vzpomínek`);
       }
+
+      // Check for AI-triggered world crisis
+      try {
+        const { data: crisisData } = await supabase.functions.invoke("world-crisis", {
+          body: {
+            gameState: {
+              currentTurn, playerCount: players.length,
+              cityCount: cities.length, events: currentTurnEvents.slice(-10),
+            }
+          }
+        });
+        if (crisisData?.crisis) {
+          await supabase.from("world_crises").insert({
+            session_id: sessionId,
+            crisis_type: crisisData.crisis.crisis_type,
+            title: crisisData.crisis.title,
+            description: crisisData.crisis.description,
+            affected_cities: crisisData.crisis.affected_cities,
+            trigger_round: currentTurn,
+          } as any);
+          toast.warning(`⚠️ Světová krize: ${crisisData.crisis.title}`);
+        }
+      } catch { /* crisis check is optional */ }
+
       await advanceTurn(sessionId, currentTurn);
       toast.success(`Kronika roku ${currentTurn} vygenerována! Pokračujeme rokem ${currentTurn + 1}.`);
       onRefetch?.();

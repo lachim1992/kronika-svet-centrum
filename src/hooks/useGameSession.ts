@@ -43,13 +43,19 @@ export function useGameSession(sessionId: string | null) {
   const [trades, setTrades] = useState<TradeLog[]>([]);
   const [wonders, setWonders] = useState<Wonder[]>([]);
   const [entityTraits, setEntityTraits] = useState<EntityTrait[]>([]);
+  const [civilizations, setCivilizations] = useState<any[]>([]);
+  const [greatPersons, setGreatPersons] = useState<any[]>([]);
+  const [declarations, setDeclarations] = useState<any[]>([]);
+  const [worldCrises, setWorldCrises] = useState<any[]>([]);
+  const [secretObjectives, setSecretObjectives] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   const fetchAll = useCallback(async () => {
     if (!sessionId) return;
     setLoading(true);
 
-    const [sessRes, evtRes, memRes, chrRes, csRes, plRes, citRes, resRes, armRes, trdRes, wndRes, trtRes] = await Promise.all([
+    const [sessRes, evtRes, memRes, chrRes, csRes, plRes, citRes, resRes, armRes, trdRes, wndRes, trtRes,
+      civRes, gpRes, declRes, crisisRes, objRes] = await Promise.all([
       supabase.from("game_sessions").select("*").eq("id", sessionId).single(),
       supabase.from("game_events").select("*").eq("session_id", sessionId).order("created_at", { ascending: true }),
       supabase.from("world_memories").select("*").eq("session_id", sessionId).order("created_at", { ascending: true }),
@@ -62,6 +68,11 @@ export function useGameSession(sessionId: string | null) {
       supabase.from("trade_log").select("*").eq("session_id", sessionId).order("created_at", { ascending: true }),
       supabase.from("wonders").select("*").eq("session_id", sessionId).order("created_at", { ascending: true }),
       supabase.from("entity_traits").select("*").eq("session_id", sessionId).order("created_at", { ascending: true }),
+      supabase.from("civilizations").select("*").eq("session_id", sessionId),
+      supabase.from("great_persons").select("*").eq("session_id", sessionId).order("created_at", { ascending: true }),
+      supabase.from("declarations").select("*").eq("session_id", sessionId).order("created_at", { ascending: true }),
+      supabase.from("world_crises").select("*").eq("session_id", sessionId).order("created_at", { ascending: true }),
+      supabase.from("secret_objectives").select("*").eq("session_id", sessionId),
     ]);
 
     if (sessRes.data) setSession(sessRes.data);
@@ -83,6 +94,11 @@ export function useGameSession(sessionId: string | null) {
     if (trdRes.data) setTrades(trdRes.data);
     if (wndRes.data) setWonders(wndRes.data);
     if (trtRes.data) setEntityTraits(trtRes.data as EntityTrait[]);
+    if (civRes.data) setCivilizations(civRes.data);
+    if (gpRes.data) setGreatPersons(gpRes.data);
+    if (declRes.data) setDeclarations(declRes.data);
+    if (crisisRes.data) setWorldCrises(crisisRes.data);
+    if (objRes.data) setSecretObjectives(objRes.data);
     setLoading(false);
   }, [sessionId]);
 
@@ -104,11 +120,21 @@ export function useGameSession(sessionId: string | null) {
       .on("postgres_changes", { event: "*", schema: "public", table: "trade_log", filter: `session_id=eq.${sessionId}` }, () => fetchAll())
       .on("postgres_changes", { event: "*", schema: "public", table: "wonders", filter: `session_id=eq.${sessionId}` }, () => fetchAll())
       .on("postgres_changes", { event: "*", schema: "public", table: "entity_traits", filter: `session_id=eq.${sessionId}` }, () => fetchAll())
+      .on("postgres_changes", { event: "*", schema: "public", table: "civilizations", filter: `session_id=eq.${sessionId}` }, () => fetchAll())
+      .on("postgres_changes", { event: "*", schema: "public", table: "great_persons", filter: `session_id=eq.${sessionId}` }, () => fetchAll())
+      .on("postgres_changes", { event: "*", schema: "public", table: "declarations", filter: `session_id=eq.${sessionId}` }, () => fetchAll())
+      .on("postgres_changes", { event: "*", schema: "public", table: "world_crises", filter: `session_id=eq.${sessionId}` }, () => fetchAll())
+      .on("postgres_changes", { event: "*", schema: "public", table: "secret_objectives", filter: `session_id=eq.${sessionId}` }, () => fetchAll())
       .subscribe();
     return () => { supabase.removeChannel(channel); };
   }, [sessionId, fetchAll]);
 
-  return { session, events, memories, chronicles, cityStates, responses, players, cities, resources, armies, trades, wonders, entityTraits, loading, refetch: fetchAll };
+  return {
+    session, events, memories, chronicles, cityStates, responses, players, cities,
+    resources, armies, trades, wonders, entityTraits,
+    civilizations, greatPersons, declarations, worldCrises, secretObjectives,
+    loading, refetch: fetchAll,
+  };
 }
 
 // ---- Session Management ----
@@ -122,53 +148,38 @@ export async function createGameSession(playerName: string): Promise<GameSession
   }).select().single();
   if (error) { console.error(error); return null; }
 
-  // Also create game_player entry
   await supabase.from("game_players").insert({
     session_id: data.id,
     player_name: playerName,
     player_number: 1,
   });
 
-  // Initialize resources for the player
   await initPlayerResources(data.id, playerName);
-
   return data;
 }
 
 export async function joinGameSession(roomCode: string, playerName: string): Promise<GameSession | null> {
-  // First get the session
   const { data: session, error: fetchErr } = await supabase
     .from("game_sessions").select("*").eq("room_code", roomCode.toUpperCase()).single();
   if (fetchErr || !session) { console.error(fetchErr); return null; }
 
-  // Count existing players
   const { data: existingPlayers } = await supabase
     .from("game_players").select("*").eq("session_id", session.id).order("player_number", { ascending: true });
   
   const playerCount = existingPlayers?.length || 0;
-  if (playerCount >= session.max_players) {
-    console.error("Game is full");
-    return null;
-  }
+  if (playerCount >= session.max_players) { console.error("Game is full"); return null; }
 
   const nextNumber = playerCount + 1;
-
-  // Add player
   const { error: plErr } = await supabase.from("game_players").insert({
-    session_id: session.id,
-    player_name: playerName,
-    player_number: nextNumber,
+    session_id: session.id, player_name: playerName, player_number: nextNumber,
   });
   if (plErr) { console.error(plErr); return null; }
 
-  // Update legacy player2_name for backward compat if needed
   if (nextNumber === 2) {
     await supabase.from("game_sessions").update({ player2_name: playerName }).eq("id", session.id);
   }
 
-  // Initialize resources
   await initPlayerResources(session.id, playerName);
-
   return session;
 }
 
@@ -184,10 +195,7 @@ async function initPlayerResources(sessionId: string, playerName: string) {
 
   for (const rt of resourceTypes) {
     await supabase.from("player_resources").insert({
-      session_id: sessionId,
-      player_name: playerName,
-      resource_type: rt,
-      ...defaults[rt],
+      session_id: sessionId, player_name: playerName, resource_type: rt, ...defaults[rt],
     });
   }
 }
@@ -212,13 +220,8 @@ export async function addEventResponse(eventId: string, player: string, note: st
 // ---- Memories ----
 
 export async function addWorldMemory(
-  sessionId: string,
-  text: string,
-  approved = false,
-  cityId?: string,
-  provinceId?: string,
-  category?: string,
-  createdRound?: number
+  sessionId: string, text: string, approved = false,
+  cityId?: string, provinceId?: string, category?: string, createdRound?: number
 ) {
   const record: any = { session_id: sessionId, text, approved };
   if (cityId) record.city_id = cityId;
@@ -266,12 +269,10 @@ export async function updateEpochStyle(sessionId: string, epochStyle: string) {
 }
 
 export async function closeTurnForPlayer(sessionId: string, playerNumber: number) {
-  // Use game_players table
   const { error } = await supabase.from("game_players").update({ turn_closed: true })
     .eq("session_id", sessionId).eq("player_number", playerNumber);
   if (error) console.error(error);
 
-  // Also update legacy fields for backward compat
   if (playerNumber === 1) {
     await supabase.from("game_sessions").update({ turn_closed_p1: true }).eq("id", sessionId);
   } else if (playerNumber === 2) {
@@ -280,13 +281,10 @@ export async function closeTurnForPlayer(sessionId: string, playerNumber: number
 }
 
 export async function advanceTurn(sessionId: string, currentTurn: number) {
-  // Reset all players' turn_closed
   await supabase.from("game_players").update({ turn_closed: false }).eq("session_id", sessionId);
 
   const { error } = await supabase.from("game_sessions").update({
-    current_turn: currentTurn + 1,
-    turn_closed_p1: false,
-    turn_closed_p2: false,
+    current_turn: currentTurn + 1, turn_closed_p1: false, turn_closed_p2: false,
   }).eq("id", sessionId);
   if (error) console.error(error);
 }
@@ -295,12 +293,7 @@ export async function advanceTurn(sessionId: string, currentTurn: number) {
 
 export async function addCity(sessionId: string, ownerPlayer: string, name: string, province: string, level: string, tags: string[]) {
   const { error } = await supabase.from("cities").insert({
-    session_id: sessionId,
-    owner_player: ownerPlayer,
-    name,
-    province: province || null,
-    level,
-    tags,
+    session_id: sessionId, owner_player: ownerPlayer, name, province: province || null, level, tags,
   });
   if (error) console.error(error);
 }
@@ -326,11 +319,7 @@ export async function updateResource(id: string, updates: { income?: number; upk
 
 export async function addArmy(sessionId: string, playerName: string, armyName: string, armyType: string, ironCost: number) {
   const { error } = await supabase.from("military_capacity").insert({
-    session_id: sessionId,
-    player_name: playerName,
-    army_name: armyName,
-    army_type: armyType,
-    iron_cost: ironCost,
+    session_id: sessionId, player_name: playerName, army_name: armyName, army_type: armyType, iron_cost: ironCost,
   });
   if (error) console.error(error);
 }
@@ -344,14 +333,8 @@ export async function updateArmy(id: string, updates: { status?: string; army_ty
 
 export async function addTrade(sessionId: string, turnNumber: number, fromPlayer: string, toPlayer: string, resourceType: string, amount: number, tradeType: string, note?: string) {
   const { error } = await supabase.from("trade_log").insert({
-    session_id: sessionId,
-    turn_number: turnNumber,
-    from_player: fromPlayer,
-    to_player: toPlayer,
-    resource_type: resourceType,
-    amount,
-    trade_type: tradeType,
-    note: note || null,
+    session_id: sessionId, turn_number: turnNumber, from_player: fromPlayer, to_player: toPlayer,
+    resource_type: resourceType, amount, trade_type: tradeType, note: note || null,
   });
   if (error) console.error(error);
 }

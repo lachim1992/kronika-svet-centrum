@@ -49,6 +49,7 @@ export type Database = {
       cities: {
         Row: {
           created_at: string
+          devastated_round: number | null
           flavor_prompt: string | null
           founded_round: number
           id: string
@@ -57,12 +58,14 @@ export type Database = {
           owner_player: string
           province: string | null
           province_id: string | null
+          ruins_note: string | null
           session_id: string
           status: string
           tags: string[] | null
         }
         Insert: {
           created_at?: string
+          devastated_round?: number | null
           flavor_prompt?: string | null
           founded_round?: number
           id?: string
@@ -71,12 +74,14 @@ export type Database = {
           owner_player: string
           province?: string | null
           province_id?: string | null
+          ruins_note?: string | null
           session_id: string
           status?: string
           tags?: string[] | null
         }
         Update: {
           created_at?: string
+          devastated_round?: number | null
           flavor_prompt?: string | null
           founded_round?: number
           id?: string
@@ -85,6 +90,7 @@ export type Database = {
           owner_player?: string
           province?: string | null
           province_id?: string | null
+          ruins_note?: string | null
           session_id?: string
           status?: string
           tags?: string[] | null
@@ -147,6 +153,47 @@ export type Database = {
           },
         ]
       }
+      civilizations: {
+        Row: {
+          architectural_style: string | null
+          civ_name: string
+          core_myth: string | null
+          created_at: string
+          cultural_quirk: string | null
+          id: string
+          player_name: string
+          session_id: string
+        }
+        Insert: {
+          architectural_style?: string | null
+          civ_name?: string
+          core_myth?: string | null
+          created_at?: string
+          cultural_quirk?: string | null
+          id?: string
+          player_name: string
+          session_id: string
+        }
+        Update: {
+          architectural_style?: string | null
+          civ_name?: string
+          core_myth?: string | null
+          created_at?: string
+          cultural_quirk?: string | null
+          id?: string
+          player_name?: string
+          session_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "civilizations_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       council_evaluations: {
         Row: {
           created_at: string
@@ -190,6 +237,47 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "council_evaluations_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      declarations: {
+        Row: {
+          created_at: string
+          declaration_type: string
+          epic_text: string | null
+          id: string
+          original_text: string
+          player_name: string
+          session_id: string
+          turn_number: number
+        }
+        Insert: {
+          created_at?: string
+          declaration_type?: string
+          epic_text?: string | null
+          id?: string
+          original_text: string
+          player_name: string
+          session_id: string
+          turn_number?: number
+        }
+        Update: {
+          created_at?: string
+          declaration_type?: string
+          epic_text?: string | null
+          id?: string
+          original_text?: string
+          player_name?: string
+          session_id?: string
+          turn_number?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "declarations_session_id_fkey"
             columns: ["session_id"]
             isOneToOne: false
             referencedRelation: "game_sessions"
@@ -387,6 +475,7 @@ export type Database = {
           player: string
           secondary_city_id: string | null
           session_id: string
+          truth_state: string
           turn_number: number
         }
         Insert: {
@@ -400,6 +489,7 @@ export type Database = {
           player: string
           secondary_city_id?: string | null
           session_id: string
+          truth_state?: string
           turn_number?: number
         }
         Update: {
@@ -413,6 +503,7 @@ export type Database = {
           player?: string
           secondary_city_id?: string | null
           session_id?: string
+          truth_state?: string
           turn_number?: number
         }
         Relationships: [
@@ -477,6 +568,7 @@ export type Database = {
       game_sessions: {
         Row: {
           created_at: string
+          current_era: string
           current_turn: number
           epoch_style: string
           id: string
@@ -489,6 +581,7 @@ export type Database = {
         }
         Insert: {
           created_at?: string
+          current_era?: string
           current_turn?: number
           epoch_style?: string
           id?: string
@@ -501,6 +594,7 @@ export type Database = {
         }
         Update: {
           created_at?: string
+          current_era?: string
           current_turn?: number
           epoch_style?: string
           id?: string
@@ -512,6 +606,63 @@ export type Database = {
           turn_closed_p2?: boolean
         }
         Relationships: []
+      }
+      great_persons: {
+        Row: {
+          born_round: number
+          city_id: string | null
+          created_at: string
+          died_round: number | null
+          flavor_trait: string | null
+          id: string
+          is_alive: boolean
+          name: string
+          person_type: string
+          player_name: string
+          session_id: string
+        }
+        Insert: {
+          born_round?: number
+          city_id?: string | null
+          created_at?: string
+          died_round?: number | null
+          flavor_trait?: string | null
+          id?: string
+          is_alive?: boolean
+          name: string
+          person_type?: string
+          player_name: string
+          session_id: string
+        }
+        Update: {
+          born_round?: number
+          city_id?: string | null
+          created_at?: string
+          died_round?: number | null
+          flavor_trait?: string | null
+          id?: string
+          is_alive?: boolean
+          name?: string
+          person_type?: string
+          player_name?: string
+          session_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "great_persons_city_id_fkey"
+            columns: ["city_id"]
+            isOneToOne: false
+            referencedRelation: "cities"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "great_persons_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       intelligence_reports: {
         Row: {
@@ -687,6 +838,44 @@ export type Database = {
           },
         ]
       }
+      secret_objectives: {
+        Row: {
+          created_at: string
+          fulfilled: boolean
+          fulfilled_round: number | null
+          id: string
+          objective_text: string
+          player_name: string
+          session_id: string
+        }
+        Insert: {
+          created_at?: string
+          fulfilled?: boolean
+          fulfilled_round?: number | null
+          id?: string
+          objective_text: string
+          player_name: string
+          session_id: string
+        }
+        Update: {
+          created_at?: string
+          fulfilled?: boolean
+          fulfilled_round?: number | null
+          id?: string
+          objective_text?: string
+          player_name?: string
+          session_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "secret_objectives_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       trade_log: {
         Row: {
           amount: number
@@ -818,6 +1007,53 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "wonders_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      world_crises: {
+        Row: {
+          affected_cities: string[] | null
+          created_at: string
+          crisis_type: string
+          description: string
+          id: string
+          resolved: boolean
+          resolved_round: number | null
+          session_id: string
+          title: string
+          trigger_round: number
+        }
+        Insert: {
+          affected_cities?: string[] | null
+          created_at?: string
+          crisis_type?: string
+          description: string
+          id?: string
+          resolved?: boolean
+          resolved_round?: number | null
+          session_id: string
+          title: string
+          trigger_round?: number
+        }
+        Update: {
+          affected_cities?: string[] | null
+          created_at?: string
+          crisis_type?: string
+          description?: string
+          id?: string
+          resolved?: boolean
+          resolved_round?: number | null
+          session_id?: string
+          title?: string
+          trigger_round?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "world_crises_session_id_fkey"
             columns: ["session_id"]
             isOneToOne: false
             referencedRelation: "game_sessions"

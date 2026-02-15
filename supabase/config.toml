@@ -20,3 +20,9 @@ verify_jwt = false
 
 [functions.wonder-portrait]
 verify_jwt = false
+
+[functions.declaration-rewrite]
+verify_jwt = false
+
+[functions.world-crisis]
+verify_jwt = false
