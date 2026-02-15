@@ -154,10 +154,10 @@ const WondersPanel = ({ sessionId, wonders, cities, players, memories, currentPl
           <h3 className="font-display font-semibold text-sm">Nový div světa</h3>
           <div className="grid grid-cols-2 gap-2">
             <Input placeholder="Název divu" value={name} onChange={e => setName(e.target.value)} className="h-9" />
-            <Select value={cityName} onValueChange={setCityName}>
+            <Select value={cityName || "__none__"} onValueChange={(v) => setCityName(v === "__none__" ? "" : v)}>
               <SelectTrigger className="h-9 text-xs"><SelectValue placeholder="Město..." /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="">— Žádné —</SelectItem>
+                <SelectItem value="__none__">— Žádné —</SelectItem>
                 {cities.map(c => <SelectItem key={c.id} value={c.name}>{c.name} ({c.owner_player})</SelectItem>)}
               </SelectContent>
             </Select>
@@ -186,10 +186,10 @@ const WondersPanel = ({ sessionId, wonders, cities, players, memories, currentPl
             rows={3}
           />
           <div className="flex gap-2">
-            <Select value={cityName} onValueChange={setCityName}>
+            <Select value={cityName || "__none__"} onValueChange={(v) => setCityName(v === "__none__" ? "" : v)}>
               <SelectTrigger className="h-9 text-xs flex-1"><SelectValue placeholder="Město..." /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="">— Žádné —</SelectItem>
+                <SelectItem value="__none__">— Žádné —</SelectItem>
                 {cities.map(c => <SelectItem key={c.id} value={c.name}>{c.name}</SelectItem>)}
               </SelectContent>
             </Select>
