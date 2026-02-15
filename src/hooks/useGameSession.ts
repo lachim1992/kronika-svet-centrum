@@ -51,6 +51,7 @@ export function useGameSession(sessionId: string | null) {
   const [loading, setLoading] = useState(true);
 
   const initialLoadDone = useRef(false);
+  const fetchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const fetchAll = useCallback(async () => {
     if (!sessionId) return;
@@ -105,32 +106,38 @@ export function useGameSession(sessionId: string | null) {
     initialLoadDone.current = true;
   }, [sessionId]);
 
+  // Debounced refetch for realtime events
+  const debouncedRefetch = useCallback(() => {
+    if (fetchTimer.current) clearTimeout(fetchTimer.current);
+    fetchTimer.current = setTimeout(() => fetchAll(), 800);
+  }, [fetchAll]);
+
   useEffect(() => { fetchAll(); }, [fetchAll]);
 
   useEffect(() => {
     if (!sessionId) return;
     const channel = supabase
       .channel(`session-${sessionId}`)
-      .on("postgres_changes", { event: "*", schema: "public", table: "game_events", filter: `session_id=eq.${sessionId}` }, () => fetchAll())
-      .on("postgres_changes", { event: "*", schema: "public", table: "world_memories", filter: `session_id=eq.${sessionId}` }, () => fetchAll())
-      .on("postgres_changes", { event: "*", schema: "public", table: "chronicle_entries", filter: `session_id=eq.${sessionId}` }, () => fetchAll())
-      .on("postgres_changes", { event: "*", schema: "public", table: "city_states", filter: `session_id=eq.${sessionId}` }, () => fetchAll())
-      .on("postgres_changes", { event: "*", schema: "public", table: "game_sessions", filter: `id=eq.${sessionId}` }, () => fetchAll())
-      .on("postgres_changes", { event: "*", schema: "public", table: "game_players", filter: `session_id=eq.${sessionId}` }, () => fetchAll())
-      .on("postgres_changes", { event: "*", schema: "public", table: "cities", filter: `session_id=eq.${sessionId}` }, () => fetchAll())
-      .on("postgres_changes", { event: "*", schema: "public", table: "player_resources", filter: `session_id=eq.${sessionId}` }, () => fetchAll())
-      .on("postgres_changes", { event: "*", schema: "public", table: "military_capacity", filter: `session_id=eq.${sessionId}` }, () => fetchAll())
-      .on("postgres_changes", { event: "*", schema: "public", table: "trade_log", filter: `session_id=eq.${sessionId}` }, () => fetchAll())
-      .on("postgres_changes", { event: "*", schema: "public", table: "wonders", filter: `session_id=eq.${sessionId}` }, () => fetchAll())
-      .on("postgres_changes", { event: "*", schema: "public", table: "entity_traits", filter: `session_id=eq.${sessionId}` }, () => fetchAll())
-      .on("postgres_changes", { event: "*", schema: "public", table: "civilizations", filter: `session_id=eq.${sessionId}` }, () => fetchAll())
-      .on("postgres_changes", { event: "*", schema: "public", table: "great_persons", filter: `session_id=eq.${sessionId}` }, () => fetchAll())
-      .on("postgres_changes", { event: "*", schema: "public", table: "declarations", filter: `session_id=eq.${sessionId}` }, () => fetchAll())
-      .on("postgres_changes", { event: "*", schema: "public", table: "world_crises", filter: `session_id=eq.${sessionId}` }, () => fetchAll())
-      .on("postgres_changes", { event: "*", schema: "public", table: "secret_objectives", filter: `session_id=eq.${sessionId}` }, () => fetchAll())
+      .on("postgres_changes", { event: "*", schema: "public", table: "game_events", filter: `session_id=eq.${sessionId}` }, () => debouncedRefetch())
+      .on("postgres_changes", { event: "*", schema: "public", table: "world_memories", filter: `session_id=eq.${sessionId}` }, () => debouncedRefetch())
+      .on("postgres_changes", { event: "*", schema: "public", table: "chronicle_entries", filter: `session_id=eq.${sessionId}` }, () => debouncedRefetch())
+      .on("postgres_changes", { event: "*", schema: "public", table: "city_states", filter: `session_id=eq.${sessionId}` }, () => debouncedRefetch())
+      .on("postgres_changes", { event: "*", schema: "public", table: "game_sessions", filter: `id=eq.${sessionId}` }, () => debouncedRefetch())
+      .on("postgres_changes", { event: "*", schema: "public", table: "game_players", filter: `session_id=eq.${sessionId}` }, () => debouncedRefetch())
+      .on("postgres_changes", { event: "*", schema: "public", table: "cities", filter: `session_id=eq.${sessionId}` }, () => debouncedRefetch())
+      .on("postgres_changes", { event: "*", schema: "public", table: "player_resources", filter: `session_id=eq.${sessionId}` }, () => debouncedRefetch())
+      .on("postgres_changes", { event: "*", schema: "public", table: "military_capacity", filter: `session_id=eq.${sessionId}` }, () => debouncedRefetch())
+      .on("postgres_changes", { event: "*", schema: "public", table: "trade_log", filter: `session_id=eq.${sessionId}` }, () => debouncedRefetch())
+      .on("postgres_changes", { event: "*", schema: "public", table: "wonders", filter: `session_id=eq.${sessionId}` }, () => debouncedRefetch())
+      .on("postgres_changes", { event: "*", schema: "public", table: "entity_traits", filter: `session_id=eq.${sessionId}` }, () => debouncedRefetch())
+      .on("postgres_changes", { event: "*", schema: "public", table: "civilizations", filter: `session_id=eq.${sessionId}` }, () => debouncedRefetch())
+      .on("postgres_changes", { event: "*", schema: "public", table: "great_persons", filter: `session_id=eq.${sessionId}` }, () => debouncedRefetch())
+      .on("postgres_changes", { event: "*", schema: "public", table: "declarations", filter: `session_id=eq.${sessionId}` }, () => debouncedRefetch())
+      .on("postgres_changes", { event: "*", schema: "public", table: "world_crises", filter: `session_id=eq.${sessionId}` }, () => debouncedRefetch())
+      .on("postgres_changes", { event: "*", schema: "public", table: "secret_objectives", filter: `session_id=eq.${sessionId}` }, () => debouncedRefetch())
       .subscribe();
     return () => { supabase.removeChannel(channel); };
-  }, [sessionId, fetchAll]);
+  }, [sessionId, debouncedRefetch]);
 
   return {
     session, events, memories, chronicles, cityStates, responses, players, cities,
