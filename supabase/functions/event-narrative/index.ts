@@ -45,7 +45,8 @@ serve(async (req) => {
 PRAVIDLA:
 - NESMÍŠ vymýšlet nové události nebo výsledky.
 - Narativně zpracuj POUZE data, která dostaneš.
-- Zahrň poznámky hráčů jako součást příběhu (citace, kontext).
+- MUSÍŠ zahrnoout poznámky hráčů — citace, kontext, perspektivu. Hráčské poznámky obohacují příběh.
+- Pokud existují městské paměti nebo fakta o světě, zapracuj je přirozeně do narativu.
 - Výstup MUSÍ být v češtině.
 - Odpověz POUZE voláním funkce generate_narrative.`;
 
