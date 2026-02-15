@@ -50,3 +50,29 @@ export async function generateWonder(
 
   return data;
 }
+
+export async function generateCityProfile(
+  city: {
+    name: string;
+    ownerName: string;
+    level: string;
+    province: string;
+    tags: string[];
+    foundedRound?: number;
+    status?: string;
+    ownerFlavorPrompt?: string | null;
+  },
+  confirmedCityEvents: any[],
+  approvedWorldFacts: string[]
+): Promise<{ introduction: string; historyRetelling: string; bulletFacts: string[]; debug?: any }> {
+  const { data, error } = await supabase.functions.invoke("cityprofile", {
+    body: { city, confirmedCityEvents, approvedWorldFacts },
+  });
+
+  if (error) {
+    console.error("City profile generation error:", error);
+    return { introduction: "Kronikář selhal...", historyRetelling: "", bulletFacts: [] };
+  }
+
+  return data;
+}

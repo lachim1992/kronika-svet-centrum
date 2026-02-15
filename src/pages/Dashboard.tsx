@@ -4,7 +4,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Scroll, Copy, Settings, BookOpen, Castle, Swords, Building2, Crown, Users, Landmark, Trophy } from "lucide-react";
+import { Scroll, Copy, Settings, BookOpen, Castle, Swords, Building2, Crown, Users, Landmark, Trophy, MapPin } from "lucide-react";
 import EventInput from "@/components/EventInput";
 import EventTimeline from "@/components/EventTimeline";
 import ChronicleFeed from "@/components/ChronicleFeed";
@@ -13,6 +13,7 @@ import CityStatesPanel from "@/components/CityStatesPanel";
 import EmpireManagement from "@/components/EmpireManagement";
 import WondersPanel from "@/components/WondersPanel";
 import LeaderboardsPanel from "@/components/LeaderboardsPanel";
+import CityDirectory from "@/components/CityDirectory";
 import { toast } from "sonner";
 
 const Dashboard = () => {
@@ -92,6 +93,9 @@ const Dashboard = () => {
           <TabsTrigger value="chronicle" className="font-display text-xs">
             <BookOpen className="h-4 w-4 mr-1" />Kronika
           </TabsTrigger>
+          <TabsTrigger value="cities" className="font-display text-xs">
+            <MapPin className="h-4 w-4 mr-1" />Města
+          </TabsTrigger>
           <TabsTrigger value="empire" className="font-display text-xs">
             <Castle className="h-4 w-4 mr-1" />Správa říše
           </TabsTrigger>
@@ -120,6 +124,14 @@ const Dashboard = () => {
             </div>
             <div><WorldMemoryPanel sessionId={session.id} memories={memories} /></div>
           </div>
+        </TabsContent>
+
+        <TabsContent value="cities" className="pb-6">
+          <CityDirectory
+            sessionId={session.id} cities={cities} events={events} players={players}
+            memories={memories} wonders={wonders} currentPlayerName={currentPlayerName}
+            currentTurn={currentTurn} onRefetch={refetch}
+          />
         </TabsContent>
 
         <TabsContent value="empire" className="px-4 pb-6">
