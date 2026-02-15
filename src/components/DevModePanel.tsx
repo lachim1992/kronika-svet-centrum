@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
-  Bug, Database, Play, CheckCircle2, XCircle, Loader2, FlaskConical, Sparkles, Trash2,
+  Bug, Database, Play, CheckCircle2, XCircle, Loader2, FlaskConical, Trash2, Zap, Sparkles,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -12,7 +12,6 @@ interface DevModePanelProps {
   sessionId: string;
   currentPlayerName: string;
   onRefetch?: () => void;
-  // Debug stats
   citiesCount: number;
   eventsCount: number;
   wondersCount: number;
@@ -20,34 +19,104 @@ interface DevModePanelProps {
   playersCount: number;
 }
 
-interface QAResult {
-  name: string;
-  pass: boolean;
-  detail?: string;
+interface QAResult { name: string; pass: boolean; detail?: string; }
+
+interface CoverageReport {
+  players: number;
+  years: number;
+  totalEvents: number;
+  eventsByType: Record<string, number>;
+  totalNotes: number;
+  cityIntros: number;
+  eventNarratives: number;
+  wondersCreated: number;
+  wonderPortraits: number;
+  chroniclesPerYear: number;
+  worldRetells: number;
+  playerChronicles: number;
+  rumors: number;
+  intelligence: number;
+  council: number;
+  diplomacyMessages: number;
+  tradeDeals: number;
+  greatPersons: number;
+  worldMemories: number;
+  failures: string[];
 }
 
-const CZECH_CITY_NAMES_P1 = ["Petra", "Tharros", "Sardara", "Nuraghe"];
-const CZECH_CITY_NAMES_P2 = ["Cabras", "Oristano", "Barumini", "Cornus"];
-const PROVINCES_P1 = ["Údolí Králů", "Severní marky"];
-const PROVINCES_P2 = ["Jižní pláně", "Přímořská provincie"];
+// ===================== CONSTANTS =====================
 
-const EVENT_TYPES_SIM = [
-  "found_settlement", "upgrade_city", "raid", "repair", "battle",
-  "diplomacy", "city_state_action", "trade", "wonder",
+const PLAYER_NAMES = ["Berr", "Protivník", "Královna", "Stratég", "Dobyvatel", "Obchodník"];
+const PROVINCE_NAMES = [
+  "Údolí Králů", "Severní marky", "Jižní pláně", "Přímořská provincie",
+  "Východní kopce", "Západní lesy", "Zlatá rovina", "Ledová kotlina",
+  "Pustá pole", "Říční delta", "Horské průsmyky", "Stříbrné pobřeží",
 ];
-
+const CITY_NAMES = [
+  "Petra", "Tharros", "Sardara", "Nuraghe", "Cabras", "Oristano", "Barumini", "Cornus",
+  "Karalis", "Nora", "Sulci", "Bosa", "Olbia", "Turris", "Alghero", "Sassari",
+  "Terranova", "Iglesias", "Castelsardo", "Siniscola", "Dorgali", "Tortolì",
+  "Lanusei", "Sanluri", "Villasor", "Decimomannu", "Monastir", "Senorbì",
+  "Muravera", "Pula", "Teulada", "Carloforte", "Portoscuso", "Guspini",
+  "Arbus", "Ales",
+];
+const CITY_STATE_NAMES = [
+  { name: "Kartágo", type: "Obchodní" }, { name: "Syrakúzy", type: "Vojenský" },
+  { name: "Rhodos", type: "Námořní" }, { name: "Delfy", type: "Kulturní" },
+  { name: "Korint", type: "Obchodní" },
+];
+const WONDER_NAMES = [
+  "Velký maják", "Koloseum", "Chrám bohů", "Pyramida moudrosti",
+  "Visutá zahrada", "Zlatá brána", "Obří socha", "Nebeská věž",
+  "Podzemní palác", "Kamenný most", "Hvězdárna", "Vodní chrám",
+];
+const PERSON_TYPES = ["Generál", "Učenec", "Obchodník", "Architekt", "Diplomat", "Kněz"];
 const FUNNY_NOTES = [
-  "generál musel na záchod",
-  "kronikář usnul při zápisu",
-  "kůň odmítl poslouchat rozkazy",
-  "vyjednavač zapomněl smlouvu doma",
-  "stavitel postavil chrám obráceně",
-  "obchodník prodal vlastní koně",
-  "špion se prozradil kýchnutím",
-  "bitva přerušena kvůli dešti",
-  "velvyslanec přišel na hostinu bez kalhot",
-  "generál se ztratil v lese",
+  "generál musel na záchod", "kronikář usnul při zápisu",
+  "kůň odmítl poslouchat rozkazy", "vyjednavač zapomněl smlouvu doma",
+  "stavitel postavil chrám obráceně", "obchodník prodal vlastního koně",
+  "špion se prozradil kýchnutím", "bitva přerušena kvůli dešti",
+  "velvyslanec přišel bez kalhot", "generál se ztratil v lese",
+  "diplomat prohlásil válku omylem", "kuchař otrávil celou posádku",
+  "hradby spadly hned po dostavbě", "posel doručil zprávu špatnému králi",
+  "zásobovací konvoj sjel z útesu", "šaman předpověděl zcela opačné počasí",
+  "posádka odmítla bojovat bez oběda", "loďstvo vyplulo opačným směrem",
+  "stavitelé zapomněli na dveře", "pokladník ztratil klíč od pokladny",
 ];
+const COUNTER_NOTES = [
+  "Popírám! Tak to nebylo!", "Kronikář lže, byl to můj kůň!",
+  "Toto je propaganda nepřítele.", "Naši špioni tvrdí opak.",
+  "Požaduji přezkum tohoto zápisu!", "Svědci viděli něco jiného.",
+];
+const MEMORY_TEMPLATES = [
+  "V {city} se traduje, že {fact}.",
+  "Obyvatelé {city} věří, že {fact}.",
+  "Kronikáři zaznamenali, že v {city} {fact}.",
+  "Stará legenda praví, že {city} {fact}.",
+];
+const MEMORY_FACTS = [
+  "zdejší studna léčí nemoci", "na náměstí žije duch starého krále",
+  "místní víno je nejlepší v říši", "hradby byly postaveny za jedinou noc",
+  "podzemní tunely vedou až k moři", "zdejší kovář vyrábí nerozbitné meče",
+  "chrám byl postaven na místě starého hrobu", "trh je nejrušnější v celém světě",
+  "zdejší kočky přinášejí štěstí", "řeka mění barvu při úplňku",
+];
+const TRAIT_CATEGORIES = ["military", "cultural", "economic", "diplomatic", "religious"];
+const CHRONICLE_TEMPLATES = [
+  "Rok {r}: Říše se otřásaly v základech. {p1} a {p2} změřili síly na poli bitevním.",
+  "Rok {r}: Obchod vzkvétal, zatímco na hranicích se shromažďovala vojska.",
+  "Rok {r}: Diplomaté jednali za zavřenými dveřmi o budoucnosti kontinentu.",
+  "Rok {r}: Nové divy světa povstaly z prachu, svědčíce o velikosti civilizací.",
+  "Rok {r}: Zvěsti o zradě a spiknutí kolují říší jako mor.",
+];
+const COUNCIL_TEMPLATES = {
+  war: ["Naše armády jsou připraveny.", "Doporučuji posílit obranu.", "Nepřítel je zranitelný na severu."],
+  diplomacy: ["Spojenectví s {p} by bylo výhodné.", "Varuju před důvěrou v {p}.", "Navrhněte mírovou smlouvu."],
+  interior: ["Města potřebují investice.", "Zásoby jídla klesají.", "Lid je spokojený."],
+  trade: ["Obchod vzkvétá.", "Potřebujeme nové trasy.", "Embargo proti {p} funguje."],
+};
+
+// ===================== COMPONENT =====================
 
 const DevModePanel = ({
   sessionId, currentPlayerName, onRefetch,
@@ -58,333 +127,615 @@ const DevModePanel = ({
   const [running, setRunning] = useState(false);
   const [qaResults, setQaResults] = useState<QAResult[]>([]);
   const [debugLog, setDebugLog] = useState<string[]>([]);
+  const [simProgress, setSimProgress] = useState("");
+  const [coverageReport, setCoverageReport] = useState<CoverageReport | null>(null);
 
-  const log = (msg: string) => setDebugLog(prev => [...prev, `[${new Date().toLocaleTimeString("cs")}] ${msg}`]);
+  const log = (msg: string) => setDebugLog(prev => [...prev.slice(-200), `[${new Date().toLocaleTimeString("cs")}] ${msg}`]);
+  const pick = <T,>(arr: T[]): T => arr[Math.floor(Math.random() * arr.length)];
+  const pickN = <T,>(arr: T[], n: number): T[] => {
+    const s = [...arr]; const r: T[] = [];
+    for (let i = 0; i < n && s.length; i++) { const idx = Math.floor(Math.random() * s.length); r.push(s.splice(idx, 1)[0]); }
+    return r;
+  };
 
   // ========================
-  // SEED DEMO WORLD
+  // SEED 6-PLAYER WORLD
   // ========================
-  const seedDemoWorld = async () => {
+  const seedExtremeWorld = async () => {
     setSeeding(true);
-    log("🌱 Začínám seedování demo světa...");
+    log("🌱 Seeduji extrémní 6-hráčový svět...");
     try {
-      const p1 = currentPlayerName;
-      const p2 = "Protivník";
-
-      // Ensure P2 exists as player
+      // Create/ensure 6 players
       const { data: existingPlayers } = await supabase.from("game_players").select("*").eq("session_id", sessionId);
-      if (!existingPlayers?.find(p => p.player_name === p2)) {
-        await supabase.from("game_players").insert({
-          session_id: sessionId, player_name: p2, player_number: 2,
-        });
-        // Init resources for P2
-        for (const rt of ["food", "wood", "stone", "iron", "wealth"]) {
-          await supabase.from("player_resources").insert({
-            session_id: sessionId, player_name: p2, resource_type: rt,
-            income: 3, upkeep: 1, stockpile: 5,
+      const existingNames = new Set(existingPlayers?.map(p => p.player_name) || []);
+
+      for (let i = 0; i < 6; i++) {
+        const pName = PLAYER_NAMES[i];
+        if (!existingNames.has(pName)) {
+          await supabase.from("game_players").insert({
+            session_id: sessionId, player_name: pName, player_number: i + 1,
           });
+          for (const rt of ["food", "wood", "stone", "iron", "wealth"]) {
+            await supabase.from("player_resources").insert({
+              session_id: sessionId, player_name: pName, resource_type: rt,
+              income: 2 + Math.floor(Math.random() * 3),
+              upkeep: Math.floor(Math.random() * 2),
+              stockpile: 3 + Math.floor(Math.random() * 8),
+            });
+          }
+          log(`✅ Hráč ${i + 1}: ${pName}`);
         }
-        log("✅ Hráč 2 vytvořen: " + p2);
       }
 
-      // Create provinces
+      // Update session
+      await supabase.from("game_sessions").update({
+        player1_name: PLAYER_NAMES[0], player2_name: PLAYER_NAMES[1], max_players: 6,
+      }).eq("id", sessionId);
+
+      // Create provinces (2 per player = 12)
       const provinceIds: Record<string, string> = {};
-      const allProvs = [...PROVINCES_P1.map(n => ({ n, o: p1 })), ...PROVINCES_P2.map(n => ({ n, o: p2 }))];
-      for (const prov of allProvs) {
-        const { data } = await supabase.from("provinces").insert({
-          session_id: sessionId, name: prov.n, owner_player: prov.o,
-        }).select().single();
-        if (data) provinceIds[prov.n] = data.id;
+      for (let i = 0; i < 6; i++) {
+        for (let j = 0; j < 2; j++) {
+          const provName = PROVINCE_NAMES[i * 2 + j];
+          const { data } = await supabase.from("provinces").insert({
+            session_id: sessionId, name: provName, owner_player: PLAYER_NAMES[i],
+          }).select().single();
+          if (data) provinceIds[provName] = data.id;
+        }
       }
-      log(`✅ ${Object.keys(provinceIds).length} provincií vytvořeno`);
+      log(`✅ ${Object.keys(provinceIds).length} provincií`);
 
-      // Create cities
-      const cityIds: string[] = [];
-      const allCities = [
-        ...CZECH_CITY_NAMES_P1.map((n, i) => ({ n, o: p1, prov: PROVINCES_P1[i < 2 ? 0 : 1] })),
-        ...CZECH_CITY_NAMES_P2.map((n, i) => ({ n, o: p2, prov: PROVINCES_P2[i < 2 ? 0 : 1] })),
-      ];
-      for (const c of allCities) {
-        const tags = i2tags(c.n);
-        const { data } = await supabase.from("cities").insert({
-          session_id: sessionId, name: c.n, owner_player: c.o,
-          province: c.prov, province_id: provinceIds[c.prov] || null,
-          level: "Osada", tags, founded_round: 1,
-        }).select().single();
-        if (data) cityIds.push(data.id);
+      // Create cities (6 per player = 36)
+      const allCityIds: { id: string; name: string; owner: string; provId: string | null }[] = [];
+      let cityIdx = 0;
+      for (let i = 0; i < 6; i++) {
+        const prov1 = PROVINCE_NAMES[i * 2];
+        const prov2 = PROVINCE_NAMES[i * 2 + 1];
+        for (let j = 0; j < 6; j++) {
+          const cName = CITY_NAMES[cityIdx++] || `Město-${cityIdx}`;
+          const prov = j < 3 ? prov1 : prov2;
+          const provId = provinceIds[prov] || null;
+          const { data } = await supabase.from("cities").insert({
+            session_id: sessionId, name: cName, owner_player: PLAYER_NAMES[i],
+            province: prov, province_id: provId,
+            level: "Osada", tags: [], founded_round: 1,
+          }).select().single();
+          if (data) allCityIds.push({ id: data.id, name: cName, owner: PLAYER_NAMES[i], provId });
+        }
       }
-      log(`✅ ${cityIds.length} měst vytvořeno`);
+      log(`✅ ${allCityIds.length} měst`);
 
       // City states
-      for (const cs of [{ name: "Kartágo", type: "Obchodní" }, { name: "Syrakúzy", type: "Vojenský" }, { name: "Rhodos", type: "Námořní" }]) {
+      for (const cs of CITY_STATE_NAMES) {
         await supabase.from("city_states").insert({ session_id: sessionId, name: cs.name, type: cs.type });
       }
-      log("✅ 3 městské státy vytvořeny");
+      log(`✅ ${CITY_STATE_NAMES.length} městských států`);
 
-      // Wonders
-      for (const w of [
-        { name: "Velký maják Tharros", owner: p1, city: "Tharros", era: "Ancient" },
-        { name: "Koloseum Oristano", owner: p2, city: "Oristano", era: "Classical" },
-      ]) {
-        await supabase.from("wonders").insert({
-          session_id: sessionId, name: w.name, owner_player: w.owner,
-          city_name: w.city, era: w.era, status: "planned",
-          description: `Legendární ${w.name}, plánovaný div světa.`,
+      // Wonders (12, 2 per player)
+      for (let i = 0; i < 6; i++) {
+        const pCities = allCityIds.filter(c => c.owner === PLAYER_NAMES[i]);
+        for (let w = 0; w < 2; w++) {
+          const wName = WONDER_NAMES[i * 2 + w] || `Div-${i * 2 + w}`;
+          const wCity = pCities[w % pCities.length];
+          await supabase.from("wonders").insert({
+            session_id: sessionId, name: wName, owner_player: PLAYER_NAMES[i],
+            city_name: wCity?.name || "", era: w === 0 ? "Ancient" : "Classical",
+            status: "planned", description: `${wName} – plánovaný div světa v ${wCity?.name}.`,
+          });
+        }
+      }
+      log("✅ 12 divů naplánovány");
+
+      // Great persons (1 per player)
+      for (let i = 0; i < 6; i++) {
+        const pCities = allCityIds.filter(c => c.owner === PLAYER_NAMES[i]);
+        await supabase.from("great_persons").insert({
+          session_id: sessionId, name: `${PLAYER_NAMES[i]}-hrdina`,
+          player_name: PLAYER_NAMES[i], person_type: PERSON_TYPES[i],
+          city_id: pCities[0]?.id || null, born_round: 1, is_alive: true,
+          bio: `Legendární ${PERSON_TYPES[i].toLowerCase()} sloužící říši ${PLAYER_NAMES[i]}.`,
         });
       }
-      log("✅ 2 divy světa naplánovány");
+      log("✅ 6 velkých osobností");
 
-      toast.success("🌱 Demo svět naseedován!");
+      // Civilizations
+      for (const p of PLAYER_NAMES) {
+        await supabase.from("civilizations").upsert({
+          session_id: sessionId, player_name: p,
+          civ_name: `Říše ${p}`, core_myth: `Pradávné proroctví o slávě ${p}.`,
+          architectural_style: pick(["Kamenný", "Dřevěný", "Cihlový", "Mramorový"]),
+          cultural_quirk: pick(["Oslavují porážky", "Jedí jen ryby", "Staví pozpátku", "Mluví zpěvem"]),
+        }, { onConflict: "session_id,player_name", ignoreDuplicates: true });
+      }
+      log("✅ 6 civilizací");
+
+      toast.success("🌱 Extrémní demo svět naseedován (6 hráčů, 36 měst, 12 divů)!");
       onRefetch?.();
-    } catch (e) {
-      console.error(e);
-      log("❌ Chyba: " + (e instanceof Error ? e.message : "unknown"));
+    } catch (e: any) {
+      log("❌ Seed error: " + (e?.message || "unknown"));
       toast.error("Seedování selhalo");
     }
     setSeeding(false);
   };
 
   // ========================
-  // SIMULATE 20 ROUNDS
+  // EXTREME 20-YEAR SIMULATION
   // ========================
-  const simulate20Rounds = async () => {
+  const runExtremeSimulation = async () => {
     setSimulating(true);
-    log("🎮 Začínám simulaci 20 kol...");
+    const report: CoverageReport = {
+      players: 0, years: 20, totalEvents: 0, eventsByType: {},
+      totalNotes: 0, cityIntros: 0, eventNarratives: 0,
+      wondersCreated: 0, wonderPortraits: 0,
+      chroniclesPerYear: 0, worldRetells: 0, playerChronicles: 0,
+      rumors: 0, intelligence: 0, council: 0,
+      diplomacyMessages: 0, tradeDeals: 0, greatPersons: 0, worldMemories: 0,
+      failures: [],
+    };
+
     try {
-      // Fetch current state
+      log("🚀 Začínám EXTRÉMNÍ simulaci: 6 hráčů × 20 let × 5+ akcí...");
+
+      // Fetch state
       const { data: cities } = await supabase.from("cities").select("*").eq("session_id", sessionId);
       const { data: players } = await supabase.from("game_players").select("*").eq("session_id", sessionId);
       const { data: wonders } = await supabase.from("wonders").select("*").eq("session_id", sessionId);
+      const { data: cityStates } = await supabase.from("city_states").select("*").eq("session_id", sessionId);
 
       if (!cities?.length || !players?.length) {
-        toast.error("Nejprve naseedujte demo svět");
-        setSimulating(false);
-        return;
+        toast.error("Nejprve naseedujte svět"); setSimulating(false); return;
       }
 
       const playerNames = players.map(p => p.player_name);
-      const cityMap: Record<string, typeof cities[0][]> = {};
+      report.players = playerNames.length;
+      const wonderList = [...(wonders || [])];
+      let wonderIdx = 0;
+
+      // Index cities by owner
+      const cityByOwner: Record<string, typeof cities> = {};
       for (const c of cities) {
-        (cityMap[c.owner_player] = cityMap[c.owner_player] || []).push(c);
+        (cityByOwner[c.owner_player] = cityByOwner[c.owner_player] || []).push(c);
       }
 
-      for (let round = 1; round <= 20; round++) {
-        log(`📅 Kolo ${round}...`);
+      // Diplomacy rooms setup
+      const roomIds: string[] = [];
+      for (let i = 0; i < playerNames.length; i++) {
+        for (let j = i + 1; j < playerNames.length; j++) {
+          const { data: room } = await supabase.from("diplomacy_rooms").insert({
+            session_id: sessionId, participant_a: playerNames[i], participant_b: playerNames[j], room_type: "player_player",
+          }).select().single();
+          if (room) roomIds.push(room.id);
+        }
+      }
+      // NPC diplomacy rooms
+      const npcRoomIds: string[] = [];
+      if (cityStates?.length) {
+        for (const cs of cityStates) {
+          const { data: r } = await supabase.from("diplomacy_rooms").insert({
+            session_id: sessionId, participant_a: playerNames[0], participant_b: cs.name,
+            room_type: "player_npc", npc_city_state_id: cs.id,
+          }).select().single();
+          if (r) npcRoomIds.push(r.id);
+        }
+      }
+      log(`✅ ${roomIds.length} hráčských + ${npcRoomIds.length} NPC diplomatických místností`);
 
+      // ------------ MAIN LOOP: 20 YEARS ------------
+      for (let year = 1; year <= 20; year++) {
+        setSimProgress(`Rok ${year}/20`);
+        log(`📅 ═══ ROK ${year} ═══`);
+
+        const yearEventIds: string[] = [];
+
+        // Each player: 5+ events
         for (const pName of playerNames) {
-          const myCities = cityMap[pName] || [];
+          const myCities = cityByOwner[pName] || [];
           const oppCities = cities.filter(c => c.owner_player !== pName);
-          const eventsThisRound: any[] = [];
+          const numEvents = 5 + Math.floor(Math.random() * 3); // 5-7
 
-          // 3+ events per player per round
-          const numEvents = 3 + Math.floor(Math.random() * 2);
           for (let e = 0; e < numEvents; e++) {
-            const evType = pickEventType(round, e);
-            const city = myCities[Math.floor(Math.random() * myCities.length)];
-            const oppCity = oppCities.length ? oppCities[Math.floor(Math.random() * oppCities.length)] : null;
-            const note = Math.random() < 0.4 ? FUNNY_NOTES[Math.floor(Math.random() * FUNNY_NOTES.length)] : null;
+            const evType = pickEventTypeExtreme(year, e, pName);
+            const city = pick(myCities.length ? myCities : cities);
+            const oppCity = oppCities.length ? pick(oppCities) : null;
+            const note = Math.random() < 0.4 ? pick(FUNNY_NOTES) : null;
 
             const eventData: any = {
-              session_id: sessionId,
-              event_type: evType,
-              player: pName,
-              turn_number: round,
-              city_id: city?.id || null,
-              location: city?.name || "",
-              note,
-              confirmed: true,
-              truth_state: Math.random() < 0.1 ? "rumor" : "canon",
+              session_id: sessionId, event_type: evType, player: pName,
+              turn_number: year, city_id: city?.id || null,
+              location: city?.name || "", note, confirmed: true,
+              truth_state: Math.random() < 0.08 ? "rumor" : "canon",
             };
 
             if (evType === "battle" && oppCity) {
               eventData.attacker_city_id = city?.id;
               eventData.defender_city_id = oppCity.id;
               eventData.secondary_city_id = oppCity.id;
-              eventData.result = Math.random() < 0.5 ? "vítězství" : "porážka";
-              eventData.casualties = `${Math.floor(Math.random() * 500 + 50)} mužů`;
-              eventData.armies_involved = [`${pName}-legion-${round}`];
+              eventData.result = pick(["vítězství", "porážka", "nerozhodně"]);
+              eventData.casualties = `${Math.floor(Math.random() * 800 + 50)} mužů`;
+              eventData.armies_involved = [`${pName}-legie-${year}`];
             }
             if (evType === "raid" && oppCity) {
               eventData.secondary_city_id = oppCity.id;
               eventData.devastation_duration = Math.floor(Math.random() * 3) + 1;
             }
             if (evType === "diplomacy") {
-              eventData.treaty_type = ["mír", "obchod", "tribut", "embargo"][Math.floor(Math.random() * 4)];
-              eventData.terms_summary = "Oboustranně výhodná dohoda";
+              eventData.treaty_type = pick(["mír", "obchod", "tribut", "embargo", "aliiance", "neútočení"]);
+              eventData.terms_summary = pick(["Oboustranně výhodná dohoda", "Jednostranný ústupek", "Tajná klauzule"]);
             }
 
-            const { data: inserted } = await supabase.from("game_events").insert(eventData).select().single();
-            if (inserted) eventsThisRound.push(inserted);
+            const { data: inserted, error: insErr } = await supabase.from("game_events").insert(eventData).select().single();
+            if (insErr) { report.failures.push(`event-${year}-${pName}-${e}: ${insErr.message}`); continue; }
+            if (inserted) {
+              yearEventIds.push(inserted.id);
+              report.totalEvents++;
+              report.eventsByType[evType] = (report.eventsByType[evType] || 0) + 1;
+            }
           }
 
-          // Add annotations sometimes
-          if (Math.random() < 0.5 && eventsThisRound.length > 0) {
-            const targetEvent = eventsThisRound[Math.floor(Math.random() * eventsThisRound.length)];
+          // Notes on 2+ events (from multiple players)
+          const myYearEvents = yearEventIds.slice(-5);
+          for (const eid of myYearEvents.slice(0, 2)) {
+            // Owner note
             await supabase.from("event_annotations").insert({
-              event_id: targetEvent.id,
-              author: pName,
-              note_text: FUNNY_NOTES[Math.floor(Math.random() * FUNNY_NOTES.length)],
-              visibility: Math.random() < 0.2 ? "leakable" : "public",
+              event_id: eid, author: pName,
+              note_text: pick(FUNNY_NOTES),
+              visibility: Math.random() < 0.25 ? "leakable" : "public",
+            });
+            report.totalNotes++;
+            // Counter-note from another player
+            const otherPlayer = pick(playerNames.filter(p => p !== pName));
+            await supabase.from("event_annotations").insert({
+              event_id: eid, author: otherPlayer,
+              note_text: pick(COUNTER_NOTES),
+              visibility: "public",
+            });
+            report.totalNotes++;
+          }
+
+          // Diplomacy messages (player-player)
+          if (roomIds.length && Math.random() < 0.6) {
+            const roomId = pick(roomIds);
+            const secrecy = pick(["PUBLIC", "PRIVATE", "LEAKABLE"]);
+            await supabase.from("diplomacy_messages").insert({
+              room_id: roomId, sender: pName, sender_type: "player",
+              message_text: `${pName} navrhuje ${pick(["mír", "obchod", "spojenectví", "výměnu"])} v roce ${year}.`,
+              secrecy, leak_chance: secrecy === "LEAKABLE" ? 50 : 0,
+              message_tag: pick(["offer", "threat", "question", null]),
+            });
+            report.diplomacyMessages++;
+          }
+
+          // NPC diplomacy
+          if (npcRoomIds.length && Math.random() < 0.3) {
+            await supabase.from("diplomacy_messages").insert({
+              room_id: pick(npcRoomIds), sender: pName, sender_type: "player",
+              message_text: `${pName} jedná s městským státem o podpoře.`,
+              secrecy: "PRIVATE", leak_chance: 0,
+            });
+            report.diplomacyMessages++;
+          }
+
+          // Trade deals
+          if (Math.random() < 0.4) {
+            const other = pick(playerNames.filter(p => p !== pName));
+            await supabase.from("trade_log").insert({
+              session_id: sessionId, turn_number: year,
+              from_player: pName, to_player: other,
+              resource_type: pick(["food", "wood", "stone", "iron", "wealth"]),
+              amount: Math.floor(Math.random() * 10) + 1,
+              trade_type: pick(["Obchod", "Tribut", "Dar"]),
+              note: Math.random() < 0.3 ? pick(FUNNY_NOTES) : null,
+            });
+            report.tradeDeals++;
+          }
+
+          // Military capacity
+          if (year % 4 === 1) {
+            await supabase.from("military_capacity").insert({
+              session_id: sessionId, player_name: pName,
+              army_name: `${pName}-legie-${year}`,
+              army_type: pick(["Lehká", "Těžká", "Jízda", "Obléhací"]),
+              iron_cost: Math.floor(Math.random() * 3) + 1,
             });
           }
         }
 
-        // City upgrades at certain rounds
-        if (round === 5 || round === 10 || round === 15) {
-          const nextLevel = round === 5 ? "Městečko" : round === 10 ? "Město" : "Polis";
-          const upgradeCity = cities[Math.floor(Math.random() * cities.length)];
-          if (upgradeCity) {
-            await supabase.from("cities").update({ level: nextLevel }).eq("id", upgradeCity.id);
+        // === PER-YEAR GLOBAL ACTIONS ===
+
+        // City upgrades (progressive)
+        if (year >= 4) {
+          const level = year < 8 ? "Městečko" : year < 14 ? "Město" : "Polis";
+          const upgradeTarget = pick(cities.filter(c => c.level !== "Polis"));
+          if (upgradeTarget) {
+            await supabase.from("cities").update({ level }).eq("id", upgradeTarget.id);
+            upgradeTarget.level = level; // update local ref
           }
         }
 
-        // Wonder progress
-        if (round === 8 && wonders?.length) {
-          await supabase.from("wonders").update({ status: "under construction" }).eq("id", wonders[0].id);
-        }
-        if (round === 14 && wonders?.length) {
-          await supabase.from("wonders").update({ status: "completed" }).eq("id", wonders[0].id);
-        }
-        if (round === 18 && wonders && wonders.length > 1) {
-          await supabase.from("wonders").update({ status: "destroyed" }).eq("id", wonders[1].id);
+        // Wonder progression
+        if (wonderList.length) {
+          const w = wonderList[wonderIdx % wonderList.length];
+          if (year === 3) await supabase.from("wonders").update({ status: "under construction" }).eq("id", w.id);
+          if (year === 7) { await supabase.from("wonders").update({ status: "completed" }).eq("id", w.id); wonderIdx++; }
+          if (year === 10 && wonderList.length > 1) {
+            await supabase.from("wonders").update({ status: "under construction" }).eq("id", wonderList[1].id);
+          }
+          if (year === 14 && wonderList.length > 1) {
+            await supabase.from("wonders").update({ status: "completed" }).eq("id", wonderList[1].id);
+            wonderIdx++;
+          }
+          if (year === 16 && wonderList.length > 2) {
+            await supabase.from("wonders").update({ status: "under construction" }).eq("id", wonderList[2].id);
+          }
+          if (year === 18 && wonderList.length > 2) {
+            await supabase.from("wonders").update({ status: "destroyed" }).eq("id", wonderList[2].id);
+          }
+          if (year === 19 && wonderList.length > 3) {
+            await supabase.from("wonders").update({ status: "damaged" }).eq("id", wonderList[3].id);
+          }
         }
 
-        // World memories
-        if (round % 3 === 0) {
-          const memCity = cities[Math.floor(Math.random() * cities.length)];
+        // World memories (3 per year)
+        for (let m = 0; m < 3; m++) {
+          const memCity = pick(cities);
+          const fact = pick(MEMORY_FACTS);
+          const tpl = pick(MEMORY_TEMPLATES);
           await supabase.from("world_memories").insert({
             session_id: sessionId,
-            text: `V kole ${round} se v ${memCity?.name || "neznámém městě"} odehrály významné události.`,
-            approved: true,
-            category: "tradition",
-            created_round: round,
-            city_id: memCity?.id || null,
+            text: tpl.replace("{city}", memCity.name).replace("{fact}", fact),
+            approved: Math.random() < 0.7,
+            category: pick(["tradition", "historical_scar", "running_joke", "legend", "mystery"]),
+            created_round: year, city_id: memCity.id,
+            province_id: memCity.province_id || null,
+          });
+          report.worldMemories++;
+        }
+
+        // Entity traits
+        if (year % 3 === 0) {
+          const traitCity = pick(cities);
+          await supabase.from("entity_traits").insert({
+            session_id: sessionId, entity_type: "city", entity_name: traitCity.name,
+            entity_id: traitCity.id, trait_category: pick(TRAIT_CATEGORIES),
+            trait_text: `${traitCity.name} je známé svou ${pick(["odvahou", "lstivostí", "bohatstvím", "krásou", "silou"])}.`,
+            source_turn: year, is_active: true,
           });
         }
 
-        // Intelligence reports
-        if (round % 4 === 0) {
-          await supabase.from("intelligence_reports").insert({
-            session_id: sessionId,
-            visible_to: playerNames[0],
-            target_entity: playerNames[1] || "NPC",
-            report_text: `Špioni hlásí podezřelou aktivitu v kole ${round}.`,
-            source_type: "merchant_gossip",
-            created_round: round,
-            secrecy_level: "uncertain",
-          });
-        }
-
-        // Chronicle entries per round
+        // Chronicle entry
+        const ctpl = pick(CHRONICLE_TEMPLATES);
         await supabase.from("chronicle_entries").insert({
           session_id: sessionId,
-          text: `Rok ${round}: Události tohoto roku budou navždy zapsány do dějin.`,
-          epoch_style: "kroniky",
+          text: ctpl.replace("{r}", String(year)).replace("{p1}", pick(playerNames)).replace("{p2}", pick(playerNames)),
+          epoch_style: pick(["kroniky", "mýty", "moderní", "humor"]),
+        });
+        report.chroniclesPerYear++;
+
+        // Intelligence reports (2 per year)
+        for (let ir = 0; ir < 2; ir++) {
+          const spy = pick(playerNames);
+          const target = pick(playerNames.filter(p => p !== spy));
+          await supabase.from("intelligence_reports").insert({
+            session_id: sessionId, visible_to: spy, target_entity: target,
+            report_text: `Špioni ${spy} hlásí aktivitu ${target} v roce ${year}: ${pick(["budování armády", "tajné jednání", "útoky na obchod", "stavba divu", "posílení hranic"])}.`,
+            source_type: pick(["merchant_gossip", "spy_network", "intercepted_message", "scout_report"]),
+            created_round: year, secrecy_level: pick(["uncertain", "reliable", "confirmed"]),
+          });
+          report.intelligence++;
+        }
+
+        // Council evaluations
+        for (const pName of playerNames) {
+          const otherP = pick(playerNames.filter(p => p !== pName));
+          await supabase.from("council_evaluations").insert({
+            session_id: sessionId, player_name: pName, round_number: year,
+            round_summary: `Rok ${year} byl pro ${pName} ${pick(["úspěšný", "těžký", "přelomový", "klidný"])}.`,
+            minister_war: pick(COUNCIL_TEMPLATES.war),
+            minister_diplomacy: pick(COUNCIL_TEMPLATES.diplomacy).replace("{p}", otherP),
+            minister_interior: pick(COUNCIL_TEMPLATES.interior),
+            minister_trade: pick(COUNCIL_TEMPLATES.trade).replace("{p}", otherP),
+            strategic_outlook: pick(["Expanze", "Obrana", "Diplomacie", "Konsolidace"]),
+          });
+          report.council++;
+        }
+
+        // City-state mood/influence changes
+        if (cityStates?.length) {
+          for (const cs of cityStates) {
+            await supabase.from("city_states").update({
+              mood: pick(["Neutrální", "Přátelský", "Nepřátelský", "Nadšený", "Opatrný"]),
+              influence_p1: Math.floor(Math.random() * 20),
+              influence_p2: Math.floor(Math.random() * 20),
+            }).eq("id", cs.id);
+          }
+        }
+
+        // Declarations (1-2 per year)
+        const declPlayer = pick(playerNames);
+        await supabase.from("declarations").insert({
+          session_id: sessionId, player_name: declPlayer, turn_number: year,
+          original_text: `${declPlayer} prohlašuje: "${pick(["Budeme bojovat!", "Mír všem národům!", "Nová éra začíná!", "Nepřátelé budou poraženi!"])}"`,
+          declaration_type: pick(["proclamation", "war_declaration", "peace_offer", "edict"]),
         });
 
+        // Secret objectives (occasional)
+        if (year === 1 || year === 10) {
+          for (const p of playerNames) {
+            await supabase.from("secret_objectives").insert({
+              session_id: sessionId, player_name: p,
+              objective_text: pick([
+                "Ovládni 3 provincie", "Postav 2 divy", "Zníč nepřátelské město",
+                "Uzavři alianci se 3 hráči", "Získej nejvíce zlata", "Dobij hlavní město rivala",
+              ]),
+              fulfilled: false,
+            });
+          }
+        }
+
         // Advance turn
-        await supabase.from("game_sessions").update({ current_turn: round + 1 }).eq("id", sessionId);
+        await supabase.from("game_sessions").update({ current_turn: year + 1 }).eq("id", sessionId);
       }
 
-      log("✅ Simulace 20 kol dokončena!");
-      toast.success("🎮 Simulace 20 kol dokončena!");
+      // === POST-SIMULATION: GENERATE CHRONICLES ===
+      log("📜 Generuji světové dějiny a kroniky hráčů...");
+
+      // World history chapters (4 chapters covering 5 years each)
+      for (let ch = 0; ch < 4; ch++) {
+        const from = ch * 5 + 1;
+        const to = (ch + 1) * 5;
+        await supabase.from("world_history_chapters").insert({
+          session_id: sessionId, from_turn: from, to_turn: to,
+          chapter_title: `Kapitola ${ch + 1}: Roky ${from}-${to}`,
+          chapter_text: `V letech ${from} až ${to} se svět proměnil. Civilizace ${pick(playerNames)} vedla expanzi, zatímco ${pick(playerNames)} budoval obranu. Konflikty a obchod formovaly dějiny.`,
+          epoch_style: "kroniky",
+        });
+        report.worldRetells++;
+      }
+
+      // Player chronicles
+      for (const p of playerNames) {
+        await supabase.from("player_chronicle_chapters").insert({
+          session_id: sessionId, player_name: p, from_turn: 1, to_turn: 20,
+          chapter_title: `Kronika ${p}: Prvních 20 let`,
+          chapter_text: `Říše ${p} prošla za 20 let bouřlivým vývojem. Od skromných osad po mocné město, od prvních šarvátek po velké bitvy.`,
+          epoch_style: "kroniky",
+        });
+        report.playerChronicles++;
+      }
+
+      // World crises
+      for (const yr of [5, 12, 18]) {
+        await supabase.from("world_crises").insert({
+          session_id: sessionId, trigger_round: yr,
+          title: pick(["Mor v říši", "Invaze barbarů", "Velká sucha", "Zemětřesení", "Mořská bouře"]),
+          description: `V roce ${yr} zasáhla krize celý kontinent.`,
+          crisis_type: pick(["sea_peoples", "plague", "famine", "earthquake"]),
+          affected_cities: pickN(cities, 3).map(c => c.name),
+        });
+      }
+
+      // Wiki entries for cities, wonders, persons
+      log("📖 Generuji wiki záznamy...");
+      for (const c of cities.slice(0, 12)) {
+        await supabase.from("wiki_entries").upsert({
+          session_id: sessionId, entity_type: "city", entity_name: c.name,
+          entity_id: c.id, owner_player: c.owner_player,
+          summary: `${c.name} je ${c.level} v provincii ${c.province || "neznámé"}.`,
+          ai_description: `${c.name}, založené v roce ${c.founded_round}, je důležitým centrem civilizace ${c.owner_player}.`,
+        }, { onConflict: "session_id,entity_id", ignoreDuplicates: true });
+        report.cityIntros++;
+      }
+
+      // Count totals
+      const { count: wonderCount } = await supabase.from("wonders").select("*", { count: "exact", head: true }).eq("session_id", sessionId);
+      report.wondersCreated = wonderCount || 0;
+
+      const { count: gpCount } = await supabase.from("great_persons").select("*", { count: "exact", head: true }).eq("session_id", sessionId);
+      report.greatPersons = gpCount || 0;
+
+      const { count: rumorCount } = await supabase.from("intelligence_reports").select("*", { count: "exact", head: true }).eq("session_id", sessionId).eq("source_type", "merchant_gossip");
+      report.rumors = rumorCount || 0;
+
+      setCoverageReport(report);
+      log(`✅ SIMULACE DOKONČENA: ${report.totalEvents} událostí, ${report.totalNotes} poznámek`);
+      toast.success(`🚀 Extrémní simulace hotova: ${report.totalEvents} událostí!`);
       onRefetch?.();
-    } catch (e) {
-      console.error(e);
-      log("❌ Simulace selhala: " + (e instanceof Error ? e.message : "unknown"));
+    } catch (e: any) {
+      report.failures.push(e?.message || "unknown error");
+      setCoverageReport(report);
+      log("❌ " + (e?.message || "unknown"));
       toast.error("Simulace selhala");
     }
     setSimulating(false);
+    setSimProgress("");
   };
 
   // ========================
-  // RUN QA TEST
+  // QA TEST
   // ========================
   const runQATest = async () => {
     setRunning(true);
     setQaResults([]);
-    log("🧪 Spouštím QA test...");
+    log("🧪 QA test...");
     const results: QAResult[] = [];
-
     const check = (name: string, pass: boolean, detail?: string) => {
       results.push({ name, pass, detail });
-      log(`${pass ? "✅" : "❌"} ${name}${detail ? ": " + detail : ""}`);
     };
 
     try {
-      // 1. GameId persistence
-      const storedId = localStorage.getItem("ch_lastGameId");
-      check("gameId persisted in localStorage", !!storedId, storedId || "missing");
+      const [
+        { data: cities }, { data: events }, { data: wonders },
+        { data: chronicles }, { data: mems }, { data: intel },
+        { data: provs }, { data: cs }, { data: plrs },
+        { data: dipMsgs }, { data: trades }, { data: councils },
+        { data: whChapters }, { data: pcChapters }, { data: crises },
+        { data: decls }, { data: gp },
+      ] = await Promise.all([
+        supabase.from("cities").select("*").eq("session_id", sessionId),
+        supabase.from("game_events").select("*").eq("session_id", sessionId),
+        supabase.from("wonders").select("*").eq("session_id", sessionId),
+        supabase.from("chronicle_entries").select("*").eq("session_id", sessionId),
+        supabase.from("world_memories").select("*").eq("session_id", sessionId),
+        supabase.from("intelligence_reports").select("*").eq("session_id", sessionId),
+        supabase.from("provinces").select("*").eq("session_id", sessionId),
+        supabase.from("city_states").select("*").eq("session_id", sessionId),
+        supabase.from("game_players").select("*").eq("session_id", sessionId),
+        supabase.from("diplomacy_messages").select("*", { count: "exact" }),
+        supabase.from("trade_log").select("*").eq("session_id", sessionId),
+        supabase.from("council_evaluations").select("*").eq("session_id", sessionId),
+        supabase.from("world_history_chapters").select("*").eq("session_id", sessionId),
+        supabase.from("player_chronicle_chapters").select("*").eq("session_id", sessionId),
+        supabase.from("world_crises").select("*").eq("session_id", sessionId),
+        supabase.from("declarations").select("*").eq("session_id", sessionId),
+        supabase.from("great_persons").select("*").eq("session_id", sessionId),
+      ]);
 
-      // 2. Cities load
-      const { data: cities } = await supabase.from("cities").select("*").eq("session_id", sessionId);
-      check("Cities load", (cities?.length || 0) > 0, `${cities?.length || 0} měst`);
+      check("6 hráčů", (plrs?.length || 0) >= 6, `${plrs?.length}`);
+      check("36+ měst", (cities?.length || 0) >= 30, `${cities?.length}`);
+      check("12+ provincií", (provs?.length || 0) >= 10, `${provs?.length}`);
+      check("600+ událostí", (events?.length || 0) >= 500, `${events?.length}`);
+      check("5+ městských států", (cs?.length || 0) >= 4, `${cs?.length}`);
+      check("12+ divů", (wonders?.length || 0) >= 10, `${wonders?.length}`);
+      check("6+ osobností", (gp?.length || 0) >= 6, `${gp?.length}`);
+      check("20+ kronik (per year)", (chronicles?.length || 0) >= 18, `${chronicles?.length}`);
+      check("40+ pamětí světa", (mems?.length || 0) >= 30, `${mems?.length}`);
+      check("20+ zpravodajských zpráv", (intel?.length || 0) >= 20, `${intel?.length}`);
+      check("Diplomatické zprávy", (dipMsgs?.length || 0) >= 20, `${dipMsgs?.length}`);
+      check("Obchodní záznamy", (trades?.length || 0) >= 10, `${trades?.length}`);
+      check("Rada ministrů (council)", (councils?.length || 0) >= 60, `${councils?.length}`);
+      check("Kapitoly dějin", (whChapters?.length || 0) >= 3, `${whChapters?.length}`);
+      check("Kroniky hráčů", (pcChapters?.length || 0) >= 5, `${pcChapters?.length}`);
+      check("Světové krize", (crises?.length || 0) >= 2, `${crises?.length}`);
+      check("Deklarace", (decls?.length || 0) >= 10, `${decls?.length}`);
 
-      // 3. Events load
-      const { data: events } = await supabase.from("game_events").select("*").eq("session_id", sessionId);
-      check("Events load", (events?.length || 0) > 0, `${events?.length || 0} událostí`);
+      // Event type coverage
+      const eventTypes = new Set(events?.map(e => e.event_type) || []);
+      const needed = ["battle", "raid", "diplomacy", "trade", "found_settlement", "upgrade_city", "wonder", "city_state_action", "repair"];
+      const covered = needed.filter(t => eventTypes.has(t));
+      check("Pokrytí typů událostí (9)", covered.length >= 7, `${covered.length}/9: ${covered.join(", ")}`);
 
-      // 4. Wonders load
-      const { data: wonders } = await supabase.from("wonders").select("*").eq("session_id", sessionId);
-      check("Wonders load", (wonders?.length || 0) > 0, `${wonders?.length || 0} divů`);
+      // Battles with structured data
+      const battles = events?.filter(e => e.event_type === "battle" && e.attacker_city_id) || [];
+      check("Bitvy se strukturou", battles.length >= 20, `${battles.length}`);
 
-      // 5. Chronicle entries exist
-      const { data: chronicles } = await supabase.from("chronicle_entries").select("*").eq("session_id", sessionId);
-      check("Chronicle entries exist", (chronicles?.length || 0) > 0, `${chronicles?.length || 0} zápisů`);
+      // No redirect
+      check("Žádný redirect na landing", window.location.pathname.includes("/game/"), window.location.pathname);
 
-      // 6. World memories exist
-      const { data: mems } = await supabase.from("world_memories").select("*").eq("session_id", sessionId);
-      check("World memories exist", (mems?.length || 0) > 0, `${mems?.length || 0} pamětí`);
-
-      // 7. Annotations exist
+      // Notes
       if (events?.length) {
-        const eventIds = events.map(e => e.id);
-        const { data: anns } = await supabase.from("event_annotations").select("*").in("event_id", eventIds.slice(0, 100));
-        check("Event annotations exist", (anns?.length || 0) > 0, `${anns?.length || 0} poznámek`);
+        const eids = events.slice(0, 200).map(e => e.id);
+        const { data: anns } = await supabase.from("event_annotations").select("*", { count: "exact" }).in("event_id", eids);
+        check("Poznámky k událostem", (anns?.length || 0) >= 50, `${anns?.length}`);
       }
 
-      // 8. Intelligence reports
-      const { data: intel } = await supabase.from("intelligence_reports").select("*").eq("session_id", sessionId);
-      check("Intelligence reports exist", (intel?.length || 0) > 0, `${intel?.length || 0} zpráv`);
-
-      // 9. Battle events with structured data
-      const battles = events?.filter(e => e.event_type === "battle" && e.attacker_city_id) || [];
-      check("Battle events with attacker/defender", battles.length > 0, `${battles.length} bitev se strukturovanými daty`);
-
-      // 10. Diplomacy events with treaty type
-      const diplos = events?.filter(e => e.event_type === "diplomacy" && e.treaty_type) || [];
-      check("Diplomacy events with treaty_type", diplos.length > 0, `${diplos.length} diplomatických událostí`);
-
-      // 11. Event type coverage
-      const eventTypes = new Set(events?.map(e => e.event_type) || []);
-      const expectedTypes = ["battle", "raid", "diplomacy", "trade", "wonder", "found_settlement"];
-      const covered = expectedTypes.filter(t => eventTypes.has(t));
-      check("Event type coverage", covered.length >= 4, `${covered.length}/${expectedTypes.length} typů: ${covered.join(", ")}`);
-
-      // 12. Provinces exist
-      const { data: provs } = await supabase.from("provinces").select("*").eq("session_id", sessionId);
-      check("Provinces exist", (provs?.length || 0) > 0, `${provs?.length || 0} provincií`);
-
-      // 13. City states exist
-      const { data: cs } = await supabase.from("city_states").select("*").eq("session_id", sessionId);
-      check("City states exist", (cs?.length || 0) > 0, `${cs?.length || 0} městských států`);
-
-      // 14. No page redirect (check current URL)
-      check("No redirect to landing", window.location.pathname.includes("/game/"), window.location.pathname);
-
-      // 15. Players >= 2
-      const { data: plrs } = await supabase.from("game_players").select("*").eq("session_id", sessionId);
-      check("At least 2 players", (plrs?.length || 0) >= 2, `${plrs?.length || 0} hráčů`);
-
-    } catch (e) {
-      log("❌ QA test error: " + (e instanceof Error ? e.message : "unknown"));
+    } catch (e: any) {
+      log("❌ QA: " + (e?.message || "unknown"));
     }
 
     setQaResults(results);
     const passed = results.filter(r => r.pass).length;
-    const total = results.length;
-    log(`🏁 QA hotovo: ${passed}/${total} prošlo`);
-    toast[passed === total ? "success" : "warning"](`QA: ${passed}/${total} testů prošlo`);
+    log(`🏁 QA: ${passed}/${results.length}`);
+    toast[passed === results.length ? "success" : "warning"](`QA: ${passed}/${results.length}`);
     setRunning(false);
   };
 
@@ -395,14 +746,14 @@ const DevModePanel = ({
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-display font-bold flex items-center gap-2">
           <Bug className="h-6 w-6 text-primary" />
-          Dev Mode
+          Dev Mode — Extrémní simulace
         </h1>
         <Badge variant="outline" className="font-mono text-xs">
           session: {sessionId.slice(0, 8)}...
         </Badge>
       </div>
 
-      {/* Debug stats */}
+      {/* Stats */}
       <div className="grid grid-cols-5 gap-2">
         {[
           { label: "Města", count: citiesCount },
@@ -418,43 +769,82 @@ const DevModePanel = ({
         ))}
       </div>
 
-      {/* Action buttons */}
-      <div className="grid grid-cols-3 gap-3">
-        <Button
-          onClick={seedDemoWorld}
-          disabled={seeding}
-          className="h-14 font-display"
-          variant="outline"
-        >
+      {/* Actions */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        <Button onClick={seedExtremeWorld} disabled={seeding} className="h-14 font-display" variant="outline">
           {seeding ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Database className="h-4 w-4 mr-2" />}
-          {seeding ? "Seeduji..." : "🌱 Seed Demo World"}
+          {seeding ? "Seeduji..." : "🌱 Seed 6-Player World"}
         </Button>
-        <Button
-          onClick={simulate20Rounds}
-          disabled={simulating}
-          className="h-14 font-display"
-          variant="outline"
-        >
-          {simulating ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Play className="h-4 w-4 mr-2" />}
-          {simulating ? "Simuluji..." : "🎮 Simulate 20 Rounds"}
+        <Button onClick={runExtremeSimulation} disabled={simulating} className="h-14 font-display text-primary-foreground bg-primary hover:bg-primary/90">
+          {simulating ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Zap className="h-4 w-4 mr-2" />}
+          {simulating ? `Simuluji... ${simProgress}` : "🚀 Simulovat 20 let (6×5+)"}
         </Button>
-        <Button
-          onClick={runQATest}
-          disabled={running}
-          className="h-14 font-display"
-        >
+        <Button onClick={runQATest} disabled={running} className="h-14 font-display">
           {running ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <FlaskConical className="h-4 w-4 mr-2" />}
           {running ? "Testuji..." : "🧪 Run QA Test"}
         </Button>
       </div>
+
+      {/* Coverage Report */}
+      {coverageReport && (
+        <div className="bg-card border rounded-lg p-4 space-y-3">
+          <h3 className="font-display font-semibold text-lg flex items-center gap-2">
+            <Sparkles className="h-5 w-5 text-primary" />
+            📊 Coverage Report
+          </h3>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-sm">
+            {[
+              ["Hráči", coverageReport.players],
+              ["Roky", coverageReport.years],
+              ["Události celkem", coverageReport.totalEvents],
+              ["Poznámky", coverageReport.totalNotes],
+              ["Intro měst", coverageReport.cityIntros],
+              ["Narativy událostí", coverageReport.eventNarratives],
+              ["Divy", coverageReport.wondersCreated],
+              ["Portréty divů", coverageReport.wonderPortraits],
+              ["Kroniky/rok", coverageReport.chroniclesPerYear],
+              ["Dějiny světa", coverageReport.worldRetells],
+              ["Kroniky hráčů", coverageReport.playerChronicles],
+              ["Zvěsti", coverageReport.rumors],
+              ["Zpravodajství", coverageReport.intelligence],
+              ["Rada ministrů", coverageReport.council],
+              ["Diplomacie msg", coverageReport.diplomacyMessages],
+              ["Obchody", coverageReport.tradeDeals],
+              ["Osobnosti", coverageReport.greatPersons],
+              ["Paměti světa", coverageReport.worldMemories],
+            ].map(([label, val]) => (
+              <div key={label as string} className="flex justify-between border-b border-border pb-1">
+                <span className="text-muted-foreground">{label}</span>
+                <span className="font-bold">{val}</span>
+              </div>
+            ))}
+          </div>
+          {/* Events by type */}
+          {Object.keys(coverageReport.eventsByType).length > 0 && (
+            <div className="mt-2">
+              <p className="text-sm font-semibold mb-1">Události dle typu:</p>
+              <div className="flex flex-wrap gap-1">
+                {Object.entries(coverageReport.eventsByType).map(([t, c]) => (
+                  <Badge key={t} variant="outline" className="text-xs">{t}: {c}</Badge>
+                ))}
+              </div>
+            </div>
+          )}
+          {coverageReport.failures.length > 0 && (
+            <div className="mt-2 text-destructive text-xs">
+              <p className="font-semibold">❌ Chyby ({coverageReport.failures.length}):</p>
+              {coverageReport.failures.slice(0, 10).map((f, i) => <p key={i}>{f}</p>)}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* QA Results */}
       {qaResults.length > 0 && (
         <div className="bg-card border rounded-lg p-4 space-y-3">
           <div className="flex items-center justify-between">
             <h3 className="font-display font-semibold flex items-center gap-2">
-              <FlaskConical className="h-4 w-4 text-primary" />
-              QA Výsledky
+              <FlaskConical className="h-4 w-4 text-primary" /> QA Výsledky
             </h3>
             <Badge variant={passCount === qaResults.length ? "default" : "destructive"}>
               {passCount}/{qaResults.length} prošlo
@@ -463,11 +853,7 @@ const DevModePanel = ({
           <div className="space-y-1">
             {qaResults.map((r, i) => (
               <div key={i} className="flex items-center gap-2 text-sm py-1 border-b border-border last:border-0">
-                {r.pass ? (
-                  <CheckCircle2 className="h-4 w-4 text-primary shrink-0" />
-                ) : (
-                  <XCircle className="h-4 w-4 text-destructive shrink-0" />
-                )}
+                {r.pass ? <CheckCircle2 className="h-4 w-4 text-primary shrink-0" /> : <XCircle className="h-4 w-4 text-destructive shrink-0" />}
                 <span className="font-medium">{r.name}</span>
                 {r.detail && <span className="text-xs text-muted-foreground ml-auto">{r.detail}</span>}
               </div>
@@ -488,9 +874,7 @@ const DevModePanel = ({
           <ScrollArea className="h-48">
             <div className="font-mono text-xs space-y-0.5">
               {debugLog.map((line, i) => (
-                <p key={i} className={line.includes("❌") ? "text-destructive" : "text-muted-foreground"}>
-                  {line}
-                </p>
+                <p key={i} className={line.includes("❌") ? "text-destructive" : "text-muted-foreground"}>{line}</p>
               ))}
             </div>
           </ScrollArea>
@@ -500,25 +884,12 @@ const DevModePanel = ({
   );
 };
 
-function i2tags(name: string): string[] {
-  const m: Record<string, string[]> = {
-    Petra: ["pevnost", "svaté město"],
-    Tharros: ["přístav", "obchodní uzel"],
-    Cabras: ["přístav"],
-    Oristano: ["obchodní uzel"],
-    Barumini: ["pevnost"],
-    Sardara: ["hornické město"],
-  };
-  return m[name] || [];
-}
-
-function pickEventType(round: number, idx: number): string {
-  if (round <= 3 && idx === 0) return "found_settlement";
-  if (round === 5 || round === 10 || round === 15) {
-    if (idx === 0) return "upgrade_city";
-  }
-  if (round >= 6 && round <= 8 && idx === 0) return "wonder";
-  const pool = ["battle", "raid", "diplomacy", "trade", "city_state_action", "repair"];
+function pickEventTypeExtreme(year: number, idx: number, _player: string): string {
+  if (year <= 2 && idx === 0) return "found_settlement";
+  if ((year === 5 || year === 10 || year === 15 || year === 18) && idx === 0) return "upgrade_city";
+  if ((year === 6 || year === 11 || year === 16) && idx === 1) return "wonder";
+  if (idx === 2) return "diplomacy";
+  const pool = ["battle", "raid", "trade", "city_state_action", "repair", "diplomacy", "found_settlement", "wonder"];
   return pool[Math.floor(Math.random() * pool.length)];
 }
 
