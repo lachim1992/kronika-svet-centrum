@@ -683,6 +683,41 @@ export type Database = {
           },
         ]
       }
+      game_memberships: {
+        Row: {
+          id: string
+          joined_at: string
+          player_name: string
+          role: string
+          session_id: string
+          user_id: string
+        }
+        Insert: {
+          id?: string
+          joined_at?: string
+          player_name: string
+          role?: string
+          session_id: string
+          user_id: string
+        }
+        Update: {
+          id?: string
+          joined_at?: string
+          player_name?: string
+          role?: string
+          session_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "game_memberships_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       game_players: {
         Row: {
           created_at: string
@@ -691,6 +726,7 @@ export type Database = {
           player_number: number
           session_id: string
           turn_closed: boolean
+          user_id: string | null
         }
         Insert: {
           created_at?: string
@@ -699,6 +735,7 @@ export type Database = {
           player_number: number
           session_id: string
           turn_closed?: boolean
+          user_id?: string | null
         }
         Update: {
           created_at?: string
@@ -707,6 +744,7 @@ export type Database = {
           player_number?: number
           session_id?: string
           turn_closed?: boolean
+          user_id?: string | null
         }
         Relationships: [
           {
@@ -721,6 +759,7 @@ export type Database = {
       game_sessions: {
         Row: {
           created_at: string
+          created_by: string | null
           current_era: string
           current_turn: number
           epoch_style: string
@@ -734,6 +773,7 @@ export type Database = {
         }
         Insert: {
           created_at?: string
+          created_by?: string | null
           current_era?: string
           current_turn?: number
           epoch_style?: string
@@ -747,6 +787,7 @@ export type Database = {
         }
         Update: {
           created_at?: string
+          created_by?: string | null
           current_era?: string
           current_turn?: number
           epoch_style?: string
@@ -1002,6 +1043,33 @@ export type Database = {
           },
         ]
       }
+      profiles: {
+        Row: {
+          avatar_url: string | null
+          bio: string | null
+          created_at: string
+          id: string
+          updated_at: string
+          username: string
+        }
+        Insert: {
+          avatar_url?: string | null
+          bio?: string | null
+          created_at?: string
+          id: string
+          updated_at?: string
+          username?: string
+        }
+        Update: {
+          avatar_url?: string | null
+          bio?: string | null
+          created_at?: string
+          id?: string
+          updated_at?: string
+          username?: string
+        }
+        Relationships: []
+      }
       provinces: {
         Row: {
           capital_city_id: string | null
@@ -1128,6 +1196,24 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      user_roles: {
+        Row: {
+          id: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Insert: {
+          id?: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Update: {
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          user_id?: string
+        }
+        Relationships: []
       }
       wiki_entries: {
         Row: {
@@ -1323,6 +1409,50 @@ export type Database = {
           },
         ]
       }
+      world_foundations: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          id: string
+          initial_factions: string[] | null
+          premise: string
+          session_id: string
+          tone: string
+          victory_style: string
+          world_name: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          initial_factions?: string[] | null
+          premise: string
+          session_id: string
+          tone?: string
+          victory_style?: string
+          world_name: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          initial_factions?: string[] | null
+          premise?: string
+          session_id?: string
+          tone?: string
+          victory_style?: string
+          world_name?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "world_foundations_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: true
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       world_history_chapters: {
         Row: {
           chapter_text: string
@@ -1427,10 +1557,16 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      has_role: {
+        Args: {
+          _role: Database["public"]["Enums"]["app_role"]
+          _user_id: string
+        }
+        Returns: boolean
+      }
     }
     Enums: {
-      [_ in never]: never
+      app_role: "admin" | "moderator" | "user"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -1557,6 +1693,8 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      app_role: ["admin", "moderator", "user"],
+    },
   },
 } as const
