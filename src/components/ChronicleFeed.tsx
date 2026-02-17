@@ -25,6 +25,7 @@ interface ChronicleFeedProps {
   entityTraits?: any[];
   cities?: City[];
   onRefetch?: () => void;
+  myRole?: string;
 }
 
 const EPOCH_LABELS: Record<string, string> = {
@@ -35,8 +36,9 @@ const EPOCH_LABELS: Record<string, string> = {
 
 const ChronicleFeed = ({
   sessionId, events, memories, chronicles, epochStyle,
-  currentTurn, players, currentPlayerName, entityTraits, cities = [], onRefetch,
+  currentTurn, players, currentPlayerName, entityTraits, cities = [], onRefetch, myRole,
 }: ChronicleFeedProps) => {
+  const isAdmin = myRole === "admin" || !myRole; // backward compat
   const [generating, setGenerating] = useState(false);
   const [generatingRumors, setGeneratingRumors] = useState(false);
   const [viewingRound, setViewingRound] = useState<number | null>(null);
@@ -296,7 +298,7 @@ const ChronicleFeed = ({
               </p>
             )}
 
-            {allClosed && (
+            {allClosed && isAdmin && (
               <Button
                 onClick={handleGenerateAndAdvance}
                 disabled={generating}
@@ -306,6 +308,11 @@ const ChronicleFeed = ({
                 <Sparkles className="mr-2 h-4 w-4" />
                 {generating ? "Generuji kroniku + zprávy..." : `✅ Zapsat kroniku roku ${currentTurn}`}
               </Button>
+            )}
+            {allClosed && !isAdmin && (
+              <p className="text-xs text-muted-foreground italic text-center mt-2">
+                Čekáme na Admina, který zapíše kroniku...
+              </p>
             )}
           </div>
         </>
