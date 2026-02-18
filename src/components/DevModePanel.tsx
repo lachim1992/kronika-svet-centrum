@@ -134,6 +134,8 @@ const DevModePanel = ({
   const [generatingProfiles, setGeneratingProfiles] = useState(false);
   const [profileProgress, setProfileProgress] = useState("");
   const [appendYears, setAppendYears] = useState(10);
+  const [focusedSimulating, setFocusedSimulating] = useState(false);
+  const [focusedProgress, setFocusedProgress] = useState("");
 
   const log = (msg: string) => setDebugLog(prev => [...prev.slice(-200), `[${new Date().toLocaleTimeString("cs")}] ${msg}`]);
   const pick = <T,>(arr: T[]): T => arr[Math.floor(Math.random() * arr.length)];
@@ -634,6 +636,533 @@ const DevModePanel = ({
   const runAppendSimulation = () => runSimulation(appendYears, true);
 
   // ========================
+  // FOCUSED SIMULATION: 6 PLAYERS, YEAR 4→10
+  // ========================
+  const FOCUSED_PLAYERS = [
+    { name: "Arvath", color: "#B58A3A", identity: "Zlatý císař pouštních říší" },
+    { name: "Sélene", color: "#2F5D50", identity: "Královna severních lesů" },
+    { name: "Kordak", color: "#8B2C2C", identity: "Válečník z rudých hor" },
+    { name: "Ilmara", color: "#4A6FA5", identity: "Obchodní kněžna přímořských měst" },
+    { name: "Zhoran", color: "#6B4E8B", identity: "Mystický vládce východních stepí" },
+    { name: "Fenrik", color: "#5A6B3A", identity: "Diplomatický stratég říčních dolin" },
+  ];
+
+  const FOCUSED_CITY_TEMPLATES = [
+    { name: "Solhaven", desc: "Přístav zalitý sluncem, kde se obchoduje s exotickým kořením.", level: "Osada" },
+    { name: "Ironhold", desc: "Pevnost z černého kamene střežící horský průsmyk.", level: "Pevnost" },
+    { name: "Willowmere", desc: "Město u jezera obklopené starými vrbami.", level: "Město" },
+    { name: "Dustreach", desc: "Osada na okraji pouště, kde vítr nikdy neustává.", level: "Osada" },
+    { name: "Thornwall", desc: "Opevněné městečko chráněné trnitým valem.", level: "Osada" },
+    { name: "Starfall", desc: "Město postavené v kráteru pradávného meteoritu.", level: "Město" },
+    { name: "Greyport", desc: "Rybářská vesnice s majákem na skalnatém útesu.", level: "Osada" },
+    { name: "Embervale", desc: "Údolí sopečných pramenů s kovářskými dílnami.", level: "Osada" },
+    { name: "Crystalspire", desc: "Věž z křišťálu tyčící se nad mlžnými pláněmi.", level: "Město" },
+    { name: "Ravenwatch", desc: "Strážní věž na hranici divočiny.", level: "Pevnost" },
+  ];
+
+  const FOCUSED_WONDER_TEMPLATES = [
+    { name: "Sloup nebes", desc: "Obelisk z bílého mramoru, jenž prý sahá až k hvězdám.", imagePrompt: "A towering white marble obelisk reaching into the clouds, fantasy art, epic scale, golden hour lighting" },
+    { name: "Stříbrný most", desc: "Most překlenující bezednou propast, pokrytý stříbrnými runami.", imagePrompt: "A magnificent silver bridge spanning a vast chasm, covered in glowing runes, fantasy landscape, aerial view" },
+    { name: "Zahrada věčnosti", desc: "Zahrady kde kvetou rostliny z celého světa po celý rok.", imagePrompt: "An eternal garden with exotic flowers from all seasons blooming simultaneously, fantasy botanical garden, lush, magical atmosphere" },
+  ];
+
+  const FOCUSED_RUMOR_TEMPLATES = [
+    "Říká se, že v {city} se ve sklepích schovávají uprchlí otroci z {otherCity}.",
+    "Šeptá se, že {player} tajně buduje armádu za hranicemi.",
+    "V ulicích kolují zvěsti o pokladu ukrytém pod {city}.",
+    "Obchodníci tvrdí, že {player} uzavřel tajnou dohodu s barbary.",
+    "Lidé šeptají, že v {city} byl spatřen duch starého krále.",
+    "Zvěsti praví, že {player} plánuje velkou výpravu za hranice známého světa.",
+    "V hostincích se mluví o tom, že {city} brzy padne kvůli moru.",
+    "Pocestní hlásí podivná světla nad {city} v noci.",
+    "Kupci šíří zprávu, že zásoby železa v {city} docházejí.",
+    "Proslýchá se, že {player} nabídl {otherPlayer} obrovský tribut za mír.",
+    "Šuškanda říká, že nový div světa v {city} je ve skutečnosti prokletý.",
+    "Námořníci vyprávějí o neznámém kontinentu za západním mořem.",
+    "Zvědy z {city} tvrdí, že {player} verbuje žoldnéře v tajnosti.",
+    "Bardové zpívají o pádu {otherCity}, ale nikdo neví, zda je to pravda.",
+    "V tržnicích se šeptá, že {player} a {otherPlayer} plánují společný útok.",
+  ];
+
+  const FOCUSED_EVENT_NARRATIVES: Record<string, string[]> = {
+    expedition: [
+      "Výprava se vydala za úsvitu. Průzkumníci prošli nezmapované hvozdy a objevili úrodné údolí za horami.",
+      "Průzkumná skupina hlásí nález starověkých ruin v hlubokém lese. Zdá se, že zde kdysi stálo velké město.",
+    ],
+    alliance: [
+      "Smlouva byla podepsána za svitu pochodní. Oba vládci si podali ruce a přísahali věrnost.",
+      "Diplomaté obou říší se setkali na neutrální půdě. Dohoda slibuje vzájemnou obranu a volný obchod.",
+    ],
+    war: [
+      "Bitva zuřila od rána do soumraku. Pole zbarvila krev padlých a kouř z hořících stanů zastínil slunce.",
+      "Obléhání trvalo tři měsíce. Obránci se nevzdali, ale hlad si nakonec vybral svou daň.",
+    ],
+    discovery: [
+      "V hlubinách dolu byl objeven žilný systém drahých kamenů. Zpráva se rozšířila jako stepní požár.",
+      "Učenci rozluštili starověký nápis na kamenné desce. Odhaluje polohu zapomenutého chrámu.",
+    ],
+    political: [
+      "Rada starších se usnesla na nových zákonech. Lid přijal změny s nadějí na lepší časy.",
+      "Převrat proběhl tiše v noci. Ráno se město probudilo pod novým vedením.",
+    ],
+    trade: [
+      "Karavana dorazila s exotickým zbožím z dalekých zemí. Tržnice praskaly ve švech.",
+      "Nová obchodní stezka přinesla prosperitu celému regionu. Ceny zboží klesly o třetinu.",
+    ],
+    founding: [
+      "Na břehu řeky byly položeny první kameny nového města. Zakladatel prohlásil: 'Zde bude stát věčné město.'",
+      "Osadníci vytyčili hranice nového sídla. Země je úrodná a voda čistá — dobré znamení.",
+    ],
+    wonder: [
+      "Stavba divu světa byla zahájena za účasti tisíců dělníků. Architekt slibuje, že stavba bude hotova do pěti let.",
+      "Div světa byl dokončen! Lid jásá a poutníci přicházejí z daleka, aby spatřili tuto nádheru.",
+    ],
+  };
+
+  const FOCUSED_COMMENTS = [
+    "To je propaganda! Tak to nebylo!",
+    "Slyšel jsem jiné vyprávění od svědků.",
+    "Impozantní čin, uznávám.",
+    "Varoval jsem před tímto vývojem.",
+    "Naši zvědové potvrzují tuto zprávu.",
+    "Pochybuji o pravdivosti tohoto zápisu.",
+    "To je znamení velké změny!",
+    "Kéž by kronikář psal pravdu.",
+    "Ať je to varování pro všechny.",
+    "Budiž zaznamenáno pro budoucí pokolení.",
+  ];
+
+  const runFocusedSimulation = async () => {
+    setFocusedSimulating(true);
+    setFocusedProgress("Příprava...");
+    log("🎯 ═══ FOCUSED SIMULATION: 6 hráčů, Rok 4→10 ═══");
+
+    try {
+      // ---- STEP 1: CLEAN PREVIOUS SIM DATA ----
+      setFocusedProgress("Čistím předchozí data...");
+      log("🧹 Mažu existující sim data...");
+
+      const tables = [
+        "game_events", "event_annotations", "chronicle_entries", "city_rumors",
+        "world_feed_items", "world_events", "wonders", "wonder_draft_images",
+        "great_persons", "cities", "provinces", "regions", "world_memories",
+        "intelligence_reports", "council_evaluations", "diplomacy_messages",
+        "diplomacy_rooms", "trade_log", "military_capacity", "declarations",
+        "world_crises", "world_history_chapters", "player_chronicle_chapters",
+        "secret_objectives", "entity_traits", "event_entity_links",
+        "event_narratives", "event_responses", "wiki_entries", "encyclopedia_images",
+        "entity_contributions", "expeditions", "world_action_log",
+        "player_resources", "game_players", "civilizations", "city_states",
+        "turn_summaries", "import_sources",
+      ] as const;
+
+      for (const t of tables) {
+        await (supabase.from(t) as any).delete().eq("session_id", sessionId);
+      }
+      // diplomacy_messages don't have session_id directly, clean via rooms
+      log("✅ Předchozí data smazána");
+
+      // ---- STEP 2: CREATE 6 PLAYERS ----
+      setFocusedProgress("Vytvářím hráče...");
+      for (let i = 0; i < 6; i++) {
+        const p = FOCUSED_PLAYERS[i];
+        await supabase.from("game_players").insert({
+          session_id: sessionId, player_name: p.name, player_number: i + 1,
+        });
+        for (const rt of ["food", "wood", "stone", "iron", "wealth"]) {
+          await supabase.from("player_resources").insert({
+            session_id: sessionId, player_name: p.name, resource_type: rt,
+            income: 2 + Math.floor(Math.random() * 4),
+            upkeep: Math.floor(Math.random() * 3),
+            stockpile: 5 + Math.floor(Math.random() * 10),
+          });
+        }
+        await supabase.from("civilizations").insert({
+          session_id: sessionId, player_name: p.name,
+          civ_name: `Říše ${p.name}`,
+          core_myth: p.identity,
+          architectural_style: pick(["Kamenný", "Dřevěný", "Mramorový", "Cihlový"]),
+          cultural_quirk: pick(["Uctívají měsíc", "Jedí jen ryby", "Staví pozpátku", "Mluví zpěvem", "Nosí masky", "Tančí před bitvou"]),
+        });
+        log(`✅ Hráč ${i + 1}: ${p.name} — ${p.identity}`);
+      }
+
+      await supabase.from("game_sessions").update({
+        player1_name: FOCUSED_PLAYERS[0].name,
+        player2_name: FOCUSED_PLAYERS[1].name,
+        max_players: 6,
+        current_turn: 4,
+      }).eq("id", sessionId);
+
+      const playerNames = FOCUSED_PLAYERS.map(p => p.name);
+
+      // ---- STEP 3: CREATE INITIAL CITIES (2 per player, founded before Year 4) ----
+      setFocusedProgress("Zakládám města...");
+      const allCities: { id: string; name: string; owner: string }[] = [];
+      for (let i = 0; i < 6; i++) {
+        for (let j = 0; j < 2; j++) {
+          const tpl = FOCUSED_CITY_TEMPLATES[i * 2 + j] || FOCUSED_CITY_TEMPLATES[j];
+          const cityName = `${tpl.name}-${FOCUSED_PLAYERS[i].name.slice(0, 3)}`;
+          const { data: city } = await supabase.from("cities").insert({
+            session_id: sessionId,
+            name: cityName,
+            owner_player: FOCUSED_PLAYERS[i].name,
+            level: tpl.level,
+            founded_round: Math.floor(Math.random() * 3) + 1,
+            flavor_prompt: tpl.desc,
+            status: "ok",
+            tags: [],
+          }).select().single();
+          if (city) {
+            allCities.push({ id: city.id, name: cityName, owner: FOCUSED_PLAYERS[i].name });
+          }
+        }
+      }
+      log(`✅ ${allCities.length} měst založeno`);
+
+      // Create diplomacy rooms
+      const roomIds: string[] = [];
+      for (let i = 0; i < playerNames.length; i++) {
+        for (let j = i + 1; j < playerNames.length; j++) {
+          const { data: room } = await supabase.from("diplomacy_rooms").insert({
+            session_id: sessionId, participant_a: playerNames[i], participant_b: playerNames[j], room_type: "player_player",
+          }).select().single();
+          if (room) roomIds.push(room.id);
+        }
+      }
+
+      // ---- STEP 4: SIMULATE YEARS 4→10 ----
+      const startYear = 4;
+      const endYear = 10;
+      let totalEvents = 0;
+      let totalRumors = 0;
+      let totalComments = 0;
+      let wondersCreated = 0;
+      let citiesFounded = 0;
+
+      const eventTypes: Array<{ type: string; category: string }> = [
+        { type: "expedition", category: "exploration" },
+        { type: "alliance", category: "diplomacy" },
+        { type: "war", category: "military" },
+        { type: "discovery", category: "exploration" },
+        { type: "political", category: "political" },
+        { type: "trade", category: "economic" },
+      ];
+
+      for (let year = startYear; year <= endYear; year++) {
+        setFocusedProgress(`Rok ${year}/${endYear}...`);
+        log(`📅 ═══ ROK ${year} ═══`);
+
+        const yearEventIds: string[] = [];
+
+        // ~8-12 events per year distributed across players
+        const numEvents = 8 + Math.floor(Math.random() * 5);
+        for (let e = 0; e < numEvents; e++) {
+          const player = pick(playerNames);
+          const playerCities = allCities.filter(c => c.owner === player);
+          const otherPlayers = playerNames.filter(p => p !== player);
+          const otherCities = allCities.filter(c => c.owner !== player);
+          const city = playerCities.length ? pick(playerCities) : pick(allCities);
+          const evtType = pick(eventTypes);
+
+          const narratives = FOCUSED_EVENT_NARRATIVES[evtType.type] || FOCUSED_EVENT_NARRATIVES.discovery;
+          const narrative = pick(narratives!);
+
+          const eventData: any = {
+            session_id: sessionId,
+            event_type: evtType.type === "war" ? "battle" : evtType.type === "alliance" ? "diplomacy" : evtType.type === "political" ? "diplomacy" : evtType.type,
+            player,
+            turn_number: year,
+            city_id: city.id,
+            location: city.name,
+            note: narrative,
+            confirmed: true,
+            truth_state: "canon",
+            importance: Math.random() < 0.2 ? "legendary" : "normal",
+          };
+
+          if (evtType.type === "war" && otherCities.length) {
+            const target = pick(otherCities);
+            eventData.attacker_city_id = city.id;
+            eventData.defender_city_id = target.id;
+            eventData.result = pick(["vítězství", "porážka", "nerozhodně", "taktický ústup"]);
+            eventData.casualties = `${Math.floor(Math.random() * 500 + 50)} padlých`;
+            eventData.armies_involved = [`${player}-legie-${year}`];
+          }
+
+          if (evtType.type === "alliance") {
+            eventData.treaty_type = pick(["mír", "obchod", "obranný pakt", "neútočení"]);
+            eventData.terms_summary = pick(["Vzájemná obrana po 5 let", "Volný obchod a výměna znalostí", "Sdílení zpravodajství"]);
+          }
+
+          const { data: inserted } = await supabase.from("game_events").insert(eventData).select().single();
+          if (inserted) {
+            yearEventIds.push(inserted.id);
+            totalEvents++;
+
+            // Create world_event for each
+            const slug = `${evtType.type}-${year}-${e}`;
+            await supabase.from("world_events").insert({
+              session_id: sessionId,
+              title: `${evtType.type === "war" ? "Bitva" : evtType.type === "alliance" ? "Spojenectví" : evtType.type === "trade" ? "Obchod" : evtType.type === "expedition" ? "Výprava" : evtType.type === "discovery" ? "Objev" : "Událost"} — Rok ${year}`,
+              slug,
+              description: narrative,
+              event_category: evtType.category,
+              status: "published",
+              created_turn: year,
+              created_by_type: "system",
+              affected_players: [player],
+              participants: [{ type: "player", name: player }],
+            });
+
+            // World feed item
+            await supabase.from("world_feed_items").insert({
+              session_id: sessionId,
+              turn_number: year,
+              content: `${player}: ${narrative.slice(0, 120)}`,
+              feed_type: Math.random() < 0.3 ? "gossip" : "news",
+              importance: eventData.importance === "legendary" ? "high" : "normal",
+              linked_event_id: null,
+            });
+          }
+        }
+
+        // ---- COMMENTS on ~30% of events ----
+        for (const eid of yearEventIds) {
+          if (Math.random() < 0.3) {
+            const commentsCount = Math.random() < 0.5 ? 1 : 2;
+            for (let c = 0; c < commentsCount; c++) {
+              const commenter = pick(playerNames);
+              await supabase.from("event_annotations").insert({
+                event_id: eid, author: commenter,
+                note_text: pick(FOCUSED_COMMENTS),
+                visibility: Math.random() < 0.2 ? "leakable" : "public",
+              });
+              totalComments++;
+            }
+          }
+        }
+
+        // ---- CITY FOUNDING (1 new city every 2 years, different players) ----
+        if (year % 2 === 0) {
+          const founder = playerNames[(year - startYear) / 2 % playerNames.length];
+          const newCityTpl = pick(FOCUSED_CITY_TEMPLATES);
+          const newCityName = `${newCityTpl.name}-${founder.slice(0, 3)}-Y${year}`;
+          const { data: newCity } = await supabase.from("cities").insert({
+            session_id: sessionId,
+            name: newCityName,
+            owner_player: founder,
+            level: "Osada",
+            founded_round: year,
+            flavor_prompt: newCityTpl.desc,
+            status: "ok",
+            tags: ["nově založeno"],
+          }).select().single();
+
+          if (newCity) {
+            allCities.push({ id: newCity.id, name: newCityName, owner: founder });
+            citiesFounded++;
+            log(`🏙️ ${founder} založil ${newCityName}`);
+
+            // Chronicle entry for founding
+            await supabase.from("chronicle_entries").insert({
+              session_id: sessionId,
+              text: `V roce ${year} položil ${founder} základní kameny nového města ${newCityName}. ${newCityTpl.desc}`,
+              turn_from: year, turn_to: year,
+              epoch_style: "kroniky",
+            });
+
+            // Game event for founding
+            await supabase.from("game_events").insert({
+              session_id: sessionId, event_type: "found_settlement",
+              player: founder, turn_number: year, city_id: newCity.id,
+              location: newCityName, note: pick(FOCUSED_EVENT_NARRATIVES.founding!),
+              confirmed: true, truth_state: "canon",
+            });
+          }
+        }
+
+        // ---- RUMORS (3 per year) ----
+        for (let r = 0; r < 3; r++) {
+          const rumorCity = pick(allCities);
+          const otherCity = pick(allCities.filter(c => c.id !== rumorCity.id));
+          const rumorPlayer = pick(playerNames);
+          const otherPlayer = pick(playerNames.filter(p => p !== rumorPlayer));
+          const tpl = pick(FOCUSED_RUMOR_TEMPLATES);
+          const text = tpl
+            .replace("{city}", rumorCity.name)
+            .replace("{otherCity}", otherCity?.name || "vzdáleného města")
+            .replace("{player}", rumorPlayer)
+            .replace("{otherPlayer}", otherPlayer);
+
+          await supabase.from("city_rumors").insert({
+            session_id: sessionId,
+            city_id: rumorCity.id,
+            city_name: rumorCity.name,
+            text,
+            turn_number: year,
+            tone_tag: pick(["mysterious", "threatening", "hopeful", "neutral", "dramatic"]),
+            is_draft: Math.random() < 0.15,
+            entity_refs: [
+              { type: "city", id: rumorCity.id, label: rumorCity.name },
+              ...(otherCity ? [{ type: "city", id: otherCity.id, label: otherCity.name }] : []),
+            ],
+          });
+          totalRumors++;
+        }
+
+        // ---- WONDERS (Year 6, 8, 10) ----
+        if ([6, 8, 10].includes(year) && wondersCreated < 3) {
+          const wTpl = FOCUSED_WONDER_TEMPLATES[wondersCreated];
+          const wonderOwner = playerNames[wondersCreated * 2 % playerNames.length];
+          const wonderCity = pick(allCities.filter(c => c.owner === wonderOwner));
+
+          const { data: wonder } = await supabase.from("wonders").insert({
+            session_id: sessionId,
+            name: wTpl.name,
+            owner_player: wonderOwner,
+            city_name: wonderCity?.name || "",
+            era: year <= 7 ? "Ancient" : "Classical",
+            status: "completed",
+            description: wTpl.desc,
+            image_prompt: wTpl.imagePrompt,
+            memory_fact: `${wTpl.name} stojí v ${wonderCity?.name || "neznámém městě"} jako symbol moci ${wonderOwner}.`,
+          }).select().single();
+
+          if (wonder) {
+            wondersCreated++;
+            log(`🏛️ Div světa: ${wTpl.name} (${wonderOwner})`);
+
+            // Chronicle for wonder
+            await supabase.from("chronicle_entries").insert({
+              session_id: sessionId,
+              text: `Rok ${year}: ${wTpl.name} byl dokončen v ${wonderCity?.name}. ${wTpl.desc} Stavba je považována za jeden z divů světa.`,
+              turn_from: year, turn_to: year,
+              epoch_style: "kroniky",
+            });
+
+            // World event for wonder
+            await supabase.from("world_events").insert({
+              session_id: sessionId,
+              title: `Dokončení ${wTpl.name}`,
+              slug: `wonder-${wTpl.name.toLowerCase().replace(/\s+/g, "-")}-y${year}`,
+              description: `${wonderOwner} dokončil stavbu ${wTpl.name} v ${wonderCity?.name}. ${wTpl.desc}`,
+              event_category: "cultural",
+              status: "published",
+              created_turn: year,
+              created_by_type: "system",
+              affected_players: [wonderOwner],
+              participants: [{ type: "player", name: wonderOwner }, { type: "city", name: wonderCity?.name || "" }],
+            });
+          }
+        }
+
+        // ---- CHRONICLE ENTRY per year ----
+        const p1 = pick(playerNames);
+        const p2 = pick(playerNames.filter(p => p !== p1));
+        await supabase.from("chronicle_entries").insert({
+          session_id: sessionId,
+          text: pick(CHRONICLE_TEMPLATES).replace("{r}", String(year)).replace("{p1}", p1).replace("{p2}", p2),
+          turn_from: year, turn_to: year,
+          epoch_style: pick(["kroniky", "mýty", "moderní"]),
+        });
+
+        // ---- INTELLIGENCE REPORTS (1 per year) ----
+        const spy = pick(playerNames);
+        const target = pick(playerNames.filter(p => p !== spy));
+        await supabase.from("intelligence_reports").insert({
+          session_id: sessionId, visible_to: spy, target_entity: target,
+          report_text: `Špioni ${spy} hlásí aktivitu ${target} v roce ${year}: ${pick(["budování armády", "tajné jednání", "stavba opevnění", "verbování žoldnéřů"])}.`,
+          source_type: pick(["merchant_gossip", "spy_network", "scout_report"]),
+          created_round: year, secrecy_level: pick(["uncertain", "reliable", "confirmed"]),
+        });
+
+        // ---- DIPLOMACY MESSAGE (1 per year) ----
+        if (roomIds.length) {
+          await supabase.from("diplomacy_messages").insert({
+            room_id: pick(roomIds), sender: pick(playerNames), sender_type: "player",
+            message_text: `Rok ${year}: ${pick(["Nabízím mír.", "Potřebujeme obchodní dohodu.", "Varuju vás před útokem ze severu.", "Navrhujeme spojenectví."])}`,
+            secrecy: pick(["PUBLIC", "PRIVATE"]),
+          });
+        }
+
+        // ---- TRADE (1-2 per year) ----
+        const tradeCount = 1 + Math.floor(Math.random() * 2);
+        for (let t = 0; t < tradeCount; t++) {
+          const from = pick(playerNames);
+          const to = pick(playerNames.filter(p => p !== from));
+          await supabase.from("trade_log").insert({
+            session_id: sessionId, turn_number: year,
+            from_player: from, to_player: to,
+            resource_type: pick(["food", "wood", "stone", "iron", "wealth"]),
+            amount: Math.floor(Math.random() * 8) + 1,
+            trade_type: pick(["Obchod", "Tribut", "Dar"]),
+          });
+        }
+
+        // ---- WORLD MEMORIES (2 per year) ----
+        for (let m = 0; m < 2; m++) {
+          const memCity = pick(allCities);
+          await supabase.from("world_memories").insert({
+            session_id: sessionId,
+            text: pick(MEMORY_TEMPLATES).replace("{city}", memCity.name).replace("{fact}", pick(MEMORY_FACTS)),
+            approved: Math.random() < 0.7,
+            category: pick(["tradition", "historical_scar", "legend", "mystery"]),
+            created_round: year, city_id: memCity.id,
+          });
+        }
+
+        // Advance turn
+        await supabase.from("game_sessions").update({ current_turn: year + 1 }).eq("id", sessionId);
+      }
+
+      // ---- STEP 5: FINAL SUMMARY ----
+      await supabase.from("chronicle_entries").insert({
+        session_id: sessionId,
+        text: "Rok 10 — První věk Kroniky je dovršen. Šest říší formovalo svůj osud skrze války, diplomacii a zázraky. Kronikář pokládá pero, ale příběh nekončí.",
+        turn_from: 10, turn_to: 10,
+        epoch_style: "kroniky",
+      });
+
+      // World history chapter
+      await supabase.from("world_history_chapters").insert({
+        session_id: sessionId, from_turn: 4, to_turn: 10,
+        chapter_title: "Kapitola I: Počátky šesti říší",
+        chapter_text: `V letech 4 až 10 se z šesti osad staly mocné říše. ${FOCUSED_PLAYERS.map(p => p.name).join(", ")} — každý šel svou cestou, ale jejich osudy se neustále propletávaly. Války, spojenectví a divy světa formovaly první epochu známého světa.`,
+        epoch_style: "kroniky",
+      });
+
+      // Great persons
+      for (let i = 0; i < 3; i++) {
+        const p = FOCUSED_PLAYERS[i * 2];
+        const pCity = allCities.find(c => c.owner === p.name);
+        await supabase.from("great_persons").insert({
+          session_id: sessionId,
+          name: `${p.name}-hrdina`,
+          player_name: p.name,
+          person_type: pick(PERSON_TYPES),
+          city_id: pCity?.id || null,
+          born_round: 4 + Math.floor(Math.random() * 4),
+          is_alive: true,
+          bio: `Legendární osobnost sloužící říši ${p.name}. ${p.identity}`,
+          image_prompt: `Fantasy portrait of a ${pick(["general", "scholar", "diplomat", "priest"])} from a ${pick(["desert", "forest", "mountain", "coastal"])} civilization, detailed, epic lighting`,
+        });
+      }
+
+      log(`✅ ═══ SIMULACE DOKONČENA ═══`);
+      log(`📊 Události: ${totalEvents} | Zvěsti: ${totalRumors} | Komentáře: ${totalComments} | Divy: ${wondersCreated} | Nová města: ${citiesFounded}`);
+      toast.success(`🎯 Simulace hotova! ${totalEvents} událostí, roky 4→10, 6 hráčů`);
+      onRefetch?.();
+    } catch (e: any) {
+      log("❌ Focused sim error: " + (e?.message || "unknown"));
+      toast.error("Simulace selhala: " + (e?.message || "unknown"));
+    }
+
+    setFocusedSimulating(false);
+    setFocusedProgress("");
+  };
+
+  // ========================
   // GENERATE AI CITY PROFILES + ILLUSTRATIONS FOR ALL CITIES
   // ========================
   const generateAllCityProfiles = async () => {
@@ -866,11 +1395,18 @@ const DevModePanel = ({
 
       {/* Actions */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        {/* Focused Simulation - Primary */}
+        <Button onClick={runFocusedSimulation} disabled={focusedSimulating || simulating || seeding}
+          className="h-14 font-display col-span-1 md:col-span-2 bg-primary text-primary-foreground hover:bg-primary/90 text-base">
+          {focusedSimulating ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Zap className="h-5 w-5 mr-2" />}
+          {focusedSimulating ? `Simuluji... ${focusedProgress}` : "🎯 Run World Simulation (6 players, Year 4→10)"}
+        </Button>
+
         <Button onClick={seedExtremeWorld} disabled={seeding} className="h-14 font-display" variant="outline">
           {seeding ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Database className="h-4 w-4 mr-2" />}
           {seeding ? "Seeduji..." : "🌱 Seed 6-Player World"}
         </Button>
-        <Button onClick={runExtremeSimulation} disabled={simulating} className="h-14 font-display text-primary-foreground bg-primary hover:bg-primary/90">
+        <Button onClick={runExtremeSimulation} disabled={simulating} className="h-14 font-display" variant="outline">
           {simulating ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Zap className="h-4 w-4 mr-2" />}
           {simulating ? `Simuluji... ${simProgress}` : "🚀 Simulovat 20 let (nová)"}
         </Button>
@@ -880,16 +1416,16 @@ const DevModePanel = ({
             onChange={(e) => setAppendYears(Math.max(1, Math.min(50, parseInt(e.target.value) || 10)))}
             className="w-24 h-14 text-center font-display text-lg"
           />
-          <Button onClick={runAppendSimulation} disabled={simulating} className="flex-1 h-14 font-display bg-primary/80 text-primary-foreground hover:bg-primary/70">
+          <Button onClick={runAppendSimulation} disabled={simulating} className="flex-1 h-14 font-display" variant="outline">
             {simulating ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Play className="h-4 w-4 mr-2" />}
-            {simulating ? `Simuluji... ${simProgress}` : `➕ Simulovat dalších ${appendYears} let (append)`}
+            {simulating ? `Simuluji... ${simProgress}` : `➕ Append ${appendYears} let`}
           </Button>
         </div>
-        <Button onClick={generateAllCityProfiles} disabled={generatingProfiles} className="h-14 font-display bg-accent text-accent-foreground hover:bg-accent/80">
+        <Button onClick={generateAllCityProfiles} disabled={generatingProfiles} className="h-14 font-display" variant="outline">
           {generatingProfiles ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Sparkles className="h-4 w-4 mr-2" />}
           {generatingProfiles ? `Generuji... ${profileProgress}` : "🎨 AI Profily + Ilustrace měst"}
         </Button>
-        <Button onClick={runQATest} disabled={running} className="h-14 font-display">
+        <Button onClick={runQATest} disabled={running} className="h-14 font-display" variant="outline">
           {running ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <FlaskConical className="h-4 w-4 mr-2" />}
           {running ? "Testuji..." : "🧪 Run QA Test"}
         </Button>
