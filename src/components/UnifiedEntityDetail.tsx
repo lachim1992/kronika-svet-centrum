@@ -131,7 +131,7 @@ const UnifiedEntityDetail = ({
 
   const fetchEntityData = async () => {
     const [wikiRes, imagesRes, worldEventsRes, linksRes, provincesRes, regionsRes, memoriesRes] = await Promise.all([
-      supabase.from("wiki_entries").select("*").eq("session_id", sessionId).eq("entity_type", entityType).eq("entity_id", entityId).maybeSingle(),
+      supabase.from("wiki_entries").select("*").eq("session_id", sessionId).eq("entity_type", entityType).eq("entity_id", entityId).limit(1).maybeSingle(),
       supabase.from("encyclopedia_images").select("*").eq("session_id", sessionId).eq("entity_type", entityType).eq("entity_id", entityId),
       supabase.from("world_events").select("*").eq("session_id", sessionId).eq("status", "published").order("date"),
       supabase.from("event_entity_links").select("*"),
