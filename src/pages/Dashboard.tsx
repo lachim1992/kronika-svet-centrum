@@ -174,6 +174,15 @@ const Dashboard = () => {
         playerName={myPlayerName}
         onAction={handleAction}
         activeTab={activeTab}
+        myRole={myRole}
+        events={events}
+        cities={cities}
+        wonders={wonders}
+        armies={armies}
+        resources={resources}
+        declarations={declarations}
+        chronicles={chronicles}
+        players={players}
       />
       <BottomNav activeTab={activeTab} onTabChange={setActiveTab} showDevTab={myRole === "admin"} />
       <ActionChooser open={showActionChooser} onClose={() => setShowActionChooser(false)} onAction={handleAction} />
