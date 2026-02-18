@@ -53,42 +53,64 @@ ${cityMemsText || "žádné"}
 Paměti provincie:
 ${provMemsText || "žádné"}`;
 
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    const aiUrl = "https://ai.gateway.lovable.dev/v1/chat/completions";
+    const aiPayload = {
+      model: "google/gemini-3-flash-preview",
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userContent },
+      ],
+      tools: [{
+        type: "function",
+        function: {
+          name: "write_city_profile",
+          description: "Write city introduction and history retelling",
+          parameters: {
+            type: "object",
+            properties: {
+              introduction: { type: "string", description: "City introduction narrative in Czech" },
+              historyRetelling: { type: "string", description: "Retelling of city history based on events, in Czech" },
+              bulletFacts: {
+                type: "array",
+                items: { type: "string" },
+                description: "Key bullet-point facts about the city in Czech"
+              }
+            },
+            required: ["introduction", "historyRetelling", "bulletFacts"],
+            additionalProperties: false
+          }
+        }
+      }],
+      tool_choice: { type: "function", function: { name: "write_city_profile" } },
+    };
+    const fetchOpts = {
       method: "POST",
       headers: {
         Authorization: `Bearer ${LOVABLE_API_KEY}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({
-        model: "google/gemini-3-flash-preview",
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userContent },
-        ],
-        tools: [{
-          type: "function",
-          function: {
-            name: "write_city_profile",
-            description: "Write city introduction and history retelling",
-            parameters: {
-              type: "object",
-              properties: {
-                introduction: { type: "string", description: "City introduction narrative in Czech" },
-                historyRetelling: { type: "string", description: "Retelling of city history based on events, in Czech" },
-                bulletFacts: {
-                  type: "array",
-                  items: { type: "string" },
-                  description: "Key bullet-point facts about the city in Czech"
-                }
-              },
-              required: ["introduction", "historyRetelling", "bulletFacts"],
-              additionalProperties: false
-            }
-          }
-        }],
-        tool_choice: { type: "function", function: { name: "write_city_profile" } },
-      }),
-    });
+      body: JSON.stringify(aiPayload),
+    };
+
+    let response: Response | null = null;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        response = await fetch(aiUrl, fetchOpts);
+        if (response.ok || response.status === 429 || response.status === 402) break;
+      } catch (e) {
+        console.error(`AI fetch attempt ${attempt + 1} failed:`, e);
+        if (attempt === 0) await new Promise(r => setTimeout(r, 1500));
+      }
+    }
+
+    if (!response) {
+      return new Response(JSON.stringify({
+        introduction: `${city.name} je ${city.level?.toLowerCase() || "město"} v provincii ${city.province || "neznámé"}.`,
+        historyRetelling: "Kronikář nemohl navázat spojení.",
+        bulletFacts: [],
+        debug: { usedProvider: "connection-error" }
+      }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
 
     if (!response.ok) {
       if (response.status === 429) {
