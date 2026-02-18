@@ -1,3 +1,4 @@
+import { useState } from "react";
 import ChronicleFeed from "@/components/ChronicleFeed";
 import PlayerChroniclePanel from "@/components/PlayerChroniclePanel";
 import WorldFeedPanel from "@/components/WorldFeedPanel";
@@ -8,8 +9,9 @@ import TimelinePanel from "@/components/TimelinePanel";
 import SourceImportPanel from "@/components/SourceImportPanel";
 import WorldActionLog from "@/components/WorldActionLog";
 import WorldHistoryPanel from "@/components/WorldHistoryPanel";
+import RumorsFeedPanel from "@/components/RumorsFeedPanel";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Newspaper, BookOpen, Swords, BookMarked, CalendarDays, Network, ScrollText, FileText } from "lucide-react";
+import { Newspaper, BookOpen, Swords, BookMarked, CalendarDays, Network, ScrollText, FileText, MessageCircle } from "lucide-react";
 import type { EntityIndex } from "@/hooks/useEntityIndex";
 
 interface Props {
@@ -65,6 +67,9 @@ const FeedTab = ({
           </TabsTrigger>
           <TabsTrigger value="network" className="font-display text-xs gap-1">
             <Network className="h-3 w-3" />Síť
+          </TabsTrigger>
+          <TabsTrigger value="rumors" className="font-display text-xs gap-1">
+            <MessageCircle className="h-3 w-3" />Zvěsti
           </TabsTrigger>
           <TabsTrigger value="history" className="font-display text-xs gap-1">
             <BookMarked className="h-3 w-3" />Dějiny
@@ -123,6 +128,17 @@ const FeedTab = ({
 
         <TabsContent value="network" className="mt-3">
           <EventNetworkPanel sessionId={sessionId} onEventClick={onEventClick} />
+        </TabsContent>
+
+        <TabsContent value="rumors" className="mt-3">
+          <RumorsFeedPanel
+            sessionId={sessionId}
+            cities={cities}
+            currentTurn={currentTurn}
+            entityIndex={entityIndex}
+            onEventClick={onEventClick}
+            onEntityClick={onEntityClick}
+          />
         </TabsContent>
 
         <TabsContent value="history" className="mt-3">

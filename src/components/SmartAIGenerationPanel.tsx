@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Sparkles, Loader2, Image, FileText, CheckCircle2 } from "lucide-react";
+import { Sparkles, Loader2, Image, FileText, CheckCircle2, MessageCircle } from "lucide-react";
 import { toast } from "sonner";
 
 interface Props {
@@ -21,6 +21,7 @@ interface MissingReport {
   personsNoImage: { id: string; name: string }[];
   wikiNoDesc: { id: string; name: string }[];
   provincesNoDesc: { id: string; name: string }[];
+  majorEventsNoRumors: { id: string; type: string; turn: number; location: string }[];
 }
 
 const SmartAIGenerationPanel = ({ sessionId, onRefetch }: Props) => {
@@ -40,17 +41,26 @@ const SmartAIGenerationPanel = ({ sessionId, onRefetch }: Props) => {
         { data: provinces },
         { data: events },
         { data: narratives },
+        { data: existingRumors },
       ] = await Promise.all([
         supabase.from("cities").select("id, name, flavor_prompt").eq("session_id", sessionId),
         supabase.from("wonders").select("id, name, description, image_url").eq("session_id", sessionId),
         supabase.from("great_persons").select("id, name, bio, image_url").eq("session_id", sessionId),
         supabase.from("wiki_entries").select("id, entity_name, ai_description").eq("session_id", sessionId),
         supabase.from("provinces").select("id, name, ai_description").eq("session_id", sessionId),
-        supabase.from("game_events").select("id, event_type, player, turn_number").eq("session_id", sessionId).eq("confirmed", true),
+        supabase.from("game_events").select("id, event_type, player, turn_number, location").eq("session_id", sessionId).eq("confirmed", true),
         supabase.from("event_narratives").select("event_id").eq("is_canon", true),
+        supabase.from("city_rumors").select("related_event_id").eq("session_id", sessionId),
       ]);
 
       const narrativeEventIds = new Set(narratives?.map(n => n.event_id) || []);
+      const rumorEventIds = new Set((existingRumors || []).filter(r => r.related_event_id).map(r => r.related_event_id));
+
+      const MAJOR_TYPES = new Set(["battle", "raid", "war", "diplomacy", "wonder", "plague", "disaster", "found_settlement"]);
+      const majorEventsNoRumors = (events || [])
+        .filter(e => MAJOR_TYPES.has(e.event_type) && !rumorEventIds.has(e.id))
+        .slice(0, 50)
+        .map(e => ({ id: e.id, type: e.event_type, turn: e.turn_number, location: e.location || "" }));
 
       setReport({
         citiesNoDesc: (cities || []).filter(c => !c.flavor_prompt),
@@ -61,6 +71,7 @@ const SmartAIGenerationPanel = ({ sessionId, onRefetch }: Props) => {
         personsNoImage: (persons || []).filter(p => !p.image_url),
         wikiNoDesc: (wiki || []).filter(w => !w.ai_description).map(w => ({ id: w.id, name: w.entity_name })),
         provincesNoDesc: (provinces || []).filter(p => !p.ai_description),
+        majorEventsNoRumors,
       });
     } catch (e) {
       toast.error("Skenování selhalo");
@@ -158,6 +169,28 @@ const SmartAIGenerationPanel = ({ sessionId, onRefetch }: Props) => {
     scan();
   };
 
+  const generateMissingRumors = async () => {
+    if (!report || report.majorEventsNoRumors.length === 0) return;
+    setGenerating("rumors");
+    const batch = report.majorEventsNoRumors.slice(0, 10);
+    const total = batch.length;
+    let done = 0;
+    for (const evt of batch) {
+      setProgress({ current: done, total, label: `${evt.type} r.${evt.turn}` });
+      try {
+        await supabase.functions.invoke("rumor-engine", {
+          body: { sessionId, eventId: evt.id, currentTurn: evt.turn, epochStyle: "kroniky", isPlayerEvent: false },
+        });
+      } catch { /* skip */ }
+      done++;
+    }
+    setProgress({ current: total, total, label: "Hotovo" });
+    toast.success(`Zvěsti: ${done}/${total} událostí zpracováno`);
+    setGenerating(null);
+    onRefetch?.();
+    scan();
+  };
+
   if (!report) {
     return (
       <div className="bg-card border rounded-lg p-4 flex items-center justify-center">
@@ -168,6 +201,7 @@ const SmartAIGenerationPanel = ({ sessionId, onRefetch }: Props) => {
   }
 
   const categories = [
+    { key: "majorEventsNoRumors", label: "Události bez zvěstí", count: report.majorEventsNoRumors.length, icon: MessageCircle, action: generateMissingRumors, actionLabel: "Generovat zvěsti (max 10)" },
     { key: "wikiNoDesc", label: "Wiki bez popisu", count: report.wikiNoDesc.length, icon: FileText, action: generateMissingWikiDescriptions, actionLabel: "Generovat wiki popisy" },
     { key: "eventsNoNarrative", label: "Události bez narativu", count: report.eventsNoNarrative.length, icon: FileText, action: generateMissingEventNarratives, actionLabel: "Generovat narativy (max 20)" },
     { key: "wondersNoImage", label: "Divy bez obrázku", count: report.wondersNoImage.length, icon: Image, action: generateMissingWonderImages, actionLabel: "Generovat obrázky divů" },

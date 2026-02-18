@@ -121,6 +121,86 @@ export type Database = {
           },
         ]
       }
+      city_rumors: {
+        Row: {
+          city_id: string
+          city_name: string
+          created_at: string
+          created_by: string
+          draft_expires_turn: number | null
+          entity_refs: Json | null
+          id: string
+          is_draft: boolean
+          related_event_id: string | null
+          related_world_event_id: string | null
+          session_id: string
+          text: string
+          tone_tag: string
+          turn_number: number
+        }
+        Insert: {
+          city_id: string
+          city_name: string
+          created_at?: string
+          created_by?: string
+          draft_expires_turn?: number | null
+          entity_refs?: Json | null
+          id?: string
+          is_draft?: boolean
+          related_event_id?: string | null
+          related_world_event_id?: string | null
+          session_id: string
+          text: string
+          tone_tag?: string
+          turn_number?: number
+        }
+        Update: {
+          city_id?: string
+          city_name?: string
+          created_at?: string
+          created_by?: string
+          draft_expires_turn?: number | null
+          entity_refs?: Json | null
+          id?: string
+          is_draft?: boolean
+          related_event_id?: string | null
+          related_world_event_id?: string | null
+          session_id?: string
+          text?: string
+          tone_tag?: string
+          turn_number?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "city_rumors_city_id_fkey"
+            columns: ["city_id"]
+            isOneToOne: false
+            referencedRelation: "cities"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "city_rumors_related_event_id_fkey"
+            columns: ["related_event_id"]
+            isOneToOne: false
+            referencedRelation: "game_events"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "city_rumors_related_world_event_id_fkey"
+            columns: ["related_world_event_id"]
+            isOneToOne: false
+            referencedRelation: "world_events"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "city_rumors_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       city_states: {
         Row: {
           created_at: string
