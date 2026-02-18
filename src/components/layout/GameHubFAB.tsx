@@ -1,125 +1,152 @@
-import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
-import { Globe, Home, Plus, Users, Crown, LogOut } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
-import { supabase } from "@/integrations/supabase/client";
-import { useAuth } from "@/hooks/useAuth";
-
-interface OtherGame {
-  session_id: string;
-  player_name: string;
-  role: string;
-  world_name?: string;
-  room_code?: string;
-  current_turn?: number;
-}
+import { useState } from "react";
+import {
+  Plus, X, Castle, Swords, ScrollText, MessageSquareWarning,
+  Sparkles, Compass, Shield, LayoutDashboard
+} from "lucide-react";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 
 interface Props {
   currentSessionId: string;
   worldName?: string;
   currentTurn: number;
   playerName: string;
+  onAction?: (action: string) => void;
+  activeTab?: string;
+  /** Context entity for context-aware actions */
+  contextEntity?: { type: string; id: string; name?: string } | null;
 }
 
-const GameHubFAB = ({ currentSessionId, worldName, currentTurn, playerName }: Props) => {
-  const navigate = useNavigate();
-  const { user, signOut } = useAuth();
-  const [games, setGames] = useState<OtherGame[]>([]);
+interface ActionItem {
+  id: string;
+  label: string;
+  desc: string;
+  icon: React.ElementType;
+  category: "core" | "context";
+}
+
+const CORE_ACTIONS: ActionItem[] = [
+  { id: "found_city", label: "Založit město", desc: "Nové osídlení ve vašem území", icon: Castle, category: "core" },
+  { id: "create_event", label: "Vytvořit událost", desc: "Bitva, smlouva, dekret, festival…", icon: Swords, category: "core" },
+  { id: "write_chronicle", label: "Zapsat kroniku", desc: "Záznam do dějin vaší říše", icon: ScrollText, category: "core" },
+  { id: "add_rumor", label: "Šířit zvěst", desc: "Pošeptejte zprávu do světa", icon: MessageSquareWarning, category: "core" },
+  { id: "ai_generate", label: "AI generování", desc: "Nechat AI rozšířit příběh", icon: Sparkles, category: "core" },
+  { id: "send_expedition", label: "Vyslat výpravu", desc: "Prozkoumat nový region", icon: Compass, category: "core" },
+  { id: "manage_armies", label: "Správa armád", desc: "Legie, verbování, přesuny", icon: Shield, category: "core" },
+  { id: "open_realm", label: "Přehled říše", desc: "Dashboard vaší civilizace", icon: LayoutDashboard, category: "core" },
+];
+
+const CITY_CONTEXT_ACTIONS: ActionItem[] = [
+  { id: "add_city_rumor", label: "Městská zvěst", desc: "Zvěst o tomto městě", icon: MessageSquareWarning, category: "context" },
+  { id: "generate_city_story", label: "Generovat příběh", desc: "AI příběh nebo obrázek města", icon: Sparkles, category: "context" },
+];
+
+const EVENT_CONTEXT_ACTIONS: ActionItem[] = [
+  { id: "add_related_entity", label: "Přidat entitu", desc: "Propojit osobu, město…", icon: Castle, category: "context" },
+  { id: "add_aftermath_rumor", label: "Zvěst po události", desc: "Co se říká po bitvě…", icon: MessageSquareWarning, category: "context" },
+];
+
+const WORLD_CONTEXT_ACTIONS: ActionItem[] = [
+  { id: "launch_expedition", label: "Výprava do neznáma", desc: "Prozkoumat oblast na mapě", icon: Compass, category: "context" },
+];
+
+const GameHubFAB = ({ onAction, activeTab, contextEntity }: Props) => {
   const [open, setOpen] = useState(false);
 
-  useEffect(() => {
-    if (!user || !open) return;
-    const fetch = async () => {
-      const { data } = await supabase
-        .from("game_memberships")
-        .select("session_id, player_name, role, game_sessions(id, room_code, current_turn)")
-        .eq("user_id", user.id)
-        .order("joined_at", { ascending: false });
-      if (!data) return;
-      const results: OtherGame[] = [];
-      for (const m of data as any[]) {
-        if (!m.game_sessions) continue;
-        const { data: wf } = await supabase
-          .from("world_foundations")
-          .select("world_name")
-          .eq("session_id", m.session_id)
-          .maybeSingle();
-        results.push({
-          session_id: m.session_id,
-          player_name: m.player_name,
-          role: m.role,
-          world_name: wf?.world_name,
-          room_code: m.game_sessions.room_code,
-          current_turn: m.game_sessions.current_turn,
-        });
-      }
-      setGames(results);
-    };
-    fetch();
-  }, [user, open]);
+  // Determine context-specific actions
+  let contextActions: ActionItem[] = [];
+  let contextLabel = "";
+  if (contextEntity?.type === "city") {
+    contextActions = CITY_CONTEXT_ACTIONS;
+    contextLabel = `🏛️ ${contextEntity.name || "Město"}`;
+  } else if (contextEntity?.type === "event") {
+    contextActions = EVENT_CONTEXT_ACTIONS;
+    contextLabel = `📜 ${contextEntity.name || "Událost"}`;
+  } else if (activeTab === "world") {
+    contextActions = WORLD_CONTEXT_ACTIONS;
+    contextLabel = "🌍 Svět";
+  }
 
-  const otherGames = games.filter(g => g.session_id !== currentSessionId);
+  const handleAction = (actionId: string) => {
+    setOpen(false);
+    onAction?.(actionId);
+  };
 
   return (
-    <Sheet open={open} onOpenChange={setOpen}>
-      <SheetTrigger asChild>
-        <button
-          className="fixed bottom-20 right-4 z-50 h-12 w-12 rounded-full bg-primary text-primary-foreground shadow-lg flex items-center justify-center hover:scale-105 active:scale-95 transition-transform"
-          aria-label="Game Hub"
-        >
-          <Globe className="h-5 w-5" />
-        </button>
-      </SheetTrigger>
-      <SheetContent side="bottom" className="rounded-t-2xl max-h-[70vh] overflow-y-auto">
-        <SheetHeader>
-          <SheetTitle className="font-display">Game Hub</SheetTitle>
-        </SheetHeader>
+    <>
+      {/* FAB Button */}
+      <button
+        onClick={() => setOpen(true)}
+        className="fixed bottom-20 right-4 z-50 h-14 w-14 rounded-full bg-primary text-primary-foreground shadow-lg shadow-primary/25 flex items-center justify-center hover:scale-110 active:scale-95 transition-all"
+        aria-label="Akce hráče"
+      >
+        <Plus className="h-6 w-6" />
+      </button>
 
-        <div className="space-y-4 mt-4">
-          {/* Current game */}
-          <div className="bg-accent/50 rounded-lg p-3 border border-border">
-            <div className="flex items-center gap-2 mb-1">
-              <Crown className="h-4 w-4 text-primary" />
-              <span className="font-display font-semibold text-sm">Aktuální hra</span>
+      {/* Command Menu Sheet */}
+      <Sheet open={open} onOpenChange={setOpen}>
+        <SheetContent side="bottom" className="rounded-t-2xl max-h-[80vh] overflow-y-auto pb-8">
+          <SheetHeader>
+            <SheetTitle className="font-display flex items-center gap-2">
+              <Plus className="h-5 w-5 text-primary" />
+              Co chcete provést?
+            </SheetTitle>
+          </SheetHeader>
+
+          <div className="mt-4 space-y-5">
+            {/* Context-aware section */}
+            {contextActions.length > 0 && (
+              <div>
+                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
+                  {contextLabel} — rychlé akce
+                </p>
+                <div className="grid grid-cols-1 gap-1.5">
+                  {contextActions.map(a => (
+                    <ActionButton key={a.id} action={a} onClick={handleAction} accent />
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Core actions */}
+            <div>
+              {contextActions.length > 0 && (
+                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">Hlavní akce</p>
+              )}
+              <div className="grid grid-cols-1 gap-1.5">
+                {CORE_ACTIONS.map(a => (
+                  <ActionButton key={a.id} action={a} onClick={handleAction} />
+                ))}
+              </div>
             </div>
-            <p className="font-display font-bold">{worldName || "Bez názvu"}</p>
-            <p className="text-xs text-muted-foreground">Rok {currentTurn} · {playerName}</p>
           </div>
-
-          {/* Other games */}
-          {otherGames.length > 0 && (
-            <div className="space-y-2">
-              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Přepnout hru</p>
-              {otherGames.map(g => (
-                <button
-                  key={g.session_id}
-                  onClick={() => { setOpen(false); navigate(`/game/${g.session_id}`); }}
-                  className="w-full text-left bg-card p-3 rounded-lg border border-border hover:border-primary/50 transition-colors"
-                >
-                  <p className="font-display font-semibold text-sm">{g.world_name || g.room_code}</p>
-                  <p className="text-xs text-muted-foreground">Rok {g.current_turn} · {g.player_name}</p>
-                </button>
-              ))}
-            </div>
-          )}
-
-          {/* Actions */}
-          <div className="grid grid-cols-2 gap-2 pt-2">
-            <Button variant="outline" onClick={() => { setOpen(false); navigate("/"); }} className="h-11">
-              <Home className="mr-2 h-4 w-4" />
-              Hlavní menu
-            </Button>
-            <Button variant="outline" onClick={() => { setOpen(false); signOut(); }} className="h-11 text-destructive border-destructive/30 hover:bg-destructive/10">
-              <LogOut className="mr-2 h-4 w-4" />
-              Odhlásit se
-            </Button>
-          </div>
-        </div>
-      </SheetContent>
-    </Sheet>
+        </SheetContent>
+      </Sheet>
+    </>
   );
 };
+
+function ActionButton({ action, onClick, accent }: { action: ActionItem; onClick: (id: string) => void; accent?: boolean }) {
+  const Icon = action.icon;
+  return (
+    <button
+      onClick={() => onClick(action.id)}
+      className={`w-full flex items-center gap-3 p-3 rounded-lg border transition-colors text-left ${
+        accent
+          ? "border-primary/40 bg-primary/5 hover:bg-primary/10"
+          : "border-border hover:border-primary/50 hover:bg-primary/5"
+      }`}
+    >
+      <div className={`h-9 w-9 rounded-lg flex items-center justify-center shrink-0 ${
+        accent ? "bg-primary/15 text-primary" : "bg-muted text-muted-foreground"
+      }`}>
+        <Icon className="h-4.5 w-4.5" />
+      </div>
+      <div className="min-w-0">
+        <p className="font-display font-semibold text-sm">{action.label}</p>
+        <p className="text-xs text-muted-foreground truncate">{action.desc}</p>
+      </div>
+    </button>
+  );
+}
 
 export default GameHubFAB;
