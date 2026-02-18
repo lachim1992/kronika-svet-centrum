@@ -17,6 +17,7 @@ import RealmTab from "@/pages/game/RealmTab";
 import FeedTab from "@/pages/game/FeedTab";
 import CodexTab from "@/pages/game/CodexTab";
 import ProfileTab from "@/pages/game/ProfileTab";
+import DevTab from "@/pages/game/DevTab";
 
 const Dashboard = () => {
   const { sessionId } = useParams<{ sessionId: string }>();
@@ -147,6 +148,18 @@ const Dashboard = () => {
         {activeTab === "realm" && <RealmTab {...sharedProps} />}
         {activeTab === "feed" && <FeedTab {...sharedProps} />}
         {activeTab === "codex" && <CodexTab {...sharedProps} codexEntityTarget={codexEntityTarget} onClearEntityTarget={() => setCodexEntityTarget(null)} />}
+        {activeTab === "dev" && myRole === "admin" && (
+          <DevTab
+            sessionId={session.id}
+            currentPlayerName={myPlayerName}
+            onRefetch={refetch}
+            citiesCount={cities.length}
+            eventsCount={events.length}
+            wondersCount={wonders.length}
+            memoriesCount={memories.length}
+            playersCount={players.length}
+          />
+        )}
       </main>
 
       <GameHubFAB
@@ -155,7 +168,7 @@ const Dashboard = () => {
         currentTurn={currentTurn}
         playerName={myPlayerName}
       />
-      <BottomNav activeTab={activeTab} onTabChange={setActiveTab} />
+      <BottomNav activeTab={activeTab} onTabChange={setActiveTab} showDevTab={myRole === "admin"} />
       <ActionChooser open={showActionChooser} onClose={() => setShowActionChooser(false)} onAction={handleAction} />
       <WorldEventDetailPanel
         eventId={eventDetailId}

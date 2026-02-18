@@ -1,13 +1,12 @@
 import { useState } from "react";
-import { useAuth, Profile } from "@/hooks/useAuth";
+import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
-import DevModePanel from "@/components/DevModePanel";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
-import { User, Settings, Bug, Save } from "lucide-react";
+import { User, Save } from "lucide-react";
 import { toast } from "sonner";
 
 interface Props {
@@ -65,21 +64,6 @@ const ProfileTab = ({
             </Button>
           </AccordionContent>
         </AccordionItem>
-
-        {myRole === "admin" && (
-          <AccordionItem value="devmode" className="manuscript-card">
-            <AccordionTrigger className="px-4 py-3 font-display text-sm">
-              <span className="flex items-center gap-2"><Bug className="h-4 w-4 text-primary" />Dev Mode (Admin)</span>
-            </AccordionTrigger>
-            <AccordionContent className="px-4 pb-4">
-              <DevModePanel
-                sessionId={sessionId} currentPlayerName={currentPlayerName}
-                onRefetch={onRefetch} citiesCount={citiesCount} eventsCount={eventsCount}
-                wondersCount={wondersCount} memoriesCount={memoriesCount} playersCount={playersCount}
-              />
-            </AccordionContent>
-          </AccordionItem>
-        )}
       </Accordion>
     </div>
   );
