@@ -1,11 +1,10 @@
-import { Home, Globe, Shield, Newspaper, Library, Plus } from "lucide-react";
+import { Home, Globe, Shield, Newspaper, Library } from "lucide-react";
 
 export type TabId = "home" | "world" | "realm" | "feed" | "codex";
 
 interface Props {
   activeTab: TabId;
   onTabChange: (tab: TabId) => void;
-  onAddAction: () => void;
 }
 
 const tabs: { id: TabId; label: string; icon: React.ElementType }[] = [
@@ -16,35 +15,18 @@ const tabs: { id: TabId; label: string; icon: React.ElementType }[] = [
   { id: "codex", label: "Kodex", icon: Library },
 ];
 
-const BottomNav = ({ activeTab, onTabChange, onAddAction }: Props) => {
+const BottomNav = ({ activeTab, onTabChange }: Props) => {
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-50 bg-card/95 backdrop-blur-sm border-t border-border shadow-lg">
-      <div className="flex items-center justify-around max-w-xl mx-auto h-16 relative">
-        {tabs.map((tab, i) => {
+      <div className="flex items-center justify-around max-w-xl mx-auto h-16">
+        {tabs.map((tab) => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.id;
-
-          // Insert FAB after index 1 (between World and Realm)
-          const elements = [];
-
-          if (i === 2) {
-            elements.push(
-              <button
-                key="fab"
-                onClick={onAddAction}
-                className="absolute -top-5 left-1/2 -translate-x-1/2 w-14 h-14 rounded-full bg-primary text-primary-foreground shadow-lg flex items-center justify-center hover:bg-primary/90 transition-colors z-10"
-                aria-label="Přidat akci"
-              >
-                <Plus className="h-6 w-6" />
-              </button>
-            );
-          }
-
-          elements.push(
+          return (
             <button
               key={tab.id}
               onClick={() => onTabChange(tab.id)}
-              className={`flex flex-col items-center gap-0.5 px-3 py-1 transition-colors ${
+              className={`flex flex-col items-center gap-0.5 px-3 py-1 transition-colors relative ${
                 isActive ? "text-primary" : "text-muted-foreground hover:text-foreground"
               }`}
             >
@@ -55,8 +37,6 @@ const BottomNav = ({ activeTab, onTabChange, onAddAction }: Props) => {
               )}
             </button>
           );
-
-          return elements;
         })}
       </div>
     </nav>

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import SmartAIGenerationPanel from "@/components/SmartAIGenerationPanel";
 import { Input } from "@/components/ui/input";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -843,6 +844,9 @@ const DevModePanel = ({
           session: {sessionId.slice(0, 8)}...
         </Badge>
       </div>
+
+      {/* Smart AI Generation */}
+      <SmartAIGenerationPanel sessionId={sessionId} onRefetch={onRefetch} />
 
       {/* Stats */}
       <div className="grid grid-cols-5 gap-2">

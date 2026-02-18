@@ -148,7 +148,7 @@ const Dashboard = () => {
         currentTurn={currentTurn}
         playerName={myPlayerName}
       />
-      <BottomNav activeTab={activeTab} onTabChange={setActiveTab} onAddAction={() => setShowActionChooser(true)} />
+      <BottomNav activeTab={activeTab} onTabChange={setActiveTab} />
       <ActionChooser open={showActionChooser} onClose={() => setShowActionChooser(false)} onAction={handleAction} />
       <WorldEventDetailPanel
         eventId={eventDetailId}
