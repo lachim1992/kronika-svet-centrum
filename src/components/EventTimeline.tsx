@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { MessageSquare, Clock, Sparkles, FileText, Send, PenLine } from "lucide-react";
 import { toast } from "sonner";
 import EventDetailModal from "@/components/EventDetailModal";
+import RichText from "@/components/RichText";
 
 type GameEvent = Tables<"game_events">;
 type EventResponse = Tables<"event_responses">;
@@ -44,9 +45,11 @@ interface EventTimelineProps {
   cities?: City[];
   memories?: WorldMemory[];
   epochStyle?: string;
+  entityIndex?: any;
+  onEntityClick?: (type: string, id: string) => void;
 }
 
-const EventTimeline = ({ events, responses, currentPlayerName, currentTurn, cities = [], memories = [], epochStyle = "kroniky" }: EventTimelineProps) => {
+const EventTimeline = ({ events, responses, currentPlayerName, currentTurn, cities = [], memories = [], epochStyle = "kroniky", entityIndex, onEntityClick }: EventTimelineProps) => {
   const [replyingTo, setReplyingTo] = useState<string | null>(null);
   const [replyText, setReplyText] = useState("");
   const [selectedEvent, setSelectedEvent] = useState<GameEvent | null>(null);
@@ -161,7 +164,7 @@ const EventTimeline = ({ events, responses, currentPlayerName, currentTurn, citi
                       })()}
                       <span className="text-sm font-semibold">{event.player}</span>
                       {event.location && (
-                        <span className="text-xs text-muted-foreground">📍 {event.location}</span>
+                        <RichText text={`📍 ${event.location}`} entityIndex={entityIndex} onEntityClick={onEntityClick} className="text-xs text-muted-foreground" />
                       )}
                       {/* G) Icons for narrative and notes */}
                       {hasNarrative && (
@@ -176,7 +179,7 @@ const EventTimeline = ({ events, responses, currentPlayerName, currentTurn, citi
                       )}
                     </div>
                     {event.note && (
-                      <p className="text-sm mt-1 italic text-muted-foreground">„{event.note}"</p>
+                      <RichText text={`„${event.note}"`} entityIndex={entityIndex} onEntityClick={onEntityClick} className="text-sm mt-1 italic text-muted-foreground" />
                     )}
                   </div>
 

@@ -10,6 +10,7 @@ import SourceImportPanel from "@/components/SourceImportPanel";
 import WorldActionLog from "@/components/WorldActionLog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { BookOpen, Newspaper, Swords, BookMarked, CalendarDays, Network, ScrollText, FileText } from "lucide-react";
+import type { EntityIndex } from "@/hooks/useEntityIndex";
 
 interface Props {
   sessionId: string;
@@ -25,14 +26,16 @@ interface Props {
   currentPlayerName: string;
   currentTurn: number;
   myRole: string;
+  entityIndex?: EntityIndex;
   onRefetch: () => void;
   onEventClick?: (eventId: string) => void;
+  onEntityClick?: (type: string, id: string) => void;
 }
 
 const ChronicleTab = ({
   sessionId, session, events, memories, chronicles, responses, players, cities,
   entityTraits, civilizations, currentPlayerName, currentTurn, myRole,
-  onRefetch, onEventClick,
+  entityIndex, onRefetch, onEventClick, onEntityClick,
 }: Props) => {
   const isAdmin = myRole === "admin" || !myRole;
 
@@ -81,6 +84,7 @@ const ChronicleTab = ({
             epochStyle={session.epoch_style} currentTurn={currentTurn} players={players}
             currentPlayerName={currentPlayerName} entityTraits={entityTraits} cities={cities}
             onRefetch={onRefetch} myRole={myRole} onEventClick={onEventClick}
+            onEntityClick={onEntityClick} entityIndex={entityIndex}
           />
         </TabsContent>
 
@@ -89,7 +93,7 @@ const ChronicleTab = ({
             sessionId={sessionId} currentPlayerName={currentPlayerName}
             events={events} memories={memories} cities={cities}
             civilizations={civilizations} epochStyle={session.epoch_style} currentTurn={currentTurn}
-            onEventClick={onEventClick}
+            onEventClick={onEventClick} onEntityClick={onEntityClick} entityIndex={entityIndex}
           />
         </TabsContent>
 
@@ -98,14 +102,15 @@ const ChronicleTab = ({
             sessionId={sessionId} currentTurn={currentTurn} events={events}
             cities={cities} memories={memories} players={players}
             epochStyle={session.epoch_style} myRole={myRole} onRefetch={onRefetch}
-            onEventClick={onEventClick}
+            onEventClick={onEventClick} onEntityClick={onEntityClick} entityIndex={entityIndex}
           />
         </TabsContent>
 
         <TabsContent value="events" className="mt-3">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <EventInput sessionId={sessionId} players={players} cities={cities} currentTurn={currentTurn} turnClosed={false} onEventAdded={onRefetch} />
-            <EventTimeline events={events} responses={responses} currentPlayerName={currentPlayerName} currentTurn={currentTurn} cities={cities} memories={memories} epochStyle={session.epoch_style} />
+            <EventTimeline events={events} responses={responses} currentPlayerName={currentPlayerName} currentTurn={currentTurn} cities={cities} memories={memories} epochStyle={session.epoch_style}
+              entityIndex={entityIndex} onEntityClick={onEntityClick} />
           </div>
         </TabsContent>
 
@@ -125,7 +130,8 @@ const ChronicleTab = ({
 
         {isAdmin && (
           <TabsContent value="actionlog" className="mt-3">
-            <WorldActionLog sessionId={sessionId} currentTurn={currentTurn} myRole={myRole} />
+            <WorldActionLog sessionId={sessionId} currentTurn={currentTurn} myRole={myRole}
+              entityIndex={entityIndex} onEntityClick={onEntityClick} />
           </TabsContent>
         )}
       </Tabs>

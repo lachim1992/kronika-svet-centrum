@@ -25,12 +25,14 @@ interface Props {
   worldFoundation: any;
   onRefetch: () => void;
   onEventClick?: (eventId: string) => void;
+  codexEntityTarget?: { type: string; id: string } | null;
+  onClearEntityTarget?: () => void;
 }
 
 const CodexTab = ({
   sessionId, session, events, memories, players, cities, wonders, greatPersons,
   resources, armies, chronicles, currentPlayerName, currentTurn, myRole,
-  worldFoundation, onRefetch, onEventClick,
+  worldFoundation, onRefetch, onEventClick, codexEntityTarget, onClearEntityTarget,
 }: Props) => {
   return (
     <div className="space-y-4 pb-20">

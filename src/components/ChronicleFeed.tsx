@@ -31,6 +31,8 @@ interface ChronicleFeedProps {
   onRefetch?: () => void;
   myRole?: string;
   onEventClick?: (eventId: string) => void;
+  onEntityClick?: (type: string, id: string) => void;
+  entityIndex?: any;
 }
 
 const EPOCH_LABELS: Record<string, string> = {
@@ -42,6 +44,7 @@ const EPOCH_LABELS: Record<string, string> = {
 const ChronicleFeed = ({
   sessionId, events, memories, chronicles, epochStyle,
   currentTurn, players, currentPlayerName, entityTraits, cities = [], onRefetch, myRole, onEventClick,
+  onEntityClick, entityIndex,
 }: ChronicleFeedProps) => {
   const isAdmin = myRole === "admin" || !myRole;
   const [generating, setGenerating] = useState(false);
@@ -332,7 +335,7 @@ const ChronicleFeed = ({
                     </div>
                   </div>
                 ) : (
-                  <RichText text={entry.text} onEventClick={onEventClick} className="text-sm leading-relaxed whitespace-pre-wrap" />
+                  <RichText text={entry.text} onEventClick={onEventClick} onEntityClick={onEntityClick} entityIndex={entityIndex} className="text-sm leading-relaxed whitespace-pre-wrap" />
                 )}
 
                 <div className="flex items-center justify-between mt-3">
@@ -407,7 +410,7 @@ const ChronicleFeed = ({
                 <div className="text-xs text-muted-foreground mb-2 font-display">
                   {EPOCH_LABELS[entry.epoch_style] || entry.epoch_style} • {new Date(entry.created_at).toLocaleString("cs-CZ")}
                 </div>
-                <RichText text={entry.text} onEventClick={onEventClick} className="text-sm leading-relaxed whitespace-pre-wrap" />
+                <RichText text={entry.text} onEventClick={onEventClick} onEntityClick={onEntityClick} entityIndex={entityIndex} className="text-sm leading-relaxed whitespace-pre-wrap" />
               </div>
             ))}
           </div>

@@ -1,16 +1,11 @@
-import { useState, useCallback, Fragment } from "react";
+import { useState, useCallback, Fragment, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { Badge } from "@/components/ui/badge";
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
-import { AlertTriangle, Calendar, MapPin, Tag, Link2 } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { AlertTriangle, Calendar, Tag, Link2 } from "lucide-react";
+import type { EntityIndex, EntityEntry } from "@/hooks/useEntityIndex";
 
-interface EntityRef {
-  type: "event" | "city" | "character" | "faction";
-  id: string;
-  label: string;
-  confidence?: number;
-  source?: "ai" | "user" | "system";
-}
+/* ───── Types ───── */
 
 interface WorldEvent {
   id: string;
@@ -26,24 +21,28 @@ interface WorldEvent {
   related_event_ids: string[] | null;
 }
 
-interface RichTextProps {
+type EntityType = "event" | "city" | "character" | "faction" | "province" | "region" | "wonder" | "person";
+
+export interface RichTextProps {
   text: string;
   onEventClick?: (eventId: string) => void;
+  onEntityClick?: (type: string, id: string) => void;
   sessionId?: string;
+  entityIndex?: EntityIndex;
   className?: string;
 }
 
-// Parse [[event:uuid|Label]] or [[city:uuid|Label]] patterns
-const REF_REGEX = /\[\[(event|city|character|faction):([^\]|]+)\|([^\]]+)\]\]/g;
+/* ───── Explicit ref parsing [[type:id|Label]] ───── */
+
+const REF_REGEX = /\[\[(event|city|character|faction|province|region|wonder|person):([^\]|]+)\|([^\]]+)\]\]/g;
 
 type TextSegment =
   | { type: "text"; value: string }
-  | { type: "ref"; refType: EntityRef["type"]; refId: string; label: string };
+  | { type: "ref"; refType: EntityType; refId: string; label: string };
 
-function parseText(text: string): TextSegment[] {
+function parseExplicitRefs(text: string): TextSegment[] {
   const segments: TextSegment[] = [];
   let lastIndex = 0;
-
   const matches = text.matchAll(REF_REGEX);
   for (const match of matches) {
     if (match.index! > lastIndex) {
@@ -51,11 +50,54 @@ function parseText(text: string): TextSegment[] {
     }
     segments.push({
       type: "ref",
-      refType: match[1] as EntityRef["type"],
+      refType: match[1] as EntityType,
       refId: match[2],
       label: match[3],
     });
     lastIndex = match.index! + match[0].length;
+  }
+  if (lastIndex < text.length) {
+    segments.push({ type: "text", value: text.slice(lastIndex) });
+  }
+  return segments;
+}
+
+/* ───── Auto-detect entity mentions from index ───── */
+
+function autoDetectEntities(text: string, index: EntityIndex): TextSegment[] {
+  if (!index.ready || index.entries.length === 0) {
+    return [{ type: "text", value: text }];
+  }
+
+  // Build a combined regex for all entity names (longest first, already sorted)
+  // Only include names with 3+ chars to avoid false positives
+  const validEntries = index.entries.filter(e => e.label.length >= 3);
+  if (validEntries.length === 0) return [{ type: "text", value: text }];
+
+  const escaped = validEntries.map(e => e.label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+  const pattern = new RegExp(`\\b(${escaped.join("|")})\\b`, "gi");
+
+  const segments: TextSegment[] = [];
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = pattern.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      segments.push({ type: "text", value: text.slice(lastIndex, match.index) });
+    }
+    const matchedText = match[1];
+    const entry = index.byName.get(matchedText.toLowerCase());
+    if (entry) {
+      segments.push({
+        type: "ref",
+        refType: entry.type as EntityType,
+        refId: entry.id,
+        label: matchedText,
+      });
+    } else {
+      segments.push({ type: "text", value: matchedText });
+    }
+    lastIndex = match.index + match[0].length;
   }
 
   if (lastIndex < text.length) {
@@ -65,32 +107,76 @@ function parseText(text: string): TextSegment[] {
   return segments;
 }
 
+/* ───── Combined parse: explicit refs first, then auto-detect on remaining text ───── */
+
+function parseText(text: string, entityIndex?: EntityIndex): TextSegment[] {
+  // First pass: explicit [[type:id|Label]] refs
+  const explicitSegments = parseExplicitRefs(text);
+
+  if (!entityIndex?.ready) return explicitSegments;
+
+  // Second pass: auto-detect on text-only segments
+  const result: TextSegment[] = [];
+  for (const seg of explicitSegments) {
+    if (seg.type === "ref") {
+      result.push(seg);
+    } else {
+      const detected = autoDetectEntities(seg.value, entityIndex);
+      result.push(...detected);
+    }
+  }
+  return result;
+}
+
+/* ───── Style maps ───── */
+
 const REF_COLORS: Record<string, string> = {
   event: "bg-primary/10 text-primary border-primary/30 hover:bg-primary/20",
   city: "bg-emerald-500/10 text-emerald-700 border-emerald-500/30 hover:bg-emerald-500/20 dark:text-emerald-400",
   character: "bg-amber-500/10 text-amber-700 border-amber-500/30 hover:bg-amber-500/20 dark:text-amber-400",
+  person: "bg-amber-500/10 text-amber-700 border-amber-500/30 hover:bg-amber-500/20 dark:text-amber-400",
   faction: "bg-violet-500/10 text-violet-700 border-violet-500/30 hover:bg-violet-500/20 dark:text-violet-400",
+  province: "bg-teal-500/10 text-teal-700 border-teal-500/30 hover:bg-teal-500/20 dark:text-teal-400",
+  region: "bg-sky-500/10 text-sky-700 border-sky-500/30 hover:bg-sky-500/20 dark:text-sky-400",
+  wonder: "bg-yellow-500/10 text-yellow-700 border-yellow-500/30 hover:bg-yellow-500/20 dark:text-yellow-400",
 };
 
 const REF_ICONS: Record<string, string> = {
   event: "📜",
   city: "🏛️",
   character: "👤",
+  person: "👤",
   faction: "⚔️",
+  province: "🗺️",
+  region: "🌍",
+  wonder: "🏛️",
 };
 
-function EventRefBadge({
+const TYPE_LABELS: Record<string, string> = {
+  event: "Událost",
+  city: "Město",
+  character: "Postava",
+  person: "Osobnost",
+  faction: "Frakce",
+  province: "Provincie",
+  region: "Region",
+  wonder: "Div světa",
+};
+
+/* ───── Entity Badge with Hover ───── */
+
+function EntityRefBadge({
   refType,
   refId,
   label,
-  sessionId,
   onEventClick,
+  onEntityClick,
 }: {
-  refType: EntityRef["type"];
+  refType: EntityType;
   refId: string;
   label: string;
-  sessionId?: string;
   onEventClick?: (eventId: string) => void;
+  onEntityClick?: (type: string, id: string) => void;
 }) {
   const [eventData, setEventData] = useState<WorldEvent | null | "loading" | "not_found">(null);
 
@@ -109,6 +195,13 @@ function EventRefBadge({
     }
   }, [refId, refType, eventData]);
 
+  const handleClick = () => {
+    if (refType === "event") {
+      onEventClick?.(refId);
+    }
+    onEntityClick?.(refType, refId);
+  };
+
   const colorClass = REF_COLORS[refType] || REF_COLORS.event;
   const icon = REF_ICONS[refType] || "🔗";
 
@@ -117,7 +210,7 @@ function EventRefBadge({
       <HoverCardTrigger asChild>
         <button
           className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded border text-xs font-medium cursor-pointer transition-colors ${colorClass}`}
-          onClick={() => onEventClick?.(refId)}
+          onClick={handleClick}
           onMouseEnter={handleHover}
           type="button"
         >
@@ -127,10 +220,11 @@ function EventRefBadge({
         </button>
       </HoverCardTrigger>
       <HoverCardContent className="w-72 p-3" side="top" align="start">
-        {eventData === "loading" && (
+        {/* Event hover with full data */}
+        {refType === "event" && eventData === "loading" && (
           <p className="text-xs text-muted-foreground animate-pulse">Načítám...</p>
         )}
-        {eventData === "not_found" && (
+        {refType === "event" && eventData === "not_found" && (
           <div className="flex items-center gap-2 text-xs text-destructive">
             <AlertTriangle className="h-3.5 w-3.5" />
             <div>
@@ -139,7 +233,7 @@ function EventRefBadge({
             </div>
           </div>
         )}
-        {eventData && typeof eventData === "object" && "id" in eventData && (
+        {refType === "event" && eventData && typeof eventData === "object" && "id" in eventData && (
           <div className="space-y-1.5">
             <p className="font-display font-semibold text-sm">{eventData.title}</p>
             {eventData.date && (
@@ -165,10 +259,12 @@ function EventRefBadge({
             <p className="text-[10px] text-muted-foreground mt-1">Klikněte pro detail →</p>
           </div>
         )}
-        {eventData === null && refType !== "event" && (
+        {/* Non-event hover: simple preview */}
+        {refType !== "event" && (
           <div className="text-xs text-muted-foreground">
-            <p className="font-semibold">{icon} {label}</p>
-            <p>Typ: {refType}</p>
+            <p className="font-semibold text-foreground">{icon} {label}</p>
+            <p>{TYPE_LABELS[refType] || refType}</p>
+            <p className="text-[10px] mt-1">Klikněte pro otevření v Kodexu →</p>
           </div>
         )}
       </HoverCardContent>
@@ -176,24 +272,25 @@ function EventRefBadge({
   );
 }
 
-const RichText = ({ text, onEventClick, sessionId, className }: RichTextProps) => {
-  const segments = parseText(text);
+/* ───── Main RichText Component ───── */
+
+const RichText = ({ text, onEventClick, onEntityClick, sessionId, entityIndex, className }: RichTextProps) => {
+  const segments = useMemo(() => parseText(text, entityIndex), [text, entityIndex]);
 
   return (
     <span className={className}>
       {segments.map((seg, i) => {
         if (seg.type === "text") {
-          // Preserve whitespace / newlines
           return <Fragment key={i}>{seg.value}</Fragment>;
         }
         return (
-          <EventRefBadge
-            key={i}
+          <EntityRefBadge
+            key={`${seg.refId}-${i}`}
             refType={seg.refType}
             refId={seg.refId}
             label={seg.label}
-            sessionId={sessionId}
             onEventClick={onEventClick}
+            onEntityClick={onEntityClick}
           />
         );
       })}

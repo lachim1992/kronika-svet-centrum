@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useGameSession } from "@/hooks/useGameSession";
 import { useAuth } from "@/hooks/useAuth";
+import { useEntityIndex } from "@/hooks/useEntityIndex";
 import { supabase } from "@/integrations/supabase/client";
 import { Scroll } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -27,12 +28,15 @@ const Dashboard = () => {
     loading, refetch,
   } = useGameSession(sessionId || null);
 
+  const entityIndex = useEntityIndex(sessionId);
+
   const [activeTab, setActiveTab] = useState<TabId>("home");
   const [showActionChooser, setShowActionChooser] = useState(false);
   const [eventDetailId, setEventDetailId] = useState<string | null>(null);
   const [myRole, setMyRole] = useState<string>("player");
   const [myPlayerName, setMyPlayerName] = useState("Hráč");
   const [worldFoundation, setWorldFoundation] = useState<any>(null);
+  const [codexEntityTarget, setCodexEntityTarget] = useState<{ type: string; id: string } | null>(null);
 
   useEffect(() => {
     if (!user || !sessionId) return;
@@ -94,6 +98,16 @@ const Dashboard = () => {
     setActiveTab("chronicle");
   };
 
+  const handleEntityClick = (type: string, id: string) => {
+    if (type === "event") {
+      setEventDetailId(id);
+      return;
+    }
+    // Navigate to Codex and pass entity target
+    setCodexEntityTarget({ type, id });
+    setActiveTab("codex");
+  };
+
   const sharedProps = {
     sessionId: session.id,
     session,
@@ -104,8 +118,10 @@ const Dashboard = () => {
     currentTurn,
     myRole,
     worldFoundation,
+    entityIndex,
     onRefetch: refetch,
     onEventClick: (id: string) => setEventDetailId(id),
+    onEntityClick: handleEntityClick,
   };
 
   return (
@@ -123,7 +139,7 @@ const Dashboard = () => {
         {activeTab === "world" && <WorldTab {...sharedProps} />}
         {activeTab === "realm" && <RealmTab {...sharedProps} />}
         {activeTab === "chronicle" && <ChronicleTab {...sharedProps} />}
-        {activeTab === "codex" && <CodexTab {...sharedProps} />}
+        {activeTab === "codex" && <CodexTab {...sharedProps} codexEntityTarget={codexEntityTarget} onClearEntityTarget={() => setCodexEntityTarget(null)} />}
       </main>
 
       <BottomNav activeTab={activeTab} onTabChange={setActiveTab} onAddAction={() => setShowActionChooser(true)} />

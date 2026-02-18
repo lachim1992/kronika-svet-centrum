@@ -4,6 +4,8 @@ import {
   Crown, Castle, Swords, Coins, Wheat, Trees, Mountain, Gem,
   AlertTriangle, Flame, Shield, Scroll, MapPin, Landmark, Bell
 } from "lucide-react";
+import RichText from "@/components/RichText";
+import type { EntityIndex } from "@/hooks/useEntityIndex";
 
 interface Props {
   sessionId: string;
@@ -20,7 +22,9 @@ interface Props {
   currentPlayerName: string;
   currentTurn: number;
   myRole: string;
+  entityIndex?: EntityIndex;
   onEventClick?: (eventId: string) => void;
+  onEntityClick?: (type: string, id: string) => void;
 }
 
 const RESOURCE_ICONS: Record<string, React.ReactNode> = {
@@ -36,7 +40,8 @@ const RESOURCE_LABELS: Record<string, string> = {
 
 const HomeTab = ({
   events, cities, resources, armies, wonders, chronicles,
-  worldCrises, currentPlayerName, currentTurn,
+  worldCrises, currentPlayerName, currentTurn, entityIndex,
+  onEventClick, onEntityClick,
 }: Props) => {
   const myCities = cities.filter(c => c.owner_player === currentPlayerName);
   const myResources = resources.filter(r => r.player_name === currentPlayerName);
@@ -76,7 +81,10 @@ const HomeTab = ({
               {devastatedCities.map(c => (
                 <div key={c.id} className="flex items-center gap-2 text-sm">
                   <Flame className="h-3 w-3 text-destructive" />
-                  <span>{c.name} — {c.status === "devastated" ? "Zpustošeno" : "Obléháno"}</span>
+                  <button className="hover:underline" onClick={() => onEntityClick?.("city", c.id)}>
+                    {c.name}
+                  </button>
+                  <span> — {c.status === "devastated" ? "Zpustošeno" : "Obléháno"}</span>
                 </div>
               ))}
               {activeCrises.map(c => (
@@ -109,11 +117,12 @@ const HomeTab = ({
             )}
             <div className="mt-2 space-y-0.5">
               {myCities.slice(0, 3).map(c => (
-                <div key={c.id} className="text-xs flex items-center gap-1">
+                <button key={c.id} className="text-xs flex items-center gap-1 w-full hover:text-primary transition-colors"
+                  onClick={() => onEntityClick?.("city", c.id)}>
                   <MapPin className="h-3 w-3 text-muted-foreground" />
                   <span className="truncate">{c.name}</span>
                   <Badge variant="outline" className="text-[9px] h-4 ml-auto">{c.level}</Badge>
-                </div>
+                </button>
               ))}
               {myCities.length > 3 && (
                 <p className="text-xs text-muted-foreground">+{myCities.length - 3} dalších</p>
@@ -194,7 +203,7 @@ const HomeTab = ({
         </Card>
       </div>
 
-      {/* Recent Events / Notifications */}
+      {/* Recent Events */}
       <Card>
         <CardHeader className="p-3 pb-2">
           <CardTitle className="text-sm flex items-center gap-2">
@@ -214,8 +223,24 @@ const HomeTab = ({
                   <Badge variant="outline" className="text-[10px] shrink-0 mt-0.5">{e.event_type}</Badge>
                   <div className="flex-1 min-w-0">
                     <span className="text-xs font-semibold">{e.player}</span>
-                    {e.note && <span className="text-xs text-muted-foreground"> — {e.note}</span>}
-                    {e.location && <span className="text-[10px] text-muted-foreground block">📍 {e.location}</span>}
+                    {e.note && (
+                      <RichText
+                        text={` — ${e.note}`}
+                        entityIndex={entityIndex}
+                        onEventClick={onEventClick}
+                        onEntityClick={onEntityClick}
+                        className="text-xs text-muted-foreground"
+                      />
+                    )}
+                    {e.location && (
+                      <RichText
+                        text={`📍 ${e.location}`}
+                        entityIndex={entityIndex}
+                        onEventClick={onEventClick}
+                        onEntityClick={onEntityClick}
+                        className="text-[10px] text-muted-foreground block"
+                      />
+                    )}
                   </div>
                   <span className="text-[10px] text-muted-foreground shrink-0">Rok {e.turn_number}</span>
                 </div>
@@ -235,9 +260,13 @@ const HomeTab = ({
             </CardTitle>
           </CardHeader>
           <CardContent className="p-3 pt-0">
-            <p className="text-xs leading-relaxed line-clamp-4 whitespace-pre-wrap">
-              {chronicles[chronicles.length - 1].text}
-            </p>
+            <RichText
+              text={chronicles[chronicles.length - 1].text}
+              entityIndex={entityIndex}
+              onEventClick={onEventClick}
+              onEntityClick={onEntityClick}
+              className="text-xs leading-relaxed line-clamp-4 whitespace-pre-wrap"
+            />
             <p className="text-[10px] text-muted-foreground mt-2">
               {new Date(chronicles[chronicles.length - 1].created_at).toLocaleString("cs-CZ")}
             </p>
