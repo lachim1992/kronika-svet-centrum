@@ -534,6 +534,77 @@ export type Database = {
           },
         ]
       }
+      entity_contributions: {
+        Row: {
+          accepted_at: string | null
+          ai_expanded_text: string | null
+          author_player: string
+          content_text: string
+          content_type: string
+          created_at: string
+          entity_id: string
+          entity_type: string
+          id: string
+          image_prompt: string | null
+          image_url: string | null
+          session_id: string
+          status: string
+          title: string | null
+          updated_at: string
+          vote_threshold: number
+          votes_no: string[] | null
+          votes_yes: string[] | null
+        }
+        Insert: {
+          accepted_at?: string | null
+          ai_expanded_text?: string | null
+          author_player: string
+          content_text: string
+          content_type?: string
+          created_at?: string
+          entity_id: string
+          entity_type: string
+          id?: string
+          image_prompt?: string | null
+          image_url?: string | null
+          session_id: string
+          status?: string
+          title?: string | null
+          updated_at?: string
+          vote_threshold?: number
+          votes_no?: string[] | null
+          votes_yes?: string[] | null
+        }
+        Update: {
+          accepted_at?: string | null
+          ai_expanded_text?: string | null
+          author_player?: string
+          content_text?: string
+          content_type?: string
+          created_at?: string
+          entity_id?: string
+          entity_type?: string
+          id?: string
+          image_prompt?: string | null
+          image_url?: string | null
+          session_id?: string
+          status?: string
+          title?: string | null
+          updated_at?: string
+          vote_threshold?: number
+          votes_no?: string[] | null
+          votes_yes?: string[] | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "entity_contributions_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       entity_traits: {
         Row: {
           created_at: string

@@ -38,11 +38,12 @@ interface CityDirectoryProps {
   currentPlayerName: string;
   currentTurn: number;
   onRefetch?: () => void;
+  onCityClick?: (cityId: string) => void;
 }
 
 const CityDirectory = ({
   sessionId, cities, events, players, memories, wonders,
-  currentPlayerName, currentTurn, onRefetch,
+  currentPlayerName, currentTurn, onRefetch, onCityClick,
 }: CityDirectoryProps) => {
   const [selectedCity, setSelectedCity] = useState<City | null>(null);
   const [search, setSearch] = useState("");
@@ -82,6 +83,11 @@ const CityDirectory = ({
   });
 
   if (selectedCity) {
+    if (onCityClick) {
+      onCityClick(selectedCity.id);
+      setSelectedCity(null);
+      return null;
+    }
     const cityEvents = events.filter(e => e.city_id === selectedCity.id || e.secondary_city_id === selectedCity.id);
     const cityWonders = wonders.filter(w => w.city_name === selectedCity.name);
     return (
