@@ -16,7 +16,7 @@ export default {
       fontFamily: {
         display: ["Cinzel", "serif"],
         decorative: ["Cinzel Decorative", "serif"],
-        body: ["Crimson Text", "serif"],
+        body: ["Inter", "sans-serif"],
       },
       colors: {
         border: "hsl(var(--border))",

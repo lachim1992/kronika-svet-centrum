@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700;900&family=Cinzel+Decorative:wght@400;700;900&family=Crimson+Text:ital,wght@0,400;0,600;0,700;1,400&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700;900&family=Cinzel+Decorative:wght@400;700;900&family=Inter:wght@300;400;500;600;700&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -6,57 +6,57 @@
 
 @layer base {
   :root {
-    --background: 37 30% 92%;
-    --foreground: 25 30% 12%;
+    --background: 37 38% 95%;
+    --foreground: 27 33% 13%;
 
-    --card: 38 35% 96%;
-    --card-foreground: 25 30% 12%;
+    --card: 43 100% 98%;
+    --card-foreground: 27 33% 13%;
 
-    --popover: 38 35% 96%;
-    --popover-foreground: 25 30% 12%;
+    --popover: 43 100% 98%;
+    --popover-foreground: 27 33% 13%;
 
-    --primary: 36 72% 42%;
-    --primary-foreground: 38 30% 96%;
+    --primary: 39 52% 47%;
+    --primary-foreground: 43 100% 98%;
 
-    --secondary: 32 18% 82%;
-    --secondary-foreground: 25 30% 18%;
+    --secondary: 37 32% 90%;
+    --secondary-foreground: 27 33% 18%;
 
-    --muted: 35 15% 88%;
-    --muted-foreground: 25 12% 48%;
+    --muted: 37 25% 91%;
+    --muted-foreground: 24 18% 30%;
 
-    --accent: 0 50% 42%;
+    --accent: 162 33% 27%;
     --accent-foreground: 0 0% 98%;
 
-    --destructive: 0 65% 48%;
+    --destructive: 0 52% 36%;
     --destructive-foreground: 0 0% 98%;
 
-    --border: 32 22% 78%;
-    --input: 32 22% 78%;
-    --ring: 36 72% 42%;
+    --border: 37 32% 85%;
+    --input: 37 32% 85%;
+    --ring: 39 52% 47%;
 
-    --radius: 0.5rem;
+    --radius: 0.875rem;
 
-    --sidebar-background: 35 25% 90%;
-    --sidebar-foreground: 25 30% 18%;
-    --sidebar-primary: 36 72% 42%;
-    --sidebar-primary-foreground: 38 30% 96%;
-    --sidebar-accent: 35 20% 85%;
-    --sidebar-accent-foreground: 25 30% 18%;
-    --sidebar-border: 32 22% 78%;
-    --sidebar-ring: 36 72% 42%;
+    --sidebar-background: 37 30% 93%;
+    --sidebar-foreground: 27 33% 18%;
+    --sidebar-primary: 39 52% 47%;
+    --sidebar-primary-foreground: 43 100% 98%;
+    --sidebar-accent: 37 25% 88%;
+    --sidebar-accent-foreground: 27 33% 18%;
+    --sidebar-border: 37 32% 85%;
+    --sidebar-ring: 39 52% 47%;
 
     --chronicle-myth: 270 35% 35%;
     --chronicle-medieval: 25 40% 30%;
     --chronicle-modern: 210 25% 25%;
 
     --gold-glow: 40 80% 55%;
-    --parchment-dark: 33 20% 75%;
-    --ink: 25 35% 15%;
+    --parchment-dark: 37 25% 78%;
+    --ink: 27 33% 13%;
 
-    --illuminated: 36 72% 42%;
-    --seal-red: 0 55% 38%;
+    --illuminated: 39 52% 47%;
+    --seal-red: 0 52% 36%;
     --royal-purple: 270 30% 28%;
-    --forest-green: 140 25% 30%;
+    --forest-green: 162 33% 27%;
   }
 
   .dark {
@@ -69,7 +69,7 @@
     --popover: 25 18% 12%;
     --popover-foreground: 37 25% 88%;
 
-    --primary: 36 72% 50%;
+    --primary: 39 60% 50%;
     --primary-foreground: 25 20% 8%;
 
     --secondary: 25 15% 18%;
@@ -78,24 +78,24 @@
     --muted: 25 12% 18%;
     --muted-foreground: 35 15% 55%;
 
-    --accent: 0 50% 50%;
+    --accent: 162 35% 45%;
     --accent-foreground: 0 0% 98%;
 
-    --destructive: 0 62.8% 30.6%;
+    --destructive: 0 52% 36%;
     --destructive-foreground: 0 0% 98%;
 
     --border: 25 12% 22%;
     --input: 25 12% 22%;
-    --ring: 36 72% 50%;
+    --ring: 39 60% 50%;
 
     --sidebar-background: 25 18% 10%;
     --sidebar-foreground: 37 25% 88%;
-    --sidebar-primary: 36 72% 50%;
+    --sidebar-primary: 39 60% 50%;
     --sidebar-primary-foreground: 25 20% 8%;
     --sidebar-accent: 25 12% 16%;
     --sidebar-accent-foreground: 37 25% 88%;
     --sidebar-border: 25 12% 22%;
-    --sidebar-ring: 36 72% 50%;
+    --sidebar-ring: 39 60% 50%;
 
     --chronicle-myth: 270 40% 60%;
     --chronicle-medieval: 35 50% 60%;
@@ -105,10 +105,10 @@
     --parchment-dark: 25 15% 25%;
     --ink: 37 25% 88%;
 
-    --illuminated: 36 72% 50%;
+    --illuminated: 39 60% 50%;
     --seal-red: 0 55% 50%;
     --royal-purple: 270 35% 55%;
-    --forest-green: 140 30% 50%;
+    --forest-green: 162 35% 45%;
   }
 }
 
