@@ -304,11 +304,49 @@ export async function advanceTurn(sessionId: string, currentTurn: number) {
 
 // ---- Cities ----
 
-export async function addCity(sessionId: string, ownerPlayer: string, name: string, province: string, level: string, tags: string[]) {
-  const { error } = await supabase.from("cities").insert({
+export async function addCity(sessionId: string, ownerPlayer: string, name: string, province: string, level: string, tags: string[], currentTurn?: number) {
+  const { data: cityData, error } = await supabase.from("cities").insert({
     session_id: sessionId, owner_player: ownerPlayer, name, province: province || null, level, tags,
+  }).select("id").single();
+  if (error) { console.error(error); return; }
+
+  const turn = currentTurn || 1;
+  const cityId = cityData?.id;
+
+  // Auto-create World Event for city founding
+  const slug = `founding-${name.toLowerCase().replace(/\s+/g, "-")}-${Date.now()}`;
+  await supabase.from("world_events").insert({
+    session_id: sessionId,
+    title: `Založení města ${name}`,
+    slug,
+    summary: `${ownerPlayer} založil${province ? ` v provincii ${province}` : ""} nové ${level.toLowerCase()} ${name}.`,
+    event_category: "founding",
+    created_turn: turn,
+    date: `Rok ${turn}`,
+    status: "published",
+    created_by_type: "player",
+    affected_players: [ownerPlayer],
+    location_id: cityId || null,
+    participants: JSON.stringify([{ name: ownerPlayer, role: "founder" }]),
   });
-  if (error) console.error(error);
+
+  // Auto-create Feed item (šuškanda)
+  await supabase.from("world_feed_items").insert({
+    session_id: sessionId,
+    turn_number: turn,
+    feed_type: "gossip",
+    content: `👂 Šeptá se, že ${ownerPlayer} založil nové ${level.toLowerCase()} jménem **${name}**${province ? ` v provincii ${province}` : ""}. Obchodníci již hledají cestu do nových ulic…`,
+    linked_city: name,
+    importance: "normal",
+  });
+
+  // Auto-create Chronicle entry
+  await supabase.from("chronicle_entries").insert({
+    session_id: sessionId,
+    turn_from: turn,
+    turn_to: turn,
+    text: `V roce ${turn} bylo založeno ${level.toLowerCase()} **${name}**${province ? ` v provincii ${province}` : ""}, pod vládou ${ownerPlayer}. Nová osada se rodí z prachu a naděje.`,
+  });
 }
 
 export async function updateCity(id: string, updates: { level?: string; province?: string; tags?: string[] }) {

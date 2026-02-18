@@ -13,7 +13,7 @@ import WorldEventDetailPanel from "@/components/WorldEventDetailPanel";
 import HomeTab from "@/pages/game/HomeTab";
 import WorldTab from "@/pages/game/WorldTab";
 import RealmTab from "@/pages/game/RealmTab";
-import ChronicleTab from "@/pages/game/ChronicleTab";
+import FeedTab from "@/pages/game/FeedTab";
 import CodexTab from "@/pages/game/CodexTab";
 import ProfileTab from "@/pages/game/ProfileTab";
 
@@ -95,7 +95,7 @@ const Dashboard = () => {
   const currentTurn = session.current_turn;
 
   const handleAction = (action: string) => {
-    setActiveTab("chronicle");
+    setActiveTab("feed");
   };
 
   const handleEntityClick = (type: string, id: string) => {
@@ -103,7 +103,6 @@ const Dashboard = () => {
       setEventDetailId(id);
       return;
     }
-    // Navigate to Codex and pass entity target
     setCodexEntityTarget({ type, id });
     setActiveTab("codex");
   };
@@ -138,7 +137,7 @@ const Dashboard = () => {
         {activeTab === "home" && <HomeTab {...sharedProps} />}
         {activeTab === "world" && <WorldTab {...sharedProps} />}
         {activeTab === "realm" && <RealmTab {...sharedProps} />}
-        {activeTab === "chronicle" && <ChronicleTab {...sharedProps} />}
+        {activeTab === "feed" && <FeedTab {...sharedProps} />}
         {activeTab === "codex" && <CodexTab {...sharedProps} codexEntityTarget={codexEntityTarget} onClearEntityTarget={() => setCodexEntityTarget(null)} />}
       </main>
 

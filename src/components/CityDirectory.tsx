@@ -63,10 +63,10 @@ const CityDirectory = ({
     if (cities.some(c => c.name.toLowerCase() === name.trim().toLowerCase())) {
       toast.error("Město s tímto názvem již existuje"); return;
     }
-    await addCity(sessionId, currentPlayerName, name.trim(), province.trim(), level, selectedTags);
+    await addCity(sessionId, currentPlayerName, name.trim(), province.trim(), level, selectedTags, currentTurn);
     setName(""); setProvince(""); setLevel("Osada"); setSelectedTags([]);
     setShowCreate(false);
-    toast.success("Město založeno");
+    toast.success("🏗️ Město založeno! Záznam vytvořen v kronice a feedu.");
     onRefetch?.();
   };
 
