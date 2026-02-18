@@ -27,12 +27,13 @@ interface Props {
   myRole: string;
   worldFoundation: any;
   onRefetch: () => void;
+  onEventClick?: (eventId: string) => void;
 }
 
 const WorldTab = ({
   sessionId, session, events, memories, chronicles, cityStates, players, cities,
   wonders, entityTraits, greatPersons, currentPlayerName, currentTurn, myRole,
-  worldFoundation, onRefetch,
+  worldFoundation, onRefetch, onEventClick,
 }: Props) => {
   const isAdmin = myRole === "admin" || !myRole;
 
@@ -61,7 +62,7 @@ const WorldTab = ({
               sessionId={sessionId} events={events} memories={memories} chronicles={chronicles}
               epochStyle={session.epoch_style} currentTurn={currentTurn} players={players}
               currentPlayerName={currentPlayerName} entityTraits={entityTraits} cities={cities}
-              onRefetch={onRefetch} myRole={myRole}
+              onRefetch={onRefetch} myRole={myRole} onEventClick={onEventClick}
             />
           </AccordionContent>
         </AccordionItem>
@@ -94,7 +95,7 @@ const WorldTab = ({
           <AccordionContent className="px-4 pb-4">
             <WorldHistoryPanel
               sessionId={sessionId} events={events} memories={memories}
-              epochStyle={session.epoch_style} currentTurn={currentTurn}
+              epochStyle={session.epoch_style} currentTurn={currentTurn} onEventClick={onEventClick}
             />
           </AccordionContent>
         </AccordionItem>

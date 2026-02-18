@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Crown, Sparkles, BookOpen } from "lucide-react";
 import { toast } from "sonner";
+import RichText from "@/components/RichText";
 
 type GameEvent = Tables<"game_events">;
 type WorldMemory = Tables<"world_memories">;
@@ -32,10 +33,11 @@ interface PlayerChroniclePanelProps {
   civilizations: any[];
   epochStyle: string;
   currentTurn: number;
+  onEventClick?: (eventId: string) => void;
 }
 
 const PlayerChroniclePanel = ({
-  sessionId, currentPlayerName, events, memories, cities, civilizations, epochStyle, currentTurn,
+  sessionId, currentPlayerName, events, memories, cities, civilizations, epochStyle, currentTurn, onEventClick,
 }: PlayerChroniclePanelProps) => {
   const [chapters, setChapters] = useState<PlayerChronicleChapter[]>([]);
   const [generating, setGenerating] = useState(false);
@@ -177,7 +179,7 @@ const PlayerChroniclePanel = ({
                   Rok {ch.from_turn}–{ch.to_turn}
                 </Badge>
               </div>
-              <p className="text-sm leading-relaxed whitespace-pre-wrap">{ch.chapter_text}</p>
+              <RichText text={ch.chapter_text} onEventClick={onEventClick} className="text-sm leading-relaxed whitespace-pre-wrap" />
               <div className="text-xs text-muted-foreground mt-3">
                 Styl: {ch.epoch_style} • {new Date(ch.created_at).toLocaleString("cs-CZ")}
               </div>
