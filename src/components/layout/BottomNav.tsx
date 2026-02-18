@@ -8,11 +8,11 @@ interface Props {
 }
 
 const tabs: { id: TabId; label: string; icon: React.ElementType }[] = [
-  { id: "home", label: "Říše", icon: Home },
-  { id: "world", label: "Svět", icon: Globe },
-  { id: "realm", label: "Správa", icon: Shield },
-  { id: "feed", label: "Feed", icon: Newspaper },
-  { id: "codex", label: "Kodex", icon: Library },
+  { id: "home", label: "My Realm", icon: Home },
+  { id: "world", label: "World", icon: Globe },
+  { id: "realm", label: "Realm", icon: Shield },
+  { id: "feed", label: "Whispers", icon: Newspaper },
+  { id: "codex", label: "Codex", icon: Library },
 ];
 
 const BottomNav = ({ activeTab, onTabChange }: Props) => {
