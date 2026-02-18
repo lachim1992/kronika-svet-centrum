@@ -167,6 +167,7 @@ const GameHubFAB = ({
   const goldResource = resources.find(r => r.player_name === playerName && r.resource_type === "wealth");
 
   const handleAction = (actionId: string) => {
+    console.log(`FAB action clicked: ${actionId}`);
     setOpen(false);
     onAction?.(actionId);
   };
