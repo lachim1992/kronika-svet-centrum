@@ -410,6 +410,50 @@ export type Database = {
           },
         ]
       }
+      encyclopedia_images: {
+        Row: {
+          created_at: string
+          created_by: string
+          entity_id: string
+          entity_type: string
+          id: string
+          image_prompt: string | null
+          image_url: string
+          is_primary: boolean
+          session_id: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string
+          entity_id: string
+          entity_type: string
+          id?: string
+          image_prompt?: string | null
+          image_url: string
+          is_primary?: boolean
+          session_id: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string
+          entity_id?: string
+          entity_type?: string
+          id?: string
+          image_prompt?: string | null
+          image_url?: string
+          is_primary?: boolean
+          session_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "encyclopedia_images_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       entity_traits: {
         Row: {
           created_at: string
@@ -510,6 +554,41 @@ export type Database = {
             columns: ["event_id"]
             isOneToOne: false
             referencedRelation: "game_events"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      event_entity_links: {
+        Row: {
+          created_at: string
+          entity_id: string
+          entity_type: string
+          event_id: string
+          id: string
+          link_type: string
+        }
+        Insert: {
+          created_at?: string
+          entity_id: string
+          entity_type: string
+          event_id: string
+          id?: string
+          link_type?: string
+        }
+        Update: {
+          created_at?: string
+          entity_id?: string
+          entity_type?: string
+          event_id?: string
+          id?: string
+          link_type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "event_entity_links_event_id_fkey"
+            columns: ["event_id"]
+            isOneToOne: false
+            referencedRelation: "world_events"
             referencedColumns: ["id"]
           },
         ]
@@ -1140,28 +1219,49 @@ export type Database = {
       }
       provinces: {
         Row: {
+          ai_description: string | null
           capital_city_id: string | null
           created_at: string
+          description: string | null
           id: string
+          image_prompt: string | null
+          image_url: string | null
           name: string
           owner_player: string
+          region_id: string | null
           session_id: string
+          tags: string[] | null
+          updated_at: string | null
         }
         Insert: {
+          ai_description?: string | null
           capital_city_id?: string | null
           created_at?: string
+          description?: string | null
           id?: string
+          image_prompt?: string | null
+          image_url?: string | null
           name: string
           owner_player: string
+          region_id?: string | null
           session_id: string
+          tags?: string[] | null
+          updated_at?: string | null
         }
         Update: {
+          ai_description?: string | null
           capital_city_id?: string | null
           created_at?: string
+          description?: string | null
           id?: string
+          image_prompt?: string | null
+          image_url?: string | null
           name?: string
           owner_player?: string
+          region_id?: string | null
           session_id?: string
+          tags?: string[] | null
+          updated_at?: string | null
         }
         Relationships: [
           {
@@ -1172,7 +1272,64 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "provinces_region_id_fkey"
+            columns: ["region_id"]
+            isOneToOne: false
+            referencedRelation: "regions"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "provinces_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      regions: {
+        Row: {
+          ai_description: string | null
+          created_at: string
+          description: string | null
+          id: string
+          image_prompt: string | null
+          image_url: string | null
+          name: string
+          owner_player: string | null
+          session_id: string
+          tags: string[] | null
+          updated_at: string
+        }
+        Insert: {
+          ai_description?: string | null
+          created_at?: string
+          description?: string | null
+          id?: string
+          image_prompt?: string | null
+          image_url?: string | null
+          name: string
+          owner_player?: string | null
+          session_id: string
+          tags?: string[] | null
+          updated_at?: string
+        }
+        Update: {
+          ai_description?: string | null
+          created_at?: string
+          description?: string | null
+          id?: string
+          image_prompt?: string | null
+          image_url?: string | null
+          name?: string
+          owner_player?: string | null
+          session_id?: string
+          tags?: string[] | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "regions_session_id_fkey"
             columns: ["session_id"]
             isOneToOne: false
             referencedRelation: "game_sessions"
@@ -1564,54 +1721,81 @@ export type Database = {
       }
       world_events: {
         Row: {
+          affected_players: string[] | null
+          ai_image_prompt: string | null
+          ai_image_url: string | null
+          auto_publish_after_turns: number | null
           created_at: string
+          created_by_type: string
           created_by_user_id: string | null
+          created_turn: number | null
           date: string | null
           date_precision: string
           description: string | null
+          event_category: string
           id: string
           location_id: string | null
           participants: Json
+          player_edited: boolean
           references: Json | null
           related_event_ids: string[] | null
           session_id: string
           slug: string
+          status: string
           summary: string | null
           tags: string[] | null
           title: string
           updated_at: string
         }
         Insert: {
+          affected_players?: string[] | null
+          ai_image_prompt?: string | null
+          ai_image_url?: string | null
+          auto_publish_after_turns?: number | null
           created_at?: string
+          created_by_type?: string
           created_by_user_id?: string | null
+          created_turn?: number | null
           date?: string | null
           date_precision?: string
           description?: string | null
+          event_category?: string
           id?: string
           location_id?: string | null
           participants?: Json
+          player_edited?: boolean
           references?: Json | null
           related_event_ids?: string[] | null
           session_id: string
           slug: string
+          status?: string
           summary?: string | null
           tags?: string[] | null
           title: string
           updated_at?: string
         }
         Update: {
+          affected_players?: string[] | null
+          ai_image_prompt?: string | null
+          ai_image_url?: string | null
+          auto_publish_after_turns?: number | null
           created_at?: string
+          created_by_type?: string
           created_by_user_id?: string | null
+          created_turn?: number | null
           date?: string | null
           date_precision?: string
           description?: string | null
+          event_category?: string
           id?: string
           location_id?: string | null
           participants?: Json
+          player_edited?: boolean
           references?: Json | null
           related_event_ids?: string[] | null
           session_id?: string
           slug?: string
+          status?: string
           summary?: string | null
           tags?: string[] | null
           title?: string

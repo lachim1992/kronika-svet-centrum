@@ -166,7 +166,8 @@ const WorldTab = ({
             <WikiPanel
               sessionId={sessionId} currentPlayerName={currentPlayerName}
               cities={cities} wonders={wonders} greatPersons={greatPersons}
-              events={events} onRefetch={onRefetch}
+              events={events} myRole={myRole} epochStyle={session.epoch_style}
+              onRefetch={onRefetch} onEventClick={onEventClick}
             />
           </AccordionContent>
         </AccordionItem>

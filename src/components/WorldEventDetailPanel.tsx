@@ -4,11 +4,14 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   Calendar, MapPin, Users, Tag, Link2, BookOpen, AlertTriangle,
-  Scroll, Globe, Crown, Newspaper,
+  Scroll, Globe, Crown, Newspaper, Plus, X, Castle, Mountain, Sparkles, Loader2, ImageIcon,
 } from "lucide-react";
 import RichText from "./RichText";
+import { toast } from "sonner";
 
 interface WorldEvent {
   id: string;
@@ -45,20 +48,37 @@ const RECORD_TYPE_LABELS: Record<string, { label: string; icon: React.ReactNode 
   world_feed: { label: "World Feed", icon: <Newspaper className="h-3.5 w-3.5" /> },
 };
 
+interface EventEntityLink {
+  id: string;
+  event_id: string;
+  entity_type: string;
+  entity_id: string;
+  link_type: string;
+}
+
 interface WorldEventDetailPanelProps {
   eventId: string | null;
   open: boolean;
   onClose: () => void;
   onEventClick?: (eventId: string) => void;
+  isAdmin?: boolean;
+  sessionId?: string;
 }
 
-const WorldEventDetailPanel = ({ eventId, open, onClose, onEventClick }: WorldEventDetailPanelProps) => {
+const WorldEventDetailPanel = ({ eventId, open, onClose, onEventClick, isAdmin, sessionId }: WorldEventDetailPanelProps) => {
   const [event, setEvent] = useState<WorldEvent | null>(null);
   const [loading, setLoading] = useState(false);
   const [notFound, setNotFound] = useState(false);
   const [mentions, setMentions] = useState<MentionRecord[]>([]);
   const [relatedEvents, setRelatedEvents] = useState<WorldEvent[]>([]);
   const [locationName, setLocationName] = useState<string | null>(null);
+  const [entityLinks, setEntityLinks] = useState<EventEntityLink[]>([]);
+  const [linkEntities, setLinkEntities] = useState<{ type: string; id: string; name: string }[]>([]);
+  const [showLinkSearch, setShowLinkSearch] = useState(false);
+  const [linkSearch, setLinkSearch] = useState("");
+  const [linkCandidates, setLinkCandidates] = useState<{ type: string; id: string; name: string }[]>([]);
+  const [generatingText, setGeneratingText] = useState(false);
+  const [generatingImage, setGeneratingImage] = useState(false);
 
   useEffect(() => {
     if (!eventId || !open) return;
@@ -71,6 +91,8 @@ const WorldEventDetailPanel = ({ eventId, open, onClose, onEventClick }: WorldEv
     setMentions([]);
     setRelatedEvents([]);
     setLocationName(null);
+    setEntityLinks([]);
+    setLinkEntities([]);
 
     const { data, error } = await supabase
       .from("world_events")
@@ -171,6 +193,30 @@ const WorldEventDetailPanel = ({ eventId, open, onClose, onEventClick }: WorldEv
     );
 
     await Promise.all(promises);
+
+    // Fetch entity links for this event
+    const { data: links } = await supabase.from("event_entity_links").select("*").eq("event_id", id);
+    if (links && links.length > 0) {
+      setEntityLinks(links as EventEntityLink[]);
+      // Resolve entity names
+      const resolved: { type: string; id: string; name: string }[] = [];
+      for (const link of links) {
+        let name = link.entity_id;
+        if (link.entity_type === "city") {
+          const { data: c } = await supabase.from("cities").select("name").eq("id", link.entity_id).maybeSingle();
+          if (c) name = c.name;
+        } else if (link.entity_type === "province") {
+          const { data: p } = await supabase.from("provinces").select("name").eq("id", link.entity_id).maybeSingle();
+          if (p) name = p.name;
+        } else if (link.entity_type === "region") {
+          const { data: r } = await supabase.from("regions").select("name").eq("id", link.entity_id).maybeSingle();
+          if (r) name = r.name;
+        }
+        resolved.push({ type: link.entity_type, id: link.entity_id, name });
+      }
+      setLinkEntities(resolved);
+    }
+
     setLoading(false);
   };
 
@@ -328,6 +374,26 @@ const WorldEventDetailPanel = ({ eventId, open, onClose, onEventClick }: WorldEv
                     </div>
                   )}
                 </div>
+
+                {/* Linked Entities */}
+                {linkEntities.length > 0 && (
+                  <>
+                    <Separator />
+                    <div>
+                      <p className="text-sm font-semibold flex items-center gap-1.5 mb-2">
+                        <Link2 className="h-3.5 w-3.5" /> Propojená místa ({linkEntities.length})
+                      </p>
+                      <div className="flex gap-1.5 flex-wrap">
+                        {linkEntities.map(le => (
+                          <Badge key={`${le.type}-${le.id}`} variant="secondary" className="text-xs">
+                            {le.type === "city" ? <MapPin className="h-3 w-3 mr-1" /> : le.type === "province" ? <Castle className="h-3 w-3 mr-1" /> : <Mountain className="h-3 w-3 mr-1" />}
+                            {le.name}
+                          </Badge>
+                        ))}
+                      </div>
+                    </div>
+                  </>
+                )}
               </>
             )}
           </div>
