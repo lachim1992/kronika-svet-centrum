@@ -220,9 +220,26 @@ export async function addGameEvent(sessionId: string, eventType: string, player:
   if (error) console.error(error);
 }
 
-export async function confirmEvent(eventId: string) {
+export async function confirmEvent(eventId: string, sessionId?: string, currentTurn?: number, epochStyle?: string) {
   const { error } = await supabase.from("game_events").update({ confirmed: true }).eq("id", eventId);
-  if (error) console.error(error);
+  if (error) { console.error(error); return; }
+
+  // Auto-trigger Rumor Engine for confirmed events
+  if (sessionId) {
+    try {
+      await supabase.functions.invoke("rumor-engine", {
+        body: {
+          sessionId,
+          eventId,
+          currentTurn: currentTurn || 1,
+          epochStyle: epochStyle || "kroniky",
+          isPlayerEvent: false,
+        },
+      });
+    } catch (e) {
+      console.warn("Rumor engine failed (non-blocking):", e);
+    }
+  }
 }
 
 export async function addEventResponse(eventId: string, player: string, note: string) {

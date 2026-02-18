@@ -62,3 +62,6 @@ verify_jwt = false
 
 [functions.city-rumors]
 verify_jwt = false
+
+[functions.rumor-engine]
+verify_jwt = false
