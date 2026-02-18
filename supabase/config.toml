@@ -65,3 +65,6 @@ verify_jwt = false
 
 [functions.rumor-engine]
 verify_jwt = false
+
+[functions.expand-contribution]
+verify_jwt = false

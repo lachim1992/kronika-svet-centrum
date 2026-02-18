@@ -32,6 +32,7 @@ const Dashboard = () => {
   const entityIndex = useEntityIndex(sessionId);
 
   const [activeTab, setActiveTab] = useState<TabId>("home");
+  const [worldEntityTarget, setWorldEntityTarget] = useState<{ type: string; id: string } | null>(null);
   const [showActionChooser, setShowActionChooser] = useState(false);
   const [eventDetailId, setEventDetailId] = useState<string | null>(null);
   const [myRole, setMyRole] = useState<string>("player");
@@ -104,8 +105,14 @@ const Dashboard = () => {
       setEventDetailId(id);
       return;
     }
-    setCodexEntityTarget({ type, id });
-    setActiveTab("codex");
+    // Route to World or Codex depending on entity type
+    if (["city", "province", "region"].includes(type)) {
+      setWorldEntityTarget({ type, id });
+      setActiveTab("world");
+    } else {
+      setCodexEntityTarget({ type, id });
+      setActiveTab("codex");
+    }
   };
 
   const sharedProps = {
@@ -136,7 +143,7 @@ const Dashboard = () => {
 
       <main className="max-w-[1600px] mx-auto px-3 py-3">
         {activeTab === "home" && <HomeTab {...sharedProps} />}
-        {activeTab === "world" && <WorldTab {...sharedProps} />}
+        {activeTab === "world" && <WorldTab {...sharedProps} worldEntityTarget={worldEntityTarget} onClearWorldEntityTarget={() => setWorldEntityTarget(null)} />}
         {activeTab === "realm" && <RealmTab {...sharedProps} />}
         {activeTab === "feed" && <FeedTab {...sharedProps} />}
         {activeTab === "codex" && <CodexTab {...sharedProps} codexEntityTarget={codexEntityTarget} onClearEntityTarget={() => setCodexEntityTarget(null)} />}

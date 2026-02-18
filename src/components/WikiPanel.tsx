@@ -266,6 +266,11 @@ const WikiPanel = ({
 
   // Navigate to entity
   const openEntity = (entity: EncyclopediaEntity) => {
+    // Delegate to parent unified navigation if available
+    if (onEntityClick) {
+      onEntityClick(entity.type, entity.id);
+      return;
+    }
     setSelectedEntity(entity);
   };
 
