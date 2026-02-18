@@ -1,10 +1,15 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Sparkles, Loader2, Image, FileText, CheckCircle2, MessageCircle } from "lucide-react";
+import {
+  Sparkles, Loader2, Image, FileText, CheckCircle2, MessageCircle,
+  Zap, AlertTriangle, MapPin, Globe, Users,
+} from "lucide-react";
 import { toast } from "sonner";
 
 interface Props {
@@ -13,22 +18,33 @@ interface Props {
 }
 
 interface MissingReport {
-  citiesNoDesc: { id: string; name: string }[];
+  citiesNoDesc: { id: string; name: string; owner: string }[];
   eventsNoNarrative: { id: string; type: string; player: string; turn: number }[];
   wondersNoDesc: { id: string; name: string }[];
   wondersNoImage: { id: string; name: string }[];
   personsNoBio: { id: string; name: string }[];
   personsNoImage: { id: string; name: string }[];
-  wikiNoDesc: { id: string; name: string }[];
-  provincesNoDesc: { id: string; name: string }[];
+  wikiNoDesc: { id: string; name: string; type: string; owner: string }[];
+  provincesNoDesc: { id: string; name: string; owner: string }[];
+  regionsNoDesc: { id: string; name: string }[];
   majorEventsNoRumors: { id: string; type: string; turn: number; location: string }[];
+  citiesNoRumors: { id: string; name: string }[];
 }
+
+type GeneratingKey = string | null;
 
 const SmartAIGenerationPanel = ({ sessionId, onRefetch }: Props) => {
   const [report, setReport] = useState<MissingReport | null>(null);
   const [scanning, setScanning] = useState(false);
-  const [generating, setGenerating] = useState<string | null>(null);
+  const [generating, setGenerating] = useState<GeneratingKey>(null);
   const [progress, setProgress] = useState({ current: 0, total: 0, label: "" });
+  const [allowOverwrite, setAllowOverwrite] = useState(false);
+  const [hydrating, setHydrating] = useState(false);
+  const [hydrationLog, setHydrationLog] = useState<string[]>([]);
+
+  const hLog = useCallback((msg: string) => {
+    setHydrationLog(prev => [...prev.slice(-100), `[${new Date().toLocaleTimeString("cs")}] ${msg}`]);
+  }, []);
 
   const scan = async () => {
     setScanning(true);
@@ -39,154 +55,276 @@ const SmartAIGenerationPanel = ({ sessionId, onRefetch }: Props) => {
         { data: persons },
         { data: wiki },
         { data: provinces },
+        { data: regions },
         { data: events },
         { data: narratives },
         { data: existingRumors },
       ] = await Promise.all([
-        supabase.from("cities").select("id, name, flavor_prompt").eq("session_id", sessionId),
+        supabase.from("cities").select("id, name, flavor_prompt, owner_player").eq("session_id", sessionId),
         supabase.from("wonders").select("id, name, description, image_url").eq("session_id", sessionId),
         supabase.from("great_persons").select("id, name, bio, image_url").eq("session_id", sessionId),
-        supabase.from("wiki_entries").select("id, entity_name, ai_description").eq("session_id", sessionId),
-        supabase.from("provinces").select("id, name, ai_description").eq("session_id", sessionId),
+        supabase.from("wiki_entries").select("id, entity_name, entity_type, ai_description, owner_player").eq("session_id", sessionId),
+        supabase.from("provinces").select("id, name, ai_description, owner_player").eq("session_id", sessionId),
+        supabase.from("regions").select("id, name, ai_description").eq("session_id", sessionId),
         supabase.from("game_events").select("id, event_type, player, turn_number, location").eq("session_id", sessionId).eq("confirmed", true),
         supabase.from("event_narratives").select("event_id").eq("is_canon", true),
-        supabase.from("city_rumors").select("related_event_id").eq("session_id", sessionId),
+        supabase.from("city_rumors").select("related_event_id, city_id").eq("session_id", sessionId),
       ]);
 
       const narrativeEventIds = new Set(narratives?.map(n => n.event_id) || []);
       const rumorEventIds = new Set((existingRumors || []).filter(r => r.related_event_id).map(r => r.related_event_id));
+      const citiesWithRumors = new Set((existingRumors || []).map(r => r.city_id));
 
       const MAJOR_TYPES = new Set(["battle", "raid", "war", "diplomacy", "wonder", "plague", "disaster", "found_settlement"]);
-      const majorEventsNoRumors = (events || [])
-        .filter(e => MAJOR_TYPES.has(e.event_type) && !rumorEventIds.has(e.id))
-        .slice(0, 50)
-        .map(e => ({ id: e.id, type: e.event_type, turn: e.turn_number, location: e.location || "" }));
 
       setReport({
-        citiesNoDesc: (cities || []).filter(c => !c.flavor_prompt),
-        eventsNoNarrative: (events || []).filter(e => !narrativeEventIds.has(e.id)).slice(0, 100).map(e => ({ id: e.id, type: e.event_type, player: e.player, turn: e.turn_number })),
-        wondersNoDesc: (wonders || []).filter(w => !w.description || w.description.length < 20),
-        wondersNoImage: (wonders || []).filter(w => !w.image_url),
-        personsNoBio: (persons || []).filter(p => !p.bio || p.bio.length < 20),
-        personsNoImage: (persons || []).filter(p => !p.image_url),
-        wikiNoDesc: (wiki || []).filter(w => !w.ai_description).map(w => ({ id: w.id, name: w.entity_name })),
-        provincesNoDesc: (provinces || []).filter(p => !p.ai_description),
-        majorEventsNoRumors,
+        citiesNoDesc: (cities || []).filter(c => allowOverwrite || !c.flavor_prompt)
+          .map(c => ({ id: c.id, name: c.name, owner: c.owner_player })),
+        eventsNoNarrative: (events || []).filter(e => allowOverwrite || !narrativeEventIds.has(e.id))
+          .slice(0, 100).map(e => ({ id: e.id, type: e.event_type, player: e.player, turn: e.turn_number })),
+        wondersNoDesc: (wonders || []).filter(w => allowOverwrite || !w.description || w.description.length < 20),
+        wondersNoImage: (wonders || []).filter(w => allowOverwrite || !w.image_url),
+        personsNoBio: (persons || []).filter(p => allowOverwrite || !p.bio || p.bio.length < 20),
+        personsNoImage: (persons || []).filter(p => allowOverwrite || !p.image_url),
+        wikiNoDesc: (wiki || []).filter(w => allowOverwrite || !w.ai_description)
+          .map(w => ({ id: w.id, name: w.entity_name, type: w.entity_type, owner: w.owner_player })),
+        provincesNoDesc: (provinces || []).filter(p => allowOverwrite || !p.ai_description)
+          .map(p => ({ id: p.id, name: p.name, owner: p.owner_player })),
+        regionsNoDesc: (regions || []).filter(r => allowOverwrite || !r.ai_description),
+        majorEventsNoRumors: (events || [])
+          .filter(e => MAJOR_TYPES.has(e.event_type) && (allowOverwrite || !rumorEventIds.has(e.id)))
+          .slice(0, 50)
+          .map(e => ({ id: e.id, type: e.event_type, turn: e.turn_number, location: e.location || "" })),
+        citiesNoRumors: (cities || []).filter(c => allowOverwrite || !citiesWithRumors.has(c.id))
+          .map(c => ({ id: c.id, name: c.name })),
       });
-    } catch (e) {
+    } catch {
       toast.error("Skenování selhalo");
     }
     setScanning(false);
   };
 
-  useEffect(() => { scan(); }, [sessionId]);
+  useEffect(() => { scan(); }, [sessionId, allowOverwrite]);
 
-  const generateMissingWikiDescriptions = async () => {
-    if (!report || report.wikiNoDesc.length === 0) return;
-    setGenerating("wiki");
-    const total = report.wikiNoDesc.length;
-    let done = 0;
-    for (const entry of report.wikiNoDesc) {
-      setProgress({ current: done, total, label: entry.name });
-      try {
-        const { data } = await supabase.functions.invoke("wiki-generate", {
-          body: { entityName: entry.name, sessionId },
-        });
-        if (data?.description) {
-          await supabase.from("wiki_entries").update({ ai_description: data.description }).eq("id", entry.id);
-        }
-      } catch { /* skip */ }
-      done++;
-    }
-    setProgress({ current: total, total, label: "Hotovo" });
-    toast.success(`Wiki popisy: ${done}/${total} vygenerováno`);
-    setGenerating(null);
-    onRefetch?.();
-    scan();
-  };
+  // --- Individual generators ---
 
-  const generateMissingEventNarratives = async () => {
-    if (!report || report.eventsNoNarrative.length === 0) return;
-    setGenerating("narratives");
-    const batch = report.eventsNoNarrative.slice(0, 20); // Limit batch
+  const runBatch = async (
+    key: string,
+    items: any[],
+    fn: (item: any, idx: number) => Promise<void>,
+    labelFn: (item: any) => string,
+    doneMsg: string,
+    batchLimit?: number,
+  ) => {
+    if (!items.length) return;
+    setGenerating(key);
+    const batch = batchLimit ? items.slice(0, batchLimit) : items;
     const total = batch.length;
     let done = 0;
-    for (const evt of batch) {
-      setProgress({ current: done, total, label: `Událost r.${evt.turn}` });
-      try {
-        await supabase.functions.invoke("event-narrative", {
-          body: { eventId: evt.id, sessionId },
-        });
-      } catch { /* skip */ }
+    for (const item of batch) {
+      setProgress({ current: done, total, label: labelFn(item) });
+      try { await fn(item, done); } catch { /* skip */ }
       done++;
     }
     setProgress({ current: total, total, label: "Hotovo" });
-    toast.success(`Narativy: ${done}/${total} vygenerováno`);
+    toast.success(`${doneMsg}: ${done}/${total}`);
     setGenerating(null);
     onRefetch?.();
     scan();
   };
 
-  const generateMissingWonderImages = async () => {
-    if (!report || report.wondersNoImage.length === 0) return;
-    setGenerating("wonder-images");
-    const total = report.wondersNoImage.length;
-    let done = 0;
-    for (const w of report.wondersNoImage) {
-      setProgress({ current: done, total, label: w.name });
-      try {
-        await supabase.functions.invoke("wonder-portrait", {
-          body: { wonderId: w.id },
-        });
-      } catch { /* skip */ }
-      done++;
-    }
-    setProgress({ current: total, total, label: "Hotovo" });
-    toast.success(`Obrázky divů: ${done}/${total} vygenerováno`);
-    setGenerating(null);
-    onRefetch?.();
-    scan();
-  };
+  const generateWikiDescriptions = () => runBatch(
+    "wiki", report!.wikiNoDesc,
+    async (entry) => {
+      const { data } = await supabase.functions.invoke("wiki-generate", {
+        body: { entityName: entry.name, entityType: entry.type, entityId: entry.id, sessionId, ownerPlayer: entry.owner },
+      });
+      if (data?.aiDescription) {
+        await supabase.from("wiki_entries").update({ ai_description: data.aiDescription }).eq("id", entry.id);
+      }
+    },
+    (e) => e.name,
+    "Wiki popisy",
+  );
 
-  const generateMissingPersonImages = async () => {
-    if (!report || report.personsNoImage.length === 0) return;
-    setGenerating("person-images");
-    const total = report.personsNoImage.length;
-    let done = 0;
-    for (const p of report.personsNoImage) {
-      setProgress({ current: done, total, label: p.name });
-      try {
-        await supabase.functions.invoke("person-portrait", {
-          body: { personId: p.id },
-        });
-      } catch { /* skip */ }
-      done++;
-    }
-    setProgress({ current: total, total, label: "Hotovo" });
-    toast.success(`Portréty osobností: ${done}/${total} vygenerováno`);
-    setGenerating(null);
-    onRefetch?.();
-    scan();
-  };
+  const generateEventNarratives = () => runBatch(
+    "narratives", report!.eventsNoNarrative,
+    async (evt) => {
+      await supabase.functions.invoke("event-narrative", {
+        body: { eventId: evt.id, sessionId },
+      });
+    },
+    (e) => `Událost r.${e.turn}`,
+    "Narativy událostí",
+    30,
+  );
 
-  const generateMissingRumors = async () => {
-    if (!report || report.majorEventsNoRumors.length === 0) return;
-    setGenerating("rumors");
-    const batch = report.majorEventsNoRumors.slice(0, 10);
-    const total = batch.length;
-    let done = 0;
-    for (const evt of batch) {
-      setProgress({ current: done, total, label: `${evt.type} r.${evt.turn}` });
+  const generateWonderImages = () => runBatch(
+    "wonder-images", report!.wondersNoImage,
+    async (w) => {
+      await supabase.functions.invoke("wonder-portrait", { body: { wonderId: w.id } });
+    },
+    (w) => w.name,
+    "Obrázky divů",
+  );
+
+  const generatePersonImages = () => runBatch(
+    "person-images", report!.personsNoImage,
+    async (p) => {
+      await supabase.functions.invoke("person-portrait", { body: { personId: p.id } });
+    },
+    (p) => p.name,
+    "Portréty osobností",
+  );
+
+  const generateRumors = () => runBatch(
+    "rumors", report!.majorEventsNoRumors,
+    async (evt) => {
+      await supabase.functions.invoke("rumor-engine", {
+        body: { sessionId, eventId: evt.id, currentTurn: evt.turn, epochStyle: "kroniky", isPlayerEvent: false },
+      });
+    },
+    (e) => `${e.type} r.${e.turn}`,
+    "Zvěsti z událostí",
+    15,
+  );
+
+  const generateProvinceDescriptions = () => runBatch(
+    "provinces", report!.provincesNoDesc,
+    async (prov) => {
+      const { data } = await supabase.functions.invoke("wiki-generate", {
+        body: { entityName: prov.name, entityType: "province", sessionId, ownerPlayer: prov.owner },
+      });
+      if (data?.aiDescription) {
+        await supabase.from("provinces").update({ ai_description: data.aiDescription }).eq("id", prov.id);
+      }
+    },
+    (p) => p.name,
+    "Popisy provincií",
+  );
+
+  const generateRegionDescriptions = () => runBatch(
+    "regions", report!.regionsNoDesc,
+    async (reg) => {
+      const { data } = await supabase.functions.invoke("wiki-generate", {
+        body: { entityName: reg.name, entityType: "region", sessionId, ownerPlayer: "" },
+      });
+      if (data?.aiDescription) {
+        await supabase.from("regions").update({ ai_description: data.aiDescription }).eq("id", reg.id);
+      }
+    },
+    (r) => r.name,
+    "Popisy regionů",
+  );
+
+  const generateCityProfiles = () => runBatch(
+    "city-profiles", report!.citiesNoDesc,
+    async (city) => {
+      const [{ data: cityEvents }, { data: mems }] = await Promise.all([
+        supabase.from("game_events").select("*").eq("session_id", sessionId).eq("city_id", city.id).eq("confirmed", true).limit(30),
+        supabase.from("world_memories").select("text, category").eq("session_id", sessionId).eq("city_id", city.id).eq("approved", true).limit(10),
+      ]);
+      const { data } = await supabase.functions.invoke("cityprofile", {
+        body: {
+          city: { name: city.name, ownerName: city.owner, level: "Osada", province: "", tags: [], foundedRound: 1, status: "ok" },
+          confirmedCityEvents: cityEvents || [],
+          approvedWorldFacts: [],
+          cityMemories: mems || [],
+        },
+      });
+      if (data?.introduction) {
+        await supabase.from("cities").update({ flavor_prompt: data.introduction }).eq("id", city.id);
+      }
+    },
+    (c) => c.name,
+    "Profily měst",
+  );
+
+  const generatePersonBios = () => runBatch(
+    "person-bios", report!.personsNoBio,
+    async (p) => {
+      const { data } = await supabase.functions.invoke("wiki-generate", {
+        body: { entityName: p.name, entityType: "person", sessionId, ownerPlayer: "" },
+      });
+      if (data?.aiDescription) {
+        await supabase.from("great_persons").update({ bio: data.aiDescription }).eq("id", p.id);
+      }
+    },
+    (p) => p.name,
+    "Biografie osobností",
+  );
+
+  const generateWonderDescriptions = () => runBatch(
+    "wonder-descs", report!.wondersNoDesc,
+    async (w) => {
+      const { data } = await supabase.functions.invoke("wiki-generate", {
+        body: { entityName: w.name, entityType: "wonder", sessionId, ownerPlayer: "" },
+      });
+      if (data?.aiDescription) {
+        await supabase.from("wonders").update({ description: data.aiDescription }).eq("id", w.id);
+      }
+    },
+    (w) => w.name,
+    "Popisy divů",
+  );
+
+  // --- FULL HYDRATION ---
+  const hydrateWorld = async () => {
+    if (!report) return;
+    setHydrating(true);
+    setHydrationLog([]);
+    hLog("🌊 Spouštím plnou hydrataci světa...");
+
+    const steps: { key: string; label: string; count: number; fn: () => Promise<void> }[] = [
+      { key: "wiki", label: "Wiki popisy", count: report.wikiNoDesc.length, fn: generateWikiDescriptions },
+      { key: "provinces", label: "Popisy provincií", count: report.provincesNoDesc.length, fn: generateProvinceDescriptions },
+      { key: "regions", label: "Popisy regionů", count: report.regionsNoDesc.length, fn: generateRegionDescriptions },
+      { key: "city-profiles", label: "Profily měst", count: report.citiesNoDesc.length, fn: generateCityProfiles },
+      { key: "wonder-descs", label: "Popisy divů", count: report.wondersNoDesc.length, fn: generateWonderDescriptions },
+      { key: "person-bios", label: "Biografie osobností", count: report.personsNoBio.length, fn: generatePersonBios },
+      { key: "narratives", label: "Narativy událostí", count: Math.min(report.eventsNoNarrative.length, 30), fn: generateEventNarratives },
+      { key: "rumors", label: "Zvěsti", count: Math.min(report.majorEventsNoRumors.length, 15), fn: generateRumors },
+      { key: "wonder-images", label: "Obrázky divů", count: report.wondersNoImage.length, fn: generateWonderImages },
+      { key: "person-images", label: "Portréty osobností", count: report.personsNoImage.length, fn: generatePersonImages },
+    ];
+
+    for (const step of steps) {
+      if (step.count === 0) {
+        hLog(`✅ ${step.label}: vše hotovo`);
+        continue;
+      }
+      hLog(`🔄 ${step.label}: ${step.count} chybějících...`);
       try {
-        await supabase.functions.invoke("rumor-engine", {
-          body: { sessionId, eventId: evt.id, currentTurn: evt.turn, epochStyle: "kroniky", isPlayerEvent: false },
-        });
-      } catch { /* skip */ }
-      done++;
+        await step.fn();
+        hLog(`✅ ${step.label}: dokončeno`);
+      } catch (e: any) {
+        hLog(`⚠️ ${step.label}: ${e?.message || "chyba"}`);
+      }
     }
-    setProgress({ current: total, total, label: "Hotovo" });
-    toast.success(`Zvěsti: ${done}/${total} událostí zpracováno`);
-    setGenerating(null);
+
+    // Populate feed with summary items
+    hLog("📰 Doplňuji feed...");
+    try {
+      const { data: session } = await supabase.from("game_sessions").select("current_turn").eq("id", sessionId).single();
+      const turn = session?.current_turn || 1;
+      const { data: existingFeed } = await supabase.from("world_feed_items").select("id").eq("session_id", sessionId).limit(1);
+      if (!existingFeed?.length) {
+        await supabase.from("world_feed_items").insert([
+          { session_id: sessionId, turn_number: Math.max(1, turn - 2), content: "Kroniky světa byly otevřeny. Učenci začínají zaznamenávat dějiny civilizací.", feed_type: "announcement", importance: "legendary" },
+          { session_id: sessionId, turn_number: Math.max(1, turn - 1), content: "Obchodníci z dalekých zemí přinášejí zvěsti o nových říších a jejich vládcích.", feed_type: "gossip", importance: "normal" },
+          { session_id: sessionId, turn_number: turn, content: "Kronikáři dokončili první mapování známého světa. Města, provincie a regiony byly zaneseny do análů.", feed_type: "announcement", importance: "memorable" },
+        ]);
+        hLog("✅ Feed: 3 základní záznamy vytvořeny");
+      } else {
+        hLog("✅ Feed: již existuje");
+      }
+    } catch (e: any) {
+      hLog(`⚠️ Feed: ${e?.message || "chyba"}`);
+    }
+
+    hLog("🏁 Hydratace dokončena!");
+    toast.success("🌊 Svět hydratován — města, provincie, události, zvěsti a feed připraveny!");
+    setHydrating(false);
     onRefetch?.();
     scan();
   };
@@ -201,21 +339,24 @@ const SmartAIGenerationPanel = ({ sessionId, onRefetch }: Props) => {
   }
 
   const categories = [
-    { key: "majorEventsNoRumors", label: "Události bez zvěstí", count: report.majorEventsNoRumors.length, icon: MessageCircle, action: generateMissingRumors, actionLabel: "Generovat zvěsti (max 10)" },
-    { key: "wikiNoDesc", label: "Wiki bez popisu", count: report.wikiNoDesc.length, icon: FileText, action: generateMissingWikiDescriptions, actionLabel: "Generovat wiki popisy" },
-    { key: "eventsNoNarrative", label: "Události bez narativu", count: report.eventsNoNarrative.length, icon: FileText, action: generateMissingEventNarratives, actionLabel: "Generovat narativy (max 20)" },
-    { key: "wondersNoImage", label: "Divy bez obrázku", count: report.wondersNoImage.length, icon: Image, action: generateMissingWonderImages, actionLabel: "Generovat obrázky divů" },
-    { key: "personsNoImage", label: "Osobnosti bez portrétu", count: report.personsNoImage.length, icon: Image, action: generateMissingPersonImages, actionLabel: "Generovat portréty" },
-    { key: "citiesNoDesc", label: "Města bez flavor promptu", count: report.citiesNoDesc.length, icon: FileText, action: undefined, actionLabel: "" },
-    { key: "wondersNoDesc", label: "Divy bez popisu", count: report.wondersNoDesc.length, icon: FileText, action: undefined, actionLabel: "" },
-    { key: "personsNoBio", label: "Osobnosti bez biografie", count: report.personsNoBio.length, icon: FileText, action: undefined, actionLabel: "" },
-    { key: "provincesNoDesc", label: "Provincie bez popisu", count: report.provincesNoDesc.length, icon: FileText, action: undefined, actionLabel: "" },
+    { key: "wikiNoDesc", label: "Wiki bez popisu", count: report.wikiNoDesc.length, icon: FileText, action: generateWikiDescriptions, actionLabel: "Generovat wiki" },
+    { key: "provincesNoDesc", label: "Provincie bez popisu", count: report.provincesNoDesc.length, icon: MapPin, action: generateProvinceDescriptions, actionLabel: "Generovat popisy" },
+    { key: "regionsNoDesc", label: "Regiony bez popisu", count: report.regionsNoDesc.length, icon: Globe, action: generateRegionDescriptions, actionLabel: "Generovat popisy" },
+    { key: "citiesNoDesc", label: "Města bez profilu", count: report.citiesNoDesc.length, icon: FileText, action: generateCityProfiles, actionLabel: "Generovat profily" },
+    { key: "wondersNoDesc", label: "Divy bez popisu", count: report.wondersNoDesc.length, icon: FileText, action: generateWonderDescriptions, actionLabel: "Generovat popisy" },
+    { key: "personsNoBio", label: "Osobnosti bez biografie", count: report.personsNoBio.length, icon: Users, action: generatePersonBios, actionLabel: "Generovat bio" },
+    { key: "eventsNoNarrative", label: "Události bez narativu", count: report.eventsNoNarrative.length, icon: FileText, action: generateEventNarratives, actionLabel: "Generovat (max 30)" },
+    { key: "majorEventsNoRumors", label: "Události bez zvěstí", count: report.majorEventsNoRumors.length, icon: MessageCircle, action: generateRumors, actionLabel: "Generovat (max 15)" },
+    { key: "wondersNoImage", label: "Divy bez obrázku", count: report.wondersNoImage.length, icon: Image, action: generateWonderImages, actionLabel: "Generovat obrázky" },
+    { key: "personsNoImage", label: "Osobnosti bez portrétu", count: report.personsNoImage.length, icon: Image, action: generatePersonImages, actionLabel: "Generovat portréty" },
   ];
 
   const totalMissing = categories.reduce((s, c) => s + c.count, 0);
+  const isWorking = !!generating || hydrating;
 
   return (
     <div className="bg-card border-2 border-primary/20 rounded-lg p-4 space-y-4">
+      {/* Header */}
       <div className="flex items-center justify-between">
         <h3 className="font-display font-semibold text-sm flex items-center gap-2">
           <Sparkles className="h-4 w-4 text-primary" />
@@ -227,12 +368,27 @@ const SmartAIGenerationPanel = ({ sessionId, onRefetch }: Props) => {
           ) : (
             <Badge variant="destructive">{totalMissing} chybí</Badge>
           )}
-          <Button size="sm" variant="ghost" onClick={scan} disabled={scanning}>
+          <Button size="sm" variant="ghost" onClick={scan} disabled={scanning || isWorking}>
             {scanning ? <Loader2 className="h-3 w-3 animate-spin" /> : "Rescan"}
           </Button>
         </div>
       </div>
 
+      {/* Overwrite toggle */}
+      <div className="flex items-center gap-3 p-2 rounded border border-destructive/30 bg-destructive/5">
+        <AlertTriangle className="h-4 w-4 text-destructive shrink-0" />
+        <Label htmlFor="overwrite-toggle" className="text-xs flex-1 cursor-pointer">
+          Povolit přepisování existujícího obsahu (nebezpečné)
+        </Label>
+        <Switch
+          id="overwrite-toggle"
+          checked={allowOverwrite}
+          onCheckedChange={setAllowOverwrite}
+          disabled={isWorking}
+        />
+      </div>
+
+      {/* Progress */}
       {generating && (
         <div className="space-y-1">
           <div className="flex justify-between text-xs text-muted-foreground">
@@ -243,15 +399,42 @@ const SmartAIGenerationPanel = ({ sessionId, onRefetch }: Props) => {
         </div>
       )}
 
+      {/* HYDRATE WORLD button */}
+      <Button
+        onClick={hydrateWorld}
+        disabled={isWorking || totalMissing === 0}
+        className="w-full h-12 font-display text-base gap-2"
+        variant="default"
+      >
+        {hydrating ? (
+          <Loader2 className="h-5 w-5 animate-spin" />
+        ) : (
+          <Zap className="h-5 w-5" />
+        )}
+        {hydrating ? "Hydratace probíhá..." : `🌊 HYDRATOVAT SVĚT (${totalMissing} položek)`}
+      </Button>
+
+      {/* Hydration log */}
+      {hydrationLog.length > 0 && (
+        <ScrollArea className="h-32 border rounded p-2 bg-muted/30">
+          <div className="space-y-0.5 font-mono text-[11px]">
+            {hydrationLog.map((line, i) => (
+              <div key={i} className="text-muted-foreground">{line}</div>
+            ))}
+          </div>
+        </ScrollArea>
+      )}
+
+      {/* Individual categories */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
         {categories.map(cat => {
           const Icon = cat.icon;
           return (
             <div key={cat.key} className="flex items-center justify-between p-2 rounded border border-border bg-muted/20">
-              <div className="flex items-center gap-2">
-                <Icon className="h-4 w-4 text-muted-foreground" />
-                <span className="text-sm">{cat.label}</span>
-                <Badge variant={cat.count > 0 ? "destructive" : "secondary"} className="text-[10px]">
+              <div className="flex items-center gap-2 min-w-0">
+                <Icon className="h-4 w-4 text-muted-foreground shrink-0" />
+                <span className="text-sm truncate">{cat.label}</span>
+                <Badge variant={cat.count > 0 ? "destructive" : "secondary"} className="text-[10px] shrink-0">
                   {cat.count}
                 </Badge>
               </div>
@@ -259,9 +442,9 @@ const SmartAIGenerationPanel = ({ sessionId, onRefetch }: Props) => {
                 <Button
                   size="sm"
                   variant="outline"
-                  className="text-xs h-7"
+                  className="text-xs h-7 shrink-0 ml-2"
                   onClick={cat.action}
-                  disabled={!!generating}
+                  disabled={isWorking}
                 >
                   {generating === cat.key ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3 mr-1" />}
                   {cat.actionLabel}
