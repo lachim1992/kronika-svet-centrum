@@ -53,3 +53,9 @@ verify_jwt = false
 
 [functions.extract-events]
 verify_jwt = false
+
+[functions.encyclopedia-generate]
+verify_jwt = false
+
+[functions.encyclopedia-image]
+verify_jwt = false
