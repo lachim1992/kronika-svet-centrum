@@ -48,10 +48,13 @@ interface PlayerChroniclePanelProps {
   epochStyle: string;
   currentTurn: number;
   onEventClick?: (eventId: string) => void;
+  onEntityClick?: (type: string, id: string) => void;
+  entityIndex?: any;
 }
 
 const PlayerChroniclePanel = ({
   sessionId, currentPlayerName, events, memories, cities, civilizations, epochStyle, currentTurn, onEventClick,
+  onEntityClick, entityIndex,
 }: PlayerChroniclePanelProps) => {
   const [chapters, setChapters] = useState<PlayerChronicleChapter[]>([]);
   const [generating, setGenerating] = useState(false);
@@ -242,7 +245,7 @@ const PlayerChroniclePanel = ({
         <div className="space-y-4">
           <div className="manuscript-card p-5 border-primary/40 border-l-4">
             <h3 className="font-display font-semibold text-lg mb-2">{pendingReview.chapterTitle}</h3>
-            <RichText text={pendingReview.chapterText} onEventClick={onEventClick} className="text-sm leading-relaxed whitespace-pre-wrap mb-4" />
+            <RichText text={pendingReview.chapterText} onEventClick={onEventClick} onEntityClick={onEntityClick} entityIndex={entityIndex} className="text-sm leading-relaxed whitespace-pre-wrap mb-4" />
             <Badge variant="secondary" className="text-xs">Rok {pendingReview.fromTurn}–{pendingReview.toTurn} • Čeká na schválení událostí</Badge>
           </div>
           <EventExtractorReview
@@ -280,7 +283,7 @@ const PlayerChroniclePanel = ({
                   </Badge>
                 </div>
               </div>
-              <RichText text={ch.chapter_text} onEventClick={onEventClick} className="text-sm leading-relaxed whitespace-pre-wrap" />
+              <RichText text={ch.chapter_text} onEventClick={onEventClick} onEntityClick={onEntityClick} entityIndex={entityIndex} className="text-sm leading-relaxed whitespace-pre-wrap" />
               <div className="text-xs text-muted-foreground mt-3">
                 Styl: {ch.epoch_style} • {new Date(ch.created_at).toLocaleString("cs-CZ")}
               </div>

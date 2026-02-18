@@ -31,6 +31,8 @@ interface Props {
   myRole: string;
   onRefetch: () => void;
   onEventClick?: (eventId: string) => void;
+  onEntityClick?: (type: string, id: string) => void;
+  entityIndex?: any;
 }
 
 const FEED_TYPE_LABELS: Record<string, { label: string; emoji: string }> = {
@@ -41,7 +43,7 @@ const FEED_TYPE_LABELS: Record<string, { label: string; emoji: string }> = {
   verified: { label: "Ověřená zpráva", emoji: "✅" },
 };
 
-const WorldFeedPanel = ({ sessionId, currentTurn, events, cities, memories, players, epochStyle, myRole, onRefetch, onEventClick }: Props) => {
+const WorldFeedPanel = ({ sessionId, currentTurn, events, cities, memories, players, epochStyle, myRole, onRefetch, onEventClick, onEntityClick, entityIndex }: Props) => {
   const isAdmin = myRole === "admin" || !myRole;
   const [feedItems, setFeedItems] = useState<WorldFeedItem[]>([]);
   const [generating, setGenerating] = useState(false);
@@ -249,7 +251,7 @@ const WorldFeedPanel = ({ sessionId, currentTurn, events, cities, memories, play
                   </Badge>
                 )}
               </div>
-              <RichText text={item.content} onEventClick={onEventClick} className="leading-relaxed" />
+              <RichText text={item.content} onEventClick={onEventClick} onEntityClick={onEntityClick} entityIndex={entityIndex} className="leading-relaxed" />
             </div>
           );
         })}

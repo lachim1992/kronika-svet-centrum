@@ -3,6 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ScrollText, Filter } from "lucide-react";
+import RichText from "@/components/RichText";
 
 interface ActionLogEntry {
   id: string;
@@ -30,9 +31,11 @@ interface Props {
   sessionId: string;
   currentTurn: number;
   myRole: string;
+  entityIndex?: any;
+  onEntityClick?: (type: string, id: string) => void;
 }
 
-const WorldActionLog = ({ sessionId, currentTurn, myRole }: Props) => {
+const WorldActionLog = ({ sessionId, currentTurn, myRole, entityIndex, onEntityClick }: Props) => {
   const [entries, setEntries] = useState<ActionLogEntry[]>([]);
   const [filterPlayer, setFilterPlayer] = useState<string>("all");
   const [filterTurn, setFilterTurn] = useState<string>("all");
@@ -114,7 +117,7 @@ const WorldActionLog = ({ sessionId, currentTurn, myRole }: Props) => {
                   <Badge variant="outline" className="text-[10px] h-4">{typeInfo.label}</Badge>
                   <span className="text-muted-foreground">Rok {entry.turn_number}</span>
                 </div>
-                <p className="text-muted-foreground mt-0.5">{entry.description}</p>
+                <RichText text={entry.description} entityIndex={entityIndex} onEntityClick={onEntityClick} className="text-muted-foreground mt-0.5" />
               </div>
               <span className="text-muted-foreground whitespace-nowrap">
                 {new Date(entry.created_at).toLocaleTimeString("cs-CZ", { hour: "2-digit", minute: "2-digit" })}
