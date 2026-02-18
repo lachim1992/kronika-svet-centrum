@@ -6,6 +6,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Input } from "@/components/ui/input";
 import { Newspaper, Sparkles, Filter } from "lucide-react";
 import { toast } from "sonner";
+import RichText from "@/components/RichText";
 
 interface WorldFeedItem {
   id: string;
@@ -29,6 +30,7 @@ interface Props {
   epochStyle: string;
   myRole: string;
   onRefetch: () => void;
+  onEventClick?: (eventId: string) => void;
 }
 
 const FEED_TYPE_LABELS: Record<string, { label: string; emoji: string }> = {
@@ -39,7 +41,7 @@ const FEED_TYPE_LABELS: Record<string, { label: string; emoji: string }> = {
   verified: { label: "Ověřená zpráva", emoji: "✅" },
 };
 
-const WorldFeedPanel = ({ sessionId, currentTurn, events, cities, memories, players, epochStyle, myRole, onRefetch }: Props) => {
+const WorldFeedPanel = ({ sessionId, currentTurn, events, cities, memories, players, epochStyle, myRole, onRefetch, onEventClick }: Props) => {
   const isAdmin = myRole === "admin" || !myRole;
   const [feedItems, setFeedItems] = useState<WorldFeedItem[]>([]);
   const [generating, setGenerating] = useState(false);
@@ -247,7 +249,7 @@ const WorldFeedPanel = ({ sessionId, currentTurn, events, cities, memories, play
                   </Badge>
                 )}
               </div>
-              <p className="leading-relaxed">{item.content}</p>
+              <RichText text={item.content} onEventClick={onEventClick} className="leading-relaxed" />
             </div>
           );
         })}

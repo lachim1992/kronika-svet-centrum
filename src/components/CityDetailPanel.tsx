@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ArrowLeft, MapPin, Sparkles, BookOpen, Shield, Flame, Crown, Scroll, Landmark, Brain } from "lucide-react";
 import { toast } from "sonner";
+import RichText from "@/components/RichText";
 import { supabase } from "@/integrations/supabase/client";
 import WorldMemoryPanel from "@/components/WorldMemoryPanel";
 
@@ -38,11 +39,12 @@ interface CityDetailPanelProps {
   currentTurn: number;
   onBack: () => void;
   onRefetch?: () => void;
+  onEventClick?: (eventId: string) => void;
 }
 
 const CityDetailPanel = ({
   city, events, memories, wonders, players,
-  currentPlayerName, currentTurn, onBack, onRefetch,
+  currentPlayerName, currentTurn, onBack, onRefetch, onEventClick,
 }: CityDetailPanelProps) => {
   const [generating, setGenerating] = useState(false);
   const [introduction, setIntroduction] = useState<string | null>(null);
@@ -218,14 +220,14 @@ const CityDetailPanel = ({
         {introduction && (
           <div className="p-4 rounded-lg border border-border bg-muted/30 space-y-2">
             <h4 className="font-display font-semibold text-sm">📜 Představení</h4>
-            <p className="text-sm leading-relaxed whitespace-pre-wrap">{introduction}</p>
+            <RichText text={introduction} onEventClick={onEventClick} className="text-sm leading-relaxed whitespace-pre-wrap" />
           </div>
         )}
 
         {history && (
           <div className="p-4 rounded-lg border border-border bg-muted/30 space-y-2">
             <h4 className="font-display font-semibold text-sm">📖 Městská sága</h4>
-            <p className="text-sm leading-relaxed whitespace-pre-wrap">{history}</p>
+            <RichText text={history} onEventClick={onEventClick} className="text-sm leading-relaxed whitespace-pre-wrap" />
             {bulletFacts.length > 0 && (
               <ul className="text-sm space-y-1 mt-2">
                 {bulletFacts.map((f, i) => <li key={i} className="flex items-start gap-1"><span>•</span><span>{f}</span></li>)}

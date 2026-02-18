@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useGameSession } from "@/hooks/useGameSession";
 import { useAuth } from "@/hooks/useAuth";
@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import AppHeader from "@/components/layout/AppHeader";
 import BottomNav, { type TabId } from "@/components/layout/BottomNav";
 import ActionChooser from "@/components/layout/ActionChooser";
+import WorldEventDetailPanel from "@/components/WorldEventDetailPanel";
 import WorldTab from "@/pages/game/WorldTab";
 import CivTab from "@/pages/game/CivTab";
 import CitiesTab from "@/pages/game/CitiesTab";
@@ -27,6 +28,7 @@ const Dashboard = () => {
 
   const [activeTab, setActiveTab] = useState<TabId>("world");
   const [showActionChooser, setShowActionChooser] = useState(false);
+  const [eventDetailId, setEventDetailId] = useState<string | null>(null);
   const [myRole, setMyRole] = useState<string>("player");
   const [myPlayerName, setMyPlayerName] = useState("Hráč");
   const [worldFoundation, setWorldFoundation] = useState<any>(null);
@@ -104,6 +106,7 @@ const Dashboard = () => {
     myRole,
     worldFoundation,
     onRefetch: refetch,
+    onEventClick: (id: string) => setEventDetailId(id),
   };
 
   return (
@@ -138,6 +141,12 @@ const Dashboard = () => {
 
       <BottomNav activeTab={activeTab} onTabChange={setActiveTab} onAddAction={() => setShowActionChooser(true)} />
       <ActionChooser open={showActionChooser} onClose={() => setShowActionChooser(false)} onAction={handleAction} />
+      <WorldEventDetailPanel
+        eventId={eventDetailId}
+        open={!!eventDetailId}
+        onClose={() => setEventDetailId(null)}
+        onEventClick={(id) => setEventDetailId(id)}
+      />
     </div>
   );
 };

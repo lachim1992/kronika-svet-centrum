@@ -18,11 +18,12 @@ interface Props {
   currentTurn: number;
   myRole: string;
   onRefetch: () => void;
+  onEventClick?: (eventId: string) => void;
 }
 
 const FeedTab = ({
   sessionId, session, events, memories, responses, players, cities, civilizations,
-  currentPlayerName, currentTurn, myRole, onRefetch,
+  currentPlayerName, currentTurn, myRole, onRefetch, onEventClick,
 }: Props) => {
   return (
     <div className="space-y-4 pb-20">
@@ -37,6 +38,7 @@ const FeedTab = ({
               sessionId={sessionId} currentTurn={currentTurn} events={events}
               cities={cities} memories={memories} players={players}
               epochStyle={session.epoch_style} myRole={myRole} onRefetch={onRefetch}
+              onEventClick={onEventClick}
             />
           </AccordionContent>
         </AccordionItem>
@@ -62,6 +64,7 @@ const FeedTab = ({
               sessionId={sessionId} currentPlayerName={currentPlayerName}
               events={events} memories={memories} cities={cities}
               civilizations={civilizations} epochStyle={session.epoch_style} currentTurn={currentTurn}
+              onEventClick={onEventClick}
             />
           </AccordionContent>
         </AccordionItem>
