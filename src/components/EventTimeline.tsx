@@ -147,6 +147,12 @@ const EventTimeline = ({ events, responses, currentPlayerName, currentTurn, citi
                         {EVENT_LABELS[event.event_type] || event.event_type}
                       </Badge>
                       {(() => {
+                        const imp = (event as any).importance || "normal";
+                        if (imp === "legendary") return <Badge variant="default" className="text-xs">⭐ Legendární</Badge>;
+                        if (imp === "memorable") return <Badge variant="secondary" className="text-xs">📌 Důležitá</Badge>;
+                        return null;
+                      })()}
+                      {(() => {
                         const ts = (event as any).truth_state || "canon";
                         const info = TRUTH_LABELS[ts];
                         return info && ts !== "canon" ? (

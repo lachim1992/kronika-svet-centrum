@@ -120,7 +120,7 @@ const Dashboard = () => {
         {activeTab === "world" && <WorldTab {...sharedProps} />}
         {activeTab === "civ" && <CivTab {...sharedProps} />}
         {activeTab === "cities" && <CitiesTab {...sharedProps} />}
-        {activeTab === "feed" && <FeedTab {...sharedProps} />}
+        {activeTab === "feed" && <FeedTab {...sharedProps} myRole={myRole} />}
         {activeTab === "profile" && (
           <ProfileTab
             sessionId={session.id}

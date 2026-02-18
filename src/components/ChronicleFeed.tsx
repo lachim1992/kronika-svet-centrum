@@ -1,10 +1,13 @@
 import { useState, useEffect } from "react";
 import type { Tables } from "@/integrations/supabase/types";
-import { addChronicleEntry, addWorldMemory, closeTurnForPlayer, advanceTurn } from "@/hooks/useGameSession";
+import { addChronicleEntry, addWorldMemory } from "@/hooks/useGameSession";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { BookOpen, Sparkles, Lock, CheckCircle2, ChevronLeft, ChevronRight, Newspaper, Globe } from "lucide-react";
+import { Textarea } from "@/components/ui/textarea";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { BookOpen, Sparkles, ChevronLeft, ChevronRight, Globe, Pencil, Trash2, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 
 type GameEvent = Tables<"game_events">;
@@ -38,160 +41,128 @@ const ChronicleFeed = ({
   sessionId, events, memories, chronicles, epochStyle,
   currentTurn, players, currentPlayerName, entityTraits, cities = [], onRefetch, myRole,
 }: ChronicleFeedProps) => {
-  const isAdmin = myRole === "admin" || !myRole; // backward compat
+  const isAdmin = myRole === "admin" || !myRole;
   const [generating, setGenerating] = useState(false);
-  const [generatingRumors, setGeneratingRumors] = useState(false);
   const [viewingRound, setViewingRound] = useState<number | null>(null);
-  const [rumors, setRumors] = useState<any[]>([]);
+  const [rangeMode, setRangeMode] = useState("last_turn");
+  const [customFrom, setCustomFrom] = useState("1");
+  const [customTo, setCustomTo] = useState(String(currentTurn));
+  const [editingEntry, setEditingEntry] = useState<string | null>(null);
+  const [editText, setEditText] = useState("");
+  const [rewriting, setRewriting] = useState<string | null>(null);
 
-  const currentPlayer = players.find(p => p.player_name === currentPlayerName);
-  const myTurnClosed = currentPlayer?.turn_closed || false;
-  const allClosed = players.length > 0 && players.every(p => p.turn_closed);
-
-  // Fetch intelligence reports (rumors) for current session
-  useEffect(() => {
-    const fetchRumors = async () => {
-      const { data } = await supabase
-        .from("intelligence_reports")
-        .select("*")
-        .eq("session_id", sessionId)
-        .order("created_round", { ascending: false });
-      if (data) setRumors(data);
-    };
-    fetchRumors();
-  }, [sessionId, chronicles.length]);
-
-  // Active display round
   const displayRound = viewingRound ?? currentTurn;
   const displayEvents = events.filter(e => e.turn_number === displayRound);
 
-  // Find chronicle entries for displayed round
-  const roundChronicles = chronicles.filter(c =>
-    c.text.includes(`Rok ${displayRound}`) || c.text.includes(`rok ${displayRound}`)
-  );
-  const roundRumors = rumors.filter(r => (r as any).created_round === displayRound);
+  // Match chronicles by turn_from/turn_to or text
+  const roundChronicles = chronicles.filter(c => {
+    const cf = c as any;
+    if (cf.turn_from && cf.turn_to) {
+      return displayRound >= cf.turn_from && displayRound <= cf.turn_to;
+    }
+    return c.text.includes(`Rok ${displayRound}`) || c.text.includes(`rok ${displayRound}`);
+  });
   const hasChronicleForRound = roundChronicles.length > 0;
 
-  const handleCloseTurn = async () => {
-    if (!currentPlayer) return;
-    await closeTurnForPlayer(sessionId, currentPlayer.player_number);
-    toast.success("Vaše kolo uzavřeno. Čekáme na ostatní hráče.");
-    onRefetch?.();
+  const getGenerationRange = (): { from: number; to: number } => {
+    switch (rangeMode) {
+      case "last_turn": return { from: currentTurn, to: currentTurn };
+      case "last_5": return { from: Math.max(1, currentTurn - 4), to: currentTurn };
+      case "full_year": return { from: 1, to: currentTurn };
+      case "custom": return { from: parseInt(customFrom) || 1, to: parseInt(customTo) || currentTurn };
+      default: return { from: currentTurn, to: currentTurn };
+    }
   };
 
-  const handleGenerateAndAdvance = async () => {
-    const roundEvents = events.filter(e => e.turn_number === currentTurn);
-    if (roundEvents.length === 0) {
-      toast.error("V tomto kole nejsou žádné události");
+  // Find turns that already have chronicles
+  const getExistingTurns = (): Set<number> => {
+    const set = new Set<number>();
+    chronicles.forEach(c => {
+      const cf = c as any;
+      if (cf.turn_from && cf.turn_to) {
+        for (let i = cf.turn_from; i <= cf.turn_to; i++) set.add(i);
+      } else {
+        // Parse from text
+        const match = c.text.match(/Rok (\d+)/);
+        if (match) set.add(parseInt(match[1]));
+      }
+    });
+    return set;
+  };
+
+  const handleGenerate = async () => {
+    const range = getGenerationRange();
+    const existingTurns = getExistingTurns();
+
+    // Filter out already generated turns
+    const turnsToGenerate: number[] = [];
+    for (let t = range.from; t <= range.to; t++) {
+      if (!existingTurns.has(t)) turnsToGenerate.push(t);
+    }
+
+    if (turnsToGenerate.length === 0) {
+      toast.info("Všechna kola v tomto rozsahu již mají kroniku.");
       return;
     }
 
     setGenerating(true);
     try {
-      // 1. Fetch all annotations for this round's events
-      const eventIds = roundEvents.map(e => e.id);
-      const { data: annotationsData } = await supabase
-        .from("event_annotations")
-        .select("*")
-        .in("event_id", eventIds);
+      for (const turn of turnsToGenerate) {
+        const roundEvents = events.filter(e => e.turn_number === turn);
+        if (roundEvents.length === 0) continue;
 
-      const annotationsWithType = (annotationsData || []).map(a => {
-        const evt = roundEvents.find(e => e.id === a.event_id);
-        return { ...a, event_type: evt?.event_type || "unknown" };
-      });
+        const eventIds = roundEvents.map(e => e.id);
+        const { data: annotationsData } = await supabase
+          .from("event_annotations").select("*").in("event_id", eventIds);
 
-      // 2. Gather approved world memories
-      const approvedMemories = memories
-        .filter(m => m.approved)
-        .map(m => ({ text: m.text, category: (m as any).category }));
+        const annotationsWithType = (annotationsData || []).map(a => {
+          const evt = roundEvents.find(e => e.id === a.event_id);
+          return { ...a, event_type: evt?.event_type || "unknown" };
+        });
 
-      // 3. Call the new world-chronicle-round endpoint
-      const { data, error } = await supabase.functions.invoke("world-chronicle-round", {
-        body: {
-          round: currentTurn,
-          confirmedEvents: roundEvents,
-          annotations: annotationsWithType.filter(a => a.visibility !== "private"),
-          worldMemories: approvedMemories,
-          epochStyle,
-        },
-      });
+        const approvedMemories = memories
+          .filter(m => m.approved)
+          .map(m => ({ text: m.text, category: (m as any).category }));
 
-      if (error) throw error;
-
-      // 4. Store chronicle entry
-      if (data.chronicleText) {
-        await addChronicleEntry(sessionId, `📜 Rok ${currentTurn}\n\n${data.chronicleText}`, epochStyle, currentTurn);
-      }
-
-      // 5. Store suggested memories
-      if (data.newSuggestedMemories?.length) {
-        for (const mem of data.newSuggestedMemories) {
-          await addWorldMemory(sessionId, mem, false);
-        }
-        toast.success(`Navrženo ${data.newSuggestedMemories.length} nových vzpomínek`);
-      }
-
-      // 6. Generate rumors/news for this round
-      try {
-        setGeneratingRumors(true);
-        const leakableAnnotations = (annotationsData || []).filter(a => a.visibility === "leakable");
-
-        const { data: rumorsData } = await supabase.functions.invoke("news-rumors", {
+        const { data, error } = await supabase.functions.invoke("world-chronicle-round", {
           body: {
-            round: currentTurn,
+            round: turn,
             confirmedEvents: roundEvents,
-            leakableNotes: leakableAnnotations,
-            diplomacyMessages: [],
+            annotations: annotationsWithType.filter(a => a.visibility !== "private"),
+            worldMemories: approvedMemories,
             epochStyle,
           },
         });
 
-        if (rumorsData?.rumors?.length) {
-          for (const rumor of rumorsData.rumors) {
-            await supabase.from("intelligence_reports").insert({
-              session_id: sessionId,
-              report_text: rumor.text,
-              source_type: rumor.type === "verified" ? "confirmed_report" : rumor.type === "propaganda" ? "propaganda" : "merchant_gossip",
-              target_entity: rumor.cityReference || "world",
-              visible_to: "all",
-              created_round: currentTurn,
-              secrecy_level: rumor.type === "verified" ? "confirmed" : "uncertain",
-              is_rumor_public: true,
-            });
-          }
-          toast.success(`📰 ${rumorsData.rumors.length} zvěstí zaznamenáno`);
+        if (error) throw error;
+
+        if (data.chronicleText) {
+          await supabase.from("chronicle_entries").insert({
+            session_id: sessionId,
+            text: `📜 Rok ${turn}\n\n${data.chronicleText}`,
+            epoch_style: epochStyle,
+            turn_from: turn,
+            turn_to: turn,
+          } as any);
         }
-        setGeneratingRumors(false);
-      } catch {
-        setGeneratingRumors(false);
+
+        if (data.newSuggestedMemories?.length) {
+          for (const mem of data.newSuggestedMemories) {
+            await addWorldMemory(sessionId, mem, false);
+          }
+        }
+
+        // Log action
+        await supabase.from("world_action_log").insert({
+          session_id: sessionId,
+          player_name: currentPlayerName,
+          turn_number: turn,
+          action_type: "other",
+          description: `Admin vygeneroval kroniku pro rok ${turn}`,
+        });
       }
 
-      // 7. Check for world crisis
-      try {
-        const { data: crisisData } = await supabase.functions.invoke("world-crisis", {
-          body: {
-            gameState: {
-              currentTurn, playerCount: players.length,
-              cityCount: cities.length, events: roundEvents.slice(-10),
-            }
-          }
-        });
-        if (crisisData?.crisis) {
-          await supabase.from("world_crises").insert({
-            session_id: sessionId,
-            crisis_type: crisisData.crisis.crisis_type,
-            title: crisisData.crisis.title,
-            description: crisisData.crisis.description,
-            affected_cities: crisisData.crisis.affected_cities,
-            trigger_round: currentTurn,
-          } as any);
-          toast.warning(`⚠️ Světová krize: ${crisisData.crisis.title}`);
-        }
-      } catch { /* optional */ }
-
-      // 8. Advance turn
-      await advanceTurn(sessionId, currentTurn);
-      toast.success(`Kronika roku ${currentTurn} zapsána! Pokračujeme rokem ${currentTurn + 1}.`);
+      toast.success(`Kronika vygenerována pro ${turnsToGenerate.length} kol!`);
       onRefetch?.();
     } catch (err) {
       console.error(err);
@@ -200,16 +171,66 @@ const ChronicleFeed = ({
     setGenerating(false);
   };
 
+  const handleDelete = async (entryId: string) => {
+    const { error } = await supabase.from("chronicle_entries").delete().eq("id", entryId);
+    if (error) {
+      toast.error("Smazání selhalo");
+    } else {
+      toast.success("Záznam smazán");
+      onRefetch?.();
+    }
+  };
+
+  const handleSaveEdit = async (entryId: string) => {
+    const { error } = await supabase.from("chronicle_entries").update({ text: editText }).eq("id", entryId);
+    if (error) {
+      toast.error("Uložení selhalo");
+    } else {
+      toast.success("Upraveno");
+      setEditingEntry(null);
+      onRefetch?.();
+    }
+  };
+
+  const handleRewrite = async (entryId: string, turn: number) => {
+    setRewriting(entryId);
+    try {
+      const roundEvents = events.filter(e => e.turn_number === turn);
+      const approvedMemories = memories.filter(m => m.approved).map(m => ({ text: m.text, category: (m as any).category }));
+
+      const { data, error } = await supabase.functions.invoke("world-chronicle-round", {
+        body: {
+          round: turn,
+          confirmedEvents: roundEvents,
+          annotations: [],
+          worldMemories: approvedMemories,
+          epochStyle,
+        },
+      });
+
+      if (error) throw error;
+
+      if (data.chronicleText) {
+        await supabase.from("chronicle_entries").update({
+          text: `📜 Rok ${turn}\n\n${data.chronicleText}`,
+        }).eq("id", entryId);
+        toast.success("Kronika přepsána AI");
+        onRefetch?.();
+      }
+    } catch {
+      toast.error("Přepis selhal");
+    }
+    setRewriting(null);
+  };
+
   const epochClass =
     epochStyle === "myty" ? "text-chronicle-myth" :
     epochStyle === "moderni" ? "text-chronicle-modern" : "text-chronicle-medieval";
 
-  // Calculate available rounds
   const allRounds = Array.from({ length: currentTurn }, (_, i) => i + 1);
 
   return (
     <div className="space-y-4">
-      {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-2">
         <h2 className="text-xl font-display font-semibold flex items-center gap-2">
           <Globe className="h-5 w-5 text-primary" />
@@ -220,125 +241,124 @@ const ChronicleFeed = ({
         </h2>
       </div>
 
+      {/* Admin: Generate Chronicle with Range */}
+      {isAdmin && (
+        <div className="p-3 rounded-lg border border-border bg-muted/20 space-y-3">
+          <p className="text-xs font-display text-muted-foreground">Generovat kroniku (Admin)</p>
+          <div className="flex items-center gap-2 flex-wrap">
+            <Select value={rangeMode} onValueChange={setRangeMode}>
+              <SelectTrigger className="w-40 h-8 text-xs"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="last_turn">Poslední kolo</SelectItem>
+                <SelectItem value="last_5">Posledních 5 kol</SelectItem>
+                <SelectItem value="full_year">Celý rok</SelectItem>
+                <SelectItem value="custom">Vlastní rozsah</SelectItem>
+              </SelectContent>
+            </Select>
+
+            {rangeMode === "custom" && (
+              <>
+                <Input type="number" min={1} max={currentTurn} value={customFrom}
+                  onChange={e => setCustomFrom(e.target.value)} className="w-16 h-8 text-xs" placeholder="Od" />
+                <span className="text-xs">–</span>
+                <Input type="number" min={1} max={currentTurn} value={customTo}
+                  onChange={e => setCustomTo(e.target.value)} className="w-16 h-8 text-xs" placeholder="Do" />
+              </>
+            )}
+
+            <Button size="sm" onClick={handleGenerate} disabled={generating} className="h-8 text-xs">
+              <Sparkles className="h-3 w-3 mr-1" />
+              {generating ? "Generuji..." : "Generovat kroniku"}
+            </Button>
+          </div>
+          <p className="text-[10px] text-muted-foreground">
+            Již vygenerovaná kola budou přeskočena.
+          </p>
+        </div>
+      )}
+
       {/* Round Navigation */}
       <div className="flex items-center gap-2 p-2 rounded-lg border border-border bg-muted/20">
-        <Button
-          variant="ghost" size="icon" className="h-7 w-7"
-          disabled={displayRound <= 1}
-          onClick={() => setViewingRound(Math.max(1, displayRound - 1))}
-        >
+        <Button variant="ghost" size="icon" className="h-7 w-7" disabled={displayRound <= 1}
+          onClick={() => setViewingRound(Math.max(1, displayRound - 1))}>
           <ChevronLeft className="h-4 w-4" />
         </Button>
-
         <div className="flex gap-1 flex-wrap flex-1 justify-center">
           {allRounds.map(r => {
-            const hasChr = chronicles.some(c => c.text.includes(`Rok ${r}`));
+            const hasChr = chronicles.some(c => {
+              const cf = c as any;
+              if (cf.turn_from && cf.turn_to) return r >= cf.turn_from && r <= cf.turn_to;
+              return c.text.includes(`Rok ${r}`);
+            });
             return (
-              <Button
-                key={r}
-                variant={r === displayRound ? "default" : hasChr ? "secondary" : "ghost"}
-                size="sm"
-                className={`h-7 w-7 p-0 text-xs ${!hasChr && r !== displayRound ? "opacity-40" : ""}`}
-                onClick={() => setViewingRound(r)}
-              >
-                {r}
-              </Button>
+              <Button key={r} variant={r === displayRound ? "default" : hasChr ? "secondary" : "ghost"}
+                size="sm" className={`h-7 w-7 p-0 text-xs ${!hasChr && r !== displayRound ? "opacity-40" : ""}`}
+                onClick={() => setViewingRound(r)}>{r}</Button>
             );
           })}
         </div>
-
-        <Button
-          variant="ghost" size="icon" className="h-7 w-7"
-          disabled={displayRound >= currentTurn}
-          onClick={() => setViewingRound(Math.min(currentTurn, displayRound + 1))}
-        >
+        <Button variant="ghost" size="icon" className="h-7 w-7" disabled={displayRound >= currentTurn}
+          onClick={() => setViewingRound(Math.min(currentTurn, displayRound + 1))}>
           <ChevronRight className="h-4 w-4" />
         </Button>
       </div>
 
-      {/* Latest Chronicle Entry (Hero) */}
-      {displayRound === currentTurn && !hasChronicleForRound && (
-        <>
-          {/* Turn closure */}
-          <div className="p-3 rounded-lg border border-border bg-muted/30 space-y-2">
-            <p className="text-sm font-display font-semibold">Rok {currentTurn} — Uzavření kola</p>
-            {players.map(p => (
-              <div key={p.id} className="flex items-center gap-2 text-sm">
-                {p.turn_closed ? (
-                  <CheckCircle2 className="h-4 w-4 text-primary" />
-                ) : (
-                  <Lock className="h-4 w-4 text-muted-foreground" />
-                )}
-                <span className={p.turn_closed ? "text-primary" : "text-muted-foreground"}>
-                  {p.player_name}: {p.turn_closed ? "Uzavřeno" : "Čeká"}
-                </span>
-              </div>
-            ))}
-
-            <div className="text-xs text-muted-foreground">
-              {displayEvents.length} událostí v tomto kole
-            </div>
-
-            {!myTurnClosed && (
-              <Button
-                onClick={handleCloseTurn}
-                variant="outline"
-                className="w-full h-10 font-display mt-2"
-                disabled={displayEvents.length === 0}
-                type="button"
-              >
-                <Lock className="mr-2 h-4 w-4" />
-                Uzavřít mé kolo
-              </Button>
-            )}
-
-            {myTurnClosed && !allClosed && (
-              <p className="text-xs text-muted-foreground italic text-center">
-                Čekáme na ostatní hráče...
-              </p>
-            )}
-
-            {allClosed && isAdmin && (
-              <Button
-                onClick={handleGenerateAndAdvance}
-                disabled={generating}
-                className="w-full h-11 font-display mt-2"
-                type="button"
-              >
-                <Sparkles className="mr-2 h-4 w-4" />
-                {generating ? "Generuji kroniku + zprávy..." : `✅ Zapsat kroniku roku ${currentTurn}`}
-              </Button>
-            )}
-            {allClosed && !isAdmin && (
-              <p className="text-xs text-muted-foreground italic text-center mt-2">
-                Čekáme na Admina, který zapíše kroniku...
-              </p>
-            )}
-          </div>
-        </>
-      )}
-
       {/* Chronicle Entry for Displayed Round */}
       {hasChronicleForRound && (
         <div className="space-y-3">
-          {roundChronicles.map((entry) => (
-            <div
-              key={entry.id}
-              className={`p-5 rounded-lg border-2 border-primary/30 bg-card shadow-parchment animate-fade-in ${epochClass}`}
-            >
-              <div className="flex items-center gap-2 mb-3">
-                <BookOpen className="h-5 w-5 text-primary" />
-                <span className="font-display font-semibold">Kronika roku {displayRound}</span>
-                <Badge variant="secondary" className="text-xs ml-auto">
-                  {EPOCH_LABELS[entry.epoch_style] || entry.epoch_style}
-                </Badge>
+          {roundChronicles.map((entry) => {
+            const turnMatch = entry.text.match(/Rok (\d+)/);
+            const entryTurn = turnMatch ? parseInt(turnMatch[1]) : displayRound;
+
+            return (
+              <div key={entry.id}
+                className={`p-5 rounded-lg border-2 border-primary/30 bg-card shadow-parchment animate-fade-in ${epochClass}`}>
+                <div className="flex items-center gap-2 mb-3">
+                  <BookOpen className="h-5 w-5 text-primary" />
+                  <span className="font-display font-semibold">Kronika roku {displayRound}</span>
+                  <Badge variant="secondary" className="text-xs ml-auto">
+                    {EPOCH_LABELS[entry.epoch_style] || entry.epoch_style}
+                  </Badge>
+                </div>
+
+                {editingEntry === entry.id ? (
+                  <div className="space-y-2">
+                    <Textarea value={editText} onChange={e => setEditText(e.target.value)} rows={8} />
+                    <div className="flex gap-2">
+                      <Button size="sm" onClick={() => handleSaveEdit(entry.id)}>Uložit</Button>
+                      <Button size="sm" variant="ghost" onClick={() => setEditingEntry(null)}>Zrušit</Button>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-sm leading-relaxed whitespace-pre-wrap">{entry.text}</p>
+                )}
+
+                <div className="flex items-center justify-between mt-3">
+                  <span className="text-xs text-muted-foreground">
+                    {new Date(entry.created_at).toLocaleString("cs-CZ")}
+                  </span>
+                  {isAdmin && editingEntry !== entry.id && (
+                    <div className="flex gap-1">
+                      <Button size="sm" variant="ghost" className="h-7 text-xs"
+                        onClick={() => { setEditingEntry(entry.id); setEditText(entry.text); }}>
+                        <Pencil className="h-3 w-3 mr-1" /> Upravit
+                      </Button>
+                      <Button size="sm" variant="ghost" className="h-7 text-xs"
+                        disabled={rewriting === entry.id}
+                        onClick={() => handleRewrite(entry.id, entryTurn)}>
+                        <RefreshCw className={`h-3 w-3 mr-1 ${rewriting === entry.id ? "animate-spin" : ""}`} />
+                        Přepsat AI
+                      </Button>
+                      <Button size="sm" variant="ghost" className="h-7 text-xs text-destructive"
+                        onClick={() => handleDelete(entry.id)}>
+                        <Trash2 className="h-3 w-3 mr-1" /> Smazat
+                      </Button>
+                    </div>
+                  )}
+                </div>
               </div>
-              <p className="text-sm leading-relaxed whitespace-pre-wrap">{entry.text}</p>
-              <div className="text-xs text-muted-foreground mt-3">
-                {new Date(entry.created_at).toLocaleString("cs-CZ")}
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
@@ -351,39 +371,28 @@ const ChronicleFeed = ({
           <p className="text-xs text-muted-foreground mt-1">
             {displayEvents.length} událostí v tomto kole
           </p>
+          {isAdmin && (
+            <Button size="sm" variant="outline" className="mt-2 text-xs"
+              onClick={() => { setRangeMode("custom"); setCustomFrom(String(displayRound)); setCustomTo(String(displayRound)); }}>
+              Generovat pro tento rok
+            </Button>
+          )}
         </div>
       )}
 
-      {/* Rumors / News for the round */}
-      {roundRumors.length > 0 && (
-        <div className="space-y-2">
-          <h3 className="font-display font-semibold text-sm flex items-center gap-2">
-            <Newspaper className="h-4 w-4 text-primary" />
-            📰 Zvěsti a zprávy roku {displayRound}
-          </h3>
-          <div className="space-y-2">
-            {roundRumors.map((r: any) => (
-              <div key={r.id} className="p-3 rounded-lg border border-border bg-muted/20 text-sm">
-                <div className="flex items-center gap-2 mb-1">
-                  <Badge variant={
-                    r.source_type === "confirmed_report" ? "default" :
-                    r.source_type === "propaganda" ? "destructive" : "outline"
-                  } className="text-xs">
-                    {r.source_type === "confirmed_report" ? "✅ Ověřeno" :
-                     r.source_type === "propaganda" ? "📢 Propaganda" : "👂 Zvěst"}
-                  </Badge>
-                  {r.target_entity && r.target_entity !== "world" && (
-                    <span className="text-xs text-muted-foreground">📍 {r.target_entity}</span>
-                  )}
-                </div>
-                <p className="leading-relaxed">{r.report_text}</p>
-              </div>
-            ))}
-          </div>
+      {/* Current turn - no chronicle yet */}
+      {displayRound === currentTurn && !hasChronicleForRound && (
+        <div className="text-center py-6">
+          <p className="text-muted-foreground italic text-sm">
+            Rok {currentTurn} probíhá...
+          </p>
+          <p className="text-xs text-muted-foreground mt-1">
+            {displayEvents.length} událostí zatím
+          </p>
         </div>
       )}
 
-      {/* Full Chronicle Archive */}
+      {/* Full Archive */}
       {chronicles.length > 0 && displayRound === currentTurn && (
         <details className="mt-4">
           <summary className="cursor-pointer font-display text-sm text-muted-foreground hover:text-foreground flex items-center gap-2">
@@ -392,10 +401,7 @@ const ChronicleFeed = ({
           </summary>
           <div className="space-y-3 mt-3 max-h-[50vh] overflow-y-auto pr-1">
             {[...chronicles].reverse().map((entry) => (
-              <div
-                key={entry.id}
-                className={`p-4 rounded-lg border border-border bg-card shadow-parchment animate-fade-in ${epochClass}`}
-              >
+              <div key={entry.id} className={`p-4 rounded-lg border border-border bg-card shadow-parchment ${epochClass}`}>
                 <div className="text-xs text-muted-foreground mb-2 font-display">
                   {EPOCH_LABELS[entry.epoch_style] || entry.epoch_style} • {new Date(entry.created_at).toLocaleString("cs-CZ")}
                 </div>
@@ -406,10 +412,9 @@ const ChronicleFeed = ({
         </details>
       )}
 
-      {/* Empty state */}
       {chronicles.length === 0 && displayRound === currentTurn && displayEvents.length === 0 && (
         <p className="text-muted-foreground text-center py-4 italic">
-          Kronika je prázdná... zadejte události a uzavřete kolo.
+          Kronika je prázdná... zadejte události.
         </p>
       )}
     </div>
