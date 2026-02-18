@@ -19,6 +19,7 @@ export type Database = {
           created_at: string
           epoch_style: string
           id: string
+          references: Json | null
           session_id: string
           text: string
           turn_from: number | null
@@ -28,6 +29,7 @@ export type Database = {
           created_at?: string
           epoch_style?: string
           id?: string
+          references?: Json | null
           session_id: string
           text: string
           turn_from?: number | null
@@ -37,6 +39,7 @@ export type Database = {
           created_at?: string
           epoch_style?: string
           id?: string
+          references?: Json | null
           session_id?: string
           text?: string
           turn_from?: number | null
@@ -520,6 +523,7 @@ export type Database = {
           is_canon: boolean
           key_quotes: string[] | null
           narrative_text: string
+          references: Json | null
           version: number
         }
         Insert: {
@@ -530,6 +534,7 @@ export type Database = {
           is_canon?: boolean
           key_quotes?: string[] | null
           narrative_text: string
+          references?: Json | null
           version?: number
         }
         Update: {
@@ -540,6 +545,7 @@ export type Database = {
           is_canon?: boolean
           key_quotes?: string[] | null
           narrative_text?: string
+          references?: Json | null
           version?: number
         }
         Relationships: [
@@ -973,6 +979,7 @@ export type Database = {
           from_turn: number
           id: string
           player_name: string
+          references: Json | null
           session_id: string
           to_turn: number
         }
@@ -984,6 +991,7 @@ export type Database = {
           from_turn?: number
           id?: string
           player_name: string
+          references?: Json | null
           session_id: string
           to_turn?: number
         }
@@ -995,6 +1003,7 @@ export type Database = {
           from_turn?: number
           id?: string
           player_name?: string
+          references?: Json | null
           session_id?: string
           to_turn?: number
         }
@@ -1276,6 +1285,7 @@ export type Database = {
           image_prompt: string | null
           image_url: string | null
           owner_player: string
+          references: Json | null
           session_id: string
           summary: string | null
           tags: string[] | null
@@ -1291,6 +1301,7 @@ export type Database = {
           image_prompt?: string | null
           image_url?: string | null
           owner_player: string
+          references?: Json | null
           session_id: string
           summary?: string | null
           tags?: string[] | null
@@ -1306,6 +1317,7 @@ export type Database = {
           image_prompt?: string | null
           image_url?: string | null
           owner_player?: string
+          references?: Json | null
           session_id?: string
           summary?: string | null
           tags?: string[] | null
@@ -1500,6 +1512,78 @@ export type Database = {
           },
         ]
       }
+      world_events: {
+        Row: {
+          created_at: string
+          created_by_user_id: string | null
+          date: string | null
+          date_precision: string
+          description: string | null
+          id: string
+          location_id: string | null
+          participants: Json
+          references: Json | null
+          related_event_ids: string[] | null
+          session_id: string
+          slug: string
+          summary: string | null
+          tags: string[] | null
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by_user_id?: string | null
+          date?: string | null
+          date_precision?: string
+          description?: string | null
+          id?: string
+          location_id?: string | null
+          participants?: Json
+          references?: Json | null
+          related_event_ids?: string[] | null
+          session_id: string
+          slug: string
+          summary?: string | null
+          tags?: string[] | null
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by_user_id?: string | null
+          date?: string | null
+          date_precision?: string
+          description?: string | null
+          id?: string
+          location_id?: string | null
+          participants?: Json
+          references?: Json | null
+          related_event_ids?: string[] | null
+          session_id?: string
+          slug?: string
+          summary?: string | null
+          tags?: string[] | null
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "world_events_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "cities"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "world_events_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       world_feed_items: {
         Row: {
           content: string
@@ -1509,6 +1593,7 @@ export type Database = {
           importance: string
           linked_city: string | null
           linked_event_id: string | null
+          references: Json | null
           session_id: string
           turn_number: number
         }
@@ -1520,6 +1605,7 @@ export type Database = {
           importance?: string
           linked_city?: string | null
           linked_event_id?: string | null
+          references?: Json | null
           session_id: string
           turn_number: number
         }
@@ -1531,6 +1617,7 @@ export type Database = {
           importance?: string
           linked_city?: string | null
           linked_event_id?: string | null
+          references?: Json | null
           session_id?: string
           turn_number?: number
         }
@@ -1603,6 +1690,7 @@ export type Database = {
           epoch_style: string
           from_turn: number
           id: string
+          references: Json | null
           session_id: string
           to_turn: number
         }
@@ -1613,6 +1701,7 @@ export type Database = {
           epoch_style?: string
           from_turn?: number
           id?: string
+          references?: Json | null
           session_id: string
           to_turn?: number
         }
@@ -1623,6 +1712,7 @@ export type Database = {
           epoch_style?: string
           from_turn?: number
           id?: string
+          references?: Json | null
           session_id?: string
           to_turn?: number
         }
