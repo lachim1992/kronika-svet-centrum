@@ -85,7 +85,8 @@ const ENTITY_LABELS: Record<string, string> = {
 const WikiPanel = ({
   sessionId, currentPlayerName, cities, wonders, greatPersons, events,
   myRole, epochStyle, onRefetch, onEventClick,
-}: WikiPanelProps) => {
+  codexEntityTarget, onClearEntityTarget, onEntityClick,
+}: WikiPanelProps & { codexEntityTarget?: { type: string; id: string } | null; onClearEntityTarget?: () => void; onEntityClick?: (type: string, id: string) => void }) => {
   const [entries, setEntries] = useState<WikiEntry[]>([]);
   const [filter, setFilter] = useState("");
   const [typeFilter, setTypeFilter] = useState<string | null>(null);
@@ -104,6 +105,8 @@ const WikiPanel = ({
   useEffect(() => {
     fetchAll();
   }, [sessionId]);
+
+
 
   const fetchAll = async () => {
     const [entriesRes, provincesRes, regionsRes, worldEventsRes, linksRes, imagesRes, memoriesRes] = await Promise.all([
@@ -133,6 +136,17 @@ const WikiPanel = ({
     ...greatPersons.map(p => ({ type: "person", name: p.name, id: p.id, owner: p.player_name, context: { personType: p.person_type, flavor: p.flavor_trait, alive: p.is_alive, bio: p.bio } })),
     ...worldEvents.map(e => ({ type: "event", name: e.title, id: e.id, owner: e.created_by_type || "system", context: { date: e.date, summary: e.summary, description: e.description, tags: e.tags, status: e.status, participants: e.participants } })),
   ], [cities, provinces, regions, wonders, greatPersons, worldEvents]);
+
+  // Handle codexEntityTarget to auto-open entity
+  useEffect(() => {
+    if (codexEntityTarget && allEntities.length > 0) {
+      const target = allEntities.find(e => e.type === codexEntityTarget.type && e.id === codexEntityTarget.id);
+      if (target) {
+        setSelectedEntity(target);
+        onClearEntityTarget?.();
+      }
+    }
+  }, [codexEntityTarget, allEntities]);
 
   const filtered = allEntities.filter(e => {
     if (typeFilter && e.type !== typeFilter) return false;

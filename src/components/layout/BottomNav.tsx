@@ -1,6 +1,6 @@
-import { Home, Globe, Shield, BookOpen, Library, Plus } from "lucide-react";
+import { Home, Globe, Shield, Newspaper, Library, Plus } from "lucide-react";
 
-export type TabId = "home" | "world" | "realm" | "chronicle" | "codex";
+export type TabId = "home" | "world" | "realm" | "feed" | "codex";
 
 interface Props {
   activeTab: TabId;
@@ -12,7 +12,7 @@ const tabs: { id: TabId; label: string; icon: React.ElementType }[] = [
   { id: "home", label: "Říše", icon: Home },
   { id: "world", label: "Svět", icon: Globe },
   { id: "realm", label: "Správa", icon: Shield },
-  { id: "chronicle", label: "Kronika", icon: BookOpen },
+  { id: "feed", label: "Feed", icon: Newspaper },
   { id: "codex", label: "Kodex", icon: Library },
 ];
 

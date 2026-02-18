@@ -3,9 +3,8 @@ import WikiPanel from "@/components/WikiPanel";
 import WondersPanel from "@/components/WondersPanel";
 import GreatPersonsPanel from "@/components/GreatPersonsPanel";
 import LeaderboardsPanel from "@/components/LeaderboardsPanel";
-import WorldHistoryPanel from "@/components/WorldHistoryPanel";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Library, BookOpen, Landmark, Star, Trophy, BookMarked } from "lucide-react";
+import { Library, BookOpen, Landmark, Star, Trophy } from "lucide-react";
 
 interface Props {
   sessionId: string;
@@ -25,6 +24,7 @@ interface Props {
   worldFoundation: any;
   onRefetch: () => void;
   onEventClick?: (eventId: string) => void;
+  onEntityClick?: (type: string, id: string) => void;
   codexEntityTarget?: { type: string; id: string } | null;
   onClearEntityTarget?: () => void;
 }
@@ -32,7 +32,8 @@ interface Props {
 const CodexTab = ({
   sessionId, session, events, memories, players, cities, wonders, greatPersons,
   resources, armies, chronicles, currentPlayerName, currentTurn, myRole,
-  worldFoundation, onRefetch, onEventClick, codexEntityTarget, onClearEntityTarget,
+  worldFoundation, onRefetch, onEventClick, onEntityClick,
+  codexEntityTarget, onClearEntityTarget,
 }: Props) => {
   return (
     <div className="space-y-4 pb-20">
@@ -55,9 +56,6 @@ const CodexTab = ({
           <TabsTrigger value="persons" className="font-display text-xs gap-1">
             <Star className="h-3 w-3" />Osobnosti
           </TabsTrigger>
-          <TabsTrigger value="history" className="font-display text-xs gap-1">
-            <BookMarked className="h-3 w-3" />Dějiny
-          </TabsTrigger>
           <TabsTrigger value="leaderboards" className="font-display text-xs gap-1">
             <Trophy className="h-3 w-3" />Žebříčky
           </TabsTrigger>
@@ -69,6 +67,9 @@ const CodexTab = ({
             cities={cities} wonders={wonders} greatPersons={greatPersons}
             events={events} myRole={myRole} epochStyle={session.epoch_style}
             onRefetch={onRefetch} onEventClick={onEventClick}
+            onEntityClick={onEntityClick}
+            codexEntityTarget={codexEntityTarget}
+            onClearEntityTarget={onClearEntityTarget}
           />
         </TabsContent>
 
@@ -87,13 +88,6 @@ const CodexTab = ({
           <GreatPersonsPanel
             sessionId={sessionId} currentPlayerName={currentPlayerName}
             greatPersons={greatPersons} cities={cities} currentTurn={currentTurn} onRefetch={onRefetch}
-          />
-        </TabsContent>
-
-        <TabsContent value="history" className="mt-3">
-          <WorldHistoryPanel
-            sessionId={sessionId} events={events} memories={memories}
-            epochStyle={session.epoch_style} currentTurn={currentTurn} onEventClick={onEventClick}
           />
         </TabsContent>
 
