@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useGameSession } from "@/hooks/useGameSession";
 import { useAuth } from "@/hooks/useAuth";
@@ -9,10 +9,11 @@ import AppHeader from "@/components/layout/AppHeader";
 import BottomNav, { type TabId } from "@/components/layout/BottomNav";
 import ActionChooser from "@/components/layout/ActionChooser";
 import WorldEventDetailPanel from "@/components/WorldEventDetailPanel";
+import HomeTab from "@/pages/game/HomeTab";
 import WorldTab from "@/pages/game/WorldTab";
-import CivTab from "@/pages/game/CivTab";
-import CitiesTab from "@/pages/game/CitiesTab";
-import FeedTab from "@/pages/game/FeedTab";
+import RealmTab from "@/pages/game/RealmTab";
+import ChronicleTab from "@/pages/game/ChronicleTab";
+import CodexTab from "@/pages/game/CodexTab";
 import ProfileTab from "@/pages/game/ProfileTab";
 
 const Dashboard = () => {
@@ -26,14 +27,13 @@ const Dashboard = () => {
     loading, refetch,
   } = useGameSession(sessionId || null);
 
-  const [activeTab, setActiveTab] = useState<TabId>("world");
+  const [activeTab, setActiveTab] = useState<TabId>("home");
   const [showActionChooser, setShowActionChooser] = useState(false);
   const [eventDetailId, setEventDetailId] = useState<string | null>(null);
   const [myRole, setMyRole] = useState<string>("player");
   const [myPlayerName, setMyPlayerName] = useState("Hráč");
   const [worldFoundation, setWorldFoundation] = useState<any>(null);
 
-  // Fetch membership & world foundation
   useEffect(() => {
     if (!user || !sessionId) return;
 
@@ -48,9 +48,8 @@ const Dashboard = () => {
         setMyRole(data.role);
         setMyPlayerName(data.player_name);
       } else {
-        // Fallback to localStorage for legacy games
         setMyPlayerName(localStorage.getItem("ch_playerName") || "Hráč");
-        setMyRole("admin"); // legacy = full access
+        setMyRole("admin");
       }
     };
 
@@ -92,7 +91,7 @@ const Dashboard = () => {
   const currentTurn = session.current_turn;
 
   const handleAction = (action: string) => {
-    setActiveTab("feed");
+    setActiveTab("chronicle");
   };
 
   const sharedProps = {
@@ -119,24 +118,12 @@ const Dashboard = () => {
         myRole={myRole}
       />
 
-      <main className="max-w-[1600px] mx-auto px-4 py-4">
+      <main className="max-w-[1600px] mx-auto px-3 py-3">
+        {activeTab === "home" && <HomeTab {...sharedProps} />}
         {activeTab === "world" && <WorldTab {...sharedProps} />}
-        {activeTab === "civ" && <CivTab {...sharedProps} />}
-        {activeTab === "cities" && <CitiesTab {...sharedProps} />}
-        {activeTab === "feed" && <FeedTab {...sharedProps} myRole={myRole} />}
-        {activeTab === "profile" && (
-          <ProfileTab
-            sessionId={session.id}
-            currentPlayerName={myPlayerName}
-            myRole={myRole}
-            citiesCount={cities.length}
-            eventsCount={events.length}
-            wondersCount={wonders.length}
-            memoriesCount={memories.length}
-            playersCount={players.length}
-            onRefetch={refetch}
-          />
-        )}
+        {activeTab === "realm" && <RealmTab {...sharedProps} />}
+        {activeTab === "chronicle" && <ChronicleTab {...sharedProps} />}
+        {activeTab === "codex" && <CodexTab {...sharedProps} />}
       </main>
 
       <BottomNav activeTab={activeTab} onTabChange={setActiveTab} onAddAction={() => setShowActionChooser(true)} />
