@@ -5,8 +5,10 @@ import WondersPanel from "@/components/WondersPanel";
 import CityStatesPanel from "@/components/CityStatesPanel";
 import WikiPanel from "@/components/WikiPanel";
 import WorldCodex from "@/components/WorldCodex";
+import TurnProgressionPanel from "@/components/TurnProgressionPanel";
+import WorldActionLog from "@/components/WorldActionLog";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
-import { BookOpen, Globe, Landmark, Building2, BookMarked } from "lucide-react";
+import { BookOpen, Globe, Landmark, Building2, BookMarked, Clock, ScrollText } from "lucide-react";
 
 interface Props {
   sessionId: string;
@@ -32,9 +34,24 @@ const WorldTab = ({
   wonders, entityTraits, greatPersons, currentPlayerName, currentTurn, myRole,
   worldFoundation, onRefetch,
 }: Props) => {
+  const isAdmin = myRole === "admin" || !myRole;
+
   return (
     <div className="space-y-4 pb-20">
-      <Accordion type="multiple" defaultValue={["chronicle", "codex"]} className="space-y-2">
+      <Accordion type="multiple" defaultValue={["turn", "chronicle", "codex"]} className="space-y-2">
+        {/* Turn Progression */}
+        <AccordionItem value="turn" className="manuscript-card">
+          <AccordionTrigger className="px-4 py-3 font-display text-sm">
+            <span className="flex items-center gap-2"><Clock className="h-4 w-4 text-primary" />⏱️ Průběh kola</span>
+          </AccordionTrigger>
+          <AccordionContent className="px-4 pb-4">
+            <TurnProgressionPanel
+              sessionId={sessionId} currentTurn={currentTurn} players={players}
+              currentPlayerName={currentPlayerName} myRole={myRole} onRefetch={onRefetch}
+            />
+          </AccordionContent>
+        </AccordionItem>
+
         <AccordionItem value="chronicle" className="manuscript-card">
           <AccordionTrigger className="px-4 py-3 font-display text-sm">
             <span className="flex items-center gap-2"><BookOpen className="h-4 w-4 text-primary" />🌍 Kronika světa</span>
@@ -90,6 +107,18 @@ const WorldTab = ({
             <CityStatesPanel sessionId={sessionId} cityStates={cityStates} recentEvents={events} players={players} />
           </AccordionContent>
         </AccordionItem>
+
+        {/* Action Log - Admin Only */}
+        {isAdmin && (
+          <AccordionItem value="actionlog" className="manuscript-card">
+            <AccordionTrigger className="px-4 py-3 font-display text-sm">
+              <span className="flex items-center gap-2"><ScrollText className="h-4 w-4 text-primary" />📜 Action Log</span>
+            </AccordionTrigger>
+            <AccordionContent className="px-4 pb-4">
+              <WorldActionLog sessionId={sessionId} currentTurn={currentTurn} myRole={myRole} />
+            </AccordionContent>
+          </AccordionItem>
+        )}
 
         <AccordionItem value="wiki" className="manuscript-card">
           <AccordionTrigger className="px-4 py-3 font-display text-sm">

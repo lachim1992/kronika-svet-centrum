@@ -135,6 +135,9 @@ export function useGameSession(sessionId: string | null) {
       .on("postgres_changes", { event: "*", schema: "public", table: "declarations", filter: `session_id=eq.${sessionId}` }, () => debouncedRefetch())
       .on("postgres_changes", { event: "*", schema: "public", table: "world_crises", filter: `session_id=eq.${sessionId}` }, () => debouncedRefetch())
       .on("postgres_changes", { event: "*", schema: "public", table: "secret_objectives", filter: `session_id=eq.${sessionId}` }, () => debouncedRefetch())
+      .on("postgres_changes", { event: "*", schema: "public", table: "turn_summaries", filter: `session_id=eq.${sessionId}` }, () => debouncedRefetch())
+      .on("postgres_changes", { event: "*", schema: "public", table: "world_feed_items", filter: `session_id=eq.${sessionId}` }, () => debouncedRefetch())
+      .on("postgres_changes", { event: "*", schema: "public", table: "world_action_log", filter: `session_id=eq.${sessionId}` }, () => debouncedRefetch())
       .subscribe();
     return () => { supabase.removeChannel(channel); };
   }, [sessionId, debouncedRefetch]);

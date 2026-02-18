@@ -1,6 +1,7 @@
 import EventTimeline from "@/components/EventTimeline";
 import EventInput from "@/components/EventInput";
 import PlayerChroniclePanel from "@/components/PlayerChroniclePanel";
+import WorldFeedPanel from "@/components/WorldFeedPanel";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Newspaper, Swords, BookMarked } from "lucide-react";
 
@@ -15,16 +16,31 @@ interface Props {
   civilizations: any[];
   currentPlayerName: string;
   currentTurn: number;
+  myRole: string;
   onRefetch: () => void;
 }
 
 const FeedTab = ({
   sessionId, session, events, memories, responses, players, cities, civilizations,
-  currentPlayerName, currentTurn, onRefetch,
+  currentPlayerName, currentTurn, myRole, onRefetch,
 }: Props) => {
   return (
     <div className="space-y-4 pb-20">
-      <Accordion type="multiple" defaultValue={["events"]} className="space-y-2">
+      <Accordion type="multiple" defaultValue={["feed", "events"]} className="space-y-2">
+        {/* World Feed - FM Style */}
+        <AccordionItem value="feed" className="manuscript-card">
+          <AccordionTrigger className="px-4 py-3 font-display text-sm">
+            <span className="flex items-center gap-2"><Newspaper className="h-4 w-4 text-primary" />📰 World Feed</span>
+          </AccordionTrigger>
+          <AccordionContent className="px-4 pb-4">
+            <WorldFeedPanel
+              sessionId={sessionId} currentTurn={currentTurn} events={events}
+              cities={cities} memories={memories} players={players}
+              epochStyle={session.epoch_style} myRole={myRole} onRefetch={onRefetch}
+            />
+          </AccordionContent>
+        </AccordionItem>
+
         <AccordionItem value="events" className="manuscript-card">
           <AccordionTrigger className="px-4 py-3 font-display text-sm">
             <span className="flex items-center gap-2"><Swords className="h-4 w-4 text-primary" />Události</span>

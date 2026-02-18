@@ -1,10 +1,8 @@
 import { useState } from "react";
-import { addGameEvent } from "@/hooks/useGameSession";
 import type { Tables } from "@/integrations/supabase/types";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { Input } from "@/components/ui/input";
 import { PenLine, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
@@ -32,6 +30,12 @@ const TRUTH_STATES = [
   { value: "propaganda", label: "📢 Propaganda (spin)" },
 ];
 
+const IMPORTANCE_LEVELS = [
+  { value: "normal", label: "Normální" },
+  { value: "memorable", label: "📌 Důležitá" },
+  { value: "legendary", label: "⭐ Legendární" },
+];
+
 const DUAL_CITY_EVENTS = ["battle", "trade", "diplomacy"];
 
 interface EventInputProps {
@@ -50,6 +54,7 @@ const EventInput = ({ sessionId, players, cities, currentTurn, turnClosed, onEve
   const [secondaryCityId, setSecondaryCityId] = useState("");
   const [note, setNote] = useState("");
   const [truthState, setTruthState] = useState("canon");
+  const [importance, setImportance] = useState("normal");
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = async () => {
@@ -66,7 +71,7 @@ const EventInput = ({ sessionId, players, cities, currentTurn, turnClosed, onEve
     const selectedCity = cities.find(c => c.id === cityId);
     const locationName = selectedCity?.name || "";
 
-    // Insert event with city_id
+    // Insert event
     const { error } = await supabase.from("game_events").insert({
       session_id: sessionId,
       event_type: eventType,
@@ -77,18 +82,33 @@ const EventInput = ({ sessionId, players, cities, currentTurn, turnClosed, onEve
       city_id: cityId,
       secondary_city_id: secondaryCityId || null,
       truth_state: truthState,
+      importance,
     } as any);
 
     if (error) {
       console.error(error);
       toast.error("Chyba při zápisu události");
     } else {
-      toast.success("Událost zaznamenána");
+      // Log to immutable action log
+      await supabase.from("world_action_log").insert({
+        session_id: sessionId,
+        player_name: player,
+        turn_number: currentTurn,
+        action_type: eventType === "battle" || eventType === "raid" ? "battle" :
+          eventType === "diplomacy" ? "diplomacy" :
+          eventType === "trade" ? "trade" :
+          eventType === "upgrade_city" || eventType === "found_settlement" ? "build" :
+          eventType === "declaration" ? "declaration" : "event",
+        description: `${EVENT_TYPES.find(t => t.value === eventType)?.label || eventType} @ ${locationName}${note ? ` — "${note}"` : ""}`,
+        metadata: { event_type: eventType, city: locationName, importance, truth_state: truthState },
+      });
+
+      toast.success(importance === "legendary" ? "⭐ Legendární událost zaznamenána!" : "Událost zaznamenána");
       onEventAdded?.();
     }
 
     setLoading(false);
-    setEventType(""); setPlayer(""); setCityId(""); setSecondaryCityId(""); setNote(""); setTruthState("canon");
+    setEventType(""); setPlayer(""); setCityId(""); setSecondaryCityId(""); setNote(""); setTruthState("canon"); setImportance("normal");
   };
 
   if (turnClosed) {
@@ -117,7 +137,7 @@ const EventInput = ({ sessionId, players, cities, currentTurn, turnClosed, onEve
       {cities.length === 0 && (
         <div className="p-3 rounded-lg border border-yellow-500/50 bg-yellow-500/10 flex items-center gap-2 text-sm">
           <AlertTriangle className="h-4 w-4 text-yellow-500 shrink-0" />
-          <span>Nejprve musíte založit město v záložce <strong>Města</strong>, než budete moci zapisovat události.</span>
+          <span>Nejprve musíte založit město v záložce <strong>Města</strong>.</span>
         </div>
       )}
 
@@ -162,14 +182,25 @@ const EventInput = ({ sessionId, players, cities, currentTurn, turnClosed, onEve
         </Select>
       )}
 
-      <Select value={truthState} onValueChange={setTruthState}>
-        <SelectTrigger className="h-11"><SelectValue placeholder="Stav pravdy..." /></SelectTrigger>
-        <SelectContent>
-          {TRUTH_STATES.map(ts => (
-            <SelectItem key={ts.value} value={ts.value}>{ts.label}</SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+      <div className="grid grid-cols-2 gap-2">
+        <Select value={truthState} onValueChange={setTruthState}>
+          <SelectTrigger className="h-11"><SelectValue placeholder="Stav pravdy..." /></SelectTrigger>
+          <SelectContent>
+            {TRUTH_STATES.map(ts => (
+              <SelectItem key={ts.value} value={ts.value}>{ts.label}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
+        <Select value={importance} onValueChange={setImportance}>
+          <SelectTrigger className="h-11"><SelectValue placeholder="Důležitost..." /></SelectTrigger>
+          <SelectContent>
+            {IMPORTANCE_LEVELS.map(il => (
+              <SelectItem key={il.value} value={il.value}>{il.label}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
 
       <Textarea
         placeholder="Poznámka / flavor text (volitelné)"
@@ -179,7 +210,7 @@ const EventInput = ({ sessionId, players, cities, currentTurn, turnClosed, onEve
       />
 
       <Button onClick={handleSubmit} disabled={loading || cities.length === 0} className="w-full h-12 font-display text-base">
-        {loading ? "Zapisuji..." : "✅ Zapsat událost"}
+        {loading ? "Zapisuji..." : importance === "legendary" ? "⭐ Zapsat legendární událost" : "✅ Zapsat událost"}
       </Button>
     </div>
   );

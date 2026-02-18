@@ -21,6 +21,8 @@ export type Database = {
           id: string
           session_id: string
           text: string
+          turn_from: number | null
+          turn_to: number | null
         }
         Insert: {
           created_at?: string
@@ -28,6 +30,8 @@ export type Database = {
           id?: string
           session_id: string
           text: string
+          turn_from?: number | null
+          turn_to?: number | null
         }
         Update: {
           created_at?: string
@@ -35,6 +39,8 @@ export type Database = {
           id?: string
           session_id?: string
           text?: string
+          turn_from?: number | null
+          turn_to?: number | null
         }
         Relationships: [
           {
@@ -590,6 +596,7 @@ export type Database = {
           devastation_duration: number | null
           event_type: string
           id: string
+          importance: string
           location: string | null
           note: string | null
           player: string
@@ -612,6 +619,7 @@ export type Database = {
           devastation_duration?: number | null
           event_type: string
           id?: string
+          importance?: string
           location?: string | null
           note?: string | null
           player: string
@@ -634,6 +642,7 @@ export type Database = {
           devastation_duration?: number | null
           event_type?: string
           id?: string
+          importance?: string
           location?: string | null
           note?: string | null
           player?: string
@@ -1197,6 +1206,47 @@ export type Database = {
           },
         ]
       }
+      turn_summaries: {
+        Row: {
+          closed_at: string | null
+          closed_by: string | null
+          created_at: string
+          id: string
+          session_id: string
+          status: string
+          summary_text: string | null
+          turn_number: number
+        }
+        Insert: {
+          closed_at?: string | null
+          closed_by?: string | null
+          created_at?: string
+          id?: string
+          session_id: string
+          status?: string
+          summary_text?: string | null
+          turn_number: number
+        }
+        Update: {
+          closed_at?: string | null
+          closed_by?: string | null
+          created_at?: string
+          id?: string
+          session_id?: string
+          status?: string
+          summary_text?: string | null
+          turn_number?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "turn_summaries_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       user_roles: {
         Row: {
           id: string
@@ -1362,6 +1412,47 @@ export type Database = {
           },
         ]
       }
+      world_action_log: {
+        Row: {
+          action_type: string
+          created_at: string
+          description: string
+          id: string
+          metadata: Json | null
+          player_name: string
+          session_id: string
+          turn_number: number
+        }
+        Insert: {
+          action_type: string
+          created_at?: string
+          description: string
+          id?: string
+          metadata?: Json | null
+          player_name: string
+          session_id: string
+          turn_number: number
+        }
+        Update: {
+          action_type?: string
+          created_at?: string
+          description?: string
+          id?: string
+          metadata?: Json | null
+          player_name?: string
+          session_id?: string
+          turn_number?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "world_action_log_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       world_crises: {
         Row: {
           affected_cities: string[] | null
@@ -1402,6 +1493,57 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "world_crises_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      world_feed_items: {
+        Row: {
+          content: string
+          created_at: string
+          feed_type: string
+          id: string
+          importance: string
+          linked_city: string | null
+          linked_event_id: string | null
+          session_id: string
+          turn_number: number
+        }
+        Insert: {
+          content: string
+          created_at?: string
+          feed_type?: string
+          id?: string
+          importance?: string
+          linked_city?: string | null
+          linked_event_id?: string | null
+          session_id: string
+          turn_number: number
+        }
+        Update: {
+          content?: string
+          created_at?: string
+          feed_type?: string
+          id?: string
+          importance?: string
+          linked_city?: string | null
+          linked_event_id?: string | null
+          session_id?: string
+          turn_number?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "world_feed_items_linked_event_id_fkey"
+            columns: ["linked_event_id"]
+            isOneToOne: false
+            referencedRelation: "game_events"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "world_feed_items_session_id_fkey"
             columns: ["session_id"]
             isOneToOne: false
             referencedRelation: "game_sessions"
