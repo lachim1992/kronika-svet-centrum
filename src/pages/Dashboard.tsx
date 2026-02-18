@@ -98,7 +98,11 @@ const Dashboard = () => {
   const currentTurn = session.current_turn;
 
   const handleAction = (action: string) => {
-    setActiveTab("feed");
+    if (action === "open_realm" || action === "manage_armies") {
+      setActiveTab("realm");
+    } else {
+      setActiveTab("feed");
+    }
   };
 
   const handleEntityClick = (type: string, id: string) => {
@@ -140,6 +144,7 @@ const Dashboard = () => {
         worldName={worldFoundation?.world_name}
         playerName={myPlayerName}
         myRole={myRole}
+        currentSessionId={session.id}
       />
 
       <main className="max-w-[1600px] mx-auto px-3 py-3">
@@ -167,6 +172,8 @@ const Dashboard = () => {
         worldName={worldFoundation?.world_name}
         currentTurn={currentTurn}
         playerName={myPlayerName}
+        onAction={handleAction}
+        activeTab={activeTab}
       />
       <BottomNav activeTab={activeTab} onTabChange={setActiveTab} showDevTab={myRole === "admin"} />
       <ActionChooser open={showActionChooser} onClose={() => setShowActionChooser(false)} onAction={handleAction} />
