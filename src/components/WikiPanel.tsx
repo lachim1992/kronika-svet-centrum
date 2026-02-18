@@ -154,8 +154,8 @@ const WikiPanel = ({
     return true;
   });
 
-  const getWikiEntry = (type: string, name: string) =>
-    entries.find(e => e.entity_type === type && e.entity_name === name);
+  const getWikiEntry = (type: string, id: string) =>
+    entries.find(e => e.entity_type === type && (e.entity_id === id || e.entity_name === id));
 
   const getEntityEvents = (entityType: string, entityId: string) => {
     const linkedEventIds = eventLinks
@@ -199,7 +199,7 @@ const WikiPanel = ({
       if (error) throw error;
       if (data.error) { toast.error(data.error); return; }
 
-      const existing = getWikiEntry(entity.type, entity.name);
+      const existing = getWikiEntry(entity.type, entity.id);
       if (existing) {
         await supabase.from("wiki_entries").update({
           summary: data.summary,
@@ -233,7 +233,7 @@ const WikiPanel = ({
     const key = `img-${entity.id}`;
     setGeneratingImage(key);
     try {
-      const wiki = getWikiEntry(entity.type, entity.name);
+      const wiki = getWikiEntry(entity.type, entity.id);
       const { data, error } = await supabase.functions.invoke("encyclopedia-image", {
         body: {
           entityType: entity.type,
@@ -248,7 +248,7 @@ const WikiPanel = ({
       if (data.error) { toast.error(data.error); return; }
 
       // Update wiki entry with image
-      const existing = getWikiEntry(entity.type, entity.name);
+      const existing = getWikiEntry(entity.type, entity.id);
       if (existing) {
         await supabase.from("wiki_entries").update({
           image_url: data.imageUrl,
@@ -281,7 +281,7 @@ const WikiPanel = ({
 
   // ─── Detail View ───
   if (selectedEntity) {
-    const wiki = getWikiEntry(selectedEntity.type, selectedEntity.name);
+    const wiki = getWikiEntry(selectedEntity.type, selectedEntity.id);
     const relatedEvents = getEntityEvents(selectedEntity.type, selectedEntity.id);
     const images = getEntityImages(selectedEntity.type, selectedEntity.id);
     const isOwner = selectedEntity.owner === currentPlayerName || isAdmin;
@@ -605,7 +605,7 @@ const WikiPanel = ({
       <ScrollArea className="h-[650px]">
         <div className="space-y-2 pr-2">
           {filtered.map(entity => {
-            const wiki = getWikiEntry(entity.type, entity.name);
+            const wiki = getWikiEntry(entity.type, entity.id);
             const isOwner = entity.owner === currentPlayerName || isAdmin;
             const key = `${entity.type}-${entity.id}`;
             const isGen = generatingId === `text-${entity.id}`;
