@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Globe, Sparkles, Swords, Users, X, Plus } from "lucide-react";
+import { Globe, Sparkles, Swords, Users, X, Plus, Mountain, TreePine, Waves, Sun, Snowflake, Flame } from "lucide-react";
 import { toast } from "sonner";
 
 const TONES = [
@@ -19,6 +19,16 @@ const VICTORY_STYLES = [
   { value: "domination", label: "⚔️ Dominace", desc: "Vojenská nadvláda" },
   { value: "survival", label: "🛡️ Přežití", desc: "Přežijte krize a katastrofy" },
   { value: "story", label: "📖 Příběh", desc: "Nejlepší příběh vyhrává" },
+];
+
+const BIOMES = [
+  { value: "plains", label: "🌾 Pláně", desc: "Úrodné roviny, ideální pro zemědělství", icon: Sun },
+  { value: "coast", label: "🌊 Pobřeží", desc: "Námořní síla, obchod, rybolov", icon: Waves },
+  { value: "mountains", label: "⛰️ Hory", desc: "Nedobytné pevnosti, nerostné bohatství", icon: Mountain },
+  { value: "forest", label: "🌲 Lesy", desc: "Dřevo, lovci, skryté osady", icon: TreePine },
+  { value: "desert", label: "🏜️ Poušť", desc: "Karavany, oázy, starověká tajemství", icon: Sun },
+  { value: "tundra", label: "❄️ Tundra", desc: "Mráz, odolnost, vzácné materiály", icon: Snowflake },
+  { value: "volcanic", label: "🌋 Vulkanický", desc: "Nebezpečná území, mocné zdroje", icon: Flame },
 ];
 
 interface Props {
@@ -38,6 +48,11 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
   const [playerName, setPlayerName] = useState(defaultPlayerName);
   const [creating, setCreating] = useState(false);
 
+  // Homeland region fields
+  const [homelandName, setHomelandName] = useState("");
+  const [homelandBiome, setHomelandBiome] = useState("plains");
+  const [homelandDesc, setHomelandDesc] = useState("");
+
   const addFaction = () => { if (factions.length < 6) setFactions([...factions, ""]); };
   const removeFaction = (i: number) => setFactions(factions.filter((_, idx) => idx !== i));
   const updateFaction = (i: number, v: string) => {
@@ -47,6 +62,7 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
   const handleCreate = async () => {
     if (!worldName.trim() || !premise.trim()) { toast.error("Vyplňte název a premisu světa"); return; }
     if (!playerName.trim()) { toast.error("Zadejte jméno hráče"); return; }
+    if (!homelandName.trim()) { toast.error("Zadejte název domovského regionu"); return; }
     setCreating(true);
 
     try {
@@ -72,6 +88,18 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
         initial_factions: factions.filter(f => f.trim()),
         created_by: userId,
       } as any);
+
+      // Create homeland region
+      const { data: homelandRegion } = await supabase.from("regions").insert({
+        session_id: session.id,
+        name: homelandName.trim(),
+        description: homelandDesc.trim() || `Domovský region ${playerName.trim()}`,
+        biome: homelandBiome,
+        owner_player: playerName.trim(),
+        is_homeland: true,
+        discovered_turn: 1,
+        discovered_by: playerName.trim(),
+      } as any).select().single();
 
       // Create game_players entry
       await supabase.from("game_players").insert({
@@ -101,6 +129,36 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
         });
       }
 
+      // Create initial world event for homeland
+      if (homelandRegion) {
+        const slug = `homeland-${homelandName.trim().toLowerCase().replace(/\s+/g, "-")}-founded`;
+        await supabase.from("world_events").insert({
+          session_id: session.id,
+          title: `Založení ${homelandName.trim()}`,
+          slug,
+          description: `${playerName.trim()} založil svou říši v regionu ${homelandName.trim()}.`,
+          event_category: "founding",
+          status: "published",
+          created_turn: 1,
+          created_by_type: "system",
+          affected_players: [playerName.trim()],
+          participants: [
+            { type: "player", name: playerName.trim() },
+            { type: "region", name: homelandName.trim(), id: homelandRegion.id },
+          ],
+        } as any);
+
+        // Feed item
+        await supabase.from("world_feed_items").insert({
+          session_id: session.id,
+          turn_number: 1,
+          content: `Nová říše se rodí! ${playerName.trim()} buduje svou civilizaci v oblasti ${homelandName.trim()}.`,
+          feed_type: "gossip",
+          importance: "high",
+          references: [{ type: "region", id: homelandRegion.id, label: homelandName.trim() }],
+        } as any);
+      }
+
       toast.success(`Svět „${worldName}" vytvořen!`);
       onCreated(session.id);
     } catch (err: any) {
@@ -110,16 +168,19 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
     setCreating(false);
   };
 
+  const totalSteps = 5;
+
   return (
     <div className="bg-card p-5 rounded-lg border border-border shadow-parchment space-y-4">
       <div className="flex items-center justify-between">
         <h3 className="font-display font-semibold text-lg flex items-center gap-2">
           <Globe className="h-5 w-5 text-primary" />
-          Založit nový svět ({step}/4)
+          Založit nový svět ({step}/{totalSteps})
         </h3>
         <Button variant="ghost" size="icon" onClick={onCancel}><X className="h-4 w-4" /></Button>
       </div>
 
+      {/* Step 1: Player name + World basics */}
       {step === 1 && (
         <div className="space-y-3">
           <div className="space-y-2">
@@ -138,6 +199,7 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
         </div>
       )}
 
+      {/* Step 2: Tone */}
       {step === 2 && (
         <div className="space-y-3">
           <Label>Tón vyprávění</Label>
@@ -157,6 +219,7 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
         </div>
       )}
 
+      {/* Step 3: Victory style */}
       {step === 3 && (
         <div className="space-y-3">
           <Label>Styl vítězství</Label>
@@ -176,7 +239,52 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
         </div>
       )}
 
+      {/* Step 4: Homeland Region */}
       {step === 4 && (
+        <div className="space-y-3">
+          <div className="bg-primary/5 border border-primary/20 rounded-lg p-3">
+            <h4 className="font-display font-semibold text-sm flex items-center gap-2 mb-1">
+              <Mountain className="h-4 w-4 text-primary" />
+              Domovský region
+            </h4>
+            <p className="text-xs text-muted-foreground">
+              Váš domovský region je základnou vaší civilizace. Zde budete stavět první města, pevnosti a divy.
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <Label>Název regionu</Label>
+            <Input value={homelandName} onChange={e => setHomelandName(e.target.value)} placeholder="např. Údolí Sinis, Pobřeží Sardos..." />
+          </div>
+
+          <div className="space-y-2">
+            <Label>Biom / Krajina</Label>
+            <div className="grid grid-cols-2 gap-2">
+              {BIOMES.map(b => (
+                <button key={b.value} onClick={() => setHomelandBiome(b.value)}
+                  className={`p-2.5 rounded-lg border text-left text-xs transition-colors ${homelandBiome === b.value ? "border-primary bg-primary/10" : "border-border hover:border-primary/30"}`}>
+                  <div className="font-display font-semibold">{b.label}</div>
+                  <div className="text-[10px] text-muted-foreground">{b.desc}</div>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label>Popis regionu <span className="text-muted-foreground">(volitelné)</span></Label>
+            <Textarea value={homelandDesc} onChange={e => setHomelandDesc(e.target.value)}
+              placeholder="Krátký popis krajiny, atmosféry..." rows={2} />
+          </div>
+
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => setStep(3)}>← Zpět</Button>
+            <Button onClick={() => setStep(5)} disabled={!homelandName.trim()} className="flex-1">Další →</Button>
+          </div>
+        </div>
+      )}
+
+      {/* Step 5: Factions + Summary */}
+      {step === 5 && (
         <div className="space-y-3">
           <Label>Počáteční frakce / civilizace</Label>
           {factions.map((f, i) => (
@@ -192,11 +300,14 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
           )}
 
           <div className="pt-2 space-y-2">
-            <p className="text-xs text-muted-foreground">
-              Shrnutí: <strong>{worldName}</strong> · {TONES.find(t => t.value === tone)?.label} · {VICTORY_STYLES.find(v => v.value === victoryStyle)?.label}
-            </p>
+            <div className="text-xs text-muted-foreground space-y-1 bg-muted/30 rounded-lg p-3">
+              <p className="font-display font-semibold text-foreground">Shrnutí:</p>
+              <p>🌍 <strong>{worldName}</strong> · {TONES.find(t => t.value === tone)?.label} · {VICTORY_STYLES.find(v => v.value === victoryStyle)?.label}</p>
+              <p>🏔️ Domovský region: <strong>{homelandName}</strong> ({BIOMES.find(b => b.value === homelandBiome)?.label})</p>
+              <p>👤 Hráč: <strong>{playerName}</strong></p>
+            </div>
             <div className="flex gap-2">
-              <Button variant="outline" onClick={() => setStep(3)}>← Zpět</Button>
+              <Button variant="outline" onClick={() => setStep(4)}>← Zpět</Button>
               <Button onClick={handleCreate} disabled={creating} className="flex-1 font-display">
                 <Sparkles className="mr-2 h-4 w-4" />
                 {creating ? "Vytvářím svět..." : "⚔️ Založit svět"}

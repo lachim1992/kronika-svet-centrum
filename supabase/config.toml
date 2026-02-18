@@ -68,3 +68,6 @@ verify_jwt = false
 
 [functions.expand-contribution]
 verify_jwt = false
+
+[functions.explore-region]
+verify_jwt = false
