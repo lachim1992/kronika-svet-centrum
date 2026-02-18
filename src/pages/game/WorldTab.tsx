@@ -7,8 +7,10 @@ import WikiPanel from "@/components/WikiPanel";
 import WorldCodex from "@/components/WorldCodex";
 import TurnProgressionPanel from "@/components/TurnProgressionPanel";
 import WorldActionLog from "@/components/WorldActionLog";
+import EventNetworkPanel from "@/components/EventNetworkPanel";
+import SourceImportPanel from "@/components/SourceImportPanel";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
-import { BookOpen, Globe, Landmark, Building2, BookMarked, Clock, ScrollText } from "lucide-react";
+import { BookOpen, Globe, Landmark, Building2, BookMarked, Clock, ScrollText, Network, FileText } from "lucide-react";
 
 interface Props {
   sessionId: string;
@@ -67,6 +69,16 @@ const WorldTab = ({
           </AccordionContent>
         </AccordionItem>
 
+        {/* Event Network */}
+        <AccordionItem value="eventnetwork" className="manuscript-card">
+          <AccordionTrigger className="px-4 py-3 font-display text-sm">
+            <span className="flex items-center gap-2"><Network className="h-4 w-4 text-primary" />🔗 Síť událostí</span>
+          </AccordionTrigger>
+          <AccordionContent className="px-4 pb-4">
+            <EventNetworkPanel sessionId={sessionId} onEventClick={onEventClick} />
+          </AccordionContent>
+        </AccordionItem>
+
         <AccordionItem value="codex" className="manuscript-card">
           <AccordionTrigger className="px-4 py-3 font-display text-sm">
             <span className="flex items-center gap-2"><Globe className="h-4 w-4 text-primary" />📖 World Codex</span>
@@ -106,6 +118,20 @@ const WorldTab = ({
           </AccordionTrigger>
           <AccordionContent className="px-4 pb-4">
             <CityStatesPanel sessionId={sessionId} cityStates={cityStates} recentEvents={events} players={players} />
+          </AccordionContent>
+        </AccordionItem>
+
+        {/* Source Import */}
+        <AccordionItem value="import" className="manuscript-card">
+          <AccordionTrigger className="px-4 py-3 font-display text-sm">
+            <span className="flex items-center gap-2"><FileText className="h-4 w-4 text-primary" />📥 Import zdrojů</span>
+          </AccordionTrigger>
+          <AccordionContent className="px-4 pb-4">
+            <SourceImportPanel
+              sessionId={sessionId}
+              currentPlayerName={currentPlayerName}
+              onRefetch={onRefetch}
+            />
           </AccordionContent>
         </AccordionItem>
 

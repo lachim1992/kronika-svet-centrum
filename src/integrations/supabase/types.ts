@@ -882,6 +882,56 @@ export type Database = {
           },
         ]
       }
+      import_sources: {
+        Row: {
+          created_at: string
+          created_by_user_id: string | null
+          id: string
+          parsed_chronicles_count: number | null
+          parsed_events_count: number | null
+          raw_text: string
+          session_id: string
+          source_type: string
+          status: string
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by_user_id?: string | null
+          id?: string
+          parsed_chronicles_count?: number | null
+          parsed_events_count?: number | null
+          raw_text: string
+          session_id: string
+          source_type?: string
+          status?: string
+          title?: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by_user_id?: string | null
+          id?: string
+          parsed_chronicles_count?: number | null
+          parsed_events_count?: number | null
+          raw_text?: string
+          session_id?: string
+          source_type?: string
+          status?: string
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "import_sources_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       intelligence_reports: {
         Row: {
           created_at: string
