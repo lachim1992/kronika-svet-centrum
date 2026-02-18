@@ -12,6 +12,8 @@ import { toast } from "sonner";
 import RichText from "@/components/RichText";
 import { supabase } from "@/integrations/supabase/client";
 import WorldMemoryPanel from "@/components/WorldMemoryPanel";
+import CityRumorsPanel from "@/components/CityRumorsPanel";
+import type { EntityIndex } from "@/hooks/useEntityIndex";
 
 type City = Tables<"cities">;
 type GameEvent = Tables<"game_events">;
@@ -40,11 +42,15 @@ interface CityDetailPanelProps {
   onBack: () => void;
   onRefetch?: () => void;
   onEventClick?: (eventId: string) => void;
+  onEntityClick?: (type: string, id: string) => void;
+  entityIndex?: EntityIndex;
+  epochStyle?: string;
 }
 
 const CityDetailPanel = ({
   city, events, memories, wonders, players,
   currentPlayerName, currentTurn, onBack, onRefetch, onEventClick,
+  onEntityClick, entityIndex, epochStyle,
 }: CityDetailPanelProps) => {
   const [generating, setGenerating] = useState(false);
   const [introduction, setIntroduction] = useState<string | null>(null);
@@ -258,6 +264,21 @@ const CityDetailPanel = ({
           </div>
         </div>
       )}
+
+      {/* City Rumors */}
+      <CityRumorsPanel
+        sessionId={(city as any).session_id || ""}
+        cityId={city.id}
+        cityName={city.name}
+        ownerPlayer={city.owner_player}
+        currentTurn={currentTurn}
+        events={events}
+        memories={memories}
+        epochStyle={epochStyle}
+        entityIndex={entityIndex}
+        onEventClick={onEventClick}
+        onEntityClick={onEntityClick}
+      />
 
       {/* City Memory (local identity layer) */}
       <WorldMemoryPanel
