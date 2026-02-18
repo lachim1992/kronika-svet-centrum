@@ -322,13 +322,31 @@ export async function advanceTurn(sessionId: string, currentTurn: number) {
 // ---- Cities ----
 
 export async function addCity(sessionId: string, ownerPlayer: string, name: string, province: string, level: string, tags: string[], currentTurn?: number) {
-  const { data: cityData, error } = await supabase.from("cities").insert({
-    session_id: sessionId, owner_player: ownerPlayer, name, province: province || null, level, tags,
-  }).select("id").single();
-  if (error) { console.error(error); return; }
+  // Check for existing city with same name in this session (prevent duplicates)
+  const { data: existing } = await supabase
+    .from("cities")
+    .select("id")
+    .eq("session_id", sessionId)
+    .eq("name", name)
+    .maybeSingle();
+
+  let cityId: string | undefined;
+
+  if (existing) {
+    // City already exists — reuse it, optionally update fields
+    cityId = existing.id;
+    await supabase.from("cities").update({
+      owner_player: ownerPlayer, province: province || null, level, tags,
+    }).eq("id", cityId);
+  } else {
+    const { data: cityData, error } = await supabase.from("cities").insert({
+      session_id: sessionId, owner_player: ownerPlayer, name, province: province || null, level, tags,
+    }).select("id").single();
+    if (error) { console.error(error); return; }
+    cityId = cityData?.id;
+  }
 
   const turn = currentTurn || 1;
-  const cityId = cityData?.id;
 
   // Auto-create World Event for city founding
   const slug = `founding-${name.toLowerCase().replace(/\s+/g, "-")}-${Date.now()}`;

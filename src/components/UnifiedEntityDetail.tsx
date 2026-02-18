@@ -131,7 +131,7 @@ const UnifiedEntityDetail = ({
 
   const fetchEntityData = async () => {
     const [wikiRes, imagesRes, worldEventsRes, linksRes, provincesRes, regionsRes, memoriesRes] = await Promise.all([
-      supabase.from("wiki_entries").select("*").eq("session_id", sessionId).eq("entity_type", entityType),
+      supabase.from("wiki_entries").select("*").eq("session_id", sessionId).eq("entity_type", entityType).eq("entity_id", entityId).maybeSingle(),
       supabase.from("encyclopedia_images").select("*").eq("session_id", sessionId).eq("entity_type", entityType).eq("entity_id", entityId),
       supabase.from("world_events").select("*").eq("session_id", sessionId).eq("status", "published").order("date"),
       supabase.from("event_entity_links").select("*"),
@@ -140,10 +140,19 @@ const UnifiedEntityDetail = ({
       supabase.from("world_memories").select("text").eq("session_id", sessionId).eq("approved", true),
     ]);
 
-    // Find wiki by entity_id OR entity_name
-    const wikiEntries = (wikiRes.data || []) as WikiEntry[];
-    const match = wikiEntries.find(w => w.entity_id === entityId) || wikiEntries.find(w => w.entity_name === entityName);
-    setWiki(match || null);
+    // Use direct entity_id match; fallback to name match if not found
+    let wikiMatch = wikiRes.data as WikiEntry | null;
+    if (!wikiMatch && entityName) {
+      const { data: fallback } = await supabase.from("wiki_entries").select("*")
+        .eq("session_id", sessionId).eq("entity_type", entityType).eq("entity_name", entityName).maybeSingle();
+      wikiMatch = fallback as WikiEntry | null;
+      // Backfill entity_id if found by name
+      if (wikiMatch && !wikiMatch.entity_id) {
+        await supabase.from("wiki_entries").update({ entity_id: entityId }).eq("id", wikiMatch.id);
+        wikiMatch.entity_id = entityId;
+      }
+    }
+    setWiki(wikiMatch);
 
     if (imagesRes.data) setImages(imagesRes.data as EncImage[]);
     if (worldEventsRes.data) setWorldEvents(worldEventsRes.data);
