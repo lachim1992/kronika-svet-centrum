@@ -820,6 +820,60 @@ export type Database = {
           },
         ]
       }
+      expeditions: {
+        Row: {
+          created_at: string
+          expedition_type: string
+          id: string
+          launched_turn: number
+          narrative: string | null
+          player_name: string
+          resolved_turn: number | null
+          result_region_id: string | null
+          session_id: string
+          status: string
+        }
+        Insert: {
+          created_at?: string
+          expedition_type?: string
+          id?: string
+          launched_turn: number
+          narrative?: string | null
+          player_name: string
+          resolved_turn?: number | null
+          result_region_id?: string | null
+          session_id: string
+          status?: string
+        }
+        Update: {
+          created_at?: string
+          expedition_type?: string
+          id?: string
+          launched_turn?: number
+          narrative?: string | null
+          player_name?: string
+          resolved_turn?: number | null
+          result_region_id?: string | null
+          session_id?: string
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "expeditions_result_region_id_fkey"
+            columns: ["result_region_id"]
+            isOneToOne: false
+            referencedRelation: "regions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "expeditions_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       game_events: {
         Row: {
           armies_involved: string[] | null
@@ -1441,11 +1495,15 @@ export type Database = {
       regions: {
         Row: {
           ai_description: string | null
+          biome: string | null
           created_at: string
           description: string | null
+          discovered_by: string | null
+          discovered_turn: number | null
           id: string
           image_prompt: string | null
           image_url: string | null
+          is_homeland: boolean | null
           name: string
           owner_player: string | null
           session_id: string
@@ -1454,11 +1512,15 @@ export type Database = {
         }
         Insert: {
           ai_description?: string | null
+          biome?: string | null
           created_at?: string
           description?: string | null
+          discovered_by?: string | null
+          discovered_turn?: number | null
           id?: string
           image_prompt?: string | null
           image_url?: string | null
+          is_homeland?: boolean | null
           name: string
           owner_player?: string | null
           session_id: string
@@ -1467,11 +1529,15 @@ export type Database = {
         }
         Update: {
           ai_description?: string | null
+          biome?: string | null
           created_at?: string
           description?: string | null
+          discovered_by?: string | null
+          discovered_turn?: number | null
           id?: string
           image_prompt?: string | null
           image_url?: string | null
+          is_homeland?: boolean | null
           name?: string
           owner_player?: string | null
           session_id?: string
