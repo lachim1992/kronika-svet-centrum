@@ -9,7 +9,33 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const { event, cityMemories, notes, epochStyle, worldFacts } = await req.json();
+    const body = await req.json();
+    let { event, cityMemories, notes, epochStyle, worldFacts } = body;
+
+    // Support calling with just eventId — fetch the event from DB
+    if (!event && body.eventId) {
+      const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
+      const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+      if (SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY) {
+        const res = await fetch(`${SUPABASE_URL}/rest/v1/game_events?id=eq.${body.eventId}&select=*`, {
+          headers: {
+            apikey: SUPABASE_SERVICE_ROLE_KEY,
+            Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+          },
+        });
+        const rows = await res.json();
+        if (rows?.length) {
+          event = rows[0];
+          epochStyle = epochStyle || "kroniky";
+        }
+      }
+    }
+
+    if (!event) {
+      return new Response(JSON.stringify({ error: "Missing 'event' in request body" }), {
+        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY not configured");
