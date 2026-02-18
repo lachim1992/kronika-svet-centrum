@@ -80,3 +80,19 @@ export async function generateCityProfile(
 
   return data;
 }
+
+export async function extractEventsFromText(
+  text: string,
+  sessionId: string
+): Promise<{ detectedEvents: any[] }> {
+  const { data, error } = await supabase.functions.invoke("extract-events", {
+    body: { text, sessionId },
+  });
+
+  if (error) {
+    console.error("Event extraction error:", error);
+    return { detectedEvents: [] };
+  }
+
+  return data;
+}
