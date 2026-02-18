@@ -1,13 +1,14 @@
-import { Home, Globe, Shield, Newspaper, Library } from "lucide-react";
+import { Home, Globe, Shield, Newspaper, Library, Wrench } from "lucide-react";
 
-export type TabId = "home" | "world" | "realm" | "feed" | "codex";
+export type TabId = "home" | "world" | "realm" | "feed" | "codex" | "dev";
 
 interface Props {
   activeTab: TabId;
   onTabChange: (tab: TabId) => void;
+  showDevTab?: boolean;
 }
 
-const tabs: { id: TabId; label: string; icon: React.ElementType }[] = [
+const baseTabs: { id: TabId; label: string; icon: React.ElementType }[] = [
   { id: "home", label: "My Realm", icon: Home },
   { id: "world", label: "World", icon: Globe },
   { id: "realm", label: "Realm", icon: Shield },
@@ -15,7 +16,11 @@ const tabs: { id: TabId; label: string; icon: React.ElementType }[] = [
   { id: "codex", label: "Codex", icon: Library },
 ];
 
-const BottomNav = ({ activeTab, onTabChange }: Props) => {
+const devTab = { id: "dev" as TabId, label: "Dev", icon: Wrench };
+
+const BottomNav = ({ activeTab, onTabChange, showDevTab = false }: Props) => {
+  const tabs = showDevTab ? [...baseTabs, devTab] : baseTabs;
+
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-50 bg-card/95 backdrop-blur-sm border-t border-border shadow-lg">
       <div className="flex items-center justify-around max-w-xl mx-auto h-16">
