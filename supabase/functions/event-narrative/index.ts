@@ -17,23 +17,32 @@ serve(async (req) => {
       const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
       const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
       if (SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY) {
-        const res = await fetch(`${SUPABASE_URL}/rest/v1/game_events?id=eq.${body.eventId}&select=*`, {
-          headers: {
-            apikey: SUPABASE_SERVICE_ROLE_KEY,
-            Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
-          },
-        });
-        const rows = await res.json();
-        if (rows?.length) {
-          event = rows[0];
-          epochStyle = epochStyle || "kroniky";
+        try {
+          const res = await fetch(`${SUPABASE_URL}/rest/v1/game_events?id=eq.${body.eventId}&select=*`, {
+            headers: {
+              apikey: SUPABASE_SERVICE_ROLE_KEY,
+              Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+            },
+          });
+          const rows = await res.json();
+          if (rows?.length) {
+            event = rows[0];
+            epochStyle = epochStyle || "kroniky";
+          }
+        } catch (fetchErr) {
+          console.error("Failed to fetch event by ID:", fetchErr);
         }
       }
     }
 
     if (!event) {
-      return new Response(JSON.stringify({ error: "Missing 'event' in request body" }), {
-        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      // Return a graceful fallback instead of a hard 400 so batch callers don't break
+      return new Response(JSON.stringify({
+        narrativeText: "Událost nebyla nalezena v databázi.",
+        keyQuotes: [],
+        debug: { provider: "fallback-not-found", eventId: body.eventId || null },
+      }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
