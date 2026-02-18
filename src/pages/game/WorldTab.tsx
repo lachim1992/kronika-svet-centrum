@@ -9,8 +9,9 @@ import TurnProgressionPanel from "@/components/TurnProgressionPanel";
 import WorldActionLog from "@/components/WorldActionLog";
 import EventNetworkPanel from "@/components/EventNetworkPanel";
 import SourceImportPanel from "@/components/SourceImportPanel";
+import TimelinePanel from "@/components/TimelinePanel";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
-import { BookOpen, Globe, Landmark, Building2, BookMarked, Clock, ScrollText, Network, FileText } from "lucide-react";
+import { BookOpen, Globe, Landmark, Building2, BookMarked, Clock, ScrollText, Network, FileText, CalendarDays } from "lucide-react";
 
 interface Props {
   sessionId: string;
@@ -76,6 +77,16 @@ const WorldTab = ({
           </AccordionTrigger>
           <AccordionContent className="px-4 pb-4">
             <EventNetworkPanel sessionId={sessionId} onEventClick={onEventClick} />
+          </AccordionContent>
+        </AccordionItem>
+
+        {/* Timeline */}
+        <AccordionItem value="timeline" className="manuscript-card">
+          <AccordionTrigger className="px-4 py-3 font-display text-sm">
+            <span className="flex items-center gap-2"><CalendarDays className="h-4 w-4 text-primary" />📅 Časová osa</span>
+          </AccordionTrigger>
+          <AccordionContent className="px-4 pb-4">
+            <TimelinePanel sessionId={sessionId} onEventClick={onEventClick} />
           </AccordionContent>
         </AccordionItem>
 
