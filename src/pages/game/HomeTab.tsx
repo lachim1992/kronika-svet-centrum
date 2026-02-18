@@ -7,6 +7,21 @@ import {
 import RichText from "@/components/RichText";
 import type { EntityIndex } from "@/hooks/useEntityIndex";
 
+const EVENT_TYPE_ICONS: Record<string, string> = {
+  battle: "⚔️", raid: "🔥", founding: "🏗️", trade: "💰", treaty: "🤝",
+  alliance: "🤝", expedition: "🧭", discovery: "🔍", diplomacy: "📜",
+  construction: "🏗️", decree: "📣", rebellion: "💥", migration: "🚶",
+  religion: "⛪", cultural: "🎭", espionage: "🕵️", natural_disaster: "🌊",
+};
+const EVENT_TYPE_LABELS: Record<string, string> = {
+  battle: "Bitva", raid: "Nájezd", founding: "Založení", trade: "Obchod",
+  treaty: "Smlouva", alliance: "Aliance", expedition: "Výprava",
+  discovery: "Objev", diplomacy: "Diplomacie", construction: "Stavba",
+  decree: "Dekret", rebellion: "Povstání", migration: "Migrace",
+  religion: "Náboženství", cultural: "Kultura", espionage: "Špionáž",
+  natural_disaster: "Katastrofa",
+};
+
 interface Props {
   sessionId: string;
   session: any;
@@ -218,33 +233,76 @@ const HomeTab = ({
             </p>
           ) : (
             <div className="space-y-2">
-              {[...recentEvents].reverse().map(e => (
-                <div key={e.id} className="flex items-start gap-2 p-2 rounded-md bg-muted/30">
-                  <Badge variant="outline" className="text-[10px] shrink-0 mt-0.5">{e.event_type}</Badge>
-                  <div className="flex-1 min-w-0">
-                    <span className="text-xs font-semibold">{e.player}</span>
-                    {e.note && (
-                      <RichText
-                        text={` — ${e.note}`}
-                        entityIndex={entityIndex}
-                        onEventClick={onEventClick}
-                        onEntityClick={onEntityClick}
-                        className="text-xs text-muted-foreground"
-                      />
-                    )}
-                    {e.location && (
-                      <RichText
-                        text={`📍 ${e.location}`}
-                        entityIndex={entityIndex}
-                        onEventClick={onEventClick}
-                        onEntityClick={onEntityClick}
-                        className="text-[10px] text-muted-foreground block"
-                      />
-                    )}
-                  </div>
-                  <span className="text-[10px] text-muted-foreground shrink-0">Rok {e.turn_number}</span>
-                </div>
-              ))}
+              {[...recentEvents].reverse().map(e => {
+                const eventCity = e.city_id ? cities.find(c => c.id === e.city_id) : null;
+                const secondaryCity = e.secondary_city_id ? cities.find(c => c.id === e.secondary_city_id) : null;
+                const attackerCity = e.attacker_city_id ? cities.find(c => c.id === e.attacker_city_id) : null;
+                const defenderCity = e.defender_city_id ? cities.find(c => c.id === e.defender_city_id) : null;
+
+                const entityChips: { type: string; id: string; label: string }[] = [];
+                if (eventCity) entityChips.push({ type: "city", id: eventCity.id, label: eventCity.name });
+                if (attackerCity && attackerCity.id !== eventCity?.id) entityChips.push({ type: "city", id: attackerCity.id, label: attackerCity.name });
+                if (defenderCity && defenderCity.id !== eventCity?.id) entityChips.push({ type: "city", id: defenderCity.id, label: defenderCity.name });
+                if (secondaryCity && !entityChips.find(c => c.id === secondaryCity.id)) entityChips.push({ type: "city", id: secondaryCity.id, label: secondaryCity.name });
+
+                const typeIcon = EVENT_TYPE_ICONS[e.event_type] || "📜";
+                const importanceBadge = e.importance === "critical" ? "destructive" as const : e.importance === "major" ? "default" as const : "outline" as const;
+
+                return (
+                  <button
+                    key={e.id}
+                    className="w-full text-left p-2.5 rounded-md bg-muted/30 hover:bg-muted/60 transition-colors cursor-pointer border border-transparent hover:border-border/50 group"
+                    onClick={() => onEventClick?.(e.id)}
+                  >
+                    <div className="flex items-start gap-2">
+                      <span className="text-sm shrink-0 mt-0.5">{typeIcon}</span>
+                      <div className="flex-1 min-w-0">
+                        {/* Title line: player + action */}
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="text-xs font-semibold">{e.player}</span>
+                          <Badge variant={importanceBadge} className="text-[9px] h-4 px-1.5">{EVENT_TYPE_LABELS[e.event_type] || e.event_type}</Badge>
+                          <span className="text-[10px] text-muted-foreground ml-auto shrink-0">Rok {e.turn_number}</span>
+                        </div>
+
+                        {/* Note with RichText */}
+                        {e.note && (
+                          <div className="mt-0.5" onClick={(ev) => ev.stopPropagation()}>
+                            <RichText
+                              text={e.note}
+                              entityIndex={entityIndex}
+                              onEventClick={onEventClick}
+                              onEntityClick={onEntityClick}
+                              className="text-xs text-muted-foreground line-clamp-2"
+                            />
+                          </div>
+                        )}
+
+                        {/* Entity chips row */}
+                        {(entityChips.length > 0 || e.location) && (
+                          <div className="flex items-center gap-1 flex-wrap mt-1" onClick={(ev) => ev.stopPropagation()}>
+                            {entityChips.map(chip => (
+                              <button
+                                key={chip.id}
+                                className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded border text-[10px] font-medium bg-primary/10 text-primary border-primary/30 hover:bg-primary/20 transition-colors"
+                                onClick={(ev) => { ev.stopPropagation(); onEntityClick?.(chip.type, chip.id); }}
+                              >
+                                🏛️ {chip.label}
+                              </button>
+                            ))}
+                            {e.location && !entityChips.some(c => c.label === e.location) && (
+                              <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] text-muted-foreground">
+                                📍 {e.location}
+                              </span>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                      {/* Arrow indicator */}
+                      <span className="text-muted-foreground text-xs opacity-0 group-hover:opacity-100 transition-opacity shrink-0 mt-0.5">→</span>
+                    </div>
+                  </button>
+                );
+              })}
             </div>
           )}
         </CardContent>
