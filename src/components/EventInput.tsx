@@ -3,9 +3,10 @@ import type { Tables } from "@/integrations/supabase/types";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { PenLine, AlertTriangle } from "lucide-react";
+import { PenLine, AlertTriangle, Search, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
+import EventExtractorReview, { type DetectedEvent } from "./EventExtractorReview";
 
 type City = Tables<"cities">;
 type GamePlayer = Tables<"game_players">;
@@ -57,6 +58,11 @@ const EventInput = ({ sessionId, players, cities, currentTurn, turnClosed, onEve
   const [importance, setImportance] = useState("normal");
   const [loading, setLoading] = useState(false);
 
+  // Event extraction state
+  const [extracting, setExtracting] = useState(false);
+  const [detectedEvents, setDetectedEvents] = useState<DetectedEvent[] | null>(null);
+  const [savedEventId, setSavedEventId] = useState<string | null>(null);
+
   const handleSubmit = async () => {
     if (!eventType || !player) {
       toast.error("Vyberte typ události a hráče");
@@ -71,8 +77,7 @@ const EventInput = ({ sessionId, players, cities, currentTurn, turnClosed, onEve
     const selectedCity = cities.find(c => c.id === cityId);
     const locationName = selectedCity?.name || "";
 
-    // Insert event
-    const { error } = await supabase.from("game_events").insert({
+    const { data: inserted, error } = await supabase.from("game_events").insert({
       session_id: sessionId,
       event_type: eventType,
       player,
@@ -83,32 +88,85 @@ const EventInput = ({ sessionId, players, cities, currentTurn, turnClosed, onEve
       secondary_city_id: secondaryCityId || null,
       truth_state: truthState,
       importance,
-    } as any);
+    } as any).select("id").single();
 
     if (error) {
       console.error(error);
       toast.error("Chyba při zápisu události");
-    } else {
-      // Log to immutable action log
-      await supabase.from("world_action_log").insert({
-        session_id: sessionId,
-        player_name: player,
-        turn_number: currentTurn,
-        action_type: eventType === "battle" || eventType === "raid" ? "battle" :
-          eventType === "diplomacy" ? "diplomacy" :
-          eventType === "trade" ? "trade" :
-          eventType === "upgrade_city" || eventType === "found_settlement" ? "build" :
-          eventType === "declaration" ? "declaration" : "event",
-        description: `${EVENT_TYPES.find(t => t.value === eventType)?.label || eventType} @ ${locationName}${note ? ` — "${note}"` : ""}`,
-        metadata: { event_type: eventType, city: locationName, importance, truth_state: truthState },
-      });
-
-      toast.success(importance === "legendary" ? "⭐ Legendární událost zaznamenána!" : "Událost zaznamenána");
-      onEventAdded?.();
+      setLoading(false);
+      return;
     }
 
+    // Log to immutable action log
+    await supabase.from("world_action_log").insert({
+      session_id: sessionId,
+      player_name: player,
+      turn_number: currentTurn,
+      action_type: eventType === "battle" || eventType === "raid" ? "battle" :
+        eventType === "diplomacy" ? "diplomacy" :
+        eventType === "trade" ? "trade" :
+        eventType === "upgrade_city" || eventType === "found_settlement" ? "build" :
+        eventType === "declaration" ? "declaration" : "event",
+      description: `${EVENT_TYPES.find(t => t.value === eventType)?.label || eventType} @ ${locationName}${note ? ` — "${note}"` : ""}`,
+      metadata: { event_type: eventType, city: locationName, importance, truth_state: truthState },
+    });
+
+    toast.success(importance === "legendary" ? "⭐ Legendární událost zaznamenána!" : "Událost zaznamenána");
+    setSavedEventId(inserted?.id || null);
     setLoading(false);
-    setEventType(""); setPlayer(""); setCityId(""); setSecondaryCityId(""); setNote(""); setTruthState("canon"); setImportance("normal");
+
+    // If there's note text, run event extraction
+    if (note && note.length > 10) {
+      await runExtraction(note);
+    } else {
+      resetForm();
+      onEventAdded?.();
+    }
+  };
+
+  const runExtraction = async (text: string) => {
+    setExtracting(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("extract-events", {
+        body: { text, sessionId },
+      });
+      if (error) throw error;
+      if (data?.detectedEvents?.length > 0) {
+        setDetectedEvents(data.detectedEvents);
+      } else {
+        resetForm();
+        onEventAdded?.();
+      }
+    } catch (e) {
+      console.error("Extract events error:", e);
+      // Don't block - just continue without extraction
+      resetForm();
+      onEventAdded?.();
+    } finally {
+      setExtracting(false);
+    }
+  };
+
+  const handleExtractorConfirm = async (references: any[], updatedText: string) => {
+    // Update the game_event note with inline links if changed
+    if (savedEventId && updatedText !== note) {
+      await supabase.from("game_events").update({ note: updatedText } as any).eq("id", savedEventId);
+    }
+    toast.success(`Propojeno ${references.length} událostí`);
+    resetForm();
+    onEventAdded?.();
+  };
+
+  const handleExtractorCancel = () => {
+    setDetectedEvents(null);
+    resetForm();
+    onEventAdded?.();
+  };
+
+  const resetForm = () => {
+    setEventType(""); setPlayer(""); setCityId(""); setSecondaryCityId("");
+    setNote(""); setTruthState("canon"); setImportance("normal");
+    setDetectedEvents(null); setSavedEventId(null);
   };
 
   if (turnClosed) {
@@ -121,6 +179,41 @@ const EventInput = ({ sessionId, players, cities, currentTurn, turnClosed, onEve
         <p className="text-muted-foreground text-center py-8 italic">
           Vaše kolo je uzavřeno. Čekáme na ostatní hráče...
         </p>
+      </div>
+    );
+  }
+
+  // Show extraction review UI
+  if (detectedEvents) {
+    return (
+      <div className="space-y-4">
+        <h2 className="text-xl font-display font-semibold flex items-center gap-2">
+          <PenLine className="h-5 w-5 text-primary" />
+          Rok {currentTurn} — Propojení událostí
+        </h2>
+        <EventExtractorReview
+          sessionId={sessionId}
+          detectedEvents={detectedEvents}
+          sourceText={note}
+          onConfirm={handleExtractorConfirm}
+          onCancel={handleExtractorCancel}
+        />
+      </div>
+    );
+  }
+
+  // Show extracting spinner
+  if (extracting) {
+    return (
+      <div className="space-y-4">
+        <h2 className="text-xl font-display font-semibold flex items-center gap-2">
+          <PenLine className="h-5 w-5 text-primary" />
+          Rok {currentTurn}
+        </h2>
+        <div className="flex items-center justify-center gap-2 py-8 text-muted-foreground">
+          <Loader2 className="h-5 w-5 animate-spin" />
+          <span>Analyzuji text na zmínky událostí...</span>
+        </div>
       </div>
     );
   }
@@ -203,7 +296,7 @@ const EventInput = ({ sessionId, players, cities, currentTurn, turnClosed, onEve
       </div>
 
       <Textarea
-        placeholder="Poznámka / flavor text (volitelné)"
+        placeholder="Poznámka / flavor text (volitelné) — AI automaticky detekuje zmíněné události"
         value={note}
         onChange={(e) => setNote(e.target.value)}
         rows={2}

@@ -50,3 +50,6 @@ verify_jwt = false
 
 [functions.news-rumors]
 verify_jwt = false
+
+[functions.extract-events]
+verify_jwt = false
