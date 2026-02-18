@@ -10,6 +10,7 @@ import AppHeader from "@/components/layout/AppHeader";
 import BottomNav, { type TabId } from "@/components/layout/BottomNav";
 import ActionChooser from "@/components/layout/ActionChooser";
 import WorldEventDetailPanel from "@/components/WorldEventDetailPanel";
+import GameHubFAB from "@/components/layout/GameHubFAB";
 import HomeTab from "@/pages/game/HomeTab";
 import WorldTab from "@/pages/game/WorldTab";
 import RealmTab from "@/pages/game/RealmTab";
@@ -141,6 +142,12 @@ const Dashboard = () => {
         {activeTab === "codex" && <CodexTab {...sharedProps} codexEntityTarget={codexEntityTarget} onClearEntityTarget={() => setCodexEntityTarget(null)} />}
       </main>
 
+      <GameHubFAB
+        currentSessionId={session.id}
+        worldName={worldFoundation?.world_name}
+        currentTurn={currentTurn}
+        playerName={myPlayerName}
+      />
       <BottomNav activeTab={activeTab} onTabChange={setActiveTab} onAddAction={() => setShowActionChooser(true)} />
       <ActionChooser open={showActionChooser} onClose={() => setShowActionChooser(false)} onAction={handleAction} />
       <WorldEventDetailPanel
