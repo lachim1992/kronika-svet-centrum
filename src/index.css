@@ -240,4 +240,19 @@
     border-bottom: 2px solid hsl(var(--illuminated) / 0.3);
     box-shadow: 0 2px 12px -2px hsl(var(--parchment-dark) / 0.3);
   }
+
+  .prose-chronicle {
+    font-family: 'Inter', sans-serif;
+    line-height: 1.75;
+  }
+
+  .prose-chronicle p:first-child::first-letter {
+    font-family: 'Cinzel Decorative', serif;
+    font-size: 2.5em;
+    float: left;
+    line-height: 0.8;
+    margin-right: 0.1em;
+    margin-top: 0.05em;
+    color: hsl(var(--illuminated));
+  }
 }

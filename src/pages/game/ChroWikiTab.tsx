@@ -1,36 +1,47 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from "@/components/ui/breadcrumb";
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Globe, MapPin, Castle, Crown, Swords, Landmark, Calendar, Users, Search, ChevronLeft } from "lucide-react";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import {
+  Search, Globe, MapPin, Castle, Crown, Swords, Landmark, Calendar,
+  Users, ChevronRight, ChevronDown, Mountain, Shield, Scroll, BookOpen,
+  Compass, Flag, Sparkles, Loader2,
+} from "lucide-react";
+import ChroWikiDetailPanel from "@/components/chrowiki/ChroWikiDetailPanel";
+import { toast } from "sonner";
 
 interface Props {
   sessionId: string;
   onEntityClick?: (type: string, id: string) => void;
 }
 
-type ViewLevel = "regions" | "region" | "province";
-
-interface ViewState {
-  level: ViewLevel;
-  regionId?: string;
-  regionName?: string;
-  provinceId?: string;
-  provinceName?: string;
-}
+const ENTITY_ICONS: Record<string, React.ReactNode> = {
+  country: <Flag className="h-3.5 w-3.5" />,
+  region: <Mountain className="h-3.5 w-3.5" />,
+  province: <MapPin className="h-3.5 w-3.5" />,
+  city: <Castle className="h-3.5 w-3.5" />,
+  wonder: <Landmark className="h-3.5 w-3.5" />,
+  person: <Crown className="h-3.5 w-3.5" />,
+  battle: <Swords className="h-3.5 w-3.5" />,
+  event: <Calendar className="h-3.5 w-3.5" />,
+  discovery: <Compass className="h-3.5 w-3.5" />,
+};
 
 const ChroWikiTab = ({ sessionId, onEntityClick }: Props) => {
-  const [view, setView] = useState<ViewState>({ level: "regions" });
   const [search, setSearch] = useState("");
-  const [filterType, setFilterType] = useState<string>("all");
+  const [eraFilter, setEraFilter] = useState("all");
+  const [typeFilter, setTypeFilter] = useState("all");
+  const [playerFilter, setPlayerFilter] = useState("all");
+
+  // Selected entity for detail panel
+  const [selectedEntity, setSelectedEntity] = useState<{ type: string; id: string; name: string } | null>(null);
 
   // Data states
+  const [countries, setCountries] = useState<any[]>([]);
   const [regions, setRegions] = useState<any[]>([]);
   const [provinces, setProvinces] = useState<any[]>([]);
   const [cities, setCities] = useState<any[]>([]);
@@ -38,21 +49,31 @@ const ChroWikiTab = ({ sessionId, onEntityClick }: Props) => {
   const [persons, setPersons] = useState<any[]>([]);
   const [events, setEvents] = useState<any[]>([]);
   const [chronicles, setChronicles] = useState<any[]>([]);
+  const [wikiEntries, setWikiEntries] = useState<any[]>([]);
+  const [expeditions, setExpeditions] = useState<any[]>([]);
+  const [declarations, setDeclarations] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Fetch all data once
+  // Collapsible state for tree nodes
+  const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set());
+
   useEffect(() => {
     if (!sessionId) return;
     setLoading(true);
     Promise.all([
+      supabase.from("countries").select("*").eq("session_id", sessionId),
       supabase.from("regions").select("*").eq("session_id", sessionId),
       supabase.from("provinces").select("*").eq("session_id", sessionId),
       supabase.from("cities").select("*").eq("session_id", sessionId),
       supabase.from("wonders").select("*").eq("session_id", sessionId),
       supabase.from("great_persons").select("*").eq("session_id", sessionId),
-      supabase.from("world_events").select("*").eq("session_id", sessionId).eq("status", "published").order("created_at", { ascending: false }).limit(200),
+      supabase.from("world_events").select("*").eq("session_id", sessionId).eq("status", "published").order("created_at", { ascending: false }).limit(300),
       supabase.from("chronicle_entries").select("*").eq("session_id", sessionId).order("created_at", { ascending: false }).limit(100),
-    ]).then(([r, p, c, w, gp, ev, ch]) => {
+      supabase.from("wiki_entries").select("*").eq("session_id", sessionId),
+      supabase.from("expeditions").select("*").eq("session_id", sessionId),
+      supabase.from("declarations").select("*").eq("session_id", sessionId).eq("status", "published"),
+    ]).then(([co, r, p, c, w, gp, ev, ch, wi, ex, decl]) => {
+      setCountries(co.data || []);
       setRegions(r.data || []);
       setProvinces(p.data || []);
       setCities(c.data || []);
@@ -60,302 +81,363 @@ const ChroWikiTab = ({ sessionId, onEntityClick }: Props) => {
       setPersons(gp.data || []);
       setEvents(ev.data || []);
       setChronicles(ch.data || []);
+      setWikiEntries(wi.data || []);
+      setExpeditions(ex.data || []);
+      setDeclarations(decl.data || []);
       setLoading(false);
     });
   }, [sessionId]);
 
-  // Derived counts
-  const provincesForRegion = (regionId: string) => provinces.filter(p => p.region_id === regionId);
-  const citiesForProvince = (provinceId: string) => cities.filter(c => c.province_id === provinceId);
-  const citiesForRegion = (regionId: string) => {
-    const provIds = provincesForRegion(regionId).map(p => p.id);
-    return cities.filter(c => provIds.includes(c.province_id));
-  };
-  const wondersForCity = (cityName: string) => wonders.filter(w => w.city_name === cityName);
-  const personsForCity = (cityId: string) => persons.filter(p => p.city_id === cityId);
+  const toggleNode = useCallback((nodeId: string) => {
+    setExpandedNodes(prev => {
+      const next = new Set(prev);
+      if (next.has(nodeId)) next.delete(nodeId);
+      else next.add(nodeId);
+      return next;
+    });
+  }, []);
 
-  const filteredRegions = useMemo(() => {
-    if (!search) return regions;
+  const selectEntity = useCallback((type: string, id: string, name: string) => {
+    setSelectedEntity({ type, id, name });
+  }, []);
+
+  // Get unique players for filter
+  const allPlayers = useMemo(() => {
+    const players = new Set<string>();
+    cities.forEach(c => players.add(c.owner_player));
+    regions.forEach(r => r.owner_player && players.add(r.owner_player));
+    persons.forEach(p => players.add(p.player_name));
+    return Array.from(players).sort();
+  }, [cities, regions, persons]);
+
+  // Battles (events with battle-related categories)
+  const battles = useMemo(() =>
+    events.filter(e => ["battle", "war", "conflict", "siege"].includes(e.event_category?.toLowerCase() || "")),
+    [events]
+  );
+
+  // Discoveries
+  const discoveries = useMemo(() =>
+    expeditions.filter(e => e.status === "resolved"),
+    [expeditions]
+  );
+
+  // Search across all entities
+  const searchResults = useMemo(() => {
+    if (!search || search.length < 2) return null;
     const q = search.toLowerCase();
-    return regions.filter(r => r.name.toLowerCase().includes(q) || r.description?.toLowerCase().includes(q));
-  }, [regions, search]);
+    const results: { type: string; id: string; name: string; sub?: string }[] = [];
 
-  const handleEntityClick = (type: string, id: string) => {
-    onEntityClick?.(type, id);
-  };
+    countries.filter(c => c.name.toLowerCase().includes(q)).forEach(c => results.push({ type: "country", id: c.id, name: c.name }));
+    regions.filter(r => r.name.toLowerCase().includes(q) || r.description?.toLowerCase().includes(q)).forEach(r => results.push({ type: "region", id: r.id, name: r.name, sub: r.biome }));
+    provinces.filter(p => p.name.toLowerCase().includes(q)).forEach(p => results.push({ type: "province", id: p.id, name: p.name }));
+    cities.filter(c => c.name.toLowerCase().includes(q)).forEach(c => results.push({ type: "city", id: c.id, name: c.name, sub: c.level }));
+    wonders.filter(w => w.name.toLowerCase().includes(q)).forEach(w => results.push({ type: "wonder", id: w.id, name: w.name, sub: w.era }));
+    persons.filter(p => p.name.toLowerCase().includes(q)).forEach(p => results.push({ type: "person", id: p.id, name: p.name, sub: p.person_type }));
+    events.filter(e => e.title?.toLowerCase().includes(q) || e.description?.toLowerCase().includes(q)).forEach(e => results.push({ type: "event", id: e.id, name: e.title, sub: e.event_category }));
 
-  // Breadcrumb navigation
-  const renderBreadcrumb = () => (
-    <Breadcrumb className="mb-4">
-      <BreadcrumbList>
-        <BreadcrumbItem>
-          <BreadcrumbLink className="cursor-pointer" onClick={() => setView({ level: "regions" })}>
-            🌍 Svět
-          </BreadcrumbLink>
-        </BreadcrumbItem>
-        {view.regionName && (
-          <>
-            <BreadcrumbSeparator />
-            <BreadcrumbItem>
-              {view.level === "region" ? (
-                <BreadcrumbPage>{view.regionName}</BreadcrumbPage>
-              ) : (
-                <BreadcrumbLink className="cursor-pointer" onClick={() => setView({ level: "region", regionId: view.regionId, regionName: view.regionName })}>
-                  {view.regionName}
-                </BreadcrumbLink>
-              )}
-            </BreadcrumbItem>
-          </>
-        )}
-        {view.provinceName && (
-          <>
-            <BreadcrumbSeparator />
-            <BreadcrumbItem>
-              <BreadcrumbPage>{view.provinceName}</BreadcrumbPage>
-            </BreadcrumbItem>
-          </>
-        )}
-      </BreadcrumbList>
-    </Breadcrumb>
-  );
+    return results.slice(0, 30);
+  }, [search, countries, regions, provinces, cities, wonders, persons, events]);
 
-  // REGIONS LIST
-  const renderRegions = () => (
-    <div className="space-y-3">
-      <div className="flex items-center gap-2 mb-4">
-        <Search className="h-4 w-4 text-muted-foreground" />
-        <Input placeholder="Hledat region…" value={search} onChange={e => setSearch(e.target.value)} className="max-w-xs" />
-      </div>
-      {filteredRegions.length === 0 && <p className="text-muted-foreground text-sm">Žádné regiony nenalezeny.</p>}
-      <div className="grid gap-3 md:grid-cols-2">
-        {filteredRegions.map(r => {
-          const provCount = provincesForRegion(r.id).length;
-          const cityCount = citiesForRegion(r.id).length;
-          return (
-            <Card key={r.id} className="cursor-pointer hover:border-primary/50 transition-colors" onClick={() => setView({ level: "region", regionId: r.id, regionName: r.name })}>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-base flex items-center gap-2">
-                  <Globe className="h-4 w-4 text-primary" />
-                  {r.name}
-                  {r.is_homeland && <Badge variant="outline" className="text-xs">Domovina</Badge>}
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="text-sm text-muted-foreground space-y-1">
-                {r.biome && <p>Biom: {r.biome}</p>}
-                {r.description && <p className="line-clamp-2">{r.description}</p>}
-                <div className="flex gap-3 pt-1">
-                  <span className="flex items-center gap-1"><MapPin className="h-3 w-3" />{provCount} provincií</span>
-                  <span className="flex items-center gap-1"><Castle className="h-3 w-3" />{cityCount} měst</span>
-                </div>
-              </CardContent>
-            </Card>
-          );
-        })}
-      </div>
-    </div>
-  );
-
-  // REGION DETAIL
-  const renderRegion = () => {
-    const region = regions.find(r => r.id === view.regionId);
-    if (!region) return <p className="text-muted-foreground">Region nenalezen.</p>;
-    const provs = provincesForRegion(region.id);
-    const regionCities = citiesForRegion(region.id);
-    const regionPersons = persons.filter(p => regionCities.some(c => c.id === p.city_id));
+  // ── Tree Node Component ──
+  const TreeNode = ({ id, label, icon, type, entityId, children, count, indent = 0 }: {
+    id: string; label: string; icon: React.ReactNode; type?: string; entityId?: string;
+    children?: React.ReactNode; count?: number; indent?: number;
+  }) => {
+    const isExpanded = expandedNodes.has(id);
+    const hasChildren = !!children;
+    const isSelected = selectedEntity?.id === entityId && selectedEntity?.type === type;
 
     return (
-      <div className="space-y-4">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="flex items-center gap-2">
-              <Globe className="h-5 w-5 text-primary" />
-              {region.name}
-              {region.biome && <Badge variant="secondary">{region.biome}</Badge>}
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="text-sm space-y-2">
-            {(region.ai_description || region.description) && <p>{region.ai_description || region.description}</p>}
-            <div className="flex gap-4 text-muted-foreground">
-              <span>{provs.length} provincií</span>
-              <span>{regionCities.length} měst</span>
-              <span>{regionPersons.length} osobností</span>
-            </div>
-          </CardContent>
-        </Card>
-
-        <h3 className="font-display font-semibold text-sm">Provincie</h3>
-        {provs.length === 0 && <p className="text-muted-foreground text-sm">Žádné provincie.</p>}
-        <div className="grid gap-3 md:grid-cols-2">
-          {provs.map(p => {
-            const pCities = citiesForProvince(p.id);
-            return (
-              <Card key={p.id} className="cursor-pointer hover:border-primary/50 transition-colors" onClick={() => setView({ ...view, level: "province", provinceId: p.id, provinceName: p.name })}>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-base flex items-center gap-2">
-                    <MapPin className="h-4 w-4 text-primary" />
-                    {p.name}
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="text-sm text-muted-foreground">
-                  {p.description && <p className="line-clamp-2">{p.description}</p>}
-                  <span className="flex items-center gap-1 mt-1"><Castle className="h-3 w-3" />{pCities.length} měst</span>
-                </CardContent>
-              </Card>
-            );
-          })}
+      <div>
+        <div
+          className={`flex items-center gap-1.5 py-1.5 px-2 rounded-md cursor-pointer transition-all text-sm group
+            ${isSelected ? "bg-primary/15 text-primary font-semibold" : "hover:bg-muted/60 text-foreground"}
+          `}
+          style={{ paddingLeft: `${indent * 16 + 8}px` }}
+          onClick={() => {
+            if (type && entityId) selectEntity(type, entityId, label);
+            if (hasChildren) toggleNode(id);
+          }}
+        >
+          {hasChildren ? (
+            <span className="shrink-0 text-muted-foreground">
+              {isExpanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+            </span>
+          ) : (
+            <span className="w-3" />
+          )}
+          <span className="shrink-0 text-illuminated">{icon}</span>
+          <span className="truncate font-display text-xs">{label}</span>
+          {count !== undefined && count > 0 && (
+            <span className="ml-auto text-[10px] text-muted-foreground font-body">{count}</span>
+          )}
         </div>
+        {hasChildren && isExpanded && (
+          <div className="animate-accordion-down">{children}</div>
+        )}
       </div>
     );
   };
 
-  // PROVINCE DETAIL
-  const renderProvince = () => {
-    const province = provinces.find(p => p.id === view.provinceId);
-    if (!province) return <p className="text-muted-foreground">Provincie nenalezena.</p>;
-    const pCities = citiesForProvince(province.id);
-    const pWonders = pCities.flatMap(c => wondersForCity(c.name));
-    const pPersons = pCities.flatMap(c => personsForCity(c.id));
-    const cityNames = pCities.map(c => c.name.toLowerCase());
+  // ── Build hierarchical tree ──
+  const renderWorldTree = () => {
+    const regionsForCountry = (countryId: string) => regions.filter(r => r.country_id === countryId);
+    const provincesForRegion = (regionId: string) => provinces.filter(p => p.region_id === regionId);
+    const citiesForProvince = (provinceId: string) => cities.filter(c => c.province_id === provinceId);
+    const wondersForCity = (cityName: string) => wonders.filter(w => w.city_name === cityName);
+    const orphanRegions = regions.filter(r => !r.country_id);
+    const orphanProvinces = provinces.filter(p => !p.region_id);
 
     return (
-      <div className="space-y-4">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="flex items-center gap-2">
-              <MapPin className="h-5 w-5 text-primary" />
-              {province.name}
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="text-sm">
-            {(province.ai_description || province.description) && <p>{province.ai_description || province.description}</p>}
-          </CardContent>
-        </Card>
-
-        <Accordion type="multiple" defaultValue={["cities", "wonders", "persons"]} className="space-y-1">
-          {/* Cities */}
-          <AccordionItem value="cities">
-            <AccordionTrigger className="text-sm font-semibold">
-              <span className="flex items-center gap-2"><Castle className="h-4 w-4" /> Města ({pCities.length})</span>
-            </AccordionTrigger>
-            <AccordionContent>
-              <div className="space-y-2">
-                {pCities.map(c => (
-                  <div key={c.id} className="flex items-center justify-between p-2 rounded-md hover:bg-muted/50 cursor-pointer" onClick={() => handleEntityClick("city", c.id)}>
-                    <div>
-                      <span className="font-medium text-sm">{c.name}</span>
-                      <Badge variant="outline" className="ml-2 text-xs">{c.level}</Badge>
-                      {c.status !== "ok" && <Badge variant="destructive" className="ml-1 text-xs">{c.status}</Badge>}
-                    </div>
-                    <span className="text-xs text-muted-foreground">{c.owner_player}</span>
-                  </div>
+      <div className="space-y-0.5">
+        {/* Countries */}
+        {countries.map(country => (
+          <TreeNode key={country.id} id={`country-${country.id}`} label={country.name}
+            icon={<Flag className="h-3.5 w-3.5" />} type="country" entityId={country.id}
+            count={regionsForCountry(country.id).length} indent={0}>
+            {regionsForCountry(country.id).map(region => (
+              <TreeNode key={region.id} id={`region-${region.id}`} label={region.name}
+                icon={<Mountain className="h-3.5 w-3.5" />} type="region" entityId={region.id}
+                count={provincesForRegion(region.id).length} indent={1}>
+                {provincesForRegion(region.id).map(prov => (
+                  <TreeNode key={prov.id} id={`prov-${prov.id}`} label={prov.name}
+                    icon={<MapPin className="h-3.5 w-3.5" />} type="province" entityId={prov.id}
+                    count={citiesForProvince(prov.id).length} indent={2}>
+                    {citiesForProvince(prov.id).map(city => (
+                      <TreeNode key={city.id} id={`city-${city.id}`} label={city.name}
+                        icon={<Castle className="h-3.5 w-3.5" />} type="city" entityId={city.id} indent={3}>
+                        {wondersForCity(city.name).map(w => (
+                          <TreeNode key={w.id} id={`w-${w.id}`} label={w.name}
+                            icon={<Landmark className="h-3.5 w-3.5" />} type="wonder" entityId={w.id} indent={4} />
+                        ))}
+                      </TreeNode>
+                    ))}
+                  </TreeNode>
                 ))}
-                {pCities.length === 0 && <p className="text-xs text-muted-foreground">Žádná města.</p>}
-              </div>
-            </AccordionContent>
-          </AccordionItem>
+              </TreeNode>
+            ))}
+          </TreeNode>
+        ))}
 
-          {/* Wonders */}
-          <AccordionItem value="wonders">
-            <AccordionTrigger className="text-sm font-semibold">
-              <span className="flex items-center gap-2"><Landmark className="h-4 w-4" /> Divy ({pWonders.length})</span>
-            </AccordionTrigger>
-            <AccordionContent>
-              <div className="space-y-2">
-                {pWonders.map(w => (
-                  <div key={w.id} className="flex items-center justify-between p-2 rounded-md hover:bg-muted/50 cursor-pointer" onClick={() => handleEntityClick("wonder", w.id)}>
-                    <span className="font-medium text-sm">{w.name}</span>
-                    <Badge variant="secondary" className="text-xs">{w.status}</Badge>
-                  </div>
+        {/* Orphan regions (no country) */}
+        {orphanRegions.length > 0 && (
+          <TreeNode id="orphan-regions" label="Nezařazené regiony"
+            icon={<Globe className="h-3.5 w-3.5" />} count={orphanRegions.length} indent={0}>
+            {orphanRegions.map(region => (
+              <TreeNode key={region.id} id={`region-${region.id}`} label={region.name}
+                icon={<Mountain className="h-3.5 w-3.5" />} type="region" entityId={region.id}
+                count={provincesForRegion(region.id).length} indent={1}>
+                {provincesForRegion(region.id).map(prov => (
+                  <TreeNode key={prov.id} id={`prov-${prov.id}`} label={prov.name}
+                    icon={<MapPin className="h-3.5 w-3.5" />} type="province" entityId={prov.id}
+                    count={citiesForProvince(prov.id).length} indent={2}>
+                    {citiesForProvince(prov.id).map(city => (
+                      <TreeNode key={city.id} id={`city-${city.id}`} label={city.name}
+                        icon={<Castle className="h-3.5 w-3.5" />} type="city" entityId={city.id} indent={3} />
+                    ))}
+                  </TreeNode>
                 ))}
-                {pWonders.length === 0 && <p className="text-xs text-muted-foreground">Žádné divy.</p>}
-              </div>
-            </AccordionContent>
-          </AccordionItem>
+              </TreeNode>
+            ))}
+          </TreeNode>
+        )}
 
-          {/* Persons */}
-          <AccordionItem value="persons">
-            <AccordionTrigger className="text-sm font-semibold">
-              <span className="flex items-center gap-2"><Crown className="h-4 w-4" /> Osobnosti ({pPersons.length})</span>
-            </AccordionTrigger>
-            <AccordionContent>
-              <div className="space-y-2">
-                {pPersons.map(p => (
-                  <div key={p.id} className="flex items-center justify-between p-2 rounded-md hover:bg-muted/50 cursor-pointer" onClick={() => handleEntityClick("person", p.id)}>
-                    <div>
-                      <span className="font-medium text-sm">{p.name}</span>
-                      <Badge variant="outline" className="ml-2 text-xs">{p.person_type}</Badge>
-                    </div>
-                    <span className="text-xs text-muted-foreground">{p.is_alive ? "Žije" : `✝ kolo ${p.died_round}`}</span>
-                  </div>
-                ))}
-                {pPersons.length === 0 && <p className="text-xs text-muted-foreground">Žádné osobnosti.</p>}
-              </div>
-            </AccordionContent>
-          </AccordionItem>
+        {/* Orphan provinces */}
+        {orphanProvinces.length > 0 && (
+          <TreeNode id="orphan-provinces" label="Nezařazené provincie"
+            icon={<MapPin className="h-3.5 w-3.5" />} count={orphanProvinces.length} indent={0}>
+            {orphanProvinces.map(prov => (
+              <TreeNode key={prov.id} id={`prov-${prov.id}`} label={prov.name}
+                icon={<MapPin className="h-3.5 w-3.5" />} type="province" entityId={prov.id} indent={1} />
+            ))}
+          </TreeNode>
+        )}
 
-          {/* Events */}
-          <AccordionItem value="events">
-            <AccordionTrigger className="text-sm font-semibold">
-              <span className="flex items-center gap-2"><Calendar className="h-4 w-4" /> Události</span>
-            </AccordionTrigger>
-            <AccordionContent>
-              <div className="space-y-2">
-                {events.filter(e => {
-                  const title = e.title?.toLowerCase() || "";
-                  const desc = e.description?.toLowerCase() || "";
-                  return cityNames.some(cn => title.includes(cn) || desc.includes(cn));
-                }).slice(0, 20).map(e => (
-                  <div key={e.id} className="flex items-center justify-between p-2 rounded-md hover:bg-muted/50 cursor-pointer" onClick={() => handleEntityClick("event", e.id)}>
-                    <span className="font-medium text-sm">{e.title}</span>
-                    <Badge variant="outline" className="text-xs">{e.event_category}</Badge>
-                  </div>
-                ))}
-              </div>
-            </AccordionContent>
-          </AccordionItem>
+        {/* ── Category sections ── */}
+        <div className="scroll-divider my-3">
+          <span className="text-[10px]">✦ Kategorie ✦</span>
+        </div>
 
-          {/* Chronicles */}
-          <AccordionItem value="chronicles">
-            <AccordionTrigger className="text-sm font-semibold">
-              <span className="flex items-center gap-2"><Swords className="h-4 w-4" /> Kronika provincie</span>
-            </AccordionTrigger>
-            <AccordionContent>
-              <div className="space-y-2">
-                {chronicles.filter(ch => {
-                  const t = ch.text?.toLowerCase() || "";
-                  return cityNames.some(cn => t.includes(cn)) || t.includes(province.name.toLowerCase());
-                }).slice(0, 10).map(ch => (
-                  <div key={ch.id} className="p-2 border-l-2 border-primary/30 pl-3 text-sm">
-                    <p className="line-clamp-3">{ch.text}</p>
-                    {ch.turn_from && <span className="text-xs text-muted-foreground">Kola {ch.turn_from}–{ch.turn_to}</span>}
-                  </div>
-                ))}
-              </div>
-            </AccordionContent>
-          </AccordionItem>
-        </Accordion>
+        {/* Personalities */}
+        <TreeNode id="cat-persons" label="Osobnosti" icon={<Crown className="h-3.5 w-3.5" />}
+          count={persons.length} indent={0}>
+          {persons.map(p => (
+            <TreeNode key={p.id} id={`person-${p.id}`} label={p.name}
+              icon={<Crown className="h-3.5 w-3.5" />} type="person" entityId={p.id} indent={1} />
+          ))}
+        </TreeNode>
+
+        {/* Battles */}
+        {battles.length > 0 && (
+          <TreeNode id="cat-battles" label="Bitvy" icon={<Swords className="h-3.5 w-3.5" />}
+            count={battles.length} indent={0}>
+            {battles.map(b => (
+              <TreeNode key={b.id} id={`battle-${b.id}`} label={b.title}
+                icon={<Swords className="h-3.5 w-3.5" />} type="event" entityId={b.id} indent={1} />
+            ))}
+          </TreeNode>
+        )}
+
+        {/* Wonders */}
+        <TreeNode id="cat-wonders" label="Divy světa" icon={<Landmark className="h-3.5 w-3.5" />}
+          count={wonders.length} indent={0}>
+          {wonders.map(w => (
+            <TreeNode key={w.id} id={`wonder-${w.id}`} label={w.name}
+              icon={<Landmark className="h-3.5 w-3.5" />} type="wonder" entityId={w.id} indent={1} />
+          ))}
+        </TreeNode>
+
+        {/* Events */}
+        <TreeNode id="cat-events" label="Události" icon={<Calendar className="h-3.5 w-3.5" />}
+          count={events.length} indent={0}>
+          {events.slice(0, 50).map(e => (
+            <TreeNode key={e.id} id={`event-${e.id}`} label={e.title}
+              icon={<Calendar className="h-3.5 w-3.5" />} type="event" entityId={e.id} indent={1} />
+          ))}
+        </TreeNode>
+
+        {/* Discoveries */}
+        {discoveries.length > 0 && (
+          <TreeNode id="cat-discoveries" label="Objevy" icon={<Compass className="h-3.5 w-3.5" />}
+            count={discoveries.length} indent={0}>
+            {discoveries.map(d => (
+              <TreeNode key={d.id} id={`disc-${d.id}`} label={d.narrative?.slice(0, 40) || "Výprava"}
+                icon={<Compass className="h-3.5 w-3.5" />} type="expedition" entityId={d.id} indent={1} />
+            ))}
+          </TreeNode>
+        )}
       </div>
     );
   };
 
   if (loading) {
-    return <div className="text-center py-8 text-muted-foreground animate-pulse">Načítání ChroWiki…</div>;
+    return (
+      <div className="flex items-center justify-center h-[60vh]">
+        <div className="text-center animate-fade-in">
+          <Scroll className="h-10 w-10 text-illuminated mx-auto mb-3 animate-pulse" />
+          <p className="font-display text-sm text-muted-foreground">Otevírám svitky ChroWiki…</p>
+        </div>
+      </div>
+    );
   }
 
   return (
-    <div className="space-y-4 pb-20">
-      <div className="flex items-center gap-2">
-        <h2 className="font-display text-lg font-bold">📜 ChroWiki</h2>
-        <Badge variant="secondary" className="text-xs">Read-only</Badge>
+    <div className="pb-20">
+      {/* Header */}
+      <div className="manuscript-card p-4 mb-4">
+        <div className="flex items-center gap-3 mb-3">
+          <BookOpen className="h-6 w-6 text-illuminated" />
+          <div>
+            <h2 className="font-decorative text-lg text-foreground tracking-wide">ChroWiki</h2>
+            <p className="text-[11px] text-muted-foreground font-body">Encyklopedie světa • Kronika říší a národů</p>
+          </div>
+        </div>
+
+        {/* Search bar */}
+        <div className="relative mb-3">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="Hledat v encyklopedii…"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            className="pl-9 bg-background/60 border-border font-body text-sm"
+          />
+        </div>
+
+        {/* Filters */}
+        <div className="flex gap-2 flex-wrap">
+          <Select value={typeFilter} onValueChange={setTypeFilter}>
+            <SelectTrigger className="w-[130px] h-8 text-xs"><SelectValue placeholder="Typ entity" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Vše</SelectItem>
+              <SelectItem value="country">Státy</SelectItem>
+              <SelectItem value="region">Regiony</SelectItem>
+              <SelectItem value="province">Provincie</SelectItem>
+              <SelectItem value="city">Města</SelectItem>
+              <SelectItem value="wonder">Divy</SelectItem>
+              <SelectItem value="person">Osobnosti</SelectItem>
+              <SelectItem value="event">Události</SelectItem>
+            </SelectContent>
+          </Select>
+          <Select value={playerFilter} onValueChange={setPlayerFilter}>
+            <SelectTrigger className="w-[130px] h-8 text-xs"><SelectValue placeholder="Frakce" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Všechny</SelectItem>
+              {allPlayers.map(p => <SelectItem key={p} value={p}>{p}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        </div>
       </div>
 
-      {renderBreadcrumb()}
+      {/* Search Results Overlay */}
+      {searchResults && searchResults.length > 0 && (
+        <div className="manuscript-card p-3 mb-4 space-y-1">
+          <p className="text-xs text-muted-foreground font-display mb-2">
+            Nalezeno {searchResults.length} záznamů
+          </p>
+          {searchResults.map(r => (
+            <div key={`${r.type}-${r.id}`}
+              className="flex items-center gap-2 py-1.5 px-2 rounded-md hover:bg-muted/50 cursor-pointer transition-colors"
+              onClick={() => { selectEntity(r.type, r.id, r.name); setSearch(""); }}
+            >
+              <span className="text-illuminated">{ENTITY_ICONS[r.type] || <BookOpen className="h-3.5 w-3.5" />}</span>
+              <span className="font-display text-xs truncate">{r.name}</span>
+              {r.sub && <Badge variant="outline" className="text-[9px] ml-auto shrink-0">{r.sub}</Badge>}
+            </div>
+          ))}
+        </div>
+      )}
 
-      <ScrollArea className="max-h-[calc(100vh-220px)]">
-        {view.level === "regions" && renderRegions()}
-        {view.level === "region" && renderRegion()}
-        {view.level === "province" && renderProvince()}
-      </ScrollArea>
+      {/* Two-panel layout */}
+      <div className="flex gap-4 min-h-[calc(100vh-320px)]">
+        {/* LEFT: Navigation Tree */}
+        <div className="w-[280px] shrink-0 manuscript-card overflow-hidden flex flex-col">
+          <div className="px-3 py-2 border-b border-border">
+            <p className="font-display text-xs text-muted-foreground tracking-wider uppercase">Navigace</p>
+          </div>
+          <ScrollArea className="flex-1 p-2">
+            {renderWorldTree()}
+          </ScrollArea>
+        </div>
+
+        {/* RIGHT: Detail Panel */}
+        <div className="flex-1 min-w-0">
+          {selectedEntity ? (
+            <ChroWikiDetailPanel
+              sessionId={sessionId}
+              entityType={selectedEntity.type}
+              entityId={selectedEntity.id}
+              entityName={selectedEntity.name}
+              countries={countries}
+              regions={regions}
+              provinces={provinces}
+              cities={cities}
+              wonders={wonders}
+              persons={persons}
+              events={events}
+              chronicles={chronicles}
+              wikiEntries={wikiEntries}
+              declarations={declarations}
+              onEntityClick={(type, id, name) => selectEntity(type, id, name)}
+              onRefreshWiki={async () => {
+                const { data } = await supabase.from("wiki_entries").select("*").eq("session_id", sessionId);
+                if (data) setWikiEntries(data);
+              }}
+            />
+          ) : (
+            <div className="manuscript-card flex items-center justify-center h-full min-h-[400px]">
+              <div className="text-center max-w-sm animate-fade-in">
+                <Scroll className="h-12 w-12 text-illuminated mx-auto mb-4 opacity-50" />
+                <h3 className="font-decorative text-base text-foreground mb-2">Vyberte záznam</h3>
+                <p className="text-xs text-muted-foreground font-body leading-relaxed">
+                  Prozkoumejte hierarchii světa v navigaci vlevo, nebo použijte vyhledávání k nalezení konkrétního záznamu v kronice.
+                </p>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 };
