@@ -40,7 +40,14 @@ serve(async (req) => {
 
     const data = await response.json();
     const imageData = data.choices?.[0]?.message?.images?.[0]?.image_url?.url;
-    if (!imageData) throw new Error("No image generated");
+    if (!imageData) {
+      console.warn("No image in AI response, returning fallback");
+      return new Response(JSON.stringify({
+        imageUrl: null,
+        imagePrompt: prompt,
+        debug: { provider: "no-image-returned" },
+      }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
 
     // Upload to storage
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
