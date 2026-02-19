@@ -71,3 +71,6 @@ verify_jwt = false
 
 [functions.explore-region]
 verify_jwt = false
+
+[functions.royal-council]
+verify_jwt = false

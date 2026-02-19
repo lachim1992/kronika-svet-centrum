@@ -1,0 +1,480 @@
+import { useState, useMemo, useCallback } from "react";
+import { supabase } from "@/integrations/supabase/client";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
+import {
+  Crown, Coins, Shield, Swords, Users, Eye, Church, Scroll,
+  ChevronRight, Loader2, Sparkles, AlertTriangle, CheckCircle, Gavel,
+  TrendingUp, TrendingDown, Minus,
+} from "lucide-react";
+import { toast } from "sonner";
+
+interface Props {
+  sessionId: string;
+  session: any;
+  currentPlayerName: string;
+  currentTurn: number;
+  myRole: string;
+  events: any[];
+  cities: any[];
+  resources: any[];
+  armies: any[];
+  trades: any[];
+  declarations: any[];
+  worldCrises: any[];
+  cityStates: any[];
+  players: any[];
+  onRefetch: () => void;
+}
+
+type AdvisorId = "economy" | "stability" | "military" | "diplomacy" | "intelligence" | "culture";
+
+const ADVISORS: { id: AdvisorId; label: string; icon: React.ElementType; title: string }[] = [
+  { id: "economy", label: "Ekonomie", icon: Coins, title: "Ministr obchodu" },
+  { id: "stability", label: "Stabilita", icon: Shield, title: "Ministr vnitra" },
+  { id: "military", label: "Vojenství", icon: Swords, title: "Vojevůdce" },
+  { id: "diplomacy", label: "Diplomacie", icon: Users, title: "Diplomat" },
+  { id: "intelligence", label: "Zvědi", icon: Eye, title: "Mistr špiónů" },
+  { id: "culture", label: "Kultura", icon: Church, title: "Velekněz" },
+];
+
+const DECREE_TYPES = [
+  { value: "law", label: "Zákon" },
+  { value: "tax", label: "Změna daní" },
+  { value: "military_reform", label: "Vojenská reforma" },
+  { value: "diplomatic_shift", label: "Diplomatický obrat" },
+  { value: "religious_decree", label: "Náboženský dekret" },
+];
+
+const CouncilTab = ({
+  sessionId, session, currentPlayerName, currentTurn, myRole,
+  events, cities, resources, armies, trades, declarations, worldCrises, cityStates, players,
+  onRefetch,
+}: Props) => {
+  const [activeAdvisor, setActiveAdvisor] = useState<AdvisorId>("economy");
+  const [showDecree, setShowDecree] = useState(false);
+  const [decreeType, setDecreeType] = useState("law");
+  const [decreeText, setDecreeText] = useState("");
+  const [decreePreview, setDecreePreview] = useState<any>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [enacting, setEnacting] = useState(false);
+  const [aiReport, setAiReport] = useState<string | null>(null);
+  const [reportLoading, setReportLoading] = useState(false);
+
+  const myResources = useMemo(() => resources.filter(r => r.player_name === currentPlayerName), [resources, currentPlayerName]);
+  const myArmies = useMemo(() => armies.filter(a => a.player_name === currentPlayerName), [armies, currentPlayerName]);
+  const myCities = useMemo(() => cities.filter(c => c.owner_player === currentPlayerName), [cities, currentPlayerName]);
+  const recentEvents = useMemo(() => events.filter(e => e.turn_number >= currentTurn - 3).slice(0, 10), [events, currentTurn]);
+  const activeCrises = useMemo(() => worldCrises.filter(c => !c.resolved), [worldCrises]);
+  const recentTrades = useMemo(() => trades.filter(t => t.turn_number >= currentTurn - 3), [trades, currentTurn]);
+
+  // ── Generate advisor reports from real data ──
+  const advisorReport = useMemo(() => {
+    switch (activeAdvisor) {
+      case "economy": {
+        const totalIncome = myResources.reduce((s, r) => s + (r.income || 0), 0);
+        const totalUpkeep = myResources.reduce((s, r) => s + (r.upkeep || 0), 0);
+        const totalStock = myResources.reduce((s, r) => s + (r.stockpile || 0), 0);
+        const netIncome = totalIncome - totalUpkeep;
+        return {
+          summary: netIncome >= 0 ? "Ekonomika je stabilní." : "⚠ Výdaje převyšují příjmy!",
+          metrics: [
+            { label: "Příjem", value: `+${totalIncome}`, trend: "up" as const },
+            { label: "Výdaje", value: `-${totalUpkeep}`, trend: "down" as const },
+            { label: "Čistý", value: `${netIncome >= 0 ? "+" : ""}${netIncome}`, trend: netIncome >= 0 ? "up" as const : "down" as const },
+            { label: "Zásoby", value: String(totalStock), trend: "neutral" as const },
+            { label: "Obchody", value: String(recentTrades.length), trend: "neutral" as const },
+            { label: "Města", value: String(myCities.length), trend: "neutral" as const },
+          ],
+          risk: netIncome < 0 ? "Vysoké" : netIncome < 5 ? "Střední" : "Nízké",
+          recommendation: netIncome < 0
+            ? "Doporučuji snížit výdaje na armádu nebo zvýšit daně."
+            : "Hospodářství se vyvíjí příznivě. Zvažte investice do nových staveb.",
+        };
+      }
+      case "military": {
+        const activeArmies = myArmies.filter(a => a.status === "Aktivní");
+        const warEvents = events.filter(e => ["battle", "war", "siege"].includes(e.event_type || e.event_category || "") && e.turn_number >= currentTurn - 5);
+        return {
+          summary: warEvents.length > 0 ? `⚔ ${warEvents.length} konfliktů v posledních 5 kolech.` : "Mír v říši.",
+          metrics: [
+            { label: "Armády", value: String(activeArmies.length), trend: "neutral" as const },
+            { label: "Síla železo", value: String(myArmies.reduce((s, a) => s + (a.iron_cost || 0), 0)), trend: "neutral" as const },
+            { label: "Konflikty", value: String(warEvents.length), trend: warEvents.length > 0 ? "down" as const : "up" as const },
+            { label: "Krize", value: String(activeCrises.length), trend: activeCrises.length > 0 ? "down" as const : "up" as const },
+          ],
+          risk: warEvents.length > 2 ? "Vysoké" : warEvents.length > 0 ? "Střední" : "Nízké",
+          recommendation: warEvents.length > 2
+            ? "Situace je kritická. Zvažte mírová jednání nebo posily."
+            : "Hranice jsou klidné. Dobrý čas na výcvik nových jednotek.",
+        };
+      }
+      case "diplomacy": {
+        const diplomaticEvents = events.filter(e => ["treaty", "diplomacy", "alliance"].includes(e.event_type || e.event_category || ""));
+        return {
+          summary: `${cityStates.length} městských států, ${diplomaticEvents.length} diplomatických akcí.`,
+          metrics: [
+            { label: "Městské státy", value: String(cityStates.length), trend: "neutral" as const },
+            { label: "Dohody", value: String(diplomaticEvents.length), trend: "neutral" as const },
+            { label: "Hráči", value: String(players.length), trend: "neutral" as const },
+          ],
+          risk: "Střední",
+          recommendation: "Sledujte vztahy s městskými státy a udržujte aliance.",
+        };
+      }
+      case "stability": {
+        const devastated = cities.filter(c => c.status === "devastated");
+        return {
+          summary: devastated.length > 0 ? `⚠ ${devastated.length} zdevastovaných měst!` : "Řád v říši je zachován.",
+          metrics: [
+            { label: "Města OK", value: String(myCities.filter(c => c.status === "ok").length), trend: "up" as const },
+            { label: "Zdevastovaná", value: String(devastated.length), trend: devastated.length > 0 ? "down" as const : "up" as const },
+            { label: "Aktivní krize", value: String(activeCrises.length), trend: activeCrises.length > 0 ? "down" as const : "up" as const },
+            { label: "Deklarace", value: String(declarations.length), trend: "neutral" as const },
+          ],
+          risk: devastated.length > 0 || activeCrises.length > 0 ? "Vysoké" : "Nízké",
+          recommendation: devastated.length > 0
+            ? "Obnovte zdevastovaná města a vyřešte aktivní krize."
+            : "Stabilita je dobrá. Zvažte vyhlášení nových zákonů.",
+        };
+      }
+      case "intelligence": {
+        return {
+          summary: "Špionážní síť monitoruje okolní říše.",
+          metrics: [
+            { label: "Události", value: String(recentEvents.length), trend: "neutral" as const },
+            { label: "Krize", value: String(activeCrises.length), trend: activeCrises.length > 0 ? "down" as const : "up" as const },
+          ],
+          risk: activeCrises.length > 1 ? "Vysoké" : "Nízké",
+          recommendation: "Udržujte špionážní síť aktivní. Sledujte pohyby sousedů.",
+        };
+      }
+      case "culture": {
+        const wonderCount = cities.length > 0 ? Math.floor(cities.length / 3) : 0;
+        return {
+          summary: "Kultura a víra slouží říši.",
+          metrics: [
+            { label: "Města s divy", value: String(wonderCount), trend: "neutral" as const },
+            { label: "Deklarace", value: String(declarations.length), trend: "neutral" as const },
+          ],
+          risk: "Nízké",
+          recommendation: "Stavba divů a náboženské dekrety posilují loajalitu.",
+        };
+      }
+    }
+  }, [activeAdvisor, myResources, myArmies, myCities, recentEvents, activeCrises, recentTrades, cityStates, players, declarations, events, cities, currentTurn, trades]);
+
+  const TrendIcon = ({ trend }: { trend: "up" | "down" | "neutral" }) => {
+    if (trend === "up") return <TrendingUp className="h-3 w-3 text-forest-green" />;
+    if (trend === "down") return <TrendingDown className="h-3 w-3 text-seal-red" />;
+    return <Minus className="h-3 w-3 text-muted-foreground" />;
+  };
+
+  // ── AI Decree Preview ──
+  const handleDecreePreview = async () => {
+    if (!decreeText.trim()) return;
+    setPreviewLoading(true);
+    setDecreePreview(null);
+    try {
+      const { data, error } = await supabase.functions.invoke("royal-council", {
+        body: {
+          action: "preview_decree",
+          sessionId,
+          playerName: currentPlayerName,
+          currentTurn,
+          decreeType,
+          decreeText,
+          context: {
+            cities: myCities.map(c => ({ name: c.name, level: c.level, status: c.status })),
+            armies: myArmies.length,
+            resources: myResources.map(r => ({ type: r.resource_type, stockpile: r.stockpile, income: r.income })),
+            crises: activeCrises.map(c => c.title),
+          },
+        },
+      });
+      if (error) throw error;
+      setDecreePreview(data);
+    } catch (e) {
+      console.error(e);
+      toast.error("Hodnocení rady selhalo");
+    }
+    setPreviewLoading(false);
+  };
+
+  // ── Enact decree ──
+  const handleEnactDecree = async () => {
+    if (!decreePreview) return;
+    setEnacting(true);
+    try {
+      // Write to declarations table
+      await supabase.from("declarations").insert({
+        session_id: sessionId,
+        player_name: currentPlayerName,
+        original_text: decreeText,
+        declaration_type: decreeType,
+        turn_number: currentTurn,
+        status: "published",
+        title: `Dekret: ${DECREE_TYPES.find(d => d.value === decreeType)?.label || decreeType}`,
+        epic_text: decreePreview?.narrativeText || null,
+        effects: decreePreview?.effects || [],
+      });
+
+      // Write to world action log
+      await supabase.from("world_action_log").insert({
+        session_id: sessionId,
+        player_name: currentPlayerName,
+        turn_number: currentTurn,
+        action_type: "decree",
+        description: `${currentPlayerName} vydal dekret: ${decreeText.slice(0, 100)}`,
+        metadata: { decree_type: decreeType, effects: decreePreview?.effects },
+      });
+
+      toast.success("📜 Dekret byl vyhlášen a zapsán do kroniky!");
+      setDecreeText("");
+      setDecreePreview(null);
+      setShowDecree(false);
+      onRefetch();
+    } catch (e) {
+      console.error(e);
+      toast.error("Vyhlášení dekretu selhalo");
+    }
+    setEnacting(false);
+  };
+
+  const activeAdvisorData = ADVISORS.find(a => a.id === activeAdvisor)!;
+  const ActiveIcon = activeAdvisorData.icon;
+
+  return (
+    <div className="pb-20">
+      {/* Header */}
+      <div className="manuscript-card p-4 mb-4">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-lg bg-royal-purple/10 flex items-center justify-center">
+            <Crown className="h-6 w-6 text-royal-purple" />
+          </div>
+          <div>
+            <h2 className="font-decorative text-lg text-foreground tracking-wide">Královská rada</h2>
+            <p className="text-[11px] text-muted-foreground font-body">Poradní sbor vládce • Kolo {currentTurn}</p>
+          </div>
+          <div className="ml-auto">
+            <Button
+              size="sm"
+              variant={showDecree ? "default" : "outline"}
+              onClick={() => setShowDecree(!showDecree)}
+              className="text-xs"
+            >
+              <Gavel className="h-3.5 w-3.5 mr-1" />
+              {showDecree ? "Zpět k radě" : "Navrhnout dekret"}
+            </Button>
+          </div>
+        </div>
+      </div>
+
+      <div className="flex gap-4 min-h-[calc(100vh-320px)]">
+        {/* LEFT: Advisor Categories */}
+        <div className="w-[220px] shrink-0 manuscript-card overflow-hidden flex flex-col">
+          <div className="px-3 py-2 border-b border-border">
+            <p className="font-display text-xs text-muted-foreground tracking-wider uppercase">Rádci</p>
+          </div>
+          <ScrollArea className="flex-1">
+            <div className="p-2 space-y-0.5">
+              {ADVISORS.map(advisor => {
+                const Icon = advisor.icon;
+                const isActive = activeAdvisor === advisor.id;
+                return (
+                  <button
+                    key={advisor.id}
+                    onClick={() => { setActiveAdvisor(advisor.id); setShowDecree(false); }}
+                    className={`w-full flex items-center gap-2.5 py-2.5 px-3 rounded-lg transition-all text-left
+                      ${isActive
+                        ? "bg-primary/10 text-primary border border-primary/20"
+                        : "hover:bg-muted/50 text-foreground border border-transparent"
+                      }`}
+                  >
+                    <Icon className={`h-4 w-4 shrink-0 ${isActive ? "text-illuminated" : "text-muted-foreground"}`} />
+                    <div className="min-w-0">
+                      <p className="font-display text-xs font-semibold truncate">{advisor.label}</p>
+                      <p className="text-[10px] text-muted-foreground truncate">{advisor.title}</p>
+                    </div>
+                    {isActive && <ChevronRight className="h-3 w-3 ml-auto text-primary shrink-0" />}
+                  </button>
+                );
+              })}
+            </div>
+          </ScrollArea>
+        </div>
+
+        {/* RIGHT: Report / Decree Panel */}
+        <div className="flex-1 min-w-0">
+          <ScrollArea className="h-[calc(100vh-320px)]">
+            {showDecree ? (
+              /* ── DECREE PLANNING ── */
+              <div className="manuscript-card p-5 space-y-5">
+                <div className="flex items-center gap-3 mb-2">
+                  <Gavel className="h-5 w-5 text-royal-purple" />
+                  <h3 className="font-decorative text-base text-foreground">Návrh dekretu</h3>
+                </div>
+
+                <div className="space-y-3">
+                  <Select value={decreeType} onValueChange={setDecreeType}>
+                    <SelectTrigger className="h-9 text-xs">
+                      <SelectValue placeholder="Typ dekretu" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {DECREE_TYPES.map(d => (
+                        <SelectItem key={d.value} value={d.value}>{d.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+
+                  <Textarea
+                    value={decreeText}
+                    onChange={e => setDecreeText(e.target.value)}
+                    placeholder="Popište svůj dekret… např. 'Zvýšit daně o 20% na obnovu zdevastovaných měst'"
+                    className="min-h-[100px] text-sm font-body"
+                  />
+
+                  <div className="flex gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={handleDecreePreview}
+                      disabled={previewLoading || !decreeText.trim()}
+                      className="text-xs"
+                    >
+                      {previewLoading ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <Eye className="h-3 w-3 mr-1" />}
+                      Náhled důsledků
+                    </Button>
+                  </div>
+                </div>
+
+                {/* Decree Preview Results */}
+                {decreePreview && (
+                  <div className="space-y-4 mt-4">
+                    <div className="scroll-divider"><span className="text-[10px]">⚖ Hodnocení rady ⚖</span></div>
+
+                    {/* Effects grid */}
+                    {decreePreview.effects && Array.isArray(decreePreview.effects) && (
+                      <div className="grid grid-cols-2 gap-2">
+                        {decreePreview.effects.map((eff: any, i: number) => (
+                          <div key={i} className={`p-2.5 rounded-lg border text-xs font-display
+                            ${eff.value > 0 ? "bg-accent/5 border-accent/20 text-forest-green" :
+                              eff.value < 0 ? "bg-destructive/5 border-destructive/20 text-seal-red" :
+                              "bg-muted/30 border-border text-muted-foreground"}`}
+                          >
+                            <span className="font-semibold">{eff.value > 0 ? "+" : ""}{eff.value}</span>{" "}
+                            <span>{eff.label}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Risk */}
+                    {decreePreview.riskLevel && (
+                      <div className="flex items-center gap-2 p-3 rounded-lg bg-muted/30 border border-border">
+                        <AlertTriangle className="h-4 w-4 text-illuminated shrink-0" />
+                        <div className="text-xs font-body">
+                          <span className="font-display font-semibold">Riziko: </span>
+                          <span>{decreePreview.riskLevel}</span>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Narrative */}
+                    {decreePreview.narrativeText && (
+                      <div className="p-3 rounded-lg bg-primary/5 border border-primary/20">
+                        <p className="text-xs font-body italic leading-relaxed">{decreePreview.narrativeText}</p>
+                      </div>
+                    )}
+
+                    {/* Enact button */}
+                    <div className="flex gap-2 justify-end">
+                      <Button size="sm" variant="outline" onClick={() => setDecreePreview(null)} className="text-xs">
+                        Zrušit
+                      </Button>
+                      <Button size="sm" onClick={handleEnactDecree} disabled={enacting} className="text-xs">
+                        {enacting ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <CheckCircle className="h-3 w-3 mr-1" />}
+                        Vyhlásit dekret
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : (
+              /* ── ADVISOR REPORT ── */
+              <div className="manuscript-card p-5 space-y-5">
+                {/* Advisor header */}
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                    <ActiveIcon className="h-5 w-5 text-illuminated" />
+                  </div>
+                  <div>
+                    <h3 className="font-decorative text-base text-foreground">{activeAdvisorData.title}</h3>
+                    <p className="text-[11px] text-muted-foreground font-body">{activeAdvisorData.label} • Hlášení</p>
+                  </div>
+                  <Badge variant="outline" className={`ml-auto text-[10px] font-display
+                    ${advisorReport.risk === "Vysoké" ? "border-destructive/40 text-seal-red" :
+                      advisorReport.risk === "Střední" ? "border-primary/40 text-illuminated" :
+                      "border-accent/40 text-forest-green"}`}
+                  >
+                    Riziko: {advisorReport.risk}
+                  </Badge>
+                </div>
+
+                {/* Summary */}
+                <div className="p-3 rounded-lg bg-muted/30 border border-border">
+                  <p className="text-sm font-body">{advisorReport.summary}</p>
+                </div>
+
+                {/* Metrics */}
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                  {advisorReport.metrics.map((m, i) => (
+                    <div key={i} className="p-3 rounded-lg bg-card border border-border">
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-[10px] text-muted-foreground font-body">{m.label}</span>
+                        <TrendIcon trend={m.trend} />
+                      </div>
+                      <p className="font-display text-lg font-bold text-foreground">{m.value}</p>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="scroll-divider"><span className="text-[10px]">✦</span></div>
+
+                {/* Recommendation */}
+                <div className="p-4 rounded-lg bg-primary/5 border border-primary/20">
+                  <h4 className="font-display text-xs font-semibold mb-2 flex items-center gap-2">
+                    <Scroll className="h-3.5 w-3.5 text-illuminated" /> Doporučení rádce
+                  </h4>
+                  <p className="text-sm font-body leading-relaxed">{advisorReport.recommendation}</p>
+                </div>
+
+                {/* Recent events relevant to this advisor */}
+                {recentEvents.length > 0 && (
+                  <div>
+                    <h4 className="font-display text-xs font-semibold mb-2 text-muted-foreground">Poslední události</h4>
+                    <div className="space-y-1">
+                      {recentEvents.slice(0, 5).map(evt => (
+                        <div key={evt.id} className="flex items-center gap-2 py-1 px-2 rounded text-xs text-foreground font-body">
+                          <span className="text-muted-foreground">K{evt.turn_number}</span>
+                          <span className="truncate">{evt.note || evt.event_type}</span>
+                          {evt.importance === "high" && <Badge variant="destructive" className="text-[9px]">!</Badge>}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </ScrollArea>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default CouncilTab;

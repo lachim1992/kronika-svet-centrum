@@ -20,6 +20,7 @@ import CodexTab from "@/pages/game/CodexTab";
 import ProfileTab from "@/pages/game/ProfileTab";
 import DevTab from "@/pages/game/DevTab";
 import ChroWikiTab from "@/pages/game/ChroWikiTab";
+import CouncilTab from "@/pages/game/CouncilTab";
 
 const Dashboard = () => {
   const { sessionId } = useParams<{ sessionId: string }>();
@@ -184,6 +185,25 @@ const Dashboard = () => {
         {activeTab === "feed" && <FeedTab {...sharedProps} />}
         {activeTab === "codex" && <CodexTab {...sharedProps} codexEntityTarget={codexEntityTarget} onClearEntityTarget={() => setCodexEntityTarget(null)} />}
         {activeTab === "wiki" && <ChroWikiTab sessionId={session.id} onEntityClick={handleEntityClick} />}
+        {activeTab === "council" && (
+          <CouncilTab
+            sessionId={session.id}
+            session={session}
+            currentPlayerName={myPlayerName}
+            currentTurn={currentTurn}
+            myRole={myRole}
+            events={events}
+            cities={cities}
+            resources={resources}
+            armies={armies}
+            trades={trades}
+            declarations={declarations}
+            worldCrises={worldCrises}
+            cityStates={cityStates}
+            players={players}
+            onRefetch={refetch}
+          />
+        )}
         {activeTab === "dev" && myRole === "admin" && (
           <DevTab
             sessionId={session.id}
