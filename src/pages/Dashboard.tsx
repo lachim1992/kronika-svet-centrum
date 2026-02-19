@@ -19,6 +19,7 @@ import FeedTab from "@/pages/game/FeedTab";
 import CodexTab from "@/pages/game/CodexTab";
 import ProfileTab from "@/pages/game/ProfileTab";
 import DevTab from "@/pages/game/DevTab";
+import ChroWikiTab from "@/pages/game/ChroWikiTab";
 
 const Dashboard = () => {
   const { sessionId } = useParams<{ sessionId: string }>();
@@ -182,6 +183,7 @@ const Dashboard = () => {
         {activeTab === "realm" && <RealmTab {...sharedProps} />}
         {activeTab === "feed" && <FeedTab {...sharedProps} />}
         {activeTab === "codex" && <CodexTab {...sharedProps} codexEntityTarget={codexEntityTarget} onClearEntityTarget={() => setCodexEntityTarget(null)} />}
+        {activeTab === "wiki" && <ChroWikiTab sessionId={session.id} onEntityClick={handleEntityClick} />}
         {activeTab === "dev" && myRole === "admin" && (
           <DevTab
             sessionId={session.id}
