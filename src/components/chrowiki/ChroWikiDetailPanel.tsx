@@ -1,11 +1,11 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   BookOpen, Castle, Calendar, Crown, Flag, Landmark, Loader2, MapPin,
-  Mountain, Scroll, Sparkles, Swords, Compass, Shield, Users, ChevronRight,
+  Mountain, Scroll, Sparkles, Swords, Compass, Shield, Users, ChevronRight, AlertTriangle,
 } from "lucide-react";
 import { toast } from "sonner";
 import RichText from "@/components/RichText";
@@ -26,6 +26,18 @@ const ENTITY_LABELS: Record<string, string> = {
   country: "Stát", region: "Region", province: "Provincie", city: "Město",
   wonder: "Div světa", person: "Osobnost", event: "Událost", battle: "Bitva",
   expedition: "Objev",
+};
+
+// Map entity types to their DB tables and name columns
+const TABLE_MAP: Record<string, { table: string; nameCol: string }> = {
+  country: { table: "countries", nameCol: "name" },
+  region: { table: "regions", nameCol: "name" },
+  province: { table: "provinces", nameCol: "name" },
+  city: { table: "cities", nameCol: "name" },
+  wonder: { table: "wonders", nameCol: "name" },
+  person: { table: "great_persons", nameCol: "name" },
+  event: { table: "world_events", nameCol: "title" },
+  expedition: { table: "expeditions", nameCol: "narrative" },
 };
 
 interface Props {
@@ -53,9 +65,29 @@ const ChroWikiDetailPanel = ({
   onEntityClick, onRefreshWiki,
 }: Props) => {
   const [generating, setGenerating] = useState(false);
+  const [dbEntity, setDbEntity] = useState<any>(null);
+  const [dbLoading, setDbLoading] = useState(false);
+  const [dbError, setDbError] = useState(false);
 
-  // Find the source entity data
-  const entity = useMemo(() => {
+  // Direct DB fetch — the primary source of truth
+  useEffect(() => {
+    if (!entityId || !entityType) return;
+    const mapping = TABLE_MAP[entityType];
+    if (!mapping) { setDbEntity(null); return; }
+
+    setDbLoading(true);
+    setDbError(false);
+
+    (supabase.from(mapping.table as any).select("*").eq("id", entityId).maybeSingle() as any)
+      .then(({ data, error }: any) => {
+        if (error) { console.error("DB fetch error:", error); setDbError(true); }
+        setDbEntity(data || null);
+        setDbLoading(false);
+      });
+  }, [entityId, entityType]);
+
+  // Find entity from in-memory as fallback
+  const memoryEntity = useMemo(() => {
     switch (entityType) {
       case "country": return countries.find(c => c.id === entityId);
       case "region": return regions.find(r => r.id === entityId);
@@ -67,6 +99,9 @@ const ChroWikiDetailPanel = ({
       default: return null;
     }
   }, [entityType, entityId, countries, regions, provinces, cities, wonders, persons, events]);
+
+  // Use DB entity first, fallback to in-memory
+  const entity = dbEntity || memoryEntity;
 
   // Find wiki entry
   const wiki = useMemo(() =>
@@ -110,9 +145,11 @@ const ChroWikiDetailPanel = ({
       if (entity.ruler_player) facts.push({ label: "Vládce", value: entity.ruler_player });
     } else if (entityType === "event") {
       if (entity.date) facts.push({ label: "Datum", value: entity.date });
-      facts.push({ label: "Kategorie", value: entity.event_category });
+      if (entity.event_category) facts.push({ label: "Kategorie", value: entity.event_category });
+      if (entity.created_turn) facts.push({ label: "Kolo", value: String(entity.created_turn) });
       if (entity.affected_players?.length > 0)
         facts.push({ label: "Účastníci", value: entity.affected_players.join(", ") });
+      if (entity.status) facts.push({ label: "Status", value: entity.status });
     }
 
     return facts;
@@ -121,6 +158,7 @@ const ChroWikiDetailPanel = ({
   // Related entities
   const relatedEntities = useMemo(() => {
     const related: { type: string; id: string; name: string; relation: string }[] = [];
+    if (!entity) return related;
 
     if (entityType === "country") {
       regions.filter(r => r.country_id === entityId).forEach(r =>
@@ -128,11 +166,13 @@ const ChroWikiDetailPanel = ({
     } else if (entityType === "region") {
       const country = countries.find(c => c.id === entity?.country_id);
       if (country) related.push({ type: "country", id: country.id, name: country.name, relation: "Stát" });
+      else if (entity?.country_id) related.push({ type: "country", id: entity.country_id, name: "⚠ Data neúplná", relation: "Stát" });
       provinces.filter(p => p.region_id === entityId).forEach(p =>
         related.push({ type: "province", id: p.id, name: p.name, relation: "Provincie" }));
     } else if (entityType === "province") {
       const region = regions.find(r => r.id === entity?.region_id);
       if (region) related.push({ type: "region", id: region.id, name: region.name, relation: "Region" });
+      else if (entity?.region_id) related.push({ type: "region", id: entity.region_id, name: "⚠ Data neúplná", relation: "Region" });
       cities.filter(c => c.province_id === entityId).forEach(c =>
         related.push({ type: "city", id: c.id, name: c.name, relation: "Město" }));
     } else if (entityType === "city") {
@@ -148,6 +188,13 @@ const ChroWikiDetailPanel = ({
     } else if (entityType === "person") {
       const city = cities.find(c => c.id === entity?.city_id);
       if (city) related.push({ type: "city", id: city.id, name: city.name, relation: "Sídlo" });
+    } else if (entityType === "event") {
+      // Show location city if present
+      if (entity?.location_id) {
+        const locCity = cities.find(c => c.id === entity.location_id);
+        if (locCity) related.push({ type: "city", id: locCity.id, name: locCity.name, relation: "Místo" });
+        else related.push({ type: "city", id: entity.location_id, name: "⚠ Data neúplná", relation: "Místo" });
+      }
     }
 
     return related;
@@ -171,8 +218,8 @@ const ChroWikiDetailPanel = ({
   }, [events, entityName, entityType]);
 
   // Description text
-  const descriptionText = wiki?.ai_description || entity?.ai_description || entity?.description || entity?.bio || null;
-  const imageUrl = wiki?.image_url || entity?.image_url || null;
+  const descriptionText = wiki?.ai_description || entity?.ai_description || entity?.description || entity?.bio || entity?.summary || null;
+  const imageUrl = wiki?.image_url || entity?.image_url || entity?.ai_image_url || null;
 
   // Auto-generate wiki entry
   const handleGenerate = async () => {
@@ -184,7 +231,7 @@ const ChroWikiDetailPanel = ({
         else if (entityType === "wonder") Object.assign(context, { era: entity.era, status: entity.status, city: entity.city_name, description: entity.description });
         else if (entityType === "person") Object.assign(context, { personType: entity.person_type, flavor: entity.flavor_trait, alive: entity.is_alive, bio: entity.bio });
         else if (entityType === "region") Object.assign(context, { biome: entity.biome, description: entity.description, is_homeland: entity.is_homeland });
-        else if (entityType === "event") Object.assign(context, { date: entity.date, summary: entity.summary, description: entity.description, category: entity.event_category });
+        else if (entityType === "event") Object.assign(context, { date: entity.date, summary: entity.summary, description: entity.description, category: entity.event_category, participants: entity.participants, affected_players: entity.affected_players });
       }
 
       const { data, error } = await supabase.functions.invoke("wiki-generate", {
@@ -192,7 +239,6 @@ const ChroWikiDetailPanel = ({
       });
       if (error) throw error;
 
-      // Upsert wiki entry if not already done by the function
       if (data?.aiDescription) {
         const existing = wikiEntries.find(w => w.entity_id === entityId && w.entity_type === entityType);
         if (existing) {
@@ -227,6 +273,33 @@ const ChroWikiDetailPanel = ({
     }
     setGenerating(false);
   };
+
+  // Loading state
+  if (dbLoading) {
+    return (
+      <div className="manuscript-card flex items-center justify-center h-full min-h-[400px]">
+        <div className="text-center animate-fade-in">
+          <Loader2 className="h-8 w-8 text-illuminated mx-auto mb-3 animate-spin" />
+          <p className="font-display text-sm text-muted-foreground">Načítám záznam…</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Entity not in DB at all
+  if (!entity && !dbLoading) {
+    return (
+      <div className="manuscript-card flex items-center justify-center h-full min-h-[400px]">
+        <div className="text-center max-w-xs animate-fade-in">
+          <AlertTriangle className="h-8 w-8 text-destructive mx-auto mb-3 opacity-60" />
+          <h3 className="font-display text-sm font-semibold text-foreground mb-1">Záznam nenalezen</h3>
+          <p className="text-xs text-muted-foreground font-body">
+            Entita s ID <code className="text-[10px] bg-muted px-1 rounded">{entityId.slice(0, 8)}…</code> nebyla nalezena v databázi.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <ScrollArea className="h-[calc(100vh-320px)]">
@@ -270,10 +343,7 @@ const ChroWikiDetailPanel = ({
             </div>
           )}
 
-          {/* Decorative divider */}
-          <div className="scroll-divider my-4">
-            <span className="text-[10px]">✦</span>
-          </div>
+          <div className="scroll-divider my-4"><span className="text-[10px]">✦</span></div>
 
           {/* Description / Article */}
           <div className="mb-5">
@@ -297,6 +367,38 @@ const ChroWikiDetailPanel = ({
               </div>
             )}
           </div>
+
+          {/* Event-specific full content */}
+          {entityType === "event" && entity && (
+            <div className="mb-5">
+              {entity.description && !descriptionText?.includes(entity.description) && (
+                <div className="mb-3">
+                  <h3 className="font-display text-sm font-semibold mb-2">Popis události</h3>
+                  <RichText text={entity.description} className="text-sm font-body leading-relaxed" />
+                </div>
+              )}
+              {entity.summary && entity.summary !== entity.description && !descriptionText?.includes(entity.summary) && (
+                <div className="p-3 rounded-lg bg-primary/5 border border-primary/20">
+                  <p className="text-xs font-body italic">{entity.summary}</p>
+                </div>
+              )}
+              {/* Participants JSON */}
+              {entity.participants && Array.isArray(entity.participants) && entity.participants.length > 0 && (
+                <div className="mt-3">
+                  <h3 className="font-display text-sm font-semibold mb-2 flex items-center gap-2">
+                    <Users className="h-4 w-4 text-illuminated" /> Účastníci
+                  </h3>
+                  <div className="flex flex-wrap gap-1.5">
+                    {entity.participants.map((p: any, i: number) => (
+                      <Badge key={i} variant="outline" className="text-xs">
+                        {typeof p === "string" ? p : p.name || JSON.stringify(p)}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Related Entities */}
           {relatedEntities.length > 0 && (
@@ -357,23 +459,6 @@ const ChroWikiDetailPanel = ({
                   </div>
                 ))}
               </div>
-            </div>
-          )}
-
-          {/* Event-specific: full content */}
-          {entityType === "event" && entity && (
-            <div className="mb-5">
-              {entity.description && (
-                <div className="mb-3">
-                  <h3 className="font-display text-sm font-semibold mb-2">Popis události</h3>
-                  <RichText text={entity.description} className="text-sm font-body leading-relaxed" />
-                </div>
-              )}
-              {entity.summary && entity.summary !== entity.description && (
-                <div className="p-3 rounded-lg bg-primary/5 border border-primary/20">
-                  <p className="text-xs font-body italic">{entity.summary}</p>
-                </div>
-              )}
             </div>
           )}
 

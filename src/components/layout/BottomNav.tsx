@@ -1,6 +1,6 @@
-import { Home, Globe, Shield, Newspaper, Library, Wrench, BookOpen } from "lucide-react";
+import { Home, Globe, Shield, Newspaper, Library, Wrench, BookOpen, Crown } from "lucide-react";
 
-export type TabId = "home" | "world" | "realm" | "feed" | "codex" | "wiki" | "dev";
+export type TabId = "home" | "world" | "realm" | "feed" | "codex" | "wiki" | "council" | "dev";
 
 interface Props {
   activeTab: TabId;
@@ -12,8 +12,8 @@ const baseTabs: { id: TabId; label: string; icon: React.ElementType }[] = [
   { id: "home", label: "My Realm", icon: Home },
   { id: "world", label: "World", icon: Globe },
   { id: "realm", label: "Realm", icon: Shield },
+  { id: "council", label: "Council", icon: Crown },
   { id: "feed", label: "Whispers", icon: Newspaper },
-  { id: "codex", label: "Codex", icon: Library },
   { id: "wiki", label: "ChroWiki", icon: BookOpen },
 ];
 
@@ -32,12 +32,12 @@ const BottomNav = ({ activeTab, onTabChange, showDevTab = false }: Props) => {
             <button
               key={tab.id}
               onClick={() => onTabChange(tab.id)}
-              className={`flex flex-col items-center gap-0.5 px-3 py-1 transition-colors relative ${
+              className={`flex flex-col items-center gap-0.5 px-2 py-1 transition-colors relative ${
                 isActive ? "text-primary" : "text-muted-foreground hover:text-foreground"
               }`}
             >
               <Icon className={`h-5 w-5 ${isActive ? "drop-shadow-sm" : ""}`} />
-              <span className="text-[10px] font-display font-semibold">{tab.label}</span>
+              <span className="text-[9px] font-display font-semibold">{tab.label}</span>
               {isActive && (
                 <span className="absolute bottom-0 w-8 h-0.5 rounded-full bg-primary" />
               )}
