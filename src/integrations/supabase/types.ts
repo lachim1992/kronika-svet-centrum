@@ -333,6 +333,56 @@ export type Database = {
           },
         ]
       }
+      countries: {
+        Row: {
+          ai_description: string | null
+          created_at: string
+          description: string | null
+          id: string
+          image_prompt: string | null
+          image_url: string | null
+          name: string
+          ruler_player: string | null
+          session_id: string
+          tags: string[] | null
+          updated_at: string
+        }
+        Insert: {
+          ai_description?: string | null
+          created_at?: string
+          description?: string | null
+          id?: string
+          image_prompt?: string | null
+          image_url?: string | null
+          name: string
+          ruler_player?: string | null
+          session_id: string
+          tags?: string[] | null
+          updated_at?: string
+        }
+        Update: {
+          ai_description?: string | null
+          created_at?: string
+          description?: string | null
+          id?: string
+          image_prompt?: string | null
+          image_url?: string | null
+          name?: string
+          ruler_player?: string | null
+          session_id?: string
+          tags?: string[] | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "countries_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       declarations: {
         Row: {
           ai_generated: boolean
@@ -1496,6 +1546,7 @@ export type Database = {
         Row: {
           ai_description: string | null
           biome: string | null
+          country_id: string | null
           created_at: string
           description: string | null
           discovered_by: string | null
@@ -1513,6 +1564,7 @@ export type Database = {
         Insert: {
           ai_description?: string | null
           biome?: string | null
+          country_id?: string | null
           created_at?: string
           description?: string | null
           discovered_by?: string | null
@@ -1530,6 +1582,7 @@ export type Database = {
         Update: {
           ai_description?: string | null
           biome?: string | null
+          country_id?: string | null
           created_at?: string
           description?: string | null
           discovered_by?: string | null
@@ -1545,6 +1598,13 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "regions_country_id_fkey"
+            columns: ["country_id"]
+            isOneToOne: false
+            referencedRelation: "countries"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "regions_session_id_fkey"
             columns: ["session_id"]
