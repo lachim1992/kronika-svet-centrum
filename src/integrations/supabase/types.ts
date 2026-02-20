@@ -57,6 +57,8 @@ export type Database = {
       }
       cities: {
         Row: {
+          city_description_cached: string | null
+          city_description_last_turn: number
           city_stability: number
           created_at: string
           custom_layers: boolean
@@ -66,6 +68,8 @@ export type Database = {
           flavor_prompt: string | null
           founded_round: number
           id: string
+          last_turn_grain_cons: number
+          last_turn_grain_prod: number
           level: string
           local_grain_reserve: number
           local_granary_capacity: number
@@ -85,6 +89,8 @@ export type Database = {
           vulnerability_score: number
         }
         Insert: {
+          city_description_cached?: string | null
+          city_description_last_turn?: number
           city_stability?: number
           created_at?: string
           custom_layers?: boolean
@@ -94,6 +100,8 @@ export type Database = {
           flavor_prompt?: string | null
           founded_round?: number
           id?: string
+          last_turn_grain_cons?: number
+          last_turn_grain_prod?: number
           level?: string
           local_grain_reserve?: number
           local_granary_capacity?: number
@@ -113,6 +121,8 @@ export type Database = {
           vulnerability_score?: number
         }
         Update: {
+          city_description_cached?: string | null
+          city_description_last_turn?: number
           city_stability?: number
           created_at?: string
           custom_layers?: boolean
@@ -122,6 +132,8 @@ export type Database = {
           flavor_prompt?: string | null
           founded_round?: number
           id?: string
+          last_turn_grain_cons?: number
+          last_turn_grain_prod?: number
           level?: string
           local_grain_reserve?: number
           local_granary_capacity?: number
@@ -1803,6 +1815,7 @@ export type Database = {
       realm_resources: {
         Row: {
           created_at: string
+          famine_city_count: number
           gold_reserve: number
           grain_reserve: number
           granary_capacity: number
@@ -1812,12 +1825,17 @@ export type Database = {
           knowledge: number
           labor_reserve: number
           last_processed_turn: number
+          last_turn_grain_cons: number
+          last_turn_grain_net: number
+          last_turn_grain_prod: number
           logistic_capacity: number
           manpower_committed: number
           manpower_pool: number
           mobilization_rate: number
           player_name: string
           prestige: number
+          realm_report_cached: string | null
+          realm_report_last_turn: number
           session_id: string
           stability: number
           stables_capacity: number
@@ -1827,6 +1845,7 @@ export type Database = {
         }
         Insert: {
           created_at?: string
+          famine_city_count?: number
           gold_reserve?: number
           grain_reserve?: number
           granary_capacity?: number
@@ -1836,12 +1855,17 @@ export type Database = {
           knowledge?: number
           labor_reserve?: number
           last_processed_turn?: number
+          last_turn_grain_cons?: number
+          last_turn_grain_net?: number
+          last_turn_grain_prod?: number
           logistic_capacity?: number
           manpower_committed?: number
           manpower_pool?: number
           mobilization_rate?: number
           player_name: string
           prestige?: number
+          realm_report_cached?: string | null
+          realm_report_last_turn?: number
           session_id: string
           stability?: number
           stables_capacity?: number
@@ -1851,6 +1875,7 @@ export type Database = {
         }
         Update: {
           created_at?: string
+          famine_city_count?: number
           gold_reserve?: number
           grain_reserve?: number
           granary_capacity?: number
@@ -1860,12 +1885,17 @@ export type Database = {
           knowledge?: number
           labor_reserve?: number
           last_processed_turn?: number
+          last_turn_grain_cons?: number
+          last_turn_grain_net?: number
+          last_turn_grain_prod?: number
           logistic_capacity?: number
           manpower_committed?: number
           manpower_pool?: number
           mobilization_rate?: number
           player_name?: string
           prestige?: number
+          realm_report_cached?: string | null
+          realm_report_last_turn?: number
           session_id?: string
           stability?: number
           stables_capacity?: number

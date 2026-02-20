@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import type { Tables } from "@/integrations/supabase/types";
+import { generateDeterministicCityDescription } from "@/lib/cityDescriptions";
 import { updateCity } from "@/hooks/useGameSession";
 import { generateCityProfile } from "@/lib/ai";
 import { Button } from "@/components/ui/button";
@@ -59,6 +60,17 @@ const CityDetailPanel = ({
   const [flavorPrompt, setFlavorPrompt] = useState((city as any).flavor_prompt || "");
   const [editingFlavor, setEditingFlavor] = useState(false);
 
+  // Cached deterministic description
+  const [cachedDescription, setCachedDescription] = useState<string>("");
+  useEffect(() => {
+    const cached = (city as any).city_description_cached;
+    if (cached) {
+      setCachedDescription(cached);
+    } else {
+      setCachedDescription(generateDeterministicCityDescription(city as any));
+    }
+  }, [city]);
+
   const isOwner = city.owner_player === currentPlayerName;
   const confirmedEvents = events.filter(e => e.confirmed);
   const approvedMemories = memories.filter(m => m.approved);
@@ -117,6 +129,15 @@ const CityDetailPanel = ({
     onRefetch?.();
   };
 
+  // Derived society profile
+  const pop = city.population_total || 0;
+  const peasantPct = pop > 0 ? (city.population_peasants || 0) / pop : 0;
+  const burgherPct = pop > 0 ? (city.population_burghers || 0) / pop : 0;
+  const clericPct = pop > 0 ? (city.population_clerics || 0) / pop : 0;
+  const societyProfile = clericPct > 0.3 ? "Klerikální vliv" : burgherPct > 0.4 ? "Urbanizující se" : peasantPct > 0.6 ? "Agrární" : "Vyvážená";
+
+  const SETTLEMENT_LABELS: Record<string, string> = { HAMLET: "Osada", TOWNSHIP: "Městečko", CITY: "Město", POLIS: "Polis" };
+
   return (
     <div className="space-y-6 p-4">
       {/* Header */}
@@ -155,6 +176,58 @@ const CityDetailPanel = ({
           </Select>
         )}
       </div>
+
+      {/* Population & Society card */}
+      <div className="bg-card p-4 rounded-lg border border-border space-y-3">
+        <h3 className="font-display font-semibold text-sm flex items-center gap-2">
+          <Crown className="h-4 w-4 text-primary" />
+          Populace & Společnost
+          <Badge variant="outline" className="text-[10px] ml-auto">{societyProfile}</Badge>
+        </h3>
+        <div className="flex items-center justify-between">
+          <span className="text-sm text-muted-foreground">Celková populace</span>
+          <span className="text-lg font-bold">{pop.toLocaleString()}</span>
+        </div>
+        <div className="flex h-2.5 rounded-full overflow-hidden bg-muted">
+          <div className="bg-primary/70" style={{ width: `${Math.round(peasantPct * 100)}%` }} />
+          <div className="bg-accent" style={{ width: `${Math.round(burgherPct * 100)}%` }} />
+          <div className="bg-muted-foreground/40" style={{ width: `${Math.round(clericPct * 100)}%` }} />
+        </div>
+        <div className="grid grid-cols-3 gap-2 text-xs">
+          <div className="text-center"><span className="font-semibold">{city.population_peasants || 0}</span><br /><span className="text-muted-foreground">Sedláci ({Math.round(peasantPct * 100)}%)</span></div>
+          <div className="text-center"><span className="font-semibold">{city.population_burghers || 0}</span><br /><span className="text-muted-foreground">Měšťané ({Math.round(burgherPct * 100)}%)</span></div>
+          <div className="text-center"><span className="font-semibold">{city.population_clerics || 0}</span><br /><span className="text-muted-foreground">Klérus ({Math.round(clericPct * 100)}%)</span></div>
+        </div>
+        <div className="flex items-center gap-4 text-xs">
+          <span>Úroveň osídlení: <Badge variant="secondary" className="text-[10px]">{SETTLEMENT_LABELS[city.settlement_level] || city.settlement_level}</Badge></span>
+          <span>Stabilita: <strong className={city.city_stability < 40 ? "text-destructive" : ""}>{city.city_stability}</strong>/100</span>
+        </div>
+      </div>
+
+      {/* Economy card */}
+      <div className="bg-card p-4 rounded-lg border border-border space-y-2">
+        <h3 className="font-display font-semibold text-sm flex items-center gap-2">
+          <Landmark className="h-4 w-4 text-primary" />
+          Ekonomika města
+        </h3>
+        <div className="grid grid-cols-2 gap-3 text-xs">
+          <div className="flex justify-between"><span className="text-muted-foreground">Produkce obilí</span><span className="font-semibold">{(city as any).last_turn_grain_prod || 0}</span></div>
+          <div className="flex justify-between"><span className="text-muted-foreground">Spotřeba obilí</span><span className="font-semibold">{(city as any).last_turn_grain_cons || 0}</span></div>
+          <div className="flex justify-between"><span className="text-muted-foreground">Lokální sýpka</span><span className="font-semibold">{city.local_grain_reserve || 0} / {city.local_granary_capacity || 0}</span></div>
+          <div className="flex justify-between"><span className="text-muted-foreground">Zranitelnost</span><span className="font-semibold">{(city.vulnerability_score || 0).toFixed(1)}</span></div>
+        </div>
+      </div>
+
+      {/* Famine / Status card */}
+      {city.famine_turn && (
+        <div className="bg-destructive/5 border border-destructive/30 p-4 rounded-lg space-y-1">
+          <h3 className="font-display font-semibold text-sm flex items-center gap-2 text-destructive">
+            <Flame className="h-4 w-4" />
+            Hladomor
+          </h3>
+          <p className="text-xs text-destructive">Deficit: {city.famine_severity} • Stabilita klesá</p>
+        </div>
+      )}
 
       {/* Level upgrade (owner only) */}
       {isOwner && (
@@ -198,6 +271,16 @@ const CityDetailPanel = ({
               <Button size="sm" variant="outline" onClick={() => setEditingFlavor(true)}>Upravit</Button>
             </div>
           )}
+        </div>
+      )}
+
+      {/* Cached city description */}
+      {cachedDescription && (
+        <div className="bg-muted/30 p-4 rounded-lg border border-border">
+          <p className="text-sm leading-relaxed italic">{cachedDescription}</p>
+          <p className="text-[10px] text-muted-foreground mt-1">
+            {(city as any).city_description_cached ? `Generováno v kole ${(city as any).city_description_last_turn || "?"}` : "Automatický popis"}
+          </p>
         </div>
       )}
 
