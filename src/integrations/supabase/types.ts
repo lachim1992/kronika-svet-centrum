@@ -70,6 +70,8 @@ export type Database = {
           id: string
           last_turn_grain_cons: number
           last_turn_grain_prod: number
+          last_turn_special_prod: number
+          last_turn_wood_prod: number
           level: string
           local_grain_reserve: number
           local_granary_capacity: number
@@ -84,6 +86,7 @@ export type Database = {
           ruins_note: string | null
           session_id: string
           settlement_level: string
+          special_resource_type: string
           status: string
           tags: string[] | null
           vulnerability_score: number
@@ -102,6 +105,8 @@ export type Database = {
           id?: string
           last_turn_grain_cons?: number
           last_turn_grain_prod?: number
+          last_turn_special_prod?: number
+          last_turn_wood_prod?: number
           level?: string
           local_grain_reserve?: number
           local_granary_capacity?: number
@@ -116,6 +121,7 @@ export type Database = {
           ruins_note?: string | null
           session_id: string
           settlement_level?: string
+          special_resource_type?: string
           status?: string
           tags?: string[] | null
           vulnerability_score?: number
@@ -134,6 +140,8 @@ export type Database = {
           id?: string
           last_turn_grain_cons?: number
           last_turn_grain_prod?: number
+          last_turn_special_prod?: number
+          last_turn_wood_prod?: number
           level?: string
           local_grain_reserve?: number
           local_granary_capacity?: number
@@ -148,6 +156,7 @@ export type Database = {
           ruins_note?: string | null
           session_id?: string
           settlement_level?: string
+          special_resource_type?: string
           status?: string
           tags?: string[] | null
           vulnerability_score?: number
@@ -1828,6 +1837,9 @@ export type Database = {
           last_turn_grain_cons: number
           last_turn_grain_net: number
           last_turn_grain_prod: number
+          last_turn_iron_prod: number
+          last_turn_stone_prod: number
+          last_turn_wood_prod: number
           logistic_capacity: number
           manpower_committed: number
           manpower_pool: number
@@ -1858,6 +1870,9 @@ export type Database = {
           last_turn_grain_cons?: number
           last_turn_grain_net?: number
           last_turn_grain_prod?: number
+          last_turn_iron_prod?: number
+          last_turn_stone_prod?: number
+          last_turn_wood_prod?: number
           logistic_capacity?: number
           manpower_committed?: number
           manpower_pool?: number
@@ -1888,6 +1903,9 @@ export type Database = {
           last_turn_grain_cons?: number
           last_turn_grain_net?: number
           last_turn_grain_prod?: number
+          last_turn_iron_prod?: number
+          last_turn_stone_prod?: number
+          last_turn_wood_prod?: number
           logistic_capacity?: number
           manpower_committed?: number
           manpower_pool?: number
@@ -2019,6 +2037,56 @@ export type Database = {
             columns: ["session_id"]
             isOneToOne: false
             referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      settlement_resource_profiles: {
+        Row: {
+          base_grain: number
+          base_special: number
+          base_wood: number
+          city_id: string
+          created_at: string
+          founded_seed: string | null
+          id: string
+          produces_grain: boolean
+          produces_wood: boolean
+          special_resource_type: string
+          updated_at: string
+        }
+        Insert: {
+          base_grain?: number
+          base_special?: number
+          base_wood?: number
+          city_id: string
+          created_at?: string
+          founded_seed?: string | null
+          id?: string
+          produces_grain?: boolean
+          produces_wood?: boolean
+          special_resource_type?: string
+          updated_at?: string
+        }
+        Update: {
+          base_grain?: number
+          base_special?: number
+          base_wood?: number
+          city_id?: string
+          created_at?: string
+          founded_seed?: string | null
+          id?: string
+          produces_grain?: boolean
+          produces_wood?: boolean
+          special_resource_type?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "settlement_resource_profiles_city_id_fkey"
+            columns: ["city_id"]
+            isOneToOne: true
+            referencedRelation: "cities"
             referencedColumns: ["id"]
           },
         ]

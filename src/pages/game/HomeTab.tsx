@@ -6,7 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Crown, Castle, Swords, Users, Wheat, AlertTriangle, Flame,
-  Shield, MapPin, Landmark, Eye, ArrowUpDown, Skull, BarChart3
+  Shield, MapPin, Landmark, Eye, ArrowUpDown, Skull, BarChart3,
+  Trees, Mountain, Anvil
 } from "lucide-react";
 import type { EntityIndex } from "@/hooks/useEntityIndex";
 
@@ -218,7 +219,7 @@ const HomeTab = ({
                       </div>
 
                       {/* Stats row */}
-                      <div className="grid grid-cols-4 gap-2 text-[10px]">
+                      <div className="grid grid-cols-4 gap-2 text-[10px] mb-2">
                         <div>
                           <span className="text-muted-foreground">Stabilita</span>
                           <div className={`font-semibold ${city.city_stability < 40 ? "text-destructive" : ""}`}>{city.city_stability}</div>
@@ -237,6 +238,19 @@ const HomeTab = ({
                           <span className="text-muted-foreground">Zranitelnost</span>
                           <div className="font-semibold">{(city.vulnerability_score || 0).toFixed(0)}</div>
                         </div>
+                      </div>
+
+                      {/* Production row */}
+                      <div className="flex items-center gap-3 text-[10px] px-2 py-1 rounded bg-muted/50">
+                        <span className="text-muted-foreground font-semibold">Produkce:</span>
+                        <span className="flex items-center gap-0.5"><Wheat className="h-3 w-3 text-primary" />+{grainProd}</span>
+                        <span className="flex items-center gap-0.5"><Trees className="h-3 w-3 text-primary" />+{city.last_turn_wood_prod || 0}</span>
+                        {city.special_resource_type === "STONE" && (
+                          <span className="flex items-center gap-0.5"><Mountain className="h-3 w-3 text-primary" />+{city.last_turn_special_prod || 0}</span>
+                        )}
+                        {city.special_resource_type === "IRON" && (
+                          <span className="flex items-center gap-0.5"><Anvil className="h-3 w-3 text-primary" />+{city.last_turn_special_prod || 0}</span>
+                        )}
                       </div>
 
                       {/* Famine banner */}
