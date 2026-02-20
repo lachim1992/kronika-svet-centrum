@@ -1,0 +1,193 @@
+// Turn engine constants and helpers (client-side)
+import { supabase } from "@/integrations/supabase/client";
+
+export const SETTLEMENT_TEMPLATES: Record<string, { peasants: number; burghers: number; clerics: number }> = {
+  HAMLET:   { peasants: 0.80, burghers: 0.15, clerics: 0.05 },
+  TOWNSHIP: { peasants: 0.60, burghers: 0.30, clerics: 0.10 },
+  CITY:     { peasants: 0.40, burghers: 0.40, clerics: 0.20 },
+  POLIS:    { peasants: 0.20, burghers: 0.55, clerics: 0.25 },
+};
+
+export const SETTLEMENT_DEFAULTS: Record<string, number> = {
+  HAMLET: 1000, TOWNSHIP: 3000, CITY: 8000, POLIS: 15000,
+};
+
+export const LEVEL_TO_SETTLEMENT: Record<string, string> = {
+  Osada: "HAMLET", Městečko: "TOWNSHIP", Město: "CITY", Polis: "POLIS",
+};
+
+export const UNIT_TYPE_LABELS: Record<string, string> = {
+  INFANTRY: "Pěchota", ARCHERS: "Lučištníci", CAVALRY: "Jízda", SIEGE: "Obléhací",
+};
+
+export const UNIT_GOLD_FACTOR: Record<string, number> = {
+  INFANTRY: 1, ARCHERS: 1.5, CAVALRY: 2, SIEGE: 3,
+};
+
+export const FORMATION_PRESETS: Record<string, { label: string; composition: { unit_type: string; manpower: number }[]; formation_type: string; morale: number }> = {
+  militia: {
+    label: "Milice",
+    composition: [{ unit_type: "INFANTRY", manpower: 200 }],
+    formation_type: "UNIT",
+    morale: 60,
+  },
+  cohort: {
+    label: "Pohraniční kohorta",
+    composition: [{ unit_type: "INFANTRY", manpower: 300 }, { unit_type: "ARCHERS", manpower: 100 }],
+    formation_type: "UNIT",
+    morale: 65,
+  },
+  cavalry_wing: {
+    label: "Jezdecký pluk",
+    composition: [{ unit_type: "CAVALRY", manpower: 200 }],
+    formation_type: "UNIT",
+    morale: 70,
+  },
+  legion: {
+    label: "Zárodek legie",
+    composition: [{ unit_type: "INFANTRY", manpower: 600 }, { unit_type: "ARCHERS", manpower: 200 }],
+    formation_type: "LEGION",
+    morale: 70,
+  },
+};
+
+export async function ensureRealmResources(sessionId: string, playerName: string) {
+  const { data: existing } = await supabase
+    .from("realm_resources")
+    .select("*")
+    .eq("session_id", sessionId)
+    .eq("player_name", playerName)
+    .maybeSingle();
+  
+  if (existing) return existing;
+  
+  const { data } = await supabase.from("realm_resources").insert({
+    session_id: sessionId, player_name: playerName,
+  }).select().single();
+  return data;
+}
+
+export async function recruitStack(
+  sessionId: string, playerName: string, stackName: string, presetKey: string
+) {
+  const preset = FORMATION_PRESETS[presetKey];
+  if (!preset) throw new Error("Unknown preset");
+
+  const totalManpower = preset.composition.reduce((s, c) => s + c.manpower, 0);
+  const totalGold = preset.composition.reduce((s, c) => s + c.manpower * (UNIT_GOLD_FACTOR[c.unit_type] || 1), 0);
+
+  // Load realm
+  const realm = await ensureRealmResources(sessionId, playerName);
+  if (!realm) throw new Error("Failed to load realm");
+
+  const availableManpower = realm.manpower_pool - realm.manpower_committed;
+  if (totalManpower > availableManpower) {
+    throw new Error(`Nedostatek mužů: potřeba ${totalManpower}, dostupno ${availableManpower}`);
+  }
+  if (totalGold > realm.gold_reserve) {
+    throw new Error(`Nedostatek zlata: potřeba ${totalGold}, dostupno ${realm.gold_reserve}`);
+  }
+
+  // Create stack
+  const { data: stack, error: stackErr } = await supabase.from("military_stacks").insert({
+    session_id: sessionId,
+    player_name: playerName,
+    name: stackName,
+    formation_type: preset.formation_type,
+    morale: preset.morale,
+  }).select().single();
+
+  if (stackErr || !stack) throw new Error("Failed to create stack");
+
+  // Create compositions
+  for (const comp of preset.composition) {
+    await supabase.from("military_stack_composition").insert({
+      stack_id: stack.id,
+      unit_type: comp.unit_type,
+      manpower: comp.manpower,
+    });
+  }
+
+  // Update realm
+  await supabase.from("realm_resources").update({
+    manpower_committed: realm.manpower_committed + totalManpower,
+    gold_reserve: realm.gold_reserve - totalGold,
+  }).eq("id", realm.id);
+
+  // Chronicle
+  await supabase.from("chronicle_entries").insert({
+    session_id: sessionId,
+    text: `${playerName} zřídil armádu **${stackName}** (${preset.label}). Síla vojska: ${totalManpower} mužů, náklady: ${totalGold} zlata.`,
+  });
+
+  // Also write to legacy military_capacity for backward compat
+  const mainUnit = preset.composition[0];
+  await supabase.from("military_capacity").insert({
+    session_id: sessionId,
+    player_name: playerName,
+    army_name: stackName,
+    army_type: UNIT_TYPE_LABELS[mainUnit.unit_type] || mainUnit.unit_type,
+    iron_cost: Math.ceil(totalManpower / 200),
+    migrated: true,
+  });
+
+  return stack;
+}
+
+export async function migrateLegacyMilitary(sessionId: string) {
+  // Find unmigrated legacy armies
+  const { data: legacyArmies } = await supabase
+    .from("military_capacity")
+    .select("*")
+    .eq("session_id", sessionId)
+    .eq("migrated", false);
+
+  if (!legacyArmies || legacyArmies.length === 0) return { migrated: 0 };
+
+  let count = 0;
+  for (const legacy of legacyArmies) {
+    // Check if already mapped
+    const { data: existing } = await supabase
+      .from("legacy_military_map")
+      .select("id")
+      .eq("legacy_id", legacy.id)
+      .maybeSingle();
+    
+    if (existing) continue;
+
+    // Map legacy army_type to unit_type
+    const unitTypeMap: Record<string, string> = {
+      "Lehká": "INFANTRY", "Těžká": "INFANTRY", "Obléhací": "SIEGE", "Námořní": "INFANTRY",
+    };
+    const unitType = unitTypeMap[legacy.army_type] || "INFANTRY";
+    const manpower = legacy.iron_cost * 200; // Estimate from iron cost
+
+    const { data: stack } = await supabase.from("military_stacks").insert({
+      session_id: sessionId,
+      player_name: legacy.player_name,
+      name: legacy.army_name,
+      formation_type: "UNIT",
+      morale: legacy.status === "Aktivní" ? 70 : 30,
+      is_active: legacy.status === "Aktivní",
+      legacy_military_id: legacy.id,
+    }).select().single();
+
+    if (stack) {
+      await supabase.from("military_stack_composition").insert({
+        stack_id: stack.id,
+        unit_type: unitType,
+        manpower,
+      });
+
+      await supabase.from("legacy_military_map").insert({
+        legacy_id: legacy.id,
+        stack_id: stack.id,
+      });
+
+      await supabase.from("military_capacity").update({ migrated: true }).eq("id", legacy.id);
+      count++;
+    }
+  }
+
+  return { migrated: count };
+}
