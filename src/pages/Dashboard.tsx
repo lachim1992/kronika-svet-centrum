@@ -8,6 +8,7 @@ import { Scroll } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import AppHeader from "@/components/layout/AppHeader";
+import ResourceHUD from "@/components/layout/ResourceHUD";
 import BottomNav, { type TabId } from "@/components/layout/BottomNav";
 import ActionChooser from "@/components/layout/ActionChooser";
 import WorldEventDetailPanel from "@/components/WorldEventDetailPanel";
@@ -177,6 +178,7 @@ const Dashboard = () => {
         myRole={myRole}
         currentSessionId={session.id}
       />
+      <ResourceHUD sessionId={session.id} playerName={myPlayerName} cities={cities} />
 
       <main className="max-w-[1600px] mx-auto px-3 py-3">
         {activeTab === "home" && <HomeTab {...sharedProps} />}

@@ -122,10 +122,16 @@ Deno.serve(async (req) => {
       const delta = Math.round(city.population_total * netGrowth);
       const newPop = Math.max(200, city.population_total + delta);
       
+      // Store per-city cached grain metrics
+      const cityGrainProd = Math.round((city.population_peasants || 0) * 0.02);
+      const cityGrainCons = Math.round(newPop * 0.015);
+
       await supabase.from("cities").update({
         population_total: newPop,
         famine_turn: false,
         famine_severity: 0,
+        last_turn_grain_prod: cityGrainProd,
+        last_turn_grain_cons: cityGrainCons,
       }).eq("id", city.id);
 
       city.population_total = newPop;
@@ -264,7 +270,7 @@ Deno.serve(async (req) => {
       }
     }
 
-    // 11) Update realm resources
+    // 11) Update realm resources + cached turn summary
     await supabase.from("realm_resources").update({
       grain_reserve: grainReserve,
       granary_capacity: granaryCapacity,
@@ -272,6 +278,10 @@ Deno.serve(async (req) => {
       manpower_pool: manpowerPool,
       logistic_capacity: logisticCapacity,
       last_processed_turn: currentTurn,
+      last_turn_grain_prod: totalGrainProd,
+      last_turn_grain_cons: totalConsumption,
+      last_turn_grain_net: netGrain,
+      famine_city_count: famineDeficit > 0 ? myCities.filter(c => c.famine_turn).length : 0,
       updated_at: new Date().toISOString(),
     }).eq("id", realm.id);
 

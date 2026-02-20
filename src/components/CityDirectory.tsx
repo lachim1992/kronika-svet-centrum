@@ -189,10 +189,16 @@ const CityDirectory = ({
         {filtered.map(city => {
           const cityEventCount = events.filter(e => e.city_id === city.id).length;
           const cityWonderCount = wonders.filter(w => w.city_name === city.name).length;
+          const pop = city.population_total || 0;
+          const peasantPct = pop > 0 ? Math.round((city.population_peasants || 0) / pop * 100) : 0;
+          const burgherPct = pop > 0 ? Math.round((city.population_burghers || 0) / pop * 100) : 0;
+          const clericPct = pop > 0 ? Math.round((city.population_clerics || 0) / pop * 100) : 0;
+          const SETTLEMENT_LABELS: Record<string, string> = { HAMLET: "Osada", TOWNSHIP: "Městečko", CITY: "Město", POLIS: "Polis" };
+
           return (
             <div
               key={city.id}
-              className="p-4 rounded-lg border border-border bg-card shadow-parchment hover:border-primary/50 transition-colors cursor-pointer"
+              className={`p-4 rounded-lg border bg-card shadow-parchment hover:border-primary/50 transition-colors cursor-pointer ${city.famine_turn ? "border-destructive/50" : "border-border"}`}
               onClick={() => setSelectedCity(city)}
             >
               <div className="flex items-start justify-between mb-2">
@@ -200,16 +206,37 @@ const CityDirectory = ({
                   <h3 className="font-display font-semibold text-base flex items-center gap-1.5">
                     {city.name}
                     {STATUS_ICONS[(city as any).status || "ok"]}
+                    {city.famine_turn && <Flame className="h-3 w-3 text-destructive" />}
                   </h3>
                   <p className="text-xs text-muted-foreground">{city.owner_player}</p>
                 </div>
                 <div className="flex flex-col items-end gap-1">
-                  <Badge variant="secondary" className="text-xs">{city.level}</Badge>
+                  <Badge variant="secondary" className="text-[10px]">{SETTLEMENT_LABELS[city.settlement_level] || city.level}</Badge>
                   {(city as any).status && (city as any).status !== "ok" && (
-                    <Badge variant="destructive" className="text-xs">{STATUS_LABELS[(city as any).status]}</Badge>
+                    <Badge variant="destructive" className="text-[10px]">{STATUS_LABELS[(city as any).status]}</Badge>
                   )}
                 </div>
               </div>
+
+              {/* Population total + layers mini bar */}
+              <div className="mb-2">
+                <div className="flex items-center justify-between text-xs mb-0.5">
+                  <span className="text-muted-foreground">Populace</span>
+                  <span className="font-semibold">{pop.toLocaleString()}</span>
+                </div>
+                <div className="flex h-1.5 rounded-full overflow-hidden bg-muted">
+                  <div className="bg-primary/70" style={{ width: `${peasantPct}%` }} title={`Sedláci ${peasantPct}%`} />
+                  <div className="bg-accent" style={{ width: `${burgherPct}%` }} title={`Měšťané ${burgherPct}%`} />
+                  <div className="bg-muted-foreground/40" style={{ width: `${clericPct}%` }} title={`Klérus ${clericPct}%`} />
+                </div>
+              </div>
+
+              {/* Stability + granary */}
+              <div className="flex items-center gap-3 text-[10px] text-muted-foreground mb-1">
+                <span>Stabilita: <strong className={city.city_stability < 40 ? "text-destructive" : ""}>{city.city_stability || 70}</strong></span>
+                <span>Sýpka: <strong>{city.local_grain_reserve || 0}/{city.local_granary_capacity || 0}</strong></span>
+              </div>
+
               {city.province && (
                 <p className="text-xs text-muted-foreground flex items-center gap-1 mb-1">
                   <MapPin className="h-3 w-3" />{city.province}
