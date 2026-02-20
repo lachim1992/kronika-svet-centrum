@@ -1,12 +1,13 @@
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Bug, Droplets, Play, Shield, Sprout, FlaskConical } from "lucide-react";
+import { Bug, Droplets, Play, Shield, Sprout, FlaskConical, BarChart3 } from "lucide-react";
 import HydrationSection from "@/components/dev/HydrationSection";
 import SimulationSection from "@/components/dev/SimulationSection";
 import WorldIntegritySection from "@/components/dev/WorldIntegritySection";
 import SeedSection from "@/components/dev/SeedSection";
 import QATestSection from "@/components/dev/QATestSection";
+import EconomyQASection from "@/components/dev/EconomyQASection";
 
 interface DevModePanelProps {
   sessionId: string;
@@ -54,7 +55,7 @@ const DevModePanel = ({
 
       {/* Tabs */}
       <Tabs defaultValue="hydration" className="w-full">
-        <TabsList className="grid w-full grid-cols-5 h-auto">
+        <TabsList className="grid w-full grid-cols-6 h-auto">
           <TabsTrigger value="hydration" className="text-xs gap-1 py-2">
             <Droplets className="h-3 w-3" /> Hydratace
           </TabsTrigger>
@@ -69,6 +70,9 @@ const DevModePanel = ({
           </TabsTrigger>
           <TabsTrigger value="qa" className="text-xs gap-1 py-2">
             <FlaskConical className="h-3 w-3" /> QA
+          </TabsTrigger>
+          <TabsTrigger value="economy-qa" className="text-xs gap-1 py-2">
+            <BarChart3 className="h-3 w-3" /> Econ QA
           </TabsTrigger>
         </TabsList>
 
@@ -86,6 +90,9 @@ const DevModePanel = ({
         </TabsContent>
         <TabsContent value="qa" className="mt-3">
           <QATestSection sessionId={sessionId} onRefetch={onRefetch} />
+        </TabsContent>
+        <TabsContent value="economy-qa" className="mt-3">
+          <EconomyQASection sessionId={sessionId} onRefetch={onRefetch} />
         </TabsContent>
       </Tabs>
     </div>

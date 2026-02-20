@@ -57,52 +57,88 @@ export type Database = {
       }
       cities: {
         Row: {
+          city_stability: number
           created_at: string
+          custom_layers: boolean
           devastated_round: number | null
+          famine_severity: number
+          famine_turn: boolean
           flavor_prompt: string | null
           founded_round: number
           id: string
           level: string
+          local_grain_reserve: number
+          local_granary_capacity: number
           name: string
           owner_player: string
+          population_burghers: number
+          population_clerics: number
+          population_peasants: number
+          population_total: number
           province: string | null
           province_id: string | null
           ruins_note: string | null
           session_id: string
+          settlement_level: string
           status: string
           tags: string[] | null
+          vulnerability_score: number
         }
         Insert: {
+          city_stability?: number
           created_at?: string
+          custom_layers?: boolean
           devastated_round?: number | null
+          famine_severity?: number
+          famine_turn?: boolean
           flavor_prompt?: string | null
           founded_round?: number
           id?: string
           level?: string
+          local_grain_reserve?: number
+          local_granary_capacity?: number
           name: string
           owner_player: string
+          population_burghers?: number
+          population_clerics?: number
+          population_peasants?: number
+          population_total?: number
           province?: string | null
           province_id?: string | null
           ruins_note?: string | null
           session_id: string
+          settlement_level?: string
           status?: string
           tags?: string[] | null
+          vulnerability_score?: number
         }
         Update: {
+          city_stability?: number
           created_at?: string
+          custom_layers?: boolean
           devastated_round?: number | null
+          famine_severity?: number
+          famine_turn?: boolean
           flavor_prompt?: string | null
           founded_round?: number
           id?: string
           level?: string
+          local_grain_reserve?: number
+          local_granary_capacity?: number
           name?: string
           owner_player?: string
+          population_burghers?: number
+          population_clerics?: number
+          population_peasants?: number
+          population_total?: number
           province?: string | null
           province_id?: string | null
           ruins_note?: string | null
           session_id?: string
+          settlement_level?: string
           status?: string
           tags?: string[] | null
+          vulnerability_score?: number
         }
         Relationships: [
           {
@@ -1150,6 +1186,44 @@ export type Database = {
         }
         Relationships: []
       }
+      generals: {
+        Row: {
+          created_at: string
+          id: string
+          name: string
+          player_name: string
+          session_id: string
+          skill: number
+          traits: Json | null
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          name: string
+          player_name: string
+          session_id: string
+          skill?: number
+          traits?: Json | null
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          name?: string
+          player_name?: string
+          session_id?: string
+          skill?: number
+          traits?: Json | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "generals_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       great_persons: {
         Row: {
           bio: string | null
@@ -1313,6 +1387,35 @@ export type Database = {
           },
         ]
       }
+      legacy_military_map: {
+        Row: {
+          id: string
+          legacy_id: string
+          migrated_at: string
+          stack_id: string
+        }
+        Insert: {
+          id?: string
+          legacy_id: string
+          migrated_at?: string
+          stack_id: string
+        }
+        Update: {
+          id?: string
+          legacy_id?: string
+          migrated_at?: string
+          stack_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "legacy_military_map_stack_id_fkey"
+            columns: ["stack_id"]
+            isOneToOne: false
+            referencedRelation: "military_stacks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       military_capacity: {
         Row: {
           army_name: string
@@ -1320,6 +1423,7 @@ export type Database = {
           created_at: string
           id: string
           iron_cost: number
+          migrated: boolean
           player_name: string
           session_id: string
           status: string
@@ -1330,6 +1434,7 @@ export type Database = {
           created_at?: string
           id?: string
           iron_cost?: number
+          migrated?: boolean
           player_name: string
           session_id: string
           status?: string
@@ -1340,6 +1445,7 @@ export type Database = {
           created_at?: string
           id?: string
           iron_cost?: number
+          migrated?: boolean
           player_name?: string
           session_id?: string
           status?: string
@@ -1347,6 +1453,111 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "military_capacity_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      military_stack_composition: {
+        Row: {
+          created_at: string
+          equipment_level: number
+          id: string
+          manpower: number
+          quality: number
+          stack_id: string
+          unit_type: string
+        }
+        Insert: {
+          created_at?: string
+          equipment_level?: number
+          id?: string
+          manpower?: number
+          quality?: number
+          stack_id: string
+          unit_type?: string
+        }
+        Update: {
+          created_at?: string
+          equipment_level?: number
+          id?: string
+          manpower?: number
+          quality?: number
+          stack_id?: string
+          unit_type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "military_stack_composition_stack_id_fkey"
+            columns: ["stack_id"]
+            isOneToOne: false
+            referencedRelation: "military_stacks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      military_stacks: {
+        Row: {
+          created_at: string
+          formation_type: string
+          general_id: string | null
+          id: string
+          is_active: boolean
+          legacy_military_id: string | null
+          morale: number
+          name: string
+          player_name: string
+          power: number
+          province_id: string | null
+          session_id: string
+        }
+        Insert: {
+          created_at?: string
+          formation_type?: string
+          general_id?: string | null
+          id?: string
+          is_active?: boolean
+          legacy_military_id?: string | null
+          morale?: number
+          name: string
+          player_name: string
+          power?: number
+          province_id?: string | null
+          session_id: string
+        }
+        Update: {
+          created_at?: string
+          formation_type?: string
+          general_id?: string | null
+          id?: string
+          is_active?: boolean
+          legacy_military_id?: string | null
+          morale?: number
+          name?: string
+          player_name?: string
+          power?: number
+          province_id?: string | null
+          session_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "military_stacks_general_id_fkey"
+            columns: ["general_id"]
+            isOneToOne: false
+            referencedRelation: "generals"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "military_stacks_province_id_fkey"
+            columns: ["province_id"]
+            isOneToOne: false
+            referencedRelation: "provinces"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "military_stacks_session_id_fkey"
             columns: ["session_id"]
             isOneToOne: false
             referencedRelation: "game_sessions"
@@ -1535,6 +1746,136 @@ export type Database = {
           },
           {
             foreignKeyName: "provinces_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      realm_infrastructure: {
+        Row: {
+          created_at: string
+          granaries_count: number
+          granary_level: number
+          id: string
+          notes: Json | null
+          player_name: string
+          session_id: string
+          slavery_factor: number
+          stables_count: number
+          stables_level: number
+        }
+        Insert: {
+          created_at?: string
+          granaries_count?: number
+          granary_level?: number
+          id?: string
+          notes?: Json | null
+          player_name: string
+          session_id: string
+          slavery_factor?: number
+          stables_count?: number
+          stables_level?: number
+        }
+        Update: {
+          created_at?: string
+          granaries_count?: number
+          granary_level?: number
+          id?: string
+          notes?: Json | null
+          player_name?: string
+          session_id?: string
+          slavery_factor?: number
+          stables_count?: number
+          stables_level?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "realm_infrastructure_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      realm_resources: {
+        Row: {
+          created_at: string
+          gold_reserve: number
+          grain_reserve: number
+          granary_capacity: number
+          horses_reserve: number
+          id: string
+          iron_reserve: number
+          knowledge: number
+          labor_reserve: number
+          last_processed_turn: number
+          logistic_capacity: number
+          manpower_committed: number
+          manpower_pool: number
+          mobilization_rate: number
+          player_name: string
+          prestige: number
+          session_id: string
+          stability: number
+          stables_capacity: number
+          stone_reserve: number
+          updated_at: string
+          wood_reserve: number
+        }
+        Insert: {
+          created_at?: string
+          gold_reserve?: number
+          grain_reserve?: number
+          granary_capacity?: number
+          horses_reserve?: number
+          id?: string
+          iron_reserve?: number
+          knowledge?: number
+          labor_reserve?: number
+          last_processed_turn?: number
+          logistic_capacity?: number
+          manpower_committed?: number
+          manpower_pool?: number
+          mobilization_rate?: number
+          player_name: string
+          prestige?: number
+          session_id: string
+          stability?: number
+          stables_capacity?: number
+          stone_reserve?: number
+          updated_at?: string
+          wood_reserve?: number
+        }
+        Update: {
+          created_at?: string
+          gold_reserve?: number
+          grain_reserve?: number
+          granary_capacity?: number
+          horses_reserve?: number
+          id?: string
+          iron_reserve?: number
+          knowledge?: number
+          labor_reserve?: number
+          last_processed_turn?: number
+          logistic_capacity?: number
+          manpower_committed?: number
+          manpower_pool?: number
+          mobilization_rate?: number
+          player_name?: string
+          prestige?: number
+          session_id?: string
+          stability?: number
+          stables_capacity?: number
+          stone_reserve?: number
+          updated_at?: string
+          wood_reserve?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "realm_resources_session_id_fkey"
             columns: ["session_id"]
             isOneToOne: false
             referencedRelation: "game_sessions"
