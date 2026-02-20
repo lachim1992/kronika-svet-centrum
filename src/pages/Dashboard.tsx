@@ -22,6 +22,7 @@ import ProfileTab from "@/pages/game/ProfileTab";
 import DevTab from "@/pages/game/DevTab";
 import ChroWikiTab from "@/pages/game/ChroWikiTab";
 import CouncilTab from "@/pages/game/CouncilTab";
+import ArmyTab from "@/pages/game/ArmyTab";
 
 const Dashboard = () => {
   const { sessionId } = useParams<{ sessionId: string }>();
@@ -184,6 +185,15 @@ const Dashboard = () => {
         {activeTab === "home" && <HomeTab {...sharedProps} />}
         {activeTab === "world" && <WorldTab {...sharedProps} worldEntityTarget={worldEntityTarget} onClearWorldEntityTarget={() => setWorldEntityTarget(null)} />}
         {activeTab === "realm" && <RealmTab {...sharedProps} />}
+        {activeTab === "army" && (
+          <ArmyTab
+            sessionId={session.id}
+            currentPlayerName={myPlayerName}
+            currentTurn={currentTurn}
+            myRole={myRole}
+            onRefetch={refetch}
+          />
+        )}
         {activeTab === "feed" && <FeedTab {...sharedProps} />}
         {activeTab === "codex" && <CodexTab {...sharedProps} codexEntityTarget={codexEntityTarget} onClearEntityTarget={() => setCodexEntityTarget(null)} />}
         {activeTab === "wiki" && <ChroWikiTab sessionId={session.id} onEntityClick={handleEntityClick} />}
