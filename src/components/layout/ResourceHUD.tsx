@@ -52,6 +52,10 @@ const ResourceHUD = ({ sessionId, playerName, cities }: ResourceHUDProps) => {
     setRealm((r: any) => ({ ...r, mobilization_rate: rate }));
   };
 
+  const woodProd = realm.last_turn_wood_prod || 0;
+  const stoneProd = realm.last_turn_stone_prod || 0;
+  const ironProd = realm.last_turn_iron_prod || 0;
+
   const chips: { icon: React.ReactNode; label: string; value: string; warning?: boolean }[] = [
     {
       icon: <Wheat className="h-3 w-3" />,
@@ -59,9 +63,9 @@ const ResourceHUD = ({ sessionId, playerName, cities }: ResourceHUDProps) => {
       value: `${netGrain >= 0 ? "+" : ""}${netGrain} · ${realm.grain_reserve || 0}/${realm.granary_capacity || 500}`,
       warning: netGrain < 0,
     },
-    { icon: <Trees className="h-3 w-3" />, label: "Dřevo", value: `${realm.wood_reserve || 0}` },
-    { icon: <Mountain className="h-3 w-3" />, label: "Kámen", value: `${realm.stone_reserve || 0}` },
-    { icon: <Anvil className="h-3 w-3" />, label: "Železo", value: `${realm.iron_reserve || 0}` },
+    { icon: <Trees className="h-3 w-3" />, label: "Dřevo", value: `+${woodProd} · ${realm.wood_reserve || 0}` },
+    { icon: <Mountain className="h-3 w-3" />, label: "Kámen", value: `+${stoneProd} · ${realm.stone_reserve || 0}` },
+    { icon: <Anvil className="h-3 w-3" />, label: "Železo", value: `+${ironProd} · ${realm.iron_reserve || 0}` },
     { icon: <Zap className="h-3 w-3" />, label: "Koně", value: `${realm.horses_reserve || 0}/${realm.stables_capacity || 100}` },
     { icon: <Coins className="h-3 w-3" />, label: "Zlato", value: `${realm.gold_reserve || 0}` },
     {

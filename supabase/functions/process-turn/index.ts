@@ -17,9 +17,26 @@ const UNIT_WEIGHTS: Record<string, number> = {
   INFANTRY: 1.0, ARCHERS: 1.1, CAVALRY: 1.3, SIEGE: 0.9,
 };
 
+// Settlement-level production constants
+const SETTLEMENT_PRODUCTION: Record<string, { grain: number; wood: number; special: number }> = {
+  HAMLET:   { grain: 8,  wood: 6, special: 2 },
+  TOWNSHIP: { grain: 10, wood: 7, special: 3 },
+  CITY:     { grain: 12, wood: 8, special: 4 },
+  POLIS:    { grain: 14, wood: 9, special: 5 },
+};
+
 const FORMATION_MULT: Record<string, number> = {
   UNIT: 1.0, LEGION: 1.1, ARMY: 1.2,
 };
+
+// Simple deterministic hash for seeding
+function hashCode(s: string): number {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) {
+    h = ((h << 5) - h + s.charCodeAt(i)) | 0;
+  }
+  return Math.abs(h);
+}
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
@@ -145,14 +162,74 @@ Deno.serve(async (req) => {
     const totalPeasants = myCities.reduce((s, c) => s + c.population_peasants, 0);
     const manpowerPool = Math.round(totalPeasants * realm.mobilization_rate);
 
-    // 5) Grain production (with mobilization penalty)
+    // 5) Settlement-based resource production
     const mobilizationPenalty = 1 - realm.mobilization_rate;
-    let totalGrainProd = 0;
-    for (const city of myCities) {
-      const cityGrain = Math.round(city.population_peasants * 0.02);
-      totalGrainProd += cityGrain;
+
+    // Load settlement resource profiles
+    const cityIds = myCities.map(c => c.id);
+    const { data: profiles } = await supabase
+      .from("settlement_resource_profiles")
+      .select("*")
+      .in("city_id", cityIds.length > 0 ? cityIds : ["00000000-0000-0000-0000-000000000000"]);
+
+    const profileMap: Record<string, any> = {};
+    for (const p of (profiles || [])) {
+      profileMap[p.city_id] = p;
     }
-    totalGrainProd = Math.round(totalGrainProd * mobilizationPenalty);
+
+    // Auto-create missing profiles
+    for (const city of myCities) {
+      if (!profileMap[city.id]) {
+        const prodConsts = SETTLEMENT_PRODUCTION[city.settlement_level] || SETTLEMENT_PRODUCTION.HAMLET;
+        const seed = Math.abs(hashCode(city.id));
+        const roll = seed % 100;
+        const specialType = roll < 25 ? "IRON" : roll < 50 ? "STONE" : "NONE";
+        const { data: newProfile } = await supabase.from("settlement_resource_profiles").insert({
+          city_id: city.id,
+          produces_grain: true,
+          produces_wood: true,
+          special_resource_type: specialType,
+          base_grain: prodConsts.grain,
+          base_wood: prodConsts.wood,
+          base_special: specialType !== "NONE" ? prodConsts.special : 0,
+          founded_seed: city.id,
+        }).select().single();
+        if (newProfile) profileMap[city.id] = newProfile;
+      }
+    }
+
+    let totalGrainProd = 0;
+    let totalWoodProd = 0;
+    let totalStoneProd = 0;
+    let totalIronProd = 0;
+
+    for (const city of myCities) {
+      const profile = profileMap[city.id];
+      const prodConsts = SETTLEMENT_PRODUCTION[city.settlement_level] || SETTLEMENT_PRODUCTION.HAMLET;
+
+      // Grain production with mobilization penalty
+      const cityGrainBase = profile ? profile.base_grain : prodConsts.grain;
+      const cityGrain = Math.round(cityGrainBase * mobilizationPenalty);
+      totalGrainProd += cityGrain;
+
+      // Wood production (no mobilization penalty)
+      const cityWood = profile ? profile.base_wood : prodConsts.wood;
+      totalWoodProd += cityWood;
+
+      // Special resource
+      const specialType = profile?.special_resource_type || "NONE";
+      const citySpecial = specialType !== "NONE" ? (profile ? profile.base_special : prodConsts.special) : 0;
+      if (specialType === "STONE") totalStoneProd += citySpecial;
+      if (specialType === "IRON") totalIronProd += citySpecial;
+
+      // Cache per-city production
+      await supabase.from("cities").update({
+        last_turn_grain_prod: cityGrain,
+        last_turn_wood_prod: cityWood,
+        last_turn_special_prod: citySpecial,
+        special_resource_type: specialType,
+      }).eq("id", city.id);
+    }
 
     // 6) Grain consumption
     let totalConsumption = 0;
@@ -176,6 +253,7 @@ Deno.serve(async (req) => {
     }
 
     chronicleEntries.push(`Obilí: produkce ${totalGrainProd}, spotřeba ${totalConsumption}, bilance ${netGrain >= 0 ? "+" : ""}${netGrain}, zásoby ${grainReserve}/${granaryCapacity}`);
+    chronicleEntries.push(`Suroviny: Dřevo +${totalWoodProd}, Kámen +${totalStoneProd}, Železo +${totalIronProd}`);
 
     // 8) Famine distribution
     if (famineDeficit > 0) {
@@ -271,6 +349,11 @@ Deno.serve(async (req) => {
     }
 
     // 11) Update realm resources + cached turn summary
+    // Add wood/stone/iron to reserves (no cap for now)
+    const newWoodReserve = (realm.wood_reserve || 0) + totalWoodProd;
+    const newStoneReserve = (realm.stone_reserve || 0) + totalStoneProd;
+    const newIronReserve = (realm.iron_reserve || 0) + totalIronProd;
+
     await supabase.from("realm_resources").update({
       grain_reserve: grainReserve,
       granary_capacity: granaryCapacity,
@@ -281,6 +364,12 @@ Deno.serve(async (req) => {
       last_turn_grain_prod: totalGrainProd,
       last_turn_grain_cons: totalConsumption,
       last_turn_grain_net: netGrain,
+      last_turn_wood_prod: totalWoodProd,
+      last_turn_stone_prod: totalStoneProd,
+      last_turn_iron_prod: totalIronProd,
+      wood_reserve: newWoodReserve,
+      stone_reserve: newStoneReserve,
+      iron_reserve: newIronReserve,
       famine_city_count: famineDeficit > 0 ? myCities.filter(c => c.famine_turn).length : 0,
       updated_at: new Date().toISOString(),
     }).eq("id", realm.id);
