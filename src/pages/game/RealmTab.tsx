@@ -4,11 +4,10 @@ import DiplomacyPanel from "@/components/DiplomacyPanel";
 import WarRoomPanel from "@/components/WarRoomPanel";
 import DeclarationsPanel from "@/components/DeclarationsPanel";
 import SecretObjectivesPanel from "@/components/SecretObjectivesPanel";
-import EmpireManagement from "@/components/EmpireManagement";
 import TurnProgressionPanel from "@/components/TurnProgressionPanel";
 import RealmDashboard from "@/components/RealmDashboard";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Shield, Swords, Feather, Castle, Megaphone, Target, Sparkles, Clock, BarChart3 } from "lucide-react";
+import { Shield, Swords, Feather, Megaphone, Target, Sparkles, Clock, BarChart3 } from "lucide-react";
 
 interface Props {
   sessionId: string;
@@ -55,9 +54,6 @@ const RealmTab = ({
           <TabsTrigger value="turn" className="font-display text-xs gap-1">
             <Clock className="h-3 w-3" />Kolo
           </TabsTrigger>
-          <TabsTrigger value="management" className="font-display text-xs gap-1">
-            <Castle className="h-3 w-3" />Správa
-          </TabsTrigger>
           <TabsTrigger value="diplomacy" className="font-display text-xs gap-1">
             <Feather className="h-3 w-3" />Diplomacie
           </TabsTrigger>
@@ -86,13 +82,6 @@ const RealmTab = ({
           <TurnProgressionPanel
             sessionId={sessionId} currentTurn={currentTurn} players={players}
             currentPlayerName={currentPlayerName} myRole={myRole} onRefetch={onRefetch}
-          />
-        </TabsContent>
-
-        <TabsContent value="management" className="mt-3">
-          <EmpireManagement
-            sessionId={sessionId} players={players} cities={cities} resources={resources}
-            armies={armies} trades={trades} currentPlayerName={currentPlayerName} currentTurn={currentTurn}
           />
         </TabsContent>
 

@@ -1,26 +1,24 @@
+import { useState, useEffect, useCallback } from "react";
+import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
-  Crown, Castle, Swords, Coins, Wheat, Trees, Mountain, Gem,
-  AlertTriangle, Flame, Shield, Scroll, MapPin, Landmark, Bell
+  Crown, Castle, Swords, Users, Wheat, AlertTriangle, Flame,
+  Shield, MapPin, Landmark, Eye, ArrowUpDown, Skull, BarChart3
 } from "lucide-react";
-import RichText from "@/components/RichText";
 import type { EntityIndex } from "@/hooks/useEntityIndex";
 
-const EVENT_TYPE_ICONS: Record<string, string> = {
-  battle: "⚔️", raid: "🔥", founding: "🏗️", trade: "💰", treaty: "🤝",
-  alliance: "🤝", expedition: "🧭", discovery: "🔍", diplomacy: "📜",
-  construction: "🏗️", decree: "📣", rebellion: "💥", migration: "🚶",
-  religion: "⛪", cultural: "🎭", espionage: "🕵️", natural_disaster: "🌊",
+const SETTLEMENT_LABELS: Record<string, string> = {
+  HAMLET: "Osada", TOWNSHIP: "Městečko", CITY: "Město", POLIS: "Polis",
 };
-const EVENT_TYPE_LABELS: Record<string, string> = {
-  battle: "Bitva", raid: "Nájezd", founding: "Založení", trade: "Obchod",
-  treaty: "Smlouva", alliance: "Aliance", expedition: "Výprava",
-  discovery: "Objev", diplomacy: "Diplomacie", construction: "Stavba",
-  decree: "Dekret", rebellion: "Povstání", migration: "Migrace",
-  religion: "Náboženství", cultural: "Kultura", espionage: "Špionáž",
-  natural_disaster: "Katastrofa",
+
+type SortKey = "population" | "stability" | "vulnerability" | "settlement";
+const SORT_LABELS: Record<SortKey, string> = {
+  population: "Populace", stability: "Stabilita", vulnerability: "Zranitelnost", settlement: "Úroveň",
 };
+const SETTLEMENT_ORDER: Record<string, number> = { POLIS: 4, CITY: 3, TOWNSHIP: 2, HAMLET: 1 };
 
 interface Props {
   sessionId: string;
@@ -42,294 +40,221 @@ interface Props {
   onEntityClick?: (type: string, id: string) => void;
 }
 
-const RESOURCE_ICONS: Record<string, React.ReactNode> = {
-  food: <Wheat className="h-4 w-4 text-forest-green" />,
-  wood: <Trees className="h-4 w-4 text-forest-green" />,
-  stone: <Mountain className="h-4 w-4 text-muted-foreground" />,
-  iron: <Gem className="h-4 w-4 text-royal-purple" />,
-  wealth: <Coins className="h-4 w-4 text-illuminated" />,
-};
-const RESOURCE_LABELS: Record<string, string> = {
-  food: "Jídlo", wood: "Dřevo", stone: "Kámen", iron: "Železo", wealth: "Zlato",
-};
-
 const HomeTab = ({
-  events, cities, resources, armies, wonders, chronicles,
-  worldCrises, currentPlayerName, currentTurn, entityIndex,
-  onEventClick, onEntityClick,
+  sessionId, cities, currentPlayerName, currentTurn,
+  onEntityClick,
 }: Props) => {
-  const myCities = cities.filter(c => c.owner_player === currentPlayerName);
-  const myResources = resources.filter(r => r.player_name === currentPlayerName);
-  const myArmies = armies.filter(a => a.player_name === currentPlayerName);
-  const myWonders = wonders.filter(w => w.owner_player === currentPlayerName);
-  const activeArmies = myArmies.filter(a => a.status === "Aktivní");
-  const devastatedCities = myCities.filter(c => c.status === "devastated" || c.status === "besieged");
-  const activeCrises = worldCrises.filter(c => !c.resolved);
-  const recentEvents = events
-    .filter(e => e.turn_number >= currentTurn - 1 && e.confirmed)
-    .slice(-6);
+  const [realm, setRealm] = useState<any>(null);
+  const [stacks, setStacks] = useState<any[]>([]);
+  const [sortKey, setSortKey] = useState<SortKey>("population");
 
-  const provinces = [...new Set(myCities.map(c => c.province).filter(Boolean))];
+  const myCities = cities.filter(c => c.owner_player === currentPlayerName);
+
+  const fetchRealm = useCallback(async () => {
+    const [realmRes, stacksRes] = await Promise.all([
+      supabase.from("realm_resources").select("*")
+        .eq("session_id", sessionId).eq("player_name", currentPlayerName).maybeSingle(),
+      supabase.from("military_stacks").select("power")
+        .eq("session_id", sessionId).eq("player_name", currentPlayerName).eq("is_active", true),
+    ]);
+    if (realmRes.data) setRealm(realmRes.data);
+    setStacks(stacksRes.data || []);
+  }, [sessionId, currentPlayerName]);
+
+  useEffect(() => { fetchRealm(); }, [fetchRealm]);
+
+  const totalPop = myCities.reduce((s, c) => s + (c.population_total || 0), 0);
+  const totalPower = stacks.reduce((s, st) => s + (st.power || 0), 0);
+  const famineCities = myCities.filter(c => c.famine_turn);
+
+  const sorted = [...myCities].sort((a, b) => {
+    switch (sortKey) {
+      case "population": return (b.population_total || 0) - (a.population_total || 0);
+      case "stability": return (a.city_stability || 70) - (b.city_stability || 70);
+      case "vulnerability": return (b.vulnerability_score || 0) - (a.vulnerability_score || 0);
+      case "settlement": return (SETTLEMENT_ORDER[b.settlement_level] || 1) - (SETTLEMENT_ORDER[a.settlement_level] || 1);
+      default: return 0;
+    }
+  });
 
   return (
     <div className="space-y-4 pb-20">
       {/* Header */}
-      <div className="text-center py-2">
-        <h1 className="text-2xl font-decorative font-bold flex items-center justify-center gap-2">
-          <Crown className="h-6 w-6 text-illuminated" />
-          Moje říše
-        </h1>
-        <p className="text-sm text-muted-foreground font-display">
-          {currentPlayerName} • Rok {currentTurn}
-        </p>
+      <div className="flex items-center gap-2 py-1">
+        <Crown className="h-5 w-5 text-illuminated" />
+        <h2 className="text-lg font-display font-bold">Moje říše</h2>
+        <span className="text-xs text-muted-foreground ml-auto font-display">Rok {currentTurn}</span>
       </div>
 
-      {/* Threats Banner */}
-      {(devastatedCities.length > 0 || activeCrises.length > 0) && (
+      {/* SECTION A: Realm Overview Strip */}
+      <div className="grid grid-cols-5 gap-2">
+        <div className="bg-card rounded-lg border border-border p-2 text-center">
+          <Castle className="h-4 w-4 mx-auto text-primary mb-0.5" />
+          <div className="text-lg font-bold font-display">{myCities.length}</div>
+          <div className="text-[10px] text-muted-foreground">Města</div>
+        </div>
+        <div className="bg-card rounded-lg border border-border p-2 text-center">
+          <Users className="h-4 w-4 mx-auto text-primary mb-0.5" />
+          <div className="text-lg font-bold font-display">{totalPop.toLocaleString()}</div>
+          <div className="text-[10px] text-muted-foreground">Populace</div>
+        </div>
+        <div className="bg-card rounded-lg border border-border p-2 text-center">
+          <Swords className="h-4 w-4 mx-auto text-primary mb-0.5" />
+          <div className="text-lg font-bold font-display">{totalPower}</div>
+          <div className="text-[10px] text-muted-foreground">Síla</div>
+        </div>
+        <div className="bg-card rounded-lg border border-border p-2 text-center">
+          <BarChart3 className="h-4 w-4 mx-auto text-primary mb-0.5" />
+          <div className="text-lg font-bold font-display">{Math.round((realm?.mobilization_rate || 0.1) * 100)}%</div>
+          <div className="text-[10px] text-muted-foreground">Mobilizace</div>
+        </div>
+        <div className={`bg-card rounded-lg border p-2 text-center ${famineCities.length > 0 ? "border-destructive/50 bg-destructive/5" : "border-border"}`}>
+          <Skull className="h-4 w-4 mx-auto mb-0.5" style={{ color: famineCities.length > 0 ? "hsl(var(--destructive))" : "hsl(var(--primary))" }} />
+          <div className="text-lg font-bold font-display">{famineCities.length}</div>
+          <div className="text-[10px] text-muted-foreground">Hlad</div>
+        </div>
+      </div>
+
+      {/* Famine Alerts */}
+      {famineCities.length > 0 && (
         <Card className="border-destructive/50 bg-destructive/5">
           <CardContent className="p-3">
-            <div className="flex items-center gap-2 mb-2">
-              <AlertTriangle className="h-4 w-4 text-destructive" />
-              <span className="text-sm font-display font-semibold text-destructive">Aktivní hrozby</span>
+            <div className="flex items-center gap-2 mb-1">
+              <Flame className="h-4 w-4 text-destructive" />
+              <span className="text-sm font-display font-semibold text-destructive">Hladomor!</span>
             </div>
-            <div className="space-y-1">
-              {devastatedCities.map(c => (
-                <div key={c.id} className="flex items-center gap-2 text-sm">
-                  <Flame className="h-3 w-3 text-destructive" />
-                  <button className="hover:underline" onClick={() => onEntityClick?.("city", c.id)}>
-                    {c.name}
-                  </button>
-                  <span> — {c.status === "devastated" ? "Zpustošeno" : "Obléháno"}</span>
-                </div>
-              ))}
-              {activeCrises.map(c => (
-                <div key={c.id} className="flex items-center gap-2 text-sm">
-                  <AlertTriangle className="h-3 w-3 text-destructive" />
-                  <span>{c.title}</span>
-                </div>
-              ))}
-            </div>
+            {famineCities.map(c => (
+              <button key={c.id} className="text-xs text-destructive hover:underline block"
+                onClick={() => onEntityClick?.("city", c.id)}>
+                {c.name} — deficit {c.famine_severity}, stabilita {c.city_stability}
+              </button>
+            ))}
           </CardContent>
         </Card>
       )}
 
-      {/* Stats Grid */}
-      <div className="grid grid-cols-2 gap-3">
-        {/* Cities */}
-        <Card>
-          <CardHeader className="p-3 pb-1">
-            <CardTitle className="text-sm flex items-center gap-2">
-              <Castle className="h-4 w-4 text-illuminated" />
-              Města
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="p-3 pt-1">
-            <div className="text-2xl font-bold font-display">{myCities.length}</div>
-            {provinces.length > 0 && (
-              <p className="text-xs text-muted-foreground mt-1">
-                {provinces.length} {provinces.length === 1 ? "provincie" : "provincií"}
-              </p>
-            )}
-            <div className="mt-2 space-y-0.5">
-              {myCities.slice(0, 3).map(c => (
-                <button key={c.id} className="text-xs flex items-center gap-1 w-full hover:text-primary transition-colors"
-                  onClick={() => onEntityClick?.("city", c.id)}>
-                  <MapPin className="h-3 w-3 text-muted-foreground" />
-                  <span className="truncate">{c.name}</span>
-                  <Badge variant="outline" className="text-[9px] h-4 ml-auto">{c.level}</Badge>
-                </button>
-              ))}
-              {myCities.length > 3 && (
-                <p className="text-xs text-muted-foreground">+{myCities.length - 3} dalších</p>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Military */}
-        <Card>
-          <CardHeader className="p-3 pb-1">
-            <CardTitle className="text-sm flex items-center gap-2">
-              <Swords className="h-4 w-4 text-illuminated" />
-              Armáda
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="p-3 pt-1">
-            <div className="text-2xl font-bold font-display">{activeArmies.length}</div>
-            <p className="text-xs text-muted-foreground mt-1">aktivních legií</p>
-            <div className="mt-2 space-y-0.5">
-              {activeArmies.slice(0, 3).map(a => (
-                <div key={a.id} className="text-xs flex items-center gap-1">
-                  <Shield className="h-3 w-3 text-muted-foreground" />
-                  <span className="truncate">{a.army_name}</span>
-                  <Badge variant="outline" className="text-[9px] h-4 ml-auto">{a.army_type}</Badge>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Wonders */}
-        <Card>
-          <CardHeader className="p-3 pb-1">
-            <CardTitle className="text-sm flex items-center gap-2">
-              <Landmark className="h-4 w-4 text-illuminated" />
-              Divy
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="p-3 pt-1">
-            <div className="text-2xl font-bold font-display">
-              {myWonders.filter(w => w.status === "completed").length}
-            </div>
-            <p className="text-xs text-muted-foreground mt-1">
-              {myWonders.filter(w => w.status !== "completed").length} ve výstavbě
-            </p>
-          </CardContent>
-        </Card>
-
-        {/* Economy */}
-        <Card>
-          <CardHeader className="p-3 pb-1">
-            <CardTitle className="text-sm flex items-center gap-2">
-              <Coins className="h-4 w-4 text-illuminated" />
-              Ekonomika
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="p-3 pt-1">
-            <div className="space-y-1">
-              {myResources.slice(0, 4).map(r => {
-                const surplus = r.income - r.upkeep;
-                return (
-                  <div key={r.id} className="flex items-center gap-1.5 text-xs">
-                    {RESOURCE_ICONS[r.resource_type]}
-                    <span className="flex-1">{RESOURCE_LABELS[r.resource_type]}</span>
-                    <span className={`font-bold ${surplus >= 0 ? "text-forest-green" : "text-seal-red"}`}>
-                      {surplus >= 0 ? `+${surplus}` : surplus}
-                    </span>
-                    <span className="text-muted-foreground">({r.stockpile})</span>
-                  </div>
-                );
-              })}
-              {myResources.length === 0 && (
-                <p className="text-xs text-muted-foreground italic">Žádné zdroje</p>
-              )}
-            </div>
-          </CardContent>
-        </Card>
+      {/* SECTION B: Cities List */}
+      <div className="flex items-center justify-between">
+        <h3 className="font-display font-semibold text-sm">Města a osady ({myCities.length})</h3>
+        <Select value={sortKey} onValueChange={v => setSortKey(v as SortKey)}>
+          <SelectTrigger className="w-36 h-7 text-xs">
+            <ArrowUpDown className="h-3 w-3 mr-1" />
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {(Object.entries(SORT_LABELS) as [SortKey, string][]).map(([k, v]) => (
+              <SelectItem key={k} value={k}>{v}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
 
-      {/* Recent Events */}
-      <Card>
-        <CardHeader className="p-3 pb-2">
-          <CardTitle className="text-sm flex items-center gap-2">
-            <Bell className="h-4 w-4 text-illuminated" />
-            Nedávné události
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="p-3 pt-0">
-          {recentEvents.length === 0 ? (
-            <p className="text-xs text-muted-foreground italic text-center py-4">
-              Žádné nedávné události
-            </p>
-          ) : (
-            <div className="space-y-2">
-              {[...recentEvents].reverse().map(e => {
-                const eventCity = e.city_id ? cities.find(c => c.id === e.city_id) : null;
-                const secondaryCity = e.secondary_city_id ? cities.find(c => c.id === e.secondary_city_id) : null;
-                const attackerCity = e.attacker_city_id ? cities.find(c => c.id === e.attacker_city_id) : null;
-                const defenderCity = e.defender_city_id ? cities.find(c => c.id === e.defender_city_id) : null;
-
-                const entityChips: { type: string; id: string; label: string }[] = [];
-                if (eventCity) entityChips.push({ type: "city", id: eventCity.id, label: eventCity.name });
-                if (attackerCity && attackerCity.id !== eventCity?.id) entityChips.push({ type: "city", id: attackerCity.id, label: attackerCity.name });
-                if (defenderCity && defenderCity.id !== eventCity?.id) entityChips.push({ type: "city", id: defenderCity.id, label: defenderCity.name });
-                if (secondaryCity && !entityChips.find(c => c.id === secondaryCity.id)) entityChips.push({ type: "city", id: secondaryCity.id, label: secondaryCity.name });
-
-                const typeIcon = EVENT_TYPE_ICONS[e.event_type] || "📜";
-                const importanceBadge = e.importance === "critical" ? "destructive" as const : e.importance === "major" ? "default" as const : "outline" as const;
-
-                return (
-                  <button
-                    key={e.id}
-                    className="w-full text-left p-2.5 rounded-md bg-muted/30 hover:bg-muted/60 transition-colors cursor-pointer border border-transparent hover:border-border/50 group"
-                    onClick={() => onEventClick?.(e.id)}
-                  >
-                    <div className="flex items-start gap-2">
-                      <span className="text-sm shrink-0 mt-0.5">{typeIcon}</span>
-                      <div className="flex-1 min-w-0">
-                        {/* Title line: player + action */}
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          <span className="text-xs font-semibold">{e.player}</span>
-                          <Badge variant={importanceBadge} className="text-[9px] h-4 px-1.5">{EVENT_TYPE_LABELS[e.event_type] || e.event_type}</Badge>
-                          <span className="text-[10px] text-muted-foreground ml-auto shrink-0">Rok {e.turn_number}</span>
-                        </div>
-
-                        {/* Note with RichText */}
-                        {e.note && (
-                          <div className="mt-0.5" onClick={(ev) => ev.stopPropagation()}>
-                            <RichText
-                              text={e.note}
-                              entityIndex={entityIndex}
-                              onEventClick={onEventClick}
-                              onEntityClick={onEntityClick}
-                              className="text-xs text-muted-foreground line-clamp-2"
-                            />
-                          </div>
-                        )}
-
-                        {/* Entity chips row */}
-                        {(entityChips.length > 0 || e.location) && (
-                          <div className="flex items-center gap-1 flex-wrap mt-1" onClick={(ev) => ev.stopPropagation()}>
-                            {entityChips.map(chip => (
-                              <button
-                                key={chip.id}
-                                className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded border text-[10px] font-medium bg-primary/10 text-primary border-primary/30 hover:bg-primary/20 transition-colors"
-                                onClick={(ev) => { ev.stopPropagation(); onEntityClick?.(chip.type, chip.id); }}
-                              >
-                                🏛️ {chip.label}
-                              </button>
-                            ))}
-                            {e.location && !entityChips.some(c => c.label === e.location) && (
-                              <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] text-muted-foreground">
-                                📍 {e.location}
-                              </span>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                      {/* Arrow indicator */}
-                      <span className="text-muted-foreground text-xs opacity-0 group-hover:opacity-100 transition-opacity shrink-0 mt-0.5">→</span>
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Last Chronicle */}
-      {chronicles.length > 0 && (
-        <Card className="border-t-2 border-t-primary/30">
-          <CardHeader className="p-3 pb-2">
-            <CardTitle className="text-sm flex items-center gap-2">
-              <Scroll className="h-4 w-4 text-illuminated" />
-              Poslední zápis v kronice
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="p-3 pt-0">
-            <RichText
-              text={chronicles[chronicles.length - 1].text}
-              entityIndex={entityIndex}
-              onEventClick={onEventClick}
-              onEntityClick={onEntityClick}
-              className="text-xs leading-relaxed line-clamp-4 whitespace-pre-wrap"
-            />
-            <p className="text-[10px] text-muted-foreground mt-2">
-              {new Date(chronicles[chronicles.length - 1].created_at).toLocaleString("cs-CZ")}
-            </p>
+      {/* Empty state */}
+      {myCities.length === 0 ? (
+        <Card>
+          <CardContent className="p-8 text-center">
+            <Castle className="h-12 w-12 text-muted-foreground mx-auto mb-3 opacity-50" />
+            <p className="text-sm text-muted-foreground mb-3">Zatím neovládáte žádná sídla.</p>
+            <Button size="sm" className="font-display" onClick={() => onEntityClick?.("action", "found_city")}>
+              Založit první město
+            </Button>
           </CardContent>
         </Card>
+      ) : (
+        <div className="space-y-3">
+          {sorted.map(city => {
+            const pop = city.population_total || 0;
+            const peasantPct = pop > 0 ? Math.round((city.population_peasants || 0) / pop * 100) : 0;
+            const burgherPct = pop > 0 ? Math.round((city.population_burghers || 0) / pop * 100) : 0;
+            const clericPct = pop > 0 ? Math.round((city.population_clerics || 0) / pop * 100) : 0;
+            const grainProd = city.last_turn_grain_prod || 0;
+            const grainCons = city.last_turn_grain_cons || 0;
+            const grainNet = grainProd - grainCons;
+            const dataProcessed = grainProd > 0 || grainCons > 0 || city.population_total > 0;
+
+            return (
+              <Card
+                key={city.id}
+                className={`cursor-pointer hover:border-primary/50 transition-colors ${city.famine_turn ? "border-destructive/50" : ""}`}
+                onClick={() => onEntityClick?.("city", city.id)}
+              >
+                <CardContent className="p-4">
+                  {/* Header row */}
+                  <div className="flex items-start justify-between mb-2">
+                    <div>
+                      <h4 className="font-display font-semibold text-base flex items-center gap-1.5">
+                        {city.name}
+                        {city.famine_turn && <Flame className="h-3.5 w-3.5 text-destructive" />}
+                      </h4>
+                      {city.province && (
+                        <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
+                          <MapPin className="h-3 w-3" />{city.province}
+                        </p>
+                      )}
+                    </div>
+                    <Badge variant="secondary" className="text-[10px] shrink-0">
+                      {SETTLEMENT_LABELS[city.settlement_level] || city.settlement_level}
+                    </Badge>
+                  </div>
+
+                  {dataProcessed ? (
+                    <>
+                      {/* Population + layers bar */}
+                      <div className="mb-2">
+                        <div className="flex items-center justify-between text-xs mb-0.5">
+                          <span className="text-muted-foreground">Populace</span>
+                          <span className="font-semibold">{pop.toLocaleString()}</span>
+                        </div>
+                        <div className="flex h-2 rounded-full overflow-hidden bg-muted">
+                          <div className="bg-primary/70" style={{ width: `${peasantPct}%` }} title={`Rolníci ${peasantPct}%`} />
+                          <div className="bg-accent" style={{ width: `${burgherPct}%` }} title={`Měšťané ${burgherPct}%`} />
+                          <div className="bg-muted-foreground/40" style={{ width: `${clericPct}%` }} title={`Klerici ${clericPct}%`} />
+                        </div>
+                        <div className="flex gap-3 text-[10px] text-muted-foreground mt-0.5">
+                          <span>Rolníci {peasantPct}%</span>
+                          <span>Měšťané {burgherPct}%</span>
+                          <span>Klerici {clericPct}%</span>
+                        </div>
+                      </div>
+
+                      {/* Stats row */}
+                      <div className="grid grid-cols-4 gap-2 text-[10px]">
+                        <div>
+                          <span className="text-muted-foreground">Stabilita</span>
+                          <div className={`font-semibold ${city.city_stability < 40 ? "text-destructive" : ""}`}>{city.city_stability}</div>
+                        </div>
+                        <div>
+                          <span className="text-muted-foreground">Sýpka</span>
+                          <div className="font-semibold">{city.local_grain_reserve || 0}/{city.local_granary_capacity || 0}</div>
+                        </div>
+                        <div>
+                          <span className="text-muted-foreground">Obilí</span>
+                          <div className={`font-semibold ${grainNet < 0 ? "text-destructive" : ""}`}>
+                            {grainProd} / {grainCons}
+                          </div>
+                        </div>
+                        <div>
+                          <span className="text-muted-foreground">Zranitelnost</span>
+                          <div className="font-semibold">{(city.vulnerability_score || 0).toFixed(0)}</div>
+                        </div>
+                      </div>
+
+                      {/* Famine banner */}
+                      {city.famine_turn && (
+                        <div className="mt-2 flex items-center gap-1.5 px-2 py-1 rounded bg-destructive/10 text-destructive text-xs font-semibold">
+                          <Skull className="h-3 w-3" />
+                          Hladomor (deficit {city.famine_severity})
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <p className="text-xs text-muted-foreground italic">Data ještě nebyla zpracována. Spusťte kolo.</p>
+                  )}
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
       )}
     </div>
   );
