@@ -2,7 +2,6 @@ import { useState, useMemo, useEffect, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
@@ -54,6 +53,21 @@ const CHRONICLE_CATEGORIES = [
   { value: "disaster", label: "Katastrofa" },
   { value: "founding", label: "Založení" },
 ];
+
+/* ── Ornamental flourish divider ── */
+const OrnamentalDivider = () => (
+  <div className="flex items-center justify-center gap-3 my-6 select-none">
+    <div className="h-px flex-1 bg-gradient-to-r from-transparent via-primary/30 to-transparent" />
+    <svg width="28" height="12" viewBox="0 0 28 12" fill="none" className="text-primary/50 shrink-0">
+      <path d="M14 2C10 2 8 6 4 6C2 6 1 5 0 4" stroke="currentColor" strokeWidth="1" fill="none"/>
+      <path d="M14 2C18 2 20 6 24 6C26 6 27 5 28 4" stroke="currentColor" strokeWidth="1" fill="none"/>
+      <circle cx="14" cy="6" r="1.5" fill="currentColor" opacity="0.6"/>
+      <path d="M14 10C10 10 8 6 4 6" stroke="currentColor" strokeWidth="1" fill="none" opacity="0.5"/>
+      <path d="M14 10C18 10 20 6 24 6" stroke="currentColor" strokeWidth="1" fill="none" opacity="0.5"/>
+    </svg>
+    <div className="h-px flex-1 bg-gradient-to-r from-transparent via-primary/30 to-transparent" />
+  </div>
+);
 
 interface Props {
   sessionId: string;
@@ -178,7 +192,7 @@ const ChroWikiDetailPanel = ({
     return sagaVersions.find(v => String(v.version) === selectedSagaVersion) || sagaVersions[0];
   }, [sagaVersions, selectedSagaVersion]);
 
-  // ── Key facts (entity-type conditional) ──
+  // ── Key facts ──
   const keyFacts = useMemo(() => {
     const facts: { label: string; value: string; icon?: React.ReactNode }[] = [];
     if (!entity) return facts;
@@ -289,12 +303,10 @@ const ChroWikiDetailPanel = ({
         else if (entityType === "region") Object.assign(context, { biome: entity.biome, description: entity.description, is_homeland: entity.is_homeland });
         else if (entityType === "event") Object.assign(context, { date: entity.date, summary: entity.summary, description: entity.description, category: entity.event_category });
       }
-
       const { data, error } = await supabase.functions.invoke("wiki-generate", {
         body: { entityType, entityName, entityId, sessionId, ownerPlayer: entity?.owner_player || entity?.player_name || "", context },
       });
       if (error) throw error;
-
       if (data?.aiDescription) {
         const existing = wikiEntries.find(w => w.entity_id === entityId && w.entity_type === entityType);
         if (existing) {
@@ -346,7 +358,6 @@ const ChroWikiDetailPanel = ({
   const handleRegenerateSaga = async () => {
     setGeneratingSaga(true);
     try {
-      // Gather last 10 chronicle mentions
       const mentions = chronicleExcerpts.slice(0, 10).map(c => c.text).join("\n---\n");
       const { data, error } = await supabase.functions.invoke("wiki-generate", {
         body: {
@@ -374,7 +385,7 @@ const ChroWikiDetailPanel = ({
   // ── Loading / Error states ──
   if (dbLoading) {
     return (
-      <div className="manuscript-card flex items-center justify-center h-full min-h-[400px]">
+      <div className="flex items-center justify-center h-full min-h-[400px]">
         <div className="text-center animate-fade-in">
           <Loader2 className="h-8 w-8 text-illuminated mx-auto mb-3 animate-spin" />
           <p className="font-display text-sm text-muted-foreground">Načítám záznam…</p>
@@ -385,7 +396,7 @@ const ChroWikiDetailPanel = ({
 
   if (!entity && !dbLoading) {
     return (
-      <div className="manuscript-card flex items-center justify-center h-full min-h-[400px]">
+      <div className="flex items-center justify-center h-full min-h-[400px]">
         <div className="text-center max-w-xs animate-fade-in">
           <AlertTriangle className="h-8 w-8 text-destructive mx-auto mb-3 opacity-60" />
           <h3 className="font-display text-sm font-semibold text-foreground mb-1">Záznam nenalezen</h3>
@@ -400,29 +411,31 @@ const ChroWikiDetailPanel = ({
   const showSigil = SIGIL_TYPES.has(entityType);
 
   return (
-    <ScrollArea className="h-[calc(100vh-320px)]">
-      <div className="manuscript-card overflow-hidden">
-        {/* ═══ A) COVER IMAGE (21:9, clickable lightbox) ═══ */}
+    <div className="flex flex-col h-full min-h-0 overflow-hidden">
+      {/* ═══ HERO SECTION (shrink-to-content) ═══ */}
+      <div className="shrink-0">
+        {/* Cover image */}
         {imageUrl ? (
           <div
             className="relative w-full overflow-hidden cursor-pointer group"
-            style={{ aspectRatio: "21/9" }}
             onClick={() => setLightboxOpen(true)}
           >
-            <img src={imageUrl} alt={entityName} className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105" />
-            <div className="absolute inset-0 bg-gradient-to-t from-card via-card/30 to-transparent" />
-            <div className="absolute bottom-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
+            <div className="aspect-[21/9] md:aspect-[21/9] max-sm:aspect-[16/9]">
+              <img src={imageUrl} alt={entityName} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-[1.03]" />
+            </div>
+            <div className="absolute inset-0 bg-gradient-to-t from-background via-background/20 to-transparent" />
+            <div className="absolute bottom-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity">
               <Badge variant="secondary" className="text-[9px] backdrop-blur-sm bg-background/60">
                 <Eye className="h-2.5 w-2.5 mr-1" /> Zvětšit
               </Badge>
             </div>
           </div>
         ) : (
-          <div className="relative w-full bg-gradient-to-br from-primary/5 via-muted/30 to-primary/10 flex items-center justify-center" style={{ aspectRatio: "21/9" }}>
-            <div className="text-center opacity-40">
-              {ENTITY_ICONS[entityType] || <BookOpen className="h-12 w-12" />}
+          <div className="relative w-full bg-gradient-to-br from-primary/8 via-secondary/40 to-primary/5 flex items-center justify-center aspect-[21/9] md:aspect-[21/9] max-sm:aspect-[16/9]">
+            <div className="text-center opacity-30">
+              <span className="[&_svg]:h-14 [&_svg]:w-14">{ENTITY_ICONS[entityType] || <BookOpen className="h-14 w-14" />}</span>
             </div>
-            <div className="absolute inset-0 bg-gradient-to-t from-card via-transparent to-transparent" />
+            <div className="absolute inset-0 bg-gradient-to-t from-background via-transparent to-transparent" />
           </div>
         )}
 
@@ -435,297 +448,341 @@ const ChroWikiDetailPanel = ({
           </DialogContent>
         </Dialog>
 
-        {/* ═══ B) SIGIL AVATAR + C) HEADER ═══ */}
-        <div className={`relative px-5 pb-4 ${imageUrl ? "-mt-10 z-10" : "pt-5"}`}>
+        {/* ═══ SIGIL + TITLE HEADER ═══ */}
+        <div className={`relative px-5 pb-3 ${imageUrl ? "-mt-12 z-10" : "pt-4"}`}>
           <div className="flex items-end gap-4">
-            {/* Sigil circle */}
             {showSigil && (
-              <div className="shrink-0 -mt-8 relative">
-                <div className="w-16 h-16 rounded-full border-2 border-primary/60 shadow-lg bg-card flex items-center justify-center overflow-hidden ring-2 ring-primary/20 ring-offset-2 ring-offset-card">
+              <div className="shrink-0 relative">
+                <div className="w-18 h-18 rounded-full shadow-lg bg-card flex items-center justify-center overflow-hidden"
+                  style={{
+                    width: 72, height: 72,
+                    border: '3px solid hsl(var(--primary) / 0.6)',
+                    boxShadow: '0 0 0 3px hsl(var(--primary) / 0.15), 0 4px 16px hsl(var(--background) / 0.5)',
+                  }}
+                >
                   {imageUrl ? (
                     <img src={imageUrl} alt="" className="w-full h-full object-cover" />
                   ) : (
-                    <span className="text-primary">{ENTITY_ICONS[entityType]}</span>
+                    <span className="text-primary [&_svg]:h-7 [&_svg]:w-7">{ENTITY_ICONS[entityType]}</span>
                   )}
                 </div>
               </div>
             )}
-
-            <div className="flex-1 min-w-0 pt-2">
-              {/* Title */}
-              <h1 className="font-decorative text-xl md:text-2xl text-foreground leading-tight">{entityName}</h1>
-              {/* Motto / summary */}
+            <div className="flex-1 min-w-0 pb-1">
+              <h1 className="font-decorative text-2xl md:text-3xl text-foreground leading-tight tracking-wide">{entityName}</h1>
               {wiki?.summary && (
-                <p className="text-sm font-display text-primary mt-1 italic leading-snug">„{wiki.summary}"</p>
+                <p className="text-sm font-decorative text-primary/90 mt-0.5 italic leading-snug">„{wiki.summary}"</p>
               )}
-              {/* Quick chips */}
-              <div className="flex items-center gap-1.5 mt-2 flex-wrap">
-                <Badge variant="outline" className="text-[10px] font-display">{ENTITY_LABELS[entityType] || entityType}</Badge>
-                {entity?.owner_player && <Badge variant="secondary" className="text-[10px]">{entity.owner_player}</Badge>}
-                {entity?.player_name && !entity?.owner_player && <Badge variant="secondary" className="text-[10px]">{entity.player_name}</Badge>}
-                {entity?.tags?.map((t: string) => (
-                  <Badge key={t} variant="outline" className="text-[9px] text-muted-foreground">{t}</Badge>
-                ))}
-              </div>
             </div>
-
-            {/* Reading mode toggle */}
-            <Button variant="ghost" size="sm" onClick={() => setReadingMode(!readingMode)} className="shrink-0 text-xs">
+            <Button variant="ghost" size="sm" onClick={() => setReadingMode(!readingMode)} className="shrink-0 text-xs mb-1">
               {readingMode ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
             </Button>
           </div>
-        </div>
-
-        <div className="px-5 pb-5">
-          {/* ═══ D) PROFILE SNAPSHOT (hidden in reading mode) ═══ */}
-          {!readingMode && keyFacts.length > 0 && (
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-2 p-3 rounded-lg bg-muted/30 border border-border mb-5">
-              {keyFacts.map((f, i) => (
-                <div key={i} className="flex items-center gap-1.5 text-xs">
-                  {f.icon && <span className="text-primary shrink-0">{f.icon}</span>}
-                  <span className="text-muted-foreground font-body">{f.label}:</span>
-                  <span className="font-display font-semibold text-foreground truncate">{f.value}</span>
-                </div>
-              ))}
-            </div>
-          )}
-
-          <div className="scroll-divider my-4"><span className="text-[10px]">✦</span></div>
-
-          {/* ═══ Encyclopedia entry ═══ */}
-          <div className="mb-5">
-            <h3 className="font-display text-sm font-semibold mb-2 flex items-center gap-2">
-              <BookOpen className="h-4 w-4 text-illuminated" /> Encyklopedický záznam
-            </h3>
-            {descriptionText ? (
-              <div className="prose-chronicle text-sm leading-relaxed text-foreground font-body space-y-2">
-                <RichText text={descriptionText} className="whitespace-pre-wrap" />
-              </div>
-            ) : (
-              <div className="text-center py-6 bg-muted/20 rounded-lg border border-dashed border-border">
-                <Scroll className="h-8 w-8 text-muted-foreground mx-auto mb-2 opacity-40" />
-                <p className="text-xs text-muted-foreground italic font-body mb-3">Tento záznam dosud nebyl sepsán kronikáři.</p>
-                <Button size="sm" variant="outline" onClick={handleGenerate} disabled={generating}>
-                  {generating ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <Sparkles className="h-3 w-3 mr-1" />}
-                  Zapsat do kroniky
-                </Button>
-              </div>
-            )}
+          {/* Quick chips */}
+          <div className="flex items-center gap-1.5 mt-2 flex-wrap ml-0">
+            <Badge variant="outline" className="text-[10px] font-display border-primary/30 text-primary">{ENTITY_LABELS[entityType] || entityType}</Badge>
+            {entity?.owner_player && <Badge variant="secondary" className="text-[10px]">{entity.owner_player}</Badge>}
+            {entity?.player_name && !entity?.owner_player && <Badge variant="secondary" className="text-[10px]">{entity.player_name}</Badge>}
+            {entity?.tags?.map((t: string) => (
+              <Badge key={t} variant="outline" className="text-[9px] text-muted-foreground">{t}</Badge>
+            ))}
           </div>
-
-          {/* ═══ E) SAGA SECTION (versioned, editable) ═══ */}
-          <div className="mb-5">
-            <div className="flex items-center gap-2 mb-2">
-              <h3 className="font-display text-sm font-semibold flex items-center gap-2">
-                <FileText className="h-4 w-4 text-illuminated" /> Sága
-              </h3>
-              {sagaVersions.length > 1 && (
-                <Select value={selectedSagaVersion} onValueChange={setSelectedSagaVersion}>
-                  <SelectTrigger className="h-6 w-28 text-[10px]">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="latest" className="text-xs">Nejnovější</SelectItem>
-                    {sagaVersions.map(v => (
-                      <SelectItem key={v.version} value={String(v.version)} className="text-xs">
-                        v{v.version} {v.is_ai_generated ? "🤖" : "✍"}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              )}
-              <div className="ml-auto flex items-center gap-1">
-                {isOwner && !editingSaga && (
-                  <Button variant="ghost" size="sm" className="h-6 text-[10px] px-2" onClick={() => { setEditingSaga(true); setSagaDraft(currentSaga?.saga_text || ""); }}>
-                    <Pencil className="h-3 w-3 mr-1" /> Upravit
-                  </Button>
-                )}
-                <Button variant="ghost" size="sm" className="h-6 text-[10px] px-2" onClick={handleRegenerateSaga} disabled={generatingSaga}>
-                  {generatingSaga ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <Sparkles className="h-3 w-3 mr-1" />}
-                  AI sága
-                </Button>
-              </div>
-            </div>
-
-            {editingSaga ? (
-              <div className="space-y-2">
-                <Textarea value={sagaDraft} onChange={e => setSagaDraft(e.target.value)} rows={8} className="text-sm font-body" placeholder="Napište příběh tohoto místa…" />
-                <div className="flex gap-2 justify-end">
-                  <Button variant="ghost" size="sm" onClick={() => setEditingSaga(false)}><X className="h-3 w-3 mr-1" /> Zrušit</Button>
-                  <Button size="sm" onClick={handleSaveSaga} disabled={savingSaga}>
-                    {savingSaga ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <Save className="h-3 w-3 mr-1" />}
-                    Uložit (nová verze)
-                  </Button>
-                </div>
-              </div>
-            ) : currentSaga ? (
-              <div className="prose-chronicle text-sm leading-relaxed text-foreground font-body p-3 rounded-lg bg-muted/15 border-l-2 border-primary/30">
-                <RichText text={currentSaga.saga_text} className="whitespace-pre-wrap" />
-                <div className="mt-2 text-[10px] text-muted-foreground flex items-center gap-2">
-                  <History className="h-3 w-3" />
-                  v{currentSaga.version} · {currentSaga.is_ai_generated ? "🤖 AI" : `✍ ${currentSaga.author_player}`}
-                  {currentSaga.created_at && ` · ${new Date(currentSaga.created_at).toLocaleDateString("cs")}`}
-                </div>
-              </div>
-            ) : (
-              <div className="text-center py-4 bg-muted/10 rounded-lg border border-dashed border-border">
-                <p className="text-xs text-muted-foreground italic font-body">Sága dosud nebyla napsána.</p>
-              </div>
-            )}
-          </div>
-
-          {/* ═══ Entity-type specific sections (hidden in reading mode) ═══ */}
-          {!readingMode && entityType === "event" && entity && (
-            <div className="mb-5">
-              {entity.description && !descriptionText?.includes(entity.description) && (
-                <div className="mb-3">
-                  <h3 className="font-display text-sm font-semibold mb-2">Popis události</h3>
-                  <RichText text={entity.description} className="text-sm font-body leading-relaxed" />
-                </div>
-              )}
-              {entity.participants && Array.isArray(entity.participants) && entity.participants.length > 0 && (
-                <div className="mt-3">
-                  <h3 className="font-display text-sm font-semibold mb-2 flex items-center gap-2">
-                    <Users className="h-4 w-4 text-illuminated" /> Účastníci
-                  </h3>
-                  <div className="flex flex-wrap gap-1.5">
-                    {entity.participants.map((p: any, i: number) => (
-                      <Badge key={i} variant="outline" className="text-xs">
-                        {typeof p === "string" ? p : p.name || JSON.stringify(p)}
-                      </Badge>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* City-specific: garrison, economy summary */}
-          {!readingMode && entityType === "city" && entity && (
-            <div className="mb-5 grid grid-cols-2 gap-2">
-              {entity.vulnerability_score != null && (
-                <div className="p-2 rounded bg-muted/20 border border-border/50 text-center">
-                  <div className="text-[10px] text-muted-foreground">Zranitelnost</div>
-                  <div className={`text-sm font-bold font-display ${entity.vulnerability_score > 50 ? "text-destructive" : "text-foreground"}`}>{entity.vulnerability_score.toFixed(0)}</div>
-                </div>
-              )}
-              {entity.famine_turn && (
-                <div className="p-2 rounded bg-destructive/10 border border-destructive/30 text-center">
-                  <div className="text-[10px] text-destructive font-semibold">⚠ Hladomor</div>
-                  <div className="text-sm font-bold font-display text-destructive">Deficit {entity.famine_severity}</div>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Person-specific: traits */}
-          {!readingMode && entityType === "person" && entity?.flavor_trait && (
-            <div className="mb-5">
-              <h3 className="font-display text-sm font-semibold mb-2 flex items-center gap-2">
-                <Zap className="h-4 w-4 text-illuminated" /> Osobnostní rysy
-              </h3>
-              <Badge variant="outline" className="text-xs">{entity.flavor_trait}</Badge>
-            </div>
-          )}
-
-          {/* ═══ G) RELATED ENTITIES (Living Links) ═══ */}
-          {!readingMode && relatedEntities.length > 0 && (
-            <div className="mb-5">
-              <h3 className="font-display text-sm font-semibold mb-2 flex items-center gap-2">
-                <Users className="h-4 w-4 text-illuminated" /> Vazby a propojení
-              </h3>
-              <div className="space-y-1">
-                {relatedEntities.map((rel, i) => (
-                  <div key={i}
-                    className="flex items-center gap-2 py-1.5 px-2 rounded-md hover:bg-muted/50 cursor-pointer transition-colors"
-                    onClick={() => onEntityClick(rel.type, rel.id, rel.name)}
-                  >
-                    <span className="text-illuminated">{ENTITY_ICONS[rel.type]}</span>
-                    <span className="font-display text-xs truncate">{rel.name}</span>
-                    <Badge variant="outline" className="text-[9px] ml-auto">{rel.relation}</Badge>
-                    <ChevronRight className="h-3 w-3 text-muted-foreground" />
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* ═══ Related Events ═══ */}
-          {!readingMode && relatedEvents.length > 0 && (
-            <div className="mb-5">
-              <h3 className="font-display text-sm font-semibold mb-2 flex items-center gap-2">
-                <Swords className="h-4 w-4 text-illuminated" /> Klíčové události
-              </h3>
-              <div className="space-y-1.5">
-                {relatedEvents.map(evt => (
-                  <div key={evt.id}
-                    className="flex items-center gap-2 py-1.5 px-2 rounded-md hover:bg-muted/50 cursor-pointer transition-colors"
-                    onClick={() => onEntityClick("event", evt.id, evt.title)}
-                  >
-                    <Calendar className="h-3.5 w-3.5 text-illuminated shrink-0" />
-                    <span className="font-display text-xs truncate">{evt.title}</span>
-                    {evt.event_category && <Badge variant="outline" className="text-[9px] ml-auto">{evt.event_category}</Badge>}
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* ═══ F) CHRONICLE MENTIONS (improved) ═══ */}
-          {chronicleExcerpts.length > 0 && (
-            <div className="mb-5">
-              <div className="flex items-center gap-2 mb-2 flex-wrap">
-                <h3 className="font-display text-sm font-semibold flex items-center gap-2">
-                  <Scroll className="h-4 w-4 text-illuminated" /> Kronikářské zmínky
-                  <Badge variant="secondary" className="text-[9px]">{chronicleExcerpts.length}</Badge>
-                </h3>
-                <Select value={chronicleCatFilter} onValueChange={setChronicleCatFilter}>
-                  <SelectTrigger className="h-6 w-24 text-[10px] ml-auto">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {CHRONICLE_CATEGORIES.map(cat => (
-                      <SelectItem key={cat.value} value={cat.value} className="text-xs">{cat.label}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <Button variant="ghost" size="sm" className="h-6 text-[10px] px-2" onClick={() => setChronicleExpanded(!chronicleExpanded)}>
-                  {chronicleExpanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-                </Button>
-              </div>
-              <div className="space-y-2">
-                {pagedChronicles.map(ch => (
-                  <div key={ch.id} className="p-3 rounded-lg bg-muted/20 border-l-2 border-illuminated/30 hover:bg-muted/30 transition-colors">
-                    <p className="text-xs text-foreground font-body leading-relaxed line-clamp-4">{ch.text}</p>
-                    <div className="flex items-center gap-2 mt-1.5">
-                      {ch.turn_from && (
-                        <span className="text-[10px] text-muted-foreground">Kola {ch.turn_from}–{ch.turn_to}</span>
-                      )}
-                      <Badge variant="outline" className="text-[9px]">{ch.epoch_style}</Badge>
-                    </div>
-                  </div>
-                ))}
-              </div>
-              {chronicleExcerpts.length > pagedChronicles.length && (
-                <Button variant="ghost" size="sm" className="w-full mt-2 text-xs" onClick={() => setChroniclePage(p => p + 1)}>
-                  Zobrazit další…
-                </Button>
-              )}
-            </div>
-          )}
-
-          {/* Generate / Regenerate button */}
-          {descriptionText && (
-            <div className="text-right">
-              <Button size="sm" variant="ghost" onClick={handleGenerate} disabled={generating} className="text-xs text-muted-foreground">
-                {generating ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <Sparkles className="h-3 w-3 mr-1" />}
-                Přegenerovat záznam
-              </Button>
-            </div>
-          )}
         </div>
       </div>
-    </ScrollArea>
+
+      {/* ═══ SCROLLABLE CONTENT AREA ═══ */}
+      <div className="flex-1 min-h-0 overflow-y-auto pb-24">
+        <div className="max-w-[900px] mx-auto px-4 md:px-6 py-4">
+          {/* ═══ PARCHMENT CHRONICLE CARD ═══ */}
+          <div className="chronicle-parchment rounded-xl p-6 md:p-8">
+
+            {/* D) PROFILE SNAPSHOT (hidden in reading mode) */}
+            {!readingMode && keyFacts.length > 0 && (
+              <>
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-2.5 p-3.5 rounded-lg border mb-4"
+                  style={{
+                    background: 'hsl(var(--secondary) / 0.3)',
+                    borderColor: 'hsl(var(--primary) / 0.15)',
+                  }}
+                >
+                  {keyFacts.map((f, i) => (
+                    <div key={i} className="flex items-center gap-1.5 text-xs">
+                      {f.icon && <span className="text-primary shrink-0">{f.icon}</span>}
+                      <span className="text-muted-foreground font-body">{f.label}:</span>
+                      <span className="font-display font-semibold text-foreground truncate">{f.value}</span>
+                    </div>
+                  ))}
+                </div>
+                <OrnamentalDivider />
+              </>
+            )}
+
+            {/* Encyclopedia entry */}
+            <section className="mb-2">
+              <h3 className="font-decorative text-base md:text-lg font-semibold mb-3 flex items-center gap-2 text-foreground">
+                <BookOpen className="h-4 w-4 text-primary" /> Encyklopedický záznam
+              </h3>
+              {descriptionText ? (
+                <div className="prose-chronicle text-[15px] md:text-base leading-[1.7] text-foreground/90 font-body">
+                  <RichText text={descriptionText} className="whitespace-pre-wrap" />
+                </div>
+              ) : (
+                <div className="text-center py-8 rounded-lg border border-dashed"
+                  style={{ borderColor: 'hsl(var(--primary) / 0.2)', background: 'hsl(var(--muted) / 0.15)' }}
+                >
+                  <Scroll className="h-10 w-10 text-primary/30 mx-auto mb-3" />
+                  <p className="text-sm text-muted-foreground italic font-body mb-3">Tento záznam dosud nebyl sepsán kronikáři.</p>
+                  <Button size="sm" variant="outline" onClick={handleGenerate} disabled={generating} className="border-primary/30">
+                    {generating ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <Sparkles className="h-3 w-3 mr-1" />}
+                    Zapsat do kroniky
+                  </Button>
+                </div>
+              )}
+            </section>
+
+            <OrnamentalDivider />
+
+            {/* E) SAGA SECTION */}
+            <section className="mb-2">
+              <div className="flex items-center gap-2 mb-3 flex-wrap">
+                <h3 className="font-decorative text-base md:text-lg font-semibold flex items-center gap-2 text-foreground">
+                  <FileText className="h-4 w-4 text-primary" /> Sága
+                </h3>
+                {sagaVersions.length > 1 && (
+                  <Select value={selectedSagaVersion} onValueChange={setSelectedSagaVersion}>
+                    <SelectTrigger className="h-6 w-28 text-[10px]"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="latest" className="text-xs">Nejnovější</SelectItem>
+                      {sagaVersions.map(v => (
+                        <SelectItem key={v.version} value={String(v.version)} className="text-xs">
+                          v{v.version} {v.is_ai_generated ? "🤖" : "✍"}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+                <div className="ml-auto flex items-center gap-1">
+                  {isOwner && !editingSaga && (
+                    <Button variant="ghost" size="sm" className="h-6 text-[10px] px-2" onClick={() => { setEditingSaga(true); setSagaDraft(currentSaga?.saga_text || ""); }}>
+                      <Pencil className="h-3 w-3 mr-1" /> Upravit
+                    </Button>
+                  )}
+                  <Button variant="ghost" size="sm" className="h-6 text-[10px] px-2" onClick={handleRegenerateSaga} disabled={generatingSaga}>
+                    {generatingSaga ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <Sparkles className="h-3 w-3 mr-1" />}
+                    AI sága
+                  </Button>
+                </div>
+              </div>
+
+              {editingSaga ? (
+                <div className="space-y-2">
+                  <Textarea value={sagaDraft} onChange={e => setSagaDraft(e.target.value)} rows={8} className="text-sm font-body" placeholder="Napište příběh tohoto místa…" />
+                  <div className="flex gap-2 justify-end">
+                    <Button variant="ghost" size="sm" onClick={() => setEditingSaga(false)}><X className="h-3 w-3 mr-1" /> Zrušit</Button>
+                    <Button size="sm" onClick={handleSaveSaga} disabled={savingSaga}>
+                      {savingSaga ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <Save className="h-3 w-3 mr-1" />}
+                      Uložit (nová verze)
+                    </Button>
+                  </div>
+                </div>
+              ) : currentSaga ? (
+                <div className="prose-chronicle text-[15px] md:text-base leading-[1.7] text-foreground/90 font-body p-4 rounded-lg"
+                  style={{
+                    background: 'hsl(var(--secondary) / 0.2)',
+                    borderLeft: '3px solid hsl(var(--primary) / 0.4)',
+                  }}
+                >
+                  <RichText text={currentSaga.saga_text} className="whitespace-pre-wrap" />
+                  <div className="mt-3 text-[10px] text-muted-foreground flex items-center gap-2 pt-2" style={{ borderTop: '1px solid hsl(var(--primary) / 0.1)' }}>
+                    <History className="h-3 w-3" />
+                    v{currentSaga.version} · {currentSaga.is_ai_generated ? "🤖 AI" : `✍ ${currentSaga.author_player}`}
+                    {currentSaga.created_at && ` · ${new Date(currentSaga.created_at).toLocaleDateString("cs")}`}
+                  </div>
+                </div>
+              ) : (
+                <div className="text-center py-5 rounded-lg border border-dashed" style={{ borderColor: 'hsl(var(--primary) / 0.15)' }}>
+                  <p className="text-xs text-muted-foreground italic font-body">Sága dosud nebyla napsána.</p>
+                </div>
+              )}
+            </section>
+
+            {/* Entity-type specific sections (hidden in reading mode) */}
+            {!readingMode && entityType === "event" && entity && (
+              <>
+                <OrnamentalDivider />
+                <section className="mb-2">
+                  {entity.description && !descriptionText?.includes(entity.description) && (
+                    <div className="mb-3">
+                      <h3 className="font-decorative text-base font-semibold mb-2">Popis události</h3>
+                      <RichText text={entity.description} className="text-sm font-body leading-relaxed" />
+                    </div>
+                  )}
+                  {entity.participants && Array.isArray(entity.participants) && entity.participants.length > 0 && (
+                    <div className="mt-3">
+                      <h3 className="font-decorative text-base font-semibold mb-2 flex items-center gap-2">
+                        <Users className="h-4 w-4 text-primary" /> Účastníci
+                      </h3>
+                      <div className="flex flex-wrap gap-1.5">
+                        {entity.participants.map((p: any, i: number) => (
+                          <Badge key={i} variant="outline" className="text-xs">
+                            {typeof p === "string" ? p : p.name || JSON.stringify(p)}
+                          </Badge>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </section>
+              </>
+            )}
+
+            {/* City-specific */}
+            {!readingMode && entityType === "city" && entity && (entity.vulnerability_score != null || entity.famine_turn) && (
+              <>
+                <OrnamentalDivider />
+                <section className="mb-2 grid grid-cols-2 gap-2">
+                  {entity.vulnerability_score != null && (
+                    <div className="p-3 rounded-lg text-center" style={{ background: 'hsl(var(--secondary) / 0.25)', border: '1px solid hsl(var(--border))' }}>
+                      <div className="text-[10px] text-muted-foreground">Zranitelnost</div>
+                      <div className={`text-lg font-bold font-display ${entity.vulnerability_score > 50 ? "text-destructive" : "text-foreground"}`}>{entity.vulnerability_score.toFixed(0)}</div>
+                    </div>
+                  )}
+                  {entity.famine_turn && (
+                    <div className="p-3 rounded-lg text-center" style={{ background: 'hsl(var(--destructive) / 0.1)', border: '1px solid hsl(var(--destructive) / 0.3)' }}>
+                      <div className="text-[10px] text-destructive font-semibold">⚠ Hladomor</div>
+                      <div className="text-lg font-bold font-display text-destructive">Deficit {entity.famine_severity}</div>
+                    </div>
+                  )}
+                </section>
+              </>
+            )}
+
+            {/* Person-specific */}
+            {!readingMode && entityType === "person" && entity?.flavor_trait && (
+              <>
+                <OrnamentalDivider />
+                <section className="mb-2">
+                  <h3 className="font-decorative text-base font-semibold mb-2 flex items-center gap-2">
+                    <Zap className="h-4 w-4 text-primary" /> Osobnostní rysy
+                  </h3>
+                  <Badge variant="outline" className="text-xs border-primary/30">{entity.flavor_trait}</Badge>
+                </section>
+              </>
+            )}
+
+            {/* G) RELATED ENTITIES */}
+            {!readingMode && relatedEntities.length > 0 && (
+              <>
+                <OrnamentalDivider />
+                <section className="mb-2">
+                  <h3 className="font-decorative text-base font-semibold mb-3 flex items-center gap-2">
+                    <Users className="h-4 w-4 text-primary" /> Vazby a propojení
+                  </h3>
+                  <div className="space-y-1">
+                    {relatedEntities.map((rel, i) => (
+                      <div key={i}
+                        className="flex items-center gap-2 py-2 px-3 rounded-lg hover:bg-secondary/30 cursor-pointer transition-colors"
+                        onClick={() => onEntityClick(rel.type, rel.id, rel.name)}
+                      >
+                        <span className="text-primary">{ENTITY_ICONS[rel.type]}</span>
+                        <span className="font-display text-sm truncate">{rel.name}</span>
+                        <Badge variant="outline" className="text-[9px] ml-auto border-primary/20">{rel.relation}</Badge>
+                        <ChevronRight className="h-3 w-3 text-muted-foreground" />
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              </>
+            )}
+
+            {/* Related Events */}
+            {!readingMode && relatedEvents.length > 0 && (
+              <>
+                <OrnamentalDivider />
+                <section className="mb-2">
+                  <h3 className="font-decorative text-base font-semibold mb-3 flex items-center gap-2">
+                    <Swords className="h-4 w-4 text-primary" /> Klíčové události
+                  </h3>
+                  <div className="space-y-1">
+                    {relatedEvents.map(evt => (
+                      <div key={evt.id}
+                        className="flex items-center gap-2 py-2 px-3 rounded-lg hover:bg-secondary/30 cursor-pointer transition-colors"
+                        onClick={() => onEntityClick("event", evt.id, evt.title)}
+                      >
+                        <Calendar className="h-3.5 w-3.5 text-primary shrink-0" />
+                        <span className="font-display text-sm truncate">{evt.title}</span>
+                        {evt.event_category && <Badge variant="outline" className="text-[9px] ml-auto border-primary/20">{evt.event_category}</Badge>}
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              </>
+            )}
+
+            {/* F) CHRONICLE MENTIONS */}
+            {chronicleExcerpts.length > 0 && (
+              <>
+                <OrnamentalDivider />
+                <section className="mb-2">
+                  <div className="flex items-center gap-2 mb-3 flex-wrap">
+                    <h3 className="font-decorative text-base font-semibold flex items-center gap-2">
+                      <Scroll className="h-4 w-4 text-primary" /> Kronikářské zmínky
+                      <Badge variant="secondary" className="text-[9px]">{chronicleExcerpts.length}</Badge>
+                    </h3>
+                    <Select value={chronicleCatFilter} onValueChange={setChronicleCatFilter}>
+                      <SelectTrigger className="h-6 w-24 text-[10px] ml-auto"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        {CHRONICLE_CATEGORIES.map(cat => (
+                          <SelectItem key={cat.value} value={cat.value} className="text-xs">{cat.label}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Button variant="ghost" size="sm" className="h-6 text-[10px] px-2" onClick={() => setChronicleExpanded(!chronicleExpanded)}>
+                      {chronicleExpanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                    </Button>
+                  </div>
+                  <div className="space-y-2.5">
+                    {pagedChronicles.map(ch => (
+                      <div key={ch.id} className="p-3.5 rounded-lg transition-colors"
+                        style={{
+                          background: 'hsl(var(--secondary) / 0.2)',
+                          borderLeft: '3px solid hsl(var(--primary) / 0.25)',
+                        }}
+                      >
+                        <p className="text-sm text-foreground/85 font-body leading-relaxed line-clamp-4">{ch.text}</p>
+                        <div className="flex items-center gap-2 mt-2">
+                          {ch.turn_from && (
+                            <span className="text-[10px] text-muted-foreground">Kola {ch.turn_from}–{ch.turn_to}</span>
+                          )}
+                          <Badge variant="outline" className="text-[9px] border-primary/20">{ch.epoch_style}</Badge>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  {chronicleExcerpts.length > pagedChronicles.length && (
+                    <Button variant="ghost" size="sm" className="w-full mt-3 text-xs text-primary/70" onClick={() => setChroniclePage(p => p + 1)}>
+                      Zobrazit další…
+                    </Button>
+                  )}
+                </section>
+              </>
+            )}
+
+            {/* Regenerate button */}
+            {descriptionText && (
+              <>
+                <OrnamentalDivider />
+                <div className="text-center">
+                  <Button size="sm" variant="ghost" onClick={handleGenerate} disabled={generating} className="text-xs text-muted-foreground">
+                    {generating ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <Sparkles className="h-3 w-3 mr-1" />}
+                    Přegenerovat záznam
+                  </Button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
   );
 };
 
