@@ -135,7 +135,8 @@ const EconomyTab = ({ sessionId, currentPlayerName, currentTurn, cities, resourc
   const currentMob = realm ? Math.round((realm.mobilization_rate || 0.1) * 100) : 10;
   const previewMob = mobPreview ?? currentMob;
   const baseGrain = myCities.reduce((s, c) => s + (profileMap[c.id]?.base_grain || 0), 0);
-  const projectedGrainProd = Math.round(baseGrain * (1 - previewMob / 100));
+  const earlyBuffer = myCities.length <= 3 ? 10 : 0;
+  const projectedGrainProd = Math.round(baseGrain * (1 - previewMob / 100 * 0.5)) + earlyBuffer;
   const projectedGrainNet = projectedGrainProd - totals.grainCons;
 
   const SortIcon = ({ field }: { field: CitySortKey }) => (

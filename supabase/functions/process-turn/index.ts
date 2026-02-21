@@ -139,9 +139,14 @@ Deno.serve(async (req) => {
       const delta = Math.round(city.population_total * netGrowth);
       const newPop = Math.max(200, city.population_total + delta);
       
-      // Store per-city cached grain metrics
-      const cityGrainProd = Math.round((city.population_peasants || 0) * 0.02);
-      const cityGrainCons = Math.round(newPop * 0.015);
+      // Store per-city cached grain metrics (consumption uses class-based formula)
+      const cityGrainProd = 0; // Will be set from settlement profiles later
+      const peas = city.population_peasants || 0;
+      const burg = city.population_burghers || 0;
+      const cler = city.population_clerics || 0;
+      const cityGrainCons = (peas + burg + cler) > 0
+        ? Math.round(peas * 0.3 + burg * 0.6 + cler * 0.5)
+        : Math.round(newPop * 0.4);
 
       await supabase.from("cities").update({
         population_total: newPop,
@@ -163,7 +168,8 @@ Deno.serve(async (req) => {
     const manpowerPool = Math.round(totalPeasants * realm.mobilization_rate);
 
     // 5) Settlement-based resource production
-    const mobilizationPenalty = 1 - realm.mobilization_rate;
+    // Mobilization penalty: halved impact (rate * 0.5)
+    const mobilizationPenalty = 1 - realm.mobilization_rate * 0.5;
 
     // Load settlement resource profiles
     const cityIds = myCities.map(c => c.id);
@@ -231,11 +237,24 @@ Deno.serve(async (req) => {
       }).eq("id", city.id);
     }
 
-    // 6) Grain consumption
+    // 6) Grain consumption (class-based formula)
     let totalConsumption = 0;
     for (const city of myCities) {
-      totalConsumption += Math.round(city.population_total * 0.015);
+      const peas = city.population_peasants || 0;
+      const burg = city.population_burghers || 0;
+      const cler = city.population_clerics || 0;
+      const cityCons = (peas + burg + cler) > 0
+        ? Math.round(peas * 0.3 + burg * 0.6 + cler * 0.5)
+        : Math.round(city.population_total * 0.4);
+      totalConsumption += cityCons;
+
+      // Update cached consumption on city
+      await supabase.from("cities").update({ last_turn_grain_cons: cityCons }).eq("id", city.id);
     }
+
+    // Early-game buffer: small realms get a bonus
+    const earlyGameBuffer = myCities.length <= 3 ? 10 : 0;
+    totalGrainProd += earlyGameBuffer;
 
     // 7) Update granary reserves
     const netGrain = totalGrainProd - totalConsumption;
@@ -271,7 +290,12 @@ Deno.serve(async (req) => {
 
       for (const city of sorted) {
         if (remaining <= 0) break;
-        const cityConsumption = Math.round(city.population_total * 0.015);
+        const cPeas = city.population_peasants || 0;
+        const cBurg = city.population_burghers || 0;
+        const cCler = city.population_clerics || 0;
+        const cityConsumption = (cPeas + cBurg + cCler) > 0
+          ? Math.round(cPeas * 0.3 + cBurg * 0.6 + cCler * 0.5)
+          : Math.round(city.population_total * 0.4);
         const cityNeed = Math.max(0, cityConsumption - city.local_grain_reserve);
         let allocDeficit = Math.min(remaining, cityNeed);
 
