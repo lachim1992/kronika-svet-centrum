@@ -181,55 +181,114 @@ const CityDetailPanel = ({
 
   const SETTLEMENT_LABELS: Record<string, string> = { HAMLET: "Osada", TOWNSHIP: "Městečko", CITY: "Město", POLIS: "Polis" };
 
+  // Fetch wiki image for hero
+  const [wikiImage, setWikiImage] = useState<string | null>(null);
+  const [wikiSummary, setWikiSummary] = useState<string | null>(null);
+  useEffect(() => {
+    const fetchWiki = async () => {
+      const { data } = await supabase.from("wiki_entries").select("image_url, summary")
+        .eq("session_id", city.session_id).eq("entity_type", "city").eq("entity_id", city.id).maybeSingle();
+      if (data) { setWikiImage(data.image_url); setWikiSummary(data.summary); }
+    };
+    fetchWiki();
+  }, [city.id, city.session_id]);
+
   return (
     <div className="space-y-6 p-4">
-      {/* Header */}
-      <div className="flex items-start gap-4">
-        <Button variant="ghost" size="icon" onClick={onBack} className="mt-1">
+      {/* ─── HERO HEADER ─── */}
+      <div className="relative rounded-xl overflow-hidden border border-border">
+        <Button variant="ghost" size="icon" onClick={onBack} className="absolute top-3 left-3 z-10 bg-background/70 backdrop-blur-sm">
           <ArrowLeft className="h-5 w-5" />
         </Button>
-        <div className="flex-1">
-          <div className="flex items-center gap-3 flex-wrap">
-            <h1 className="text-2xl font-display font-bold">{city.name}</h1>
-            <Badge variant="secondary" className="font-display">{city.level}</Badge>
-            {(city as any).status && (city as any).status !== "ok" && (
-              <Badge variant="destructive" className="flex items-center gap-1">
-                {(city as any).status === "devastated" ? <Flame className="h-3 w-3" /> : <Shield className="h-3 w-3" />}
-                {STATUS_LABELS[(city as any).status]}
-              </Badge>
+
+        <div className="relative h-[180px] md:h-[260px]">
+          {wikiImage ? (
+            <img src={wikiImage} alt={city.name} className="w-full h-full object-cover" />
+          ) : (
+            <div className="w-full h-full bg-gradient-to-br from-primary/10 via-muted to-primary/5 flex items-center justify-center">
+              <Castle className="h-16 w-16 text-muted-foreground/20" />
+            </div>
+          )}
+          <div className="absolute inset-0 bg-gradient-to-t from-background via-background/60 to-transparent" />
+
+          <div className="absolute bottom-0 left-0 right-0 p-4 md:p-6">
+            {/* Breadcrumbs */}
+            {(worldContext.region || worldContext.province) && (
+              <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground mb-1.5">
+                {worldContext.region && (
+                  <button className="hover:text-primary transition-colors" onClick={() => onEntityClick?.("region", worldContext.region.id)}>
+                    {worldContext.region.name}
+                  </button>
+                )}
+                {worldContext.region && worldContext.province && <span>›</span>}
+                {worldContext.province && (
+                  <button className="hover:text-primary transition-colors" onClick={() => onEntityClick?.("province", worldContext.province.id)}>
+                    {worldContext.province.name}
+                  </button>
+                )}
+              </div>
             )}
-          </div>
-          <div className="flex items-center gap-3 text-sm text-muted-foreground mt-1">
-            <span className="flex items-center gap-1"><Crown className="h-3 w-3" />{city.owner_player}</span>
-            {city.province && <span className="flex items-center gap-1"><MapPin className="h-3 w-3" />{city.province}</span>}
-            <span>Založeno v roce {(city as any).founded_round || 1}</span>
+
+            <div className="flex items-center gap-3 mb-1 flex-wrap">
+              <h1 className="text-2xl md:text-3xl font-display font-bold">{city.name}</h1>
+              <Badge variant="secondary" className="font-display">{city.level}</Badge>
+              {city.tags && city.tags.map(t => <Badge key={t} variant="outline" className="text-[10px]">{t}</Badge>)}
+              {(city as any).status && (city as any).status !== "ok" && (
+                <Badge variant="destructive" className="flex items-center gap-1">
+                  {(city as any).status === "devastated" ? <Flame className="h-3 w-3" /> : <Shield className="h-3 w-3" />}
+                  {STATUS_LABELS[(city as any).status]}
+                </Badge>
+              )}
+            </div>
+
+            {/* Lore sentence */}
+            {wikiSummary && (
+              <p className="text-sm text-muted-foreground italic max-w-md mb-2">{wikiSummary}</p>
+            )}
+
+            {/* Quick stats chips */}
+            <div className="flex items-center gap-2 flex-wrap">
+              <div className="flex items-center gap-1 px-2 py-1 rounded-md bg-background/70 backdrop-blur-sm border border-border/50 text-xs">
+                <Crown className="h-3 w-3 text-primary" />
+                <span>{city.owner_player}</span>
+              </div>
+              <div className="flex items-center gap-1 px-2 py-1 rounded-md bg-background/70 backdrop-blur-sm border border-border/50 text-xs">
+                <span>👥</span>
+                <span className="font-semibold">{pop.toLocaleString()}</span>
+              </div>
+              <div className="flex items-center gap-1 px-2 py-1 rounded-md bg-background/70 backdrop-blur-sm border border-border/50 text-xs">
+                <Shield className={`h-3 w-3 ${city.city_stability < 40 ? "text-destructive" : "text-primary"}`} />
+                <span className={`font-semibold ${city.city_stability < 40 ? "text-destructive" : ""}`}>{city.city_stability}</span>
+              </div>
+              <div className="flex items-center gap-1 px-2 py-1 rounded-md bg-background/70 backdrop-blur-sm border border-border/50 text-xs">
+                <span>🌾</span>
+                <span className="font-semibold">{((city as any).last_turn_grain_prod || 0) - ((city as any).last_turn_grain_cons || 0)}</span>
+              </div>
+            </div>
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          {isOwner && (
-            <AILoreButton
-              sessionId={city.session_id}
-              loreType="city_lore"
-              context={{ cityName: city.name, biome: city.province || "", owner: city.owner_player }}
-              label="✨ AI Lore"
-              compact
-            />
-          )}
-          {perms.canEditCityStatus ? (
+
+        {/* Admin controls row */}
+        {perms.canEditCityStatus && (
+          <div className="flex items-center gap-2 p-3 bg-card border-t border-border">
+            <span className="text-xs text-muted-foreground font-display">Admin:</span>
             <Select value={(city as any).status || "ok"} onValueChange={handleUpdateStatus}>
               <SelectTrigger className="w-36 h-8 text-xs"><SelectValue /></SelectTrigger>
               <SelectContent>
                 {STATUSES.map(s => <SelectItem key={s} value={s}>{STATUS_LABELS[s]}</SelectItem>)}
               </SelectContent>
             </Select>
-          ) : (
-            (city as any).status && (city as any).status !== "ok" && (
-              <Badge variant="destructive" className="text-xs">
-                {STATUS_LABELS[(city as any).status]}
-              </Badge>
-            )
-          )}
-        </div>
+            {isOwner && (
+              <AILoreButton
+                sessionId={city.session_id}
+                loreType="city_lore"
+                context={{ cityName: city.name, biome: city.province || "", owner: city.owner_player }}
+                label="✨ AI Lore"
+                compact
+              />
+            )}
+          </div>
+        )}
       </div>
 
       {/* World Context Card */}

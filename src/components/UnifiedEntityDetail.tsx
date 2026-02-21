@@ -365,6 +365,12 @@ const UnifiedEntityDetail = ({
     return tabs;
   }, [entityType, relatedWorldEvents.length, confirmedCityEvents.length, images.length, wiki?.image_url]);
 
+  const primaryImage = wiki?.image_url || images.find(i => i.is_primary)?.image_url || images[0]?.image_url;
+
+  // Breadcrumb data for city
+  const cityProvince = city ? provinces.find(p => p.id === city.province_id) : null;
+  const cityRegion = cityProvince ? regions.find(r => r.id === cityProvince.region_id) : null;
+
   return (
     <div className="space-y-6 pb-20">
       {/* Back button */}
@@ -372,39 +378,73 @@ const UnifiedEntityDetail = ({
         <ArrowLeft className="h-3 w-3 mr-1" /> Zpět
       </Button>
 
-      {/* Header */}
-      <div className="flex items-start gap-4">
-        <div className="shrink-0 w-32 h-32 rounded-lg overflow-hidden border border-border bg-muted/30">
-          {wiki?.image_url ? (
-            <img src={wiki.image_url} alt={entityName} className="w-full h-full object-cover" />
-          ) : (
-            <div className="w-full h-full flex items-center justify-center flex-col gap-1">
-              {ENTITY_ICONS[entityType]}
-              <span className="text-[10px] text-muted-foreground">Bez ilustrace</span>
-            </div>
-          )}
-        </div>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 mb-1">
-            {ENTITY_ICONS[entityType]}
-            <h1 className="font-display font-bold text-xl">{entityName}</h1>
-          </div>
-          <div className="flex items-center gap-2 flex-wrap mb-1">
-            <Badge variant="outline" className="text-xs">{ENTITY_LABELS[entityType]}</Badge>
-            {entityOwner && <Badge variant="secondary" className="text-xs">{entityOwner}</Badge>}
-            {city?.status && city.status !== "ok" && (
-              <Badge variant="destructive" className="flex items-center gap-1 text-xs">
-                {city.status === "devastated" ? <Flame className="h-3 w-3" /> : <Shield className="h-3 w-3" />}
-                {STATUS_LABELS[city.status]}
-              </Badge>
+      {/* ─── HERO HEADER (city with image) ─── */}
+      {entityType === "city" && city ? (
+        <div className="relative rounded-xl overflow-hidden border border-border">
+          {/* Hero cover */}
+          <div className="relative h-[200px] md:h-[280px]">
+            {primaryImage ? (
+              <img src={primaryImage} alt={entityName} className="w-full h-full object-cover" />
+            ) : (
+              <div className="w-full h-full bg-gradient-to-br from-primary/10 via-muted to-primary/5 flex items-center justify-center">
+                <Castle className="h-16 w-16 text-muted-foreground/20" />
+              </div>
             )}
+            {/* Gradient overlay */}
+            <div className="absolute inset-0 bg-gradient-to-t from-background via-background/60 to-transparent" />
+            {/* Content overlay */}
+            <div className="absolute bottom-0 left-0 right-0 p-4 md:p-6">
+              {/* Breadcrumbs */}
+              {(cityRegion || cityProvince) && (
+                <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground mb-2">
+                  {cityRegion && (
+                    <button className="hover:text-primary transition-colors" onClick={() => onEntityClick?.("region", cityRegion.id)}>
+                      {cityRegion.name}
+                    </button>
+                  )}
+                  {cityRegion && cityProvince && <ChevronRight className="h-3 w-3" />}
+                  {cityProvince && (
+                    <button className="hover:text-primary transition-colors" onClick={() => onEntityClick?.("province", cityProvince.id)}>
+                      {cityProvince.name}
+                    </button>
+                  )}
+                </div>
+              )}
+              <div className="flex items-center gap-3 mb-2">
+                <h1 className="font-display font-bold text-2xl md:text-3xl">{entityName}</h1>
+                <Badge variant="secondary" className="text-xs">{city.level}</Badge>
+                {city.status && city.status !== "ok" && (
+                  <Badge variant="destructive" className="flex items-center gap-1 text-xs">
+                    {city.status === "devastated" ? <Flame className="h-3 w-3" /> : <Shield className="h-3 w-3" />}
+                    {STATUS_LABELS[city.status]}
+                  </Badge>
+                )}
+              </div>
+              {/* Lore sentence */}
+              {wiki?.summary && (
+                <p className="text-sm text-muted-foreground italic max-w-lg">{wiki.summary}</p>
+              )}
+              {/* Quick stats */}
+              <div className="flex items-center gap-3 mt-3 flex-wrap">
+                {[
+                  { icon: Users, label: "Populace", value: (city.population_total || 0).toLocaleString() },
+                  { icon: Shield, label: "Stabilita", value: city.city_stability, danger: city.city_stability < 40 },
+                  { icon: <span className="text-sm">🌾</span>, label: "Obilí", value: `${(city as any).last_turn_grain_prod || 0} - ${(city as any).last_turn_grain_cons || 0}` },
+                  { icon: Flame, label: "Zranitelnost", value: (city.vulnerability_score || 0).toFixed(0) },
+                ].map((s, i) => (
+                  <div key={i} className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md bg-background/70 backdrop-blur-sm border border-border/50 text-xs">
+                    {typeof s.icon === "object" ? s.icon : (() => { const I = s.icon as any; return <I className={`h-3.5 w-3.5 ${(s as any).danger ? "text-destructive" : "text-primary"}`} />; })()}
+                    <span className="text-muted-foreground">{s.label}</span>
+                    <span className={`font-semibold ${(s as any).danger ? "text-destructive" : ""}`}>{s.value}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
-          {wiki?.summary && (
-            <p className="text-sm font-semibold text-primary mt-1">{wiki.summary}</p>
-          )}
-          {/* Action buttons */}
+
+          {/* Action buttons row */}
           {isOwner && (
-            <div className="flex gap-2 mt-3 flex-wrap">
+            <div className="flex items-center gap-2 p-3 bg-card border-t border-border flex-wrap">
               <Button size="sm" variant="outline" onClick={handleGenerateText} disabled={generatingText}>
                 {generatingText ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <Sparkles className="h-3 w-3 mr-1" />}
                 {wiki?.ai_description ? "Přegenerovat" : "Generovat text"}
@@ -413,22 +453,60 @@ const UnifiedEntityDetail = ({
                 {generatingImage ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <ImageIcon className="h-3 w-3 mr-1" />}
                 Ilustrace
               </Button>
+              {/* Admin-only: level + status dropdowns */}
+              {isAdmin && (
+                <>
+                  <Select value={city.level} onValueChange={v => { updateCity(city.id, { level: v }); onRefetch?.(); }}>
+                    <SelectTrigger className="w-28 h-8 text-xs"><SelectValue /></SelectTrigger>
+                    <SelectContent>{CITY_LEVELS.map(l => <SelectItem key={l} value={l}>{l}</SelectItem>)}</SelectContent>
+                  </Select>
+                  <Select value={city.status || "ok"} onValueChange={handleUpdateStatus}>
+                    <SelectTrigger className="w-32 h-8 text-xs"><SelectValue /></SelectTrigger>
+                    <SelectContent>{STATUSES.map(s => <SelectItem key={s} value={s}>{STATUS_LABELS[s]}</SelectItem>)}</SelectContent>
+                  </Select>
+                </>
+              )}
             </div>
           )}
         </div>
-      </div>
-
-      {/* City management (owner only) */}
-      {entityType === "city" && city && isOwner && (
-        <div className="flex items-center gap-3 flex-wrap">
-          <Select value={city.level} onValueChange={v => { updateCity(city.id, { level: v }); onRefetch?.(); }}>
-            <SelectTrigger className="w-28 h-8 text-xs"><SelectValue /></SelectTrigger>
-            <SelectContent>{CITY_LEVELS.map(l => <SelectItem key={l} value={l}>{l}</SelectItem>)}</SelectContent>
-          </Select>
-          <Select value={city.status || "ok"} onValueChange={handleUpdateStatus}>
-            <SelectTrigger className="w-32 h-8 text-xs"><SelectValue /></SelectTrigger>
-            <SelectContent>{STATUSES.map(s => <SelectItem key={s} value={s}>{STATUS_LABELS[s]}</SelectItem>)}</SelectContent>
-          </Select>
+      ) : (
+        /* ─── Standard header for non-city entities ─── */
+        <div className="flex items-start gap-4">
+          <div className="shrink-0 w-32 h-32 rounded-lg overflow-hidden border border-border bg-muted/30">
+            {primaryImage ? (
+              <img src={primaryImage} alt={entityName} className="w-full h-full object-cover" />
+            ) : (
+              <div className="w-full h-full flex items-center justify-center flex-col gap-1">
+                {ENTITY_ICONS[entityType]}
+                <span className="text-[10px] text-muted-foreground">Bez ilustrace</span>
+              </div>
+            )}
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 mb-1">
+              {ENTITY_ICONS[entityType]}
+              <h1 className="font-display font-bold text-xl">{entityName}</h1>
+            </div>
+            <div className="flex items-center gap-2 flex-wrap mb-1">
+              <Badge variant="outline" className="text-xs">{ENTITY_LABELS[entityType]}</Badge>
+              {entityOwner && <Badge variant="secondary" className="text-xs">{entityOwner}</Badge>}
+            </div>
+            {wiki?.summary && (
+              <p className="text-sm font-semibold text-primary mt-1">{wiki.summary}</p>
+            )}
+            {isOwner && (
+              <div className="flex gap-2 mt-3 flex-wrap">
+                <Button size="sm" variant="outline" onClick={handleGenerateText} disabled={generatingText}>
+                  {generatingText ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <Sparkles className="h-3 w-3 mr-1" />}
+                  {wiki?.ai_description ? "Přegenerovat" : "Generovat text"}
+                </Button>
+                <Button size="sm" variant="outline" onClick={handleGenerateImage} disabled={generatingImage}>
+                  {generatingImage ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <ImageIcon className="h-3 w-3 mr-1" />}
+                  Ilustrace
+                </Button>
+              </div>
+            )}
+          </div>
         </div>
       )}
 
