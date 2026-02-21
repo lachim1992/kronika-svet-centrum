@@ -5,11 +5,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { Scroll, Send, Plus, Users, Building2, Sparkles, Lock, Eye, AlertTriangle } from "lucide-react";
+import { Scroll, Send, Plus, Users, Building2, Sparkles, Lock, Eye, AlertTriangle, Bot } from "lucide-react";
 import { toast } from "sonner";
 
 type GamePlayer = Tables<"game_players">;
 type CityState = Tables<"city_states">;
+type AIFaction = Tables<"ai_factions">;
 
 interface DiplomacyRoom {
   id: string;
@@ -38,6 +39,7 @@ interface DiplomacyPanelProps {
   players: GamePlayer[];
   cityStates: CityState[];
   currentPlayerName: string;
+  gameMode?: string;
 }
 
 const TAG_LABELS: Record<string, string> = {
@@ -55,7 +57,7 @@ const SECRECY_ICONS: Record<string, React.ReactNode> = {
   LEAKABLE: <AlertTriangle className="h-3 w-3" />,
 };
 
-const DiplomacyPanel = ({ sessionId, players, cityStates, currentPlayerName }: DiplomacyPanelProps) => {
+const DiplomacyPanel = ({ sessionId, players, cityStates, currentPlayerName, gameMode }: DiplomacyPanelProps) => {
   const [rooms, setRooms] = useState<DiplomacyRoom[]>([]);
   const [selectedRoom, setSelectedRoom] = useState<DiplomacyRoom | null>(null);
   const [messages, setMessages] = useState<DiplomacyMessage[]>([]);
@@ -66,14 +68,25 @@ const DiplomacyPanel = ({ sessionId, players, cityStates, currentPlayerName }: D
   const [createType, setCreateType] = useState("player_player");
   const [createTarget, setCreateTarget] = useState("");
   const [loadingNpc, setLoadingNpc] = useState(false);
+  const [aiFactions, setAiFactions] = useState<AIFaction[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
+  const isAIMode = gameMode === "tb_single_ai";
   const otherPlayers = players.filter(p => p.player_name !== currentPlayerName).map(p => p.player_name);
 
-  // Fetch rooms
+  // Fetch rooms + AI factions
   useEffect(() => {
     fetchRooms();
+    if (isAIMode) fetchAIFactions();
   }, [sessionId]);
+
+  const fetchAIFactions = async () => {
+    const { data } = await supabase.from("ai_factions")
+      .select("*")
+      .eq("session_id", sessionId)
+      .eq("is_active", true);
+    if (data) setAiFactions(data);
+  };
 
   const fetchRooms = async () => {
     const { data } = await supabase
@@ -120,13 +133,15 @@ const DiplomacyPanel = ({ sessionId, players, cityStates, currentPlayerName }: D
 
     const participant_a = currentPlayerName;
     const participant_b = createTarget;
-    const npc_city_state_id = createType === "player_npc"
+    const isNpcTarget = createType === "player_npc";
+    const isAiFactionTarget = createType === "player_ai_faction";
+    const npc_city_state_id = isNpcTarget
       ? cityStates.find(cs => cs.name === createTarget)?.id || null
       : null;
 
     const { error } = await supabase.from("diplomacy_rooms").insert({
       session_id: sessionId,
-      room_type: createType,
+      room_type: isAiFactionTarget ? "player_ai_faction" : createType,
       participant_a,
       participant_b,
       npc_city_state_id,
@@ -160,36 +175,73 @@ const DiplomacyPanel = ({ sessionId, players, cityStates, currentPlayerName }: D
   };
 
   const handleNpcReply = async () => {
-    if (!selectedRoom || !selectedRoom.npc_city_state_id) return;
+    if (!selectedRoom) return;
     setLoadingNpc(true);
 
     try {
-      const npc = cityStates.find(cs => cs.id === selectedRoom.npc_city_state_id);
-      if (!npc) throw new Error("NPC nenalezeno");
+      const isAiFactionRoom = selectedRoom.room_type === "player_ai_faction";
+      const isNpcRoom = selectedRoom.room_type === "player_npc";
 
-      const { data, error } = await supabase.functions.invoke("diplomacy-reply", {
-        body: {
-          npc: { name: npc.name, type: npc.type, mood: npc.mood },
-          recentMessages: messages.slice(-10),
-          recentConfirmedEvents: [],
-          worldFacts: [],
-        },
-      });
+      if (isAiFactionRoom) {
+        // AI faction diplomacy reply
+        const factionName = selectedRoom.participant_a === currentPlayerName
+          ? selectedRoom.participant_b : selectedRoom.participant_a;
+        const faction = aiFactions.find(f => f.faction_name === factionName);
 
-      if (error) throw error;
+        const { data, error } = await supabase.functions.invoke("diplomacy-reply", {
+          body: {
+            npc: { name: factionName, type: "ai_faction", mood: faction?.personality || "diplomatic" },
+            recentMessages: messages.slice(-10),
+            recentConfirmedEvents: [],
+            worldFacts: [],
+            factionContext: faction ? {
+              personality: faction.personality,
+              disposition: faction.disposition,
+              goals: faction.goals,
+            } : undefined,
+          },
+        });
 
-      // Insert NPC reply as message
-      await supabase.from("diplomacy_messages").insert({
-        room_id: selectedRoom.id,
-        sender: npc.name,
-        sender_type: "npc",
-        message_text: data.replyText || "... diplomat mlčí ...",
-        secrecy: "PRIVATE",
-        message_tag: null,
-        leak_chance: 0,
-      });
+        if (error) throw error;
 
-      toast.success(`${npc.name} odpověděl(a)`);
+        await supabase.from("diplomacy_messages").insert({
+          room_id: selectedRoom.id,
+          sender: factionName,
+          sender_type: "npc",
+          message_text: data.replyText || "... vyslanec mlčí ...",
+          secrecy: "PRIVATE",
+          message_tag: null,
+          leak_chance: 0,
+        });
+
+        toast.success(`${factionName} odpověděl(a)`);
+      } else if (isNpcRoom && selectedRoom.npc_city_state_id) {
+        const npc = cityStates.find(cs => cs.id === selectedRoom.npc_city_state_id);
+        if (!npc) throw new Error("NPC nenalezeno");
+
+        const { data, error } = await supabase.functions.invoke("diplomacy-reply", {
+          body: {
+            npc: { name: npc.name, type: npc.type, mood: npc.mood },
+            recentMessages: messages.slice(-10),
+            recentConfirmedEvents: [],
+            worldFacts: [],
+          },
+        });
+
+        if (error) throw error;
+
+        await supabase.from("diplomacy_messages").insert({
+          room_id: selectedRoom.id,
+          sender: npc.name,
+          sender_type: "npc",
+          message_text: data.replyText || "... diplomat mlčí ...",
+          secrecy: "PRIVATE",
+          message_tag: null,
+          leak_chance: 0,
+        });
+
+        toast.success(`${npc.name} odpověděl(a)`);
+      }
     } catch {
       toast.error("AI diplomat selhal");
     }
@@ -223,6 +275,9 @@ const DiplomacyPanel = ({ sessionId, players, cityStates, currentPlayerName }: D
                 <SelectContent>
                   <SelectItem value="player_player"><Users className="h-3 w-3 inline mr-1" />Hráč ↔ Hráč</SelectItem>
                   <SelectItem value="player_npc"><Building2 className="h-3 w-3 inline mr-1" />Hráč ↔ NPC</SelectItem>
+                  {isAIMode && aiFactions.length > 0 && (
+                    <SelectItem value="player_ai_faction"><Bot className="h-3 w-3 inline mr-1" />Hráč ↔ AI Frakce</SelectItem>
+                  )}
                 </SelectContent>
               </Select>
               <Select value={createTarget} onValueChange={setCreateTarget}>
@@ -230,7 +285,9 @@ const DiplomacyPanel = ({ sessionId, players, cityStates, currentPlayerName }: D
                 <SelectContent>
                   {createType === "player_player"
                     ? otherPlayers.map(p => <SelectItem key={p} value={p}>{p}</SelectItem>)
-                    : cityStates.map(cs => <SelectItem key={cs.id} value={cs.name}>{cs.name} ({cs.type})</SelectItem>)
+                    : createType === "player_ai_faction"
+                      ? aiFactions.map(f => <SelectItem key={f.id} value={f.faction_name}>{f.faction_name} ({f.personality})</SelectItem>)
+                      : cityStates.map(cs => <SelectItem key={cs.id} value={cs.name}>{cs.name} ({cs.type})</SelectItem>)
                   }
                 </SelectContent>
               </Select>
@@ -251,6 +308,7 @@ const DiplomacyPanel = ({ sessionId, players, cityStates, currentPlayerName }: D
             {myRooms.map(room => {
               const otherParticipant = room.participant_a === currentPlayerName ? room.participant_b : room.participant_a;
               const isNpc = room.room_type === "player_npc";
+              const isAiFaction = room.room_type === "player_ai_faction";
               return (
                 <div
                   key={room.id}
@@ -258,12 +316,12 @@ const DiplomacyPanel = ({ sessionId, players, cityStates, currentPlayerName }: D
                   className="manuscript-card p-4 cursor-pointer hover:border-primary/50 transition-colors"
                 >
                   <div className="flex items-center gap-2">
-                    {isNpc ? <Building2 className="h-5 w-5 text-royal-purple" /> : <Users className="h-5 w-5 text-illuminated" />}
+                    {isAiFaction ? <Bot className="h-5 w-5 text-primary" /> : isNpc ? <Building2 className="h-5 w-5 text-royal-purple" /> : <Users className="h-5 w-5 text-illuminated" />}
                     <h3 className="font-display font-semibold">{otherParticipant}</h3>
                   </div>
                   <div className="flex items-center gap-2 mt-2">
                     <Badge variant="outline" className="text-xs">
-                      {isNpc ? "Městský stát" : "Hráč"}
+                      {isAiFaction ? "AI Frakce" : isNpc ? "Městský stát" : "Hráč"}
                     </Badge>
                     <span className="text-xs text-muted-foreground">
                       {new Date(room.created_at).toLocaleDateString("cs-CZ")}
@@ -282,6 +340,8 @@ const DiplomacyPanel = ({ sessionId, players, cityStates, currentPlayerName }: D
   const otherParticipant = selectedRoom.participant_a === currentPlayerName
     ? selectedRoom.participant_b : selectedRoom.participant_a;
   const isNpcRoom = selectedRoom.room_type === "player_npc";
+  const isAiFactionRoom = selectedRoom.room_type === "player_ai_faction";
+  const canRequestReply = isNpcRoom || isAiFactionRoom;
 
   return (
     <div className="flex flex-col h-[calc(100vh-200px)] p-4">
@@ -292,11 +352,11 @@ const DiplomacyPanel = ({ sessionId, players, cityStates, currentPlayerName }: D
             ← Zpět
           </Button>
           <h2 className="font-display font-semibold flex items-center gap-2">
-            {isNpcRoom ? <Building2 className="h-5 w-5 text-royal-purple" /> : <Users className="h-5 w-5 text-illuminated" />}
+            {isAiFactionRoom ? <Bot className="h-5 w-5 text-primary" /> : isNpcRoom ? <Building2 className="h-5 w-5 text-royal-purple" /> : <Users className="h-5 w-5 text-illuminated" />}
             {otherParticipant}
           </h2>
         </div>
-        {isNpcRoom && (
+        {canRequestReply && (
           <Button
             onClick={handleNpcReply}
             disabled={loadingNpc}

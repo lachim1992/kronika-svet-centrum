@@ -83,3 +83,6 @@ verify_jwt = false
 
 [functions.ai-faction-turn]
 verify_jwt = false
+
+[functions.ai-compress-history]
+verify_jwt = false

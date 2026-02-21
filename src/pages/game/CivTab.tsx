@@ -64,7 +64,7 @@ const CivTab = ({
             <span className="flex items-center gap-2"><Feather className="h-4 w-4 text-primary" />Diplomacie</span>
           </AccordionTrigger>
           <AccordionContent className="px-4 pb-4">
-            <DiplomacyPanel sessionId={sessionId} players={players} cityStates={cityStates} currentPlayerName={currentPlayerName} />
+            <DiplomacyPanel sessionId={sessionId} players={players} cityStates={cityStates} currentPlayerName={currentPlayerName} gameMode={undefined} />
           </AccordionContent>
         </AccordionItem>
 

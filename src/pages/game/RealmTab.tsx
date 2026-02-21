@@ -81,12 +81,12 @@ const RealmTab = ({
         <TabsContent value="turn" className="mt-3">
           <TurnProgressionPanel
             sessionId={sessionId} currentTurn={currentTurn} players={players}
-            currentPlayerName={currentPlayerName} myRole={myRole} onRefetch={onRefetch}
+            currentPlayerName={currentPlayerName} myRole={myRole} gameMode={session?.game_mode} onRefetch={onRefetch}
           />
         </TabsContent>
 
         <TabsContent value="diplomacy" className="mt-3">
-          <DiplomacyPanel sessionId={sessionId} players={players} cityStates={cityStates} currentPlayerName={currentPlayerName} />
+          <DiplomacyPanel sessionId={sessionId} players={players} cityStates={cityStates} currentPlayerName={currentPlayerName} gameMode={session?.game_mode} />
         </TabsContent>
 
         <TabsContent value="war" className="mt-3">
