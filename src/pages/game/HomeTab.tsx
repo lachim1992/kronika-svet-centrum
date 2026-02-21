@@ -123,6 +123,7 @@ const HomeTab = ({
           sessionId={sessionId}
           currentPlayerName={currentPlayerName}
           currentTurn={currentTurn}
+          myRole={myRole}
           onComplete={() => { setShowOnboarding(false); fetchRealm(); onRefetch?.(); }}
         />
       </div>
