@@ -427,6 +427,7 @@ const ChroWikiTab = ({ sessionId, currentPlayerName = "", myRole = "player", onE
               entityType={selectedEntity.type}
               entityId={selectedEntity.id}
               entityName={selectedEntity.name}
+              currentPlayerName={currentPlayerName}
               countries={countries}
               regions={regions}
               provinces={provinces}
