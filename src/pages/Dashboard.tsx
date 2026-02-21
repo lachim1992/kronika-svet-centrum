@@ -47,6 +47,7 @@ const Dashboard = () => {
   const [myPlayerName, setMyPlayerName] = useState("Hráč");
   const [worldFoundation, setWorldFoundation] = useState<any>(null);
   const [codexEntityTarget, setCodexEntityTarget] = useState<{ type: string; id: string } | null>(null);
+  const [foundCityTrigger, setFoundCityTrigger] = useState(0);
 
   useEffect(() => {
     if (!user || !sessionId) return;
@@ -104,13 +105,20 @@ const Dashboard = () => {
 
   const currentTurn = session.current_turn;
 
-  const handleAction = (action: string) => {
+  const handleAction = (action: string, payload?: any) => {
     console.log(`Dashboard handleAction: ${action}`);
+
+    // Special handling for found_city — stay on Home tab, trigger settlement creation
+    if (action === "found_city") {
+      setActiveTab("home");
+      setFoundCityTrigger(prev => prev + 1);
+      return;
+    }
+
     const tabMap: Record<string, TabId> = {
       open_realm: "realm",
       manage_armies: "realm",
       view_threats: "realm",
-      found_city: "world",
       send_expedition: "world",
       launch_expedition: "world",
       create_event: "feed",
@@ -184,7 +192,7 @@ const Dashboard = () => {
       <ResourceHUD sessionId={session.id} playerName={myPlayerName} cities={cities} />
 
       <main className="max-w-[1600px] mx-auto px-3 py-3">
-        {activeTab === "home" && <HomeTab {...sharedProps} />}
+        {activeTab === "home" && <HomeTab {...sharedProps} foundCityTrigger={foundCityTrigger} />}
         {activeTab === "world" && <WorldTab {...sharedProps} worldEntityTarget={worldEntityTarget} onClearWorldEntityTarget={() => setWorldEntityTarget(null)} />}
         {activeTab === "realm" && <RealmTab {...sharedProps} />}
         {activeTab === "army" && (

@@ -3,14 +3,16 @@ import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Crown, Castle, Swords, Users, Wheat, Flame,
   MapPin, Eye, ArrowUpDown, Skull, BarChart3,
-  Trees, Mountain, Anvil
+  Trees, Mountain, Anvil, Plus, Loader2
 } from "lucide-react";
 import type { EntityIndex } from "@/hooks/useEntityIndex";
 import ProvinceOnboardingWizard from "@/components/ProvinceOnboardingWizard";
+import { toast } from "sonner";
 
 const SETTLEMENT_LABELS: Record<string, string> = {
   HAMLET: "Osada", TOWNSHIP: "Městečko", CITY: "Město", POLIS: "Polis",
@@ -41,17 +43,20 @@ interface Props {
   onEventClick?: (eventId: string) => void;
   onEntityClick?: (type: string, id: string) => void;
   onRefetch?: () => void;
+  foundCityTrigger?: number;
 }
 
 const HomeTab = ({
   sessionId, cities, currentPlayerName, currentTurn, myRole,
-  onEntityClick, onRefetch,
+  onEntityClick, onRefetch, foundCityTrigger,
 }: Props) => {
   const [realm, setRealm] = useState<any>(null);
   const [stacks, setStacks] = useState<any[]>([]);
   const [sortKey, setSortKey] = useState<SortKey>("population");
   const [hasProvince, setHasProvince] = useState<boolean | null>(null);
   const [showOnboarding, setShowOnboarding] = useState(false);
+  const [showCreateSettlement, setShowCreateSettlement] = useState(false);
+  const [playerProvinces, setPlayerProvinces] = useState<any[]>([]);
 
   const myCities = cities.filter(c => c.owner_player === currentPlayerName);
 
@@ -61,12 +66,14 @@ const HomeTab = ({
         .eq("session_id", sessionId).eq("player_name", currentPlayerName).maybeSingle(),
       supabase.from("military_stacks").select("power")
         .eq("session_id", sessionId).eq("player_name", currentPlayerName).eq("is_active", true),
-      supabase.from("provinces").select("id")
-        .eq("session_id", sessionId).eq("owner_player", currentPlayerName).limit(1),
+      supabase.from("provinces").select("id, name")
+        .eq("session_id", sessionId).eq("owner_player", currentPlayerName),
     ]);
     if (realmRes.data) setRealm(realmRes.data);
     setStacks(stacksRes.data || []);
-    const playerHasProvince = (provRes.data && provRes.data.length > 0);
+    const provs = provRes.data || [];
+    setPlayerProvinces(provs);
+    const playerHasProvince = provs.length > 0;
     setHasProvince(playerHasProvince);
     // Show onboarding for non-admin players with no province and no cities
     if (!playerHasProvince && myRole !== "admin" && myCities.length === 0) {
@@ -75,6 +82,19 @@ const HomeTab = ({
   }, [sessionId, currentPlayerName, myRole, myCities.length]);
 
   useEffect(() => { fetchRealm(); }, [fetchRealm]);
+
+  // Handle found_city trigger from FAB/Dashboard
+  useEffect(() => {
+    if (!foundCityTrigger || foundCityTrigger === 0) return;
+    if (hasProvince === null) return; // still loading
+    if (!hasProvince) {
+      // No province → show onboarding
+      setShowOnboarding(true);
+    } else {
+      // Has province → show create settlement form
+      setShowCreateSettlement(true);
+    }
+  }, [foundCityTrigger, hasProvince]);
 
   const totalPop = myCities.reduce((s, c) => s + (c.population_total || 0), 0);
   const totalPower = stacks.reduce((s, st) => s + (st.power || 0), 0);
@@ -160,18 +180,40 @@ const HomeTab = ({
       {/* Cities List Header */}
       <div className="flex items-center justify-between">
         <h3 className="font-display font-semibold text-base">Města a osady ({myCities.length})</h3>
-        <Select value={sortKey} onValueChange={v => setSortKey(v as SortKey)}>
-          <SelectTrigger className="w-40 h-9 text-sm">
-            <ArrowUpDown className="h-3.5 w-3.5 mr-1.5" />
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {(Object.entries(SORT_LABELS) as [SortKey, string][]).map(([k, v]) => (
-              <SelectItem key={k} value={k}>{v}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <div className="flex items-center gap-2">
+          {hasProvince && (
+            <Button size="sm" variant="outline" className="font-display text-xs" onClick={() => setShowCreateSettlement(true)}>
+              <Plus className="h-3 w-3 mr-1" />Založit osadu
+            </Button>
+          )}
+          <Select value={sortKey} onValueChange={v => setSortKey(v as SortKey)}>
+            <SelectTrigger className="w-40 h-9 text-sm">
+              <ArrowUpDown className="h-3.5 w-3.5 mr-1.5" />
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {(Object.entries(SORT_LABELS) as [SortKey, string][]).map(([k, v]) => (
+                <SelectItem key={k} value={k}>{v}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
       </div>
+
+      {/* Inline Create Settlement Form */}
+      {showCreateSettlement && <CreateSettlementForm
+        sessionId={sessionId}
+        currentPlayerName={currentPlayerName}
+        currentTurn={currentTurn}
+        provinces={playerProvinces}
+        onCreated={(cityId) => {
+          setShowCreateSettlement(false);
+          fetchRealm();
+          onRefetch?.();
+          onEntityClick?.("city", cityId);
+        }}
+        onCancel={() => setShowCreateSettlement(false)}
+      />}
 
       {/* Empty state */}
       {myCities.length === 0 ? (
@@ -298,5 +340,80 @@ const HomeTab = ({
     </div>
   );
 };
+
+/* ─── Inline Settlement Creation Form ─── */
+
+function CreateSettlementForm({ sessionId, currentPlayerName, currentTurn, provinces, onCreated, onCancel }: {
+  sessionId: string;
+  currentPlayerName: string;
+  currentTurn: number;
+  provinces: { id: string; name: string }[];
+  onCreated: (cityId: string) => void;
+  onCancel: () => void;
+}) {
+  const [name, setName] = useState("");
+  const [provinceId, setProvinceId] = useState(provinces[0]?.id || "");
+  const [creating, setCreating] = useState(false);
+
+  const handleCreate = async () => {
+    if (!name.trim()) { toast.error("Zadejte název osady"); return; }
+    if (!provinceId) { toast.error("Vyberte provincii"); return; }
+
+    const selectedProvince = provinces.find(p => p.id === provinceId);
+    setCreating(true);
+    try {
+      const { data, error } = await supabase.from("cities").insert({
+        session_id: sessionId,
+        owner_player: currentPlayerName,
+        name: name.trim(),
+        province_id: provinceId,
+        province: selectedProvince?.name || "",
+        level: "Osada",
+        settlement_level: "HAMLET",
+        founded_round: currentTurn,
+      }).select("id").single();
+
+      if (error) throw error;
+      toast.success(`Osada ${name.trim()} založena!`);
+      onCreated(data.id);
+    } catch (err: any) {
+      console.error(err);
+      toast.error("Chyba: " + (err.message || "Nepodařilo se založit osadu"));
+    }
+    setCreating(false);
+  };
+
+  return (
+    <div className="game-card p-5 space-y-4 border-primary/30">
+      <h3 className="font-display font-semibold text-sm flex items-center gap-2">
+        <Castle className="h-4 w-4 text-primary" />
+        Založit novou osadu
+      </h3>
+      <div className="space-y-3">
+        <Input
+          placeholder="Název osady"
+          value={name}
+          onChange={e => setName(e.target.value)}
+        />
+        {provinces.length > 1 ? (
+          <Select value={provinceId} onValueChange={setProvinceId}>
+            <SelectTrigger className="h-9 text-sm"><SelectValue placeholder="Vyberte provincii" /></SelectTrigger>
+            <SelectContent>
+              {provinces.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        ) : (
+          <p className="text-sm text-muted-foreground">Provincie: <strong>{provinces[0]?.name}</strong></p>
+        )}
+      </div>
+      <div className="flex gap-2">
+        <Button onClick={handleCreate} disabled={creating || !name.trim()} className="font-display flex-1">
+          {creating ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Zakládám...</> : "Založit osadu"}
+        </Button>
+        <Button variant="outline" onClick={onCancel} className="font-display">Zrušit</Button>
+      </div>
+    </div>
+  );
+}
 
 export default HomeTab;

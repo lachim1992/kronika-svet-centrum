@@ -50,7 +50,7 @@ interface ActionItem {
 }
 
 const CORE_ACTIONS: ActionItem[] = [
-  { id: "found_city", label: "Založit město", desc: "Nové osídlení ve vašem území", icon: Castle },
+  { id: "found_city", label: "Založit osadu", desc: "Nové osídlení ve vašem území", icon: Castle },
   { id: "create_event", label: "Vytvořit událost", desc: "Bitva, smlouva, dekret, festival…", icon: Swords },
   { id: "write_chronicle", label: "Zapsat kroniku", desc: "Záznam do dějin vaší říše", icon: ScrollText },
   { id: "add_rumor", label: "Šířit zvěst", desc: "Pošeptejte zprávu do světa", icon: MessageSquareWarning },
