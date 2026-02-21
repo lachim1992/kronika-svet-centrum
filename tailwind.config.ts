@@ -14,8 +14,8 @@ export default {
     },
     extend: {
       fontFamily: {
-        display: ["Cinzel", "serif"],
-        decorative: ["Cinzel Decorative", "serif"],
+        display: ["Cormorant Garamond", "serif"],
+        decorative: ["Cormorant Garamond", "serif"],
         body: ["Inter", "sans-serif"],
       },
       colors: {
@@ -70,6 +70,7 @@ export default {
         "seal-red": "hsl(var(--seal-red))",
         "royal-purple": "hsl(var(--royal-purple))",
         "forest-green": "hsl(var(--forest-green))",
+        "surface-elevated": "hsl(var(--surface-elevated))",
       },
       borderRadius: {
         lg: "var(--radius)",

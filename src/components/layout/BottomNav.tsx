@@ -1,4 +1,4 @@
-import { Home, Globe, Shield, Newspaper, Library, Wrench, BookOpen, Crown, Swords, BarChart3, Timer } from "lucide-react";
+import { Home, Globe, Shield, Newspaper, BookOpen, Crown, Swords, BarChart3, Timer, Wrench } from "lucide-react";
 
 export type TabId = "home" | "world" | "realm" | "army" | "economy" | "feed" | "codex" | "wiki" | "council" | "persistent" | "dev";
 
@@ -29,8 +29,8 @@ const BottomNav = ({ activeTab, onTabChange, showDevTab = false, showPersistentT
   if (showDevTab) tabs.push(devTab);
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-50 bg-card/95 backdrop-blur-sm border-t border-border shadow-lg">
-      <div className="flex items-center justify-around max-w-xl mx-auto h-16">
+    <nav className="fixed bottom-0 left-0 right-0 z-50 bg-card/95 backdrop-blur-sm border-t border-border">
+      <div className="flex items-center justify-around max-w-xl mx-auto h-14">
         {tabs.map((tab) => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.id;
@@ -42,10 +42,10 @@ const BottomNav = ({ activeTab, onTabChange, showDevTab = false, showPersistentT
                 isActive ? "text-primary" : "text-muted-foreground hover:text-foreground"
               }`}
             >
-              <Icon className={`h-5 w-5 ${isActive ? "drop-shadow-sm" : ""}`} />
+              <Icon className="h-4.5 w-4.5" strokeWidth={isActive ? 2 : 1.5} />
               <span className="text-[9px] font-display font-semibold">{tab.label}</span>
               {isActive && (
-                <span className="absolute bottom-0 w-8 h-0.5 rounded-full bg-primary" />
+                <span className="absolute bottom-0 w-6 h-0.5 rounded-full bg-primary" />
               )}
             </button>
           );

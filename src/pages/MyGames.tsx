@@ -6,9 +6,10 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import {
-  BookOpen, Feather, Plus, Users, LogOut, Scroll,
+  Plus, Users, LogOut, Scroll,
   Clock, RotateCcw, Bot, Pen, UserPlus, Server,
 } from "lucide-react";
+import ChronicleHubLogo from "@/components/ChronicleHubLogo";
 import { toast } from "sonner";
 import WorldSetupWizard from "@/components/WorldSetupWizard";
 
@@ -44,15 +45,7 @@ const getModeMeta = (mode?: string) => {
   return MODE_META[mode];
 };
 
-const ChronicleLogo = () => (
-  <div className="relative w-7 h-7 flex items-center justify-center shrink-0">
-    <BookOpen className="h-5 w-5 text-primary" strokeWidth={1.8} />
-    <Feather className="h-3 w-3 text-primary absolute -top-0.5 -right-0.5 rotate-45" strokeWidth={2} />
-    <svg className="absolute -bottom-0.5 -right-1 w-2.5 h-2.5" viewBox="0 0 12 12" fill="none">
-      <path d="M6 0L7.2 4.8L12 6L7.2 7.2L6 12L4.8 7.2L0 6L4.8 4.8Z" fill="hsl(var(--primary))" opacity="0.7" />
-    </svg>
-  </div>
-);
+/* Logo moved to ChronicleHubLogo component */
 
 const MyGames = () => {
   const navigate = useNavigate();
@@ -167,7 +160,7 @@ const MyGames = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center parchment-bg">
+      <div className="min-h-screen flex items-center justify-center bg-background">
         <Scroll className="h-12 w-12 text-primary animate-pulse" />
       </div>
     );
@@ -181,17 +174,14 @@ const MyGames = () => {
   const persistentGames = memberships.filter(m => m.game_sessions?.game_mode === "time_persistent");
 
   return (
-    <div className="min-h-screen parchment-bg">
+    <div className="min-h-screen bg-background">
       {/* Header */}
       <header className="imperial-header sticky top-0 z-50">
         <div className="flex items-center justify-between px-4 py-3 max-w-3xl mx-auto">
-          <div className="flex items-center gap-2">
-            <ChronicleLogo />
-            <h1 className="font-decorative font-bold text-lg">Chronicle Hub</h1>
-          </div>
+          <ChronicleHubLogo variant="full" size="sm" />
           <div className="flex items-center gap-2">
             <span className="text-sm text-muted-foreground">{profile?.username}</span>
-            <Button variant="ghost" size="icon" onClick={signOut}><LogOut className="h-4 w-4" /></Button>
+            <Button variant="ghost" size="icon" onClick={signOut} className="text-muted-foreground hover:text-foreground"><LogOut className="h-4 w-4" /></Button>
           </div>
         </div>
       </header>
@@ -212,7 +202,7 @@ const MyGames = () => {
 
           {/* Join Game inline */}
           {showJoin && (
-            <div className="bg-card p-5 rounded-lg border border-border shadow-parchment space-y-3 mb-4">
+            <div className="bg-card p-5 rounded-md border border-border space-y-3 mb-4">
               <h3 className="font-display font-semibold">Připojit se ke hře</h3>
               <Input placeholder="Vaše jméno v této hře" value={playerName} onChange={e => setPlayerName(e.target.value)} />
               <Input placeholder="Kód místnosti (např. A3K9F2)" value={joinCode} onChange={e => setJoinCode(e.target.value.toUpperCase())} className="font-mono tracking-widest" maxLength={6} />
@@ -307,7 +297,7 @@ const GameCard = ({ membership: m, worldName, onNavigate }: {
   return (
     <button
       onClick={onNavigate}
-      className="w-full text-left bg-card p-4 rounded-lg border border-border shadow-parchment hover:border-primary/50 transition-colors"
+      className="w-full text-left bg-card p-4 rounded-md border border-border hover:border-primary/30 transition-colors"
     >
       <div className="flex items-center justify-between gap-3">
         <div className="min-w-0 flex-1">
