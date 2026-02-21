@@ -80,18 +80,16 @@ const EconomyTab = ({ sessionId, currentPlayerName, currentTurn, cities, resourc
     return m;
   }, [resources, currentPlayerName]);
 
-  // Aggregate production/consumption
+  // Derive totals from player_resources (canonical source)
   const totals = useMemo(() => {
-    let grainProd = 0, grainCons = 0, woodProd = 0, stoneProd = 0, ironProd = 0;
-    for (const c of myCities) {
-      grainProd += c.last_turn_grain_prod || 0;
-      grainCons += c.last_turn_grain_cons || 0;
-      woodProd += c.last_turn_wood_prod || 0;
-      if (c.special_resource_type === "STONE") stoneProd += c.last_turn_special_prod || 0;
-      if (c.special_resource_type === "IRON") ironProd += c.last_turn_special_prod || 0;
-    }
+    const foodR = resMap["food"];
+    const grainProd = foodR?.income || 0;
+    const grainCons = foodR?.upkeep || 0;
+    const woodProd = resMap["wood"]?.income || 0;
+    const stoneProd = resMap["stone"]?.income || 0;
+    const ironProd = resMap["iron"]?.income || 0;
     return { grainProd, grainCons, grainNet: grainProd - grainCons, woodProd, stoneProd, ironProd };
-  }, [myCities]);
+  }, [resMap]);
 
   // Drivers: top producing and consuming cities
   const topProducers = useMemo(() =>
@@ -128,8 +126,10 @@ const EconomyTab = ({ sessionId, currentPlayerName, currentTurn, cities, resourc
 
   // Alerts
   const alerts: { text: string; severity: "error" | "warning" | "info" }[] = [];
-  if (totals.grainNet < 0) alerts.push({ text: `Deficit obilí: ${totals.grainNet}/kolo. Hrozí hladomor!`, severity: "error" });
-  if (realm && realm.grain_reserve >= (realm.granary_capacity || 500) * 0.9) alerts.push({ text: "Sýpky téměř plné — nadprodukce se ztrácí.", severity: "warning" });
+  const foodNet = totals.grainNet;
+  if (foodNet < 0) alerts.push({ text: `Deficit obilí: ${foodNet}/kolo. Hrozí hladomor!`, severity: "error" });
+  if (foodNet < 0 && totals.grainProd > 0 && Math.abs(foodNet) > totals.grainProd * 0.2) alerts.push({ text: "Vážné riziko hladomoru — deficit přesahuje 20% produkce.", severity: "error" });
+  if (realm && (resMap["food"]?.stockpile || 0) >= (realm.granary_capacity || 500) * 0.9) alerts.push({ text: "Sýpky téměř plné — nadprodukce se ztrácí.", severity: "warning" });
   if (realm && (realm.mobilization_rate || 0) > 0.2) alerts.push({ text: `Vysoká mobilizace (${Math.round((realm.mobilization_rate || 0) * 100)}%) — penalizace produkce obilí.`, severity: "warning" });
   const famineCities = myCities.filter(c => c.famine_turn);
   if (famineCities.length > 0) alerts.push({ text: `${famineCities.length} sídel trpí hladomorem!`, severity: "error" });
@@ -192,7 +192,7 @@ const EconomyTab = ({ sessionId, currentPlayerName, currentTurn, cities, resourc
           const upkeep = r?.upkeep || 0;
           const stockpile = r?.stockpile || 0;
           const net = income - upkeep;
-          const isDeficit = rt === "food" && totals.grainNet < 0;
+          const isDeficit = rt === "food" && foodNet < 0;
           return (
             <Card key={rt} className={`${isDeficit ? "border-destructive/50 bg-destructive/5" : ""}`}>
               <CardContent className="p-3">
