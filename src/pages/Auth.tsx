@@ -72,11 +72,8 @@ const Auth = () => {
         {/* Logo & Title */}
         <div className="text-center space-y-4">
           <div className="flex justify-center">
-            <ChronicleHubLogo variant="mark" size="lg" />
+            <ChronicleHubLogo variant="full" size="lg" />
           </div>
-          <h1 className="font-display font-semibold text-2xl tracking-wide text-primary">
-            The Chronicle Hub
-          </h1>
           <p className="text-muted-foreground text-sm">
             {showReset ? "Reset hesla" : isSignUp ? "Vytvořte si účet" : "Přihlaste se ke svému světu"}
           </p>
