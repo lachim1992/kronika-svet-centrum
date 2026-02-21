@@ -330,7 +330,12 @@ const WorldTab = ({
         </div>
       </div>
 
-      <WorldHexMap sessionId={sessionId} playerName={currentPlayerName} myRole={myRole} />
+      <WorldHexMap
+        sessionId={sessionId}
+        playerName={currentPlayerName}
+        myRole={myRole}
+        onCityClick={(cityId) => handleEntityClick("city", cityId)}
+      />
     </div>
   );
 };
