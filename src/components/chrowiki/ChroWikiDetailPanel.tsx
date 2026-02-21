@@ -13,6 +13,9 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import RichText from "@/components/RichText";
+import { buildSagaContext, type SagaContextData } from "@/lib/sagaContext";
+import SagaSourcesPanel from "./SagaSourcesPanel";
+import SagaDisplay from "./SagaDisplay";
 
 const ENTITY_ICONS: Record<string, React.ReactNode> = {
   country: <Flag className="h-5 w-5" />,
@@ -109,6 +112,8 @@ const ChroWikiDetailPanel = ({
   const [sagaDraft, setSagaDraft] = useState("");
   const [savingSaga, setSavingSaga] = useState(false);
   const [generatingSaga, setGeneratingSaga] = useState(false);
+  const [sagaContext, setSagaContext] = useState<SagaContextData | null>(null);
+  const [sagaResult, setSagaResult] = useState<any>(null);
 
   // Chronicle mentions state
   const [chroniclePage, setChroniclePage] = useState(0);
@@ -161,6 +166,8 @@ const ChroWikiDetailPanel = ({
     setChronicleCatFilter("all");
     setChronicleExpanded(false);
     setReadingMode(false);
+    setSagaContext(null);
+    setSagaResult(null);
   }, [entityId]);
 
   const memoryEntity = useMemo(() => {
@@ -362,27 +369,46 @@ const ChroWikiDetailPanel = ({
 
   const handleRegenerateSaga = async () => {
     setGeneratingSaga(true);
+    setSagaResult(null);
     try {
-      const mentions = chronicleExcerpts.slice(0, 10).map(c => c.text).join("\n---\n");
-      const { data, error } = await supabase.functions.invoke("wiki-generate", {
-        body: {
-          entityType, entityName, entityId, sessionId,
-          ownerPlayer: entity?.owner_player || entity?.player_name || "",
-          context: { sagaRegeneration: true, chronicleMentions: mentions, existingSaga: currentSaga?.saga_text || "" },
-        },
+      // 1) Build SagaContext from DB
+      const ctx = await buildSagaContext(
+        sessionId, entityType, entityId, entityName, entity,
+        { countries, regions, provinces, cities, wonders, persons, events, chronicles, declarations }
+      );
+      setSagaContext(ctx);
+
+      // 2) Call saga-generate edge function
+      const { data, error } = await supabase.functions.invoke("saga-generate", {
+        body: { sagaContext: ctx },
       });
       if (error) throw error;
-      const sagaText = data?.aiDescription || data?.summary || "Sága se nepodařila vygenerovat.";
+      if (data?.error) throw new Error(data.error);
+
+      setSagaResult(data);
+
+      // 3) Save as new saga version (full structured JSON)
+      const sagaText = [
+        "## Stručná chronologie\n" + (data.chronology || []).map((c: string) => `- ${c}`).join("\n"),
+        "\n## Sága místa\n" + (data.saga || ""),
+        data.consequences ? "\n## Důsledky pro říši\n" + data.consequences : "",
+        data.legends ? "\n## Legenda a šeptanda\n" + data.legends : "",
+      ].filter(Boolean).join("\n\n");
+
       const nextVersion = (sagaVersions[0]?.version || 0) + 1;
       await supabase.from("saga_versions").insert({
         session_id: sessionId, entity_type: entityType, entity_id: entityId,
         version: nextVersion, saga_text: sagaText,
         author_player: "AI", source_turn: 0, is_ai_generated: true,
       });
-      setSagaVersions(prev => [{ version: nextVersion, saga_text: sagaText, author_player: "AI", created_at: new Date().toISOString(), is_ai_generated: true }, ...prev]);
-      toast.success("AI sága vygenerována!");
+      setSagaVersions(prev => [{
+        version: nextVersion, saga_text: sagaText, author_player: "AI",
+        created_at: new Date().toISOString(), is_ai_generated: true
+      }, ...prev]);
+      toast.success("📜 Dvorní kronika vygenerována!");
     } catch (e: any) {
-      toast.error("Chyba: " + e.message);
+      console.error("Saga generation failed:", e);
+      toast.error("Chyba: " + (e.message || "Generování selhalo"));
     }
     setGeneratingSaga(false);
   };
@@ -528,10 +554,10 @@ const ChroWikiDetailPanel = ({
             <section className="mb-2">
               <div className="flex items-center gap-2 mb-3 flex-wrap">
                 <h3 className="font-decorative text-base md:text-lg font-semibold flex items-center gap-2 text-foreground">
-                  <FileText className="h-4 w-4 text-primary" /> Sága
+                  <FileText className="h-4 w-4 text-primary" /> Dvorní kronika
                 </h3>
                 {sagaVersions.length > 1 && (
-                  <Select value={selectedSagaVersion} onValueChange={setSelectedSagaVersion}>
+                  <Select value={selectedSagaVersion} onValueChange={v => { setSelectedSagaVersion(v); setSagaResult(null); }}>
                     <SelectTrigger className="h-6 w-28 text-[10px]"><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="latest" className="text-xs">Nejnovější</SelectItem>
@@ -551,10 +577,26 @@ const ChroWikiDetailPanel = ({
                   )}
                   <Button variant="ghost" size="sm" className="h-6 text-[10px] px-2" onClick={handleRegenerateSaga} disabled={generatingSaga}>
                     {generatingSaga ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <Sparkles className="h-3 w-3 mr-1" />}
-                    AI sága
+                    Generovat ságu
                   </Button>
                 </div>
               </div>
+
+              {/* Sources panel (shown after context is built) */}
+              {sagaContext && (
+                <SagaSourcesPanel
+                  context={sagaContext}
+                  onEventClick={(id, title) => onEntityClick("event", id, title)}
+                />
+              )}
+
+              {/* Structured saga display */}
+              {sagaResult && !editingSaga && (
+                <SagaDisplay
+                  result={sagaResult}
+                  onEventClick={(id, title) => onEntityClick("event", id, title)}
+                />
+              )}
 
               {editingSaga ? (
                 <div className="space-y-2">
@@ -567,7 +609,7 @@ const ChroWikiDetailPanel = ({
                     </Button>
                   </div>
                 </div>
-              ) : currentSaga ? (
+              ) : !sagaResult && currentSaga ? (
                 <div className="prose-chronicle text-[15px] md:text-base leading-[1.7] text-foreground/90 font-body p-4 rounded-lg"
                   style={{
                     background: 'hsl(var(--secondary) / 0.2)',
@@ -581,11 +623,16 @@ const ChroWikiDetailPanel = ({
                     {currentSaga.created_at && ` · ${new Date(currentSaga.created_at).toLocaleDateString("cs")}`}
                   </div>
                 </div>
-              ) : (
+              ) : !sagaResult && !generatingSaga ? (
                 <div className="text-center py-5 rounded-lg border border-dashed" style={{ borderColor: 'hsl(var(--primary) / 0.15)' }}>
-                  <p className="text-xs text-muted-foreground italic font-body">Sága dosud nebyla napsána.</p>
+                  <p className="text-xs text-muted-foreground italic font-body">Dvorní kronika dosud nebyla sepsána.</p>
                 </div>
-              )}
+              ) : generatingSaga && !sagaResult ? (
+                <div className="text-center py-8">
+                  <Loader2 className="h-6 w-6 animate-spin text-primary mx-auto mb-2" />
+                  <p className="text-xs text-muted-foreground font-body">Kronikář sepisuje ságu…</p>
+                </div>
+              ) : null}
             </section>
 
             {/* Entity-type specific sections (hidden in reading mode) */}
