@@ -23,6 +23,7 @@ import DevTab from "@/pages/game/DevTab";
 import ChroWikiTab from "@/pages/game/ChroWikiTab";
 import CouncilTab from "@/pages/game/CouncilTab";
 import ArmyTab from "@/pages/game/ArmyTab";
+import EconomyTab from "@/pages/game/EconomyTab";
 
 const Dashboard = () => {
   const { sessionId } = useParams<{ sessionId: string }>();
@@ -192,6 +193,17 @@ const Dashboard = () => {
             currentTurn={currentTurn}
             myRole={myRole}
             onRefetch={refetch}
+          />
+        )}
+        {activeTab === "economy" && (
+          <EconomyTab
+            sessionId={session.id}
+            currentPlayerName={myPlayerName}
+            currentTurn={currentTurn}
+            cities={cities}
+            resources={resources}
+            armies={armies}
+            onEntityClick={handleEntityClick}
           />
         )}
         {activeTab === "feed" && <FeedTab {...sharedProps} />}
