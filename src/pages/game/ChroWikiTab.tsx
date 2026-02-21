@@ -408,7 +408,7 @@ const ChroWikiTab = ({ sessionId, currentPlayerName = "", myRole = "player", onE
       )}
 
       {/* Two-panel layout */}
-      <div className="flex gap-4 min-h-[calc(100vh-320px)]">
+      <div className="flex gap-4" style={{ height: 'calc(100vh - 260px)', minHeight: '500px' }}>
         {/* LEFT: Navigation Tree */}
         <div className="w-[280px] shrink-0 manuscript-card overflow-hidden flex flex-col">
           <div className="px-3 py-2 border-b border-border">
