@@ -256,6 +256,9 @@ Deno.serve(async (req) => {
     const earlyGameBuffer = myCities.length <= 3 ? 10 : 0;
     totalGrainProd += earlyGameBuffer;
 
+    // Guard: consumption must always be positive
+    if (totalConsumption < 0) totalConsumption = Math.abs(totalConsumption);
+
     // 7) Update granary reserves
     const netGrain = totalGrainProd - totalConsumption;
     let grainReserve = realm.grain_reserve;

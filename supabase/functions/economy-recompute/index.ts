@@ -84,6 +84,8 @@ Deno.serve(async (req) => {
       await supabase.from("cities").update({ last_turn_grain_cons: cons }).eq("id", city.id);
     }
 
+    // Guard: consumption must always be positive
+    if (totalGrainCons < 0) totalGrainCons = Math.abs(totalGrainCons);
     const netGrain = totalGrainProd - totalGrainCons;
 
     // 6) Update player_resources
