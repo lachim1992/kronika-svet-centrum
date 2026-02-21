@@ -14,6 +14,50 @@ export type Database = {
   }
   public: {
     Tables: {
+      action_queue: {
+        Row: {
+          action_data: Json
+          action_type: string
+          completes_at: string
+          created_at: string | null
+          id: string
+          player_name: string
+          session_id: string
+          started_at: string | null
+          status: string
+        }
+        Insert: {
+          action_data?: Json
+          action_type: string
+          completes_at: string
+          created_at?: string | null
+          id?: string
+          player_name: string
+          session_id: string
+          started_at?: string | null
+          status?: string
+        }
+        Update: {
+          action_data?: Json
+          action_type?: string
+          completes_at?: string
+          created_at?: string | null
+          id?: string
+          player_name?: string
+          session_id?: string
+          started_at?: string | null
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "action_queue_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       ai_factions: {
         Row: {
           created_at: string
@@ -2147,6 +2191,53 @@ export type Database = {
           },
         ]
       }
+      server_config: {
+        Row: {
+          admin_user_id: string | null
+          created_at: string | null
+          delegation_enabled: boolean
+          economic_params: Json
+          id: string
+          inactivity_threshold_hours: number
+          max_players: number
+          session_id: string
+          tick_interval_seconds: number
+          time_scale: number
+        }
+        Insert: {
+          admin_user_id?: string | null
+          created_at?: string | null
+          delegation_enabled?: boolean
+          economic_params?: Json
+          id?: string
+          inactivity_threshold_hours?: number
+          max_players?: number
+          session_id: string
+          tick_interval_seconds?: number
+          time_scale?: number
+        }
+        Update: {
+          admin_user_id?: string | null
+          created_at?: string | null
+          delegation_enabled?: boolean
+          economic_params?: Json
+          id?: string
+          inactivity_threshold_hours?: number
+          max_players?: number
+          session_id?: string
+          tick_interval_seconds?: number
+          time_scale?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "server_config_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: true
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       settlement_resource_profiles: {
         Row: {
           base_grain: number
@@ -2193,6 +2284,50 @@ export type Database = {
             columns: ["city_id"]
             isOneToOne: true
             referencedRelation: "cities"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      time_pools: {
+        Row: {
+          created_at: string | null
+          entity_id: string
+          entity_type: string
+          id: string
+          pool_name: string
+          resets_at: string | null
+          session_id: string
+          total_minutes: number
+          used_minutes: number
+        }
+        Insert: {
+          created_at?: string | null
+          entity_id: string
+          entity_type: string
+          id?: string
+          pool_name: string
+          resets_at?: string | null
+          session_id: string
+          total_minutes?: number
+          used_minutes?: number
+        }
+        Update: {
+          created_at?: string | null
+          entity_id?: string
+          entity_type?: string
+          id?: string
+          pool_name?: string
+          resets_at?: string | null
+          session_id?: string
+          total_minutes?: number
+          used_minutes?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "time_pools_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
             referencedColumns: ["id"]
           },
         ]

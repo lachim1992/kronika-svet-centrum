@@ -89,3 +89,6 @@ verify_jwt = false
 
 [functions.ai-lore-generate]
 verify_jwt = false
+
+[functions.process-tick]
+verify_jwt = false

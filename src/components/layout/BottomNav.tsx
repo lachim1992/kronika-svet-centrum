@@ -1,11 +1,12 @@
-import { Home, Globe, Shield, Newspaper, Library, Wrench, BookOpen, Crown, Swords, BarChart3 } from "lucide-react";
+import { Home, Globe, Shield, Newspaper, Library, Wrench, BookOpen, Crown, Swords, BarChart3, Timer } from "lucide-react";
 
-export type TabId = "home" | "world" | "realm" | "army" | "economy" | "feed" | "codex" | "wiki" | "council" | "dev";
+export type TabId = "home" | "world" | "realm" | "army" | "economy" | "feed" | "codex" | "wiki" | "council" | "persistent" | "dev";
 
 interface Props {
   activeTab: TabId;
   onTabChange: (tab: TabId) => void;
   showDevTab?: boolean;
+  showPersistentTab?: boolean;
 }
 
 const baseTabs: { id: TabId; label: string; icon: React.ElementType }[] = [
@@ -20,9 +21,12 @@ const baseTabs: { id: TabId; label: string; icon: React.ElementType }[] = [
 ];
 
 const devTab = { id: "dev" as TabId, label: "Dev", icon: Wrench };
+const persistentTab = { id: "persistent" as TabId, label: "Persistent", icon: Timer };
 
-const BottomNav = ({ activeTab, onTabChange, showDevTab = false }: Props) => {
-  const tabs = showDevTab ? [...baseTabs, devTab] : baseTabs;
+const BottomNav = ({ activeTab, onTabChange, showDevTab = false, showPersistentTab = false }: Props) => {
+  let tabs = [...baseTabs];
+  if (showPersistentTab) tabs.push(persistentTab);
+  if (showDevTab) tabs.push(devTab);
 
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-50 bg-card/95 backdrop-blur-sm border-t border-border shadow-lg">
