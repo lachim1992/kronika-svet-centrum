@@ -257,6 +257,8 @@ export type Database = {
           population_total: number
           province: string | null
           province_id: string | null
+          province_q: number | null
+          province_r: number | null
           ruins_note: string | null
           session_id: string
           settlement_level: string
@@ -292,6 +294,8 @@ export type Database = {
           population_total?: number
           province?: string | null
           province_id?: string | null
+          province_q?: number | null
+          province_r?: number | null
           ruins_note?: string | null
           session_id: string
           settlement_level?: string
@@ -327,6 +331,8 @@ export type Database = {
           population_total?: number
           province?: string | null
           province_id?: string | null
+          province_q?: number | null
+          province_r?: number | null
           ruins_note?: string | null
           session_id?: string
           settlement_level?: string
