@@ -97,26 +97,26 @@ const ResourceHUD = ({ sessionId, playerName, cities }: ResourceHUDProps) => {
   const grainPct = Math.min(100, (food.stockpile / Math.max(1, grainCapacity)) * 100);
 
   return (
-    <div className="bg-card/95 backdrop-blur-sm border-b border-border px-3 py-1.5 flex items-center gap-1 overflow-x-auto scrollbar-hide">
+    <div className="bg-secondary/80 backdrop-blur-sm border-b border-border px-4 py-2 flex items-center gap-1.5 overflow-x-auto scrollbar-hide">
       {/* Resource chips */}
       {chips.map(chip => (
         <div
           key={chip.label}
-          className={`flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold shrink-0 border ${
+          className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-semibold shrink-0 border transition-colors ${
             chip.warning
               ? "border-destructive/30 bg-destructive/10 text-destructive"
-              : "border-border bg-secondary/50 text-foreground"
+              : "border-border bg-card/60 text-foreground hover:border-primary/30 hover:bg-card/80"
           }`}
           title={chip.label}
         >
           <span className={chip.warning ? "" : "text-primary"}>{chip.icon}</span>
           <span className="hidden sm:inline text-muted-foreground">{chip.label}</span>
-          <span className={chip.warning ? "" : ""}>{chip.value}</span>
+          <span>{chip.value}</span>
         </div>
       ))}
 
       {/* Mobilization chip */}
-      <div className="flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold shrink-0 border border-border bg-secondary/50">
+      <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-semibold shrink-0 border border-border bg-card/60 hover:border-primary/30 hover:bg-card/80 transition-colors">
         <Gauge className="h-3 w-3 text-primary" />
         <span className="hidden sm:inline text-muted-foreground">Mob</span>
         <span>{Math.round((realm.mobilization_rate || 0.1) * 100)}%</span>
@@ -124,7 +124,7 @@ const ResourceHUD = ({ sessionId, playerName, cities }: ResourceHUDProps) => {
 
       {/* Famine indicator */}
       {famineCities.length > 0 && (
-        <div className="flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold shrink-0 border border-destructive/30 bg-destructive/10 text-destructive">
+        <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-semibold shrink-0 border border-destructive/25 bg-destructive/8 text-destructive animate-pulse">
           <Skull className="h-3 w-3" />
           <span>{famineCities.length}× hlad</span>
         </div>
