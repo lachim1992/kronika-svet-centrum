@@ -1,13 +1,11 @@
 import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Slider } from "@/components/ui/slider";
-import { Badge } from "@/components/ui/badge";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   Wheat, Trees, Mountain, Anvil, Zap, Coins, Users, Gauge,
-  AlertTriangle, ChevronDown, Skull
+  ChevronDown, Skull
 } from "lucide-react";
-import { toast } from "sonner";
 
 interface ResourceHUDProps {
   sessionId: string;
@@ -17,55 +15,71 @@ interface ResourceHUDProps {
 
 const ResourceHUD = ({ sessionId, playerName, cities }: ResourceHUDProps) => {
   const [realm, setRealm] = useState<any>(null);
+  const [playerRes, setPlayerRes] = useState<Record<string, any>>({});
 
-  const fetchRealm = useCallback(async () => {
-    const { data } = await supabase
-      .from("realm_resources")
-      .select("*")
-      .eq("session_id", sessionId)
-      .eq("player_name", playerName)
-      .maybeSingle();
-    if (data) setRealm(data);
+  const fetchData = useCallback(async () => {
+    const [realmRes, prRes] = await Promise.all([
+      supabase
+        .from("realm_resources")
+        .select("*")
+        .eq("session_id", sessionId)
+        .eq("player_name", playerName)
+        .maybeSingle(),
+      supabase
+        .from("player_resources")
+        .select("*")
+        .eq("session_id", sessionId)
+        .ilike("player_name", playerName),
+    ]);
+    if (realmRes.data) setRealm(realmRes.data);
+    const map: Record<string, any> = {};
+    for (const r of (prRes.data || [])) map[r.resource_type] = r;
+    setPlayerRes(map);
   }, [sessionId, playerName]);
 
-  useEffect(() => { fetchRealm(); }, [fetchRealm]);
+  useEffect(() => { fetchData(); }, [fetchData]);
 
   useEffect(() => {
     const ch = supabase
       .channel(`hud-${sessionId}-${playerName}`)
-      .on("postgres_changes", { event: "*", schema: "public", table: "realm_resources", filter: `session_id=eq.${sessionId}` }, () => fetchRealm())
+      .on("postgres_changes", { event: "*", schema: "public", table: "realm_resources", filter: `session_id=eq.${sessionId}` }, () => fetchData())
+      .on("postgres_changes", { event: "*", schema: "public", table: "player_resources", filter: `session_id=eq.${sessionId}` }, () => fetchData())
       .subscribe();
     return () => { supabase.removeChannel(ch); };
-  }, [sessionId, playerName, fetchRealm]);
+  }, [sessionId, playerName, fetchData]);
 
   if (!realm) return null;
 
   const myCities = cities.filter(c => c.owner_player === playerName);
   const famineCities = myCities.filter(c => c.famine_turn);
-  const netGrain = (realm.last_turn_grain_net ?? 0);
   const availableManpower = (realm.manpower_pool || 0) - (realm.manpower_committed || 0);
-  const grainPct = Math.min(100, ((realm.grain_reserve || 0) / Math.max(1, realm.granary_capacity || 500)) * 100);
 
-  const handleMobilizationChange = async (val: number[]) => {
-    const rate = val[0] / 100;
-    await supabase.from("realm_resources").update({ mobilization_rate: rate }).eq("id", realm.id);
-    setRealm((r: any) => ({ ...r, mobilization_rate: rate }));
+  // Derive resource values from player_resources (canonical source)
+  const getRes = (type: string) => {
+    const r = playerRes[type];
+    const income = r?.income || 0;
+    const upkeep = r?.upkeep || 0;
+    const stockpile = r?.stockpile || 0;
+    return { net: income - upkeep, stockpile };
   };
 
-  const woodProd = realm.last_turn_wood_prod || 0;
-  const stoneProd = realm.last_turn_stone_prod || 0;
-  const ironProd = realm.last_turn_iron_prod || 0;
+  const food = getRes("food");
+  const wood = getRes("wood");
+  const stone = getRes("stone");
+  const iron = getRes("iron");
+
+  const grainCapacity = realm.granary_capacity || 500;
 
   const chips: { icon: React.ReactNode; label: string; value: string; warning?: boolean }[] = [
     {
       icon: <Wheat className="h-3 w-3" />,
       label: "Obilí",
-      value: `${netGrain >= 0 ? "+" : ""}${netGrain} · ${realm.grain_reserve || 0}/${realm.granary_capacity || 500}`,
-      warning: netGrain < 0,
+      value: `${food.net >= 0 ? "+" : ""}${food.net} · ${food.stockpile}/${grainCapacity}`,
+      warning: food.net < 0,
     },
-    { icon: <Trees className="h-3 w-3" />, label: "Dřevo", value: `+${woodProd} · ${realm.wood_reserve || 0}` },
-    { icon: <Mountain className="h-3 w-3" />, label: "Kámen", value: `+${stoneProd} · ${realm.stone_reserve || 0}` },
-    { icon: <Anvil className="h-3 w-3" />, label: "Železo", value: `+${ironProd} · ${realm.iron_reserve || 0}` },
+    { icon: <Trees className="h-3 w-3" />, label: "Dřevo", value: `+${wood.net} · ${wood.stockpile}` },
+    { icon: <Mountain className="h-3 w-3" />, label: "Kámen", value: `+${stone.net} · ${stone.stockpile}` },
+    { icon: <Anvil className="h-3 w-3" />, label: "Železo", value: `+${iron.net} · ${iron.stockpile}` },
     { icon: <Zap className="h-3 w-3" />, label: "Koně", value: `${realm.horses_reserve || 0}/${realm.stables_capacity || 100}` },
     { icon: <Coins className="h-3 w-3" />, label: "Zlato", value: `${realm.gold_reserve || 0}` },
     {
@@ -74,6 +88,14 @@ const ResourceHUD = ({ sessionId, playerName, cities }: ResourceHUDProps) => {
       value: `${availableManpower}/${realm.manpower_pool || 0}`,
     },
   ];
+
+  const handleMobilizationChange = async (val: number[]) => {
+    const rate = val[0] / 100;
+    await supabase.from("realm_resources").update({ mobilization_rate: rate }).eq("id", realm.id);
+    setRealm((r: any) => ({ ...r, mobilization_rate: rate }));
+  };
+
+  const grainPct = Math.min(100, (food.stockpile / Math.max(1, grainCapacity)) * 100);
 
   return (
     <div className="bg-card/90 backdrop-blur-sm border-b border-border px-3 py-1.5 flex items-center gap-1 overflow-x-auto scrollbar-hide">
@@ -119,15 +141,15 @@ const ResourceHUD = ({ sessionId, playerName, cities }: ResourceHUDProps) => {
 
           {/* Grain breakdown */}
           <div className="space-y-1 text-xs mb-3">
-            <div className="flex justify-between"><span className="text-muted-foreground">Produkce obilí</span><span className="font-semibold">{realm.last_turn_grain_prod || 0}</span></div>
-            <div className="flex justify-between"><span className="text-muted-foreground">Spotřeba obilí</span><span className="font-semibold">{realm.last_turn_grain_cons || 0}</span></div>
-            <div className="flex justify-between"><span className="text-muted-foreground">Bilance</span><span className={`font-semibold ${netGrain < 0 ? "text-destructive" : "text-accent"}`}>{netGrain >= 0 ? "+" : ""}{netGrain}</span></div>
+            <div className="flex justify-between"><span className="text-muted-foreground">Produkce obilí</span><span className="font-semibold">{playerRes.food?.income || 0}</span></div>
+            <div className="flex justify-between"><span className="text-muted-foreground">Spotřeba obilí</span><span className="font-semibold">{playerRes.food?.upkeep || 0}</span></div>
+            <div className="flex justify-between"><span className="text-muted-foreground">Bilance</span><span className={`font-semibold ${food.net < 0 ? "text-destructive" : "text-accent"}`}>{food.net >= 0 ? "+" : ""}{food.net}</span></div>
             <div className="w-full bg-muted rounded-full h-1.5 mt-1">
               <div className="bg-primary rounded-full h-1.5 transition-all" style={{ width: `${grainPct}%` }} />
             </div>
             <div className="flex justify-between text-[10px] text-muted-foreground">
-              <span>Zásoby: {realm.grain_reserve || 0}</span>
-              <span>Kapacita: {realm.granary_capacity || 500}</span>
+              <span>Zásoby: {food.stockpile}</span>
+              <span>Kapacita: {grainCapacity}</span>
             </div>
           </div>
 
