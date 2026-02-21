@@ -89,7 +89,6 @@ const TurnProgressionPanel = ({ sessionId, currentTurn, players, currentPlayerNa
       } catch (e) {
         console.error("AI faction processing error:", e);
       }
-      setProcessingAI(false);
     }
 
     // Create turn summary record
@@ -112,6 +111,23 @@ const TurnProgressionPanel = ({ sessionId, currentTurn, players, currentPlayerNa
 
     // Advance turn
     await advanceTurn(sessionId, currentTurn);
+
+    // Compress history in background (AI mode only)
+    if (isAIMode) {
+      try {
+        // Fetch session tier
+        const { data: sess } = await supabase.from("game_sessions")
+          .select("tier").eq("id", sessionId).single();
+        
+        await supabase.functions.invoke("ai-compress-history", {
+          body: { sessionId, currentTurn: currentTurn + 1, tier: sess?.tier || "free" },
+        });
+      } catch (e) {
+        console.error("History compression error:", e);
+      }
+      setProcessingAI(false);
+    }
+
     toast.success(`Kolo ${currentTurn} uzavřeno. Pokračujeme rokem ${currentTurn + 1}.`);
     onRefetch();
   };
