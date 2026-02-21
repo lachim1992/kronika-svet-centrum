@@ -5,32 +5,56 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Globe, Sparkles, Swords, Users, X, Plus, Mountain, TreePine, Waves, Sun, Snowflake, Flame, Bot, Pen, UserPlus, Loader2 } from "lucide-react";
+import { Globe, Sparkles, Swords, Users, X, Plus, Mountain, TreePine, Waves, Sun, Snowflake, Flame, Bot, Pen, UserPlus, Loader2, Server, RotateCcw, Clock } from "lucide-react";
 import { toast } from "sonner";
 
-const GAME_MODES = [
+const GAME_MODE_CATEGORIES = [
   {
-    value: "tb_single_ai",
-    label: "🤖 AI Svět",
-    desc: "AI vygeneruje svět, frakce, historii a reaguje na vaše rozhodnutí.",
-    icon: Bot,
-    badge: "Solo",
+    category: "Turn-Based",
+    description: "Tahové hry — svět se posune, když odehrajete kolo.",
+    icon: RotateCcw,
+    modes: [
+      {
+        value: "tb_single_ai",
+        label: "🤖 AI Svět",
+        desc: "AI vygeneruje svět, frakce, historii a reaguje na vaše rozhodnutí.",
+        icon: Bot,
+        badge: "Solo",
+      },
+      {
+        value: "tb_single_manual",
+        label: "✍️ Ruční svět",
+        desc: "Vytvořte svět ručně — ideální pro DnD, RPG, storytelling.",
+        icon: Pen,
+        badge: "Solo",
+      },
+      {
+        value: "tb_multi",
+        label: "👥 Multiplayer",
+        desc: "Turn-based hra pro 2–6 hráčů. AI slouží jako kronikář.",
+        icon: UserPlus,
+        badge: "2–6 hráčů",
+      },
+    ],
   },
   {
-    value: "tb_single_manual",
-    label: "✍️ Ruční svět",
-    desc: "Vytvořte svět ručně — ideální pro DnD, RPG, storytelling.",
-    icon: Pen,
-    badge: "Solo",
-  },
-  {
-    value: "tb_multi",
-    label: "👥 Multiplayer",
-    desc: "Turn-based hra pro 2–6 hráčů. AI slouží jako kronikář.",
-    icon: UserPlus,
-    badge: "2–6 hráčů",
+    category: "Time-Based",
+    description: "Persistentní svět v reálném čase — svět žije i bez vás.",
+    icon: Clock,
+    modes: [
+      {
+        value: "time_persistent",
+        label: "🌐 Persistentní server",
+        desc: "Reálný čas. Akce mají trvání, armády cestují, svět se vyvíjí sám. Vyžaduje admina.",
+        icon: Server,
+        badge: "Real-time",
+      },
+    ],
   },
 ];
+
+// Flat list for lookups
+const ALL_MODES = GAME_MODE_CATEGORIES.flatMap(c => c.modes);
 
 const WORLD_SIZES = [
   { value: "small", label: "Malý", desc: "5 měst, 2 regiony", cities: 5, regions: 2 },
@@ -96,6 +120,7 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
   const isAIMode = gameMode === "tb_single_ai";
   const isManualMode = gameMode === "tb_single_manual";
   const isMultiMode = gameMode === "tb_multi";
+  const isPersistentMode = gameMode === "time_persistent";
 
   // Steps differ by mode
   // AI: 0(mode) → 1(player+world) → 2(tone) → 3(victory) → 4(AI config: size) → 5(summary+generate)
@@ -116,7 +141,7 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
       const { data: session, error: sessErr } = await supabase.from("game_sessions").insert({
         room_code: roomCode,
         player1_name: playerName.trim(),
-        max_players: isMultiMode ? 6 : 1,
+        max_players: isPersistentMode ? 50 : isMultiMode ? 6 : 1,
         created_by: userId,
         game_mode: gameMode,
         tier: "free",
@@ -235,6 +260,19 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
             references: [{ type: "region", id: homelandRegion.id, label: homelandName.trim() }],
           } as any);
         }
+
+        // For persistent mode, create server_config
+        if (isPersistentMode) {
+          await supabase.from("server_config").insert({
+            session_id: session.id,
+            admin_user_id: userId,
+            tick_interval_seconds: 60,
+            time_scale: 1.0,
+            max_players: 50,
+            inactivity_threshold_hours: 48,
+            delegation_enabled: true,
+          } as any);
+        }
       }
 
       toast.success(`Svět „${worldName}" vytvořen!`);
@@ -258,28 +296,38 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
 
       {/* Step 0: Game Mode Selection */}
       {step === 0 && (
-        <div className="space-y-3">
+        <div className="space-y-4">
           <Label className="text-base font-display">Zvolte typ hry</Label>
-          <div className="space-y-2">
-            {GAME_MODES.map(m => {
-              const Icon = m.icon;
-              return (
-                <button key={m.value} onClick={() => setGameMode(m.value)}
-                  className={`w-full p-4 rounded-lg border text-left transition-colors ${gameMode === m.value ? "border-primary bg-primary/10" : "border-border hover:border-primary/30"}`}>
-                  <div className="flex items-center gap-3">
-                    <Icon className={`h-6 w-6 ${gameMode === m.value ? "text-primary" : "text-muted-foreground"}`} />
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2">
-                        <span className="font-display font-semibold">{m.label}</span>
-                        <Badge variant="secondary" className="text-[10px]">{m.badge}</Badge>
+          {GAME_MODE_CATEGORIES.map(cat => {
+            const CatIcon = cat.icon;
+            return (
+              <div key={cat.category} className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <CatIcon className="h-4 w-4 text-muted-foreground" />
+                  <span className="text-xs font-display font-semibold text-muted-foreground uppercase tracking-wider">{cat.category}</span>
+                  <span className="text-[10px] text-muted-foreground">— {cat.description}</span>
+                </div>
+                {cat.modes.map(m => {
+                  const Icon = m.icon;
+                  return (
+                    <button key={m.value} onClick={() => setGameMode(m.value)}
+                      className={`w-full p-4 rounded-lg border text-left transition-colors ${gameMode === m.value ? "border-primary bg-primary/10" : "border-border hover:border-primary/30"}`}>
+                      <div className="flex items-center gap-3">
+                        <Icon className={`h-6 w-6 ${gameMode === m.value ? "text-primary" : "text-muted-foreground"}`} />
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2">
+                            <span className="font-display font-semibold">{m.label}</span>
+                            <Badge variant="secondary" className="text-[10px]">{m.badge}</Badge>
+                          </div>
+                          <p className="text-xs text-muted-foreground mt-0.5">{m.desc}</p>
+                        </div>
                       </div>
-                      <p className="text-xs text-muted-foreground mt-0.5">{m.desc}</p>
-                    </div>
-                  </div>
-                </button>
-              );
-            })}
-          </div>
+                    </button>
+                  );
+                })}
+              </div>
+            );
+          })}
           <Button onClick={() => setStep(1)} className="w-full">Další →</Button>
         </div>
       )}
@@ -450,7 +498,7 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
           <div className="pt-2 space-y-2">
             <div className="text-xs text-muted-foreground space-y-1 bg-muted/30 rounded-lg p-3">
               <p className="font-display font-semibold text-foreground">Shrnutí:</p>
-              <p>🎮 <strong>{GAME_MODES.find(m => m.value === gameMode)?.label}</strong></p>
+              <p>🎮 <strong>{ALL_MODES.find(m => m.value === gameMode)?.label}</strong></p>
               <p>🌍 <strong>{worldName}</strong> · {TONES.find(t => t.value === tone)?.label} · {VICTORY_STYLES.find(v => v.value === victoryStyle)?.label}</p>
               {isAIMode && (
                 <p>🤖 Velikost: <strong>{WORLD_SIZES.find(s => s.value === worldSize)?.label}</strong> ({WORLD_SIZES.find(s => s.value === worldSize)?.desc})</p>
