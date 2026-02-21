@@ -1,9 +1,11 @@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ListOrdered, Timer, Settings, Monitor } from "lucide-react";
+import { ListOrdered, Timer, Settings, Monitor, Route, UserX } from "lucide-react";
 import ActionQueuePanel from "@/components/ActionQueuePanel";
 import TimePoolPanel from "@/components/TimePoolPanel";
 import ServerConfigPanel from "@/components/ServerConfigPanel";
 import AdminMonitorPanel from "@/components/AdminMonitorPanel";
+import TravelPanel from "@/components/TravelPanel";
+import InactivityPanel from "@/components/InactivityPanel";
 
 interface Props {
   sessionId: string;
@@ -35,8 +37,14 @@ const PersistentTab = ({
           <TabsTrigger value="queue" className="font-display text-xs gap-1">
             <ListOrdered className="h-3 w-3" /> Fronta akcí
           </TabsTrigger>
+          <TabsTrigger value="travel" className="font-display text-xs gap-1">
+            <Route className="h-3 w-3" /> Cestování
+          </TabsTrigger>
           <TabsTrigger value="pools" className="font-display text-xs gap-1">
             <Timer className="h-3 w-3" /> Časové fondy
+          </TabsTrigger>
+          <TabsTrigger value="inactivity" className="font-display text-xs gap-1">
+            <UserX className="h-3 w-3" /> Delegace
           </TabsTrigger>
           {isAdmin && (
             <>
@@ -53,8 +61,14 @@ const PersistentTab = ({
         <TabsContent value="queue" className="mt-3">
           <ActionQueuePanel sessionId={sessionId} currentPlayerName={currentPlayerName} />
         </TabsContent>
+        <TabsContent value="travel" className="mt-3">
+          <TravelPanel sessionId={sessionId} currentPlayerName={currentPlayerName} />
+        </TabsContent>
         <TabsContent value="pools" className="mt-3">
           <TimePoolPanel sessionId={sessionId} currentPlayerName={currentPlayerName} cities={cities} />
+        </TabsContent>
+        <TabsContent value="inactivity" className="mt-3">
+          <InactivityPanel sessionId={sessionId} currentPlayerName={currentPlayerName} myRole={myRole} players={players} />
         </TabsContent>
         {isAdmin && (
           <>
