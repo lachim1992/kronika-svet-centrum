@@ -1638,6 +1638,7 @@ export type Database = {
           created_at: string
           id: string
           income: number
+          last_applied_turn: number
           player_name: string
           resource_type: string
           session_id: string
@@ -1649,6 +1650,7 @@ export type Database = {
           created_at?: string
           id?: string
           income?: number
+          last_applied_turn?: number
           player_name: string
           resource_type: string
           session_id: string
@@ -1660,6 +1662,7 @@ export type Database = {
           created_at?: string
           id?: string
           income?: number
+          last_applied_turn?: number
           player_name?: string
           resource_type?: string
           session_id?: string
