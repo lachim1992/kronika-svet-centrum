@@ -375,6 +375,26 @@ function CreateSettlementForm({ sessionId, currentPlayerName, currentTurn, provi
       }).select("id").single();
 
       if (error) throw error;
+
+      // Auto-discover province and city + all sibling cities in that province
+      const discoveryRows: any[] = [
+        { session_id: sessionId, player_name: currentPlayerName, entity_type: "city", entity_id: data.id, source: "founded" },
+        { session_id: sessionId, player_name: currentPlayerName, entity_type: "province", entity_id: provinceId, source: "founded" },
+      ];
+      // Also discover the province's region
+      const { data: prov } = await supabase.from("provinces").select("region_id").eq("id", provinceId).single();
+      if (prov?.region_id) {
+        discoveryRows.push({ session_id: sessionId, player_name: currentPlayerName, entity_type: "region", entity_id: prov.region_id, source: "founded" });
+      }
+      // Discover all existing cities in the same province
+      const { data: siblingCities } = await supabase.from("cities").select("id").eq("session_id", sessionId).eq("province_id", provinceId).neq("id", data.id);
+      if (siblingCities) {
+        for (const sc of siblingCities) {
+          discoveryRows.push({ session_id: sessionId, player_name: currentPlayerName, entity_type: "city", entity_id: sc.id, source: "founded" });
+        }
+      }
+      await supabase.from("discoveries").upsert(discoveryRows, { onConflict: "session_id,player_name,entity_type,entity_id" });
+
       toast.success(`Osada ${name.trim()} založena!`);
       onCreated(data.id);
     } catch (err: any) {

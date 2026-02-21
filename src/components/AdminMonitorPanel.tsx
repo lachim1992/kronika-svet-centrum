@@ -4,8 +4,13 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import {
   Monitor, TrendingUp, Swords, Users, AlertTriangle,
-  Activity, Flame, Shield, Zap, RefreshCw
+  Activity, Flame, Shield, Zap, RefreshCw, UserX, Loader2
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -147,8 +152,102 @@ const AdminMonitorPanel = ({
           )}
         </CardContent>
       </Card>
+      {/* Kick Player */}
+      <KickPlayerSection sessionId={sessionId} players={players} cities={cities} onRefresh={handleRefresh} />
     </div>
   );
 };
+
+/* ─── Kick Player Section ─── */
+function KickPlayerSection({ sessionId, players, cities, onRefresh }: {
+  sessionId: string;
+  players: any[];
+  cities: any[];
+  onRefresh: () => void;
+}) {
+  const [kicking, setKicking] = useState<string | null>(null);
+
+  const playerNames = [...new Set(cities.map(c => c.owner_player).filter((p: string) => p && p !== "NPC"))];
+
+  const handleKick = async (playerName: string) => {
+    setKicking(playerName);
+    try {
+      // Delete in order: cities, provinces, discoveries, expeditions, military, memberships
+      await Promise.all([
+        supabase.from("cities").delete().eq("session_id", sessionId).eq("owner_player", playerName),
+        supabase.from("provinces").delete().eq("session_id", sessionId).eq("owner_player", playerName),
+        supabase.from("discoveries").delete().eq("session_id", sessionId).eq("player_name", playerName),
+        supabase.from("expeditions").delete().eq("session_id", sessionId).eq("player_name", playerName),
+        supabase.from("military_stacks").delete().eq("session_id", sessionId).eq("player_name", playerName),
+        supabase.from("military_capacity").delete().eq("session_id", sessionId).eq("player_name", playerName),
+        supabase.from("realm_resources").delete().eq("session_id", sessionId).eq("player_name", playerName),
+        supabase.from("realm_infrastructure").delete().eq("session_id", sessionId).eq("player_name", playerName),
+        supabase.from("player_resources").delete().eq("session_id", sessionId).eq("player_name", playerName),
+        supabase.from("regions").update({ owner_player: null }).eq("session_id", sessionId).eq("owner_player", playerName),
+      ]);
+
+      // Remove game membership (so they can re-join)
+      await supabase.from("game_memberships").delete().eq("session_id", sessionId).eq("player_name", playerName);
+
+      toast.success(`Hráč ${playerName} byl odstraněn ze světa.`);
+      onRefresh();
+    } catch (err: any) {
+      toast.error("Chyba: " + (err.message || "Nepodařilo se odstranit hráče"));
+    }
+    setKicking(null);
+  };
+
+  if (playerNames.length === 0) return null;
+
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <CardTitle className="text-sm flex items-center gap-2">
+          <UserX className="h-4 w-4 text-destructive" /> Správa hráčů
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-2">
+        {playerNames.map(name => (
+          <div key={name} className="flex items-center justify-between p-2 rounded-lg border border-border">
+            <div className="flex items-center gap-2">
+              <Users className="h-4 w-4 text-muted-foreground" />
+              <span className="text-sm font-display">{name}</span>
+              <Badge variant="outline" className="text-[9px]">
+                {cities.filter(c => c.owner_player === name).length} měst
+              </Badge>
+            </div>
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive text-xs gap-1">
+                  <UserX className="h-3 w-3" />Vykopnout
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Vykopnout hráče {name}?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    Tato akce smaže všechna města, provincie, objevy, armády a zdroje hráče.
+                    Hráčův účet zůstane zachován a může se znovu připojit (projde onboardingem).
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Zrušit</AlertDialogCancel>
+                  <AlertDialogAction
+                    onClick={() => handleKick(name)}
+                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                    disabled={kicking === name}
+                  >
+                    {kicking === name ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+                    Potvrdit odstranění
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          </div>
+        ))}
+      </CardContent>
+    </Card>
+  );
+}
 
 export default AdminMonitorPanel;

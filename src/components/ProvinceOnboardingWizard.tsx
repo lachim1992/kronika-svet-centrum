@@ -227,6 +227,16 @@ const ProvinceOnboardingWizard = ({ sessionId, currentPlayerName, currentTurn, m
         related_entity_id: cityData.id,
       } as any);
 
+      // Auto-discover region, province, and city
+      const discoveryRows = [
+        { session_id: sessionId, player_name: currentPlayerName, entity_type: "city", entity_id: cityData.id, source: "founded" },
+        { session_id: sessionId, player_name: currentPlayerName, entity_type: "province", entity_id: createdProvinceId, source: "founded" },
+      ];
+      if (selectedRegionId) {
+        discoveryRows.push({ session_id: sessionId, player_name: currentPlayerName, entity_type: "region", entity_id: selectedRegionId, source: "founded" });
+      }
+      await supabase.from("discoveries").upsert(discoveryRows, { onConflict: "session_id,player_name,entity_type,entity_id" });
+
       toast.success(`Osada ${settlementName} založena!`);
       onComplete();
     } catch (err: any) {
