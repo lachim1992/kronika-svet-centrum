@@ -1,5 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
+import { createClient } from "npm:@supabase/supabase-js@2.49.1";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -24,12 +24,27 @@ serve(async (req) => {
       }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
+    const sb = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+
+    // Fetch lore bible for consistency
+    const { data: styleCfg } = await sb
+      .from("game_style_settings")
+      .select("lore_bible")
+      .eq("session_id", sessionId)
+      .maybeSingle();
+    const loreBible = styleCfg?.lore_bible || "";
+
     const entityTypeLabels: Record<string, string> = {
       city: "město", wonder: "div světa", person: "osobnost", battle: "bitva",
-      province: "provincie", civilization: "civilizace",
+      province: "provincie", civilization: "civilizace", region: "region", country: "stát",
     };
 
-    // Generate description
+    const systemContent = [
+      `Jsi encyklopedický kronikář. Napiš encyklopedický článek (česky, 4-8 vět) o dané entitě. Piš jako středověký učenec.`,
+      loreBible ? `Lore světa: ${loreBible.substring(0, 600)}` : "",
+    ].filter(Boolean).join("\n");
+
+    // Generate TEXT ONLY (images handled by generate-entity-media)
     const descResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -39,10 +54,7 @@ serve(async (req) => {
       body: JSON.stringify({
         model: "google/gemini-3-flash-preview",
         messages: [
-          {
-            role: "system",
-            content: `Jsi encyklopedický kronikář. Napiš encyklopedický článek (česky, 4-8 vět) o dané entitě. Piš jako středověký učenec. Také navrhni anglický image prompt pro ilustraci v illuminated manuscript stylu.`
-          },
+          { role: "system", content: systemContent },
           {
             role: "user",
             content: `Typ: ${entityTypeLabels[entityType] || entityType}\nNázev: ${entityName}\nVlastník: ${ownerPlayer}\nKontext: ${JSON.stringify(context || {})}`
@@ -58,7 +70,7 @@ serve(async (req) => {
               properties: {
                 summary: { type: "string", description: "One-sentence Czech summary" },
                 aiDescription: { type: "string", description: "4-8 sentence encyclopedia article in Czech" },
-                imagePrompt: { type: "string", description: "English image prompt, illuminated manuscript style" },
+                imagePrompt: { type: "string", description: "English image prompt for illustration" },
               },
               required: ["summary", "aiDescription", "imagePrompt"],
               additionalProperties: false
@@ -84,64 +96,71 @@ serve(async (req) => {
       }
     }
 
-    // Generate image
-    let imageUrl: string | null = null;
-    try {
-      const imgResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${LOVABLE_API_KEY}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: "google/gemini-2.5-flash-image",
-          messages: [{ role: "user", content: imagePrompt }],
-          modalities: ["image", "text"],
-        }),
-      });
+    // Upsert wiki entry (text only, no image generation here)
+    if (sessionId) {
+      const { data: existing } = await sb
+        .from("wiki_entries")
+        .select("id")
+        .eq("session_id", sessionId)
+        .eq("entity_type", entityType)
+        .eq("entity_id", entityId)
+        .maybeSingle();
 
-      if (imgResponse.ok) {
-        const imgData = await imgResponse.json();
-        const imageBase64 = imgData.choices?.[0]?.message?.images?.[0]?.image_url?.url;
-        if (imageBase64) {
-          const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
-          const base64Data = imageBase64.replace(/^data:image\/\w+;base64,/, "");
-          const binaryData = Uint8Array.from(atob(base64Data), c => c.charCodeAt(0));
-          const fileName = `wiki/${entityType}/${crypto.randomUUID()}.png`;
-
-          const { error: uploadError } = await supabaseAdmin.storage
-            .from("wonder-images")
-            .upload(fileName, binaryData, { contentType: "image/png", upsert: true });
-
-          if (!uploadError) {
-            const { data: urlData } = supabaseAdmin.storage.from("wonder-images").getPublicUrl(fileName);
-            imageUrl = urlData.publicUrl;
-          }
-
-          // Upsert wiki entry
-          if (sessionId) {
-            await supabaseAdmin.from("wiki_entries").upsert({
-              session_id: sessionId,
-              entity_type: entityType,
-              entity_id: entityId || null,
-              entity_name: entityName,
-              owner_player: ownerPlayer,
-              summary,
-              ai_description: aiDescription,
-              image_url: imageUrl,
-              image_prompt: imagePrompt,
-              updated_at: new Date().toISOString(),
-            }, { onConflict: "id" });
-          }
-        }
+      if (existing) {
+        await sb.from("wiki_entries").update({
+          summary,
+          ai_description: aiDescription,
+          image_prompt: imagePrompt,
+          updated_at: new Date().toISOString(),
+        }).eq("id", existing.id);
+      } else {
+        await sb.from("wiki_entries").upsert({
+          session_id: sessionId,
+          entity_type: entityType,
+          entity_id: entityId || null,
+          entity_name: entityName,
+          owner_player: ownerPlayer,
+          summary,
+          ai_description: aiDescription,
+          image_prompt: imagePrompt,
+          updated_at: new Date().toISOString(),
+        }, { onConflict: "id" });
       }
-    } catch (imgErr) {
-      console.error("Wiki image gen failed:", imgErr);
+    }
+
+    // Now generate image via unified pipeline (fire-and-forget for speed, or await)
+    let imageUrl: string | null = null;
+    if (entityId && sessionId) {
+      try {
+        // Call generate-entity-media internally
+        const mediaRes = await fetch(`${SUPABASE_URL}/functions/v1/generate-entity-media`, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            sessionId,
+            entityId,
+            entityType,
+            entityName,
+            kind: "cover",
+            imagePrompt,
+            createdBy: ownerPlayer || "wiki-generate",
+          }),
+        });
+        if (mediaRes.ok) {
+          const mediaData = await mediaRes.json();
+          imageUrl = mediaData.imageUrl || null;
+        }
+      } catch (imgErr) {
+        console.error("Wiki image delegation failed:", imgErr);
+      }
     }
 
     return new Response(JSON.stringify({
       summary, aiDescription, imageUrl, imagePrompt,
-      debug: { provider: "lovable-ai" }
+      debug: { provider: "lovable-ai", pipeline: "unified" }
     }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
   } catch (e) {
