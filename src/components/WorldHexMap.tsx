@@ -4,7 +4,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Loader2, Hexagon, Map as MapIcon, Eye, Plus, Minus } from "lucide-react";
+import { Loader2, Hexagon, Map as MapIcon, Eye, Plus, Minus, RefreshCw } from "lucide-react";
+import { toast } from "sonner";
 import { useHexMap, AXIAL_NEIGHBORS, type HexData } from "@/hooks/useHexMap";
 
 /* ───── Config ───── */
@@ -107,6 +108,7 @@ const WorldHexMap = ({ sessionId, playerName, myRole }: Props) => {
   const [exploring, setExploring] = useState<string | null>(null); // key of frontier being explored
   const [zoom, setZoom] = useState(1);
   const [mapLoaded, setMapLoaded] = useState(false);
+  const [recomputing, setRecomputing] = useState(false);
 
   // Pan state
   const [pan, setPan] = useState({ x: 0, y: 0 });
@@ -278,6 +280,28 @@ const WorldHexMap = ({ sessionId, playerName, myRole }: Props) => {
   const zoomIn = () => setZoom(z => Math.min(3, z + 0.2));
   const zoomOut = () => setZoom(z => Math.max(0.3, z - 0.2));
 
+  /* ── Recompute biomes (DEV) ── */
+  const handleRecomputeBiomes = useCallback(async () => {
+    const allIds = Object.values(hexes).map(h => h.id).filter(Boolean);
+    if (allIds.length === 0) { toast.error("Žádné hexy k přepočtu"); return; }
+    setRecomputing(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("recompute-biomes", {
+        body: { session_id: sessionId, hex_ids: allIds },
+      });
+      if (error) throw error;
+      const updated = data?.updated || [];
+      // Refresh hex cache
+      if (isAdmin) await loadAllGenerated();
+      await fetchDiscoveries();
+      toast.success(`Přepočteno ${updated.length} hexů`);
+    } catch (e: any) {
+      toast.error("Chyba: " + (e.message || "neznámá"));
+    } finally {
+      setRecomputing(false);
+    }
+  }, [hexes, sessionId, isAdmin, loadAllGenerated, fetchDiscoveries]);
+
   /* ── Handle tile click ── */
   const handleTileClick = useCallback((q: number, r: number, isFrontier: boolean) => {
     // Ignore if it was a drag
@@ -310,6 +334,13 @@ const WorldHexMap = ({ sessionId, playerName, myRole }: Props) => {
               }} className="scale-75" />
               <Eye className="h-3 w-3" /> DEV
             </label>
+          )}
+          {isAdmin && devMode && (
+            <Button size="sm" variant="outline" className="h-7 text-[10px] gap-1"
+              onClick={handleRecomputeBiomes} disabled={recomputing}>
+              {recomputing ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
+              Přepočítat biomy (DEV)
+            </Button>
           )}
         </div>
       </div>
