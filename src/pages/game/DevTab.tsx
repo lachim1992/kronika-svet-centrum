@@ -4,6 +4,7 @@ import { Wrench } from "lucide-react";
 interface Props {
   sessionId: string;
   currentPlayerName: string;
+  myRole: string;
   citiesCount: number;
   eventsCount: number;
   wondersCount: number;
@@ -13,7 +14,7 @@ interface Props {
 }
 
 const DevTab = ({
-  sessionId, currentPlayerName,
+  sessionId, currentPlayerName, myRole,
   citiesCount, eventsCount, wondersCount, memoriesCount, playersCount,
   onRefetch,
 }: Props) => {
@@ -26,6 +27,7 @@ const DevTab = ({
       <DevModePanel
         sessionId={sessionId}
         currentPlayerName={currentPlayerName}
+        myRole={myRole}
         onRefetch={onRefetch}
         citiesCount={citiesCount}
         eventsCount={eventsCount}

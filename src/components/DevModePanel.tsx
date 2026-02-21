@@ -1,17 +1,19 @@
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Bug, Droplets, Play, Shield, Sprout, FlaskConical, BarChart3 } from "lucide-react";
+import { Bug, Droplets, Play, Shield, Sprout, FlaskConical, BarChart3, Compass } from "lucide-react";
 import HydrationSection from "@/components/dev/HydrationSection";
 import SimulationSection from "@/components/dev/SimulationSection";
 import WorldIntegritySection from "@/components/dev/WorldIntegritySection";
 import SeedSection from "@/components/dev/SeedSection";
 import QATestSection from "@/components/dev/QATestSection";
 import EconomyQASection from "@/components/dev/EconomyQASection";
+import LocalSimulationSection from "@/components/dev/LocalSimulationSection";
+import { getPermissions } from "@/lib/permissions";
 
 interface DevModePanelProps {
   sessionId: string;
   currentPlayerName: string;
+  myRole?: string;
   onRefetch?: () => void;
   citiesCount: number;
   eventsCount: number;
@@ -21,9 +23,10 @@ interface DevModePanelProps {
 }
 
 const DevModePanel = ({
-  sessionId, currentPlayerName, onRefetch,
+  sessionId, currentPlayerName, myRole = "player", onRefetch,
   citiesCount, eventsCount, wondersCount, memoriesCount, playersCount,
 }: DevModePanelProps) => {
+  const perms = getPermissions(myRole);
 
   return (
     <div className="space-y-4">
@@ -54,45 +57,60 @@ const DevModePanel = ({
       </div>
 
       {/* Tabs */}
-      <Tabs defaultValue="hydration" className="w-full">
-        <TabsList className="grid w-full grid-cols-6 h-auto">
-          <TabsTrigger value="hydration" className="text-xs gap-1 py-2">
-            <Droplets className="h-3 w-3" /> Hydratace
-          </TabsTrigger>
-          <TabsTrigger value="simulation" className="text-xs gap-1 py-2">
-            <Play className="h-3 w-3" /> Simulace
-          </TabsTrigger>
-          <TabsTrigger value="integrity" className="text-xs gap-1 py-2">
-            <Shield className="h-3 w-3" /> Integrita
-          </TabsTrigger>
-          <TabsTrigger value="seed" className="text-xs gap-1 py-2">
-            <Sprout className="h-3 w-3" /> Seed
-          </TabsTrigger>
-          <TabsTrigger value="qa" className="text-xs gap-1 py-2">
-            <FlaskConical className="h-3 w-3" /> QA
-          </TabsTrigger>
-          <TabsTrigger value="economy-qa" className="text-xs gap-1 py-2">
-            <BarChart3 className="h-3 w-3" /> Econ QA
+      <Tabs defaultValue={perms.canRunServerDevTools ? "hydration" : "local-sim"} className="w-full">
+        <TabsList className={`grid w-full h-auto ${perms.canRunServerDevTools ? "grid-cols-7" : "grid-cols-1"}`}>
+          {perms.canRunServerDevTools && (
+            <>
+              <TabsTrigger value="hydration" className="text-xs gap-1 py-2">
+                <Droplets className="h-3 w-3" /> Hydratace
+              </TabsTrigger>
+              <TabsTrigger value="simulation" className="text-xs gap-1 py-2">
+                <Play className="h-3 w-3" /> Simulace
+              </TabsTrigger>
+              <TabsTrigger value="integrity" className="text-xs gap-1 py-2">
+                <Shield className="h-3 w-3" /> Integrita
+              </TabsTrigger>
+              <TabsTrigger value="seed" className="text-xs gap-1 py-2">
+                <Sprout className="h-3 w-3" /> Seed
+              </TabsTrigger>
+              <TabsTrigger value="qa" className="text-xs gap-1 py-2">
+                <FlaskConical className="h-3 w-3" /> QA
+              </TabsTrigger>
+              <TabsTrigger value="economy-qa" className="text-xs gap-1 py-2">
+                <BarChart3 className="h-3 w-3" /> Econ QA
+              </TabsTrigger>
+            </>
+          )}
+          <TabsTrigger value="local-sim" className="text-xs gap-1 py-2">
+            <Compass className="h-3 w-3" /> Lokální simulace
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="hydration" className="mt-3">
-          <HydrationSection sessionId={sessionId} onRefetch={onRefetch} />
-        </TabsContent>
-        <TabsContent value="simulation" className="mt-3">
-          <SimulationSection sessionId={sessionId} onRefetch={onRefetch} />
-        </TabsContent>
-        <TabsContent value="integrity" className="mt-3">
-          <WorldIntegritySection sessionId={sessionId} onRefetch={onRefetch} />
-        </TabsContent>
-        <TabsContent value="seed" className="mt-3">
-          <SeedSection sessionId={sessionId} onRefetch={onRefetch} />
-        </TabsContent>
-        <TabsContent value="qa" className="mt-3">
-          <QATestSection sessionId={sessionId} onRefetch={onRefetch} />
-        </TabsContent>
-        <TabsContent value="economy-qa" className="mt-3">
-          <EconomyQASection sessionId={sessionId} onRefetch={onRefetch} />
+        {perms.canRunServerDevTools && (
+          <>
+            <TabsContent value="hydration" className="mt-3">
+              <HydrationSection sessionId={sessionId} onRefetch={onRefetch} />
+            </TabsContent>
+            <TabsContent value="simulation" className="mt-3">
+              <SimulationSection sessionId={sessionId} onRefetch={onRefetch} />
+            </TabsContent>
+            <TabsContent value="integrity" className="mt-3">
+              <WorldIntegritySection sessionId={sessionId} onRefetch={onRefetch} />
+            </TabsContent>
+            <TabsContent value="seed" className="mt-3">
+              <SeedSection sessionId={sessionId} onRefetch={onRefetch} />
+            </TabsContent>
+            <TabsContent value="qa" className="mt-3">
+              <QATestSection sessionId={sessionId} onRefetch={onRefetch} />
+            </TabsContent>
+            <TabsContent value="economy-qa" className="mt-3">
+              <EconomyQASection sessionId={sessionId} onRefetch={onRefetch} />
+            </TabsContent>
+          </>
+        )}
+
+        <TabsContent value="local-sim" className="mt-3">
+          <LocalSimulationSection sessionId={sessionId} currentPlayerName={currentPlayerName} onRefetch={onRefetch} />
         </TabsContent>
       </Tabs>
     </div>

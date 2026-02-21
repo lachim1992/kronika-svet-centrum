@@ -16,6 +16,7 @@ import AILoreButton from "@/components/AILoreButton";
 import WorldMemoryPanel from "@/components/WorldMemoryPanel";
 import CityRumorsPanel from "@/components/CityRumorsPanel";
 import type { EntityIndex } from "@/hooks/useEntityIndex";
+import { getPermissions } from "@/lib/permissions";
 
 type City = Tables<"cities">;
 type GameEvent = Tables<"game_events">;
@@ -42,6 +43,7 @@ interface CityDetailPanelProps {
   currentPlayerName: string;
   currentTurn: number;
   onBack: () => void;
+  myRole?: string;
   onRefetch?: () => void;
   onEventClick?: (eventId: string) => void;
   onEntityClick?: (type: string, id: string) => void;
@@ -52,8 +54,9 @@ interface CityDetailPanelProps {
 const CityDetailPanel = ({
   city, events, memories, wonders, players,
   currentPlayerName, currentTurn, onBack, onRefetch, onEventClick,
-  onEntityClick, entityIndex, epochStyle,
+  onEntityClick, entityIndex, epochStyle, myRole = "player",
 }: CityDetailPanelProps) => {
+  const perms = getPermissions(myRole);
   const [generating, setGenerating] = useState(false);
   const [introduction, setIntroduction] = useState<string | null>(null);
   const [history, setHistory] = useState<string | null>(null);
@@ -168,8 +171,8 @@ const CityDetailPanel = ({
             </div>
           )}
         </div>
-        {isOwner && (
-          <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2">
+          {isOwner && (
             <AILoreButton
               sessionId={city.session_id}
               loreType="city_lore"
@@ -177,14 +180,22 @@ const CityDetailPanel = ({
               label="✨ AI Lore"
               compact
             />
+          )}
+          {perms.canEditCityStatus ? (
             <Select value={(city as any).status || "ok"} onValueChange={handleUpdateStatus}>
               <SelectTrigger className="w-36 h-8 text-xs"><SelectValue /></SelectTrigger>
               <SelectContent>
                 {STATUSES.map(s => <SelectItem key={s} value={s}>{STATUS_LABELS[s]}</SelectItem>)}
               </SelectContent>
             </Select>
-          </div>
-        )}
+          ) : (
+            (city as any).status && (city as any).status !== "ok" && (
+              <Badge variant="destructive" className="text-xs">
+                {STATUS_LABELS[(city as any).status]}
+              </Badge>
+            )
+          )}
+        </div>
       </div>
 
       {/* Population & Society card */}
@@ -239,16 +250,18 @@ const CityDetailPanel = ({
         </div>
       )}
 
-      {/* Level upgrade (owner only) */}
-      {isOwner && (
-        <div className="flex items-center gap-2">
-          <span className="text-sm font-display">Úroveň:</span>
+      {/* Level upgrade */}
+      <div className="flex items-center gap-2">
+        <span className="text-sm font-display">Úroveň:</span>
+        {perms.canEditCityLevel ? (
           <Select value={city.level} onValueChange={v => { updateCity(city.id, { level: v }); onRefetch?.(); }}>
             <SelectTrigger className="w-28 h-8 text-xs"><SelectValue /></SelectTrigger>
             <SelectContent>{CITY_LEVELS.map(l => <SelectItem key={l} value={l}>{l}</SelectItem>)}</SelectContent>
           </Select>
-        </div>
-      )}
+        ) : (
+          <Badge variant="secondary" className="text-xs">{city.level}</Badge>
+        )}
+      </div>
 
       {/* Flavor prompt */}
       {isOwner && (

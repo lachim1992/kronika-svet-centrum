@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Building2, Plus, Search, MapPin, Shield, Flame, Eye } from "lucide-react";
 import { toast } from "sonner";
 import CityDetailPanel from "@/components/CityDetailPanel";
+import { getPermissions } from "@/lib/permissions";
 
 type City = Tables<"cities">;
 type GameEvent = Tables<"game_events">;
@@ -37,14 +38,16 @@ interface CityDirectoryProps {
   wonders: Wonder[];
   currentPlayerName: string;
   currentTurn: number;
+  myRole?: string;
   onRefetch?: () => void;
   onCityClick?: (cityId: string) => void;
 }
 
 const CityDirectory = ({
   sessionId, cities, events, players, memories, wonders,
-  currentPlayerName, currentTurn, onRefetch, onCityClick,
+  currentPlayerName, currentTurn, myRole = "player", onRefetch, onCityClick,
 }: CityDirectoryProps) => {
+  const perms = getPermissions(myRole);
   const [selectedCity, setSelectedCity] = useState<City | null>(null);
   const [search, setSearch] = useState("");
   const [filterOwner, setFilterOwner] = useState("__all__");
@@ -113,9 +116,11 @@ const CityDirectory = ({
           <Building2 className="h-6 w-6 text-primary" />
           Města a osady
         </h1>
-        <Button onClick={() => setShowCreate(!showCreate)} size="sm" className="font-display">
-          <Plus className="h-3 w-3 mr-1" />{showCreate ? "Zavřít" : "Založit město"}
-        </Button>
+        {perms.canCreateCityGlobal && (
+          <Button onClick={() => setShowCreate(!showCreate)} size="sm" className="font-display">
+            <Plus className="h-3 w-3 mr-1" />{showCreate ? "Zavřít" : "Založit město"}
+          </Button>
+        )}
       </div>
 
       {/* Create form */}
