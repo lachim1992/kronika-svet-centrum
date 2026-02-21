@@ -38,10 +38,21 @@ function determineBiome(
   if (height > 80) return "mountains";
   if (height > 65) return "hills";
   if (temp <= 1 && moisture <= 1) return "tundra";
-  if (temp >= 3 && moisture <= 1) return "desert";
+  if (moisture <= 1 && temp >= 3) return "desert";
   if (moisture >= 3 && height < 25) return "swamp";
-  if (moisture >= 2 && temp >= 2) return "forest";
+  if (moisture >= 3) return "forest";
   return "plains";
+}
+
+// --- Biome transition enforcement ---
+// desert↔forest without plains in between is forbidden
+function enforceTransition(
+  myBiome: string,
+  neighborBiomes: string[]
+): string {
+  if (myBiome === "desert" && neighborBiomes.includes("forest")) return "plains";
+  if (myBiome === "forest" && neighborBiomes.includes("desert")) return "plains";
+  return myBiome;
 }
 
 // --- Macro wave for large-scale terrain features ---
@@ -49,13 +60,29 @@ function macroHeightWave(q: number, r: number, worldSeed: string): number {
   const s1 = hashSeed(worldSeed + ":wave1");
   const s2 = hashSeed(worldSeed + ":wave2");
   const s3 = hashSeed(worldSeed + ":wave3");
-
-  // Multiple overlapping sine waves for natural-feeling terrain
   const wave1 = Math.sin((q * 0.3 + s1 * 100) * 0.1) * 20;
   const wave2 = Math.cos((r * 0.25 + s2 * 100) * 0.12) * 15;
   const wave3 = Math.sin(((q + r) * 0.2 + s3 * 100) * 0.08) * 10;
-
   return 50 + wave1 + wave2 + wave3;
+}
+
+// --- Macro waves for moisture and temperature (slow-varying) ---
+function macroMoistureWave(q: number, r: number, worldSeed: string): number {
+  const s1 = hashSeed(worldSeed + ":moist_w1");
+  const s2 = hashSeed(worldSeed + ":moist_w2");
+  const wave1 = Math.sin((q * 0.15 + s1 * 80) * 0.09) * 1.5;
+  const wave2 = Math.cos((r * 0.18 + s2 * 80) * 0.11) * 1.0;
+  const micro = (hashSeed(`${worldSeed}:${q}:${r}:moist_micro`) - 0.5) * 0.8;
+  return Math.max(0, Math.min(4, Math.round(2 + wave1 + wave2 + micro)));
+}
+
+function macroTempWave(q: number, r: number, worldSeed: string): number {
+  const s1 = hashSeed(worldSeed + ":temp_w1");
+  const s2 = hashSeed(worldSeed + ":temp_w2");
+  const wave1 = Math.sin((r * 0.12 + s1 * 90) * 0.1) * 1.5;
+  const wave2 = Math.cos((q * 0.14 + s2 * 90) * 0.08) * 1.0;
+  const micro = (hashSeed(`${worldSeed}:${q}:${r}:temp_micro`) - 0.5) * 0.8;
+  return Math.max(0, Math.min(4, Math.round(2 + wave1 + wave2 + micro)));
 }
 
 // --- Quantize for macroregion bands ---
@@ -171,7 +198,7 @@ Deno.serve(async (req) => {
     const neighborCoords = getNeighborCoords(q, r);
     const { data: neighbors } = await sb
       .from("province_hexes")
-      .select("q, r, mean_height")
+      .select("q, r, mean_height, moisture_band, temp_band, biome_family")
       .eq("session_id", session_id)
       .or(
         neighborCoords
@@ -190,12 +217,28 @@ Deno.serve(async (req) => {
       meanHeight = Math.max(0, Math.min(100, meanHeight));
     }
 
-    // Climate bands
-    const moistureBand = hashInt(hexSeed + ":moisture", 0, 4);
-    const tempBand = hashInt(hexSeed + ":temp", 0, 4);
+    // Climate bands via macro waves (slow-varying)
+    let moistureBand = macroMoistureWave(q, r, worldSeed);
+    let tempBand = macroTempWave(q, r, worldSeed);
 
-    // Biome
-    const biomeFamily = determineBiome(meanHeight, moistureBand, tempBand);
+    // Enforce neighbor band continuity (Δ ≤ 1)
+    if (neighbors && neighbors.length > 0) {
+      for (const nb of neighbors) {
+        if (Math.abs(moistureBand - nb.moisture_band) > 1) {
+          moistureBand = nb.moisture_band + Math.sign(moistureBand - nb.moisture_band);
+        }
+        if (Math.abs(tempBand - nb.temp_band) > 1) {
+          tempBand = nb.temp_band + Math.sign(tempBand - nb.temp_band);
+        }
+      }
+      moistureBand = Math.max(0, Math.min(4, moistureBand));
+      tempBand = Math.max(0, Math.min(4, tempBand));
+    }
+
+    // Biome + transition enforcement
+    let biomeFamily = determineBiome(meanHeight, moistureBand, tempBand);
+    const neighborBiomes = (neighbors || []).map((n: any) => n.biome_family);
+    biomeFamily = enforceTransition(biomeFamily, neighborBiomes);
 
     // Coastal detection
     let coastal = false;
