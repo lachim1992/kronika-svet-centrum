@@ -1,4 +1,4 @@
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "npm:@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -78,11 +78,27 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { session_id, q, r } = await req.json();
+    let session_id: string | null = null;
+    let q: number | undefined;
+    let r: number | undefined;
 
-    if (!session_id || q === undefined || r === undefined) {
+    if (req.method === "GET") {
+      const url = new URL(req.url);
+      session_id = url.searchParams.get("session_id") || url.searchParams.get("world_id");
+      const qStr = url.searchParams.get("q");
+      const rStr = url.searchParams.get("r");
+      if (qStr !== null) q = parseInt(qStr, 10);
+      if (rStr !== null) r = parseInt(rStr, 10);
+    } else {
+      const body = await req.json();
+      session_id = body.session_id || body.world_id;
+      q = body.q;
+      r = body.r;
+    }
+
+    if (!session_id || q === undefined || r === undefined || isNaN(q) || isNaN(r)) {
       return new Response(
-        JSON.stringify({ error: "session_id, q, r required" }),
+        JSON.stringify({ error: "session_id (or world_id), q, r required" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -90,6 +106,19 @@ Deno.serve(async (req) => {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const sb = createClient(supabaseUrl, serviceKey);
+
+    // Helper: enrich hex with macro_region object
+    async function enrichHex(hex: any) {
+      if (hex.macro_region_id) {
+        const { data: mr } = await sb
+          .from("macro_regions")
+          .select("*")
+          .eq("id", hex.macro_region_id)
+          .maybeSingle();
+        return { ...hex, macro_region: mr || null };
+      }
+      return { ...hex, macro_region: null };
+    }
 
     // Check if hex already exists
     const { data: existing } = await sb
@@ -101,7 +130,8 @@ Deno.serve(async (req) => {
       .maybeSingle();
 
     if (existing) {
-      return new Response(JSON.stringify(existing), {
+      const enriched = await enrichHex(existing);
+      return new Response(JSON.stringify(enriched), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
@@ -257,14 +287,16 @@ Deno.serve(async (req) => {
           .eq("q", q)
           .eq("r", r)
           .single();
-        return new Response(JSON.stringify(raceHex), {
+        const enrichedRace = await enrichHex(raceHex);
+        return new Response(JSON.stringify(enrichedRace), {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
       throw error;
     }
 
-    return new Response(JSON.stringify(hex), {
+    const enrichedHex = await enrichHex(hex);
+    return new Response(JSON.stringify(enrichedHex), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (e) {
