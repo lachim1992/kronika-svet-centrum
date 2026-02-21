@@ -1,6 +1,6 @@
 import {
   Home, Globe, Shield, Swords, BarChart3, Crown,
-  Newspaper, BookOpen, Timer, Wrench, PanelLeftClose, PanelLeft,
+  Newspaper, BookOpen, Timer, Wrench, PanelLeftClose, PanelLeft, Map,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -20,6 +20,7 @@ interface AppSidebarProps {
 const navItems: { id: TabId; label: string; icon: React.ElementType; group: string }[] = [
   { id: "home", label: "My Realm", icon: Home, group: "main" },
   { id: "world", label: "World", icon: Globe, group: "main" },
+  { id: "worldmap", label: "World Map", icon: Map, group: "main" },
   { id: "realm", label: "Provinces", icon: Shield, group: "main" },
   { id: "army", label: "Armies", icon: Swords, group: "main" },
   { id: "economy", label: "Economy", icon: BarChart3, group: "main" },
