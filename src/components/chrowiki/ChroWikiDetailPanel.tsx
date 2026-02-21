@@ -416,31 +416,56 @@ const ChroWikiDetailPanel = ({
   const showSigil = SIGIL_TYPES.has(entityType);
 
   return (
-    <div className="flex flex-col h-full min-h-0 overflow-hidden">
-      {/* ═══ HERO SECTION (shrink-to-content) ═══ */}
-      <div className="shrink-0">
-        {/* Cover image */}
-        {imageUrl ? (
-          <div
-            className="relative w-full overflow-hidden cursor-pointer group"
-            onClick={() => setLightboxOpen(true)}
-          >
-            <div className="aspect-[21/9] md:aspect-[21/9] max-sm:aspect-[16/9]">
-              <img src={imageUrl} alt={entityName} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-[1.03]" />
+    <div className="chrowiki-page-content">
+      <div className="chrowiki-book-frame mx-4 md:mx-6 my-4">
+        {/* ═══ BOOK HEADER ═══ */}
+        <div className="flex items-start gap-4 mb-4">
+          {showSigil && (
+            <div className="shrink-0">
+              <div className="rounded-full bg-card flex items-center justify-center overflow-hidden"
+                style={{
+                  width: 56, height: 56,
+                  border: '2px solid hsl(var(--primary) / 0.5)',
+                  boxShadow: '0 0 0 2px hsl(var(--primary) / 0.12), 0 2px 8px hsl(var(--background) / 0.4)',
+                }}
+              >
+                {imageUrl ? (
+                  <img src={imageUrl} alt="" className="w-full h-full object-cover" />
+                ) : (
+                  <span className="text-primary [&_svg]:h-5 [&_svg]:w-5">{ENTITY_ICONS[entityType]}</span>
+                )}
+              </div>
             </div>
-            <div className="absolute inset-0 bg-gradient-to-t from-background via-background/20 to-transparent" />
-            <div className="absolute bottom-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity">
-              <Badge variant="secondary" className="text-[9px] backdrop-blur-sm bg-background/60">
-                <Eye className="h-2.5 w-2.5 mr-1" /> Zvětšit
-              </Badge>
+          )}
+          <div className="flex-1 min-w-0">
+            <h1 className="font-decorative text-xl md:text-2xl text-foreground leading-tight tracking-wide">{entityName}</h1>
+            {wiki?.summary && (
+              <p className="text-sm font-decorative text-primary/90 mt-0.5 italic leading-snug">„{wiki.summary}"</p>
+            )}
+            <div className="flex items-center gap-1.5 mt-2 flex-wrap">
+              <Badge variant="outline" className="text-[10px] font-display border-primary/30 text-primary">{ENTITY_LABELS[entityType] || entityType}</Badge>
+              {entity?.owner_player && <Badge variant="secondary" className="text-[10px]">{entity.owner_player}</Badge>}
+              {entity?.player_name && !entity?.owner_player && <Badge variant="secondary" className="text-[10px]">{entity.player_name}</Badge>}
+              {entity?.tags?.map((t: string) => (
+                <Badge key={t} variant="outline" className="text-[9px] text-muted-foreground">{t}</Badge>
+              ))}
             </div>
           </div>
+          <Button variant="ghost" size="sm" onClick={() => setReadingMode(!readingMode)} className="shrink-0 text-xs">
+            {readingMode ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+          </Button>
+        </div>
+
+        {/* ═══ COVER IMAGE (inline, inside book frame) ═══ */}
+        {imageUrl ? (
+          <div className="chrowiki-cover mb-5 cursor-pointer" onClick={() => setLightboxOpen(true)}>
+            <img src={imageUrl} alt={entityName} />
+          </div>
         ) : (
-          <div className="relative w-full bg-gradient-to-br from-primary/8 via-secondary/40 to-primary/5 flex items-center justify-center aspect-[21/9] md:aspect-[21/9] max-sm:aspect-[16/9]">
+          <div className="chrowiki-cover-placeholder mb-5">
             <div className="text-center opacity-30">
-              <span className="[&_svg]:h-14 [&_svg]:w-14">{ENTITY_ICONS[entityType] || <BookOpen className="h-14 w-14" />}</span>
+              <span className="[&_svg]:h-10 [&_svg]:w-10">{ENTITY_ICONS[entityType] || <BookOpen className="h-10 w-10" />}</span>
             </div>
-            <div className="absolute inset-0 bg-gradient-to-t from-background via-transparent to-transparent" />
           </div>
         )}
 
@@ -453,55 +478,7 @@ const ChroWikiDetailPanel = ({
           </DialogContent>
         </Dialog>
 
-        {/* ═══ SIGIL + TITLE HEADER ═══ */}
-        <div className={`relative px-5 pb-3 ${imageUrl ? "-mt-12 z-10" : "pt-4"}`}>
-          <div className="flex items-end gap-4">
-            {showSigil && (
-              <div className="shrink-0 relative">
-                <div className="w-18 h-18 rounded-full shadow-lg bg-card flex items-center justify-center overflow-hidden"
-                  style={{
-                    width: 72, height: 72,
-                    border: '3px solid hsl(var(--primary) / 0.6)',
-                    boxShadow: '0 0 0 3px hsl(var(--primary) / 0.15), 0 4px 16px hsl(var(--background) / 0.5)',
-                  }}
-                >
-                  {imageUrl ? (
-                    <img src={imageUrl} alt="" className="w-full h-full object-cover" />
-                  ) : (
-                    <span className="text-primary [&_svg]:h-7 [&_svg]:w-7">{ENTITY_ICONS[entityType]}</span>
-                  )}
-                </div>
-              </div>
-            )}
-            <div className="flex-1 min-w-0 pb-1">
-              <h1 className="font-decorative text-2xl md:text-3xl text-foreground leading-tight tracking-wide">{entityName}</h1>
-              {wiki?.summary && (
-                <p className="text-sm font-decorative text-primary/90 mt-0.5 italic leading-snug">„{wiki.summary}"</p>
-              )}
-            </div>
-            <Button variant="ghost" size="sm" onClick={() => setReadingMode(!readingMode)} className="shrink-0 text-xs mb-1">
-              {readingMode ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
-            </Button>
-          </div>
-          {/* Quick chips */}
-          <div className="flex items-center gap-1.5 mt-2 flex-wrap ml-0">
-            <Badge variant="outline" className="text-[10px] font-display border-primary/30 text-primary">{ENTITY_LABELS[entityType] || entityType}</Badge>
-            {entity?.owner_player && <Badge variant="secondary" className="text-[10px]">{entity.owner_player}</Badge>}
-            {entity?.player_name && !entity?.owner_player && <Badge variant="secondary" className="text-[10px]">{entity.player_name}</Badge>}
-            {entity?.tags?.map((t: string) => (
-              <Badge key={t} variant="outline" className="text-[9px] text-muted-foreground">{t}</Badge>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {/* ═══ SCROLLABLE CONTENT AREA ═══ */}
-      <div className="flex-1 min-h-0 overflow-y-auto pb-24">
-        <div className="max-w-[900px] mx-auto px-4 md:px-8 lg:px-12 py-4">
-          {/* ═══ PARCHMENT CHRONICLE CARD ═══ */}
-          <div className="chronicle-parchment rounded-xl p-6 md:p-8 mx-2 md:mx-6 lg:mx-10">
-
-            {/* D) PROFILE SNAPSHOT (hidden in reading mode) */}
+        {/* ═══ INFO TABLE ═══ */}
             {!readingMode && keyFacts.length > 0 && (
               <>
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-2.5 p-3.5 rounded-lg border mb-4"
@@ -784,8 +761,6 @@ const ChroWikiDetailPanel = ({
                 </div>
               </>
             )}
-          </div>
-        </div>
       </div>
     </div>
   );
