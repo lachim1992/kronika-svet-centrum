@@ -1,310 +1,344 @@
+# Chronicle Hub — Architecture Plan v2
 
+## Vision
 
-# Chronicle Hub -- Complete Overhaul Plan
+Chronicle Hub supports **two world progression systems** sharing one database engine:
+1. **Turn-Based** (Singleplayer + Multiplayer)
+2. **Time-Based Persistent** (flagship, phase 3+)
 
-## Overview
-
-This plan implements four major changes simultaneously:
-1. User authentication (email + Google) with persistent profiles
-2. World Foundation setup when creating a new game
-3. Role-based permissions (Admin / Player)
-4. Full navigation redesign (bottom nav + nested pages)
+Priority #1: **Turn-Based Singleplayer with AI World** (premium feature).
+Monetization: free/premium flag only (no Stripe yet).
 
 ---
 
-## 1. Database Changes (Migrations)
+## I. GAME MODE TAXONOMY
 
-### New Tables
+```
+game_sessions.game_mode = 'tb_single_ai' | 'tb_single_manual' | 'tb_multi' | 'time_persistent'
+game_sessions.tier       = 'free' | 'premium'
+```
 
-**profiles**
-- `id` (uuid, PK, references auth.users ON DELETE CASCADE)
-- `username` (text, NOT NULL)
-- `avatar_url` (text, nullable)
-- `bio` (text, nullable)
-- `created_at` (timestamptz, default now())
-- `updated_at` (timestamptz, default now())
-- RLS: users can read all profiles, update only their own
-- Trigger: auto-create profile row on auth.users insert
+| Mode | Code | Players | AI Role | Status |
+|------|------|---------|---------|--------|
+| SP AI World | `tb_single_ai` | 1 | World generator + reactor | **Phase 1** |
+| SP Manual | `tb_single_manual` | 1 | Optional lore helper | Phase 2 |
+| MP Turn-Based | `tb_multi` | 2–6 | Narrator + event gen | **Existing** (current app) |
+| Time-Based Persistent | `time_persistent` | 2–50+ | Autonomous event engine | Phase 3 |
 
-**user_roles**
-- `id` (uuid, PK)
-- `user_id` (uuid, references auth.users ON DELETE CASCADE)
-- `role` (app_role enum: admin, moderator, user)
-- UNIQUE(user_id, role)
-- RLS via security definer function `has_role()`
+---
 
-**game_memberships**
-- `id` (uuid, PK)
-- `user_id` (uuid, references auth.users ON DELETE CASCADE)
-- `session_id` (uuid, references game_sessions ON DELETE CASCADE)
-- `player_name` (text, NOT NULL) -- the in-game identity
-- `role` (text, default 'player') -- 'admin' or 'player'
-- `joined_at` (timestamptz, default now())
-- UNIQUE(user_id, session_id)
-- RLS: authenticated users can read memberships for their games, insert for themselves
+## II. PHASE 1 — Turn-Based Singleplayer (AI World)
 
-**world_foundations**
-- `id` (uuid, PK)
-- `session_id` (uuid, references game_sessions, UNIQUE)
-- `world_name` (text, NOT NULL)
-- `premise` (text, NOT NULL) -- short world description
-- `tone` (text, default 'mythic') -- mythic / realistic / dark_fantasy / sci_fi
-- `victory_style` (text, default 'story') -- domination / survival / story
-- `initial_factions` (text[], default '{}')
-- `created_by` (uuid, references auth.users)
-- `created_at` (timestamptz, default now())
-- RLS: readable by all authenticated, writable by game admin only
+### A) World Generation Pipeline
 
-### Modified Tables
+When creating a `tb_single_ai` game, the system generates:
 
-**game_sessions**: Add column `created_by` (uuid, nullable, references auth.users) to track the game creator.
+1. **World Foundation** (existing `world_foundations` table — extend)
+   - World name, premise, tone, victory_style
+   - NEW: `biome_template`, `world_size` (small/medium/large), `history_depth` (free: 10y, premium: 50-200y)
 
-**game_players**: Add column `user_id` (uuid, nullable, references auth.users) to link players to authenticated users.
+2. **AI World Init** — new edge function `world-generate-init`
+   - Input: world_foundation params + tier
+   - Generates:
+     - 3–8 AI factions (stored in `civilizations` with `is_ai = true`)
+     - 5–20 cities across 2–6 regions
+     - Political relationships (alliances, rivalries)
+     - 10–200 years of simulated pre-history (as `game_events` + `chronicle_entries`)
+     - Trade routes (as `entity_traits` on cities)
+     - Cultural tensions (as `world_memories`)
+   - Output saved to DB in one transaction
 
-### Security Definer Function
+3. **Player Placement**
+   - Player chooses or is assigned a starting faction
+   - Player's cities/regions highlighted
+   - AI factions become NPC opponents
 
+### B) AI Reaction System
+
+Each turn end triggers:
+1. `process-turn` (existing) — economy
+2. NEW: `ai-faction-turn` — each AI faction:
+   - Evaluates world state
+   - Makes decisions (build, trade, declare war, ally)
+   - Generates events
+   - Uses **compressed world summary** (not full history)
+3. `chronicle` / `world-chronicle-round` (existing) — narrate
+
+### C) Memory & Context Management
+
+**Free Tier:**
+- AI remembers last 5 turns in detail
+- Older history compressed to 1-paragraph summaries per 5 turns
+- Max 20 world memories active
+
+**Premium Tier:**
+- AI remembers last 20 turns in detail
+- Full entity trait history
+- Unlimited world memories
+- Richer narrative generation (longer prompts, more context)
+
+#### New Table: `ai_world_summaries`
 ```sql
-create or replace function public.has_role(_user_id uuid, _role app_role)
-returns boolean language sql stable security definer
-set search_path = public as $$
-  select exists (
-    select 1 from public.user_roles
-    where user_id = _user_id and role = _role
-  )
-$$;
+CREATE TABLE ai_world_summaries (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  session_id UUID REFERENCES game_sessions NOT NULL,
+  summary_type TEXT NOT NULL, -- 'world_state' | 'faction_state' | 'era_recap'
+  faction_name TEXT,          -- NULL for world-level summaries
+  turn_range_from INT,
+  turn_range_to INT,
+  summary_text TEXT NOT NULL,
+  key_facts JSONB DEFAULT '[]',
+  created_at TIMESTAMPTZ DEFAULT now()
+);
 ```
 
-### Auto-Create Profile Trigger
-
+#### New Table: `ai_factions`
 ```sql
-create or replace function public.handle_new_user()
-returns trigger language plpgsql security definer
-set search_path = public as $$
-begin
-  insert into public.profiles (id, username)
-  values (new.id, coalesce(new.raw_user_meta_data->>'username', 'Player'));
-  return new;
-end;
-$$;
-
-create trigger on_auth_user_created
-  after insert on auth.users
-  for each row execute function public.handle_new_user();
+CREATE TABLE ai_factions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  session_id UUID REFERENCES game_sessions NOT NULL,
+  faction_name TEXT NOT NULL,
+  personality TEXT NOT NULL,     -- 'aggressive' | 'diplomatic' | 'mercantile' | 'isolationist'
+  disposition JSONB DEFAULT '{}', -- { "player": 50, "faction_x": -20 }
+  goals JSONB DEFAULT '[]',      -- ["expand_north", "build_wonder"]
+  resources_snapshot JSONB DEFAULT '{}',
+  is_active BOOLEAN DEFAULT true,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
 ```
 
----
+### D) Database Changes (Phase 1)
 
-## 2. Authentication Implementation
-
-### New Pages / Components
-
-**`src/pages/Auth.tsx`** -- Login/Register page
-- Email + password form (sign up / sign in toggle)
-- Google OAuth button (using `lovable.auth.signInWithOAuth("google", ...)`)
-- Username field on registration
-- Redirect to `/` after successful auth
-
-**`src/pages/ResetPassword.tsx`** -- Password reset page at `/reset-password`
-
-**`src/hooks/useAuth.ts`** -- Auth context/hook
-- `onAuthStateChange` listener (set up BEFORE `getSession()`)
-- Exposes: `user`, `profile`, `loading`, `signOut()`
-- Wraps the app in an AuthProvider
-
-**`src/components/AuthGuard.tsx`** -- Protected route wrapper
-- Redirects to `/auth` if not logged in
-- Shows loading skeleton during auth check
-
-### Auth Flow
-
-1. Unauthenticated users see `/auth` (login/register)
-2. After login, redirect to `/` which shows "My Games" dashboard
-3. Game creation/joining now links to `game_memberships`
-4. Re-entering a game loads the same `game_memberships.player_name`
-5. No more localStorage-based identity (`ch_playerName` replaced by DB lookup)
-
----
-
-## 3. World Foundation Setup
-
-### New Component: `src/components/WorldSetupWizard.tsx`
-
-Shown as a modal/step after clicking "Create New Game":
-- Step 1: World name + premise (text inputs)
-- Step 2: Tone selector (mythic / realistic / dark fantasy / sci-fi)
-- Step 3: Victory condition (domination / survival / story-based)
-- Step 4: Initial factions/civilizations (add 2-6)
-- Submit creates `game_sessions` + `world_foundations` + `game_memberships` (role: admin)
-
-### World Codex Page
-
-New section under the World tab showing the immutable `world_foundations` data. AI edge functions will receive `world_foundation` as context when generating narratives.
-
----
-
-## 4. Role-Based Permissions
-
-### Rules
-
-**Game Admin** (the creator of the game, stored in `game_memberships.role = 'admin'`):
-- Generate AI Chronicle entries
-- Generate World Feed summaries
-- Edit/delete official world history
-- Approve legendary events
-- Access Dev Mode / Simulation
-
-**Player** (`game_memberships.role = 'player'`):
-- Add personal actions (city upgrades, battles, diplomacy)
-- Write comments, annotations, local city descriptions
-- Submit events as "pending" (not auto-confirmed)
-
-### Implementation
-
-- `useGameSession` hook gains `myRole` field from `game_memberships`
-- AI generation buttons are conditionally rendered: `{myRole === 'admin' && <Button>Generate Chronicle</Button>}`
-- Event confirmation: players submit as `confirmed: false`, admin confirms
-- Chronicle generation buttons hidden from players
-
----
-
-## 5. Navigation Redesign
-
-### Remove
-
-- The massive `TabsList` with 19+ tabs in `Dashboard.tsx`
-- The sticky imperial header (simplified)
-
-### New Structure
-
-**`src/components/layout/BottomNav.tsx`** -- 5 tabs + center FAB
-- Tabs: World, Civ, Cities, Feed, Profile
-- Center "+" floating action button
-
-**`src/components/layout/ActionChooser.tsx`** -- Modal opened by "+"
-- Add City Action (build/upgrade)
-- Add Battle
-- Add Diplomacy Move
-- Add Event (normal/memorable/legendary)
-- Add Comment/Note
-
-**`src/components/layout/AppHeader.tsx`** -- Minimal header
-- App name, current game selector, turn indicator (Year N), user avatar
-
-### Tab Content (nested pages using accordion/sections)
-
-**World Tab** (`src/pages/game/WorldTab.tsx`)
-- World Chronicle (ChronicleFeed -- official canon entries)
-- World Codex (WorldFoundation / rules / base premise)
-- Wonders of the World (WondersPanel)
-- World Timeline (WorldHistoryPanel -- turn-by-turn summaries)
-- City States (CityStatesPanel)
-
-**Civ Tab** (`src/pages/game/CivTab.tsx`)
-- My Civilization overview (CivilizationDNA)
-- Other Nations / Entity Traits (EntityTraitsPanel)
-- Diplomacy (DiplomacyPanel)
-- War Map (WarRoomPanel)
-- Rankings / Scores (LeaderboardsPanel)
-- Declarations (DeclarationsPanel)
-- Secret Objectives (SecretObjectivesPanel)
-
-**Cities Tab** (`src/pages/game/CitiesTab.tsx`)
-- My Cities list (CityDirectory)
-- Economy overview (EmpireManagement -- resources/armies/trades)
-- Great Persons (GreatPersonsPanel)
-
-**Feed Tab** (`src/pages/game/FeedTab.tsx`)
-- Rumors and News feed (intelligence_reports)
-- Event Timeline with filters
-- Player Chronicle (PlayerChroniclePanel)
-
-**Profile Tab** (`src/pages/game/ProfileTab.tsx`)
-- My profile (username/avatar/bio, editable)
-- My games list (from game_memberships)
-- My role per game
-- Settings
-- Dev Mode (DevModePanel -- hidden in collapsible, admin only)
-
-### Migration Mapping (old tab to new location)
-
-| Old Tab | New Location |
-|---------|-------------|
-| overview | World Tab (top section) |
-| chronicle | World Tab > World Chronicle |
-| worldhistory | World Tab > World Timeline |
-| playerchronicle | Feed Tab > My Chronicle |
-| civdna | Civ Tab > My Civilization |
-| traits | Civ Tab > Other Nations |
-| persons | Cities Tab > Great Persons |
-| cities | Cities Tab > My Cities |
-| empire | Cities Tab > Economy |
-| events | Feed Tab > Event Timeline |
-| declarations | Civ Tab > Declarations |
-| warroom | Civ Tab > War Map |
-| wonders | World Tab > Wonders |
-| diplomacy | Civ Tab > Diplomacy |
-| destiny | Civ Tab > Secret Objectives |
-| leaderboards | Civ Tab > Rankings |
-| citystates | World Tab > City States |
-| wiki | World Tab > Wiki / Codex |
-| devmode | Profile Tab > Dev Mode |
-
----
-
-## 6. Updated Routing
-
-```
-/auth              -- Login / Register
-/reset-password    -- Password reset
-/                  -- My Games dashboard (authenticated)
-/game/:sessionId   -- Game view with bottom nav
+#### Alter `game_sessions`:
+```sql
+ALTER TABLE game_sessions ADD COLUMN game_mode TEXT DEFAULT 'tb_multi';
+ALTER TABLE game_sessions ADD COLUMN tier TEXT DEFAULT 'free';
 ```
 
-The game view no longer uses URL-based tab routing -- bottom nav manages internal state.
+#### Alter `civilizations`:
+```sql
+ALTER TABLE civilizations ADD COLUMN is_ai BOOLEAN DEFAULT false;
+ALTER TABLE civilizations ADD COLUMN ai_personality TEXT;
+```
+
+#### New edge functions:
+- `world-generate-init` — generates full world from foundation params
+- `ai-faction-turn` — processes one AI faction's turn decisions
+- `ai-compress-history` — compresses old turns into summaries
+
+### E) UI Changes (Phase 1)
+
+#### Game Creation Flow:
+1. User picks mode: "AI World" / "Manual World" / "Multiplayer"
+2. For AI World:
+   - World size selector (small 5 cities / medium 12 / large 20)
+   - Tone + premise (existing wizard)
+   - History depth (free: 10y / premium: 50-200y)
+   - Generate button → loading screen with progress
+3. After generation → enter game as usual
+
+#### In-Game:
+- AI factions appear in Diplomacy panel as NPC partners
+- AI faction decisions appear in World Feed
+- Player can interact with AI factions (trade, war, diplomacy)
+- "AI Turn" processing shown as animated loading between turns
 
 ---
 
-## 7. Files to Create
+## III. PHASE 2 — Turn-Based Singleplayer (Manual/Human-Arranged)
 
-- `src/hooks/useAuth.ts`
-- `src/components/AuthGuard.tsx`
-- `src/pages/Auth.tsx`
-- `src/pages/ResetPassword.tsx`
-- `src/pages/MyGames.tsx`
-- `src/components/WorldSetupWizard.tsx`
-- `src/components/WorldCodex.tsx`
-- `src/components/layout/BottomNav.tsx`
-- `src/components/layout/ActionChooser.tsx`
-- `src/components/layout/AppHeader.tsx`
-- `src/pages/game/WorldTab.tsx`
-- `src/pages/game/CivTab.tsx`
-- `src/pages/game/CitiesTab.tsx`
-- `src/pages/game/FeedTab.tsx`
-- `src/pages/game/ProfileTab.tsx`
+### Purpose
+For DnD groups, tabletop RPGs, collaborative worldbuilding.
 
-## 8. Files to Modify
+### Key Differences from AI Mode:
+- No automatic world generation
+- No AI faction turns
+- Player(s) manually create everything
+- AI available as **optional paid tool**:
+  - "Generate city lore" button
+  - "Generate war outcome" button
+  - "Generate artifact description" button
+  - Each generation costs 1 "AI credit" (tracked in DB, not real money yet)
 
-- `src/App.tsx` -- Add AuthProvider, new routes, AuthGuard
-- `src/pages/Dashboard.tsx` -- Complete rewrite: bottom nav layout, remove TabsList
-- `src/pages/Index.tsx` -- Becomes MyGames dashboard (or redirect)
-- `src/hooks/useGameSession.ts` -- Add `myRole`, `user_id` linking, World Foundation fetch
-- `src/components/ChronicleFeed.tsx` -- Admin-only generation buttons
-- `src/components/EventInput.tsx` -- Players submit as pending
-- `src/components/DevModePanel.tsx` -- Admin-only access
-- Edge functions -- Include `world_foundation` context in AI prompts
+### Database:
+- Uses same tables as Phase 1
+- `game_mode = 'tb_single_manual'`
+- No `ai_factions` rows
+- No `ai_world_summaries`
+
+### UI:
+- Simplified creation wizard (no world generation)
+- Manual entity creation forms for everything
+- Optional AI buttons marked with ✨ icon
 
 ---
 
-## 9. Execution Order
+## IV. PHASE 3 — Time-Based Persistent System
 
-1. Database migration (profiles, user_roles, game_memberships, world_foundations, alter game_sessions/game_players)
-2. Configure Google OAuth via social auth tool
-3. Auth hook, AuthGuard, Auth page, ResetPassword page
-4. MyGames dashboard page
-5. WorldSetupWizard (game creation flow)
-6. Game membership logic in useGameSession
-7. Bottom navigation + AppHeader + ActionChooser
-8. Five tab pages (World, Civ, Cities, Feed, Profile)
-9. Rewrite Dashboard.tsx to use new layout
-10. Role-based conditional rendering throughout
+### Core Concept
+World runs in real-time. Actions consume time. Distance matters.
 
+### New Concepts:
+- **Action Queue** — ordered list of pending actions with time costs
+- **Time Pools** — per-player and per-city time budgets
+- **Travel System** — distance-based delays between cities
+- **Admin Mode** — dedicated monitoring dashboard
+
+### New Tables:
+
+#### `action_queue`
+```sql
+CREATE TABLE action_queue (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  session_id UUID REFERENCES game_sessions NOT NULL,
+  player_name TEXT NOT NULL,
+  action_type TEXT NOT NULL,
+  action_data JSONB NOT NULL,
+  started_at TIMESTAMPTZ DEFAULT now(),
+  completes_at TIMESTAMPTZ NOT NULL,
+  status TEXT DEFAULT 'pending', -- pending | in_progress | completed | cancelled
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+```
+
+#### `time_pools`
+```sql
+CREATE TABLE time_pools (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  session_id UUID REFERENCES game_sessions NOT NULL,
+  entity_type TEXT NOT NULL, -- 'player' | 'city' | 'army'
+  entity_id UUID NOT NULL,
+  pool_name TEXT NOT NULL,   -- 'personal' | 'governance' | 'military'
+  total_minutes INT NOT NULL,
+  used_minutes INT DEFAULT 0,
+  resets_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+```
+
+#### `server_config`
+```sql
+CREATE TABLE server_config (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  session_id UUID REFERENCES game_sessions NOT NULL UNIQUE,
+  time_scale FLOAT DEFAULT 1.0,    -- 1.0 = real-time, 10.0 = 10x speed
+  tick_interval_seconds INT DEFAULT 60,
+  max_players INT DEFAULT 50,
+  admin_user_id UUID REFERENCES auth.users,
+  economic_params JSONB DEFAULT '{}',
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+```
+
+### Admin Dashboard:
+- Economic monitoring (inflation, resource rates)
+- Faction balance stats
+- Political instability meter
+- Conflict heatmap
+- Player activity tracker
+- Manual intervention tools
+
+### Automated Event Engine:
+- Cron job every N minutes
+- Evaluates: economic imbalance, military tension, trade disruption, cultural friction
+- References past history for continuity
+- Generates contextual events
+
+### Inactivity System:
+- After X hours inactive: AI assumes conservative governance
+- After Y days: faction can be voted out by other players
+- Delegation system for temporary absence
+
+---
+
+## V. SHARED ENGINE (All Modes)
+
+These systems are shared across all modes:
+
+| System | Tables | Notes |
+|--------|--------|-------|
+| Chronicle Engine | `chronicle_entries`, `event_narratives` | Single source of truth |
+| World Memory | `world_memories`, `city_memories` | Persistent facts |
+| Entity Traits | `entity_traits` | Identity system |
+| Entity Contributions | `entity_contributions` | Player-created lore |
+| Wiki/Codex | `wiki_entries`, `encyclopedia_images` | Knowledge base |
+| Diplomacy | `diplomacy_rooms`, `diplomacy_messages` | Player-to-player/NPC |
+| Events | `game_events`, `world_events` | History nodes |
+| Economy | `player_resources`, `cities`, `settlement_resource_profiles` | Resource model |
+
+---
+
+## VI. FREE vs PREMIUM
+
+| Feature | Free | Premium |
+|---------|------|---------|
+| Multiplayer | ✅ Full | ✅ Full |
+| Manual Singleplayer | ✅ Full | ✅ Full |
+| AI Singleplayer | ✅ Limited | ✅ Full |
+| AI history depth | 10 years | 50-200 years |
+| AI memory window | 5 turns | 20 turns |
+| World memories cap | 20 | Unlimited |
+| AI lore generation | 3/day | Unlimited |
+| World size | Small (5 cities) | Large (20 cities) |
+| Time-Based servers | ❌ | ✅ |
+
+Stored as: `game_sessions.tier = 'free' | 'premium'`
+
+User-level premium tracked in: `profiles.is_premium BOOLEAN DEFAULT false`
+
+---
+
+## VII. EXECUTION ROADMAP
+
+### Phase 1A — Foundation (Current Sprint)
+1. ✅ Auth system (done)
+2. ✅ Role-based permissions (done)
+3. ✅ Navigation redesign (done)
+4. ✅ Economy system (done)
+5. Migration: Add `game_mode`, `tier` to `game_sessions`
+6. Migration: Add `is_ai`, `ai_personality` to `civilizations`
+7. Migration: Create `ai_factions`, `ai_world_summaries`
+8. Migration: Add `is_premium` to `profiles`
+9. Update game creation wizard with mode selection
+
+### Phase 1B — AI Singleplayer Core
+10. Edge function: `world-generate-init`
+11. Edge function: `ai-faction-turn`
+12. Edge function: `ai-compress-history`
+13. AI faction display in Diplomacy panel
+14. AI turn processing animation
+15. World generation loading screen
+16. Free/premium tier limits enforcement
+
+### Phase 2 — Manual Singleplayer
+17. Simplified creation wizard
+18. Manual entity creation forms
+19. Optional AI generation buttons with credit tracking
+20. DnD/RPG-friendly templates
+
+### Phase 3 — Time-Based Persistent
+21. Action queue system
+22. Time pool mechanics
+23. Travel/distance system
+24. Admin monitoring dashboard
+25. Automated event engine (cron)
+26. Inactivity/delegation system
+27. Server configuration panel
+
+---
+
+## VIII. DESIGN PHILOSOPHY
+
+> Chronicle Hub is not just a game.
+> It is a **persistent world engine**, a **political simulation platform**,
+> and a **narrative chronicle system**.
+> **Time and consequence** are core pillars.
+
+All modes share:
+- Event-based chronicle as single source of truth
+- World summary layers for AI context
+- Entity state tracking
+- Action audit logging
+
+No duplicated logic between modes.
+Only **time resolution** differs.
