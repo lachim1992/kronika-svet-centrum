@@ -38,7 +38,7 @@ const hKey = (q: number, r: number) => `${q},${r}`;
 /* ───── City on hex ───── */
 interface CityOnHex {
   id: string; name: string; owner_player: string; q: number; r: number;
-  settlement_level: string; isCapital?: boolean;
+  settlement_level: string; isCapital?: boolean; imageUrl?: string | null;
 }
 
 /* ───── Props ───── */
@@ -92,6 +92,7 @@ const HexTile = memo(({
                   settlementLevel={c.settlement_level}
                   ownerPlayer={c.owner_player}
                   isCapital={c.isCapital}
+                  imageUrl={c.imageUrl}
                   size="md"
                   cx={cx + (i > 0 ? (i === 1 ? -8 : 8) : 0)}
                   cy={cy + (i > 0 ? 6 : 0)}
@@ -162,13 +163,27 @@ const WorldHexMap = ({ sessionId, playerName, myRole, onCityClick }: Props) => {
 
   /* ── Load cities with province coordinates ── */
   const fetchCities = useCallback(async () => {
-    const { data } = await supabase
-      .from("cities")
-      .select("id, name, owner_player, province_q, province_r, settlement_level")
-      .eq("session_id", sessionId)
-      .not("province_q", "is", null)
-      .not("province_r", "is", null);
+    const [{ data }, { data: images }] = await Promise.all([
+      supabase
+        .from("cities")
+        .select("id, name, owner_player, province_q, province_r, settlement_level")
+        .eq("session_id", sessionId)
+        .not("province_q", "is", null)
+        .not("province_r", "is", null),
+      supabase
+        .from("encyclopedia_images")
+        .select("entity_id, image_url")
+        .eq("session_id", sessionId)
+        .eq("entity_type", "city")
+        .eq("is_primary", true),
+    ]);
     if (data) {
+      // Build image lookup
+      const imgMap = new Map<string, string>();
+      for (const img of images || []) {
+        imgMap.set(img.entity_id, img.image_url);
+      }
+
       // Determine capital: first CITY-level or first city per player
       const capitalIds = new Set<string>();
       const byPlayer = new Map<string, typeof data>();
@@ -187,6 +202,7 @@ const WorldHexMap = ({ sessionId, playerName, myRole, onCityClick }: Props) => {
         q: c.province_q!, r: c.province_r!,
         settlement_level: c.settlement_level,
         isCapital: capitalIds.has(c.id),
+        imageUrl: imgMap.get(c.id) || null,
       }));
       setAllCities(mapped);
       setPlayerCities(mapped.filter(c => c.owner_player === playerName));
