@@ -5,7 +5,6 @@ import UnifiedEntityDetail from "@/components/UnifiedEntityDetail";
 import ExplorationPanel from "@/components/ExplorationPanel";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { MapPin, Building2, Globe, Castle, Mountain, Eye, EyeOff, Compass, Map } from "lucide-react";
-import WorldHexMap from "@/components/WorldHexMap";
 import { supabase } from "@/integrations/supabase/client";
 import { Badge } from "@/components/ui/badge";
 import { useDiscoveries } from "@/hooks/useDiscoveries";
@@ -316,26 +315,6 @@ const WorldTab = ({
         />
       </section>
 
-      {/* ═══════════════════════════════════════════ */}
-      {/* SECTION C — World Hex Map                   */}
-      {/* ═══════════════════════════════════════════ */}
-      <div className="relative">
-        <div className="absolute inset-0 flex items-center">
-          <div className="w-full border-t border-dashed border-muted-foreground/20" />
-        </div>
-        <div className="relative flex justify-center">
-          <span className="bg-background px-3 text-[10px] text-muted-foreground font-display uppercase tracking-wider">
-            Mapa světa
-          </span>
-        </div>
-      </div>
-
-      <WorldHexMap
-        sessionId={sessionId}
-        playerName={currentPlayerName}
-        myRole={myRole}
-        onCityClick={(cityId) => handleEntityClick("city", cityId)}
-      />
     </div>
   );
 };

@@ -26,6 +26,7 @@ import CouncilTab from "@/pages/game/CouncilTab";
 import ArmyTab from "@/pages/game/ArmyTab";
 import EconomyTab from "@/pages/game/EconomyTab";
 import PersistentTab from "@/pages/game/PersistentTab";
+import WorldMapTab from "@/pages/game/WorldMapTab";
 
 const Dashboard = () => {
   const { sessionId } = useParams<{ sessionId: string }>();
@@ -229,6 +230,15 @@ const Dashboard = () => {
     >
       {activeTab === "home" && <HomeTab {...sharedProps} foundCityTrigger={foundCityTrigger} />}
       {activeTab === "world" && <WorldTab {...sharedProps} worldEntityTarget={worldEntityTarget} onClearWorldEntityTarget={() => setWorldEntityTarget(null)} />}
+      {activeTab === "worldmap" && (
+        <WorldMapTab
+          sessionId={session.id}
+          currentPlayerName={myPlayerName}
+          myRole={myRole}
+          worldName={worldFoundation?.world_name}
+          onCityClick={(cityId) => handleEntityClick("city", cityId)}
+        />
+      )}
       {activeTab === "realm" && <RealmTab {...sharedProps} />}
       {activeTab === "army" && (
         <ArmyTab
