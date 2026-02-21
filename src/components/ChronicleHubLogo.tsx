@@ -25,7 +25,7 @@ const ChronicleHubLogo = ({ variant = "full", className = "", size = "md" }: Log
         className="shrink-0"
       >
         {/* Outer circle */}
-        <circle cx="60" cy="60" r="56" stroke="hsl(var(--primary))" strokeWidth="2.5" fill="none" />
+        <circle cx="60" cy="60" r="56" stroke="hsl(var(--primary))" strokeWidth="3.5" fill="none" />
 
         {/* Crown */}
         <path
@@ -46,7 +46,7 @@ const ChronicleHubLogo = ({ variant = "full", className = "", size = "md" }: Log
         <path
           d="M60 58 C60 58, 58 52, 38 50 L38 80 C58 78, 60 82, 60 82 Z"
           stroke="hsl(var(--primary))"
-          strokeWidth="2"
+          strokeWidth="2.5"
           fill="none"
           strokeLinecap="round"
           strokeLinejoin="round"
@@ -55,7 +55,7 @@ const ChronicleHubLogo = ({ variant = "full", className = "", size = "md" }: Log
         <path
           d="M60 58 C60 58, 62 52, 82 50 L82 80 C62 78, 60 82, 60 82 Z"
           stroke="hsl(var(--primary))"
-          strokeWidth="2"
+          strokeWidth="2.5"
           fill="none"
           strokeLinecap="round"
           strokeLinejoin="round"
@@ -70,11 +70,14 @@ const ChronicleHubLogo = ({ variant = "full", className = "", size = "md" }: Log
         <line x1="77" y1="70" x2="64" y2="72" stroke="hsl(var(--primary))" strokeWidth="1" opacity="0.4" />
 
         {/* Underline flourish */}
-        <line x1="42" y1="86" x2="78" y2="86" stroke="hsl(var(--primary))" strokeWidth="1.5" opacity="0.5" strokeLinecap="round" />
+        <line x1="42" y1="86" x2="78" y2="86" stroke="hsl(var(--primary))" strokeWidth="2" opacity="0.5" strokeLinecap="round" />
       </svg>
 
       {variant === "full" && (
-        <span className={`tracking-widest text-primary ${s.text}`} style={{ fontFamily: "'Forum', serif" }}>
+        <span
+          className={`tracking-[0.25em] uppercase text-primary font-bold ${s.text}`}
+          style={{ fontFamily: "'Cinzel', serif" }}
+        >
           The Chronicle Hub
         </span>
       )}
