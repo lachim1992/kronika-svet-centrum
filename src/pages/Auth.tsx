@@ -6,7 +6,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Crown, Mail, KeyRound } from "lucide-react";
+import { BookOpen, Feather, Mail, KeyRound } from "lucide-react";
 import { toast } from "sonner";
 import { useEffect } from "react";
 
@@ -69,9 +69,28 @@ const Auth = () => {
   return (
     <div className="min-h-screen flex items-center justify-center p-6 parchment-bg">
       <div className="max-w-md w-full space-y-6 animate-fade-in">
-        <div className="text-center space-y-2">
-          <Crown className="h-10 w-10 text-primary mx-auto" />
-          <h1 className="text-3xl font-display font-bold">Chronicle Hub</h1>
+        <div className="text-center space-y-3">
+          {/* Epic Chronicle Logo */}
+          <div className="relative w-20 h-20 mx-auto flex items-center justify-center">
+            {/* Outer glow ring */}
+            <div className="absolute inset-0 rounded-full bg-gradient-to-br from-primary/20 via-transparent to-primary/10 animate-pulse" />
+            {/* Main book icon */}
+            <BookOpen className="h-12 w-12 text-primary drop-shadow-lg" strokeWidth={1.5} />
+            {/* Quill */}
+            <Feather className="h-6 w-6 text-primary absolute -top-1 -right-1 rotate-45 drop-shadow-md" strokeWidth={1.8} />
+            {/* Compass star */}
+            <svg className="absolute -bottom-1 -right-2 w-5 h-5" viewBox="0 0 12 12" fill="none">
+              <path d="M6 0L7.2 4.8L12 6L7.2 7.2L6 12L4.8 7.2L0 6L4.8 4.8Z" fill="hsl(var(--primary))" opacity="0.8" />
+            </svg>
+            {/* Small decorative stars */}
+            <svg className="absolute top-0 -left-2 w-3 h-3 opacity-50" viewBox="0 0 12 12" fill="none">
+              <path d="M6 0L7.2 4.8L12 6L7.2 7.2L6 12L4.8 7.2L0 6L4.8 4.8Z" fill="hsl(var(--primary))" />
+            </svg>
+            <svg className="absolute bottom-2 -left-3 w-2 h-2 opacity-30" viewBox="0 0 12 12" fill="none">
+              <path d="M6 0L7.2 4.8L12 6L7.2 7.2L6 12L4.8 7.2L0 6L4.8 4.8Z" fill="hsl(var(--primary))" />
+            </svg>
+          </div>
+          <h1 className="text-3xl font-decorative font-bold tracking-wide">Chronicle Hub</h1>
           <p className="text-muted-foreground">
             {showReset ? "Reset hesla" : isSignUp ? "Vytvořte si účet" : "Přihlaste se"}
           </p>
