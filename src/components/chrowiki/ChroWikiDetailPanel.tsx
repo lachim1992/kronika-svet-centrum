@@ -98,6 +98,7 @@ const ChroWikiDetailPanel = ({
   const [dbEntity, setDbEntity] = useState<any>(null);
   const [dbLoading, setDbLoading] = useState(false);
   const [dbError, setDbError] = useState(false);
+  const [coverImage, setCoverImage] = useState<string | null>(null);
   const [readingMode, setReadingMode] = useState(false);
   const [lightboxOpen, setLightboxOpen] = useState(false);
 
@@ -142,9 +143,13 @@ const ChroWikiDetailPanel = ({
       supabase.from("entity_links").select("*")
         .eq("session_id", sessionId)
         .or(`and(from_entity_type.eq.${entityType},from_entity_id.eq.${entityId}),and(to_entity_type.eq.${entityType},to_entity_id.eq.${entityId})`),
-    ]).then(([sagaRes, linksRes]) => {
+      supabase.from("encyclopedia_images").select("image_url")
+        .eq("session_id", sessionId).eq("entity_type", entityType).eq("entity_id", entityId)
+        .eq("is_primary", true).eq("kind", "cover").limit(1).maybeSingle(),
+    ]).then(([sagaRes, linksRes, coverRes]) => {
       setSagaVersions(sagaRes.data || []);
       setEntityLinks(linksRes.data || []);
+      setCoverImage(coverRes.data?.image_url || null);
     });
   }, [entityId, entityType, sessionId]);
 
@@ -183,7 +188,7 @@ const ChroWikiDetailPanel = ({
 
   const isOwner = entity?.owner_player === currentPlayerName || entity?.player_name === currentPlayerName;
   const descriptionText = wiki?.ai_description || entity?.ai_description || entity?.description || entity?.bio || entity?.summary || null;
-  const imageUrl = wiki?.image_url || entity?.image_url || entity?.ai_image_url || null;
+  const imageUrl = coverImage || wiki?.image_url || entity?.image_url || entity?.ai_image_url || null;
 
   // Current saga text
   const currentSaga = useMemo(() => {

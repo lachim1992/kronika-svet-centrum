@@ -234,12 +234,13 @@ const WikiPanel = ({
     setGeneratingImage(key);
     try {
       const wiki = getWikiEntry(entity.type, entity.id);
-      const { data, error } = await supabase.functions.invoke("encyclopedia-image", {
+      const { data, error } = await supabase.functions.invoke("generate-entity-media", {
         body: {
+          sessionId,
           entityType: entity.type,
           entityName: entity.name,
           entityId: entity.id,
-          sessionId,
+          kind: "cover",
           imagePrompt: wiki?.image_prompt,
           createdBy: isAdmin ? "admin" : currentPlayerName,
         },

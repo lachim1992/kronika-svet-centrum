@@ -162,7 +162,7 @@ const SmartAIGenerationPanel = ({ sessionId, onRefetch }: Props) => {
   const generateWonderImages = () => runBatch(
     "wonder-images", report!.wondersNoImage,
     async (w) => {
-      await supabase.functions.invoke("wonder-portrait", { body: { wonderId: w.id } });
+      await supabase.functions.invoke("generate-entity-media", { body: { sessionId, entityId: w.id, entityType: "wonder", entityName: w.name, kind: "cover" } });
     },
     (w) => w.name,
     "Obrázky divů",
@@ -171,7 +171,7 @@ const SmartAIGenerationPanel = ({ sessionId, onRefetch }: Props) => {
   const generatePersonImages = () => runBatch(
     "person-images", report!.personsNoImage,
     async (p) => {
-      await supabase.functions.invoke("person-portrait", { body: { personId: p.id } });
+      await supabase.functions.invoke("generate-entity-media", { body: { sessionId, entityId: p.id, entityType: "person", entityName: p.name, kind: "cover" } });
     },
     (p) => p.name,
     "Portréty osobností",

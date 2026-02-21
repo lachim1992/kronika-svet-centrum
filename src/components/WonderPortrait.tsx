@@ -22,10 +22,10 @@ interface WonderPortraitProps {
 
 interface DraftImage {
   id: string;
-  wonder_id: string;
   image_url: string;
   image_prompt: string | null;
   created_at: string;
+  is_primary: boolean;
 }
 
 const WonderPortrait = ({
@@ -44,9 +44,12 @@ const WonderPortrait = ({
 
   const fetchDrafts = async () => {
     const { data } = await supabase
-      .from("wonder_draft_images")
+      .from("encyclopedia_images")
       .select("*")
-      .eq("wonder_id", wonderId)
+      .eq("session_id", sessionId)
+      .eq("entity_type", "wonder")
+      .eq("entity_id", wonderId)
+      .eq("is_primary", false)
       .order("created_at", { ascending: false });
     if (data) setDrafts(data as DraftImage[]);
   };
@@ -58,31 +61,28 @@ const WonderPortrait = ({
     }
     setGenerating(true);
     try {
-      const { data, error } = await supabase.functions.invoke("wonder-portrait", {
+      const { data, error } = await supabase.functions.invoke("generate-entity-media", {
         body: {
-          wonderId,
-          city: cityName,
-          ownerFlavorPrompt: promptText,
-          wonderPromptCzech: promptText,
-          existingMemories: [],
+          sessionId,
+          entityId: wonderId,
+          entityType: "wonder",
+          entityName: wonderName,
+          kind: "illustration",
+          imagePrompt: promptText,
+          createdBy: currentPlayerName,
         },
       });
 
       if (error) throw error;
+      if (data.error) { toast.error(data.error); return; }
 
-      if (data.error) {
-        toast.error(data.error);
-        return;
-      }
-
-      // Save the prompt on the wonder
       await supabase.from("wonders").update({
         image_prompt: promptText,
         updated_at: new Date().toISOString(),
       }).eq("id", wonderId);
 
       await fetchDrafts();
-      toast.success(`🎨 ${data.candidates?.length || 0} kandidátů vygenerováno!`);
+      toast.success(`🎨 Kandidát portrétu vygenerován!`);
       onRefetch?.();
     } catch (e) {
       console.error(e);
@@ -92,17 +92,33 @@ const WonderPortrait = ({
   };
 
   const handleApprove = async (draft: DraftImage) => {
-    const { error } = await supabase.from("wonders").update({
+    // Set this draft as primary cover in encyclopedia_images
+    await supabase
+      .from("encyclopedia_images")
+      .update({ is_primary: false })
+      .eq("session_id", sessionId)
+      .eq("entity_type", "wonder")
+      .eq("entity_id", wonderId)
+      .eq("is_primary", true);
+
+    await supabase
+      .from("encyclopedia_images")
+      .update({ is_primary: true, kind: "cover" })
+      .eq("id", draft.id);
+
+    // Also update wonders table for backward compat
+    await supabase.from("wonders").update({
       image_url: draft.image_url,
       image_prompt: draft.image_prompt || promptText,
       updated_at: new Date().toISOString(),
     }).eq("id", wonderId);
 
-    if (error) {
-      console.error(error);
-      toast.error("Chyba při potvrzení portrétu");
-      return;
-    }
+    // Update wiki_entries for backward compat
+    await supabase.from("wiki_entries").update({
+      image_url: draft.image_url,
+      image_prompt: draft.image_prompt || promptText,
+      updated_at: new Date().toISOString(),
+    }).eq("session_id", sessionId).eq("entity_type", "wonder").eq("entity_id", wonderId);
 
     await addGameEvent(
       sessionId, "wonder", ownerPlayer, cityName || "",
@@ -110,8 +126,6 @@ const WonderPortrait = ({
       currentTurn
     );
 
-    // Clean up drafts
-    await supabase.from("wonder_draft_images").delete().eq("wonder_id", wonderId);
     setDrafts([]);
     toast.success(`✅ Oficiální portrét „${wonderName}" potvrzen!`);
     onRefetch?.();
@@ -179,9 +193,9 @@ const WonderPortrait = ({
             className="w-full font-display"
           >
             {generating ? (
-              <><Loader2 className="h-3 w-3 mr-1 animate-spin" />Tvořím portréty...</>
+              <><Loader2 className="h-3 w-3 mr-1 animate-spin" />Tvořím portrét...</>
             ) : (
-              <><Sparkles className="h-3 w-3 mr-1" />Vygenerovat kandidáty</>
+              <><Sparkles className="h-3 w-3 mr-1" />Vygenerovat kandidáta</>
             )}
           </Button>
         </div>
