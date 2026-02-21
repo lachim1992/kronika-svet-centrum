@@ -19,6 +19,7 @@ import CityRumorsPanel from "@/components/CityRumorsPanel";
 import WorldMemoryPanel from "@/components/WorldMemoryPanel";
 import EntityContributionsPanel from "@/components/EntityContributionsPanel";
 import type { EntityIndex } from "@/hooks/useEntityIndex";
+import AILoreButton from "@/components/AILoreButton";
 
 const ENTITY_ICONS: Record<string, React.ReactNode> = {
   city: <MapPin className="h-4 w-4" />,

@@ -86,3 +86,6 @@ verify_jwt = false
 
 [functions.ai-compress-history]
 verify_jwt = false
+
+[functions.ai-lore-generate]
+verify_jwt = false

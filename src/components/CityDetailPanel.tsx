@@ -12,6 +12,7 @@ import { ArrowLeft, MapPin, Sparkles, BookOpen, Shield, Flame, Crown, Scroll, La
 import { toast } from "sonner";
 import RichText from "@/components/RichText";
 import { supabase } from "@/integrations/supabase/client";
+import AILoreButton from "@/components/AILoreButton";
 import WorldMemoryPanel from "@/components/WorldMemoryPanel";
 import CityRumorsPanel from "@/components/CityRumorsPanel";
 import type { EntityIndex } from "@/hooks/useEntityIndex";
@@ -168,12 +169,21 @@ const CityDetailPanel = ({
           )}
         </div>
         {isOwner && (
-          <Select value={(city as any).status || "ok"} onValueChange={handleUpdateStatus}>
-            <SelectTrigger className="w-36 h-8 text-xs"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              {STATUSES.map(s => <SelectItem key={s} value={s}>{STATUS_LABELS[s]}</SelectItem>)}
-            </SelectContent>
-          </Select>
+          <div className="flex items-center gap-2">
+            <AILoreButton
+              sessionId={city.session_id}
+              loreType="city_lore"
+              context={{ cityName: city.name, biome: city.province || "", owner: city.owner_player }}
+              label="✨ AI Lore"
+              compact
+            />
+            <Select value={(city as any).status || "ok"} onValueChange={handleUpdateStatus}>
+              <SelectTrigger className="w-36 h-8 text-xs"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {STATUSES.map(s => <SelectItem key={s} value={s}>{STATUS_LABELS[s]}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
         )}
       </div>
 
