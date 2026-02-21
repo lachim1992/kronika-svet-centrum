@@ -3,8 +3,9 @@ import { useNavigate } from "react-router-dom";
 import { createGameSession, joinGameSession } from "@/hooks/useGameSession";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Scroll, Users, Swords, Crown } from "lucide-react";
+import { Scroll, Users, Swords } from "lucide-react";
 import { toast } from "sonner";
+import ChronicleHubLogo from "@/components/ChronicleHubLogo";
 
 const LandingPage = () => {
   const navigate = useNavigate();
@@ -65,19 +66,15 @@ const LandingPage = () => {
   };
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center p-6 parchment-bg">
+    <div className="min-h-screen flex flex-col items-center justify-center p-6" style={{ background: "linear-gradient(180deg, hsl(220 30% 5%) 0%, hsl(220 30% 10%) 50%, hsl(220 25% 7%) 100%)" }}>
       <div className="max-w-md w-full space-y-8 animate-fade-in">
-        <div className="text-center space-y-3">
-          <div className="flex items-center justify-center gap-3 mb-2">
-            <Crown className="h-10 w-10 text-primary" />
-            <h1 className="text-4xl md:text-5xl font-display font-bold text-foreground tracking-wide">
-              Chronicle Hub
-            </h1>
-          </div>
-          <p className="text-muted-foreground text-lg font-body">
-            Kronikář vaší civilizace · 2–6 hráčů
-          </p>
+        <div className="text-center space-y-6 py-8">
+          <ChronicleHubLogo variant="full" size="hero" />
         </div>
+
+        <p className="text-muted-foreground text-base text-center" style={{ fontFamily: "'Cinzel', serif", letterSpacing: "0.15em" }}>
+          Kronikář vaší civilizace · 2–6 hráčů
+        </p>
 
         {mode === "menu" && (
           <div className="space-y-4">
