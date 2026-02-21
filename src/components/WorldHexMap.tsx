@@ -4,84 +4,69 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Loader2, Hexagon, Map, Compass, Eye, Plus, Minus } from "lucide-react";
-import { useHexMap, axialRange, type HexData } from "@/hooks/useHexMap";
+import { Loader2, Hexagon, Map as MapIcon, Eye, Plus, Minus } from "lucide-react";
+import { useHexMap, AXIAL_NEIGHBORS, type HexData } from "@/hooks/useHexMap";
 
 /* ───── Config ───── */
 const HEX_SIZE = 38;
-const RENDER_RADIUS = 6;
 const SQRT3 = Math.sqrt(3);
 
 const BIOME_COLORS: Record<string, string> = {
-  sea: "#1a3550",
-  plains: "#4a6030",
-  forest: "#1f4a28",
-  hills: "#6a5a38",
-  mountains: "#4a4a50",
-  desert: "#8a7a40",
-  swamp: "#2a4a3a",
-  tundra: "#4a6878",
+  sea: "#1a3550", plains: "#4a6030", forest: "#1f4a28", hills: "#6a5a38",
+  mountains: "#4a4a50", desert: "#8a7a40", swamp: "#2a4a3a", tundra: "#4a6878",
 };
 const BIOME_LABELS: Record<string, string> = {
   sea: "Moře", plains: "Pláně", forest: "Les", hills: "Kopce",
   mountains: "Hory", desert: "Poušť", swamp: "Bažiny", tundra: "Tundra",
 };
-
 const FOG_COLOR = "#111318";
 
 /* ───── Hex math ───── */
 function hexToPixel(q: number, r: number) {
-  return {
-    x: HEX_SIZE * (SQRT3 * q + (SQRT3 / 2) * r),
-    y: HEX_SIZE * 1.5 * r,
-  };
+  return { x: HEX_SIZE * (SQRT3 * q + (SQRT3 / 2) * r), y: HEX_SIZE * 1.5 * r };
 }
-
 function hexPoints(cx: number, cy: number): string {
   return Array.from({ length: 6 }, (_, i) => {
     const a = (Math.PI / 180) * (60 * i - 30);
     return `${cx + HEX_SIZE * Math.cos(a)},${cy + HEX_SIZE * Math.sin(a)}`;
   }).join(" ");
 }
+const hKey = (q: number, r: number) => `${q},${r}`;
 
 /* ───── Props ───── */
-interface Props {
-  sessionId: string;
-  playerName: string;
-  myRole: string;
-}
+interface Props { sessionId: string; playerName: string; myRole: string; }
 
-/* ───── Single hex tile (memoized) ───── */
+/* ───── Memoized hex tile ───── */
 const HexTile = memo(({
-  q, r, hex, visible, isCenter, devMode, loading, onClick,
-  offsetX, offsetY,
+  q, r, hex, isFrontier, devMode, loading, onClick, offsetX, offsetY,
 }: {
-  q: number; r: number; hex?: HexData; visible: boolean;
-  isCenter: boolean; devMode: boolean; loading: boolean;
+  q: number; r: number; hex?: HexData; isFrontier: boolean;
+  devMode: boolean; loading: boolean;
   onClick: () => void; offsetX: number; offsetY: number;
 }) => {
   const pos = hexToPixel(q, r);
   const cx = pos.x + offsetX;
   const cy = pos.y + offsetY;
   const pts = hexPoints(cx, cy);
-  const show = visible || devMode;
-  const fillColor = show && hex ? (BIOME_COLORS[hex.biome_family] || BIOME_COLORS.plains) : FOG_COLOR;
+  const isRevealed = !isFrontier;
+  const showBiome = isRevealed && hex;
+  const fillColor = showBiome ? (BIOME_COLORS[hex.biome_family] || BIOME_COLORS.plains) : FOG_COLOR;
 
   return (
-    <g onClick={show ? onClick : undefined} className={show ? "cursor-pointer" : ""}>
+    <g onClick={onClick} className="cursor-pointer">
       <polygon
         points={pts}
         fill={fillColor}
-        stroke={isCenter ? "hsl(var(--primary))" : "hsl(var(--border))"}
-        strokeWidth={isCenter ? 2.5 : 0.8}
-        opacity={show && hex ? 1 : 0.35}
-        className="transition-opacity"
+        stroke={isFrontier ? "hsl(var(--muted-foreground) / 0.3)" : "hsl(var(--border))"}
+        strokeWidth={0.8}
+        opacity={showBiome ? 1 : 0.3}
+        strokeDasharray={isFrontier ? "3,3" : undefined}
       />
       {loading && (
         <text x={cx} y={cy} textAnchor="middle" dominantBaseline="middle"
           fill="hsl(var(--muted-foreground))" fontSize="10">⏳</text>
       )}
-      {show && hex && !loading && (
+      {showBiome && !loading && (
         <>
           <text x={cx} y={cy - 8} textAnchor="middle" dominantBaseline="middle"
             fill="white" fontSize="9" fontWeight="600" style={{ pointerEvents: "none" }}>
@@ -103,9 +88,9 @@ const HexTile = memo(({
           )}
         </>
       )}
-      {!show && !loading && (
+      {isFrontier && !loading && (
         <text x={cx} y={cy} textAnchor="middle" dominantBaseline="middle"
-          fill="hsl(var(--muted-foreground))" fontSize="8" opacity={0.3} style={{ pointerEvents: "none" }}>?</text>
+          fill="hsl(var(--primary))" fontSize="10" opacity={0.6} style={{ pointerEvents: "none" }}>?</text>
       )}
     </g>
   );
@@ -115,146 +100,214 @@ HexTile.displayName = "HexTile";
 /* ───── Main component ───── */
 const WorldHexMap = ({ sessionId, playerName, myRole }: Props) => {
   const isAdmin = myRole === "admin";
-  const [centerQ, setCenterQ] = useState(0);
-  const [centerR, setCenterR] = useState(0);
-  const [devMode, setDevMode] = useState(false);
+  const [devMode, setDevMode] = useState(isAdmin);
   const [selectedHex, setSelectedHex] = useState<HexData | null>(null);
-  const [discoveredSet, setDiscoveredSet] = useState<Set<string>>(new Set());
-  const [exploring, setExploring] = useState(false);
+  const [discoveredIds, setDiscoveredIds] = useState<Set<string>>(new Set());
+  const [discoveredCoords, setDiscoveredCoords] = useState<Set<string>>(new Set());
+  const [exploring, setExploring] = useState<string | null>(null); // key of frontier being explored
   const [zoom, setZoom] = useState(1);
   const [mapLoaded, setMapLoaded] = useState(false);
 
   // Pan state
   const [pan, setPan] = useState({ x: 0, y: 0 });
-  const dragRef = useRef<{ startX: number; startY: number; panX: number; panY: number } | null>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const dragRef = useRef<{ startX: number; startY: number; panX: number; panY: number; moved: boolean } | null>(null);
 
-  const { getHex, isLoading, ensureHexes } = useHexMap(sessionId);
+  const { hexes, getHex, isLoading, fetchHex, loadHexesByIds, loadAllGenerated } = useHexMap(sessionId);
 
-  // Load discoveries
+  /* ── Load player discoveries ── */
   const fetchDiscoveries = useCallback(async () => {
-    if (isAdmin) return;
     const { data } = await supabase
       .from("discoveries")
       .select("entity_id")
       .eq("session_id", sessionId)
       .eq("player_name", playerName)
       .eq("entity_type", "province_hex");
-    const set = new Set((data || []).map(d => d.entity_id));
-    setDiscoveredSet(set);
-  }, [sessionId, playerName, isAdmin]);
+    const ids = (data || []).map(d => d.entity_id);
+    setDiscoveredIds(new Set(ids));
+    // Also load the actual hex data for these IDs
+    await loadHexesByIds(ids);
+  }, [sessionId, playerName, loadHexesByIds]);
 
-  useEffect(() => { fetchDiscoveries(); }, [fetchDiscoveries]);
-
-  const isDiscovered = useCallback((hexId?: string) => {
-    if (isAdmin || devMode) return true;
-    return hexId ? discoveredSet.has(hexId) : false;
-  }, [isAdmin, devMode, discoveredSet]);
-
-  // Visible coords based on center + radius
-  const visibleCoords = useMemo(() => axialRange(centerQ, centerR, RENDER_RADIUS), [centerQ, centerR]);
-
-  // Debounced loading
-  const loadVisible = useCallback(() => {
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => {
-      ensureHexes(visibleCoords);
-    }, 250);
-  }, [visibleCoords, ensureHexes]);
-
+  // After hexes load, compute discovered coord set
   useEffect(() => {
-    if (mapLoaded) loadVisible();
-  }, [mapLoaded, loadVisible]);
+    const coords = new Set<string>();
+    for (const id of discoveredIds) {
+      const hex = Object.values(hexes).find(h => h.id === id);
+      if (hex) coords.add(hKey(hex.q, hex.r));
+    }
+    setDiscoveredCoords(coords);
+  }, [discoveredIds, hexes]);
 
-  const handleLoadMap = async () => {
+  /* ── Compute frontier tiles ── */
+  const frontierCoords = useMemo(() => {
+    if (isAdmin && !devMode) return new Set<string>(); // admin sees all, no frontier needed
+    const frontier = new Set<string>();
+    for (const coordStr of discoveredCoords) {
+      const [q, r] = coordStr.split(",").map(Number);
+      for (const n of AXIAL_NEIGHBORS) {
+        const nk = hKey(q + n.dq, r + n.dr);
+        if (!discoveredCoords.has(nk)) frontier.add(nk);
+      }
+    }
+    return frontier;
+  }, [discoveredCoords, isAdmin, devMode]);
+
+  /* ── All tiles to render ── */
+  const renderCoords = useMemo(() => {
+    const all = new Map<string, { q: number; r: number; isFrontier: boolean }>();
+
+    if (isAdmin && devMode) {
+      // Show all generated hexes + frontier of discovered
+      for (const key of Object.keys(hexes)) {
+        const [q, r] = key.split(",").map(Number);
+        all.set(key, { q, r, isFrontier: false });
+      }
+      // Also add frontier for discovered
+      for (const fk of frontierCoords) {
+        if (!all.has(fk)) {
+          const [q, r] = fk.split(",").map(Number);
+          all.set(fk, { q, r, isFrontier: true });
+        }
+      }
+    } else {
+      // Discovered tiles
+      for (const coordStr of discoveredCoords) {
+        const [q, r] = coordStr.split(",").map(Number);
+        all.set(coordStr, { q, r, isFrontier: false });
+      }
+      // Frontier tiles
+      for (const fk of frontierCoords) {
+        const [q, r] = fk.split(",").map(Number);
+        all.set(fk, { q, r, isFrontier: true });
+      }
+    }
+    return Array.from(all.values());
+  }, [hexes, discoveredCoords, frontierCoords, isAdmin, devMode]);
+
+  /* ── Camera center (average of discovered hexes) ── */
+  const cameraCenter = useMemo(() => {
+    if (discoveredCoords.size === 0) return { x: 0, y: 0 };
+    let sx = 0, sy = 0, n = 0;
+    for (const coordStr of discoveredCoords) {
+      const [q, r] = coordStr.split(",").map(Number);
+      const p = hexToPixel(q, r);
+      sx += p.x; sy += p.y; n++;
+    }
+    return { x: sx / n, y: sy / n };
+  }, [discoveredCoords]);
+
+  /* ── Initial load ── */
+  const handleLoadMap = useCallback(async () => {
     setMapLoaded(true);
-    await ensureHexes(visibleCoords);
-  };
+    if (isAdmin) {
+      await loadAllGenerated();
+    }
+    await fetchDiscoveries();
 
-  // Navigation
-  const navigateTo = useCallback((q: number, r: number) => {
-    setCenterQ(q);
-    setCenterR(r);
-    setPan({ x: 0, y: 0 });
-    setSelectedHex(null);
-  }, []);
+    // If player has no discoveries, auto-explore (0,0)
+    // We check after fetch completes
+  }, [isAdmin, loadAllGenerated, fetchDiscoveries]);
 
-  // Pan handlers
-  const onPointerDown = useCallback((e: React.PointerEvent) => {
-    if (e.button !== 0) return;
-    (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
-    dragRef.current = { startX: e.clientX, startY: e.clientY, panX: pan.x, panY: pan.y };
-  }, [pan]);
-
-  const onPointerMove = useCallback((e: React.PointerEvent) => {
-    if (!dragRef.current) return;
-    const dx = e.clientX - dragRef.current.startX;
-    const dy = e.clientY - dragRef.current.startY;
-    setPan({ x: dragRef.current.panX + dx, y: dragRef.current.panY + dy });
-  }, []);
-
-  const onPointerUp = useCallback(() => {
-    dragRef.current = null;
-  }, []);
-
-  // Zoom
-  const onWheel = useCallback((e: React.WheelEvent) => {
-    e.preventDefault();
-    setZoom(z => Math.max(0.4, Math.min(2.5, z - e.deltaY * 0.001)));
-  }, []);
-
-  const zoomIn = () => setZoom(z => Math.min(2.5, z + 0.2));
-  const zoomOut = () => setZoom(z => Math.max(0.4, z - 0.2));
-
-  // Explore action
-  const handleExplore = async () => {
-    setExploring(true);
-    try {
-      // Generate hexes within radius 2 of center
-      const exploreCoords = axialRange(centerQ, centerR, 2);
-      await ensureHexes(exploreCoords);
-
-      // Mark all as discovered
-      for (const c of exploreCoords) {
-        const hex = getHex(c.q, c.r);
+  // Auto-seed (0,0) if no discoveries
+  useEffect(() => {
+    if (!mapLoaded) return;
+    if (!isAdmin && discoveredIds.size === 0) {
+      // Seed starting hex at (0,0)
+      (async () => {
+        const hex = await fetchHex(0, 0);
         if (hex) {
           await supabase.from("discoveries").upsert({
             session_id: sessionId,
             player_name: playerName,
             entity_type: "province_hex",
             entity_id: hex.id,
-            source: "explore",
+            source: "start",
           }, { onConflict: "session_id,player_name,entity_type,entity_id" });
+          await fetchDiscoveries();
         }
-      }
+      })();
+    }
+  }, [mapLoaded, discoveredIds.size, isAdmin, sessionId, playerName, fetchHex, fetchDiscoveries]);
+
+  /* ── Explore frontier tile ── */
+  const handleExploreFrontier = useCallback(async (q: number, r: number) => {
+    const key = hKey(q, r);
+    setExploring(key);
+    try {
+      // Generate/fetch the hex
+      const hex = await fetchHex(q, r);
+      if (!hex) return;
+      // Insert discovery
+      await supabase.from("discoveries").upsert({
+        session_id: sessionId,
+        player_name: playerName,
+        entity_type: "province_hex",
+        entity_id: hex.id,
+        source: "explore",
+      }, { onConflict: "session_id,player_name,entity_type,entity_id" });
       await fetchDiscoveries();
     } finally {
-      setExploring(false);
+      setExploring(null);
     }
-  };
+  }, [sessionId, playerName, fetchHex, fetchDiscoveries]);
 
-  // SVG viewbox calculation
+  /* ── Pan handlers ── */
+  const onPointerDown = useCallback((e: React.PointerEvent) => {
+    if (e.button !== 0) return;
+    (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
+    dragRef.current = { startX: e.clientX, startY: e.clientY, panX: pan.x, panY: pan.y, moved: false };
+  }, [pan]);
+
+  const onPointerMove = useCallback((e: React.PointerEvent) => {
+    if (!dragRef.current) return;
+    const dx = e.clientX - dragRef.current.startX;
+    const dy = e.clientY - dragRef.current.startY;
+    if (Math.abs(dx) > 3 || Math.abs(dy) > 3) dragRef.current.moved = true;
+    setPan({ x: dragRef.current.panX + dx, y: dragRef.current.panY + dy });
+  }, []);
+
+  const onPointerUp = useCallback(() => { dragRef.current = null; }, []);
+
+  const wasDrag = useCallback(() => dragRef.current?.moved ?? false, []);
+
+  // Zoom
+  const onWheel = useCallback((e: React.WheelEvent) => {
+    e.preventDefault();
+    setZoom(z => Math.max(0.3, Math.min(3, z - e.deltaY * 0.001)));
+  }, []);
+  const zoomIn = () => setZoom(z => Math.min(3, z + 0.2));
+  const zoomOut = () => setZoom(z => Math.max(0.3, z - 0.2));
+
+  /* ── Handle tile click ── */
+  const handleTileClick = useCallback((q: number, r: number, isFrontier: boolean) => {
+    // Ignore if it was a drag
+    if (dragRef.current?.moved) return;
+    if (isFrontier) {
+      handleExploreFrontier(q, r);
+    } else {
+      const hex = getHex(q, r);
+      if (hex) setSelectedHex(hex);
+    }
+  }, [getHex, handleExploreFrontier]);
+
+  /* ── SVG layout ── */
   const svgW = 800;
   const svgH = 600;
-  const offsetX = svgW / 2;
-  const offsetY = svgH / 2;
-  // Adjust offset for center hex
-  const centerPx = hexToPixel(centerQ, centerR);
+  const offsetX = svgW / 2 - cameraCenter.x;
+  const offsetY = svgH / 2 - cameraCenter.y;
 
   return (
     <section className="space-y-3">
       <div className="flex items-center gap-2 flex-wrap">
-        <Map className="h-4 w-4 text-primary" />
+        <MapIcon className="h-4 w-4 text-primary" />
         <h3 className="font-display font-semibold text-sm">Mapa světa</h3>
         <div className="ml-auto flex items-center gap-2">
           {isAdmin && (
             <label className="flex items-center gap-1.5 text-[10px] text-muted-foreground cursor-pointer">
-              <Switch
-                checked={devMode}
-                onCheckedChange={setDevMode}
-                className="scale-75"
-              />
+              <Switch checked={devMode} onCheckedChange={async (v) => {
+                setDevMode(v);
+                if (v) await loadAllGenerated();
+              }} className="scale-75" />
               <Eye className="h-3 w-3" /> DEV
             </label>
           )}
@@ -265,15 +318,12 @@ const WorldHexMap = ({ sessionId, playerName, myRole }: Props) => {
         <div className="game-card p-6 text-center space-y-3">
           <p className="text-sm text-muted-foreground">Načtěte hex mapu světa</p>
           <Button onClick={handleLoadMap} variant="outline" className="font-display gap-2">
-            <Map className="h-4 w-4" />
-            Zobrazit mapu
+            <MapIcon className="h-4 w-4" /> Zobrazit mapu
           </Button>
         </div>
       ) : (
         <>
-          {/* Map container */}
           <div
-            ref={containerRef}
             className="game-card p-0 overflow-hidden relative select-none touch-none"
             style={{ height: "420px" }}
             onPointerDown={onPointerDown}
@@ -282,29 +332,21 @@ const WorldHexMap = ({ sessionId, playerName, myRole }: Props) => {
             onPointerLeave={onPointerUp}
             onWheel={onWheel}
           >
-            <svg
-              width="100%"
-              height="100%"
-              viewBox={`0 0 ${svgW} ${svgH}`}
-              preserveAspectRatio="xMidYMid meet"
-            >
+            <svg width="100%" height="100%" viewBox={`0 0 ${svgW} ${svgH}`} preserveAspectRatio="xMidYMid meet">
               <g transform={`translate(${pan.x / zoom}, ${pan.y / zoom}) scale(${zoom})`}>
-                {visibleCoords.map(c => {
+                {renderCoords.map(c => {
                   const hex = getHex(c.q, c.r);
-                  const visible = isDiscovered(hex?.id);
                   return (
                     <HexTile
-                      key={`${c.q},${c.r}`}
-                      q={c.q}
-                      r={c.r}
+                      key={hKey(c.q, c.r)}
+                      q={c.q} r={c.r}
                       hex={hex}
-                      visible={visible}
-                      isCenter={c.q === centerQ && c.r === centerR}
+                      isFrontier={c.isFrontier}
                       devMode={devMode}
-                      loading={isLoading(c.q, c.r)}
-                      onClick={() => hex && setSelectedHex(hex)}
-                      offsetX={offsetX - centerPx.x}
-                      offsetY={offsetY - centerPx.y}
+                      loading={isLoading(c.q, c.r) || exploring === hKey(c.q, c.r)}
+                      onClick={() => handleTileClick(c.q, c.r, c.isFrontier)}
+                      offsetX={offsetX}
+                      offsetY={offsetY}
                     />
                   );
                 })}
@@ -320,25 +362,25 @@ const WorldHexMap = ({ sessionId, playerName, myRole }: Props) => {
                 <Minus className="h-3.5 w-3.5" />
               </Button>
             </div>
+
+            {/* Info overlay */}
+            {renderCoords.length === 0 && (
+              <div className="absolute inset-0 flex items-center justify-center">
+                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+              </div>
+            )}
           </div>
 
-          {/* Controls bar */}
           <div className="flex items-center gap-2 flex-wrap">
             <Badge variant="outline" className="text-[9px]">
-              Střed: ({centerQ}, {centerR})
+              {discoveredCoords.size} provinc{discoveredCoords.size === 1 ? "ie" : "ií"} objeveno
             </Badge>
-            {!isAdmin && (
-              <Button
-                size="sm"
-                variant="outline"
-                className="font-display gap-1.5 text-xs ml-auto"
-                onClick={handleExplore}
-                disabled={exploring}
-              >
-                {exploring ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Compass className="h-3.5 w-3.5" />}
-                Prozkoumat okolí
-              </Button>
-            )}
+            <Badge variant="outline" className="text-[9px]">
+              {frontierCoords.size} na hranici
+            </Badge>
+            <p className="text-[10px] text-muted-foreground ml-auto italic">
+              Klikněte na ? hex pro průzkum
+            </p>
           </div>
         </>
       )}
@@ -374,14 +416,6 @@ const WorldHexMap = ({ sessionId, playerName, myRole }: Props) => {
                   </p>
                 </div>
               )}
-              <Button
-                variant="outline"
-                className="w-full font-display gap-2"
-                onClick={() => navigateTo(selectedHex.q, selectedHex.r)}
-              >
-                <Hexagon className="h-4 w-4" />
-                Centrovat mapu sem
-              </Button>
             </div>
           )}
         </DialogContent>

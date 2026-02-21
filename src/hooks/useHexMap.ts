@@ -21,6 +21,12 @@ export interface HexData {
   } | null;
 }
 
+export const AXIAL_NEIGHBORS = [
+  { dq: 1, dr: 0 }, { dq: -1, dr: 0 },
+  { dq: 0, dr: 1 }, { dq: 0, dr: -1 },
+  { dq: 1, dr: -1 }, { dq: -1, dr: 1 },
+];
+
 const hexKey = (q: number, r: number) => `${q},${r}`;
 
 export function useHexMap(sessionId: string) {
@@ -28,8 +34,10 @@ export function useHexMap(sessionId: string) {
   const [loadingKeys, setLoadingKeys] = useState<Set<string>>(new Set());
   const inflightRef = useRef<Set<string>>(new Set());
 
+  /** Fetch or generate a single hex via edge function */
   const fetchHex = useCallback(async (q: number, r: number): Promise<HexData | null> => {
     const key = hexKey(q, r);
+    if (hexes[key]) return hexes[key];
     if (inflightRef.current.has(key)) return null;
     inflightRef.current.add(key);
     setLoadingKeys(prev => new Set(prev).add(key));
@@ -53,20 +61,73 @@ export function useHexMap(sessionId: string) {
         return next;
       });
     }
-  }, [sessionId]);
+  }, [sessionId, hexes]);
 
-  const ensureHexes = useCallback(async (coords: { q: number; r: number }[]) => {
-    const missing = coords.filter(c => {
-      const k = hexKey(c.q, c.r);
-      return !hexes[k] && !inflightRef.current.has(k);
-    });
+  /** Bulk-load province_hexes by their IDs (from discoveries) */
+  const loadHexesByIds = useCallback(async (hexIds: string[]) => {
+    if (hexIds.length === 0) return;
+    // Only fetch IDs we don't already have cached
+    const knownIds = new Set(Object.values(hexes).map(h => h.id));
+    const missing = hexIds.filter(id => !knownIds.has(id));
     if (missing.length === 0) return;
-    // Batch in groups of 7 to avoid overload
-    const BATCH = 7;
+
+    // Supabase .in() max ~300, batch if needed
+    const BATCH = 200;
     for (let i = 0; i < missing.length; i += BATCH) {
-      await Promise.all(missing.slice(i, i + BATCH).map(c => fetchHex(c.q, c.r)));
+      const batch = missing.slice(i, i + BATCH);
+      const { data } = await supabase
+        .from("province_hexes")
+        .select("*, macro_regions(*)")
+        .in("id", batch);
+      if (data) {
+        const mapped: Record<string, HexData> = {};
+        for (const row of data) {
+          const h: HexData = {
+            id: row.id,
+            q: row.q,
+            r: row.r,
+            mean_height: row.mean_height,
+            biome_family: row.biome_family,
+            coastal: row.coastal,
+            moisture_band: row.moisture_band,
+            temp_band: row.temp_band,
+            seed: row.seed,
+            macro_region: (row as any).macro_regions || null,
+          };
+          mapped[hexKey(h.q, h.r)] = h;
+        }
+        setHexes(prev => ({ ...prev, ...mapped }));
+      }
     }
-  }, [hexes, fetchHex]);
+  }, [hexes]);
+
+  /** Load ALL generated hexes for this session (admin/dev mode) */
+  const loadAllGenerated = useCallback(async () => {
+    const { data } = await supabase
+      .from("province_hexes")
+      .select("*, macro_regions(*)")
+      .eq("session_id", sessionId)
+      .limit(500);
+    if (data) {
+      const mapped: Record<string, HexData> = {};
+      for (const row of data) {
+        const h: HexData = {
+          id: row.id,
+          q: row.q,
+          r: row.r,
+          mean_height: row.mean_height,
+          biome_family: row.biome_family,
+          coastal: row.coastal,
+          moisture_band: row.moisture_band,
+          temp_band: row.temp_band,
+          seed: row.seed,
+          macro_region: (row as any).macro_regions || null,
+        };
+        mapped[hexKey(h.q, h.r)] = h;
+      }
+      setHexes(prev => ({ ...prev, ...mapped }));
+    }
+  }, [sessionId]);
 
   const getHex = useCallback((q: number, r: number): HexData | undefined => {
     return hexes[hexKey(q, r)];
@@ -76,16 +137,5 @@ export function useHexMap(sessionId: string) {
     return loadingKeys.has(hexKey(q, r));
   }, [loadingKeys]);
 
-  return { hexes, getHex, isLoading, ensureHexes, fetchHex };
-}
-
-// Generate axial coords within a given radius
-export function axialRange(cq: number, cr: number, radius: number): { q: number; r: number }[] {
-  const results: { q: number; r: number }[] = [];
-  for (let dq = -radius; dq <= radius; dq++) {
-    for (let dr = Math.max(-radius, -dq - radius); dr <= Math.min(radius, -dq + radius); dr++) {
-      results.push({ q: cq + dq, r: cr + dr });
-    }
-  }
-  return results;
+  return { hexes, getHex, isLoading, fetchHex, loadHexesByIds, loadAllGenerated };
 }
