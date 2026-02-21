@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { useDiscoveries } from "@/hooks/useDiscoveries";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -16,6 +17,8 @@ import { toast } from "sonner";
 
 interface Props {
   sessionId: string;
+  currentPlayerName?: string;
+  myRole?: string;
   onEntityClick?: (type: string, id: string) => void;
 }
 
@@ -31,7 +34,7 @@ const ENTITY_ICONS: Record<string, React.ReactNode> = {
   discovery: <Compass className="h-3.5 w-3.5" />,
 };
 
-const ChroWikiTab = ({ sessionId, onEntityClick }: Props) => {
+const ChroWikiTab = ({ sessionId, currentPlayerName = "", myRole = "player", onEntityClick }: Props) => {
   const [search, setSearch] = useState("");
   const [eraFilter, setEraFilter] = useState("all");
   const [typeFilter, setTypeFilter] = useState("all");
@@ -54,6 +57,7 @@ const ChroWikiTab = ({ sessionId, onEntityClick }: Props) => {
   const [declarations, setDeclarations] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
+  const { isDiscovered, isAdmin } = useDiscoveries(sessionId, currentPlayerName, myRole || "player");
   // Collapsible state for tree nodes
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set());
 
@@ -101,14 +105,21 @@ const ChroWikiTab = ({ sessionId, onEntityClick }: Props) => {
     setSelectedEntity({ type, id, name });
   }, []);
 
+  // Filter helper for non-admin fog-of-war
+  const isEntityVisible = (type: string, id: string, ownerPlayer?: string) => {
+    if (isAdmin) return true;
+    if (ownerPlayer === currentPlayerName) return true;
+    return isDiscovered(type, id);
+  };
+
   // Get unique players for filter
   const allPlayers = useMemo(() => {
     const players = new Set<string>();
-    cities.forEach(c => players.add(c.owner_player));
-    regions.forEach(r => r.owner_player && players.add(r.owner_player));
-    persons.forEach(p => players.add(p.player_name));
+    cities.filter(c => isEntityVisible("city", c.id, c.owner_player)).forEach(c => players.add(c.owner_player));
+    regions.filter(r => isEntityVisible("region", r.id, r.owner_player)).forEach(r => r.owner_player && players.add(r.owner_player));
+    persons.filter(p => isEntityVisible("person", p.id, p.player_name)).forEach(p => players.add(p.player_name));
     return Array.from(players).sort();
-  }, [cities, regions, persons]);
+  }, [cities, regions, persons, isAdmin, isDiscovered]);
 
   // Battles (events with battle-related categories)
   const battles = useMemo(() =>
@@ -122,22 +133,22 @@ const ChroWikiTab = ({ sessionId, onEntityClick }: Props) => {
     [expeditions]
   );
 
-  // Search across all entities
+  // Search across all entities (filtered by visibility)
   const searchResults = useMemo(() => {
     if (!search || search.length < 2) return null;
     const q = search.toLowerCase();
     const results: { type: string; id: string; name: string; sub?: string }[] = [];
 
-    countries.filter(c => c.name.toLowerCase().includes(q)).forEach(c => results.push({ type: "country", id: c.id, name: c.name }));
-    regions.filter(r => r.name.toLowerCase().includes(q) || r.description?.toLowerCase().includes(q)).forEach(r => results.push({ type: "region", id: r.id, name: r.name, sub: r.biome }));
-    provinces.filter(p => p.name.toLowerCase().includes(q)).forEach(p => results.push({ type: "province", id: p.id, name: p.name }));
-    cities.filter(c => c.name.toLowerCase().includes(q)).forEach(c => results.push({ type: "city", id: c.id, name: c.name, sub: c.level }));
-    wonders.filter(w => w.name.toLowerCase().includes(q)).forEach(w => results.push({ type: "wonder", id: w.id, name: w.name, sub: w.era }));
-    persons.filter(p => p.name.toLowerCase().includes(q)).forEach(p => results.push({ type: "person", id: p.id, name: p.name, sub: p.person_type }));
+    countries.filter(c => c.name.toLowerCase().includes(q) && isEntityVisible("country", c.id, c.ruler_player)).forEach(c => results.push({ type: "country", id: c.id, name: c.name }));
+    regions.filter(r => (r.name.toLowerCase().includes(q) || r.description?.toLowerCase().includes(q)) && isEntityVisible("region", r.id, r.owner_player)).forEach(r => results.push({ type: "region", id: r.id, name: r.name, sub: r.biome }));
+    provinces.filter(p => p.name.toLowerCase().includes(q) && isEntityVisible("province", p.id, p.owner_player)).forEach(p => results.push({ type: "province", id: p.id, name: p.name }));
+    cities.filter(c => c.name.toLowerCase().includes(q) && isEntityVisible("city", c.id, c.owner_player)).forEach(c => results.push({ type: "city", id: c.id, name: c.name, sub: c.level }));
+    wonders.filter(w => w.name.toLowerCase().includes(q) && isEntityVisible("wonder", w.id, w.owner_player)).forEach(w => results.push({ type: "wonder", id: w.id, name: w.name, sub: w.era }));
+    persons.filter(p => p.name.toLowerCase().includes(q) && isEntityVisible("person", p.id, p.player_name)).forEach(p => results.push({ type: "person", id: p.id, name: p.name, sub: p.person_type }));
     events.filter(e => e.title?.toLowerCase().includes(q) || e.description?.toLowerCase().includes(q)).forEach(e => results.push({ type: "event", id: e.id, name: e.title, sub: e.event_category }));
 
     return results.slice(0, 30);
-  }, [search, countries, regions, provinces, cities, wonders, persons, events]);
+  }, [search, countries, regions, provinces, cities, wonders, persons, events, isAdmin, isDiscovered]);
 
   // ── Tree Node Component ──
   const TreeNode = ({ id, label, icon, type, entityId, children, count, indent = 0 }: {
@@ -182,17 +193,24 @@ const ChroWikiTab = ({ sessionId, onEntityClick }: Props) => {
 
   // ── Build hierarchical tree ──
   const renderWorldTree = () => {
-    const regionsForCountry = (countryId: string) => regions.filter(r => r.country_id === countryId);
-    const provincesForRegion = (regionId: string) => provinces.filter(p => p.region_id === regionId);
-    const citiesForProvince = (provinceId: string) => cities.filter(c => c.province_id === provinceId);
-    const wondersForCity = (cityName: string) => wonders.filter(w => w.city_name === cityName);
-    const orphanRegions = regions.filter(r => !r.country_id);
-    const orphanProvinces = provinces.filter(p => !p.region_id);
+    const visibleCountries = countries.filter(c => isEntityVisible("country", c.id, c.ruler_player));
+    const visibleRegions = regions.filter(r => isEntityVisible("region", r.id, r.owner_player));
+    const visibleProvinces = provinces.filter(p => isEntityVisible("province", p.id, p.owner_player));
+    const visibleCities = cities.filter(c => isEntityVisible("city", c.id, c.owner_player));
+    const visiblePersons = persons.filter(p => isEntityVisible("person", p.id, p.player_name));
+    const visibleWonders = wonders.filter(w => isEntityVisible("wonder", w.id, w.owner_player));
 
-    return (
+    const regionsForCountry = (countryId: string) => visibleRegions.filter(r => r.country_id === countryId);
+    const provincesForRegion = (regionId: string) => visibleProvinces.filter(p => p.region_id === regionId);
+    const citiesForProvince = (provinceId: string) => visibleCities.filter(c => c.province_id === provinceId);
+    const wondersForCity = (cityName: string) => visibleWonders.filter(w => w.city_name === cityName);
+    const orphanRegions = visibleRegions.filter(r => !r.country_id);
+    const orphanProvinces = visibleProvinces.filter(p => !p.region_id);
+
+      return (
       <div className="space-y-0.5">
         {/* Countries */}
-        {countries.map(country => (
+        {visibleCountries.map(country => (
           <TreeNode key={country.id} id={`country-${country.id}`} label={country.name}
             icon={<Flag className="h-3.5 w-3.5" />} type="country" entityId={country.id}
             count={regionsForCountry(country.id).length} indent={0}>
@@ -261,8 +279,8 @@ const ChroWikiTab = ({ sessionId, onEntityClick }: Props) => {
 
         {/* Personalities */}
         <TreeNode id="cat-persons" label="Osobnosti" icon={<Crown className="h-3.5 w-3.5" />}
-          count={persons.length} indent={0}>
-          {persons.map(p => (
+          count={visiblePersons.length} indent={0}>
+          {visiblePersons.map(p => (
             <TreeNode key={p.id} id={`person-${p.id}`} label={p.name}
               icon={<Crown className="h-3.5 w-3.5" />} type="person" entityId={p.id} indent={1} />
           ))}
@@ -281,8 +299,8 @@ const ChroWikiTab = ({ sessionId, onEntityClick }: Props) => {
 
         {/* Wonders */}
         <TreeNode id="cat-wonders" label="Divy světa" icon={<Landmark className="h-3.5 w-3.5" />}
-          count={wonders.length} indent={0}>
-          {wonders.map(w => (
+          count={visibleWonders.length} indent={0}>
+          {visibleWonders.map(w => (
             <TreeNode key={w.id} id={`wonder-${w.id}`} label={w.name}
               icon={<Landmark className="h-3.5 w-3.5" />} type="wonder" entityId={w.id} indent={1} />
           ))}

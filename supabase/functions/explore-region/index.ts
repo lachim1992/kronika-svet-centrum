@@ -10,7 +10,7 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const { sessionId, playerName, currentTurn, worldFoundation, existingRegions } = await req.json();
+    const { sessionId, playerName, currentTurn, worldFoundation, existingRegions, biomePreference, riskLevel } = await req.json();
 
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY not set");
@@ -20,6 +20,9 @@ serve(async (req) => {
     const supabase = createClient(supabaseUrl, supabaseKey);
 
     const existingNames = (existingRegions || []).map((r: any) => r.name).join(", ");
+    const biomeHint = biomePreference ? `Prefer biome: ${biomePreference}.` : "";
+    const riskHint = riskLevel === "high" ? "Include dangerous elements, powerful factions, and rare resources." :
+                     riskLevel === "low" ? "Make the region relatively safe and approachable." : "";
 
     const prompt = `You are a world-building AI for a civilization strategy game.
 
@@ -29,6 +32,8 @@ Tone: "${worldFoundation?.tone || "mythic"}"
 Existing regions: ${existingNames || "none"}
 Explorer: ${playerName}
 Current turn: ${currentTurn}
+${biomeHint}
+${riskHint}
 
 Generate a NEW frontier region that has just been discovered. It must be NPC-controlled.
 The region should feel like unexplored territory beyond the known world.
@@ -95,8 +100,6 @@ Do NOT use names from existing regions.`;
 
     const aiData = await aiResp.json();
     const raw = aiData.choices?.[0]?.message?.content || "";
-    
-    // Extract JSON from response
     const jsonMatch = raw.match(/\{[\s\S]*\}/);
     if (!jsonMatch) throw new Error("No JSON in AI response");
     const generated = JSON.parse(jsonMatch[0]);
@@ -112,10 +115,9 @@ Do NOT use names from existing regions.`;
       discovered_by: playerName,
       is_homeland: false,
     }).select().single();
-
     if (regErr) throw regErr;
 
-    // 2. Create cities inside region
+    // 2. Create cities
     const createdCities = [];
     for (const city of (generated.cities || [])) {
       const { data: c } = await supabase.from("cities").insert({
@@ -130,7 +132,7 @@ Do NOT use names from existing regions.`;
       if (c) createdCities.push(c);
     }
 
-    // 3. Create rulers/persons
+    // 3. Create rulers
     for (const ruler of (generated.rulers || [])) {
       await supabase.from("great_persons").insert({
         session_id: sessionId,
@@ -159,7 +161,7 @@ Do NOT use names from existing regions.`;
       participants: [{ type: "player", name: playerName }, { type: "region", name: generated.region.name }],
     }).select().single();
 
-    // 5. Create feed item
+    // 5. Feed item
     await supabase.from("world_feed_items").insert({
       session_id: sessionId,
       turn_number: currentTurn,
@@ -170,7 +172,7 @@ Do NOT use names from existing regions.`;
       references: [{ type: "region", id: region.id, label: generated.region.name }],
     });
 
-    // 6. Create chronicle entry
+    // 6. Chronicle entry
     await supabase.from("chronicle_entries").insert({
       session_id: sessionId,
       text: `V roce ${currentTurn} byly za hranicemi objeveny nové země — ${generated.region.name}. ${generated.history || ""}`,
@@ -179,7 +181,7 @@ Do NOT use names from existing regions.`;
       references: [{ type: "region", id: region.id, label: generated.region.name }],
     });
 
-    // 7. Create rumors for nearby cities
+    // 7. Rumors
     for (const rumor of (generated.rumors || [])) {
       if (createdCities[0]) {
         await supabase.from("city_rumors").insert({
@@ -194,7 +196,7 @@ Do NOT use names from existing regions.`;
       }
     }
 
-    // 8. Create expedition record
+    // 8. Expedition record
     await supabase.from("expeditions").insert({
       session_id: sessionId,
       player_name: playerName,
@@ -205,6 +207,30 @@ Do NOT use names from existing regions.`;
       result_region_id: region.id,
       narrative: generated.history,
     });
+
+    // 9. ✨ Create discovery records for the exploring player
+    const discoveryRows = [
+      { session_id: sessionId, player_name: playerName, entity_type: "region", entity_id: region.id, source: "expedition_unknown" },
+      ...createdCities.map((c: any) => ({
+        session_id: sessionId, player_name: playerName, entity_type: "city", entity_id: c.id, source: "expedition_unknown",
+      })),
+    ];
+    if (discoveryRows.length > 0) {
+      await supabase.from("discoveries").insert(discoveryRows);
+    }
+
+    // 10. Also create discoveries for all admins (they see everything)
+    const { data: adminMembers } = await supabase.from("game_memberships")
+      .select("player_name")
+      .eq("session_id", sessionId)
+      .eq("role", "admin");
+    if (adminMembers) {
+      for (const admin of adminMembers) {
+        if (admin.player_name === playerName) continue;
+        const adminRows = discoveryRows.map(d => ({ ...d, player_name: admin.player_name, source: "admin" }));
+        await supabase.from("discoveries").upsert(adminRows, { onConflict: "session_id,player_name,entity_type,entity_id" });
+      }
+    }
 
     return new Response(JSON.stringify({
       region,

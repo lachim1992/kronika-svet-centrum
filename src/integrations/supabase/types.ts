@@ -735,6 +735,44 @@ export type Database = {
           },
         ]
       }
+      discoveries: {
+        Row: {
+          discovered_at: string
+          entity_id: string
+          entity_type: string
+          id: string
+          player_name: string
+          session_id: string
+          source: string
+        }
+        Insert: {
+          discovered_at?: string
+          entity_id: string
+          entity_type: string
+          id?: string
+          player_name: string
+          session_id: string
+          source?: string
+        }
+        Update: {
+          discovered_at?: string
+          entity_id?: string
+          entity_type?: string
+          id?: string
+          player_name?: string
+          session_id?: string
+          source?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "discoveries_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       encyclopedia_images: {
         Row: {
           created_at: string
