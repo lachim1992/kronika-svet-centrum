@@ -54,7 +54,6 @@ const ResourceHUD = ({ sessionId, playerName, cities }: ResourceHUDProps) => {
   const famineCities = myCities.filter(c => c.famine_turn);
   const availableManpower = (realm.manpower_pool || 0) - (realm.manpower_committed || 0);
 
-  // Derive resource values from player_resources (canonical source)
   const getRes = (type: string) => {
     const r = playerRes[type];
     const income = r?.income || 0;
@@ -98,32 +97,34 @@ const ResourceHUD = ({ sessionId, playerName, cities }: ResourceHUDProps) => {
   const grainPct = Math.min(100, (food.stockpile / Math.max(1, grainCapacity)) * 100);
 
   return (
-    <div className="bg-card/90 backdrop-blur-sm border-b border-border px-3 py-1.5 flex items-center gap-1 overflow-x-auto scrollbar-hide">
+    <div className="bg-card/95 backdrop-blur-sm border-b border-border px-3 py-1.5 flex items-center gap-1 overflow-x-auto scrollbar-hide">
       {/* Resource chips */}
       {chips.map(chip => (
         <div
           key={chip.label}
-          className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold shrink-0 border ${
-            chip.warning ? "border-destructive/40 bg-destructive/10 text-destructive" : "border-border bg-muted/50 text-foreground"
+          className={`flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold shrink-0 border ${
+            chip.warning
+              ? "border-destructive/30 bg-destructive/10 text-destructive"
+              : "border-border bg-secondary/50 text-foreground"
           }`}
           title={chip.label}
         >
-          {chip.icon}
-          <span className="hidden sm:inline">{chip.label}</span>
-          <span>{chip.value}</span>
+          <span className={chip.warning ? "" : "text-primary"}>{chip.icon}</span>
+          <span className="hidden sm:inline text-muted-foreground">{chip.label}</span>
+          <span className={chip.warning ? "" : ""}>{chip.value}</span>
         </div>
       ))}
 
       {/* Mobilization chip */}
-      <div className="flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold shrink-0 border border-border bg-muted/50">
-        <Gauge className="h-3 w-3" />
-        <span className="hidden sm:inline">Mob</span>
+      <div className="flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold shrink-0 border border-border bg-secondary/50">
+        <Gauge className="h-3 w-3 text-primary" />
+        <span className="hidden sm:inline text-muted-foreground">Mob</span>
         <span>{Math.round((realm.mobilization_rate || 0.1) * 100)}%</span>
       </div>
 
       {/* Famine indicator */}
       {famineCities.length > 0 && (
-        <div className="flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold shrink-0 border border-destructive/40 bg-destructive/10 text-destructive">
+        <div className="flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold shrink-0 border border-destructive/30 bg-destructive/10 text-destructive">
           <Skull className="h-3 w-3" />
           <span>{famineCities.length}× hlad</span>
         </div>
@@ -132,20 +133,19 @@ const ResourceHUD = ({ sessionId, playerName, cities }: ResourceHUDProps) => {
       {/* Economy detail popover */}
       <Popover>
         <PopoverTrigger asChild>
-          <button className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-semibold shrink-0 border border-primary/30 bg-primary/10 text-primary hover:bg-primary/20 transition-colors">
+          <button className="flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-semibold shrink-0 border border-primary/25 bg-primary/10 text-primary hover:bg-primary/20 transition-colors">
             <ChevronDown className="h-3 w-3" />
           </button>
         </PopoverTrigger>
         <PopoverContent className="w-72 p-3" align="end">
-          <h4 className="font-display font-semibold text-sm mb-2">Ekonomický přehled</h4>
+          <h4 className="font-display font-semibold text-sm mb-2 text-primary">Ekonomický přehled</h4>
 
-          {/* Grain breakdown */}
           <div className="space-y-1 text-xs mb-3">
             <div className="flex justify-between"><span className="text-muted-foreground">Produkce obilí</span><span className="font-semibold">{playerRes.food?.income || 0}</span></div>
             <div className="flex justify-between"><span className="text-muted-foreground">Spotřeba obilí</span><span className="font-semibold">{playerRes.food?.upkeep || 0}</span></div>
-            <div className="flex justify-between"><span className="text-muted-foreground">Bilance</span><span className={`font-semibold ${food.net < 0 ? "text-destructive" : "text-accent"}`}>{food.net >= 0 ? "+" : ""}{food.net}</span></div>
-            <div className="w-full bg-muted rounded-full h-1.5 mt-1">
-              <div className="bg-primary rounded-full h-1.5 transition-all" style={{ width: `${grainPct}%` }} />
+            <div className="flex justify-between"><span className="text-muted-foreground">Bilance</span><span className={`font-semibold ${food.net < 0 ? "text-destructive" : "text-primary"}`}>{food.net >= 0 ? "+" : ""}{food.net}</span></div>
+            <div className="w-full bg-muted rounded h-1.5 mt-1">
+              <div className="bg-primary rounded h-1.5 transition-all" style={{ width: `${grainPct}%` }} />
             </div>
             <div className="flex justify-between text-[10px] text-muted-foreground">
               <span>Zásoby: {food.stockpile}</span>
@@ -153,7 +153,6 @@ const ResourceHUD = ({ sessionId, playerName, cities }: ResourceHUDProps) => {
             </div>
           </div>
 
-          {/* Mobilization slider */}
           <div className="space-y-1 mb-3">
             <div className="flex justify-between text-xs">
               <span className="text-muted-foreground">Mobilizace</span>
@@ -171,7 +170,6 @@ const ResourceHUD = ({ sessionId, playerName, cities }: ResourceHUDProps) => {
             </div>
           </div>
 
-          {/* Vulnerable cities */}
           {myCities.length > 0 && (
             <div className="space-y-1">
               <h5 className="text-[10px] font-semibold text-muted-foreground">Nejzranitelnější města</h5>

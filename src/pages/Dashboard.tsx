@@ -82,7 +82,7 @@ const Dashboard = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center parchment-bg">
+      <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="text-center animate-fade-in">
           <Scroll className="h-12 w-12 text-primary mx-auto mb-4 animate-pulse" />
           <p className="font-display text-lg text-muted-foreground">Načítání herního světa...</p>
@@ -93,7 +93,7 @@ const Dashboard = () => {
 
   if (!session) {
     return (
-      <div className="min-h-screen flex items-center justify-center parchment-bg">
+      <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="text-center space-y-4">
           <p className="font-display text-lg">Hra nenalezena</p>
           <Button onClick={() => navigate("/")}>Zpět na úvod</Button>
@@ -172,7 +172,7 @@ const Dashboard = () => {
   };
 
   return (
-    <div className="min-h-screen parchment-bg">
+    <div className="min-h-screen bg-background">
       <AppHeader
         roomCode={session.room_code}
         currentTurn={currentTurn}
