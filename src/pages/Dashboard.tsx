@@ -9,7 +9,8 @@ import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import AppHeader from "@/components/layout/AppHeader";
 import ResourceHUD from "@/components/layout/ResourceHUD";
-import BottomNav, { type TabId } from "@/components/layout/BottomNav";
+import AppShell from "@/components/layout/AppShell";
+import type { TabId } from "@/components/layout/BottomNav";
 import ActionChooser from "@/components/layout/ActionChooser";
 import WorldEventDetailPanel from "@/components/WorldEventDetailPanel";
 import GameHubFAB from "@/components/layout/GameHubFAB";
@@ -108,7 +109,6 @@ const Dashboard = () => {
   const handleAction = (action: string, payload?: any) => {
     console.log(`Dashboard handleAction: ${action}`);
 
-    // Special handling for found_city — stay on Home tab, trigger settlement creation
     if (action === "found_city") {
       setActiveTab("home");
       setFoundCityTrigger(prev => prev + 1);
@@ -153,7 +153,6 @@ const Dashboard = () => {
       setEventDetailId(id);
       return;
     }
-    // Route to World or Codex depending on entity type
     if (["city", "province", "region"].includes(type)) {
       setWorldEntityTarget({ type, id });
       setActiveTab("world");
@@ -180,117 +179,126 @@ const Dashboard = () => {
   };
 
   return (
-    <div className="min-h-screen bg-background">
-      <AppHeader
-        roomCode={session.room_code}
-        currentTurn={currentTurn}
-        worldName={worldFoundation?.world_name}
-        playerName={myPlayerName}
-        myRole={myRole}
-        currentSessionId={session.id}
-      />
-      <ResourceHUD sessionId={session.id} playerName={myPlayerName} cities={cities} />
-
-      <main className="max-w-[1600px] mx-auto px-3 py-3">
-        {activeTab === "home" && <HomeTab {...sharedProps} foundCityTrigger={foundCityTrigger} />}
-        {activeTab === "world" && <WorldTab {...sharedProps} worldEntityTarget={worldEntityTarget} onClearWorldEntityTarget={() => setWorldEntityTarget(null)} />}
-        {activeTab === "realm" && <RealmTab {...sharedProps} />}
-        {activeTab === "army" && (
-          <ArmyTab
-            sessionId={session.id}
-            currentPlayerName={myPlayerName}
+    <AppShell
+      activeTab={activeTab}
+      onTabChange={setActiveTab}
+      showDevTab={true}
+      showPersistentTab={session?.game_mode === "time_persistent"}
+      worldName={worldFoundation?.world_name}
+      header={
+        <AppHeader
+          roomCode={session.room_code}
+          currentTurn={currentTurn}
+          worldName={worldFoundation?.world_name}
+          playerName={myPlayerName}
+          myRole={myRole}
+          currentSessionId={session.id}
+        />
+      }
+      resourceHud={
+        <ResourceHUD sessionId={session.id} playerName={myPlayerName} cities={cities} />
+      }
+      bottomExtras={
+        <>
+          <GameHubFAB
+            currentSessionId={session.id}
+            worldName={worldFoundation?.world_name}
             currentTurn={currentTurn}
-            myRole={myRole}
-            onRefetch={refetch}
-          />
-        )}
-        {activeTab === "economy" && (
-          <EconomyTab
-            sessionId={session.id}
-            currentPlayerName={myPlayerName}
-            currentTurn={currentTurn}
-            cities={cities}
-            resources={resources}
-            armies={armies}
-            onEntityClick={handleEntityClick}
-          />
-        )}
-        {activeTab === "feed" && <FeedTab {...sharedProps} />}
-        {activeTab === "codex" && <CodexTab {...sharedProps} codexEntityTarget={codexEntityTarget} onClearEntityTarget={() => setCodexEntityTarget(null)} />}
-        {activeTab === "wiki" && <ChroWikiTab sessionId={session.id} currentPlayerName={myPlayerName} myRole={myRole} onEntityClick={handleEntityClick} />}
-        {activeTab === "council" && (
-          <CouncilTab
-            sessionId={session.id}
-            session={session}
-            currentPlayerName={myPlayerName}
-            currentTurn={currentTurn}
+            playerName={myPlayerName}
+            onAction={handleAction}
+            activeTab={activeTab}
             myRole={myRole}
             events={events}
             cities={cities}
-            resources={resources}
+            wonders={wonders}
             armies={armies}
-            trades={trades}
+            resources={resources}
             declarations={declarations}
-            worldCrises={worldCrises}
-            cityStates={cityStates}
+            chronicles={chronicles}
             players={players}
-            onRefetch={refetch}
           />
-        )}
-        {activeTab === "dev" && (
-          <DevTab
-            sessionId={session.id}
-            currentPlayerName={myPlayerName}
-            myRole={myRole}
-            onRefetch={refetch}
-            citiesCount={cities.length}
-            eventsCount={events.length}
-            wondersCount={wonders.length}
-            memoriesCount={memories.length}
-            playersCount={players.length}
+          <ActionChooser open={showActionChooser} onClose={() => setShowActionChooser(false)} onAction={handleAction} />
+          <WorldEventDetailPanel
+            eventId={eventDetailId}
+            open={!!eventDetailId}
+            onClose={() => setEventDetailId(null)}
+            onEventClick={(id) => setEventDetailId(id)}
           />
-        )}
-        {activeTab === "persistent" && (
-          <PersistentTab
-            sessionId={session.id}
-            currentPlayerName={myPlayerName}
-            myRole={myRole}
-            cities={cities}
-            armies={armies as any}
-            players={players}
-            resources={resources}
-            events={events}
-            worldCrises={worldCrises}
-          />
-        )}
-      </main>
-
-      <GameHubFAB
-        currentSessionId={session.id}
-        worldName={worldFoundation?.world_name}
-        currentTurn={currentTurn}
-        playerName={myPlayerName}
-        onAction={handleAction}
-        activeTab={activeTab}
-        myRole={myRole}
-        events={events}
-        cities={cities}
-        wonders={wonders}
-        armies={armies}
-        resources={resources}
-        declarations={declarations}
-        chronicles={chronicles}
-        players={players}
-      />
-      <BottomNav activeTab={activeTab} onTabChange={setActiveTab} showDevTab={true} showPersistentTab={session?.game_mode === "time_persistent"} />
-      <ActionChooser open={showActionChooser} onClose={() => setShowActionChooser(false)} onAction={handleAction} />
-      <WorldEventDetailPanel
-        eventId={eventDetailId}
-        open={!!eventDetailId}
-        onClose={() => setEventDetailId(null)}
-        onEventClick={(id) => setEventDetailId(id)}
-      />
-    </div>
+        </>
+      }
+    >
+      {activeTab === "home" && <HomeTab {...sharedProps} foundCityTrigger={foundCityTrigger} />}
+      {activeTab === "world" && <WorldTab {...sharedProps} worldEntityTarget={worldEntityTarget} onClearWorldEntityTarget={() => setWorldEntityTarget(null)} />}
+      {activeTab === "realm" && <RealmTab {...sharedProps} />}
+      {activeTab === "army" && (
+        <ArmyTab
+          sessionId={session.id}
+          currentPlayerName={myPlayerName}
+          currentTurn={currentTurn}
+          myRole={myRole}
+          onRefetch={refetch}
+        />
+      )}
+      {activeTab === "economy" && (
+        <EconomyTab
+          sessionId={session.id}
+          currentPlayerName={myPlayerName}
+          currentTurn={currentTurn}
+          cities={cities}
+          resources={resources}
+          armies={armies}
+          onEntityClick={handleEntityClick}
+        />
+      )}
+      {activeTab === "feed" && <FeedTab {...sharedProps} />}
+      {activeTab === "codex" && <CodexTab {...sharedProps} codexEntityTarget={codexEntityTarget} onClearEntityTarget={() => setCodexEntityTarget(null)} />}
+      {activeTab === "wiki" && <ChroWikiTab sessionId={session.id} currentPlayerName={myPlayerName} myRole={myRole} onEntityClick={handleEntityClick} />}
+      {activeTab === "council" && (
+        <CouncilTab
+          sessionId={session.id}
+          session={session}
+          currentPlayerName={myPlayerName}
+          currentTurn={currentTurn}
+          myRole={myRole}
+          events={events}
+          cities={cities}
+          resources={resources}
+          armies={armies}
+          trades={trades}
+          declarations={declarations}
+          worldCrises={worldCrises}
+          cityStates={cityStates}
+          players={players}
+          onRefetch={refetch}
+        />
+      )}
+      {activeTab === "dev" && (
+        <DevTab
+          sessionId={session.id}
+          currentPlayerName={myPlayerName}
+          myRole={myRole}
+          onRefetch={refetch}
+          citiesCount={cities.length}
+          eventsCount={events.length}
+          wondersCount={wonders.length}
+          memoriesCount={memories.length}
+          playersCount={players.length}
+        />
+      )}
+      {activeTab === "persistent" && (
+        <PersistentTab
+          sessionId={session.id}
+          currentPlayerName={myPlayerName}
+          myRole={myRole}
+          cities={cities}
+          armies={armies as any}
+          players={players}
+          resources={resources}
+          events={events}
+          worldCrises={worldCrises}
+        />
+      )}
+    </AppShell>
   );
 };
 
