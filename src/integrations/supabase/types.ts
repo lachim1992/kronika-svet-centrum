@@ -14,6 +14,94 @@ export type Database = {
   }
   public: {
     Tables: {
+      ai_factions: {
+        Row: {
+          created_at: string
+          disposition: Json
+          faction_name: string
+          goals: Json
+          id: string
+          is_active: boolean
+          personality: string
+          resources_snapshot: Json
+          session_id: string
+        }
+        Insert: {
+          created_at?: string
+          disposition?: Json
+          faction_name: string
+          goals?: Json
+          id?: string
+          is_active?: boolean
+          personality?: string
+          resources_snapshot?: Json
+          session_id: string
+        }
+        Update: {
+          created_at?: string
+          disposition?: Json
+          faction_name?: string
+          goals?: Json
+          id?: string
+          is_active?: boolean
+          personality?: string
+          resources_snapshot?: Json
+          session_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_factions_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ai_world_summaries: {
+        Row: {
+          created_at: string
+          faction_name: string | null
+          id: string
+          key_facts: Json
+          session_id: string
+          summary_text: string
+          summary_type: string
+          turn_range_from: number | null
+          turn_range_to: number | null
+        }
+        Insert: {
+          created_at?: string
+          faction_name?: string | null
+          id?: string
+          key_facts?: Json
+          session_id: string
+          summary_text: string
+          summary_type?: string
+          turn_range_from?: number | null
+          turn_range_to?: number | null
+        }
+        Update: {
+          created_at?: string
+          faction_name?: string | null
+          id?: string
+          key_facts?: Json
+          session_id?: string
+          summary_text?: string
+          summary_type?: string
+          turn_range_from?: number | null
+          turn_range_to?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_world_summaries_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       chronicle_entries: {
         Row: {
           created_at: string
@@ -301,32 +389,38 @@ export type Database = {
       }
       civilizations: {
         Row: {
+          ai_personality: string | null
           architectural_style: string | null
           civ_name: string
           core_myth: string | null
           created_at: string
           cultural_quirk: string | null
           id: string
+          is_ai: boolean
           player_name: string
           session_id: string
         }
         Insert: {
+          ai_personality?: string | null
           architectural_style?: string | null
           civ_name?: string
           core_myth?: string | null
           created_at?: string
           cultural_quirk?: string | null
           id?: string
+          is_ai?: boolean
           player_name: string
           session_id: string
         }
         Update: {
+          ai_personality?: string | null
           architectural_style?: string | null
           civ_name?: string
           core_myth?: string | null
           created_at?: string
           cultural_quirk?: string | null
           id?: string
+          is_ai?: boolean
           player_name?: string
           session_id?: string
         }
@@ -1169,11 +1263,13 @@ export type Database = {
           current_era: string
           current_turn: number
           epoch_style: string
+          game_mode: string
           id: string
           max_players: number
           player1_name: string
           player2_name: string
           room_code: string
+          tier: string
           turn_closed_p1: boolean
           turn_closed_p2: boolean
         }
@@ -1183,11 +1279,13 @@ export type Database = {
           current_era?: string
           current_turn?: number
           epoch_style?: string
+          game_mode?: string
           id?: string
           max_players?: number
           player1_name?: string
           player2_name?: string
           room_code: string
+          tier?: string
           turn_closed_p1?: boolean
           turn_closed_p2?: boolean
         }
@@ -1197,11 +1295,13 @@ export type Database = {
           current_era?: string
           current_turn?: number
           epoch_style?: string
+          game_mode?: string
           id?: string
           max_players?: number
           player1_name?: string
           player2_name?: string
           room_code?: string
+          tier?: string
           turn_closed_p1?: boolean
           turn_closed_p2?: boolean
         }
@@ -1686,6 +1786,7 @@ export type Database = {
           bio: string | null
           created_at: string
           id: string
+          is_premium: boolean
           updated_at: string
           username: string
         }
@@ -1694,6 +1795,7 @@ export type Database = {
           bio?: string | null
           created_at?: string
           id: string
+          is_premium?: boolean
           updated_at?: string
           username?: string
         }
@@ -1702,6 +1804,7 @@ export type Database = {
           bio?: string | null
           created_at?: string
           id?: string
+          is_premium?: boolean
           updated_at?: string
           username?: string
         }
