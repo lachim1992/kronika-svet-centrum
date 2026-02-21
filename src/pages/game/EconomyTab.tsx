@@ -6,8 +6,10 @@ import { Slider } from "@/components/ui/slider";
 import {
   Wheat, Trees, Mountain, Anvil, Coins, Users, Gauge,
   AlertTriangle, TrendingUp, TrendingDown, Minus, Castle,
-  Skull, ArrowUpDown, BarChart3, ShieldAlert, Info
+  Skull, ArrowUpDown, BarChart3, ShieldAlert, Info, RefreshCw
 } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { toast } from "@/hooks/use-toast";
 import {
   Table, TableHeader, TableBody, TableRow, TableHead, TableCell,
 } from "@/components/ui/table";
@@ -46,6 +48,7 @@ const EconomyTab = ({ sessionId, currentPlayerName, currentTurn, cities, resourc
   const [citySortKey, setCitySortKey] = useState<CitySortKey>("grain_prod");
   const [citySortAsc, setCitySortAsc] = useState(false);
   const [mobPreview, setMobPreview] = useState<number | null>(null);
+  const [recomputing, setRecomputing] = useState(false);
 
   const myCities = useMemo(() => cities.filter(c => c.owner_player === currentPlayerName), [cities, currentPlayerName]);
 
@@ -146,6 +149,22 @@ const EconomyTab = ({ sessionId, currentPlayerName, currentTurn, cities, resourc
     />
   );
 
+  const handleRecompute = useCallback(async () => {
+    setRecomputing(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("economy-recompute", {
+        body: { session_id: sessionId, player_name: currentPlayerName },
+      });
+      if (error) throw error;
+      toast({ title: "Ekonomika přepočítána", description: `Obilí netto = ${data.net_food}` });
+      await fetchData();
+    } catch (e: any) {
+      toast({ title: "Chyba přepočtu", description: e.message, variant: "destructive" });
+    } finally {
+      setRecomputing(false);
+    }
+  }, [sessionId, currentPlayerName, fetchData]);
+
   return (
     <div className="space-y-4 pb-20">
       {/* Header */}
@@ -153,6 +172,16 @@ const EconomyTab = ({ sessionId, currentPlayerName, currentTurn, cities, resourc
         <BarChart3 className="h-5 w-5 text-primary" />
         <h2 className="text-lg font-display font-bold">Ekonomika</h2>
         <span className="text-xs text-muted-foreground ml-auto font-display">Rok {currentTurn}</span>
+        <Button
+          variant="outline"
+          size="sm"
+          className="ml-2 text-xs"
+          onClick={handleRecompute}
+          disabled={recomputing}
+        >
+          <RefreshCw className={`h-3.5 w-3.5 mr-1 ${recomputing ? "animate-spin" : ""}`} />
+          {recomputing ? "Počítám…" : "Přepočítat"}
+        </Button>
       </div>
 
       {/* A1: Top Summary Strip */}
