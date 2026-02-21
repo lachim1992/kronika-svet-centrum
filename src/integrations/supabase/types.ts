@@ -1730,6 +1730,47 @@ export type Database = {
           },
         ]
       }
+      player_activity: {
+        Row: {
+          created_at: string | null
+          delegated_to: string | null
+          delegation_style: string | null
+          id: string
+          is_delegated: boolean
+          last_action_at: string | null
+          player_name: string
+          session_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          delegated_to?: string | null
+          delegation_style?: string | null
+          id?: string
+          is_delegated?: boolean
+          last_action_at?: string | null
+          player_name: string
+          session_id: string
+        }
+        Update: {
+          created_at?: string | null
+          delegated_to?: string | null
+          delegation_style?: string | null
+          id?: string
+          is_delegated?: boolean
+          last_action_at?: string | null
+          player_name?: string
+          session_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "player_activity_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       player_chronicle_chapters: {
         Row: {
           chapter_text: string
@@ -2375,6 +2416,125 @@ export type Database = {
             columns: ["session_id"]
             isOneToOne: false
             referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      travel_orders: {
+        Row: {
+          arrives_at: string
+          created_at: string | null
+          departed_at: string | null
+          entity_id: string | null
+          entity_type: string
+          from_province_id: string | null
+          id: string
+          player_name: string
+          session_id: string
+          status: string
+          to_province_id: string | null
+        }
+        Insert: {
+          arrives_at: string
+          created_at?: string | null
+          departed_at?: string | null
+          entity_id?: string | null
+          entity_type?: string
+          from_province_id?: string | null
+          id?: string
+          player_name: string
+          session_id: string
+          status?: string
+          to_province_id?: string | null
+        }
+        Update: {
+          arrives_at?: string
+          created_at?: string | null
+          departed_at?: string | null
+          entity_id?: string | null
+          entity_type?: string
+          from_province_id?: string | null
+          id?: string
+          player_name?: string
+          session_id?: string
+          status?: string
+          to_province_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "travel_orders_from_province_id_fkey"
+            columns: ["from_province_id"]
+            isOneToOne: false
+            referencedRelation: "provinces"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "travel_orders_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "travel_orders_to_province_id_fkey"
+            columns: ["to_province_id"]
+            isOneToOne: false
+            referencedRelation: "provinces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      travel_routes: {
+        Row: {
+          created_at: string | null
+          distance_minutes: number
+          from_province_id: string | null
+          id: string
+          is_active: boolean
+          session_id: string
+          terrain_modifier: number
+          to_province_id: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          distance_minutes?: number
+          from_province_id?: string | null
+          id?: string
+          is_active?: boolean
+          session_id: string
+          terrain_modifier?: number
+          to_province_id?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          distance_minutes?: number
+          from_province_id?: string | null
+          id?: string
+          is_active?: boolean
+          session_id?: string
+          terrain_modifier?: number
+          to_province_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "travel_routes_from_province_id_fkey"
+            columns: ["from_province_id"]
+            isOneToOne: false
+            referencedRelation: "provinces"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "travel_routes_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "travel_routes_to_province_id_fkey"
+            columns: ["to_province_id"]
+            isOneToOne: false
+            referencedRelation: "provinces"
             referencedColumns: ["id"]
           },
         ]
