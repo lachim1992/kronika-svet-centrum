@@ -10,6 +10,7 @@ import {
   Trees, Mountain, Anvil
 } from "lucide-react";
 import type { EntityIndex } from "@/hooks/useEntityIndex";
+import ProvinceOnboardingWizard from "@/components/ProvinceOnboardingWizard";
 
 const SETTLEMENT_LABELS: Record<string, string> = {
   HAMLET: "Osada", TOWNSHIP: "Městečko", CITY: "Město", POLIS: "Polis",
@@ -39,28 +40,39 @@ interface Props {
   entityIndex?: EntityIndex;
   onEventClick?: (eventId: string) => void;
   onEntityClick?: (type: string, id: string) => void;
+  onRefetch?: () => void;
 }
 
 const HomeTab = ({
-  sessionId, cities, currentPlayerName, currentTurn,
-  onEntityClick,
+  sessionId, cities, currentPlayerName, currentTurn, myRole,
+  onEntityClick, onRefetch,
 }: Props) => {
   const [realm, setRealm] = useState<any>(null);
   const [stacks, setStacks] = useState<any[]>([]);
   const [sortKey, setSortKey] = useState<SortKey>("population");
+  const [hasProvince, setHasProvince] = useState<boolean | null>(null);
+  const [showOnboarding, setShowOnboarding] = useState(false);
 
   const myCities = cities.filter(c => c.owner_player === currentPlayerName);
 
   const fetchRealm = useCallback(async () => {
-    const [realmRes, stacksRes] = await Promise.all([
+    const [realmRes, stacksRes, provRes] = await Promise.all([
       supabase.from("realm_resources").select("*")
         .eq("session_id", sessionId).eq("player_name", currentPlayerName).maybeSingle(),
       supabase.from("military_stacks").select("power")
         .eq("session_id", sessionId).eq("player_name", currentPlayerName).eq("is_active", true),
+      supabase.from("provinces").select("id")
+        .eq("session_id", sessionId).eq("owner_player", currentPlayerName).limit(1),
     ]);
     if (realmRes.data) setRealm(realmRes.data);
     setStacks(stacksRes.data || []);
-  }, [sessionId, currentPlayerName]);
+    const playerHasProvince = (provRes.data && provRes.data.length > 0);
+    setHasProvince(playerHasProvince);
+    // Show onboarding for non-admin players with no province and no cities
+    if (!playerHasProvince && myRole !== "admin" && myCities.length === 0) {
+      setShowOnboarding(true);
+    }
+  }, [sessionId, currentPlayerName, myRole, myCities.length]);
 
   useEffect(() => { fetchRealm(); }, [fetchRealm]);
 
@@ -77,6 +89,25 @@ const HomeTab = ({
       default: return 0;
     }
   });
+
+  // Show onboarding wizard for new players
+  if (showOnboarding && hasProvince === false && myRole !== "admin") {
+    return (
+      <div className="space-y-6 pb-24 px-1">
+        <div className="flex items-center gap-3 pt-2">
+          <Crown className="h-6 w-6 text-primary" />
+          <h2 className="text-xl font-display font-bold">Vítejte ve světě!</h2>
+          <span className="text-sm text-muted-foreground ml-auto font-display">Rok {currentTurn}</span>
+        </div>
+        <ProvinceOnboardingWizard
+          sessionId={sessionId}
+          currentPlayerName={currentPlayerName}
+          currentTurn={currentTurn}
+          onComplete={() => { setShowOnboarding(false); fetchRealm(); onRefetch?.(); }}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6 pb-24 px-1">
@@ -147,9 +178,15 @@ const HomeTab = ({
         <div className="game-card p-10 text-center">
           <Castle className="h-14 w-14 text-muted-foreground mx-auto mb-4 opacity-40" />
           <p className="text-base text-muted-foreground mb-4">Zatím neovládáte žádná sídla.</p>
-          <Button size="lg" className="font-display" onClick={() => onEntityClick?.("action", "found_city")}>
-            Založit první město
-          </Button>
+          {myRole === "admin" ? (
+            <Button size="lg" className="font-display" onClick={() => onEntityClick?.("action", "found_city")}>
+              Založit první město
+            </Button>
+          ) : (
+            <Button size="lg" className="font-display" onClick={() => setShowOnboarding(true)}>
+              Založit provincii a osadu
+            </Button>
+          )}
         </div>
       ) : (
         <div className="space-y-4">

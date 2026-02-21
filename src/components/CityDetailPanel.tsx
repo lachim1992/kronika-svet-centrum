@@ -8,13 +8,14 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ArrowLeft, MapPin, Sparkles, BookOpen, Shield, Flame, Crown, Scroll, Landmark, Brain } from "lucide-react";
+import { ArrowLeft, MapPin, Sparkles, BookOpen, Shield, Flame, Crown, Scroll, Landmark, Brain, Globe, Castle, Map } from "lucide-react";
 import { toast } from "sonner";
 import RichText from "@/components/RichText";
 import { supabase } from "@/integrations/supabase/client";
 import AILoreButton from "@/components/AILoreButton";
 import WorldMemoryPanel from "@/components/WorldMemoryPanel";
 import CityRumorsPanel from "@/components/CityRumorsPanel";
+import SettlementUpgradePanel from "@/components/SettlementUpgradePanel";
 import type { EntityIndex } from "@/hooks/useEntityIndex";
 import { getPermissions } from "@/lib/permissions";
 
@@ -63,6 +64,44 @@ const CityDetailPanel = ({
   const [bulletFacts, setBulletFacts] = useState<string[]>([]);
   const [flavorPrompt, setFlavorPrompt] = useState((city as any).flavor_prompt || "");
   const [editingFlavor, setEditingFlavor] = useState(false);
+
+  // World context state
+  const [worldContext, setWorldContext] = useState<{
+    province: any; region: any; country: any; nearbyCities: any[];
+  }>({ province: null, region: null, country: null, nearbyCities: [] });
+  const [realm, setRealm] = useState<any>(null);
+
+  useEffect(() => {
+    const fetchContext = async () => {
+      // Fetch province
+      let province = null;
+      let region = null;
+      let country = null;
+      if (city.province_id) {
+        const { data: prov } = await supabase.from("provinces").select("*").eq("id", city.province_id).maybeSingle();
+        province = prov;
+        if (prov?.region_id) {
+          const { data: reg } = await supabase.from("regions").select("*").eq("id", prov.region_id).maybeSingle();
+          region = reg;
+          if ((reg as any)?.country_id) {
+            const { data: cnt } = await supabase.from("countries").select("*").eq("id", (reg as any).country_id).maybeSingle();
+            country = cnt;
+          }
+        }
+      }
+      // Fetch nearby cities (same session, different id, limit 3)
+      const { data: nearby } = await supabase.from("cities").select("id, name, settlement_level, province")
+        .eq("session_id", city.session_id).neq("id", city.id).limit(3);
+
+      // Fetch realm resources for upgrade panel
+      const { data: realmData } = await supabase.from("realm_resources").select("*")
+        .eq("session_id", city.session_id).eq("player_name", city.owner_player).maybeSingle();
+
+      setWorldContext({ province, region, country, nearbyCities: nearby || [] });
+      setRealm(realmData);
+    };
+    fetchContext();
+  }, [city.id, city.province_id, city.session_id, city.owner_player]);
 
   // Cached deterministic description
   const [cachedDescription, setCachedDescription] = useState<string>("");
@@ -165,11 +204,6 @@ const CityDetailPanel = ({
             {city.province && <span className="flex items-center gap-1"><MapPin className="h-3 w-3" />{city.province}</span>}
             <span>Založeno v roce {(city as any).founded_round || 1}</span>
           </div>
-          {city.tags && city.tags.length > 0 && (
-            <div className="flex gap-1 mt-2 flex-wrap">
-              {city.tags.map(t => <Badge key={t} variant="outline" className="text-xs">{t}</Badge>)}
-            </div>
-          )}
         </div>
         <div className="flex items-center gap-2">
           {isOwner && (
@@ -197,6 +231,64 @@ const CityDetailPanel = ({
           )}
         </div>
       </div>
+
+      {/* World Context Card */}
+      {(worldContext.province || worldContext.region || worldContext.country || worldContext.nearbyCities.length > 0 || (city.tags && city.tags.length > 0)) && (
+        <div className="bg-card p-4 rounded-lg border border-border space-y-2">
+          <h3 className="font-display font-semibold text-sm flex items-center gap-2">
+            <Globe className="h-4 w-4 text-primary" />
+            Umístění ve světě
+          </h3>
+          <div className="grid grid-cols-2 gap-x-6 gap-y-1.5 text-sm">
+            {worldContext.province && (
+              <div className="flex items-center gap-2">
+                <Castle className="h-3 w-3 text-muted-foreground" />
+                <span className="text-muted-foreground">Provincie:</span>
+                <button className="text-primary hover:underline text-sm font-semibold"
+                  onClick={() => onEntityClick?.("province", worldContext.province.id)}>
+                  {worldContext.province.name}
+                </button>
+              </div>
+            )}
+            {worldContext.region && (
+              <div className="flex items-center gap-2">
+                <Map className="h-3 w-3 text-muted-foreground" />
+                <span className="text-muted-foreground">Region:</span>
+                <button className="text-primary hover:underline text-sm font-semibold"
+                  onClick={() => onEntityClick?.("region", worldContext.region.id)}>
+                  {worldContext.region.name}
+                </button>
+              </div>
+            )}
+            {worldContext.country && (
+              <div className="flex items-center gap-2">
+                <Globe className="h-3 w-3 text-muted-foreground" />
+                <span className="text-muted-foreground">Stát:</span>
+                <span className="font-semibold">{worldContext.country.name}</span>
+              </div>
+            )}
+          </div>
+          {worldContext.nearbyCities.length > 0 && (
+            <div className="pt-1">
+              <span className="text-xs text-muted-foreground">Blízká sídla: </span>
+              {worldContext.nearbyCities.map((nc, i) => (
+                <span key={nc.id}>
+                  <button className="text-xs text-primary hover:underline"
+                    onClick={() => onEntityClick?.("city", nc.id)}>
+                    {nc.name}
+                  </button>
+                  {i < worldContext.nearbyCities.length - 1 && <span className="text-xs text-muted-foreground">, </span>}
+                </span>
+              ))}
+            </div>
+          )}
+          {city.tags && city.tags.length > 0 && (
+            <div className="flex gap-1 flex-wrap pt-1">
+              {city.tags.map(t => <Badge key={t} variant="outline" className="text-xs">{t}</Badge>)}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Population & Society card */}
       <div className="bg-card p-4 rounded-lg border border-border space-y-3">
@@ -250,18 +342,23 @@ const CityDetailPanel = ({
         </div>
       )}
 
-      {/* Level upgrade */}
-      <div className="flex items-center gap-2">
-        <span className="text-sm font-display">Úroveň:</span>
-        {perms.canEditCityLevel ? (
+      {/* Level upgrade - admin can edit directly, players see upgrade panel */}
+      {perms.canEditCityLevel ? (
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-display">Úroveň:</span>
           <Select value={city.level} onValueChange={v => { updateCity(city.id, { level: v }); onRefetch?.(); }}>
             <SelectTrigger className="w-28 h-8 text-xs"><SelectValue /></SelectTrigger>
             <SelectContent>{CITY_LEVELS.map(l => <SelectItem key={l} value={l}>{l}</SelectItem>)}</SelectContent>
           </Select>
-        ) : (
+        </div>
+      ) : isOwner && city.settlement_level !== "POLIS" ? (
+        <SettlementUpgradePanel city={city} realm={realm} onRefetch={onRefetch} />
+      ) : (
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-display">Úroveň:</span>
           <Badge variant="secondary" className="text-xs">{city.level}</Badge>
-        )}
-      </div>
+        </div>
+      )}
 
       {/* Flavor prompt */}
       {isOwner && (
