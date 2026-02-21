@@ -98,7 +98,7 @@ Deno.serve(async (req) => {
       .from("cities")
       .select("*")
       .eq("session_id", sessionId)
-      .eq("owner_player", playerName);
+      .ilike("owner_player", playerName);
 
     const myCities = cities || [];
     const chronicleEntries: string[] = [];

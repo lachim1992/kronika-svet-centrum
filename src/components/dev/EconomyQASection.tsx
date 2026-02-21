@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { FlaskConical, Loader2, ChevronDown, AlertTriangle, CheckCircle, Info, Sprout } from "lucide-react";
+import { FlaskConical, Loader2, ChevronDown, AlertTriangle, CheckCircle, Info, Sprout, BarChart3 } from "lucide-react";
 import { toast } from "sonner";
 import { SETTLEMENT_TEMPLATES } from "@/lib/turnEngine";
 
@@ -161,6 +161,76 @@ const EconomyQASection = ({ sessionId, onRefetch }: Props) => {
     }
   };
 
+  const [recomputing, setRecomputing] = useState(false);
+
+  const handleRecomputeIncomes = async () => {
+    setRecomputing(true);
+    try {
+      const { data: players } = await supabase
+        .from("game_players")
+        .select("player_name")
+        .eq("session_id", sessionId);
+
+      for (const p of (players || [])) {
+        const { data: cities } = await supabase
+          .from("cities")
+          .select("id, status")
+          .eq("session_id", sessionId)
+          .ilike("owner_player", p.player_name);
+
+        const okCities = (cities || []).filter(c => c.status === "ok" || !c.status);
+        const cityIds = okCities.map(c => c.id);
+
+        let foodIncome = 0, woodIncome = 0, stoneIncome = 0, ironIncome = 0;
+
+        if (cityIds.length > 0) {
+          const { data: profiles } = await supabase
+            .from("settlement_resource_profiles")
+            .select("base_grain, base_wood, base_special, special_resource_type")
+            .in("city_id", cityIds);
+
+          for (const pr of (profiles || [])) {
+            foodIncome += pr.base_grain || 0;
+            woodIncome += pr.base_wood || 0;
+            if (pr.special_resource_type === "STONE") stoneIncome += pr.base_special || 0;
+            if (pr.special_resource_type === "IRON") ironIncome += pr.base_special || 0;
+          }
+        }
+
+        const incomes: Record<string, number> = {
+          food: foodIncome, wood: woodIncome, stone: stoneIncome,
+          iron: ironIncome, wealth: okCities.length,
+        };
+
+        for (const [resType, income] of Object.entries(incomes)) {
+          const { data: updated } = await supabase
+            .from("player_resources")
+            .update({ income, updated_at: new Date().toISOString() })
+            .eq("session_id", sessionId)
+            .ilike("player_name", p.player_name)
+            .eq("resource_type", resType)
+            .select("id");
+
+          if (!updated || updated.length === 0) {
+            await supabase.from("player_resources").insert({
+              session_id: sessionId,
+              player_name: p.player_name.toLowerCase(),
+              resource_type: resType,
+              income, stockpile: 0, upkeep: 0, last_applied_turn: 0,
+            });
+          }
+        }
+
+        toast.success(`${p.player_name}: food+${foodIncome} wood+${woodIncome} stone+${stoneIncome} iron+${ironIncome} wealth+${okCities.length}`);
+      }
+      onRefetch?.();
+    } catch (e: any) {
+      toast.error(e.message);
+    } finally {
+      setRecomputing(false);
+    }
+  };
+
   const errors = issues.filter(i => i.severity === "error").length;
   const warnings = issues.filter(i => i.severity === "warning").length;
   const infos = issues.filter(i => i.severity === "info").length;
@@ -176,6 +246,10 @@ const EconomyQASection = ({ sessionId, onRefetch }: Props) => {
         <Button onClick={handleSeedRealm} disabled={seeding} size="sm" variant="outline" className="font-display">
           {seeding ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <Sprout className="h-3 w-3 mr-1" />}
           Seed Realm Data
+        </Button>
+        <Button onClick={handleRecomputeIncomes} disabled={recomputing} size="sm" variant="outline" className="font-display">
+          {recomputing ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <BarChart3 className="h-3 w-3 mr-1" />}
+          Recompute Incomes
         </Button>
       </div>
 
