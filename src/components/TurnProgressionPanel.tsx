@@ -3,7 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { closeTurnForPlayer, advanceTurn } from "@/hooks/useGameSession";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Lock, CheckCircle2, Clock, Play } from "lucide-react";
+import { Lock, CheckCircle2, Clock, Play, Bot, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
 interface Props {
@@ -12,14 +12,17 @@ interface Props {
   players: any[];
   currentPlayerName: string;
   myRole: string;
+  gameMode?: string;
   onRefetch: () => void;
 }
 
-const TurnProgressionPanel = ({ sessionId, currentTurn, players, currentPlayerName, myRole, onRefetch }: Props) => {
+const TurnProgressionPanel = ({ sessionId, currentTurn, players, currentPlayerName, myRole, gameMode, onRefetch }: Props) => {
   const isAdmin = myRole === "admin" || !myRole;
   const currentPlayer = players.find(p => p.player_name === currentPlayerName);
   const myTurnClosed = currentPlayer?.turn_closed || false;
   const allClosed = players.length > 0 && players.every(p => p.turn_closed);
+  const isAIMode = gameMode === "tb_single_ai";
+  const [processingAI, setProcessingAI] = useState(false);
 
   const [turnSummaries, setTurnSummaries] = useState<any[]>([]);
 
@@ -53,7 +56,42 @@ const TurnProgressionPanel = ({ sessionId, currentTurn, players, currentPlayerNa
     onRefetch();
   };
 
+  const processAIFactions = async () => {
+    // Fetch active AI factions for this session
+    const { data: aiFactions } = await supabase.from("ai_factions")
+      .select("faction_name")
+      .eq("session_id", sessionId)
+      .eq("is_active", true);
+
+    if (!aiFactions || aiFactions.length === 0) return 0;
+
+    let processed = 0;
+    for (const faction of aiFactions) {
+      try {
+        await supabase.functions.invoke("ai-faction-turn", {
+          body: { sessionId, factionName: faction.faction_name },
+        });
+        processed++;
+      } catch (e) {
+        console.error(`AI faction ${faction.faction_name} error:`, e);
+      }
+    }
+    return processed;
+  };
+
   const handleAdminCloseTurn = async () => {
+    // Process AI factions first (if AI mode)
+    if (isAIMode) {
+      setProcessingAI(true);
+      try {
+        const aiCount = await processAIFactions();
+        if (aiCount > 0) toast.info(`${aiCount} AI frakcí provedlo svůj tah.`);
+      } catch (e) {
+        console.error("AI faction processing error:", e);
+      }
+      setProcessingAI(false);
+    }
+
     // Create turn summary record
     await supabase.from("turn_summaries").insert({
       session_id: sessionId,
@@ -112,27 +150,41 @@ const TurnProgressionPanel = ({ sessionId, currentTurn, players, currentPlayerNa
       </div>
 
       {/* Actions */}
-      {!myTurnClosed && (
+      {isAIMode && !myTurnClosed && (
+        <Button onClick={async () => { await handleCloseTurn(); handleAdminCloseTurn(); }} 
+          disabled={processingAI} className="w-full font-display">
+          {processingAI ? (
+            <><Loader2 className="mr-2 h-4 w-4 animate-spin" />AI frakce hrají...</>
+          ) : (
+            <><Play className="mr-2 h-4 w-4" />Ukončit kolo</>
+          )}
+        </Button>
+      )}
+
+      {!isAIMode && !myTurnClosed && (
         <Button onClick={handleCloseTurn} variant="outline" className="w-full font-display">
           <Lock className="mr-2 h-4 w-4" />
           Uzavřít mé kolo
         </Button>
       )}
 
-      {myTurnClosed && !allClosed && (
+      {!isAIMode && myTurnClosed && !allClosed && (
         <p className="text-xs text-muted-foreground italic text-center">
           Čekáme na ostatní hráče...
         </p>
       )}
 
-      {allClosed && isAdmin && (
-        <Button onClick={handleAdminCloseTurn} className="w-full font-display">
-          <Play className="mr-2 h-4 w-4" />
-          Uzavřít kolo a pokračovat
+      {!isAIMode && allClosed && isAdmin && (
+        <Button onClick={handleAdminCloseTurn} disabled={processingAI} className="w-full font-display">
+          {processingAI ? (
+            <><Loader2 className="mr-2 h-4 w-4 animate-spin" />AI frakce hrají...</>
+          ) : (
+            <><Play className="mr-2 h-4 w-4" />Uzavřít kolo a pokračovat</>
+          )}
         </Button>
       )}
 
-      {allClosed && !isAdmin && (
+      {!isAIMode && allClosed && !isAdmin && (
         <p className="text-xs text-muted-foreground italic text-center">
           Čekáme na Admina...
         </p>

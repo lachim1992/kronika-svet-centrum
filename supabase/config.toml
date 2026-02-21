@@ -77,3 +77,9 @@ verify_jwt = false
 
 [functions.process-turn]
 verify_jwt = false
+
+[functions.world-generate-init]
+verify_jwt = false
+
+[functions.ai-faction-turn]
+verify_jwt = false
