@@ -1496,6 +1496,7 @@ export type Database = {
           tier: string
           turn_closed_p1: boolean
           turn_closed_p2: boolean
+          world_seed: string | null
         }
         Insert: {
           created_at?: string
@@ -1512,6 +1513,7 @@ export type Database = {
           tier?: string
           turn_closed_p1?: boolean
           turn_closed_p2?: boolean
+          world_seed?: string | null
         }
         Update: {
           created_at?: string
@@ -1528,6 +1530,7 @@ export type Database = {
           tier?: string
           turn_closed_p1?: boolean
           turn_closed_p2?: boolean
+          world_seed?: string | null
         }
         Relationships: []
       }
@@ -1792,6 +1795,47 @@ export type Database = {
             columns: ["stack_id"]
             isOneToOne: false
             referencedRelation: "military_stacks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      macro_regions: {
+        Row: {
+          climate_band: number
+          created_at: string
+          elevation_band: number
+          id: string
+          moisture_band: number
+          name: string
+          region_key: string
+          session_id: string
+        }
+        Insert: {
+          climate_band?: number
+          created_at?: string
+          elevation_band?: number
+          id?: string
+          moisture_band?: number
+          name: string
+          region_key: string
+          session_id: string
+        }
+        Update: {
+          climate_band?: number
+          created_at?: string
+          elevation_band?: number
+          id?: string
+          moisture_band?: number
+          name?: string
+          region_key?: string
+          session_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "macro_regions_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
             referencedColumns: ["id"]
           },
         ]
@@ -2109,6 +2153,66 @@ export type Database = {
           username?: string
         }
         Relationships: []
+      }
+      province_hexes: {
+        Row: {
+          biome_family: string
+          coastal: boolean
+          created_at: string
+          id: string
+          macro_region_id: string | null
+          mean_height: number
+          moisture_band: number
+          q: number
+          r: number
+          seed: string
+          session_id: string
+          temp_band: number
+        }
+        Insert: {
+          biome_family?: string
+          coastal?: boolean
+          created_at?: string
+          id?: string
+          macro_region_id?: string | null
+          mean_height?: number
+          moisture_band?: number
+          q: number
+          r: number
+          seed: string
+          session_id: string
+          temp_band?: number
+        }
+        Update: {
+          biome_family?: string
+          coastal?: boolean
+          created_at?: string
+          id?: string
+          macro_region_id?: string | null
+          mean_height?: number
+          moisture_band?: number
+          q?: number
+          r?: number
+          seed?: string
+          session_id?: string
+          temp_band?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "province_hexes_macro_region_id_fkey"
+            columns: ["macro_region_id"]
+            isOneToOne: false
+            referencedRelation: "macro_regions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "province_hexes_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       provinces: {
         Row: {
