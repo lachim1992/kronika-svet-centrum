@@ -67,14 +67,15 @@ const Auth = () => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-6 bg-background">
+    <div
+      className="min-h-screen flex items-center justify-center p-6"
+      style={{ background: "linear-gradient(180deg, hsl(220 30% 5%) 0%, hsl(220 30% 10%) 50%, hsl(220 25% 7%) 100%)" }}
+    >
       <div className="max-w-md w-full space-y-8 animate-fade-in">
-        {/* Logo & Title */}
-        <div className="text-center space-y-4">
-          <div className="flex justify-center">
-            <ChronicleHubLogo variant="full" size="lg" />
-          </div>
-          <p className="text-muted-foreground text-sm">
+        {/* Hero: Logo + Title + Subtitle */}
+        <div className="text-center space-y-6 pt-4 pb-2">
+          <ChronicleHubLogo variant="full" size="hero" />
+          <p className="text-muted-foreground text-sm" style={{ fontFamily: "'Cinzel', serif", letterSpacing: "0.12em" }}>
             {showReset ? "Reset hesla" : isSignUp ? "Vytvořte si účet" : "Přihlaste se ke svému světu"}
           </p>
         </div>
