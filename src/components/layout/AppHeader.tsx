@@ -70,29 +70,31 @@ const AppHeader = ({ roomCode, currentTurn, worldName, playerName, myRole, curre
   }, [user, currentSessionId]);
 
   return (
-    <header className="imperial-header sticky top-0 z-40">
-      <div className="flex items-center justify-between px-4 py-2.5 max-w-[1600px] mx-auto">
-        <div className="flex items-center gap-3 min-w-0">
+    <header className="sticky top-0 z-40 border-b border-border backdrop-blur-md"
+      style={{ background: "hsl(220 28% 7% / 0.95)", boxShadow: "0 2px 16px -4px hsl(220 30% 3% / 0.6)" }}
+    >
+      <div className="flex items-center justify-between px-5 py-3 max-w-[1600px] mx-auto">
+        <div className="flex items-center gap-4 min-w-0">
           <ChronicleHubLogo variant="mark" size="sm" />
-          <span className="font-display font-semibold text-sm text-primary truncate">
+          <span className="font-display font-semibold text-base text-primary truncate">
             {worldName || "The Chronicle Hub"}
           </span>
-          <Badge className="bg-primary/15 text-primary border-primary/25 font-display text-xs shrink-0">
+          <Badge className="bg-primary/15 text-primary border-primary/25 font-display text-xs shrink-0 px-3 py-1">
             Rok {currentTurn}
           </Badge>
         </div>
 
-        <div className="flex items-center gap-2 shrink-0">
-          <Button variant="ghost" size="sm" onClick={copyCode} className="font-mono text-xs h-7 px-2 text-muted-foreground hover:text-foreground">
-            <Copy className="h-3 w-3 mr-1" />{roomCode}
+        <div className="flex items-center gap-3 shrink-0">
+          <Button variant="ghost" size="sm" onClick={copyCode} className="font-mono text-xs h-8 px-3 text-muted-foreground hover:text-foreground">
+            <Copy className="h-3.5 w-3.5 mr-1.5" />{roomCode}
           </Button>
 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <button className="h-8 px-2.5 rounded-md bg-secondary border border-border hover:bg-secondary/80 transition-colors flex items-center gap-1.5 text-sm font-display">
-                <User className="h-3.5 w-3.5 text-primary" />
-                <span className="text-xs font-semibold max-w-[80px] truncate">{playerName}</span>
-                {myRole === "admin" && <span className="text-[10px] text-primary">★</span>}
+              <button className="h-9 px-3 rounded-lg bg-secondary border border-border hover:bg-secondary/80 hover:border-primary/20 transition-all duration-200 flex items-center gap-2 text-sm font-display">
+                <User className="h-4 w-4 text-primary" />
+                <span className="text-xs font-semibold max-w-[100px] truncate">{playerName}</span>
+                {myRole === "admin" && <span className="text-xs text-primary">★</span>}
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-56">

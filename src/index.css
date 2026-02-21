@@ -6,59 +6,70 @@
 
 @layer base {
   :root {
-    --background: 220 30% 7%;
-    --foreground: 40 20% 88%;
+    --background: 220 30% 6%;
+    --foreground: 40 18% 92%;
 
-    --card: 220 25% 12%;
-    --card-foreground: 40 20% 88%;
+    --card: 220 22% 11%;
+    --card-foreground: 40 18% 92%;
 
-    --popover: 220 25% 12%;
-    --popover-foreground: 40 20% 88%;
+    --popover: 220 22% 11%;
+    --popover-foreground: 40 18% 92%;
 
-    --primary: 40 50% 56%;
+    --primary: 40 55% 58%;
     --primary-foreground: 220 30% 7%;
 
-    --secondary: 220 18% 18%;
-    --secondary-foreground: 40 20% 85%;
+    --secondary: 220 18% 16%;
+    --secondary-foreground: 40 18% 88%;
 
-    --muted: 220 15% 16%;
-    --muted-foreground: 220 10% 50%;
+    --muted: 220 14% 15%;
+    --muted-foreground: 220 8% 55%;
 
-    --accent: 40 50% 56%;
+    --accent: 40 55% 58%;
     --accent-foreground: 220 30% 7%;
 
-    --destructive: 0 40% 38%;
-    --destructive-foreground: 0 20% 90%;
+    --destructive: 0 50% 42%;
+    --destructive-foreground: 0 20% 95%;
 
-    --border: 220 15% 20%;
-    --input: 220 15% 20%;
-    --ring: 40 50% 56%;
+    --success: 150 40% 42%;
+    --success-foreground: 150 20% 95%;
 
-    --radius: 0.5rem;
+    --info: 210 40% 55%;
+    --info-foreground: 210 20% 95%;
 
-    --sidebar-background: 220 28% 9%;
-    --sidebar-foreground: 40 20% 85%;
-    --sidebar-primary: 40 50% 56%;
+    --border: 220 14% 18%;
+    --input: 220 14% 18%;
+    --ring: 40 55% 58%;
+
+    --radius: 0.875rem;
+
+    --sidebar-background: 220 28% 8%;
+    --sidebar-foreground: 40 18% 88%;
+    --sidebar-primary: 40 55% 58%;
     --sidebar-primary-foreground: 220 30% 7%;
-    --sidebar-accent: 220 18% 15%;
-    --sidebar-accent-foreground: 40 20% 85%;
-    --sidebar-border: 220 15% 18%;
-    --sidebar-ring: 40 50% 56%;
+    --sidebar-accent: 220 18% 14%;
+    --sidebar-accent-foreground: 40 18% 88%;
+    --sidebar-border: 220 14% 16%;
+    --sidebar-ring: 40 55% 58%;
 
     --chronicle-myth: 270 30% 55%;
     --chronicle-medieval: 35 40% 55%;
     --chronicle-modern: 210 25% 55%;
 
-    --gold-glow: 40 55% 56%;
-    --parchment-dark: 220 15% 22%;
-    --ink: 40 20% 88%;
+    --gold-glow: 40 60% 58%;
+    --parchment-dark: 220 14% 20%;
+    --ink: 40 18% 92%;
 
-    --illuminated: 40 50% 56%;
-    --seal-red: 0 40% 42%;
+    --illuminated: 40 55% 58%;
+    --seal-red: 0 45% 45%;
     --royal-purple: 270 25% 45%;
     --forest-green: 162 30% 38%;
 
-    --surface-elevated: 220 22% 15%;
+    --surface-elevated: 220 20% 14%;
+
+    /* Card premium styling */
+    --card-shadow: 0 4px 24px -8px hsl(220 30% 3% / 0.6);
+    --card-shadow-hover: 0 8px 32px -8px hsl(40 55% 58% / 0.12);
+    --card-border-hover: 40 55% 58%;
   }
 
   /* Light mode override (optional, dark-first) */
@@ -100,11 +111,17 @@
 
   body {
     @apply bg-background text-foreground font-body antialiased;
+    font-size: 15px;
+    line-height: 1.6;
   }
 
   h1, h2, h3, h4, h5, h6 {
     @apply font-display;
   }
+
+  h1 { @apply text-2xl md:text-3xl font-bold tracking-wide; }
+  h2 { @apply text-xl md:text-2xl font-bold; }
+  h3 { @apply text-lg font-semibold; }
 }
 
 @layer utilities {
@@ -142,6 +159,21 @@
     font-family: 'Cormorant Garamond', serif;
     font-weight: 600;
   }
+  .text-success {
+    color: hsl(var(--success));
+  }
+  .text-info {
+    color: hsl(var(--info));
+  }
+  .stat-number {
+    @apply text-xl md:text-2xl font-bold font-display leading-none;
+  }
+  .stat-label {
+    @apply text-xs text-muted-foreground font-display uppercase tracking-wider;
+  }
+  .stat-meta {
+    @apply text-[11px] text-muted-foreground;
+  }
 }
 
 @layer components {
@@ -154,9 +186,28 @@
   }
 
   .manuscript-card {
-    @apply bg-card rounded-md shadow-parchment;
+    @apply bg-card rounded-xl;
     border: 1px solid hsl(var(--border));
     border-top: 2px solid hsl(var(--illuminated) / 0.3);
+    box-shadow: var(--card-shadow);
+    padding: 1.5rem;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  }
+
+  .manuscript-card:hover {
+    border-color: hsl(var(--card-border-hover) / 0.3);
+    box-shadow: var(--card-shadow-hover);
+  }
+
+  .game-card {
+    @apply bg-card rounded-xl border border-border;
+    box-shadow: var(--card-shadow);
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  }
+
+  .game-card:hover {
+    border-color: hsl(var(--card-border-hover) / 0.25);
+    box-shadow: var(--card-shadow-hover);
   }
 
   .seal-badge {

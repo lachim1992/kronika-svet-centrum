@@ -25,11 +25,11 @@ interface Props {
 }
 
 const RESOURCE_ICONS: Record<string, React.ReactNode> = {
-  food: <Wheat className="h-3.5 w-3.5" />,
-  wood: <Trees className="h-3.5 w-3.5" />,
-  stone: <Mountain className="h-3.5 w-3.5" />,
-  iron: <Anvil className="h-3.5 w-3.5" />,
-  wealth: <Coins className="h-3.5 w-3.5" />,
+  food: <Wheat className="h-4 w-4" />,
+  wood: <Trees className="h-4 w-4" />,
+  stone: <Mountain className="h-4 w-4" />,
+  iron: <Anvil className="h-4 w-4" />,
+  wealth: <Coins className="h-4 w-4" />,
 };
 
 const RESOURCE_LABELS: Record<string, string> = {
@@ -71,7 +71,6 @@ const EconomyTab = ({ sessionId, currentPlayerName, currentTurn, cities, resourc
     return m;
   }, [profiles]);
 
-  // Player resources map
   const resMap = useMemo(() => {
     const m: Record<string, any> = {};
     for (const r of resources.filter(r => r.player_name?.toLowerCase() === currentPlayerName.toLowerCase())) {
@@ -80,7 +79,6 @@ const EconomyTab = ({ sessionId, currentPlayerName, currentTurn, cities, resourc
     return m;
   }, [resources, currentPlayerName]);
 
-  // Derive totals from player_resources (canonical source)
   const totals = useMemo(() => {
     const foodR = resMap["food"];
     const grainProd = foodR?.income || 0;
@@ -91,7 +89,6 @@ const EconomyTab = ({ sessionId, currentPlayerName, currentTurn, cities, resourc
     return { grainProd, grainCons, grainNet: grainProd - grainCons, woodProd, stoneProd, ironProd };
   }, [resMap]);
 
-  // Drivers: top producing and consuming cities
   const topProducers = useMemo(() =>
     [...myCities].sort((a, b) => (b.last_turn_grain_prod || 0) - (a.last_turn_grain_prod || 0)).slice(0, 5),
   [myCities]);
@@ -100,7 +97,6 @@ const EconomyTab = ({ sessionId, currentPlayerName, currentTurn, cities, resourc
     [...myCities].sort((a, b) => (b.last_turn_grain_cons || 0) - (a.last_turn_grain_cons || 0)).slice(0, 5),
   [myCities]);
 
-  // City table sorting
   const sortedCities = useMemo(() => {
     const arr = [...myCities];
     arr.sort((a, b) => {
@@ -124,7 +120,6 @@ const EconomyTab = ({ sessionId, currentPlayerName, currentTurn, cities, resourc
     else { setCitySortKey(key); setCitySortAsc(false); }
   };
 
-  // Alerts
   const alerts: { text: string; severity: "error" | "warning" | "info" }[] = [];
   const foodNet = totals.grainNet;
   if (foodNet < 0) alerts.push({ text: `Deficit obilí: ${foodNet}/kolo. Hrozí hladomor!`, severity: "error" });
@@ -134,7 +129,6 @@ const EconomyTab = ({ sessionId, currentPlayerName, currentTurn, cities, resourc
   const famineCities = myCities.filter(c => c.famine_turn);
   if (famineCities.length > 0) alerts.push({ text: `${famineCities.length} sídel trpí hladomorem!`, severity: "error" });
 
-  // Mobilization preview
   const currentMob = realm ? Math.round((realm.mobilization_rate || 0.1) * 100) : 10;
   const previewMob = mobPreview ?? currentMob;
   const baseGrain = myCities.reduce((s, c) => s + (profileMap[c.id]?.base_grain || 0), 0);
@@ -166,26 +160,59 @@ const EconomyTab = ({ sessionId, currentPlayerName, currentTurn, cities, resourc
   }, [sessionId, currentPlayerName, fetchData]);
 
   return (
-    <div className="space-y-4 pb-20">
+    <div className="space-y-6 pb-24 px-1">
       {/* Header */}
-      <div className="flex items-center gap-2 py-1">
-        <BarChart3 className="h-5 w-5 text-primary" />
-        <h2 className="text-lg font-display font-bold">Ekonomika</h2>
-        <span className="text-xs text-muted-foreground ml-auto font-display">Rok {currentTurn}</span>
+      <div className="flex items-center gap-3 pt-2">
+        <BarChart3 className="h-6 w-6 text-primary" />
+        <h2 className="text-xl font-display font-bold">Ekonomika</h2>
+        <span className="text-sm text-muted-foreground ml-auto font-display">Rok {currentTurn}</span>
         <Button
           variant="outline"
           size="sm"
-          className="ml-2 text-xs"
+          className="ml-2 text-sm h-9"
           onClick={handleRecompute}
           disabled={recomputing}
         >
-          <RefreshCw className={`h-3.5 w-3.5 mr-1 ${recomputing ? "animate-spin" : ""}`} />
+          <RefreshCw className={`h-4 w-4 mr-1.5 ${recomputing ? "animate-spin" : ""}`} />
           {recomputing ? "Počítám…" : "Přepočítat"}
         </Button>
       </div>
 
-      {/* A1: Top Summary Strip */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2">
+      {/* Production / Consumption / Balance — 3 dramatic blocks */}
+      <div className="grid grid-cols-3 gap-4">
+        <div className="game-card p-5 text-center">
+          <TrendingUp className="h-5 w-5 mx-auto mb-2 text-success" />
+          <div className="stat-label mb-1">Produkce</div>
+          <div className="text-2xl md:text-3xl font-bold font-display text-success">{totals.grainProd}</div>
+          <div className="stat-meta mt-1">obilí/kolo</div>
+        </div>
+        <div className="game-card p-5 text-center">
+          <TrendingDown className="h-5 w-5 mx-auto mb-2 text-destructive" />
+          <div className="stat-label mb-1">Spotřeba</div>
+          <div className="text-2xl md:text-3xl font-bold font-display text-destructive">{totals.grainCons}</div>
+          <div className="stat-meta mt-1">obilí/kolo</div>
+        </div>
+        <div className={`game-card p-5 text-center ${foodNet < 0 ? "border-destructive/40 bg-destructive/5" : "border-success/20"}`}>
+          {foodNet >= 0 ? <TrendingUp className="h-5 w-5 mx-auto mb-2 text-success" /> : <AlertTriangle className="h-5 w-5 mx-auto mb-2 text-destructive" />}
+          <div className="stat-label mb-1">Bilance</div>
+          <div className={`text-2xl md:text-3xl font-bold font-display ${foodNet < 0 ? "text-destructive" : "text-success"}`}>
+            {foodNet >= 0 ? "+" : ""}{foodNet}
+          </div>
+          <div className="stat-meta mt-1">netto/kolo</div>
+          {/* Balance bar */}
+          {totals.grainProd > 0 && (
+            <div className="mt-3 h-2 rounded-full overflow-hidden bg-muted">
+              <div
+                className={`h-full rounded-full transition-all ${foodNet >= 0 ? "bg-success" : "bg-destructive"}`}
+                style={{ width: `${Math.min(100, Math.abs(foodNet) / totals.grainProd * 100)}%` }}
+              />
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Resource Summary Strip */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
         {(["food", "wood", "stone", "iron", "wealth"] as const).map(rt => {
           const r = resMap[rt];
           const income = r?.income || 0;
@@ -194,236 +221,209 @@ const EconomyTab = ({ sessionId, currentPlayerName, currentTurn, cities, resourc
           const net = income - upkeep;
           const isDeficit = rt === "food" && foodNet < 0;
           return (
-            <Card key={rt} className={`${isDeficit ? "border-destructive/50 bg-destructive/5" : ""}`}>
-              <CardContent className="p-3">
-                <div className="flex items-center gap-1.5 mb-1">
-                  {RESOURCE_ICONS[rt]}
-                  <span className="text-xs font-display font-semibold">{RESOURCE_LABELS[rt]}</span>
-                </div>
-                <div className="text-lg font-bold font-display">{stockpile}</div>
-                <div className="flex items-center gap-1 text-[10px]">
-                  {net > 0 ? <TrendingUp className="h-3 w-3 text-accent" /> : net < 0 ? <TrendingDown className="h-3 w-3 text-destructive" /> : <Minus className="h-3 w-3 text-muted-foreground" />}
-                  <span className={net < 0 ? "text-destructive font-semibold" : "text-muted-foreground"}>
-                    {net >= 0 ? "+" : ""}{net}/kolo
-                  </span>
-                </div>
-                {rt === "food" && realm && (
-                  <div className="text-[10px] text-muted-foreground mt-0.5">
-                    Produkce {totals.grainProd} · Spotřeba {totals.grainCons}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
+            <div key={rt} className={`game-card p-4 ${isDeficit ? "border-destructive/40 bg-destructive/5" : ""}`}>
+              <div className="flex items-center gap-2 mb-2">
+                <span className="text-primary">{RESOURCE_ICONS[rt]}</span>
+                <span className="text-sm font-display font-semibold">{RESOURCE_LABELS[rt]}</span>
+              </div>
+              <div className="stat-number">{stockpile}</div>
+              <div className="flex items-center gap-1.5 mt-1">
+                {net > 0 ? <TrendingUp className="h-3.5 w-3.5 text-success" /> : net < 0 ? <TrendingDown className="h-3.5 w-3.5 text-destructive" /> : <Minus className="h-3.5 w-3.5 text-muted-foreground" />}
+                <span className={`text-sm ${net < 0 ? "text-destructive font-semibold" : "text-muted-foreground"}`}>
+                  {net >= 0 ? "+" : ""}{net}/kolo
+                </span>
+              </div>
+            </div>
           );
         })}
       </div>
 
       {/* Manpower + Stability + Mobilization row */}
-      <div className="grid grid-cols-3 gap-2">
-        <Card>
-          <CardContent className="p-3">
-            <div className="flex items-center gap-1.5 mb-1">
-              <Users className="h-3.5 w-3.5" />
-              <span className="text-xs font-display font-semibold">Lidská síla</span>
-            </div>
-            <div className="text-lg font-bold font-display">
-              {(realm?.manpower_pool || 0) - (realm?.manpower_committed || 0)}
-            </div>
-            <div className="text-[10px] text-muted-foreground">
-              z {realm?.manpower_pool || 0} · odvedeno {realm?.manpower_committed || 0}
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-3">
-            <div className="flex items-center gap-1.5 mb-1">
-              <ShieldAlert className="h-3.5 w-3.5" />
-              <span className="text-xs font-display font-semibold">Stabilita</span>
-            </div>
-            <div className={`text-lg font-bold font-display ${(realm?.stability || 70) < 40 ? "text-destructive" : ""}`}>
-              {realm?.stability || 70}
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-3">
-            <div className="flex items-center gap-1.5 mb-1">
-              <Gauge className="h-3.5 w-3.5" />
-              <span className="text-xs font-display font-semibold">Mobilizace</span>
-            </div>
-            <div className="text-lg font-bold font-display">{currentMob}%</div>
-          </CardContent>
-        </Card>
+      <div className="grid grid-cols-3 gap-4">
+        <div className="game-card p-5">
+          <div className="flex items-center gap-2 mb-2">
+            <Users className="h-4 w-4 text-primary" />
+            <span className="stat-label">Lidská síla</span>
+          </div>
+          <div className="stat-number">
+            {(realm?.manpower_pool || 0) - (realm?.manpower_committed || 0)}
+          </div>
+          <div className="stat-meta mt-1">
+            z {realm?.manpower_pool || 0} · odvedeno {realm?.manpower_committed || 0}
+          </div>
+        </div>
+        <div className="game-card p-5">
+          <div className="flex items-center gap-2 mb-2">
+            <ShieldAlert className="h-4 w-4 text-primary" />
+            <span className="stat-label">Stabilita</span>
+          </div>
+          <div className={`stat-number ${(realm?.stability || 70) < 40 ? "text-destructive" : ""}`}>
+            {realm?.stability || 70}
+          </div>
+        </div>
+        <div className="game-card p-5">
+          <div className="flex items-center gap-2 mb-2">
+            <Gauge className="h-4 w-4 text-primary" />
+            <span className="stat-label">Mobilizace</span>
+          </div>
+          <div className="stat-number">{currentMob}%</div>
+        </div>
       </div>
 
       {/* Alerts */}
       {alerts.length > 0 && (
-        <Card className="border-destructive/30">
-          <CardContent className="p-3 space-y-1.5">
-            {alerts.map((a, i) => (
-              <div key={i} className={`flex items-start gap-2 text-xs ${a.severity === "error" ? "text-destructive" : a.severity === "warning" ? "text-foreground" : "text-muted-foreground"}`}>
-                {a.severity === "error" ? <Skull className="h-3.5 w-3.5 shrink-0 mt-0.5" /> : <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" />}
-                <span>{a.text}</span>
-              </div>
-            ))}
-          </CardContent>
-        </Card>
+        <div className="game-card border-destructive/30 bg-destructive/5 p-5 space-y-2">
+          {alerts.map((a, i) => (
+            <div key={i} className={`flex items-start gap-2.5 text-sm ${a.severity === "error" ? "text-destructive" : a.severity === "warning" ? "text-foreground" : "text-muted-foreground"}`}>
+              {a.severity === "error" ? <Skull className="h-4 w-4 shrink-0 mt-0.5" /> : <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />}
+              <span>{a.text}</span>
+            </div>
+          ))}
+        </div>
       )}
 
-      {/* A2: Drivers */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        <Card>
-          <CardHeader className="p-3 pb-1">
-            <CardTitle className="text-sm font-display flex items-center gap-1.5">
-              <TrendingUp className="h-4 w-4 text-accent" /> Top producenti (obilí)
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="p-3 pt-1">
-            {topProducers.map(c => (
-              <div key={c.id} className="flex justify-between text-xs py-0.5 cursor-pointer hover:text-primary" onClick={() => onEntityClick?.("city", c.id)}>
-                <span>{c.name}</span>
-                <span className="font-semibold">+{c.last_turn_grain_prod || 0}</span>
-              </div>
-            ))}
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="p-3 pb-1">
-            <CardTitle className="text-sm font-display flex items-center gap-1.5">
-              <TrendingDown className="h-4 w-4 text-destructive" /> Top spotřebitelé (obilí)
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="p-3 pt-1">
-            {topConsumers.map(c => (
-              <div key={c.id} className="flex justify-between text-xs py-0.5 cursor-pointer hover:text-primary" onClick={() => onEntityClick?.("city", c.id)}>
-                <span>{c.name}</span>
-                <span className="font-semibold">-{c.last_turn_grain_cons || 0}</span>
-              </div>
-            ))}
-          </CardContent>
-        </Card>
+      {/* Drivers */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="game-card p-5">
+          <h3 className="text-base font-display font-semibold flex items-center gap-2 mb-3">
+            <TrendingUp className="h-4 w-4 text-success" /> Top producenti (obilí)
+          </h3>
+          {topProducers.map(c => (
+            <div key={c.id} className="flex justify-between text-sm py-1.5 cursor-pointer hover:text-primary border-b border-border/30 last:border-0" onClick={() => onEntityClick?.("city", c.id)}>
+              <span>{c.name}</span>
+              <span className="font-semibold text-success">+{c.last_turn_grain_prod || 0}</span>
+            </div>
+          ))}
+        </div>
+        <div className="game-card p-5">
+          <h3 className="text-base font-display font-semibold flex items-center gap-2 mb-3">
+            <TrendingDown className="h-4 w-4 text-destructive" /> Top spotřebitelé (obilí)
+          </h3>
+          {topConsumers.map(c => (
+            <div key={c.id} className="flex justify-between text-sm py-1.5 cursor-pointer hover:text-primary border-b border-border/30 last:border-0" onClick={() => onEntityClick?.("city", c.id)}>
+              <span>{c.name}</span>
+              <span className="font-semibold text-destructive">-{c.last_turn_grain_cons || 0}</span>
+            </div>
+          ))}
+        </div>
       </div>
 
-      {/* A3: City Breakdown Table */}
-      <Card>
-        <CardHeader className="p-3 pb-1">
-          <CardTitle className="text-sm font-display">Přehled sídel</CardTitle>
-        </CardHeader>
-        <CardContent className="p-0">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="text-[10px] px-2">Město <SortIcon field="name" /></TableHead>
-                <TableHead className="text-[10px] px-2">Úroveň</TableHead>
-                <TableHead className="text-[10px] px-2 text-right">Pop <SortIcon field="population" /></TableHead>
-                <TableHead className="text-[10px] px-2 text-right">🌾+ <SortIcon field="grain_prod" /></TableHead>
-                <TableHead className="text-[10px] px-2 text-right">🌾- <SortIcon field="grain_cons" /></TableHead>
-                <TableHead className="text-[10px] px-2 text-right">🪵+ <SortIcon field="wood_prod" /></TableHead>
-                <TableHead className="text-[10px] px-2 text-right">Spec <SortIcon field="special" /></TableHead>
-                <TableHead className="text-[10px] px-2 text-right">Zranit. <SortIcon field="vulnerability" /></TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {sortedCities.map(c => {
-                const profile = profileMap[c.id];
-                return (
-                  <TableRow key={c.id} className="cursor-pointer hover:bg-muted/50" onClick={() => onEntityClick?.("city", c.id)}>
-                    <TableCell className="text-xs px-2 font-semibold">
-                      {c.name}
-                      {c.famine_turn && <Skull className="h-3 w-3 inline ml-1 text-destructive" />}
-                    </TableCell>
-                    <TableCell className="text-[10px] px-2">
-                      <Badge variant="secondary" className="text-[9px]">{SETTLEMENT_LABELS[c.settlement_level] || c.settlement_level}</Badge>
-                    </TableCell>
-                    <TableCell className="text-xs px-2 text-right">{(c.population_total || 0).toLocaleString()}</TableCell>
-                    <TableCell className="text-xs px-2 text-right">{c.last_turn_grain_prod || 0}</TableCell>
-                    <TableCell className="text-xs px-2 text-right">{c.last_turn_grain_cons || 0}</TableCell>
-                    <TableCell className="text-xs px-2 text-right">{c.last_turn_wood_prod || 0}</TableCell>
-                    <TableCell className="text-xs px-2 text-right">
-                      {profile?.special_resource_type !== "NONE" && profile?.special_resource_type
-                        ? `${profile.special_resource_type === "STONE" ? "⛏" : "⚒"} +${c.last_turn_special_prod || 0}`
-                        : "—"}
-                    </TableCell>
-                    <TableCell className="text-xs px-2 text-right">{(c.vulnerability_score || 0).toFixed(0)}</TableCell>
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
+      {/* City Breakdown Table */}
+      <div className="game-card p-0 overflow-hidden">
+        <div className="px-5 pt-4 pb-2">
+          <h3 className="text-base font-display font-semibold">Přehled sídel</h3>
+        </div>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead className="text-xs px-3">Město <SortIcon field="name" /></TableHead>
+              <TableHead className="text-xs px-3">Úroveň</TableHead>
+              <TableHead className="text-xs px-3 text-right">Pop <SortIcon field="population" /></TableHead>
+              <TableHead className="text-xs px-3 text-right">🌾+ <SortIcon field="grain_prod" /></TableHead>
+              <TableHead className="text-xs px-3 text-right">🌾- <SortIcon field="grain_cons" /></TableHead>
+              <TableHead className="text-xs px-3 text-right">🪵+ <SortIcon field="wood_prod" /></TableHead>
+              <TableHead className="text-xs px-3 text-right">Spec <SortIcon field="special" /></TableHead>
+              <TableHead className="text-xs px-3 text-right">Zranit. <SortIcon field="vulnerability" /></TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {sortedCities.map(c => {
+              const profile = profileMap[c.id];
+              return (
+                <TableRow key={c.id} className="cursor-pointer hover:bg-muted/50" onClick={() => onEntityClick?.("city", c.id)}>
+                  <TableCell className="text-sm px-3 font-semibold">
+                    {c.name}
+                    {c.famine_turn && <Skull className="h-3.5 w-3.5 inline ml-1.5 text-destructive" />}
+                  </TableCell>
+                  <TableCell className="text-xs px-3">
+                    <Badge variant="secondary" className="text-[10px]">{SETTLEMENT_LABELS[c.settlement_level] || c.settlement_level}</Badge>
+                  </TableCell>
+                  <TableCell className="text-sm px-3 text-right">{(c.population_total || 0).toLocaleString()}</TableCell>
+                  <TableCell className="text-sm px-3 text-right text-success">{c.last_turn_grain_prod || 0}</TableCell>
+                  <TableCell className="text-sm px-3 text-right text-destructive">{c.last_turn_grain_cons || 0}</TableCell>
+                  <TableCell className="text-sm px-3 text-right">{c.last_turn_wood_prod || 0}</TableCell>
+                  <TableCell className="text-sm px-3 text-right">
+                    {profile?.special_resource_type !== "NONE" && profile?.special_resource_type
+                      ? `${profile.special_resource_type === "STONE" ? "⛏" : "⚒"} +${c.last_turn_special_prod || 0}`
+                      : "—"}
+                  </TableCell>
+                  <TableCell className="text-sm px-3 text-right">{(c.vulnerability_score || 0).toFixed(0)}</TableCell>
+                </TableRow>
+              );
+            })}
+          </TableBody>
+        </Table>
+      </div>
 
-      {/* A5: What-if: Mobilization Preview */}
-      <Card>
-        <CardHeader className="p-3 pb-1">
-          <CardTitle className="text-sm font-display flex items-center gap-1.5">
-            <Gauge className="h-4 w-4" /> Simulátor: Mobilizace
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="p-3 pt-2 space-y-3">
-          <div className="flex items-center gap-3">
-            <span className="text-xs text-muted-foreground w-16">Mobilizace</span>
-            <Slider
-              value={[previewMob]}
-              onValueChange={(v) => setMobPreview(v[0])}
-              max={30} min={0} step={1}
-              className="flex-1"
-            />
-            <span className="text-sm font-bold font-display w-12 text-right">{previewMob}%</span>
+      {/* Mobilization Simulator */}
+      <div className="game-card p-5">
+        <h3 className="text-base font-display font-semibold flex items-center gap-2 mb-4">
+          <Gauge className="h-5 w-5 text-primary" /> Simulátor: Mobilizace
+        </h3>
+        <div className="space-y-4">
+          <div className="flex items-center gap-4">
+            <span className="text-sm text-muted-foreground w-24 font-display">Mobilizace</span>
+            <div className="flex-1 relative">
+              <Slider
+                value={[previewMob]}
+                onValueChange={(v) => setMobPreview(v[0])}
+                max={30} min={0} step={1}
+                className="flex-1"
+              />
+            </div>
+            <span className="text-xl font-bold font-display w-16 text-right text-primary">{previewMob}%</span>
           </div>
 
-          <div className="grid grid-cols-3 gap-2 text-xs">
-            <div className="bg-muted/50 rounded p-2 text-center">
-              <div className="text-muted-foreground text-[10px]">Projekce obilí</div>
-              <div className={`font-bold ${projectedGrainNet < 0 ? "text-destructive" : ""}`}>
+          <div className="grid grid-cols-3 gap-4">
+            <div className="bg-muted/40 rounded-lg p-3 text-center">
+              <div className="stat-label">Projekce obilí</div>
+              <div className={`text-lg font-bold font-display mt-1 ${projectedGrainNet < 0 ? "text-destructive" : "text-success"}`}>
                 {projectedGrainNet >= 0 ? "+" : ""}{projectedGrainNet}/kolo
               </div>
             </div>
-            <div className="bg-muted/50 rounded p-2 text-center">
-              <div className="text-muted-foreground text-[10px]">Produkce</div>
-              <div className="font-bold">{projectedGrainProd}</div>
+            <div className="bg-muted/40 rounded-lg p-3 text-center">
+              <div className="stat-label">Produkce</div>
+              <div className="text-lg font-bold font-display mt-1">{projectedGrainProd}</div>
             </div>
-            <div className="bg-muted/50 rounded p-2 text-center">
-              <div className="text-muted-foreground text-[10px]">Lidská síla</div>
-              <div className="font-bold">
+            <div className="bg-muted/40 rounded-lg p-3 text-center">
+              <div className="stat-label">Lidská síla</div>
+              <div className="text-lg font-bold font-display mt-1">
                 {Math.round((myCities.reduce((s, c) => s + (c.population_total || 0), 0)) * previewMob / 100)}
               </div>
             </div>
           </div>
 
           {mobPreview !== null && mobPreview !== currentMob && (
-            <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
-              <Info className="h-3 w-3" />
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Info className="h-4 w-4" />
               <span>Toto je pouze náhled. Mobilizaci změníte v HUD baru nahoře.</span>
             </div>
           )}
-        </CardContent>
-      </Card>
+        </div>
+      </div>
 
-      {/* A4: Consumption Breakdown */}
-      <Card>
-        <CardHeader className="p-3 pb-1">
-          <CardTitle className="text-sm font-display">Spotřeba obilí</CardTitle>
-        </CardHeader>
-        <CardContent className="p-3 pt-1 space-y-2">
-          <div className="flex justify-between text-xs">
+      {/* Consumption Breakdown */}
+      <div className="game-card p-5">
+        <h3 className="text-base font-display font-semibold mb-3">Spotřeba obilí</h3>
+        <div className="space-y-2">
+          <div className="flex justify-between text-sm py-1 border-b border-border/30">
             <span className="text-muted-foreground">Civilní (populace)</span>
             <span className="font-semibold">{totals.grainCons}</span>
           </div>
-          <div className="flex justify-between text-xs">
+          <div className="flex justify-between text-sm py-1 border-b border-border/30">
             <span className="text-muted-foreground">Vojenská (mobilizace)</span>
             <span className="font-semibold text-muted-foreground">—</span>
           </div>
-          <div className="flex justify-between text-xs">
+          <div className="flex justify-between text-sm py-1 border-b border-border/30">
             <span className="text-muted-foreground">Budovy (údržba)</span>
             <span className="font-semibold text-muted-foreground">—</span>
           </div>
-          <div className="border-t border-border pt-1 flex justify-between text-xs font-semibold">
+          <div className="pt-2 flex justify-between text-sm font-semibold">
             <span>Celkem</span>
-            <span>{totals.grainCons}</span>
+            <span className="text-primary">{totals.grainCons}</span>
           </div>
-        </CardContent>
-      </Card>
+        </div>
+      </div>
     </div>
   );
 };

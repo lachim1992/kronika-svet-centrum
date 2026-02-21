@@ -71,6 +71,14 @@ export default {
         "royal-purple": "hsl(var(--royal-purple))",
         "forest-green": "hsl(var(--forest-green))",
         "surface-elevated": "hsl(var(--surface-elevated))",
+        success: {
+          DEFAULT: "hsl(var(--success))",
+          foreground: "hsl(var(--success-foreground))",
+        },
+        info: {
+          DEFAULT: "hsl(var(--info))",
+          foreground: "hsl(var(--info-foreground))",
+        },
       },
       borderRadius: {
         lg: "var(--radius)",
