@@ -1,14 +1,13 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import CityDirectory from "@/components/CityDirectory";
 import CityStatesPanel from "@/components/CityStatesPanel";
 import UnifiedEntityDetail from "@/components/UnifiedEntityDetail";
+import ExplorationPanel from "@/components/ExplorationPanel";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { MapPin, Building2, Globe, Castle, Mountain, Compass, Loader2 } from "lucide-react";
+import { MapPin, Building2, Globe, Castle, Mountain, Eye, EyeOff, Loader2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
-import { useEffect } from "react";
-import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { toast } from "sonner";
+import { useDiscoveries } from "@/hooks/useDiscoveries";
 
 interface Props {
   sessionId: string;
@@ -48,7 +47,8 @@ const WorldTab = ({
   const [provinces, setProvinces] = useState<any[]>([]);
   const [regions, setRegions] = useState<any[]>([]);
   const [expeditions, setExpeditions] = useState<any[]>([]);
-  const [exploring, setExploring] = useState(false);
+
+  const { isDiscovered, isAdmin, refetch: refetchDiscoveries } = useDiscoveries(sessionId, currentPlayerName, myRole);
 
   const fetchData = async () => {
     const [pRes, rRes, eRes] = await Promise.all([
@@ -76,76 +76,76 @@ const WorldTab = ({
       onEventClick?.(id);
       return;
     }
+    // Non-admin can only open discovered entities
+    if (!isAdmin && !isDiscovered(type, id)) return;
     setSelectedEntity({ type, id });
   };
 
-  const handleExplore = async () => {
-    setExploring(true);
-    try {
-      const { data, error } = await supabase.functions.invoke("explore-region", {
-        body: {
-          sessionId,
-          playerName: currentPlayerName,
-          currentTurn,
-          worldFoundation,
-          existingRegions: regions,
-        },
-      });
-
-      if (error) throw error;
-      if (data?.error) throw new Error(data.error);
-
-      toast.success(`Objeveny nové země: ${data.region?.name || "Neznámý region"}!`);
-      await fetchData();
-      onRefetch();
-
-      // Navigate to the new region
-      if (data.region?.id) {
-        setSelectedEntity({ type: "region", id: data.region.id });
-      }
-    } catch (err: any) {
-      console.error(err);
-      toast.error("Průzkum selhal: " + (err.message || "Neznámá chyba"));
+  const handleExploreComplete = async (regionId?: string) => {
+    await fetchData();
+    await refetchDiscoveries();
+    onRefetch();
+    if (regionId) {
+      setSelectedEntity({ type: "region", id: regionId });
     }
-    setExploring(false);
   };
+
+  // Filter data by discoveries for non-admin
+  const visibleRegions = isAdmin ? regions : regions.filter(r => isDiscovered("region", r.id));
+  const visibleProvinces = isAdmin ? provinces : provinces.filter(p => isDiscovered("province", p.id));
+  const visibleCities = isAdmin ? cities : cities.filter(c =>
+    c.owner_player === currentPlayerName || isDiscovered("city", c.id)
+  );
 
   // Show unified detail
   if (selectedEntity) {
-    return (
-      <div className="pb-20">
-        <UnifiedEntityDetail
-          sessionId={sessionId}
-          entityType={selectedEntity.type}
-          entityId={selectedEntity.id}
-          currentPlayerName={currentPlayerName}
-          currentTurn={currentTurn}
-          myRole={myRole}
-          epochStyle={session.epoch_style}
-          cities={cities}
-          events={events}
-          memories={memories}
-          wonders={wonders}
-          players={players}
-          greatPersons={greatPersons}
-          entityIndex={entityIndex}
-          onBack={() => setSelectedEntity(null)}
-          onEventClick={onEventClick}
-          onEntityClick={handleEntityClick}
-          onRefetch={onRefetch}
-        />
-      </div>
-    );
+    // Access check for non-admin
+    if (!isAdmin && !isDiscovered(selectedEntity.type, selectedEntity.id) &&
+        !(selectedEntity.type === "city" && visibleCities.some(c => c.id === selectedEntity.id))) {
+      setSelectedEntity(null);
+    } else {
+      return (
+        <div className="pb-20">
+          <UnifiedEntityDetail
+            sessionId={sessionId}
+            entityType={selectedEntity.type}
+            entityId={selectedEntity.id}
+            currentPlayerName={currentPlayerName}
+            currentTurn={currentTurn}
+            myRole={myRole}
+            epochStyle={session.epoch_style}
+            cities={visibleCities}
+            events={events}
+            memories={memories}
+            wonders={wonders}
+            players={players}
+            greatPersons={greatPersons}
+            entityIndex={entityIndex}
+            onBack={() => setSelectedEntity(null)}
+            onEventClick={onEventClick}
+            onEntityClick={handleEntityClick}
+            onRefetch={onRefetch}
+          />
+        </div>
+      );
+    }
   }
 
-  const myHomeland = regions.find(r => (r as any).is_homeland && r.owner_player === currentPlayerName);
-  const discoveredRegions = regions.filter(r => !(r as any).is_homeland);
+  const myHomeland = visibleRegions.find(r => (r as any).is_homeland && r.owner_player === currentPlayerName);
+  const discoveredRegions = visibleRegions.filter(r => !(r as any).is_homeland || r.owner_player !== currentPlayerName);
+  const unknownCount = isAdmin ? 0 : regions.length - visibleRegions.length;
 
   return (
     <div className="space-y-4 pb-20">
       <div className="flex items-center gap-2 py-1">
         <Globe className="h-5 w-5 text-illuminated" />
         <h2 className="text-lg font-display font-bold">Svět{worldFoundation?.world_name ? ` — ${worldFoundation.world_name}` : ""}</h2>
+        {!isAdmin && (
+          <Badge variant="outline" className="ml-auto text-[9px] gap-1">
+            <Eye className="h-3 w-3" />{visibleRegions.length} známých
+            {unknownCount > 0 && <><EyeOff className="h-3 w-3 ml-1" />{unknownCount} neznámých</>}
+          </Badge>
+        )}
       </div>
 
       {/* Homeland banner */}
@@ -165,35 +165,27 @@ const WorldTab = ({
         </div>
       )}
 
-      {/* Exploration action */}
-      <div className="flex items-center gap-2">
-        <Button
-          onClick={handleExplore}
-          disabled={exploring}
-          variant="outline"
-          className="font-display gap-2"
-        >
-          {exploring ? (
-            <><Loader2 className="h-4 w-4 animate-spin" />Průzkum probíhá…</>
-          ) : (
-            <><Compass className="h-4 w-4" />🗺️ Vyslat průzkumnou výpravu</>
-          )}
-        </Button>
-        {expeditions.length > 0 && (
-          <span className="text-xs text-muted-foreground">{expeditions.length} výprav celkem</span>
-        )}
-      </div>
+      {/* Exploration panel */}
+      <ExplorationPanel
+        sessionId={sessionId}
+        playerName={currentPlayerName}
+        currentTurn={currentTurn}
+        worldFoundation={worldFoundation}
+        regions={regions}
+        expeditions={expeditions}
+        onExploreComplete={handleExploreComplete}
+      />
 
       <Tabs defaultValue="cities" className="w-full">
         <TabsList className="w-full justify-start bg-card border border-border h-auto p-1 gap-1 flex-wrap">
           <TabsTrigger value="cities" className="font-display text-xs gap-1">
-            <MapPin className="h-3 w-3" />Města
+            <MapPin className="h-3 w-3" />Města ({visibleCities.length})
           </TabsTrigger>
           <TabsTrigger value="provinces" className="font-display text-xs gap-1">
-            <Castle className="h-3 w-3" />Provincie
+            <Castle className="h-3 w-3" />Provincie ({visibleProvinces.length})
           </TabsTrigger>
           <TabsTrigger value="regions" className="font-display text-xs gap-1">
-            <Mountain className="h-3 w-3" />Regiony ({regions.length})
+            <Mountain className="h-3 w-3" />Regiony ({visibleRegions.length})
           </TabsTrigger>
           <TabsTrigger value="citystates" className="font-display text-xs gap-1">
             <Building2 className="h-3 w-3" />Městské státy
@@ -202,7 +194,7 @@ const WorldTab = ({
 
         <TabsContent value="cities" className="mt-3">
           <CityDirectory
-            sessionId={sessionId} cities={cities} events={events} players={players}
+            sessionId={sessionId} cities={visibleCities} events={events} players={players}
             memories={memories} wonders={wonders} currentPlayerName={currentPlayerName}
             currentTurn={currentTurn} myRole={myRole} onRefetch={onRefetch}
             onCityClick={(cityId) => handleEntityClick("city", cityId)}
@@ -211,10 +203,12 @@ const WorldTab = ({
 
         <TabsContent value="provinces" className="mt-3">
           <div className="space-y-2">
-            {provinces.length === 0 && (
-              <p className="text-center text-muted-foreground text-sm py-8 italic">Žádné provincie</p>
+            {visibleProvinces.length === 0 && (
+              <p className="text-center text-muted-foreground text-sm py-8 italic">
+                {isAdmin ? "Žádné provincie" : "Žádné objevené provincie — vyšlete průzkumnou výpravu!"}
+              </p>
             )}
-            {provinces.map(p => (
+            {visibleProvinces.map(p => (
               <div key={p.id} className="p-3 rounded-lg border border-border bg-card hover:border-primary/40 cursor-pointer transition-colors"
                 onClick={() => handleEntityClick("province", p.id)}>
                 <div className="flex items-center gap-2">
@@ -230,12 +224,12 @@ const WorldTab = ({
 
         <TabsContent value="regions" className="mt-3">
           <div className="space-y-2">
-            {regions.length === 0 && (
+            {visibleRegions.length === 0 && (
               <p className="text-center text-muted-foreground text-sm py-8 italic">
-                Žádné regiony — vyšlete průzkumnou výpravu!
+                {isAdmin ? "Žádné regiony" : "Žádné známé regiony — vyšlete průzkumnou výpravu!"}
               </p>
             )}
-            {regions.map(r => {
+            {visibleRegions.map(r => {
               const reg = r as any;
               return (
                 <div key={r.id} className="p-3 rounded-lg border border-border bg-card hover:border-primary/40 cursor-pointer transition-colors"
@@ -264,6 +258,16 @@ const WorldTab = ({
                 </div>
               );
             })}
+
+            {/* Unknown territories hint for non-admin */}
+            {!isAdmin && unknownCount > 0 && (
+              <div className="p-4 rounded-lg border border-dashed border-muted-foreground/30 bg-muted/20 text-center">
+                <EyeOff className="h-6 w-6 text-muted-foreground mx-auto mb-2 opacity-50" />
+                <p className="text-xs text-muted-foreground italic">
+                  Za hranicemi leží ještě {unknownCount} neprozkoumaných oblastí…
+                </p>
+              </div>
+            )}
           </div>
         </TabsContent>
 

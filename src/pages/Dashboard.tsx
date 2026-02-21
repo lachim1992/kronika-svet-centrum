@@ -217,7 +217,7 @@ const Dashboard = () => {
         )}
         {activeTab === "feed" && <FeedTab {...sharedProps} />}
         {activeTab === "codex" && <CodexTab {...sharedProps} codexEntityTarget={codexEntityTarget} onClearEntityTarget={() => setCodexEntityTarget(null)} />}
-        {activeTab === "wiki" && <ChroWikiTab sessionId={session.id} onEntityClick={handleEntityClick} />}
+        {activeTab === "wiki" && <ChroWikiTab sessionId={session.id} currentPlayerName={myPlayerName} myRole={myRole} onEntityClick={handleEntityClick} />}
         {activeTab === "council" && (
           <CouncilTab
             sessionId={session.id}
