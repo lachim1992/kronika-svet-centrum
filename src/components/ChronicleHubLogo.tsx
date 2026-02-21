@@ -79,25 +79,48 @@ const ChronicleHubLogo = ({ variant = "full", className = "", size = "md" }: Log
         </svg>
       </div>
 
-      {variant === "full" && (
-        <div className={isHero ? "flex flex-col items-center gap-3" : ""}>
+      {variant === "full" && !isHero && (
+        <span
+          className={`tracking-[0.2em] uppercase text-primary font-bold ${s.text}`}
+          style={{ fontFamily: "'Cinzel', serif" }}
+        >
+          The Chronicle Hub
+        </span>
+      )}
+
+      {variant === "full" && isHero && (
+        <div className="flex flex-col items-center gap-0">
+          {/* THE — small accent prefix */}
           <span
-            className={`tracking-[0.2em] uppercase text-primary font-bold ${s.text}`}
+            className="text-xl md:text-2xl tracking-[0.45em] uppercase font-normal text-primary/70 leading-none"
             style={{ fontFamily: "'Cinzel', serif" }}
           >
-            The Chronicle Hub
+            The
           </span>
-          {isHero && (
-            <span
-              className="text-lg md:text-xl tracking-[0.35em] uppercase font-light"
-              style={{
-                fontFamily: "'Cinzel', serif",
-                color: "hsl(var(--primary) / 0.6)",
-              }}
-            >
-              Choose Your Own Destiny
-            </span>
-          )}
+          {/* CHRONICLE — dominant brand anchor */}
+          <span
+            className="text-5xl md:text-6xl tracking-[0.08em] uppercase font-bold text-primary leading-none mt-1"
+            style={{ fontFamily: "'Cinzel', serif" }}
+          >
+            Chronicle
+          </span>
+          {/* HUB — secondary support */}
+          <span
+            className="text-2xl md:text-3xl tracking-[0.35em] uppercase font-semibold text-primary/85 leading-none mt-1"
+            style={{ fontFamily: "'Cinzel', serif" }}
+          >
+            Hub
+          </span>
+          {/* Subtitle */}
+          <span
+            className="text-sm md:text-base tracking-[0.4em] uppercase font-light leading-none mt-6"
+            style={{
+              fontFamily: "'Cinzel', serif",
+              color: "hsl(var(--primary) / 0.5)",
+            }}
+          >
+            Choose Your Own Destiny
+          </span>
         </div>
       )}
     </div>
