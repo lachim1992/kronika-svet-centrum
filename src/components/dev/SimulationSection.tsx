@@ -6,7 +6,8 @@ import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Loader2, Play, AlertTriangle, Eye } from "lucide-react";
+import { Progress } from "@/components/ui/progress";
+import { Loader2, Play, AlertTriangle, Eye, BookOpen } from "lucide-react";
 import { toast } from "sonner";
 
 interface Props {
@@ -16,7 +17,6 @@ interface Props {
 
 const YEAR_PRESETS = [1, 2, 3, 5, 10, 20];
 
-const PLAYER_NAMES = ["Berr", "Protivník", "Královna", "Stratég", "Dobyvatel", "Obchodník"];
 const FUNNY_NOTES = [
   "generál musel na záchod", "kronikář usnul při zápisu", "kůň odmítl poslouchat rozkazy",
   "vyjednavač zapomněl smlouvu doma", "stavitel postavil chrám obráceně",
@@ -43,9 +43,11 @@ const SimulationSection = ({ sessionId, onRefetch }: Props) => {
   const [dryRun, setDryRun] = useState(false);
   const [allowOverwrite, setAllowOverwrite] = useState(false);
   const [simulating, setSimulating] = useState(false);
-  const [progress, setProgress] = useState("");
+  const [progressPct, setProgressPct] = useState(0);
+  const [progressText, setProgressText] = useState("");
   const [log, setLog] = useState<string[]>([]);
   const [summary, setSummary] = useState<SimSummary | null>(null);
+  const [regenerating, setRegenerating] = useState(false);
 
   const addLog = (msg: string) => setLog(prev => [...prev.slice(-200), `[${new Date().toLocaleTimeString("cs")}] ${msg}`]);
 
@@ -55,6 +57,7 @@ const SimulationSection = ({ sessionId, onRefetch }: Props) => {
     setSimulating(true);
     setLog([]);
     setSummary(null);
+    setProgressPct(0);
     const sim: SimSummary = { yearsSimulated: effectiveYears, eventsGenerated: 0, messagesGenerated: 0, discoveries: 0, entitiesCreated: 0, warnings: [] };
 
     addLog(`${dryRun ? "🔍 DRY RUN" : "🚀 LIVE RUN"}: Simulace ${effectiveYears} let`);
@@ -63,6 +66,23 @@ const SimulationSection = ({ sessionId, onRefetch }: Props) => {
       const { data: sessionData } = await supabase.from("game_sessions").select("current_turn").eq("id", sessionId).single();
       const startYear = sessionData?.current_turn || 1;
       const endYear = startYear + effectiveYears - 1;
+
+      // Check overlapping simulation (skip for dry run)
+      if (!dryRun && !allowOverwrite) {
+        const { data: overlap } = await supabase.from("simulation_log")
+          .select("id")
+          .eq("session_id", sessionId)
+          .gte("year_end", startYear)
+          .lte("year_start", endYear)
+          .limit(1);
+
+        if (overlap && overlap.length > 0) {
+          sim.warnings.push(`Simulace pro roky ${startYear}–${endYear} již proběhla. Povolte přepisování.`);
+          setSummary(sim);
+          setSimulating(false);
+          return;
+        }
+      }
 
       const { data: cities } = await supabase.from("cities").select("*").eq("session_id", sessionId);
       const { data: players } = await supabase.from("game_players").select("*").eq("session_id", sessionId);
@@ -92,9 +112,13 @@ const SimulationSection = ({ sessionId, onRefetch }: Props) => {
         }
       }
 
-      for (let year = startYear; year <= endYear; year++) {
-        setProgress(`Rok ${year}/${endYear}`);
+      for (let yearIdx = 0; yearIdx < effectiveYears; yearIdx++) {
+        const year = startYear + yearIdx;
+        setProgressText(`Rok ${year}/${endYear}`);
+        setProgressPct(Math.round(((yearIdx + 1) / effectiveYears) * 100));
         addLog(`📅 ═══ ROK ${year} ═══`);
+
+        const yearEventRows: any[] = [];
 
         // Events per player
         for (const pName of playerNames) {
@@ -105,8 +129,8 @@ const SimulationSection = ({ sessionId, onRefetch }: Props) => {
             const evType = pick(["battle", "trade", "diplomacy", "raid", "found_settlement", "wonder", "city_state_action"]);
             const city = myCities.length ? pick(myCities) : (cities?.length ? pick(cities) : null);
 
-            if (!dryRun && city) {
-              await supabase.from("game_events").insert({
+            if (city) {
+              yearEventRows.push({
                 session_id: sessionId, event_type: evType, player: pName,
                 turn_number: year, city_id: city.id, location: city.name,
                 note: Math.random() < 0.3 ? pick(FUNNY_NOTES) : null,
@@ -127,27 +151,19 @@ const SimulationSection = ({ sessionId, onRefetch }: Props) => {
             }
             sim.messagesGenerated++;
           }
+        }
 
-          // Trade
-          if (Math.random() < 0.5) {
-            const other = pick(playerNames.filter(p => p !== pName));
-            if (!dryRun) {
-              await supabase.from("trade_log").insert({
-                session_id: sessionId, turn_number: year,
-                from_player: pName, to_player: other,
-                resource_type: pick(["food", "wood", "stone", "iron", "wealth"]),
-                amount: Math.floor(Math.random() * 10) + 1,
-                trade_type: pick(["Obchod", "Tribut", "Dar"]),
-              });
-            }
-          }
+        // Batch insert events for this year
+        if (!dryRun && yearEventRows.length > 0) {
+          await supabase.from("game_events").insert(yearEventRows);
         }
 
         // World memories
         if (!dryRun && cities?.length) {
+          const memRows = [];
           for (let m = 0; m < 2; m++) {
             const memCity = pick(cities);
-            await supabase.from("world_memories").insert({
+            memRows.push({
               session_id: sessionId,
               text: `V ${memCity.name} se traduje, že ${pick(MEMORY_FACTS)}.`,
               approved: Math.random() < 0.7,
@@ -155,9 +171,10 @@ const SimulationSection = ({ sessionId, onRefetch }: Props) => {
               created_round: year, city_id: memCity.id,
             });
           }
+          await supabase.from("world_memories").insert(memRows);
         }
 
-        // Chronicle
+        // Chronicle entry per year
         if (!dryRun) {
           const p1 = pick(playerNames);
           const p2 = pick(playerNames.filter(p => p !== p1));
@@ -205,11 +222,25 @@ const SimulationSection = ({ sessionId, onRefetch }: Props) => {
           chapter_text: `V letech ${startYear} až ${endYear} se svět dramaticky proměnil. Civilizace bojovaly, obchodovaly a budovaly.`,
           epoch_style: "kroniky",
         });
+
+        // Log simulation
+        await supabase.from("simulation_log").insert({
+          session_id: sessionId,
+          year_start: startYear,
+          year_end: endYear,
+          scope: "admin",
+          triggered_by: "admin",
+          events_generated: sim.eventsGenerated,
+        });
       }
 
       setSummary(sim);
       addLog(`✅ SIMULACE DOKONČENA: ${sim.eventsGenerated} událostí, ${sim.messagesGenerated} zpráv, ${sim.discoveries} objevů`);
-      toast.success(`${dryRun ? "🔍 Preview" : "✅ Simulace"}: ${sim.eventsGenerated} událostí`);
+      toast.success(
+        dryRun
+          ? `🔍 Preview: ${sim.eventsGenerated} událostí`
+          : `Uplynulo ${effectiveYears} let. Kronika byla aktualizována. ${sim.eventsGenerated} událostí.`
+      );
       if (!dryRun) onRefetch?.();
     } catch (e: any) {
       sim.warnings.push(e?.message || "unknown");
@@ -218,14 +249,81 @@ const SimulationSection = ({ sessionId, onRefetch }: Props) => {
       toast.error("Simulace selhala");
     }
     setSimulating(false);
-    setProgress("");
+    setProgressText("");
+    setProgressPct(0);
+  };
+
+  const regenerateChronicle = async () => {
+    if (!summary) return;
+    setRegenerating(true);
+    try {
+      const { data: sessionData } = await supabase.from("game_sessions").select("current_turn").eq("id", sessionId).single();
+      const currentTurn = sessionData?.current_turn || 1;
+      const fromYear = currentTurn - summary.yearsSimulated;
+      const toYear = currentTurn - 1;
+
+      // Read events for the period
+      const { data: events } = await supabase.from("game_events")
+        .select("turn_number, event_type, player, note, location")
+        .eq("session_id", sessionId)
+        .gte("turn_number", fromYear)
+        .lte("turn_number", toYear)
+        .order("turn_number");
+
+      if (!events?.length) {
+        toast.error("Žádné události k regeneraci");
+        setRegenerating(false);
+        return;
+      }
+
+      // Group by year
+      const byYear: Record<number, typeof events> = {};
+      for (const ev of events) {
+        (byYear[ev.turn_number] = byYear[ev.turn_number] || []).push(ev);
+      }
+
+      const parts: string[] = [];
+      for (let y = fromYear; y <= toYear; y++) {
+        const yevs = byYear[y];
+        if (!yevs?.length) continue;
+        const descs = yevs.slice(0, 6).map(e => `${e.player}: ${e.event_type}${e.note ? ` — ${e.note}` : ""}${e.location ? ` (${e.location})` : ""}`);
+        parts.push(`**Rok ${y}** (${yevs.length} událostí)\n${descs.join("\n")}`);
+      }
+
+      // Update world history chapter
+      await supabase.from("world_history_chapters").upsert({
+        session_id: sessionId,
+        from_turn: fromYear,
+        to_turn: toYear,
+        chapter_title: `Regenerovaná kronika: Roky ${fromYear}–${toYear}`,
+        chapter_text: parts.join("\n\n"),
+        epoch_style: "kroniky",
+      }, { onConflict: "session_id,from_turn,to_turn" }).then(() => {
+        // Fallback: just insert if upsert fails on missing unique constraint
+      });
+
+      // Also insert as chronicle_entries summary
+      await supabase.from("chronicle_entries").insert({
+        session_id: sessionId,
+        text: `Souhrnná kronika let ${fromYear}–${toYear}:\n\n${parts.join("\n\n")}`,
+        turn_from: fromYear,
+        turn_to: toYear,
+        epoch_style: "kroniky",
+      });
+
+      toast.success(`Kronika regenerována pro roky ${fromYear}–${toYear}`);
+      onRefetch?.();
+    } catch (err: any) {
+      toast.error("Regenerace selhala: " + (err.message || ""));
+    }
+    setRegenerating(false);
   };
 
   return (
     <div className="bg-card border-2 border-accent/30 rounded-lg p-4 space-y-4">
       <h3 className="font-display font-semibold text-sm flex items-center gap-2">
         <Play className="h-4 w-4 text-accent" />
-        Simulace & Debug
+        Simulace vývoje světa (Admin)
       </h3>
 
       {/* Year presets */}
@@ -264,10 +362,18 @@ const SimulationSection = ({ sessionId, onRefetch }: Props) => {
         </div>
       </div>
 
+      {/* Progress */}
+      {simulating && (
+        <div className="space-y-2">
+          <Progress value={progressPct} className="h-2" />
+          <p className="text-xs text-muted-foreground text-center">{progressText}</p>
+        </div>
+      )}
+
       {/* Run button */}
       <Button onClick={runSimulation} disabled={simulating} className="w-full h-12 font-display text-base gap-2">
         {simulating ? <Loader2 className="h-5 w-5 animate-spin" /> : <Play className="h-5 w-5" />}
-        {simulating ? `Simuluji... ${progress}` : `${dryRun ? "🔍 Preview" : "🚀 Spustit"} simulaci (${effectiveYears} let)`}
+        {simulating ? `Simuluji… ${progressText}` : `${dryRun ? "🔍 Preview" : "🚀 Spustit"} simulaci (${effectiveYears} let)`}
       </Button>
 
       {/* Summary */}
@@ -295,6 +401,12 @@ const SimulationSection = ({ sessionId, onRefetch }: Props) => {
             <div className="text-xs text-destructive">
               {summary.warnings.map((w, i) => <p key={i}>⚠️ {w}</p>)}
             </div>
+          )}
+          {!dryRun && (
+            <Button variant="outline" size="sm" className="w-full text-xs gap-1.5 mt-2" onClick={regenerateChronicle} disabled={regenerating}>
+              <BookOpen className="h-3.5 w-3.5" />
+              {regenerating ? "Regeneruji kroniku…" : "Regenerovat kroniku světa"}
+            </Button>
           )}
         </div>
       )}

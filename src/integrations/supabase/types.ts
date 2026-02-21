@@ -2367,6 +2367,47 @@ export type Database = {
           },
         ]
       }
+      simulation_log: {
+        Row: {
+          created_at: string
+          events_generated: number
+          id: string
+          scope: string
+          session_id: string
+          triggered_by: string
+          year_end: number
+          year_start: number
+        }
+        Insert: {
+          created_at?: string
+          events_generated?: number
+          id?: string
+          scope?: string
+          session_id: string
+          triggered_by?: string
+          year_end: number
+          year_start: number
+        }
+        Update: {
+          created_at?: string
+          events_generated?: number
+          id?: string
+          scope?: string
+          session_id?: string
+          triggered_by?: string
+          year_end?: number
+          year_start?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "simulation_log_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       time_pools: {
         Row: {
           created_at: string | null
