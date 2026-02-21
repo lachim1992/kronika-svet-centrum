@@ -24,6 +24,7 @@ import ChroWikiTab from "@/pages/game/ChroWikiTab";
 import CouncilTab from "@/pages/game/CouncilTab";
 import ArmyTab from "@/pages/game/ArmyTab";
 import EconomyTab from "@/pages/game/EconomyTab";
+import PersistentTab from "@/pages/game/PersistentTab";
 
 const Dashboard = () => {
   const { sessionId } = useParams<{ sessionId: string }>();
@@ -240,6 +241,19 @@ const Dashboard = () => {
             playersCount={players.length}
           />
         )}
+        {activeTab === "persistent" && (
+          <PersistentTab
+            sessionId={session.id}
+            currentPlayerName={myPlayerName}
+            myRole={myRole}
+            cities={cities}
+            armies={armies as any}
+            players={players}
+            resources={resources}
+            events={events}
+            worldCrises={worldCrises}
+          />
+        )}
       </main>
 
       <GameHubFAB
@@ -259,7 +273,7 @@ const Dashboard = () => {
         chronicles={chronicles}
         players={players}
       />
-      <BottomNav activeTab={activeTab} onTabChange={setActiveTab} showDevTab={myRole === "admin"} />
+      <BottomNav activeTab={activeTab} onTabChange={setActiveTab} showDevTab={myRole === "admin"} showPersistentTab={session?.game_mode === "time_persistent"} />
       <ActionChooser open={showActionChooser} onClose={() => setShowActionChooser(false)} onAction={handleAction} />
       <WorldEventDetailPanel
         eventId={eventDetailId}
