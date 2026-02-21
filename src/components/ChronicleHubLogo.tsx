@@ -5,9 +5,9 @@ interface LogoProps {
 }
 
 const sizes = {
-  sm: { mark: 28, text: "text-sm" },
-  md: { mark: 40, text: "text-lg" },
-  lg: { mark: 64, text: "text-2xl" },
+  sm: { mark: 28, text: "text-lg" },
+  md: { mark: 40, text: "text-2xl" },
+  lg: { mark: 64, text: "text-4xl" },
 };
 
 const ChronicleHubLogo = ({ variant = "full", className = "", size = "md" }: LogoProps) => {
@@ -74,7 +74,7 @@ const ChronicleHubLogo = ({ variant = "full", className = "", size = "md" }: Log
       </svg>
 
       {variant === "full" && (
-        <span className={`font-display font-semibold tracking-wide text-primary ${s.text}`}>
+        <span className={`tracking-widest text-primary ${s.text}`} style={{ fontFamily: "'Forum', serif" }}>
           The Chronicle Hub
         </span>
       )}
