@@ -265,13 +265,14 @@ const UnifiedEntityDetail = ({
     setGeneratingText(false);
   };
 
-  // ── Generate image
+  // ── Generate image (unified pipeline)
   const handleGenerateImage = async () => {
     setGeneratingImage(true);
     try {
-      const { data, error } = await supabase.functions.invoke("encyclopedia-image", {
+      const { data, error } = await supabase.functions.invoke("generate-entity-media", {
         body: {
-          entityType, entityName, entityId, sessionId,
+          sessionId, entityType, entityName, entityId,
+          kind: "cover",
           imagePrompt: wiki?.image_prompt,
           createdBy: isAdmin ? "admin" : currentPlayerName,
         },
@@ -279,9 +280,6 @@ const UnifiedEntityDetail = ({
       if (error) throw error;
       if (data.error) { toast.error(data.error); return; }
 
-      if (wiki) {
-        await supabase.from("wiki_entries").update({ image_url: data.imageUrl, updated_at: new Date().toISOString() }).eq("id", wiki.id);
-      }
       await fetchEntityData();
       toast.success(`🖼️ Ilustrace vygenerována!`);
     } catch (e) {

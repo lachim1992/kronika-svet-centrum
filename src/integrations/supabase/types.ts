@@ -825,7 +825,11 @@ export type Database = {
           image_prompt: string | null
           image_url: string
           is_primary: boolean
+          kind: string
+          model_meta: Json | null
           session_id: string
+          source_turn: number | null
+          style_preset: string
         }
         Insert: {
           created_at?: string
@@ -836,7 +840,11 @@ export type Database = {
           image_prompt?: string | null
           image_url: string
           is_primary?: boolean
+          kind?: string
+          model_meta?: Json | null
           session_id: string
+          source_turn?: number | null
+          style_preset?: string
         }
         Update: {
           created_at?: string
@@ -847,7 +855,11 @@ export type Database = {
           image_prompt?: string | null
           image_url?: string
           is_primary?: boolean
+          kind?: string
+          model_meta?: Json | null
           session_id?: string
+          source_turn?: number | null
+          style_preset?: string
         }
         Relationships: [
           {
@@ -1518,6 +1530,41 @@ export type Database = {
           turn_closed_p2?: boolean
         }
         Relationships: []
+      }
+      game_style_settings: {
+        Row: {
+          default_style_preset: string
+          id: string
+          lore_bible: string | null
+          prompt_rules: string | null
+          session_id: string
+          updated_at: string
+        }
+        Insert: {
+          default_style_preset?: string
+          id?: string
+          lore_bible?: string | null
+          prompt_rules?: string | null
+          session_id: string
+          updated_at?: string
+        }
+        Update: {
+          default_style_preset?: string
+          id?: string
+          lore_bible?: string | null
+          prompt_rules?: string | null
+          session_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "game_style_settings_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: true
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       generals: {
         Row: {

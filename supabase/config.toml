@@ -92,3 +92,6 @@ verify_jwt = false
 
 [functions.process-tick]
 verify_jwt = false
+
+[functions.generate-entity-media]
+verify_jwt = false
