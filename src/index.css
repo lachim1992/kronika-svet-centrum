@@ -258,14 +258,19 @@
     line-height: 1.75;
   }
 
-  .prose-chronicle p:first-child::first-letter {
+  .prose-chronicle p:first-child::first-letter,
+  .drop-cap-section p:first-of-type::first-letter,
+  .drop-cap-section > div:first-child p:first-of-type::first-letter,
+  .drop-cap-section > span:first-child::first-letter {
     font-family: 'Cormorant Garamond', serif;
-    font-size: 2.5em;
+    font-size: 3.2em;
     float: left;
-    line-height: 0.8;
-    margin-right: 0.1em;
+    line-height: 0.75;
+    margin-right: 0.12em;
     margin-top: 0.05em;
+    padding-right: 0.05em;
     color: hsl(var(--illuminated));
+    font-weight: 700;
   }
 
   .surface-elevated {
