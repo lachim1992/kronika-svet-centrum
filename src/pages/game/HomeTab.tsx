@@ -1,12 +1,12 @@
 import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
-  Crown, Castle, Swords, Users, Wheat, AlertTriangle, Flame,
-  Shield, MapPin, Landmark, Eye, ArrowUpDown, Skull, BarChart3,
+  Crown, Castle, Swords, Users, Wheat, Flame,
+  MapPin, Eye, ArrowUpDown, Skull, BarChart3,
   Trees, Mountain, Anvil
 } from "lucide-react";
 import type { EntityIndex } from "@/hooks/useEntityIndex";
@@ -79,67 +79,59 @@ const HomeTab = ({
   });
 
   return (
-    <div className="space-y-4 pb-20">
+    <div className="space-y-6 pb-24 px-1">
       {/* Header */}
-      <div className="flex items-center gap-2 py-1">
-        <Crown className="h-5 w-5 text-illuminated" />
-        <h2 className="text-lg font-display font-bold">Moje říše</h2>
-        <span className="text-xs text-muted-foreground ml-auto font-display">Rok {currentTurn}</span>
+      <div className="flex items-center gap-3 pt-2">
+        <Crown className="h-6 w-6 text-primary" />
+        <h2 className="text-xl font-display font-bold">Moje říše</h2>
+        <span className="text-sm text-muted-foreground ml-auto font-display">Rok {currentTurn}</span>
       </div>
 
-      {/* SECTION A: Realm Overview Strip */}
-      <div className="grid grid-cols-5 gap-2">
-        <div className="bg-card rounded-lg border border-border p-2 text-center">
-          <Castle className="h-4 w-4 mx-auto text-primary mb-0.5" />
-          <div className="text-lg font-bold font-display">{myCities.length}</div>
-          <div className="text-[10px] text-muted-foreground">Města</div>
-        </div>
-        <div className="bg-card rounded-lg border border-border p-2 text-center">
-          <Users className="h-4 w-4 mx-auto text-primary mb-0.5" />
-          <div className="text-lg font-bold font-display">{totalPop.toLocaleString()}</div>
-          <div className="text-[10px] text-muted-foreground">Populace</div>
-        </div>
-        <div className="bg-card rounded-lg border border-border p-2 text-center">
-          <Swords className="h-4 w-4 mx-auto text-primary mb-0.5" />
-          <div className="text-lg font-bold font-display">{totalPower}</div>
-          <div className="text-[10px] text-muted-foreground">Síla</div>
-        </div>
-        <div className="bg-card rounded-lg border border-border p-2 text-center">
-          <BarChart3 className="h-4 w-4 mx-auto text-primary mb-0.5" />
-          <div className="text-lg font-bold font-display">{Math.round((realm?.mobilization_rate || 0.1) * 100)}%</div>
-          <div className="text-[10px] text-muted-foreground">Mobilizace</div>
-        </div>
-        <div className={`bg-card rounded-lg border p-2 text-center ${famineCities.length > 0 ? "border-destructive/50 bg-destructive/5" : "border-border"}`}>
-          <Skull className="h-4 w-4 mx-auto mb-0.5" style={{ color: famineCities.length > 0 ? "hsl(var(--destructive))" : "hsl(var(--primary))" }} />
-          <div className="text-lg font-bold font-display">{famineCities.length}</div>
-          <div className="text-[10px] text-muted-foreground">Hlad</div>
-        </div>
+      {/* Realm Overview Strip */}
+      <div className="grid grid-cols-5 gap-3">
+        {[
+          { icon: Castle, value: myCities.length, label: "Města", color: "text-primary" },
+          { icon: Users, value: totalPop.toLocaleString(), label: "Populace", color: "text-primary" },
+          { icon: Swords, value: totalPower, label: "Síla", color: "text-primary" },
+          { icon: BarChart3, value: `${Math.round((realm?.mobilization_rate || 0.1) * 100)}%`, label: "Mobilizace", color: "text-primary" },
+          { icon: Skull, value: famineCities.length, label: "Hlad", color: famineCities.length > 0 ? "text-destructive" : "text-primary", danger: famineCities.length > 0 },
+        ].map((stat, i) => {
+          const Icon = stat.icon;
+          return (
+            <div
+              key={i}
+              className={`game-card p-4 text-center ${stat.danger ? "border-destructive/40 bg-destructive/5" : ""}`}
+            >
+              <Icon className={`h-5 w-5 mx-auto mb-2 ${stat.color}`} />
+              <div className="stat-number">{stat.value}</div>
+              <div className="stat-label mt-1">{stat.label}</div>
+            </div>
+          );
+        })}
       </div>
 
       {/* Famine Alerts */}
       {famineCities.length > 0 && (
-        <Card className="border-destructive/50 bg-destructive/5">
-          <CardContent className="p-3">
-            <div className="flex items-center gap-2 mb-1">
-              <Flame className="h-4 w-4 text-destructive" />
-              <span className="text-sm font-display font-semibold text-destructive">Hladomor!</span>
-            </div>
-            {famineCities.map(c => (
-              <button key={c.id} className="text-xs text-destructive hover:underline block"
-                onClick={() => onEntityClick?.("city", c.id)}>
-                {c.name} — deficit {c.famine_severity}, stabilita {c.city_stability}
-              </button>
-            ))}
-          </CardContent>
-        </Card>
+        <div className="game-card border-destructive/40 bg-destructive/5 p-5">
+          <div className="flex items-center gap-2.5 mb-2">
+            <Flame className="h-5 w-5 text-destructive" />
+            <span className="text-base font-display font-semibold text-destructive">Hladomor!</span>
+          </div>
+          {famineCities.map(c => (
+            <button key={c.id} className="text-sm text-destructive hover:underline block py-0.5"
+              onClick={() => onEntityClick?.("city", c.id)}>
+              {c.name} — deficit {c.famine_severity}, stabilita {c.city_stability}
+            </button>
+          ))}
+        </div>
       )}
 
-      {/* SECTION B: Cities List */}
+      {/* Cities List Header */}
       <div className="flex items-center justify-between">
-        <h3 className="font-display font-semibold text-sm">Města a osady ({myCities.length})</h3>
+        <h3 className="font-display font-semibold text-base">Města a osady ({myCities.length})</h3>
         <Select value={sortKey} onValueChange={v => setSortKey(v as SortKey)}>
-          <SelectTrigger className="w-36 h-7 text-xs">
-            <ArrowUpDown className="h-3 w-3 mr-1" />
+          <SelectTrigger className="w-40 h-9 text-sm">
+            <ArrowUpDown className="h-3.5 w-3.5 mr-1.5" />
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -152,17 +144,15 @@ const HomeTab = ({
 
       {/* Empty state */}
       {myCities.length === 0 ? (
-        <Card>
-          <CardContent className="p-8 text-center">
-            <Castle className="h-12 w-12 text-muted-foreground mx-auto mb-3 opacity-50" />
-            <p className="text-sm text-muted-foreground mb-3">Zatím neovládáte žádná sídla.</p>
-            <Button size="sm" className="font-display" onClick={() => onEntityClick?.("action", "found_city")}>
-              Založit první město
-            </Button>
-          </CardContent>
-        </Card>
+        <div className="game-card p-10 text-center">
+          <Castle className="h-14 w-14 text-muted-foreground mx-auto mb-4 opacity-40" />
+          <p className="text-base text-muted-foreground mb-4">Zatím neovládáte žádná sídla.</p>
+          <Button size="lg" className="font-display" onClick={() => onEntityClick?.("action", "found_city")}>
+            Založit první město
+          </Button>
+        </div>
       ) : (
-        <div className="space-y-3">
+        <div className="space-y-4">
           {sorted.map(city => {
             const pop = city.population_total || 0;
             const peasantPct = pop > 0 ? Math.round((city.population_peasants || 0) / pop * 100) : 0;
@@ -174,98 +164,96 @@ const HomeTab = ({
             const dataProcessed = grainProd > 0 || grainCons > 0 || city.population_total > 0;
 
             return (
-              <Card
+              <div
                 key={city.id}
-                className={`cursor-pointer hover:border-primary/50 transition-colors ${city.famine_turn ? "border-destructive/50" : ""}`}
+                className={`game-card p-5 cursor-pointer ${city.famine_turn ? "border-destructive/40" : ""}`}
                 onClick={() => onEntityClick?.("city", city.id)}
               >
-                <CardContent className="p-4">
-                  {/* Header row */}
-                  <div className="flex items-start justify-between mb-2">
-                    <div>
-                      <h4 className="font-display font-semibold text-base flex items-center gap-1.5">
-                        {city.name}
-                        {city.famine_turn && <Flame className="h-3.5 w-3.5 text-destructive" />}
-                      </h4>
-                      {city.province && (
-                        <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
-                          <MapPin className="h-3 w-3" />{city.province}
-                        </p>
+                {/* Header row */}
+                <div className="flex items-start justify-between mb-3">
+                  <div>
+                    <h4 className="font-display font-semibold text-lg flex items-center gap-2">
+                      {city.name}
+                      {city.famine_turn && <Flame className="h-4 w-4 text-destructive" />}
+                    </h4>
+                    {city.province && (
+                      <p className="text-sm text-muted-foreground flex items-center gap-1 mt-0.5">
+                        <MapPin className="h-3.5 w-3.5" />{city.province}
+                      </p>
+                    )}
+                  </div>
+                  <Badge variant="secondary" className="text-xs shrink-0 px-2.5 py-1">
+                    {SETTLEMENT_LABELS[city.settlement_level] || city.settlement_level}
+                  </Badge>
+                </div>
+
+                {dataProcessed ? (
+                  <>
+                    {/* Population bar */}
+                    <div className="mb-3">
+                      <div className="flex items-center justify-between text-sm mb-1">
+                        <span className="text-muted-foreground">Populace</span>
+                        <span className="font-semibold text-base">{pop.toLocaleString()}</span>
+                      </div>
+                      <div className="flex h-2.5 rounded-full overflow-hidden bg-muted">
+                        <div className="bg-primary/70 transition-all" style={{ width: `${peasantPct}%` }} title={`Rolníci ${peasantPct}%`} />
+                        <div className="bg-accent transition-all" style={{ width: `${burgherPct}%` }} title={`Měšťané ${burgherPct}%`} />
+                        <div className="bg-muted-foreground/40 transition-all" style={{ width: `${clericPct}%` }} title={`Klerici ${clericPct}%`} />
+                      </div>
+                      <div className="flex gap-4 text-xs text-muted-foreground mt-1">
+                        <span>Rolníci {peasantPct}%</span>
+                        <span>Měšťané {burgherPct}%</span>
+                        <span>Klerici {clericPct}%</span>
+                      </div>
+                    </div>
+
+                    {/* Stats grid */}
+                    <div className="grid grid-cols-4 gap-3 text-xs mb-3">
+                      <div>
+                        <span className="stat-label">Stabilita</span>
+                        <div className={`text-lg font-bold font-display ${city.city_stability < 40 ? "text-destructive" : "text-foreground"}`}>{city.city_stability}</div>
+                      </div>
+                      <div>
+                        <span className="stat-label">Sýpka</span>
+                        <div className="text-lg font-bold font-display">{city.local_grain_reserve || 0}<span className="text-sm text-muted-foreground">/{city.local_granary_capacity || 0}</span></div>
+                      </div>
+                      <div>
+                        <span className="stat-label">Obilí</span>
+                        <div className={`text-lg font-bold font-display ${grainNet < 0 ? "text-destructive" : "text-success"}`}>
+                          {grainNet >= 0 ? "+" : ""}{grainNet}
+                        </div>
+                      </div>
+                      <div>
+                        <span className="stat-label">Zranitelnost</span>
+                        <div className="text-lg font-bold font-display">{(city.vulnerability_score || 0).toFixed(0)}</div>
+                      </div>
+                    </div>
+
+                    {/* Production row */}
+                    <div className="flex items-center gap-4 text-sm px-3 py-2 rounded-lg bg-muted/40">
+                      <span className="text-muted-foreground font-semibold text-xs">Produkce:</span>
+                      <span className="flex items-center gap-1"><Wheat className="h-3.5 w-3.5 text-primary" />+{grainProd}</span>
+                      <span className="flex items-center gap-1"><Trees className="h-3.5 w-3.5 text-primary" />+{city.last_turn_wood_prod || 0}</span>
+                      {city.special_resource_type === "STONE" && (
+                        <span className="flex items-center gap-1"><Mountain className="h-3.5 w-3.5 text-primary" />+{city.last_turn_special_prod || 0}</span>
+                      )}
+                      {city.special_resource_type === "IRON" && (
+                        <span className="flex items-center gap-1"><Anvil className="h-3.5 w-3.5 text-primary" />+{city.last_turn_special_prod || 0}</span>
                       )}
                     </div>
-                    <Badge variant="secondary" className="text-[10px] shrink-0">
-                      {SETTLEMENT_LABELS[city.settlement_level] || city.settlement_level}
-                    </Badge>
-                  </div>
 
-                  {dataProcessed ? (
-                    <>
-                      {/* Population + layers bar */}
-                      <div className="mb-2">
-                        <div className="flex items-center justify-between text-xs mb-0.5">
-                          <span className="text-muted-foreground">Populace</span>
-                          <span className="font-semibold">{pop.toLocaleString()}</span>
-                        </div>
-                        <div className="flex h-2 rounded-full overflow-hidden bg-muted">
-                          <div className="bg-primary/70" style={{ width: `${peasantPct}%` }} title={`Rolníci ${peasantPct}%`} />
-                          <div className="bg-accent" style={{ width: `${burgherPct}%` }} title={`Měšťané ${burgherPct}%`} />
-                          <div className="bg-muted-foreground/40" style={{ width: `${clericPct}%` }} title={`Klerici ${clericPct}%`} />
-                        </div>
-                        <div className="flex gap-3 text-[10px] text-muted-foreground mt-0.5">
-                          <span>Rolníci {peasantPct}%</span>
-                          <span>Měšťané {burgherPct}%</span>
-                          <span>Klerici {clericPct}%</span>
-                        </div>
+                    {/* Famine banner */}
+                    {city.famine_turn && (
+                      <div className="mt-3 flex items-center gap-2 px-3 py-2 rounded-lg bg-destructive/10 text-destructive text-sm font-semibold">
+                        <Skull className="h-4 w-4" />
+                        Hladomor (deficit {city.famine_severity})
                       </div>
-
-                      {/* Stats row */}
-                      <div className="grid grid-cols-4 gap-2 text-[10px] mb-2">
-                        <div>
-                          <span className="text-muted-foreground">Stabilita</span>
-                          <div className={`font-semibold ${city.city_stability < 40 ? "text-destructive" : ""}`}>{city.city_stability}</div>
-                        </div>
-                        <div>
-                          <span className="text-muted-foreground">Sýpka</span>
-                          <div className="font-semibold">{city.local_grain_reserve || 0}/{city.local_granary_capacity || 0}</div>
-                        </div>
-                        <div>
-                          <span className="text-muted-foreground">Obilí</span>
-                          <div className={`font-semibold ${grainNet < 0 ? "text-destructive" : ""}`}>
-                            {grainProd} / {grainCons}
-                          </div>
-                        </div>
-                        <div>
-                          <span className="text-muted-foreground">Zranitelnost</span>
-                          <div className="font-semibold">{(city.vulnerability_score || 0).toFixed(0)}</div>
-                        </div>
-                      </div>
-
-                      {/* Production row */}
-                      <div className="flex items-center gap-3 text-[10px] px-2 py-1 rounded bg-muted/50">
-                        <span className="text-muted-foreground font-semibold">Produkce:</span>
-                        <span className="flex items-center gap-0.5"><Wheat className="h-3 w-3 text-primary" />+{grainProd}</span>
-                        <span className="flex items-center gap-0.5"><Trees className="h-3 w-3 text-primary" />+{city.last_turn_wood_prod || 0}</span>
-                        {city.special_resource_type === "STONE" && (
-                          <span className="flex items-center gap-0.5"><Mountain className="h-3 w-3 text-primary" />+{city.last_turn_special_prod || 0}</span>
-                        )}
-                        {city.special_resource_type === "IRON" && (
-                          <span className="flex items-center gap-0.5"><Anvil className="h-3 w-3 text-primary" />+{city.last_turn_special_prod || 0}</span>
-                        )}
-                      </div>
-
-                      {/* Famine banner */}
-                      {city.famine_turn && (
-                        <div className="mt-2 flex items-center gap-1.5 px-2 py-1 rounded bg-destructive/10 text-destructive text-xs font-semibold">
-                          <Skull className="h-3 w-3" />
-                          Hladomor (deficit {city.famine_severity})
-                        </div>
-                      )}
-                    </>
-                  ) : (
-                    <p className="text-xs text-muted-foreground italic">Data ještě nebyla zpracována. Spusťte kolo.</p>
-                  )}
-                </CardContent>
-              </Card>
+                    )}
+                  </>
+                ) : (
+                  <p className="text-sm text-muted-foreground italic">Data ještě nebyla zpracována. Spusťte kolo.</p>
+                )}
+              </div>
             );
           })}
         </div>

@@ -29,8 +29,10 @@ const BottomNav = ({ activeTab, onTabChange, showDevTab = false, showPersistentT
   if (showDevTab) tabs.push(devTab);
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-50 bg-card/95 backdrop-blur-sm border-t border-border">
-      <div className="flex items-center justify-around max-w-xl mx-auto h-14">
+    <nav className="fixed bottom-0 left-0 right-0 z-50 border-t border-border backdrop-blur-md"
+      style={{ background: "hsl(220 28% 8% / 0.95)" }}
+    >
+      <div className="flex items-center justify-around max-w-2xl mx-auto h-16 px-1">
         {tabs.map((tab) => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.id;
@@ -38,14 +40,18 @@ const BottomNav = ({ activeTab, onTabChange, showDevTab = false, showPersistentT
             <button
               key={tab.id}
               onClick={() => onTabChange(tab.id)}
-              className={`flex flex-col items-center gap-0.5 px-2 py-1 transition-colors relative ${
-                isActive ? "text-primary" : "text-muted-foreground hover:text-foreground"
+              className={`flex flex-col items-center gap-1 px-2.5 py-1.5 rounded-lg transition-all duration-200 relative ${
+                isActive
+                  ? "text-primary"
+                  : "text-muted-foreground hover:text-foreground hover:bg-muted/30"
               }`}
             >
-              <Icon className="h-4.5 w-4.5" strokeWidth={isActive ? 2 : 1.5} />
-              <span className="text-[9px] font-display font-semibold">{tab.label}</span>
+              <Icon className="h-5 w-5" strokeWidth={isActive ? 2.2 : 1.5} />
+              <span className="text-[10px] font-display font-semibold tracking-wide">{tab.label}</span>
               {isActive && (
-                <span className="absolute bottom-0 w-6 h-0.5 rounded-full bg-primary" />
+                <span className="absolute -bottom-1 w-8 h-[3px] rounded-full bg-primary" 
+                  style={{ boxShadow: "0 0 8px hsl(var(--primary) / 0.4)" }} 
+                />
               )}
             </button>
           );
