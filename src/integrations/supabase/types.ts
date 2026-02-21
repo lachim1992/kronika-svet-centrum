@@ -187,6 +187,48 @@ export type Database = {
           },
         ]
       }
+      chronicle_mentions: {
+        Row: {
+          created_at: string
+          entity_id: string
+          entity_type: string
+          entry_id: string
+          id: string
+          session_id: string
+        }
+        Insert: {
+          created_at?: string
+          entity_id: string
+          entity_type: string
+          entry_id: string
+          id?: string
+          session_id: string
+        }
+        Update: {
+          created_at?: string
+          entity_id?: string
+          entity_type?: string
+          entry_id?: string
+          id?: string
+          session_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "chronicle_mentions_entry_id_fkey"
+            columns: ["entry_id"]
+            isOneToOne: false
+            referencedRelation: "chronicle_entries"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "chronicle_mentions_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       cities: {
         Row: {
           city_description_cached: string | null
@@ -881,6 +923,94 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "entity_contributions_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      entity_links: {
+        Row: {
+          created_at: string
+          from_entity_id: string
+          from_entity_type: string
+          id: string
+          label: string | null
+          link_type: string
+          session_id: string
+          to_entity_id: string
+          to_entity_type: string
+        }
+        Insert: {
+          created_at?: string
+          from_entity_id: string
+          from_entity_type: string
+          id?: string
+          label?: string | null
+          link_type?: string
+          session_id: string
+          to_entity_id: string
+          to_entity_type: string
+        }
+        Update: {
+          created_at?: string
+          from_entity_id?: string
+          from_entity_type?: string
+          id?: string
+          label?: string | null
+          link_type?: string
+          session_id?: string
+          to_entity_id?: string
+          to_entity_type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "entity_links_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      entity_stats: {
+        Row: {
+          entity_id: string
+          entity_type: string
+          id: string
+          session_id: string
+          source_turn: number
+          stat_key: string
+          stat_unit: string | null
+          stat_value: string
+          updated_at: string
+        }
+        Insert: {
+          entity_id: string
+          entity_type: string
+          id?: string
+          session_id: string
+          source_turn?: number
+          stat_key: string
+          stat_unit?: string | null
+          stat_value?: string
+          updated_at?: string
+        }
+        Update: {
+          entity_id?: string
+          entity_type?: string
+          id?: string
+          session_id?: string
+          source_turn?: number
+          stat_key?: string
+          stat_unit?: string | null
+          stat_value?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "entity_stats_session_id_fkey"
             columns: ["session_id"]
             isOneToOne: false
             referencedRelation: "game_sessions"
@@ -2225,6 +2355,53 @@ export type Database = {
           },
           {
             foreignKeyName: "regions_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      saga_versions: {
+        Row: {
+          author_player: string
+          created_at: string
+          entity_id: string
+          entity_type: string
+          id: string
+          is_ai_generated: boolean
+          saga_text: string
+          session_id: string
+          source_turn: number
+          version: number
+        }
+        Insert: {
+          author_player?: string
+          created_at?: string
+          entity_id: string
+          entity_type: string
+          id?: string
+          is_ai_generated?: boolean
+          saga_text: string
+          session_id: string
+          source_turn?: number
+          version?: number
+        }
+        Update: {
+          author_player?: string
+          created_at?: string
+          entity_id?: string
+          entity_type?: string
+          id?: string
+          is_ai_generated?: boolean
+          saga_text?: string
+          session_id?: string
+          source_turn?: number
+          version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "saga_versions_session_id_fkey"
             columns: ["session_id"]
             isOneToOne: false
             referencedRelation: "game_sessions"
