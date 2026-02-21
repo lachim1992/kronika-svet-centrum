@@ -427,15 +427,18 @@ const UnifiedEntityDetail = ({
               {/* Quick stats */}
               <div className="flex items-center gap-3 mt-3 flex-wrap">
                 {[
-                  { icon: Users, label: "Populace", value: (city.population_total || 0).toLocaleString() },
-                  { icon: Shield, label: "Stabilita", value: city.city_stability, danger: city.city_stability < 40 },
-                  { icon: <span className="text-sm">🌾</span>, label: "Obilí", value: `${(city as any).last_turn_grain_prod || 0} - ${(city as any).last_turn_grain_cons || 0}` },
-                  { icon: Flame, label: "Zranitelnost", value: (city.vulnerability_score || 0).toFixed(0) },
+                  { icon: "users" as const, label: "Populace", value: (city.population_total || 0).toLocaleString() },
+                  { icon: "shield" as const, label: "Stabilita", value: city.city_stability, danger: city.city_stability < 40 },
+                  { icon: "grain" as const, label: "Obilí", value: `${(city as any).last_turn_grain_prod || 0} - ${(city as any).last_turn_grain_cons || 0}` },
+                  { icon: "flame" as const, label: "Zranitelnost", value: (city.vulnerability_score || 0).toFixed(0) },
                 ].map((s, i) => (
                   <div key={i} className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md bg-background/70 backdrop-blur-sm border border-border/50 text-xs">
-                    {typeof s.icon === "object" ? s.icon : (() => { const I = s.icon as any; return <I className={`h-3.5 w-3.5 ${(s as any).danger ? "text-destructive" : "text-primary"}`} />; })()}
+                    {s.icon === "users" ? <Users className={`h-3.5 w-3.5 text-primary`} /> :
+                     s.icon === "shield" ? <Shield className={`h-3.5 w-3.5 ${s.danger ? "text-destructive" : "text-primary"}`} /> :
+                     s.icon === "grain" ? <span className="text-sm">🌾</span> :
+                     <Flame className={`h-3.5 w-3.5 text-primary`} />}
                     <span className="text-muted-foreground">{s.label}</span>
-                    <span className={`font-semibold ${(s as any).danger ? "text-destructive" : ""}`}>{s.value}</span>
+                    <span className={`font-semibold ${s.danger ? "text-destructive" : ""}`}>{s.value}</span>
                   </div>
                 ))}
               </div>
