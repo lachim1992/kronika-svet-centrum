@@ -204,7 +204,7 @@ const WorldTab = ({
           <CityDirectory
             sessionId={sessionId} cities={cities} events={events} players={players}
             memories={memories} wonders={wonders} currentPlayerName={currentPlayerName}
-            currentTurn={currentTurn} onRefetch={onRefetch}
+            currentTurn={currentTurn} myRole={myRole} onRefetch={onRefetch}
             onCityClick={(cityId) => handleEntityClick("city", cityId)}
           />
         </TabsContent>

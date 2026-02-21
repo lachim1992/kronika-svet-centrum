@@ -229,10 +229,11 @@ const Dashboard = () => {
             onRefetch={refetch}
           />
         )}
-        {activeTab === "dev" && myRole === "admin" && (
+        {activeTab === "dev" && (
           <DevTab
             sessionId={session.id}
             currentPlayerName={myPlayerName}
+            myRole={myRole}
             onRefetch={refetch}
             citiesCount={cities.length}
             eventsCount={events.length}
@@ -273,7 +274,7 @@ const Dashboard = () => {
         chronicles={chronicles}
         players={players}
       />
-      <BottomNav activeTab={activeTab} onTabChange={setActiveTab} showDevTab={myRole === "admin"} showPersistentTab={session?.game_mode === "time_persistent"} />
+      <BottomNav activeTab={activeTab} onTabChange={setActiveTab} showDevTab={true} showPersistentTab={session?.game_mode === "time_persistent"} />
       <ActionChooser open={showActionChooser} onClose={() => setShowActionChooser(false)} onAction={handleAction} />
       <WorldEventDetailPanel
         eventId={eventDetailId}
