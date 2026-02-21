@@ -167,7 +167,7 @@ const HydrationSection = ({ sessionId, onRefetch }: Props) => {
   const genWonderImages = async (items: MissingItem[]) => {
     for (const w of items) {
       try {
-        await supabase.functions.invoke("wonder-portrait", { body: { wonderId: w.id } });
+        await supabase.functions.invoke("generate-entity-media", { body: { sessionId, entityId: w.id, entityType: "wonder", entityName: w.name, kind: "cover" } });
         hLog(`✅ Obrázek divu: ${w.name}`);
       } catch { hLog(`❌ Obrázek divu: ${w.name}`); }
     }
@@ -176,7 +176,7 @@ const HydrationSection = ({ sessionId, onRefetch }: Props) => {
   const genPersonImages = async (items: MissingItem[]) => {
     for (const p of items) {
       try {
-        await supabase.functions.invoke("person-portrait", { body: { personId: p.id } });
+        await supabase.functions.invoke("generate-entity-media", { body: { sessionId, entityId: p.id, entityType: "person", entityName: p.name, kind: "cover" } });
         hLog(`✅ Portrét: ${p.name}`);
       } catch { hLog(`❌ Portrét: ${p.name}`); }
     }
