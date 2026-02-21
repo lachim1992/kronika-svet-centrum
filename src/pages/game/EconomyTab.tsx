@@ -211,31 +211,100 @@ const EconomyTab = ({ sessionId, currentPlayerName, currentTurn, cities, resourc
         </div>
       </div>
 
-      {/* Resource Summary Strip */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
-        {(["food", "wood", "stone", "iron", "wealth"] as const).map(rt => {
-          const r = resMap[rt];
-          const income = r?.income || 0;
-          const upkeep = r?.upkeep || 0;
-          const stockpile = r?.stockpile || 0;
-          const net = income - upkeep;
-          const isDeficit = rt === "food" && foodNet < 0;
-          return (
-            <div key={rt} className={`game-card p-4 ${isDeficit ? "border-destructive/40 bg-destructive/5" : ""}`}>
-              <div className="flex items-center gap-2 mb-2">
-                <span className="text-primary">{RESOURCE_ICONS[rt]}</span>
-                <span className="text-sm font-display font-semibold">{RESOURCE_LABELS[rt]}</span>
+      {/* Per-Resource Breakdown Cards */}
+      <div className="space-y-3">
+        <h3 className="text-base font-display font-semibold flex items-center gap-2">
+          <Info className="h-4 w-4 text-primary" /> Rozbor zdrojů
+        </h3>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {(["food", "wood", "stone", "iron", "wealth"] as const).map(rt => {
+            const r = resMap[rt];
+            const income = r?.income || 0;
+            const upkeep = r?.upkeep || 0;
+            const stockpile = r?.stockpile || 0;
+            const net = income - upkeep;
+            const isDeficit = net < 0;
+            const maxBar = Math.max(income, upkeep, 1);
+
+            // Build explanation sources
+            const sources: { label: string; value: number; type: "income" | "expense" }[] = [];
+            if (rt === "food") {
+              const totalGrainProd = myCities.reduce((s, c) => s + (c.last_turn_grain_prod || 0), 0);
+              const totalGrainCons = myCities.reduce((s, c) => s + (c.last_turn_grain_cons || 0), 0);
+              sources.push({ label: "Produkce sídel", value: totalGrainProd, type: "income" });
+              if (myCities.length <= 3) sources.push({ label: "Bonus malé říše", value: 10, type: "income" });
+              sources.push({ label: "Spotřeba populace", value: totalGrainCons, type: "expense" });
+              if (realm && (realm.mobilization_rate || 0) > 0) {
+                sources.push({ label: `Penalizace mobilizace (${Math.round((realm.mobilization_rate || 0) * 100)}%)`, value: Math.round(totalGrainProd * (realm.mobilization_rate || 0) * 0.5), type: "expense" });
+              }
+            } else if (rt === "wood") {
+              const totalWood = myCities.reduce((s, c) => s + (c.last_turn_wood_prod || 0), 0);
+              sources.push({ label: "Produkce sídel", value: totalWood, type: "income" });
+              if (upkeep > 0) sources.push({ label: "Údržba budov", value: upkeep, type: "expense" });
+            } else if (rt === "stone" || rt === "iron") {
+              const totalSpec = myCities.filter(c => c.special_resource_type === rt.toUpperCase()).reduce((s, c) => s + (c.last_turn_special_prod || 0), 0);
+              sources.push({ label: "Produkce dolů", value: totalSpec, type: "income" });
+              if (upkeep > 0) sources.push({ label: "Vojenská údržba", value: upkeep, type: "expense" });
+            } else {
+              if (income > 0) sources.push({ label: "Obchod & daně", value: income, type: "income" });
+              if (upkeep > 0) sources.push({ label: "Výdaje", value: upkeep, type: "expense" });
+            }
+
+            return (
+              <div key={rt} className={`game-card p-5 space-y-3 ${isDeficit ? "border-destructive/30 bg-destructive/5" : ""}`}>
+                {/* Resource header */}
+                <div className="flex items-center gap-2">
+                  <span className="text-primary">{RESOURCE_ICONS[rt]}</span>
+                  <span className="font-display font-semibold text-base">{RESOURCE_LABELS[rt]}</span>
+                  <Badge variant="outline" className="ml-auto text-[10px]">
+                    Zásoba: {stockpile}
+                  </Badge>
+                </div>
+
+                {/* Income / Expense / Net row */}
+                <div className="grid grid-cols-3 gap-2 text-center">
+                  <div>
+                    <div className="stat-label text-[10px]">Příjem</div>
+                    <div className="text-lg font-bold font-display text-success">+{income}</div>
+                  </div>
+                  <div>
+                    <div className="stat-label text-[10px]">Výdaje</div>
+                    <div className="text-lg font-bold font-display text-destructive">-{upkeep}</div>
+                  </div>
+                  <div>
+                    <div className="stat-label text-[10px]">Netto</div>
+                    <div className={`text-lg font-bold font-display ${isDeficit ? "text-destructive" : "text-success"}`}>
+                      {net >= 0 ? "+" : ""}{net}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Net direction bar */}
+                <div className="flex items-center gap-2">
+                  <div className="flex-1 h-2 rounded-full overflow-hidden bg-muted flex">
+                    <div className="bg-success transition-all rounded-l-full" style={{ width: `${(income / maxBar) * 50}%` }} />
+                    <div className="bg-destructive transition-all rounded-r-full" style={{ width: `${(upkeep / maxBar) * 50}%` }} />
+                  </div>
+                  {net > 0 ? <TrendingUp className="h-3.5 w-3.5 text-success" /> : net < 0 ? <TrendingDown className="h-3.5 w-3.5 text-destructive" /> : <Minus className="h-3.5 w-3.5 text-muted-foreground" />}
+                </div>
+
+                {/* Source explanation */}
+                {sources.length > 0 && (
+                  <div className="border-t border-border/50 pt-2 space-y-1">
+                    {sources.map((src, i) => (
+                      <div key={i} className="flex justify-between text-[11px]">
+                        <span className="text-muted-foreground">{src.label}</span>
+                        <span className={src.type === "income" ? "text-success" : "text-destructive"}>
+                          {src.type === "income" ? "+" : "-"}{src.value}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
-              <div className="stat-number">{stockpile}</div>
-              <div className="flex items-center gap-1.5 mt-1">
-                {net > 0 ? <TrendingUp className="h-3.5 w-3.5 text-success" /> : net < 0 ? <TrendingDown className="h-3.5 w-3.5 text-destructive" /> : <Minus className="h-3.5 w-3.5 text-muted-foreground" />}
-                <span className={`text-sm ${net < 0 ? "text-destructive font-semibold" : "text-muted-foreground"}`}>
-                  {net >= 0 ? "+" : ""}{net}/kolo
-                </span>
-              </div>
-            </div>
-          );
-        })}
+            );
+          })}
+        </div>
       </div>
 
       {/* Manpower + Stability + Mobilization row */}
