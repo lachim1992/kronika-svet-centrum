@@ -385,13 +385,76 @@ Deno.serve(async (req) => {
       });
     }
 
+    // 13) Recompute player_resources incomes from settlement profiles
+    const resourceTypes = ["food", "wood", "stone", "iron", "wealth"];
+    const incomes: Record<string, number> = {
+      food: totalGrainProd,
+      wood: totalWoodProd,
+      stone: totalStoneProd,
+      iron: totalIronProd,
+      wealth: myCities.filter(c => c.status === "ok" || !c.status).length,
+    };
+
+    for (const resType of resourceTypes) {
+      const income = incomes[resType] || 0;
+
+      // Try update first
+      const { data: updated, count } = await supabase
+        .from("player_resources")
+        .update({
+          income,
+          stockpile: undefined, // handled below
+          updated_at: new Date().toISOString(),
+        })
+        .eq("session_id", sessionId)
+        .eq("player_name", playerName)
+        .eq("resource_type", resType)
+        .select("id, stockpile, upkeep, last_applied_turn");
+
+      if (!updated || updated.length === 0) {
+        // Insert new row
+        await supabase.from("player_resources").insert({
+          session_id: sessionId,
+          player_name: playerName,
+          resource_type: resType,
+          income,
+          stockpile: 0,
+          upkeep: 0,
+          last_applied_turn: 0,
+        });
+      }
+    }
+
+    // Apply stockpile increments (idempotent via last_applied_turn)
+    const { data: allResources } = await supabase
+      .from("player_resources")
+      .select("*")
+      .eq("session_id", sessionId)
+      .eq("player_name", playerName);
+
+    for (const res of (allResources || [])) {
+      if (res.last_applied_turn >= currentTurn) continue; // already applied
+      const newStockpile = Math.max(0, (res.stockpile || 0) + (res.income || 0) - (res.upkeep || 0));
+      await supabase.from("player_resources").update({
+        stockpile: newStockpile,
+        last_applied_turn: currentTurn,
+        updated_at: new Date().toISOString(),
+      }).eq("id", res.id);
+    }
+
+    const incomeSummary = resourceTypes
+      .filter(r => (incomes[r] || 0) > 0)
+      .map(r => `${r}+${incomes[r]}`)
+      .join(" ");
+    chronicleEntries.push(`Příjmy: ${incomeSummary}`);
+
     // Write to world_action_log
     await supabase.from("world_action_log").insert({
       session_id: sessionId,
       turn_number: currentTurn,
       player_name: playerName,
       action_type: "turn_processing",
-      description: `Kolo ${currentTurn} zpracováno: obilí ${netGrain >= 0 ? "+" : ""}${netGrain}, pop ${totalPopulation}, manpower ${manpowerPool}`,
+      description: `Kolo ${currentTurn} zpracováno: obilí ${netGrain >= 0 ? "+" : ""}${netGrain}, pop ${totalPopulation}, manpower ${manpowerPool}. Income: ${incomeSummary}`,
       metadata: {
         grain_prod: totalGrainProd,
         grain_consumption: totalConsumption,
@@ -399,6 +462,7 @@ Deno.serve(async (req) => {
         grain_reserve: grainReserve,
         manpower_pool: manpowerPool,
         famine_deficit: famineDeficit,
+        incomes,
       },
     });
 
