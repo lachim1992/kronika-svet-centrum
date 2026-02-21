@@ -7,6 +7,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Loader2, Hexagon, Map as MapIcon, Eye, Plus, Minus, RefreshCw, Home } from "lucide-react";
 import { toast } from "sonner";
 import { useHexMap, AXIAL_NEIGHBORS, type HexData } from "@/hooks/useHexMap";
+import CityMarkerBadge from "@/components/CityMarkerBadge";
 
 /* ───── Config ───── */
 const HEX_SIZE = 38;
@@ -35,19 +36,26 @@ function hexPoints(cx: number, cy: number): string {
 const hKey = (q: number, r: number) => `${q},${r}`;
 
 /* ───── City on hex ───── */
-interface CityOnHex { id: string; name: string; owner_player: string; q: number; r: number; }
+interface CityOnHex {
+  id: string; name: string; owner_player: string; q: number; r: number;
+  settlement_level: string; isCapital?: boolean;
+}
 
 /* ───── Props ───── */
-interface Props { sessionId: string; playerName: string; myRole: string; }
+interface Props {
+  sessionId: string; playerName: string; myRole: string;
+  onCityClick?: (cityId: string) => void;
+}
 
 /* ───── Memoized hex tile ───── */
 const HexTile = memo(({
-  q, r, hex, isFrontier, isCurrent, devMode, loading, onClick, offsetX, offsetY, city,
+  q, r, hex, isFrontier, isCurrent, devMode, loading, onClick, offsetX, offsetY, cities, onCityClick,
 }: {
   q: number; r: number; hex?: HexData; isFrontier: boolean; isCurrent: boolean;
   devMode: boolean; loading: boolean;
   onClick: () => void; offsetX: number; offsetY: number;
-  city?: CityOnHex;
+  cities: CityOnHex[];
+  onCityClick?: (cityId: string) => void;
 }) => {
   const pos = hexToPixel(q, r);
   const cx = pos.x + offsetX;
@@ -73,14 +81,29 @@ const HexTile = memo(({
       )}
       {showBiome && !loading && (
         <>
-          {city ? (
+          {cities.length > 0 ? (
             <>
-              <text x={cx} y={cy - 10} textAnchor="middle" dominantBaseline="middle"
-                fill="hsl(45, 90%, 70%)" fontSize="12" style={{ pointerEvents: "none" }}>🏰</text>
-              <text x={cx} y={cy + 4} textAnchor="middle" dominantBaseline="middle"
-                fill="white" fontSize="7" fontWeight="700" style={{ pointerEvents: "none" }}>
-                {city.name.length > 10 ? city.name.slice(0, 9) + "…" : city.name}
-              </text>
+              {/* Render up to 3 city markers, stacked */}
+              {cities.slice(0, 3).map((c, i) => (
+                <CityMarkerBadge
+                  key={c.id}
+                  cityId={c.id}
+                  cityName={c.name}
+                  settlementLevel={c.settlement_level}
+                  ownerPlayer={c.owner_player}
+                  isCapital={c.isCapital}
+                  size="md"
+                  cx={cx + (i > 0 ? (i === 1 ? -8 : 8) : 0)}
+                  cy={cy + (i > 0 ? 6 : 0)}
+                  onClick={() => onCityClick?.(c.id)}
+                />
+              ))}
+              {cities.length > 3 && (
+                <text x={cx + 14} y={cy + 18} textAnchor="middle" dominantBaseline="middle"
+                  fill="white" fontSize="7" fontWeight="700" style={{ pointerEvents: "none" }}>
+                  +{cities.length - 3}
+                </text>
+              )}
             </>
           ) : (
             <>
@@ -94,7 +117,7 @@ const HexTile = memo(({
               </text>
             </>
           )}
-          {hex.coastal && !city && (
+          {hex.coastal && cities.length === 0 && (
             <text x={cx} y={cy + 14} textAnchor="middle" dominantBaseline="middle"
               fill="#60a5fa" fontSize="7" style={{ pointerEvents: "none" }}>🌊</text>
           )}
@@ -116,7 +139,7 @@ const HexTile = memo(({
 HexTile.displayName = "HexTile";
 
 /* ───── Main component ───── */
-const WorldHexMap = ({ sessionId, playerName, myRole }: Props) => {
+const WorldHexMap = ({ sessionId, playerName, myRole, onCityClick }: Props) => {
   const isAdmin = myRole === "admin";
   const [devMode, setDevMode] = useState(isAdmin);
   const [selectedHex, setSelectedHex] = useState<HexData | null>(null);
@@ -141,26 +164,50 @@ const WorldHexMap = ({ sessionId, playerName, myRole }: Props) => {
   const fetchCities = useCallback(async () => {
     const { data } = await supabase
       .from("cities")
-      .select("id, name, owner_player, province_q, province_r")
+      .select("id, name, owner_player, province_q, province_r, settlement_level")
       .eq("session_id", sessionId)
       .not("province_q", "is", null)
       .not("province_r", "is", null);
     if (data) {
+      // Determine capital: first CITY-level or first city per player
+      const capitalIds = new Set<string>();
+      const byPlayer = new Map<string, typeof data>();
+      for (const c of data) {
+        const list = byPlayer.get(c.owner_player) || [];
+        list.push(c);
+        byPlayer.set(c.owner_player, list);
+      }
+      for (const [, pCities] of byPlayer) {
+        const capital = pCities.find(c => c.settlement_level === "CITY") || pCities[0];
+        if (capital) capitalIds.add(capital.id);
+      }
+
       const mapped: CityOnHex[] = data.map(c => ({
         id: c.id, name: c.name, owner_player: c.owner_player,
         q: c.province_q!, r: c.province_r!,
+        settlement_level: c.settlement_level,
+        isCapital: capitalIds.has(c.id),
       }));
       setAllCities(mapped);
       setPlayerCities(mapped.filter(c => c.owner_player === playerName));
     }
   }, [sessionId, playerName]);
 
-  /* ── City lookup by coords ── */
-  const cityByCoord = useMemo(() => {
-    const m = new Map<string, CityOnHex>();
-    for (const c of allCities) m.set(hKey(c.q, c.r), c);
+  /* ── City lookup by coords — supports multiple cities per hex ── */
+  const citiesByCoord = useMemo(() => {
+    // Filter by discovery: show own cities always, others only if province discovered
+    const visible = allCities.filter(c =>
+      c.owner_player === playerName || isAdmin || discoveredCoords.has(hKey(c.q, c.r))
+    );
+    const m = new Map<string, CityOnHex[]>();
+    for (const c of visible) {
+      const key = hKey(c.q, c.r);
+      const list = m.get(key) || [];
+      list.push(c);
+      m.set(key, list);
+    }
     return m;
-  }, [allCities]);
+  }, [allCities, playerName, isAdmin, discoveredCoords]);
 
   /* ── Load player discoveries ── */
   const fetchDiscoveries = useCallback(async () => {
@@ -437,7 +484,7 @@ const WorldHexMap = ({ sessionId, playerName, myRole }: Props) => {
                 {renderCoords.map(c => {
                   const hex = getHex(c.q, c.r);
                   const isCurrent = currentPos !== null && c.q === currentPos.q && c.r === currentPos.r && !c.isFrontier;
-                  const city = cityByCoord.get(hKey(c.q, c.r));
+                  const hexCities = citiesByCoord.get(hKey(c.q, c.r)) || [];
                   return (
                     <HexTile
                       key={hKey(c.q, c.r)}
@@ -450,7 +497,8 @@ const WorldHexMap = ({ sessionId, playerName, myRole }: Props) => {
                       onClick={() => handleTileClick(c.q, c.r, c.isFrontier)}
                       offsetX={offsetX}
                       offsetY={offsetY}
-                      city={city}
+                      cities={hexCities}
+                      onCityClick={onCityClick}
                     />
                   );
                 })}
@@ -472,8 +520,8 @@ const WorldHexMap = ({ sessionId, playerName, myRole }: Props) => {
               <div className="absolute top-2 left-2 z-10">
                 <Badge variant="secondary" className="text-[9px] gap-1">
                   📍 ({currentPos.q}, {currentPos.r})
-                  {cityByCoord.has(hKey(currentPos.q, currentPos.r)) && (
-                    <span className="ml-1">— {cityByCoord.get(hKey(currentPos.q, currentPos.r))!.name}</span>
+                  {(citiesByCoord.get(hKey(currentPos.q, currentPos.r)) || []).length > 0 && (
+                    <span className="ml-1">— {citiesByCoord.get(hKey(currentPos.q, currentPos.r))![0].name}</span>
                   )}
                 </Badge>
               </div>
@@ -513,9 +561,9 @@ const WorldHexMap = ({ sessionId, playerName, myRole }: Props) => {
             <DialogTitle className="font-display flex items-center gap-2">
               <Hexagon className="h-5 w-5 text-primary" />
               Provincie ({selectedHex?.q}, {selectedHex?.r})
-              {selectedHex && cityByCoord.has(hKey(selectedHex.q, selectedHex.r)) && (
+              {selectedHex && (citiesByCoord.get(hKey(selectedHex.q, selectedHex.r)) || []).length > 0 && (
                 <Badge variant="secondary" className="text-[9px] ml-2">
-                  🏰 {cityByCoord.get(hKey(selectedHex.q, selectedHex.r))!.name}
+                  🏰 {citiesByCoord.get(hKey(selectedHex.q, selectedHex.r))![0].name}
                 </Badge>
               )}
             </DialogTitle>
