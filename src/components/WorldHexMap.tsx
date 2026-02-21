@@ -4,7 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Loader2, Hexagon, Map as MapIcon, Eye, Plus, Minus, RefreshCw } from "lucide-react";
+import { Loader2, Hexagon, Map as MapIcon, Eye, Plus, Minus, RefreshCw, Home } from "lucide-react";
 import { toast } from "sonner";
 import { useHexMap, AXIAL_NEIGHBORS, type HexData } from "@/hooks/useHexMap";
 
@@ -34,16 +34,20 @@ function hexPoints(cx: number, cy: number): string {
 }
 const hKey = (q: number, r: number) => `${q},${r}`;
 
+/* ───── City on hex ───── */
+interface CityOnHex { id: string; name: string; owner_player: string; q: number; r: number; }
+
 /* ───── Props ───── */
 interface Props { sessionId: string; playerName: string; myRole: string; }
 
 /* ───── Memoized hex tile ───── */
 const HexTile = memo(({
-  q, r, hex, isFrontier, isCurrent, devMode, loading, onClick, offsetX, offsetY,
+  q, r, hex, isFrontier, isCurrent, devMode, loading, onClick, offsetX, offsetY, city,
 }: {
   q: number; r: number; hex?: HexData; isFrontier: boolean; isCurrent: boolean;
   devMode: boolean; loading: boolean;
   onClick: () => void; offsetX: number; offsetY: number;
+  city?: CityOnHex;
 }) => {
   const pos = hexToPixel(q, r);
   const cx = pos.x + offsetX;
@@ -69,15 +73,28 @@ const HexTile = memo(({
       )}
       {showBiome && !loading && (
         <>
-          <text x={cx} y={cy - 8} textAnchor="middle" dominantBaseline="middle"
-            fill="white" fontSize="9" fontWeight="600" style={{ pointerEvents: "none" }}>
-            {BIOME_LABELS[hex.biome_family] || hex.biome_family}
-          </text>
-          <text x={cx} y={cy + 4} textAnchor="middle" dominantBaseline="middle"
-            fill="hsl(var(--muted-foreground))" fontSize="7" style={{ pointerEvents: "none" }}>
-            H:{hex.mean_height}
-          </text>
-          {hex.coastal && (
+          {city ? (
+            <>
+              <text x={cx} y={cy - 10} textAnchor="middle" dominantBaseline="middle"
+                fill="hsl(45, 90%, 70%)" fontSize="12" style={{ pointerEvents: "none" }}>🏰</text>
+              <text x={cx} y={cy + 4} textAnchor="middle" dominantBaseline="middle"
+                fill="white" fontSize="7" fontWeight="700" style={{ pointerEvents: "none" }}>
+                {city.name.length > 10 ? city.name.slice(0, 9) + "…" : city.name}
+              </text>
+            </>
+          ) : (
+            <>
+              <text x={cx} y={cy - 8} textAnchor="middle" dominantBaseline="middle"
+                fill="white" fontSize="9" fontWeight="600" style={{ pointerEvents: "none" }}>
+                {BIOME_LABELS[hex.biome_family] || hex.biome_family}
+              </text>
+              <text x={cx} y={cy + 4} textAnchor="middle" dominantBaseline="middle"
+                fill="hsl(var(--muted-foreground))" fontSize="7" style={{ pointerEvents: "none" }}>
+                H:{hex.mean_height}
+              </text>
+            </>
+          )}
+          {hex.coastal && !city && (
             <text x={cx} y={cy + 14} textAnchor="middle" dominantBaseline="middle"
               fill="#60a5fa" fontSize="7" style={{ pointerEvents: "none" }}>🌊</text>
           )}
@@ -109,13 +126,41 @@ const WorldHexMap = ({ sessionId, playerName, myRole }: Props) => {
   const [zoom, setZoom] = useState(1);
   const [mapLoaded, setMapLoaded] = useState(false);
   const [recomputing, setRecomputing] = useState(false);
-  const [currentPos, setCurrentPos] = useState<{ q: number; r: number }>({ q: 0, r: 0 });
+  const [currentPos, setCurrentPos] = useState<{ q: number; r: number } | null>(null);
+  const [playerCities, setPlayerCities] = useState<CityOnHex[]>([]);
+  const [allCities, setAllCities] = useState<CityOnHex[]>([]);
+  const [bootstrapping, setBootstrapping] = useState(false);
 
   // Pan state
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const dragRef = useRef<{ startX: number; startY: number; panX: number; panY: number; moved: boolean } | null>(null);
 
   const { hexes, getHex, isLoading, fetchHex, loadHexesByIds, loadAllGenerated } = useHexMap(sessionId);
+
+  /* ── Load cities with province coordinates ── */
+  const fetchCities = useCallback(async () => {
+    const { data } = await supabase
+      .from("cities")
+      .select("id, name, owner_player, province_q, province_r")
+      .eq("session_id", sessionId)
+      .not("province_q", "is", null)
+      .not("province_r", "is", null);
+    if (data) {
+      const mapped: CityOnHex[] = data.map(c => ({
+        id: c.id, name: c.name, owner_player: c.owner_player,
+        q: c.province_q!, r: c.province_r!,
+      }));
+      setAllCities(mapped);
+      setPlayerCities(mapped.filter(c => c.owner_player === playerName));
+    }
+  }, [sessionId, playerName]);
+
+  /* ── City lookup by coords ── */
+  const cityByCoord = useMemo(() => {
+    const m = new Map<string, CityOnHex>();
+    for (const c of allCities) m.set(hKey(c.q, c.r), c);
+    return m;
+  }, [allCities]);
 
   /* ── Load player discoveries ── */
   const fetchDiscoveries = useCallback(async () => {
@@ -182,8 +227,13 @@ const WorldHexMap = ({ sessionId, playerName, myRole }: Props) => {
     return Array.from(all.values());
   }, [hexes, discoveredCoords, frontierCoords, isAdmin, devMode]);
 
-  /* ── Camera center (average of discovered hexes) ── */
+  /* ── Camera center on player capital ── */
   const cameraCenter = useMemo(() => {
+    // Center on current position if set
+    if (currentPos) return hexToPixel(currentPos.q, currentPos.r);
+    // Center on capital (first city)
+    if (playerCities.length > 0) return hexToPixel(playerCities[0].q, playerCities[0].r);
+    // Fallback to average of discovered
     if (discoveredCoords.size === 0) return { x: 0, y: 0 };
     let sx = 0, sy = 0, n = 0;
     for (const coordStr of discoveredCoords) {
@@ -192,35 +242,49 @@ const WorldHexMap = ({ sessionId, playerName, myRole }: Props) => {
       sx += p.x; sy += p.y; n++;
     }
     return { x: sx / n, y: sy / n };
-  }, [discoveredCoords]);
+  }, [currentPos, playerCities, discoveredCoords]);
+
+  /* ── Bootstrap: discover player's city hexes on load ── */
+  const bootstrapCityDiscoveries = useCallback(async (cities: CityOnHex[]) => {
+    if (cities.length === 0 || bootstrapping) return;
+    setBootstrapping(true);
+    try {
+      for (const city of cities) {
+        // Use explore-hex which handles get-or-generate + discovery insert
+        await supabase.functions.invoke("explore-hex", {
+          body: { session_id: sessionId, player_name: playerName, q: city.q, r: city.r },
+        });
+      }
+      await fetchDiscoveries();
+      // Set current position to capital
+      setCurrentPos({ q: cities[0].q, r: cities[0].r });
+    } catch (e: any) {
+      console.error("Bootstrap failed", e);
+    } finally {
+      setBootstrapping(false);
+    }
+  }, [sessionId, playerName, fetchDiscoveries, bootstrapping]);
 
   /* ── Initial load ── */
   const handleLoadMap = useCallback(async () => {
     setMapLoaded(true);
+    await fetchCities();
     if (isAdmin) {
       await loadAllGenerated();
     }
     await fetchDiscoveries();
-  }, [isAdmin, loadAllGenerated, fetchDiscoveries]);
+  }, [isAdmin, loadAllGenerated, fetchDiscoveries, fetchCities]);
 
-  // Auto-seed home hex (0,0) if no discoveries — via explore-hex edge function
+  // After discoveries + cities load, bootstrap if needed
   useEffect(() => {
-    if (!mapLoaded) return;
-    if (discoveredIds.size === 0 && !isAdmin) {
-      (async () => {
-        try {
-          const { data, error } = await supabase.functions.invoke("explore-hex", {
-            body: { session_id: sessionId, player_name: playerName, q: 0, r: 0 },
-          });
-          if (error) throw error;
-          await fetchDiscoveries();
-          setCurrentPos({ q: 0, r: 0 });
-        } catch (e: any) {
-          console.error("Auto-seed failed", e);
-        }
-      })();
+    if (!mapLoaded || bootstrapping) return;
+    if (discoveredIds.size === 0 && playerCities.length > 0) {
+      bootstrapCityDiscoveries(playerCities);
+    } else if (discoveredIds.size > 0 && currentPos === null && playerCities.length > 0) {
+      // Set initial position to capital
+      setCurrentPos({ q: playerCities[0].q, r: playerCities[0].r });
     }
-  }, [mapLoaded, discoveredIds.size, isAdmin, sessionId, playerName, fetchDiscoveries]);
+  }, [mapLoaded, discoveredIds.size, playerCities, currentPos, bootstrapping, bootstrapCityDiscoveries]);
 
   /* ── Explore frontier tile (server-validated) ── */
   const handleExploreFrontier = useCallback(async (q: number, r: number) => {
@@ -301,7 +365,6 @@ const WorldHexMap = ({ sessionId, playerName, myRole }: Props) => {
     if (isFrontier) {
       handleExploreFrontier(q, r);
     } else {
-      // Click on discovered hex = move there
       handleMoveToHex(q, r);
     }
   }, [handleExploreFrontier, handleMoveToHex]);
@@ -353,6 +416,13 @@ const WorldHexMap = ({ sessionId, playerName, myRole }: Props) => {
         </div>
       ) : (
         <>
+          {bootstrapping && (
+            <div className="flex items-center gap-2 text-xs text-muted-foreground p-2 rounded-lg border border-border bg-card">
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              Objevuji provincie vašich měst…
+            </div>
+          )}
+
           <div
             className="game-card p-0 overflow-hidden relative select-none touch-none"
             style={{ height: "420px" }}
@@ -366,7 +436,8 @@ const WorldHexMap = ({ sessionId, playerName, myRole }: Props) => {
               <g transform={`translate(${pan.x / zoom}, ${pan.y / zoom}) scale(${zoom})`}>
                 {renderCoords.map(c => {
                   const hex = getHex(c.q, c.r);
-                  const isCurrent = c.q === currentPos.q && c.r === currentPos.r && !c.isFrontier;
+                  const isCurrent = currentPos !== null && c.q === currentPos.q && c.r === currentPos.r && !c.isFrontier;
+                  const city = cityByCoord.get(hKey(c.q, c.r));
                   return (
                     <HexTile
                       key={hKey(c.q, c.r)}
@@ -379,6 +450,7 @@ const WorldHexMap = ({ sessionId, playerName, myRole }: Props) => {
                       onClick={() => handleTileClick(c.q, c.r, c.isFrontier)}
                       offsetX={offsetX}
                       offsetY={offsetY}
+                      city={city}
                     />
                   );
                 })}
@@ -396,13 +468,18 @@ const WorldHexMap = ({ sessionId, playerName, myRole }: Props) => {
             </div>
 
             {/* Current position indicator */}
-            <div className="absolute top-2 left-2 z-10">
-              <Badge variant="secondary" className="text-[9px] gap-1">
-                📍 ({currentPos.q}, {currentPos.r})
-              </Badge>
-            </div>
+            {currentPos && (
+              <div className="absolute top-2 left-2 z-10">
+                <Badge variant="secondary" className="text-[9px] gap-1">
+                  📍 ({currentPos.q}, {currentPos.r})
+                  {cityByCoord.has(hKey(currentPos.q, currentPos.r)) && (
+                    <span className="ml-1">— {cityByCoord.get(hKey(currentPos.q, currentPos.r))!.name}</span>
+                  )}
+                </Badge>
+              </div>
+            )}
 
-            {renderCoords.length === 0 && (
+            {renderCoords.length === 0 && !bootstrapping && (
               <div className="absolute inset-0 flex items-center justify-center">
                 <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
               </div>
@@ -416,6 +493,12 @@ const WorldHexMap = ({ sessionId, playerName, myRole }: Props) => {
             <Badge variant="outline" className="text-[9px]">
               {frontierCoords.size} na hranici
             </Badge>
+            {playerCities.length > 0 && (
+              <Badge variant="outline" className="text-[9px] gap-1">
+                <Home className="h-3 w-3" />
+                {playerCities.length} měst na mapě
+              </Badge>
+            )}
             <p className="text-[10px] text-muted-foreground ml-auto italic">
               Klikněte na ? hex pro průzkum · na odkrytý hex pro přesun
             </p>
@@ -430,6 +513,11 @@ const WorldHexMap = ({ sessionId, playerName, myRole }: Props) => {
             <DialogTitle className="font-display flex items-center gap-2">
               <Hexagon className="h-5 w-5 text-primary" />
               Provincie ({selectedHex?.q}, {selectedHex?.r})
+              {selectedHex && cityByCoord.has(hKey(selectedHex.q, selectedHex.r)) && (
+                <Badge variant="secondary" className="text-[9px] ml-2">
+                  🏰 {cityByCoord.get(hKey(selectedHex.q, selectedHex.r))!.name}
+                </Badge>
+              )}
             </DialogTitle>
           </DialogHeader>
           {selectedHex && (

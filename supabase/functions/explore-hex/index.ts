@@ -42,13 +42,26 @@ Deno.serve(async (req) => {
 
     // 2. Load hex data for discovered hexes to get their coords
     if (discoveredIds.size === 0) {
-      // No discoveries yet — allow (0,0) as bootstrap
-      if (q !== 0 || r !== 0) {
-        return new Response(
-          JSON.stringify({ error: "Nelze prozkoumat: nemáte žádné objevené provincie" }),
-          { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
+      // No discoveries yet — allow bootstrap of any city hex the player owns
+      const { data: cityCheck } = await sb
+        .from("cities")
+        .select("id")
+        .eq("session_id", session_id)
+        .eq("owner_player", player_name)
+        .eq("province_q", q)
+        .eq("province_r", r)
+        .limit(1);
+      
+      if (!cityCheck || cityCheck.length === 0) {
+        // Also allow (0,0) as fallback bootstrap
+        if (q !== 0 || r !== 0) {
+          return new Response(
+            JSON.stringify({ error: "Nelze prozkoumat: nemáte žádné objevené provincie" }),
+            { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
       }
+      // Bootstrap allowed — skip adjacency check
     } else {
       // Check that target (q,r) is adjacent to at least one discovered hex
       const discoveredIdList = Array.from(discoveredIds);
