@@ -492,9 +492,9 @@ const ChroWikiDetailPanel = ({
 
       {/* ═══ SCROLLABLE CONTENT AREA ═══ */}
       <div className="flex-1 min-h-0 overflow-y-auto pb-24">
-        <div className="max-w-[900px] mx-auto px-4 md:px-6 py-4">
+        <div className="max-w-[900px] mx-auto px-4 md:px-8 lg:px-12 py-4">
           {/* ═══ PARCHMENT CHRONICLE CARD ═══ */}
-          <div className="chronicle-parchment rounded-xl p-6 md:p-8">
+          <div className="chronicle-parchment rounded-xl p-6 md:p-8 mx-2 md:mx-6 lg:mx-10">
 
             {/* D) PROFILE SNAPSHOT (hidden in reading mode) */}
             {!readingMode && keyFacts.length > 0 && (
@@ -523,7 +523,7 @@ const ChroWikiDetailPanel = ({
                 <BookOpen className="h-4 w-4 text-primary" /> Encyklopedický záznam
               </h3>
               {descriptionText ? (
-                <div className="prose-chronicle text-[15px] md:text-base leading-[1.7] text-foreground/90 font-body">
+              <div className="prose-chronicle drop-cap-section text-[15px] md:text-base leading-[1.7] text-foreground/90 font-body">
                   <RichText text={descriptionText} className="whitespace-pre-wrap" />
                 </div>
               ) : (
