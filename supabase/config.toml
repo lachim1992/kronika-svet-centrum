@@ -98,3 +98,6 @@ verify_jwt = false
 
 [functions.saga-generate]
 verify_jwt = false
+
+[functions.history-synthesize]
+verify_jwt = false

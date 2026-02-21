@@ -9,7 +9,7 @@ serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response(null, { headers: corsHeaders });
 
   try {
-    const { sagaContext } = await req.json();
+    const { sagaContext, historySynthesis } = await req.json();
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
 
     if (!LOVABLE_API_KEY) {
@@ -18,9 +18,11 @@ serve(async (req) => {
       });
     }
 
-    const { entity, timeline, actors, relations, stats, chronicleNotes, declarations: decls } = sagaContext;
+    const { entity, timeline, actors } = sagaContext;
 
-    // Build structured context for AI
+    // If we have a pre-generated history synthesis, use it as the primary source
+    const hasHistory = historySynthesis && historySynthesis.synthesis;
+
     const timelineText = (timeline || []).map((t: any) =>
       `[Kolo ${t.turn}] ${t.title}${t.summary ? ': ' + t.summary : ''} (ID: ${t.eventId})`
     ).join("\n");
@@ -29,69 +31,52 @@ serve(async (req) => {
       `${a.name} (${a.role || a.type}) — frakce: ${a.faction || '?'}`
     ).join("\n");
 
-    const relationsText = Object.entries(relations || {}).map(([key, val]: any) =>
-      `${key}: ${Array.isArray(val) ? val.map((v: any) => v.name || v).join(', ') : val}`
-    ).join("\n");
-
-    const statsText = (stats || []).map((s: any) =>
-      `${s.stat_key}: ${s.stat_value}${s.stat_unit ? ' ' + s.stat_unit : ''} (kolo ${s.source_turn})`
-    ).join("\n");
-
-    const chronicleText = (chronicleNotes || []).slice(0, 10).map((c: any) =>
-      `[Kola ${c.turn_from || '?'}-${c.turn_to || '?'}] ${c.text?.slice(0, 300)}`
-    ).join("\n---\n");
-
-    const declText = (decls || []).slice(0, 5).map((d: any) =>
-      `[Kolo ${d.turn_number}] ${d.title || d.declaration_type}: ${d.epic_text || d.original_text}`
-    ).join("\n");
-
     const eventCount = (timeline || []).length;
+
+    // History synthesis section (preferred source)
+    const historySection = hasHistory ? `
+=== HISTORICKÁ SYNTÉZA (primární zdroj — MUSÍŠ na ni navázat) ===
+${historySynthesis.synthesis}
+
+=== KLÍČOVÁ FAKTA Z HISTORIE ===
+${(historySynthesis.keyFacts || []).join("\n")}
+
+=== MOTIVY ===
+${(historySynthesis.themes || []).join(", ")}
+` : "";
 
     const systemPrompt = `Jsi královský kronikář, který píše vznešeným, mýtickým, mírně propagandistickým stylem dvorní kroniky.
 
 STRIKTNÍ PRAVIDLA:
-1. Piš VÝHRADNĚ na základě dodaných dat (SagaContext). NESMÍŠ vymýšlet nové události, postavy, války ani katastrofy.
+1. Piš VÝHRADNĚ na základě dodaných dat. ${hasHistory ? 'Tvým HLAVNÍM zdrojem je historická syntéza — interpretuj ji mýticky, ale NEPŘIDÁVEJ nové fakty.' : 'NESMÍŠ vymýšlet nové události.'}
 2. KAŽDÝ odstavec MUSÍ obsahovat alespoň jednu referenci na událost ve formátu [[event:EVENT_ID|popis]].
-3. Vítězství prezentuj jako naplnění osudu. Utrpení (hladomor, válka) rámuj jako zkoušky ohněm, které vykují velikost.
-4. Vládce/aktéry zobrazuj jako větší-než-život postavy, ale POUZE pokud existují v datech.
+3. Vítězství prezentuj jako naplnění osudu. Utrpení rámuj jako zkoušky ohněm.
+4. Vládce/aktéry zobrazuj jako větší-než-život postavy, POUZE pokud existují v datech.
 5. Zdůrazňuj kontinuitu, dědictví a nevyhnutelnost velikosti.
 
-POVINNÁ STRUKTURA VÝSTUPU (přes tool call):
-A) "chronology" — Stručná chronologie (8-20 bodů) — každý bod MUSÍ obsahovat [[event:ID|text]]
-B) "saga" — Sága místa (700-1400 slov) s inline referencemi [[event:ID|text]]
-   Struktura: Mýtická invokace → Věk zkoušek → Zlom/Vzestup → Současná sláva → Odkaz
-C) "actors" — Klíčové postavy a frakce (pole objektů: name, role, linkedItems)
-D) "consequences" — Důsledky pro říši (ekonomika/stabilita/armáda) založené na stats/events
-E) "legends" — Legenda a šeptanda (volitelné, spekulativní, jasně označené) — MŮŽE být prázdné
+POVINNÁ STRUKTURA:
+A) "chronology" — Stručná chronologie (8-20 bodů) s [[event:ID|text]]
+B) "saga" — Sága místa (700-1400 slov): Mýtická invokace → Věk zkoušek → Zlom → Současná sláva → Odkaz
+C) "actors" — Klíčové postavy (name, role, linkedItems)
+D) "consequences" — Důsledky pro říši
+E) "legends" — Legenda a šeptanda (volitelné, jasně oddělené)
 
-${eventCount < 3 ? 'VAROVÁNÍ: K dispozici je málo zdrojových událostí (' + eventCount + '). Sága musí být označena jako "proto-sága" a výslovně uvést nedostatek zdrojů. Nepředstírej bohatou historii.' : ''}`;
+${eventCount < 3 ? 'VAROVÁNÍ: Málo zdrojů (' + eventCount + '). Označ jako proto-ságu.' : ''}`;
 
     const userContent = `=== ENTITA ===
 Jméno: ${entity.name}
 Typ: ${entity.type}
 Vlastník: ${entity.owner || '?'}
 Tagy: ${(entity.tags || []).join(', ') || 'žádné'}
-Dodatečné info: ${JSON.stringify(entity.extra || {})}
-
-=== ČASOVÁ OSA UDÁLOSTÍ (${eventCount} záznamů) ===
+Info: ${JSON.stringify(entity.extra || {})}
+${historySection}
+=== ČASOVÁ OSA (${eventCount} záznamů) ===
 ${timelineText || 'Žádné události'}
 
 === AKTÉŘI ===
 ${actorsText || 'Žádní známí aktéři'}
 
-=== VAZBY ===
-${relationsText || 'Žádné vazby'}
-
-=== STATISTIKY ===
-${statsText || 'Žádné statistiky'}
-
-=== KRONIKÁŘSKÉ ZÁZNAMY ===
-${chronicleText || 'Žádné záznamy'}
-
-=== DEKLARACE / VÝNOSY ===
-${declText || 'Žádné deklarace'}
-
-Napiš dvorní kroniku tohoto místa/entity ve výše popsané struktuře.`;
+Napiš dvorní kroniku tohoto místa/entity.`;
 
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",

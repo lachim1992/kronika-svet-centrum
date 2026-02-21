@@ -5,17 +5,19 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   BookOpen, Castle, Calendar, Crown, Flag, Landmark, Loader2, MapPin,
   Mountain, Scroll, Sparkles, Swords, Compass, Shield, Users, ChevronRight, AlertTriangle,
   Eye, EyeOff, Pencil, Save, X, History, Zap, Wheat, Coins, Heart,
-  ChevronDown, ChevronUp, FileText,
+  ChevronDown, ChevronUp, FileText, Clock,
 } from "lucide-react";
 import { toast } from "sonner";
 import RichText from "@/components/RichText";
 import { buildSagaContext, type SagaContextData } from "@/lib/sagaContext";
 import SagaSourcesPanel from "./SagaSourcesPanel";
 import SagaDisplay from "./SagaDisplay";
+import HistoryDisplay, { type HistoryResult } from "./HistoryDisplay";
 
 const ENTITY_ICONS: Record<string, React.ReactNode> = {
   country: <Flag className="h-5 w-5" />,
@@ -115,6 +117,11 @@ const ChroWikiDetailPanel = ({
   const [sagaContext, setSagaContext] = useState<SagaContextData | null>(null);
   const [sagaResult, setSagaResult] = useState<any>(null);
 
+  // History state
+  const [historyResult, setHistoryResult] = useState<HistoryResult | null>(null);
+  const [generatingHistory, setGeneratingHistory] = useState(false);
+  const [activeTab, setActiveTab] = useState<string>("historie");
+
   // Chronicle mentions state
   const [chroniclePage, setChroniclePage] = useState(0);
   const [chronicleCatFilter, setChronicleCatFilter] = useState("all");
@@ -168,6 +175,8 @@ const ChroWikiDetailPanel = ({
     setReadingMode(false);
     setSagaContext(null);
     setSagaResult(null);
+    setHistoryResult(null);
+    setActiveTab("historie");
   }, [entityId]);
 
   const memoryEntity = useMemo(() => {
@@ -378,9 +387,9 @@ const ChroWikiDetailPanel = ({
       );
       setSagaContext(ctx);
 
-      // 2) Call saga-generate edge function
+      // 2) Call saga-generate edge function WITH history synthesis
       const { data, error } = await supabase.functions.invoke("saga-generate", {
-        body: { sagaContext: ctx },
+        body: { sagaContext: ctx, historySynthesis: historyResult },
       });
       if (error) throw error;
       if (data?.error) throw new Error(data.error);
@@ -412,8 +421,32 @@ const ChroWikiDetailPanel = ({
     }
     setGeneratingSaga(false);
   };
+  const handleGenerateHistory = async () => {
+    setGeneratingHistory(true);
+    setHistoryResult(null);
+    try {
+      const ctx = await buildSagaContext(
+        sessionId, entityType, entityId, entityName, entity,
+        { countries, regions, provinces, cities, wonders, persons, events, chronicles, declarations }
+      );
+      setSagaContext(ctx);
 
-  // ── Loading / Error states ──
+      const { data, error } = await supabase.functions.invoke("history-synthesize", {
+        body: { sagaContext: ctx },
+      });
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+
+      setHistoryResult(data);
+      toast.success("📋 Historická syntéza vygenerována!");
+    } catch (e: any) {
+      console.error("History synthesis failed:", e);
+      toast.error("Chyba: " + (e.message || "Generování selhalo"));
+    }
+    setGeneratingHistory(false);
+  };
+
+
   if (dbLoading) {
     return (
       <div className="flex items-center justify-center h-full min-h-[400px]">
@@ -550,89 +583,124 @@ const ChroWikiDetailPanel = ({
 
             <OrnamentalDivider />
 
-            {/* E) SAGA SECTION */}
+            {/* E) HISTORIE & SÁGA — TABBED SECTION */}
             <section className="mb-2">
-              <div className="flex items-center gap-2 mb-3 flex-wrap">
-                <h3 className="font-decorative text-base md:text-lg font-semibold flex items-center gap-2 text-foreground">
-                  <FileText className="h-4 w-4 text-primary" /> Dvorní kronika
-                </h3>
-                {sagaVersions.length > 1 && (
-                  <Select value={selectedSagaVersion} onValueChange={v => { setSelectedSagaVersion(v); setSagaResult(null); }}>
-                    <SelectTrigger className="h-6 w-28 text-[10px]"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="latest" className="text-xs">Nejnovější</SelectItem>
-                      {sagaVersions.map(v => (
-                        <SelectItem key={v.version} value={String(v.version)} className="text-xs">
-                          v{v.version} {v.is_ai_generated ? "🤖" : "✍"}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                )}
-                <div className="ml-auto flex items-center gap-1">
-                  {isOwner && !editingSaga && (
-                    <Button variant="ghost" size="sm" className="h-6 text-[10px] px-2" onClick={() => { setEditingSaga(true); setSagaDraft(currentSaga?.saga_text || ""); }}>
-                      <Pencil className="h-3 w-3 mr-1" /> Upravit
-                    </Button>
+              <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+                <div className="flex items-center gap-2 mb-3 flex-wrap">
+                  <TabsList className="h-8">
+                    <TabsTrigger value="historie" className="text-xs gap-1 px-3 py-1.5">
+                      <Clock className="h-3 w-3" /> Historie
+                    </TabsTrigger>
+                    <TabsTrigger value="saga" className="text-xs gap-1 px-3 py-1.5">
+                      <FileText className="h-3 w-3" /> Sága
+                    </TabsTrigger>
+                  </TabsList>
+                  {activeTab === "saga" && sagaVersions.length > 1 && (
+                    <Select value={selectedSagaVersion} onValueChange={v => { setSelectedSagaVersion(v); setSagaResult(null); }}>
+                      <SelectTrigger className="h-6 w-28 text-[10px]"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="latest" className="text-xs">Nejnovější</SelectItem>
+                        {sagaVersions.map(v => (
+                          <SelectItem key={v.version} value={String(v.version)} className="text-xs">
+                            v{v.version} {v.is_ai_generated ? "🤖" : "✍"}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   )}
-                  <Button variant="ghost" size="sm" className="h-6 text-[10px] px-2" onClick={handleRegenerateSaga} disabled={generatingSaga}>
-                    {generatingSaga ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <Sparkles className="h-3 w-3 mr-1" />}
-                    Generovat ságu
-                  </Button>
                 </div>
-              </div>
 
-              {/* Sources panel (shown after context is built) */}
-              {sagaContext && (
-                <SagaSourcesPanel
-                  context={sagaContext}
-                  onEventClick={(id, title) => onEntityClick("event", id, title)}
-                />
-              )}
-
-              {/* Structured saga display */}
-              {sagaResult && !editingSaga && (
-                <SagaDisplay
-                  result={sagaResult}
-                  onEventClick={(id, title) => onEntityClick("event", id, title)}
-                />
-              )}
-
-              {editingSaga ? (
-                <div className="space-y-2">
-                  <Textarea value={sagaDraft} onChange={e => setSagaDraft(e.target.value)} rows={8} className="text-sm font-body" placeholder="Napište příběh tohoto místa…" />
-                  <div className="flex gap-2 justify-end">
-                    <Button variant="ghost" size="sm" onClick={() => setEditingSaga(false)}><X className="h-3 w-3 mr-1" /> Zrušit</Button>
-                    <Button size="sm" onClick={handleSaveSaga} disabled={savingSaga}>
-                      {savingSaga ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <Save className="h-3 w-3 mr-1" />}
-                      Uložit (nová verze)
+                {/* ═══ HISTORIE TAB ═══ */}
+                <TabsContent value="historie" className="mt-0">
+                  <div className="flex items-center justify-between mb-3">
+                    <p className="text-[11px] text-muted-foreground italic">
+                      Objektivní syntéza založená na herních událostech v databázi.
+                    </p>
+                    <Button variant="ghost" size="sm" className="h-6 text-[10px] px-2" onClick={handleGenerateHistory} disabled={generatingHistory}>
+                      {generatingHistory ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <Sparkles className="h-3 w-3 mr-1" />}
+                      Generovat historickou syntézu
                     </Button>
                   </div>
-                </div>
-              ) : !sagaResult && currentSaga ? (
-                <div className="prose-chronicle text-[15px] md:text-base leading-[1.7] text-foreground/90 font-body p-4 rounded-lg"
-                  style={{
-                    background: 'hsl(var(--secondary) / 0.2)',
-                    borderLeft: '3px solid hsl(var(--primary) / 0.4)',
-                  }}
-                >
-                  <RichText text={currentSaga.saga_text} className="whitespace-pre-wrap" />
-                  <div className="mt-3 text-[10px] text-muted-foreground flex items-center gap-2 pt-2" style={{ borderTop: '1px solid hsl(var(--primary) / 0.1)' }}>
-                    <History className="h-3 w-3" />
-                    v{currentSaga.version} · {currentSaga.is_ai_generated ? "🤖 AI" : `✍ ${currentSaga.author_player}`}
-                    {currentSaga.created_at && ` · ${new Date(currentSaga.created_at).toLocaleDateString("cs")}`}
+
+                  {sagaContext && <SagaSourcesPanel context={sagaContext} onEventClick={(id, title) => onEntityClick("event", id, title)} />}
+
+                  {generatingHistory && !historyResult && (
+                    <div className="text-center py-8">
+                      <Loader2 className="h-6 w-6 animate-spin text-primary mx-auto mb-2" />
+                      <p className="text-xs text-muted-foreground font-body">Analyzuji herní události…</p>
+                    </div>
+                  )}
+
+                  {historyResult && (
+                    <HistoryDisplay result={historyResult} onEventClick={(id, title) => onEntityClick("event", id, title)} />
+                  )}
+
+                  {!historyResult && !generatingHistory && (
+                    <div className="text-center py-5 rounded-lg border border-dashed" style={{ borderColor: 'hsl(var(--primary) / 0.15)' }}>
+                      <Clock className="h-8 w-8 text-primary/20 mx-auto mb-2" />
+                      <p className="text-xs text-muted-foreground italic font-body">Historická syntéza dosud nebyla vygenerována.</p>
+                    </div>
+                  )}
+                </TabsContent>
+
+                {/* ═══ SÁGA TAB ═══ */}
+                <TabsContent value="saga" className="mt-0">
+                  <div className="flex items-center justify-between mb-3">
+                    <p className="text-[11px] text-muted-foreground italic">
+                      Mýtická interpretace historie — dvorní kronika.
+                      {!historyResult && <span className="text-destructive/70 ml-1">(Doporučeno nejprve vygenerovat Historii)</span>}
+                    </p>
+                    <div className="flex items-center gap-1">
+                      {isOwner && !editingSaga && (
+                        <Button variant="ghost" size="sm" className="h-6 text-[10px] px-2" onClick={() => { setEditingSaga(true); setSagaDraft(currentSaga?.saga_text || ""); }}>
+                          <Pencil className="h-3 w-3 mr-1" /> Upravit
+                        </Button>
+                      )}
+                      <Button variant="ghost" size="sm" className="h-6 text-[10px] px-2" onClick={handleRegenerateSaga} disabled={generatingSaga}>
+                        {generatingSaga ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <Sparkles className="h-3 w-3 mr-1" />}
+                        Generovat ságu
+                      </Button>
+                    </div>
                   </div>
-                </div>
-              ) : !sagaResult && !generatingSaga ? (
-                <div className="text-center py-5 rounded-lg border border-dashed" style={{ borderColor: 'hsl(var(--primary) / 0.15)' }}>
-                  <p className="text-xs text-muted-foreground italic font-body">Dvorní kronika dosud nebyla sepsána.</p>
-                </div>
-              ) : generatingSaga && !sagaResult ? (
-                <div className="text-center py-8">
-                  <Loader2 className="h-6 w-6 animate-spin text-primary mx-auto mb-2" />
-                  <p className="text-xs text-muted-foreground font-body">Kronikář sepisuje ságu…</p>
-                </div>
-              ) : null}
+
+                  {sagaResult && !editingSaga && (
+                    <SagaDisplay result={sagaResult} onEventClick={(id, title) => onEntityClick("event", id, title)} />
+                  )}
+
+                  {editingSaga ? (
+                    <div className="space-y-2">
+                      <Textarea value={sagaDraft} onChange={e => setSagaDraft(e.target.value)} rows={8} className="text-sm font-body" placeholder="Napište příběh tohoto místa…" />
+                      <div className="flex gap-2 justify-end">
+                        <Button variant="ghost" size="sm" onClick={() => setEditingSaga(false)}><X className="h-3 w-3 mr-1" /> Zrušit</Button>
+                        <Button size="sm" onClick={handleSaveSaga} disabled={savingSaga}>
+                          {savingSaga ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <Save className="h-3 w-3 mr-1" />}
+                          Uložit (nová verze)
+                        </Button>
+                      </div>
+                    </div>
+                  ) : !sagaResult && currentSaga ? (
+                    <div className="prose-chronicle text-[15px] md:text-base leading-[1.7] text-foreground/90 font-body p-4 rounded-lg"
+                      style={{ background: 'hsl(var(--secondary) / 0.2)', borderLeft: '3px solid hsl(var(--primary) / 0.4)' }}
+                    >
+                      <RichText text={currentSaga.saga_text} className="whitespace-pre-wrap" />
+                      <div className="mt-3 text-[10px] text-muted-foreground flex items-center gap-2 pt-2" style={{ borderTop: '1px solid hsl(var(--primary) / 0.1)' }}>
+                        <History className="h-3 w-3" />
+                        v{currentSaga.version} · {currentSaga.is_ai_generated ? "🤖 AI" : `✍ ${currentSaga.author_player}`}
+                        {currentSaga.created_at && ` · ${new Date(currentSaga.created_at).toLocaleDateString("cs")}`}
+                      </div>
+                    </div>
+                  ) : !sagaResult && !generatingSaga ? (
+                    <div className="text-center py-5 rounded-lg border border-dashed" style={{ borderColor: 'hsl(var(--primary) / 0.15)' }}>
+                      <p className="text-xs text-muted-foreground italic font-body">Dvorní kronika dosud nebyla sepsána.</p>
+                    </div>
+                  ) : generatingSaga && !sagaResult ? (
+                    <div className="text-center py-8">
+                      <Loader2 className="h-6 w-6 animate-spin text-primary mx-auto mb-2" />
+                      <p className="text-xs text-muted-foreground font-body">Kronikář sepisuje ságu…</p>
+                    </div>
+                  ) : null}
+                </TabsContent>
+              </Tabs>
             </section>
 
             {/* Entity-type specific sections (hidden in reading mode) */}
