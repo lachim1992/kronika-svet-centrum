@@ -39,9 +39,9 @@ interface Props { sessionId: string; playerName: string; myRole: string; }
 
 /* ───── Memoized hex tile ───── */
 const HexTile = memo(({
-  q, r, hex, isFrontier, devMode, loading, onClick, offsetX, offsetY,
+  q, r, hex, isFrontier, isCurrent, devMode, loading, onClick, offsetX, offsetY,
 }: {
-  q: number; r: number; hex?: HexData; isFrontier: boolean;
+  q: number; r: number; hex?: HexData; isFrontier: boolean; isCurrent: boolean;
   devMode: boolean; loading: boolean;
   onClick: () => void; offsetX: number; offsetY: number;
 }) => {
@@ -58,8 +58,8 @@ const HexTile = memo(({
       <polygon
         points={pts}
         fill={fillColor}
-        stroke={isFrontier ? "hsl(var(--muted-foreground) / 0.3)" : "hsl(var(--border))"}
-        strokeWidth={0.8}
+        stroke={isCurrent ? "hsl(45, 90%, 55%)" : isFrontier ? "hsl(var(--muted-foreground) / 0.3)" : "hsl(var(--border))"}
+        strokeWidth={isCurrent ? 2.5 : 0.8}
         opacity={showBiome ? 1 : 0.3}
         strokeDasharray={isFrontier ? "3,3" : undefined}
       />
@@ -105,10 +105,11 @@ const WorldHexMap = ({ sessionId, playerName, myRole }: Props) => {
   const [selectedHex, setSelectedHex] = useState<HexData | null>(null);
   const [discoveredIds, setDiscoveredIds] = useState<Set<string>>(new Set());
   const [discoveredCoords, setDiscoveredCoords] = useState<Set<string>>(new Set());
-  const [exploring, setExploring] = useState<string | null>(null); // key of frontier being explored
+  const [exploring, setExploring] = useState<string | null>(null);
   const [zoom, setZoom] = useState(1);
   const [mapLoaded, setMapLoaded] = useState(false);
   const [recomputing, setRecomputing] = useState(false);
+  const [currentPos, setCurrentPos] = useState<{ q: number; r: number }>({ q: 0, r: 0 });
 
   // Pan state
   const [pan, setPan] = useState({ x: 0, y: 0 });
@@ -126,7 +127,6 @@ const WorldHexMap = ({ sessionId, playerName, myRole }: Props) => {
       .eq("entity_type", "province_hex");
     const ids = (data || []).map(d => d.entity_id);
     setDiscoveredIds(new Set(ids));
-    // Also load the actual hex data for these IDs
     await loadHexesByIds(ids);
   }, [sessionId, playerName, loadHexesByIds]);
 
@@ -142,7 +142,7 @@ const WorldHexMap = ({ sessionId, playerName, myRole }: Props) => {
 
   /* ── Compute frontier tiles ── */
   const frontierCoords = useMemo(() => {
-    if (isAdmin && !devMode) return new Set<string>(); // admin sees all, no frontier needed
+    if (isAdmin && !devMode) return new Set<string>();
     const frontier = new Set<string>();
     for (const coordStr of discoveredCoords) {
       const [q, r] = coordStr.split(",").map(Number);
@@ -159,12 +159,10 @@ const WorldHexMap = ({ sessionId, playerName, myRole }: Props) => {
     const all = new Map<string, { q: number; r: number; isFrontier: boolean }>();
 
     if (isAdmin && devMode) {
-      // Show all generated hexes + frontier of discovered
       for (const key of Object.keys(hexes)) {
         const [q, r] = key.split(",").map(Number);
         all.set(key, { q, r, isFrontier: false });
       }
-      // Also add frontier for discovered
       for (const fk of frontierCoords) {
         if (!all.has(fk)) {
           const [q, r] = fk.split(",").map(Number);
@@ -172,12 +170,10 @@ const WorldHexMap = ({ sessionId, playerName, myRole }: Props) => {
         }
       }
     } else {
-      // Discovered tiles
       for (const coordStr of discoveredCoords) {
         const [q, r] = coordStr.split(",").map(Number);
         all.set(coordStr, { q, r, isFrontier: false });
       }
-      // Frontier tiles
       for (const fk of frontierCoords) {
         const [q, r] = fk.split(",").map(Number);
         all.set(fk, { q, r, isFrontier: true });
@@ -205,53 +201,54 @@ const WorldHexMap = ({ sessionId, playerName, myRole }: Props) => {
       await loadAllGenerated();
     }
     await fetchDiscoveries();
-
-    // If player has no discoveries, auto-explore (0,0)
-    // We check after fetch completes
   }, [isAdmin, loadAllGenerated, fetchDiscoveries]);
 
-  // Auto-seed (0,0) if no discoveries
+  // Auto-seed home hex (0,0) if no discoveries — via explore-hex edge function
   useEffect(() => {
     if (!mapLoaded) return;
-    if (!isAdmin && discoveredIds.size === 0) {
-      // Seed starting hex at (0,0)
+    if (discoveredIds.size === 0 && !isAdmin) {
       (async () => {
-        const hex = await fetchHex(0, 0);
-        if (hex) {
-          await supabase.from("discoveries").upsert({
-            session_id: sessionId,
-            player_name: playerName,
-            entity_type: "province_hex",
-            entity_id: hex.id,
-            source: "start",
-          }, { onConflict: "session_id,player_name,entity_type,entity_id" });
+        try {
+          const { data, error } = await supabase.functions.invoke("explore-hex", {
+            body: { session_id: sessionId, player_name: playerName, q: 0, r: 0 },
+          });
+          if (error) throw error;
           await fetchDiscoveries();
+          setCurrentPos({ q: 0, r: 0 });
+        } catch (e: any) {
+          console.error("Auto-seed failed", e);
         }
       })();
     }
-  }, [mapLoaded, discoveredIds.size, isAdmin, sessionId, playerName, fetchHex, fetchDiscoveries]);
+  }, [mapLoaded, discoveredIds.size, isAdmin, sessionId, playerName, fetchDiscoveries]);
 
-  /* ── Explore frontier tile ── */
+  /* ── Explore frontier tile (server-validated) ── */
   const handleExploreFrontier = useCallback(async (q: number, r: number) => {
     const key = hKey(q, r);
     setExploring(key);
     try {
-      // Generate/fetch the hex
-      const hex = await fetchHex(q, r);
-      if (!hex) return;
-      // Insert discovery
-      await supabase.from("discoveries").upsert({
-        session_id: sessionId,
-        player_name: playerName,
-        entity_type: "province_hex",
-        entity_id: hex.id,
-        source: "explore",
-      }, { onConflict: "session_id,player_name,entity_type,entity_id" });
+      const { data, error } = await supabase.functions.invoke("explore-hex", {
+        body: { session_id: sessionId, player_name: playerName, q, r },
+      });
+      if (error) throw error;
+      if (data?.error) {
+        toast.error(data.error);
+        return;
+      }
       await fetchDiscoveries();
+      toast.success(`Provincie (${q}, ${r}) objevena!`);
+    } catch (e: any) {
+      toast.error("Průzkum selhal: " + (e.message || "neznámá chyba"));
     } finally {
       setExploring(null);
     }
-  }, [sessionId, playerName, fetchHex, fetchDiscoveries]);
+  }, [sessionId, playerName, fetchDiscoveries]);
+
+  /* ── Move to discovered hex ── */
+  const handleMoveToHex = useCallback((q: number, r: number) => {
+    setCurrentPos({ q, r });
+    toast.success(`Přesun na (${q}, ${r})`);
+  }, []);
 
   /* ── Pan handlers ── */
   const onPointerDown = useCallback((e: React.PointerEvent) => {
@@ -270,9 +267,6 @@ const WorldHexMap = ({ sessionId, playerName, myRole }: Props) => {
 
   const onPointerUp = useCallback(() => { dragRef.current = null; }, []);
 
-  const wasDrag = useCallback(() => dragRef.current?.moved ?? false, []);
-
-  // Zoom
   const onWheel = useCallback((e: React.WheelEvent) => {
     e.preventDefault();
     setZoom(z => Math.max(0.3, Math.min(3, z - e.deltaY * 0.001)));
@@ -291,7 +285,6 @@ const WorldHexMap = ({ sessionId, playerName, myRole }: Props) => {
       });
       if (error) throw error;
       const updated = data?.updated || [];
-      // Refresh hex cache
       if (isAdmin) await loadAllGenerated();
       await fetchDiscoveries();
       toast.success(`Přepočteno ${updated.length} hexů`);
@@ -304,15 +297,21 @@ const WorldHexMap = ({ sessionId, playerName, myRole }: Props) => {
 
   /* ── Handle tile click ── */
   const handleTileClick = useCallback((q: number, r: number, isFrontier: boolean) => {
-    // Ignore if it was a drag
     if (dragRef.current?.moved) return;
     if (isFrontier) {
       handleExploreFrontier(q, r);
     } else {
-      const hex = getHex(q, r);
-      if (hex) setSelectedHex(hex);
+      // Click on discovered hex = move there
+      handleMoveToHex(q, r);
     }
-  }, [getHex, handleExploreFrontier]);
+  }, [handleExploreFrontier, handleMoveToHex]);
+
+  /* ── Long-press / detail on discovered hex ── */
+  const handleTileContextMenu = useCallback((q: number, r: number, isFrontier: boolean) => {
+    if (isFrontier) return;
+    const hex = getHex(q, r);
+    if (hex) setSelectedHex(hex);
+  }, [getHex]);
 
   /* ── SVG layout ── */
   const svgW = 800;
@@ -367,12 +366,14 @@ const WorldHexMap = ({ sessionId, playerName, myRole }: Props) => {
               <g transform={`translate(${pan.x / zoom}, ${pan.y / zoom}) scale(${zoom})`}>
                 {renderCoords.map(c => {
                   const hex = getHex(c.q, c.r);
+                  const isCurrent = c.q === currentPos.q && c.r === currentPos.r && !c.isFrontier;
                   return (
                     <HexTile
                       key={hKey(c.q, c.r)}
                       q={c.q} r={c.r}
                       hex={hex}
                       isFrontier={c.isFrontier}
+                      isCurrent={isCurrent}
                       devMode={devMode}
                       loading={isLoading(c.q, c.r) || exploring === hKey(c.q, c.r)}
                       onClick={() => handleTileClick(c.q, c.r, c.isFrontier)}
@@ -394,7 +395,13 @@ const WorldHexMap = ({ sessionId, playerName, myRole }: Props) => {
               </Button>
             </div>
 
-            {/* Info overlay */}
+            {/* Current position indicator */}
+            <div className="absolute top-2 left-2 z-10">
+              <Badge variant="secondary" className="text-[9px] gap-1">
+                📍 ({currentPos.q}, {currentPos.r})
+              </Badge>
+            </div>
+
             {renderCoords.length === 0 && (
               <div className="absolute inset-0 flex items-center justify-center">
                 <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -410,7 +417,7 @@ const WorldHexMap = ({ sessionId, playerName, myRole }: Props) => {
               {frontierCoords.size} na hranici
             </Badge>
             <p className="text-[10px] text-muted-foreground ml-auto italic">
-              Klikněte na ? hex pro průzkum
+              Klikněte na ? hex pro průzkum · na odkrytý hex pro přesun
             </p>
           </div>
         </>
@@ -447,6 +454,16 @@ const WorldHexMap = ({ sessionId, playerName, myRole }: Props) => {
                   </p>
                 </div>
               )}
+              <Button
+                variant="outline" size="sm" className="w-full font-display text-xs"
+                onClick={() => {
+                  setCurrentPos({ q: selectedHex.q, r: selectedHex.r });
+                  setSelectedHex(null);
+                  toast.success(`Přesun na (${selectedHex.q}, ${selectedHex.r})`);
+                }}
+              >
+                📍 Přesunout se sem
+              </Button>
             </div>
           )}
         </DialogContent>

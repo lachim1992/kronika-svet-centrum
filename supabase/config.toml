@@ -107,3 +107,6 @@ verify_jwt = false
 
 [functions.recompute-biomes]
 verify_jwt = false
+
+[functions.explore-hex]
+verify_jwt = false
