@@ -263,6 +263,7 @@ const Dashboard = () => {
           currentPlayerName={myPlayerName}
           currentTurn={currentTurn}
           myRole={myRole}
+          cities={cities}
           onRefetch={refetch}
         />
       )}

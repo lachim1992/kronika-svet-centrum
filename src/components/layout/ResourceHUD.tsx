@@ -52,7 +52,10 @@ const ResourceHUD = ({ sessionId, playerName, cities }: ResourceHUDProps) => {
 
   const myCities = cities.filter(c => c.owner_player === playerName);
   const famineCities = myCities.filter(c => c.famine_turn);
-  const availableManpower = (realm.manpower_pool || 0) - (realm.manpower_committed || 0);
+  const totalPopulation = myCities.reduce((s, c) => s + (c.population_total || 0), 0);
+  const mobRate = realm.mobilization_rate || 0.1;
+  const computedPool = Math.floor(totalPopulation * mobRate);
+  const availableManpower = computedPool - (realm.manpower_committed || 0);
 
   const getRes = (type: string) => {
     const r = playerRes[type];
@@ -84,7 +87,7 @@ const ResourceHUD = ({ sessionId, playerName, cities }: ResourceHUDProps) => {
     {
       icon: <Users className="h-3 w-3" />,
       label: "Muži",
-      value: `${availableManpower}/${realm.manpower_pool || 0}`,
+      value: `${availableManpower}/${computedPool}`,
     },
   ];
 

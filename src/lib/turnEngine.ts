@@ -59,12 +59,44 @@ export async function ensureRealmResources(sessionId: string, playerName: string
     .eq("player_name", playerName)
     .maybeSingle();
   
-  if (existing) return existing;
+  if (existing) {
+    // Always recompute manpower_pool from population × mobilization_rate
+    const updated = await recomputeManpowerPool(sessionId, playerName, existing);
+    return updated || existing;
+  }
   
   const { data } = await supabase.from("realm_resources").insert({
     session_id: sessionId, player_name: playerName,
   }).select().single();
+  if (data) {
+    const updated = await recomputeManpowerPool(sessionId, playerName, data);
+    return updated || data;
+  }
   return data;
+}
+
+/** Recompute manpower_pool = total population of player's cities × mobilization_rate */
+export async function recomputeManpowerPool(sessionId: string, playerName: string, realm: any) {
+  const { data: cities } = await supabase
+    .from("cities")
+    .select("population_total")
+    .eq("session_id", sessionId)
+    .eq("owner_player", playerName);
+
+  const totalPopulation = (cities || []).reduce((s, c) => s + (c.population_total || 0), 0);
+  const rate = realm.mobilization_rate || 0.1;
+  const newPool = Math.floor(totalPopulation * rate);
+
+  if (newPool !== realm.manpower_pool) {
+    const { data: updated } = await supabase
+      .from("realm_resources")
+      .update({ manpower_pool: newPool, updated_at: new Date().toISOString() })
+      .eq("id", realm.id)
+      .select()
+      .single();
+    return updated;
+  }
+  return realm;
 }
 
 export async function recruitStack(
