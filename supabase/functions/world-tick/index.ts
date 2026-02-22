@@ -622,12 +622,7 @@ Deno.serve(async (req) => {
     }
     results.reputation_changes = reputationResults;
 
-    // ========== FINALIZE TICK ==========
-    await supabase.from("world_tick_log").update({
-      status: "completed",
-      finished_at: new Date().toISOString(),
-      results,
-    }).eq("id", tickId);
+    // (economy recompute runs next, then final tick update)
 
     // ========== 11. ECONOMY RECOMPUTE ==========
     // Run economy-recompute for each unique player after all physics
