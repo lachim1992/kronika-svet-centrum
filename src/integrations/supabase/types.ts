@@ -479,6 +479,121 @@ export type Database = {
           },
         ]
       }
+      civ_influence: {
+        Row: {
+          created_at: string
+          diplomatic_score: number
+          id: string
+          law_stability_score: number
+          military_score: number
+          player_name: string
+          reputation_score: number
+          session_id: string
+          territorial_score: number
+          total_influence: number
+          trade_score: number
+          turn_number: number
+        }
+        Insert: {
+          created_at?: string
+          diplomatic_score?: number
+          id?: string
+          law_stability_score?: number
+          military_score?: number
+          player_name: string
+          reputation_score?: number
+          session_id: string
+          territorial_score?: number
+          total_influence?: number
+          trade_score?: number
+          turn_number?: number
+        }
+        Update: {
+          created_at?: string
+          diplomatic_score?: number
+          id?: string
+          law_stability_score?: number
+          military_score?: number
+          player_name?: string
+          reputation_score?: number
+          session_id?: string
+          territorial_score?: number
+          total_influence?: number
+          trade_score?: number
+          turn_number?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "civ_influence_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      civ_tensions: {
+        Row: {
+          border_proximity: number
+          broken_treaties: number
+          conflicting_alliances: number
+          created_at: string
+          crisis_triggered: boolean
+          id: string
+          military_diff: number
+          player_a: string
+          player_b: string
+          session_id: string
+          total_tension: number
+          trade_embargo: number
+          turn_number: number
+          war_roll_result: number | null
+          war_roll_triggered: boolean
+        }
+        Insert: {
+          border_proximity?: number
+          broken_treaties?: number
+          conflicting_alliances?: number
+          created_at?: string
+          crisis_triggered?: boolean
+          id?: string
+          military_diff?: number
+          player_a: string
+          player_b: string
+          session_id: string
+          total_tension?: number
+          trade_embargo?: number
+          turn_number?: number
+          war_roll_result?: number | null
+          war_roll_triggered?: boolean
+        }
+        Update: {
+          border_proximity?: number
+          broken_treaties?: number
+          conflicting_alliances?: number
+          created_at?: string
+          crisis_triggered?: boolean
+          id?: string
+          military_diff?: number
+          player_a?: string
+          player_b?: string
+          session_id?: string
+          total_tension?: number
+          trade_embargo?: number
+          turn_number?: number
+          war_roll_result?: number | null
+          war_roll_triggered?: boolean
+        }
+        Relationships: [
+          {
+            foreignKeyName: "civ_tensions_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       civilizations: {
         Row: {
           ai_personality: string | null
@@ -1769,6 +1884,56 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "intelligence_reports_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      laws: {
+        Row: {
+          ai_epic_text: string | null
+          created_at: string
+          enacted_turn: number
+          full_text: string
+          id: string
+          is_active: boolean
+          law_name: string
+          player_name: string
+          repealed_turn: number | null
+          session_id: string
+          structured_effects: Json
+        }
+        Insert: {
+          ai_epic_text?: string | null
+          created_at?: string
+          enacted_turn?: number
+          full_text: string
+          id?: string
+          is_active?: boolean
+          law_name: string
+          player_name: string
+          repealed_turn?: number | null
+          session_id: string
+          structured_effects?: Json
+        }
+        Update: {
+          ai_epic_text?: string | null
+          created_at?: string
+          enacted_turn?: number
+          full_text?: string
+          id?: string
+          is_active?: boolean
+          law_name?: string
+          player_name?: string
+          repealed_turn?: number | null
+          session_id?: string
+          structured_effects?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "laws_session_id_fkey"
             columns: ["session_id"]
             isOneToOne: false
             referencedRelation: "game_sessions"
@@ -3541,6 +3706,47 @@ export type Database = {
           },
           {
             foreignKeyName: "world_memories_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      world_tick_log: {
+        Row: {
+          created_at: string
+          finished_at: string | null
+          id: string
+          results: Json
+          session_id: string
+          started_at: string
+          status: string
+          turn_number: number
+        }
+        Insert: {
+          created_at?: string
+          finished_at?: string | null
+          id?: string
+          results?: Json
+          session_id: string
+          started_at?: string
+          status?: string
+          turn_number: number
+        }
+        Update: {
+          created_at?: string
+          finished_at?: string | null
+          id?: string
+          results?: Json
+          session_id?: string
+          started_at?: string
+          status?: string
+          turn_number?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "world_tick_log_session_id_fkey"
             columns: ["session_id"]
             isOneToOne: false
             referencedRelation: "game_sessions"

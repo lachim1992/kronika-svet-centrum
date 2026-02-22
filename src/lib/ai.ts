@@ -96,3 +96,19 @@ export async function extractEventsFromText(
 
   return data;
 }
+
+export async function runWorldTick(
+  sessionId: string,
+  turnNumber: number
+): Promise<{ ok: boolean; tickId?: string; results?: any; error?: string }> {
+  const { data, error } = await supabase.functions.invoke("world-tick", {
+    body: { sessionId, turnNumber },
+  });
+
+  if (error) {
+    console.error("World tick error:", error);
+    return { ok: false, error: error.message };
+  }
+
+  return data;
+}
