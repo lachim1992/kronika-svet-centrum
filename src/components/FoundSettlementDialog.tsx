@@ -72,7 +72,38 @@ const FoundSettlementDialog = ({
     const selectedProvince = provinces.find(p => p.id === provinceId);
     setCreating(true);
     try {
-      // 1. Create city
+      // 0. Find free hex coordinates — fetch all occupied coords in this session
+      const { data: occupiedCities } = await supabase
+        .from("cities")
+        .select("province_q, province_r")
+        .eq("session_id", sessionId);
+      
+      const occupied = new Set(
+        (occupiedCities || []).map(c => `${c.province_q},${c.province_r}`)
+      );
+
+      // Spiral outward from (0,0) to find a free hex
+      let freeQ = 0, freeR = 0, found = false;
+      const directions = [[1,0],[1,-1],[0,-1],[-1,0],[-1,1],[0,1]];
+      if (!occupied.has("0,0")) {
+        found = true;
+      } else {
+        outer:
+        for (let ring = 1; ring <= 20; ring++) {
+          let q = 0, r = -ring;
+          for (let d = 0; d < 6; d++) {
+            for (let step = 0; step < ring; step++) {
+              if (!occupied.has(`${q},${r}`)) {
+                freeQ = q; freeR = r; found = true; break outer;
+              }
+              q += directions[d][0]; r += directions[d][1];
+            }
+          }
+        }
+      }
+      if (!found) { freeQ = Math.floor(Math.random() * 100) + 20; freeR = Math.floor(Math.random() * 100) + 20; }
+
+      // 1. Create city with unique coordinates
       const { data: cityData, error: cityErr } = await supabase.from("cities").insert({
         session_id: sessionId,
         owner_player: currentPlayerName,
@@ -84,6 +115,15 @@ const FoundSettlementDialog = ({
         tags: selectedTags.length > 0 ? selectedTags : null,
         founded_round: currentTurn,
         flavor_prompt: flavorPrompt.trim() || null,
+        province_q: freeQ,
+        province_r: freeR,
+        population_total: 1000,
+        population_peasants: 800,
+        population_burghers: 150,
+        population_clerics: 50,
+        city_stability: 70,
+        local_grain_reserve: 0,
+        local_granary_capacity: 0,
       }).select("id").single();
 
       if (cityErr) throw cityErr;
@@ -160,6 +200,21 @@ const FoundSettlementDialog = ({
         }
       }
       await supabase.from("discoveries").upsert(discoveryRows, { onConflict: "session_id,player_name,entity_type,entity_id" });
+
+      // 7. Create settlement resource profile for economic engine
+      const seed = Math.abs(cityId.split("").reduce((h: number, c: string) => ((h << 5) - h + c.charCodeAt(0)) | 0, 0));
+      const roll = seed % 100;
+      const specialType = roll < 25 ? "IRON" : roll < 50 ? "STONE" : "NONE";
+      await supabase.from("settlement_resource_profiles").upsert({
+        city_id: cityId,
+        produces_grain: true,
+        produces_wood: true,
+        special_resource_type: specialType,
+        base_grain: 8,
+        base_wood: 6,
+        base_special: specialType !== "NONE" ? 2 : 0,
+        founded_seed: cityId,
+      } as any, { onConflict: "city_id" });
 
       toast.success(`🏗️ Osada ${name.trim()} založena!`);
       resetForm();
