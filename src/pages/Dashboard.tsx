@@ -14,6 +14,7 @@ import type { TabId } from "@/components/layout/BottomNav";
 import ActionChooser from "@/components/layout/ActionChooser";
 import WorldEventDetailPanel from "@/components/WorldEventDetailPanel";
 import GameHubFAB from "@/components/layout/GameHubFAB";
+import FoundSettlementDialog from "@/components/FoundSettlementDialog";
 import HomeTab from "@/pages/game/HomeTab";
 import WorldTab from "@/pages/game/WorldTab";
 import RealmTab from "@/pages/game/RealmTab";
@@ -51,7 +52,7 @@ const Dashboard = () => {
   const [worldFoundation, setWorldFoundation] = useState<any>(null);
   const [codexEntityTarget, setCodexEntityTarget] = useState<{ type: string; id: string } | null>(null);
   const [wikiEntityTarget, setWikiEntityTarget] = useState<{ type: string; id: string } | null>(null);
-  const [foundCityTrigger, setFoundCityTrigger] = useState(0);
+  const [showFoundDialog, setShowFoundDialog] = useState(false);
 
   useEffect(() => {
     if (!user || !sessionId) return;
@@ -113,8 +114,7 @@ const Dashboard = () => {
     console.log(`Dashboard handleAction: ${action}`);
 
     if (action === "found_city") {
-      setActiveTab("home");
-      setFoundCityTrigger(prev => prev + 1);
+      setShowFoundDialog(true);
       return;
     }
 
@@ -223,6 +223,19 @@ const Dashboard = () => {
             players={players}
           />
           <ActionChooser open={showActionChooser} onClose={() => setShowActionChooser(false)} onAction={handleAction} />
+          <FoundSettlementDialog
+            open={showFoundDialog}
+            onClose={() => setShowFoundDialog(false)}
+            sessionId={session.id}
+            currentPlayerName={myPlayerName}
+            currentTurn={currentTurn}
+            myRole={myRole}
+            onCreated={(cityId) => {
+              refetch();
+              setWikiEntityTarget({ type: "city", id: cityId });
+              setActiveTab("wiki");
+            }}
+          />
           <WorldEventDetailPanel
             eventId={eventDetailId}
             open={!!eventDetailId}
@@ -232,7 +245,7 @@ const Dashboard = () => {
         </>
       }
     >
-      {activeTab === "home" && <HomeTab {...sharedProps} foundCityTrigger={foundCityTrigger} />}
+      {activeTab === "home" && <HomeTab {...sharedProps} onFoundCity={() => setShowFoundDialog(true)} />}
       {activeTab === "world" && <WorldTab {...sharedProps} worldEntityTarget={worldEntityTarget} onClearWorldEntityTarget={() => setWorldEntityTarget(null)} />}
       {activeTab === "worldmap" && (
         <WorldMapTab

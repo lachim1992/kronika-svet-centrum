@@ -45,20 +45,18 @@ interface Props {
   onEventClick?: (eventId: string) => void;
   onEntityClick?: (type: string, id: string) => void;
   onRefetch?: () => void;
-  foundCityTrigger?: number;
+  onFoundCity?: () => void;
 }
 
 const HomeTab = ({
   sessionId, session, cities, players, currentPlayerName, currentTurn, myRole,
-  onEntityClick, onRefetch, foundCityTrigger,
+  onEntityClick, onRefetch, onFoundCity,
 }: Props) => {
   const [realm, setRealm] = useState<any>(null);
   const [stacks, setStacks] = useState<any[]>([]);
   const [sortKey, setSortKey] = useState<SortKey>("population");
   const [hasProvince, setHasProvince] = useState<boolean | null>(null);
   const [showOnboarding, setShowOnboarding] = useState(false);
-  const [showCreateSettlement, setShowCreateSettlement] = useState(false);
-  const [playerProvinces, setPlayerProvinces] = useState<any[]>([]);
   const [processingTurn, setProcessingTurn] = useState(false);
 
   const isAIMode = session?.game_mode === "tb_single_ai";
@@ -78,7 +76,6 @@ const HomeTab = ({
     if (realmRes.data) setRealm(realmRes.data);
     setStacks(stacksRes.data || []);
     const provs = provRes.data || [];
-    setPlayerProvinces(provs);
     const playerHasProvince = provs.length > 0;
     setHasProvince(playerHasProvince);
     // Show onboarding for non-admin players with no province and no cities
@@ -167,18 +164,7 @@ const HomeTab = ({
 
   useEffect(() => { fetchRealm(); }, [fetchRealm]);
 
-  // Handle found_city trigger from FAB/Dashboard
-  useEffect(() => {
-    if (!foundCityTrigger || foundCityTrigger === 0) return;
-    if (hasProvince === null) return; // still loading
-    if (!hasProvince) {
-      // No province → show onboarding
-      setShowOnboarding(true);
-    } else {
-      // Has province → show create settlement form
-      setShowCreateSettlement(true);
-    }
-  }, [foundCityTrigger, hasProvince]);
+  // No more foundCityTrigger — founding is handled by the unified dialog in Dashboard
 
   const totalPop = myCities.reduce((s, c) => s + (c.population_total || 0), 0);
   const totalPower = stacks.reduce((s, st) => s + (st.power || 0), 0);
@@ -281,7 +267,7 @@ const HomeTab = ({
         <h3 className="font-display font-semibold text-base">Města a osady ({myCities.length})</h3>
         <div className="flex items-center gap-2">
           {hasProvince && (
-            <Button size="sm" variant="outline" className="font-display text-xs" onClick={() => setShowCreateSettlement(true)}>
+            <Button size="sm" variant="outline" className="font-display text-xs" onClick={() => onFoundCity?.()}>
               <Plus className="h-3 w-3 mr-1" />Založit osadu
             </Button>
           )}
@@ -299,28 +285,13 @@ const HomeTab = ({
         </div>
       </div>
 
-      {/* Inline Create Settlement Form */}
-      {showCreateSettlement && <CreateSettlementForm
-        sessionId={sessionId}
-        currentPlayerName={currentPlayerName}
-        currentTurn={currentTurn}
-        provinces={playerProvinces}
-        onCreated={(cityId) => {
-          setShowCreateSettlement(false);
-          fetchRealm();
-          onRefetch?.();
-          onEntityClick?.("city", cityId);
-        }}
-        onCancel={() => setShowCreateSettlement(false)}
-      />}
-
       {/* Empty state */}
       {myCities.length === 0 ? (
         <div className="game-card p-10 text-center">
           <Castle className="h-14 w-14 text-muted-foreground mx-auto mb-4 opacity-40" />
           <p className="text-base text-muted-foreground mb-4">Zatím neovládáte žádná sídla.</p>
           {myRole === "admin" ? (
-            <Button size="lg" className="font-display" onClick={() => onEntityClick?.("action", "found_city")}>
+            <Button size="lg" className="font-display" onClick={() => onFoundCity?.()}>
               Založit první město
             </Button>
           ) : (
@@ -439,100 +410,5 @@ const HomeTab = ({
     </div>
   );
 };
-
-/* ─── Inline Settlement Creation Form ─── */
-
-function CreateSettlementForm({ sessionId, currentPlayerName, currentTurn, provinces, onCreated, onCancel }: {
-  sessionId: string;
-  currentPlayerName: string;
-  currentTurn: number;
-  provinces: { id: string; name: string }[];
-  onCreated: (cityId: string) => void;
-  onCancel: () => void;
-}) {
-  const [name, setName] = useState("");
-  const [provinceId, setProvinceId] = useState(provinces[0]?.id || "");
-  const [creating, setCreating] = useState(false);
-
-  const handleCreate = async () => {
-    if (!name.trim()) { toast.error("Zadejte název osady"); return; }
-    if (!provinceId) { toast.error("Vyberte provincii"); return; }
-
-    const selectedProvince = provinces.find(p => p.id === provinceId);
-    setCreating(true);
-    try {
-      const { data, error } = await supabase.from("cities").insert({
-        session_id: sessionId,
-        owner_player: currentPlayerName,
-        name: name.trim(),
-        province_id: provinceId,
-        province: selectedProvince?.name || "",
-        level: "Osada",
-        settlement_level: "HAMLET",
-        founded_round: currentTurn,
-      }).select("id").single();
-
-      if (error) throw error;
-
-      // Auto-discover province and city + all sibling cities in that province
-      const discoveryRows: any[] = [
-        { session_id: sessionId, player_name: currentPlayerName, entity_type: "city", entity_id: data.id, source: "founded" },
-        { session_id: sessionId, player_name: currentPlayerName, entity_type: "province", entity_id: provinceId, source: "founded" },
-      ];
-      // Also discover the province's region
-      const { data: prov } = await supabase.from("provinces").select("region_id").eq("id", provinceId).single();
-      if (prov?.region_id) {
-        discoveryRows.push({ session_id: sessionId, player_name: currentPlayerName, entity_type: "region", entity_id: prov.region_id, source: "founded" });
-      }
-      // Discover all existing cities in the same province
-      const { data: siblingCities } = await supabase.from("cities").select("id").eq("session_id", sessionId).eq("province_id", provinceId).neq("id", data.id);
-      if (siblingCities) {
-        for (const sc of siblingCities) {
-          discoveryRows.push({ session_id: sessionId, player_name: currentPlayerName, entity_type: "city", entity_id: sc.id, source: "founded" });
-        }
-      }
-      await supabase.from("discoveries").upsert(discoveryRows, { onConflict: "session_id,player_name,entity_type,entity_id" });
-
-      toast.success(`Osada ${name.trim()} založena!`);
-      onCreated(data.id);
-    } catch (err: any) {
-      console.error(err);
-      toast.error("Chyba: " + (err.message || "Nepodařilo se založit osadu"));
-    }
-    setCreating(false);
-  };
-
-  return (
-    <div className="game-card p-5 space-y-4 border-primary/30">
-      <h3 className="font-display font-semibold text-sm flex items-center gap-2">
-        <Castle className="h-4 w-4 text-primary" />
-        Založit novou osadu
-      </h3>
-      <div className="space-y-3">
-        <Input
-          placeholder="Název osady"
-          value={name}
-          onChange={e => setName(e.target.value)}
-        />
-        {provinces.length > 1 ? (
-          <Select value={provinceId} onValueChange={setProvinceId}>
-            <SelectTrigger className="h-9 text-sm"><SelectValue placeholder="Vyberte provincii" /></SelectTrigger>
-            <SelectContent>
-              {provinces.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
-            </SelectContent>
-          </Select>
-        ) : (
-          <p className="text-sm text-muted-foreground">Provincie: <strong>{provinces[0]?.name}</strong></p>
-        )}
-      </div>
-      <div className="flex gap-2">
-        <Button onClick={handleCreate} disabled={creating || !name.trim()} className="font-display flex-1">
-          {creating ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Zakládám...</> : "Založit osadu"}
-        </Button>
-        <Button variant="outline" onClick={onCancel} className="font-display">Zrušit</Button>
-      </div>
-    </div>
-  );
-}
 
 export default HomeTab;
