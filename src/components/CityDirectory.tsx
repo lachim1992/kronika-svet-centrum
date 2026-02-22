@@ -1,20 +1,26 @@
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import type { Tables } from "@/integrations/supabase/types";
-import { addCity, updateCity, deleteCity } from "@/hooks/useGameSession";
+import { addCity } from "@/hooks/useGameSession";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { Building2, Plus, Search, MapPin, Shield, Flame, Eye } from "lucide-react";
+import { Building2, Plus, Search, MapPin, Shield, Flame, Eye, ImageIcon, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import CityDetailPanel from "@/components/CityDetailPanel";
 import { getPermissions } from "@/lib/permissions";
+import { supabase } from "@/integrations/supabase/client";
 
 type City = Tables<"cities">;
 type GameEvent = Tables<"game_events">;
 type GamePlayer = Tables<"game_players">;
 type WorldMemory = Tables<"world_memories">;
 type Wonder = Tables<"wonders">;
+
+interface WikiInfo {
+  image_url: string | null;
+  summary: string | null;
+}
 
 const CITY_LEVELS = ["Osada", "Městečko", "Město", "Polis"];
 const CITY_TAGS = ["přístav", "pevnost", "svaté město", "obchodní uzel", "hornické město"];
@@ -60,7 +66,72 @@ const CityDirectory = ({
   const [level, setLevel] = useState("Osada");
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
 
+  // Wiki data keyed by entity_id
+  const [wikiMap, setWikiMap] = useState<Record<string, WikiInfo>>({});
+  const [generatingImages, setGeneratingImages] = useState<Set<string>>(new Set());
+
   const playerNames = players.map(p => p.player_name);
+
+  // Fetch wiki_entries for all cities in this session
+  useEffect(() => {
+    if (!sessionId || cities.length === 0) return;
+    const fetchWiki = async () => {
+      const { data } = await supabase
+        .from("wiki_entries")
+        .select("entity_id, image_url, summary")
+        .eq("session_id", sessionId)
+        .eq("entity_type", "city")
+        .in("entity_id", cities.map(c => c.id));
+      if (data) {
+        const map: Record<string, WikiInfo> = {};
+        for (const w of data) {
+          map[w.entity_id] = { image_url: w.image_url, summary: w.summary };
+        }
+        setWikiMap(map);
+      }
+    };
+    fetchWiki();
+  }, [sessionId, cities]);
+
+  // Lazy generate image for a single city
+  const lazyGenerateImage = useCallback(async (city: City) => {
+    if (generatingImages.has(city.id)) return;
+    setGeneratingImages(prev => new Set(prev).add(city.id));
+    try {
+      const { data } = await supabase.functions.invoke("generate-entity-media", {
+        body: {
+          sessionId,
+          entityId: city.id,
+          entityType: "city",
+          entityName: city.name,
+          kind: "cover",
+          imagePrompt: [city.flavor_prompt, city.name, city.province, ...(city.tags || [])].filter(Boolean).join(", "),
+          createdBy: "lazy_hydrate",
+        },
+      });
+      if (data?.imageUrl) {
+        setWikiMap(prev => ({
+          ...prev,
+          [city.id]: { ...prev[city.id], image_url: data.imageUrl },
+        }));
+        // Also write back to wiki_entries
+        await supabase
+          .from("wiki_entries")
+          .update({ image_url: data.imageUrl, image_prompt: data.imagePrompt } as any)
+          .eq("session_id", sessionId)
+          .eq("entity_type", "city")
+          .eq("entity_id", city.id);
+      }
+    } catch (e) {
+      console.error("Lazy image gen failed for", city.name, e);
+    } finally {
+      setGeneratingImages(prev => {
+        const next = new Set(prev);
+        next.delete(city.id);
+        return next;
+      });
+    }
+  }, [sessionId, generatingImages]);
 
   const handleAdd = async () => {
     if (!name.trim()) { toast.error("Zadejte název města"); return; }
@@ -192,6 +263,9 @@ const CityDirectory = ({
 
       <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
         {filtered.map(city => {
+          const wiki = wikiMap[city.id];
+          const cityImage = wiki?.image_url || null;
+          const citySummary = wiki?.summary || null;
           const cityEventCount = events.filter(e => e.city_id === city.id).length;
           const cityWonderCount = wonders.filter(w => w.city_name === city.name).length;
           const pop = city.population_total || 0;
@@ -199,65 +273,99 @@ const CityDirectory = ({
           const burgherPct = pop > 0 ? Math.round((city.population_burghers || 0) / pop * 100) : 0;
           const clericPct = pop > 0 ? Math.round((city.population_clerics || 0) / pop * 100) : 0;
           const SETTLEMENT_LABELS: Record<string, string> = { HAMLET: "Osada", TOWNSHIP: "Městečko", CITY: "Město", POLIS: "Polis" };
+          const isGenerating = generatingImages.has(city.id);
 
           return (
             <div
               key={city.id}
-              className={`p-4 rounded-lg border bg-card shadow-parchment hover:border-primary/50 transition-colors cursor-pointer ${city.famine_turn ? "border-destructive/50" : "border-border"}`}
+              className={`rounded-lg border bg-card shadow-parchment hover:border-primary/50 transition-colors cursor-pointer overflow-hidden ${city.famine_turn ? "border-destructive/50" : "border-border"}`}
               onClick={() => setSelectedCity(city)}
             >
-              <div className="flex items-start justify-between mb-2">
-                <div>
-                  <h3 className="font-display font-semibold text-base flex items-center gap-1.5">
-                    {city.name}
-                    {STATUS_ICONS[(city as any).status || "ok"]}
-                    {city.famine_turn && <Flame className="h-3 w-3 text-destructive" />}
-                  </h3>
-                  <p className="text-xs text-muted-foreground">{city.owner_player}</p>
-                </div>
-                <div className="flex flex-col items-end gap-1">
-                  <Badge variant="secondary" className="text-[10px]">{SETTLEMENT_LABELS[city.settlement_level] || city.level}</Badge>
-                  {(city as any).status && (city as any).status !== "ok" && (
-                    <Badge variant="destructive" className="text-[10px]">{STATUS_LABELS[(city as any).status]}</Badge>
-                  )}
-                </div>
+              {/* City image / placeholder */}
+              <div className="relative h-28 w-full bg-muted">
+                {cityImage ? (
+                  <img src={cityImage} alt={city.name} className="w-full h-full object-cover" />
+                ) : (
+                  <div className="w-full h-full bg-gradient-to-br from-primary/10 via-muted to-primary/5 flex items-center justify-center">
+                    {isGenerating ? (
+                      <Loader2 className="h-8 w-8 text-muted-foreground/30 animate-spin" />
+                    ) : (
+                      <Building2 className="h-8 w-8 text-muted-foreground/20" />
+                    )}
+                  </div>
+                )}
+                {/* Lazy generate button — only show when no image and not generating */}
+                {!cityImage && !isGenerating && (
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    className="absolute bottom-1 right-1 h-6 text-[10px] gap-1 opacity-80 hover:opacity-100"
+                    onClick={e => { e.stopPropagation(); lazyGenerateImage(city); }}
+                  >
+                    <ImageIcon className="h-3 w-3" />Generovat
+                  </Button>
+                )}
               </div>
 
-              {/* Population total + layers mini bar */}
-              <div className="mb-2">
-                <div className="flex items-center justify-between text-xs mb-0.5">
-                  <span className="text-muted-foreground">Populace</span>
-                  <span className="font-semibold">{pop.toLocaleString()}</span>
+              <div className="p-4">
+                <div className="flex items-start justify-between mb-1">
+                  <div>
+                    <h3 className="font-display font-semibold text-base flex items-center gap-1.5">
+                      {city.name}
+                      {STATUS_ICONS[(city as any).status || "ok"]}
+                      {city.famine_turn && <Flame className="h-3 w-3 text-destructive" />}
+                    </h3>
+                    <p className="text-xs text-muted-foreground">{city.owner_player}</p>
+                  </div>
+                  <div className="flex flex-col items-end gap-1">
+                    <Badge variant="secondary" className="text-[10px]">{SETTLEMENT_LABELS[city.settlement_level] || city.level}</Badge>
+                    {(city as any).status && (city as any).status !== "ok" && (
+                      <Badge variant="destructive" className="text-[10px]">{STATUS_LABELS[(city as any).status]}</Badge>
+                    )}
+                  </div>
                 </div>
-                <div className="flex h-1.5 rounded-full overflow-hidden bg-muted">
-                  <div className="bg-primary/70" style={{ width: `${peasantPct}%` }} title={`Sedláci ${peasantPct}%`} />
-                  <div className="bg-accent" style={{ width: `${burgherPct}%` }} title={`Měšťané ${burgherPct}%`} />
-                  <div className="bg-muted-foreground/40" style={{ width: `${clericPct}%` }} title={`Klérus ${clericPct}%`} />
-                </div>
-              </div>
 
-              {/* Stability + granary */}
-              <div className="flex items-center gap-3 text-[10px] text-muted-foreground mb-1">
-                <span>Stabilita: <strong className={city.city_stability < 40 ? "text-destructive" : ""}>{city.city_stability || 70}</strong></span>
-                <span>Sýpka: <strong>{city.local_grain_reserve || 0}/{city.local_granary_capacity || 0}</strong></span>
-              </div>
+                {/* Wiki summary */}
+                {citySummary && (
+                  <p className="text-xs text-muted-foreground italic line-clamp-2 mb-2">{citySummary}</p>
+                )}
 
-              {city.province && (
-                <p className="text-xs text-muted-foreground flex items-center gap-1 mb-1">
-                  <MapPin className="h-3 w-3" />{city.province}
-                </p>
-              )}
-              {city.tags && city.tags.length > 0 && (
-                <div className="flex gap-1 mb-2 flex-wrap">
-                  {city.tags.map(t => <Badge key={t} variant="outline" className="text-xs">{t}</Badge>)}
+                {/* Population total + layers mini bar */}
+                <div className="mb-2">
+                  <div className="flex items-center justify-between text-xs mb-0.5">
+                    <span className="text-muted-foreground">Populace</span>
+                    <span className="font-semibold">{pop.toLocaleString()}</span>
+                  </div>
+                  <div className="flex h-1.5 rounded-full overflow-hidden bg-muted">
+                    <div className="bg-primary/70" style={{ width: `${peasantPct}%` }} title={`Sedláci ${peasantPct}%`} />
+                    <div className="bg-accent" style={{ width: `${burgherPct}%` }} title={`Měšťané ${burgherPct}%`} />
+                    <div className="bg-muted-foreground/40" style={{ width: `${clericPct}%` }} title={`Klérus ${clericPct}%`} />
+                  </div>
                 </div>
-              )}
-              <div className="flex items-center justify-between text-xs text-muted-foreground mt-2 pt-2 border-t border-border">
-                <span>📜 {cityEventCount} událostí</span>
-                {cityWonderCount > 0 && <span>🏛️ {cityWonderCount} divů</span>}
-                <Button size="sm" variant="ghost" className="h-6 text-xs gap-1" onClick={e => { e.stopPropagation(); setSelectedCity(city); }}>
-                  <Eye className="h-3 w-3" />Profil
-                </Button>
+
+                {/* Stability + granary */}
+                <div className="flex items-center gap-3 text-[10px] text-muted-foreground mb-1">
+                  <span>Stabilita: <strong className={city.city_stability < 40 ? "text-destructive" : ""}>{city.city_stability || 70}</strong></span>
+                  <span>Sýpka: <strong>{city.local_grain_reserve || 0}/{city.local_granary_capacity || 0}</strong></span>
+                </div>
+
+                {city.province && (
+                  <p className="text-xs text-muted-foreground flex items-center gap-1 mb-1">
+                    <MapPin className="h-3 w-3" />{city.province}
+                  </p>
+                )}
+                {city.tags && city.tags.length > 0 && (
+                  <div className="flex gap-1 mb-2 flex-wrap">
+                    {city.tags.map(t => <Badge key={t} variant="outline" className="text-xs">{t}</Badge>)}
+                  </div>
+                )}
+                <div className="flex items-center justify-between text-xs text-muted-foreground mt-2 pt-2 border-t border-border">
+                  <span>📜 {cityEventCount} událostí</span>
+                  {cityWonderCount > 0 && <span>🏛️ {cityWonderCount} divů</span>}
+                  <Button size="sm" variant="ghost" className="h-6 text-xs gap-1" onClick={e => { e.stopPropagation(); setSelectedCity(city); }}>
+                    <Eye className="h-3 w-3" />Profil
+                  </Button>
+                </div>
               </div>
             </div>
           );
