@@ -1,9 +1,10 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { closeTurnForPlayer, advanceTurn } from "@/hooks/useGameSession";
+import { runWorldTick } from "@/lib/ai";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Lock, CheckCircle2, Clock, Play, Bot, Loader2 } from "lucide-react";
+import { Lock, CheckCircle2, Clock, Play, Bot, Loader2, Zap } from "lucide-react";
 import { toast } from "sonner";
 
 interface Props {
@@ -80,9 +81,25 @@ const TurnProgressionPanel = ({ sessionId, currentTurn, players, currentPlayerNa
   };
 
   const handleAdminCloseTurn = async () => {
-    // Process AI factions first (if AI mode)
+    setProcessingAI(true);
+
+    // ===== WORLD TICK: deterministic engine first =====
+    try {
+      const tickResult = await runWorldTick(sessionId, currentTurn);
+      if (tickResult.ok) {
+        const r = tickResult.results || {};
+        const growthCount = r.settlement_growth?.length || 0;
+        const tensionCrises = (r.tensions || []).filter((t: any) => t.crisis_triggered).length;
+        toast.info(`⚙️ World Tick: ${growthCount} měst rostlo, ${tensionCrises} krizí.`);
+      } else {
+        console.warn("World tick warning:", tickResult.error);
+      }
+    } catch (e) {
+      console.error("World tick error:", e);
+    }
+
+    // Process AI factions (if AI mode)
     if (isAIMode) {
-      setProcessingAI(true);
       try {
         const aiCount = await processAIFactions();
         if (aiCount > 0) toast.info(`${aiCount} AI frakcí provedlo svůj tah.`);
@@ -115,7 +132,6 @@ const TurnProgressionPanel = ({ sessionId, currentTurn, players, currentPlayerNa
     // Compress history in background (AI mode only)
     if (isAIMode) {
       try {
-        // Fetch session tier
         const { data: sess } = await supabase.from("game_sessions")
           .select("tier").eq("id", sessionId).single();
         
@@ -125,9 +141,9 @@ const TurnProgressionPanel = ({ sessionId, currentTurn, players, currentPlayerNa
       } catch (e) {
         console.error("History compression error:", e);
       }
-      setProcessingAI(false);
     }
 
+    setProcessingAI(false);
     toast.success(`Kolo ${currentTurn} uzavřeno. Pokračujeme rokem ${currentTurn + 1}.`);
     onRefetch();
   };
