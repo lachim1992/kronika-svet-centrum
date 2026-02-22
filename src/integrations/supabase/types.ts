@@ -235,6 +235,7 @@ export type Database = {
           city_description_last_turn: number
           city_stability: number
           created_at: string
+          culture_id: string | null
           custom_layers: boolean
           devastated_round: number | null
           development_level: number
@@ -244,6 +245,7 @@ export type Database = {
           founded_round: number
           id: string
           influence_score: number
+          language_id: string | null
           last_tick_at: string | null
           last_turn_grain_cons: number
           last_turn_grain_prod: number
@@ -275,6 +277,7 @@ export type Database = {
           city_description_last_turn?: number
           city_stability?: number
           created_at?: string
+          culture_id?: string | null
           custom_layers?: boolean
           devastated_round?: number | null
           development_level?: number
@@ -284,6 +287,7 @@ export type Database = {
           founded_round?: number
           id?: string
           influence_score?: number
+          language_id?: string | null
           last_tick_at?: string | null
           last_turn_grain_cons?: number
           last_turn_grain_prod?: number
@@ -315,6 +319,7 @@ export type Database = {
           city_description_last_turn?: number
           city_stability?: number
           created_at?: string
+          culture_id?: string | null
           custom_layers?: boolean
           devastated_round?: number | null
           development_level?: number
@@ -324,6 +329,7 @@ export type Database = {
           founded_round?: number
           id?: string
           influence_score?: number
+          language_id?: string | null
           last_tick_at?: string | null
           last_turn_grain_cons?: number
           last_turn_grain_prod?: number
@@ -351,6 +357,20 @@ export type Database = {
           vulnerability_score?: number
         }
         Relationships: [
+          {
+            foreignKeyName: "cities_culture_id_fkey"
+            columns: ["culture_id"]
+            isOneToOne: false
+            referencedRelation: "cultures"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cities_language_id_fkey"
+            columns: ["language_id"]
+            isOneToOne: false
+            referencedRelation: "languages"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "cities_province_id_fkey"
             columns: ["province_id"]
@@ -743,6 +763,41 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "countries_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      cultures: {
+        Row: {
+          created_at: string
+          description: string | null
+          id: string
+          name: string
+          session_id: string
+          values_text: string | null
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          name: string
+          session_id: string
+          values_text?: string | null
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          name?: string
+          session_id?: string
+          values_text?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cultures_session_id_fkey"
             columns: ["session_id"]
             isOneToOne: false
             referencedRelation: "game_sessions"
@@ -1619,6 +1674,7 @@ export type Database = {
           epoch_style: string
           game_mode: string
           id: string
+          init_status: string
           max_players: number
           player1_name: string
           player2_name: string
@@ -1636,6 +1692,7 @@ export type Database = {
           epoch_style?: string
           game_mode?: string
           id?: string
+          init_status?: string
           max_players?: number
           player1_name?: string
           player2_name?: string
@@ -1653,6 +1710,7 @@ export type Database = {
           epoch_style?: string
           game_mode?: string
           id?: string
+          init_status?: string
           max_players?: number
           player1_name?: string
           player2_name?: string
@@ -1893,6 +1951,41 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "intelligence_reports_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      languages: {
+        Row: {
+          created_at: string
+          description: string | null
+          id: string
+          name: string
+          phonetics: string | null
+          session_id: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          name: string
+          phonetics?: string | null
+          session_id: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          name?: string
+          phonetics?: string | null
+          session_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "languages_session_id_fkey"
             columns: ["session_id"]
             isOneToOne: false
             referencedRelation: "game_sessions"

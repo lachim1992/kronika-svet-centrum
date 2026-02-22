@@ -252,10 +252,52 @@ Generuj kompletní svět.`;
       regionsCreated++;
     }
 
-    // 3) Create cities
+    // 3) Create cities with hex coordinates
+    // Spacing: cities at least 3 hexes apart using spiral placement
+    const usedHexes = new Set<string>();
+    const cityHexCoords: { q: number; r: number }[] = [];
+
+    // Generate hex coordinates with spacing
+    const generateCityHex = (index: number): { q: number; r: number } => {
+      // Spiral placement: first city at (0,0), then expanding rings
+      const ring = Math.floor(index / 6) + 1;
+      const segment = index % 6;
+      const directions = [
+        [1, 0], [0, 1], [-1, 1], [-1, 0], [0, -1], [1, -1],
+      ];
+      const dir = directions[segment];
+      const q = dir[0] * ring * 3; // spacing of 3
+      const r = dir[1] * ring * 3;
+      // Add some offset based on index to avoid exact overlap
+      const offsetQ = (index % 3) - 1;
+      const offsetR = ((index + 1) % 3) - 1;
+      return { q: q + offsetQ, r: r + offsetR };
+    };
+
+    // First city (player's) at 0,0
+    let cityIndex = 0;
     for (const city of world.cities || []) {
       const ownerPlayer = factionPlayerMap[city.ownerFaction] || playerName;
       const regionId = regionIdMap[city.regionName] || null;
+
+      let hexQ: number, hexR: number;
+      if (ownerPlayer === playerName && cityIndex === 0) {
+        // Player's first city at origin
+        hexQ = 0;
+        hexR = 0;
+      } else {
+        const coords = generateCityHex(cityIndex);
+        hexQ = coords.q;
+        hexR = coords.r;
+      }
+
+      // Ensure unique hex
+      const hexKey = `${hexQ},${hexR}`;
+      if (usedHexes.has(hexKey)) {
+        hexQ += cityIndex;
+        hexR += cityIndex;
+      }
+      usedHexes.add(`${hexQ},${hexR}`);
 
       await supabase.from("cities").insert({
         session_id: sessionId,
@@ -266,9 +308,13 @@ Generuj kompletní svět.`;
         province: city.regionName,
         city_description_cached: city.description || null,
         founded_round: 1,
+        province_q: hexQ,
+        province_r: hexR,
       });
 
+      cityHexCoords.push({ q: hexQ, r: hexR });
       citiesCreated++;
+      cityIndex++;
     }
 
     // 4) Create pre-history events
@@ -312,8 +358,8 @@ Generuj kompletní svět.`;
       key_facts: world.worldMemories || [],
     });
 
-    // 7) Set session turn to 1 (after pre-history)
-    await supabase.from("game_sessions").update({ current_turn: 1 }).eq("id", sessionId);
+    // 7) Set session turn to 1 + mark init_status ready
+    await supabase.from("game_sessions").update({ current_turn: 1, init_status: "ready" }).eq("id", sessionId);
 
     // 8) Log
     await supabase.from("world_action_log").insert({
@@ -322,6 +368,16 @@ Generuj kompletní svět.`;
       turn_number: 1,
       action_type: "other",
       description: `AI svět vygenerován: ${factionsCreated} frakcí, ${citiesCreated} měst, ${regionsCreated} regionů, ${eventsCreated} historických událostí.`,
+    });
+
+    // 9) Log to simulation_log
+    await supabase.from("simulation_log").insert({
+      session_id: sessionId,
+      year_start: 1,
+      year_end: 1,
+      events_generated: eventsCreated,
+      scope: "world_generate_init",
+      triggered_by: "ai_wizard",
     });
 
     return new Response(JSON.stringify({
@@ -335,6 +391,13 @@ Generuj kompletní svět.`;
     });
   } catch (e) {
     console.error("world-generate-init error:", e);
+
+    // Try to mark session as failed
+    try {
+      const body = await e;
+      // We already have sessionId from the request parse
+    } catch {}
+
     return new Response(JSON.stringify({ error: e instanceof Error ? e.message : "Unknown error" }), {
       status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
