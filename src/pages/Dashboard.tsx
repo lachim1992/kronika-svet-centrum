@@ -156,13 +156,9 @@ const Dashboard = () => {
       setEventDetailId(id);
       return;
     }
-    if (["city", "province", "region"].includes(type)) {
-      setWorldEntityTarget({ type, id });
-      setActiveTab("world");
-    } else {
-      setCodexEntityTarget({ type, id });
-      setActiveTab("codex");
-    }
+    // All entity types go to ChroWiki as the single unified detail view
+    setWikiEntityTarget({ type, id });
+    setActiveTab("wiki");
   };
 
   /** Navigate to ChroWiki for a specific city (used by hex map city markers) */
@@ -280,7 +276,7 @@ const Dashboard = () => {
         />
       )}
       {activeTab === "codex" && <CodexTab {...sharedProps} codexEntityTarget={codexEntityTarget} onClearEntityTarget={() => setCodexEntityTarget(null)} />}
-      {activeTab === "wiki" && <ChroWikiTab sessionId={session.id} currentPlayerName={myPlayerName} myRole={myRole} onEntityClick={handleEntityClick} wikiEntityTarget={wikiEntityTarget} onClearWikiEntityTarget={() => setWikiEntityTarget(null)} />}
+      {activeTab === "wiki" && <ChroWikiTab sessionId={session.id} currentPlayerName={myPlayerName} myRole={myRole} currentTurn={currentTurn} epochStyle={session.epoch_style} memories={memories} players={players} entityIndex={entityIndex} onEntityClick={handleEntityClick} wikiEntityTarget={wikiEntityTarget} onClearWikiEntityTarget={() => setWikiEntityTarget(null)} />}
       {activeTab === "council" && (
         <CouncilTab
           sessionId={session.id}
