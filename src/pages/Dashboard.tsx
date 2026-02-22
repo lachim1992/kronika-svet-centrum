@@ -265,7 +265,9 @@ const Dashboard = () => {
           cities={cities}
           resources={resources}
           armies={armies}
+          myRole={myRole}
           onEntityClick={handleEntityClick}
+          onRefetch={refetch}
         />
       )}
       {activeTab === "feed" && <FeedTab {...sharedProps} />}
