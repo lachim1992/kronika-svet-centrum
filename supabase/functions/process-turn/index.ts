@@ -34,13 +34,38 @@ const SETTLEMENT_WEALTH: Record<string, number> = {
   HAMLET: 1, TOWNSHIP: 2, CITY: 4, POLIS: 6,
 };
 
+// --- GRAIN CONSUMPTION per capita (balanced to match production) ---
+// A HAMLET (pop 1000, grain prod 8) should consume ~6 grain → 0.006 per capita base
+// Burghers consume more (trade/luxury), clerics moderate, peasants least
+const CONSUMPTION_PER_CAPITA = {
+  peasants: 0.005,
+  burghers: 0.010,
+  clerics: 0.008,
+};
+// Fallback: if no layer data, use flat rate
+const CONSUMPTION_PER_CAPITA_FLAT = 0.006;
+
+function computeGrainConsumption(city: any): number {
+  const peas = city.population_peasants || 0;
+  const burg = city.population_burghers || 0;
+  const cler = city.population_clerics || 0;
+  if (peas + burg + cler > 0) {
+    return Math.round(
+      peas * CONSUMPTION_PER_CAPITA.peasants +
+      burg * CONSUMPTION_PER_CAPITA.burghers +
+      cler * CONSUMPTION_PER_CAPITA.clerics
+    );
+  }
+  return Math.round((city.population_total || 0) * CONSUMPTION_PER_CAPITA_FLAT);
+}
+
 function computeWealthIncome(cities: any[]): number {
   let total = 0;
   for (const c of cities) {
-    if (c.status && c.status !== "ok") continue; // skip besieged/devastated
+    if (c.status && c.status !== "ok") continue;
     const tierBase = SETTLEMENT_WEALTH[c.settlement_level] || 1;
-    const popTax = Math.floor((c.population_total || 0) / 500); // 1 gold per 500 pop
-    const burgherTrade = Math.floor((c.population_burghers || 0) / 200); // burghers generate extra trade
+    const popTax = Math.floor((c.population_total || 0) / 500);
+    const burgherTrade = Math.floor((c.population_burghers || 0) / 200);
     total += tierBase + popTax + burgherTrade;
   }
   return total;
@@ -76,7 +101,6 @@ Deno.serve(async (req) => {
       .maybeSingle();
 
     if (!realm) {
-      // Auto-create realm resources
       const { data: newRealm } = await supabase.from("realm_resources").insert({
         session_id: sessionId, player_name: playerName,
       }).select().single();
@@ -124,7 +148,7 @@ Deno.serve(async (req) => {
     const granaryCapacity = 500 * (infra?.granary_level || 1) * (infra?.granaries_count || 1);
     const stablesCapacity = 100 * (infra?.stables_level || 1) * (infra?.stables_count || 1);
 
-    // 2) Recompute settlement layers
+    // 2b) Recompute settlement layers
     for (const city of myCities) {
       if (city.custom_layers) continue;
       const template = SETTLEMENT_TEMPLATES[city.settlement_level] || SETTLEMENT_TEMPLATES.HAMLET;
@@ -144,51 +168,9 @@ Deno.serve(async (req) => {
       city.population_clerics = clerics;
     }
 
-    // 3) Population growth
-    for (const city of myCities) {
-      const baseGrowth = 0.01;
-      const stabilityFactor = (city.city_stability - 50) / 200;
-      const foodFactor = city.famine_turn ? -0.02 : 0.01;
-      const warFactor = (city.status === "besieged" || city.status === "devastated") ? -0.02 : 0;
-      let netGrowth = baseGrowth + stabilityFactor + foodFactor + warFactor;
-      netGrowth = Math.max(-0.05, Math.min(0.05, netGrowth));
-      
-      const delta = Math.round(city.population_total * netGrowth);
-      const newPop = Math.max(200, city.population_total + delta);
-      
-      // Store per-city cached grain metrics (consumption uses class-based formula)
-      const cityGrainProd = 0; // Will be set from settlement profiles later
-      const peas = city.population_peasants || 0;
-      const burg = city.population_burghers || 0;
-      const cler = city.population_clerics || 0;
-      const cityGrainCons = (peas + burg + cler) > 0
-        ? Math.round(peas * 0.3 + burg * 0.6 + cler * 0.5)
-        : Math.round(newPop * 0.4);
-
-      await supabase.from("cities").update({
-        population_total: newPop,
-        famine_turn: false,
-        famine_severity: 0,
-        last_turn_grain_prod: cityGrainProd,
-        last_turn_grain_cons: cityGrainCons,
-      }).eq("id", city.id);
-
-      city.population_total = newPop;
-
-      if (Math.abs(delta) > city.population_total * 0.01) {
-        chronicleEntries.push(`${city.name}: populace ${delta > 0 ? "+" : ""}${delta} (${newPop})`);
-      }
-    }
-
-    // 4) Manpower pool
-    const totalPeasants = myCities.reduce((s, c) => s + c.population_peasants, 0);
-    const manpowerPool = Math.round(totalPeasants * realm.mobilization_rate);
-
-    // 5) Settlement-based resource production
-    // Mobilization penalty: halved impact (rate * 0.5)
+    // 3) Settlement-based resource production
     const mobilizationPenalty = 1 - realm.mobilization_rate * 0.5;
 
-    // Load settlement resource profiles
     const cityIds = myCities.map(c => c.id);
     const { data: profiles } = await supabase
       .from("settlement_resource_profiles")
@@ -230,22 +212,18 @@ Deno.serve(async (req) => {
       const profile = profileMap[city.id];
       const prodConsts = SETTLEMENT_PRODUCTION[city.settlement_level] || SETTLEMENT_PRODUCTION.HAMLET;
 
-      // Grain production with mobilization penalty
       const cityGrainBase = profile ? profile.base_grain : prodConsts.grain;
       const cityGrain = Math.round(cityGrainBase * mobilizationPenalty);
       totalGrainProd += cityGrain;
 
-      // Wood production (no mobilization penalty)
       const cityWood = profile ? profile.base_wood : prodConsts.wood;
       totalWoodProd += cityWood;
 
-      // Special resource
       const specialType = profile?.special_resource_type || "NONE";
       const citySpecial = specialType !== "NONE" ? (profile ? profile.base_special : prodConsts.special) : 0;
       if (specialType === "STONE") totalStoneProd += citySpecial;
       if (specialType === "IRON") totalIronProd += citySpecial;
 
-      // Cache per-city production
       await supabase.from("cities").update({
         last_turn_grain_prod: cityGrain,
         last_turn_wood_prod: cityWood,
@@ -254,100 +232,159 @@ Deno.serve(async (req) => {
       }).eq("id", city.id);
     }
 
-    // 6) Grain consumption (class-based formula)
+    // 4) Grain consumption (balanced per-capita formula)
     let totalConsumption = 0;
     for (const city of myCities) {
-      const peas = city.population_peasants || 0;
-      const burg = city.population_burghers || 0;
-      const cler = city.population_clerics || 0;
-      const cityCons = (peas + burg + cler) > 0
-        ? Math.round(peas * 0.3 + burg * 0.6 + cler * 0.5)
-        : Math.round(city.population_total * 0.4);
+      const cityCons = computeGrainConsumption(city);
       totalConsumption += cityCons;
-
-      // Update cached consumption on city
       await supabase.from("cities").update({ last_turn_grain_cons: cityCons }).eq("id", city.id);
+      city._cachedCons = cityCons;
     }
 
     // Early-game buffer: small realms get a bonus
     const earlyGameBuffer = myCities.length <= 3 ? 10 : 0;
     totalGrainProd += earlyGameBuffer;
 
-    // Guard: consumption must always be positive
     if (totalConsumption < 0) totalConsumption = Math.abs(totalConsumption);
 
-    // 7) Update granary reserves
+    // 5) Update granary reserves — FAMINE LOGIC
     const netGrain = totalGrainProd - totalConsumption;
-    let grainReserve = realm.grain_reserve;
-    let famineDeficit = 0;
+    let grainReserve = realm.grain_reserve || 0;
+    let famineActive = false;
 
     if (netGrain >= 0) {
+      // === SURPLUS: no famine, fill reserves ===
       const addToReserve = Math.min(netGrain, granaryCapacity - grainReserve);
       grainReserve += addToReserve;
+
+      // Clear famine from ALL cities (surplus = no famine)
+      for (const city of myCities) {
+        if (city.famine_turn) {
+          await supabase.from("cities").update({
+            famine_turn: false,
+            famine_severity: 0,
+          }).eq("id", city.id);
+          city.famine_turn = false;
+          city.famine_severity = 0;
+        }
+      }
     } else {
+      // === DEFICIT: drain reserves first ===
       const deficit = Math.abs(netGrain);
       const taken = Math.min(deficit, grainReserve);
       grainReserve -= taken;
-      famineDeficit = deficit - taken;
+      const remainingDeficit = deficit - taken;
+
+      if (remainingDeficit > 0) {
+        // === FAMINE: reserves depleted and still deficit ===
+        famineActive = true;
+
+        // Distribute famine across cities by vulnerability
+        for (const city of myCities) {
+          const vuln = (100 - city.city_stability) * 0.5
+            + (1 - city.local_grain_reserve / Math.max(city.local_granary_capacity, 1)) * 20
+            + ({ HAMLET: 10, TOWNSHIP: 8, CITY: 6, POLIS: 5 }[city.settlement_level] || 10);
+          city.vulnerability_score = vuln;
+        }
+
+        const sorted = [...myCities].sort((a, b) => b.vulnerability_score - a.vulnerability_score);
+        let remaining = remainingDeficit;
+
+        for (const city of sorted) {
+          if (remaining <= 0) break;
+          const cityCons = city._cachedCons || computeGrainConsumption(city);
+          const cityNeed = Math.max(0, cityCons - (city.local_grain_reserve || 0));
+          const allocDeficit = Math.min(remaining, cityNeed);
+
+          if (city.local_grain_reserve > 0) {
+            const localUsed = Math.min(city.local_grain_reserve, allocDeficit);
+            city.local_grain_reserve -= localUsed;
+          }
+
+          if (allocDeficit > 0) {
+            // Famine effects: stability loss + 5% population loss
+            const stabLoss = Math.min(20, Math.max(5, Math.round(allocDeficit / 2)));
+            const newStab = Math.max(0, city.city_stability - stabLoss);
+            const popLoss = Math.round(city.population_total * 0.05);
+            const newPop = Math.max(100, city.population_total - popLoss);
+
+            await supabase.from("cities").update({
+              famine_turn: true,
+              famine_severity: allocDeficit,
+              city_stability: newStab,
+              population_total: newPop,
+              local_grain_reserve: city.local_grain_reserve,
+              vulnerability_score: city.vulnerability_score,
+            }).eq("id", city.id);
+
+            city.famine_turn = true;
+            city.population_total = newPop;
+            city.city_stability = newStab;
+
+            chronicleEntries.push(`⚠️ HLADOMOR v ${city.name}: deficit ${allocDeficit}, populace -${popLoss} (${newPop}), stabilita ${newStab}`);
+            remaining -= allocDeficit;
+          }
+        }
+
+        // Cities NOT hit by famine should have famine cleared
+        for (const city of myCities) {
+          if (!city.famine_turn) {
+            await supabase.from("cities").update({
+              famine_turn: false, famine_severity: 0,
+            }).eq("id", city.id);
+          }
+        }
+      } else {
+        // Deficit covered by reserves — no famine
+        for (const city of myCities) {
+          if (city.famine_turn) {
+            await supabase.from("cities").update({
+              famine_turn: false, famine_severity: 0,
+            }).eq("id", city.id);
+            city.famine_turn = false;
+            city.famine_severity = 0;
+          }
+        }
+        chronicleEntries.push(`Deficit obilí ${deficit} pokryt ze zásob (zbývá ${grainReserve})`);
+      }
     }
 
     chronicleEntries.push(`Obilí: produkce ${totalGrainProd}, spotřeba ${totalConsumption}, bilance ${netGrain >= 0 ? "+" : ""}${netGrain}, zásoby ${grainReserve}/${granaryCapacity}`);
     chronicleEntries.push(`Suroviny: Dřevo +${totalWoodProd}, Kámen +${totalStoneProd}, Železo +${totalIronProd}`);
 
-    // 8) Famine distribution
-    if (famineDeficit > 0) {
-      // Compute vulnerability scores
-      for (const city of myCities) {
-        const vuln = (100 - city.city_stability) * 0.5
-          + (1 - city.local_grain_reserve / Math.max(city.local_granary_capacity, 1)) * 20
-          + ({ HAMLET: 10, TOWNSHIP: 8, CITY: 6, POLIS: 5 }[city.settlement_level] || 10);
-        city.vulnerability_score = vuln;
-      }
+    // 6) Population growth (only for non-famine cities, famine cities already lost pop above)
+    for (const city of myCities) {
+      if (city.famine_turn) continue; // famine cities already handled
 
-      // Sort by vulnerability DESC
-      const sorted = [...myCities].sort((a, b) => b.vulnerability_score - a.vulnerability_score);
-      let remaining = famineDeficit;
+      const baseGrowth = 0.01;
+      const stabilityFactor = (city.city_stability - 50) / 200;
+      const warFactor = (city.status === "besieged" || city.status === "devastated") ? -0.02 : 0;
+      let netGrowthRate = baseGrowth + stabilityFactor + warFactor;
+      netGrowthRate = Math.max(-0.03, Math.min(0.05, netGrowthRate));
+      
+      const delta = Math.round(city.population_total * netGrowthRate);
+      const newPop = Math.max(200, city.population_total + delta);
 
-      for (const city of sorted) {
-        if (remaining <= 0) break;
-        const cPeas = city.population_peasants || 0;
-        const cBurg = city.population_burghers || 0;
-        const cCler = city.population_clerics || 0;
-        const cityConsumption = (cPeas + cBurg + cCler) > 0
-          ? Math.round(cPeas * 0.3 + cBurg * 0.6 + cCler * 0.5)
-          : Math.round(city.population_total * 0.4);
-        const cityNeed = Math.max(0, cityConsumption - city.local_grain_reserve);
-        let allocDeficit = Math.min(remaining, cityNeed);
+      await supabase.from("cities").update({
+        population_total: newPop,
+      }).eq("id", city.id);
 
-        // Use local reserves first
-        if (city.local_grain_reserve > 0) {
-          const localUsed = Math.min(city.local_grain_reserve, allocDeficit);
-          city.local_grain_reserve -= localUsed;
-          allocDeficit -= localUsed;
-        }
+      city.population_total = newPop;
 
-        if (allocDeficit > 0) {
-          const stabLoss = Math.min(20, Math.max(5, Math.round(allocDeficit / 10)));
-          const newStab = Math.max(0, city.city_stability - stabLoss);
-          
-          await supabase.from("cities").update({
-            famine_turn: true,
-            famine_severity: allocDeficit,
-            city_stability: newStab,
-            local_grain_reserve: city.local_grain_reserve,
-            vulnerability_score: city.vulnerability_score,
-          }).eq("id", city.id);
-
-          chronicleEntries.push(`⚠️ HLADOMOR v ${city.name}: deficit ${allocDeficit}, stabilita ${newStab}`);
-          remaining -= allocDeficit;
-        }
+      if (Math.abs(delta) > 5) {
+        chronicleEntries.push(`${city.name}: populace ${delta > 0 ? "+" : ""}${delta} (${newPop})`);
       }
     }
 
-    // 9) Logistic capacity
+    // 7) Manpower pool
+    const totalPopulation = myCities.reduce((s, c) => s + c.population_total, 0);
+    const totalPeasants = myCities.reduce((s, c) => s + (c.population_peasants || 0), 0);
+    const manpowerPool = Math.round(totalPeasants * realm.mobilization_rate);
+
+    // 8) Logistic capacity
     const logisticCapacity = realm.horses_reserve + Math.round((infra?.slavery_factor || 0) * 100);
 
-    // 10) Military power recomputation
+    // 9) Military power recomputation
     const { data: stacks } = await supabase
       .from("military_stacks")
       .select("*, military_stack_composition(*)")
@@ -355,13 +392,11 @@ Deno.serve(async (req) => {
       .eq("player_name", playerName)
       .eq("is_active", true);
 
-    const totalPopulation = myCities.reduce((s, c) => s + c.population_total, 0);
-    const totalBurghers = myCities.reduce((s, c) => s + c.population_burghers, 0);
+    const totalBurghers = myCities.reduce((s, c) => s + (c.population_burghers || 0), 0);
     const burgherRatio = totalPopulation > 0 ? totalBurghers / totalPopulation : 0;
     const qualityBonus = Math.round(burgherRatio * 30);
 
     for (const stack of (stacks || [])) {
-      // Load general
       let generalSkill = 0;
       if (stack.general_id) {
         const { data: gen } = await supabase.from("generals").select("skill").eq("id", stack.general_id).maybeSingle();
@@ -373,8 +408,6 @@ Deno.serve(async (req) => {
         const weight = UNIT_WEIGHTS[comp.unit_type] || 1.0;
         const quality = Math.max(0, Math.min(100, 50 + qualityBonus + (generalSkill - 50) / 5));
         powerComponent += comp.manpower * weight * (0.5 + quality / 100);
-
-        // Update quality on composition
         await supabase.from("military_stack_composition").update({ quality: Math.round(quality) }).eq("id", comp.id);
       }
 
@@ -392,11 +425,12 @@ Deno.serve(async (req) => {
       }
     }
 
-    // 11) Update realm resources + cached turn summary
-    // Add wood/stone/iron to reserves (no cap for now)
+    // 10) Update realm resources
     const newWoodReserve = (realm.wood_reserve || 0) + totalWoodProd;
     const newStoneReserve = (realm.stone_reserve || 0) + totalStoneProd;
     const newIronReserve = (realm.iron_reserve || 0) + totalIronProd;
+
+    const famineCityCount = myCities.filter(c => c.famine_turn).length;
 
     await supabase.from("realm_resources").update({
       grain_reserve: grainReserve,
@@ -414,11 +448,11 @@ Deno.serve(async (req) => {
       wood_reserve: newWoodReserve,
       stone_reserve: newStoneReserve,
       iron_reserve: newIronReserve,
-      famine_city_count: famineDeficit > 0 ? myCities.filter(c => c.famine_turn).length : 0,
+      famine_city_count: famineCityCount,
       updated_at: new Date().toISOString(),
     }).eq("id", realm.id);
 
-    // 12) Write chronicle summary
+    // 11) Write chronicle summary
     if (chronicleEntries.length > 0) {
       const summaryText = `**Shrnutí kola ${currentTurn} — ${playerName}**\n\n` + chronicleEntries.join("\n");
       await supabase.from("chronicle_entries").insert({
@@ -438,32 +472,38 @@ Deno.serve(async (req) => {
       iron: totalIronProd,
       wealth: computeWealthIncome(myCities),
     };
+    const upkeeps: Record<string, number> = {
+      food: totalConsumption,
+      wood: 0,
+      stone: 0,
+      iron: 0,
+      wealth: 0,
+    };
 
     for (const resType of resourceTypes) {
       const income = incomes[resType] || 0;
+      const upkeep = upkeeps[resType] || 0;
 
-      // Try update first
-      const { data: updated, count } = await supabase
+      const { data: updated } = await supabase
         .from("player_resources")
         .update({
           income,
-          stockpile: undefined, // handled below
+          upkeep,
           updated_at: new Date().toISOString(),
         })
         .eq("session_id", sessionId)
         .eq("player_name", playerName)
         .eq("resource_type", resType)
-        .select("id, stockpile, upkeep, last_applied_turn");
+        .select("id, stockpile, last_applied_turn");
 
       if (!updated || updated.length === 0) {
-        // Insert new row
         await supabase.from("player_resources").insert({
           session_id: sessionId,
           player_name: playerName,
           resource_type: resType,
           income,
+          upkeep,
           stockpile: 0,
-          upkeep: 0,
           last_applied_turn: 0,
         });
       }
@@ -477,7 +517,7 @@ Deno.serve(async (req) => {
       .eq("player_name", playerName);
 
     for (const res of (allResources || [])) {
-      if (res.last_applied_turn >= currentTurn) continue; // already applied
+      if (res.last_applied_turn >= currentTurn) continue;
       const newStockpile = Math.max(0, (res.stockpile || 0) + (res.income || 0) - (res.upkeep || 0));
       await supabase.from("player_resources").update({
         stockpile: newStockpile,
@@ -505,7 +545,8 @@ Deno.serve(async (req) => {
         net_grain: netGrain,
         grain_reserve: grainReserve,
         manpower_pool: manpowerPool,
-        famine_deficit: famineDeficit,
+        famine_active: famineActive,
+        famine_city_count: famineCityCount,
         incomes,
       },
     });
@@ -523,7 +564,8 @@ Deno.serve(async (req) => {
         manpowerCommitted: realm.manpower_committed,
         logisticCapacity,
         totalPopulation,
-        famineDeficit,
+        famineActive,
+        famineCityCount,
         chronicleEntries: chronicleEntries.length,
       },
     }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
