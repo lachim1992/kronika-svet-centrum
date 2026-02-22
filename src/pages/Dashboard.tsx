@@ -302,6 +302,7 @@ const Dashboard = () => {
         <DevTab
           sessionId={session.id}
           currentPlayerName={myPlayerName}
+          currentTurn={currentTurn}
           myRole={myRole}
           onRefetch={refetch}
           citiesCount={cities.length}
