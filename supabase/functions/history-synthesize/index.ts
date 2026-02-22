@@ -97,6 +97,8 @@ Typ: ${entity.type}
 Vlastník: ${entity.owner || '?'}
 Tagy: ${(entity.tags || []).join(', ') || 'žádné'}
 Info: ${JSON.stringify(entity.extra || {})}
+${entity.flavorPrompt ? `Flavor prompt: ${entity.flavorPrompt}` : ''}
+${entity.foundingLegend ? `Zakladatelská legenda od hráče: ${entity.foundingLegend}` : ''}
 
 === UDÁLOSTI (${eventCount}) ===
 ${timelineText || 'Žádné události'}

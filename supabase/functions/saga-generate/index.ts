@@ -101,8 +101,12 @@ ${(historySynthesis.themes || []).join(", ")}
       ? `\n\nFLAVOR PROMPT ENTITY (povinně ovlivni tón a atmosféru):\n${entity.flavorPrompt}`
       : "";
 
+    const legendSection = entity?.foundingLegend
+      ? `\n\nZAKLADATELSKÁ LEGENDA OD HRÁČE (povinně integruj do ság a šeptandy — je to autentický hráčský obsah):\n${entity.foundingLegend}`
+      : "";
+
     const systemPrompt = `Jsi královský kronikář, který píše vznešeným, mýtickým stylem dvorní kroniky.
-${stanceInstruction}${customStylePrompt}${keywordsInstruction}${forbiddenInstruction}${flavorSection}${worldNarrativeSection}
+${stanceInstruction}${customStylePrompt}${keywordsInstruction}${forbiddenInstruction}${flavorSection}${legendSection}${worldNarrativeSection}
 
 STRIKTNÍ PRAVIDLA:
 1. Piš VÝHRADNĚ na základě dodaných dat. ${hasHistory ? 'Tvým HLAVNÍM zdrojem je historická syntéza — interpretuj ji mýticky, ale NEPŘIDÁVEJ nové fakty.' : 'NESMÍŠ vymýšlet nové události.'}
