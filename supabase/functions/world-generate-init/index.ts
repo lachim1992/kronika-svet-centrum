@@ -54,25 +54,33 @@ serve(async (req) => {
     const topProfilesCount = economic.top_profiles_count || 3;
 
     // Determine world params based on size
-    const sizeConfig: Record<string, { factions: number; cities: number; regions: number; historyYears: number }> = {
-      small:  { factions: 3, cities: 5,  regions: 2, historyYears: 10 },
-      medium: { factions: 5, cities: 12, regions: 4, historyYears: 25 },
-      large:  { factions: 7, cities: 20, regions: 6, historyYears: 50 },
+    const sizeConfig: Record<string, { factions: number; cities: number; regions: number; historyYears: number; legendaryEvents: number }> = {
+      small:  { factions: 3, cities: 5,  regions: 2, historyYears: 10, legendaryEvents: 5 },
+      medium: { factions: 5, cities: 12, regions: 4, historyYears: 25, legendaryEvents: 6 },
+      large:  { factions: 7, cities: 20, regions: 6, historyYears: 50, legendaryEvents: 7 },
     };
     const config = sizeConfig[worldSize] || sizeConfig.small;
 
-    const systemPrompt = `Jsi generátor světa pro civilizační strategickou hru. Tvým úkolem je vytvořit kompletní svět na základě zadané premisy.
+    // ═══════════════════════════════════════════════
+    // AI PROMPT — enforce Country → Region → City thematic hierarchy
+    // ═══════════════════════════════════════════════
+    const systemPrompt = `Jsi generátor světa pro civilizační strategickou hru. Tvým úkolem je vytvořit kompletní, tematicky koherentní svět.
 
-PRAVIDLA:
+HLAVNÍ PRAVIDLA:
 - Vše generuj v ČEŠTINĚ.
-- Svět musí být koherentní a navzájem propojený.
+- Existuje JEDEN společný stát (country), do kterého patří VŠECHNY frakce na začátku.
+- Regiony musí tematicky, vizuálně i jmenně korespondovat se státem a jeho kulturou.
+- Města pod regiony musí tematicky odpovídat danému kraji — jména, perky, popisy.
+- Každý region musí mít bohatý encyklopedický popis (4-6 vět), který zahrnuje geografii, klima, obyvatele, tradice.
+- Každé město musí mít popis odpovídající svému regionu.
 - Každá frakce musí mít unikátní osobnost, kulturu a cíle.
-- Historie musí obsahovat konflikty, aliance, vzestupy a pády.
-- Hráčova frakce ("${playerName}") musí být jednou z frakcí — nech ji neutrální, hráč si ji dotvoří.
-- Města musí mít smysluplná jména odpovídající kultuře frakce.
-- Regiony musí mít různé biomy a strategickou hodnotu.
-- Každý region musí obsahovat alespoň jednu provincii.
-- Každé město musí být přiřazeno k provincii.
+
+LEGENDÁRNÍ UDÁLOSTI (${config.legendaryEvents}):
+- Vygeneruj ${config.legendaryEvents} legendárních historických událostí, které formovaly svět.
+- Mohou to být bitvy, korunovace králů, katastrofy, zázraky, objevy, vzestupy a pády říší.
+- Každá událost musí mít bohatý narativní popis (3-5 vět), rok, místo a zúčastněné frakce.
+- Tyto události budou tvořit základ pro kroniky, ságy a pověsti — musí být epické a zapamatovatelné.
+- Legendární události slouží jako legitimizační základ pro vládnoucí rody a tradice.
 
 Odpověz POUZE voláním funkce generate_world.`;
 
@@ -81,12 +89,15 @@ PREMISA: ${premise}
 TÓN: ${tone}
 STYL VÍTĚZSTVÍ: ${victoryStyle}
 HRÁČ: ${playerName}
+${realmName ? `ŘÍŠE HRÁČE: ${realmName}` : ""}
+${cultureName ? `KULTURA: ${cultureName}` : ""}
 
 POŽADAVKY:
+- 1 společný stát (country) se jménem, popisem a historií
 - ${config.factions} AI frakcí (+ 1 hráčova frakce = ${config.factions + 1} celkem)
-- ${config.regions} regionů
-- ${config.cities} měst rozdělených mezi frakce
-- ${config.historyYears} let pre-historie (klíčové události)
+- ${config.regions} regionů tematicky propojených se státem
+- ${config.cities} měst rozdělených mezi frakce, tematicky odpovídajících regionům
+- ${config.legendaryEvents} legendárních historických událostí
 - Každý region musí mít alespoň 1 provincii
 - Každé město musí mít přiřazenou provincii (provinceName)
 
@@ -108,10 +119,20 @@ Generuj kompletní svět.`;
           type: "function",
           function: {
             name: "generate_world",
-            description: "Generate a complete game world with factions, regions, provinces, cities, and history.",
+            description: "Generate a complete game world with country, factions, regions, provinces, cities, legendary events, and history.",
             parameters: {
               type: "object",
               properties: {
+                country: {
+                  type: "object",
+                  properties: {
+                    name: { type: "string", description: "Name of the common country/state" },
+                    description: { type: "string", description: "4-6 sentence encyclopedia article about the country in Czech" },
+                    motto: { type: "string", description: "National motto or guiding principle" },
+                  },
+                  required: ["name", "description"],
+                  additionalProperties: false,
+                },
                 factions: {
                   type: "array",
                   items: {
@@ -126,7 +147,6 @@ Generuj kompletní svět.`;
                       isPlayer: { type: "boolean" },
                       goals: { type: "array", items: { type: "string" } },
                       dispositionToPlayer: { type: "integer", description: "Attitude toward player: -100 to 100" },
-                      countryName: { type: "string", description: "Name of the country/state for this faction" },
                     },
                     required: ["name", "personality", "description", "isPlayer", "goals", "dispositionToPlayer"],
                     additionalProperties: false,
@@ -139,24 +159,25 @@ Generuj kompletní svět.`;
                     properties: {
                       name: { type: "string" },
                       biome: { type: "string", enum: ["plains", "coast", "mountains", "forest", "desert", "tundra", "volcanic"] },
-                      description: { type: "string" },
+                      description: { type: "string", description: "4-6 sentence encyclopedia article about this region in Czech" },
                       controlledBy: { type: "string", description: "Faction name that controls this region" },
                       isPlayerHomeland: { type: "boolean" },
+                      imagePrompt: { type: "string", description: "English image prompt for region illustration, medieval manuscript style" },
                       provinces: {
                         type: "array",
                         items: {
                           type: "object",
                           properties: {
                             name: { type: "string" },
-                            description: { type: "string" },
+                            description: { type: "string", description: "2-3 sentence description of the province" },
                           },
-                          required: ["name"],
+                          required: ["name", "description"],
                           additionalProperties: false,
                         },
                         description: "Provinces within this region (at least 1)",
                       },
                     },
-                    required: ["name", "biome", "description", "controlledBy", "isPlayerHomeland", "provinces"],
+                    required: ["name", "biome", "description", "controlledBy", "isPlayerHomeland", "imagePrompt", "provinces"],
                     additionalProperties: false,
                   },
                 },
@@ -171,9 +192,27 @@ Generuj kompletní svět.`;
                       provinceName: { type: "string", description: "Name of the province this city belongs to" },
                       level: { type: "string", enum: ["Osada", "Vesnice", "Město", "Velkoměsto"] },
                       tags: { type: "array", items: { type: "string" } },
-                      description: { type: "string" },
+                      description: { type: "string", description: "2-4 sentence description matching the region's theme" },
                     },
-                    required: ["name", "ownerFaction", "regionName", "provinceName", "level"],
+                    required: ["name", "ownerFaction", "regionName", "provinceName", "level", "description"],
+                    additionalProperties: false,
+                  },
+                },
+                legendaryEvents: {
+                  type: "array",
+                  items: {
+                    type: "object",
+                    properties: {
+                      year: { type: "integer", description: "Negative = before founding, positive = year" },
+                      title: { type: "string", description: "Epic event title in Czech" },
+                      description: { type: "string", description: "3-5 sentence narrative description in Czech" },
+                      eventType: { type: "string", enum: ["war", "coronation", "disaster", "miracle", "discovery", "founding", "treaty", "cultural"] },
+                      involvedFactions: { type: "array", items: { type: "string" } },
+                      location: { type: "string" },
+                      imagePrompt: { type: "string", description: "English image prompt for event illustration" },
+                      legacyImpact: { type: "string", description: "How this event affects current politics, legends, and legitimacy (1-2 sentences, Czech)" },
+                    },
+                    required: ["year", "title", "description", "eventType", "involvedFactions", "location", "imagePrompt", "legacyImpact"],
                     additionalProperties: false,
                   },
                 },
@@ -199,7 +238,7 @@ Generuj kompletní svět.`;
                   description: "Key world facts and traditions that define this world",
                 },
               },
-              required: ["factions", "regions", "cities", "history", "worldMemories"],
+              required: ["country", "factions", "regions", "cities", "legendaryEvents", "history", "worldMemories"],
               additionalProperties: false,
             },
           },
@@ -228,12 +267,14 @@ Generuj kompletní svět.`;
 
     // ═══════════════════════════════════════════════════════════
     // DETERMINISTIC GENERATION ORDER:
-    // A) Civilizations/Factions
-    // B) Regions
-    // C) Provinces (within regions)
-    // D) Cities (with province_id)
-    // E) Countries (linked to factions)
-    // F) Wiki entries (only after cities exist)
+    // A) Country (single shared state)
+    // B) Civilizations/Factions
+    // C) Regions (with wiki entries)
+    // D) Provinces (with wiki entries)
+    // E) Cities (with wiki entries)
+    // F) Legendary Events (world_events + wiki entries)
+    // G) History events (game_events only, minor)
+    // H) World memories, rumors, feed, chronicle
     // ═══════════════════════════════════════════════════════════
 
     let factionsCreated = 0;
@@ -244,10 +285,39 @@ Generuj kompletní svět.`;
     let countriesCreated = 0;
     let wikiEntriesCreated = 0;
     let rumorsCreated = 0;
+    let legendaryEventsCreated = 0;
 
     const factionPlayerMap: Record<string, string> = {};
 
-    // ═══ STEP A: Create civilizations + ai_factions ═══
+    // ═══ STEP A: Create the shared country ═══
+    const countryInfo = world.country || { name: worldName, description: premise };
+    const { data: countryRow } = await supabase.from("countries").insert({
+      session_id: sessionId,
+      name: countryInfo.name,
+      description: countryInfo.description || null,
+      ruler_player: null, // shared state
+    }).select("id").single();
+
+    const countryId = countryRow?.id || null;
+    if (countryId) {
+      countriesCreated++;
+      // Wiki entry for country
+      await supabase.from("wiki_entries").upsert({
+        session_id: sessionId,
+        entity_type: "country",
+        entity_id: countryId,
+        entity_name: countryInfo.name,
+        owner_player: "system",
+        summary: `${countryInfo.name} — společný stát tohoto světa.`,
+        ai_description: countryInfo.description || null,
+        image_prompt: `A medieval illuminated manuscript illustration of the kingdom of ${countryInfo.name}, panoramic landscape`,
+        updated_at: new Date().toISOString(),
+        references: { generated: true, mode: "world_init" },
+      } as any, { onConflict: "session_id,entity_type,entity_id" });
+      wikiEntriesCreated++;
+    }
+
+    // ═══ STEP B: Create civilizations + ai_factions ═══
     for (const faction of world.factions || []) {
       const factionPlayerName = faction.isPlayer ? playerName : faction.name;
       factionPlayerMap[faction.name] = factionPlayerName;
@@ -288,7 +358,7 @@ Generuj kompletní svět.`;
       factionsCreated++;
     }
 
-    // ═══ STEP B: Create regions ═══
+    // ═══ STEP C: Create regions with wiki entries ═══
     const regionIdMap: Record<string, string> = {};
     for (const region of world.regions || []) {
       const ownerPlayer = factionPlayerMap[region.controlledBy] || playerName;
@@ -301,22 +371,39 @@ Generuj kompletní svět.`;
         is_homeland: region.isPlayerHomeland || false,
         discovered_turn: 1,
         discovered_by: ownerPlayer,
+        country_id: countryId,
       }).select("id").single();
 
-      if (regRow) regionIdMap[region.name] = regRow.id;
+      if (regRow) {
+        regionIdMap[region.name] = regRow.id;
+
+        // Wiki entry for region
+        await supabase.from("wiki_entries").upsert({
+          session_id: sessionId,
+          entity_type: "region",
+          entity_id: regRow.id,
+          entity_name: region.name,
+          owner_player: ownerPlayer,
+          summary: `${region.name} — ${region.biome} region ve státě ${countryInfo.name}.`,
+          ai_description: region.description || null,
+          image_prompt: region.imagePrompt || `A medieval illuminated manuscript illustration of ${region.name}, ${region.biome} landscape`,
+          updated_at: new Date().toISOString(),
+          references: { generated: true, mode: "world_init", biome: region.biome },
+        } as any, { onConflict: "session_id,entity_type,entity_id" });
+        wikiEntriesCreated++;
+      }
       regionsCreated++;
     }
 
-    // ═══ STEP C: Create provinces (within regions) ═══
-    const provinceIdMap: Record<string, string> = {}; // provinceName → province.id
-    const provinceRegionMap: Record<string, string> = {}; // provinceName → regionName
+    // ═══ STEP D: Create provinces with wiki entries ═══
+    const provinceIdMap: Record<string, string> = {};
+    const provinceRegionMap: Record<string, string> = {};
 
     for (const region of world.regions || []) {
       const regionId = regionIdMap[region.name];
       const ownerPlayer = factionPlayerMap[region.controlledBy] || playerName;
       const regionProvinces = region.provinces || [];
 
-      // If AI didn't generate provinces for this region, create a default one
       if (regionProvinces.length === 0) {
         regionProvinces.push({ name: `${region.name} – Centrální provincie`, description: `Hlavní provincie regionu ${region.name}.` });
       }
@@ -333,6 +420,20 @@ Generuj kompletní svět.`;
         if (provRow) {
           provinceIdMap[prov.name] = provRow.id;
           provinceRegionMap[prov.name] = region.name;
+
+          // Wiki entry for province
+          await supabase.from("wiki_entries").upsert({
+            session_id: sessionId,
+            entity_type: "province",
+            entity_id: provRow.id,
+            entity_name: prov.name,
+            owner_player: ownerPlayer,
+            summary: `${prov.name} — provincie v regionu ${region.name}.`,
+            ai_description: prov.description || null,
+            updated_at: new Date().toISOString(),
+            references: { generated: true, mode: "world_init", regionName: region.name },
+          } as any, { onConflict: "session_id,entity_type,entity_id" });
+          wikiEntriesCreated++;
         }
         provincesCreated++;
       }
@@ -340,22 +441,16 @@ Generuj kompletní svět.`;
 
     // Helper: find best province for a city
     const findProvinceId = (city: any): string | null => {
-      // 1) Try exact province name match
-      if (city.provinceName && provinceIdMap[city.provinceName]) {
-        return provinceIdMap[city.provinceName];
-      }
-      // 2) Try first province in the city's region
+      if (city.provinceName && provinceIdMap[city.provinceName]) return provinceIdMap[city.provinceName];
       if (city.regionName) {
         for (const [provName, regName] of Object.entries(provinceRegionMap)) {
           if (regName === city.regionName) return provinceIdMap[provName];
         }
       }
-      // 3) Fallback: first province overall
-      const firstProvId = Object.values(provinceIdMap)[0];
-      return firstProvId || null;
+      return Object.values(provinceIdMap)[0] || null;
     };
 
-    // ═══ STEP D: Create cities with province_id ═══
+    // ═══ STEP E: Create cities with wiki entries ═══
     const usedHexes = new Set<string>();
     const createdCityIds: string[] = [];
     const createdCityRows: any[] = [];
@@ -402,6 +497,7 @@ Generuj kompletní svět.`;
         province: city.provinceName || city.regionName || null,
         province_id: provinceId,
         city_description_cached: city.description || null,
+        flavor_prompt: city.description || null,
         founded_round: 1,
         province_q: coords.q,
         province_r: coords.r,
@@ -419,126 +515,90 @@ Generuj kompletní svět.`;
         level: city.level || "Osada",
         q: coords.q, r: coords.r, isPlayer: isPlayerCity,
       });
+
+      // Wiki entry for city
+      const levelLabel = city.level || "Osada";
+      const regionPart = city.regionName ? ` v regionu ${city.regionName}` : "";
+      await supabase.from("wiki_entries").upsert({
+        session_id: sessionId,
+        entity_type: "city",
+        entity_id: cityId,
+        entity_name: cityName,
+        owner_player: ownerPlayer,
+        summary: `${cityName} je ${levelLabel.toLowerCase()}${regionPart}, pod správou ${ownerPlayer}.`,
+        ai_description: city.description || null,
+        updated_at: new Date().toISOString(),
+        references: { generated: !!city.description, mode: isCheapStart ? "cheap_start" : "full_start" },
+      } as any, { onConflict: "session_id,entity_type,entity_id" });
+      wikiEntriesCreated++;
+
       citiesCreated++;
       cityIndex++;
     }
 
-    // ═══ STEP E: Create countries for each faction ═══
-    const countryIdMap: Record<string, string> = {};
-    for (const faction of world.factions || []) {
-      const rulerPlayer = faction.isPlayer ? playerName : null;
-      const countryName = faction.countryName || faction.name;
-      const { data: countryRow } = await supabase.from("countries").insert({
+    // ═══ STEP F: Legendary Events → world_events + wiki entries ═══
+    const legendaryEventIds: string[] = [];
+    for (const evt of world.legendaryEvents || []) {
+      const slug = `legendary-${evt.title.toLowerCase().replace(/[^a-z0-9]+/g, "-").substring(0, 60)}-${Date.now()}`;
+      const involvedPlayers = (evt.involvedFactions || []).map((f: string) => factionPlayerMap[f] || f);
+      const participants = (evt.involvedFactions || []).map((f: string) => ({
+        type: "faction", name: f, player: factionPlayerMap[f] || f,
+      }));
+
+      const { data: weRow } = await supabase.from("world_events").insert({
         session_id: sessionId,
-        name: countryName,
-        ruler_player: rulerPlayer,
-        description: faction.description || null,
-      }).select("id").single();
+        title: evt.title,
+        slug,
+        summary: evt.description.substring(0, 200),
+        description: evt.description,
+        date: `Rok ${evt.year}`,
+        event_category: evt.eventType,
+        status: "published",
+        created_turn: 1,
+        created_by_type: "system",
+        affected_players: involvedPlayers,
+        participants,
+        tags: ["legendary", evt.eventType],
+        ai_image_prompt: evt.imagePrompt || null,
+      } as any).select("id").single();
 
-      if (countryRow) {
-        countryIdMap[faction.name] = countryRow.id;
-        countriesCreated++;
+      if (weRow) {
+        legendaryEventIds.push(weRow.id);
+        legendaryEventsCreated++;
+
+        // Wiki entry for legendary event
+        await supabase.from("wiki_entries").upsert({
+          session_id: sessionId,
+          entity_type: "event",
+          entity_id: weRow.id,
+          entity_name: evt.title,
+          owner_player: "system",
+          summary: evt.description.substring(0, 200),
+          ai_description: `${evt.description}\n\n**Odkaz:** ${evt.legacyImpact || ""}`,
+          image_prompt: evt.imagePrompt || null,
+          updated_at: new Date().toISOString(),
+          references: { generated: true, mode: "legendary", year: evt.year, eventType: evt.eventType },
+        } as any, { onConflict: "session_id,entity_type,entity_id" });
+        wikiEntriesCreated++;
+
+        // Also create a mirrored game_event for the turn engine
+        await supabase.from("game_events").insert({
+          session_id: sessionId,
+          event_type: evt.eventType || "other",
+          player: involvedPlayers[0] || "system",
+          turn_number: Math.max(1, Math.abs(evt.year)),
+          confirmed: true,
+          note: evt.description,
+          location: evt.location || null,
+          result: evt.title,
+          importance: "high",
+          truth_state: "canon",
+        });
+        eventsCreated++;
       }
     }
 
-    // Link regions to their countries via country_id
-    for (const region of world.regions || []) {
-      const countryId = countryIdMap[region.controlledBy];
-      const regionId = regionIdMap[region.name];
-      if (countryId && regionId) {
-        await supabase.from("regions").update({ country_id: countryId }).eq("id", regionId);
-      }
-    }
-
-    // ═══ STEP F: Create wiki_entries ONLY for existing cities ═══
-    const stubSummary = (c: any): string => {
-      const levelLabel = c.level || "Osada";
-      const regionPart = c.regionName ? ` v regionu ${c.regionName}` : "";
-      const descPart = c.description ? ` ${c.description}` : "";
-      return `${c.name} je ${levelLabel.toLowerCase()}${regionPart}, pod správou ${c.ownerPlayer}.${descPart ? descPart.substring(0, 120) : ""}`;
-    };
-
-    // Verify each city exists before creating wiki entry
-    for (const city of createdCityRows) {
-      const { data: cityExists } = await supabase
-        .from("cities").select("id").eq("id", city.id).single();
-      if (!cityExists) {
-        console.warn(`Skipping wiki entry for non-existent city: ${city.id}`);
-        continue;
-      }
-
-      await supabase.from("wiki_entries").upsert({
-        session_id: sessionId,
-        entity_type: "city",
-        entity_id: city.id,
-        entity_name: city.name,
-        owner_player: city.ownerPlayer,
-        summary: stubSummary(city),
-        ai_description: null,
-        updated_at: new Date().toISOString(),
-        references: { generated: false, mode: isCheapStart ? "cheap_start" : "full_start", ts: new Date().toISOString() },
-      } as any, { onConflict: "session_id,entity_type,entity_id" });
-      wikiEntriesCreated++;
-    }
-
-    // AI profiles for top cities (cheap_start) or all (full_start)
-    let citiesToGenerate: any[] = [];
-    if (isCheapStart) {
-      const playerCity = createdCityRows.find(c => c.isPlayer);
-      const playerQ = playerCity?.q ?? 0;
-      const playerR = playerCity?.r ?? 0;
-      const hexDist = (c: any) => {
-        const dq = c.q - playerQ;
-        const dr = c.r - playerR;
-        return (Math.abs(dq) + Math.abs(dq + dr) + Math.abs(dr)) / 2;
-      };
-      const sorted = [...createdCityRows].sort((a, b) => hexDist(a) - hexDist(b));
-      citiesToGenerate = sorted.slice(0, topProfilesCount);
-      console.log(`cheap_start: generating AI profiles for ${citiesToGenerate.length}/${createdCityRows.length} cities`);
-    } else {
-      citiesToGenerate = [...createdCityRows];
-    }
-
-    const WIKI_BATCH = 3;
-    let wikiGenerated = 0;
-    let wikiFailed = 0;
-    const wikiStartTime = Date.now();
-
-    for (let i = 0; i < citiesToGenerate.length; i += WIKI_BATCH) {
-      const batch = citiesToGenerate.slice(i, i + WIKI_BATCH);
-      const results = await Promise.allSettled(
-        batch.map(city =>
-          fetch(`${supabaseUrl}/functions/v1/wiki-generate`, {
-            method: "POST",
-            headers: { Authorization: `Bearer ${supabaseKey}`, "Content-Type": "application/json" },
-            body: JSON.stringify({
-              entityType: "city", entityName: city.name, entityId: city.id,
-              sessionId, ownerPlayer: city.ownerPlayer,
-              context: { regionName: city.regionName, description: city.description, worldName, premise, tone },
-            }),
-          }).then(async (res) => {
-            if (!res.ok) throw new Error(`wiki-generate ${res.status}`);
-            return res.json();
-          })
-        )
-      );
-
-      for (const r of results) {
-        if (r.status === "fulfilled") wikiGenerated++;
-        else { wikiFailed++; console.error("Wiki gen failed:", r.reason); }
-      }
-    }
-
-    // Log wiki generation stats
-    await supabase.from("simulation_log").insert({
-      session_id: sessionId, year_start: 1, year_end: 1,
-      events_generated: wikiGenerated, scope: "seed_city_profiles",
-      triggered_by: isCheapStart ? "cheap_start" : "full_start",
-    }).catch(() => {});
-
-    console.log(`Wiki generation (${economic.world_gen_mode}): ${wikiGenerated} ok, ${wikiFailed} failed, ${Date.now() - wikiStartTime}ms`);
-
-    // ═══ STEP G: Pre-history events ═══
+    // ═══ STEP G: Minor history events (game_events only) ═══
     for (const event of world.history || []) {
       await supabase.from("game_events").insert({
         session_id: sessionId,
@@ -555,11 +615,22 @@ Generuj kompletní svět.`;
       eventsCreated++;
     }
 
+    // ═══ STEP H: World memories, rumors, feed, chronicle ═══
+
     // World memories
     for (const memory of world.worldMemories || []) {
       await supabase.from("world_memories").insert({
         session_id: sessionId, text: memory, category: "tradition", status: "approved", source_turn: 1,
       } as any);
+    }
+
+    // Add legendary event legacy impacts as world memories
+    for (const evt of world.legendaryEvents || []) {
+      if (evt.legacyImpact) {
+        await supabase.from("world_memories").insert({
+          session_id: sessionId, text: `${evt.title}: ${evt.legacyImpact}`, category: "historical_scar", status: "approved", source_turn: 1,
+        } as any);
+      }
     }
 
     // City rumors
@@ -591,16 +662,18 @@ Generuj kompletní svět.`;
     // World feed items
     await supabase.from("world_feed_items").insert({
       session_id: sessionId, turn_number: 1,
-      content: `Věk zakládání začíná. V zemi ${worldName} vznikají nové říše a města.`,
+      content: `Věk zakládání začíná. V zemi ${countryInfo.name} vznikají nové říše a města.`,
       feed_type: "gossip", importance: "high",
     } as any);
 
-    // Chronicle entry
-    await supabase.from("chronicle_entries").insert({
-      session_id: sessionId,
-      text: `Věk zakládání – V prvním roce letopočtu byly založeny základy civilizací ve světě ${worldName}. ${citiesCreated} měst vzniklo v ${regionsCreated} regionech, ${provincesCreated} provinciích a ${countriesCreated} státech. ${premise}`,
-      epoch_style: "kroniky", turn_from: 1, turn_to: 1,
-    });
+    // Feed items for legendary events
+    for (const evt of world.legendaryEvents || []) {
+      await supabase.from("world_feed_items").insert({
+        session_id: sessionId, turn_number: 1,
+        content: `Bardi zpívají o ${evt.title}. ${(evt.description || "").substring(0, 100)}…`,
+        feed_type: "gossip", importance: "high",
+      } as any);
+    }
 
     // Founding events for top cities
     const topCities = createdCityRows.slice(0, Math.min(5, createdCityRows.length));
@@ -612,11 +685,97 @@ Generuj kompletní svět.`;
       } as any);
     }
 
+    // Chronicle entry incorporating legendary events
+    const legendaryNames = (world.legendaryEvents || []).map((e: any) => e.title).join(", ");
+    await supabase.from("chronicle_entries").insert({
+      session_id: sessionId,
+      text: `Věk zakládání – V prvním roce letopočtu byly založeny základy civilizací ve státě ${countryInfo.name}. ${citiesCreated} měst vzniklo v ${regionsCreated} regionech a ${provincesCreated} provinciích. ${legendaryNames ? `Legendy praví o událostech, jež formovaly svět: ${legendaryNames}.` : ""} ${premise}`,
+      epoch_style: "kroniky", turn_from: 1, turn_to: 1,
+    });
+
+    // AI wiki profiles for top cities
+    let citiesToGenerate: any[] = [];
+    if (isCheapStart) {
+      const playerCity = createdCityRows.find(c => c.isPlayer);
+      const playerQ = playerCity?.q ?? 0;
+      const playerR = playerCity?.r ?? 0;
+      const hexDist = (c: any) => {
+        const dq = c.q - playerQ;
+        const dr = c.r - playerR;
+        return (Math.abs(dq) + Math.abs(dq + dr) + Math.abs(dr)) / 2;
+      };
+      const sorted = [...createdCityRows].sort((a, b) => hexDist(a) - hexDist(b));
+      citiesToGenerate = sorted.slice(0, topProfilesCount);
+    } else {
+      citiesToGenerate = [...createdCityRows];
+    }
+
+    const WIKI_BATCH = 3;
+    let wikiGenerated = 0;
+    let wikiFailed = 0;
+
+    for (let i = 0; i < citiesToGenerate.length; i += WIKI_BATCH) {
+      const batch = citiesToGenerate.slice(i, i + WIKI_BATCH);
+      const results = await Promise.allSettled(
+        batch.map(city =>
+          fetch(`${supabaseUrl}/functions/v1/wiki-generate`, {
+            method: "POST",
+            headers: { Authorization: `Bearer ${supabaseKey}`, "Content-Type": "application/json" },
+            body: JSON.stringify({
+              entityType: "city", entityName: city.name, entityId: city.id,
+              sessionId, ownerPlayer: city.ownerPlayer,
+              context: { regionName: city.regionName, description: city.description, worldName, premise, tone },
+            }),
+          }).then(async (res) => {
+            if (!res.ok) throw new Error(`wiki-generate ${res.status}`);
+            return res.json();
+          })
+        )
+      );
+
+      for (const r of results) {
+        if (r.status === "fulfilled") wikiGenerated++;
+        else { wikiFailed++; console.error("Wiki gen failed:", r.reason); }
+      }
+    }
+
+    // Also generate wiki images for regions (batch, best effort)
+    const regionEntries = Object.entries(regionIdMap);
+    for (let i = 0; i < regionEntries.length; i += WIKI_BATCH) {
+      const batch = regionEntries.slice(i, i + WIKI_BATCH);
+      await Promise.allSettled(
+        batch.map(([regionName, regionId]) => {
+          const region = (world.regions || []).find((r: any) => r.name === regionName);
+          return fetch(`${supabaseUrl}/functions/v1/generate-entity-media`, {
+            method: "POST",
+            headers: { Authorization: `Bearer ${supabaseKey}`, "Content-Type": "application/json" },
+            body: JSON.stringify({
+              sessionId, entityId: regionId, entityType: "region", entityName: regionName,
+              kind: "cover",
+              imagePrompt: region?.imagePrompt || `A medieval illuminated manuscript illustration of ${regionName}, ${region?.biome || "landscape"}`,
+              createdBy: "world-generate",
+            }),
+          }).then(async (res) => {
+            if (res.ok) {
+              const mediaData = await res.json();
+              if (mediaData.imageUrl) {
+                await supabase.from("wiki_entries")
+                  .update({ image_url: mediaData.imageUrl } as any)
+                  .eq("session_id", sessionId)
+                  .eq("entity_type", "region")
+                  .eq("entity_id", regionId);
+              }
+            }
+          }).catch(err => console.warn("Region image gen failed:", regionName, err));
+        })
+      );
+    }
+
     // World summary
     await supabase.from("ai_world_summaries").insert({
       session_id: sessionId, summary_type: "world_state",
       turn_range_from: 1, turn_range_to: 1,
-      summary_text: `Svět ${worldName}: ${premise}. ${factionsCreated} frakcí, ${citiesCreated} měst, ${regionsCreated} regionů, ${provincesCreated} provincií, ${countriesCreated} států. ${eventsCreated} historických událostí.`,
+      summary_text: `Stát ${countryInfo.name}: ${premise}. ${factionsCreated} frakcí, ${citiesCreated} měst, ${regionsCreated} regionů, ${provincesCreated} provincií. ${legendaryEventsCreated} legendárních událostí, ${eventsCreated} historických záznamů.`,
       key_facts: world.worldMemories || [],
     });
 
@@ -624,10 +783,11 @@ Generuj kompletní svět.`;
     const stylePayload = {
       session_id: sessionId,
       lore_bible: [
-        `Svět: ${worldName}`, `Premisa: ${premise}`, `Tón: ${tone}`, `Styl vítězství: ${victoryStyle}`,
+        `Svět: ${worldName}`, `Stát: ${countryInfo.name}`, `Premisa: ${premise}`, `Tón: ${tone}`, `Styl vítězství: ${victoryStyle}`,
         realmName ? `Říše hráče: ${realmName}` : "",
         cultureName ? `Kultura: ${cultureName}` : "",
         languageName ? `Jazyk: ${languageName}` : "",
+        legendaryNames ? `Legendární události: ${legendaryNames}` : "",
       ].filter(Boolean).join("\n"),
       prompt_rules: JSON.stringify({
         world_vibe: tone,
@@ -636,6 +796,7 @@ Generuj kompletní svět.`;
         language_name: languageName || "",
         culture_name: cultureName || "",
         player_realm_name: realmName || "",
+        country_name: countryInfo.name,
       }),
       updated_at: new Date().toISOString(),
     };
@@ -647,7 +808,7 @@ Generuj kompletní svět.`;
       .select("id, entity_id, entity_type")
       .eq("session_id", sessionId)
       .eq("entity_type", "city");
-    
+
     let orphansDeleted = 0;
     if (allWiki) {
       const validCityIds = new Set(createdCityIds);
@@ -655,7 +816,6 @@ Generuj kompletní svět.`;
         if (!validCityIds.has(w.entity_id)) {
           await supabase.from("wiki_entries").delete().eq("id", w.id);
           orphansDeleted++;
-          console.log(`Deleted orphan wiki entry: ${w.id}`);
         }
       }
     }
@@ -666,12 +826,12 @@ Generuj kompletní svět.`;
     // Logging
     await supabase.from("world_action_log").insert({
       session_id: sessionId, player_name: "system", turn_number: 1, action_type: "other",
-      description: `AI svět vygenerován (${economic.world_gen_mode}): ${factionsCreated} frakcí, ${citiesCreated} měst, ${regionsCreated} regionů, ${provincesCreated} provincií, ${countriesCreated} států, ${eventsCreated} událostí, ${wikiGenerated}/${citiesCreated} wiki profilů, ${rumorsCreated} pověstí, ${orphansDeleted} sirotků odstraněno.`,
+      description: `AI svět vygenerován: ${countriesCreated} stát, ${factionsCreated} frakcí, ${citiesCreated} měst, ${regionsCreated} regionů, ${provincesCreated} provincií, ${legendaryEventsCreated} legendárních událostí, ${eventsCreated} hist. událostí, ${wikiEntriesCreated} wiki, ${wikiGenerated} AI profilů, ${rumorsCreated} pověstí.`,
     });
 
     await supabase.from("simulation_log").insert({
       session_id: sessionId, year_start: 1, year_end: 1,
-      events_generated: eventsCreated, scope: "world_generate_init", triggered_by: "ai_wizard",
+      events_generated: eventsCreated + legendaryEventsCreated, scope: "world_generate_init", triggered_by: "ai_wizard",
     });
 
     // Generate hexes around player start
@@ -693,7 +853,8 @@ Generuj kompletní svět.`;
 
     return new Response(JSON.stringify({
       factionsCreated, citiesCreated, regionsCreated, provincesCreated, countriesCreated,
-      eventsCreated, memoriesCreated: world.worldMemories?.length || 0,
+      eventsCreated, legendaryEventsCreated,
+      memoriesCreated: (world.worldMemories?.length || 0) + (world.legendaryEvents?.length || 0),
       wikiEntriesCreated, wikiProfilesGenerated: wikiGenerated,
       rumorsCreated, orphansDeleted, mode: economic.world_gen_mode,
     }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
