@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { AlertTriangle, Calendar, ChevronDown, ChevronUp, Database, Users, Scroll, BarChart3 } from "lucide-react";
+import { AlertTriangle, Calendar, ChevronDown, ChevronUp, Database, Users, Scroll, BarChart3, MessageSquare, Globe, Flag } from "lucide-react";
 import type { SagaContextData } from "@/lib/sagaContext";
 
 interface Props {
@@ -56,7 +56,7 @@ const SagaSourcesPanel = ({ context, onEventClick }: Props) => {
           <div className="p-3 mt-1 rounded-lg space-y-2"
             style={{ background: 'hsl(var(--secondary) / 0.2)', border: '1px solid hsl(var(--border))' }}
           >
-            <div className="grid grid-cols-3 md:grid-cols-5 gap-2 text-center text-[10px]">
+            <div className="grid grid-cols-4 md:grid-cols-8 gap-2 text-center text-[10px]">
               <div>
                 <div className="font-bold text-foreground text-sm">{sourceCounts.events}</div>
                 <div className="text-muted-foreground">Události</div>
@@ -75,7 +75,19 @@ const SagaSourcesPanel = ({ context, onEventClick }: Props) => {
               </div>
               <div>
                 <div className="font-bold text-foreground text-sm">{sourceCounts.declarations}</div>
-                <div className="text-muted-foreground">Deklarace</div>
+                <div className="text-muted-foreground">Dekrety</div>
+              </div>
+              <div>
+                <div className="font-bold text-foreground text-sm">{sourceCounts.rumors || 0}</div>
+                <div className="text-muted-foreground">Zvěsti</div>
+              </div>
+              <div>
+                <div className="font-bold text-foreground text-sm">{sourceCounts.worldEvents || 0}</div>
+                <div className="text-muted-foreground">Svět. udál.</div>
+              </div>
+              <div>
+                <div className="font-bold text-foreground text-sm">{sourceCounts.diplomacy || 0}</div>
+                <div className="text-muted-foreground">Diplomacie</div>
               </div>
             </div>
 

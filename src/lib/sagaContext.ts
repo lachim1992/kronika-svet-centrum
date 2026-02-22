@@ -38,6 +38,32 @@ export interface SagaContextData {
     epoch_style: string;
   }>;
   declarations: any[];
+  // Extended sources
+  rumors: Array<{
+    text: string;
+    tone_tag: string;
+    turn_number: number;
+    city_name: string;
+  }>;
+  worldEvents: Array<{
+    id: string;
+    title: string;
+    summary: string;
+    event_category: string;
+    created_turn: number;
+    tags: string[];
+  }>;
+  civilizationInfo: {
+    civ_name: string;
+    core_myth: string | null;
+    cultural_quirk: string | null;
+    architectural_style: string | null;
+  } | null;
+  diplomacySnippets: Array<{
+    sender: string;
+    message_text: string;
+    message_tag: string | null;
+  }>;
   // Meta for UI
   sourceCounts: {
     events: number;
@@ -45,6 +71,9 @@ export interface SagaContextData {
     chronicles: number;
     stats: number;
     declarations: number;
+    rumors: number;
+    worldEvents: number;
+    diplomacy: number;
   };
 }
 
@@ -97,6 +126,7 @@ export async function buildSagaContext(
   // 1) Collect related entity IDs (self + children + parent chain)
   const relatedEntityIds = new Set<string>([entityId]);
   const relations: Record<string, any> = {};
+  const relatedCityIds = new Set<string>();
 
   if (entityType === "country") {
     const childRegions = allData.regions.filter(r => r.country_id === entityId);
@@ -105,7 +135,7 @@ export async function buildSagaContext(
     const childProvinces = allData.provinces.filter(p => childRegions.some(r => r.id === p.region_id));
     childProvinces.forEach(p => relatedEntityIds.add(p.id));
     const childCities = allData.cities.filter(c => childProvinces.some(p => p.id === c.province_id));
-    childCities.forEach(c => relatedEntityIds.add(c.id));
+    childCities.forEach(c => { relatedEntityIds.add(c.id); relatedCityIds.add(c.id); });
     relations.cities = childCities.map(c => ({ id: c.id, name: c.name }));
   } else if (entityType === "region") {
     const country = allData.countries.find(c => c.id === entity?.country_id);
@@ -114,15 +144,16 @@ export async function buildSagaContext(
     childProvinces.forEach(p => relatedEntityIds.add(p.id));
     relations.provinces = childProvinces.map(p => ({ id: p.id, name: p.name }));
     const childCities = allData.cities.filter(c => childProvinces.some(p => p.id === c.province_id));
-    childCities.forEach(c => relatedEntityIds.add(c.id));
+    childCities.forEach(c => { relatedEntityIds.add(c.id); relatedCityIds.add(c.id); });
     relations.cities = childCities.map(c => ({ id: c.id, name: c.name }));
   } else if (entityType === "province") {
     const region = allData.regions.find(r => r.id === entity?.region_id);
     if (region) { relatedEntityIds.add(region.id); relations.region = { id: region.id, name: region.name }; }
     const childCities = allData.cities.filter(c => c.province_id === entityId);
-    childCities.forEach(c => relatedEntityIds.add(c.id));
+    childCities.forEach(c => { relatedEntityIds.add(c.id); relatedCityIds.add(c.id); });
     relations.cities = childCities.map(c => ({ id: c.id, name: c.name }));
   } else if (entityType === "city") {
+    relatedCityIds.add(entityId);
     const province = allData.provinces.find(p => p.id === entity?.province_id);
     if (province) { relatedEntityIds.add(province.id); relations.province = { id: province.id, name: province.name }; }
     const cityWonders = allData.wonders.filter(w => w.city_name === entity?.name);
@@ -133,8 +164,11 @@ export async function buildSagaContext(
     relations.persons = cityPersons.map(p => ({ id: p.id, name: p.name }));
   }
 
-  // 2) Find events by entity links + text search
-  const [eventLinksRes, entityStatsRes, entityTraitsRes] = await Promise.all([
+  // 2) Parallel DB queries — event links, stats, traits, rumors, world_events, civ, diplomacy
+  const cityIdsArray = Array.from(relatedCityIds).slice(0, 50);
+  const nameLC = entityName.toLowerCase();
+
+  const [eventLinksRes, entityStatsRes, entityTraitsRes, rumorsRes, worldEventsRes, civRes, diplomacyRes] = await Promise.all([
     supabase.from("event_entity_links").select("event_id, entity_id, entity_type, link_type")
       .eq("entity_id", entityId),
     supabase.from("entity_stats").select("*")
@@ -142,12 +176,31 @@ export async function buildSagaContext(
       .order("source_turn", { ascending: true }),
     supabase.from("entity_traits").select("*")
       .eq("session_id", sessionId).eq("entity_id", entityId).eq("is_active", true),
+    // Rumors from related cities
+    cityIdsArray.length > 0
+      ? supabase.from("city_rumors").select("text, tone_tag, turn_number, city_name")
+          .eq("session_id", sessionId).in("city_id", cityIdsArray).eq("is_draft", false)
+          .order("turn_number", { ascending: false }).limit(20)
+      : Promise.resolve({ data: [] as any[], error: null }),
+    // World events mentioning this entity
+    supabase.from("world_events" as any).select("id, title, summary, event_category, created_turn, tags")
+      .eq("session_id", sessionId).order("created_turn", { ascending: true }).limit(100),
+    // Civilization info for the owner
+    owner
+      ? supabase.from("civilizations").select("civ_name, core_myth, cultural_quirk, architectural_style")
+          .eq("session_id", sessionId).eq("player_name", owner).maybeSingle()
+      : Promise.resolve({ data: null, error: null }),
+    // Diplomacy snippets mentioning the entity or owner
+    owner
+      ? supabase.from("diplomacy_messages").select("sender, message_text, message_tag")
+          .or(`message_text.ilike.%${entityName}%,sender.eq.${owner}`)
+          .order("created_at", { ascending: false }).limit(15)
+      : Promise.resolve({ data: [] as any[], error: null }),
   ]);
 
   const linkedEventIds = new Set((eventLinksRes.data || []).map(l => l.event_id));
 
   // Text-match events (by entity name in title/description)
-  const nameLC = entityName.toLowerCase();
   const textMatchedEvents = allData.events.filter(e =>
     e.title?.toLowerCase().includes(nameLC) || e.description?.toLowerCase().includes(nameLC)
   );
@@ -177,7 +230,6 @@ export async function buildSagaContext(
   const actorNames = new Set<string>();
   const actors: SagaContextData["actors"] = [];
 
-  // Persons linked to entity
   const linkedPersons = allData.persons.filter(p =>
     relatedEntityIds.has(p.city_id) || p.player_name === owner
   );
@@ -188,7 +240,6 @@ export async function buildSagaContext(
     }
   });
 
-  // Traits as extra actor info
   (entityTraitsRes.data || []).forEach((t: any) => {
     if (t.entity_name && !actorNames.has(t.entity_name) && t.entity_type !== entityType) {
       actorNames.add(t.entity_name);
@@ -224,6 +275,46 @@ export async function buildSagaContext(
     source_turn: s.source_turn,
   }));
 
+  // 6) Rumors
+  const rumors = (rumorsRes.data || []).map((r: any) => ({
+    text: r.text,
+    tone_tag: r.tone_tag,
+    turn_number: r.turn_number,
+    city_name: r.city_name,
+  }));
+
+  // 7) World events filtered to those mentioning entity
+  const worldEvents = (worldEventsRes.data || [])
+    .filter((we: any) =>
+      we.title?.toLowerCase().includes(nameLC) ||
+      we.summary?.toLowerCase().includes(nameLC) ||
+      (we.tags || []).some((t: string) => t.toLowerCase().includes(nameLC))
+    )
+    .slice(0, 20)
+    .map((we: any) => ({
+      id: we.id,
+      title: we.title,
+      summary: we.summary || "",
+      event_category: we.event_category || "",
+      created_turn: we.created_turn || 0,
+      tags: we.tags || [],
+    }));
+
+  // 8) Civilization info
+  const civilizationInfo = civRes.data ? {
+    civ_name: (civRes.data as any).civ_name,
+    core_myth: (civRes.data as any).core_myth,
+    cultural_quirk: (civRes.data as any).cultural_quirk,
+    architectural_style: (civRes.data as any).architectural_style,
+  } : null;
+
+  // 9) Diplomacy
+  const diplomacySnippets = (diplomacyRes.data || []).map((d: any) => ({
+    sender: d.sender,
+    message_text: d.message_text?.slice(0, 200) || "",
+    message_tag: d.message_tag,
+  }));
+
   return {
     sessionId,
     entity: { id: entityId, name: entityName, type: entityType, owner, tags, extra },
@@ -233,12 +324,19 @@ export async function buildSagaContext(
     stats,
     chronicleNotes,
     declarations: relatedDeclarations,
+    rumors,
+    worldEvents,
+    civilizationInfo,
+    diplomacySnippets,
     sourceCounts: {
       events: timeline.length,
       actors: actors.length,
       chronicles: chronicleNotes.length,
       stats: stats.length,
       declarations: relatedDeclarations.length,
+      rumors: rumors.length,
+      worldEvents: worldEvents.length,
+      diplomacy: diplomacySnippets.length,
     },
   };
 }
