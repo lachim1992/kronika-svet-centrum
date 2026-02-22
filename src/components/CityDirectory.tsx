@@ -188,41 +188,10 @@ const CityDirectory = ({
           Města a osady
         </h1>
         {perms.canCreateCityGlobal && (
-          <Button onClick={() => setShowCreate(!showCreate)} size="sm" className="font-display">
-            <Plus className="h-3 w-3 mr-1" />{showCreate ? "Zavřít" : "Založit město"}
-          </Button>
+          <p className="text-xs text-muted-foreground italic">Použijte tlačítko + pro založení města.</p>
         )}
       </div>
 
-      {/* Create form */}
-      {showCreate && (
-        <div className="bg-card p-4 rounded-lg border-2 border-primary/30 shadow-parchment space-y-3">
-          <h3 className="font-display font-semibold text-sm">Založit nové město</h3>
-          <div className="grid grid-cols-2 gap-2">
-            <Input placeholder="Název města" value={name} onChange={e => setName(e.target.value)} className="h-9" />
-            <Input placeholder="Provincie (volitelné)" value={province} onChange={e => setProvince(e.target.value)} className="h-9" />
-          </div>
-          <div className="flex gap-2 items-center flex-wrap">
-            <Select value={level} onValueChange={setLevel}>
-              <SelectTrigger className="w-32 h-9 text-xs"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                {CITY_LEVELS.map(l => <SelectItem key={l} value={l}>{l}</SelectItem>)}
-              </SelectContent>
-            </Select>
-            <div className="flex gap-1 flex-wrap flex-1">
-              {CITY_TAGS.map(tag => (
-                <Badge
-                  key={tag}
-                  variant={selectedTags.includes(tag) ? "default" : "outline"}
-                  className="cursor-pointer text-xs"
-                  onClick={() => toggleTag(tag)}
-                >{tag}</Badge>
-              ))}
-            </div>
-          </div>
-          <Button onClick={handleAdd} size="sm" className="font-display"><Plus className="h-3 w-3 mr-1" />Založit</Button>
-        </div>
-      )}
 
       {/* Filters */}
       <div className="flex gap-2 flex-wrap">
