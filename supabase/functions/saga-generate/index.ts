@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -19,8 +20,35 @@ serve(async (req) => {
     }
 
     const { entity, timeline, actors } = sagaContext;
+    const sessionId = sagaContext.sessionId || entity?.sessionId;
 
-    // If we have a pre-generated history synthesis, use it as the primary source
+    // ─── Load narrative config from server_config ───
+    let narrativeSaga: any = null;
+    if (sessionId) {
+      try {
+        const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+        const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+        const sb = createClient(supabaseUrl, supabaseKey);
+        const { data: cfgData } = await sb
+          .from("server_config")
+          .select("economic_params")
+          .eq("session_id", sessionId)
+          .maybeSingle();
+        const econ = (cfgData as any)?.economic_params || {};
+        narrativeSaga = econ.narrative?.saga || null;
+      } catch (e) {
+        console.warn("Could not load narrative config:", e);
+      }
+    }
+
+    // If saga generation is disabled, return empty
+    if (narrativeSaga && narrativeSaga.enabled === false) {
+      return new Response(JSON.stringify({
+        chronology: [], saga: "Generování ság je zakázáno v konfiguraci serveru.",
+        actors: [], consequences: "", legends: "", isProtoSaga: true,
+      }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
     const hasHistory = historySynthesis && historySynthesis.synthesis;
 
     const timelineText = (timeline || []).map((t: any) =>
@@ -33,7 +61,6 @@ serve(async (req) => {
 
     const eventCount = (timeline || []).length;
 
-    // History synthesis section (preferred source)
     const historySection = hasHistory ? `
 === HISTORICKÁ SYNTÉZA (primární zdroj — MUSÍŠ na ni navázat) ===
 ${historySynthesis.synthesis}
@@ -45,7 +72,20 @@ ${(historySynthesis.keyFacts || []).join("\n")}
 ${(historySynthesis.themes || []).join(", ")}
 ` : "";
 
-    const systemPrompt = `Jsi královský kronikář, který píše vznešeným, mýtickým, mírně propagandistickým stylem dvorní kroniky.
+    // Build stance/style instructions from config
+    const stanceMap: Record<string, string> = {
+      "pro-regime": "Piš královským, oslavným, mírně propagandistickým stylem dvorní kroniky.",
+      "neutral": "Piš neutrálním, ale vznešeným kronikářským stylem bez hodnocení.",
+      "critical": "Piš kritickým, skeptickým stylem — zdůrazňuj chyby vládců a utrpení lidu.",
+      "mythical": "Piš čistě mýtickým, legendárním stylem plným metafor, symbolů a nadpřirozena.",
+    };
+    const stanceInstruction = narrativeSaga?.stance ? (stanceMap[narrativeSaga.stance] || stanceMap["pro-regime"]) : stanceMap["pro-regime"];
+    const customStylePrompt = narrativeSaga?.style_prompt ? `\n\nDODATEČNÝ STYLOVÝ POKYN OD SPRÁVCE HRY:\n${narrativeSaga.style_prompt}` : "";
+    const keywordsInstruction = narrativeSaga?.keywords?.length ? `\nPREFEROVANÁ KLÍČOVÁ SLOVA: ${narrativeSaga.keywords.join(", ")}` : "";
+    const forbiddenInstruction = narrativeSaga?.forbidden?.length ? `\nZAKÁZANÁ SLOVA (nikdy nepoužívej): ${narrativeSaga.forbidden.join(", ")}` : "";
+
+    const systemPrompt = `Jsi královský kronikář, který píše vznešeným, mýtickým stylem dvorní kroniky.
+${stanceInstruction}${customStylePrompt}${keywordsInstruction}${forbiddenInstruction}
 
 STRIKTNÍ PRAVIDLA:
 1. Piš VÝHRADNĚ na základě dodaných dat. ${hasHistory ? 'Tvým HLAVNÍM zdrojem je historická syntéza — interpretuj ji mýticky, ale NEPŘIDÁVEJ nové fakty.' : 'NESMÍŠ vymýšlet nové události.'}
@@ -98,33 +138,24 @@ Napiš dvorní kroniku tohoto místa/entity.`;
             parameters: {
               type: "object",
               properties: {
-                chronology: {
-                  type: "array",
-                  items: { type: "string" },
-                  description: "Bullet points of chronology with [[event:ID|label]] references"
-                },
+                chronology: { type: "array", items: { type: "string" }, description: "Bullet points of chronology with [[event:ID|label]] references" },
                 saga: { type: "string", description: "Main saga narrative 700-1400 words with inline [[event:ID|label]] references" },
                 actors: {
                   type: "array",
                   items: {
                     type: "object",
-                    properties: {
-                      name: { type: "string" },
-                      role: { type: "string" },
-                      linkedItems: { type: "array", items: { type: "string" } }
-                    },
-                    required: ["name", "role"],
-                    additionalProperties: false
-                  }
+                    properties: { name: { type: "string" }, role: { type: "string" }, linkedItems: { type: "array", items: { type: "string" } } },
+                    required: ["name", "role"], additionalProperties: false,
+                  },
                 },
                 consequences: { type: "string", description: "Economy/stability/army impacts grounded in stats/events" },
                 legends: { type: "string", description: "Optional speculative flavor section, clearly labeled as legend" },
-                isProtoSaga: { type: "boolean", description: "True if insufficient source data (<3 events)" }
+                isProtoSaga: { type: "boolean", description: "True if insufficient source data (<3 events)" },
               },
               required: ["chronology", "saga", "actors", "consequences", "isProtoSaga"],
-              additionalProperties: false
-            }
-          }
+              additionalProperties: false,
+            },
+          },
         }],
         tool_choice: { type: "function", function: { name: "write_saga" } },
       }),
@@ -158,7 +189,6 @@ Napiš dvorní kroniku tohoto místa/entity.`;
       });
     }
 
-    // Fallback
     const content = data.choices?.[0]?.message?.content || "";
     return new Response(JSON.stringify({
       chronology: [], saga: content || "Sága se nepodařila vygenerovat.",

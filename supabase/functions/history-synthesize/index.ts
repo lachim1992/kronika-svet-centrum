@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -19,6 +20,34 @@ serve(async (req) => {
     }
 
     const { entity, timeline, actors, relations, stats, chronicleNotes, declarations: decls } = sagaContext;
+    const sessionId = sagaContext.sessionId || entity?.sessionId;
+
+    // ─── Load narrative config from server_config ───
+    let narrativeHistory: any = null;
+    if (sessionId) {
+      try {
+        const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+        const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+        const sb = createClient(supabaseUrl, supabaseKey);
+        const { data: cfgData } = await sb
+          .from("server_config")
+          .select("economic_params")
+          .eq("session_id", sessionId)
+          .maybeSingle();
+        const econ = (cfgData as any)?.economic_params || {};
+        narrativeHistory = econ.narrative?.history || null;
+      } catch (e) {
+        console.warn("Could not load narrative config:", e);
+      }
+    }
+
+    // If history generation is disabled, return empty
+    if (narrativeHistory && narrativeHistory.enabled === false) {
+      return new Response(JSON.stringify({
+        timeline: [], synthesis: "Generování historických syntéz je zakázáno v konfiguraci serveru.",
+        keyFacts: [], actors: [], themes: [], insufficient: true,
+      }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
 
     const timelineText = (timeline || []).map((t: any) =>
       `[Kolo ${t.turn}] ${t.title}${t.summary ? ': ' + t.summary : ''} (ID: ${t.eventId})`
@@ -38,13 +67,19 @@ serve(async (req) => {
 
     const eventCount = (timeline || []).length;
 
-    const systemPrompt = `Jsi historický analytik herního světa. Tvým úkolem je vytvořit OBJEKTIVNÍ, NEUTRÁLNÍ historickou syntézu entity na základě dodaných dat.
+    // Build custom style instructions from config
+    const customStylePrompt = narrativeHistory?.style_prompt ? `\n\nDODATEČNÝ STYLOVÝ POKYN OD SPRÁVCE HRY:\n${narrativeHistory.style_prompt}` : "";
+    const metricsInstruction = narrativeHistory?.include_metrics === false
+      ? "\nNEZAHRNUJ numerické metriky (populace, stabilita atd.) do syntézy."
+      : "\nZahrnuj konkrétní čísla (kola, populace, stabilita) pokud jsou dostupná.";
+
+    const systemPrompt = `Jsi historický analytik herního světa. Tvým úkolem je vytvořit OBJEKTIVNÍ, NEUTRÁLNÍ historickou syntézu entity na základě dodaných dat.${customStylePrompt}
 
 STRIKTNÍ PRAVIDLA:
 1. Piš VÝHRADNĚ na základě dodaných dat. NESMÍŠ vymýšlet nové události, postavy ani fakta.
 2. KAŽDÝ bod chronologie MUSÍ obsahovat referenci na událost ve formátu [[event:EVENT_ID|popis]].
 3. Styl: věcný, encyklopedický, neutrální. Žádná poetika, žádná propaganda.
-4. Uváděj konkrétní čísla (kola, populace, stabilita) když jsou dostupná.
+4. ${metricsInstruction}
 5. Organizuj výstup chronologicky.
 
 POVINNÁ STRUKTURA (přes tool call):
@@ -102,10 +137,8 @@ Vytvoř objektivní historickou syntézu.`;
                   items: {
                     type: "object",
                     properties: {
-                      turn: { type: "number" },
-                      title: { type: "string" },
-                      summary: { type: "string" },
-                      eventId: { type: "string" },
+                      turn: { type: "number" }, title: { type: "string" },
+                      summary: { type: "string" }, eventId: { type: "string" },
                     },
                     required: ["turn", "title", "summary", "eventId"],
                     additionalProperties: false,
@@ -117,13 +150,8 @@ Vytvoř objektivní historickou syntézu.`;
                   type: "array",
                   items: {
                     type: "object",
-                    properties: {
-                      name: { type: "string" },
-                      role: { type: "string" },
-                      period: { type: "string" },
-                    },
-                    required: ["name", "role"],
-                    additionalProperties: false,
+                    properties: { name: { type: "string" }, role: { type: "string" }, period: { type: "string" } },
+                    required: ["name", "role"], additionalProperties: false,
                   },
                 },
                 themes: { type: "array", items: { type: "string" } },

@@ -668,14 +668,19 @@ const ChroWikiDetailPanel = ({
 
                 {/* ═══ HISTORIE TAB ═══ */}
                 <TabsContent value="historie" className="mt-0">
-                  <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
                     <p className="text-[11px] text-muted-foreground italic">
                       Objektivní syntéza založená na herních událostech v databázi.
                     </p>
-                    <Button variant="ghost" size="sm" className="h-6 text-[10px] px-2" onClick={handleGenerateHistory} disabled={generatingHistory}>
-                      {generatingHistory ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <Sparkles className="h-3 w-3 mr-1" />}
-                      Generovat historickou syntézu
-                    </Button>
+                    <div className="flex items-center gap-1">
+                      <Badge variant="outline" className="text-[9px] text-muted-foreground">
+                        Styl: World Engine → Narativ
+                      </Badge>
+                      <Button variant="ghost" size="sm" className="h-6 text-[10px] px-2" onClick={handleGenerateHistory} disabled={generatingHistory}>
+                        {generatingHistory ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <Sparkles className="h-3 w-3 mr-1" />}
+                        Generovat historickou syntézu
+                      </Button>
+                    </div>
                   </div>
 
                   {sagaContext && <SagaSourcesPanel context={sagaContext} onEventClick={(id, title) => onEntityClick("event", id, title)} />}
@@ -701,11 +706,14 @@ const ChroWikiDetailPanel = ({
 
                 {/* ═══ SÁGA TAB ═══ */}
                 <TabsContent value="saga" className="mt-0">
-                  <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
                     <p className="text-[11px] text-muted-foreground italic">
                       Mýtická interpretace historie — dvorní kronika.
                       {!historyResult && <span className="text-destructive/70 ml-1">(Doporučeno nejprve vygenerovat Historii)</span>}
                     </p>
+                    <Badge variant="outline" className="text-[9px] text-muted-foreground">
+                      Styl: World Engine → Narativ
+                    </Badge>
                     <div className="flex items-center gap-1">
                       {isOwner && !editingSaga && (
                         <Button variant="ghost" size="sm" className="h-6 text-[10px] px-2" onClick={() => { setEditingSaga(true); setSagaDraft(currentSaga?.saga_text || ""); }}>

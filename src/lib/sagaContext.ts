@@ -1,6 +1,7 @@
 import { supabase } from "@/integrations/supabase/client";
 
 export interface SagaContextData {
+  sessionId: string;
   entity: {
     id: string;
     name: string;
@@ -224,6 +225,7 @@ export async function buildSagaContext(
   }));
 
   return {
+    sessionId,
     entity: { id: entityId, name: entityName, type: entityType, owner, tags, extra },
     timeline,
     actors,
