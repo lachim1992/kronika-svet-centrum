@@ -190,8 +190,8 @@ const ArmyTab = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, on
 
       {/* Military Summary Bar */}
       <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
-        <SummaryChip label="Dostupní muži" value={availableManpower} icon={Users} />
-        <SummaryChip label="Nasazení" value={totalCommitted} icon={Shield} />
+        <SummaryChip label="Dostupní muži" value={computedPool} icon={Users} />
+        <SummaryChip label="Mobilizovaní" value={totalCommitted} icon={Shield} />
         <SummaryChip label="Mobilizace" value={`${Math.round(mobRate * 100)}%`} icon={ChevronUp} />
         <SummaryChip label="Zlato" value={realm?.gold_reserve || 0} icon={Coins} />
         <SummaryChip label="Celková síla" value={totalPower} icon={Swords} highlight />
@@ -210,37 +210,50 @@ const ArmyTab = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, on
           <h3 className="text-sm font-display font-semibold">Mobilizace</h3>
           <Badge variant="outline" className="ml-auto text-xs">{Math.round(mobRate * 100)}%</Badge>
         </div>
-        <Slider
+      <Slider
           value={[Math.round(mobRate * 100)]}
+          onValueChange={(val) => {
+            if (!realm) return;
+            const rate = val[0] / 100;
+            setRealm({ ...realm, mobilization_rate: rate, manpower_pool: Math.floor(totalPopulation * rate) });
+          }}
           onValueCommit={async (val) => {
             if (!realm) return;
             const rate = val[0] / 100;
-            await supabase.from("realm_resources").update({ mobilization_rate: rate }).eq("id", realm.id);
             const newPool = Math.floor(totalPopulation * rate);
-            await supabase.from("realm_resources").update({ manpower_pool: newPool }).eq("id", realm.id);
-            setRealm({ ...realm, mobilization_rate: rate, manpower_pool: newPool });
+            await supabase.from("realm_resources").update({ mobilization_rate: rate, manpower_pool: newPool }).eq("id", realm.id);
           }}
-          max={100} min={0} step={1}
+          max={30} min={0} step={1}
           className="w-full"
         />
         <div className="flex justify-between text-[10px] text-muted-foreground">
           <span>0% — Mír</span>
-          <span>100% — Totální mobilizace</span>
+          <span>30% — Totální mobilizace</span>
         </div>
-        <div className="grid grid-cols-3 gap-3 text-xs">
-          <div className="bg-muted/40 rounded-lg p-2.5 text-center">
-            <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Populace</div>
-            <div className="text-base font-bold font-display mt-0.5">{totalPopulation.toLocaleString()}</div>
-          </div>
-          <div className="bg-muted/40 rounded-lg p-2.5 text-center">
-            <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">K dispozici</div>
-            <div className="text-base font-bold font-display mt-0.5">{availableManpower.toLocaleString()}</div>
-          </div>
-          <div className="bg-muted/40 rounded-lg p-2.5 text-center">
-            <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Odvedení</div>
-            <div className="text-base font-bold font-display mt-0.5">{totalCommitted.toLocaleString()}</div>
-          </div>
-        </div>
+        {(() => {
+          const reservesPct = computedPool > 0 ? Math.round(((computedPool - totalCommitted) / computedPool) * 100) : 100;
+          const reservesLow = reservesPct < 20;
+          return (
+            <div className="grid grid-cols-4 gap-2 text-xs">
+              <div className="bg-muted/40 rounded-lg p-2.5 text-center">
+                <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Populace</div>
+                <div className="text-base font-bold font-display mt-0.5">{totalPopulation.toLocaleString()}</div>
+              </div>
+              <div className="bg-muted/40 rounded-lg p-2.5 text-center">
+                <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">K dispozici</div>
+                <div className="text-base font-bold font-display mt-0.5">{computedPool.toLocaleString()}</div>
+              </div>
+              <div className="bg-muted/40 rounded-lg p-2.5 text-center">
+                <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Mobilizovaní</div>
+                <div className="text-base font-bold font-display mt-0.5">{totalCommitted.toLocaleString()}</div>
+              </div>
+              <div className={`rounded-lg p-2.5 text-center ${reservesLow ? "bg-destructive/15" : "bg-muted/40"}`}>
+                <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Zálohy</div>
+                <div className={`text-base font-bold font-display mt-0.5 ${reservesLow ? "text-destructive" : ""}`}>{reservesPct}%</div>
+              </div>
+            </div>
+          );
+        })()}
       </div>
 
       <Tabs defaultValue="forces" className="w-full">
