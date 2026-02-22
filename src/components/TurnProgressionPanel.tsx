@@ -98,6 +98,21 @@ const TurnProgressionPanel = ({ sessionId, currentTurn, players, currentPlayerNa
       console.error("World tick error:", e);
     }
 
+    // ===== PROCESS TURN: resource production & stockpiles for ALL players =====
+    try {
+      const { data: allPlayers } = await supabase.from("game_players")
+        .select("player_name").eq("session_id", sessionId);
+      for (const p of (allPlayers || [])) {
+        const { error: ptErr } = await supabase.functions.invoke("process-turn", {
+          body: { sessionId, playerName: p.player_name },
+        });
+        if (ptErr) console.warn(`process-turn for ${p.player_name}:`, ptErr.message);
+      }
+      toast.info("📦 Ekonomika všech hráčů zpracována.");
+    } catch (e) {
+      console.error("Process turn error:", e);
+    }
+
     // Process AI factions (if AI mode)
     if (isAIMode) {
       try {

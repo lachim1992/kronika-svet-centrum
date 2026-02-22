@@ -42,7 +42,17 @@ const DevTab = ({
       });
       if (processErr) console.warn("process-tick warning:", processErr.message);
 
-      // 3. Advance game_sessions.current_turn
+      // 3. Process turn for ALL players (resource production, stockpiles, population)
+      const { data: allPlayers } = await supabase.from("game_players")
+        .select("player_name").eq("session_id", sessionId);
+      for (const p of (allPlayers || [])) {
+        const { error: ptErr } = await supabase.functions.invoke("process-turn", {
+          body: { sessionId, playerName: p.player_name },
+        });
+        if (ptErr) console.warn(`process-turn for ${p.player_name}:`, ptErr.message);
+      }
+
+      // 4. Advance game_sessions.current_turn
       const { error: updateErr } = await supabase
         .from("game_sessions")
         .update({ current_turn: nextTurn, turn_closed_p1: false, turn_closed_p2: false })
@@ -50,7 +60,7 @@ const DevTab = ({
 
       if (updateErr) throw updateErr;
 
-      // 4. Reset player turn_closed flags
+      // 5. Reset player turn_closed flags
       await supabase
         .from("game_players")
         .update({ turn_closed: false })
