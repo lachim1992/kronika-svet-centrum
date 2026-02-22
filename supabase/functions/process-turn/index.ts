@@ -29,6 +29,23 @@ const FORMATION_MULT: Record<string, number> = {
   UNIT: 1.0, LEGION: 1.1, ARMY: 1.2,
 };
 
+// Wealth income formula: base per city + population tax + burgher trade bonus + settlement tier
+const SETTLEMENT_WEALTH: Record<string, number> = {
+  HAMLET: 1, TOWNSHIP: 2, CITY: 4, POLIS: 6,
+};
+
+function computeWealthIncome(cities: any[]): number {
+  let total = 0;
+  for (const c of cities) {
+    if (c.status && c.status !== "ok") continue; // skip besieged/devastated
+    const tierBase = SETTLEMENT_WEALTH[c.settlement_level] || 1;
+    const popTax = Math.floor((c.population_total || 0) / 500); // 1 gold per 500 pop
+    const burgherTrade = Math.floor((c.population_burghers || 0) / 200); // burghers generate extra trade
+    total += tierBase + popTax + burgherTrade;
+  }
+  return total;
+}
+
 // Simple deterministic hash for seeding
 function hashCode(s: string): number {
   let h = 0;
@@ -419,7 +436,7 @@ Deno.serve(async (req) => {
       wood: totalWoodProd,
       stone: totalStoneProd,
       iron: totalIronProd,
-      wealth: myCities.filter(c => c.status === "ok" || !c.status).length,
+      wealth: computeWealthIncome(myCities),
     };
 
     for (const resType of resourceTypes) {
