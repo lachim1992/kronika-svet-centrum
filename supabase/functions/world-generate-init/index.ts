@@ -317,7 +317,7 @@ Generuj kompletní svět.`;
       wikiEntriesCreated++;
     }
 
-    // ═══ STEP B: Create civilizations + ai_factions ═══
+    // ═══ STEP B: Create civilizations + ai_factions + resources for ALL ═══
     for (const faction of world.factions || []) {
       const factionPlayerName = faction.isPlayer ? playerName : faction.name;
       factionPlayerMap[faction.name] = factionPlayerName;
@@ -342,18 +342,33 @@ Generuj kompletní svět.`;
           goals: faction.goals || [],
           is_active: true,
         });
-
-        for (const rt of ["food", "wood", "stone", "iron", "wealth"]) {
-          await supabase.from("player_resources").insert({
-            session_id: sessionId,
-            player_name: factionPlayerName,
-            resource_type: rt,
-            income: rt === "food" ? 6 : rt === "wood" ? 4 : rt === "stone" ? 3 : rt === "iron" ? 2 : 3,
-            upkeep: rt === "food" ? 3 : rt === "wood" ? 1 : rt === "wealth" ? 1 : 0,
-            stockpile: rt === "food" ? 20 : rt === "wood" ? 10 : rt === "stone" ? 5 : rt === "iron" ? 3 : 10,
-          });
-        }
       }
+
+      // Create player_resources for ALL factions (player + AI)
+      for (const rt of ["food", "wood", "stone", "iron", "wealth"]) {
+        await supabase.from("player_resources").insert({
+          session_id: sessionId,
+          player_name: factionPlayerName,
+          resource_type: rt,
+          income: rt === "food" ? 6 : rt === "wood" ? 4 : rt === "stone" ? 3 : rt === "iron" ? 2 : 3,
+          upkeep: rt === "food" ? 3 : rt === "wood" ? 1 : rt === "wealth" ? 1 : 0,
+          stockpile: rt === "food" ? 20 : rt === "wood" ? 10 : rt === "stone" ? 5 : rt === "iron" ? 3 : 10,
+        });
+      }
+
+      // Create realm_resources for ALL factions
+      await supabase.from("realm_resources").insert({
+        session_id: sessionId,
+        player_name: factionPlayerName,
+        grain_reserve: 20,
+        wood_reserve: 10,
+        stone_reserve: 5,
+        iron_reserve: 3,
+        gold_reserve: 100,
+        stability: 70,
+        granary_capacity: 500,
+        mobilization_rate: 0.1,
+      });
 
       factionsCreated++;
     }
@@ -472,6 +487,26 @@ Generuj kompletní svět.`;
       return { q, r };
     };
 
+    // Population ranges by level: capital gets highest, randomized
+    const POP_RANGES: Record<string, { min: number; max: number }> = {
+      Velkoměsto: { min: 1200, max: 1600 },
+      Město:      { min: 800,  max: 1200 },
+      Vesnice:    { min: 400,  max: 700 },
+      Osada:      { min: 300,  max: 600 },
+    };
+    const SETTLEMENT_MAP: Record<string, string> = {
+      Velkoměsto: "POLIS", Město: "CITY", Vesnice: "TOWNSHIP", Osada: "HAMLET",
+    };
+    const POP_TEMPLATES: Record<string, { peasants: number; burghers: number; clerics: number }> = {
+      HAMLET:   { peasants: 0.80, burghers: 0.15, clerics: 0.05 },
+      TOWNSHIP: { peasants: 0.60, burghers: 0.30, clerics: 0.10 },
+      CITY:     { peasants: 0.40, burghers: 0.40, clerics: 0.20 },
+      POLIS:    { peasants: 0.20, burghers: 0.55, clerics: 0.25 },
+    };
+
+    // Track first city per player (capital = highest pop)
+    const playerFirstCity = new Set<string>();
+
     let cityIndex = 0;
     for (const city of world.cities || []) {
       const ownerPlayer = factionPlayerMap[city.ownerFaction] || playerName;
@@ -488,11 +523,31 @@ Generuj kompletní svět.`;
       const cityName = (isPlayerCity && cityIndex === 0 && settlementName) ? settlementName : city.name;
       const provinceId = findProvinceId(city);
 
+      // Randomize population
+      const level = city.level || "Osada";
+      const isCapital = !playerFirstCity.has(ownerPlayer);
+      if (isCapital) playerFirstCity.add(ownerPlayer);
+
+      const range = POP_RANGES[level] || POP_RANGES.Osada;
+      let popTotal: number;
+      if (isCapital) {
+        // Capital: highest range + bonus
+        popTotal = range.max + Math.floor(Math.random() * 200);
+      } else {
+        popTotal = range.min + Math.floor(Math.random() * (range.max - range.min));
+      }
+
+      const settlementLevel = SETTLEMENT_MAP[level] || "HAMLET";
+      const template = POP_TEMPLATES[settlementLevel];
+      const popPeasants = Math.round(popTotal * template.peasants);
+      const popBurghers = Math.round(popTotal * template.burghers);
+      const popClerics = popTotal - popPeasants - popBurghers;
+
       const { data: cityRow, error: cityErr } = await supabase.from("cities").insert({
         session_id: sessionId,
         name: cityName,
         owner_player: ownerPlayer,
-        level: city.level || "Osada",
+        level,
         tags: city.tags || [],
         province: city.provinceName || city.regionName || null,
         province_id: provinceId,
@@ -503,6 +558,11 @@ Generuj kompletní svět.`;
         province_r: coords.r,
         city_stability: 60 + Math.floor(Math.random() * 15),
         influence_score: 0,
+        population_total: popTotal,
+        population_peasants: popPeasants,
+        population_burghers: popBurghers,
+        population_clerics: popClerics,
+        settlement_level: settlementLevel,
       }).select("id").single();
 
       if (cityErr) { console.error("City insert error:", cityErr); continue; }
@@ -512,8 +572,7 @@ Generuj kompletní svět.`;
       createdCityRows.push({
         id: cityId, name: cityName, ownerPlayer, description: city.description,
         regionName: city.regionName, provinceName: city.provinceName,
-        level: city.level || "Osada",
-        q: coords.q, r: coords.r, isPlayer: isPlayerCity,
+        level, q: coords.q, r: coords.r, isPlayer: isPlayerCity,
       });
 
       // Wiki entry for city
