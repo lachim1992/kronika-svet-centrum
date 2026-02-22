@@ -1,7 +1,6 @@
 import { useState, useEffect } from "react";
 import CityDirectory from "@/components/CityDirectory";
 import CityStatesPanel from "@/components/CityStatesPanel";
-import UnifiedEntityDetail from "@/components/UnifiedEntityDetail";
 import ExplorationPanel from "@/components/ExplorationPanel";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { MapPin, Building2, Globe, Castle, Mountain, Eye, EyeOff, Compass, Map } from "lucide-react";
@@ -43,7 +42,7 @@ const WorldTab = ({
   onRefetch, onEventClick, onEntityClick,
   worldEntityTarget, onClearWorldEntityTarget,
 }: Props) => {
-  const [selectedEntity, setSelectedEntity] = useState<{ type: string; id: string } | null>(null);
+  // selectedEntity state removed — entity details now handled by ChroWiki tab
   const [provinces, setProvinces] = useState<any[]>([]);
   const [regions, setRegions] = useState<any[]>([]);
   const [expeditions, setExpeditions] = useState<any[]>([]);
@@ -65,7 +64,8 @@ const WorldTab = ({
 
   useEffect(() => {
     if (worldEntityTarget) {
-      setSelectedEntity(worldEntityTarget);
+      // Redirect to ChroWiki via onEntityClick
+      onEntityClick?.(worldEntityTarget.type, worldEntityTarget.id);
       onClearWorldEntityTarget?.();
     }
   }, [worldEntityTarget]);
@@ -76,7 +76,8 @@ const WorldTab = ({
       return;
     }
     if (!isAdmin && !isDiscovered(type, id)) return;
-    setSelectedEntity({ type, id });
+    // Navigate to ChroWiki for unified entity detail
+    onEntityClick?.(type, id);
   };
 
   const handleExploreComplete = async (regionId?: string) => {
@@ -84,7 +85,7 @@ const WorldTab = ({
     await refetchDiscoveries();
     onRefetch();
     if (regionId) {
-      setSelectedEntity({ type: "region", id: regionId });
+      onEntityClick?.("region", regionId);
     }
   };
 
@@ -95,38 +96,6 @@ const WorldTab = ({
     c.owner_player === currentPlayerName || isDiscovered("city", c.id)
   );
 
-  // Show unified detail
-  if (selectedEntity) {
-    if (!isAdmin && !isDiscovered(selectedEntity.type, selectedEntity.id) &&
-        !(selectedEntity.type === "city" && visibleCities.some(c => c.id === selectedEntity.id))) {
-      setSelectedEntity(null);
-    } else {
-      return (
-        <div className="pb-20">
-          <UnifiedEntityDetail
-            sessionId={sessionId}
-            entityType={selectedEntity.type}
-            entityId={selectedEntity.id}
-            currentPlayerName={currentPlayerName}
-            currentTurn={currentTurn}
-            myRole={myRole}
-            epochStyle={session.epoch_style}
-            cities={visibleCities}
-            events={events}
-            memories={memories}
-            wonders={wonders}
-            players={players}
-            greatPersons={greatPersons}
-            entityIndex={entityIndex}
-            onBack={() => setSelectedEntity(null)}
-            onEventClick={onEventClick}
-            onEntityClick={handleEntityClick}
-            onRefetch={onRefetch}
-          />
-        </div>
-      );
-    }
-  }
 
   const totalKnown = visibleRegions.length + visibleProvinces.length + visibleCities.length;
   const unknownRegions = isAdmin ? 0 : regions.length - visibleRegions.length;

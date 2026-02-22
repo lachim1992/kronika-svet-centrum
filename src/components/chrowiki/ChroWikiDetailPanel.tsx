@@ -10,7 +10,7 @@ import {
   BookOpen, Castle, Calendar, Crown, Flag, Landmark, Loader2, MapPin,
   Mountain, Scroll, Sparkles, Swords, Compass, Shield, Users, ChevronRight, AlertTriangle,
   Eye, EyeOff, Pencil, Save, X, History, Zap, Wheat, Coins, Heart,
-  ChevronDown, ChevronUp, FileText, Clock,
+  ChevronDown, ChevronUp, FileText, Clock, MessageSquare, Brain, Feather,
 } from "lucide-react";
 import { toast } from "sonner";
 import RichText from "@/components/RichText";
@@ -18,6 +18,9 @@ import { buildSagaContext, type SagaContextData } from "@/lib/sagaContext";
 import SagaSourcesPanel from "./SagaSourcesPanel";
 import SagaDisplay from "./SagaDisplay";
 import HistoryDisplay, { type HistoryResult } from "./HistoryDisplay";
+import CityRumorsPanel from "@/components/CityRumorsPanel";
+import WorldMemoryPanel from "@/components/WorldMemoryPanel";
+import EntityContributionsPanel from "@/components/EntityContributionsPanel";
 
 const ENTITY_ICONS: Record<string, React.ReactNode> = {
   country: <Flag className="h-5 w-5" />,
@@ -80,6 +83,9 @@ interface Props {
   entityId: string;
   entityName: string;
   currentPlayerName?: string;
+  currentTurn?: number;
+  myRole?: string;
+  epochStyle?: string;
   countries: any[];
   regions: any[];
   provinces: any[];
@@ -90,12 +96,16 @@ interface Props {
   chronicles: any[];
   wikiEntries: any[];
   declarations: any[];
+  memories?: any[];
+  players?: any[];
+  entityIndex?: any;
   onEntityClick: (type: string, id: string, name: string) => void;
   onRefreshWiki: () => Promise<void>;
 }
 
 const ChroWikiDetailPanel = ({
   sessionId, entityType, entityId, entityName, currentPlayerName,
+  currentTurn, myRole, epochStyle, memories, players, entityIndex,
   countries, regions, provinces, cities, wonders, persons, events, chronicles, wikiEntries, declarations,
   onEntityClick, onRefreshWiki,
 }: Props) => {
@@ -817,6 +827,62 @@ const ChroWikiDetailPanel = ({
               </>
             )}
 
+            {/* City-specific panels: Rumors, Contributions, World Memory */}
+            {!readingMode && entityType === "city" && entity && (
+              <>
+                <OrnamentalDivider />
+                <section className="mb-2">
+                  <Tabs defaultValue="rumors" className="w-full">
+                    <TabsList className="h-8 w-full justify-start">
+                      <TabsTrigger value="rumors" className="text-xs gap-1 px-3 py-1.5">
+                        <MessageSquare className="h-3 w-3" /> Zvěsti
+                      </TabsTrigger>
+                      <TabsTrigger value="contributions" className="text-xs gap-1 px-3 py-1.5">
+                        <Feather className="h-3 w-3" /> Příspěvky
+                      </TabsTrigger>
+                      <TabsTrigger value="memory" className="text-xs gap-1 px-3 py-1.5">
+                        <Brain className="h-3 w-3" /> Paměť
+                      </TabsTrigger>
+                    </TabsList>
+                    <TabsContent value="rumors" className="mt-2">
+                      <CityRumorsPanel
+                        sessionId={sessionId}
+                        cityId={entityId}
+                        cityName={entityName}
+                        ownerPlayer={entity.owner_player || ""}
+                        currentTurn={currentTurn || 1}
+                        events={events}
+                        memories={memories || []}
+                        epochStyle={epochStyle}
+                        entityIndex={entityIndex}
+                        onEventClick={(id) => onEntityClick("event", id, "")}
+                        onEntityClick={(type, id) => onEntityClick(type, id, "")}
+                      />
+                    </TabsContent>
+                    <TabsContent value="contributions" className="mt-2">
+                      <EntityContributionsPanel
+                        sessionId={sessionId}
+                        entityType="city"
+                        entityId={entityId}
+                        currentPlayerName={currentPlayerName || ""}
+                        players={players || []}
+                        myRole={myRole || "player"}
+                        onEventClick={(id) => onEntityClick("event", id, "")}
+                      />
+                    </TabsContent>
+                    <TabsContent value="memory" className="mt-2">
+                      <WorldMemoryPanel
+                        sessionId={sessionId}
+                        memories={memories || []}
+                        cities={cities}
+                        currentTurn={currentTurn}
+                        filterCityId={entityId}
+                      />
+                    </TabsContent>
+                  </Tabs>
+                </section>
+              </>
+            )}
             {/* Person-specific */}
             {!readingMode && entityType === "person" && entity?.flavor_trait && (
               <>

@@ -18,6 +18,11 @@ interface Props {
   sessionId: string;
   currentPlayerName?: string;
   myRole?: string;
+  currentTurn?: number;
+  epochStyle?: string;
+  memories?: any[];
+  players?: any[];
+  entityIndex?: any;
   onEntityClick?: (type: string, id: string) => void;
   wikiEntityTarget?: { type: string; id: string } | null;
   onClearWikiEntityTarget?: () => void;
@@ -35,7 +40,7 @@ const ENTITY_ICONS: Record<string, React.ReactNode> = {
   discovery: <Compass className="h-3.5 w-3.5" />,
 };
 
-const ChroWikiTab = ({ sessionId, currentPlayerName = "", myRole = "player", onEntityClick, wikiEntityTarget, onClearWikiEntityTarget }: Props) => {
+const ChroWikiTab = ({ sessionId, currentPlayerName = "", myRole = "player", currentTurn, epochStyle, memories, players, entityIndex, onEntityClick, wikiEntityTarget, onClearWikiEntityTarget }: Props) => {
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState("all");
   const [playerFilter, setPlayerFilter] = useState("all");
@@ -239,6 +244,12 @@ const ChroWikiTab = ({ sessionId, currentPlayerName = "", myRole = "player", onE
               entityId={selectedEntity.id}
               entityName={selectedEntity.name}
               currentPlayerName={currentPlayerName}
+              currentTurn={currentTurn}
+              myRole={myRole}
+              epochStyle={epochStyle}
+              memories={memories}
+              players={players}
+              entityIndex={entityIndex}
               countries={countries}
               regions={regions}
               provinces={provinces}
