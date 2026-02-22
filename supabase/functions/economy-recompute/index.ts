@@ -151,11 +151,33 @@ Deno.serve(async (req) => {
     const resMap: Record<string, any> = {};
     for (const r of (currentResources || [])) resMap[r.resource_type] = r;
 
+    // ===== WEALTH INCOME (balanced) =====
+    const SETTLEMENT_WEALTH: Record<string, number> = {
+      HAMLET: 1, TOWNSHIP: 2, CITY: 4, POLIS: 6,
+    };
+    let totalWealthIncome = 0;
+    for (const city of cities) {
+      if (city.status && city.status !== "ok") continue;
+      const tierBase = SETTLEMENT_WEALTH[city.settlement_level] || 1;
+      const popTax = Math.floor((city.population_total || 0) / 500);
+      const burgherTrade = Math.floor((city.population_burghers || 0) / 200);
+      totalWealthIncome += tierBase + popTax + burgherTrade;
+    }
+
+    // Military wealth upkeep: 1 gold per 300 troops
+    let militaryWealthUpkeep = 0;
+    for (const stack of (stacks || [])) {
+      const totalManpower = (stack.military_stack_composition || [])
+        .reduce((sum: number, c: any) => sum + (c.manpower ?? 0), 0);
+      militaryWealthUpkeep += Math.ceil(totalManpower / 300);
+    }
+
     const resourceUpdates = [
       { type: "food", income: totalGrainProd, upkeep: totalGrainCons, net: netGrain },
       { type: "wood", income: totalWoodProd, upkeep: 0, net: netWood },
       { type: "stone", income: totalStoneProd, upkeep: 0, net: netStone },
       { type: "iron", income: totalIronProd, upkeep: militaryIronUpkeep, net: netIron },
+      { type: "wealth", income: totalWealthIncome, upkeep: militaryWealthUpkeep, net: Math.max(-MAX_NET_CHANGE, Math.min(MAX_NET_CHANGE, totalWealthIncome - militaryWealthUpkeep)) },
     ];
 
     const appliedStockpiles: Record<string, number> = {};
