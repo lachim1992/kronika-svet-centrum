@@ -49,6 +49,7 @@ const Dashboard = () => {
   const [myPlayerName, setMyPlayerName] = useState("Hráč");
   const [worldFoundation, setWorldFoundation] = useState<any>(null);
   const [codexEntityTarget, setCodexEntityTarget] = useState<{ type: string; id: string } | null>(null);
+  const [wikiEntityTarget, setWikiEntityTarget] = useState<{ type: string; id: string } | null>(null);
   const [foundCityTrigger, setFoundCityTrigger] = useState(0);
 
   useEffect(() => {
@@ -163,6 +164,12 @@ const Dashboard = () => {
     }
   };
 
+  /** Navigate to ChroWiki for a specific city (used by hex map city markers) */
+  const handleCityClickToWiki = (cityId: string) => {
+    setWikiEntityTarget({ type: "city", id: cityId });
+    setActiveTab("wiki");
+  };
+
   const sharedProps = {
     sessionId: session.id,
     session,
@@ -236,7 +243,7 @@ const Dashboard = () => {
           currentPlayerName={myPlayerName}
           myRole={myRole}
           worldName={worldFoundation?.world_name}
-          onCityClick={(cityId) => handleEntityClick("city", cityId)}
+          onCityClick={handleCityClickToWiki}
         />
       )}
       {activeTab === "realm" && <RealmTab {...sharedProps} />}
@@ -262,7 +269,7 @@ const Dashboard = () => {
       )}
       {activeTab === "feed" && <FeedTab {...sharedProps} />}
       {activeTab === "codex" && <CodexTab {...sharedProps} codexEntityTarget={codexEntityTarget} onClearEntityTarget={() => setCodexEntityTarget(null)} />}
-      {activeTab === "wiki" && <ChroWikiTab sessionId={session.id} currentPlayerName={myPlayerName} myRole={myRole} onEntityClick={handleEntityClick} />}
+      {activeTab === "wiki" && <ChroWikiTab sessionId={session.id} currentPlayerName={myPlayerName} myRole={myRole} onEntityClick={handleEntityClick} wikiEntityTarget={wikiEntityTarget} onClearWikiEntityTarget={() => setWikiEntityTarget(null)} />}
       {activeTab === "council" && (
         <CouncilTab
           sessionId={session.id}

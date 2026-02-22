@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ArrowLeft, MapPin, Sparkles, BookOpen, Shield, Flame, Crown, Scroll, Landmark, Brain, Globe, Castle, Map } from "lucide-react";
+import { ArrowLeft, MapPin, Sparkles, BookOpen, Shield, Flame, Crown, Scroll, Landmark, Brain, Globe, Castle, Map, ImageIcon, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import RichText from "@/components/RichText";
 import { supabase } from "@/integrations/supabase/client";
@@ -58,12 +58,15 @@ const CityDetailPanel = ({
   onEntityClick, entityIndex, epochStyle, myRole = "player",
 }: CityDetailPanelProps) => {
   const perms = getPermissions(myRole);
+  const isAdmin = myRole === "admin";
   const [generating, setGenerating] = useState(false);
   const [introduction, setIntroduction] = useState<string | null>(null);
   const [history, setHistory] = useState<string | null>(null);
   const [bulletFacts, setBulletFacts] = useState<string[]>([]);
   const [flavorPrompt, setFlavorPrompt] = useState((city as any).flavor_prompt || "");
   const [editingFlavor, setEditingFlavor] = useState(false);
+  const [generatingMapIcon, setGeneratingMapIcon] = useState(false);
+  const [mapIconUrl, setMapIconUrl] = useState<string | null>(null);
 
   // World context state
   const [worldContext, setWorldContext] = useState<{
@@ -186,12 +189,35 @@ const CityDetailPanel = ({
   const [wikiSummary, setWikiSummary] = useState<string | null>(null);
   useEffect(() => {
     const fetchWiki = async () => {
-      const { data } = await supabase.from("wiki_entries").select("image_url, summary")
-        .eq("session_id", city.session_id).eq("entity_type", "city").eq("entity_id", city.id).maybeSingle();
-      if (data) { setWikiImage(data.image_url); setWikiSummary(data.summary); }
+      const [{ data: wikiData }, { data: iconData }] = await Promise.all([
+        supabase.from("wiki_entries").select("image_url, summary")
+          .eq("session_id", city.session_id).eq("entity_type", "city").eq("entity_id", city.id).maybeSingle(),
+        supabase.from("encyclopedia_images").select("image_url")
+          .eq("session_id", city.session_id).eq("entity_id", city.id).eq("entity_type", "city").eq("kind", "map_icon").limit(1),
+      ]);
+      if (wikiData) { setWikiImage(wikiData.image_url); setWikiSummary(wikiData.summary); }
+      if (iconData && iconData.length > 0) { setMapIconUrl(iconData[0].image_url); }
     };
     fetchWiki();
   }, [city.id, city.session_id]);
+
+  const handleGenerateMapIcon = async () => {
+    setGeneratingMapIcon(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("generate-map-icon", {
+        body: { session_id: city.session_id, city_id: city.id },
+      });
+      if (error) throw error;
+      if (data?.error) { toast.error(data.error); return; }
+      setMapIconUrl(data.map_icon_url);
+      toast.success(`Mapový avatar pro ${city.name} vygenerován!`);
+      onRefetch?.();
+    } catch (e: any) {
+      toast.error("Generování avataru selhalo: " + (e.message || "neznámá chyba"));
+    } finally {
+      setGeneratingMapIcon(false);
+    }
+  };
 
   return (
     <div className="space-y-6 p-4">
@@ -287,6 +313,31 @@ const CityDetailPanel = ({
                 compact
               />
             )}
+          </div>
+        )}
+
+        {/* Map Avatar generation — visible to owner + admin */}
+        {(isOwner || isAdmin) && (
+          <div className="flex items-center gap-3 p-3 bg-card border-t border-border">
+            {mapIconUrl && (
+              <img src={mapIconUrl} alt="Map icon" className="w-10 h-10 rounded border border-border" style={{ imageRendering: "pixelated" }} />
+            )}
+            <div className="flex-1 min-w-0">
+              <p className="text-xs font-display font-semibold">Mapový avatar</p>
+              <p className="text-[10px] text-muted-foreground">
+                {mapIconUrl ? "Pixel-art ikona pro hexovou mapu" : "Vygenerujte pixel-art ikonu z ilustrace města"}
+              </p>
+            </div>
+            <Button
+              size="sm"
+              variant={mapIconUrl ? "outline" : "default"}
+              className="h-8 text-xs gap-1.5 font-display shrink-0"
+              disabled={generatingMapIcon}
+              onClick={handleGenerateMapIcon}
+            >
+              {generatingMapIcon ? <Loader2 className="h-3 w-3 animate-spin" /> : <ImageIcon className="h-3 w-3" />}
+              {mapIconUrl ? "Přegenerovat" : "Generovat avatar"}
+            </Button>
           </div>
         )}
       </div>
