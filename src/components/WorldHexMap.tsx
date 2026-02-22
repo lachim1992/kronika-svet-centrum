@@ -3,8 +3,9 @@ import { supabase } from "@/integrations/supabase/client";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Loader2, Hexagon, Map as MapIcon, Eye, Plus, Minus, RefreshCw, Home } from "lucide-react";
+import { Loader2, Hexagon, Map as MapIcon, Eye, Plus, Minus, RefreshCw, Home, Pencil } from "lucide-react";
 import { toast } from "sonner";
 import { useHexMap, AXIAL_NEIGHBORS, type HexData } from "@/hooks/useHexMap";
 import CityMarkerBadge from "@/components/CityMarkerBadge";
@@ -177,6 +178,8 @@ const WorldHexMap = ({ sessionId, playerName, myRole, onCityClick }: Props) => {
   const isAdmin = myRole === "admin";
   const [devMode, setDevMode] = useState(isAdmin);
   const [selectedHex, setSelectedHex] = useState<HexData | null>(null);
+  const [editBiome, setEditBiome] = useState<string | null>(null);
+  const [savingBiome, setSavingBiome] = useState(false);
   const [discoveredIds, setDiscoveredIds] = useState<Set<string>>(new Set());
   const [discoveredCoords, setDiscoveredCoords] = useState<Set<string>>(new Set());
   const [exploring, setExploring] = useState<string | null>(null);
@@ -477,7 +480,30 @@ const WorldHexMap = ({ sessionId, playerName, myRole, onCityClick }: Props) => {
     }
   }, [hexes, sessionId, isAdmin, loadAllGenerated, fetchDiscoveries]);
 
-  /* ── Handle tile click ── */
+  /* ── Save biome change ── */
+  const handleSaveBiome = useCallback(async () => {
+    if (!selectedHex || !editBiome || editBiome === selectedHex.biome_family) return;
+    setSavingBiome(true);
+    try {
+      const { error } = await supabase
+        .from("province_hexes")
+        .update({ biome_family: editBiome })
+        .eq("id", selectedHex.id);
+      if (error) throw error;
+      // Refresh hex data
+      if (isAdmin) await loadAllGenerated();
+      else await fetchDiscoveries();
+      toast.success(`Biom změněn na ${BIOME_LABELS[editBiome] || editBiome}`);
+      setSelectedHex(null);
+      setEditBiome(null);
+    } catch (e: any) {
+      toast.error("Chyba: " + (e.message || "neznámá"));
+    } finally {
+      setSavingBiome(false);
+    }
+  }, [selectedHex, editBiome, isAdmin, loadAllGenerated, fetchDiscoveries]);
+
+
   const handleTileClick = useCallback((q: number, r: number, isFrontier: boolean) => {
     if (dragRef.current?.moved) return;
     if (isFrontier) {
@@ -700,7 +726,7 @@ const WorldHexMap = ({ sessionId, playerName, myRole, onCityClick }: Props) => {
       )}
 
       {/* Province detail modal */}
-      <Dialog open={!!selectedHex} onOpenChange={() => setSelectedHex(null)}>
+      <Dialog open={!!selectedHex} onOpenChange={(open) => { if (!open) { setSelectedHex(null); setEditBiome(null); } }}>
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle className="font-display flex items-center gap-2">
@@ -723,6 +749,42 @@ const WorldHexMap = ({ sessionId, playerName, myRole, onCityClick }: Props) => {
                 <InfoRow label="Pobřeží" value={selectedHex.coastal ? "✅ Ano" : "❌ Ne"} />
                 <InfoRow label="Seed" value={selectedHex.seed.slice(-8)} />
               </div>
+
+              {/* Biome editor */}
+              {isAdmin && (
+                <div className="p-3 rounded-lg border border-primary/30 bg-primary/5 space-y-2">
+                  <p className="text-xs font-display font-semibold flex items-center gap-1.5">
+                    <Pencil className="h-3 w-3 text-primary" /> Změnit biom
+                  </p>
+                  <div className="flex gap-2">
+                    <Select
+                      value={editBiome ?? selectedHex.biome_family}
+                      onValueChange={setEditBiome}
+                    >
+                      <SelectTrigger className="h-8 text-xs flex-1">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {Object.entries(BIOME_LABELS).map(([key, label]) => (
+                          <SelectItem key={key} value={key} className="text-xs">
+                            {label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Button
+                      size="sm"
+                      className="h-8 text-xs gap-1"
+                      disabled={savingBiome || !editBiome || editBiome === selectedHex.biome_family}
+                      onClick={handleSaveBiome}
+                    >
+                      {savingBiome ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
+                      Uložit
+                    </Button>
+                  </div>
+                </div>
+              )}
+
               {selectedHex.macro_region && (
                 <div className="p-3 rounded-lg border border-border bg-muted/30">
                   <p className="text-xs font-display font-semibold mb-1">Makroregion</p>
@@ -740,6 +802,7 @@ const WorldHexMap = ({ sessionId, playerName, myRole, onCityClick }: Props) => {
                 onClick={() => {
                   setCurrentPos({ q: selectedHex.q, r: selectedHex.r });
                   setSelectedHex(null);
+                  setEditBiome(null);
                   toast.success(`Přesun na (${selectedHex.q}, ${selectedHex.r})`);
                 }}
               >
