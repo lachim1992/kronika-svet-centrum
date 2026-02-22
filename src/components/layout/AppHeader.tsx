@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { Copy, User, Home, LogOut, Globe } from "lucide-react";
+import { Copy, User, Home, LogOut, Globe, Sun, Moon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -31,11 +31,35 @@ interface Props {
 const AppHeader = ({ roomCode, currentTurn, worldName, playerName, myRole, currentSessionId }: Props) => {
   const navigate = useNavigate();
   const { signOut, user } = useAuth();
-  const [otherGames, setOtherGames] = useState<OtherGame[]>([]);
+  const [isLight, setIsLight] = useState(() => document.documentElement.classList.contains("light"));
 
   const copyCode = () => {
     navigator.clipboard.writeText(roomCode);
     toast.success(`Kód ${roomCode} zkopírován`);
+  };
+
+  const [otherGames, setOtherGames] = useState<OtherGame[]>([]);
+
+  // Restore theme from localStorage on mount
+  useEffect(() => {
+    const saved = localStorage.getItem("theme");
+    if (saved === "light") {
+      document.documentElement.classList.add("light");
+      setIsLight(true);
+    }
+  }, []);
+
+  const toggleTheme = () => {
+    const root = document.documentElement;
+    if (isLight) {
+      root.classList.remove("light");
+      localStorage.setItem("theme", "dark");
+      setIsLight(false);
+    } else {
+      root.classList.add("light");
+      localStorage.setItem("theme", "light");
+      setIsLight(true);
+    }
   };
 
   useEffect(() => {
@@ -70,8 +94,8 @@ const AppHeader = ({ roomCode, currentTurn, worldName, playerName, myRole, curre
   }, [user, currentSessionId]);
 
   return (
-    <header className="sticky top-0 z-40 border-b border-border backdrop-blur-md"
-      style={{ background: "hsl(220 28% 7% / 0.95)", boxShadow: "0 2px 16px -4px hsl(220 30% 3% / 0.6)" }}
+    <header className="sticky top-0 z-40 border-b border-border backdrop-blur-md bg-background/95"
+      style={{ boxShadow: "0 2px 16px -4px hsl(220 30% 3% / 0.6)" }}
     >
       <div className="flex items-center justify-between px-5 py-3 max-w-[1600px] mx-auto">
         <div className="flex items-center gap-4 min-w-0">
@@ -84,7 +108,16 @@ const AppHeader = ({ roomCode, currentTurn, worldName, playerName, myRole, curre
           </Badge>
         </div>
 
-        <div className="flex items-center gap-3 shrink-0">
+        <div className="flex items-center gap-2 shrink-0">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8 text-muted-foreground hover:text-foreground"
+            onClick={toggleTheme}
+          >
+            {isLight ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
+          </Button>
+
           <Button variant="ghost" size="sm" onClick={copyCode} className="font-mono text-xs h-8 px-3 text-muted-foreground hover:text-foreground">
             <Copy className="h-3.5 w-3.5 mr-1.5" />{roomCode}
           </Button>
