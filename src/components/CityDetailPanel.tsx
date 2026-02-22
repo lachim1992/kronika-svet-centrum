@@ -184,19 +184,50 @@ const CityDetailPanel = ({
 
   const SETTLEMENT_LABELS: Record<string, string> = { HAMLET: "Osada", TOWNSHIP: "Městečko", CITY: "Město", POLIS: "Polis" };
 
-  // Fetch wiki image for hero
+  // Fetch wiki image for hero + lazy generate if ai_description empty
   const [wikiImage, setWikiImage] = useState<string | null>(null);
   const [wikiSummary, setWikiSummary] = useState<string | null>(null);
+  const [lazyGenerating, setLazyGenerating] = useState(false);
   useEffect(() => {
     const fetchWiki = async () => {
       const [{ data: wikiData }, { data: iconData }] = await Promise.all([
-        supabase.from("wiki_entries").select("image_url, summary")
+        supabase.from("wiki_entries").select("image_url, summary, ai_description")
           .eq("session_id", city.session_id).eq("entity_type", "city").eq("entity_id", city.id).maybeSingle(),
         supabase.from("encyclopedia_images").select("image_url")
           .eq("session_id", city.session_id).eq("entity_id", city.id).eq("entity_type", "city").eq("kind", "map_icon").limit(1),
       ]);
       if (wikiData) { setWikiImage(wikiData.image_url); setWikiSummary(wikiData.summary); }
       if (iconData && iconData.length > 0) { setMapIconUrl(iconData[0].image_url); }
+
+      // Lazy generate: if ai_description is empty, check server_config and trigger wiki-generate
+      const aiDesc = wikiData?.ai_description;
+      if (!aiDesc || (typeof aiDesc === "string" && aiDesc.trim().length < 10)) {
+        // Check if lazy generation is enabled
+        const { data: cfgData } = await supabase
+          .from("server_config" as any)
+          .select("economic_params")
+          .eq("session_id", city.session_id)
+          .maybeSingle();
+        const econ = (cfgData as any)?.economic_params || {};
+        if (econ.lazy_generate_on_open !== false) {
+          setLazyGenerating(true);
+          try {
+            const { data: genData } = await supabase.functions.invoke("wiki-generate", {
+              body: {
+                entityType: "city", entityName: city.name, entityId: city.id,
+                sessionId: city.session_id, ownerPlayer: city.owner_player,
+                context: { regionName: city.province, description: city.city_description_cached, level: city.level },
+              },
+            });
+            if (genData?.summary) setWikiSummary(genData.summary);
+            if (genData?.imageUrl) setWikiImage(genData.imageUrl);
+          } catch (e) {
+            console.error("Lazy wiki generation failed:", e);
+          } finally {
+            setLazyGenerating(false);
+          }
+        }
+      }
     };
     fetchWiki();
   }, [city.id, city.session_id]);

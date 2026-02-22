@@ -23,7 +23,41 @@ serve(async (req) => {
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // Determine world params based on size — no premium gating
+    // ═══════════════════════════════════════════════
+    // 0) Read / seed economic config flags
+    // ═══════════════════════════════════════════════
+    const defaultEconomic = {
+      world_gen_mode: "cheap_start",
+      auto_generate_city_profiles: false,
+      auto_generate_top_city_profiles: true,
+      top_profiles_count: 3,
+      lazy_generate_on_open: true,
+      dev_unlock_premium: true,
+    };
+
+    const { data: existingCfg } = await supabase
+      .from("server_config")
+      .select("id, economic_params")
+      .eq("session_id", sessionId)
+      .maybeSingle();
+
+    let economic = { ...defaultEconomic };
+    if (existingCfg) {
+      const stored = existingCfg.economic_params as Record<string, unknown> || {};
+      economic = { ...defaultEconomic, ...stored };
+      // Merge defaults into existing row
+      await supabase.from("server_config").update({ economic_params: economic }).eq("id", existingCfg.id);
+    } else {
+      await supabase.from("server_config").insert({
+        session_id: sessionId,
+        economic_params: economic,
+      });
+    }
+
+    const isCheapStart = economic.world_gen_mode === "cheap_start";
+    const topProfilesCount = economic.top_profiles_count || 3;
+
+    // Determine world params based on size
     const sizeConfig: Record<string, { factions: number; cities: number; regions: number; historyYears: number }> = {
       small:  { factions: 3, cities: 5,  regions: 2, historyYears: 10 },
       medium: { factions: 5, cities: 12, regions: 4, historyYears: 25 },
@@ -253,30 +287,20 @@ Generuj kompletní svět.`;
     const createdCityIds: string[] = [];
     const createdCityRows: any[] = [];
 
-    // Spiral hex placement with minimum spacing of 2
     const placeCityHex = (index: number): { q: number; r: number } => {
       if (index === 0) return { q: 0, r: 0 };
-      // Spiral rings, 6 positions per ring
       const ring = Math.floor((index - 1) / 6) + 1;
       const pos = (index - 1) % 6;
-      const directions = [
-        [1, 0], [0, 1], [-1, 1], [-1, 0], [0, -1], [1, -1],
-      ];
+      const directions = [[1, 0], [0, 1], [-1, 1], [-1, 0], [0, -1], [1, -1]];
       const dir = directions[pos];
       let q = dir[0] * ring * 2;
       let r = dir[1] * ring * 2;
-      // Add slight offset for variety
       const offset = Math.floor(index / 7);
       q += offset % 2;
       r += (offset + 1) % 2;
-      // Ensure unique
       let key = `${q},${r}`;
       let attempts = 0;
-      while (usedHexes.has(key) && attempts < 20) {
-        q += 1;
-        attempts++;
-        key = `${q},${r}`;
-      }
+      while (usedHexes.has(key) && attempts < 20) { q += 1; attempts++; key = `${q},${r}`; }
       return { q, r };
     };
 
@@ -285,7 +309,6 @@ Generuj kompletní svět.`;
       const ownerPlayer = factionPlayerMap[city.ownerFaction] || playerName;
       const isPlayerCity = ownerPlayer === playerName;
 
-      // Player's first city gets (0,0)
       let coords: { q: number; r: number };
       if (isPlayerCity && cityIndex === 0) {
         coords = { q: 0, r: 0 };
@@ -294,7 +317,6 @@ Generuj kompletní svět.`;
       }
       usedHexes.add(`${coords.q},${coords.r}`);
 
-      // Use player's chosen settlement name for the first player city
       const cityName = (isPlayerCity && cityIndex === 0 && settlementName) ? settlementName : city.name;
 
       const { data: cityRow, error: cityErr } = await supabase.from("cities").insert({
@@ -312,14 +334,15 @@ Generuj kompletní svět.`;
         influence_score: 0,
       }).select("id").single();
 
-      if (cityErr) {
-        console.error("City insert error:", cityErr);
-        continue;
-      }
+      if (cityErr) { console.error("City insert error:", cityErr); continue; }
 
       const cityId = cityRow!.id;
       createdCityIds.push(cityId);
-      createdCityRows.push({ id: cityId, name: cityName, ownerPlayer, description: city.description, regionName: city.regionName });
+      createdCityRows.push({
+        id: cityId, name: cityName, ownerPlayer, description: city.description,
+        regionName: city.regionName, level: city.level || "Osada",
+        q: coords.q, r: coords.r, isPlayer: isPlayerCity,
+      });
       citiesCreated++;
       cityIndex++;
     }
@@ -344,19 +367,23 @@ Generuj kompletní svět.`;
     // 5) Create world memories
     for (const memory of world.worldMemories || []) {
       await supabase.from("world_memories").insert({
-        session_id: sessionId,
-        text: memory,
-        category: "tradition",
-        status: "approved",
-        source_turn: 1,
+        session_id: sessionId, text: memory, category: "tradition", status: "approved", source_turn: 1,
       } as any);
     }
 
     // ═══════════════════════════════════════════════
-    // 6) SEED CONTENT: Wiki entries + Rumors + Feed
+    // 6) SEED WIKI ENTRIES — cheap_start vs full_start
     // ═══════════════════════════════════════════════
 
-    // Wiki entries: first insert placeholder rows, then call wiki-generate for real AI content
+    // Helper: generate a NON-AI stub summary from city fields
+    const stubSummary = (c: any): string => {
+      const levelLabel = c.level || "Osada";
+      const regionPart = c.regionName ? ` v regionu ${c.regionName}` : "";
+      const descPart = c.description ? ` ${c.description}` : "";
+      return `${c.name} je ${levelLabel.toLowerCase()}${regionPart}, pod správou ${c.ownerPlayer}.${descPart ? descPart.substring(0, 120) : ""}`;
+    };
+
+    // Insert wiki_entries rows for ALL cities with stub summaries
     for (const city of createdCityRows) {
       await supabase.from("wiki_entries").upsert({
         session_id: sessionId,
@@ -364,42 +391,54 @@ Generuj kompletní svět.`;
         entity_id: city.id,
         entity_name: city.name,
         owner_player: city.ownerPlayer,
-        summary: `${city.name} — ${city.description || "město tohoto světa"}.`,
-        ai_description: city.description || `${city.name} je sídlo v regionu ${city.regionName || "neznámém"}.`,
+        summary: stubSummary(city),
+        ai_description: null, // Will be filled for top cities only in cheap_start
         updated_at: new Date().toISOString(),
-      }, { onConflict: "session_id,entity_type,entity_id" });
+        references: { generated: false, mode: isCheapStart ? "cheap_start" : "full_start", ts: new Date().toISOString() },
+      } as any, { onConflict: "session_id,entity_type,entity_id" });
       wikiEntriesCreated++;
     }
 
-    // Call wiki-generate for each city to get proper AI content (parallel, max 3 at a time)
+    // Determine which cities get full AI profiles
+    let citiesToGenerate: any[] = [];
+
+    if (isCheapStart) {
+      // Find player's home city (first player city = 0,0)
+      const playerCity = createdCityRows.find(c => c.isPlayer);
+      const playerQ = playerCity?.q ?? 0;
+      const playerR = playerCity?.r ?? 0;
+
+      // Sort all cities by hex distance from player home
+      const hexDist = (c: any) => {
+        const dq = c.q - playerQ;
+        const dr = c.r - playerR;
+        return (Math.abs(dq) + Math.abs(dq + dr) + Math.abs(dr)) / 2;
+      };
+      const sorted = [...createdCityRows].sort((a, b) => hexDist(a) - hexDist(b));
+      citiesToGenerate = sorted.slice(0, topProfilesCount);
+      console.log(`cheap_start: generating AI profiles for ${citiesToGenerate.length}/${createdCityRows.length} cities`);
+    } else {
+      // full_start: generate for all
+      citiesToGenerate = [...createdCityRows];
+    }
+
+    // Generate AI profiles for selected cities
     const WIKI_BATCH = 3;
     let wikiGenerated = 0;
     let wikiFailed = 0;
     const wikiStartTime = Date.now();
 
-    for (let i = 0; i < createdCityRows.length; i += WIKI_BATCH) {
-      const batch = createdCityRows.slice(i, i + WIKI_BATCH);
+    for (let i = 0; i < citiesToGenerate.length; i += WIKI_BATCH) {
+      const batch = citiesToGenerate.slice(i, i + WIKI_BATCH);
       const results = await Promise.allSettled(
         batch.map(city =>
           fetch(`${supabaseUrl}/functions/v1/wiki-generate`, {
             method: "POST",
-            headers: {
-              Authorization: `Bearer ${supabaseKey}`,
-              "Content-Type": "application/json",
-            },
+            headers: { Authorization: `Bearer ${supabaseKey}`, "Content-Type": "application/json" },
             body: JSON.stringify({
-              entityType: "city",
-              entityName: city.name,
-              entityId: city.id,
-              sessionId,
-              ownerPlayer: city.ownerPlayer,
-              context: {
-                regionName: city.regionName,
-                description: city.description,
-                worldName,
-                premise,
-                tone,
-              },
+              entityType: "city", entityName: city.name, entityId: city.id,
+              sessionId, ownerPlayer: city.ownerPlayer,
+              context: { regionName: city.regionName, description: city.description, worldName, premise, tone },
             }),
           }).then(async (res) => {
             if (!res.ok) throw new Error(`wiki-generate ${res.status}`);
@@ -414,17 +453,14 @@ Generuj kompletní svět.`;
       }
     }
 
-    // Log wiki generation stats to simulation_log
+    // Log wiki generation stats
     await supabase.from("simulation_log").insert({
-      session_id: sessionId,
-      year_start: 1,
-      year_end: 1,
-      events_generated: wikiGenerated,
-      scope: "seed_city_profiles",
-      triggered_by: "world_generate_init",
+      session_id: sessionId, year_start: 1, year_end: 1,
+      events_generated: wikiGenerated, scope: "seed_city_profiles",
+      triggered_by: isCheapStart ? "cheap_start" : "full_start",
     }).catch(() => {});
 
-    console.log(`Wiki generation: ${wikiGenerated} ok, ${wikiFailed} failed, ${Date.now() - wikiStartTime}ms`);
+    console.log(`Wiki generation (${economic.world_gen_mode}): ${wikiGenerated} ok, ${wikiFailed} failed, ${Date.now() - wikiStartTime}ms`);
 
     // City rumors: 3-5 per city
     const rumorTemplates = [
@@ -443,66 +479,52 @@ Generuj kompletní svět.`;
       const shuffled = [...rumorTemplates].sort(() => Math.random() - 0.5);
       for (let i = 0; i < Math.min(rumorCount, shuffled.length); i++) {
         await supabase.from("city_rumors").insert({
-          session_id: sessionId,
-          city_id: city.id,
-          city_name: city.name,
+          session_id: sessionId, city_id: city.id, city_name: city.name,
           text: shuffled[i](city.name),
           tone_tag: ["neutral", "ominous", "hopeful", "mysterious"][Math.floor(Math.random() * 4)],
-          turn_number: 1,
-          created_by: "system",
+          turn_number: 1, created_by: "system",
         });
         rumorsCreated++;
       }
     }
 
-    // World feed items: founding era news
+    // World feed items
     await supabase.from("world_feed_items").insert({
-      session_id: sessionId,
-      turn_number: 1,
+      session_id: sessionId, turn_number: 1,
       content: `Věk zakládání začíná. V zemi ${worldName} vznikají nové říše a města.`,
-      feed_type: "gossip",
-      importance: "high",
+      feed_type: "gossip", importance: "high",
     } as any);
 
-    // Chronicle entry for founding
+    // Chronicle entry
     await supabase.from("chronicle_entries").insert({
       session_id: sessionId,
       text: `Věk zakládání – V prvním roce letopočtu byly založeny základy civilizací ve světě ${worldName}. ${citiesCreated} měst vzniklo v ${regionsCreated} regionech. ${premise}`,
-      epoch_style: "kroniky",
-      turn_from: 1,
-      turn_to: 1,
+      epoch_style: "kroniky", turn_from: 1, turn_to: 1,
     });
 
     // Founding events for top cities
     const topCities = createdCityRows.slice(0, Math.min(5, createdCityRows.length));
     for (const city of topCities) {
       await supabase.from("world_feed_items").insert({
-        session_id: sessionId,
-        turn_number: 1,
+        session_id: sessionId, turn_number: 1,
         content: `Město ${city.name} bylo založeno v regionu ${city.regionName || worldName}.`,
-        feed_type: "gossip",
-        importance: "normal",
+        feed_type: "gossip", importance: "normal",
       } as any);
     }
 
-    // 7) Create initial world summary
+    // 7) World summary
     await supabase.from("ai_world_summaries").insert({
-      session_id: sessionId,
-      summary_type: "world_state",
-      turn_range_from: 1,
-      turn_range_to: 1,
+      session_id: sessionId, summary_type: "world_state",
+      turn_range_from: 1, turn_range_to: 1,
       summary_text: `Svět ${worldName}: ${premise}. ${factionsCreated} frakcí, ${citiesCreated} měst, ${regionsCreated} regionů. ${eventsCreated} historických událostí.`,
       key_facts: world.worldMemories || [],
     });
 
-    // 8) Upsert game_style_settings for flavor persistence
+    // 8) Upsert game_style_settings
     const stylePayload = {
       session_id: sessionId,
       lore_bible: [
-        `Svět: ${worldName}`,
-        `Premisa: ${premise}`,
-        `Tón: ${tone}`,
-        `Styl vítězství: ${victoryStyle}`,
+        `Svět: ${worldName}`, `Premisa: ${premise}`, `Tón: ${tone}`, `Styl vítězství: ${victoryStyle}`,
         realmName ? `Říše hráče: ${realmName}` : "",
         cultureName ? `Kultura: ${cultureName}` : "",
         languageName ? `Jazyk: ${languageName}` : "",
@@ -519,31 +541,23 @@ Generuj kompletní svět.`;
     };
     await supabase.from("game_style_settings").upsert(stylePayload, { onConflict: "session_id" });
 
-    // Set session turn to 1 + mark init_status ready
+    // Set session ready
     await supabase.from("game_sessions").update({ current_turn: 1, init_status: "ready" }).eq("id", sessionId);
 
     // 9) Log
     await supabase.from("world_action_log").insert({
-      session_id: sessionId,
-      player_name: "system",
-      turn_number: 1,
-      action_type: "other",
-      description: `AI svět vygenerován: ${factionsCreated} frakcí, ${citiesCreated} měst, ${regionsCreated} regionů, ${eventsCreated} událostí, ${wikiEntriesCreated} wiki, ${rumorsCreated} pověstí.`,
+      session_id: sessionId, player_name: "system", turn_number: 1, action_type: "other",
+      description: `AI svět vygenerován (${economic.world_gen_mode}): ${factionsCreated} frakcí, ${citiesCreated} měst, ${regionsCreated} regionů, ${eventsCreated} událostí, ${wikiGenerated}/${citiesCreated} wiki profilů, ${rumorsCreated} pověstí.`,
     });
 
     // 10) simulation_log
     await supabase.from("simulation_log").insert({
-      session_id: sessionId,
-      year_start: 1,
-      year_end: 1,
-      events_generated: eventsCreated,
-      scope: "world_generate_init",
-      triggered_by: "ai_wizard",
+      session_id: sessionId, year_start: 1, year_end: 1,
+      events_generated: eventsCreated, scope: "world_generate_init", triggered_by: "ai_wizard",
     });
 
     // 11) Generate hexes around player start
     try {
-      // Generate hex at 0,0 and surrounding ring
       const hexPositions = [
         [0, 0], [1, 0], [-1, 0], [0, 1], [0, -1], [1, -1], [-1, 1],
         [2, 0], [-2, 0], [0, 2], [0, -2], [2, -2], [-2, 2], [2, -1], [-2, 1], [1, 1], [-1, -1], [1, -2], [-1, 2],
@@ -551,10 +565,7 @@ Generuj kompletní svět.`;
       await Promise.all(hexPositions.map(([q, r]) =>
         fetch(`${supabaseUrl}/functions/v1/generate-hex`, {
           method: "POST",
-          headers: {
-            Authorization: `Bearer ${supabaseKey}`,
-            "Content-Type": "application/json",
-          },
+          headers: { Authorization: `Bearer ${supabaseKey}`, "Content-Type": "application/json" },
           body: JSON.stringify({ sessionId, q, r }),
         }).catch(() => null)
       ));
@@ -563,19 +574,13 @@ Generuj kompletní svět.`;
     }
 
     return new Response(JSON.stringify({
-      factionsCreated,
-      citiesCreated,
-      regionsCreated,
-      eventsCreated,
+      factionsCreated, citiesCreated, regionsCreated, eventsCreated,
       memoriesCreated: world.worldMemories?.length || 0,
-      wikiEntriesCreated,
-      rumorsCreated,
-    }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+      wikiEntriesCreated, wikiProfilesGenerated: wikiGenerated,
+      rumorsCreated, mode: economic.world_gen_mode,
+    }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
   } catch (e) {
     console.error("world-generate-init error:", e);
-
     return new Response(JSON.stringify({ error: e instanceof Error ? e.message : "Unknown error" }), {
       status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
