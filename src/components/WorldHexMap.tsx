@@ -39,6 +39,7 @@ const hKey = (q: number, r: number) => `${q},${r}`;
 interface CityOnHex {
   id: string; name: string; owner_player: string; q: number; r: number;
   settlement_level: string; isCapital?: boolean; imageUrl?: string | null;
+  mapIconUrl?: string | null;
   population: number;
 }
 
@@ -98,6 +99,7 @@ const HexTile = memo(({
                   ownerPlayer={c.owner_player}
                   isCapital={c.isCapital}
                   imageUrl={c.imageUrl}
+                  mapIconUrl={c.mapIconUrl}
                   population={c.population}
                   size="md"
                   cx={cx + (i > 0 ? (i === 1 ? -8 : 8) : 0)}
@@ -175,7 +177,7 @@ const WorldHexMap = ({ sessionId, playerName, myRole, onCityClick }: Props) => {
 
   /* ── Load cities with province coordinates ── */
   const fetchCities = useCallback(async () => {
-    const [{ data }, { data: images }] = await Promise.all([
+    const [{ data }, { data: images }, { data: mapIcons }] = await Promise.all([
       supabase
         .from("cities")
         .select("id, name, owner_player, province_q, province_r, settlement_level, population_total")
@@ -188,12 +190,22 @@ const WorldHexMap = ({ sessionId, playerName, myRole, onCityClick }: Props) => {
         .eq("session_id", sessionId)
         .eq("entity_type", "city")
         .eq("is_primary", true),
+      supabase
+        .from("encyclopedia_images")
+        .select("entity_id, image_url")
+        .eq("session_id", sessionId)
+        .eq("entity_type", "city")
+        .eq("kind", "map_icon"),
     ]);
     if (data) {
-      // Build image lookup
+      // Build image lookups
       const imgMap = new Map<string, string>();
       for (const img of images || []) {
         imgMap.set(img.entity_id, img.image_url);
+      }
+      const iconMap = new Map<string, string>();
+      for (const icon of mapIcons || []) {
+        iconMap.set(icon.entity_id, icon.image_url);
       }
 
       // Determine capital: first CITY-level or first city per player
@@ -215,6 +227,7 @@ const WorldHexMap = ({ sessionId, playerName, myRole, onCityClick }: Props) => {
         settlement_level: c.settlement_level,
         isCapital: capitalIds.has(c.id),
         imageUrl: imgMap.get(c.id) || null,
+        mapIconUrl: iconMap.get(c.id) || null,
         population: c.population_total || 1000,
       }));
       setAllCities(mapped);
