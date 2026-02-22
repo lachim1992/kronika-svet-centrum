@@ -104,6 +104,7 @@ const ChroWikiDetailPanel = ({
   const [dbLoading, setDbLoading] = useState(false);
   const [dbError, setDbError] = useState(false);
   const [coverImage, setCoverImage] = useState<string | null>(null);
+  const [mapIconUrl, setMapIconUrl] = useState<string | null>(null);
   const [readingMode, setReadingMode] = useState(false);
   const [lightboxOpen, setLightboxOpen] = useState(false);
 
@@ -158,10 +159,14 @@ const ChroWikiDetailPanel = ({
       supabase.from("encyclopedia_images").select("image_url")
         .eq("session_id", sessionId).eq("entity_type", entityType).eq("entity_id", entityId)
         .eq("is_primary", true).eq("kind", "cover").limit(1).maybeSingle(),
-    ]).then(([sagaRes, linksRes, coverRes]) => {
+      supabase.from("encyclopedia_images").select("image_url")
+        .eq("session_id", sessionId).eq("entity_type", entityType).eq("entity_id", entityId)
+        .eq("kind", "map_icon").limit(1).maybeSingle(),
+    ]).then(([sagaRes, linksRes, coverRes, mapIconRes]) => {
       setSagaVersions(sagaRes.data || []);
       setEntityLinks(linksRes.data || []);
       setCoverImage(coverRes.data?.image_url || null);
+      setMapIconUrl(mapIconRes.data?.image_url || null);
     });
   }, [entityId, entityType, sessionId]);
 
@@ -488,7 +493,9 @@ const ChroWikiDetailPanel = ({
                   boxShadow: '0 0 0 2px hsl(var(--primary) / 0.12), 0 2px 8px hsl(var(--background) / 0.4)',
                 }}
               >
-                {imageUrl ? (
+                {mapIconUrl ? (
+                  <img src={mapIconUrl} alt="" className="w-full h-full object-cover" style={{ imageRendering: "pixelated" }} />
+                ) : imageUrl ? (
                   <img src={imageUrl} alt="" className="w-full h-full object-cover" />
                 ) : (
                   <span className="text-primary [&_svg]:h-5 [&_svg]:w-5">{ENTITY_ICONS[entityType]}</span>
