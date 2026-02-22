@@ -63,36 +63,48 @@ Deno.serve(async (req) => {
       }
       // Bootstrap allowed — skip adjacency check
     } else {
-      // Check that target (q,r) is adjacent to at least one discovered hex
-      const discoveredIdList = Array.from(discoveredIds);
-      const BATCH = 200;
-      let isAdjacent = false;
+      // First check if player has a city on this hex — always allow
+      const { data: ownCityCheck } = await sb
+        .from("cities")
+        .select("id")
+        .eq("session_id", session_id)
+        .eq("owner_player", player_name)
+        .eq("province_q", q)
+        .eq("province_r", r)
+        .limit(1);
 
-      for (let i = 0; i < discoveredIdList.length && !isAdjacent; i += BATCH) {
-        const batch = discoveredIdList.slice(i, i + BATCH);
-        const { data: hexData } = await sb
-          .from("province_hexes")
-          .select("q, r")
-          .in("id", batch);
+      if (!ownCityCheck || ownCityCheck.length === 0) {
+        // Check that target (q,r) is adjacent to at least one discovered hex
+        const discoveredIdList = Array.from(discoveredIds);
+        const BATCH = 200;
+        let isAdjacent = false;
 
-        if (hexData) {
-          for (const h of hexData) {
-            for (const [dq, dr] of NEIGHBORS) {
-              if (h.q + dq === q && h.r + dr === r) {
-                isAdjacent = true;
-                break;
+        for (let i = 0; i < discoveredIdList.length && !isAdjacent; i += BATCH) {
+          const batch = discoveredIdList.slice(i, i + BATCH);
+          const { data: hexData } = await sb
+            .from("province_hexes")
+            .select("q, r")
+            .in("id", batch);
+
+          if (hexData) {
+            for (const h of hexData) {
+              for (const [dq, dr] of NEIGHBORS) {
+                if (h.q + dq === q && h.r + dr === r) {
+                  isAdjacent = true;
+                  break;
+                }
               }
+              if (isAdjacent) break;
             }
-            if (isAdjacent) break;
           }
         }
-      }
 
-      if (!isAdjacent) {
-        return new Response(
-          JSON.stringify({ error: "Nelze prozkoumat: mimo hranici" }),
-          { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
+        if (!isAdjacent) {
+          return new Response(
+            JSON.stringify({ error: "Nelze prozkoumat: mimo hranici" }),
+            { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
       }
     }
 
