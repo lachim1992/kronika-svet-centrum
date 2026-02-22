@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { ensureRealmResources, UNIT_TYPE_LABELS, UNIT_GOLD_FACTOR, FORMATION_PRESETS } from "@/lib/turnEngine";
+import { ensureRealmResources, recomputeManpowerPool, UNIT_TYPE_LABELS, UNIT_GOLD_FACTOR, FORMATION_PRESETS } from "@/lib/turnEngine";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -9,8 +9,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Progress } from "@/components/ui/progress";
+import { Slider } from "@/components/ui/slider";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { Swords, Shield, Target, Crosshair, Users, Coins, ChevronUp, Plus, Minus, Crown, User, AlertTriangle, CheckCircle2, XCircle } from "lucide-react";
+import { Swords, Shield, Target, Crosshair, Users, Coins, ChevronUp, Plus, Minus, Crown, User, AlertTriangle, CheckCircle2, XCircle, Gauge } from "lucide-react";
 import { toast } from "sonner";
 
 const UNIT_ICONS: Record<string, React.ElementType> = {
@@ -92,10 +93,11 @@ interface Props {
   currentPlayerName: string;
   currentTurn: number;
   myRole: string;
+  cities: any[];
   onRefetch: () => void;
 }
 
-const ArmyTab = ({ sessionId, currentPlayerName, currentTurn, myRole, onRefetch }: Props) => {
+const ArmyTab = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, onRefetch }: Props) => {
   const [stacks, setStacks] = useState<Stack[]>([]);
   const [generals, setGenerals] = useState<General[]>([]);
   const [realm, setRealm] = useState<RealmRes | null>(null);
@@ -137,7 +139,12 @@ const ArmyTab = ({ sessionId, currentPlayerName, currentTurn, myRole, onRefetch 
 
   useEffect(() => { fetchMilitary(); }, [fetchMilitary]);
 
-  const availableManpower = realm ? realm.manpower_pool - realm.manpower_committed : 0;
+  // Compute population-based manpower
+  const myCities = cities.filter(c => c.owner_player === currentPlayerName);
+  const totalPopulation = myCities.reduce((s, c) => s + (c.population_total || 0), 0);
+  const mobRate = realm?.mobilization_rate || 0.1;
+  const computedPool = Math.floor(totalPopulation * mobRate);
+  const availableManpower = computedPool - (realm?.manpower_committed || 0);
   const totalPower = stacks.filter(s => s.is_active).reduce((s, st) => s + st.power, 0);
   const totalCommitted = stacks.filter(s => s.is_active).reduce((s, st) => s + st.compositions.reduce((a, c) => a + c.manpower, 0), 0);
 
@@ -185,7 +192,7 @@ const ArmyTab = ({ sessionId, currentPlayerName, currentTurn, myRole, onRefetch 
       <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
         <SummaryChip label="Dostupní muži" value={availableManpower} icon={Users} />
         <SummaryChip label="Nasazení" value={totalCommitted} icon={Shield} />
-        <SummaryChip label="Mobilizace" value={`${Math.round((realm?.mobilization_rate || 0) * 100)}%`} icon={ChevronUp} />
+        <SummaryChip label="Mobilizace" value={`${Math.round(mobRate * 100)}%`} icon={ChevronUp} />
         <SummaryChip label="Zlato" value={realm?.gold_reserve || 0} icon={Coins} />
         <SummaryChip label="Celková síla" value={totalPower} icon={Swords} highlight />
         <div className="manuscript-card p-2 flex flex-col items-center justify-center gap-0.5">
@@ -193,6 +200,46 @@ const ArmyTab = ({ sessionId, currentPlayerName, currentTurn, myRole, onRefetch 
           <span className={`text-xs font-display font-semibold ${readinessConfig[readiness].className}`}>
             {readinessConfig[readiness].label}
           </span>
+        </div>
+      </div>
+
+      {/* Mobilization Control */}
+      <div className="game-card p-4 space-y-3">
+        <div className="flex items-center gap-2">
+          <Gauge className="h-4 w-4 text-primary" />
+          <h3 className="text-sm font-display font-semibold">Mobilizace</h3>
+          <Badge variant="outline" className="ml-auto text-xs">{Math.round(mobRate * 100)}%</Badge>
+        </div>
+        <Slider
+          value={[Math.round(mobRate * 100)]}
+          onValueCommit={async (val) => {
+            if (!realm) return;
+            const rate = val[0] / 100;
+            await supabase.from("realm_resources").update({ mobilization_rate: rate }).eq("id", realm.id);
+            const newPool = Math.floor(totalPopulation * rate);
+            await supabase.from("realm_resources").update({ manpower_pool: newPool }).eq("id", realm.id);
+            setRealm({ ...realm, mobilization_rate: rate, manpower_pool: newPool });
+          }}
+          max={100} min={0} step={1}
+          className="w-full"
+        />
+        <div className="flex justify-between text-[10px] text-muted-foreground">
+          <span>0% — Mír</span>
+          <span>100% — Totální mobilizace</span>
+        </div>
+        <div className="grid grid-cols-3 gap-3 text-xs">
+          <div className="bg-muted/40 rounded-lg p-2.5 text-center">
+            <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Populace</div>
+            <div className="text-base font-bold font-display mt-0.5">{totalPopulation.toLocaleString()}</div>
+          </div>
+          <div className="bg-muted/40 rounded-lg p-2.5 text-center">
+            <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">K dispozici</div>
+            <div className="text-base font-bold font-display mt-0.5">{availableManpower.toLocaleString()}</div>
+          </div>
+          <div className="bg-muted/40 rounded-lg p-2.5 text-center">
+            <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Odvedení</div>
+            <div className="text-base font-bold font-display mt-0.5">{totalCommitted.toLocaleString()}</div>
+          </div>
         </div>
       </div>
 

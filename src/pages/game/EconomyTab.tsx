@@ -2,7 +2,6 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Slider } from "@/components/ui/slider";
 import {
   Wheat, Trees, Mountain, Anvil, Coins, Users, Gauge,
   AlertTriangle, TrendingUp, TrendingDown, Minus,
@@ -174,12 +173,6 @@ const EconomyTab = ({ sessionId, currentPlayerName, currentTurn, cities, resourc
     }
   }, [sessionId, currentPlayerName, fetchData, onRefetch]);
 
-  const handleMobilizationChange = async (val: number[]) => {
-    if (!realm) return;
-    const rate = val[0] / 100;
-    await supabase.from("realm_resources").update({ mobilization_rate: rate }).eq("id", realm.id);
-    setRealm({ ...realm, mobilization_rate: rate });
-  };
 
   // Build sources for a resource type
   const buildSources = (rt: string) => {
@@ -419,37 +412,38 @@ const EconomyTab = ({ sessionId, currentPlayerName, currentTurn, cities, resourc
         </div>
       </div>
 
-      {/* ═══ MOBILIZATION CONTROL ═══ */}
-      <div className="game-card p-5 space-y-4">
-        <h3 className="text-base font-display font-semibold flex items-center gap-2">
-          <Gauge className="h-5 w-5 text-primary" /> Mobilizace
-          <Badge variant="outline" className="ml-auto text-xs">{currentMob}%</Badge>
-        </h3>
-        <Slider
-          value={[currentMob]}
-          onValueCommit={handleMobilizationChange}
-          max={30} min={0} step={1}
-          className="w-full"
-        />
-        <div className="flex justify-between text-[10px] text-muted-foreground">
-          <span>0% — Mír</span>
-          <span>30% — Totální mobilizace</span>
+      {/* ═══ ARMY COSTS TABLE ═══ */}
+      {armies.length > 0 && (
+        <div className="game-card p-0 overflow-hidden">
+          <div className="px-5 pt-4 pb-2">
+            <h3 className="text-base font-display font-semibold flex items-center gap-2">
+              <ShieldAlert className="h-4 w-4 text-primary" /> Náklady na armádu
+            </h3>
+          </div>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="text-xs px-3">Armáda</TableHead>
+                <TableHead className="text-xs px-3">Typ</TableHead>
+                <TableHead className="text-xs px-3 text-right">Železa/kolo</TableHead>
+                <TableHead className="text-xs px-3 text-right">Stav</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {armies.map((a: any) => (
+                <TableRow key={a.id}>
+                  <TableCell className="text-sm px-3 font-semibold">{a.army_name}</TableCell>
+                  <TableCell className="text-xs px-3">{a.army_type}</TableCell>
+                  <TableCell className="text-sm px-3 text-right">{a.iron_cost}</TableCell>
+                  <TableCell className="text-xs px-3 text-right">
+                    <Badge variant={a.status === "Aktivní" ? "default" : "secondary"} className="text-[10px]">{a.status}</Badge>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
         </div>
-        <div className="grid grid-cols-3 gap-4 text-xs">
-          <div className="bg-muted/40 rounded-lg p-3 text-center">
-            <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">K dispozici</div>
-            <div className="text-lg font-bold font-display mt-1">{availableManpower}</div>
-          </div>
-          <div className="bg-muted/40 rounded-lg p-3 text-center">
-            <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Odvedení</div>
-            <div className="text-lg font-bold font-display mt-1">{realm?.manpower_committed || 0}</div>
-          </div>
-          <div className="bg-muted/40 rounded-lg p-3 text-center">
-            <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Logistika</div>
-            <div className="text-lg font-bold font-display mt-1">{realm?.logistic_capacity || 0}</div>
-          </div>
-        </div>
-      </div>
+      )}
 
       {/* ═══ DRIVERS: Top producers / consumers ═══ */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
