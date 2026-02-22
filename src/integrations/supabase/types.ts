@@ -237,11 +237,14 @@ export type Database = {
           created_at: string
           custom_layers: boolean
           devastated_round: number | null
+          development_level: number
           famine_severity: number
           famine_turn: boolean
           flavor_prompt: string | null
           founded_round: number
           id: string
+          influence_score: number
+          last_tick_at: string | null
           last_turn_grain_cons: number
           last_turn_grain_prod: number
           last_turn_special_prod: number
@@ -274,11 +277,14 @@ export type Database = {
           created_at?: string
           custom_layers?: boolean
           devastated_round?: number | null
+          development_level?: number
           famine_severity?: number
           famine_turn?: boolean
           flavor_prompt?: string | null
           founded_round?: number
           id?: string
+          influence_score?: number
+          last_tick_at?: string | null
           last_turn_grain_cons?: number
           last_turn_grain_prod?: number
           last_turn_special_prod?: number
@@ -311,11 +317,14 @@ export type Database = {
           created_at?: string
           custom_layers?: boolean
           devastated_round?: number | null
+          development_level?: number
           famine_severity?: number
           famine_turn?: boolean
           flavor_prompt?: string | null
           founded_round?: number
           id?: string
+          influence_score?: number
+          last_tick_at?: string | null
           last_turn_grain_cons?: number
           last_turn_grain_prod?: number
           last_turn_special_prod?: number
