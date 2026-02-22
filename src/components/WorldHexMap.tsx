@@ -67,13 +67,17 @@ const HexTile = memo(({
 
   return (
     <g onClick={onClick} className="cursor-pointer">
+      {isFrontier && (
+        <title>Prozkoumat ({q}, {r})</title>
+      )}
       <polygon
         points={pts}
         fill={fillColor}
-        stroke={isCurrent ? "hsl(45, 90%, 55%)" : isFrontier ? "hsl(var(--muted-foreground) / 0.3)" : "hsl(var(--border))"}
-        strokeWidth={isCurrent ? 2.5 : 0.8}
-        opacity={showBiome ? 1 : 0.3}
+        stroke={isCurrent ? "hsl(45, 90%, 55%)" : isFrontier ? "hsl(var(--primary) / 0.4)" : "hsl(var(--border))"}
+        strokeWidth={isCurrent ? 2.5 : isFrontier ? 1.2 : 0.8}
+        opacity={showBiome ? 1 : isFrontier ? 0.45 : 0.3}
         strokeDasharray={isFrontier ? "3,3" : undefined}
+        className={isFrontier ? "hover:opacity-70 transition-opacity" : ""}
       />
       {loading && (
         <text x={cx} y={cy} textAnchor="middle" dominantBaseline="middle"
@@ -131,8 +135,14 @@ const HexTile = memo(({
         </>
       )}
       {isFrontier && !loading && (
-        <text x={cx} y={cy} textAnchor="middle" dominantBaseline="middle"
-          fill="hsl(var(--primary))" fontSize="10" opacity={0.6} style={{ pointerEvents: "none" }}>?</text>
+        <>
+          <text x={cx} y={cy - 4} textAnchor="middle" dominantBaseline="middle"
+            fill="hsl(var(--primary))" fontSize="12" opacity={0.7} style={{ pointerEvents: "none" }}>?</text>
+          <text x={cx} y={cy + 8} textAnchor="middle" dominantBaseline="middle"
+            fill="hsl(var(--primary))" fontSize="5.5" opacity={0.5} style={{ pointerEvents: "none" }}>
+            Prozkoumat
+          </text>
+        </>
       )}
     </g>
   );
@@ -349,27 +359,37 @@ const WorldHexMap = ({ sessionId, playerName, myRole, onCityClick }: Props) => {
     }
   }, [mapLoaded, discoveredIds.size, playerCities, currentPos, bootstrapping, bootstrapCityDiscoveries]);
 
+  /* ── DEV debug log ── */
+  const [debugLog, setDebugLog] = useState<{ q: number; r: number; type: string; status: number; message: string } | null>(null);
+
   /* ── Explore frontier tile (server-validated) ── */
   const handleExploreFrontier = useCallback(async (q: number, r: number) => {
     const key = hKey(q, r);
     setExploring(key);
+    setDebugLog(null);
     try {
       const { data, error } = await supabase.functions.invoke("explore-hex", {
         body: { session_id: sessionId, player_name: playerName, q, r },
       });
-      if (error) throw error;
+      if (error) {
+        setDebugLog({ q, r, type: "frontier", status: 500, message: error.message || "invoke error" });
+        throw error;
+      }
       if (data?.error) {
+        setDebugLog({ q, r, type: "frontier", status: 403, message: data.error });
         toast.error(data.error);
         return;
       }
+      setDebugLog({ q, r, type: "frontier", status: 200, message: "OK" });
       await fetchDiscoveries();
+      await fetchCities();
       toast.success(`Provincie (${q}, ${r}) objevena!`);
     } catch (e: any) {
       toast.error("Průzkum selhal: " + (e.message || "neznámá chyba"));
     } finally {
       setExploring(null);
     }
-  }, [sessionId, playerName, fetchDiscoveries]);
+  }, [sessionId, playerName, fetchDiscoveries, fetchCities]);
 
   /* ── Move to discovered hex ── */
   const handleMoveToHex = useCallback((q: number, r: number) => {
@@ -567,6 +587,15 @@ const WorldHexMap = ({ sessionId, playerName, myRole, onCityClick }: Props) => {
               Klikněte na ? hex pro průzkum · na odkrytý hex pro přesun
             </p>
           </div>
+
+          {/* DEV debug panel */}
+          {devMode && debugLog && (
+            <div className="p-2 rounded-lg border border-border bg-card text-[10px] font-mono space-y-0.5">
+              <p className="font-display font-semibold text-xs text-muted-foreground">🔧 DEV — Poslední průzkum</p>
+              <p>Souřadnice: ({debugLog.q}, {debugLog.r}) — Typ: {debugLog.type}</p>
+              <p>Status: <span className={debugLog.status === 200 ? "text-green-400" : "text-red-400"}>{debugLog.status}</span> — {debugLog.message}</p>
+            </div>
+          )}
         </>
       )}
 
