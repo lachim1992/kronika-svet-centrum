@@ -56,6 +56,8 @@ Deno.serve(async (req) => {
       { data: laws },
       { data: provinces },
       { data: prevInfluence },
+      { data: aiFactions },
+      { data: cityStates },
     ] = await Promise.all([
       supabase.from("game_players").select("*").eq("session_id", sessionId),
       supabase.from("cities").select("*").eq("session_id", sessionId),
@@ -66,9 +68,14 @@ Deno.serve(async (req) => {
       supabase.from("laws").select("*").eq("session_id", sessionId).eq("is_active", true),
       supabase.from("provinces").select("*").eq("session_id", sessionId),
       supabase.from("civ_influence").select("*").eq("session_id", sessionId).eq("turn_number", turnNumber - 1),
+      supabase.from("ai_factions").select("*").eq("session_id", sessionId).eq("is_active", true),
+      supabase.from("city_states").select("*").eq("session_id", sessionId),
     ]);
 
+    // Include AI faction names in player list for influence/tension calculations
     const playerNames = (players || []).map((p: any) => p.player_name);
+    const aiFactionNames = (aiFactions || []).map((f: any) => f.faction_name);
+    const allActorNames = [...new Set([...playerNames, ...aiFactionNames])];
 
     // ========== 2. SETTLEMENT GROWTH ==========
     const growthResults: any[] = [];
@@ -99,7 +106,7 @@ Deno.serve(async (req) => {
 
     // ========== 3. INFLUENCE CALCULATION ==========
     const influenceResults: any[] = [];
-    for (const pName of playerNames) {
+    for (const pName of allActorNames) {
       const myCities = (cities || []).filter((c: any) => c.owner_player === pName);
       const myStacks = (militaryStacks || []).filter((s: any) => s.player_name === pName);
       const myLaws = (laws || []).filter((l: any) => l.player_name === pName);
@@ -231,8 +238,10 @@ Deno.serve(async (req) => {
     const CRISIS_THRESHOLD = 60;
     const WAR_THRESHOLD = 85;
 
-    for (let i = 0; i < playerNames.length; i++) {
-      for (let j = i + 1; j < playerNames.length; j++) {
+    for (let i = 0; i < allActorNames.length; i++) {
+      for (let j = i + 1; j < allActorNames.length; j++) {
+        const pA = allActorNames[i];
+        const pB = allActorNames[j];
         const pA = playerNames[i];
         const pB = playerNames[j];
 
@@ -442,7 +451,180 @@ Deno.serve(async (req) => {
     }
     results.laws_applied = lawResults;
 
-    // ========== 7. FINALIZE TICK ==========
+    // ========== 7. TREATY STABILITY EVALUATION ==========
+    const treatyResults: any[] = [];
+    // Check all active treaties - if tension between treaty parties is high, treaty may break
+    const activeTreaties = (treaties || []).filter((e: any) => e.event_type === "treaty" || e.event_type === "alliance");
+    for (const treaty of activeTreaties) {
+      const partyA = treaty.player;
+      // Try to extract party B from note
+      const partyB = allActorNames.find(n => n !== partyA && treaty.note?.includes(n));
+      if (!partyB) continue;
+
+      const tensionBetween = tensionResults.find(t =>
+        (t.player_a === partyA && t.player_b === partyB) ||
+        (t.player_a === partyB && t.player_b === partyA)
+      );
+      const tensionLevel = tensionBetween ? tensionBetween.total_tension : 0;
+
+      // Treaty breaks if tension > 50 (deterministic based on turn seed)
+      if (tensionLevel > 50) {
+        const breakSeed = turnNumber * 17 + partyA.length * 3 + partyB.length * 11;
+        const breakRoll = (breakSeed % 100) / 100;
+        const breakThreshold = tensionLevel > 70 ? 0.3 : 0.6; // Higher tension = easier to break
+
+        if (breakRoll < breakThreshold) {
+          // Treaty breaks!
+          await supabase.from("game_events").insert({
+            session_id: sessionId,
+            event_type: "betrayal",
+            player: "Systém",
+            note: `Smlouva mezi ${partyA} a ${partyB} se rozpadla pod tíhou napětí (tenze: ${Math.round(tensionLevel)}).`,
+            importance: "critical",
+            confirmed: true,
+            turn_number: turnNumber,
+          });
+
+          await supabase.from("world_memories").insert({
+            session_id: sessionId,
+            fact_text: `V roce ${turnNumber} se rozpadla smlouva mezi ${partyA} a ${partyB}.`,
+            category: "historická jizva",
+            location_type: "world",
+            location_name: "Svět",
+            approved: true,
+          }).catch(() => {});
+
+          await supabase.from("chronicle_entries").insert({
+            session_id: sessionId,
+            text: `**Rozpad smlouvy (rok ${turnNumber}):** Pod tíhou narůstajícího napětí (${Math.round(tensionLevel)}) se dohoda mezi ${partyA} a ${partyB} rozpadla. Důvěra byla pošlapána.`,
+            epoch_style: "kroniky",
+            turn_from: turnNumber,
+            turn_to: turnNumber,
+          }).catch(() => {});
+
+          reputationDeltas[partyA] = (reputationDeltas[partyA] || 0) - 10;
+          reputationDeltas[partyB] = (reputationDeltas[partyB] || 0) - 10;
+
+          treatyResults.push({ partyA, partyB, tension: tensionLevel, broken: true });
+        } else {
+          treatyResults.push({ partyA, partyB, tension: tensionLevel, broken: false, strained: true });
+        }
+      }
+    }
+    results.treaty_stability = treatyResults;
+
+    // ========== 8. REBELLION EVALUATION ==========
+    const rebellionResults: any[] = [];
+    for (const city of (cities || [])) {
+      if (city.status !== "ok") continue;
+      const stability = city.city_stability || 70;
+
+      // Rebellion chance increases as stability drops below 30
+      if (stability < 30) {
+        const rebelSeed = turnNumber * 23 + city.name.length * 7;
+        const rebelRoll = (rebelSeed % 100) / 100;
+        const rebelThreshold = stability < 15 ? 0.4 : 0.7; // Very low stability = high rebel chance
+
+        if (rebelRoll < rebelThreshold) {
+          // Rebellion!
+          const popLoss = Math.round(city.population_total * 0.1);
+          const newStability = Math.max(5, stability - 15);
+
+          await supabase.from("cities").update({
+            city_stability: newStability,
+            population_total: Math.max(50, city.population_total - popLoss),
+          }).eq("id", city.id);
+
+          await supabase.from("game_events").insert({
+            session_id: sessionId,
+            event_type: "rebellion",
+            player: "Systém",
+            note: `Vzpoura v ${city.name}! Lid se bouří proti ${city.owner_player}. Ztráta ${popLoss} obyvatel.`,
+            importance: "critical",
+            confirmed: true,
+            turn_number: turnNumber,
+            location: city.name,
+            city_id: city.id,
+          });
+
+          await supabase.from("world_memories").insert({
+            session_id: sessionId,
+            fact_text: `V roce ${turnNumber} vypukla vzpoura v ${city.name} (stabilita: ${stability}%).`,
+            category: "historická jizva",
+            location_type: "city",
+            location_name: city.name,
+            city_id: city.id,
+            approved: true,
+          }).catch(() => {});
+
+          await supabase.from("chronicle_entries").insert({
+            session_id: sessionId,
+            text: `**Vzpoura (rok ${turnNumber}):** Lid města ${city.name} povstal proti vládě ${city.owner_player}. Stabilita klesla na ${newStability}%, ${popLoss} obyvatel uprchlo.`,
+            epoch_style: "kroniky",
+            turn_from: turnNumber,
+            turn_to: turnNumber,
+          }).catch(() => {});
+
+          reputationDeltas[city.owner_player] = (reputationDeltas[city.owner_player] || 0) - 8;
+          rebellionResults.push({ city: city.name, owner: city.owner_player, stability, popLoss, rebelled: true });
+        } else {
+          rebellionResults.push({ city: city.name, owner: city.owner_player, stability, rebelled: false, unrest: true });
+        }
+      }
+    }
+    results.rebellions = rebellionResults;
+
+    // ========== 9. NPC / CITY-STATE AUTONOMOUS DIPLOMACY ==========
+    const npcResults: any[] = [];
+    for (const cs of (cityStates || [])) {
+      // City-states shift influence toward the stronger neighbor
+      const influenceDiff = (cs.influence_p1 || 0) - (cs.influence_p2 || 0);
+      
+      // Drift toward strongest nearby actor based on total influence
+      const sortedInfluence = [...influenceResults].sort((a, b) => b.total_influence - a.total_influence);
+      if (sortedInfluence.length >= 2) {
+        const drift = Math.round(sortedInfluence[0].total_influence * 0.02);
+        const updates: any = {};
+        // Simple: strongest gets +drift on p1, weaker on p2
+        if (sortedInfluence[0].player_name === playerNames[0]) {
+          updates.influence_p1 = Math.min(100, (cs.influence_p1 || 0) + drift);
+        } else {
+          updates.influence_p2 = Math.min(100, (cs.influence_p2 || 0) + drift);
+        }
+
+        // Mood shifts based on world tension
+        const avgTension = tensionResults.length > 0
+          ? tensionResults.reduce((s, t) => s + t.total_tension, 0) / tensionResults.length
+          : 0;
+        if (avgTension > 60) updates.mood = "Nepokojný";
+        else if (avgTension > 30) updates.mood = "Opatrný";
+        else updates.mood = "Neutrální";
+
+        await supabase.from("city_states").update(updates).eq("id", cs.id);
+        npcResults.push({ cityState: cs.name, drift, mood: updates.mood || cs.mood });
+      }
+    }
+    results.npc_diplomacy = npcResults;
+
+    // ========== 10. APPLY FINAL REPUTATION DELTAS ==========
+    // (Treaty breaks and rebellions may have added new deltas)
+    for (const [playerName, delta] of Object.entries(reputationDeltas)) {
+      if (delta === 0) continue;
+      const existingRep = reputationResults.find(r => r.player === playerName);
+      if (existingRep) continue; // Already applied in step 5a
+      
+      const inf = influenceResults.find(r => r.player_name === playerName);
+      if (inf) {
+        const newRep = Math.max(-100, Math.min(100, (inf.reputation_score || 0) + delta));
+        await supabase.from("civ_influence").update({
+          reputation_score: Math.round(newRep * 10) / 10,
+        }).eq("session_id", sessionId).eq("player_name", playerName).eq("turn_number", turnNumber);
+        reputationResults.push({ player: playerName, delta, newRep });
+      }
+    }
+    results.reputation_changes = reputationResults;
+
+    // ========== FINALIZE TICK ==========
     await supabase.from("world_tick_log").update({
       status: "completed",
       finished_at: new Date().toISOString(),
