@@ -460,8 +460,8 @@ const WorldHexMap = ({ sessionId, playerName, myRole, onCityClick }: Props) => {
   }, [getHex]);
 
   /* ── SVG layout ── */
-  const svgW = 800;
-  const svgH = 600;
+  const svgW = 1100;
+  const svgH = 700;
   const offsetX = svgW / 2 - cameraCenter.x;
   const offsetY = svgH / 2 - cameraCenter.y;
 
@@ -508,7 +508,7 @@ const WorldHexMap = ({ sessionId, playerName, myRole, onCityClick }: Props) => {
 
           <div
             className="game-card p-0 overflow-hidden relative select-none touch-none"
-            style={{ height: "420px" }}
+            style={{ height: "520px" }}
             onPointerDown={onPointerDown}
             onPointerMove={onPointerMove}
             onPointerUp={onPointerUp}
