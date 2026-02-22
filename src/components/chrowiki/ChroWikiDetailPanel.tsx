@@ -131,6 +131,9 @@ const ChroWikiDetailPanel = ({
   // Entity links
   const [entityLinks, setEntityLinks] = useState<any[]>([]);
 
+  // Lazy wiki generation state
+  const [lazyGenerating, setLazyGenerating] = useState(false);
+
   // Direct DB fetch
   useEffect(() => {
     if (!entityId || !entityType) return;
@@ -145,6 +148,45 @@ const ChroWikiDetailPanel = ({
         setDbLoading(false);
       });
   }, [entityId, entityType]);
+
+  // Lazy generate wiki content on open if ai_description is empty
+  useEffect(() => {
+    if (!entityId || !sessionId || !entityType) return;
+    const wiki = wikiEntries.find(w => w.entity_id === entityId && w.entity_type === entityType);
+    const aiDesc = wiki?.ai_description;
+    if (aiDesc && typeof aiDesc === "string" && aiDesc.trim().length >= 10) return; // already has content
+
+    const lazyGen = async () => {
+      // Check server_config for lazy_generate_on_open
+      const { data: cfgData } = await supabase
+        .from("server_config" as any)
+        .select("economic_params")
+        .eq("session_id", sessionId)
+        .maybeSingle();
+      const econ = (cfgData as any)?.economic_params || {};
+      if (econ.lazy_generate_on_open === false) return;
+
+      setLazyGenerating(true);
+      try {
+        const entity = wikiEntries.find(w => w.entity_id === entityId);
+        const { data: genData, error } = await supabase.functions.invoke("wiki-generate", {
+          body: {
+            entityType, entityName, entityId, sessionId,
+            ownerPlayer: entity?.owner_player || "",
+            context: {},
+          },
+        });
+        if (!error && genData?.aiDescription) {
+          await onRefreshWiki();
+        }
+      } catch (e) {
+        console.error("Lazy wiki generation failed:", e);
+      } finally {
+        setLazyGenerating(false);
+      }
+    };
+    lazyGen();
+  }, [entityId, entityType, sessionId]);
 
   // Fetch saga versions + entity links
   useEffect(() => {
@@ -208,7 +250,7 @@ const ChroWikiDetailPanel = ({
   );
 
   const isOwner = entity?.owner_player === currentPlayerName || entity?.player_name === currentPlayerName;
-  const descriptionText = wiki?.ai_description || entity?.ai_description || entity?.description || entity?.bio || entity?.summary || null;
+  const descriptionText = lazyGenerating ? "Generuji encyklopedický záznam…" : (wiki?.ai_description || entity?.ai_description || entity?.description || entity?.bio || entity?.summary || null);
   const imageUrl = coverImage || wiki?.image_url || entity?.image_url || entity?.ai_image_url || null;
 
   // Current saga text
