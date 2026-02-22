@@ -120,7 +120,7 @@ Deno.serve(async (req) => {
     }
 
     const aiData = await aiResponse.json();
-    const generatedImage = aiData.choices?.[0]?.message?.images?.[0]?.image_url?.url;
+    let generatedImage = aiData.choices?.[0]?.message?.images?.[0]?.image_url?.url;
 
     if (!generatedImage) {
       console.error("No image in AI response:", JSON.stringify(aiData).slice(0, 500));
@@ -128,6 +128,48 @@ Deno.serve(async (req) => {
         JSON.stringify({ error: "AI did not return an image" }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
+    }
+
+    // 3b. Second pass: remove background
+    console.log("Removing background from generated icon...");
+    const bgRemoveResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${LOVABLE_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "google/gemini-2.5-flash-image",
+        messages: [
+          {
+            role: "user",
+            content: [
+              {
+                type: "text",
+                text: "Remove the background from this pixel art icon completely. Keep ONLY the buildings/settlement structure. The background must be fully transparent (alpha = 0). Do not add any ground, terrain, grass or shadow beneath the buildings. Output a clean PNG with transparent background.",
+              },
+              {
+                type: "image_url",
+                image_url: { url: generatedImage },
+              },
+            ],
+          },
+        ],
+        modalities: ["image", "text"],
+      }),
+    });
+
+    if (bgRemoveResponse.ok) {
+      const bgData = await bgRemoveResponse.json();
+      const cleanImage = bgData.choices?.[0]?.message?.images?.[0]?.image_url?.url;
+      if (cleanImage) {
+        generatedImage = cleanImage;
+        console.log("Background removed successfully");
+      } else {
+        console.warn("BG removal returned no image, using original");
+      }
+    } else {
+      console.warn("BG removal failed, using original:", bgRemoveResponse.status);
     }
 
     // 4. Upload to storage
