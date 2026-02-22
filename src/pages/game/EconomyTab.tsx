@@ -120,20 +120,21 @@ const EconomyTab = ({ sessionId, currentPlayerName, currentTurn, cities, resourc
     else { setCitySortKey(key); setCitySortAsc(false); }
   };
 
-  // Wealth data
+  // Wealth data — compute client-side to match breakdown
+  const SETTLEMENT_WEALTH: Record<string, number> = { HAMLET: 1, TOWNSHIP: 2, CITY: 4, POLIS: 6 };
+  const tierTotal = myCities.filter(c => !c.status || c.status === "ok").reduce((s, c) => s + (SETTLEMENT_WEALTH[c.settlement_level] || 1), 0);
+  const popTaxTotal = myCities.filter(c => !c.status || c.status === "ok").reduce((s, c) => s + Math.floor((c.population_total || 0) / 500), 0);
+  const burgherTradeTotal = myCities.filter(c => !c.status || c.status === "ok").reduce((s, c) => s + Math.floor((c.population_burghers || 0) / 200), 0);
+  const computedWealthIncome = tierTotal + popTaxTotal + burgherTradeTotal;
+
   const wealthR = resMap["wealth"];
-  const wealthIncome = wealthR?.income || 0;
   const wealthUpkeep = wealthR?.upkeep || 0;
+  const wealthIncome = computedWealthIncome > 0 ? computedWealthIncome : (wealthR?.income || 0);
   const wealthNet = wealthIncome - wealthUpkeep;
   const wealthStock = wealthR?.stockpile || realm?.gold_reserve || 0;
 
   // Wealth top sources breakdown
   const wealthSources: { label: string; value: number; type: "income" | "expense" }[] = [];
-  // Tier base
-  const SETTLEMENT_WEALTH: Record<string, number> = { HAMLET: 1, TOWNSHIP: 2, CITY: 4, POLIS: 6 };
-  const tierTotal = myCities.filter(c => !c.status || c.status === "ok").reduce((s, c) => s + (SETTLEMENT_WEALTH[c.settlement_level] || 1), 0);
-  const popTaxTotal = myCities.filter(c => !c.status || c.status === "ok").reduce((s, c) => s + Math.floor((c.population_total || 0) / 500), 0);
-  const burgherTradeTotal = myCities.filter(c => !c.status || c.status === "ok").reduce((s, c) => s + Math.floor((c.population_burghers || 0) / 200), 0);
   if (tierTotal > 0) wealthSources.push({ label: "Daně sídel", value: tierTotal, type: "income" });
   if (popTaxTotal > 0) wealthSources.push({ label: "Daň z populace", value: popTaxTotal, type: "income" });
   if (burgherTradeTotal > 0) wealthSources.push({ label: "Obchod měšťanů", value: burgherTradeTotal, type: "income" });

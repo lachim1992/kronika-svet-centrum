@@ -62,13 +62,24 @@ const ResourceHUD = ({ sessionId, playerName, cities }: ResourceHUDProps) => {
     const income = r?.income || 0;
     const upkeep = r?.upkeep || 0;
     const stockpile = r?.stockpile || 0;
-    return { net: income - upkeep, stockpile };
+    return { income, upkeep, net: income - upkeep, stockpile };
   };
 
   const food = getRes("food");
   const wood = getRes("wood");
   const stone = getRes("stone");
   const iron = getRes("iron");
+  const wealth = getRes("wealth");
+
+  // Compute wealth client-side for consistency
+  const SETTLEMENT_WEALTH: Record<string, number> = { HAMLET: 1, TOWNSHIP: 2, CITY: 4, POLIS: 6 };
+  const computedWealthIncome = myCities.filter(c => !c.status || c.status === "ok").reduce((s, c) => {
+    return s + (SETTLEMENT_WEALTH[c.settlement_level] || 1)
+      + Math.floor((c.population_total || 0) / 500)
+      + Math.floor((c.population_burghers || 0) / 200);
+  }, 0);
+  const wealthNet = (computedWealthIncome > 0 ? computedWealthIncome : wealth.income) - wealth.upkeep;
+  const wealthStock = wealth.stockpile || realm.gold_reserve || 0;
 
   const grainCapacity = realm.granary_capacity || 500;
 
@@ -83,7 +94,7 @@ const ResourceHUD = ({ sessionId, playerName, cities }: ResourceHUDProps) => {
     { icon: <Mountain className="h-3 w-3" />, label: "Kámen", value: `+${stone.net} · ${stone.stockpile}` },
     { icon: <Anvil className="h-3 w-3" />, label: "Železo", value: `+${iron.net} · ${iron.stockpile}` },
     { icon: <Zap className="h-3 w-3" />, label: "Koně", value: `${realm.horses_reserve || 0}/${realm.stables_capacity || 100}` },
-    { icon: <Coins className="h-3 w-3" />, label: "Zlato", value: `${realm.gold_reserve || 0}` },
+    { icon: <Coins className="h-3 w-3" />, label: "Zlato", value: `${wealthNet >= 0 ? "+" : ""}${wealthNet} · ${wealthStock}` },
     {
       icon: <Users className="h-3 w-3" />,
       label: "Muži",
