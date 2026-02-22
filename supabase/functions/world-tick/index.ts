@@ -242,8 +242,6 @@ Deno.serve(async (req) => {
       for (let j = i + 1; j < allActorNames.length; j++) {
         const pA = allActorNames[i];
         const pB = allActorNames[j];
-        const pA = playerNames[i];
-        const pB = playerNames[j];
 
         // Border proximity: shared province borders (cities in same or adjacent provinces)
         const citiesA = (cities || []).filter((c: any) => c.owner_player === pA);
@@ -623,6 +621,38 @@ Deno.serve(async (req) => {
       }
     }
     results.reputation_changes = reputationResults;
+
+    // ========== FINALIZE TICK ==========
+    await supabase.from("world_tick_log").update({
+      status: "completed",
+      finished_at: new Date().toISOString(),
+      results,
+    }).eq("id", tickId);
+
+    // ========== 11. ECONOMY RECOMPUTE ==========
+    // Run economy-recompute for each unique player after all physics
+    const uniquePlayers = [...new Set((cities || []).map((c: any) => c.owner_player).filter(Boolean))];
+    const econResults: any[] = [];
+    for (const pn of uniquePlayers) {
+      try {
+        const econResp = await fetch(
+          `${Deno.env.get("SUPABASE_URL")}/functions/v1/economy-recompute`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
+            },
+            body: JSON.stringify({ session_id: sessionId, player_name: pn }),
+          }
+        );
+        const econData = await econResp.json();
+        econResults.push({ player: pn, ...econData });
+      } catch (econErr) {
+        econResults.push({ player: pn, error: String(econErr) });
+      }
+    }
+    results.economy_recompute = econResults;
 
     // ========== FINALIZE TICK ==========
     await supabase.from("world_tick_log").update({
