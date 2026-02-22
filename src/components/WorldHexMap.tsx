@@ -39,6 +39,7 @@ const hKey = (q: number, r: number) => `${q},${r}`;
 interface CityOnHex {
   id: string; name: string; owner_player: string; q: number; r: number;
   settlement_level: string; isCapital?: boolean; imageUrl?: string | null;
+  population: number;
 }
 
 /* ───── Props ───── */
@@ -97,6 +98,7 @@ const HexTile = memo(({
                   ownerPlayer={c.owner_player}
                   isCapital={c.isCapital}
                   imageUrl={c.imageUrl}
+                  population={c.population}
                   size="md"
                   cx={cx + (i > 0 ? (i === 1 ? -8 : 8) : 0)}
                   cy={cy + (i > 0 ? 6 : 0)}
@@ -176,7 +178,7 @@ const WorldHexMap = ({ sessionId, playerName, myRole, onCityClick }: Props) => {
     const [{ data }, { data: images }] = await Promise.all([
       supabase
         .from("cities")
-        .select("id, name, owner_player, province_q, province_r, settlement_level")
+        .select("id, name, owner_player, province_q, province_r, settlement_level, population_total")
         .eq("session_id", sessionId)
         .not("province_q", "is", null)
         .not("province_r", "is", null),
@@ -213,6 +215,7 @@ const WorldHexMap = ({ sessionId, playerName, myRole, onCityClick }: Props) => {
         settlement_level: c.settlement_level,
         isCapital: capitalIds.has(c.id),
         imageUrl: imgMap.get(c.id) || null,
+        population: c.population_total || 1000,
       }));
       setAllCities(mapped);
       setPlayerCities(mapped.filter(c => c.owner_player === playerName));
