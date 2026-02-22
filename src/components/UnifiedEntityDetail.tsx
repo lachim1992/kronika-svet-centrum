@@ -12,6 +12,7 @@ import {
   ArrowLeft, MapPin, Landmark, Star, Castle, Mountain, Swords, Globe,
   Sparkles, Loader2, ImageIcon, BookOpen, Calendar, ChevronRight,
   Link2, Crown, Shield, Flame, Scroll, Brain, Users, MessageSquare,
+  Map as MapIcon,
 } from "lucide-react";
 import { toast } from "sonner";
 import RichText from "@/components/RichText";
@@ -105,6 +106,8 @@ const UnifiedEntityDetail = ({
   const [generatingText, setGeneratingText] = useState(false);
   const [generatingImage, setGeneratingImage] = useState(false);
   const [generatingProfile, setGeneratingProfile] = useState(false);
+  const [generatingMapIcon, setGeneratingMapIcon] = useState(false);
+  const [mapIconUrl, setMapIconUrl] = useState<string | null>(null);
   const [introduction, setIntroduction] = useState<string | null>(null);
   const [history, setHistory] = useState<string | null>(null);
   const [bulletFacts, setBulletFacts] = useState<string[]>([]);
@@ -161,6 +164,31 @@ const UnifiedEntityDetail = ({
     if (provincesRes.data) setProvinces(provincesRes.data);
     if (regionsRes.data) setRegions(regionsRes.data);
     if (memoriesRes.data) setWorldMemories(memoriesRes.data.map((m: any) => m.text));
+
+    // Fetch map icon for cities
+    if (entityType === "city") {
+      const { data: iconData } = await supabase.from("encyclopedia_images").select("image_url")
+        .eq("session_id", sessionId).eq("entity_id", entityId).eq("entity_type", "city").eq("kind", "map_icon").limit(1);
+      setMapIconUrl(iconData?.[0]?.image_url || null);
+    }
+  };
+
+  const handleGenerateMapIcon = async () => {
+    setGeneratingMapIcon(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("generate-map-icon", {
+        body: { session_id: sessionId, city_id: entityId },
+      });
+      if (error) throw error;
+      if (data?.error) { toast.error(data.error); return; }
+      setMapIconUrl(data.map_icon_url);
+      toast.success(`Mapový avatar vygenerován!`);
+      onRefetch?.();
+    } catch (e: any) {
+      toast.error("Generování avataru selhalo: " + (e.message || "neznámá chyba"));
+    } finally {
+      setGeneratingMapIcon(false);
+    }
   };
 
   // Entity-related world events
@@ -452,8 +480,15 @@ const UnifiedEntityDetail = ({
               </Button>
               <Button size="sm" variant="outline" onClick={handleGenerateImage} disabled={generatingImage}>
                 {generatingImage ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <ImageIcon className="h-3 w-3 mr-1" />}
-                Ilustrace
+              Ilustrace
               </Button>
+              {/* Map avatar — owner + admin for cities */}
+              {entityType === "city" && (
+                <Button size="sm" variant="outline" onClick={handleGenerateMapIcon} disabled={generatingMapIcon} className="gap-1">
+                  {generatingMapIcon ? <Loader2 className="h-3 w-3 animate-spin" /> : mapIconUrl ? <img src={mapIconUrl} alt="" className="h-4 w-4 rounded" style={{ imageRendering: "pixelated" }} /> : <MapIcon className="h-3 w-3" />}
+                  {mapIconUrl ? "Přegen. avatar" : "Map avatar"}
+                </Button>
+              )}
               {/* Admin-only: level + status dropdowns */}
               {isAdmin && (
                 <>
