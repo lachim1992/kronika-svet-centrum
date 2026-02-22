@@ -1,13 +1,13 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Slider } from "@/components/ui/slider";
 import {
   Wheat, Trees, Mountain, Anvil, Coins, Users, Gauge,
   AlertTriangle, TrendingUp, TrendingDown, Minus,
   Skull, ArrowUpDown, BarChart3, ShieldAlert, Info, RefreshCw,
-  ChevronDown
+  ChevronDown, Code, Loader2
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/hooks/use-toast";
@@ -17,6 +17,7 @@ import {
 import {
   Collapsible, CollapsibleContent, CollapsibleTrigger,
 } from "@/components/ui/collapsible";
+import { ensureRealmResources } from "@/lib/turnEngine";
 
 interface Props {
   sessionId: string;
@@ -25,7 +26,9 @@ interface Props {
   cities: any[];
   resources: any[];
   armies: any[];
+  myRole?: string;
   onEntityClick?: (type: string, id: string) => void;
+  onRefetch?: () => void;
 }
 
 const RESOURCE_ICONS: Record<string, React.ReactNode> = {
@@ -46,13 +49,13 @@ const SETTLEMENT_LABELS: Record<string, string> = {
 
 type CitySortKey = "name" | "population" | "grain_prod" | "grain_cons" | "wood_prod" | "special" | "vulnerability";
 
-const EconomyTab = ({ sessionId, currentPlayerName, currentTurn, cities, resources, armies, onEntityClick }: Props) => {
+const EconomyTab = ({ sessionId, currentPlayerName, currentTurn, cities, resources, armies, myRole, onEntityClick, onRefetch }: Props) => {
   const [realm, setRealm] = useState<any>(null);
   const [profiles, setProfiles] = useState<any[]>([]);
   const [citySortKey, setCitySortKey] = useState<CitySortKey>("grain_prod");
   const [citySortAsc, setCitySortAsc] = useState(false);
-  const [mobPreview, setMobPreview] = useState<number | null>(null);
   const [recomputing, setRecomputing] = useState(false);
+  const [showDebug, setShowDebug] = useState(false);
 
   const myCities = useMemo(() => cities.filter(c => c.owner_player === currentPlayerName), [cities, currentPlayerName]);
 
@@ -63,7 +66,12 @@ const EconomyTab = ({ sessionId, currentPlayerName, currentTurn, cities, resourc
       supabase.from("settlement_resource_profiles").select("*")
         .in("city_id", myCities.map(c => c.id)),
     ]);
-    if (realmRes.data) setRealm(realmRes.data);
+    if (realmRes.data) {
+      setRealm(realmRes.data);
+    } else {
+      const r = await ensureRealmResources(sessionId, currentPlayerName);
+      setRealm(r);
+    }
     setProfiles(profilesRes.data || []);
   }, [sessionId, currentPlayerName, myCities]);
 
@@ -131,15 +139,16 @@ const EconomyTab = ({ sessionId, currentPlayerName, currentTurn, cities, resourc
   if (foodNet < 0) alerts.push({ text: `Deficit obilí: ${foodNet}/kolo`, severity: "error" });
   const famineCities = myCities.filter(c => c.famine_turn);
   if (famineCities.length > 0) alerts.push({ text: `${famineCities.length} sídel trpí hladomorem!`, severity: "error" });
-  if (realm && (realm.mobilization_rate || 0) > 0.2) alerts.push({ text: `Vysoká mobilizace (${Math.round((realm.mobilization_rate || 0) * 100)}%)`, severity: "warning" });
-
-  // Mobilization simulator
   const currentMob = realm ? Math.round((realm.mobilization_rate || 0.1) * 100) : 10;
-  const previewMob = mobPreview ?? currentMob;
-  const baseGrain = myCities.reduce((s, c) => s + (profileMap[c.id]?.base_grain || 0), 0);
-  const earlyBuffer = myCities.length <= 3 ? 10 : 0;
-  const projectedGrainProd = Math.round(baseGrain * (1 - previewMob / 100 * 0.5)) + earlyBuffer;
-  const projectedGrainNet = projectedGrainProd - totals.grainCons;
+  if (currentMob > 20) alerts.push({ text: `Vysoká mobilizace (${currentMob}%)`, severity: "warning" });
+
+  // Mobilization
+  const availableManpower = (realm?.manpower_pool || 0) - (realm?.manpower_committed || 0);
+
+  // Granary
+  const grainReserve = realm?.grain_reserve ?? resMap["food"]?.stockpile ?? 0;
+  const granaryCapacity = realm?.granary_capacity || 500;
+  const granaryPct = Math.min(100, (grainReserve / Math.max(1, granaryCapacity)) * 100);
 
   const SortIcon = ({ field }: { field: CitySortKey }) => (
     <ArrowUpDown
@@ -155,14 +164,22 @@ const EconomyTab = ({ sessionId, currentPlayerName, currentTurn, cities, resourc
         body: { session_id: sessionId, player_name: currentPlayerName },
       });
       if (error) throw error;
-      toast({ title: "Ekonomika přepočítána", description: `Obilí netto = ${data.net_food}` });
+      toast({ title: "Ekonomika přepočítána", description: `Obilí netto = ${data.capped_net?.grain ?? data.net_food}` });
       await fetchData();
+      onRefetch?.();
     } catch (e: any) {
       toast({ title: "Chyba přepočtu", description: e.message, variant: "destructive" });
     } finally {
       setRecomputing(false);
     }
-  }, [sessionId, currentPlayerName, fetchData]);
+  }, [sessionId, currentPlayerName, fetchData, onRefetch]);
+
+  const handleMobilizationChange = async (val: number[]) => {
+    if (!realm) return;
+    const rate = val[0] / 100;
+    await supabase.from("realm_resources").update({ mobilization_rate: rate }).eq("id", realm.id);
+    setRealm({ ...realm, mobilization_rate: rate });
+  };
 
   // Build sources for a resource type
   const buildSources = (rt: string) => {
@@ -176,8 +193,8 @@ const EconomyTab = ({ sessionId, currentPlayerName, currentTurn, cities, resourc
       sources.push({ label: "Produkce sídel", value: totalGrainProd, type: "income" });
       if (myCities.length <= 3) sources.push({ label: "Bonus malé říše", value: 10, type: "income" });
       sources.push({ label: "Spotřeba populace", value: totalGrainCons, type: "expense" });
-      if (realm && (realm.mobilization_rate || 0) > 0) {
-        sources.push({ label: `Penalizace mobilizace`, value: Math.round(totalGrainProd * (realm.mobilization_rate || 0) * 0.5), type: "expense" });
+      if (upkeep > totalGrainCons) {
+        sources.push({ label: "Vojenská spotřeba", value: upkeep - totalGrainCons, type: "expense" });
       }
     } else if (rt === "wood") {
       const totalWood = myCities.reduce((s, c) => s + (c.last_turn_wood_prod || 0), 0);
@@ -194,12 +211,11 @@ const EconomyTab = ({ sessionId, currentPlayerName, currentTurn, cities, resourc
     return sources;
   };
 
-  // Resource types for the compact grid (all except wealth which is top-tier)
   const compactResources = ["food", "wood", "stone", "iron"] as const;
 
   // Data freshness check
   const realmUpdatedAt = realm?.updated_at;
-  const isStale = realmUpdatedAt && (Date.now() - new Date(realmUpdatedAt).getTime()) > 1000 * 60 * 60 * 2; // >2 hours
+  const isStale = realmUpdatedAt && (Date.now() - new Date(realmUpdatedAt).getTime()) > 1000 * 60 * 60 * 2;
 
   return (
     <div className="space-y-6 pb-24 px-1">
@@ -222,7 +238,7 @@ const EconomyTab = ({ sessionId, currentPlayerName, currentTurn, cities, resourc
         </div>
       )}
 
-      {/* ═══ TOP TIER: Wealth (Money) + Alerts ═══ */}
+      {/* ═══ TOP TIER: Wealth + Alerts + Realm Stats ═══ */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {/* Wealth main card — spans 2 cols */}
         <div className="game-card p-5 md:col-span-2 space-y-4">
@@ -259,7 +275,6 @@ const EconomyTab = ({ sessionId, currentPlayerName, currentTurn, cities, resourc
             </div>
           </div>
 
-          {/* Top sources */}
           {wealthSources.length > 0 && (
             <div className="border-t border-border/50 pt-3 space-y-1">
               {wealthSources.map((src, i) => (
@@ -274,9 +289,24 @@ const EconomyTab = ({ sessionId, currentPlayerName, currentTurn, cities, resourc
           )}
         </div>
 
-        {/* Right column: Alerts + quick stats */}
+        {/* Right column: Alerts + Realm stats */}
         <div className="space-y-4">
-          {/* Alerts */}
+          {/* Famine alerts */}
+          {famineCities.length > 0 && (
+            <div className="game-card border-destructive/30 bg-destructive/5 p-4 space-y-2">
+              <div className="flex items-center gap-2 mb-1">
+                <Skull className="h-4 w-4 text-destructive" />
+                <span className="text-sm font-display font-semibold text-destructive">Hladomor!</span>
+              </div>
+              {famineCities.map(c => (
+                <div key={c.id} className="text-xs text-destructive">
+                  {c.name} — deficit {c.famine_severity}, stabilita {c.city_stability}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* General alerts */}
           {alerts.length > 0 && (
             <div className="game-card border-destructive/30 bg-destructive/5 p-4 space-y-2">
               {alerts.map((a, i) => (
@@ -292,7 +322,7 @@ const EconomyTab = ({ sessionId, currentPlayerName, currentTurn, cities, resourc
           <div className="game-card p-4 space-y-3">
             <div className="flex items-center justify-between text-xs">
               <span className="text-muted-foreground flex items-center gap-1.5"><Users className="h-3.5 w-3.5 text-primary" /> Lidská síla</span>
-              <span className="font-bold">{(realm?.manpower_pool || 0) - (realm?.manpower_committed || 0)} / {realm?.manpower_pool || 0}</span>
+              <span className="font-bold">{availableManpower} / {realm?.manpower_pool || 0}</span>
             </div>
             <div className="flex items-center justify-between text-xs">
               <span className="text-muted-foreground flex items-center gap-1.5"><ShieldAlert className="h-3.5 w-3.5 text-primary" /> Stabilita</span>
@@ -301,6 +331,17 @@ const EconomyTab = ({ sessionId, currentPlayerName, currentTurn, cities, resourc
             <div className="flex items-center justify-between text-xs">
               <span className="text-muted-foreground flex items-center gap-1.5"><Gauge className="h-3.5 w-3.5 text-primary" /> Mobilizace</span>
               <span className="font-bold">{currentMob}%</span>
+            </div>
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-muted-foreground flex items-center gap-1.5"><Wheat className="h-3.5 w-3.5 text-primary" /> Sýpky</span>
+              <span className="font-bold">{grainReserve} / {granaryCapacity}</span>
+            </div>
+            {/* Granary bar */}
+            <div className="w-full bg-muted rounded-full h-1.5">
+              <div
+                className={`rounded-full h-1.5 transition-all ${granaryPct < 20 ? "bg-destructive" : granaryPct < 50 ? "bg-yellow-500" : "bg-primary"}`}
+                style={{ width: `${granaryPct}%` }}
+              />
             </div>
           </div>
         </div>
@@ -325,21 +366,17 @@ const EconomyTab = ({ sessionId, currentPlayerName, currentTurn, cities, resourc
             return (
               <Collapsible key={rt}>
                 <div className={`game-card p-4 space-y-2.5 ${isDeficit ? "border-destructive/30" : ""}`}>
-                  {/* Header row */}
                   <div className="flex items-center gap-2">
                     <span className="text-primary">{RESOURCE_ICONS[rt]}</span>
                     <span className="font-display font-semibold text-sm">{RESOURCE_LABELS[rt]}</span>
                     {isFamine && (
-                      <Badge variant="destructive" className="text-[9px] px-1.5 py-0 ml-1">
-                        ⚠ Hladomor
-                      </Badge>
+                      <Badge variant="destructive" className="text-[9px] px-1.5 py-0 ml-1">⚠ Hladomor</Badge>
                     )}
                     <span className="ml-auto text-xs text-muted-foreground">
                       Zásoba: <span className="font-bold text-foreground">{stockpile}</span>
                     </span>
                   </div>
 
-                  {/* Net — prominent */}
                   <div className="flex items-center gap-3">
                     <div className={`text-xl font-bold font-display ${isDeficit ? "text-destructive" : "text-success"}`}>
                       {net >= 0 ? "+" : ""}{net}
@@ -348,13 +385,11 @@ const EconomyTab = ({ sessionId, currentPlayerName, currentTurn, cities, resourc
                     {net > 0 ? <TrendingUp className="h-3.5 w-3.5 text-success ml-auto" /> : net < 0 ? <TrendingDown className="h-3.5 w-3.5 text-destructive ml-auto" /> : <Minus className="h-3.5 w-3.5 text-muted-foreground ml-auto" />}
                   </div>
 
-                  {/* Income / Expense inline */}
                   <div className="flex items-center gap-4 text-xs">
                     <span className="text-muted-foreground">Příjem: <span className="text-success font-semibold">+{income}</span></span>
                     <span className="text-muted-foreground">Výdaje: <span className="text-destructive font-semibold">-{upkeep}</span></span>
                   </div>
 
-                  {/* Expandable breakdown */}
                   {sources.length > 0 && (
                     <>
                       <CollapsibleTrigger asChild>
@@ -381,6 +416,38 @@ const EconomyTab = ({ sessionId, currentPlayerName, currentTurn, cities, resourc
               </Collapsible>
             );
           })}
+        </div>
+      </div>
+
+      {/* ═══ MOBILIZATION CONTROL ═══ */}
+      <div className="game-card p-5 space-y-4">
+        <h3 className="text-base font-display font-semibold flex items-center gap-2">
+          <Gauge className="h-5 w-5 text-primary" /> Mobilizace
+          <Badge variant="outline" className="ml-auto text-xs">{currentMob}%</Badge>
+        </h3>
+        <Slider
+          value={[currentMob]}
+          onValueCommit={handleMobilizationChange}
+          max={30} min={0} step={1}
+          className="w-full"
+        />
+        <div className="flex justify-between text-[10px] text-muted-foreground">
+          <span>0% — Mír</span>
+          <span>30% — Totální mobilizace</span>
+        </div>
+        <div className="grid grid-cols-3 gap-4 text-xs">
+          <div className="bg-muted/40 rounded-lg p-3 text-center">
+            <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">K dispozici</div>
+            <div className="text-lg font-bold font-display mt-1">{availableManpower}</div>
+          </div>
+          <div className="bg-muted/40 rounded-lg p-3 text-center">
+            <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Odvedení</div>
+            <div className="text-lg font-bold font-display mt-1">{realm?.manpower_committed || 0}</div>
+          </div>
+          <div className="bg-muted/40 rounded-lg p-3 text-center">
+            <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Logistika</div>
+            <div className="text-lg font-bold font-display mt-1">{realm?.logistic_capacity || 0}</div>
+          </div>
         </div>
       </div>
 
@@ -457,43 +524,19 @@ const EconomyTab = ({ sessionId, currentPlayerName, currentTurn, cities, resourc
         </Table>
       </div>
 
-      {/* ═══ MOBILIZATION SIMULATOR ═══ */}
-      <div className="game-card p-5">
-        <h3 className="text-base font-display font-semibold flex items-center gap-2 mb-4">
-          <Gauge className="h-5 w-5 text-primary" /> Simulátor: Mobilizace
-        </h3>
-        <div className="space-y-4">
-          <div className="flex items-center gap-4">
-            <span className="text-sm text-muted-foreground w-24 font-display">Mobilizace</span>
-            <Slider value={[previewMob]} onValueChange={(v) => setMobPreview(v[0])} max={30} min={0} step={1} className="flex-1" />
-            <span className="text-xl font-bold font-display w-16 text-right text-primary">{previewMob}%</span>
-          </div>
-          <div className="grid grid-cols-3 gap-4">
-            <div className="bg-muted/40 rounded-lg p-3 text-center">
-              <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Projekce obilí</div>
-              <div className={`text-lg font-bold font-display mt-1 ${projectedGrainNet < 0 ? "text-destructive" : "text-success"}`}>
-                {projectedGrainNet >= 0 ? "+" : ""}{projectedGrainNet}/kolo
-              </div>
-            </div>
-            <div className="bg-muted/40 rounded-lg p-3 text-center">
-              <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Produkce</div>
-              <div className="text-lg font-bold font-display mt-1">{projectedGrainProd}</div>
-            </div>
-            <div className="bg-muted/40 rounded-lg p-3 text-center">
-              <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Lidská síla</div>
-              <div className="text-lg font-bold font-display mt-1">
-                {Math.round((myCities.reduce((s, c) => s + (c.population_total || 0), 0)) * previewMob / 100)}
-              </div>
-            </div>
-          </div>
-          {mobPreview !== null && mobPreview !== currentMob && (
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Info className="h-4 w-4" />
-              <span>Toto je pouze náhled. Mobilizaci změníte v HUD baru nahoře.</span>
-            </div>
+      {/* ═══ ADMIN DEBUG ═══ */}
+      {myRole === "admin" && (
+        <div>
+          <Button variant="ghost" size="sm" onClick={() => setShowDebug(!showDebug)} className="text-xs gap-1">
+            <Code className="h-3 w-3" />{showDebug ? "Skrýt" : "Debug"} realm_resources
+          </Button>
+          {showDebug && realm && (
+            <pre className="mt-2 p-3 rounded bg-muted text-[10px] overflow-auto max-h-60 border border-border">
+              {JSON.stringify(realm, null, 2)}
+            </pre>
           )}
         </div>
-      </div>
+      )}
     </div>
   );
 };
