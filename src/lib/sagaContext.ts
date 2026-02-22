@@ -9,6 +9,7 @@ export interface SagaContextData {
     owner: string;
     tags: string[];
     extra: Record<string, any>;
+    flavorPrompt: string | null;
   };
   timeline: Array<{
     turn: number;
@@ -64,6 +65,12 @@ export interface SagaContextData {
     message_text: string;
     message_tag: string | null;
   }>;
+  // World narrative context
+  worldNarrative: {
+    loreBible: string | null;
+    promptRules: any | null;
+    worldSeed: string | null;
+  };
   // Meta for UI
   sourceCounts: {
     events: number;
@@ -101,6 +108,7 @@ export async function buildSagaContext(
 ): Promise<SagaContextData> {
   const owner = entity?.owner_player || entity?.player_name || entity?.ruler_player || "";
   const tags = entity?.tags || [];
+  const flavorPrompt = entity?.flavor_prompt || null;
 
   // Build extra entity info
   const extra: Record<string, any> = {};
@@ -168,7 +176,7 @@ export async function buildSagaContext(
   const cityIdsArray = Array.from(relatedCityIds).slice(0, 50);
   const nameLC = entityName.toLowerCase();
 
-  const [eventLinksRes, entityStatsRes, entityTraitsRes, rumorsRes, worldEventsRes, civRes, diplomacyRes] = await Promise.all([
+  const [eventLinksRes, entityStatsRes, entityTraitsRes, rumorsRes, worldEventsRes, civRes, diplomacyRes, styleRes, sessionRes] = await Promise.all([
     supabase.from("event_entity_links").select("event_id, entity_id, entity_type, link_type")
       .eq("entity_id", entityId),
     supabase.from("entity_stats").select("*")
@@ -196,6 +204,12 @@ export async function buildSagaContext(
           .or(`message_text.ilike.%${entityName}%,sender.eq.${owner}`)
           .order("created_at", { ascending: false }).limit(15)
       : Promise.resolve({ data: [] as any[], error: null }),
+    // World style settings (lore_bible, prompt_rules)
+    supabase.from("game_style_settings").select("lore_bible, prompt_rules")
+      .eq("session_id", sessionId).maybeSingle(),
+    // Session info (world_seed)
+    supabase.from("game_sessions").select("world_seed")
+      .eq("id", sessionId).maybeSingle(),
   ]);
 
   const linkedEventIds = new Set((eventLinksRes.data || []).map(l => l.event_id));
@@ -315,9 +329,16 @@ export async function buildSagaContext(
     message_tag: d.message_tag,
   }));
 
+  // 10) World narrative context
+  const worldNarrative = {
+    loreBible: (styleRes.data as any)?.lore_bible || null,
+    promptRules: (() => { try { return JSON.parse((styleRes.data as any)?.prompt_rules || "null"); } catch { return null; } })(),
+    worldSeed: (sessionRes.data as any)?.world_seed || null,
+  };
+
   return {
     sessionId,
-    entity: { id: entityId, name: entityName, type: entityType, owner, tags, extra },
+    entity: { id: entityId, name: entityName, type: entityType, owner, tags, extra, flavorPrompt },
     timeline,
     actors,
     relations,
@@ -328,6 +349,7 @@ export async function buildSagaContext(
     worldEvents,
     civilizationInfo,
     diplomacySnippets,
+    worldNarrative,
     sourceCounts: {
       events: timeline.length,
       actors: actors.length,

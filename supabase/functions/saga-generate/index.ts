@@ -19,7 +19,7 @@ serve(async (req) => {
       });
     }
 
-    const { entity, timeline, actors, rumors, worldEvents, civilizationInfo, diplomacySnippets, declarations } = sagaContext;
+    const { entity, timeline, actors, rumors, worldEvents, civilizationInfo, diplomacySnippets, declarations, worldNarrative } = sagaContext;
     const sessionId = sagaContext.sessionId || entity?.sessionId;
 
     // ─── Load narrative config from server_config ───
@@ -84,8 +84,25 @@ ${(historySynthesis.themes || []).join(", ")}
     const keywordsInstruction = narrativeSaga?.keywords?.length ? `\nPREFEROVANÁ KLÍČOVÁ SLOVA: ${narrativeSaga.keywords.join(", ")}` : "";
     const forbiddenInstruction = narrativeSaga?.forbidden?.length ? `\nZAKÁZANÁ SLOVA (nikdy nepoužívej): ${narrativeSaga.forbidden.join(", ")}` : "";
 
+    // Build world narrative context
+    const worldNarrativeSection = worldNarrative ? (() => {
+      const parts: string[] = [];
+      if (worldNarrative.loreBible) parts.push(`LORE BIBLE SVĚTA:\n${worldNarrative.loreBible}`);
+      if (worldNarrative.promptRules) {
+        const rules = worldNarrative.promptRules;
+        if (rules.world_vibe) parts.push(`ATMOSFÉRA SVĚTA: ${rules.world_vibe}`);
+        if (rules.writing_style) parts.push(`STYL PSANÍ: ${rules.writing_style}`);
+      }
+      if (worldNarrative.worldSeed) parts.push(`SVĚT SEED: ${worldNarrative.worldSeed}`);
+      return parts.length > 0 ? `\n\n=== NARATIV SVĚTA (povinně respektuj) ===\n${parts.join("\n\n")}` : "";
+    })() : "";
+
+    const flavorSection = entity?.flavorPrompt
+      ? `\n\nFLAVOR PROMPT ENTITY (povinně ovlivni tón a atmosféru):\n${entity.flavorPrompt}`
+      : "";
+
     const systemPrompt = `Jsi královský kronikář, který píše vznešeným, mýtickým stylem dvorní kroniky.
-${stanceInstruction}${customStylePrompt}${keywordsInstruction}${forbiddenInstruction}
+${stanceInstruction}${customStylePrompt}${keywordsInstruction}${forbiddenInstruction}${flavorSection}${worldNarrativeSection}
 
 STRIKTNÍ PRAVIDLA:
 1. Piš VÝHRADNĚ na základě dodaných dat. ${hasHistory ? 'Tvým HLAVNÍM zdrojem je historická syntéza — interpretuj ji mýticky, ale NEPŘIDÁVEJ nové fakty.' : 'NESMÍŠ vymýšlet nové události.'}
@@ -93,6 +110,8 @@ STRIKTNÍ PRAVIDLA:
 3. Vítězství prezentuj jako naplnění osudu. Utrpení rámuj jako zkoušky ohněm.
 4. Vládce/aktéry zobrazuj jako větší-než-život postavy, POUZE pokud existují v datech.
 5. Zdůrazňuj kontinuitu, dědictví a nevyhnutelnost velikosti.
+6. Pokud má entita flavor prompt, MUSÍŠ ho respektovat jako hlavní tónový pokyn.
+7. Pokud existuje lore bible nebo narativ světa, MUSÍŠ do ság integrovat jeho premisu a atmosféru.
 
 POVINNÁ STRUKTURA:
 A) "chronology" — Stručná chronologie (8-20 bodů) s [[event:ID|text]]

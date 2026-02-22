@@ -11,6 +11,7 @@ import {
   Mountain, Scroll, Sparkles, Swords, Compass, Shield, Users, ChevronRight, AlertTriangle,
   Eye, EyeOff, Pencil, Save, X, History, Zap, Wheat, Coins, Heart,
   ChevronDown, ChevronUp, FileText, Clock, MessageSquare, Brain, Feather,
+  ImageIcon, Flame,
 } from "lucide-react";
 import { toast } from "sonner";
 import RichText from "@/components/RichText";
@@ -21,6 +22,7 @@ import HistoryDisplay, { type HistoryResult } from "./HistoryDisplay";
 import CityRumorsPanel from "@/components/CityRumorsPanel";
 import WorldMemoryPanel from "@/components/WorldMemoryPanel";
 import EntityContributionsPanel from "@/components/EntityContributionsPanel";
+import SettlementUpgradePanel from "@/components/SettlementUpgradePanel";
 
 const ENTITY_ICONS: Record<string, React.ReactNode> = {
   country: <Flag className="h-5 w-5" />,
@@ -149,6 +151,12 @@ const ChroWikiDetailPanel = ({
   // Lazy wiki generation state
   const [lazyGenerating, setLazyGenerating] = useState(false);
 
+  // City-specific state (from old CityDetailPanel)
+  const [flavorPrompt, setFlavorPrompt] = useState("");
+  const [editingFlavor, setEditingFlavor] = useState(false);
+  const [generatingMapIcon, setGeneratingMapIcon] = useState(false);
+  const [realm, setRealm] = useState<any>(null);
+
   // Direct DB fetch
   useEffect(() => {
     if (!entityId || !entityType) return;
@@ -265,8 +273,33 @@ const ChroWikiDetailPanel = ({
   );
 
   const isOwner = entity?.owner_player === currentPlayerName || entity?.player_name === currentPlayerName;
+  const isAdmin = myRole === "admin" || !myRole;
+  const canGenerate = isOwner || isAdmin;
   const descriptionText = lazyGenerating ? "Generuji encyklopedický záznam…" : (wiki?.ai_description || entity?.ai_description || entity?.description || entity?.bio || entity?.summary || null);
   const imageUrl = coverImage || wiki?.image_url || entity?.image_url || entity?.ai_image_url || null;
+
+  // Load flavor prompt when entity changes (city)
+  useEffect(() => {
+    if (entityType === "city" && entity?.flavor_prompt != null) {
+      setFlavorPrompt(entity.flavor_prompt || "");
+    }
+  }, [entity?.flavor_prompt, entityType]);
+
+  // Load realm data for settlement upgrade panel
+  useEffect(() => {
+    if (entityType !== "city" || !entity?.owner_player) return;
+    supabase.from("realm_resources" as any).select("*")
+      .eq("session_id", sessionId).eq("player_name", entity.owner_player).maybeSingle()
+      .then(({ data }) => setRealm(data));
+  }, [entityType, entity?.owner_player, sessionId]);
+
+  // Population helpers for city
+  const pop = entityType === "city" ? (entity?.population_total || 0) : 0;
+  const peasantPct = pop > 0 ? (entity?.population_peasants || 0) / pop : 0;
+  const burgherPct = pop > 0 ? (entity?.population_burghers || 0) / pop : 0;
+  const clericPct = pop > 0 ? (entity?.population_clerics || 0) / pop : 0;
+  const societyProfile = clericPct > 0.3 ? "Klerikální vliv" : burgherPct > 0.4 ? "Urbanizující se" : peasantPct > 0.6 ? "Agrární" : "Vyvážená";
+  const SETTLEMENT_LABELS: Record<string, string> = { HAMLET: "Osada", TOWNSHIP: "Městečko", CITY: "Město", POLIS: "Polis" };
 
   // Current saga text
   const currentSaga = useMemo(() => {
@@ -373,6 +406,42 @@ const ChroWikiDetailPanel = ({
     const name = entityName.toLowerCase();
     return events.filter(e => e.title?.toLowerCase().includes(name) || e.description?.toLowerCase().includes(name)).slice(0, 10);
   }, [events, entityName, entityType]);
+
+  // ── City-specific handlers ──
+  const handleSaveFlavor = async () => {
+    if (entityType !== "city" || !entity) return;
+    await supabase.from("cities").update({ flavor_prompt: flavorPrompt || null } as any).eq("id", entityId);
+    setEditingFlavor(false);
+    toast.success("Flavor prompt uložen");
+    await onRefreshWiki();
+  };
+
+  const handleGenerateMapIcon = async () => {
+    setGeneratingMapIcon(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("generate-map-icon", {
+        body: { session_id: sessionId, city_id: entityId },
+      });
+      if (error) throw error;
+      if (data?.error) { toast.error(data.error); return; }
+      setMapIconUrl(data.map_icon_url);
+      toast.success("Mapový avatar vygenerován!");
+    } catch (e: any) {
+      toast.error("Generování avataru selhalo: " + (e.message || "neznámá chyba"));
+    } finally {
+      setGeneratingMapIcon(false);
+    }
+  };
+
+  const handleUpdateStatus = async (newStatus: string) => {
+    if (entityType !== "city" || !entity) return;
+    await supabase.from("cities").update({ status: newStatus } as any).eq("id", entityId);
+    toast.success(`Status města změněn`);
+    await onRefreshWiki();
+  };
+
+  const STATUSES = ["ok", "devastated", "besieged"];
+  const STATUS_LABELS: Record<string, string> = { ok: "V pořádku", devastated: "Zpustošeno", besieged: "Obléháno" };
 
   // ── Handlers ──
   const handleGenerate = async () => {
@@ -763,10 +832,15 @@ const ChroWikiDetailPanel = ({
                       <Badge variant="outline" className="text-[9px] text-muted-foreground">
                         Styl: World Engine → Narativ
                       </Badge>
+                    {canGenerate && (
                       <Button variant="ghost" size="sm" className="h-6 text-[10px] px-2" onClick={handleGenerateHistory} disabled={generatingHistory}>
                         {generatingHistory ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <Sparkles className="h-3 w-3 mr-1" />}
                         Generovat historickou syntézu
                       </Button>
+                    )}
+                    {!canGenerate && (
+                      <span className="text-[10px] text-muted-foreground italic">Pouze vlastník nebo admin</span>
+                    )}
                     </div>
                   </div>
 
@@ -802,20 +876,25 @@ const ChroWikiDetailPanel = ({
                       Styl: World Engine → Narativ
                     </Badge>
                     <div className="flex items-center gap-1">
-                      {isOwner && !editingSaga && (
+                      {canGenerate && !editingSaga && (
                         <Button variant="ghost" size="sm" className="h-6 text-[10px] px-2" onClick={() => { setEditingSaga(true); setSagaDraft(currentSaga?.saga_text || ""); }}>
                           <Pencil className="h-3 w-3 mr-1" /> Upravit
                         </Button>
                       )}
-                      <Button variant="ghost" size="sm" className="h-6 text-[10px] px-2" onClick={handleRegenerateSaga} disabled={generatingSaga}>
-                       {generatingSaga ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <Sparkles className="h-3 w-3 mr-1" />}
-                        Generovat ságu
-                      </Button>
-                      {(sagaResult || currentSaga) && (
+                      {canGenerate && (
+                        <Button variant="ghost" size="sm" className="h-6 text-[10px] px-2" onClick={handleRegenerateSaga} disabled={generatingSaga}>
+                         {generatingSaga ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <Sparkles className="h-3 w-3 mr-1" />}
+                          Generovat ságu
+                        </Button>
+                      )}
+                      {canGenerate && (sagaResult || currentSaga) && (
                         <Button variant="default" size="sm" className="h-6 text-[10px] px-2" onClick={handlePublishBook} disabled={publishingBook}>
                           {publishingBook ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <Feather className="h-3 w-3 mr-1" />}
                           Zapsat dvorním kronikářem
                         </Button>
+                      )}
+                      {!canGenerate && (
+                        <span className="text-[10px] text-muted-foreground italic">Pouze vlastník nebo admin</span>
                       )}
                     </div>
                   </div>
@@ -969,24 +1048,124 @@ const ChroWikiDetailPanel = ({
               </>
             )}
 
-            {/* City-specific */}
-            {!readingMode && entityType === "city" && entity && (entity.vulnerability_score != null || entity.famine_turn) && (
+            {/* ═══ CITY-SPECIFIC: Population, Economy, Flavor, Status, Map Icon ═══ */}
+            {!readingMode && entityType === "city" && entity && (
               <>
                 <OrnamentalDivider />
-                <section className="mb-2 grid grid-cols-2 gap-2">
-                  {entity.vulnerability_score != null && (
-                    <div className="p-3 rounded-lg text-center" style={{ background: 'hsl(var(--secondary) / 0.25)', border: '1px solid hsl(var(--border))' }}>
-                      <div className="text-[10px] text-muted-foreground">Zranitelnost</div>
-                      <div className={`text-lg font-bold font-display ${entity.vulnerability_score > 50 ? "text-destructive" : "text-foreground"}`}>{entity.vulnerability_score.toFixed(0)}</div>
-                    </div>
-                  )}
-                  {entity.famine_turn && (
-                    <div className="p-3 rounded-lg text-center" style={{ background: 'hsl(var(--destructive) / 0.1)', border: '1px solid hsl(var(--destructive) / 0.3)' }}>
-                      <div className="text-[10px] text-destructive font-semibold">⚠ Hladomor</div>
-                      <div className="text-lg font-bold font-display text-destructive">Deficit {entity.famine_severity}</div>
-                    </div>
-                  )}
+                {/* Population & Society */}
+                <section className="mb-3 p-3.5 rounded-lg" style={{ background: 'hsl(var(--secondary) / 0.2)', border: '1px solid hsl(var(--border))' }}>
+                  <h3 className="font-decorative text-sm font-semibold mb-2 flex items-center gap-2">
+                    <Crown className="h-4 w-4 text-primary" /> Populace & Společnost
+                    <Badge variant="outline" className="text-[9px] ml-auto">{societyProfile}</Badge>
+                  </h3>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs text-muted-foreground">Celková populace</span>
+                    <span className="text-base font-bold font-display">{pop.toLocaleString()}</span>
+                  </div>
+                  <div className="flex h-2 rounded-full overflow-hidden bg-muted mb-2">
+                    <div className="bg-primary/70" style={{ width: `${Math.round(peasantPct * 100)}%` }} />
+                    <div className="bg-accent" style={{ width: `${Math.round(burgherPct * 100)}%` }} />
+                    <div className="bg-muted-foreground/40" style={{ width: `${Math.round(clericPct * 100)}%` }} />
+                  </div>
+                  <div className="grid grid-cols-3 gap-2 text-[11px] text-center">
+                    <div><span className="font-semibold">{entity.population_peasants || 0}</span><br /><span className="text-muted-foreground">Sedláci</span></div>
+                    <div><span className="font-semibold">{entity.population_burghers || 0}</span><br /><span className="text-muted-foreground">Měšťané</span></div>
+                    <div><span className="font-semibold">{entity.population_clerics || 0}</span><br /><span className="text-muted-foreground">Klérus</span></div>
+                  </div>
+                  <div className="flex items-center gap-3 mt-2 text-[11px]">
+                    <span>Osídlení: <Badge variant="secondary" className="text-[9px]">{SETTLEMENT_LABELS[entity.settlement_level] || entity.settlement_level}</Badge></span>
+                    <span>Stabilita: <strong className={entity.city_stability < 40 ? "text-destructive" : ""}>{entity.city_stability}</strong>/100</span>
+                  </div>
                 </section>
+
+                {/* Economy */}
+                <section className="mb-3 p-3.5 rounded-lg" style={{ background: 'hsl(var(--secondary) / 0.2)', border: '1px solid hsl(var(--border))' }}>
+                  <h3 className="font-decorative text-sm font-semibold mb-2 flex items-center gap-2">
+                    <Landmark className="h-4 w-4 text-primary" /> Ekonomika
+                  </h3>
+                  <div className="grid grid-cols-2 gap-2 text-[11px]">
+                    <div className="flex justify-between"><span className="text-muted-foreground">Produkce obilí</span><span className="font-semibold">{entity.last_turn_grain_prod || 0}</span></div>
+                    <div className="flex justify-between"><span className="text-muted-foreground">Spotřeba</span><span className="font-semibold">{entity.last_turn_grain_cons || 0}</span></div>
+                    <div className="flex justify-between"><span className="text-muted-foreground">Sýpka</span><span className="font-semibold">{entity.local_grain_reserve || 0}/{entity.local_granary_capacity || 0}</span></div>
+                    <div className="flex justify-between"><span className="text-muted-foreground">Zranitelnost</span><span className="font-semibold">{(entity.vulnerability_score || 0).toFixed(1)}</span></div>
+                  </div>
+                </section>
+
+                {/* Famine warning */}
+                {entity.famine_turn && (
+                  <section className="mb-3 p-3 rounded-lg" style={{ background: 'hsl(var(--destructive) / 0.08)', border: '1px solid hsl(var(--destructive) / 0.3)' }}>
+                    <div className="flex items-center gap-2 text-destructive text-sm font-display font-semibold">
+                      <Flame className="h-4 w-4" /> Hladomor · Deficit: {entity.famine_severity}
+                    </div>
+                  </section>
+                )}
+
+                {/* Settlement Upgrade (owner only, non-admin) */}
+                {isOwner && !isAdmin && entity.settlement_level !== "POLIS" && (
+                  <section className="mb-3">
+                    <SettlementUpgradePanel city={entity} realm={realm} onRefetch={onRefreshWiki} />
+                  </section>
+                )}
+
+                {/* Admin: Status control */}
+                {isAdmin && (
+                  <section className="mb-3 flex items-center gap-2 p-3 rounded-lg" style={{ background: 'hsl(var(--secondary) / 0.15)', border: '1px solid hsl(var(--border))' }}>
+                    <span className="text-xs text-muted-foreground font-display">Admin Status:</span>
+                    <Select value={entity.status || "ok"} onValueChange={handleUpdateStatus}>
+                      <SelectTrigger className="w-32 h-7 text-[11px]"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        {STATUSES.map(s => <SelectItem key={s} value={s} className="text-xs">{STATUS_LABELS[s]}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </section>
+                )}
+
+                {/* Flavor Prompt (owner or admin) */}
+                {canGenerate && (
+                  <section className="mb-3 p-3.5 rounded-lg" style={{ background: 'hsl(var(--secondary) / 0.15)', border: '1px solid hsl(var(--primary) / 0.15)' }}>
+                    <h3 className="font-decorative text-sm font-semibold mb-1 flex items-center gap-2">
+                      <Sparkles className="h-4 w-4 text-primary" /> Flavor prompt
+                    </h3>
+                    <p className="text-[10px] text-muted-foreground mb-2">
+                      Popište atmosféru a styl města. AI ho použije pro tón narativů.
+                    </p>
+                    {editingFlavor ? (
+                      <div className="space-y-2">
+                        <Textarea value={flavorPrompt} onChange={e => setFlavorPrompt(e.target.value)}
+                          placeholder="Např.: Petra má být popisována jako růžová mramorová citadela…" rows={3} className="text-xs" />
+                        <div className="flex gap-2">
+                          <Button size="sm" className="h-7 text-xs" onClick={handleSaveFlavor}><Save className="h-3 w-3 mr-1" /> Uložit</Button>
+                          <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => setEditingFlavor(false)}>Zrušit</Button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex items-start gap-2">
+                        <p className="text-xs italic flex-1 text-foreground/80">{entity.flavor_prompt || "Žádný flavor prompt."}</p>
+                        <Button size="sm" variant="ghost" className="h-6 text-[10px]" onClick={() => setEditingFlavor(true)}>
+                          <Pencil className="h-3 w-3 mr-1" /> Upravit
+                        </Button>
+                      </div>
+                    )}
+                  </section>
+                )}
+
+                {/* Map Avatar */}
+                {canGenerate && (
+                  <section className="mb-3 flex items-center gap-3 p-3 rounded-lg" style={{ background: 'hsl(var(--secondary) / 0.15)', border: '1px solid hsl(var(--border))' }}>
+                    {mapIconUrl && (
+                      <img src={mapIconUrl} alt="Map icon" className="w-10 h-10 rounded border border-border" style={{ imageRendering: "pixelated" }} />
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-display font-semibold">Mapový avatar</p>
+                      <p className="text-[10px] text-muted-foreground">{mapIconUrl ? "Pixel-art ikona" : "Vygenerujte pixel-art ikonu"}</p>
+                    </div>
+                    <Button size="sm" variant={mapIconUrl ? "outline" : "default"} className="h-7 text-[10px] gap-1 shrink-0"
+                      disabled={generatingMapIcon} onClick={handleGenerateMapIcon}>
+                      {generatingMapIcon ? <Loader2 className="h-3 w-3 animate-spin" /> : <ImageIcon className="h-3 w-3" />}
+                      {mapIconUrl ? "Přegenerovat" : "Generovat"}
+                    </Button>
+                  </section>
+                )}
               </>
             )}
 
