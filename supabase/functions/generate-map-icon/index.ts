@@ -83,14 +83,15 @@ Deno.serve(async (req) => {
             content: [
               {
                 type: "text",
-                text: `Convert this city illustration into a tiny pixel art map icon. Requirements:
+                text: `Convert this city illustration into a tiny pixel art map icon. CRITICAL REQUIREMENTS:
+- The background MUST be fully transparent (PNG with alpha channel) — no ground, no grass, no terrain, no colored background whatsoever
 - Top-down/isometric perspective suitable for a hex map tile
 - 64x64 pixel art style with visible pixels
-- Show the key architectural features of this specific city in miniature
+- Show ONLY the buildings and architectural features, floating on a completely transparent background
 - Use a warm color palette that stands out on a dark map background
-- No background (or very minimal), just the settlement itself
 - The style should feel like classic strategy game map icons (Age of Empires, Civilization)
-- Make it recognizable as "${city.name}" - a ${city.settlement_level.toLowerCase()} level settlement`,
+- Make it recognizable as "${city.name}" - a ${city.settlement_level.toLowerCase()} level settlement
+- IMPORTANT: transparent background, no ground plane, no terrain beneath the buildings`,
               },
               {
                 type: "image_url",
