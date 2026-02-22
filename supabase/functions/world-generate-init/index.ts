@@ -441,7 +441,31 @@ Generuj kompletní svět.`;
       key_facts: world.worldMemories || [],
     });
 
-    // 8) Set session turn to 1 + mark init_status ready
+    // 8) Upsert game_style_settings for flavor persistence
+    const stylePayload = {
+      session_id: sessionId,
+      lore_bible: [
+        `Svět: ${worldName}`,
+        `Premisa: ${premise}`,
+        `Tón: ${tone}`,
+        `Styl vítězství: ${victoryStyle}`,
+        realmName ? `Říše hráče: ${realmName}` : "",
+        cultureName ? `Kultura: ${cultureName}` : "",
+        languageName ? `Jazyk: ${languageName}` : "",
+      ].filter(Boolean).join("\n"),
+      prompt_rules: JSON.stringify({
+        world_vibe: tone,
+        writing_style: tone === "realistic" ? "political-chronicle" : tone === "mythic" ? "epic-saga" : "narrative",
+        constraints: tone === "realistic" ? "avoid random magic unless selected" : "",
+        language_name: languageName || "",
+        culture_name: cultureName || "",
+        player_realm_name: realmName || "",
+      }),
+      updated_at: new Date().toISOString(),
+    };
+    await supabase.from("game_style_settings").upsert(stylePayload, { onConflict: "session_id" });
+
+    // Set session turn to 1 + mark init_status ready
     await supabase.from("game_sessions").update({ current_turn: 1, init_status: "ready" }).eq("id", sessionId);
 
     // 9) Log
