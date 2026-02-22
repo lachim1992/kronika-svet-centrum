@@ -10,6 +10,7 @@ export interface SagaContextData {
     tags: string[];
     extra: Record<string, any>;
     flavorPrompt: string | null;
+    foundingLegend: string | null;
   };
   timeline: Array<{
     turn: number;
@@ -110,6 +111,18 @@ export async function buildSagaContext(
   const tags = entity?.tags || [];
   const flavorPrompt = entity?.flavor_prompt || null;
 
+  // Fetch player's founding legend from wiki_entries
+  let foundingLegend: string | null = null;
+  {
+    const { data: wikiRow } = await supabase
+      .from("wiki_entries" as any)
+      .select("body_md")
+      .eq("session_id", sessionId)
+      .eq("entity_type", entityType)
+      .eq("entity_id", entityId)
+      .maybeSingle();
+    foundingLegend = (wikiRow as any)?.body_md || null;
+  }
   // Build extra entity info
   const extra: Record<string, any> = {};
   if (entityType === "city") {
@@ -338,7 +351,7 @@ export async function buildSagaContext(
 
   return {
     sessionId,
-    entity: { id: entityId, name: entityName, type: entityType, owner, tags, extra, flavorPrompt },
+    entity: { id: entityId, name: entityName, type: entityType, owner, tags, extra, flavorPrompt, foundingLegend },
     timeline,
     actors,
     relations,

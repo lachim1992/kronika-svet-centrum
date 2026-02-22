@@ -26,6 +26,25 @@ serve(async (req) => {
 
     const sb = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
+    // Fetch existing wiki entry to preserve player-written content
+    const { data: existingWiki } = await sb
+      .from("wiki_entries")
+      .select("body_md, summary, ai_description")
+      .eq("session_id", sessionId)
+      .eq("entity_type", entityType)
+      .eq("entity_id", entityId)
+      .maybeSingle();
+
+    const playerLegend = (existingWiki as any)?.body_md || "";
+    const playerSummary = (existingWiki as any)?.summary || "";
+
+    // Fetch flavor_prompt from the source entity (city, province, etc.)
+    let flavorPrompt = "";
+    if (entityType === "city") {
+      const { data: cityData } = await sb.from("cities").select("flavor_prompt").eq("id", entityId).maybeSingle();
+      flavorPrompt = (cityData as any)?.flavor_prompt || "";
+    }
+
     // Fetch lore bible + prompt_rules for consistency
     const { data: styleCfg } = await sb
       .from("game_style_settings")
@@ -54,6 +73,7 @@ serve(async (req) => {
     const systemContent = [
       `Jsi encyklopedický kronikář. Napiš encyklopedický článek (česky, 4-8 vět) o dané entitě.`,
       writingInstructions,
+      `DŮLEŽITÉ: Pokud hráč napsal vlastní legendu nebo flavor prompt, MUSÍŠ je respektovat a integrovat do svého textu. Nesmíš je ignorovat ani přepisovat vlastním výmyslem.`,
       loreBible ? `Lore světa:\n${loreBible.substring(0, 800)}` : "",
       worldVibe ? `Tón světa: ${worldVibe}` : "",
       constraints ? `Omezení: ${constraints}` : "",
@@ -78,7 +98,15 @@ serve(async (req) => {
             { role: "system", content: systemContent },
             {
               role: "user",
-              content: `Typ: ${entityTypeLabels[entityType] || entityType}\nNázev: ${entityName}\nVlastník: ${ownerPlayer}\nKontext: ${JSON.stringify(context || {})}`
+              content: [
+                `Typ: ${entityTypeLabels[entityType] || entityType}`,
+                `Název: ${entityName}`,
+                `Vlastník: ${ownerPlayer}`,
+                flavorPrompt ? `Hráčův flavor prompt (MUSÍŠ respektovat): ${flavorPrompt}` : "",
+                playerLegend ? `Zakladatelská legenda od hráče (MUSÍŠ integrovat): ${playerLegend}` : "",
+                playerSummary ? `Hráčovo shrnutí: ${playerSummary}` : "",
+                `Kontext: ${JSON.stringify(context || {})}`,
+              ].filter(Boolean).join("\n")
             }
           ],
           tools: [{
@@ -149,7 +177,7 @@ serve(async (req) => {
         .eq("entity_id", entityId)
         .maybeSingle();
 
-      const wikiPayload = {
+      const wikiPayload: any = {
         summary,
         ai_description: aiDescription,
         image_prompt: imagePrompt,
@@ -163,8 +191,15 @@ serve(async (req) => {
         },
       };
 
+      // Preserve player-written body_md — never overwrite it
+      if (existing && playerLegend) {
+        // Don't touch body_md
+      } else if (!existing) {
+        wikiPayload.body_md = playerLegend || null;
+      }
+
       if (existing) {
-        await sb.from("wiki_entries").update(wikiPayload as any).eq("id", existing.id);
+        await sb.from("wiki_entries").update(wikiPayload).eq("id", existing.id);
       } else {
         await sb.from("wiki_entries").upsert({
           session_id: sessionId,

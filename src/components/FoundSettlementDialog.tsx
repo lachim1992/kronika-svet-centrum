@@ -173,14 +173,22 @@ const FoundSettlementDialog = ({
         text: chronicleText,
       });
 
-      // 5. Wiki entry with flavor + legend
+      // 5. Wiki entry with flavor + legend — store player text as ai_description
+      //    so lazy wiki generation doesn't overwrite it
+      const playerSummary = flavorPrompt.trim() || `Nově založená osada v provincii ${selectedProvince?.name || ""}.`;
+      const playerLegend = legend.trim() || null;
+      const playerAiDesc = playerLegend
+        ? `${playerSummary}\n\n${playerLegend}`
+        : playerSummary;
+
       await supabase.from("wiki_entries").upsert({
         session_id: sessionId,
         entity_type: "city",
         entity_id: cityId,
         entity_name: name.trim(),
-        summary: flavorPrompt.trim() || `Nově založená osada v provincii ${selectedProvince?.name || ""}.`,
-        body_md: legend.trim() || null,
+        summary: playerSummary,
+        body_md: playerLegend,
+        ai_description: playerAiDesc,
         status: "published",
       } as any, { onConflict: "session_id,entity_type,entity_id" });
 
