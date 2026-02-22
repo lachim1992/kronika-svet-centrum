@@ -356,9 +356,8 @@ Generuj kompletní svět.`;
     // 6) SEED CONTENT: Wiki entries + Rumors + Feed
     // ═══════════════════════════════════════════════
 
-    // Wiki entries for each city
+    // Wiki entries: first insert placeholder rows, then call wiki-generate for real AI content
     for (const city of createdCityRows) {
-      // wiki_entries are auto-created by trigger, but ensure they have content
       await supabase.from("wiki_entries").upsert({
         session_id: sessionId,
         entity_type: "city",
@@ -371,6 +370,61 @@ Generuj kompletní svět.`;
       }, { onConflict: "session_id,entity_type,entity_id" });
       wikiEntriesCreated++;
     }
+
+    // Call wiki-generate for each city to get proper AI content (parallel, max 3 at a time)
+    const WIKI_BATCH = 3;
+    let wikiGenerated = 0;
+    let wikiFailed = 0;
+    const wikiStartTime = Date.now();
+
+    for (let i = 0; i < createdCityRows.length; i += WIKI_BATCH) {
+      const batch = createdCityRows.slice(i, i + WIKI_BATCH);
+      const results = await Promise.allSettled(
+        batch.map(city =>
+          fetch(`${supabaseUrl}/functions/v1/wiki-generate`, {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${supabaseKey}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              entityType: "city",
+              entityName: city.name,
+              entityId: city.id,
+              sessionId,
+              ownerPlayer: city.ownerPlayer,
+              context: {
+                regionName: city.regionName,
+                description: city.description,
+                worldName,
+                premise,
+                tone,
+              },
+            }),
+          }).then(async (res) => {
+            if (!res.ok) throw new Error(`wiki-generate ${res.status}`);
+            return res.json();
+          })
+        )
+      );
+
+      for (const r of results) {
+        if (r.status === "fulfilled") wikiGenerated++;
+        else { wikiFailed++; console.error("Wiki gen failed:", r.reason); }
+      }
+    }
+
+    // Log wiki generation stats to simulation_log
+    await supabase.from("simulation_log").insert({
+      session_id: sessionId,
+      year_start: 1,
+      year_end: 1,
+      events_generated: wikiGenerated,
+      scope: "seed_city_profiles",
+      triggered_by: "world_generate_init",
+    }).catch(() => {});
+
+    console.log(`Wiki generation: ${wikiGenerated} ok, ${wikiFailed} failed, ${Date.now() - wikiStartTime}ms`);
 
     // City rumors: 3-5 per city
     const rumorTemplates = [

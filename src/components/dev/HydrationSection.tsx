@@ -419,6 +419,36 @@ const HydrationSection = ({ sessionId, onRefetch }: Props) => {
         {generating === "all" ? "Hydratace probíhá..." : `🌊 HYDRATOVAT VŠE (${totalMissing} položek)`}
       </Button>
 
+      {/* Backfill missing wiki profiles (server-side) */}
+      <Button
+        variant="outline"
+        onClick={async () => {
+          setGenerating("backfill");
+          hLog("🔄 Backfill wiki profilů spuštěn (server-side)...");
+          try {
+            const { data, error } = await supabase.functions.invoke("backfill-wiki", {
+              body: { sessionId },
+            });
+            if (error) throw error;
+            hLog(`✅ Backfill hotov: ${data.cities_generated}/${data.cities_needing_gen} vygenerováno, ${data.cities_failed} selhalo (${data.duration_ms}ms)`);
+            toast.success(`Backfill: ${data.cities_generated} profilů vygenerováno`);
+            setResults({ success: data.cities_generated, skipped: data.cities_total - data.cities_needing_gen, failed: data.cities_failed });
+            setLastRunTime(new Date().toLocaleString("cs"));
+            onRefetch?.();
+            scan();
+          } catch (e: any) {
+            hLog(`❌ Backfill selhal: ${e.message}`);
+            toast.error("Backfill selhal");
+          }
+          setGenerating(null);
+        }}
+        disabled={isWorking}
+        className="w-full gap-2"
+      >
+        {generating === "backfill" ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileText className="h-4 w-4" />}
+        Regenerovat chybějící wiki profily (server)
+      </Button>
+
       {/* Per-category with expandable item lists */}
       <div className="space-y-1">
         {categories.map(cat => {
