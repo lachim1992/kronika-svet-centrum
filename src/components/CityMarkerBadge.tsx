@@ -48,7 +48,7 @@ const CityMarkerBadge = memo(({
 
   // ── Pixel art sprite mode ──
   if (mapIconUrl) {
-    const spriteSize = Math.round(r * 2.4); // larger than circle to fill hex area
+    const spriteSize = Math.round(r * 4.2); // fill entire hex
     return (
       <g
         onClick={(e) => { e.stopPropagation(); onClick?.(e); }}
