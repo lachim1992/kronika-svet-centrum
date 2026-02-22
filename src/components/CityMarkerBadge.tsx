@@ -15,21 +15,33 @@ export interface CityMarkerProps {
   isCapital?: boolean;
   /** Optional image URL for city avatar */
   imageUrl?: string | null;
-  /** sm = 12px radius, md = 16px radius */
+  /** Population count — drives marker radius */
+  population?: number;
+  /** sm = base 10, md = base 14 (before population scaling) */
   size?: "sm" | "md";
   cx: number;
   cy: number;
   onClick?: (e: React.MouseEvent) => void;
 }
 
+/** Map population to a radius multiplier (0.7 – 1.6) */
+function popScale(pop: number): number {
+  if (pop <= 500) return 0.7;
+  if (pop >= 10000) return 1.6;
+  // logarithmic interpolation between 500→10000
+  const t = (Math.log(pop) - Math.log(500)) / (Math.log(10000) - Math.log(500));
+  return 0.7 + t * 0.9;
+}
+
 const CityMarkerBadge = memo(({
   cityId, cityName, settlementLevel, ownerPlayer, isCapital,
-  imageUrl, size = "md", cx, cy, onClick,
+  imageUrl, population = 1000, size = "md", cx, cy, onClick,
 }: CityMarkerProps) => {
-  const r = size === "sm" ? 12 : 16;
+  const baseR = size === "sm" ? 10 : 14;
+  const r = Math.round(baseR * popScale(population));
   const icon = SETTLEMENT_ICONS[settlementLevel] || SETTLEMENT_ICONS.HAMLET;
-  const fontSize = size === "sm" ? 9 : 12;
-  const nameSize = size === "sm" ? 5.5 : 7;
+  const fontSize = Math.round(r * 0.75);
+  const nameSize = Math.max(5, Math.round(r * 0.42));
   const nameMaxLen = size === "sm" ? 7 : 10;
   const displayName = cityName.length > nameMaxLen ? cityName.slice(0, nameMaxLen - 1) + "…" : cityName;
   const clipId = `city-clip-${cityId}`;
