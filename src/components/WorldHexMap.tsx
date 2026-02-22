@@ -77,6 +77,7 @@ const HexTile = memo(({
   const pts = hexPoints(cx, cy);
   const isRevealed = !isFrontier;
   const showBiome = isRevealed && hex;
+  const showFrontierBiome = isFrontier && hex;
   const fillColor = showBiome ? (BIOME_COLORS[hex.biome_family] || BIOME_COLORS.plains) : FOG_COLOR;
 
   return (
@@ -86,13 +87,22 @@ const HexTile = memo(({
       )}
       <polygon
         points={pts}
-        fill={showBiome ? `url(#biome-grad-${hex.biome_family})` : FOG_COLOR}
+        fill={showBiome ? `url(#biome-grad-${hex.biome_family})` : showFrontierBiome ? `url(#biome-grad-${hex.biome_family})` : FOG_COLOR}
         stroke={isCurrent ? "hsl(45, 90%, 55%)" : isFrontier ? "hsl(var(--primary) / 0.4)" : "hsl(var(--border))"}
         strokeWidth={isCurrent ? 2.5 : isFrontier ? 1.2 : 0.8}
-        opacity={showBiome ? 1 : isFrontier ? 0.45 : 0.3}
+        opacity={showBiome ? 1 : showFrontierBiome ? 0.35 : isFrontier ? 0.25 : 0.3}
         strokeDasharray={isFrontier ? "3,3" : undefined}
-        className={isFrontier ? "hover:opacity-70 transition-opacity" : ""}
+        className={isFrontier ? "hover:opacity-60 transition-opacity" : ""}
       />
+      {/* Fog overlay for frontier hexes with biome data */}
+      {showFrontierBiome && (
+        <polygon
+          points={pts}
+          fill={FOG_COLOR}
+          opacity={0.45}
+          style={{ pointerEvents: "none" }}
+        />
+      )}
       {/* Biome texture overlay */}
       {showBiome && (
         <polygon
@@ -309,6 +319,23 @@ const WorldHexMap = ({ sessionId, playerName, myRole, onCityClick }: Props) => {
     }
     return frontier;
   }, [discoveredCoords, isAdmin, devMode]);
+
+  /* ── Auto-fetch frontier hex data so terrain is visible ── */
+  const frontierFetchedRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    if (frontierCoords.size === 0) return;
+    const toFetch: { q: number; r: number }[] = [];
+    for (const fk of frontierCoords) {
+      if (frontierFetchedRef.current.has(fk)) continue;
+      if (getHex(...fk.split(",").map(Number) as [number, number])) continue;
+      toFetch.push({ q: Number(fk.split(",")[0]), r: Number(fk.split(",")[1]) });
+      frontierFetchedRef.current.add(fk);
+    }
+    if (toFetch.length === 0) return;
+    // Fetch in batches to avoid overwhelming
+    const batch = toFetch.slice(0, 20);
+    Promise.all(batch.map(c => fetchHex(c.q, c.r)));
+  }, [frontierCoords, getHex, fetchHex]);
 
   /* ── All tiles to render ── */
   const renderCoords = useMemo(() => {
