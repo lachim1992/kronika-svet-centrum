@@ -155,10 +155,26 @@ Deno.serve(async (req) => {
         const popChange = Math.round(city.population_total * popMultiplier);
         const newPop = Math.max(50, city.population_total + popChange);
 
-        // Stability drift toward 60 baseline
-        let newStability = city.city_stability || 70;
+      // Stability drift toward 60 baseline
+      let newStability = city.city_stability || 70;
+
+      // Check for active rebellion on this city
+      const { data: rebellionEvents } = await supabase
+        .from("game_events")
+        .select("id")
+        .eq("session_id", sessionId)
+        .eq("event_type", "rebellion")
+        .eq("city_id", city.id)
+        .eq("turn_number", turnNumber)
+        .limit(1);
+      const hasRebellion = (rebellionEvents || []).length > 0;
+
+      if (hasRebellion) {
+        newStability -= 3;
+      } else {
         if (newStability > 60) newStability -= 1;
         else if (newStability < 60) newStability += 1;
+      }
 
         // Development level grows slowly with population milestones
         let newDev = city.development_level || 1;
@@ -186,38 +202,74 @@ Deno.serve(async (req) => {
       }
 
       // ═══════════════════════════════════════════
-      // PHASE B: INFLUENCE SCORE (deterministic)
+      // PHASE B: INFLUENCE DELTA (deterministic)
       // ═══════════════════════════════════════════
-
-      // Normalize helpers
-      const maxMil = Math.max(1, ...allStacks.map((s: any) => s.power || 0));
-      const totalTradeVol = Math.max(1, allTrades.reduce((s: number, t: any) => s + (t.amount || 0), 0));
 
       for (const city of allCities) {
         if (city.status !== "ok") continue;
 
-        // Owner's military power (normalized)
-        const ownerStacks = allStacks.filter((s: any) => s.player_name === city.owner_player);
-        const milPower = ownerStacks.reduce((s: number, st: any) => s + (st.power || 0), 0);
-        const normMil = milPower / maxMil;
+        let influenceDelta = 0;
+        const stability = city.city_stability || 70;
 
-        // Owner's trade volume (normalized)
-        const ownerTradeVol = allTrades
-          .filter((t: any) => t.from_player === city.owner_player || t.to_player === city.owner_player)
-          .reduce((s: number, t: any) => s + (t.amount || 0), 0);
-        const normTrade = ownerTradeVol / totalTradeVol;
+        // Stability bonus/penalty
+        if (stability > 70) influenceDelta += 0.02;
+        if (stability < 40) influenceDelta -= 0.02;
 
-        // Stability (normalized 0-1)
-        const normStability = (city.city_stability || 70) / 100;
+        // Active trade bonus
+        const hasTrade = allTrades.some(
+          (t: any) => t.from_player === city.owner_player || t.to_player === city.owner_player
+        );
+        if (hasTrade) influenceDelta += 0.01;
 
-        // Development level (normalized, max 5)
-        const normDev = (city.development_level || 1) / 5;
+        // Rebellion penalty (last 5 turns)
+        const { data: recentRebellions } = await supabase
+          .from("game_events")
+          .select("id")
+          .eq("session_id", sessionId)
+          .eq("event_type", "rebellion")
+          .eq("city_id", city.id)
+          .gte("turn_number", turnNumber - 5)
+          .limit(1);
+        if ((recentRebellions || []).length > 0) influenceDelta -= 0.01;
 
-        const influenceScore = 0.4 * normMil + 0.3 * normTrade + 0.2 * normStability + 0.1 * normDev;
+        // Military presence bonus
+        const hasMilitary = allStacks.some(
+          (s: any) => s.player_name === city.owner_player && s.province_id === city.province_id
+        );
+        if (hasMilitary) influenceDelta += 0.01;
+
+        const newInfluence = Math.max(-1, Math.min(1, (city.influence_score || 0) + influenceDelta));
 
         await supabase.from("cities").update({
-          influence_score: Math.round(influenceScore * 1000) / 1000,
+          influence_score: Math.round(newInfluence * 1000) / 1000,
         }).eq("id", city.id);
+      }
+
+      // ═══════════════════════════════════════════
+      // PHASE B2: REGIONAL POWER CHECK
+      // ═══════════════════════════════════════════
+
+      const sortedByInfluence = [...allCities]
+        .filter((c: any) => c.status === "ok")
+        .sort((a: any, b: any) => (b.influence_score || 0) - (a.influence_score || 0));
+
+      if (sortedByInfluence.length >= 2) {
+        const top = sortedByInfluence[0];
+        const second = sortedByInfluence[1];
+        const diff = (top.influence_score || 0) - (second.influence_score || 0);
+        if (diff > 0.4) {
+          await supabase.from("game_events").insert({
+            session_id: sessionId,
+            event_type: "power_shift",
+            player: "Systém",
+            note: `${top.name} se stává dominantní regionální silou (vliv: ${(top.influence_score || 0).toFixed(2)}).`,
+            importance: "high",
+            confirmed: true,
+            turn_number: turnNumber,
+            city_id: top.id,
+          });
+          tickResult.eventsCreated++;
+        }
       }
 
       // Aggregate influence per owner into civ_influence (upsert)
