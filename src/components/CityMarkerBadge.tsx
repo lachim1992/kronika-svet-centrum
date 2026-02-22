@@ -55,6 +55,14 @@ const CityMarkerBadge = memo(({
         className="cursor-pointer"
         style={{ pointerEvents: "all" }}
       >
+        {/* Invisible click target */}
+        <rect
+          x={cx - spriteSize / 2} y={cy - spriteSize / 2 - 4}
+          width={spriteSize} height={spriteSize}
+          fill="transparent"
+          style={{ pointerEvents: "all" }}
+        />
+
         {/* Drop shadow */}
         <ellipse cx={cx} cy={cy + spriteSize * 0.35} rx={spriteSize * 0.35} ry={spriteSize * 0.12}
           fill="black" opacity={0.2} style={{ pointerEvents: "none" }} />
