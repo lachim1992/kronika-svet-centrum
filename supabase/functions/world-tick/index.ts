@@ -154,7 +154,79 @@ Deno.serve(async (req) => {
     }
     results.influence = influenceResults;
 
-    // ========== 4. TENSION CALCULATION ==========
+    // ========== 4. SCAN RECENT KEY EVENTS FOR MEMORY LINKS ==========
+    const { data: recentKeyEvents } = await supabase.from("game_events")
+      .select("*")
+      .eq("session_id", sessionId)
+      .eq("turn_number", turnNumber)
+      .eq("confirmed", true)
+      .in("event_type", ["alliance", "betrayal", "treaty"]);
+
+    const reputationDeltas: Record<string, number> = {};
+
+    // Process alliance/betrayal events into memories + chronicles
+    for (const evt of (recentKeyEvents || [])) {
+      if (evt.event_type === "alliance") {
+        await supabase.from("world_memories").insert({
+          session_id: sessionId,
+          fact_text: `V roce ${turnNumber} byla uzavřena aliance: ${evt.note || evt.player}.`,
+          category: "tradice",
+          location_type: "world",
+          location_name: "Svět",
+          approved: true,
+        }).catch(() => {});
+
+        await supabase.from("chronicle_entries").insert({
+          session_id: sessionId,
+          text: `**Nová aliance (rok ${turnNumber}):** ${evt.note || `${evt.player} uzavřel spojenectví.`}`,
+          epoch_style: "kroniky",
+          turn_from: turnNumber,
+          turn_to: turnNumber,
+        }).catch(() => {});
+
+        // Alliance boosts reputation
+        reputationDeltas[evt.player] = (reputationDeltas[evt.player] || 0) + 10;
+      }
+
+      if (evt.event_type === "betrayal") {
+        await supabase.from("world_memories").insert({
+          session_id: sessionId,
+          fact_text: `V roce ${turnNumber} došlo ke zradě: ${evt.note || evt.player}.`,
+          category: "historická jizva",
+          location_type: "world",
+          location_name: "Svět",
+          approved: true,
+        }).catch(() => {});
+
+        await supabase.from("chronicle_entries").insert({
+          session_id: sessionId,
+          text: `**Zrada (rok ${turnNumber}):** ${evt.note || `${evt.player} porušil důvěru.`} Svět nezapomíná.`,
+          epoch_style: "kroniky",
+          turn_from: turnNumber,
+          turn_to: turnNumber,
+        }).catch(() => {});
+
+        // Betrayal devastates reputation
+        reputationDeltas[evt.player] = (reputationDeltas[evt.player] || 0) - 25;
+      }
+
+      if (evt.event_type === "treaty") {
+        await supabase.from("world_memories").insert({
+          session_id: sessionId,
+          fact_text: `V roce ${turnNumber} byla podepsána smlouva: ${evt.note || evt.player}.`,
+          category: "tradice",
+          location_type: "world",
+          location_name: "Svět",
+          approved: true,
+        }).catch(() => {});
+
+        reputationDeltas[evt.player] = (reputationDeltas[evt.player] || 0) + 5;
+      }
+    }
+
+    results.memory_events_processed = (recentKeyEvents || []).length;
+
+    // ========== 5. TENSION CALCULATION ==========
     const tensionResults: any[] = [];
     const CRISIS_THRESHOLD = 60;
     const WAR_THRESHOLD = 85;
@@ -234,19 +306,20 @@ Deno.serve(async (req) => {
 
         tensionResults.push(tensionRecord);
 
-        // ===== AUTO-GENERATE EVENTS =====
+        // ===== AUTO-GENERATE EVENTS + MEMORY LINKS =====
         if (crisisTriggered) {
+          const crisisNote = `Diplomatická krize mezi ${pA} a ${pB}! Tenze dosáhla ${Math.round(totalTension)}.`;
           await supabase.from("game_events").insert({
             session_id: sessionId,
             event_type: "crisis",
             player: "Systém",
-            note: `Diplomatická krize mezi ${pA} a ${pB}! Tenze dosáhla ${Math.round(totalTension)}.`,
+            note: crisisNote,
             importance: "critical",
             confirmed: true,
             turn_number: turnNumber,
           });
 
-          // Auto memory entry
+          // Memory: crisis
           await supabase.from("world_memories").insert({
             session_id: sessionId,
             fact_text: `V roce ${turnNumber} vypukla diplomatická krize mezi ${pA} a ${pB} (tenze: ${Math.round(totalTension)}).`,
@@ -254,25 +327,80 @@ Deno.serve(async (req) => {
             location_type: "world",
             location_name: "Svět",
             approved: true,
-          }).then(() => {}).catch(() => {});
+          }).catch(() => {});
+
+          // Chronicle: crisis
+          await supabase.from("chronicle_entries").insert({
+            session_id: sessionId,
+            text: `**Diplomatická krize (rok ${turnNumber}):** Napětí mezi říšemi ${pA} a ${pB} dosáhlo bodu zlomu. Tenze: ${Math.round(totalTension)}. Vyslanci obou stran opustili jednací stoly.`,
+            epoch_style: "kroniky",
+            turn_from: turnNumber,
+            turn_to: turnNumber,
+          }).catch(() => {});
+
+          // Reputation penalty for both sides
+          reputationDeltas[pA] = (reputationDeltas[pA] || 0) - 5;
+          reputationDeltas[pB] = (reputationDeltas[pB] || 0) - 5;
         }
 
         if (warRollTriggered && warRollResult !== null && warRollResult > 0.7) {
+          const warNote = `Válka mezi ${pA} a ${pB} je nevyhnutelná! Tenze: ${Math.round(totalTension)}, hod: ${Math.round(warRollResult * 100)}%.`;
           await supabase.from("game_events").insert({
             session_id: sessionId,
             event_type: "war",
             player: "Systém",
-            note: `Válka mezi ${pA} a ${pB} je nevyhnutelná! Tenze: ${Math.round(totalTension)}, hod: ${Math.round(warRollResult * 100)}%.`,
+            note: warNote,
             importance: "critical",
             confirmed: true,
             turn_number: turnNumber,
           });
+
+          // Memory: war
+          await supabase.from("world_memories").insert({
+            session_id: sessionId,
+            fact_text: `V roce ${turnNumber} vypukla válka mezi ${pA} a ${pB}. Svět se zachvěl.`,
+            category: "historická jizva",
+            location_type: "world",
+            location_name: "Svět",
+            approved: true,
+          }).catch(() => {});
+
+          // Chronicle: war
+          await supabase.from("chronicle_entries").insert({
+            session_id: sessionId,
+            text: `**Vyhlášení války (rok ${turnNumber}):** Po dlouhém napětí (tenze ${Math.round(totalTension)}) vypukl otevřený konflikt mezi ${pA} a ${pB}. Vojska obou stran se dala do pohybu.`,
+            epoch_style: "kroniky",
+            turn_from: turnNumber,
+            turn_to: turnNumber,
+          }).catch(() => {});
+
+          // Heavy reputation penalty
+          reputationDeltas[pA] = (reputationDeltas[pA] || 0) - 15;
+          reputationDeltas[pB] = (reputationDeltas[pB] || 0) - 10;
         }
       }
     }
     results.tensions = tensionResults;
 
-    // ========== 5. APPLY LAW MODIFIERS ==========
+    // ========== 5a. APPLY REPUTATION DELTAS ==========
+    const reputationResults: any[] = [];
+    for (const [playerName, delta] of Object.entries(reputationDeltas)) {
+      if (delta === 0) continue;
+      // Find this turn's influence record and update reputation
+      const inf = influenceResults.find(r => r.player_name === playerName);
+      if (inf) {
+        const newRep = Math.max(-100, Math.min(100, (inf.reputation_score || 0) + delta));
+        const newTotal = inf.total_influence + (delta * 0.1);
+        await supabase.from("civ_influence").update({
+          reputation_score: Math.round(newRep * 10) / 10,
+          total_influence: Math.round(newTotal * 10) / 10,
+        }).eq("session_id", sessionId).eq("player_name", playerName).eq("turn_number", turnNumber);
+        reputationResults.push({ player: playerName, delta, newRep });
+      }
+    }
+    results.reputation_changes = reputationResults;
+
+    // ========== 6. APPLY LAW MODIFIERS ==========
     const lawResults: any[] = [];
     for (const law of (laws || [])) {
       const effects = law.structured_effects as any[];
@@ -314,7 +442,7 @@ Deno.serve(async (req) => {
     }
     results.laws_applied = lawResults;
 
-    // ========== 6. FINALIZE TICK ==========
+    // ========== 7. FINALIZE TICK ==========
     await supabase.from("world_tick_log").update({
       status: "completed",
       finished_at: new Date().toISOString(),
