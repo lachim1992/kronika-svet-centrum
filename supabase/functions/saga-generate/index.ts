@@ -19,7 +19,7 @@ serve(async (req) => {
       });
     }
 
-    const { entity, timeline, actors } = sagaContext;
+    const { entity, timeline, actors, rumors, worldEvents, civilizationInfo, diplomacySnippets, declarations } = sagaContext;
     const sessionId = sagaContext.sessionId || entity?.sessionId;
 
     // ─── Load narrative config from server_config ───
@@ -103,20 +103,46 @@ E) "legends" — Legenda a šeptanda (volitelné, jasně oddělené)
 
 ${eventCount < 3 ? 'VAROVÁNÍ: Málo zdrojů (' + eventCount + '). Označ jako proto-ságu.' : ''}`;
 
+    // Build extended context sections
+    const rumorsText = (rumors || []).slice(0, 10).map((r: any) =>
+      `[${r.city_name}, Kolo ${r.turn_number}, ${r.tone_tag}] ${r.text}`
+    ).join("\n");
+
+    const worldEventsText = (worldEvents || []).slice(0, 10).map((we: any) =>
+      `[Kolo ${we.created_turn}] ${we.title}: ${we.summary}`
+    ).join("\n");
+
+    const civText = civilizationInfo
+      ? `Civilizace: ${civilizationInfo.civ_name}\nMýtus: ${civilizationInfo.core_myth || '?'}\nKulturní rys: ${civilizationInfo.cultural_quirk || '?'}\nArchitektura: ${civilizationInfo.architectural_style || '?'}`
+      : "";
+
+    const diplomacyText = (diplomacySnippets || []).slice(0, 8).map((d: any) =>
+      `[${d.sender}${d.message_tag ? ' (' + d.message_tag + ')' : ''}] ${d.message_text}`
+    ).join("\n");
+
+    const declarationsText = (declarations || []).slice(0, 5).map((d: any) =>
+      `[${d.player_name}, ${d.declaration_type}] ${d.title || ''}: ${(d.epic_text || d.original_text || '').slice(0, 150)}`
+    ).join("\n");
+
     const userContent = `=== ENTITA ===
 Jméno: ${entity.name}
 Typ: ${entity.type}
 Vlastník: ${entity.owner || '?'}
 Tagy: ${(entity.tags || []).join(', ') || 'žádné'}
 Info: ${JSON.stringify(entity.extra || {})}
+${civText ? '\n=== CIVILIZACE ===\n' + civText : ''}
 ${historySection}
 === ČASOVÁ OSA (${eventCount} záznamů) ===
 ${timelineText || 'Žádné události'}
 
 === AKTÉŘI ===
 ${actorsText || 'Žádní známí aktéři'}
+${rumorsText ? '\n=== ZVĚSTI A ŠEPTANDA ===\n' + rumorsText : ''}
+${worldEventsText ? '\n=== SVĚTOVÉ UDÁLOSTI ===\n' + worldEventsText : ''}
+${diplomacyText ? '\n=== DIPLOMATICKÁ KORESPONDENCE ===\n' + diplomacyText : ''}
+${declarationsText ? '\n=== VYHLÁŠENÍ A DEKRETY ===\n' + declarationsText : ''}
 
-Napiš dvorní kroniku tohoto místa/entity.`;
+Napiš dvorní kroniku tohoto místa/entity. Využij VŠECHNY dostupné zdroje.`;
 
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",

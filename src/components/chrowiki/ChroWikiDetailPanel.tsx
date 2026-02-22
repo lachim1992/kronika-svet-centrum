@@ -133,6 +133,11 @@ const ChroWikiDetailPanel = ({
   const [generatingHistory, setGeneratingHistory] = useState(false);
   const [activeTab, setActiveTab] = useState<string>("historie");
 
+  // Book publishing state
+  const [publishingBook, setPublishingBook] = useState(false);
+  const [bookPreviewOpen, setBookPreviewOpen] = useState(false);
+  const [bookPreviewData, setBookPreviewData] = useState<any>(null);
+
   // Chronicle mentions state
   const [chroniclePage, setChroniclePage] = useState(0);
   const [chronicleCatFilter, setChronicleCatFilter] = useState("all");
@@ -503,6 +508,78 @@ const ChroWikiDetailPanel = ({
     setGeneratingHistory(false);
   };
 
+  // ── Publish as court chronicle book ──
+  const handlePublishBook = async () => {
+    if (!sagaResult && !currentSaga) { toast.error("Nejprve vygenerujte ságu"); return; }
+    setPublishingBook(true);
+    try {
+      // Generate a chronicler name
+      const chroniclerNames = [
+        "Mistr Bartoloměj z Dálného Hradu", "Kronikář Oldřich Perokrevný",
+        "Písař Theodor z Knihovny", "Učený Václav Inkoustový",
+        "Mnich Řehoř z Kláštera Věčného Slova", "Dvorní písař Jindřich Vševědoucí",
+        "Archivář Přemysl z Pergamenu", "Klerik Dominik Zlatoústý",
+      ];
+      const chroniclerName = chroniclerNames[Math.floor(Math.random() * chroniclerNames.length)];
+      const bookTitle = `Kronika o ${entityName}`;
+      
+      const sagaText = sagaResult
+        ? [
+            "## Stručná chronologie\n" + (sagaResult.chronology || []).map((c: string) => `- ${c}`).join("\n"),
+            "\n## Sága\n" + (sagaResult.saga || ""),
+            sagaResult.consequences ? "\n## Důsledky\n" + sagaResult.consequences : "",
+            sagaResult.legends ? "\n## Legenda\n" + sagaResult.legends : "",
+          ].filter(Boolean).join("\n\n")
+        : currentSaga?.saga_text || "";
+
+      const historyText = historyResult
+        ? [
+            historyResult.synthesis,
+            historyResult.keyFacts?.length ? "\n### Klíčová fakta\n" + historyResult.keyFacts.join("\n") : "",
+          ].filter(Boolean).join("\n")
+        : "";
+
+      const nextVersion = (sagaVersions[0]?.version || 0) + 1;
+      const { error } = await supabase.from("saga_versions").insert({
+        session_id: sessionId, entity_type: entityType, entity_id: entityId,
+        version: nextVersion, saga_text: sagaText,
+        history_text: historyText,
+        author_player: currentPlayerName || "unknown", source_turn: currentTurn || 0,
+        is_ai_generated: true,
+        published_as_book: true,
+        book_title: bookTitle,
+        chronicler_name: chroniclerName,
+        source_summary: {
+          events: sagaContext?.sourceCounts?.events || 0,
+          actors: sagaContext?.sourceCounts?.actors || 0,
+          rumors: sagaContext?.sourceCounts?.rumors || 0,
+          worldEvents: sagaContext?.sourceCounts?.worldEvents || 0,
+          diplomacy: sagaContext?.sourceCounts?.diplomacy || 0,
+        },
+      });
+      if (error) throw error;
+
+      const newEntry = {
+        version: nextVersion, saga_text: sagaText, history_text: historyText,
+        author_player: currentPlayerName, created_at: new Date().toISOString(),
+        is_ai_generated: true, published_as_book: true, book_title: bookTitle,
+        chronicler_name: chroniclerName,
+      };
+      setSagaVersions(prev => [newEntry, ...prev]);
+      setBookPreviewData(newEntry);
+      setBookPreviewOpen(true);
+      toast.success("📖 Kronika zapsána dvorním kronikářem!");
+    } catch (e: any) {
+      toast.error("Chyba: " + (e.message || "Publikování selhalo"));
+    }
+    setPublishingBook(false);
+  };
+
+  const handleOpenBook = (entry: any) => {
+    setBookPreviewData(entry);
+    setBookPreviewOpen(true);
+  };
+
 
   if (dbLoading) {
     return (
@@ -731,9 +808,15 @@ const ChroWikiDetailPanel = ({
                         </Button>
                       )}
                       <Button variant="ghost" size="sm" className="h-6 text-[10px] px-2" onClick={handleRegenerateSaga} disabled={generatingSaga}>
-                        {generatingSaga ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <Sparkles className="h-3 w-3 mr-1" />}
+                       {generatingSaga ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <Sparkles className="h-3 w-3 mr-1" />}
                         Generovat ságu
                       </Button>
+                      {(sagaResult || currentSaga) && (
+                        <Button variant="default" size="sm" className="h-6 text-[10px] px-2" onClick={handlePublishBook} disabled={publishingBook}>
+                          {publishingBook ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <Feather className="h-3 w-3 mr-1" />}
+                          Zapsat dvorním kronikářem
+                        </Button>
+                      )}
                     </div>
                   </div>
 
@@ -773,9 +856,89 @@ const ChroWikiDetailPanel = ({
                       <p className="text-xs text-muted-foreground font-body">Kronikář sepisuje ságu…</p>
                     </div>
                   ) : null}
+
+                  {/* Published books list */}
+                  {sagaVersions.filter(v => v.published_as_book).length > 0 && (
+                    <div className="mt-4 pt-3" style={{ borderTop: '1px solid hsl(var(--primary) / 0.15)' }}>
+                      <h5 className="font-decorative text-xs font-semibold mb-2 flex items-center gap-1.5 text-muted-foreground">
+                        <BookOpen className="h-3 w-3" /> Zapsané kroniky
+                      </h5>
+                      <div className="space-y-1.5">
+                        {sagaVersions.filter(v => v.published_as_book).map(book => (
+                          <div key={book.version}
+                            className="flex items-center gap-2 py-2 px-3 rounded-lg hover:bg-secondary/30 cursor-pointer transition-colors"
+                            style={{ border: '1px solid hsl(var(--primary) / 0.1)' }}
+                            onClick={() => handleOpenBook(book)}
+                          >
+                            <Scroll className="h-4 w-4 text-primary shrink-0" />
+                            <div className="min-w-0 flex-1">
+                              <p className="font-display text-sm font-semibold truncate text-foreground">{book.book_title || `Kronika v${book.version}`}</p>
+                              <p className="text-[10px] text-muted-foreground">
+                                {book.chronicler_name || "Neznámý kronikář"} · {new Date(book.created_at).toLocaleDateString("cs")}
+                              </p>
+                            </div>
+                            <ChevronRight className="h-3 w-3 text-muted-foreground shrink-0" />
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </TabsContent>
               </Tabs>
             </section>
+
+            {/* ═══ BOOK PREVIEW DIALOG ═══ */}
+            <Dialog open={bookPreviewOpen} onOpenChange={setBookPreviewOpen}>
+              <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+                {bookPreviewData && (
+                  <div className="chrowiki-book-frame p-6">
+                    {/* Book cover header */}
+                    <div className="text-center mb-6 pb-4" style={{ borderBottom: '2px solid hsl(var(--primary) / 0.3)' }}>
+                      <div className="text-[10px] uppercase tracking-[0.3em] text-muted-foreground mb-2">Dvorní kronika</div>
+                      <h2 className="font-decorative text-2xl text-foreground mb-2">{bookPreviewData.book_title || `Kronika o ${entityName}`}</h2>
+                      <OrnamentalDivider />
+                      <p className="text-sm font-body text-muted-foreground italic mt-2">
+                        Sepsal <span className="font-display font-semibold text-foreground">{bookPreviewData.chronicler_name || "Neznámý kronikář"}</span>
+                      </p>
+                      <p className="text-[10px] text-muted-foreground mt-1">
+                        Vydáno {new Date(bookPreviewData.created_at).toLocaleDateString("cs", { day: "numeric", month: "long", year: "numeric" })}
+                        {bookPreviewData.source_turn ? ` · Kolo ${bookPreviewData.source_turn}` : ""}
+                      </p>
+                    </div>
+
+                    {/* History section */}
+                    {bookPreviewData.history_text && (
+                      <section className="mb-5">
+                        <h3 className="font-decorative text-base font-semibold mb-2 flex items-center gap-2 text-foreground">
+                          <Clock className="h-4 w-4 text-primary" /> Historická syntéza
+                        </h3>
+                        <div className="prose-chronicle text-[14px] leading-[1.7] text-foreground/90 font-body whitespace-pre-wrap">
+                          <RichText text={bookPreviewData.history_text} />
+                        </div>
+                        <OrnamentalDivider />
+                      </section>
+                    )}
+
+                    {/* Saga section */}
+                    <section>
+                      <h3 className="font-decorative text-base font-semibold mb-2 flex items-center gap-2 text-foreground">
+                        <Sparkles className="h-4 w-4 text-primary" /> Sága
+                      </h3>
+                      <div className="prose-chronicle drop-cap-section text-[14px] leading-[1.7] text-foreground/90 font-body whitespace-pre-wrap">
+                        <RichText text={bookPreviewData.saga_text || ""} />
+                      </div>
+                    </section>
+
+                    {/* Footer */}
+                    <div className="mt-6 pt-3 text-center" style={{ borderTop: '1px solid hsl(var(--primary) / 0.15)' }}>
+                      <p className="text-[9px] uppercase tracking-[0.2em] text-muted-foreground">
+                        ~ Finis ~
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </DialogContent>
+            </Dialog>
 
             {/* Entity-type specific sections (hidden in reading mode) */}
             {!readingMode && entityType === "event" && entity && (

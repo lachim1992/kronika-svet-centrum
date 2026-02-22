@@ -2789,37 +2789,52 @@ export type Database = {
       saga_versions: {
         Row: {
           author_player: string
+          book_title: string | null
+          chronicler_name: string | null
           created_at: string
           entity_id: string
           entity_type: string
+          history_text: string | null
           id: string
           is_ai_generated: boolean
+          published_as_book: boolean | null
           saga_text: string
           session_id: string
+          source_summary: Json | null
           source_turn: number
           version: number
         }
         Insert: {
           author_player?: string
+          book_title?: string | null
+          chronicler_name?: string | null
           created_at?: string
           entity_id: string
           entity_type: string
+          history_text?: string | null
           id?: string
           is_ai_generated?: boolean
+          published_as_book?: boolean | null
           saga_text: string
           session_id: string
+          source_summary?: Json | null
           source_turn?: number
           version?: number
         }
         Update: {
           author_player?: string
+          book_title?: string | null
+          chronicler_name?: string | null
           created_at?: string
           entity_id?: string
           entity_type?: string
+          history_text?: string | null
           id?: string
           is_ai_generated?: boolean
+          published_as_book?: boolean | null
           saga_text?: string
           session_id?: string
+          source_summary?: Json | null
           source_turn?: number
           version?: number
         }
