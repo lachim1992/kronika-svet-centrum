@@ -19,6 +19,8 @@ interface Props {
   currentPlayerName?: string;
   myRole?: string;
   onEntityClick?: (type: string, id: string) => void;
+  wikiEntityTarget?: { type: string; id: string } | null;
+  onClearWikiEntityTarget?: () => void;
 }
 
 const ENTITY_ICONS: Record<string, React.ReactNode> = {
@@ -33,7 +35,7 @@ const ENTITY_ICONS: Record<string, React.ReactNode> = {
   discovery: <Compass className="h-3.5 w-3.5" />,
 };
 
-const ChroWikiTab = ({ sessionId, currentPlayerName = "", myRole = "player", onEntityClick }: Props) => {
+const ChroWikiTab = ({ sessionId, currentPlayerName = "", myRole = "player", onEntityClick, wikiEntityTarget, onClearWikiEntityTarget }: Props) => {
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState("all");
   const [playerFilter, setPlayerFilter] = useState("all");
@@ -85,6 +87,26 @@ const ChroWikiTab = ({ sessionId, currentPlayerName = "", myRole = "player", onE
       setLoading(false);
     });
   }, [sessionId]);
+
+  // Handle incoming wiki entity target (e.g. from hex map city click)
+  useEffect(() => {
+    if (wikiEntityTarget && !loading) {
+      // Find the entity name from loaded data
+      let name = "";
+      if (wikiEntityTarget.type === "city") {
+        const city = cities.find(c => c.id === wikiEntityTarget.id);
+        name = city?.name || "Město";
+      } else if (wikiEntityTarget.type === "region") {
+        const region = regions.find(r => r.id === wikiEntityTarget.id);
+        name = region?.name || "Region";
+      } else if (wikiEntityTarget.type === "province") {
+        const prov = provinces.find(p => p.id === wikiEntityTarget.id);
+        name = prov?.name || "Provincie";
+      }
+      setSelectedEntity({ type: wikiEntityTarget.type, id: wikiEntityTarget.id, name });
+      onClearWikiEntityTarget?.();
+    }
+  }, [wikiEntityTarget, loading, cities, regions, provinces, onClearWikiEntityTarget]);
 
   const selectEntity = useCallback((type: string, id: string, name: string) => {
     setSelectedEntity({ type, id, name });
