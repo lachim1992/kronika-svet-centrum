@@ -154,7 +154,7 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
         max_players: isPersistentMode ? 50 : isMultiMode ? 6 : 1,
         created_by: userId,
         game_mode: gameMode,
-        tier: "free",
+        tier: "premium",
         init_status: "creating",
       } as any).select().single();
 
@@ -225,7 +225,7 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
       setStepStatus(progress, 3, "active");
 
       if (isAIMode) {
-        // AI world generation
+        // AI world generation — generates ALL cities including player's starting city
         setGeneratingWorld(true);
         try {
           const { data: genData, error: genErr } = await supabase.functions.invoke("world-generate-init", {
@@ -237,19 +237,24 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
               tone,
               victoryStyle,
               worldSize,
-              tier: "free",
+              tier: "premium",
+              settlementName: settlementName.trim(),
+              cultureName: cultureName.trim(),
+              languageName: languageName.trim(),
+              realmName: realmName.trim(),
             },
           });
           if (genErr) {
             console.error("World generation error:", genErr);
-            toast.error("Generování AI světa selhalo, pokračuji s ručním nastavením.");
-          } else {
-            toast.success(`AI svět vygenerován! ${genData?.factionsCreated || 0} frakcí, ${genData?.citiesCreated || 0} měst.`);
+            throw new Error("Generování AI světa selhalo: " + (typeof genErr === "string" ? genErr : genErr.message || "neznámá chyba"));
           }
-        } catch (e) {
+          toast.success(`AI svět vygenerován! ${genData?.factionsCreated || 0} frakcí, ${genData?.citiesCreated || 0} měst, ${genData?.rumorsCreated || 0} pověstí.`);
+        } catch (e: any) {
           console.error("World generation error:", e);
+          throw e;
+        } finally {
+          setGeneratingWorld(false);
         }
-        setGeneratingWorld(false);
       } else {
         // Manual / Multi: create homeland region
         const { data: homelandRegion } = await supabase.from("regions").insert({
@@ -293,75 +298,88 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
       }
       setStepStatus(progress, 3, "done");
 
-      // ── STEP 5: Create starting settlement ──
+      // ── STEP 5: Create starting settlement (skip for AI mode — already created by world-generate-init) ──
       setStepStatus(progress, 4, "active");
 
-      // Create a default province if we don't have one yet
-      let provinceId: string | null = null;
-      const { data: existingProvs } = await supabase.from("provinces").select("id").eq("session_id", session.id).eq("owner_player", playerName.trim()).limit(1);
+      if (!isAIMode) {
+        // Create a default province if we don't have one yet
+        let provinceId: string | null = null;
+        const { data: existingProvs } = await supabase.from("provinces").select("id").eq("session_id", session.id).eq("owner_player", playerName.trim()).limit(1);
 
-      if (existingProvs && existingProvs.length > 0) {
-        provinceId = existingProvs[0].id;
-      } else {
-        // Create province in homeland
-        const { data: regions } = await supabase.from("regions").select("id").eq("session_id", session.id).eq("owner_player", playerName.trim()).limit(1);
-        const regionId = regions?.[0]?.id || null;
+        if (existingProvs && existingProvs.length > 0) {
+          provinceId = existingProvs[0].id;
+        } else {
+          const { data: regions } = await supabase.from("regions").select("id").eq("session_id", session.id).eq("owner_player", playerName.trim()).limit(1);
+          const regionId = regions?.[0]?.id || null;
 
-        const { data: provData } = await supabase.from("provinces").insert({
+          const { data: provData } = await supabase.from("provinces").insert({
+            session_id: session.id,
+            name: homelandName.trim() || `${playerName.trim()} – Provincie`,
+            owner_player: playerName.trim(),
+            region_id: regionId,
+          }).select("id").single();
+          if (provData) provinceId = provData.id;
+        }
+
+        const { data: cityData, error: cityErr } = await supabase.from("cities").insert({
           session_id: session.id,
-          name: homelandName.trim() || `${playerName.trim()} – Provincie`,
           owner_player: playerName.trim(),
-          region_id: regionId,
+          name: settlementName.trim(),
+          province_id: provinceId,
+          province: homelandName.trim() || `${playerName.trim()} – Provincie`,
+          level: "Osada",
+          settlement_level: "HAMLET",
+          founded_round: 1,
+          province_q: 0,
+          province_r: 0,
+          culture_id: cultureId,
+          language_id: languageId,
+          city_stability: 65,
+          influence_score: 0,
         }).select("id").single();
-        if (provData) provinceId = provData.id;
+
+        if (cityErr) throw cityErr;
+
+        const discoveryRows: any[] = [
+          { session_id: session.id, player_name: playerName.trim(), entity_type: "city", entity_id: cityData!.id, source: "founded" },
+        ];
+        if (provinceId) {
+          discoveryRows.push({ session_id: session.id, player_name: playerName.trim(), entity_type: "province", entity_id: provinceId, source: "founded" });
+        }
+        await supabase.from("discoveries").upsert(discoveryRows, { onConflict: "session_id,player_name,entity_type,entity_id" });
+
+        await supabase.from("game_events").insert({
+          session_id: session.id,
+          event_type: "founding",
+          player: playerName.trim(),
+          note: `${playerName.trim()} založil osadu ${settlementName.trim()}.`,
+          turn_number: 1,
+          confirmed: true,
+          importance: "high",
+          city_id: cityData!.id,
+        });
+
+        await supabase.from("world_feed_items").insert({
+          session_id: session.id,
+          turn_number: 1,
+          content: `V zemi ${homelandName.trim() || worldName.trim()} byla založena nová osada ${settlementName.trim()}.`,
+          feed_type: "gossip",
+          importance: "high",
+        } as any);
+      } else {
+        // AI mode: cities already created — auto-discover player's cities
+        const { data: playerCities } = await supabase.from("cities").select("id").eq("session_id", session.id).eq("owner_player", playerName.trim());
+        if (playerCities && playerCities.length > 0) {
+          const discoveries = playerCities.map(c => ({
+            session_id: session.id,
+            player_name: playerName.trim(),
+            entity_type: "city",
+            entity_id: c.id,
+            source: "founded",
+          }));
+          await supabase.from("discoveries").upsert(discoveries as any[], { onConflict: "session_id,player_name,entity_type,entity_id" });
+        }
       }
-
-      // Create the starting city with hex coordinates (0,0)
-      const { data: cityData, error: cityErr } = await supabase.from("cities").insert({
-        session_id: session.id,
-        owner_player: playerName.trim(),
-        name: settlementName.trim(),
-        province_id: provinceId,
-        province: homelandName.trim() || `${playerName.trim()} – Provincie`,
-        level: "Osada",
-        settlement_level: "HAMLET",
-        founded_round: 1,
-        province_q: 0,
-        province_r: 0,
-        culture_id: cultureId,
-        language_id: languageId,
-      }).select("id").single();
-
-      if (cityErr) throw cityErr;
-
-      // Auto-discover
-      const discoveryRows: any[] = [
-        { session_id: session.id, player_name: playerName.trim(), entity_type: "city", entity_id: cityData!.id, source: "founded" },
-      ];
-      if (provinceId) {
-        discoveryRows.push({ session_id: session.id, player_name: playerName.trim(), entity_type: "province", entity_id: provinceId, source: "founded" });
-      }
-      await supabase.from("discoveries").upsert(discoveryRows, { onConflict: "session_id,player_name,entity_type,entity_id" });
-
-      // Chronicle + feed
-      await supabase.from("game_events").insert({
-        session_id: session.id,
-        event_type: "founding",
-        player: playerName.trim(),
-        note: `${playerName.trim()} založil osadu ${settlementName.trim()}.`,
-        turn_number: 1,
-        confirmed: true,
-        importance: "high",
-        city_id: cityData!.id,
-      });
-
-      await supabase.from("world_feed_items").insert({
-        session_id: session.id,
-        turn_number: 1,
-        content: `V zemi ${homelandName.trim() || worldName.trim()} byla založena nová osada ${settlementName.trim()}.`,
-        feed_type: "gossip",
-        importance: "high",
-      } as any);
 
       setStepStatus(progress, 4, "done");
 
@@ -404,20 +422,21 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
         } as any);
       }
 
-      // Generate initial hex at 0,0
-      try {
-        await supabase.functions.invoke("generate-hex", {
-          body: { sessionId: session.id, q: 0, r: 0 },
-        });
-        // Generate surrounding hexes
-        const neighbors = [
-          [1, 0], [-1, 0], [0, 1], [0, -1], [1, -1], [-1, 1],
-        ];
-        await Promise.all(neighbors.map(([q, r]) =>
-          supabase.functions.invoke("generate-hex", { body: { sessionId: session.id, q, r } })
-        ));
-      } catch (e) {
-        console.warn("Hex generation warning:", e);
+      // Generate initial hexes (skip for AI mode — world-generate-init handles it)
+      if (!isAIMode) {
+        try {
+          await supabase.functions.invoke("generate-hex", {
+            body: { sessionId: session.id, q: 0, r: 0 },
+          });
+          const neighbors = [
+            [1, 0], [-1, 0], [0, 1], [0, -1], [1, -1], [-1, 1],
+          ];
+          await Promise.all(neighbors.map(([q, r]) =>
+            supabase.functions.invoke("generate-hex", { body: { sessionId: session.id, q, r } })
+          ));
+        } catch (e) {
+          console.warn("Hex generation warning:", e);
+        }
       }
 
       // Mark init complete
