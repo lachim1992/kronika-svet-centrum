@@ -1,10 +1,94 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { PNG } from "npm:pngjs@7.0.0";
+import { Buffer } from "node:buffer";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
+
+/** Remove background by flood-filling from corners with transparency */
+function removeBackground(pngBuffer: Uint8Array): Uint8Array {
+  const png = PNG.sync.read(Buffer.from(pngBuffer));
+  const { width, height, data } = png;
+
+  // Sample corner pixels to determine background color
+  const corners = [
+    { x: 0, y: 0 },
+    { x: width - 1, y: 0 },
+    { x: 0, y: height - 1 },
+    { x: width - 1, y: height - 1 },
+  ];
+
+  // Get average corner color
+  let rSum = 0, gSum = 0, bSum = 0;
+  for (const c of corners) {
+    const idx = (c.y * width + c.x) * 4;
+    rSum += data[idx];
+    gSum += data[idx + 1];
+    bSum += data[idx + 2];
+  }
+  const bgR = Math.round(rSum / 4);
+  const bgG = Math.round(gSum / 4);
+  const bgB = Math.round(bSum / 4);
+
+  console.log(`Detected background color: rgb(${bgR}, ${bgG}, ${bgB})`);
+
+  // Flood fill from all corners
+  const tolerance = 60; // color distance tolerance
+  const visited = new Uint8Array(width * height);
+  const queue: number[] = [];
+
+  function colorDist(idx: number): number {
+    const dr = data[idx] - bgR;
+    const dg = data[idx + 1] - bgG;
+    const db = data[idx + 2] - bgB;
+    return Math.sqrt(dr * dr + dg * dg + db * db);
+  }
+
+  // Seed from corners and edges
+  for (let x = 0; x < width; x++) {
+    queue.push(x); // top edge
+    queue.push((height - 1) * width + x); // bottom edge
+  }
+  for (let y = 0; y < height; y++) {
+    queue.push(y * width); // left edge
+    queue.push(y * width + width - 1); // right edge
+  }
+
+  while (queue.length > 0) {
+    const pos = queue.pop()!;
+    if (visited[pos]) continue;
+    visited[pos] = 1;
+
+    const idx = pos * 4;
+    if (colorDist(idx) > tolerance) continue;
+
+    // Make transparent
+    data[idx + 3] = 0;
+
+    const x = pos % width;
+    const y = Math.floor(pos / width);
+
+    if (x > 0) queue.push(pos - 1);
+    if (x < width - 1) queue.push(pos + 1);
+    if (y > 0) queue.push(pos - width);
+    if (y < height - 1) queue.push(pos + width);
+  }
+
+  // Also make any remaining pixels that closely match bg color semi-transparent
+  // (catches isolated bg-color pixels inside the image)
+  for (let i = 0; i < width * height; i++) {
+    const idx = i * 4;
+    if (data[idx + 3] === 0) continue; // already transparent
+    if (colorDist(idx) < tolerance * 0.5) {
+      data[idx + 3] = 0;
+    }
+  }
+
+  return new Uint8Array(PNG.sync.write(png));
+}
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -66,7 +150,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    // 3. Generate pixel art icon using Lovable AI image editing
+    // 3. Generate pixel art icon on solid background
     console.log(`Generating pixel map icon for ${city.name} from ${sourceImageUrl}`);
 
     const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
@@ -83,15 +167,15 @@ Deno.serve(async (req) => {
             content: [
               {
                 type: "text",
-                text: `Convert this city illustration into a tiny pixel art map icon. CRITICAL REQUIREMENTS:
-- The background MUST be fully transparent (PNG with alpha channel) — no ground, no grass, no terrain, no colored background whatsoever
-- Top-down/isometric perspective suitable for a hex map tile
+                text: `Convert this city illustration into a tiny pixel art map icon on a SOLID BRIGHT GREEN (#00FF00) background. Requirements:
+- Isometric/top-down perspective for a hex map tile
 - 64x64 pixel art style with visible pixels
-- Show ONLY the buildings and architectural features, floating on a completely transparent background
-- Use a warm color palette that stands out on a dark map background
-- The style should feel like classic strategy game map icons (Age of Empires, Civilization)
-- Make it recognizable as "${city.name}" - a ${city.settlement_level.toLowerCase()} level settlement
-- IMPORTANT: transparent background, no ground plane, no terrain beneath the buildings`,
+- Show the key architectural features of "${city.name}" (${city.settlement_level.toLowerCase()}) in miniature
+- Use warm colors for the buildings that contrast with the green background
+- The ENTIRE background must be uniform solid bright green (#00FF00) — no gradients, no shadows on the background
+- Buildings should NOT contain any bright green (#00FF00) color
+- Style: classic strategy game map icons (Civilization, Age of Empires)
+- NO ground plane or terrain — buildings float directly on the green background`,
               },
               {
                 type: "image_url",
@@ -120,7 +204,7 @@ Deno.serve(async (req) => {
     }
 
     const aiData = await aiResponse.json();
-    let generatedImage = aiData.choices?.[0]?.message?.images?.[0]?.image_url?.url;
+    const generatedImage = aiData.choices?.[0]?.message?.images?.[0]?.image_url?.url;
 
     if (!generatedImage) {
       console.error("No image in AI response:", JSON.stringify(aiData).slice(0, 500));
@@ -130,56 +214,18 @@ Deno.serve(async (req) => {
       );
     }
 
-    // 3b. Second pass: remove background
-    console.log("Removing background from generated icon...");
-    const bgRemoveResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-2.5-flash-image",
-        messages: [
-          {
-            role: "user",
-            content: [
-              {
-                type: "text",
-                text: "Remove the background from this pixel art icon completely. Keep ONLY the buildings/settlement structure. The background must be fully transparent (alpha = 0). Do not add any ground, terrain, grass or shadow beneath the buildings. Output a clean PNG with transparent background.",
-              },
-              {
-                type: "image_url",
-                image_url: { url: generatedImage },
-              },
-            ],
-          },
-        ],
-        modalities: ["image", "text"],
-      }),
-    });
+    // 4. Programmatic background removal (chroma key on detected bg color)
+    console.log("Removing background programmatically...");
+    const rawBase64 = generatedImage.replace(/^data:image\/\w+;base64,/, "");
+    const rawBytes = Uint8Array.from(atob(rawBase64), (c) => c.charCodeAt(0));
+    const cleanedBytes = removeBackground(rawBytes);
 
-    if (bgRemoveResponse.ok) {
-      const bgData = await bgRemoveResponse.json();
-      const cleanImage = bgData.choices?.[0]?.message?.images?.[0]?.image_url?.url;
-      if (cleanImage) {
-        generatedImage = cleanImage;
-        console.log("Background removed successfully");
-      } else {
-        console.warn("BG removal returned no image, using original");
-      }
-    } else {
-      console.warn("BG removal failed, using original:", bgRemoveResponse.status);
-    }
-
-    // 4. Upload to storage
-    const base64Data = generatedImage.replace(/^data:image\/\w+;base64,/, "");
-    const binaryData = Uint8Array.from(atob(base64Data), (c) => c.charCodeAt(0));
+    // 5. Upload to storage
     const storagePath = `${session_id}/city/${city_id}-map-icon-${Date.now()}.png`;
 
     const { error: uploadErr } = await sb.storage
       .from("wonder-images")
-      .upload(storagePath, binaryData, {
+      .upload(storagePath, cleanedBytes, {
         contentType: "image/png",
         upsert: true,
       });
@@ -196,8 +242,7 @@ Deno.serve(async (req) => {
       .from("wonder-images")
       .getPublicUrl(storagePath);
 
-    // 5. Save as encyclopedia_images entry with kind='map_icon'
-    // Remove old map_icon entries for this city
+    // 6. Save as encyclopedia_images entry with kind='map_icon'
     await sb
       .from("encyclopedia_images")
       .delete()
