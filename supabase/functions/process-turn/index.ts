@@ -425,10 +425,15 @@ Deno.serve(async (req) => {
       }
     }
 
-    // 10) Update realm resources
+    // 10) Update realm resources + gold
     const newWoodReserve = (realm.wood_reserve || 0) + totalWoodProd;
     const newStoneReserve = (realm.stone_reserve || 0) + totalStoneProd;
     const newIronReserve = (realm.iron_reserve || 0) + totalIronProd;
+
+    // Gold: compute wealth income and add to gold_reserve
+    const wealthIncome = computeWealthIncome(myCities);
+    const wealthUpkeep = 0; // Future: army upkeep, etc.
+    const newGoldReserve = Math.max(0, (realm.gold_reserve || 0) + wealthIncome - wealthUpkeep);
 
     const famineCityCount = myCities.filter(c => c.famine_turn).length;
 
@@ -448,6 +453,7 @@ Deno.serve(async (req) => {
       wood_reserve: newWoodReserve,
       stone_reserve: newStoneReserve,
       iron_reserve: newIronReserve,
+      gold_reserve: newGoldReserve,
       famine_city_count: famineCityCount,
       updated_at: new Date().toISOString(),
     }).eq("id", realm.id);
@@ -518,7 +524,13 @@ Deno.serve(async (req) => {
 
     for (const res of (allResources || [])) {
       if (res.last_applied_turn >= currentTurn) continue;
-      const newStockpile = Math.max(0, (res.stockpile || 0) + (res.income || 0) - (res.upkeep || 0));
+      let newStockpile: number;
+      if (res.resource_type === "wealth") {
+        // Wealth stockpile = gold_reserve (single source of truth)
+        newStockpile = newGoldReserve;
+      } else {
+        newStockpile = Math.max(0, (res.stockpile || 0) + (res.income || 0) - (res.upkeep || 0));
+      }
       await supabase.from("player_resources").update({
         stockpile: newStockpile,
         last_applied_turn: currentTurn,

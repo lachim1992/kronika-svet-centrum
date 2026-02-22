@@ -98,22 +98,7 @@ const TurnProgressionPanel = ({ sessionId, currentTurn, players, currentPlayerNa
       console.error("World tick error:", e);
     }
 
-    // ===== PROCESS TURN: resource production & stockpiles for ALL players =====
-    try {
-      const { data: allPlayers } = await supabase.from("game_players")
-        .select("player_name").eq("session_id", sessionId);
-      for (const p of (allPlayers || [])) {
-        const { error: ptErr } = await supabase.functions.invoke("process-turn", {
-          body: { sessionId, playerName: p.player_name },
-        });
-        if (ptErr) console.warn(`process-turn for ${p.player_name}:`, ptErr.message);
-      }
-      toast.info("📦 Ekonomika všech hráčů zpracována.");
-    } catch (e) {
-      console.error("Process turn error:", e);
-    }
-
-    // Process AI factions (if AI mode)
+    // Process AI factions (if AI mode) — before advance
     if (isAIMode) {
       try {
         const aiCount = await processAIFactions();
@@ -141,15 +126,29 @@ const TurnProgressionPanel = ({ sessionId, currentTurn, players, currentPlayerNa
       description: `Admin uzavřel kolo ${currentTurn} a posunul hru do roku ${currentTurn + 1}`,
     });
 
-    // Advance turn
+    // ===== ADVANCE TURN FIRST =====
     await advanceTurn(sessionId, currentTurn);
+
+    // ===== PROCESS TURN AFTER ADVANCE: resource production & stockpiles for ALL players =====
+    try {
+      const { data: allPlayers } = await supabase.from("game_players")
+        .select("player_name").eq("session_id", sessionId);
+      for (const p of (allPlayers || [])) {
+        const { error: ptErr } = await supabase.functions.invoke("process-turn", {
+          body: { sessionId, playerName: p.player_name },
+        });
+        if (ptErr) console.warn(`process-turn for ${p.player_name}:`, ptErr.message);
+      }
+      toast.info("📦 Ekonomika všech hráčů zpracována.");
+    } catch (e) {
+      console.error("Process turn error:", e);
+    }
 
     // Compress history in background (AI mode only)
     if (isAIMode) {
       try {
         const { data: sess } = await supabase.from("game_sessions")
           .select("tier").eq("id", sessionId).single();
-        
         await supabase.functions.invoke("ai-compress-history", {
           body: { sessionId, currentTurn: currentTurn + 1, tier: sess?.tier || "free" },
         });
