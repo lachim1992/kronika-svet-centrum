@@ -111,6 +111,95 @@ Evaluate this decree and return the assessment.`;
       });
     }
 
+    if (action === "generate_law_draft") {
+      const systemPrompt = `Jsi středověký právní poradce královské rady. Na základě dekretu vládce vytvoř formální návrh zákona.
+Zákon musí mít:
+1. Formální název (krátký, autoritativní)
+2. Plný text zákona (3-6 vět, formální středověký styl)
+3. Mechanické efekty (strukturované dopady na ekonomiku, stabilitu, armádu atd.)
+
+Piš česky. Buď konkrétní a realistický na základě herního stavu.`;
+
+      const userPrompt = `Vládce: ${playerName}
+Kolo: ${currentTurn}
+Typ dekretu: ${decreeType}
+Text dekretu: "${decreeText}"
+
+Herní stav:
+- Města: ${JSON.stringify(context?.cities || [])}
+- Armád: ${context?.armies || 0}
+- Zdroje: ${JSON.stringify(context?.resources || [])}
+
+Vygeneruj formální návrh zákona.`;
+
+      const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${LOVABLE_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "google/gemini-3-flash-preview",
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: userPrompt },
+          ],
+          tools: [{
+            type: "function",
+            function: {
+              name: "create_law_draft",
+              description: "Create a formal law draft from the decree",
+              parameters: {
+                type: "object",
+                properties: {
+                  lawName: { type: "string", description: "Formální název zákona (česky, krátký)" },
+                  fullText: { type: "string", description: "Plný text zákona ve formálním středověkém stylu (česky)" },
+                  effects: {
+                    type: "array",
+                    items: {
+                      type: "object",
+                      properties: {
+                        type: { type: "string", description: "Effect type: tax_change, trade_restriction, military_funding, civil_reform" },
+                        value: { type: "number", description: "Numeric effect value (positive = bonus, negative = penalty)" },
+                        label: { type: "string", description: "Czech label for this effect" },
+                      },
+                      required: ["type", "value", "label"],
+                    },
+                    description: "List of structured mechanical effects",
+                  },
+                },
+                required: ["lawName", "fullText", "effects"],
+              },
+            },
+          }],
+          tool_choice: { type: "function", function: { name: "create_law_draft" } },
+        }),
+      });
+
+      if (!response.ok) {
+        const errText = await response.text();
+        console.error("AI gateway error:", response.status, errText);
+        throw new Error(`AI error: ${response.status}`);
+      }
+
+      const aiData = await response.json();
+      const toolCall = aiData.choices?.[0]?.message?.tool_calls?.[0];
+      if (toolCall?.function?.arguments) {
+        const parsed = JSON.parse(toolCall.function.arguments);
+        return new Response(JSON.stringify(parsed), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      return new Response(JSON.stringify({
+        lawName: "Nový zákon",
+        fullText: decreeText,
+        effects: [{ type: "civil_reform", value: 1, label: "Reforma" }],
+      }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     return new Response(JSON.stringify({ error: "Unknown action" }), {
       status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
