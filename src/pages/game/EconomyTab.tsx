@@ -131,7 +131,7 @@ const EconomyTab = ({ sessionId, currentPlayerName, currentTurn, cities, resourc
   const wealthUpkeep = wealthR?.upkeep || 0;
   const wealthIncome = computedWealthIncome > 0 ? computedWealthIncome : (wealthR?.income || 0);
   const wealthNet = wealthIncome - wealthUpkeep;
-  const wealthStock = wealthR?.stockpile || realm?.gold_reserve || 0;
+  const wealthStock = realm?.gold_reserve ?? wealthR?.stockpile ?? 0;
 
   // Wealth top sources breakdown
   const wealthSources: { label: string; value: number; type: "income" | "expense" }[] = [];

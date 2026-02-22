@@ -79,7 +79,7 @@ const ResourceHUD = ({ sessionId, playerName, cities }: ResourceHUDProps) => {
       + Math.floor((c.population_burghers || 0) / 200);
   }, 0);
   const wealthNet = (computedWealthIncome > 0 ? computedWealthIncome : wealth.income) - wealth.upkeep;
-  const wealthStock = wealth.stockpile || realm.gold_reserve || 0;
+  const wealthStock = realm.gold_reserve ?? wealth.stockpile ?? 0;
 
   const grainCapacity = realm.granary_capacity || 500;
 

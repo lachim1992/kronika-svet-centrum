@@ -141,10 +141,15 @@ export async function recruitStack(
   }
 
   // Update realm
+  const newGold = realm.gold_reserve - totalGold;
   await supabase.from("realm_resources").update({
     manpower_committed: realm.manpower_committed + totalManpower,
-    gold_reserve: realm.gold_reserve - totalGold,
+    gold_reserve: newGold,
   }).eq("id", realm.id);
+
+  // Sync player_resources wealth stockpile
+  await supabase.from("player_resources").update({ stockpile: newGold })
+    .eq("session_id", sessionId).eq("player_name", playerName).eq("resource_type", "wealth");
 
   // Chronicle
   await supabase.from("chronicle_entries").insert({
