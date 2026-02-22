@@ -106,7 +106,22 @@ const HomeTab = ({
         console.error("World tick error:", e);
       }
 
-      // 3. Process AI factions (if AI mode)
+      // 3. Process turn for ALL players (resource production, stockpiles, population)
+      try {
+        const { data: allPlayers } = await supabase.from("game_players")
+          .select("player_name").eq("session_id", sessionId);
+        for (const p of (allPlayers || [])) {
+          const { error: ptErr } = await supabase.functions.invoke("process-turn", {
+            body: { sessionId, playerName: p.player_name },
+          });
+          if (ptErr) console.warn(`process-turn for ${p.player_name}:`, ptErr.message);
+        }
+        toast.info("📦 Ekonomika všech hráčů zpracována.");
+      } catch (e) {
+        console.error("Process turn error:", e);
+      }
+
+      // 4. Process AI factions (if AI mode)
       if (isAIMode) {
         try {
           const { data: aiFactions } = await supabase.from("ai_factions")
@@ -128,7 +143,7 @@ const HomeTab = ({
         } catch (e) { console.error("AI faction error:", e); }
       }
 
-      // 4. Turn summary
+      // 5. Turn summary
       await supabase.from("turn_summaries").insert({
         session_id: sessionId,
         turn_number: currentTurn,
@@ -137,10 +152,10 @@ const HomeTab = ({
         closed_by: currentPlayerName,
       });
 
-      // 5. Advance turn
+      // 6. Advance turn
       await advanceTurn(sessionId, currentTurn);
 
-      // 6. Compress history (AI mode, background)
+      // 7. Compress history (AI mode, background)
       if (isAIMode) {
         try {
           const { data: sess } = await supabase.from("game_sessions")
