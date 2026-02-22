@@ -116,3 +116,6 @@ verify_jwt = false
 
 [functions.world-tick]
 verify_jwt = false
+
+[functions.law-process]
+verify_jwt = false
