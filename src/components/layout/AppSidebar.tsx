@@ -1,6 +1,6 @@
 import {
   Home, Globe, Shield, Swords, BarChart3, Crown,
-  Newspaper, BookOpen, Timer, Wrench, PanelLeftClose, PanelLeft, Map,
+  Newspaper, BookOpen, Timer, Wrench, PanelLeftClose, PanelLeft, Map, Zap,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -24,6 +24,7 @@ const navItems: { id: TabId; label: string; icon: React.ElementType; group: stri
   { id: "realm", label: "Provinces", icon: Shield, group: "main" },
   { id: "army", label: "Armies", icon: Swords, group: "main" },
   { id: "economy", label: "Economy", icon: BarChart3, group: "main" },
+  { id: "engine", label: "Engine", icon: Zap, group: "main" },
   { id: "council", label: "Council", icon: Crown, group: "main" },
   { id: "feed", label: "Whispers", icon: Newspaper, group: "content" },
   { id: "wiki", label: "ChroWiki", icon: BookOpen, group: "content" },

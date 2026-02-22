@@ -27,6 +27,7 @@ import ArmyTab from "@/pages/game/ArmyTab";
 import EconomyTab from "@/pages/game/EconomyTab";
 import PersistentTab from "@/pages/game/PersistentTab";
 import WorldMapTab from "@/pages/game/WorldMapTab";
+import EngineTab from "@/pages/game/EngineTab";
 
 const Dashboard = () => {
   const { sessionId } = useParams<{ sessionId: string }>();
@@ -268,6 +269,14 @@ const Dashboard = () => {
         />
       )}
       {activeTab === "feed" && <FeedTab {...sharedProps} />}
+      {activeTab === "engine" && (
+        <EngineTab
+          sessionId={session.id}
+          currentPlayerName={myPlayerName}
+          currentTurn={currentTurn}
+          myRole={myRole}
+        />
+      )}
       {activeTab === "codex" && <CodexTab {...sharedProps} codexEntityTarget={codexEntityTarget} onClearEntityTarget={() => setCodexEntityTarget(null)} />}
       {activeTab === "wiki" && <ChroWikiTab sessionId={session.id} currentPlayerName={myPlayerName} myRole={myRole} onEntityClick={handleEntityClick} wikiEntityTarget={wikiEntityTarget} onClearWikiEntityTarget={() => setWikiEntityTarget(null)} />}
       {activeTab === "council" && (
