@@ -9,7 +9,7 @@ serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response(null, { headers: corsHeaders });
 
   try {
-    const { city, confirmedCityEvents, approvedWorldFacts, cityMemories, provinceMemories } = await req.json();
+    const { city, confirmedCityEvents, approvedWorldFacts, cityMemories, provinceMemories, sessionId } = await req.json();
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
 
     if (!LOVABLE_API_KEY) {
@@ -21,20 +21,58 @@ serve(async (req) => {
       }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
+    // Fetch session style settings for flavor consistency
+    const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
+    const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const { createClient } = await import("npm:@supabase/supabase-js@2.49.1");
+    const sb = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+
+    let loreBible = "";
+    let worldVibe = "";
+    let writingStyle = "narrative";
+    let constraints = "";
+    const effectiveSessionId = sessionId || city.sessionId || null;
+    if (effectiveSessionId) {
+      const { data: styleCfg } = await sb
+        .from("game_style_settings")
+        .select("lore_bible, prompt_rules")
+        .eq("session_id", effectiveSessionId)
+        .maybeSingle();
+      loreBible = styleCfg?.lore_bible || "";
+      try {
+        const rules = styleCfg?.prompt_rules ? JSON.parse(styleCfg.prompt_rules) : {};
+        worldVibe = rules.world_vibe || "";
+        writingStyle = rules.writing_style || "narrative";
+        constraints = rules.constraints || "";
+      } catch { /* ignore */ }
+    }
+
     const flavorNote = city.ownerFlavorPrompt
       ? `\n\nVlastník města si přeje tento stylový kontext (použij POUZE pro tón a atmosféru, NEVYMÝŠLEJ fakta): "${city.ownerFlavorPrompt}"`
       : "";
 
-    const systemPrompt = `Jsi kronikář civilizační deskové hry. Tvým úkolem je napsat představení města a převyprávět jeho historii.
+    const writingInstructions = writingStyle === "political-chronicle"
+      ? "Piš jako politický kronikář — střízlivě, fakticky, bez přehnaných metafor. Styl zpravodajského komentáře."
+      : writingStyle === "epic-saga"
+      ? "Piš jako bard — vznešeně, epicky, s metaforami a odkazem na mýty."
+      : "Piš jako středověký učenec — vzdělaně, s respektem k faktům.";
 
-PRAVIDLA:
-- Piš česky, vznešeným kronikářským stylem.
-- NEVYMÝŠLEJ události ani čísla. Pracuj POUZE s poskytnutými daty.
-- Pokud chybí informace, řekni že jsou neznámé.
-- Události převyprávěj objektivně.
-- MUSÍŠ zapracovat lokální paměti města (tradice, jizvy, kulturní rysy) do představení.
-- Pokud město má tradici nebo pověst, zmiň ji přirozeně v textu.
-- Rysy města (emergentní vlastnosti) vyplývají z opakovaných pamětí.${flavorNote}`;
+    const systemPrompt = [
+      `Jsi kronikář civilizační deskové hry. Tvým úkolem je napsat představení města a převyprávět jeho historii.`,
+      writingInstructions,
+      `PRAVIDLA:`,
+      `- Piš česky.`,
+      `- NEVYMÝŠLEJ události ani čísla. Pracuj POUZE s poskytnutými daty.`,
+      `- Pokud chybí informace, řekni že jsou neznámé.`,
+      `- Události převyprávěj objektivně.`,
+      `- MUSÍŠ zapracovat lokální paměti města (tradice, jizvy, kulturní rysy) do představení.`,
+      `- Pokud město má tradici nebo pověst, zmiň ji přirozeně v textu.`,
+      `- Rysy města (emergentní vlastnosti) vyplývají z opakovaných pamětí.`,
+      loreBible ? `\nLore světa:\n${loreBible.substring(0, 600)}` : "",
+      worldVibe ? `Tón světa: ${worldVibe}` : "",
+      constraints ? `Omezení: ${constraints}` : "",
+      flavorNote,
+    ].filter(Boolean).join("\n");
 
     const cityMemsText = (cityMemories || []).map((m: any) => `[${m.category || "tradition"}] ${m.text}`).join("\n");
     const provMemsText = (provinceMemories || []).map((m: any) => `[${m.category || "tradition"}] ${m.text}`).join("\n");

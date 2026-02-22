@@ -26,77 +26,120 @@ serve(async (req) => {
 
     const sb = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-    // Fetch lore bible for consistency
+    // Fetch lore bible + prompt_rules for consistency
     const { data: styleCfg } = await sb
       .from("game_style_settings")
-      .select("lore_bible")
+      .select("lore_bible, prompt_rules")
       .eq("session_id", sessionId)
       .maybeSingle();
     const loreBible = styleCfg?.lore_bible || "";
+    let styleRules: any = {};
+    try { styleRules = styleCfg?.prompt_rules ? JSON.parse(styleCfg.prompt_rules) : {}; } catch { /* ignore */ }
+
+    const worldVibe = styleRules.world_vibe || "";
+    const writingStyle = styleRules.writing_style || "narrative";
+    const constraints = styleRules.constraints || "";
 
     const entityTypeLabels: Record<string, string> = {
       city: "město", wonder: "div světa", person: "osobnost", battle: "bitva",
       province: "provincie", civilization: "civilizace", region: "region", country: "stát",
     };
 
+    const writingInstructions = writingStyle === "political-chronicle"
+      ? "Piš jako politický kronikář — střízlivě, fakticky, bez přehnaných metafor. Styl zpravodajského komentáře."
+      : writingStyle === "epic-saga"
+      ? "Piš jako bard — vznešeně, epicky, s metaforami a odkazem na mýty."
+      : "Piš jako středověký učenec — vzdělaně, s respektem k faktům.";
+
     const systemContent = [
-      `Jsi encyklopedický kronikář. Napiš encyklopedický článek (česky, 4-8 vět) o dané entitě. Piš jako středověký učenec.`,
-      loreBible ? `Lore světa: ${loreBible.substring(0, 600)}` : "",
+      `Jsi encyklopedický kronikář. Napiš encyklopedický článek (česky, 4-8 vět) o dané entitě.`,
+      writingInstructions,
+      loreBible ? `Lore světa:\n${loreBible.substring(0, 800)}` : "",
+      worldVibe ? `Tón světa: ${worldVibe}` : "",
+      constraints ? `Omezení: ${constraints}` : "",
     ].filter(Boolean).join("\n");
 
-    // Generate TEXT ONLY (images handled by generate-entity-media)
-    const descResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-3-flash-preview",
-        messages: [
-          { role: "system", content: systemContent },
-          {
-            role: "user",
-            content: `Typ: ${entityTypeLabels[entityType] || entityType}\nNázev: ${entityName}\nVlastník: ${ownerPlayer}\nKontext: ${JSON.stringify(context || {})}`
-          }
-        ],
-        tools: [{
-          type: "function",
-          function: {
-            name: "create_wiki_entry",
-            description: "Create wiki entry",
-            parameters: {
-              type: "object",
-              properties: {
-                summary: { type: "string", description: "One-sentence Czech summary" },
-                aiDescription: { type: "string", description: "4-8 sentence encyclopedia article in Czech" },
-                imagePrompt: { type: "string", description: "English image prompt for illustration" },
-              },
-              required: ["summary", "aiDescription", "imagePrompt"],
-              additionalProperties: false
-            }
-          }
-        }],
-        tool_choice: { type: "function", function: { name: "create_wiki_entry" } },
-      }),
-    });
-
+    // Retry logic: up to 2 retries if ai_description is empty
     let summary = `${entityName} — záznam v encyklopedii.`;
-    let aiDescription = `Informace o ${entityName} dosud nebyly zaznamenány.`;
+    let aiDescription = "";
     let imagePrompt = `A medieval illuminated manuscript illustration of ${entityName}, ${entityTypeLabels[entityType] || entityType}`;
+    const MAX_RETRIES = 2;
 
-    if (descResponse.ok) {
-      const descData = await descResponse.json();
-      const tc = descData.choices?.[0]?.message?.tool_calls?.[0];
-      if (tc?.function?.arguments) {
-        const parsed = JSON.parse(tc.function.arguments);
-        summary = parsed.summary || summary;
-        aiDescription = parsed.aiDescription || aiDescription;
-        imagePrompt = parsed.imagePrompt || imagePrompt;
+    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+      const descResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${LOVABLE_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "google/gemini-3-flash-preview",
+          messages: [
+            { role: "system", content: systemContent },
+            {
+              role: "user",
+              content: `Typ: ${entityTypeLabels[entityType] || entityType}\nNázev: ${entityName}\nVlastník: ${ownerPlayer}\nKontext: ${JSON.stringify(context || {})}`
+            }
+          ],
+          tools: [{
+            type: "function",
+            function: {
+              name: "create_wiki_entry",
+              description: "Create wiki entry",
+              parameters: {
+                type: "object",
+                properties: {
+                  summary: { type: "string", description: "One-sentence Czech summary" },
+                  aiDescription: { type: "string", description: "4-8 sentence encyclopedia article in Czech" },
+                  imagePrompt: { type: "string", description: "English image prompt for illustration" },
+                },
+                required: ["summary", "aiDescription", "imagePrompt"],
+                additionalProperties: false
+              }
+            }
+          }],
+          tool_choice: { type: "function", function: { name: "create_wiki_entry" } },
+        }),
+      });
+
+      if (descResponse.ok) {
+        const descData = await descResponse.json();
+        const tc = descData.choices?.[0]?.message?.tool_calls?.[0];
+        if (tc?.function?.arguments) {
+          const parsed = JSON.parse(tc.function.arguments);
+          summary = parsed.summary || summary;
+          aiDescription = parsed.aiDescription || aiDescription;
+          imagePrompt = parsed.imagePrompt || imagePrompt;
+        }
+      }
+
+      // If we got a non-empty description, break out
+      if (aiDescription && aiDescription.trim().length > 10) break;
+
+      // Log retry attempt
+      if (attempt < MAX_RETRIES) {
+        console.warn(`wiki-generate: ai_description empty for ${entityName}, retry ${attempt + 1}/${MAX_RETRIES}`);
+        await sb.from("simulation_log").insert({
+          session_id: sessionId,
+          year_start: 1,
+          year_end: 1,
+          events_generated: 0,
+          scope: "wiki_generate_retry",
+          triggered_by: `retry_${attempt + 1}`,
+        }).catch(() => {});
       }
     }
 
-    // Upsert wiki entry (text only, no image generation here)
+    // Fallback if still empty after retries
+    if (!aiDescription || aiDescription.trim().length < 10) {
+      aiDescription = `Informace o ${entityName} dosud nebyly zaznamenány kronikářem.`;
+    }
+
+    // Build style audit reference
+    const styleHash = loreBible ? loreBible.substring(0, 32) : "none";
+    const promptUsed = systemContent.substring(0, 200);
+
+    // Upsert wiki entry with audit data
     if (sessionId) {
       const { data: existing } = await sb
         .from("wiki_entries")
@@ -106,13 +149,22 @@ serve(async (req) => {
         .eq("entity_id", entityId)
         .maybeSingle();
 
+      const wikiPayload = {
+        summary,
+        ai_description: aiDescription,
+        image_prompt: imagePrompt,
+        updated_at: new Date().toISOString(),
+        references: {
+          style_hash: styleHash,
+          style_version: "1",
+          prompt_used: promptUsed,
+          world_vibe: worldVibe,
+          writing_style: writingStyle,
+        },
+      };
+
       if (existing) {
-        await sb.from("wiki_entries").update({
-          summary,
-          ai_description: aiDescription,
-          image_prompt: imagePrompt,
-          updated_at: new Date().toISOString(),
-        }).eq("id", existing.id);
+        await sb.from("wiki_entries").update(wikiPayload as any).eq("id", existing.id);
       } else {
         await sb.from("wiki_entries").upsert({
           session_id: sessionId,
@@ -120,19 +172,15 @@ serve(async (req) => {
           entity_id: entityId || null,
           entity_name: entityName,
           owner_player: ownerPlayer,
-          summary,
-          ai_description: aiDescription,
-          image_prompt: imagePrompt,
-          updated_at: new Date().toISOString(),
-        }, { onConflict: "id" });
+          ...wikiPayload,
+        } as any, { onConflict: "id" });
       }
     }
 
-    // Now generate image via unified pipeline (fire-and-forget for speed, or await)
+    // Generate image via unified pipeline
     let imageUrl: string | null = null;
     if (entityId && sessionId) {
       try {
-        // Call generate-entity-media internally
         const mediaRes = await fetch(`${SUPABASE_URL}/functions/v1/generate-entity-media`, {
           method: "POST",
           headers: {
@@ -160,7 +208,7 @@ serve(async (req) => {
 
     return new Response(JSON.stringify({
       summary, aiDescription, imageUrl, imagePrompt,
-      debug: { provider: "lovable-ai", pipeline: "unified" }
+      debug: { provider: "lovable-ai", pipeline: "unified", worldVibe, writingStyle }
     }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
   } catch (e) {

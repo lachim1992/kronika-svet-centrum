@@ -439,6 +439,33 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
         }
       }
 
+      // ── Upsert game_style_settings for flavor persistence ──
+      const stylePayload = {
+        session_id: session.id,
+        lore_bible: [
+          `Svět: ${worldName.trim()}`,
+          `Premisa: ${premise.trim()}`,
+          `Tón: ${tone}`,
+          `Styl vítězství: ${victoryStyle}`,
+          realmName.trim() ? `Říše hráče: ${realmName.trim()}` : "",
+          peopleName.trim() ? `Národ: ${peopleName.trim()}` : "",
+          cultureName.trim() ? `Kultura: ${cultureName.trim()}` : "",
+          languageName.trim() ? `Jazyk: ${languageName.trim()}` : "",
+          homelandName.trim() ? `Domovina: ${homelandName.trim()} (${homelandBiome})` : "",
+        ].filter(Boolean).join("\n"),
+        prompt_rules: JSON.stringify({
+          world_vibe: tone,
+          writing_style: tone === "realistic" ? "political-chronicle" : tone === "mythic" ? "epic-saga" : "narrative",
+          constraints: tone === "realistic" ? "avoid random magic unless selected" : "",
+          language_name: languageName.trim(),
+          culture_name: cultureName.trim(),
+          nation_name: peopleName.trim(),
+          player_realm_name: realmName.trim(),
+        }),
+        updated_at: new Date().toISOString(),
+      };
+      await supabase.from("game_style_settings").upsert(stylePayload as any, { onConflict: "session_id" });
+
       // Mark init complete
       await supabase.from("game_sessions").update({ init_status: "ready" } as any).eq("id", session.id);
 
