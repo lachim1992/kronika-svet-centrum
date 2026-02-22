@@ -7,7 +7,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import {
-  Crown, Coins, Shield, Swords, Users, Eye, Church, Scroll,
+  Crown, Coins, Shield, Swords, Users, Eye, Church, Scroll, ScrollText,
   ChevronRight, Loader2, Sparkles, AlertTriangle, CheckCircle, Gavel,
   TrendingUp, TrendingDown, Minus,
 } from "lucide-react";
@@ -64,6 +64,11 @@ const CouncilTab = ({
   const [enacting, setEnacting] = useState(false);
   const [aiReport, setAiReport] = useState<string | null>(null);
   const [reportLoading, setReportLoading] = useState(false);
+
+  // Law draft generation state
+  const [lawDraft, setLawDraft] = useState<{ lawName: string; fullText: string; effects: { type: string; value: number; label: string }[] } | null>(null);
+  const [generatingLaw, setGeneratingLaw] = useState(false);
+  const [savingLaw, setSavingLaw] = useState(false);
 
   const myResources = useMemo(() => resources.filter(r => r.player_name === currentPlayerName), [resources, currentPlayerName]);
   const myArmies = useMemo(() => armies.filter(a => a.player_name === currentPlayerName), [armies, currentPlayerName]);
@@ -245,6 +250,91 @@ const CouncilTab = ({
     setEnacting(false);
   };
 
+  // ── Generate law draft from decree ──
+  const handleGenerateLawDraft = async () => {
+    if (!decreeText.trim()) return;
+    setGeneratingLaw(true);
+    setLawDraft(null);
+    try {
+      const { data, error } = await supabase.functions.invoke("royal-council", {
+        body: {
+          action: "generate_law_draft",
+          sessionId,
+          playerName: currentPlayerName,
+          currentTurn,
+          decreeType,
+          decreeText,
+          context: {
+            cities: myCities.map(c => ({ name: c.name, level: c.level, status: c.status })),
+            armies: myArmies.length,
+            resources: myResources.map(r => ({ type: r.resource_type, stockpile: r.stockpile, income: r.income })),
+          },
+        },
+      });
+      if (error) throw error;
+      setLawDraft(data);
+    } catch (e) {
+      console.error(e);
+      toast.error("Generování návrhu zákona selhalo");
+    }
+    setGeneratingLaw(false);
+  };
+
+  // ── Save law draft to laws collection ──
+  const handleSaveLawToCollection = async () => {
+    if (!lawDraft) return;
+    setSavingLaw(true);
+    try {
+      // 1. Insert the law
+      const { error: insertError } = await supabase.from("laws").insert({
+        session_id: sessionId,
+        player_name: currentPlayerName,
+        law_name: lawDraft.lawName,
+        full_text: lawDraft.fullText,
+        structured_effects: lawDraft.effects.map(e => ({ type: e.type, value: e.value })),
+        enacted_turn: currentTurn,
+      });
+      if (insertError) throw insertError;
+
+      // 2. Try AI epic rewrite (non-blocking)
+      try {
+        const { data: aiData } = await supabase.functions.invoke("law-process", {
+          body: {
+            lawName: lawDraft.lawName,
+            fullText: lawDraft.fullText,
+            effects: lawDraft.effects,
+            playerName: currentPlayerName,
+          },
+        });
+        if (aiData?.epicText) {
+          await supabase.from("laws")
+            .update({ ai_epic_text: aiData.epicText })
+            .eq("session_id", sessionId)
+            .eq("law_name", lawDraft.lawName)
+            .eq("enacted_turn", currentTurn);
+        }
+      } catch { /* non-blocking */ }
+
+      // 3. World action log
+      await supabase.from("world_action_log").insert({
+        session_id: sessionId,
+        player_name: currentPlayerName,
+        turn_number: currentTurn,
+        action_type: "law_enacted",
+        description: `${currentPlayerName} zavedl zákon: ${lawDraft.lawName}`,
+        metadata: { effects: lawDraft.effects },
+      });
+
+      toast.success("⚖️ Zákon byl přidán do sbírky zákonů!");
+      setLawDraft(null);
+      onRefetch();
+    } catch (e) {
+      console.error(e);
+      toast.error("Uložení zákona selhalo");
+    }
+    setSavingLaw(false);
+  };
+
   const activeAdvisorData = ADVISORS.find(a => a.id === activeAdvisor)!;
   const ActiveIcon = activeAdvisorData.icon;
 
@@ -338,7 +428,7 @@ const CouncilTab = ({
                     className="min-h-[100px] text-sm font-body"
                   />
 
-                  <div className="flex gap-2">
+                  <div className="flex gap-2 flex-wrap">
                     <Button
                       size="sm"
                       variant="outline"
@@ -348,6 +438,16 @@ const CouncilTab = ({
                     >
                       {previewLoading ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <Eye className="h-3 w-3 mr-1" />}
                       Náhled důsledků
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={handleGenerateLawDraft}
+                      disabled={generatingLaw || !decreeText.trim()}
+                      className="text-xs"
+                    >
+                      {generatingLaw ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <ScrollText className="h-3 w-3 mr-1" />}
+                      Vygenerovat návrh zákona
                     </Button>
                   </div>
                 </div>
@@ -400,6 +500,52 @@ const CouncilTab = ({
                         {enacting ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <CheckCircle className="h-3 w-3 mr-1" />}
                         Vyhlásit dekret
                       </Button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Law Draft Section */}
+                {lawDraft && (
+                  <div className="space-y-4 mt-4">
+                    <div className="scroll-divider"><span className="text-[10px]">📜 Návrh zákona 📜</span></div>
+
+                    <div className="p-4 rounded-lg bg-card border border-primary/20 space-y-3">
+                      <div className="flex items-center gap-2">
+                        <ScrollText className="h-4 w-4 text-illuminated" />
+                        <h4 className="font-decorative text-sm text-foreground">{lawDraft.lawName}</h4>
+                      </div>
+
+                      <div className="p-3 rounded-lg bg-muted/30 border border-border">
+                        <p className="text-xs font-body leading-relaxed whitespace-pre-wrap">{lawDraft.fullText}</p>
+                      </div>
+
+                      {lawDraft.effects && lawDraft.effects.length > 0 && (
+                        <div>
+                          <p className="text-[10px] text-muted-foreground font-display mb-1.5 uppercase tracking-wider">Mechanické efekty</p>
+                          <div className="grid grid-cols-2 gap-1.5">
+                            {lawDraft.effects.map((eff, i) => (
+                              <div key={i} className={`p-2 rounded border text-xs font-display
+                                ${eff.value > 0 ? "bg-accent/5 border-accent/20 text-forest-green" :
+                                  eff.value < 0 ? "bg-destructive/5 border-destructive/20 text-seal-red" :
+                                  "bg-muted/30 border-border text-muted-foreground"}`}
+                              >
+                                <span className="font-semibold">{eff.value > 0 ? "+" : ""}{eff.value}</span>{" "}
+                                <span>{eff.label}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      <div className="flex gap-2 justify-end pt-1">
+                        <Button size="sm" variant="outline" onClick={() => setLawDraft(null)} className="text-xs">
+                          Zahodit
+                        </Button>
+                        <Button size="sm" onClick={handleSaveLawToCollection} disabled={savingLaw} className="text-xs">
+                          {savingLaw ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <Gavel className="h-3 w-3 mr-1" />}
+                          Přidat do sbírky zákonů
+                        </Button>
+                      </div>
                     </div>
                   </div>
                 )}
