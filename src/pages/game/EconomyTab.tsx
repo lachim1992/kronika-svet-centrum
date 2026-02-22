@@ -197,6 +197,10 @@ const EconomyTab = ({ sessionId, currentPlayerName, currentTurn, cities, resourc
   // Resource types for the compact grid (all except wealth which is top-tier)
   const compactResources = ["food", "wood", "stone", "iron"] as const;
 
+  // Data freshness check
+  const realmUpdatedAt = realm?.updated_at;
+  const isStale = realmUpdatedAt && (Date.now() - new Date(realmUpdatedAt).getTime()) > 1000 * 60 * 60 * 2; // >2 hours
+
   return (
     <div className="space-y-6 pb-24 px-1">
       {/* Header */}
@@ -209,6 +213,14 @@ const EconomyTab = ({ sessionId, currentPlayerName, currentTurn, cities, resourc
           {recomputing ? "Počítám…" : "Přepočítat"}
         </Button>
       </div>
+
+      {/* Data freshness diagnostic */}
+      {isStale && (
+        <div className="flex items-center gap-2 text-xs text-muted-foreground bg-muted/50 rounded-lg px-3 py-2 border border-border">
+          <AlertTriangle className="h-3.5 w-3.5 text-yellow-500 shrink-0" />
+          <span>Data mohou být zastaralá (poslední aktualizace: {realmUpdatedAt ? new Date(realmUpdatedAt).toLocaleString("cs") : "nikdy"}). Klikněte na „Přepočítat" nebo spusťte další kolo.</span>
+        </div>
+      )}
 
       {/* ═══ TOP TIER: Wealth (Money) + Alerts ═══ */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
