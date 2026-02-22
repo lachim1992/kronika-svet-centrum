@@ -484,11 +484,17 @@ const ChroWikiDetailPanel = ({
       <div className="chrowiki-book-frame mx-4 md:mx-6 my-4">
         {/* ═══ BOOK HEADER ═══ */}
         <div className="flex items-start gap-4 mb-4">
-          {showSigil && (
+          {showSigil && (() => {
+            // Scale avatar size by population for cities (40–72px)
+            const pop = entityType === "city" ? (dbEntity?.population_total || 1000) : 0;
+            const avatarSize = entityType === "city"
+              ? Math.round(40 + 32 * Math.min(1, Math.max(0, (Math.log(Math.max(pop, 100)) - Math.log(100)) / (Math.log(15000) - Math.log(100)))))
+              : 56;
+            return (
             <div className="shrink-0">
               <div className="rounded-full bg-card flex items-center justify-center overflow-hidden"
                 style={{
-                  width: 56, height: 56,
+                  width: avatarSize, height: avatarSize,
                   border: '2px solid hsl(var(--primary) / 0.5)',
                   boxShadow: '0 0 0 2px hsl(var(--primary) / 0.12), 0 2px 8px hsl(var(--background) / 0.4)',
                 }}
@@ -502,7 +508,8 @@ const ChroWikiDetailPanel = ({
                 )}
               </div>
             </div>
-          )}
+            );
+          })()}
           <div className="flex-1 min-w-0">
             <h1 className="font-decorative text-xl md:text-2xl text-foreground leading-tight tracking-wide">{entityName}</h1>
             {wiki?.summary && (
