@@ -102,6 +102,8 @@ const HomeTab = ({
           const growthCount = r.settlement_growth?.length || 0;
           const tensionCrises = (r.tensions || []).filter((t: any) => t.crisis_triggered).length;
           toast.info(`⚙️ World Tick: ${growthCount} měst rostlo, ${tensionCrises} krizí.`);
+        } else if (tickResult.alreadyProcessed) {
+          toast.info("⚙️ World Tick pro toto kolo již proběhl.");
         }
       } catch (e) {
         console.error("World tick error:", e);

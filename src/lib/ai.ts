@@ -100,12 +100,19 @@ export async function extractEventsFromText(
 export async function runWorldTick(
   sessionId: string,
   turnNumber: number
-): Promise<{ ok: boolean; tickId?: string; results?: any; error?: string }> {
+): Promise<{ ok: boolean; alreadyProcessed?: boolean; tickId?: string; results?: any; error?: string }> {
   const { data, error } = await supabase.functions.invoke("world-tick", {
     body: { sessionId, turnNumber },
   });
 
   if (error) {
+    // 409 = tick already processed, treat as non-fatal
+    try {
+      const parsed = JSON.parse(error.message || "{}");
+      if (parsed.error === "Tick already processed") {
+        return { ok: false, alreadyProcessed: true, tickId: parsed.tickId };
+      }
+    } catch { /* not JSON, fall through */ }
     console.error("World tick error:", error);
     return { ok: false, error: error.message };
   }
