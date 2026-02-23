@@ -154,6 +154,8 @@ Deno.serve(async (req) => {
           epoch_style: "kroniky",
           turn_from: turnNumber,
           turn_to: turnNumber,
+          event_id: evt.id,
+          source_type: "system",
         }).catch(() => {});
 
         // Alliance boosts reputation
@@ -174,6 +176,8 @@ Deno.serve(async (req) => {
           epoch_style: "kroniky",
           turn_from: turnNumber,
           turn_to: turnNumber,
+          event_id: evt.id,
+          source_type: "system",
         }).catch(() => {});
 
         // Betrayal devastates reputation
@@ -231,11 +235,11 @@ Deno.serve(async (req) => {
 
         // ===== AUTO-GENERATE EVENTS + MEMORY LINKS =====
         if (tension.crisis_triggered) {
-          await supabase.from("game_events").insert({
+          const { data: crisisEvt } = await supabase.from("game_events").insert({
             session_id: sessionId, event_type: "crisis", player: "Systém",
             note: `Diplomatická krize mezi ${pA} a ${pB}! Tenze dosáhla ${Math.round(tension.total_tension)}.`,
             importance: "critical", confirmed: true, turn_number: turnNumber,
-          });
+          }).select("id").single();
           await supabase.from("world_memories").insert({
             session_id: sessionId,
             text: `V roce ${turnNumber} vypukla diplomatická krize mezi ${pA} a ${pB} (tenze: ${Math.round(tension.total_tension)}).`,
@@ -245,17 +249,19 @@ Deno.serve(async (req) => {
             session_id: sessionId,
             text: `**Diplomatická krize (rok ${turnNumber}):** Napětí mezi říšemi ${pA} a ${pB} dosáhlo bodu zlomu. Tenze: ${Math.round(tension.total_tension)}. Vyslanci obou stran opustili jednací stoly.`,
             epoch_style: "kroniky", turn_from: turnNumber, turn_to: turnNumber,
+            event_id: crisisEvt?.id || null,
+            source_type: "system",
           }).catch(() => {});
           reputationDeltas[pA] = (reputationDeltas[pA] || 0) + REPUTATION_DELTAS.crisis_participant;
           reputationDeltas[pB] = (reputationDeltas[pB] || 0) + REPUTATION_DELTAS.crisis_participant;
         }
 
         if (tension.war_roll_triggered && tension.war_roll_result !== null && tension.war_roll_result > 0.7) {
-          await supabase.from("game_events").insert({
+          const { data: warEvt } = await supabase.from("game_events").insert({
             session_id: sessionId, event_type: "war", player: "Systém",
             note: `Válka mezi ${pA} a ${pB} je nevyhnutelná! Tenze: ${Math.round(tension.total_tension)}, hod: ${Math.round(tension.war_roll_result * 100)}%.`,
             importance: "critical", confirmed: true, turn_number: turnNumber,
-          });
+          }).select("id").single();
           await supabase.from("world_memories").insert({
             session_id: sessionId,
             text: `V roce ${turnNumber} vypukla válka mezi ${pA} a ${pB}. Svět se zachvěl.`,
@@ -265,6 +271,8 @@ Deno.serve(async (req) => {
             session_id: sessionId,
             text: `**Vyhlášení války (rok ${turnNumber}):** Po dlouhém napětí (tenze ${Math.round(tension.total_tension)}) vypukl otevřený konflikt mezi ${pA} a ${pB}. Vojska obou stran se dala do pohybu.`,
             epoch_style: "kroniky", turn_from: turnNumber, turn_to: turnNumber,
+            event_id: warEvt?.id || null,
+            source_type: "system",
           }).catch(() => {});
           reputationDeltas[pA] = (reputationDeltas[pA] || 0) + REPUTATION_DELTAS.war_aggressor;
           reputationDeltas[pB] = (reputationDeltas[pB] || 0) + REPUTATION_DELTAS.war_defender;
@@ -357,7 +365,7 @@ Deno.serve(async (req) => {
 
         if (breakRoll < breakThreshold) {
           // Treaty breaks!
-          await supabase.from("game_events").insert({
+          const { data: breakEvt } = await supabase.from("game_events").insert({
             session_id: sessionId,
             event_type: "betrayal",
             player: "Systém",
@@ -365,7 +373,7 @@ Deno.serve(async (req) => {
             importance: "critical",
             confirmed: true,
             turn_number: turnNumber,
-          });
+          }).select("id").single();
 
           await supabase.from("world_memories").insert({
             session_id: sessionId,
@@ -380,6 +388,8 @@ Deno.serve(async (req) => {
             epoch_style: "kroniky",
             turn_from: turnNumber,
             turn_to: turnNumber,
+            event_id: breakEvt?.id || null,
+            source_type: "system",
           }).catch(() => {});
 
           reputationDeltas[partyA] = (reputationDeltas[partyA] || 0) - 10;
@@ -415,7 +425,7 @@ Deno.serve(async (req) => {
             population_total: Math.max(50, city.population_total - popLoss),
           }).eq("id", city.id);
 
-          await supabase.from("game_events").insert({
+          const { data: rebelEvt } = await supabase.from("game_events").insert({
             session_id: sessionId,
             event_type: "rebellion",
             player: "Systém",
@@ -425,7 +435,7 @@ Deno.serve(async (req) => {
             turn_number: turnNumber,
             location: city.name,
             city_id: city.id,
-          });
+          }).select("id").single();
 
           await supabase.from("world_memories").insert({
             session_id: sessionId,
@@ -441,6 +451,8 @@ Deno.serve(async (req) => {
             epoch_style: "kroniky",
             turn_from: turnNumber,
             turn_to: turnNumber,
+            event_id: rebelEvt?.id || null,
+            source_type: "system",
           }).catch(() => {});
 
           reputationDeltas[city.owner_player] = (reputationDeltas[city.owner_player] || 0) - 8;
