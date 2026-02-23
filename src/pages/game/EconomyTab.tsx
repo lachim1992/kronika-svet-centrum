@@ -3,7 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
-  Wheat, Trees, Mountain, Anvil, Coins, Users, Gauge,
+  Users, Gauge,
   AlertTriangle, TrendingUp, TrendingDown, Minus,
   Skull, ArrowUpDown, BarChart3, ShieldAlert, Info, RefreshCw,
   ChevronDown, Code, Loader2
@@ -17,6 +17,11 @@ import {
   Collapsible, CollapsibleContent, CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { ensureRealmResources } from "@/lib/turnEngine";
+import {
+  RESOURCE_ICONS, RESOURCE_LABELS, SETTLEMENT_LABELS, SETTLEMENT_WEALTH,
+  computeWealthIncome, computeArmyGoldUpkeep,
+} from "@/lib/economyConstants";
+import { Wheat, Coins } from "lucide-react";
 
 interface Props {
   sessionId: string;
@@ -29,22 +34,6 @@ interface Props {
   onEntityClick?: (type: string, id: string) => void;
   onRefetch?: () => void;
 }
-
-const RESOURCE_ICONS: Record<string, React.ReactNode> = {
-  food: <Wheat className="h-4 w-4" />,
-  wood: <Trees className="h-4 w-4" />,
-  stone: <Mountain className="h-4 w-4" />,
-  iron: <Anvil className="h-4 w-4" />,
-  wealth: <Coins className="h-4 w-4" />,
-};
-
-const RESOURCE_LABELS: Record<string, string> = {
-  food: "Obilí", wood: "Dřevo", stone: "Kámen", iron: "Železo", wealth: "Bohatství",
-};
-
-const SETTLEMENT_LABELS: Record<string, string> = {
-  HAMLET: "Osada", TOWNSHIP: "Městečko", CITY: "Město", POLIS: "Polis",
-};
 
 type CitySortKey = "name" | "population" | "grain_prod" | "grain_cons" | "wood_prod" | "special" | "vulnerability";
 
@@ -120,12 +109,8 @@ const EconomyTab = ({ sessionId, currentPlayerName, currentTurn, cities, resourc
     else { setCitySortKey(key); setCitySortAsc(false); }
   };
 
-  // Wealth data — compute client-side to match breakdown
-  const SETTLEMENT_WEALTH: Record<string, number> = { HAMLET: 1, TOWNSHIP: 2, CITY: 4, POLIS: 6 };
-  const tierTotal = myCities.filter(c => !c.status || c.status === "ok").reduce((s, c) => s + (SETTLEMENT_WEALTH[c.settlement_level] || 1), 0);
-  const popTaxTotal = myCities.filter(c => !c.status || c.status === "ok").reduce((s, c) => s + Math.floor((c.population_total || 0) / 500), 0);
-  const burgherTradeTotal = myCities.filter(c => !c.status || c.status === "ok").reduce((s, c) => s + Math.floor((c.population_burghers || 0) / 200), 0);
-  const computedWealthIncome = tierTotal + popTaxTotal + burgherTradeTotal;
+  // Wealth data — use shared computation from economyConstants
+  const computedWealthIncome = computeWealthIncome(myCities);
 
   const wealthR = resMap["wealth"];
   const wealthUpkeep = wealthR?.upkeep || 0;
@@ -133,11 +118,15 @@ const EconomyTab = ({ sessionId, currentPlayerName, currentTurn, cities, resourc
   const wealthNet = wealthIncome - wealthUpkeep;
   const wealthStock = realm?.gold_reserve ?? wealthR?.stockpile ?? 0;
 
-  // Wealth top sources breakdown
+  // Wealth top sources breakdown — recompute from shared constants
+  const tierTotal = myCities.filter(c => !c.status || c.status === "ok").reduce((s, c) => s + (SETTLEMENT_WEALTH[c.settlement_level] || 1), 0);
+  const popTaxTotal = myCities.filter(c => !c.status || c.status === "ok").reduce((s, c) => s + Math.floor((c.population_total || 0) / 500), 0);
+  const burgherTradeTotal = myCities.filter(c => !c.status || c.status === "ok").reduce((s, c) => s + Math.floor((c.population_burghers || 0) / 200), 0);
   const wealthSources: { label: string; value: number; type: "income" | "expense" }[] = [];
   if (tierTotal > 0) wealthSources.push({ label: "Daně sídel", value: tierTotal, type: "income" });
   if (popTaxTotal > 0) wealthSources.push({ label: "Daň z populace", value: popTaxTotal, type: "income" });
   if (burgherTradeTotal > 0) wealthSources.push({ label: "Obchod měšťanů", value: burgherTradeTotal, type: "income" });
+  if (wealthUpkeep > 0) wealthSources.push({ label: "Výdaje správy & armády", value: wealthUpkeep, type: "expense" });
   if (wealthUpkeep > 0) wealthSources.push({ label: "Výdaje správy & armády", value: wealthUpkeep, type: "expense" });
 
   // Alerts

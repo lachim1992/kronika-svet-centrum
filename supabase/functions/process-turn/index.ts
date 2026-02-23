@@ -430,9 +430,15 @@ Deno.serve(async (req) => {
     const newStoneReserve = (realm.stone_reserve || 0) + totalStoneProd;
     const newIronReserve = (realm.iron_reserve || 0) + totalIronProd;
 
-    // Gold: compute wealth income and add to gold_reserve
+    // Gold: compute wealth income and army upkeep, then update gold_reserve
     const wealthIncome = computeWealthIncome(myCities);
-    const wealthUpkeep = 0; // Future: army upkeep, etc.
+    // Army upkeep: 1 gold per 100 troops
+    let wealthUpkeep = 0;
+    for (const stack of (stacks || [])) {
+      const stackManpower = (stack.military_stack_composition || [])
+        .reduce((sum: number, c: any) => sum + (c.manpower ?? 0), 0);
+      wealthUpkeep += Math.ceil(stackManpower / 100);
+    }
     const newGoldReserve = Math.max(0, (realm.gold_reserve || 0) + wealthIncome - wealthUpkeep);
 
     const famineCityCount = myCities.filter(c => c.famine_turn).length;
@@ -483,7 +489,7 @@ Deno.serve(async (req) => {
       wood: 0,
       stone: 0,
       iron: 0,
-      wealth: 0,
+      wealth: wealthUpkeep,
     };
 
     for (const resType of resourceTypes) {
