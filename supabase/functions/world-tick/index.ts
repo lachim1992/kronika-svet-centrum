@@ -504,30 +504,8 @@ Deno.serve(async (req) => {
 
     // (economy recompute runs next, then final tick update)
 
-    // ========== 11. ECONOMY RECOMPUTE ==========
-    // Run economy-recompute for each unique player after all physics
-    const uniquePlayers = [...new Set((cities || []).map((c: any) => c.owner_player).filter(Boolean))];
-    const econResults: any[] = [];
-    for (const pn of uniquePlayers) {
-      try {
-        const econResp = await fetch(
-          `${Deno.env.get("SUPABASE_URL")}/functions/v1/economy-recompute`,
-          {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "Authorization": `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
-            },
-            body: JSON.stringify({ session_id: sessionId, player_name: pn }),
-          }
-        );
-        const econData = await econResp.json();
-        econResults.push({ player: pn, ...econData });
-      } catch (econErr) {
-        econResults.push({ player: pn, error: String(econErr) });
-      }
-    }
-    results.economy_recompute = econResults;
+    // ========== 11. ECONOMY — handled by process-turn, NOT here ==========
+    // economy-recompute removed; process-turn is the single economy engine.
 
     // ========== FINALIZE TICK ==========
     await supabase.from("world_tick_log").update({
