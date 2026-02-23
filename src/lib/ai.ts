@@ -107,14 +107,18 @@ export async function runWorldTick(
 
   if (error) {
     // 409 = tick already processed, treat as non-fatal
-    try {
-      const parsed = JSON.parse(error.message || "{}");
-      if (parsed.error === "Tick already processed") {
-        return { ok: false, alreadyProcessed: true, tickId: parsed.tickId };
-      }
-    } catch { /* not JSON, fall through */ }
+    const msg = error.message || "";
+    const jsonMatch = msg.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      try {
+        const parsed = JSON.parse(jsonMatch[0]);
+        if (parsed.error === "Tick already processed") {
+          return { ok: false, alreadyProcessed: true, tickId: parsed.tickId };
+        }
+      } catch { /* not JSON, fall through */ }
+    }
     console.error("World tick error:", error);
-    return { ok: false, error: error.message };
+    return { ok: false, error: msg };
   }
 
   return data;
