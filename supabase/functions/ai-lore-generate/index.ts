@@ -31,7 +31,7 @@ serve(async (req) => {
       .single();
 
     const { data: memories } = await supabase.from("world_memories")
-      .select("fact_text, category")
+      .select("text, category")
       .eq("session_id", sessionId)
       .eq("approved", true)
       .limit(15);
@@ -40,7 +40,7 @@ serve(async (req) => {
 PREMISA: ${foundation?.premise || ""}
 TÓN: ${foundation?.tone || "kroniky"}
 FAKTA O SVĚTĚ:
-${(memories || []).map(m => `- [${m.category}] ${m.fact_text}`).join("\n")}`;
+${(memories || []).map(m => `- [${m.category}] ${m.text}`).join("\n")}`;
 
     const LORE_INSTRUCTIONS: Record<string, string> = {
       city_lore: `Vygeneruj bohatý popis a historii města "${context.cityName || ""}".

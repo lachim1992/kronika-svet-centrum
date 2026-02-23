@@ -66,14 +66,21 @@ serve(async (req) => {
       .limit(1)
       .single();
 
-    // Fetch faction resources
-    const { data: resources } = await supabase.from("player_resources")
-      .select("resource_type, income, upkeep, stockpile")
+    // Fetch faction resources from realm_resources (source of truth for reserves)
+    const { data: realmRes } = await supabase.from("realm_resources")
+      .select("*")
       .eq("session_id", sessionId)
-      .eq("player_name", factionName);
+      .eq("player_name", factionName)
+      .maybeSingle();
 
-    const resMap: Record<string, any> = {};
-    for (const r of resources || []) resMap[r.resource_type] = r;
+    const resMap: Record<string, any> = {
+      grain: { stockpile: realmRes?.grain_reserve || 0, capacity: realmRes?.granary_capacity || 0 },
+      wood: { stockpile: realmRes?.wood_reserve || 0 },
+      stone: { stockpile: realmRes?.stone_reserve || 0 },
+      iron: { stockpile: realmRes?.iron_reserve || 0 },
+      gold: { stockpile: realmRes?.gold_reserve || 0 },
+      manpower: { pool: realmRes?.manpower_pool || 0 },
+    };
 
     const systemPrompt = `Jsi AI řídící frakci "${factionName}" v civilizační strategické hře.
 
