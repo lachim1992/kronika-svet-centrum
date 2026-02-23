@@ -30,33 +30,43 @@ const DevTab = ({
     try {
       const nextTurn = currentTurn + 1;
 
-      // 1. Run world-tick for current turn (structured physics)
-      const { error: tickErr } = await supabase.functions.invoke("world-tick", {
-        body: { sessionId, turnNumber: currentTurn },
-      });
-      if (tickErr) console.warn("world-tick warning:", tickErr.message);
+      // 1. World Tick — physics (population, influence, tension, rebellion)
+      try {
+        const { error: tickErr } = await supabase.functions.invoke("world-tick", {
+          body: { sessionId, turnNumber: currentTurn },
+        });
+        if (tickErr) {
+          // HTTP 409 = already processed, continue gracefully
+          if (/already processed|409/i.test(tickErr.message || "")) {
+            console.info("world-tick already processed for this turn, continuing.");
+          } else {
+            console.warn("world-tick warning:", tickErr.message);
+          }
+        }
+      } catch (e: any) {
+        console.warn("world-tick error (non-fatal):", e.message);
+      }
 
-      // 2. Run process-tick (cron physics + housekeeping)
-      const { error: processErr } = await supabase.functions.invoke("process-tick", {
-        body: { sessionId },
-      });
-      if (processErr) console.warn("process-tick warning:", processErr.message);
+      // 2. Process-tick — housekeeping (action_queue, travel_orders)
+      try {
+        await supabase.functions.invoke("process-tick", { body: { sessionId } });
+      } catch (e: any) {
+        console.warn("process-tick warning:", e.message);
+      }
 
-      // 3. Advance game_sessions.current_turn FIRST
+      // 3. Advance turn (game_sessions.current_turn + reset flags)
       const { error: updateErr } = await supabase
         .from("game_sessions")
         .update({ current_turn: nextTurn, turn_closed_p1: false, turn_closed_p2: false })
         .eq("id", sessionId);
-
       if (updateErr) throw updateErr;
 
-      // 4. Reset player turn_closed flags
       await supabase
         .from("game_players")
         .update({ turn_closed: false })
         .eq("session_id", sessionId);
 
-      // 5. Process turn for ALL players AFTER advance (resource production, stockpiles, population)
+      // 4. Process-turn — economy for ALL players (production, consumption, famine, stockpiles)
       const { data: allPlayers } = await supabase.from("game_players")
         .select("player_name").eq("session_id", sessionId);
       for (const p of (allPlayers || [])) {

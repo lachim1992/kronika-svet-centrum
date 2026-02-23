@@ -352,29 +352,8 @@ Deno.serve(async (req) => {
     chronicleEntries.push(`Obilí: produkce ${totalGrainProd}, spotřeba ${totalConsumption}, bilance ${netGrain >= 0 ? "+" : ""}${netGrain}, zásoby ${grainReserve}/${granaryCapacity}`);
     chronicleEntries.push(`Suroviny: Dřevo +${totalWoodProd}, Kámen +${totalStoneProd}, Železo +${totalIronProd}`);
 
-    // 6) Population growth (only for non-famine cities, famine cities already lost pop above)
-    for (const city of myCities) {
-      if (city.famine_turn) continue; // famine cities already handled
-
-      const baseGrowth = 0.01;
-      const stabilityFactor = (city.city_stability - 50) / 200;
-      const warFactor = (city.status === "besieged" || city.status === "devastated") ? -0.02 : 0;
-      let netGrowthRate = baseGrowth + stabilityFactor + warFactor;
-      netGrowthRate = Math.max(-0.03, Math.min(0.05, netGrowthRate));
-      
-      const delta = Math.round(city.population_total * netGrowthRate);
-      const newPop = Math.max(200, city.population_total + delta);
-
-      await supabase.from("cities").update({
-        population_total: newPop,
-      }).eq("id", city.id);
-
-      city.population_total = newPop;
-
-      if (Math.abs(delta) > 5) {
-        chronicleEntries.push(`${city.name}: populace ${delta > 0 ? "+" : ""}${delta} (${newPop})`);
-      }
-    }
+    // 6) Population growth — handled by world-tick (shared physics), NOT here.
+    // process-turn only handles economy (production, consumption, famine, stockpiles).
 
     // 7) Manpower pool
     const totalPopulation = myCities.reduce((s, c) => s + c.population_total, 0);
