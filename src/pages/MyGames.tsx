@@ -6,12 +6,13 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import {
-  Plus, Users, LogOut, Scroll,
+  Plus, Users, LogOut, Scroll, Sparkles,
   Clock, RotateCcw, Bot, Pen, UserPlus, Server,
 } from "lucide-react";
 import ChronicleHubLogo from "@/components/ChronicleHubLogo";
 import { toast } from "sonner";
 import WorldSetupWizard from "@/components/WorldSetupWizard";
+import PromoWorldGenerator from "@/components/PromoWorldGenerator";
 
 interface GameMembership {
   id: string;
@@ -58,6 +59,7 @@ const MyGames = () => {
   const [joinCode, setJoinCode] = useState("");
   const [playerName, setPlayerName] = useState("");
   const [joining, setJoining] = useState(false);
+  const [showPromo, setShowPromo] = useState(false);
 
   const fetchGames = async () => {
     if (!user) return;
@@ -254,7 +256,25 @@ const MyGames = () => {
           )}
         </section>
 
-        {/* ====== SECTION B: Create New World ====== */}
+        {/* ====== SECTION B: Promo World Generator ====== */}
+        <section>
+          <button
+            onClick={() => setShowPromo(true)}
+            className="w-full p-5 rounded-lg border-2 border-dashed border-accent/30 hover:border-accent/60 bg-accent/5 hover:bg-accent/10 transition-all group mb-3"
+          >
+            <div className="flex items-center justify-center gap-3">
+              <div className="h-10 w-10 rounded-full bg-accent/15 flex items-center justify-center group-hover:bg-accent/25 transition-colors">
+                <Sparkles className="h-5 w-5 text-accent-foreground" />
+              </div>
+              <div className="text-left">
+                <p className="font-display font-bold text-lg text-foreground">Vygenerovat promo svět</p>
+                <p className="text-sm text-muted-foreground">Kompletní svět s 25 lety historie, bitvami a kronikou</p>
+              </div>
+            </div>
+          </button>
+        </section>
+
+        {/* ====== SECTION C: Create New World ====== */}
         <section>
           {!showCreate ? (
             <button
@@ -280,6 +300,14 @@ const MyGames = () => {
             />
           )}
         </section>
+
+        <PromoWorldGenerator
+          userId={user!.id}
+          playerName={profile?.username || "Hráč"}
+          open={showPromo}
+          onOpenChange={setShowPromo}
+          onCreated={handleGameCreated}
+        />
       </main>
     </div>
   );
