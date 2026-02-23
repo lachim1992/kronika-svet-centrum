@@ -92,6 +92,7 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
   const [peopleName, setPeopleName] = useState("");
   const [cultureName, setCultureName] = useState("");
   const [languageName, setLanguageName] = useState("");
+  const [civDescription, setCivDescription] = useState("");
 
   // Homeland fields
   const [homelandName, setHomelandName] = useState("");
@@ -114,7 +115,7 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
   const isMultiMode = gameMode === "tb_multi";
   const isPersistentMode = gameMode === "time_persistent";
 
-  const totalSteps = 7; // Added identity step
+  const totalSteps = 8; // Added identity + AI civ step
 
   const updateProgress = (steps: ProgressStep[]) => setProgressSteps([...steps]);
 
@@ -136,12 +137,16 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
       { label: "Vytváření relace…", status: "active" },
       { label: "Vytváření hráče…", status: "pending" },
       { label: "Zakládání kultury a jazyka…", status: "pending" },
+      { label: "AI generování civilizace…", status: "pending" },
       { label: "Generování mapy…", status: "pending" },
       { label: "Zakládání sídla…", status: "pending" },
       { label: "Inicializace zdrojů…", status: "pending" },
       { label: "Dokončování…", status: "pending" },
     ];
     updateProgress(progress);
+
+    // AI-generated civ start data (will be populated in step 3.5)
+    let civStartData: any = null;
 
     let sessionId: string | null = null;
 
@@ -212,17 +217,49 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
         if (langData) languageId = langData.id;
       }
 
-      // Create civilization record
-      await supabase.from("civilizations").insert({
+      // Create civilization record (will be updated with AI traits)
+      const { data: civRecord } = await supabase.from("civilizations").insert({
         session_id: session.id,
         player_name: playerName.trim(),
         civ_name: realmName.trim() || peopleName.trim() || playerName.trim(),
         is_ai: false,
-      });
+      }).select("id").single();
       setStepStatus(progress, 2, "done");
 
-      // ── STEP 4: Generate map / homeland ──
+      // ── STEP 3.5: AI Civilization Generation ──
       setStepStatus(progress, 3, "active");
+      if (civDescription.trim()) {
+        try {
+          const { data: civData, error: civErr } = await supabase.functions.invoke("generate-civ-start", {
+            body: {
+              sessionId: session.id,
+              playerName: playerName.trim(),
+              civDescription: civDescription.trim(),
+              worldPremise: premise.trim(),
+              tone,
+              biomeName: homelandBiome,
+              settlementName: settlementName.trim(),
+            },
+          });
+          if (!civErr && civData && !civData.error) {
+            civStartData = civData;
+            // Update civilization record with AI-generated traits
+            if (civRecord?.id && civData.civilization) {
+              await supabase.from("civilizations").update({
+                core_myth: civData.civilization.core_myth || null,
+                cultural_quirk: civData.civilization.cultural_quirk || null,
+                architectural_style: civData.civilization.architectural_style || null,
+              }).eq("id", civRecord.id);
+            }
+          }
+        } catch (e) {
+          console.warn("AI civ generation failed (non-blocking):", e);
+        }
+      }
+      setStepStatus(progress, 3, "done");
+
+      // ── STEP 4: Generate map / homeland ──
+      setStepStatus(progress, 4, "active");
 
       if (isAIMode) {
         // AI world generation — generates ALL cities including player's starting city
@@ -296,10 +333,10 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
           } as any);
         }
       }
-      setStepStatus(progress, 3, "done");
+      setStepStatus(progress, 4, "done");
 
       // ── STEP 5: Create starting settlement (skip for AI mode — already created by world-generate-init) ──
-      setStepStatus(progress, 4, "active");
+      setStepStatus(progress, 5, "active");
 
       if (!isAIMode) {
         // Create a default province if we don't have one yet
@@ -321,6 +358,8 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
           if (provData) provinceId = provData.id;
         }
 
+        // Use AI-generated settlement params if available
+        const stParams = civStartData?.settlement;
         const { data: cityData, error: cityErr } = await supabase.from("cities").insert({
           session_id: session.id,
           owner_player: playerName.trim(),
@@ -334,8 +373,14 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
           province_r: 0,
           culture_id: cultureId,
           language_id: languageId,
-          city_stability: 65,
+          city_stability: stParams?.city_stability || 65,
           influence_score: 0,
+          population_total: stParams?.population_total || 1000,
+          population_peasants: stParams?.population_peasants || 800,
+          population_burghers: stParams?.population_burghers || 150,
+          population_clerics: stParams?.population_clerics || 50,
+          special_resource_type: stParams?.special_resource_type || "NONE",
+          flavor_prompt: stParams?.settlement_flavor || civDescription.trim() || null,
         }).select("id").single();
 
         if (cityErr) throw cityErr;
@@ -381,24 +426,43 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
         }
       }
 
-      setStepStatus(progress, 4, "done");
+      setStepStatus(progress, 5, "done");
 
-      // ── STEP 6: Init resources ──
-      setStepStatus(progress, 5, "active");
-      for (const rt of ["food", "wood", "stone", "iron", "wealth"]) {
+      // ── STEP 6: Init resources (AI-generated or defaults) ──
+      setStepStatus(progress, 6, "active");
+      const aiRes = civStartData?.player_resources;
+      for (const rt of ["food", "wood", "stone", "iron", "wealth"] as const) {
+        const aiVals = aiRes?.[rt];
         await supabase.from("player_resources").insert({
           session_id: session.id,
           player_name: playerName.trim(),
           resource_type: rt,
-          income: rt === "food" ? 4 : rt === "wood" ? 3 : rt === "stone" ? 2 : rt === "iron" ? 1 : 2,
-          upkeep: rt === "food" ? 2 : rt === "wood" ? 1 : rt === "wealth" ? 1 : 0,
-          stockpile: rt === "food" ? 10 : rt === "wood" ? 5 : rt === "stone" ? 3 : rt === "iron" ? 2 : 5,
+          income: aiVals?.income ?? (rt === "food" ? 4 : rt === "wood" ? 3 : rt === "stone" ? 2 : rt === "iron" ? 1 : 2),
+          upkeep: aiVals?.upkeep ?? (rt === "food" ? 2 : rt === "wood" ? 1 : rt === "wealth" ? 1 : 0),
+          stockpile: aiVals?.stockpile ?? (rt === "food" ? 10 : rt === "wood" ? 5 : rt === "stone" ? 3 : rt === "iron" ? 2 : 5),
         });
       }
-      setStepStatus(progress, 5, "done");
 
-      // ── STEP 7: Finalize ──
-      setStepStatus(progress, 6, "active");
+      // Create realm_resources with AI-generated reserves
+      const aiRealm = civStartData?.realm_resources;
+      await supabase.from("realm_resources").insert({
+        session_id: session.id,
+        player_name: playerName.trim(),
+        grain_reserve: aiRealm?.grain_reserve ?? 20,
+        wood_reserve: aiRealm?.wood_reserve ?? 10,
+        stone_reserve: aiRealm?.stone_reserve ?? 5,
+        iron_reserve: aiRealm?.iron_reserve ?? 3,
+        horses_reserve: aiRealm?.horses_reserve ?? 5,
+        gold_reserve: aiRealm?.gold_reserve ?? 100,
+        stability: aiRealm?.stability ?? 70,
+        granary_capacity: aiRealm?.granary_capacity ?? 500,
+        stables_capacity: aiRealm?.stables_capacity ?? 100,
+      });
+
+      setStepStatus(progress, 6, "done");
+
+      // ── STEP 8: Finalize ──
+      setStepStatus(progress, 7, "active");
 
       // For persistent mode, create server_config
       if (isPersistentMode) {
@@ -452,6 +516,7 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
           cultureName.trim() ? `Kultura: ${cultureName.trim()}` : "",
           languageName.trim() ? `Jazyk: ${languageName.trim()}` : "",
           homelandName.trim() ? `Domovina: ${homelandName.trim()} (${homelandBiome})` : "",
+          civDescription.trim() ? `Popis civilizace: ${civDescription.trim()}` : "",
         ].filter(Boolean).join("\n"),
         prompt_rules: JSON.stringify({
           world_vibe: tone,
@@ -479,7 +544,7 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
         triggered_by: "wizard",
       });
 
-      setStepStatus(progress, 6, "done");
+      setStepStatus(progress, 7, "done");
 
       toast.success(`Svět „${worldName}" vytvořen!`);
       onCreated(session.id);
@@ -619,6 +684,20 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
           <div className="space-y-2">
             <Label className="text-xs">Jazyk <span className="text-muted-foreground">(volitelné)</span></Label>
             <Input value={languageName} onChange={e => setLanguageName(e.target.value)} placeholder="např. Sardština" />
+          </div>
+          <div className="space-y-2">
+            <Label className="flex items-center gap-1.5">
+              <Sparkles className="h-3.5 w-3.5 text-primary" />
+              Popis vaší civilizace
+            </Label>
+            <Textarea
+              value={civDescription}
+              onChange={e => setCivDescription(e.target.value)}
+              placeholder="Popište, čím je váš národ výjimečný — jsou to bojovníci, obchodníci, námořníci? Co umí? Jaká je jejich filosofie? AI z toho vygeneruje startovní zdroje, populaci a charakter vašeho sídla…"
+              rows={4}
+              maxLength={1000}
+            />
+            <p className="text-[10px] text-muted-foreground">{civDescription.length}/1000 · AI vygeneruje počáteční podmínky na základě tohoto popisu</p>
           </div>
           <div className="flex gap-2">
             <Button variant="outline" onClick={() => setStep(0)}>← Zpět</Button>
@@ -778,6 +857,7 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
               {peopleName && <p>👥 Národ: <strong>{peopleName}</strong></p>}
               {cultureName && <p>🎭 Kultura: <strong>{cultureName}</strong></p>}
               {languageName && <p>🗣️ Jazyk: <strong>{languageName}</strong></p>}
+              {civDescription && <p>🧬 Civilizace: <em>{civDescription.slice(0, 80)}{civDescription.length > 80 ? "…" : ""}</em></p>}
               {isAIMode && <p>🤖 Velikost: <strong>{WORLD_SIZES.find(s => s.value === worldSize)?.label}</strong></p>}
               {!isAIMode && <p>🏔️ Region: <strong>{homelandName}</strong> ({BIOMES.find(b => b.value === homelandBiome)?.label})</p>}
             </div>
