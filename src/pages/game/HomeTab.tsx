@@ -106,7 +106,19 @@ const HomeTab = ({
         console.error("World tick error:", e);
       }
 
-      // 3. Process AI factions (if AI mode) — before advance
+      // 3. Turn summary
+      await supabase.from("turn_summaries").insert({
+        session_id: sessionId,
+        turn_number: currentTurn,
+        status: "closed",
+        closed_at: new Date().toISOString(),
+        closed_by: currentPlayerName,
+      });
+
+      // 5. Advance turn FIRST (so process-turn sees the new turn number)
+      await advanceTurn(sessionId, currentTurn);
+
+      // 5. Process AI factions AFTER advance (same turn number as human)
       if (isAIMode) {
         try {
           const { data: aiFactions } = await supabase.from("ai_factions")
@@ -127,18 +139,6 @@ const HomeTab = ({
           }
         } catch (e) { console.error("AI faction error:", e); }
       }
-
-      // 4. Turn summary
-      await supabase.from("turn_summaries").insert({
-        session_id: sessionId,
-        turn_number: currentTurn,
-        status: "closed",
-        closed_at: new Date().toISOString(),
-        closed_by: currentPlayerName,
-      });
-
-      // 5. Advance turn FIRST (so process-turn sees the new turn number)
-      await advanceTurn(sessionId, currentTurn);
 
       // 6. Process turn for ALL players AFTER advance (resource production, stockpiles, population)
       try {
