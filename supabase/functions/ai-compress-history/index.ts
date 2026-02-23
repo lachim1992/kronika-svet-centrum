@@ -64,7 +64,7 @@ serve(async (req) => {
 
     // Fetch world memories for context
     const { data: memories } = await supabase.from("world_memories")
-      .select("fact_text, category")
+      .select("text, category")
       .eq("session_id", sessionId)
       .eq("approved", true)
       .limit(20);
@@ -102,7 +102,7 @@ UDÁLOSTI:
 ${JSON.stringify(events, null, 2)}
 
 FAKTA O SVĚTĚ:
-${(memories || []).map(m => `- ${m.fact_text}`).join("\n")}
+${(memories || []).map(m => `- ${m.text}`).join("\n")}
 
 Vrať JSON: { "summary": "...", "keyFacts": ["fakt1", "fakt2", ...] }`;
 
@@ -175,7 +175,7 @@ AKTIVNÍ FRAKCE:
 ${JSON.stringify(factions || [], null, 2)}
 
 FAKTA:
-${(memories || []).map(m => `- ${m.fact_text}`).join("\n")}
+${(memories || []).map(m => `- ${m.text}`).join("\n")}
 
 Vrať JSON: { "summary": "...", "keyFacts": ["fakt1", ...] }`;
 

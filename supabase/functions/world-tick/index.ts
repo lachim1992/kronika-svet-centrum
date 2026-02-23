@@ -1,4 +1,11 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import {
+  computeSettlementGrowth, distributePopLayers,
+  computeInfluence, computeTension, evaluateRebellion,
+  clampReputation, REPUTATION_DELTAS, REPUTATION_DECAY,
+  CRISIS_THRESHOLD, WAR_THRESHOLD,
+  type CityForGrowth, type InfluenceInput,
+} from "../_shared/physics.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -77,86 +84,46 @@ Deno.serve(async (req) => {
     const aiFactionNames = (aiFactions || []).map((f: any) => f.faction_name);
     const allActorNames = [...new Set([...playerNames, ...aiFactionNames])];
 
-    // ========== 2. SETTLEMENT GROWTH ==========
+    // ========== 2. SETTLEMENT GROWTH (shared physics) ==========
     const growthResults: any[] = [];
     for (const city of (cities || [])) {
-      if (city.status !== "ok") continue;
-
-      const stabilityFactor = (city.city_stability || 70) / 100;
-      const growthRate = city.famine_turn ? -0.02 : 0.01 * stabilityFactor;
-      const popChange = Math.round(city.population_total * growthRate);
-
-      if (popChange !== 0) {
-        const newPop = Math.max(50, city.population_total + popChange);
-        const peasantRatio = city.population_peasants / Math.max(1, city.population_total);
-        const burgherRatio = city.population_burghers / Math.max(1, city.population_total);
-        const clericRatio = city.population_clerics / Math.max(1, city.population_total);
-
+      const result = computeSettlementGrowth(city as CityForGrowth);
+      if (result.delta !== 0) {
+        const layers = distributePopLayers(
+          result.newPop, city.population_total,
+          city.population_peasants, city.population_burghers, city.population_clerics
+        );
         await supabase.from("cities").update({
-          population_total: newPop,
-          population_peasants: Math.round(newPop * peasantRatio),
-          population_burghers: Math.round(newPop * burgherRatio),
-          population_clerics: Math.round(newPop * clericRatio),
+          population_total: result.newPop,
+          population_peasants: layers.peasants,
+          population_burghers: layers.burghers,
+          population_clerics: layers.clerics,
+          city_stability: result.newStability,
+          development_level: result.newDev,
         }).eq("id", city.id);
-
-        growthResults.push({ city: city.name, change: popChange, newPop });
+        growthResults.push({ city: city.name, change: result.delta, newPop: result.newPop });
       }
     }
     results.settlement_growth = growthResults;
 
-    // ========== 3. INFLUENCE CALCULATION ==========
+    // ========== 3. INFLUENCE CALCULATION (shared physics) ==========
     const influenceResults: any[] = [];
     for (const pName of allActorNames) {
-      const myCities = (cities || []).filter((c: any) => c.owner_player === pName);
-      const myStacks = (militaryStacks || []).filter((s: any) => s.player_name === pName);
-      const myLaws = (laws || []).filter((l: any) => l.player_name === pName);
-      const myProvinces = (provinces || []).filter((p: any) => p.owner_player === pName);
-
-      // Military score: total power of active stacks
-      const militaryScore = myStacks.reduce((sum: number, s: any) => sum + (s.power || 0), 0);
-
-      // Trade score: population-based proxy (burghers drive trade)
-      const tradeScore = myCities.reduce((sum: number, c: any) => sum + (c.population_burghers || 0), 0);
-
-      // Diplomatic score: count treaties/alliances involving this player
-      const diplomaticEvents = (treaties || []).filter((e: any) =>
-        e.player === pName || (e.note && e.note.includes(pName))
-      );
-      const diplomaticScore = diplomaticEvents.length * 10;
-
-      // Territorial score: number of provinces + cities
-      const territorialScore = myProvinces.length * 20 + myCities.length * 10;
-
-      // Law stability: active laws count * avg city stability
-      const avgStability = myCities.length > 0
-        ? myCities.reduce((sum: number, c: any) => sum + (c.city_stability || 70), 0) / myCities.length
-        : 50;
-      const lawStabilityScore = myLaws.length * 5 + avgStability * 0.5;
-
-      // Reputation: carried from previous turn with decay
       const prev = (prevInfluence || []).find((i: any) => i.player_name === pName);
-      const reputationScore = prev ? Number(prev.reputation_score) * 0.9 : 0;
+      const result = computeInfluence({
+        playerName: pName,
+        cities: cities || [],
+        stacks: militaryStacks || [],
+        laws: laws || [],
+        provinces: provinces || [],
+        treaties: treaties || [],
+        previousReputation: prev ? Number(prev.reputation_score) : 0,
+      });
 
-      const totalInfluence = militaryScore * 0.25 + tradeScore * 0.2 + diplomaticScore * 0.15 +
-        territorialScore * 0.2 + lawStabilityScore * 0.1 + reputationScore * 0.1;
-
-      const record = {
-        session_id: sessionId,
-        player_name: pName,
-        turn_number: turnNumber,
-        military_score: Math.round(militaryScore),
-        trade_score: Math.round(tradeScore),
-        diplomatic_score: Math.round(diplomaticScore),
-        territorial_score: Math.round(territorialScore),
-        law_stability_score: Math.round(lawStabilityScore * 10) / 10,
-        reputation_score: Math.round(reputationScore * 10) / 10,
-        total_influence: Math.round(totalInfluence * 10) / 10,
-      };
-
+      const record = { session_id: sessionId, turn_number: turnNumber, ...result };
       await supabase.from("civ_influence").upsert(record, {
         onConflict: "session_id,player_name,turn_number",
       });
-
       influenceResults.push(record);
     }
     results.influence = influenceResults;
@@ -176,10 +143,8 @@ Deno.serve(async (req) => {
       if (evt.event_type === "alliance") {
         await supabase.from("world_memories").insert({
           session_id: sessionId,
-          fact_text: `V roce ${turnNumber} byla uzavřena aliance: ${evt.note || evt.player}.`,
+          text: `V roce ${turnNumber} byla uzavřena aliance: ${evt.note || evt.player}.`,
           category: "tradice",
-          location_type: "world",
-          location_name: "Svět",
           approved: true,
         }).catch(() => {});
 
@@ -198,10 +163,8 @@ Deno.serve(async (req) => {
       if (evt.event_type === "betrayal") {
         await supabase.from("world_memories").insert({
           session_id: sessionId,
-          fact_text: `V roce ${turnNumber} došlo ke zradě: ${evt.note || evt.player}.`,
+          text: `V roce ${turnNumber} došlo ke zradě: ${evt.note || evt.player}.`,
           category: "historická jizva",
-          location_type: "world",
-          location_name: "Svět",
           approved: true,
         }).catch(() => {});
 
@@ -220,10 +183,8 @@ Deno.serve(async (req) => {
       if (evt.event_type === "treaty") {
         await supabase.from("world_memories").insert({
           session_id: sessionId,
-          fact_text: `V roce ${turnNumber} byla podepsána smlouva: ${evt.note || evt.player}.`,
+          text: `V roce ${turnNumber} byla podepsána smlouva: ${evt.note || evt.player}.`,
           category: "tradice",
-          location_type: "world",
-          location_name: "Svět",
           approved: true,
         }).catch(() => {});
 
@@ -233,157 +194,80 @@ Deno.serve(async (req) => {
 
     results.memory_events_processed = (recentKeyEvents || []).length;
 
-    // ========== 5. TENSION CALCULATION ==========
+    // ========== 5. TENSION CALCULATION (shared physics) ==========
     const tensionResults: any[] = [];
-    const CRISIS_THRESHOLD = 60;
-    const WAR_THRESHOLD = 85;
 
     for (let i = 0; i < allActorNames.length; i++) {
       for (let j = i + 1; j < allActorNames.length; j++) {
         const pA = allActorNames[i];
         const pB = allActorNames[j];
 
-        // Border proximity: shared province borders (cities in same or adjacent provinces)
         const citiesA = (cities || []).filter((c: any) => c.owner_player === pA);
         const citiesB = (cities || []).filter((c: any) => c.owner_player === pB);
-        const provIdsA = new Set(citiesA.map((c: any) => c.province_id).filter(Boolean));
-        const provIdsB = new Set(citiesB.map((c: any) => c.province_id).filter(Boolean));
-        // Shared provinces = direct border
-        const sharedProvs = [...provIdsA].filter(id => provIdsB.has(id));
-        const borderProximity = sharedProvs.length * 15 + Math.min(provIdsA.size, provIdsB.size) * 2;
-
-        // Military difference
         const milA = influenceResults.find(r => r.player_name === pA)?.military_score || 0;
         const milB = influenceResults.find(r => r.player_name === pB)?.military_score || 0;
-        const militaryDiff = Math.abs(milA - milB) * 0.1;
 
-        // Broken treaties: events involving both players
-        const brokenTreaties = (treaties || []).filter((e: any) =>
+        const brokenTreatyCount = (treaties || []).filter((e: any) =>
           e.event_type === "betrayal" &&
           ((e.player === pA && e.note?.includes(pB)) || (e.player === pB && e.note?.includes(pA)))
-        ).length * 20;
-
-        // Trade embargo: declarations of embargo between players
-        const tradeEmbargo = (declarations || []).filter((d: any) =>
+        ).length;
+        const embargoCount = (declarations || []).filter((d: any) =>
           d.declaration_type === "embargo" &&
           ((d.player_name === pA && d.original_text?.includes(pB)) ||
            (d.player_name === pB && d.original_text?.includes(pA)))
-        ).length * 15;
+        ).length;
 
-        // Conflicting alliances
-        const alliancesA = (treaties || []).filter((e: any) =>
-          e.event_type === "alliance" && (e.player === pA || e.note?.includes(pA))
-        ).map((e: any) => e.player === pA ? e.note : e.player);
-        const alliancesB = (treaties || []).filter((e: any) =>
-          e.event_type === "alliance" && (e.player === pB || e.note?.includes(pB))
-        ).map((e: any) => e.player === pB ? e.note : e.player);
-        // If A is allied with someone B is at war with (simplified)
-        const conflictingAlliances = 0; // TODO: cross-reference wars with alliances
+        const tension = computeTension({
+          sessionId, turnNumber, playerA: pA, playerB: pB,
+          citiesA, citiesB, militaryScoreA: milA, militaryScoreB: milB,
+          brokenTreatyCount, embargoCount,
+        });
 
-        const totalTension = borderProximity + militaryDiff + brokenTreaties + tradeEmbargo + conflictingAlliances;
-        const crisisTriggered = totalTension >= CRISIS_THRESHOLD;
-        const warRollTriggered = totalTension >= WAR_THRESHOLD;
-        let warRollResult = null;
-
-        if (warRollTriggered) {
-          // Deterministic-ish roll based on turn + player names
-          const seed = turnNumber * 31 + pA.length * 7 + pB.length * 13;
-          warRollResult = (seed % 100) / 100;
-        }
-
-        const tensionRecord = {
-          session_id: sessionId,
-          player_a: pA,
-          player_b: pB,
-          turn_number: turnNumber,
-          border_proximity: borderProximity,
-          military_diff: Math.round(militaryDiff * 10) / 10,
-          broken_treaties: brokenTreaties,
-          trade_embargo: tradeEmbargo,
-          conflicting_alliances: conflictingAlliances,
-          total_tension: Math.round(totalTension * 10) / 10,
-          crisis_triggered: crisisTriggered,
-          war_roll_triggered: warRollTriggered,
-          war_roll_result: warRollResult,
-        };
-
+        const tensionRecord = { session_id: sessionId, turn_number: turnNumber, ...tension };
         await supabase.from("civ_tensions").upsert(tensionRecord, {
           onConflict: "session_id,player_a,player_b,turn_number",
         });
-
         tensionResults.push(tensionRecord);
 
         // ===== AUTO-GENERATE EVENTS + MEMORY LINKS =====
-        if (crisisTriggered) {
-          const crisisNote = `Diplomatická krize mezi ${pA} a ${pB}! Tenze dosáhla ${Math.round(totalTension)}.`;
+        if (tension.crisis_triggered) {
           await supabase.from("game_events").insert({
-            session_id: sessionId,
-            event_type: "crisis",
-            player: "Systém",
-            note: crisisNote,
-            importance: "critical",
-            confirmed: true,
-            turn_number: turnNumber,
+            session_id: sessionId, event_type: "crisis", player: "Systém",
+            note: `Diplomatická krize mezi ${pA} a ${pB}! Tenze dosáhla ${Math.round(tension.total_tension)}.`,
+            importance: "critical", confirmed: true, turn_number: turnNumber,
           });
-
-          // Memory: crisis
           await supabase.from("world_memories").insert({
             session_id: sessionId,
-            fact_text: `V roce ${turnNumber} vypukla diplomatická krize mezi ${pA} a ${pB} (tenze: ${Math.round(totalTension)}).`,
-            category: "historická jizva",
-            location_type: "world",
-            location_name: "Svět",
-            approved: true,
+            text: `V roce ${turnNumber} vypukla diplomatická krize mezi ${pA} a ${pB} (tenze: ${Math.round(tension.total_tension)}).`,
+            category: "historická jizva", approved: true,
           }).catch(() => {});
-
-          // Chronicle: crisis
           await supabase.from("chronicle_entries").insert({
             session_id: sessionId,
-            text: `**Diplomatická krize (rok ${turnNumber}):** Napětí mezi říšemi ${pA} a ${pB} dosáhlo bodu zlomu. Tenze: ${Math.round(totalTension)}. Vyslanci obou stran opustili jednací stoly.`,
-            epoch_style: "kroniky",
-            turn_from: turnNumber,
-            turn_to: turnNumber,
+            text: `**Diplomatická krize (rok ${turnNumber}):** Napětí mezi říšemi ${pA} a ${pB} dosáhlo bodu zlomu. Tenze: ${Math.round(tension.total_tension)}. Vyslanci obou stran opustili jednací stoly.`,
+            epoch_style: "kroniky", turn_from: turnNumber, turn_to: turnNumber,
           }).catch(() => {});
-
-          // Reputation penalty for both sides
-          reputationDeltas[pA] = (reputationDeltas[pA] || 0) - 5;
-          reputationDeltas[pB] = (reputationDeltas[pB] || 0) - 5;
+          reputationDeltas[pA] = (reputationDeltas[pA] || 0) + REPUTATION_DELTAS.crisis_participant;
+          reputationDeltas[pB] = (reputationDeltas[pB] || 0) + REPUTATION_DELTAS.crisis_participant;
         }
 
-        if (warRollTriggered && warRollResult !== null && warRollResult > 0.7) {
-          const warNote = `Válka mezi ${pA} a ${pB} je nevyhnutelná! Tenze: ${Math.round(totalTension)}, hod: ${Math.round(warRollResult * 100)}%.`;
+        if (tension.war_roll_triggered && tension.war_roll_result !== null && tension.war_roll_result > 0.7) {
           await supabase.from("game_events").insert({
-            session_id: sessionId,
-            event_type: "war",
-            player: "Systém",
-            note: warNote,
-            importance: "critical",
-            confirmed: true,
-            turn_number: turnNumber,
+            session_id: sessionId, event_type: "war", player: "Systém",
+            note: `Válka mezi ${pA} a ${pB} je nevyhnutelná! Tenze: ${Math.round(tension.total_tension)}, hod: ${Math.round(tension.war_roll_result * 100)}%.`,
+            importance: "critical", confirmed: true, turn_number: turnNumber,
           });
-
-          // Memory: war
           await supabase.from("world_memories").insert({
             session_id: sessionId,
-            fact_text: `V roce ${turnNumber} vypukla válka mezi ${pA} a ${pB}. Svět se zachvěl.`,
-            category: "historická jizva",
-            location_type: "world",
-            location_name: "Svět",
-            approved: true,
+            text: `V roce ${turnNumber} vypukla válka mezi ${pA} a ${pB}. Svět se zachvěl.`,
+            category: "historická jizva", approved: true,
           }).catch(() => {});
-
-          // Chronicle: war
           await supabase.from("chronicle_entries").insert({
             session_id: sessionId,
-            text: `**Vyhlášení války (rok ${turnNumber}):** Po dlouhém napětí (tenze ${Math.round(totalTension)}) vypukl otevřený konflikt mezi ${pA} a ${pB}. Vojska obou stran se dala do pohybu.`,
-            epoch_style: "kroniky",
-            turn_from: turnNumber,
-            turn_to: turnNumber,
+            text: `**Vyhlášení války (rok ${turnNumber}):** Po dlouhém napětí (tenze ${Math.round(tension.total_tension)}) vypukl otevřený konflikt mezi ${pA} a ${pB}. Vojska obou stran se dala do pohybu.`,
+            epoch_style: "kroniky", turn_from: turnNumber, turn_to: turnNumber,
           }).catch(() => {});
-
-          // Heavy reputation penalty
-          reputationDeltas[pA] = (reputationDeltas[pA] || 0) - 15;
-          reputationDeltas[pB] = (reputationDeltas[pB] || 0) - 10;
+          reputationDeltas[pA] = (reputationDeltas[pA] || 0) + REPUTATION_DELTAS.war_aggressor;
+          reputationDeltas[pB] = (reputationDeltas[pB] || 0) + REPUTATION_DELTAS.war_defender;
         }
       }
     }
@@ -485,10 +369,8 @@ Deno.serve(async (req) => {
 
           await supabase.from("world_memories").insert({
             session_id: sessionId,
-            fact_text: `V roce ${turnNumber} se rozpadla smlouva mezi ${partyA} a ${partyB}.`,
+            text: `V roce ${turnNumber} se rozpadla smlouva mezi ${partyA} a ${partyB}.`,
             category: "historická jizva",
-            location_type: "world",
-            location_name: "Svět",
             approved: true,
           }).catch(() => {});
 
@@ -547,10 +429,8 @@ Deno.serve(async (req) => {
 
           await supabase.from("world_memories").insert({
             session_id: sessionId,
-            fact_text: `V roce ${turnNumber} vypukla vzpoura v ${city.name} (stabilita: ${stability}%).`,
+            text: `V roce ${turnNumber} vypukla vzpoura v ${city.name} (stabilita: ${stability}%).`,
             category: "historická jizva",
-            location_type: "city",
-            location_name: city.name,
             city_id: city.id,
             approved: true,
           }).catch(() => {});
