@@ -178,11 +178,11 @@ const Welcome = () => {
             </p>
 
             <p>
-              Chronicle is meant to be a place where you can formulate your own
-              laws, negotiate terms, build fortresses in strategic locations,
-              manage trade networks, influence the mood of cities, and respond to
-              emerging threats. Each world should be unique, and each game should
-              generate its own history — one that is not written in advance.
+
+
+
+
+
             </p>
 
             <p>
