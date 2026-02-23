@@ -102,7 +102,7 @@ const Dashboard = () => {
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="text-center space-y-4">
           <p className="font-display text-lg">Hra nenalezena</p>
-          <Button onClick={() => navigate("/")}>Zpět na úvod</Button>
+          <Button onClick={() => navigate("/games")}>Zpět na úvod</Button>
         </div>
       </div>
     );

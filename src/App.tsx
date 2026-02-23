@@ -7,6 +7,7 @@ import { AuthContext, useAuthProvider } from "@/hooks/useAuth";
 import AuthGuard from "@/components/AuthGuard";
 import Auth from "./pages/Auth";
 import ResetPassword from "./pages/ResetPassword";
+import Welcome from "./pages/Welcome";
 import MyGames from "./pages/MyGames";
 import Dashboard from "./pages/Dashboard";
 import NotFound from "./pages/NotFound";
@@ -22,7 +23,8 @@ const AppRoutes = () => {
         <Routes>
           <Route path="/auth" element={<Auth />} />
           <Route path="/reset-password" element={<ResetPassword />} />
-          <Route path="/" element={<AuthGuard><MyGames /></AuthGuard>} />
+          <Route path="/" element={<AuthGuard><Welcome /></AuthGuard>} />
+          <Route path="/games" element={<AuthGuard><MyGames /></AuthGuard>} />
           <Route path="/game/:sessionId" element={<AuthGuard><Dashboard /></AuthGuard>} />
           <Route path="*" element={<NotFound />} />
         </Routes>
