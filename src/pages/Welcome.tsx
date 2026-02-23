@@ -127,9 +127,9 @@ const Welcome = () => {
             className="prose-chronicle space-y-5 text-sm md:text-base text-muted-foreground/90 leading-[1.85] px-2"
             style={{ fontFamily: "'Inter', sans-serif" }}
           >
-            <p className="text-center text-base md:text-lg italic text-primary/70 leading-relaxed px-4">
+            <blockquote className="text-center text-base md:text-lg italic text-primary/70 leading-relaxed px-4">
               "Every thought you express in this world can become an event. And every event can change history."
-            </p>
+            </blockquote>
 
             <p>
               The Chronicle Hub is a project aimed at creating a simulation of
