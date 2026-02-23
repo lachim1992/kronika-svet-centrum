@@ -157,7 +157,7 @@ export async function createGameSession(playerName: string): Promise<GameSession
   const { data, error } = await supabase.from("game_sessions").insert({
     room_code: roomCode,
     player1_name: playerName,
-    max_players: 6,
+    max_players: 10,
   }).select().single();
   if (error) { console.error(error); return null; }
 

@@ -75,7 +75,7 @@ export default function PromoWorldGenerator({ userId, playerName, open, onOpenCh
             Vygenerovat promo svět
           </DialogTitle>
           <DialogDescription>
-            Kompletní svět s 25 lety historie, 2 státy, 24 sídly, bitvami, kronikou a zvěstmi.
+            Kompletní svět s hlubokou prehistorií, 25 lety historie, legendami, bitvami, kronikou, zvěstmi a obrázky.
           </DialogDescription>
         </DialogHeader>
 
@@ -119,8 +119,9 @@ export default function PromoWorldGenerator({ userId, playerName, open, onOpenCh
             </Button>
 
             <p className="text-xs text-muted-foreground text-center leading-relaxed">
-              2 státy · 8 provincií · 24 sídel · 10 osobností · 4 divy<br />
-              40 událostí · 20 bitev · 30 zvěstí · 25 let kroniky
+              2 státy · 8 provincií · 24 sídel · 10+ osobností · 4 divy<br />
+              10+ prehistorických legend · 20 událostí · 20 bitev · 40+ zvěstí<br />
+              Kronika „Před počátkem paměti" · Lore Bible · Obrázky entit
             </p>
           </div>
         )}
