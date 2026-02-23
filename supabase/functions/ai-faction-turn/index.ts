@@ -138,7 +138,7 @@ Rozhodni se, co frakce udělá v tomto kole.`;
                   items: {
                     type: "object",
                     properties: {
-                      actionType: { type: "string", enum: ["build", "trade", "diplomacy", "military", "research", "expand"] },
+                      actionType: { type: "string", enum: ["build", "trade", "diplomacy", "expand", "explore"] },
                       description: { type: "string" },
                       targetCity: { type: "string" },
                       targetFaction: { type: "string" },

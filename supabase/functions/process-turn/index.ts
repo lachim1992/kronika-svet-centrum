@@ -136,7 +136,7 @@ Deno.serve(async (req) => {
       .ilike("owner_player", playerName);
 
     const myCities = cities || [];
-    const chronicleEntries: string[] = [];
+    const logEntries: string[] = [];
 
     // Compute granary/stables capacity from infrastructure
     const granaryCapacity = 500 * (infra?.granary_level || 1) * (infra?.granaries_count || 1);
@@ -315,7 +315,7 @@ Deno.serve(async (req) => {
             city.population_total = newPop;
             city.city_stability = newStab;
 
-            chronicleEntries.push(`⚠️ HLADOMOR v ${city.name}: deficit ${allocDeficit}, populace -${popLoss} (${newPop}), stabilita ${newStab}`);
+            logEntries.push(`⚠️ HLADOMOR v ${city.name}: deficit ${allocDeficit}, populace -${popLoss} (${newPop}), stabilita ${newStab}`);
             remaining -= allocDeficit;
           }
         }
@@ -339,12 +339,12 @@ Deno.serve(async (req) => {
             city.famine_severity = 0;
           }
         }
-        chronicleEntries.push(`Deficit obilí ${deficit} pokryt ze zásob (zbývá ${grainReserve})`);
+        logEntries.push(`Deficit obilí ${deficit} pokryt ze zásob (zbývá ${grainReserve})`);
       }
     }
 
-    chronicleEntries.push(`Obilí: produkce ${totalGrainProd}, spotřeba ${totalConsumption}, bilance ${netGrain >= 0 ? "+" : ""}${netGrain}, zásoby ${grainReserve}/${granaryCapacity}`);
-    chronicleEntries.push(`Suroviny: Dřevo +${totalWoodProd}, Kámen +${totalStoneProd}, Železo +${totalIronProd}`);
+    logEntries.push(`Obilí: produkce ${totalGrainProd}, spotřeba ${totalConsumption}, bilance ${netGrain >= 0 ? "+" : ""}${netGrain}, zásoby ${grainReserve}/${granaryCapacity}`);
+    logEntries.push(`Suroviny: Dřevo +${totalWoodProd}, Kámen +${totalStoneProd}, Železo +${totalIronProd}`);
 
     // 6) Population growth — handled by world-tick (shared physics), NOT here.
     // process-turn only handles economy (production, consumption, famine, stockpiles).
@@ -393,7 +393,7 @@ Deno.serve(async (req) => {
       if (Math.abs(newPower - oldPower) > oldPower * 0.05 || oldPower === 0) {
         await supabase.from("military_stacks").update({ power: newPower }).eq("id", stack.id);
         if (oldPower > 0) {
-          chronicleEntries.push(`Armáda "${stack.name}": síla ${oldPower} → ${newPower}`);
+          logEntries.push(`Armáda "${stack.name}": síla ${oldPower} → ${newPower}`);
         }
       }
     }
@@ -403,15 +403,19 @@ Deno.serve(async (req) => {
     const newStoneReserve = (realm.stone_reserve || 0) + totalStoneProd;
     const newIronReserve = (realm.iron_reserve || 0) + totalIronProd;
 
-    // Gold: compute wealth income and army upkeep, then update gold_reserve
-    const wealthIncome = computeWealthIncome(myCities);
-    // Army upkeep: 1 gold per 100 troops
+    // Gold & food army upkeep: 1 gold per 100 troops, 1 food per 500 troops
     let wealthUpkeep = 0;
+    let armyFoodUpkeep = 0;
     for (const stack of (stacks || [])) {
       const stackManpower = (stack.military_stack_composition || [])
         .reduce((sum: number, c: any) => sum + (c.manpower ?? 0), 0);
       wealthUpkeep += Math.ceil(stackManpower / 100);
+      armyFoodUpkeep += Math.ceil(stackManpower / 500);
     }
+
+    // Subtract army food from grain reserve (after settlement consumption)
+    grainReserve = Math.max(0, grainReserve - armyFoodUpkeep);
+
     const newGoldReserve = Math.max(0, (realm.gold_reserve || 0) + wealthIncome - wealthUpkeep);
 
     const famineCityCount = myCities.filter(c => c.famine_turn).length;
@@ -450,7 +454,7 @@ Deno.serve(async (req) => {
       wealth: computeWealthIncome(myCities),
     };
     const upkeeps: Record<string, number> = {
-      food: totalConsumption,
+      food: totalConsumption + armyFoodUpkeep,
       wood: 0,
       stone: 0,
       iron: 0,
@@ -513,7 +517,7 @@ Deno.serve(async (req) => {
       .filter(r => (incomes[r] || 0) > 0)
       .map(r => `${r}+${incomes[r]}`)
       .join(" ");
-    chronicleEntries.push(`Příjmy: ${incomeSummary}`);
+    logEntries.push(`Příjmy: ${incomeSummary}`);
 
     // Write to world_action_log
     await supabase.from("world_action_log").insert({
@@ -521,10 +525,12 @@ Deno.serve(async (req) => {
       turn_number: currentTurn,
       player_name: playerName,
       action_type: "turn_processing",
-      description: `Kolo ${currentTurn} zpracováno: obilí ${netGrain >= 0 ? "+" : ""}${netGrain}, pop ${totalPopulation}, manpower ${manpowerPool}. Income: ${incomeSummary}`,
+      description: `Kolo ${currentTurn} zpracováno: obilí ${netGrain >= 0 ? "+" : ""}${netGrain}, pop ${totalPopulation}, manpower ${manpowerPool}. Army food upkeep: ${armyFoodUpkeep}. ${incomeSummary}`,
       metadata: {
         grain_prod: totalGrainProd,
         grain_consumption: totalConsumption,
+        army_food_upkeep: armyFoodUpkeep,
+        army_gold_upkeep: wealthUpkeep,
         net_grain: netGrain,
         grain_reserve: grainReserve,
         manpower_pool: manpowerPool,
@@ -549,7 +555,9 @@ Deno.serve(async (req) => {
         totalPopulation,
         famineActive,
         famineCityCount,
-        chronicleEntries: chronicleEntries.length,
+        logEntries: logEntries.length,
+        armyFoodUpkeep,
+        armyGoldUpkeep: wealthUpkeep,
       },
     }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
 

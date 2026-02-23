@@ -63,3 +63,14 @@ export function computeArmyGoldUpkeep(stacks: any[]): number {
   }
   return total;
 }
+
+/** Compute military food upkeep: 1 food per 500 troops */
+export function computeArmyFoodUpkeep(stacks: any[]): number {
+  let total = 0;
+  for (const stack of stacks) {
+    const manpower = (stack.military_stack_composition || [])
+      .reduce((sum: number, c: any) => sum + (c.manpower ?? 0), 0);
+    total += Math.ceil(manpower / 500);
+  }
+  return total;
+}
