@@ -7,15 +7,25 @@ import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { BookOpen, Sparkles, ChevronLeft, ChevronRight, Globe, Pencil, Trash2, RefreshCw } from "lucide-react";
+import { BookOpen, Sparkles, ChevronLeft, ChevronRight, Globe, Pencil, Trash2, RefreshCw, Filter } from "lucide-react";
 import { toast } from "sonner";
 import RichText from "@/components/RichText";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 type GameEvent = Tables<"game_events">;
 type WorldMemory = Tables<"world_memories">;
 type ChronicleEntry = Tables<"chronicle_entries">;
 type GamePlayer = Tables<"game_players">;
 type City = Tables<"cities">;
+
+const SOURCE_FILTERS = [
+  { value: "all", label: "Vše" },
+  { value: "chronicle", label: "📜 Kronika" },
+  { value: "system", label: "⚙️ Systém" },
+  { value: "founding", label: "🏗️ Založení" },
+] as const;
+
+type SourceFilter = typeof SOURCE_FILTERS[number]["value"];
 
 interface ChronicleFeedProps {
   sessionId: string;
@@ -55,12 +65,18 @@ const ChronicleFeed = ({
   const [editingEntry, setEditingEntry] = useState<string | null>(null);
   const [editText, setEditText] = useState("");
   const [rewriting, setRewriting] = useState<string | null>(null);
+  const [sourceFilter, setSourceFilter] = useState<SourceFilter>("all");
 
   const displayRound = viewingRound ?? currentTurn;
   const displayEvents = events.filter(e => e.turn_number === displayRound);
 
+  // Filter chronicles by source_type
+  const filteredChronicles = sourceFilter === "all"
+    ? chronicles
+    : chronicles.filter(c => (c as any).source_type === sourceFilter);
+
   // Match chronicles by turn_from/turn_to or text
-  const roundChronicles = chronicles.filter(c => {
+  const roundChronicles = filteredChronicles.filter(c => {
     const cf = c as any;
     if (cf.turn_from && cf.turn_to) {
       return displayRound >= cf.turn_from && displayRound <= cf.turn_to;
@@ -281,6 +297,20 @@ const ChronicleFeed = ({
           </p>
         </div>
       )}
+
+      {/* Source Filter */}
+      <div className="flex items-center gap-2 flex-wrap">
+        <Filter className="h-4 w-4 text-muted-foreground" />
+        <Tabs value={sourceFilter} onValueChange={(v) => setSourceFilter(v as SourceFilter)} className="w-auto">
+          <TabsList className="h-8">
+            {SOURCE_FILTERS.map(f => (
+              <TabsTrigger key={f.value} value={f.value} className="text-xs px-3 h-7">
+                {f.label}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        </Tabs>
+      </div>
 
       {/* Round Navigation */}
       <div className="flex items-center gap-2 p-2 rounded-lg border border-border bg-muted/20">
