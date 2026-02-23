@@ -119,7 +119,7 @@ const HomeTab = ({
       await advanceTurn(sessionId, currentTurn);
 
       // 5. Process AI factions AFTER advance (same turn number as human)
-      if (isAIMode) {
+      {
         try {
           const { data: aiFactions } = await supabase.from("ai_factions")
             .select("faction_name")

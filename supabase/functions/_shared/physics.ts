@@ -41,6 +41,11 @@ export const SETTLEMENT_TEMPLATES: Record<string, { peasants: number; burghers: 
   POLIS:    { peasants: 0.20, burghers: 0.55, clerics: 0.25 },
 };
 
+// Settlement wealth income per tier
+export const SETTLEMENT_WEALTH: Record<string, number> = {
+  HAMLET: 1, TOWNSHIP: 2, CITY: 4, POLIS: 6,
+};
+
 // Development thresholds
 export const DEV_THRESHOLDS = [
   { pop: 500, level: 2 },
