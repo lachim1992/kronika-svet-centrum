@@ -69,7 +69,7 @@ const SeedSection = ({ sessionId, onRefetch }: Props) => {
         }
       }
 
-      await supabase.from("game_sessions").update({ player1_name: PLAYER_NAMES[0], player2_name: PLAYER_NAMES[1], max_players: 6 }).eq("id", sessionId);
+      await supabase.from("game_sessions").update({ player1_name: PLAYER_NAMES[0], player2_name: PLAYER_NAMES[1], max_players: 10 }).eq("id", sessionId);
 
       // Provinces
       const provinceIds: Record<string, string> = {};

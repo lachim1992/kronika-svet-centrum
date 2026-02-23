@@ -16,7 +16,7 @@ const GAME_MODE_CATEGORIES = [
     modes: [
       { value: "tb_single_ai", label: "🤖 AI Svět", desc: "AI vygeneruje svět, frakce, historii a reaguje na vaše rozhodnutí.", icon: Bot, badge: "Solo" },
       { value: "tb_single_manual", label: "✍️ Ruční svět", desc: "Vytvořte svět ručně — ideální pro DnD, RPG, storytelling.", icon: Pen, badge: "Solo" },
-      { value: "tb_multi", label: "👥 Multiplayer", desc: "Turn-based hra pro 2–6 hráčů. AI slouží jako kronikář.", icon: UserPlus, badge: "2–6 hráčů" },
+      { value: "tb_multi", label: "👥 Multiplayer", desc: "Turn-based hra pro 2–10 hráčů. AI slouží jako kronikář.", icon: UserPlus, badge: "2–10 hráčů" },
     ],
   },
   {
@@ -151,7 +151,7 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
       const { data: session, error: sessErr } = await supabase.from("game_sessions").insert({
         room_code: roomCode,
         player1_name: playerName.trim(),
-        max_players: isPersistentMode ? 50 : isMultiMode ? 6 : 1,
+        max_players: isPersistentMode ? 50 : isMultiMode ? 10 : 1,
         created_by: userId,
         game_mode: gameMode,
         tier: "premium",
