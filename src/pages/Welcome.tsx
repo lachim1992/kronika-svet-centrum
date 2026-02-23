@@ -11,9 +11,9 @@ const Welcome = () => {
       className="min-h-screen flex flex-col"
       style={{
         background:
-          "linear-gradient(180deg, hsl(220 30% 5%) 0%, hsl(220 30% 10%) 40%, hsl(220 25% 7%) 100%)",
-      }}
-    >
+        "linear-gradient(180deg, hsl(220 30% 5%) 0%, hsl(220 30% 10%) 40%, hsl(220 25% 7%) 100%)"
+      }}>
+
       {/* Main content – vertically centered */}
       <div className="flex-1 flex items-center justify-center px-6 py-12">
         <div className="max-w-2xl w-full space-y-10 animate-fade-in">
@@ -25,8 +25,8 @@ const Welcome = () => {
           {/* Heading */}
           <h1
             className="text-center text-xl md:text-2xl font-semibold text-primary tracking-wide leading-relaxed"
-            style={{ fontFamily: "'Cinzel', serif" }}
-          >
+            style={{ fontFamily: "'Cinzel', serif" }}>
+
             Vítejte v The Chronicle Hub.
           </h1>
 
@@ -39,8 +39,8 @@ const Welcome = () => {
           {/* Body prose */}
           <div
             className="prose-chronicle space-y-5 text-sm md:text-base text-muted-foreground/90 leading-[1.85] px-2"
-            style={{ fontFamily: "'Inter', sans-serif" }}
-          >
+            style={{ fontFamily: "'Inter', sans-serif" }}>
+
             <p>
               The Chronicle Hub je projekt, jehož cílem je vytvořit simulátor
               vzniku civilizace od prvních osad až po vznik říší, konfederací a
@@ -84,11 +84,11 @@ const Welcome = () => {
             </p>
 
             <p>
-              Chronicle má být místem, kde můžete formulovat vlastní zákony,
-              vyjednávat podmínky, budovat pevnosti na strategických místech,
-              řídit obchodní vazby, ovlivňovat náladu měst a reagovat na hrozby,
-              které vznikají postupně. Každý svět má být unikátní a každá hra má
-              vytvářet vlastní historii, která nebude předem napsaná.
+
+
+
+
+
             </p>
 
             <p>
@@ -125,8 +125,8 @@ const Welcome = () => {
           {/* English version */}
           <div
             className="prose-chronicle space-y-5 text-sm md:text-base text-muted-foreground/90 leading-[1.85] px-2"
-            style={{ fontFamily: "'Inter', sans-serif" }}
-          >
+            style={{ fontFamily: "'Inter', sans-serif" }}>
+
             <blockquote className="text-center text-base md:text-lg italic text-primary/70 leading-relaxed px-4">
               "Every thought you express in this world can become an event. And every event can change history."
             </blockquote>
@@ -216,14 +216,14 @@ const Welcome = () => {
         <Button
           size="lg"
           onClick={() => navigate("/games")}
-          className="font-display text-base tracking-wide gap-2 px-8"
-        >
+          className="font-display text-base tracking-wide gap-2 px-8">
+
           Přejít na moje světy
           <ArrowRight className="h-5 w-5" />
         </Button>
       </div>
-    </div>
-  );
+    </div>);
+
 };
 
 export default Welcome;
