@@ -5,13 +5,7 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-// Settlement templates
-const SETTLEMENT_TEMPLATES: Record<string, { peasants: number; burghers: number; clerics: number }> = {
-  HAMLET:   { peasants: 0.80, burghers: 0.15, clerics: 0.05 },
-  TOWNSHIP: { peasants: 0.60, burghers: 0.30, clerics: 0.10 },
-  CITY:     { peasants: 0.40, burghers: 0.40, clerics: 0.20 },
-  POLIS:    { peasants: 0.20, burghers: 0.55, clerics: 0.25 },
-};
+import { SETTLEMENT_TEMPLATES } from "../_shared/physics.ts";
 
 const UNIT_WEIGHTS: Record<string, number> = {
   INFANTRY: 1.0, ARCHERS: 1.1, CAVALRY: 1.3, SIEGE: 0.9,
@@ -443,16 +437,8 @@ Deno.serve(async (req) => {
       updated_at: new Date().toISOString(),
     }).eq("id", realm.id);
 
-    // 11) Write chronicle summary
-    if (chronicleEntries.length > 0) {
-      const summaryText = `**Shrnutí kola ${currentTurn} — ${playerName}**\n\n` + chronicleEntries.join("\n");
-      await supabase.from("chronicle_entries").insert({
-        session_id: sessionId,
-        turn_from: currentTurn,
-        turn_to: currentTurn,
-        text: summaryText,
-      });
-    }
+    // 11) Write economy summary to world_action_log (NOT chronicle — chronicle is for narrative events only)
+    // Chronicle entries are now strictly derived from game_events with event_id FK.
 
     // 13) Recompute player_resources incomes from settlement profiles
     const resourceTypes = ["food", "wood", "stone", "iron", "wealth"];

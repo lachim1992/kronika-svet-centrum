@@ -1,6 +1,8 @@
 // Turn engine constants and helpers (client-side)
 import { supabase } from "@/integrations/supabase/client";
 
+// Settlement templates — canonical source is supabase/functions/_shared/physics.ts
+// Client-side mirror for UI display only.
 export const SETTLEMENT_TEMPLATES: Record<string, { peasants: number; burghers: number; clerics: number }> = {
   HAMLET:   { peasants: 0.80, burghers: 0.15, clerics: 0.05 },
   TOWNSHIP: { peasants: 0.60, burghers: 0.30, clerics: 0.10 },

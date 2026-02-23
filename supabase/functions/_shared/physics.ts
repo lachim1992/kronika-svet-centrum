@@ -33,6 +33,14 @@ export const REPUTATION_DECAY = 0.9;
 export const REPUTATION_MIN = -100;
 export const REPUTATION_MAX = 100;
 
+// Settlement templates (population layer ratios)
+export const SETTLEMENT_TEMPLATES: Record<string, { peasants: number; burghers: number; clerics: number }> = {
+  HAMLET:   { peasants: 0.80, burghers: 0.15, clerics: 0.05 },
+  TOWNSHIP: { peasants: 0.60, burghers: 0.30, clerics: 0.10 },
+  CITY:     { peasants: 0.40, burghers: 0.40, clerics: 0.20 },
+  POLIS:    { peasants: 0.20, burghers: 0.55, clerics: 0.25 },
+};
+
 // Development thresholds
 export const DEV_THRESHOLDS = [
   { pop: 500, level: 2 },

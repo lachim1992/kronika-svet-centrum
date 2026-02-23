@@ -219,6 +219,21 @@ Rozhodni se, co frakce udělá v tomto kole.`;
       description: `AI frakce ${factionName}: ${result.actions?.length || 0} akcí. ${result.internalThought || ""}`,
     });
 
+    // Trigger process-turn for AI faction (economy pipeline)
+    const processTurnUrl = `${supabaseUrl}/functions/v1/process-turn`;
+    try {
+      await fetch(processTurnUrl, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${supabaseKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ sessionId, playerName: factionName }),
+      });
+    } catch (ptErr) {
+      console.warn("process-turn for AI faction failed:", ptErr);
+    }
+
     return new Response(JSON.stringify({
       faction: factionName,
       actionsCount: result.actions?.length || 0,
