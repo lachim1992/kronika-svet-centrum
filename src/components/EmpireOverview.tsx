@@ -1,9 +1,10 @@
 import type { Tables } from "@/integrations/supabase/types";
 import { Badge } from "@/components/ui/badge";
 import {
-  Crown, Castle, Wheat, Trees, Mountain, Gem, Coins,
+  Crown, Castle, Coins,
   Swords, Landmark, AlertTriangle, Shield, Flame, MapPin, Scroll, BookOpen
 } from "lucide-react";
+import { RESOURCE_ICONS, RESOURCE_LABELS } from "@/lib/economyConstants";
 
 type GamePlayer = Tables<"game_players">;
 type City = Tables<"cities">;
@@ -13,16 +14,6 @@ type Wonder = Tables<"wonders">;
 type GameEvent = Tables<"game_events">;
 type ChronicleEntry = Tables<"chronicle_entries">;
 
-const RESOURCE_ICONS: Record<string, React.ReactNode> = {
-  food: <Wheat className="h-4 w-4" />,
-  wood: <Trees className="h-4 w-4" />,
-  stone: <Mountain className="h-4 w-4" />,
-  iron: <Gem className="h-4 w-4" />,
-  wealth: <Coins className="h-4 w-4" />,
-};
-const RESOURCE_LABELS: Record<string, string> = {
-  food: "Jídlo", wood: "Dřevo", stone: "Kámen", iron: "Železo", wealth: "Zlato",
-};
 const LEVEL_ORDER = ["Polis", "Město", "Městečko", "Osada"];
 
 interface EmpireOverviewProps {

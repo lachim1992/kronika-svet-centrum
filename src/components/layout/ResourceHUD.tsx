@@ -6,6 +6,7 @@ import {
   Wheat, Trees, Mountain, Anvil, Zap, Coins, Users, Gauge,
   ChevronDown, Skull
 } from "lucide-react";
+import { computeWealthIncome } from "@/lib/economyConstants";
 
 interface ResourceHUDProps {
   sessionId: string;
@@ -71,13 +72,8 @@ const ResourceHUD = ({ sessionId, playerName, cities }: ResourceHUDProps) => {
   const iron = getRes("iron");
   const wealth = getRes("wealth");
 
-  // Compute wealth client-side for consistency
-  const SETTLEMENT_WEALTH: Record<string, number> = { HAMLET: 1, TOWNSHIP: 2, CITY: 4, POLIS: 6 };
-  const computedWealthIncome = myCities.filter(c => !c.status || c.status === "ok").reduce((s, c) => {
-    return s + (SETTLEMENT_WEALTH[c.settlement_level] || 1)
-      + Math.floor((c.population_total || 0) / 500)
-      + Math.floor((c.population_burghers || 0) / 200);
-  }, 0);
+  // Compute wealth client-side using shared formula
+  const computedWealthIncome = computeWealthIncome(myCities);
   const wealthNet = (computedWealthIncome > 0 ? computedWealthIncome : wealth.income) - wealth.upkeep;
   const wealthStock = realm.gold_reserve ?? wealth.stockpile ?? 0;
 

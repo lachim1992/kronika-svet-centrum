@@ -6,8 +6,9 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Castle, Wheat, Trees, Mountain, Gem, Coins, Swords, Plus, Trash2, ArrowUpDown, HandCoins } from "lucide-react";
+import { Castle, Swords, Plus, Trash2, ArrowUpDown, HandCoins, Coins } from "lucide-react";
 import { toast } from "sonner";
+import { RESOURCE_ICONS, RESOURCE_LABELS } from "@/lib/economyConstants";
 
 type City = Tables<"cities">;
 type PlayerResource = Tables<"player_resources">;
@@ -18,16 +19,6 @@ type GamePlayer = Tables<"game_players">;
 const CITY_LEVELS = ["Osada", "Městečko", "Město", "Polis"];
 const CITY_TAGS = ["port", "fortress", "holy_city", "market", "mine"];
 const ARMY_TYPES = ["Lehká", "Těžká", "Obléhací", "Námořní"];
-const RESOURCE_ICONS: Record<string, React.ReactNode> = {
-  food: <Wheat className="h-4 w-4" />,
-  wood: <Trees className="h-4 w-4" />,
-  stone: <Mountain className="h-4 w-4" />,
-  iron: <Gem className="h-4 w-4" />,
-  wealth: <Coins className="h-4 w-4" />,
-};
-const RESOURCE_LABELS: Record<string, string> = {
-  food: "Jídlo", wood: "Dřevo", stone: "Kámen", iron: "Železo", wealth: "Zlato",
-};
 const TRADE_TYPES = ["Obchod", "Tribut", "Dar"];
 
 interface EmpireManagementProps {
