@@ -82,6 +82,21 @@ serve(async (req) => {
       manpower: { pool: realmRes?.manpower_pool || 0 },
     };
 
+    // Fetch influence scores (latest turn)
+    const { data: influenceData } = await supabase.from("civ_influence")
+      .select("player_name, total_influence, military_score, trade_score, diplomatic_score, reputation_score")
+      .eq("session_id", sessionId)
+      .order("turn_number", { ascending: false })
+      .limit(10);
+
+    // Fetch tensions involving this faction
+    const { data: tensionData } = await supabase.from("civ_tensions")
+      .select("player_a, player_b, total_tension, crisis_triggered, war_roll_triggered")
+      .eq("session_id", sessionId)
+      .or(`player_a.eq.${factionName},player_b.eq.${factionName}`)
+      .order("turn_number", { ascending: false })
+      .limit(10);
+
     const systemPrompt = `Jsi AI řídící frakci "${factionName}" v civilizační strategické hře.
 
 OSOBNOST: ${faction.personality}
@@ -91,7 +106,7 @@ POSTOJ K HRÁČI: ${JSON.stringify(faction.disposition)}
 PRAVIDLA:
 - Rozhoduj se logicky na základě osobnosti a cílů.
 - Bere v úvahu aktuální stav zdrojů a měst.
-- Zohledni nedávné události.
+- Zohledni nedávné události, vliv civilizací a napětí.
 - Nesmíš provádět více než 3 akce za kolo.
 - Akce musí být proveditelné (nemůžeš stavět bez zdrojů).
 - Odpověz POUZE voláním funkce faction_turn.
@@ -104,6 +119,12 @@ ${JSON.stringify(cities || [], null, 2)}
 
 ZDROJE:
 ${JSON.stringify(resMap, null, 2)}
+
+VLIV CIVILIZACÍ:
+${JSON.stringify(influenceData || [], null, 2)}
+
+NAPĚTÍ:
+${JSON.stringify(tensionData || [], null, 2)}
 
 NEDÁVNÉ UDÁLOSTI:
 ${JSON.stringify(recentEvents || [], null, 2)}

@@ -5,7 +5,7 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-import { SETTLEMENT_TEMPLATES } from "../_shared/physics.ts";
+import { SETTLEMENT_TEMPLATES, SETTLEMENT_WEALTH } from "../_shared/physics.ts";
 
 const UNIT_WEIGHTS: Record<string, number> = {
   INFANTRY: 1.0, ARCHERS: 1.1, CAVALRY: 1.3, SIEGE: 0.9,
@@ -24,9 +24,7 @@ const FORMATION_MULT: Record<string, number> = {
 };
 
 // Wealth income formula: base per city + population tax + burgher trade bonus + settlement tier
-const SETTLEMENT_WEALTH: Record<string, number> = {
-  HAMLET: 1, TOWNSHIP: 2, CITY: 4, POLIS: 6,
-};
+// Wealth income uses SETTLEMENT_WEALTH from shared physics
 
 // --- GRAIN CONSUMPTION per capita (balanced to match production) ---
 // A HAMLET (pop 1000, grain prod 8) should consume ~6 grain → 0.006 per capita base
@@ -133,7 +131,7 @@ Deno.serve(async (req) => {
       .from("cities")
       .select("*")
       .eq("session_id", sessionId)
-      .ilike("owner_player", playerName);
+      .eq("owner_player", playerName);
 
     const myCities = cities || [];
     const logEntries: string[] = [];
@@ -142,25 +140,8 @@ Deno.serve(async (req) => {
     const granaryCapacity = 500 * (infra?.granary_level || 1) * (infra?.granaries_count || 1);
     const stablesCapacity = 100 * (infra?.stables_level || 1) * (infra?.stables_count || 1);
 
-    // 2b) Recompute settlement layers
-    for (const city of myCities) {
-      if (city.custom_layers) continue;
-      const template = SETTLEMENT_TEMPLATES[city.settlement_level] || SETTLEMENT_TEMPLATES.HAMLET;
-      const pop = city.population_total;
-      const peasants = Math.round(pop * template.peasants);
-      const burghers = Math.round(pop * template.burghers);
-      const clerics = pop - peasants - burghers;
-      
-      await supabase.from("cities").update({
-        population_peasants: peasants,
-        population_burghers: burghers,
-        population_clerics: clerics,
-      }).eq("id", city.id);
-
-      city.population_peasants = peasants;
-      city.population_burghers = burghers;
-      city.population_clerics = clerics;
-    }
+    // Settlement layers are computed by world-tick (shared physics). 
+    // process-turn trusts those values and only handles economy.
 
     // 3) Settlement-based resource production
     const mobilizationPenalty = 1 - realm.mobilization_rate * 0.5;
