@@ -159,7 +159,7 @@ const AppHeader = ({ roomCode, currentTurn, worldName, playerName, myRole, curre
                 </>
               )}
 
-              <DropdownMenuItem onClick={() => navigate("/")}>
+              <DropdownMenuItem onClick={() => navigate("/games")}>
                 <Home className="mr-2 h-4 w-4" />
                 Hlavní menu
               </DropdownMenuItem>
