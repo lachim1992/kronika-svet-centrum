@@ -893,19 +893,45 @@ Generuj kompletní svět.`;
       events_generated: eventsCreated + legendaryEventsCreated, scope: "world_generate_init", triggered_by: "ai_wizard",
     });
 
-    // Generate hexes around player start
+    // Generate hexes around player start (2-ring = 19 hexes)
     try {
       const hexPositions = [
         [0, 0], [1, 0], [-1, 0], [0, 1], [0, -1], [1, -1], [-1, 1],
         [2, 0], [-2, 0], [0, 2], [0, -2], [2, -2], [-2, 2], [2, -1], [-2, 1], [1, 1], [-1, -1], [1, -2], [-1, 2],
       ];
-      await Promise.all(hexPositions.map(([q, r]) =>
+      const hexResults = await Promise.all(hexPositions.map(([q, r]) =>
         fetch(`${supabaseUrl}/functions/v1/generate-hex`, {
           method: "POST",
           headers: { Authorization: `Bearer ${supabaseKey}`, "Content-Type": "application/json" },
-          body: JSON.stringify({ sessionId, q, r }),
-        }).catch(() => null)
+          body: JSON.stringify({ session_id: sessionId, q, r }),
+        }).then(res => res.ok ? res.json() : null).catch(() => null)
       ));
+
+      // Create discovery records for ALL players on the generated hexes
+      const allPlayerNames = Object.values(factionPlayerMap);
+      const discoveryRows: any[] = [];
+      for (const hex of hexResults) {
+        if (!hex?.id) continue;
+        for (const pn of allPlayerNames) {
+          discoveryRows.push({
+            session_id: sessionId,
+            player_name: pn,
+            entity_type: "province_hex",
+            entity_id: hex.id,
+            source: "world_init",
+          });
+        }
+      }
+      if (discoveryRows.length > 0) {
+        // Batch insert discoveries, ignore duplicates
+        const DISC_BATCH = 100;
+        for (let i = 0; i < discoveryRows.length; i += DISC_BATCH) {
+          await supabase.from("discoveries").upsert(
+            discoveryRows.slice(i, i + DISC_BATCH),
+            { onConflict: "session_id,player_name,entity_type,entity_id" }
+          );
+        }
+      }
     } catch (hexErr) {
       console.warn("Hex generation warning:", hexErr);
     }

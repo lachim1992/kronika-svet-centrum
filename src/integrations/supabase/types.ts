@@ -150,9 +150,11 @@ export type Database = {
         Row: {
           created_at: string
           epoch_style: string
+          event_id: string | null
           id: string
           references: Json | null
           session_id: string
+          source_type: string
           text: string
           turn_from: number | null
           turn_to: number | null
@@ -160,9 +162,11 @@ export type Database = {
         Insert: {
           created_at?: string
           epoch_style?: string
+          event_id?: string | null
           id?: string
           references?: Json | null
           session_id: string
+          source_type?: string
           text: string
           turn_from?: number | null
           turn_to?: number | null
@@ -170,14 +174,23 @@ export type Database = {
         Update: {
           created_at?: string
           epoch_style?: string
+          event_id?: string | null
           id?: string
           references?: Json | null
           session_id?: string
+          source_type?: string
           text?: string
           turn_from?: number | null
           turn_to?: number | null
         }
         Relationships: [
+          {
+            foreignKeyName: "chronicle_entries_event_id_fkey"
+            columns: ["event_id"]
+            isOneToOne: false
+            referencedRelation: "game_events"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "chronicle_entries_session_id_fkey"
             columns: ["session_id"]

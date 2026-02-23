@@ -108,8 +108,7 @@ Deno.serve(async (req) => {
       }
     }
 
-    // 3. Get-or-generate the hex via the generate-hex function logic
-    //    We call the generate-hex function internally
+    // 3. Get-or-generate the hex via the generate-hex function
     const funcUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/generate-hex`;
     const hexRes = await fetch(funcUrl, {
       method: "POST",
@@ -127,7 +126,7 @@ Deno.serve(async (req) => {
 
     const hex = await hexRes.json();
 
-    // 4. Insert discovery record
+    // 4. Insert discovery for the target hex
     await sb.from("discoveries").upsert({
       session_id,
       player_name,
@@ -136,7 +135,44 @@ Deno.serve(async (req) => {
       source: "explore",
     }, { onConflict: "session_id,player_name,entity_type,entity_id" });
 
-    return new Response(JSON.stringify({ hex, discovered: true }), {
+    // 5. Bootstrap: if player had 0 discoveries, auto-reveal 2-ring (19 hexes)
+    const isBootstrap = discoveredIds.size === 0;
+    if (isBootstrap) {
+      const RING2 = [
+        [1,0],[-1,0],[0,1],[0,-1],[1,-1],[-1,1],
+        [2,0],[-2,0],[0,2],[0,-2],[2,-2],[-2,2],[2,-1],[-2,1],[1,1],[-1,-1],[1,-2],[-1,2],
+      ];
+      const neighborHexes = await Promise.all(
+        RING2.map(([dq, dr]) =>
+          fetch(funcUrl, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
+            },
+            body: JSON.stringify({ session_id, q: q + dq, r: r + dr }),
+          }).then(r => r.ok ? r.json() : null).catch(() => null)
+        )
+      );
+
+      const discRows = neighborHexes
+        .filter(h => h?.id)
+        .map(h => ({
+          session_id,
+          player_name,
+          entity_type: "province_hex",
+          entity_id: h.id,
+          source: "bootstrap",
+        }));
+
+      if (discRows.length > 0) {
+        await sb.from("discoveries").upsert(discRows, {
+          onConflict: "session_id,player_name,entity_type,entity_id",
+        });
+      }
+    }
+
+    return new Response(JSON.stringify({ hex, discovered: true, bootstrap: isBootstrap }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (e) {
