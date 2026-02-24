@@ -163,10 +163,14 @@ const ArmyTab = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, on
   const mobRate = realm?.mobilization_rate || 0.1;
   const wf = computeWorkforceBreakdown(myCities, mobRate);
   const computedPool = wf.effectiveActivePop;
-  const availableManpower = computedPool - (realm?.manpower_committed || 0);
   const totalPower = stacks.filter(s => s.is_active).reduce((s, st) => s + st.power, 0);
   const totalCommitted = stacks.filter(s => s.is_active).reduce((s, st) => s + st.compositions.reduce((a, c) => a + c.manpower, 0), 0);
   const maxMobPct = Math.round(wf.maxMobilization * 100);
+  // Mobilization cap = how many can be mobilized at current rate
+  const mobilizationCap = wf.mobilized;
+  const availableManpower = Math.max(0, mobilizationCap - totalCommitted);
+  const isOverMobCap = mobRate > wf.maxMobilization;
+  const overMobPenalty = isOverMobCap ? Math.round((mobRate - wf.maxMobilization) * 100) : 0;
 
   const grainNet = realm ? realm.last_turn_grain_prod - realm.last_turn_grain_cons : 0;
   const readiness = realm
@@ -210,7 +214,7 @@ const ArmyTab = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, on
 
       {/* Military Summary Bar */}
       <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
-        <SummaryChip label="Dostupní muži" value={computedPool} icon={Users} tip="Celkový pool aktivní populace dostupný pro mobilizaci. Závisí na populaci a koeficientu aktivní populace (výchozí 50%)." />
+        <SummaryChip label="Dostupní muži" value={availableManpower} icon={Users} tip={`Mobilizační strop (${mobilizationCap}) minus nasazení muži (${totalCommitted}). Závisí na míře mobilizace.`} />
         <SummaryChip label="Mobilizovaní" value={totalCommitted} icon={Shield} tip="Počet mužů aktuálně sloužících v armádách. Odečítáno z pracovní síly — více vojáků = méně produkce." />
         <SummaryChip label="Mobilizace" value={`${Math.round(mobRate * 100)}%`} icon={ChevronUp} tip={`Procento aktivní populace odváděné do armády. Maximum ${maxMobPct}%, upravitelné dekrety.`} />
         <SummaryChip label="Zlato" value={realm?.gold_reserve || 0} icon={Coins} tip="Zásoby zlata. Armáda spotřebovává 1 zlato za 100 vojáků/kolo." />
@@ -251,8 +255,14 @@ const ArmyTab = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, on
         />
         <div className="flex justify-between text-[10px] text-muted-foreground">
           <span>0% — Mír</span>
-          <span>{maxMobPct}% — Totální mobilizace</span>
+          <span className={mobRate > wf.maxMobilization ? "text-illuminated font-semibold" : ""}>{maxMobPct}% — Doporučené maximum</span>
         </div>
+        {isOverMobCap && (
+          <div className="flex items-center gap-1.5 text-xs text-illuminated bg-illuminated/10 rounded-md px-3 py-1.5">
+            <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+            <span>Mobilizace překračuje doporučený limit o {overMobPenalty}%. Produkce penalizována o {Math.round(wf.overMobPenalty * 100)}%.</span>
+          </div>
+        )}
         {(() => {
           const reservesPct = computedPool > 0 ? Math.round(((computedPool - totalCommitted) / computedPool) * 100) : 100;
           const reservesLow = reservesPct < 20;
@@ -271,8 +281,8 @@ const ArmyTab = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, on
                 <div className="text-base font-bold font-display mt-0.5">{totalCommitted.toLocaleString()}</div>
               </div>
               <div className="bg-muted/40 rounded-lg p-2.5 text-center">
-                <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold flex items-center justify-center gap-1">K dispozici <InfoTip>Maximální kapacita mobilizovatelných mužů dle aktuální míry mobilizace.</InfoTip></div>
-                <div className="text-base font-bold font-display mt-0.5">{computedPool.toLocaleString()}</div>
+                <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold flex items-center justify-center gap-1">K dispozici <InfoTip>Mobilizační strop ({mobilizationCap}) minus nasazení vojáci ({totalCommitted}). Zvyšte mobilizaci pro více mužů.</InfoTip></div>
+                <div className={`text-base font-bold font-display mt-0.5 ${availableManpower <= 0 ? "text-destructive" : ""}`}>{availableManpower.toLocaleString()}</div>
               </div>
               <div className={`rounded-lg p-2.5 text-center ${reservesLow ? "bg-destructive/15" : "bg-muted/40"}`}>
                 <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold flex items-center justify-center gap-1">Zálohy <InfoTip>Kolik % z pool je dosud nevyužito. Pod 20% hrozí krize.</InfoTip></div>

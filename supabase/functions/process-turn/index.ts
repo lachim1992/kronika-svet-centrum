@@ -237,12 +237,17 @@ Deno.serve(async (req) => {
     const effectiveRatio = Math.max(0.1, Math.min(0.9, DEFAULT_ACTIVE_POP_RATIO + activePopModifier));
     const effectiveActivePop = Math.floor(activePopRaw * effectiveRatio);
     const maxMob = Math.max(0.05, Math.min(0.5, DEFAULT_MAX_MOBILIZATION + maxMobModifier));
-    const clampedMobRate = Math.min(realm.mobilization_rate, maxMob);
-    const mobilized = Math.floor(effectiveActivePop * clampedMobRate);
+    // Soft cap: allow mobilization above maxMob but apply production penalty
+    const mobRate = realm.mobilization_rate || 0.1;
+    const isOverMob = mobRate > maxMob;
+    const mobilized = Math.floor(effectiveActivePop * mobRate);
     const workforce = effectiveActivePop - mobilized;
     const workforceRatio = effectiveActivePop > 0 ? workforce / effectiveActivePop : 1;
+    // Over-mob penalty: each % over cap = 2% production penalty
+    const overMobPenalty = isOverMob ? Math.min(0.8, (mobRate - maxMob) * 2) : 0;
+    const effectiveWorkforceRatio = Math.max(0.05, workforceRatio * (1 - overMobPenalty));
 
-    logEntries.push(`Workforce: active_pop_raw=${activePopRaw}, effective=${effectiveActivePop} (ratio ${effectiveRatio}), workforce=${workforce}, mobilized=${mobilized}, workforceRatio=${workforceRatio.toFixed(2)}`);
+    logEntries.push(`Workforce: active_pop_raw=${activePopRaw}, effective=${effectiveActivePop} (ratio ${effectiveRatio}), workforce=${workforce}, mobilized=${mobilized}, workforceRatio=${workforceRatio.toFixed(2)}, overMobPenalty=${(overMobPenalty*100).toFixed(0)}%, effectiveWR=${effectiveWorkforceRatio.toFixed(2)}`);
 
     // 3) Settlement-based resource production (ALL resources scaled by workforce_ratio)
     const cityIds = myCities.map(c => c.id);
@@ -288,21 +293,21 @@ Deno.serve(async (req) => {
       const bldgEff = cityBuildingEffects[city.id] || {};
 
       const cityGrainBase = profile ? profile.base_grain : prodConsts.grain;
-      const cityGrain = Math.round(cityGrainBase * workforceRatio) + (bldgEff.food_income || 0);
+      const cityGrain = Math.round(cityGrainBase * effectiveWorkforceRatio) + (bldgEff.food_income || 0);
       totalGrainProd += cityGrain;
 
       const cityWoodBase = profile ? profile.base_wood : prodConsts.wood;
-      const cityWood = Math.round(cityWoodBase * workforceRatio) + (bldgEff.wood_income || 0);
+      const cityWood = Math.round(cityWoodBase * effectiveWorkforceRatio) + (bldgEff.wood_income || 0);
       totalWoodProd += cityWood;
 
       // Stone scaled by workforce + building bonus
-      const cityStone = Math.round(prodConsts.stone * workforceRatio) + (bldgEff.stone_income || 0);
+      const cityStone = Math.round(prodConsts.stone * effectiveWorkforceRatio) + (bldgEff.stone_income || 0);
       totalStoneProd += cityStone;
 
       // Iron scaled by workforce (only for IRON cities) + building bonus
       const specialType = profile?.special_resource_type || "NONE";
       const cityIronBase = specialType === "IRON" ? (profile ? profile.base_special : prodConsts.iron_special) : 0;
-      const cityIron = Math.round(cityIronBase * workforceRatio) + (bldgEff.iron_income || 0);
+      const cityIron = Math.round(cityIronBase * effectiveWorkforceRatio) + (bldgEff.iron_income || 0);
       totalIronProd += cityIron;
 
       // Apply stability bonus from buildings (clamp 0-100)
