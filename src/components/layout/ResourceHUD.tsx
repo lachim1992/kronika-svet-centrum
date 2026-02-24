@@ -30,7 +30,7 @@ const ResourceHUD = ({ sessionId, playerName, cities }: ResourceHUDProps) => {
         .from("player_resources")
         .select("*")
         .eq("session_id", sessionId)
-        .ilike("player_name", playerName),
+        .eq("player_name", playerName),
     ]);
     if (realmRes.data) setRealm(realmRes.data);
     const map: Record<string, any> = {};
@@ -53,9 +53,9 @@ const ResourceHUD = ({ sessionId, playerName, cities }: ResourceHUDProps) => {
 
   const myCities = cities.filter(c => c.owner_player === playerName);
   const famineCities = myCities.filter(c => c.famine_turn);
-  const totalPopulation = myCities.reduce((s, c) => s + (c.population_total || 0), 0);
+  const totalPeasants = myCities.reduce((s, c) => s + (c.population_peasants || 0), 0);
   const mobRate = realm.mobilization_rate || 0.1;
-  const computedPool = Math.floor(totalPopulation * mobRate);
+  const computedPool = Math.floor(totalPeasants * mobRate);
   const availableManpower = computedPool - (realm.manpower_committed || 0);
 
   const getRes = (type: string) => {

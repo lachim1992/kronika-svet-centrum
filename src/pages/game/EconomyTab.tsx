@@ -50,7 +50,7 @@ const EconomyTab = ({ sessionId, currentPlayerName, currentTurn, cities, resourc
   const fetchData = useCallback(async () => {
     const [realmRes, profilesRes] = await Promise.all([
       supabase.from("realm_resources").select("*")
-        .eq("session_id", sessionId).ilike("player_name", currentPlayerName).maybeSingle(),
+        .eq("session_id", sessionId).eq("player_name", currentPlayerName).maybeSingle(),
       supabase.from("settlement_resource_profiles").select("*")
         .in("city_id", myCities.map(c => c.id)),
     ]);
@@ -127,7 +127,6 @@ const EconomyTab = ({ sessionId, currentPlayerName, currentTurn, cities, resourc
   if (popTaxTotal > 0) wealthSources.push({ label: "Daň z populace", value: popTaxTotal, type: "income" });
   if (burgherTradeTotal > 0) wealthSources.push({ label: "Obchod měšťanů", value: burgherTradeTotal, type: "income" });
   if (wealthUpkeep > 0) wealthSources.push({ label: "Výdaje správy & armády", value: wealthUpkeep, type: "expense" });
-  if (wealthUpkeep > 0) wealthSources.push({ label: "Výdaje správy & armády", value: wealthUpkeep, type: "expense" });
 
   // Alerts
   const alerts: { text: string; severity: "error" | "warning" }[] = [];
@@ -138,8 +137,11 @@ const EconomyTab = ({ sessionId, currentPlayerName, currentTurn, cities, resourc
   const currentMob = realm ? Math.round((realm.mobilization_rate || 0.1) * 100) : 10;
   if (currentMob > 20) alerts.push({ text: `Vysoká mobilizace (${currentMob}%)`, severity: "warning" });
 
-  // Mobilization
-  const availableManpower = (realm?.manpower_pool || 0) - (realm?.manpower_committed || 0);
+  // Mobilization — compute client-side like ResourceHUD for consistency
+  const totalPeasants = myCities.reduce((s, c) => s + (c.population_peasants || 0), 0);
+  const mobRate = realm?.mobilization_rate || 0.1;
+  const computedPool = Math.floor(totalPeasants * mobRate);
+  const availableManpower = computedPool - (realm?.manpower_committed || 0);
 
   // Granary
   const grainReserve = realm?.grain_reserve ?? resMap["food"]?.stockpile ?? 0;
@@ -312,7 +314,7 @@ const EconomyTab = ({ sessionId, currentPlayerName, currentTurn, cities, resourc
           <div className="game-card p-4 space-y-3">
             <div className="flex items-center justify-between text-xs">
               <span className="text-muted-foreground flex items-center gap-1.5"><Users className="h-3.5 w-3.5 text-primary" /> Lidská síla</span>
-              <span className="font-bold">{availableManpower} / {realm?.manpower_pool || 0}</span>
+              <span className="font-bold">{availableManpower} / {computedPool}</span>
             </div>
             <div className="flex items-center justify-between text-xs">
               <span className="text-muted-foreground flex items-center gap-1.5"><ShieldAlert className="h-3.5 w-3.5 text-primary" /> Stabilita</span>
