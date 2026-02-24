@@ -13,6 +13,7 @@ import { Progress } from "@/components/ui/progress";
 import { Slider } from "@/components/ui/slider";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Swords, Shield, Target, Crosshair, Users, Coins, ChevronUp, Plus, Minus, Crown, User, AlertTriangle, CheckCircle2, XCircle, Gauge } from "lucide-react";
+import { InfoTip } from "@/components/ui/info-tip";
 import { toast } from "sonner";
 
 const UNIT_ICONS: Record<string, React.ElementType> = {
@@ -193,15 +194,18 @@ const ArmyTab = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, on
 
       {/* Military Summary Bar */}
       <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
-        <SummaryChip label="Dostupní muži" value={computedPool} icon={Users} />
-        <SummaryChip label="Mobilizovaní" value={totalCommitted} icon={Shield} />
-        <SummaryChip label="Mobilizace" value={`${Math.round(mobRate * 100)}%`} icon={ChevronUp} />
-        <SummaryChip label="Zlato" value={realm?.gold_reserve || 0} icon={Coins} />
-        <SummaryChip label="Celková síla" value={totalPower} icon={Swords} highlight />
+        <SummaryChip label="Dostupní muži" value={computedPool} icon={Users} tip="Celkový pool aktivní populace dostupný pro mobilizaci. Závisí na populaci a koeficientu aktivní populace (výchozí 50%)." />
+        <SummaryChip label="Mobilizovaní" value={totalCommitted} icon={Shield} tip="Počet mužů aktuálně sloužících v armádách. Odečítáno z pracovní síly — více vojáků = méně produkce." />
+        <SummaryChip label="Mobilizace" value={`${Math.round(mobRate * 100)}%`} icon={ChevronUp} tip={`Procento aktivní populace odváděné do armády. Maximum ${maxMobPct}%, upravitelné dekrety.`} />
+        <SummaryChip label="Zlato" value={realm?.gold_reserve || 0} icon={Coins} tip="Zásoby zlata. Armáda spotřebovává 1 zlato za 100 vojáků/kolo." />
+        <SummaryChip label="Celková síla" value={totalPower} icon={Swords} highlight tip="Součet bojové síly všech aktivních armád. Závisí na počtu mužů, kvalitě, morálce, generálovi a formaci." />
         <div className="manuscript-card p-2 flex flex-col items-center justify-center gap-0.5">
           <ReadinessIcon className={`h-4 w-4 ${readinessConfig[readiness].className}`} />
           <span className={`text-xs font-display font-semibold ${readinessConfig[readiness].className}`}>
             {readinessConfig[readiness].label}
+          </span>
+          <span className="text-[8px] text-muted-foreground">
+            {readiness === "crisis" ? "Hladomor nebo bankrot" : readiness === "strained" ? "Nízké zásoby" : "Vše v pořádku"}
           </span>
         </div>
       </div>
@@ -239,23 +243,23 @@ const ArmyTab = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, on
           return (
             <div className="grid grid-cols-5 gap-2 text-xs">
               <div className="bg-muted/40 rounded-lg p-2.5 text-center">
-                <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Akt. populace</div>
+                <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold flex items-center justify-center gap-1">Akt. populace <InfoTip>Rolníci×1.0 + měšťané×0.7 + klerici×0.2, pak × koeficient (výchozí 50%).</InfoTip></div>
                 <div className="text-base font-bold font-display mt-0.5">{wf.effectiveActivePop.toLocaleString()}</div>
               </div>
               <div className="bg-muted/40 rounded-lg p-2.5 text-center">
-                <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Pracovní síla</div>
+                <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold flex items-center justify-center gap-1">Pracovní síla <InfoTip>Aktivní populace minus mobilizovaní muži. Přímo ovlivňuje produkci všech surovin.</InfoTip></div>
                 <div className="text-base font-bold font-display mt-0.5">{wf.workforce.toLocaleString()}</div>
               </div>
               <div className="bg-muted/40 rounded-lg p-2.5 text-center">
-                <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Mobilizovaní</div>
+                <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold flex items-center justify-center gap-1">Mobilizovaní <InfoTip>Počet mužů odvedených do armád. Snižuje pracovní sílu a tím produkci.</InfoTip></div>
                 <div className="text-base font-bold font-display mt-0.5">{totalCommitted.toLocaleString()}</div>
               </div>
               <div className="bg-muted/40 rounded-lg p-2.5 text-center">
-                <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">K dispozici</div>
+                <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold flex items-center justify-center gap-1">K dispozici <InfoTip>Maximální kapacita mobilizovatelných mužů dle aktuální míry mobilizace.</InfoTip></div>
                 <div className="text-base font-bold font-display mt-0.5">{computedPool.toLocaleString()}</div>
               </div>
               <div className={`rounded-lg p-2.5 text-center ${reservesLow ? "bg-destructive/15" : "bg-muted/40"}`}>
-                <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Zálohy</div>
+                <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold flex items-center justify-center gap-1">Zálohy <InfoTip>Kolik % z pool je dosud nevyužito. Pod 20% hrozí krize.</InfoTip></div>
                 <div className={`text-base font-bold font-display mt-0.5 ${reservesLow ? "text-destructive" : ""}`}>{reservesPct}%</div>
               </div>
             </div>
@@ -391,12 +395,15 @@ const ArmyTab = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, on
 };
 
 // ---- Summary Chip ----
-function SummaryChip({ label, value, icon: Icon, highlight }: { label: string; value: string | number; icon: React.ElementType; highlight?: boolean }) {
+function SummaryChip({ label, value, icon: Icon, highlight, tip }: { label: string; value: string | number; icon: React.ElementType; highlight?: boolean; tip?: string }) {
   return (
     <div className="manuscript-card p-2 flex flex-col items-center justify-center gap-0.5">
       <Icon className={`h-4 w-4 ${highlight ? "text-primary" : "text-muted-foreground"}`} />
       <span className={`text-sm font-display font-bold ${highlight ? "text-primary" : ""}`}>{value}</span>
-      <span className="text-[9px] text-muted-foreground text-center leading-tight">{label}</span>
+      <span className="text-[9px] text-muted-foreground text-center leading-tight flex items-center gap-0.5">
+        {label}
+        {tip && <InfoTip>{tip}</InfoTip>}
+      </span>
     </div>
   );
 }
