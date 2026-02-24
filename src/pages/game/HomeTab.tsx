@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import CityManagement from "@/components/CityManagement";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -55,6 +56,7 @@ const HomeTab = ({
   const [realm, setRealm] = useState<any>(null);
   const [stacks, setStacks] = useState<any[]>([]);
   const [sortKey, setSortKey] = useState<SortKey>("population");
+  const [managingCityId, setManagingCityId] = useState<string | null>(null);
   const [hasProvince, setHasProvince] = useState<boolean | null>(null);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [processingTurn, setProcessingTurn] = useState(false);
@@ -215,6 +217,22 @@ const HomeTab = ({
     );
   }
 
+  // City Management inline view
+  if (managingCityId) {
+    return (
+      <div className="pb-24 px-1">
+        <CityManagement
+          sessionId={sessionId}
+          cityId={managingCityId}
+          currentPlayerName={currentPlayerName}
+          currentTurn={currentTurn}
+          onBack={() => { setManagingCityId(null); onRefetch?.(); }}
+          onRefetch={onRefetch}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6 pb-24 px-1">
       {/* Header */}
@@ -331,7 +349,7 @@ const HomeTab = ({
               <div
                 key={city.id}
                 className={`game-card p-5 cursor-pointer ${city.famine_turn ? "border-destructive/40" : ""}`}
-                onClick={() => onEntityClick?.("city", city.id)}
+                onClick={() => setManagingCityId(city.id)}
               >
                 {/* Header row */}
                 <div className="flex items-start justify-between mb-3">

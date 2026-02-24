@@ -259,7 +259,13 @@ const CityDirectory = ({
             <div
               key={city.id}
               className={`rounded-lg border bg-card shadow-parchment hover:border-primary/50 transition-colors cursor-pointer overflow-hidden ${city.famine_turn ? "border-destructive/50" : "border-border"}`}
-              onClick={() => city.owner_player === currentPlayerName ? setManagingCity(city) : setSelectedCity(city)}
+              onClick={() => {
+                if (onCityClick) {
+                  onCityClick(city.id);
+                } else {
+                  city.owner_player === currentPlayerName ? setManagingCity(city) : setSelectedCity(city);
+                }
+              }}
             >
               {/* City image / placeholder */}
               <div className="relative h-28 w-full bg-muted">
