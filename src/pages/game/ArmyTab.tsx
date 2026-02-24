@@ -1151,99 +1151,103 @@ function MyArmyPanel({
                 const sigilKey = `sigil_stack-${stack.id}`;
                 return (
                   <div key={stack.id} className="manuscript-card p-3 space-y-2">
+                    {/* Header with sigil top-right */}
                     <div className="flex items-center gap-2">
                       <Swords className="h-3 w-3 text-primary" />
                       <span className="font-display font-semibold text-sm">{stack.name}</span>
                       <Badge variant="outline" className="text-xs">{FORMATION_LABELS[stack.formation_type]}</Badge>
-                    </div>
-                    <div className="grid grid-cols-2 gap-3">
-                      {/* Stack Image */}
-                      <div className="space-y-1.5">
-                        <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Vizuál</p>
-                        <div className="w-full h-20 rounded border border-border bg-muted/20 overflow-hidden flex items-center justify-center">
-                          {(stack as any).image_url ? (
-                            <img src={(stack as any).image_url} alt={stack.name} className="w-full h-full object-cover" />
-                          ) : (
-                            <ImageIcon className="h-6 w-6 text-muted-foreground/20" />
-                          )}
-                        </div>
-                        <Input
-                          placeholder="Prompt..."
-                          value={customPrompts[imgKey] || ""}
-                          onChange={e => setCustomPrompts(p => ({ ...p, [imgKey]: e.target.value }))}
-                          className="h-6 text-[10px]"
-                        />
-                        <div className="flex gap-1">
-                          <Button
-                            size="sm" variant="outline" className="text-[10px] font-display flex-1 h-6"
-                            disabled={generatingVisual === imgKey}
-                            onClick={() => handleGenerate("stack", { stackId: stack.id, stackName: stack.name })}
-                          >
-                            {generatingVisual === imgKey ? <Loader2 className="h-3 w-3 animate-spin" /> : <><Sparkles className="h-3 w-3 mr-0.5" />Vizuál</>}
-                          </Button>
-                          {(stack as any).image_url && !(stack as any).image_confirmed && (
-                            <Button
-                              size="sm" variant="default" className="text-[10px] font-display h-6 px-2"
-                              onClick={async (e) => {
-                                e.stopPropagation();
-                                await supabase.from("military_stacks").update({ image_confirmed: true } as any).eq("id", stack.id);
-                                toast.success("✅ Vizuál potvrzen!");
-                                onRefresh();
-                              }}
-                            >
-                              <Check className="h-3 w-3 mr-0.5" />Potvrdit
-                            </Button>
-                          )}
-                          {(stack as any).image_confirmed && (
-                            <Badge variant="outline" className="text-[9px] h-6 px-1.5 flex items-center gap-0.5 border-accent text-accent">
-                              <Check className="h-2.5 w-2.5" />OK
-                            </Badge>
-                          )}
-                        </div>
-                      </div>
-                      {/* Stack Sigil */}
-                      <div className="space-y-1.5">
-                        <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Znak</p>
-                        <div className="w-full h-20 rounded border border-border bg-muted/20 overflow-hidden flex items-center justify-center">
+                      <div className="ml-auto flex items-center gap-1.5">
+                        {/* Sigil mini */}
+                        <div className="shrink-0 w-8 h-8 rounded border border-border bg-muted/20 overflow-hidden flex items-center justify-center">
                           {(stack as any).sigil_url ? (
                             <img src={(stack as any).sigil_url} alt="Znak" className="w-full h-full object-cover" />
                           ) : (
-                            <Flag className="h-6 w-6 text-muted-foreground/20" />
+                            <Flag className="h-4 w-4 text-muted-foreground/20" />
                           )}
                         </div>
+                        {(stack as any).sigil_confirmed && (
+                          <Badge variant="outline" className="text-[9px] h-5 px-1 flex items-center gap-0.5 border-accent text-accent">
+                            <Check className="h-2.5 w-2.5" />
+                          </Badge>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Full-width visual */}
+                    <div className="space-y-1.5">
+                      <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Vizuál</p>
+                      <div className="w-full h-40 rounded border border-border bg-muted/20 overflow-hidden flex items-center justify-center">
+                        {(stack as any).image_url ? (
+                          <img src={(stack as any).image_url} alt={stack.name} className="w-full h-full object-cover" />
+                        ) : (
+                          <ImageIcon className="h-8 w-8 text-muted-foreground/20" />
+                        )}
+                      </div>
+                      <Input
+                        placeholder="Prompt..."
+                        value={customPrompts[imgKey] || ""}
+                        onChange={e => setCustomPrompts(p => ({ ...p, [imgKey]: e.target.value }))}
+                        className="h-6 text-[10px]"
+                      />
+                      <div className="flex gap-1">
+                        <Button
+                          size="sm" variant="outline" className="text-[10px] font-display flex-1 h-6"
+                          disabled={generatingVisual === imgKey}
+                          onClick={() => handleGenerate("stack", { stackId: stack.id, stackName: stack.name })}
+                        >
+                          {generatingVisual === imgKey ? <Loader2 className="h-3 w-3 animate-spin" /> : <><Sparkles className="h-3 w-3 mr-0.5" />Vizuál</>}
+                        </Button>
+                        {(stack as any).image_url && !(stack as any).image_confirmed && (
+                          <Button
+                            size="sm" variant="default" className="text-[10px] font-display h-6 px-2"
+                            onClick={async (e) => {
+                              e.stopPropagation();
+                              await supabase.from("military_stacks").update({ image_confirmed: true } as any).eq("id", stack.id);
+                              toast.success("✅ Vizuál potvrzen!");
+                              onRefresh();
+                            }}
+                          >
+                            <Check className="h-3 w-3 mr-0.5" />Potvrdit
+                          </Button>
+                        )}
+                        {(stack as any).image_confirmed && (
+                          <Badge variant="outline" className="text-[9px] h-6 px-1.5 flex items-center gap-0.5 border-accent text-accent">
+                            <Check className="h-2.5 w-2.5" />OK
+                          </Badge>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Sigil controls */}
+                    <div className="space-y-1.5">
+                      <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Znak</p>
+                      <div className="flex gap-2 items-center">
                         <Input
-                          placeholder="Prompt..."
+                          placeholder="Prompt znaku..."
                           value={customPrompts[sigilKey] || ""}
                           onChange={e => setCustomPrompts(p => ({ ...p, [sigilKey]: e.target.value }))}
-                          className="h-6 text-[10px]"
+                          className="h-6 text-[10px] flex-1"
                         />
-                        <div className="flex gap-1">
+                        <Button
+                          size="sm" variant="outline" className="text-[10px] font-display h-6 shrink-0"
+                          disabled={generatingVisual === sigilKey}
+                          onClick={() => handleGenerate("sigil_stack", { stackId: stack.id, stackName: stack.name })}
+                        >
+                          {generatingVisual === sigilKey ? <Loader2 className="h-3 w-3 animate-spin" /> : <><Sparkles className="h-3 w-3 mr-0.5" />Znak</>}
+                        </Button>
+                        {(stack as any).sigil_url && !(stack as any).sigil_confirmed && (
                           <Button
-                            size="sm" variant="outline" className="text-[10px] font-display flex-1 h-6"
-                            disabled={generatingVisual === sigilKey}
-                            onClick={() => handleGenerate("sigil_stack", { stackId: stack.id, stackName: stack.name })}
+                            size="sm" variant="default" className="text-[10px] font-display h-6 px-2 shrink-0"
+                            onClick={async (e) => {
+                              e.stopPropagation();
+                              await supabase.from("military_stacks").update({ sigil_confirmed: true } as any).eq("id", stack.id);
+                              toast.success("✅ Znak potvrzen!");
+                              onRefresh();
+                            }}
                           >
-                            {generatingVisual === sigilKey ? <Loader2 className="h-3 w-3 animate-spin" /> : <><Sparkles className="h-3 w-3 mr-0.5" />Znak</>}
+                            <Check className="h-3 w-3 mr-0.5" />Potvrdit
                           </Button>
-                          {(stack as any).sigil_url && !(stack as any).sigil_confirmed && (
-                            <Button
-                              size="sm" variant="default" className="text-[10px] font-display h-6 px-2"
-                              onClick={async (e) => {
-                                e.stopPropagation();
-                                await supabase.from("military_stacks").update({ sigil_confirmed: true } as any).eq("id", stack.id);
-                                toast.success("✅ Znak potvrzen!");
-                                onRefresh();
-                              }}
-                            >
-                              <Check className="h-3 w-3 mr-0.5" />Potvrdit
-                            </Button>
-                          )}
-                          {(stack as any).sigil_confirmed && (
-                            <Badge variant="outline" className="text-[9px] h-6 px-1.5 flex items-center gap-0.5 border-accent text-accent">
-                              <Check className="h-2.5 w-2.5" />OK
-                            </Badge>
-                          )}
-                        </div>
+                        )}
                       </div>
                     </div>
                   </div>

@@ -90,8 +90,8 @@ serve(async (req) => {
       }
       case "stack": {
         prompt = customPrompt
-          ? `${customPrompt}. Military formation called "${params.stackName}". ${styleStr} ${civContext}`
-          : `Epic battle formation illustration: "${params.stackName}", a military unit of ${civ?.civ_name || playerName}. Soldiers marching, banners flying. ${styleStr} ${civContext}. ${loreBible}`;
+          ? `${customPrompt}. Military formation called "${params.stackName}". Wide panoramic 16:9 landscape composition. ${styleStr} ${civContext}`
+          : `Wide panoramic 16:9 landscape illustration of epic battle formation: "${params.stackName}", a military unit of ${civ?.civ_name || playerName}. Soldiers marching, banners flying, wide battlefield vista. ${styleStr} ${civContext}. ${loreBible}`;
         targetTable = "military_stacks";
         targetId = params.stackId || "";
         break;
