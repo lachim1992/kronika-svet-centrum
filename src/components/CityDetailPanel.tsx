@@ -9,6 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ArrowLeft, MapPin, Sparkles, BookOpen, Shield, Flame, Crown, Scroll, Landmark, Brain, Globe, Castle, Map, ImageIcon, Loader2 } from "lucide-react";
+import { InfoTip } from "@/components/ui/info-tip";
 import { toast } from "sonner";
 import RichText from "@/components/RichText";
 import { supabase } from "@/integrations/supabase/client";
@@ -312,14 +313,17 @@ const CityDetailPanel = ({
               <div className="flex items-center gap-1 px-2 py-1 rounded-md bg-background/70 backdrop-blur-sm border border-border/50 text-xs">
                 <span>👥</span>
                 <span className="font-semibold">{pop.toLocaleString()}</span>
+                <InfoTip side="bottom">Celková populace: {(city.population_peasants||0).toLocaleString()} rolníků, {(city.population_burghers||0).toLocaleString()} měšťanů, {(city.population_clerics||0).toLocaleString()} kleriků. Profil: {societyProfile}.</InfoTip>
               </div>
               <div className="flex items-center gap-1 px-2 py-1 rounded-md bg-background/70 backdrop-blur-sm border border-border/50 text-xs">
                 <Shield className={`h-3 w-3 ${city.city_stability < 40 ? "text-destructive" : "text-primary"}`} />
                 <span className={`font-semibold ${city.city_stability < 40 ? "text-destructive" : ""}`}>{city.city_stability}</span>
+                <InfoTip side="bottom">Stabilita města. Klesá při hladomoru, válkách a vysoké mobilizaci. Pod 40 hrozí vzpoury.</InfoTip>
               </div>
               <div className="flex items-center gap-1 px-2 py-1 rounded-md bg-background/70 backdrop-blur-sm border border-border/50 text-xs">
                 <span>🌾</span>
                 <span className="font-semibold">{((city as any).last_turn_grain_prod || 0) - ((city as any).last_turn_grain_cons || 0)}</span>
+                <InfoTip side="bottom">Bilance obilí: produkce {(city as any).last_turn_grain_prod || 0} − spotřeba {(city as any).last_turn_grain_cons || 0}. Závisí na pracovní síle a populaci.</InfoTip>
               </div>
             </div>
           </div>

@@ -4,6 +4,7 @@ import {
   Crown, Castle, Coins,
   Swords, Landmark, AlertTriangle, Shield, Flame, MapPin, Scroll, BookOpen
 } from "lucide-react";
+import { InfoTip } from "@/components/ui/info-tip";
 import { RESOURCE_ICONS, RESOURCE_LABELS } from "@/lib/economyConstants";
 
 type GamePlayer = Tables<"game_players">;

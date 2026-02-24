@@ -8,6 +8,7 @@ import {
   Skull, ArrowUpDown, BarChart3, ShieldAlert, Info, RefreshCw,
   ChevronDown, Code, Loader2, MessageSquare
 } from "lucide-react";
+import { InfoTip } from "@/components/ui/info-tip";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/hooks/use-toast";
 import {
@@ -473,6 +474,7 @@ const EconomyTab = ({ sessionId, currentPlayerName, currentTurn, cities, resourc
       <div>
         <h3 className="text-base font-display font-semibold flex items-center gap-2 mb-3">
           <Info className="h-4 w-4 text-primary" /> Suroviny
+          <InfoTip side="right">Přehled všech surovin vaší říše. Produkce závisí na pracovní síle — vyšší mobilizace snižuje výnosy. Spotřeba obilí závisí na populaci.</InfoTip>
         </h3>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
           {compactResources.map(rt => {
@@ -501,12 +503,20 @@ const EconomyTab = ({ sessionId, currentPlayerName, currentTurn, cities, resourc
             const isFamine = rt === "food" && famineCities.length > 0;
             const sources = buildSources(rt);
 
+            const resourceTips: Record<string, string> = {
+              food: `Obilí živí vaši populaci. Produkce závisí na úrovni sídel a pracovní síle (efektivita ${Math.round(wf.workforceRatio * 100)}%). Spotřeba roste s počtem obyvatel: rolníci 0.005, měšťané 0.01, klerici 0.008 na osobu.`,
+              wood: `Dřevo se těží ve všech sídlech. Produkce škálována pracovní silou (${Math.round(wf.workforceRatio * 100)}%). Slouží ke stavbám a vylepšením.`,
+              stone: `Kámen je fixní surovina dle úrovně sídla (Osada: 2, Městečko: 3, Město: 4, Polis: 5). Škálováno pracovní silou (${Math.round(wf.workforceRatio * 100)}%).`,
+              iron: `Železo produkují pouze sídla s železnými doly (25% šance při založení). Škálováno pracovní silou (${Math.round(wf.workforceRatio * 100)}%). Potřebné pro armádu.`,
+            };
+
             return (
               <Collapsible key={rt}>
                 <div className={`game-card p-4 space-y-2.5 ${isDeficit ? "border-destructive/30" : ""}`}>
                   <div className="flex items-center gap-2">
                     <span className="text-primary">{RESOURCE_ICONS[rt]}</span>
                     <span className="font-display font-semibold text-sm">{RESOURCE_LABELS[rt]}</span>
+                    <InfoTip side="bottom">{resourceTips[rt]}</InfoTip>
                     {isFamine && (
                       <Badge variant="destructive" className="text-[9px] px-1.5 py-0 ml-1">⚠ Hladomor</Badge>
                     )}
@@ -538,14 +548,29 @@ const EconomyTab = ({ sessionId, currentPlayerName, currentTurn, cities, resourc
                       </CollapsibleTrigger>
                       <CollapsibleContent>
                         <div className="border-t border-border/50 pt-2 mt-1 space-y-1">
-                          {sources.map((src, i) => (
-                            <div key={i} className="flex justify-between text-[11px]">
-                              <span className="text-muted-foreground">{src.label}</span>
-                              <span className={src.type === "income" ? "text-success" : "text-destructive"}>
-                                {src.type === "income" ? "+" : "-"}{src.value}
-                              </span>
-                            </div>
-                          ))}
+                          {sources.map((src, i) => {
+                            const sourceTips: Record<string, string> = {
+                              "Produkce sídel": "Součet základní produkce všech vašich sídel, škálováno aktuální pracovní silou.",
+                              "Bonus malé říše": "Automatický bonus +10 obilí pro říše s 3 a méně městy. Kompenzuje počáteční nevýhodu.",
+                              "Spotřeba populace": "Každý obyvatel spotřebovává obilí: rolníci 0.005, měšťané 0.01, klerici 0.008 na osobu/kolo.",
+                              "Vojenská spotřeba": "1 jídlo za každých 500 vojáků v aktivních armádách.",
+                              "Údržba budov": "Náklady na údržbu infrastruktury ve dřevě.",
+                              "Stavební údržba": "Náklady na údržbu kamenných staveb.",
+                              "Železné doly": "Produkce ze sídel s železnými doly. Pouze ~25% sídel má doly.",
+                              "Vojenská údržba": "Spotřeba železa na údržbu armádního vybavení.",
+                            };
+                            return (
+                              <div key={i} className="flex justify-between text-[11px]">
+                                <span className="text-muted-foreground flex items-center gap-1">
+                                  {src.label}
+                                  {sourceTips[src.label] && <InfoTip side="left">{sourceTips[src.label]}</InfoTip>}
+                                </span>
+                                <span className={src.type === "income" ? "text-success" : "text-destructive"}>
+                                  {src.type === "income" ? "+" : "-"}{src.value}
+                                </span>
+                              </div>
+                            );
+                          })}
                         </div>
                       </CollapsibleContent>
                     </>
@@ -563,6 +588,7 @@ const EconomyTab = ({ sessionId, currentPlayerName, currentTurn, cities, resourc
           <div className="px-5 pt-4 pb-2">
             <h3 className="text-base font-display font-semibold flex items-center gap-2">
               <ShieldAlert className="h-4 w-4 text-primary" /> Náklady na armádu
+              <InfoTip side="right">Každá aktivní armáda spotřebovává železo a zlato. 1 zlato / 100 vojáků, 1 jídlo / 500 vojáků.</InfoTip>
             </h3>
           </div>
           <Table>
@@ -570,7 +596,7 @@ const EconomyTab = ({ sessionId, currentPlayerName, currentTurn, cities, resourc
               <TableRow>
                 <TableHead className="text-xs px-3">Armáda</TableHead>
                 <TableHead className="text-xs px-3">Typ</TableHead>
-                <TableHead className="text-xs px-3 text-right">Železa/kolo</TableHead>
+                <TableHead className="text-xs px-3 text-right">Železa/kolo <InfoTip>Množství železa spotřebovaného touto armádou za kolo.</InfoTip></TableHead>
                 <TableHead className="text-xs px-3 text-right">Stav</TableHead>
               </TableRow>
             </TableHeader>
@@ -595,6 +621,7 @@ const EconomyTab = ({ sessionId, currentPlayerName, currentTurn, cities, resourc
         <div className="game-card p-5">
           <h3 className="text-sm font-display font-semibold flex items-center gap-2 mb-3">
             <TrendingUp className="h-4 w-4 text-success" /> Top producenti (obilí)
+            <InfoTip side="right">Sídla s nejvyšší produkcí obilí. Produkce závisí na úrovni sídla a pracovní síle.</InfoTip>
           </h3>
           {[...myCities].sort((a, b) => (b.last_turn_grain_prod || 0) - (a.last_turn_grain_prod || 0)).slice(0, 5).map(c => (
             <div key={c.id} className="flex justify-between text-sm py-1.5 cursor-pointer hover:text-primary border-b border-border/30 last:border-0" onClick={() => onEntityClick?.("city", c.id)}>
@@ -606,6 +633,7 @@ const EconomyTab = ({ sessionId, currentPlayerName, currentTurn, cities, resourc
         <div className="game-card p-5">
           <h3 className="text-sm font-display font-semibold flex items-center gap-2 mb-3">
             <TrendingDown className="h-4 w-4 text-destructive" /> Top spotřebitelé (obilí)
+            <InfoTip side="right">Sídla s nejvyšší spotřebou obilí. Spotřeba roste s populací a podílem měšťanů/kleriků.</InfoTip>
           </h3>
           {[...myCities].sort((a, b) => (b.last_turn_grain_cons || 0) - (a.last_turn_grain_cons || 0)).slice(0, 5).map(c => (
             <div key={c.id} className="flex justify-between text-sm py-1.5 cursor-pointer hover:text-primary border-b border-border/30 last:border-0" onClick={() => onEntityClick?.("city", c.id)}>
@@ -619,20 +647,23 @@ const EconomyTab = ({ sessionId, currentPlayerName, currentTurn, cities, resourc
       {/* ═══ CITY TABLE ═══ */}
       <div className="game-card p-0 overflow-hidden">
         <div className="px-5 pt-4 pb-2">
-          <h3 className="text-base font-display font-semibold">Přehled sídel</h3>
+          <h3 className="text-base font-display font-semibold flex items-center gap-2">
+            Přehled sídel
+            <InfoTip side="right">Detailní ekonomický rozpis všech vašich sídel. Kliknutím otevřete detail města.</InfoTip>
+          </h3>
         </div>
         <Table>
           <TableHeader>
             <TableRow>
               <TableHead className="text-xs px-3">Město <SortIcon field="name" /></TableHead>
-              <TableHead className="text-xs px-3">Úroveň</TableHead>
-              <TableHead className="text-xs px-3 text-right">Pop <SortIcon field="population" /></TableHead>
-              <TableHead className="text-xs px-3 text-right">🌾+ <SortIcon field="grain_prod" /></TableHead>
-              <TableHead className="text-xs px-3 text-right">🌾- <SortIcon field="grain_cons" /></TableHead>
-              <TableHead className="text-xs px-3 text-right">🪵+ <SortIcon field="wood_prod" /></TableHead>
-              <TableHead className="text-xs px-3 text-right">⛏ <SortIcon field="special" /></TableHead>
-              <TableHead className="text-xs px-3 text-right">⚒ Železo</TableHead>
-              <TableHead className="text-xs px-3 text-right">Zranit. <SortIcon field="vulnerability" /></TableHead>
+              <TableHead className="text-xs px-3">Úroveň <InfoTip>Osada → Městečko → Město → Polis. Vyšší úroveň = více produkce a populace.</InfoTip></TableHead>
+              <TableHead className="text-xs px-3 text-right">Pop <SortIcon field="population" /> <InfoTip>Celková populace sídla. Dělí se na rolníky, měšťany a kleriky.</InfoTip></TableHead>
+              <TableHead className="text-xs px-3 text-right">🌾+ <SortIcon field="grain_prod" /> <InfoTip>Produkce obilí za kolo. Závisí na úrovni sídla a pracovní síle.</InfoTip></TableHead>
+              <TableHead className="text-xs px-3 text-right">🌾- <SortIcon field="grain_cons" /> <InfoTip>Spotřeba obilí za kolo. Závisí na počtu a složení obyvatel.</InfoTip></TableHead>
+              <TableHead className="text-xs px-3 text-right">🪵+ <SortIcon field="wood_prod" /> <InfoTip>Produkce dřeva. Škálováno pracovní silou.</InfoTip></TableHead>
+              <TableHead className="text-xs px-3 text-right">⛏ <SortIcon field="special" /> <InfoTip>Produkce kamene. Fixní dle úrovně, škálováno pracovní silou.</InfoTip></TableHead>
+              <TableHead className="text-xs px-3 text-right">⚒ Železo <InfoTip>Produkce železa. Pouze sídla s doly (~25% při založení).</InfoTip></TableHead>
+              <TableHead className="text-xs px-3 text-right">Zranit. <SortIcon field="vulnerability" /> <InfoTip>Score zranitelnosti města. Vyšší = větší riziko hladomoru. Závisí na stabilitě, zásobách a úrovni.</InfoTip></TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
