@@ -1929,8 +1929,12 @@ export type Database = {
       }
       generals: {
         Row: {
+          bio: string | null
           created_at: string
+          flavor_trait: string | null
           id: string
+          image_prompt: string | null
+          image_url: string | null
           name: string
           player_name: string
           session_id: string
@@ -1938,8 +1942,12 @@ export type Database = {
           traits: Json | null
         }
         Insert: {
+          bio?: string | null
           created_at?: string
+          flavor_trait?: string | null
           id?: string
+          image_prompt?: string | null
+          image_url?: string | null
           name: string
           player_name: string
           session_id: string
@@ -1947,8 +1955,12 @@ export type Database = {
           traits?: Json | null
         }
         Update: {
+          bio?: string | null
           created_at?: string
+          flavor_trait?: string | null
           id?: string
+          image_prompt?: string | null
+          image_url?: string | null
           name?: string
           player_name?: string
           session_id?: string
@@ -2371,6 +2383,8 @@ export type Database = {
           formation_type: string
           general_id: string | null
           id: string
+          image_prompt: string | null
+          image_url: string | null
           is_active: boolean
           legacy_military_id: string | null
           morale: number
@@ -2379,12 +2393,16 @@ export type Database = {
           power: number
           province_id: string | null
           session_id: string
+          sigil_prompt: string | null
+          sigil_url: string | null
         }
         Insert: {
           created_at?: string
           formation_type?: string
           general_id?: string | null
           id?: string
+          image_prompt?: string | null
+          image_url?: string | null
           is_active?: boolean
           legacy_military_id?: string | null
           morale?: number
@@ -2393,12 +2411,16 @@ export type Database = {
           power?: number
           province_id?: string | null
           session_id: string
+          sigil_prompt?: string | null
+          sigil_url?: string | null
         }
         Update: {
           created_at?: string
           formation_type?: string
           general_id?: string | null
           id?: string
+          image_prompt?: string | null
+          image_url?: string | null
           is_active?: boolean
           legacy_military_id?: string | null
           morale?: number
@@ -2407,6 +2429,8 @@ export type Database = {
           power?: number
           province_id?: string | null
           session_id?: string
+          sigil_prompt?: string | null
+          sigil_url?: string | null
         }
         Relationships: [
           {
@@ -2776,6 +2800,8 @@ export type Database = {
       }
       realm_resources: {
         Row: {
+          army_sigil_prompt: string | null
+          army_sigil_url: string | null
           created_at: string
           famine_city_count: number
           gold_reserve: number
@@ -2809,6 +2835,8 @@ export type Database = {
           wood_reserve: number
         }
         Insert: {
+          army_sigil_prompt?: string | null
+          army_sigil_url?: string | null
           created_at?: string
           famine_city_count?: number
           gold_reserve?: number
@@ -2842,6 +2870,8 @@ export type Database = {
           wood_reserve?: number
         }
         Update: {
+          army_sigil_prompt?: string | null
+          army_sigil_url?: string | null
           created_at?: string
           famine_city_count?: number
           gold_reserve?: number
@@ -3438,6 +3468,44 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "turn_summaries_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      unit_type_visuals: {
+        Row: {
+          created_at: string
+          id: string
+          image_prompt: string | null
+          image_url: string | null
+          player_name: string
+          session_id: string
+          unit_type: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          image_prompt?: string | null
+          image_url?: string | null
+          player_name: string
+          session_id: string
+          unit_type: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          image_prompt?: string | null
+          image_url?: string | null
+          player_name?: string
+          session_id?: string
+          unit_type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "unit_type_visuals_session_id_fkey"
             columns: ["session_id"]
             isOneToOne: false
             referencedRelation: "game_sessions"

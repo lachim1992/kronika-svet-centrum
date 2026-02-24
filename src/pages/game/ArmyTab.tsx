@@ -6,13 +6,14 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Progress } from "@/components/ui/progress";
 import { Slider } from "@/components/ui/slider";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { Swords, Shield, Target, Crosshair, Users, Coins, ChevronUp, Plus, Minus, Crown, User, AlertTriangle, CheckCircle2, XCircle, Gauge } from "lucide-react";
+import { Swords, Shield, Target, Crosshair, Users, Coins, ChevronUp, Plus, Minus, Crown, User, AlertTriangle, CheckCircle2, XCircle, Gauge, Sparkles, Loader2, ImageIcon, Flag, Palette } from "lucide-react";
 import { InfoTip } from "@/components/ui/info-tip";
 import { toast } from "sonner";
 
@@ -75,6 +76,17 @@ interface General {
   skill: number;
   traits: any;
   player_name: string;
+  bio?: string;
+  image_url?: string;
+  image_prompt?: string;
+  flavor_trait?: string;
+}
+
+interface UnitTypeVisual {
+  id: string;
+  unit_type: string;
+  image_url: string | null;
+  image_prompt: string | null;
 }
 
 interface RealmRes {
@@ -108,12 +120,15 @@ const ArmyTab = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, on
   const [showRecruit, setShowRecruit] = useState(false);
   const [showCreateGeneral, setShowCreateGeneral] = useState(false);
   const [sortBy, setSortBy] = useState<"power" | "morale" | "formation">("power");
+  const [unitVisuals, setUnitVisuals] = useState<UnitTypeVisual[]>([]);
+  const [generatingVisual, setGeneratingVisual] = useState<string | null>(null);
 
   const fetchMilitary = useCallback(async () => {
     setLoading(true);
-    const [stacksRes, generalsRes] = await Promise.all([
+    const [stacksRes, generalsRes, visualsRes] = await Promise.all([
       supabase.from("military_stacks").select("*").eq("session_id", sessionId).eq("player_name", currentPlayerName).order("created_at"),
       supabase.from("generals").select("*").eq("session_id", sessionId).eq("player_name", currentPlayerName),
+      supabase.from("unit_type_visuals").select("*").eq("session_id", sessionId).eq("player_name", currentPlayerName),
     ]);
 
     const rawStacks = stacksRes.data || [];
@@ -132,6 +147,7 @@ const ArmyTab = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, on
 
     setStacks(enriched);
     setGenerals((generalsRes.data || []) as General[]);
+    setUnitVisuals((visualsRes.data || []) as UnitTypeVisual[]);
 
     const realmData = await ensureRealmResources(sessionId, currentPlayerName);
     if (realmData) setRealm(realmData as RealmRes);
@@ -275,6 +291,9 @@ const ArmyTab = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, on
           <TabsTrigger value="generals" className="font-display text-xs gap-1">
             <Crown className="h-3 w-3" />Generálové
           </TabsTrigger>
+          <TabsTrigger value="my-army" className="font-display text-xs gap-1">
+            <Flag className="h-3 w-3" />Moje armáda
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="forces" className="mt-3 space-y-3">
@@ -334,25 +353,78 @@ const ArmyTab = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, on
           <div className="grid gap-3 md:grid-cols-2">
             {generals.map(g => {
               const assigned = stacks.find(s => s.general_id === g.id);
+              const isGen = generatingVisual === `general-${g.id}`;
               return (
                 <Card key={g.id}>
-                  <CardContent className="p-4 flex items-center gap-3">
-                    <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
-                      <Crown className="h-5 w-5 text-primary" />
+                  <CardContent className="p-4 space-y-3">
+                    <div className="flex gap-3">
+                      {/* Portrait */}
+                      <div className="shrink-0 w-16 h-16 rounded-md overflow-hidden border border-border bg-muted/30">
+                        {g.image_url ? (
+                          <img src={g.image_url} alt={g.name} className="w-full h-full object-cover" />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center">
+                            <Crown className="h-6 w-6 text-muted-foreground/30" />
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <p className="font-display font-semibold text-sm truncate">{g.name}</p>
+                          <Badge variant="outline" className="text-xs">{g.skill}</Badge>
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          Schopnost: {g.skill}/100
+                          {assigned && <> · Velí: {assigned.name}</>}
+                        </p>
+                        {g.flavor_trait && <p className="text-xs italic text-muted-foreground">„{g.flavor_trait}"</p>}
+                      </div>
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="font-display font-semibold text-sm truncate">{g.name}</p>
-                      <p className="text-xs text-muted-foreground">
-                        Schopnost: {g.skill}/100
-                        {assigned && <> · Velí: {assigned.name}</>}
-                      </p>
-                    </div>
-                    <Badge variant="outline" className="text-xs">{g.skill}</Badge>
+                    {g.bio && <p className="text-xs text-muted-foreground italic leading-relaxed">{g.bio}</p>}
+                    <Button
+                      size="sm" variant="outline" className="text-xs font-display w-full"
+                      disabled={isGen}
+                      onClick={async () => {
+                        setGeneratingVisual(`general-${g.id}`);
+                        try {
+                          const { data, error } = await supabase.functions.invoke("army-visualize", {
+                            body: {
+                              sessionId, playerName: currentPlayerName, mode: "general_portrait",
+                              generalId: g.id, generalName: g.name, generalSkill: g.skill,
+                              flavorTrait: g.flavor_trait,
+                            },
+                          });
+                          if (error) throw error;
+                          if (data?.error) { toast.error(data.error); return; }
+                          toast.success(`🎨 Portrét a bio ${g.name} vygenerován + zapsán do ChroWiki!`);
+                          fetchMilitary();
+                        } catch (e) {
+                          console.error(e);
+                          toast.error("Generování selhalo");
+                        }
+                        setGeneratingVisual(null);
+                      }}
+                    >
+                      {isGen ? <><Loader2 className="h-3 w-3 mr-1 animate-spin" />Generuji...</> : <><Sparkles className="h-3 w-3 mr-1" />{g.image_url ? "Regenerovat portrét" : "Vygenerovat portrét + ChroWiki"}</>}
+                    </Button>
                   </CardContent>
                 </Card>
               );
             })}
           </div>
+        </TabsContent>
+
+        <TabsContent value="my-army" className="mt-3 space-y-4">
+          <MyArmyPanel
+            sessionId={sessionId}
+            currentPlayerName={currentPlayerName}
+            stacks={stacks}
+            realm={realm}
+            unitVisuals={unitVisuals}
+            generatingVisual={generatingVisual}
+            setGeneratingVisual={setGeneratingVisual}
+            onRefresh={fetchMilitary}
+          />
         </TabsContent>
       </Tabs>
 
@@ -860,6 +932,7 @@ function CreateGeneralDialog({
   goldReserve: number; onRefresh: () => void;
 }) {
   const [name, setName] = useState("");
+  const [flavorTrait, setFlavorTrait] = useState("");
   const [saving, setSaving] = useState(false);
   const cost = 100;
 
@@ -875,6 +948,7 @@ function CreateGeneralDialog({
       player_name: currentPlayerName,
       name: name.trim(),
       skill,
+      flavor_trait: flavorTrait.trim() || null,
     });
 
     // Deduct gold
@@ -895,7 +969,7 @@ function CreateGeneralDialog({
     });
 
     toast.success(`Generál ${name.trim()} jmenován (sch. ${skill})`);
-    setName("");
+    setName(""); setFlavorTrait("");
     setSaving(false);
     onRefresh();
     onClose();
@@ -912,6 +986,7 @@ function CreateGeneralDialog({
         </DialogHeader>
         <div className="space-y-3">
           <Input placeholder="Jméno generála" value={name} onChange={e => setName(e.target.value)} className="h-9" />
+          <Input placeholder="Rys / přezdívka (volitelné)" value={flavorTrait} onChange={e => setFlavorTrait(e.target.value)} className="h-9" />
           <p className="text-xs text-muted-foreground">Náklady: {cost} zlata · Zlato: {goldReserve}</p>
           <Button onClick={handleCreate} disabled={saving || !name.trim()} className="w-full font-display">
             <Crown className="h-4 w-4 mr-1" />Jmenovat
@@ -919,6 +994,208 @@ function CreateGeneralDialog({
         </div>
       </DialogContent>
     </Dialog>
+  );
+}
+
+// ---- My Army Panel ----
+function MyArmyPanel({
+  sessionId, currentPlayerName, stacks, realm, unitVisuals, generatingVisual, setGeneratingVisual, onRefresh,
+}: {
+  sessionId: string; currentPlayerName: string; stacks: Stack[]; realm: any;
+  unitVisuals: UnitTypeVisual[]; generatingVisual: string | null;
+  setGeneratingVisual: (v: string | null) => void; onRefresh: () => void;
+}) {
+  const [customPrompts, setCustomPrompts] = useState<Record<string, string>>({});
+
+  const handleGenerate = async (mode: string, extra: Record<string, any> = {}) => {
+    const key = `${mode}-${extra.unitType || extra.stackId || "realm"}`;
+    setGeneratingVisual(key);
+    try {
+      const { data, error } = await supabase.functions.invoke("army-visualize", {
+        body: {
+          sessionId, playerName: currentPlayerName, mode,
+          customPrompt: customPrompts[key] || undefined,
+          ...extra,
+        },
+      });
+      if (error) throw error;
+      if (data?.error) { toast.error(data.error); return; }
+      toast.success("🎨 Vizuál vygenerován!");
+      onRefresh();
+    } catch (e) {
+      console.error(e);
+      toast.error("Generování selhalo");
+    }
+    setGeneratingVisual(null);
+  };
+
+  const UNIT_TYPES = ["INFANTRY", "ARCHERS", "CAVALRY", "SIEGE"];
+  const UNIT_LABELS_CZ: Record<string, string> = {
+    INFANTRY: "Pěchota", ARCHERS: "Lučišníci", CAVALRY: "Jízda", SIEGE: "Obléhací",
+  };
+  const UNIT_ICONS_MAP: Record<string, React.ElementType> = {
+    INFANTRY: Shield, ARCHERS: Target, CAVALRY: Crosshair, SIEGE: Swords,
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Army Sigil (Realm) */}
+      <Card>
+        <CardContent className="p-4 space-y-3">
+          <h3 className="font-display font-semibold text-sm flex items-center gap-2">
+            <Flag className="h-4 w-4 text-illuminated" /> Znak armády (říšský erb)
+          </h3>
+          <div className="flex gap-4">
+            <div className="shrink-0 w-24 h-24 rounded-lg border border-border bg-muted/30 overflow-hidden flex items-center justify-center">
+              {(realm as any)?.army_sigil_url ? (
+                <img src={(realm as any).army_sigil_url} alt="Znak armády" className="w-full h-full object-cover" />
+              ) : (
+                <Flag className="h-10 w-10 text-muted-foreground/20" />
+              )}
+            </div>
+            <div className="flex-1 space-y-2">
+              <Input
+                placeholder="Vlastní prompt (volitelné)..."
+                value={customPrompts["sigil_realm-realm"] || ""}
+                onChange={e => setCustomPrompts(p => ({ ...p, "sigil_realm-realm": e.target.value }))}
+                className="h-8 text-xs"
+              />
+              <Button
+                size="sm" variant="outline" className="text-xs font-display w-full"
+                disabled={generatingVisual === "sigil_realm-realm"}
+                onClick={() => handleGenerate("sigil_realm")}
+              >
+                {generatingVisual === "sigil_realm-realm"
+                  ? <><Loader2 className="h-3 w-3 mr-1 animate-spin" />Generuji...</>
+                  : <><Sparkles className="h-3 w-3 mr-1" />{(realm as any)?.army_sigil_url ? "Regenerovat znak" : "Vygenerovat znak armády"}</>
+                }
+              </Button>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Unit Type Visuals */}
+      <Card>
+        <CardContent className="p-4 space-y-3">
+          <h3 className="font-display font-semibold text-sm flex items-center gap-2">
+            <Palette className="h-4 w-4 text-primary" /> Vizualizace typů jednotek
+          </h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {UNIT_TYPES.map(ut => {
+              const visual = unitVisuals.find(v => v.unit_type === ut);
+              const key = `unit_type-${ut}`;
+              const isGen = generatingVisual === key;
+              const UIcon = UNIT_ICONS_MAP[ut] || Shield;
+              return (
+                <div key={ut} className="manuscript-card p-3 space-y-2">
+                  <div className="flex items-center gap-2">
+                    <UIcon className="h-4 w-4 text-muted-foreground" />
+                    <span className="font-display font-semibold text-sm">{UNIT_LABELS_CZ[ut]}</span>
+                  </div>
+                  <div className="w-full h-28 rounded border border-border bg-muted/20 overflow-hidden flex items-center justify-center">
+                    {visual?.image_url ? (
+                      <img src={visual.image_url} alt={ut} className="w-full h-full object-cover" />
+                    ) : (
+                      <ImageIcon className="h-8 w-8 text-muted-foreground/20" />
+                    )}
+                  </div>
+                  <Input
+                    placeholder="Vlastní prompt..."
+                    value={customPrompts[key] || ""}
+                    onChange={e => setCustomPrompts(p => ({ ...p, [key]: e.target.value }))}
+                    className="h-7 text-xs"
+                  />
+                  <Button
+                    size="sm" variant="outline" className="text-xs font-display w-full"
+                    disabled={isGen}
+                    onClick={() => handleGenerate("unit_type", { unitType: ut })}
+                  >
+                    {isGen ? <><Loader2 className="h-3 w-3 mr-1 animate-spin" />Generuji...</> : <><Sparkles className="h-3 w-3 mr-1" />{visual?.image_url ? "Regenerovat" : "Vygenerovat"}</>}
+                  </Button>
+                </div>
+              );
+            })}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Stack Visuals & Sigils */}
+      {stacks.filter(s => s.is_active).length > 0 && (
+        <Card>
+          <CardContent className="p-4 space-y-3">
+            <h3 className="font-display font-semibold text-sm flex items-center gap-2">
+              <Swords className="h-4 w-4 text-primary" /> Vizualizace a znaky jednotek
+            </h3>
+            <div className="space-y-3">
+              {stacks.filter(s => s.is_active).map(stack => {
+                const imgKey = `stack-${stack.id}`;
+                const sigilKey = `sigil_stack-${stack.id}`;
+                return (
+                  <div key={stack.id} className="manuscript-card p-3 space-y-2">
+                    <div className="flex items-center gap-2">
+                      <Swords className="h-3 w-3 text-primary" />
+                      <span className="font-display font-semibold text-sm">{stack.name}</span>
+                      <Badge variant="outline" className="text-xs">{FORMATION_LABELS[stack.formation_type]}</Badge>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      {/* Stack Image */}
+                      <div className="space-y-1.5">
+                        <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Vizuál</p>
+                        <div className="w-full h-20 rounded border border-border bg-muted/20 overflow-hidden flex items-center justify-center">
+                          {(stack as any).image_url ? (
+                            <img src={(stack as any).image_url} alt={stack.name} className="w-full h-full object-cover" />
+                          ) : (
+                            <ImageIcon className="h-6 w-6 text-muted-foreground/20" />
+                          )}
+                        </div>
+                        <Input
+                          placeholder="Prompt..."
+                          value={customPrompts[imgKey] || ""}
+                          onChange={e => setCustomPrompts(p => ({ ...p, [imgKey]: e.target.value }))}
+                          className="h-6 text-[10px]"
+                        />
+                        <Button
+                          size="sm" variant="outline" className="text-[10px] font-display w-full h-6"
+                          disabled={generatingVisual === imgKey}
+                          onClick={() => handleGenerate("stack", { stackId: stack.id, stackName: stack.name })}
+                        >
+                          {generatingVisual === imgKey ? <Loader2 className="h-3 w-3 animate-spin" /> : <><Sparkles className="h-3 w-3 mr-0.5" />Vizuál</>}
+                        </Button>
+                      </div>
+                      {/* Stack Sigil */}
+                      <div className="space-y-1.5">
+                        <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Znak</p>
+                        <div className="w-full h-20 rounded border border-border bg-muted/20 overflow-hidden flex items-center justify-center">
+                          {(stack as any).sigil_url ? (
+                            <img src={(stack as any).sigil_url} alt="Znak" className="w-full h-full object-cover" />
+                          ) : (
+                            <Flag className="h-6 w-6 text-muted-foreground/20" />
+                          )}
+                        </div>
+                        <Input
+                          placeholder="Prompt..."
+                          value={customPrompts[sigilKey] || ""}
+                          onChange={e => setCustomPrompts(p => ({ ...p, [sigilKey]: e.target.value }))}
+                          className="h-6 text-[10px]"
+                        />
+                        <Button
+                          size="sm" variant="outline" className="text-[10px] font-display w-full h-6"
+                          disabled={generatingVisual === sigilKey}
+                          onClick={() => handleGenerate("sigil_stack", { stackId: stack.id, stackName: stack.name })}
+                        >
+                          {generatingVisual === sigilKey ? <Loader2 className="h-3 w-3 animate-spin" /> : <><Sparkles className="h-3 w-3 mr-0.5" />Znak</>}
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+    </div>
   );
 }
 
