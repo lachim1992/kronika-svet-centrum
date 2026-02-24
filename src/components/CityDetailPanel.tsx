@@ -18,6 +18,7 @@ import WorldMemoryPanel from "@/components/WorldMemoryPanel";
 import CityRumorsPanel from "@/components/CityRumorsPanel";
 import SettlementUpgradePanel from "@/components/SettlementUpgradePanel";
 import CityGovernancePanel from "@/components/city/CityGovernancePanel";
+import CityBuildingsPanel from "@/components/city/CityBuildingsPanel";
 import type { EntityIndex } from "@/hooks/useEntityIndex";
 import { getPermissions } from "@/lib/permissions";
 
@@ -481,6 +482,19 @@ const CityDetailPanel = ({
       <CityGovernancePanel
         sessionId={city.session_id}
         city={city}
+        realm={realm}
+        currentPlayerName={currentPlayerName}
+        currentTurn={currentTurn}
+        isOwner={isOwner}
+        onRefetch={onRefetch}
+      />
+
+      {/* ─── CITY BUILDINGS ─── */}
+      <CityBuildingsPanel
+        sessionId={city.session_id}
+        cityId={city.id}
+        cityName={city.name}
+        settlementLevel={city.settlement_level}
         realm={realm}
         currentPlayerName={currentPlayerName}
         currentTurn={currentTurn}
