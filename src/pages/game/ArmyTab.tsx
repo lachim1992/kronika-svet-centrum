@@ -13,9 +13,10 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Progress } from "@/components/ui/progress";
 import { Slider } from "@/components/ui/slider";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { Swords, Shield, Target, Crosshair, Users, Coins, ChevronUp, Plus, Minus, Crown, User, AlertTriangle, CheckCircle2, XCircle, Gauge, Sparkles, Loader2, ImageIcon, Flag, Palette, Check } from "lucide-react";
+import { Swords, Shield, Target, Crosshair, Users, Coins, ChevronUp, Plus, Minus, Crown, User, AlertTriangle, CheckCircle2, XCircle, Gauge, Sparkles, Loader2, ImageIcon, Flag, Palette, Check, Navigation } from "lucide-react";
 import { InfoTip } from "@/components/ui/info-tip";
 import { toast } from "sonner";
+import DeployBattlePanel from "@/components/military/DeployBattlePanel";
 
 const UNIT_ICONS: Record<string, React.ElementType> = {
   INFANTRY: Shield,
@@ -304,6 +305,9 @@ const ArmyTab = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, on
           <TabsTrigger value="my-army" className="font-display text-xs gap-1">
             <Flag className="h-3 w-3" />Moje armáda
           </TabsTrigger>
+          <TabsTrigger value="deploy" className="font-display text-xs gap-1">
+            <Navigation className="h-3 w-3" />Nasazení
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="forces" className="mt-3 space-y-3">
@@ -433,6 +437,17 @@ const ArmyTab = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, on
             unitVisuals={unitVisuals}
             generatingVisual={generatingVisual}
             setGeneratingVisual={setGeneratingVisual}
+            onRefresh={fetchMilitary}
+          />
+        </TabsContent>
+
+        <TabsContent value="deploy" className="mt-3">
+          <DeployBattlePanel
+            sessionId={sessionId}
+            currentPlayerName={currentPlayerName}
+            currentTurn={currentTurn}
+            stacks={stacks}
+            cities={cities}
             onRefresh={fetchMilitary}
           />
         </TabsContent>
