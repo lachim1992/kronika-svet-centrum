@@ -10,8 +10,9 @@ import { toast } from "sonner";
 import {
   ArrowLeft, Building2, Coins, Shield, Swords, Palette, Church, Route,
   Plus, Loader2, Hammer, Crown, Wheat, Trees, Mountain, Anvil, Users,
-  Sparkles, TrendingUp, Castle, ScrollText,
+  Sparkles, TrendingUp, Castle, ScrollText, BookOpen, ImageIcon,
 } from "lucide-react";
+import CityGovernancePanel from "@/components/city/CityGovernancePanel";
 
 // ═══════════════════════════════════════════
 // TYPES
@@ -115,6 +116,12 @@ const CityManagement = ({ sessionId, cityId, currentPlayerName, currentTurn, onB
   const [declarations, setDeclarations] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
+  // Wiki / ChroWiki state
+  const [wikiImage, setWikiImage] = useState<string | null>(null);
+  const [wikiSummary, setWikiSummary] = useState<string | null>(null);
+  const [wikiDescription, setWikiDescription] = useState<string | null>(null);
+  const [generatingImage, setGeneratingImage] = useState(false);
+
   // AI build form
   const [aiDescription, setAiDescription] = useState("");
   const [aiMyth, setAiMyth] = useState("");
@@ -125,18 +132,24 @@ const CityManagement = ({ sessionId, cityId, currentPlayerName, currentTurn, onB
 
   const fetchData = useCallback(async () => {
     setLoading(true);
-    const [cityRes, buildingsRes, templatesRes, realmRes, declRes] = await Promise.all([
+    const [cityRes, buildingsRes, templatesRes, realmRes, declRes, wikiRes] = await Promise.all([
       supabase.from("cities").select("*").eq("id", cityId).maybeSingle(),
       supabase.from("city_buildings").select("*").eq("city_id", cityId).order("created_at"),
       supabase.from("building_templates").select("*").order("category, name"),
       supabase.from("realm_resources").select("*").eq("session_id", sessionId).eq("player_name", currentPlayerName).maybeSingle(),
       supabase.from("declarations").select("*").eq("session_id", sessionId).eq("player_name", currentPlayerName).order("created_at", { ascending: false }).limit(10),
+      supabase.from("wiki_entries").select("image_url, summary, ai_description").eq("session_id", sessionId).eq("entity_type", "city").eq("entity_id", cityId).maybeSingle(),
     ]);
     setCity(cityRes.data);
     setBuildings((buildingsRes.data || []) as unknown as CityBuilding[]);
     setTemplates((templatesRes.data || []) as unknown as BuildingTemplate[]);
     setRealm(realmRes.data);
     setDeclarations(declRes.data || []);
+    if (wikiRes.data) {
+      setWikiImage(wikiRes.data.image_url);
+      setWikiSummary(wikiRes.data.summary);
+      setWikiDescription(wikiRes.data.ai_description);
+    }
     setLoading(false);
   }, [cityId, sessionId, currentPlayerName]);
 
@@ -345,9 +358,77 @@ const CityManagement = ({ sessionId, cityId, currentPlayerName, currentTurn, onB
         {/* OVERVIEW */}
         {section === "overview" && (
           <div className="space-y-4">
-            <h2 className="text-xl font-display font-bold flex items-center gap-2">
-              <Castle className="h-5 w-5 text-primary" />Přehled města – {city.name}
-            </h2>
+            {/* ── HERO IMAGE ── */}
+            <div className="relative rounded-xl overflow-hidden border border-border">
+              <div className="relative h-[160px] md:h-[220px]">
+                {wikiImage ? (
+                  <img src={wikiImage} alt={city.name} className="w-full h-full object-cover" />
+                ) : (
+                  <div className="w-full h-full bg-gradient-to-br from-primary/10 via-muted to-primary/5 flex items-center justify-center">
+                    {generatingImage ? (
+                      <Loader2 className="h-10 w-10 text-muted-foreground/30 animate-spin" />
+                    ) : (
+                      <Castle className="h-12 w-12 text-muted-foreground/20" />
+                    )}
+                  </div>
+                )}
+                <div className="absolute inset-0 bg-gradient-to-t from-background via-background/50 to-transparent" />
+                <div className="absolute bottom-0 left-0 right-0 p-4">
+                  <h2 className="text-xl md:text-2xl font-display font-bold">{city.name}</h2>
+                  <div className="flex items-center gap-2 mt-1">
+                    <Badge variant="secondary" className="text-[10px]">{SETTLEMENT_LABELS[city.settlement_level] || city.level}</Badge>
+                    <span className="text-xs text-muted-foreground">{city.owner_player}</span>
+                  </div>
+                </div>
+                {/* Generate image button */}
+                {!wikiImage && !generatingImage && (
+                  <Button
+                    size="sm" variant="secondary"
+                    className="absolute top-2 right-2 h-7 text-[10px] gap-1 opacity-80 hover:opacity-100"
+                    onClick={async () => {
+                      setGeneratingImage(true);
+                      try {
+                        const { data } = await supabase.functions.invoke("generate-entity-media", {
+                          body: {
+                            sessionId, entityId: cityId, entityType: "city",
+                            entityName: city.name, kind: "cover",
+                            imagePrompt: [city.flavor_prompt, city.name, city.province, ...(city.tags || [])].filter(Boolean).join(", "),
+                            createdBy: "city_management",
+                          },
+                        });
+                        if (data?.imageUrl) {
+                          setWikiImage(data.imageUrl);
+                          await supabase.from("wiki_entries").update({ image_url: data.imageUrl } as any)
+                            .eq("session_id", sessionId).eq("entity_type", "city").eq("entity_id", cityId);
+                        }
+                      } catch (e) { console.error(e); }
+                      setGeneratingImage(false);
+                    }}
+                  >
+                    <ImageIcon className="h-3 w-3" />Generovat obraz
+                  </Button>
+                )}
+              </div>
+            </div>
+
+            {/* ── CHROWIKI EXCERPT ── */}
+            {(wikiSummary || wikiDescription) && (
+              <Card className="border-primary/20">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-display flex items-center gap-2">
+                    <BookOpen className="h-4 w-4 text-primary" />Kronika města
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-2">
+                  {wikiSummary && (
+                    <p className="text-sm italic text-muted-foreground leading-relaxed">{wikiSummary}</p>
+                  )}
+                  {wikiDescription && (
+                    <p className="text-xs text-muted-foreground leading-relaxed">{wikiDescription}</p>
+                  )}
+                </CardContent>
+              </Card>
+            )}
 
             {/* Stats grid */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -360,6 +441,17 @@ const CityManagement = ({ sessionId, cityId, currentPlayerName, currentTurn, onB
               <StatCard label="Úroveň" value={SETTLEMENT_LABELS[city.settlement_level] || city.level} icon={<Crown className="h-4 w-4" />}
                 tip="Osada → Městečko → Město → Polis. Vyšší úroveň = více slotů a ekonomických bonusů." />
             </div>
+
+            {/* ── CITY GOVERNANCE (Food, Labor, Districts, Factions) ── */}
+            <CityGovernancePanel
+              sessionId={sessionId}
+              city={city}
+              realm={realm}
+              currentPlayerName={currentPlayerName}
+              currentTurn={currentTurn}
+              isOwner={true}
+              onRefetch={() => fetchData()}
+            />
 
             {/* Building effects summary */}
             {Object.keys(totalEffects).length > 0 && (
