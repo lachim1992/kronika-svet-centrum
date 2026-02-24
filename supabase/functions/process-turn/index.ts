@@ -12,11 +12,11 @@ const UNIT_WEIGHTS: Record<string, number> = {
 };
 
 // Settlement-level production constants
-const SETTLEMENT_PRODUCTION: Record<string, { grain: number; wood: number; special: number }> = {
-  HAMLET:   { grain: 8,  wood: 6, special: 2 },
-  TOWNSHIP: { grain: 10, wood: 7, special: 3 },
-  CITY:     { grain: 12, wood: 8, special: 4 },
-  POLIS:    { grain: 14, wood: 9, special: 5 },
+const SETTLEMENT_PRODUCTION: Record<string, { grain: number; wood: number; stone: number; iron_special: number }> = {
+  HAMLET:   { grain: 8,  wood: 6, stone: 2, iron_special: 2 },
+  TOWNSHIP: { grain: 10, wood: 7, stone: 3, iron_special: 3 },
+  CITY:     { grain: 12, wood: 8, stone: 4, iron_special: 4 },
+  POLIS:    { grain: 14, wood: 9, stone: 5, iron_special: 5 },
 };
 
 const FORMATION_MULT: Record<string, number> = {
@@ -163,7 +163,8 @@ Deno.serve(async (req) => {
         const prodConsts = SETTLEMENT_PRODUCTION[city.settlement_level] || SETTLEMENT_PRODUCTION.HAMLET;
         const seed = Math.abs(hashCode(city.id));
         const roll = seed % 100;
-        const specialType = roll < 25 ? "IRON" : roll < 50 ? "STONE" : "NONE";
+        // Iron is the only special resource now; stone is base for all cities
+        const specialType = roll < 30 ? "IRON" : "NONE";
         const { data: newProfile } = await supabase.from("settlement_resource_profiles").insert({
           city_id: city.id,
           produces_grain: true,
@@ -171,7 +172,7 @@ Deno.serve(async (req) => {
           special_resource_type: specialType,
           base_grain: prodConsts.grain,
           base_wood: prodConsts.wood,
-          base_special: specialType !== "NONE" ? prodConsts.special : 0,
+          base_special: specialType === "IRON" ? prodConsts.iron_special : 0,
           founded_seed: city.id,
         }).select().single();
         if (newProfile) profileMap[city.id] = newProfile;
@@ -194,15 +195,21 @@ Deno.serve(async (req) => {
       const cityWood = profile ? profile.base_wood : prodConsts.wood;
       totalWoodProd += cityWood;
 
+      // Stone is now a BASE resource for all cities (like grain/wood)
+      const cityStone = prodConsts.stone;
+      totalStoneProd += cityStone;
+
+      // Iron is SPECIAL — only for cities with special_resource_type=IRON
       const specialType = profile?.special_resource_type || "NONE";
-      const citySpecial = specialType !== "NONE" ? (profile ? profile.base_special : prodConsts.special) : 0;
-      if (specialType === "STONE") totalStoneProd += citySpecial;
-      if (specialType === "IRON") totalIronProd += citySpecial;
+      const cityIron = specialType === "IRON" ? (profile ? profile.base_special : prodConsts.iron_special) : 0;
+      totalIronProd += cityIron;
 
       await supabase.from("cities").update({
         last_turn_grain_prod: cityGrain,
         last_turn_wood_prod: cityWood,
-        last_turn_special_prod: citySpecial,
+        last_turn_stone_prod: cityStone,
+        last_turn_iron_prod: cityIron,
+        last_turn_special_prod: cityIron, // backward compat
         special_resource_type: specialType,
       }).eq("id", city.id);
     }

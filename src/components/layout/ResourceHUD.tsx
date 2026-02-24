@@ -66,14 +66,27 @@ const ResourceHUD = ({ sessionId, playerName, cities }: ResourceHUDProps) => {
     return { income, upkeep, net: income - upkeep, stockpile };
   };
 
-  const food = getRes("food");
   const wood = getRes("wood");
-  const stone = getRes("stone");
-  const iron = getRes("iron");
-  const wealth = getRes("wealth");
+
+  // Grain: compute from city-level data to avoid buffer confusion
+  const cityGrainProd = myCities.reduce((s, c) => s + (c.last_turn_grain_prod || 0), 0);
+  const grainBuffer = myCities.length <= 3 ? 10 : 0;
+  const grainCons = myCities.reduce((s, c) => s + (c.last_turn_grain_cons || 0), 0);
+  const grainTotalIncome = cityGrainProd + grainBuffer;
+  const grainNet = grainTotalIncome - grainCons;
+  const grainStock = realm.grain_reserve ?? getRes("food").stockpile ?? 0;
+
+  // Stone: base resource from all cities
+  const stoneIncome = myCities.reduce((s, c) => s + (c.last_turn_stone_prod || 0), 0);
+  const stoneStock = getRes("stone").stockpile;
+
+  // Iron: special resource from some cities
+  const ironIncome = myCities.reduce((s, c) => s + (c.last_turn_iron_prod || 0), 0);
+  const ironStock = getRes("iron").stockpile;
 
   // Compute wealth client-side using shared formula
   const computedWealthIncome = computeWealthIncome(myCities);
+  const wealth = getRes("wealth");
   const wealthNet = (computedWealthIncome > 0 ? computedWealthIncome : wealth.income) - wealth.upkeep;
   const wealthStock = realm.gold_reserve ?? wealth.stockpile ?? 0;
 
@@ -83,12 +96,12 @@ const ResourceHUD = ({ sessionId, playerName, cities }: ResourceHUDProps) => {
     {
       icon: <Wheat className="h-3 w-3" />,
       label: "Obilí",
-      value: `${food.net >= 0 ? "+" : ""}${food.net} · ${food.stockpile}/${grainCapacity}`,
-      warning: food.net < 0,
+      value: `${grainNet >= 0 ? "+" : ""}${grainNet} · ${grainStock}/${grainCapacity}`,
+      warning: grainNet < 0,
     },
     { icon: <Trees className="h-3 w-3" />, label: "Dřevo", value: `+${wood.net} · ${wood.stockpile}` },
-    { icon: <Mountain className="h-3 w-3" />, label: "Kámen", value: `+${stone.net} · ${stone.stockpile}` },
-    { icon: <Anvil className="h-3 w-3" />, label: "Železo", value: `+${iron.net} · ${iron.stockpile}` },
+    { icon: <Mountain className="h-3 w-3" />, label: "Kámen", value: `+${stoneIncome} · ${stoneStock}` },
+    { icon: <Anvil className="h-3 w-3" />, label: "Železo", value: `+${ironIncome} · ${ironStock}` },
     { icon: <Zap className="h-3 w-3" />, label: "Koně", value: `${realm.horses_reserve || 0}/${realm.stables_capacity || 100}` },
     { icon: <Coins className="h-3 w-3" />, label: "Zlato", value: `${wealthNet >= 0 ? "+" : ""}${wealthNet} · ${wealthStock}` },
     {
@@ -104,7 +117,7 @@ const ResourceHUD = ({ sessionId, playerName, cities }: ResourceHUDProps) => {
     setRealm((r: any) => ({ ...r, mobilization_rate: rate }));
   };
 
-  const grainPct = Math.min(100, (food.stockpile / Math.max(1, grainCapacity)) * 100);
+  const grainPct = Math.min(100, (grainStock / Math.max(1, grainCapacity)) * 100);
 
   return (
     <div className="bg-secondary/80 backdrop-blur-sm border-b border-border px-4 py-2 flex items-center gap-1.5 overflow-x-auto scrollbar-hide">
@@ -151,14 +164,15 @@ const ResourceHUD = ({ sessionId, playerName, cities }: ResourceHUDProps) => {
           <h4 className="font-display font-semibold text-sm mb-2 text-primary">Ekonomický přehled</h4>
 
           <div className="space-y-1 text-xs mb-3">
-            <div className="flex justify-between"><span className="text-muted-foreground">Produkce obilí</span><span className="font-semibold">{playerRes.food?.income || 0}</span></div>
-            <div className="flex justify-between"><span className="text-muted-foreground">Spotřeba obilí</span><span className="font-semibold">{playerRes.food?.upkeep || 0}</span></div>
-            <div className="flex justify-between"><span className="text-muted-foreground">Bilance</span><span className={`font-semibold ${food.net < 0 ? "text-destructive" : "text-primary"}`}>{food.net >= 0 ? "+" : ""}{food.net}</span></div>
+            <div className="flex justify-between"><span className="text-muted-foreground">Produkce sídel</span><span className="font-semibold">{cityGrainProd}</span></div>
+            {grainBuffer > 0 && <div className="flex justify-between"><span className="text-muted-foreground">Bonus malé říše</span><span className="font-semibold text-primary">+{grainBuffer}</span></div>}
+            <div className="flex justify-between"><span className="text-muted-foreground">Spotřeba</span><span className="font-semibold">{grainCons}</span></div>
+            <div className="flex justify-between"><span className="text-muted-foreground">Bilance</span><span className={`font-semibold ${grainNet < 0 ? "text-destructive" : "text-primary"}`}>{grainNet >= 0 ? "+" : ""}{grainNet}</span></div>
             <div className="w-full bg-muted rounded h-1.5 mt-1">
               <div className="bg-primary rounded h-1.5 transition-all" style={{ width: `${grainPct}%` }} />
             </div>
             <div className="flex justify-between text-[10px] text-muted-foreground">
-              <span>Zásoby: {food.stockpile}</span>
+              <span>Zásoby: {grainStock}</span>
               <span>Kapacita: {grainCapacity}</span>
             </div>
           </div>
