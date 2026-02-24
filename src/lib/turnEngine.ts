@@ -26,7 +26,7 @@ export const UNIT_GOLD_FACTOR: Record<string, number> = {
   INFANTRY: 1, ARCHERS: 1.5, CAVALRY: 2, SIEGE: 3,
 };
 
-export const FORMATION_PRESETS: Record<string, { label: string; composition: { unit_type: string; manpower: number }[]; formation_type: string; morale: number }> = {
+export const FORMATION_PRESETS: Record<string, { label: string; composition: { unit_type: string; manpower: number }[]; formation_type: string; morale: number; gold_override?: number }> = {
   militia: {
     label: "Milice",
     composition: [{ unit_type: "INFANTRY", manpower: 200 }],
@@ -50,6 +50,7 @@ export const FORMATION_PRESETS: Record<string, { label: string; composition: { u
     composition: [{ unit_type: "INFANTRY", manpower: 600 }, { unit_type: "ARCHERS", manpower: 200 }],
     formation_type: "LEGION",
     morale: 70,
+    gold_override: 50, // TEMP: sníženo pro testování
   },
 };
 
@@ -115,7 +116,7 @@ export async function recruitStack(
   if (!preset) throw new Error("Unknown preset");
 
   const totalManpower = preset.composition.reduce((s, c) => s + c.manpower, 0);
-  const totalGold = preset.composition.reduce((s, c) => s + c.manpower * (UNIT_GOLD_FACTOR[c.unit_type] || 1), 0);
+  const totalGold = preset.gold_override ?? preset.composition.reduce((s, c) => s + c.manpower * (UNIT_GOLD_FACTOR[c.unit_type] || 1), 0);
 
   // Load realm
   const realm = await ensureRealmResources(sessionId, playerName);
