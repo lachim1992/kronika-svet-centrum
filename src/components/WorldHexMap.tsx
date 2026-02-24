@@ -760,7 +760,11 @@ const WorldHexMap = ({ sessionId, playerName, myRole, onCityClick }: Props) => {
 
   /* ── Evaluate battle speech ── */
   const handleEvaluateSpeech = useCallback(async () => {
-    if (!battleSpeech.trim() || !selectedStack || !battleTarget) return;
+    console.log("[battle-speech] called", { battleSpeech: battleSpeech.trim(), selectedStack: !!selectedStack, battleTarget });
+    if (!battleSpeech.trim() || !selectedStack || !battleTarget) {
+      console.warn("[battle-speech] early return – missing data");
+      return;
+    }
     setEvaluatingSpeech(true);
     try {
       const hexCities = citiesByCoord.get(hKey(battleTarget.q, battleTarget.r)) || [];
@@ -769,6 +773,7 @@ const WorldHexMap = ({ sessionId, playerName, myRole, onCityClick }: Props) => {
       const enemyStack = hexStacks.find(s => s.player_name !== playerName);
       const defName = enemyCity?.name || enemyStack?.name || "nepřítel";
 
+      console.log("[battle-speech] invoking edge fn", { attacker: selectedStack.name, defender: defName });
       const { data, error } = await supabase.functions.invoke("battle-speech", {
         body: {
           speech_text: battleSpeech,
@@ -778,10 +783,16 @@ const WorldHexMap = ({ sessionId, playerName, myRole, onCityClick }: Props) => {
           attacker_morale: 70,
         },
       });
+      console.log("[battle-speech] response", { data, error });
       if (error) throw error;
-      setSpeechResult(data);
-      toast.success(`Proslov: ${data.morale_modifier >= 0 ? "+" : ""}${data.morale_modifier} morálka`);
-    } catch {
+      if (data) {
+        setSpeechResult(data);
+        toast.success(`Proslov: ${data.morale_modifier >= 0 ? "+" : ""}${data.morale_modifier} morálka`);
+      } else {
+        toast.error("Prázdná odpověď z AI");
+      }
+    } catch (e) {
+      console.error("[battle-speech] error", e);
       toast.error("Chyba proslovu");
     }
     setEvaluatingSpeech(false);
