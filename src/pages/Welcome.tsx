@@ -170,14 +170,14 @@ The game engine will analyze your actions, interpret their intent, and calculate
             </p>
 
             <p>
-              The core idea is simple: the world should not be static. Cities
-              should grow or decline. Alliances should form even without direct
-              player intervention. Conflicts should have causes — and memory. If
-              a betrayal occurs, the world should remember it. If a significant
-              agreement is reached, it should influence the balance of power for
-              years to come. The goal is not merely to occupy territory, but to
-              create a structure that can endure over time and leave a mark on
-              the history of the world.
+
+
+
+
+
+
+
+
             </p>
 
             <p>
