@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { Copy, User, Home, LogOut, Globe, Sun, Moon } from "lucide-react";
+import { Copy, User, Home, LogOut, Globe, Sun, Moon, Play, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -26,9 +26,11 @@ interface Props {
   playerName: string;
   myRole: string;
   currentSessionId?: string;
+  onNextTurn?: () => void;
+  turnProcessing?: boolean;
 }
 
-const AppHeader = ({ roomCode, currentTurn, worldName, playerName, myRole, currentSessionId }: Props) => {
+const AppHeader = ({ roomCode, currentTurn, worldName, playerName, myRole, currentSessionId, onNextTurn, turnProcessing }: Props) => {
   const navigate = useNavigate();
   const { signOut, user } = useAuth();
   const [isLight, setIsLight] = useState(() => document.documentElement.classList.contains("light"));
@@ -109,6 +111,21 @@ const AppHeader = ({ roomCode, currentTurn, worldName, playerName, myRole, curre
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
+          {onNextTurn && (
+            <Button
+              size="sm"
+              onClick={onNextTurn}
+              disabled={turnProcessing}
+              className="h-8 px-3 font-display text-xs gap-1.5"
+            >
+              {turnProcessing ? (
+                <><Loader2 className="h-3.5 w-3.5 animate-spin" />Zpracovávám…</>
+              ) : (
+                <><Play className="h-3.5 w-3.5" />Další tah</>
+              )}
+            </Button>
+          )}
+
           <Button
             variant="ghost"
             size="icon"
