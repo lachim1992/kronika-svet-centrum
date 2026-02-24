@@ -26,6 +26,7 @@ import {
   computeWealthIncome, computeArmyGoldUpkeep, computeWorkforceBreakdown,
 } from "@/lib/economyConstants";
 import { Wheat, Coins } from "lucide-react";
+import TradePanel from "@/components/TradePanel";
 
 interface Props {
   sessionId: string;
@@ -695,6 +696,17 @@ const EconomyTab = ({ sessionId, currentPlayerName, currentTurn, cities, resourc
           </TableBody>
         </Table>
       </div>
+
+      {/* ═══ TRADE SYSTEM ═══ */}
+      <TradePanel
+        sessionId={sessionId}
+        currentPlayerName={currentPlayerName}
+        currentTurn={currentTurn}
+        myCities={myCities}
+        allCities={cities}
+        realm={realm}
+        onRefetch={onRefetch}
+      />
 
       {/* ═══ ADMIN DEBUG ═══ */}
       {myRole === "admin" && (
