@@ -7,6 +7,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Scroll } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
+import { useNextTurn } from "@/hooks/useNextTurn";
 import AppHeader from "@/components/layout/AppHeader";
 import ResourceHUD from "@/components/layout/ResourceHUD";
 import AppShell from "@/components/layout/AppShell";
@@ -110,6 +111,14 @@ const Dashboard = () => {
 
   const currentTurn = session.current_turn;
 
+  const { processing: turnProcessing, processNextTurn } = useNextTurn({
+    sessionId: session.id,
+    currentTurn,
+    playerName: myPlayerName,
+    gameMode: session.game_mode,
+    onComplete: refetch,
+  });
+
   const handleAction = (action: string, payload?: any) => {
     console.log(`Dashboard handleAction: ${action}`);
 
@@ -198,6 +207,8 @@ const Dashboard = () => {
           playerName={myPlayerName}
           myRole={myRole}
           currentSessionId={session.id}
+          onNextTurn={processNextTurn}
+          turnProcessing={turnProcessing}
         />
       }
       resourceHud={
