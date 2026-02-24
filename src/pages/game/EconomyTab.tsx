@@ -22,7 +22,7 @@ import {
 import { ensureRealmResources } from "@/lib/turnEngine";
 import {
   RESOURCE_ICONS, RESOURCE_LABELS, SETTLEMENT_LABELS, SETTLEMENT_WEALTH,
-  computeWealthIncome, computeArmyGoldUpkeep,
+  computeWealthIncome, computeArmyGoldUpkeep, computeWorkforceBreakdown,
 } from "@/lib/economyConstants";
 import { Wheat, Coins } from "lucide-react";
 
@@ -143,11 +143,12 @@ const EconomyTab = ({ sessionId, currentPlayerName, currentTurn, cities, resourc
   const currentMob = realm ? Math.round((realm.mobilization_rate || 0.1) * 100) : 10;
   if (currentMob > 20) alerts.push({ text: `Vysoká mobilizace (${currentMob}%)`, severity: "warning" });
 
-  // Mobilization — compute client-side like ResourceHUD for consistency
-  const totalPeasants = myCities.reduce((s, c) => s + (c.population_peasants || 0), 0);
+  // Workforce system — compute from new model
   const mobRate = realm?.mobilization_rate || 0.1;
-  const computedPool = Math.floor(totalPeasants * mobRate);
+  const wf = computeWorkforceBreakdown(myCities, mobRate);
+  const computedPool = wf.effectiveActivePop;
   const availableManpower = computedPool - (realm?.manpower_committed || 0);
+  const totalPeasants = myCities.reduce((s, c) => s + (c.population_peasants || 0), 0);
 
   // Granary
   const grainReserve = realm?.grain_reserve ?? resMap["food"]?.stockpile ?? 0;
@@ -403,11 +404,15 @@ const EconomyTab = ({ sessionId, currentPlayerName, currentTurn, cities, resourc
                     <Info className="h-2.5 w-2.5 text-muted-foreground/50" />
                   </span>
                 </TooltipTrigger>
-                <TooltipContent side="left" className="max-w-[260px] text-xs">
-                  Počet mužů dostupných k mobilizaci. Vypočítáno jako: rolníci × mobilizační sazba. Odvedení muži jsou ti, kteří jsou aktuálně v armádách. Hodnota: {totalPeasants} rolníků × {Math.round(mobRate * 100)}% = {computedPool}, odvedeno {realm?.manpower_committed || 0}.
+                <TooltipContent side="left" className="max-w-[300px] text-xs space-y-1">
+                  <p className="font-semibold">Systém pracovní síly</p>
+                  <p>Aktivní populace = rolníci×1.0 + měšťané×0.7 + klerici×0.2, z toho {Math.round(wf.effectiveRatio * 100)}% je aktivní ({wf.effectiveActivePop}).</p>
+                  <p>Při {Math.round(mobRate * 100)}% mobilizaci: {wf.mobilized} vojáků, {wf.workforce} pracovní síla.</p>
+                  <p>Efektivita produkce: {Math.round(wf.workforceRatio * 100)}% (více mobilizace = méně surovin).</p>
+                  <p className="text-muted-foreground italic">Upravitelné dekrety: active_pop_modifier, max_mobilization_modifier</p>
                 </TooltipContent>
               </Tooltip>
-              <span className="font-bold">{availableManpower} / {computedPool}</span>
+              <span className="font-bold">{wf.workforce} prac. / {wf.mobilized} voj.</span>
             </div>
             <div className="flex items-center justify-between text-xs">
               <Tooltip>

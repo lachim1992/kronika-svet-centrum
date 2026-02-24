@@ -143,9 +143,51 @@ Deno.serve(async (req) => {
     // Settlement layers are computed by world-tick (shared physics). 
     // process-turn trusts those values and only handles economy.
 
-    // 3) Settlement-based resource production
-    const mobilizationPenalty = 1 - realm.mobilization_rate * 0.5;
+    // ═══ WORKFORCE SYSTEM ═══
+    // Active pop = peasants*1.0 + burghers*0.7 + clerics*0.2
+    // Effective active pop = active_pop_raw * active_pop_ratio (default 0.5, modified by laws)
+    // Workforce = effective_active_pop - mobilized
+    // Production multiplier = workforce_ratio = workforce / effective_active_pop
 
+    const ACTIVE_POP_WEIGHTS = { peasants: 1.0, burghers: 0.7, clerics: 0.2 };
+    const DEFAULT_ACTIVE_POP_RATIO = 0.5;
+    const DEFAULT_MAX_MOBILIZATION = 0.3;
+
+    // Read law modifiers for workforce
+    const { data: activeLaws } = await supabase.from("laws").select("structured_effects, player_name")
+      .eq("session_id", sessionId).eq("player_name", playerName).eq("is_active", true);
+
+    let activePopModifier = 0;
+    let maxMobModifier = 0;
+    for (const law of (activeLaws || [])) {
+      const effects = law.structured_effects as any[];
+      if (!Array.isArray(effects)) continue;
+      for (const eff of effects) {
+        if (eff.type === "active_pop_modifier") activePopModifier += (eff.value || 0);
+        if (eff.type === "max_mobilization_modifier") maxMobModifier += (eff.value || 0);
+      }
+    }
+
+    let activePopRaw = 0;
+    for (const city of myCities) {
+      if (city.status && city.status !== "ok") continue;
+      activePopRaw += (city.population_peasants || 0) * ACTIVE_POP_WEIGHTS.peasants
+                    + (city.population_burghers || 0) * ACTIVE_POP_WEIGHTS.burghers
+                    + (city.population_clerics || 0) * ACTIVE_POP_WEIGHTS.clerics;
+    }
+    activePopRaw = Math.floor(activePopRaw);
+
+    const effectiveRatio = Math.max(0.1, Math.min(0.9, DEFAULT_ACTIVE_POP_RATIO + activePopModifier));
+    const effectiveActivePop = Math.floor(activePopRaw * effectiveRatio);
+    const maxMob = Math.max(0.05, Math.min(0.5, DEFAULT_MAX_MOBILIZATION + maxMobModifier));
+    const clampedMobRate = Math.min(realm.mobilization_rate, maxMob);
+    const mobilized = Math.floor(effectiveActivePop * clampedMobRate);
+    const workforce = effectiveActivePop - mobilized;
+    const workforceRatio = effectiveActivePop > 0 ? workforce / effectiveActivePop : 1;
+
+    logEntries.push(`Workforce: active_pop_raw=${activePopRaw}, effective=${effectiveActivePop} (ratio ${effectiveRatio}), workforce=${workforce}, mobilized=${mobilized}, workforceRatio=${workforceRatio.toFixed(2)}`);
+
+    // 3) Settlement-based resource production (ALL resources scaled by workforce_ratio)
     const cityIds = myCities.map(c => c.id);
     const { data: profiles } = await supabase
       .from("settlement_resource_profiles")
@@ -163,7 +205,6 @@ Deno.serve(async (req) => {
         const prodConsts = SETTLEMENT_PRODUCTION[city.settlement_level] || SETTLEMENT_PRODUCTION.HAMLET;
         const seed = Math.abs(hashCode(city.id));
         const roll = seed % 100;
-        // Iron is the only special resource now; stone is base for all cities
         const specialType = roll < 30 ? "IRON" : "NONE";
         const { data: newProfile } = await supabase.from("settlement_resource_profiles").insert({
           city_id: city.id,
@@ -189,19 +230,21 @@ Deno.serve(async (req) => {
       const prodConsts = SETTLEMENT_PRODUCTION[city.settlement_level] || SETTLEMENT_PRODUCTION.HAMLET;
 
       const cityGrainBase = profile ? profile.base_grain : prodConsts.grain;
-      const cityGrain = Math.round(cityGrainBase * mobilizationPenalty);
+      const cityGrain = Math.round(cityGrainBase * workforceRatio);
       totalGrainProd += cityGrain;
 
-      const cityWood = profile ? profile.base_wood : prodConsts.wood;
+      const cityWoodBase = profile ? profile.base_wood : prodConsts.wood;
+      const cityWood = Math.round(cityWoodBase * workforceRatio);
       totalWoodProd += cityWood;
 
-      // Stone is now a BASE resource for all cities (like grain/wood)
-      const cityStone = prodConsts.stone;
+      // Stone scaled by workforce
+      const cityStone = Math.round(prodConsts.stone * workforceRatio);
       totalStoneProd += cityStone;
 
-      // Iron is SPECIAL — only for cities with special_resource_type=IRON
+      // Iron scaled by workforce (only for IRON cities)
       const specialType = profile?.special_resource_type || "NONE";
-      const cityIron = specialType === "IRON" ? (profile ? profile.base_special : prodConsts.iron_special) : 0;
+      const cityIronBase = specialType === "IRON" ? (profile ? profile.base_special : prodConsts.iron_special) : 0;
+      const cityIron = Math.round(cityIronBase * workforceRatio);
       totalIronProd += cityIron;
 
       await supabase.from("cities").update({
@@ -209,7 +252,7 @@ Deno.serve(async (req) => {
         last_turn_wood_prod: cityWood,
         last_turn_stone_prod: cityStone,
         last_turn_iron_prod: cityIron,
-        last_turn_special_prod: cityIron, // backward compat
+        last_turn_special_prod: cityIron,
         special_resource_type: specialType,
       }).eq("id", city.id);
     }
@@ -337,10 +380,9 @@ Deno.serve(async (req) => {
     // 6) Population growth — handled by world-tick (shared physics), NOT here.
     // process-turn only handles economy (production, consumption, famine, stockpiles).
 
-    // 7) Manpower pool
+    // 7) Manpower pool — uses workforce system
     const totalPopulation = myCities.reduce((s, c) => s + c.population_total, 0);
-    const totalPeasants = myCities.reduce((s, c) => s + (c.population_peasants || 0), 0);
-    const manpowerPool = Math.round(totalPeasants * realm.mobilization_rate);
+    const manpowerPool = effectiveActivePop;
 
     // 8) Logistic capacity
     const logisticCapacity = realm.horses_reserve + Math.round((infra?.slavery_factor || 0) * 100);

@@ -337,6 +337,12 @@ Deno.serve(async (req) => {
           }
           lawResults.push({ law: law.law_name, effect: effect.type, applied: true });
         }
+        // Workforce modifiers (active_pop_modifier, max_mobilization_modifier)
+        // These are read at process-turn time from active laws, no world-tick action needed.
+        // Just log them for visibility.
+        if (effect.type === "active_pop_modifier" || effect.type === "max_mobilization_modifier") {
+          lawResults.push({ law: law.law_name, effect: effect.type, value: effect.value, applied: true, note: "Applied in process-turn" });
+        }
       }
     }
     results.laws_applied = lawResults;
