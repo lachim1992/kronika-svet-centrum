@@ -397,6 +397,7 @@ Deno.serve(async (req) => {
     // Subtract army food from grain reserve (after settlement consumption)
     grainReserve = Math.max(0, grainReserve - armyFoodUpkeep);
 
+    const wealthIncome = computeWealthIncome(myCities);
     const newGoldReserve = Math.max(0, (realm.gold_reserve || 0) + wealthIncome - wealthUpkeep);
 
     const famineCityCount = myCities.filter(c => c.famine_turn).length;
