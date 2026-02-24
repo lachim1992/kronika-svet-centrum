@@ -1984,6 +1984,7 @@ export type Database = {
           city_id: string | null
           created_at: string
           died_round: number | null
+          exceptional_prompt: string | null
           flavor_trait: string | null
           id: string
           image_prompt: string | null
@@ -2000,6 +2001,7 @@ export type Database = {
           city_id?: string | null
           created_at?: string
           died_round?: number | null
+          exceptional_prompt?: string | null
           flavor_trait?: string | null
           id?: string
           image_prompt?: string | null
@@ -2016,6 +2018,7 @@ export type Database = {
           city_id?: string | null
           created_at?: string
           died_round?: number | null
+          exceptional_prompt?: string | null
           flavor_trait?: string | null
           id?: string
           image_prompt?: string | null
