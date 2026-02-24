@@ -3597,6 +3597,161 @@ export type Database = {
           },
         ]
       }
+      trade_offers: {
+        Row: {
+          created_at: string
+          duration_turns: number | null
+          from_city_id: string
+          from_player: string
+          id: string
+          message: string | null
+          offer_resources: Json
+          request_resources: Json
+          responded_at: string | null
+          session_id: string
+          status: string
+          to_city_id: string
+          to_player: string
+          turn_number: number
+        }
+        Insert: {
+          created_at?: string
+          duration_turns?: number | null
+          from_city_id: string
+          from_player: string
+          id?: string
+          message?: string | null
+          offer_resources?: Json
+          request_resources?: Json
+          responded_at?: string | null
+          session_id: string
+          status?: string
+          to_city_id: string
+          to_player: string
+          turn_number?: number
+        }
+        Update: {
+          created_at?: string
+          duration_turns?: number | null
+          from_city_id?: string
+          from_player?: string
+          id?: string
+          message?: string | null
+          offer_resources?: Json
+          request_resources?: Json
+          responded_at?: string | null
+          session_id?: string
+          status?: string
+          to_city_id?: string
+          to_player?: string
+          turn_number?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "trade_offers_from_city_id_fkey"
+            columns: ["from_city_id"]
+            isOneToOne: false
+            referencedRelation: "cities"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "trade_offers_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "trade_offers_to_city_id_fkey"
+            columns: ["to_city_id"]
+            isOneToOne: false
+            referencedRelation: "cities"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      trade_routes: {
+        Row: {
+          amount_per_turn: number
+          created_at: string
+          duration_turns: number | null
+          expires_turn: number | null
+          from_city_id: string
+          from_player: string
+          id: string
+          narrative: string | null
+          resource_type: string
+          return_amount: number | null
+          return_resource_type: string | null
+          route_safety: number
+          session_id: string
+          started_turn: number
+          status: string
+          to_city_id: string
+          to_player: string
+        }
+        Insert: {
+          amount_per_turn?: number
+          created_at?: string
+          duration_turns?: number | null
+          expires_turn?: number | null
+          from_city_id: string
+          from_player: string
+          id?: string
+          narrative?: string | null
+          resource_type?: string
+          return_amount?: number | null
+          return_resource_type?: string | null
+          route_safety?: number
+          session_id: string
+          started_turn?: number
+          status?: string
+          to_city_id: string
+          to_player: string
+        }
+        Update: {
+          amount_per_turn?: number
+          created_at?: string
+          duration_turns?: number | null
+          expires_turn?: number | null
+          from_city_id?: string
+          from_player?: string
+          id?: string
+          narrative?: string | null
+          resource_type?: string
+          return_amount?: number | null
+          return_resource_type?: string | null
+          route_safety?: number
+          session_id?: string
+          started_turn?: number
+          status?: string
+          to_city_id?: string
+          to_player?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "trade_routes_from_city_id_fkey"
+            columns: ["from_city_id"]
+            isOneToOne: false
+            referencedRelation: "cities"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "trade_routes_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "trade_routes_to_city_id_fkey"
+            columns: ["to_city_id"]
+            isOneToOne: false
+            referencedRelation: "cities"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       travel_orders: {
         Row: {
           arrives_at: string
