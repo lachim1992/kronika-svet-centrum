@@ -262,7 +262,9 @@ export type Database = {
           last_tick_at: string | null
           last_turn_grain_cons: number
           last_turn_grain_prod: number
+          last_turn_iron_prod: number
           last_turn_special_prod: number
+          last_turn_stone_prod: number
           last_turn_wood_prod: number
           level: string
           local_grain_reserve: number
@@ -304,7 +306,9 @@ export type Database = {
           last_tick_at?: string | null
           last_turn_grain_cons?: number
           last_turn_grain_prod?: number
+          last_turn_iron_prod?: number
           last_turn_special_prod?: number
+          last_turn_stone_prod?: number
           last_turn_wood_prod?: number
           level?: string
           local_grain_reserve?: number
@@ -346,7 +350,9 @@ export type Database = {
           last_tick_at?: string | null
           last_turn_grain_cons?: number
           last_turn_grain_prod?: number
+          last_turn_iron_prod?: number
           last_turn_special_prod?: number
+          last_turn_stone_prod?: number
           last_turn_wood_prod?: number
           level?: string
           local_grain_reserve?: number

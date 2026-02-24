@@ -80,11 +80,13 @@ const EconomyTab = ({ sessionId, currentPlayerName, currentTurn, cities, resourc
   }, [resources, currentPlayerName]);
 
   const totals = useMemo(() => {
-    const foodR = resMap["food"];
-    const grainProd = foodR?.income || 0;
-    const grainCons = foodR?.upkeep || 0;
-    return { grainProd, grainCons, grainNet: grainProd - grainCons };
-  }, [resMap]);
+    // Use city-level data as source of truth for grain (without buffer)
+    const cityGrainProd = myCities.reduce((s, c) => s + (c.last_turn_grain_prod || 0), 0);
+    const grainBuffer = myCities.length <= 3 ? 10 : 0;
+    const grainCons = myCities.reduce((s, c) => s + (c.last_turn_grain_cons || 0), 0);
+    const totalIncome = cityGrainProd + grainBuffer;
+    return { grainProd: cityGrainProd, grainBuffer, grainCons, grainNet: totalIncome - grainCons, totalIncome };
+  }, [myCities]);
 
   const sortedCities = useMemo(() => {
     const arr = [...myCities];
@@ -177,7 +179,6 @@ const EconomyTab = ({ sessionId, currentPlayerName, currentTurn, cities, resourc
   const buildSources = (rt: string) => {
     const sources: { label: string; value: number; type: "income" | "expense" }[] = [];
     const r = resMap[rt];
-    const income = r?.income || 0;
     const upkeep = r?.upkeep || 0;
     if (rt === "food") {
       const totalGrainProd = myCities.reduce((s, c) => s + (c.last_turn_grain_prod || 0), 0);
@@ -185,18 +186,24 @@ const EconomyTab = ({ sessionId, currentPlayerName, currentTurn, cities, resourc
       sources.push({ label: "Produkce sídel", value: totalGrainProd, type: "income" });
       if (myCities.length <= 3) sources.push({ label: "Bonus malé říše", value: 10, type: "income" });
       sources.push({ label: "Spotřeba populace", value: totalGrainCons, type: "expense" });
-      if (upkeep > totalGrainCons) {
-        sources.push({ label: "Vojenská spotřeba", value: upkeep - totalGrainCons, type: "expense" });
+      const armyFood = upkeep > totalGrainCons ? upkeep - totalGrainCons : 0;
+      if (armyFood > 0) {
+        sources.push({ label: "Vojenská spotřeba", value: armyFood, type: "expense" });
       }
     } else if (rt === "wood") {
       const totalWood = myCities.reduce((s, c) => s + (c.last_turn_wood_prod || 0), 0);
       sources.push({ label: "Produkce sídel", value: totalWood, type: "income" });
       if (upkeep > 0) sources.push({ label: "Údržba budov", value: upkeep, type: "expense" });
-    } else if (rt === "stone" || rt === "iron") {
-      const totalSpec = myCities.filter(c => c.special_resource_type === rt.toUpperCase()).reduce((s, c) => s + (c.last_turn_special_prod || 0), 0);
-      sources.push({ label: "Produkce dolů", value: totalSpec, type: "income" });
+    } else if (rt === "stone") {
+      const totalStone = myCities.reduce((s, c) => s + (c.last_turn_stone_prod || 0), 0);
+      sources.push({ label: "Produkce sídel", value: totalStone, type: "income" });
+      if (upkeep > 0) sources.push({ label: "Stavební údržba", value: upkeep, type: "expense" });
+    } else if (rt === "iron") {
+      const totalIron = myCities.reduce((s, c) => s + (c.last_turn_iron_prod || 0), 0);
+      sources.push({ label: "Železné doly", value: totalIron, type: "income" });
       if (upkeep > 0) sources.push({ label: "Vojenská údržba", value: upkeep, type: "expense" });
     } else {
+      const income = r?.income || 0;
       if (income > 0) sources.push({ label: "Obchod & daně", value: income, type: "income" });
       if (upkeep > 0) sources.push({ label: "Výdaje", value: upkeep, type: "expense" });
     }
@@ -346,10 +353,26 @@ const EconomyTab = ({ sessionId, currentPlayerName, currentTurn, cities, resourc
         </h3>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
           {compactResources.map(rt => {
-            const r = resMap[rt];
-            const income = r?.income || 0;
-            const upkeep = r?.upkeep || 0;
-            const stockpile = r?.stockpile || 0;
+            // For food/stone/iron: compute from city-level data, not player_resources (avoids buffer confusion)
+            let income: number, upkeep: number, stockpile: number;
+            if (rt === "food") {
+              income = totals.totalIncome;
+              upkeep = totals.grainCons;
+              stockpile = grainReserve;
+            } else if (rt === "stone") {
+              income = myCities.reduce((s, c) => s + (c.last_turn_stone_prod || 0), 0);
+              upkeep = 0;
+              stockpile = resMap[rt]?.stockpile || 0;
+            } else if (rt === "iron") {
+              income = myCities.reduce((s, c) => s + (c.last_turn_iron_prod || 0), 0);
+              upkeep = 0;
+              stockpile = resMap[rt]?.stockpile || 0;
+            } else {
+              const r = resMap[rt];
+              income = r?.income || 0;
+              upkeep = r?.upkeep || 0;
+              stockpile = r?.stockpile || 0;
+            }
             const net = income - upkeep;
             const isDeficit = net < 0;
             const isFamine = rt === "food" && famineCities.length > 0;
@@ -484,7 +507,8 @@ const EconomyTab = ({ sessionId, currentPlayerName, currentTurn, cities, resourc
               <TableHead className="text-xs px-3 text-right">🌾+ <SortIcon field="grain_prod" /></TableHead>
               <TableHead className="text-xs px-3 text-right">🌾- <SortIcon field="grain_cons" /></TableHead>
               <TableHead className="text-xs px-3 text-right">🪵+ <SortIcon field="wood_prod" /></TableHead>
-              <TableHead className="text-xs px-3 text-right">Spec <SortIcon field="special" /></TableHead>
+              <TableHead className="text-xs px-3 text-right">⛏ <SortIcon field="special" /></TableHead>
+              <TableHead className="text-xs px-3 text-right">⚒ Železo</TableHead>
               <TableHead className="text-xs px-3 text-right">Zranit. <SortIcon field="vulnerability" /></TableHead>
             </TableRow>
           </TableHeader>
@@ -505,9 +529,10 @@ const EconomyTab = ({ sessionId, currentPlayerName, currentTurn, cities, resourc
                   <TableCell className="text-sm px-3 text-right text-destructive">{c.last_turn_grain_cons || 0}</TableCell>
                   <TableCell className="text-sm px-3 text-right">{c.last_turn_wood_prod || 0}</TableCell>
                   <TableCell className="text-sm px-3 text-right">
-                    {profile?.special_resource_type !== "NONE" && profile?.special_resource_type
-                      ? `${profile.special_resource_type === "STONE" ? "⛏" : "⚒"} +${c.last_turn_special_prod || 0}`
-                      : "—"}
+                    {(c.last_turn_stone_prod || 0) > 0 ? `⛏ +${c.last_turn_stone_prod}` : "—"}
+                  </TableCell>
+                  <TableCell className="text-sm px-3 text-right">
+                    {(c.last_turn_iron_prod || 0) > 0 ? `⚒ +${c.last_turn_iron_prod}` : "—"}
                   </TableCell>
                   <TableCell className="text-sm px-3 text-right">{(c.vulnerability_score || 0).toFixed(0)}</TableCell>
                 </TableRow>
