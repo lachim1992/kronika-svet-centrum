@@ -154,7 +154,7 @@ serve(async (req) => {
           events_generated: 0,
           scope: "wiki_generate_retry",
           triggered_by: `retry_${attempt + 1}`,
-        }).catch(() => {});
+        }).then(() => {}, () => {});
       }
     }
 

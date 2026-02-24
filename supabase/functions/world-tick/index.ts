@@ -12,6 +12,11 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+// Helper: supabase insert returns a PromiseLike without .catch() in edge runtime
+async function safeInsert(query: any) {
+  try { await query; } catch (_) { /* non-critical */ }
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -141,14 +146,14 @@ Deno.serve(async (req) => {
     // Process alliance/betrayal events into memories + chronicles
     for (const evt of (recentKeyEvents || [])) {
       if (evt.event_type === "alliance") {
-        await supabase.from("world_memories").insert({
+        await safeInsert(supabase.from("world_memories").insert({
           session_id: sessionId,
           text: `V roce ${turnNumber} byla uzavřena aliance: ${evt.note || evt.player}.`,
           category: "tradice",
           approved: true,
-        }).catch(() => {});
+        }));
 
-        await supabase.from("chronicle_entries").insert({
+        await safeInsert(supabase.from("chronicle_entries").insert({
           session_id: sessionId,
           text: `**Nová aliance (rok ${turnNumber}):** ${evt.note || `${evt.player} uzavřel spojenectví.`}`,
           epoch_style: "kroniky",
@@ -156,21 +161,21 @@ Deno.serve(async (req) => {
           turn_to: turnNumber,
           event_id: evt.id,
           source_type: "system",
-        }).catch(() => {});
+        }));
 
         // Alliance boosts reputation
         reputationDeltas[evt.player] = (reputationDeltas[evt.player] || 0) + 10;
       }
 
       if (evt.event_type === "betrayal") {
-        await supabase.from("world_memories").insert({
+        await safeInsert(supabase.from("world_memories").insert({
           session_id: sessionId,
           text: `V roce ${turnNumber} došlo ke zradě: ${evt.note || evt.player}.`,
           category: "historická jizva",
           approved: true,
-        }).catch(() => {});
+        }));
 
-        await supabase.from("chronicle_entries").insert({
+        await safeInsert(supabase.from("chronicle_entries").insert({
           session_id: sessionId,
           text: `**Zrada (rok ${turnNumber}):** ${evt.note || `${evt.player} porušil důvěru.`} Svět nezapomíná.`,
           epoch_style: "kroniky",
@@ -178,19 +183,19 @@ Deno.serve(async (req) => {
           turn_to: turnNumber,
           event_id: evt.id,
           source_type: "system",
-        }).catch(() => {});
+        }));
 
         // Betrayal devastates reputation
         reputationDeltas[evt.player] = (reputationDeltas[evt.player] || 0) - 25;
       }
 
       if (evt.event_type === "treaty") {
-        await supabase.from("world_memories").insert({
+        await safeInsert(supabase.from("world_memories").insert({
           session_id: sessionId,
           text: `V roce ${turnNumber} byla podepsána smlouva: ${evt.note || evt.player}.`,
           category: "tradice",
           approved: true,
-        }).catch(() => {});
+        }));
 
         reputationDeltas[evt.player] = (reputationDeltas[evt.player] || 0) + 5;
       }
@@ -240,18 +245,18 @@ Deno.serve(async (req) => {
             note: `Diplomatická krize mezi ${pA} a ${pB}! Tenze dosáhla ${Math.round(tension.total_tension)}.`,
             importance: "critical", confirmed: true, turn_number: turnNumber,
           }).select("id").single();
-          await supabase.from("world_memories").insert({
+          await safeInsert(supabase.from("world_memories").insert({
             session_id: sessionId,
             text: `V roce ${turnNumber} vypukla diplomatická krize mezi ${pA} a ${pB} (tenze: ${Math.round(tension.total_tension)}).`,
             category: "historická jizva", approved: true,
-          }).catch(() => {});
-          await supabase.from("chronicle_entries").insert({
+          }));
+          await safeInsert(supabase.from("chronicle_entries").insert({
             session_id: sessionId,
             text: `**Diplomatická krize (rok ${turnNumber}):** Napětí mezi říšemi ${pA} a ${pB} dosáhlo bodu zlomu. Tenze: ${Math.round(tension.total_tension)}. Vyslanci obou stran opustili jednací stoly.`,
             epoch_style: "kroniky", turn_from: turnNumber, turn_to: turnNumber,
             event_id: crisisEvt?.id || null,
             source_type: "system",
-          }).catch(() => {});
+          }));
           reputationDeltas[pA] = (reputationDeltas[pA] || 0) + REPUTATION_DELTAS.crisis_participant;
           reputationDeltas[pB] = (reputationDeltas[pB] || 0) + REPUTATION_DELTAS.crisis_participant;
         }
@@ -262,18 +267,18 @@ Deno.serve(async (req) => {
             note: `Válka mezi ${pA} a ${pB} je nevyhnutelná! Tenze: ${Math.round(tension.total_tension)}, hod: ${Math.round(tension.war_roll_result * 100)}%.`,
             importance: "critical", confirmed: true, turn_number: turnNumber,
           }).select("id").single();
-          await supabase.from("world_memories").insert({
+          await safeInsert(supabase.from("world_memories").insert({
             session_id: sessionId,
             text: `V roce ${turnNumber} vypukla válka mezi ${pA} a ${pB}. Svět se zachvěl.`,
             category: "historická jizva", approved: true,
-          }).catch(() => {});
-          await supabase.from("chronicle_entries").insert({
+          }));
+          await safeInsert(supabase.from("chronicle_entries").insert({
             session_id: sessionId,
             text: `**Vyhlášení války (rok ${turnNumber}):** Po dlouhém napětí (tenze ${Math.round(tension.total_tension)}) vypukl otevřený konflikt mezi ${pA} a ${pB}. Vojska obou stran se dala do pohybu.`,
             epoch_style: "kroniky", turn_from: turnNumber, turn_to: turnNumber,
             event_id: warEvt?.id || null,
             source_type: "system",
-          }).catch(() => {});
+          }));
           reputationDeltas[pA] = (reputationDeltas[pA] || 0) + REPUTATION_DELTAS.war_aggressor;
           reputationDeltas[pB] = (reputationDeltas[pB] || 0) + REPUTATION_DELTAS.war_defender;
         }
@@ -381,14 +386,14 @@ Deno.serve(async (req) => {
             turn_number: turnNumber,
           }).select("id").single();
 
-          await supabase.from("world_memories").insert({
+          await safeInsert(supabase.from("world_memories").insert({
             session_id: sessionId,
             text: `V roce ${turnNumber} se rozpadla smlouva mezi ${partyA} a ${partyB}.`,
             category: "historická jizva",
             approved: true,
-          }).catch(() => {});
+          }));
 
-          await supabase.from("chronicle_entries").insert({
+          await safeInsert(supabase.from("chronicle_entries").insert({
             session_id: sessionId,
             text: `**Rozpad smlouvy (rok ${turnNumber}):** Pod tíhou narůstajícího napětí (${Math.round(tensionLevel)}) se dohoda mezi ${partyA} a ${partyB} rozpadla. Důvěra byla pošlapána.`,
             epoch_style: "kroniky",
@@ -396,7 +401,7 @@ Deno.serve(async (req) => {
             turn_to: turnNumber,
             event_id: breakEvt?.id || null,
             source_type: "system",
-          }).catch(() => {});
+          }));
 
           reputationDeltas[partyA] = (reputationDeltas[partyA] || 0) - 10;
           reputationDeltas[partyB] = (reputationDeltas[partyB] || 0) - 10;
@@ -443,15 +448,15 @@ Deno.serve(async (req) => {
             city_id: city.id,
           }).select("id").single();
 
-          await supabase.from("world_memories").insert({
+          await safeInsert(supabase.from("world_memories").insert({
             session_id: sessionId,
             text: `V roce ${turnNumber} vypukla vzpoura v ${city.name} (stabilita: ${stability}%).`,
             category: "historická jizva",
             city_id: city.id,
             approved: true,
-          }).catch(() => {});
+          }));
 
-          await supabase.from("chronicle_entries").insert({
+          await safeInsert(supabase.from("chronicle_entries").insert({
             session_id: sessionId,
             text: `**Vzpoura (rok ${turnNumber}):** Lid města ${city.name} povstal proti vládě ${city.owner_player}. Stabilita klesla na ${newStability}%, ${popLoss} obyvatel uprchlo.`,
             epoch_style: "kroniky",
@@ -459,7 +464,7 @@ Deno.serve(async (req) => {
             turn_to: turnNumber,
             event_id: rebelEvt?.id || null,
             source_type: "system",
-          }).catch(() => {});
+          }));
 
           reputationDeltas[city.owner_player] = (reputationDeltas[city.owner_player] || 0) - 8;
           rebellionResults.push({ city: city.name, owner: city.owner_player, stability, popLoss, rebelled: true });

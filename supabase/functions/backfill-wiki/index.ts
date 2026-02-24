@@ -111,7 +111,7 @@ serve(async (req) => {
       events_generated: generated,
       scope: "backfill_wiki",
       triggered_by: "admin",
-    }).catch(() => {});
+    }).then(() => {}, () => {});
 
     return new Response(JSON.stringify({
       cities_total: cities.length,

@@ -855,7 +855,7 @@ Kroniky musí používat skutečná jména míst, osob a událostí z vygenerova
   } catch (e) {
     console.error("generate-promo-world error:", e);
     if (sessionId) {
-      await supabase.from("game_sessions").update({ init_status: "failed" }).eq("id", sessionId).catch(() => {});
+      await supabase.from("game_sessions").update({ init_status: "failed" }).eq("id", sessionId).then(() => {}, () => {});
     }
     return new Response(JSON.stringify({ error: e instanceof Error ? e.message : "Unknown error" }), {
       status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
