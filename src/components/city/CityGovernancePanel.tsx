@@ -8,12 +8,13 @@ import { InfoTip } from "@/components/ui/info-tip";
 import { toast } from "sonner";
 import {
   Wheat, Shield, Crown, Users, Building2, Loader2, Plus,
-  Landmark, ScrollText, TrendingUp,
+  Landmark, ScrollText, TrendingUp, ArrowUpCircle,
 } from "lucide-react";
 import {
   DISTRICT_TYPES, FACTION_TYPES, RATION_POLICIES,
-  LABOR_KEYS, LABOR_LABELS, MAX_DISTRICTS, computeFactionPower,
+  LABOR_KEYS, LABOR_LABELS, MAX_DISTRICTS, INFRA_UPGRADES, computeFactionPower,
 } from "@/lib/cityGovernance";
+import CityDistrictMap from "@/components/city/CityDistrictMap";
 
 interface Props {
   sessionId: string;
@@ -263,7 +264,22 @@ const CityGovernancePanel = ({ sessionId, city, realm, currentPlayerName, curren
         </CardContent>
       </Card>
 
-      {/* ─── DISTRICTS ─── */}
+      {/* ─── DISTRICT MAP ─── */}
+      {districts.length > 0 && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-display flex items-center gap-2">
+              <Building2 className="h-4 w-4 text-primary" />Mapa čtvrtí
+              <Badge variant="secondary" className="text-[10px] ml-auto">{districts.length}/{maxDistricts}</Badge>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <CityDistrictMap districts={districts} settlementLevel={city.settlement_level} />
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ─── DISTRICTS LIST + BUILD ─── */}
       <Card>
         <CardHeader className="pb-2">
           <CardTitle className="text-sm font-display flex items-center gap-2">
@@ -401,32 +417,86 @@ const CityGovernancePanel = ({ sessionId, city, realm, currentPlayerName, curren
         </CardContent>
       </Card>
 
-      {/* ─── INFRASTRUCTURE SUMMARY ─── */}
+      {/* ─── INFRASTRUCTURE UPGRADES ─── */}
       <Card>
         <CardHeader className="pb-2">
           <CardTitle className="text-sm font-display flex items-center gap-2">
             <Landmark className="h-4 w-4 text-primary" />Infrastruktura
+            <InfoTip>Investujte do zavlažování, chrámů a tržišť. Každá úroveň vyžaduje suroviny.</InfoTip>
           </CardTitle>
         </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-3 gap-3">
-            <div className="text-center p-2 rounded bg-muted/30">
-              <p className="text-lg">🏗️</p>
-              <p className="text-[10px] text-muted-foreground">Zavlažování</p>
-              <p className="text-sm font-bold">{city.irrigation_level || 0}</p>
-            </div>
-            <div className="text-center p-2 rounded bg-muted/30">
-              <p className="text-lg">⛪</p>
-              <p className="text-[10px] text-muted-foreground">Chrám</p>
-              <p className="text-sm font-bold">{city.temple_level || 0}</p>
-            </div>
-            <div className="text-center p-2 rounded bg-muted/30">
-              <p className="text-lg">🏪</p>
-              <p className="text-[10px] text-muted-foreground">Tržiště</p>
-              <p className="text-sm font-bold">{city.market_level || 0}</p>
-            </div>
-          </div>
-          <div className="flex items-center justify-between text-xs mt-2 p-2 bg-muted/30 rounded">
+        <CardContent className="space-y-3">
+          {Object.entries(INFRA_UPGRADES).map(([key, infra]) => {
+            const currentLevel = (city as any)[infra.field] || 0;
+            const atMax = currentLevel >= infra.maxLevel;
+            const cost = {
+              wealth: infra.costPerLevel.wealth * (currentLevel + 1),
+              wood: infra.costPerLevel.wood * (currentLevel + 1),
+              stone: infra.costPerLevel.stone * (currentLevel + 1),
+            };
+            const canAfford = realm &&
+              (realm.gold_reserve || 0) >= cost.wealth &&
+              (realm.wood_reserve || 0) >= cost.wood &&
+              (realm.stone_reserve || 0) >= cost.stone;
+
+            return (
+              <div key={key} className="p-3 rounded-lg border border-border">
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="text-lg">{infra.icon}</span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-display font-semibold">{infra.label}</p>
+                    <p className="text-[10px] text-muted-foreground">{infra.effects}</p>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <p className="text-xs font-bold">{currentLevel}/{infra.maxLevel}</p>
+                  </div>
+                </div>
+                {/* Level bar */}
+                <div className="flex h-1.5 rounded-full overflow-hidden bg-muted mb-2">
+                  <div className="bg-primary/70 transition-all" style={{ width: `${(currentLevel / infra.maxLevel) * 100}%` }} />
+                </div>
+                {isOwner && !atMax && (
+                  <div className="flex items-center justify-between">
+                    <div className="flex gap-1 text-[9px] text-muted-foreground">
+                      <span>💰{cost.wealth}</span>
+                      <span>🪵{cost.wood}</span>
+                      <span>🪨{cost.stone}</span>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-6 text-[10px] gap-1"
+                      disabled={saving || !canAfford}
+                      onClick={async () => {
+                        setSaving(true);
+                        await supabase.from("realm_resources").update({
+                          gold_reserve: (realm.gold_reserve || 0) - cost.wealth,
+                          wood_reserve: (realm.wood_reserve || 0) - cost.wood,
+                          stone_reserve: (realm.stone_reserve || 0) - cost.stone,
+                        } as any).eq("id", realm.id);
+                        await supabase.from("cities").update({
+                          [infra.field]: currentLevel + 1,
+                        } as any).eq("id", city.id);
+                        await supabase.from("chronicle_entries").insert({
+                          session_id: sessionId,
+                          text: `V městě **${city.name}** byla vylepšena infrastruktura: **${infra.label}** na úroveň ${currentLevel + 1}.`,
+                        });
+                        toast.success(`${infra.icon} ${infra.label} vylepšena na úroveň ${currentLevel + 1}!`);
+                        setSaving(false);
+                        onRefetch?.();
+                      }}
+                    >
+                      <ArrowUpCircle className="h-3 w-3" />Vylepšit
+                    </Button>
+                  </div>
+                )}
+                {atMax && (
+                  <p className="text-[10px] text-primary font-semibold">✓ Maximální úroveň</p>
+                )}
+              </div>
+            );
+          })}
+          <div className="flex items-center justify-between text-xs p-2 bg-muted/30 rounded">
             <span className="text-muted-foreground flex items-center gap-1">
               <Shield className="h-3 w-3" /> Legitimita
             </span>

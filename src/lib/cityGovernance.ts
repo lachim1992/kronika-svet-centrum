@@ -148,6 +148,38 @@ export const MAX_DISTRICTS: Record<string, number> = {
   HAMLET: 2, TOWNSHIP: 4, CITY: 6, POLIS: 10,
 };
 
+// ═══════════════════════════════════════════
+// INFRASTRUCTURE UPGRADES
+// ═══════════════════════════════════════════
+export const INFRA_UPGRADES: Record<string, {
+  label: string;
+  icon: string;
+  field: string;
+  maxLevel: number;
+  costPerLevel: { wealth: number; wood: number; stone: number };
+  effects: string;
+  tip: string;
+}> = {
+  irrigation: {
+    label: "Zavlažování", icon: "🏗️", field: "irrigation_level", maxLevel: 5,
+    costPerLevel: { wealth: 20, wood: 10, stone: 15 },
+    effects: "+3 🌾 produkce obilí / úroveň",
+    tip: "Kanály a hráze. Každá úroveň zvyšuje produkci obilí o 3. Riziko povodně při zanedbání.",
+  },
+  temple: {
+    label: "Chrám", icon: "⛪", field: "temple_level", maxLevel: 5,
+    costPerLevel: { wealth: 30, wood: 5, stone: 25 },
+    effects: "+5 legitimita, +2 stabilita / úroveň",
+    tip: "Posvátné místo. Zvyšuje legitimitu a stabilitu, posiluje kněžskou frakci.",
+  },
+  market: {
+    label: "Tržiště", icon: "🏪", field: "market_level", maxLevel: 5,
+    costPerLevel: { wealth: 25, wood: 15, stone: 10 },
+    effects: "+4 💰 bohatství / úroveň",
+    tip: "Obchodní centrum. Každá úroveň zvyšuje příjem bohatství. Přitahuje měšťany a cizince.",
+  },
+};
+
 // Compute faction base power from city demographics
 export function computeFactionPower(city: any): Record<string, number> {
   const pop = city.population_total || 1;
