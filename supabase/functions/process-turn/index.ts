@@ -136,6 +136,63 @@ Deno.serve(async (req) => {
     const myCities = cities || [];
     const logEntries: string[] = [];
 
+    // ═══ BUILDING COMPLETION ═══
+    // Complete buildings whose build time has elapsed
+    const { data: allBuildings } = await supabase
+      .from("city_buildings")
+      .select("*")
+      .eq("session_id", sessionId)
+      .eq("status", "building")
+      .in("city_id", myCities.length > 0 ? myCities.map(c => c.id) : ["00000000-0000-0000-0000-000000000000"]);
+
+    let completedCount = 0;
+    for (const b of (allBuildings || [])) {
+      const finishTurn = (b.build_started_turn || 0) + (b.build_duration || 1);
+      if (currentTurn >= finishTurn) {
+        await supabase.from("city_buildings").update({
+          status: "completed",
+          completed_turn: currentTurn,
+        }).eq("id", b.id);
+        completedCount++;
+        const cityName = myCities.find(c => c.id === b.city_id)?.name || "?";
+        logEntries.push(`🏗️ Stavba "${b.name}" v ${cityName} dokončena!`);
+      }
+    }
+    if (completedCount > 0) {
+      logEntries.push(`Celkem dokončeno ${completedCount} staveb`);
+    }
+
+    // ═══ BUILDING EFFECTS ═══
+    // Load ALL completed buildings for this player's cities to sum up economic bonuses
+    const { data: completedBuildings } = await supabase
+      .from("city_buildings")
+      .select("city_id, effects")
+      .eq("session_id", sessionId)
+      .eq("status", "completed")
+      .in("city_id", myCities.length > 0 ? myCities.map(c => c.id) : ["00000000-0000-0000-0000-000000000000"]);
+
+    // Aggregate building effects per city and globally
+    const cityBuildingEffects: Record<string, Record<string, number>> = {};
+    const globalBuildingEffects: Record<string, number> = {};
+    for (const b of (completedBuildings || [])) {
+      const eff = b.effects as Record<string, number> | null;
+      if (!eff) continue;
+      if (!cityBuildingEffects[b.city_id]) cityBuildingEffects[b.city_id] = {};
+      for (const [k, v] of Object.entries(eff)) {
+        if (typeof v !== "number") continue;
+        cityBuildingEffects[b.city_id][k] = (cityBuildingEffects[b.city_id][k] || 0) + v;
+        globalBuildingEffects[k] = (globalBuildingEffects[k] || 0) + v;
+      }
+    }
+
+    if (Object.keys(globalBuildingEffects).length > 0) {
+      const effStr = Object.entries(globalBuildingEffects)
+        .filter(([, v]) => v > 0)
+        .map(([k, v]) => `${k}:+${v}`)
+        .join(", ");
+      logEntries.push(`Bonusy ze staveb: ${effStr}`);
+    }
+
     // Compute granary/stables capacity from infrastructure
     const granaryCapacity = 500 * (infra?.granary_level || 1) * (infra?.granaries_count || 1);
     const stablesCapacity = 100 * (infra?.stables_level || 1) * (infra?.stables_count || 1);
@@ -228,24 +285,34 @@ Deno.serve(async (req) => {
     for (const city of myCities) {
       const profile = profileMap[city.id];
       const prodConsts = SETTLEMENT_PRODUCTION[city.settlement_level] || SETTLEMENT_PRODUCTION.HAMLET;
+      const bldgEff = cityBuildingEffects[city.id] || {};
 
       const cityGrainBase = profile ? profile.base_grain : prodConsts.grain;
-      const cityGrain = Math.round(cityGrainBase * workforceRatio);
+      const cityGrain = Math.round(cityGrainBase * workforceRatio) + (bldgEff.food_income || 0);
       totalGrainProd += cityGrain;
 
       const cityWoodBase = profile ? profile.base_wood : prodConsts.wood;
-      const cityWood = Math.round(cityWoodBase * workforceRatio);
+      const cityWood = Math.round(cityWoodBase * workforceRatio) + (bldgEff.wood_income || 0);
       totalWoodProd += cityWood;
 
-      // Stone scaled by workforce
-      const cityStone = Math.round(prodConsts.stone * workforceRatio);
+      // Stone scaled by workforce + building bonus
+      const cityStone = Math.round(prodConsts.stone * workforceRatio) + (bldgEff.stone_income || 0);
       totalStoneProd += cityStone;
 
-      // Iron scaled by workforce (only for IRON cities)
+      // Iron scaled by workforce (only for IRON cities) + building bonus
       const specialType = profile?.special_resource_type || "NONE";
       const cityIronBase = specialType === "IRON" ? (profile ? profile.base_special : prodConsts.iron_special) : 0;
-      const cityIron = Math.round(cityIronBase * workforceRatio);
+      const cityIron = Math.round(cityIronBase * workforceRatio) + (bldgEff.iron_income || 0);
       totalIronProd += cityIron;
+
+      // Apply stability bonus from buildings (clamp 0-100)
+      if (bldgEff.stability_bonus && bldgEff.stability_bonus > 0) {
+        const newStab = Math.min(100, (city.city_stability || 70) + bldgEff.stability_bonus);
+        if (newStab !== city.city_stability) {
+          await supabase.from("cities").update({ city_stability: newStab }).eq("id", city.id);
+          city.city_stability = newStab;
+        }
+      }
 
       await supabase.from("cities").update({
         last_turn_grain_prod: cityGrain,
@@ -446,7 +513,7 @@ Deno.serve(async (req) => {
     // Subtract army food from grain reserve (after settlement consumption)
     grainReserve = Math.max(0, grainReserve - armyFoodUpkeep);
 
-    const wealthIncome = computeWealthIncome(myCities);
+    const wealthIncome = computeWealthIncome(myCities) + (globalBuildingEffects.wealth_income || 0);
     const newGoldReserve = Math.max(0, (realm.gold_reserve || 0) + wealthIncome - wealthUpkeep);
 
     const famineCityCount = myCities.filter(c => c.famine_turn).length;
