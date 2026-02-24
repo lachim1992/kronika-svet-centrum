@@ -6,7 +6,7 @@ import {
   Users, Gauge,
   AlertTriangle, TrendingUp, TrendingDown, Minus,
   Skull, ArrowUpDown, BarChart3, ShieldAlert, Info, RefreshCw,
-  ChevronDown, Code, Loader2
+  ChevronDown, Code, Loader2, MessageSquare
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/hooks/use-toast";
@@ -16,6 +16,9 @@ import {
 import {
   Collapsible, CollapsibleContent, CollapsibleTrigger,
 } from "@/components/ui/collapsible";
+import {
+  Tooltip, TooltipContent, TooltipTrigger, TooltipProvider,
+} from "@/components/ui/tooltip";
 import { ensureRealmResources } from "@/lib/turnEngine";
 import {
   RESOURCE_ICONS, RESOURCE_LABELS, SETTLEMENT_LABELS, SETTLEMENT_WEALTH,
@@ -33,11 +36,12 @@ interface Props {
   myRole?: string;
   onEntityClick?: (type: string, id: string) => void;
   onRefetch?: () => void;
+  onTabChange?: (tab: string) => void;
 }
 
 type CitySortKey = "name" | "population" | "grain_prod" | "grain_cons" | "wood_prod" | "special" | "vulnerability";
 
-const EconomyTab = ({ sessionId, currentPlayerName, currentTurn, cities, resources, armies, myRole, onEntityClick, onRefetch }: Props) => {
+const EconomyTab = ({ sessionId, currentPlayerName, currentTurn, cities, resources, armies, myRole, onEntityClick, onRefetch, onTabChange }: Props) => {
   const [realm, setRealm] = useState<any>(null);
   const [profiles, setProfiles] = useState<any[]>([]);
   const [citySortKey, setCitySortKey] = useState<CitySortKey>("grain_prod");
@@ -240,6 +244,7 @@ const EconomyTab = ({ sessionId, currentPlayerName, currentTurn, cities, resourc
       {/* ═══ TOP TIER: Wealth + Alerts + Realm Stats ═══ */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {/* Wealth main card — spans 2 cols */}
+        <Collapsible>
         <div className="game-card p-5 md:col-span-2 space-y-4">
           <div className="flex items-center gap-3">
             <div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center">
@@ -277,16 +282,86 @@ const EconomyTab = ({ sessionId, currentPlayerName, currentTurn, cities, resourc
           {wealthSources.length > 0 && (
             <div className="border-t border-border/50 pt-3 space-y-1">
               {wealthSources.map((src, i) => (
-                <div key={i} className="flex justify-between text-xs">
-                  <span className="text-muted-foreground">{src.label}</span>
-                  <span className={src.type === "income" ? "text-success font-semibold" : "text-destructive font-semibold"}>
-                    {src.type === "income" ? "+" : "-"}{src.value}
-                  </span>
-                </div>
+                <TooltipProvider key={i}>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <div className="flex justify-between text-xs cursor-help">
+                        <span className="text-muted-foreground flex items-center gap-1">
+                          {src.label}
+                          <Info className="h-2.5 w-2.5 text-muted-foreground/50" />
+                        </span>
+                        <span className={src.type === "income" ? "text-success font-semibold" : "text-destructive font-semibold"}>
+                          {src.type === "income" ? "+" : "-"}{src.value}
+                        </span>
+                      </div>
+                    </TooltipTrigger>
+                    <TooltipContent side="left" className="max-w-[240px] text-xs">
+                      {src.label === "Daně sídel" && "Každé sídlo platí daň podle úrovně: Osada 1, Městečko 2, Město 4, Polis 6 zlata/kolo."}
+                      {src.label === "Daň z populace" && "1 zlato za každých 500 obyvatel v říši. Čím víc lidí, tím víc příjmů."}
+                      {src.label === "Obchod měšťanů" && "1 zlato za každých 200 měšťanů. Měšťané jsou obchodnická třída ve městech."}
+                      {src.label === "Výdaje správy & armády" && "1 zlato za každých 100 vojáků v aktivních armádách."}
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
               ))}
             </div>
           )}
+
+          {/* Expandable per-city wealth breakdown */}
+          <CollapsibleTrigger asChild>
+            <button className="flex items-center gap-1 text-[10px] text-primary hover:text-primary/80 transition-colors pt-1">
+              <ChevronDown className="h-3 w-3" />
+              <span>Detailní rozpis po městech</span>
+            </button>
+          </CollapsibleTrigger>
+          <CollapsibleContent>
+            <div className="border-t border-border/50 pt-3 space-y-3">
+              {myCities.filter(c => !c.status || c.status === "ok").map(c => {
+                const tierIncome = SETTLEMENT_WEALTH[c.settlement_level] || 1;
+                const popTax = Math.floor((c.population_total || 0) / 500);
+                const burgherTrade = Math.floor((c.population_burghers || 0) / 200);
+                const cityTotal = tierIncome + popTax + burgherTrade;
+                return (
+                  <div key={c.id} className="space-y-1">
+                    <div className="flex justify-between text-xs font-semibold cursor-pointer hover:text-primary" onClick={() => onEntityClick?.("city", c.id)}>
+                      <span>{c.name}</span>
+                      <span className="text-success">+{cityTotal}</span>
+                    </div>
+                    <div className="grid grid-cols-3 gap-2 text-[10px] text-muted-foreground pl-2">
+                      <span>Daně: +{tierIncome}</span>
+                      <span>Pop: +{popTax}</span>
+                      <span>Obchod: +{burgherTrade}</span>
+                    </div>
+                  </div>
+                );
+              })}
+              {wealthUpkeep > 0 && (
+                <div className="flex justify-between text-xs border-t border-border/30 pt-2">
+                  <span className="text-muted-foreground">Armádní upkeep</span>
+                  <span className="text-destructive font-semibold">-{wealthUpkeep}</span>
+                </div>
+              )}
+              <div className="flex justify-between text-xs font-bold border-t border-border pt-2">
+                <span>Celkem netto</span>
+                <span className={wealthNet < 0 ? "text-destructive" : "text-success"}>
+                  {wealthNet >= 0 ? "+" : ""}{wealthNet}
+                </span>
+              </div>
+
+              {/* Council link */}
+              <Button
+                variant="outline"
+                size="sm"
+                className="w-full mt-2 text-xs gap-1.5"
+                onClick={() => onTabChange?.("council")}
+              >
+                <MessageSquare className="h-3.5 w-3.5" />
+                Poradit se s rádci o ekonomice
+              </Button>
+            </div>
+          </CollapsibleContent>
         </div>
+        </Collapsible>
 
         {/* Right column: Alerts + Realm stats */}
         <div className="space-y-4">
@@ -318,21 +393,62 @@ const EconomyTab = ({ sessionId, currentPlayerName, currentTurn, cities, resourc
           )}
 
           {/* Quick realm stats */}
+          <TooltipProvider>
           <div className="game-card p-4 space-y-3">
             <div className="flex items-center justify-between text-xs">
-              <span className="text-muted-foreground flex items-center gap-1.5"><Users className="h-3.5 w-3.5 text-primary" /> Lidská síla</span>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span className="text-muted-foreground flex items-center gap-1.5 cursor-help">
+                    <Users className="h-3.5 w-3.5 text-primary" /> Lidská síla
+                    <Info className="h-2.5 w-2.5 text-muted-foreground/50" />
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent side="left" className="max-w-[260px] text-xs">
+                  Počet mužů dostupných k mobilizaci. Vypočítáno jako: rolníci × mobilizační sazba. Odvedení muži jsou ti, kteří jsou aktuálně v armádách. Hodnota: {totalPeasants} rolníků × {Math.round(mobRate * 100)}% = {computedPool}, odvedeno {realm?.manpower_committed || 0}.
+                </TooltipContent>
+              </Tooltip>
               <span className="font-bold">{availableManpower} / {computedPool}</span>
             </div>
             <div className="flex items-center justify-between text-xs">
-              <span className="text-muted-foreground flex items-center gap-1.5"><ShieldAlert className="h-3.5 w-3.5 text-primary" /> Stabilita</span>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span className="text-muted-foreground flex items-center gap-1.5 cursor-help">
+                    <ShieldAlert className="h-3.5 w-3.5 text-primary" /> Stabilita
+                    <Info className="h-2.5 w-2.5 text-muted-foreground/50" />
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent side="left" className="max-w-[260px] text-xs">
+                  Průměrná stabilita vašich sídel. Klesá při hladomoru, válkách a vysoké mobilizaci. Nízká stabilita zvyšuje riziko vzpour.
+                </TooltipContent>
+              </Tooltip>
               <span className={`font-bold ${(realm?.stability || 70) < 40 ? "text-destructive" : ""}`}>{realm?.stability || 70}</span>
             </div>
             <div className="flex items-center justify-between text-xs">
-              <span className="text-muted-foreground flex items-center gap-1.5"><Gauge className="h-3.5 w-3.5 text-primary" /> Mobilizace</span>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span className="text-muted-foreground flex items-center gap-1.5 cursor-help">
+                    <Gauge className="h-3.5 w-3.5 text-primary" /> Mobilizace
+                    <Info className="h-2.5 w-2.5 text-muted-foreground/50" />
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent side="left" className="max-w-[260px] text-xs">
+                  Procento rolníků odváděných do armády. Vyšší mobilizace = více vojáků, ale snížená produkce obilí (penalizace 0.5×) a pokles stability. Nastavuje se v ekonomickém popoveru na HUD liště.
+                </TooltipContent>
+              </Tooltip>
               <span className="font-bold">{currentMob}%</span>
             </div>
             <div className="flex items-center justify-between text-xs">
-              <span className="text-muted-foreground flex items-center gap-1.5"><Wheat className="h-3.5 w-3.5 text-primary" /> Sýpky</span>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span className="text-muted-foreground flex items-center gap-1.5 cursor-help">
+                    <Wheat className="h-3.5 w-3.5 text-primary" /> Sýpky
+                    <Info className="h-2.5 w-2.5 text-muted-foreground/50" />
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent side="left" className="max-w-[260px] text-xs">
+                  Celkové zásoby obilí v říši. Hladomor nastává až po úplném vyčerpání zásob při negativním netto příjmu. Kapacitu sýpek lze zvýšit vylepšením sídel.
+                </TooltipContent>
+              </Tooltip>
               <span className="font-bold">{grainReserve} / {granaryCapacity}</span>
             </div>
             {/* Granary bar */}
@@ -343,6 +459,7 @@ const EconomyTab = ({ sessionId, currentPlayerName, currentTurn, cities, resourc
               />
             </div>
           </div>
+          </TooltipProvider>
         </div>
       </div>
 

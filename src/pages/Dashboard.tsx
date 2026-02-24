@@ -289,6 +289,7 @@ const Dashboard = () => {
           myRole={myRole}
           onEntityClick={handleEntityClick}
           onRefetch={refetch}
+          onTabChange={(tab) => setActiveTab(tab as TabId)}
         />
       )}
       {activeTab === "feed" && <FeedTab {...sharedProps} />}
