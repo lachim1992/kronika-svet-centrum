@@ -55,6 +55,16 @@ const Dashboard = () => {
   const [wikiEntityTarget, setWikiEntityTarget] = useState<{ type: string; id: string } | null>(null);
   const [showFoundDialog, setShowFoundDialog] = useState(false);
 
+  const currentTurn = session?.current_turn ?? 0;
+
+  const { processing: turnProcessing, processNextTurn } = useNextTurn({
+    sessionId: session?.id || sessionId || "",
+    currentTurn,
+    playerName: myPlayerName,
+    gameMode: session?.game_mode,
+    onComplete: refetch,
+  });
+
   useEffect(() => {
     if (!user || !sessionId) return;
 
@@ -108,16 +118,6 @@ const Dashboard = () => {
       </div>
     );
   }
-
-  const currentTurn = session.current_turn;
-
-  const { processing: turnProcessing, processNextTurn } = useNextTurn({
-    sessionId: session.id,
-    currentTurn,
-    playerName: myPlayerName,
-    gameMode: session.game_mode,
-    onComplete: refetch,
-  });
 
   const handleAction = (action: string, payload?: any) => {
     console.log(`Dashboard handleAction: ${action}`);
