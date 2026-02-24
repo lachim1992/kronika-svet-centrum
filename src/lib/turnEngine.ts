@@ -118,13 +118,40 @@ export async function recruitStack(
   const totalManpower = preset.composition.reduce((s, c) => s + c.manpower, 0);
   const totalGold = preset.gold_override ?? preset.composition.reduce((s, c) => s + c.manpower * (UNIT_GOLD_FACTOR[c.unit_type] || 1), 0);
 
-  // Load realm
+  // Load realm fresh from DB to prevent stale state
   const realm = await ensureRealmResources(sessionId, playerName);
   if (!realm) throw new Error("Failed to load realm");
 
-  const availableManpower = realm.manpower_pool - realm.manpower_committed;
+  // Compute actual mobilization cap from cities
+  const { data: cities } = await supabase
+    .from("cities")
+    .select("population_total, population_peasants, population_burghers, population_clerics, status")
+    .eq("session_id", sessionId)
+    .eq("owner_player", playerName);
+
+  const { computeWorkforceBreakdown } = await import("@/lib/economyConstants");
+  const wf = computeWorkforceBreakdown(cities || [], realm.mobilization_rate || 0.1);
+
+  // Get actual committed from stacks (not cached realm value)
+  const { data: existingStacks } = await supabase
+    .from("military_stacks")
+    .select("id")
+    .eq("session_id", sessionId)
+    .eq("player_name", playerName)
+    .eq("is_active", true);
+  const stackIds = (existingStacks || []).map(s => s.id);
+  let actualCommitted = 0;
+  if (stackIds.length > 0) {
+    const { data: comps } = await supabase
+      .from("military_stack_composition")
+      .select("manpower")
+      .in("stack_id", stackIds);
+    actualCommitted = (comps || []).reduce((s, c) => s + (c.manpower || 0), 0);
+  }
+
+  const availableManpower = Math.max(0, wf.mobilized - actualCommitted);
   if (totalManpower > availableManpower) {
-    throw new Error(`Nedostatek mužů: potřeba ${totalManpower}, dostupno ${availableManpower}`);
+    throw new Error(`Nedostatek mužů: potřeba ${totalManpower}, dostupno ${availableManpower} (mobilizační strop: ${wf.mobilized})`);
   }
   if (totalGold > realm.gold_reserve) {
     throw new Error(`Nedostatek zlata: potřeba ${totalGold}, dostupno ${realm.gold_reserve}`);

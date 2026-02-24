@@ -86,20 +86,27 @@ export function computeWorkforceBreakdown(
   const effectiveRatio = Math.max(0.1, Math.min(0.9, DEFAULT_ACTIVE_POP_RATIO + activePopRatioModifier));
   const effectiveActivePop = Math.floor(activePopRaw * effectiveRatio);
   const maxMob = Math.max(0.05, Math.min(0.5, DEFAULT_MAX_MOBILIZATION + maxMobilizationModifier));
-  const clampedMobRate = Math.min(mobilizationRate, maxMob);
-  const mobilized = Math.floor(effectiveActivePop * clampedMobRate);
+  // Soft cap: allow mobilization above maxMob but track the overshoot
+  const isOverMob = mobilizationRate > maxMob;
+  const mobilized = Math.floor(effectiveActivePop * mobilizationRate);
   const workforce = effectiveActivePop - mobilized;
   const workforceRatio = effectiveActivePop > 0 ? workforce / effectiveActivePop : 1;
+  // Penalty multiplier for production when over mob cap: each % over cap = 2% production penalty
+  const overMobPenalty = isOverMob ? Math.min(0.8, (mobilizationRate - maxMob) * 2) : 0;
+  const effectiveWorkforceRatio = Math.max(0.05, workforceRatio * (1 - overMobPenalty));
 
   return {
     activePopRaw,
     effectiveRatio,
     effectiveActivePop,
     maxMobilization: maxMob,
-    clampedMobRate,
+    clampedMobRate: mobilizationRate,
     mobilized,
     workforce,
     workforceRatio,
+    overMobPenalty,
+    effectiveWorkforceRatio,
+    isOverMob,
   };
 }
 
