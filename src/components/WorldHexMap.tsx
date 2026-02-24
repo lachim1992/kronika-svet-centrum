@@ -70,6 +70,7 @@ interface Props {
 /* ───── Memoized hex tile ───── */
 const HexTile = memo(({
   q, r, hex, isFrontier, isCurrent, devMode, loading, onClick, offsetX, offsetY, cities, onCityClick, stacks,
+  selectedStackId, isMoveTarget, onStackClick, onMoveClick, myPlayerName,
 }: {
   q: number; r: number; hex?: HexData; isFrontier: boolean; isCurrent: boolean;
   devMode: boolean; loading: boolean;
@@ -77,6 +78,11 @@ const HexTile = memo(({
   cities: CityOnHex[];
   onCityClick?: (cityId: string) => void;
   stacks: StackOnHex[];
+  selectedStackId?: string | null;
+  isMoveTarget?: boolean;
+  onStackClick?: (stack: StackOnHex) => void;
+  onMoveClick?: (q: number, r: number) => void;
+  myPlayerName?: string;
 }) => {
   const pos = hexToPixel(q, r);
   const cx = pos.x + offsetX;
@@ -88,7 +94,7 @@ const HexTile = memo(({
   const fillColor = showBiome ? (BIOME_COLORS[hex.biome_family] || BIOME_COLORS.plains) : FOG_COLOR;
 
   return (
-    <g onClick={onClick} className="cursor-pointer">
+    <g onClick={isMoveTarget ? () => onMoveClick?.(q, r) : onClick} className="cursor-pointer">
       {isFrontier && (
         <title>Prozkoumat ({q}, {r})</title>
       )}
@@ -177,19 +183,25 @@ const HexTile = memo(({
           {stacks.length > 0 && (
             <>
               {stacks.slice(0, 3).map((s, i) => {
-                const isOwn = s.player_name === (hex ? "" : ""); // just for color; we pass playerName via closure
+                const isOwn = s.player_name === myPlayerName;
+                const isSelected = s.id === selectedStackId;
                 const yOff = cities.length > 0 ? 20 : 14;
                 return (
-                  <g key={s.id} style={{ pointerEvents: "none" }}>
+                  <g key={s.id} className="cursor-pointer" onClick={(e) => {
+                    e.stopPropagation();
+                    if (isOwn && onStackClick) onStackClick(s);
+                  }}>
                     <rect
                       x={cx - 14 + i * 4} y={cy + yOff - 5}
                       width="28" height="10" rx="3"
-                      fill="hsl(0, 0%, 10%)" fillOpacity="0.75"
-                      stroke="hsl(45, 80%, 55%)" strokeWidth="0.8"
+                      fill={isSelected ? "hsl(45, 90%, 20%)" : "hsl(0, 0%, 10%)"} fillOpacity="0.85"
+                      stroke={isSelected ? "hsl(45, 90%, 65%)" : isOwn ? "hsl(45, 80%, 55%)" : "hsl(0, 60%, 55%)"}
+                      strokeWidth={isSelected ? 1.8 : 0.8}
                     />
                     <text x={cx + i * 4} y={cy + yOff + 1}
                       textAnchor="middle" dominantBaseline="middle"
-                      fill="hsl(45, 80%, 60%)" fontSize="6" fontWeight="700">
+                      fill={isOwn ? "hsl(45, 80%, 60%)" : "hsl(0, 60%, 65%)"} fontSize="6" fontWeight="700"
+                      style={{ pointerEvents: "none" }}>
                       ⚔ {s.manpower}
                     </text>
                   </g>
@@ -202,6 +214,30 @@ const HexTile = memo(({
                   +{stacks.length - 3}
                 </text>
               )}
+            </>
+          )}
+          {/* Move target overlay */}
+          {isMoveTarget && (
+            <>
+              <polygon
+                points={pts}
+                fill="hsl(120, 60%, 40%)"
+                opacity={0.2}
+                style={{ pointerEvents: "none" }}
+              />
+              <polygon
+                points={pts}
+                fill="none"
+                stroke="hsl(120, 70%, 50%)"
+                strokeWidth={2}
+                strokeDasharray="4,3"
+                opacity={0.7}
+                style={{ pointerEvents: "none" }}
+              />
+              <text x={cx} y={cy + (cities.length > 0 ? -16 : 16)} textAnchor="middle" dominantBaseline="middle"
+                fill="hsl(120, 70%, 60%)" fontSize="7" fontWeight="700" style={{ pointerEvents: "none" }}>
+                ↗ Přesun
+              </text>
             </>
           )}
         </>
@@ -238,6 +274,8 @@ const WorldHexMap = ({ sessionId, playerName, myRole, onCityClick }: Props) => {
   const [playerCities, setPlayerCities] = useState<CityOnHex[]>([]);
   const [allCities, setAllCities] = useState<CityOnHex[]>([]);
   const [allStacks, setAllStacks] = useState<StackOnHex[]>([]);
+  const [selectedStack, setSelectedStack] = useState<StackOnHex | null>(null);
+  const [movingStack, setMovingStack] = useState(false);
   const [bootstrapping, setBootstrapping] = useState(false);
 
   // Pan state
@@ -610,14 +648,71 @@ const WorldHexMap = ({ sessionId, playerName, myRole, onCityClick }: Props) => {
   }, [selectedHex, editBiome, isAdmin, loadAllGenerated, fetchDiscoveries]);
 
 
+  /* ── Move targets for selected stack ── */
+  const moveTargetCoords = useMemo(() => {
+    if (!selectedStack) return new Set<string>();
+    const targets = new Set<string>();
+    for (const n of AXIAL_NEIGHBORS) {
+      const nk = hKey(selectedStack.q + n.dq, selectedStack.r + n.dr);
+      // Can move to discovered hexes that are not sea
+      if (discoveredCoords.has(nk) || (isAdmin && devMode)) {
+        const hex = getHex(selectedStack.q + n.dq, selectedStack.r + n.dr);
+        if (hex && hex.biome_family !== "sea") targets.add(nk);
+      }
+    }
+    return targets;
+  }, [selectedStack, discoveredCoords, isAdmin, devMode, getHex]);
+
+  /* ── Handle stack selection ── */
+  const handleStackClick = useCallback((stack: StackOnHex) => {
+    if (dragRef.current?.moved) return;
+    if (stack.player_name !== playerName) return;
+    setSelectedStack(prev => prev?.id === stack.id ? null : stack);
+  }, [playerName]);
+
+  /* ── Handle move to hex ── */
+  const handleMoveStackToHex = useCallback(async (targetQ: number, targetR: number) => {
+    if (!selectedStack || movingStack) return;
+    // Check if already moved this turn
+    const { data: stackData } = await supabase
+      .from("military_stacks")
+      .select("moved_this_turn")
+      .eq("id", selectedStack.id)
+      .single();
+    if (stackData?.moved_this_turn) {
+      toast.error("Tato jednotka se již tento tah přesunula!");
+      return;
+    }
+    setMovingStack(true);
+    try {
+      const { error } = await supabase
+        .from("military_stacks")
+        .update({ hex_q: targetQ, hex_r: targetR, moved_this_turn: true })
+        .eq("id", selectedStack.id);
+      if (error) throw error;
+      toast.success(`${selectedStack.name} přesunuta na (${targetQ}, ${targetR})`);
+      setSelectedStack(null);
+      await fetchStacks();
+    } catch (e: any) {
+      toast.error("Přesun selhal: " + (e.message || "neznámá chyba"));
+    } finally {
+      setMovingStack(false);
+    }
+  }, [selectedStack, movingStack, fetchStacks]);
+
   const handleTileClick = useCallback((q: number, r: number, isFrontier: boolean) => {
     if (dragRef.current?.moved) return;
     if (isFrontier) {
       handleExploreFrontier(q, r);
     } else {
+      // If stack selected, deselect on non-move-target click
+      if (selectedStack) {
+        setSelectedStack(null);
+        return;
+      }
       handleMoveToHex(q, r);
     }
-  }, [handleExploreFrontier, handleMoveToHex]);
+  }, [handleExploreFrontier, handleMoveToHex, selectedStack]);
 
   /* ── Long-press / detail on discovered hex ── */
   const handleTileContextMenu = useCallback((q: number, r: number, isFrontier: boolean) => {
@@ -768,6 +863,11 @@ const WorldHexMap = ({ sessionId, playerName, myRole, onCityClick }: Props) => {
                       cities={hexCities}
                       onCityClick={onCityClick}
                       stacks={stacksByCoord.get(hKey(c.q, c.r)) || []}
+                      selectedStackId={selectedStack?.id}
+                      isMoveTarget={moveTargetCoords.has(hKey(c.q, c.r))}
+                      onStackClick={handleStackClick}
+                      onMoveClick={handleMoveStackToHex}
+                      myPlayerName={playerName}
                     />
                   );
                 })}
@@ -796,6 +896,31 @@ const WorldHexMap = ({ sessionId, playerName, myRole, onCityClick }: Props) => {
               </div>
             )}
 
+            {/* Selected unit panel */}
+            {selectedStack && (
+              <div className="absolute bottom-2 left-2 z-10 p-2 rounded-lg border border-primary/40 bg-card/90 backdrop-blur-sm max-w-[200px]">
+                <div className="flex items-center gap-1.5 mb-1">
+                  <span className="text-xs">⚔️</span>
+                  <span className="text-[10px] font-display font-bold text-foreground truncate">{selectedStack.name}</span>
+                </div>
+                <div className="flex items-center gap-2 text-[9px] text-muted-foreground">
+                  <span>👥 {selectedStack.manpower}</span>
+                  <span>📍 ({selectedStack.q},{selectedStack.r})</span>
+                </div>
+                <p className="text-[8px] text-primary mt-1">Klikněte na zelený hex pro přesun</p>
+                {movingStack && (
+                  <div className="flex items-center gap-1 mt-1">
+                    <Loader2 className="h-3 w-3 animate-spin text-primary" />
+                    <span className="text-[9px] text-muted-foreground">Přesouvám…</span>
+                  </div>
+                )}
+                <Button size="sm" variant="ghost" className="h-5 text-[9px] mt-1 w-full"
+                  onClick={() => setSelectedStack(null)}>
+                  Zrušit výběr
+                </Button>
+              </div>
+            )}
+
             {renderCoords.length === 0 && !bootstrapping && (
               <div className="absolute inset-0 flex items-center justify-center">
                 <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -817,7 +942,7 @@ const WorldHexMap = ({ sessionId, playerName, myRole, onCityClick }: Props) => {
               </Badge>
             )}
             <p className="text-[10px] text-muted-foreground ml-auto italic">
-              Klikněte na ? hex pro průzkum · na odkrytý hex pro přesun
+              Klikněte na ? hex pro průzkum · na ⚔ jednotku pro výběr a přesun
             </p>
           </div>
 
