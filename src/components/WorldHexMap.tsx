@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Loader2, Hexagon, Map as MapIcon, Eye, Plus, Minus, RefreshCw, Home, Pencil } from "lucide-react";
+import { Loader2, Hexagon, Map as MapIcon, Eye, Plus, Minus, RefreshCw, Home, Pencil, Swords } from "lucide-react";
 import { toast } from "sonner";
 import { useHexMap, AXIAL_NEIGHBORS, type HexData } from "@/hooks/useHexMap";
 import CityMarkerBadge from "@/components/CityMarkerBadge";
@@ -70,7 +70,7 @@ interface Props {
 /* ───── Memoized hex tile ───── */
 const HexTile = memo(({
   q, r, hex, isFrontier, isCurrent, devMode, loading, onClick, offsetX, offsetY, cities, onCityClick, stacks,
-  selectedStackId, isMoveTarget, onStackClick, onMoveClick, myPlayerName,
+  selectedStackId, isMoveTarget, isAttackTarget, onStackClick, onMoveClick, onAttackClick, myPlayerName,
 }: {
   q: number; r: number; hex?: HexData; isFrontier: boolean; isCurrent: boolean;
   devMode: boolean; loading: boolean;
@@ -80,8 +80,10 @@ const HexTile = memo(({
   stacks: StackOnHex[];
   selectedStackId?: string | null;
   isMoveTarget?: boolean;
+  isAttackTarget?: boolean;
   onStackClick?: (stack: StackOnHex) => void;
   onMoveClick?: (q: number, r: number) => void;
+  onAttackClick?: (q: number, r: number) => void;
   myPlayerName?: string;
 }) => {
   const pos = hexToPixel(q, r);
@@ -94,7 +96,7 @@ const HexTile = memo(({
   const fillColor = showBiome ? (BIOME_COLORS[hex.biome_family] || BIOME_COLORS.plains) : FOG_COLOR;
 
   return (
-    <g onClick={isMoveTarget ? () => onMoveClick?.(q, r) : onClick} className="cursor-pointer">
+    <g onClick={isAttackTarget ? () => onAttackClick?.(q, r) : isMoveTarget ? () => onMoveClick?.(q, r) : onClick} className="cursor-pointer">
       {isFrontier && (
         <title>Prozkoumat ({q}, {r})</title>
       )}
@@ -240,6 +242,30 @@ const HexTile = memo(({
               </text>
             </>
           )}
+          {/* Attack target overlay */}
+          {isAttackTarget && (
+            <>
+              <polygon
+                points={pts}
+                fill="hsl(0, 70%, 40%)"
+                opacity={0.25}
+                style={{ pointerEvents: "none" }}
+              />
+              <polygon
+                points={pts}
+                fill="none"
+                stroke="hsl(0, 80%, 55%)"
+                strokeWidth={2}
+                strokeDasharray="4,3"
+                opacity={0.8}
+                style={{ pointerEvents: "none" }}
+              />
+              <text x={cx} y={cy + (cities.length > 0 ? -16 : 16)} textAnchor="middle" dominantBaseline="middle"
+                fill="hsl(0, 80%, 65%)" fontSize="7" fontWeight="700" style={{ pointerEvents: "none" }}>
+                ⚔ Útok
+              </text>
+            </>
+          )}
         </>
       )}
       {isFrontier && !loading && (
@@ -276,6 +302,11 @@ const WorldHexMap = ({ sessionId, playerName, myRole, onCityClick }: Props) => {
   const [allStacks, setAllStacks] = useState<StackOnHex[]>([]);
   const [selectedStack, setSelectedStack] = useState<StackOnHex | null>(null);
   const [movingStack, setMovingStack] = useState(false);
+  const [battleTarget, setBattleTarget] = useState<{ q: number; r: number } | null>(null);
+  const [battleSpeech, setBattleSpeech] = useState("");
+  const [speechResult, setSpeechResult] = useState<{ morale_modifier: number; ai_feedback: string } | null>(null);
+  const [evaluatingSpeech, setEvaluatingSpeech] = useState(false);
+  const [submittingBattle, setSubmittingBattle] = useState(false);
   const [bootstrapping, setBootstrapping] = useState(false);
 
   // Pan state
@@ -663,6 +694,24 @@ const WorldHexMap = ({ sessionId, playerName, myRole, onCityClick }: Props) => {
     return targets;
   }, [selectedStack, discoveredCoords, isAdmin, devMode, getHex]);
 
+  /* ── Attack targets for selected stack (enemy cities/stacks on adjacent hexes) ── */
+  const attackTargetCoords = useMemo(() => {
+    if (!selectedStack) return new Set<string>();
+    const targets = new Set<string>();
+    for (const n of AXIAL_NEIGHBORS) {
+      const nq = selectedStack.q + n.dq;
+      const nr = selectedStack.r + n.dr;
+      const nk = hKey(nq, nr);
+      // Check if there's an enemy city or enemy stack on this hex
+      const hexCities = citiesByCoord.get(nk) || [];
+      const hexStacks = stacksByCoord.get(nk) || [];
+      const hasEnemyCity = hexCities.some(c => c.owner_player !== playerName);
+      const hasEnemyStack = hexStacks.some(s => s.player_name !== playerName);
+      if (hasEnemyCity || hasEnemyStack) targets.add(nk);
+    }
+    return targets;
+  }, [selectedStack, citiesByCoord, stacksByCoord, playerName]);
+
   /* ── Handle stack selection ── */
   const handleStackClick = useCallback((stack: StackOnHex) => {
     if (dragRef.current?.moved) return;
@@ -699,6 +748,84 @@ const WorldHexMap = ({ sessionId, playerName, myRole, onCityClick }: Props) => {
       setMovingStack(false);
     }
   }, [selectedStack, movingStack, fetchStacks]);
+
+  /* ── Handle attack target click ── */
+  const handleAttackClick = useCallback((q: number, r: number) => {
+    if (dragRef.current?.moved) return;
+    if (!selectedStack) return;
+    setBattleTarget({ q, r });
+    setBattleSpeech("");
+    setSpeechResult(null);
+  }, [selectedStack]);
+
+  /* ── Evaluate battle speech ── */
+  const handleEvaluateSpeech = useCallback(async () => {
+    if (!battleSpeech.trim() || !selectedStack || !battleTarget) return;
+    setEvaluatingSpeech(true);
+    try {
+      const hexCities = citiesByCoord.get(hKey(battleTarget.q, battleTarget.r)) || [];
+      const hexStacks = stacksByCoord.get(hKey(battleTarget.q, battleTarget.r)) || [];
+      const enemyCity = hexCities.find(c => c.owner_player !== playerName);
+      const enemyStack = hexStacks.find(s => s.player_name !== playerName);
+      const defName = enemyCity?.name || enemyStack?.name || "nepřítel";
+
+      const { data, error } = await supabase.functions.invoke("battle-speech", {
+        body: {
+          speech_text: battleSpeech,
+          attacker_name: selectedStack.name,
+          defender_name: defName,
+          biome: "plains",
+          attacker_morale: 70,
+        },
+      });
+      if (error) throw error;
+      setSpeechResult(data);
+      toast.success(`Proslov: ${data.morale_modifier >= 0 ? "+" : ""}${data.morale_modifier} morálka`);
+    } catch {
+      toast.error("Chyba proslovu");
+    }
+    setEvaluatingSpeech(false);
+  }, [battleSpeech, selectedStack, battleTarget, citiesByCoord, stacksByCoord, playerName]);
+
+  /* ── Submit battle from map ── */
+  const handleSubmitBattle = useCallback(async () => {
+    if (!selectedStack || !battleTarget) return;
+    setSubmittingBattle(true);
+    try {
+      const hexCities = citiesByCoord.get(hKey(battleTarget.q, battleTarget.r)) || [];
+      const hexStacks = stacksByCoord.get(hKey(battleTarget.q, battleTarget.r)) || [];
+      const enemyCity = hexCities.find(c => c.owner_player !== playerName);
+      const enemyStack = hexStacks.find(s => s.player_name !== playerName);
+
+      const seed = Date.now() + Math.floor(Math.random() * 100000);
+      const { data: session } = await supabase.from("game_sessions").select("current_turn").eq("id", sessionId).single();
+      const turn = session?.current_turn || 1;
+
+      await supabase.from("action_queue").insert({
+        session_id: sessionId,
+        player_name: playerName,
+        action_type: "battle",
+        status: "pending",
+        action_data: {
+          attacker_stack_id: selectedStack.id,
+          defender_city_id: enemyCity?.id || null,
+          defender_stack_id: enemyStack?.id || null,
+          speech_text: battleSpeech || null,
+          speech_morale_modifier: speechResult?.morale_modifier || 0,
+          seed,
+        },
+        execute_on_turn: turn,
+        completes_at: new Date().toISOString(),
+      });
+      toast.success("Bitva zahájena!");
+      setBattleTarget(null);
+      setSelectedStack(null);
+      await fetchStacks();
+    } catch (e: any) {
+      toast.error("Chyba: " + (e.message || "neznámá"));
+    }
+    setSubmittingBattle(false);
+  }, [selectedStack, battleTarget, citiesByCoord, stacksByCoord, playerName, sessionId, battleSpeech, speechResult, fetchStacks]);
 
   const handleTileClick = useCallback((q: number, r: number, isFrontier: boolean) => {
     if (dragRef.current?.moved) return;
@@ -865,8 +992,10 @@ const WorldHexMap = ({ sessionId, playerName, myRole, onCityClick }: Props) => {
                       stacks={stacksByCoord.get(hKey(c.q, c.r)) || []}
                       selectedStackId={selectedStack?.id}
                       isMoveTarget={moveTargetCoords.has(hKey(c.q, c.r))}
+                      isAttackTarget={attackTargetCoords.has(hKey(c.q, c.r))}
                       onStackClick={handleStackClick}
                       onMoveClick={handleMoveStackToHex}
+                      onAttackClick={handleAttackClick}
                       myPlayerName={playerName}
                     />
                   );
@@ -907,7 +1036,10 @@ const WorldHexMap = ({ sessionId, playerName, myRole, onCityClick }: Props) => {
                   <span>👥 {selectedStack.manpower}</span>
                   <span>📍 ({selectedStack.q},{selectedStack.r})</span>
                 </div>
-                <p className="text-[8px] text-primary mt-1">Klikněte na zelený hex pro přesun</p>
+                <p className="text-[8px] mt-1">
+                  <span className="text-primary">Zelený hex = přesun</span>
+                  {attackTargetCoords.size > 0 && <span className="text-destructive"> · Červený = útok</span>}
+                </p>
                 {movingStack && (
                   <div className="flex items-center gap-1 mt-1">
                     <Loader2 className="h-3 w-3 animate-spin text-primary" />
@@ -1042,6 +1174,73 @@ const WorldHexMap = ({ sessionId, playerName, myRole, onCityClick }: Props) => {
               </Button>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Battle initiation dialog from map */}
+      <Dialog open={!!battleTarget} onOpenChange={(open) => { if (!open) { setBattleTarget(null); setSpeechResult(null); setBattleSpeech(""); } }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="font-display flex items-center gap-2">
+              <Swords className="h-5 w-5 text-destructive" />
+              Zahájit bitvu
+            </DialogTitle>
+          </DialogHeader>
+          {battleTarget && selectedStack && (() => {
+            const hexCities = citiesByCoord.get(hKey(battleTarget.q, battleTarget.r)) || [];
+            const hexStacks = stacksByCoord.get(hKey(battleTarget.q, battleTarget.r)) || [];
+            const enemyCity = hexCities.find(c => c.owner_player !== playerName);
+            const enemyStack = hexStacks.find(s => s.player_name !== playerName);
+            return (
+              <div className="space-y-3">
+                <div className="p-3 rounded-lg border border-border bg-card space-y-1">
+                  <p className="text-xs font-display font-semibold">Útočník</p>
+                  <p className="text-sm">⚔ {selectedStack.name} ({selectedStack.manpower} mužů)</p>
+                </div>
+                <div className="p-3 rounded-lg border border-destructive/30 bg-destructive/5 space-y-1">
+                  <p className="text-xs font-display font-semibold text-destructive">Obránce</p>
+                  {enemyCity && <p className="text-sm">🏰 {enemyCity.name} ({enemyCity.owner_player})</p>}
+                  {enemyStack && <p className="text-sm">⚔ {enemyStack.name} ({enemyStack.manpower} mužů)</p>}
+                  <p className="text-[10px] text-muted-foreground">Hex ({battleTarget.q}, {battleTarget.r})</p>
+                </div>
+
+                {/* Battle speech */}
+                <div className="space-y-2">
+                  <label className="text-xs font-display font-semibold">Bitevní proslov (volitelný)</label>
+                  <textarea
+                    className="w-full p-2 rounded-lg border border-border bg-card text-xs min-h-[60px] resize-none focus:outline-none focus:ring-1 focus:ring-primary"
+                    placeholder="Promluvte ke svým vojákům..."
+                    value={battleSpeech}
+                    onChange={(e) => setBattleSpeech(e.target.value)}
+                  />
+                  {battleSpeech.trim() && !speechResult && (
+                    <Button size="sm" variant="outline" className="text-xs font-display w-full"
+                      disabled={evaluatingSpeech}
+                      onClick={handleEvaluateSpeech}>
+                      {evaluatingSpeech ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : null}
+                      Vyhodnotit proslov
+                    </Button>
+                  )}
+                  {speechResult && (
+                    <div className="p-2 rounded border border-primary/30 bg-primary/5 text-xs space-y-1">
+                      <p className="font-display font-semibold">
+                        Morálka: <span className={speechResult.morale_modifier >= 0 ? "text-accent" : "text-destructive"}>
+                          {speechResult.morale_modifier >= 0 ? "+" : ""}{speechResult.morale_modifier}
+                        </span>
+                      </p>
+                      <p className="text-muted-foreground italic">{speechResult.ai_feedback}</p>
+                    </div>
+                  )}
+                </div>
+
+                <Button className="w-full font-display gap-2" disabled={submittingBattle}
+                  onClick={handleSubmitBattle}>
+                  {submittingBattle ? <Loader2 className="h-4 w-4 animate-spin" /> : <Swords className="h-4 w-4" />}
+                  Zaútočit!
+                </Button>
+              </div>
+            );
+          })()}
         </DialogContent>
       </Dialog>
     </section>
