@@ -312,6 +312,8 @@ export type Database = {
           founded_round: number
           id: string
           influence_score: number
+          irrigation_level: number
+          labor_allocation: Json
           language_id: string | null
           last_tick_at: string | null
           last_turn_grain_cons: number
@@ -320,9 +322,13 @@ export type Database = {
           last_turn_special_prod: number
           last_turn_stone_prod: number
           last_turn_wood_prod: number
+          legitimacy: number
           level: string
           local_grain_reserve: number
           local_granary_capacity: number
+          market_level: number
+          max_districts: number
+          military_garrison: number
           name: string
           owner_player: string
           population_burghers: number
@@ -333,12 +339,14 @@ export type Database = {
           province_id: string | null
           province_q: number
           province_r: number
+          ration_policy: string
           ruins_note: string | null
           session_id: string
           settlement_level: string
           special_resource_type: string
           status: string
           tags: string[] | null
+          temple_level: number
           vulnerability_score: number
         }
         Insert: {
@@ -356,6 +364,8 @@ export type Database = {
           founded_round?: number
           id?: string
           influence_score?: number
+          irrigation_level?: number
+          labor_allocation?: Json
           language_id?: string | null
           last_tick_at?: string | null
           last_turn_grain_cons?: number
@@ -364,9 +374,13 @@ export type Database = {
           last_turn_special_prod?: number
           last_turn_stone_prod?: number
           last_turn_wood_prod?: number
+          legitimacy?: number
           level?: string
           local_grain_reserve?: number
           local_granary_capacity?: number
+          market_level?: number
+          max_districts?: number
+          military_garrison?: number
           name: string
           owner_player: string
           population_burghers?: number
@@ -377,12 +391,14 @@ export type Database = {
           province_id?: string | null
           province_q?: number
           province_r?: number
+          ration_policy?: string
           ruins_note?: string | null
           session_id: string
           settlement_level?: string
           special_resource_type?: string
           status?: string
           tags?: string[] | null
+          temple_level?: number
           vulnerability_score?: number
         }
         Update: {
@@ -400,6 +416,8 @@ export type Database = {
           founded_round?: number
           id?: string
           influence_score?: number
+          irrigation_level?: number
+          labor_allocation?: Json
           language_id?: string | null
           last_tick_at?: string | null
           last_turn_grain_cons?: number
@@ -408,9 +426,13 @@ export type Database = {
           last_turn_special_prod?: number
           last_turn_stone_prod?: number
           last_turn_wood_prod?: number
+          legitimacy?: number
           level?: string
           local_grain_reserve?: number
           local_granary_capacity?: number
+          market_level?: number
+          max_districts?: number
+          military_garrison?: number
           name?: string
           owner_player?: string
           population_burghers?: number
@@ -421,12 +443,14 @@ export type Database = {
           province_id?: string | null
           province_q?: number
           province_r?: number
+          ration_policy?: string
           ruins_note?: string | null
           session_id?: string
           settlement_level?: string
           special_resource_type?: string
           status?: string
           tags?: string[] | null
+          temple_level?: number
           vulnerability_score?: number
         }
         Relationships: [
@@ -553,6 +577,255 @@ export type Database = {
             columns: ["template_id"]
             isOneToOne: false
             referencedRelation: "building_templates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      city_districts: {
+        Row: {
+          build_cost_stone: number
+          build_cost_wealth: number
+          build_cost_wood: number
+          build_started_turn: number
+          build_turns: number
+          burgher_attraction: number
+          city_id: string
+          cleric_attraction: number
+          completed_turn: number | null
+          created_at: string
+          current_population: number
+          description: string | null
+          district_type: string
+          grain_modifier: number
+          id: string
+          image_url: string | null
+          influence_modifier: number
+          military_attraction: number
+          name: string
+          peasant_attraction: number
+          population_capacity: number
+          production_modifier: number
+          session_id: string
+          stability_modifier: number
+          status: string
+          wealth_modifier: number
+        }
+        Insert: {
+          build_cost_stone?: number
+          build_cost_wealth?: number
+          build_cost_wood?: number
+          build_started_turn?: number
+          build_turns?: number
+          burgher_attraction?: number
+          city_id: string
+          cleric_attraction?: number
+          completed_turn?: number | null
+          created_at?: string
+          current_population?: number
+          description?: string | null
+          district_type?: string
+          grain_modifier?: number
+          id?: string
+          image_url?: string | null
+          influence_modifier?: number
+          military_attraction?: number
+          name?: string
+          peasant_attraction?: number
+          population_capacity?: number
+          production_modifier?: number
+          session_id: string
+          stability_modifier?: number
+          status?: string
+          wealth_modifier?: number
+        }
+        Update: {
+          build_cost_stone?: number
+          build_cost_wealth?: number
+          build_cost_wood?: number
+          build_started_turn?: number
+          build_turns?: number
+          burgher_attraction?: number
+          city_id?: string
+          cleric_attraction?: number
+          completed_turn?: number | null
+          created_at?: string
+          current_population?: number
+          description?: string | null
+          district_type?: string
+          grain_modifier?: number
+          id?: string
+          image_url?: string | null
+          influence_modifier?: number
+          military_attraction?: number
+          name?: string
+          peasant_attraction?: number
+          population_capacity?: number
+          production_modifier?: number
+          session_id?: string
+          stability_modifier?: number
+          status?: string
+          wealth_modifier?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "city_districts_city_id_fkey"
+            columns: ["city_id"]
+            isOneToOne: false
+            referencedRelation: "cities"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "city_districts_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      city_factions: {
+        Row: {
+          city_id: string
+          created_at: string
+          current_demand: string | null
+          demand_urgency: number
+          description: string | null
+          faction_type: string
+          id: string
+          is_active: boolean
+          leader_appointed_turn: number | null
+          leader_name: string | null
+          leader_trait: string | null
+          loyalty: number
+          power: number
+          satisfaction: number
+          session_id: string
+          updated_at: string
+        }
+        Insert: {
+          city_id: string
+          created_at?: string
+          current_demand?: string | null
+          demand_urgency?: number
+          description?: string | null
+          faction_type?: string
+          id?: string
+          is_active?: boolean
+          leader_appointed_turn?: number | null
+          leader_name?: string | null
+          leader_trait?: string | null
+          loyalty?: number
+          power?: number
+          satisfaction?: number
+          session_id: string
+          updated_at?: string
+        }
+        Update: {
+          city_id?: string
+          created_at?: string
+          current_demand?: string | null
+          demand_urgency?: number
+          description?: string | null
+          faction_type?: string
+          id?: string
+          is_active?: boolean
+          leader_appointed_turn?: number | null
+          leader_name?: string | null
+          leader_trait?: string | null
+          loyalty?: number
+          power?: number
+          satisfaction?: number
+          session_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "city_factions_city_id_fkey"
+            columns: ["city_id"]
+            isOneToOne: false
+            referencedRelation: "cities"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "city_factions_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      city_policies: {
+        Row: {
+          city_id: string
+          created_at: string
+          description: string | null
+          enacted_by: string
+          enacted_turn: number
+          faction_impact: Json
+          grain_effect: number
+          id: string
+          is_active: boolean
+          legitimacy_effect: number
+          policy_category: string
+          policy_key: string
+          policy_value: string
+          production_effect: number
+          session_id: string
+          stability_effect: number
+          wealth_effect: number
+        }
+        Insert: {
+          city_id: string
+          created_at?: string
+          description?: string | null
+          enacted_by?: string
+          enacted_turn?: number
+          faction_impact?: Json
+          grain_effect?: number
+          id?: string
+          is_active?: boolean
+          legitimacy_effect?: number
+          policy_category?: string
+          policy_key?: string
+          policy_value?: string
+          production_effect?: number
+          session_id: string
+          stability_effect?: number
+          wealth_effect?: number
+        }
+        Update: {
+          city_id?: string
+          created_at?: string
+          description?: string | null
+          enacted_by?: string
+          enacted_turn?: number
+          faction_impact?: Json
+          grain_effect?: number
+          id?: string
+          is_active?: boolean
+          legitimacy_effect?: number
+          policy_category?: string
+          policy_key?: string
+          policy_value?: string
+          production_effect?: number
+          session_id?: string
+          stability_effect?: number
+          wealth_effect?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "city_policies_city_id_fkey"
+            columns: ["city_id"]
+            isOneToOne: false
+            referencedRelation: "cities"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "city_policies_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
             referencedColumns: ["id"]
           },
         ]

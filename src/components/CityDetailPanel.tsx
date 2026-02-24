@@ -17,6 +17,7 @@ import AILoreButton from "@/components/AILoreButton";
 import WorldMemoryPanel from "@/components/WorldMemoryPanel";
 import CityRumorsPanel from "@/components/CityRumorsPanel";
 import SettlementUpgradePanel from "@/components/SettlementUpgradePanel";
+import CityGovernancePanel from "@/components/city/CityGovernancePanel";
 import type { EntityIndex } from "@/hooks/useEntityIndex";
 import { getPermissions } from "@/lib/permissions";
 
@@ -475,6 +476,17 @@ const CityDetailPanel = ({
           <div className="flex justify-between"><span className="text-muted-foreground">Zranitelnost</span><span className="font-semibold">{(city.vulnerability_score || 0).toFixed(1)}</span></div>
         </div>
       </div>
+
+      {/* ─── CITY GOVERNANCE (Food, Labor, Districts, Factions) ─── */}
+      <CityGovernancePanel
+        sessionId={city.session_id}
+        city={city}
+        realm={realm}
+        currentPlayerName={currentPlayerName}
+        currentTurn={currentTurn}
+        isOwner={isOwner}
+        onRefetch={onRefetch}
+      />
 
       {/* Famine / Status card */}
       {city.famine_turn && (
