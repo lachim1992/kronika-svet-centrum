@@ -13,7 +13,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Progress } from "@/components/ui/progress";
 import { Slider } from "@/components/ui/slider";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { Swords, Shield, Target, Crosshair, Users, Coins, ChevronUp, Plus, Minus, Crown, User, AlertTriangle, CheckCircle2, XCircle, Gauge, Sparkles, Loader2, ImageIcon, Flag, Palette } from "lucide-react";
+import { Swords, Shield, Target, Crosshair, Users, Coins, ChevronUp, Plus, Minus, Crown, User, AlertTriangle, CheckCircle2, XCircle, Gauge, Sparkles, Loader2, ImageIcon, Flag, Palette, Check } from "lucide-react";
 import { InfoTip } from "@/components/ui/info-tip";
 import { toast } from "sonner";
 
@@ -483,19 +483,32 @@ function SummaryChip({ label, value, icon: Icon, highlight, tip }: { label: stri
 // ---- Stack Card ----
 function StackCard({ stack, general, onManage }: { stack: Stack; general?: General; onManage: () => void }) {
   const totalManpower = stack.compositions.reduce((s, c) => s + c.manpower, 0);
+  const hasConfirmedVisual = (stack as any).image_confirmed && (stack as any).image_url;
+  const hasConfirmedSigil = (stack as any).sigil_confirmed && (stack as any).sigil_url;
 
   return (
     <Card className={`cursor-pointer hover:border-primary/40 transition-colors ${!stack.is_active ? "opacity-50" : ""}`} onClick={onManage}>
       <CardContent className="p-4 space-y-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2 min-w-0">
-            <Swords className="h-4 w-4 text-primary shrink-0" />
+            {hasConfirmedSigil ? (
+              <img src={(stack as any).sigil_url} alt="Znak" className="h-6 w-6 rounded object-cover shrink-0" />
+            ) : (
+              <Swords className="h-4 w-4 text-primary shrink-0" />
+            )}
             <span className="font-display font-bold text-sm truncate">{stack.name}</span>
           </div>
           <Badge className={`text-xs shrink-0 ${FORMATION_COLORS[stack.formation_type] || ""}`}>
             {FORMATION_LABELS[stack.formation_type] || stack.formation_type}
           </Badge>
         </div>
+
+        {/* Confirmed visual banner */}
+        {hasConfirmedVisual && (
+          <div className="w-full h-20 rounded overflow-hidden border border-border">
+            <img src={(stack as any).image_url} alt={stack.name} className="w-full h-full object-cover" />
+          </div>
+        )}
 
         <div className="flex items-center gap-4">
           <div className="text-center">
@@ -1011,6 +1024,11 @@ function MyArmyPanel({
     const key = `${mode}-${extra.unitType || extra.stackId || "realm"}`;
     setGeneratingVisual(key);
     try {
+      // Reset confirmed flags when regenerating
+      if ((mode === "stack" || mode === "sigil_stack") && extra.stackId) {
+        const resetField = mode === "stack" ? { image_confirmed: false } : { sigil_confirmed: false };
+        await supabase.from("military_stacks").update(resetField as any).eq("id", extra.stackId);
+      }
       const { data, error } = await supabase.functions.invoke("army-visualize", {
         body: {
           sessionId, playerName: currentPlayerName, mode,
@@ -1155,13 +1173,33 @@ function MyArmyPanel({
                           onChange={e => setCustomPrompts(p => ({ ...p, [imgKey]: e.target.value }))}
                           className="h-6 text-[10px]"
                         />
-                        <Button
-                          size="sm" variant="outline" className="text-[10px] font-display w-full h-6"
-                          disabled={generatingVisual === imgKey}
-                          onClick={() => handleGenerate("stack", { stackId: stack.id, stackName: stack.name })}
-                        >
-                          {generatingVisual === imgKey ? <Loader2 className="h-3 w-3 animate-spin" /> : <><Sparkles className="h-3 w-3 mr-0.5" />Vizuál</>}
-                        </Button>
+                        <div className="flex gap-1">
+                          <Button
+                            size="sm" variant="outline" className="text-[10px] font-display flex-1 h-6"
+                            disabled={generatingVisual === imgKey}
+                            onClick={() => handleGenerate("stack", { stackId: stack.id, stackName: stack.name })}
+                          >
+                            {generatingVisual === imgKey ? <Loader2 className="h-3 w-3 animate-spin" /> : <><Sparkles className="h-3 w-3 mr-0.5" />Vizuál</>}
+                          </Button>
+                          {(stack as any).image_url && !(stack as any).image_confirmed && (
+                            <Button
+                              size="sm" variant="default" className="text-[10px] font-display h-6 px-2"
+                              onClick={async (e) => {
+                                e.stopPropagation();
+                                await supabase.from("military_stacks").update({ image_confirmed: true } as any).eq("id", stack.id);
+                                toast.success("✅ Vizuál potvrzen!");
+                                onRefresh();
+                              }}
+                            >
+                              <Check className="h-3 w-3 mr-0.5" />Potvrdit
+                            </Button>
+                          )}
+                          {(stack as any).image_confirmed && (
+                            <Badge variant="outline" className="text-[9px] h-6 px-1.5 flex items-center gap-0.5 border-accent text-accent">
+                              <Check className="h-2.5 w-2.5" />OK
+                            </Badge>
+                          )}
+                        </div>
                       </div>
                       {/* Stack Sigil */}
                       <div className="space-y-1.5">
@@ -1179,13 +1217,33 @@ function MyArmyPanel({
                           onChange={e => setCustomPrompts(p => ({ ...p, [sigilKey]: e.target.value }))}
                           className="h-6 text-[10px]"
                         />
-                        <Button
-                          size="sm" variant="outline" className="text-[10px] font-display w-full h-6"
-                          disabled={generatingVisual === sigilKey}
-                          onClick={() => handleGenerate("sigil_stack", { stackId: stack.id, stackName: stack.name })}
-                        >
-                          {generatingVisual === sigilKey ? <Loader2 className="h-3 w-3 animate-spin" /> : <><Sparkles className="h-3 w-3 mr-0.5" />Znak</>}
-                        </Button>
+                        <div className="flex gap-1">
+                          <Button
+                            size="sm" variant="outline" className="text-[10px] font-display flex-1 h-6"
+                            disabled={generatingVisual === sigilKey}
+                            onClick={() => handleGenerate("sigil_stack", { stackId: stack.id, stackName: stack.name })}
+                          >
+                            {generatingVisual === sigilKey ? <Loader2 className="h-3 w-3 animate-spin" /> : <><Sparkles className="h-3 w-3 mr-0.5" />Znak</>}
+                          </Button>
+                          {(stack as any).sigil_url && !(stack as any).sigil_confirmed && (
+                            <Button
+                              size="sm" variant="default" className="text-[10px] font-display h-6 px-2"
+                              onClick={async (e) => {
+                                e.stopPropagation();
+                                await supabase.from("military_stacks").update({ sigil_confirmed: true } as any).eq("id", stack.id);
+                                toast.success("✅ Znak potvrzen!");
+                                onRefresh();
+                              }}
+                            >
+                              <Check className="h-3 w-3 mr-0.5" />Potvrdit
+                            </Button>
+                          )}
+                          {(stack as any).sigil_confirmed && (
+                            <Badge variant="outline" className="text-[9px] h-6 px-1.5 flex items-center gap-0.5 border-accent text-accent">
+                              <Check className="h-2.5 w-2.5" />OK
+                            </Badge>
+                          )}
+                        </div>
                       </div>
                     </div>
                   </div>
