@@ -173,11 +173,6 @@ const CityDirectory = ({
   }
 
   if (selectedCity) {
-    if (onCityClick) {
-      onCityClick(selectedCity.id);
-      setSelectedCity(null);
-      return null;
-    }
     const cityEvents = events.filter(e => e.city_id === selectedCity.id || e.secondary_city_id === selectedCity.id);
     const cityWonders = wonders.filter(w => w.city_name === selectedCity.name);
     return (
