@@ -495,10 +495,81 @@ Deno.serve(async (req) => {
       }
     }
 
-    // 10) Update realm resources + gold
-    const newWoodReserve = (realm.wood_reserve || 0) + totalWoodProd;
-    const newStoneReserve = (realm.stone_reserve || 0) + totalStoneProd;
-    const newIronReserve = (realm.iron_reserve || 0) + totalIronProd;
+    // ═══ TRADE ROUTE PROCESSING ═══
+    // Process active trade routes where this player is sender (outgoing) or receiver (incoming)
+    const { data: activeRoutes } = await supabase
+      .from("trade_routes")
+      .select("*")
+      .eq("session_id", sessionId)
+      .eq("status", "active")
+      .or(`from_player.eq.${playerName},to_player.eq.${playerName}`);
+
+    let tradeGoldDelta = 0;
+    let tradeGrainDelta = 0;
+    let tradeWoodDelta = 0;
+    let tradeStoneDelta = 0;
+    let tradeIronDelta = 0;
+    const tradeLogParts: string[] = [];
+
+    const TRADE_RES_MAP: Record<string, string> = {
+      gold: "gold", grain: "grain", wood: "wood", stone: "stone", iron: "iron",
+    };
+
+    function applyTradeDelta(res: string, amount: number) {
+      switch (res) {
+        case "gold": tradeGoldDelta += amount; break;
+        case "grain": tradeGrainDelta += amount; break;
+        case "wood": tradeWoodDelta += amount; break;
+        case "stone": tradeStoneDelta += amount; break;
+        case "iron": tradeIronDelta += amount; break;
+      }
+    }
+
+    for (const route of (activeRoutes || [])) {
+      // Check expiration
+      if (route.expires_turn && currentTurn >= route.expires_turn) {
+        await supabase.from("trade_routes").update({ status: "expired" }).eq("id", route.id);
+        tradeLogParts.push(`Trasa ${route.id.slice(0, 6)} vypršela`);
+        continue;
+      }
+
+      const isSender = route.from_player === playerName;
+      const efficiency = Math.min(1.0, 0.7 + (route.route_safety || 1) * 0.2);
+
+      if (isSender) {
+        // Sender loses resource_type, gains return_resource_type
+        applyTradeDelta(route.resource_type, -route.amount_per_turn);
+        if (route.return_resource_type && route.return_amount > 0) {
+          const received = Math.round(route.return_amount * efficiency);
+          applyTradeDelta(route.return_resource_type, received);
+        }
+      } else {
+        // Receiver gains resource_type, loses return_resource_type
+        const received = Math.round(route.amount_per_turn * efficiency);
+        applyTradeDelta(route.resource_type, received);
+        if (route.return_resource_type && route.return_amount > 0) {
+          applyTradeDelta(route.return_resource_type, -route.return_amount);
+        }
+      }
+    }
+
+    if (tradeGoldDelta !== 0 || tradeGrainDelta !== 0 || tradeWoodDelta !== 0 || tradeStoneDelta !== 0 || tradeIronDelta !== 0) {
+      const parts: string[] = [];
+      if (tradeGoldDelta !== 0) parts.push(`zlato ${tradeGoldDelta >= 0 ? "+" : ""}${tradeGoldDelta}`);
+      if (tradeGrainDelta !== 0) parts.push(`obilí ${tradeGrainDelta >= 0 ? "+" : ""}${tradeGrainDelta}`);
+      if (tradeWoodDelta !== 0) parts.push(`dřevo ${tradeWoodDelta >= 0 ? "+" : ""}${tradeWoodDelta}`);
+      if (tradeStoneDelta !== 0) parts.push(`kámen ${tradeStoneDelta >= 0 ? "+" : ""}${tradeStoneDelta}`);
+      if (tradeIronDelta !== 0) parts.push(`železo ${tradeIronDelta >= 0 ? "+" : ""}${tradeIronDelta}`);
+      logEntries.push(`🔄 Obchod: ${parts.join(", ")}`);
+    }
+    if (tradeLogParts.length > 0) {
+      logEntries.push(`Obchodní trasy: ${tradeLogParts.join("; ")}`);
+    }
+
+    // 10) Update realm resources + gold (including trade deltas)
+    const newWoodReserve = Math.max(0, (realm.wood_reserve || 0) + totalWoodProd + tradeWoodDelta);
+    const newStoneReserve = Math.max(0, (realm.stone_reserve || 0) + totalStoneProd + tradeStoneDelta);
+    const newIronReserve = Math.max(0, (realm.iron_reserve || 0) + totalIronProd + tradeIronDelta);
 
     // Gold & food army upkeep: 1 gold per 100 troops, 1 food per 500 troops
     let wealthUpkeep = 0;
@@ -513,8 +584,11 @@ Deno.serve(async (req) => {
     // Subtract army food from grain reserve (after settlement consumption)
     grainReserve = Math.max(0, grainReserve - armyFoodUpkeep);
 
+    // Apply trade grain delta
+    grainReserve = Math.max(0, grainReserve + tradeGrainDelta);
+
     const wealthIncome = computeWealthIncome(myCities) + (globalBuildingEffects.wealth_income || 0);
-    const newGoldReserve = Math.max(0, (realm.gold_reserve || 0) + wealthIncome - wealthUpkeep);
+    const newGoldReserve = Math.max(0, (realm.gold_reserve || 0) + wealthIncome - wealthUpkeep + tradeGoldDelta);
 
     const famineCityCount = myCities.filter(c => c.famine_turn).length;
 
