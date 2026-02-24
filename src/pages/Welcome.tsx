@@ -59,18 +59,21 @@ const Welcome = () => {
             </p>
 
             <p>
-              V budoucnu by Chronicle mělo umožnit, aby každé vaše rozhodnutí –
-              ať už formulujete nový zákon, sepíšete diplomatickou deklaraci,
-              poradíte se s radou, nebo jednoduše vyjádříte svůj záměr vlastním
-              jazykem – mělo skutečné důsledky. Nejde jen o výběr z nabídky
-              možností, ale o prostor, kde můžete definovat směr svého národa
-              sami. Herní engine bude analyzovat vaše kroky, interpretovat jejich
-              podstatu a přepočítávat jejich dopad na stabilitu, vztahy, obchod,
-              napětí i reputaci. Umělá inteligence nebude nahrazovat logiku
-              světa, ale zprostředkovávat jeho reakce – vytvářet kroniky, zprávy
-              a postoje aktérů, kteří v něm žijí. Každá myšlenka, kterou ve
-              světě vyslovíte, se může stát událostí. A každá událost může
-              změnit dějiny.
+
+
+V budoucnu by Chronicle mělo umožnit, aby každé vaše rozhodnutí – ať už formulujete nový zákon, sepíšete diplomatickou deklaraci, poradíte se s radou, nebo jednoduše vyjádříte svůj záměr vlastním jazykem – mělo skutečné důsledky. Nejde jen o výběr z nabídky možností, ale o prostor, kde můžete definovat směr svého národa sami.
+
+Zároveň však nepůjde pouze o reakci na existující svět. Budete moci vytvářet svůj vlastní svět od samotných základů – definovat jeho geografii, historii, kultury, mýty i mocenské struktury. Můžete zakládat vlastní města a budovat celé impérium, určovat jejich vizuální podobu, vlastnosti, charakter i dlouhodobý vývoj. Každé město může mít svou identitu, architekturu, tradice i ambice. Můžete stavět naprosto custom budovy, unikátní čtvrti, divy světa, chrámy, pevnosti či akademie – nejen jako statické objekty, ale jako živé prvky světa s konkrétními dopady na ekonomiku, stabilitu, kulturu i vztahy s ostatními.
+
+Svět nebude jen kulisou – bude reagovat, pamatovat si a vyvíjet se. Budete moci zapisovat své činy do dějin, vytvářet nebo upravovat kroniky, reagovat na již existující záznamy a formovat oficiální i neoficiální verze historie. Příběh se nebude generovat náhodně, ale na základě skutečných událostí, předchozích rozhodnutí a historické kontinuity světa. To, co se stalo před desítkami tahů, může ovlivnit to, co se odehraje nyní.
+
+Herní engine bude analyzovat vaše kroky, interpretovat jejich podstatu a přepočítávat jejich dopad na stabilitu, vztahy, obchod, napětí i reputaci. Umělá inteligence nebude nahrazovat logiku světa, ale zprostředkovávat jeho reakce – vytvářet kroniky, zprávy, postoje aktérů, mýty i propagandu. Každá myšlenka, kterou ve světě vyslovíte, se může stát událostí. Každá stavba může změnit rovnováhu sil. Každý kulturní krok může přepsat identitu říše.
+
+Chronicle tak nebude jen hra o řízení říše, ale nástroj pro tvorbu dějin – prostor, kde tvoříte svět, reagujete na jeho paměť a zároveň jste jeho součástí. A každá událost, kterou vyvoláte, může změnit jeho budoucnost.
+
+
+
+
             </p>
 
             <p>
@@ -123,9 +126,7 @@ const Welcome = () => {
           </div>
 
           {/* English version */}
-          <div
-            className="prose-chronicle space-y-5 text-sm md:text-base text-muted-foreground/90 leading-[1.85] px-2"
-            style={{ fontFamily: "'Inter', sans-serif" }}>
+          <div className="prose-chronicle space-y-5 text-sm md:text-base text-muted-foreground/90 leading-[1.85] px-2" style={{ fontFamily: "'Inter', sans-serif" }}>
 
             <blockquote className="text-center text-base md:text-lg italic text-primary/70 leading-relaxed px-4">
               "Every thought you express in this world can become an event. And every event can change history."
@@ -213,10 +214,9 @@ const Welcome = () => {
 
       {/* Sticky bottom CTA */}
       <div className="sticky bottom-0 w-full py-6 px-6 flex justify-end backdrop-blur-md bg-background/40 border-t border-border/40">
-        <Button
-          size="lg"
-          onClick={() => navigate("/games")}
-          className="font-display text-base tracking-wide gap-2 px-8">
+        <Button size="lg"
+        onClick={() => navigate("/games")}
+        className="font-display text-base tracking-wide gap-2 px-8">
 
           Přejít na moje světy
           <ArrowRight className="h-5 w-5" />
