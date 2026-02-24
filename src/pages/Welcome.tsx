@@ -152,19 +152,21 @@ Chronicle tak nebude jen hra o řízení říše, ale nástroj pro tvorbu dějin
             </p>
 
             <p>
-              In the future, Chronicle is intended to allow every decision you
-              make — whether you draft a new law, issue a diplomatic declaration,
-              consult your council, or simply express your intent in your own
-              words — to carry real consequences. This is not about choosing from
-              predefined options, but about defining the direction of your nation
-              yourself. The game engine will analyze your actions, interpret
-              their meaning, and calculate their impact on stability,
-              relationships, trade, tension, and reputation. Artificial
-              intelligence will not replace the logic of the world, but will
-              interpret its evolution — generating chronicles, reports, and the
-              reactions of the actors who live within it. Every thought you
-              express in this world can become an event. And every event can
-              change history.
+
+
+In the future, Chronicle should allow every decision you make—whether you draft a new law, compose a diplomatic declaration, consult your council, or simply express your intentions in your own words—to carry real consequences. It will not be limited to selecting options from a predefined list, but instead offer a space where you define the direction of your nation yourself.
+
+At the same time, it will not be only about reacting to an existing world. You will be able to create your own world from the very foundations—defining its geography, history, cultures, myths, and power structures. You can found your own cities and build an entire empire, shaping their visual identity, attributes, character, and long-term development. Each city can possess its own architectural style, traditions, ambitions, and internal dynamics.
+
+You will be able to construct fully custom buildings, districts, wonders, fortresses, academies, temples, or entire cultural landmarks—not as static decorations, but as living elements of the world with measurable impact on economy, stability, culture, diplomacy, and power balance. You can shape cultures, define ideologies, influence collective memory, and guide how your civilization perceives itself and others.
+
+The world will not be a backdrop—it will remember, evolve, and respond. You will be able to record your actions into history, create or amend chronicles, react to existing historical entries, and influence both official records and alternative narratives. The story will not be generated randomly, but grounded in historical continuity. Events emerge from prior decisions, accumulated tensions, alliances, and cultural developments. What happened dozens of turns ago may shape what unfolds now.
+
+The game engine will analyze your actions, interpret their intent, and calculate their impact on stability, trade, diplomacy, internal cohesion, reputation, and global tensions. Artificial intelligence will not replace the logic of the world—it will mediate its response. It will generate chronicles, reports, political reactions, myths, propaganda, and the perspectives of the actors who inhabit the world.
+
+
+
+
             </p>
 
             <p>
@@ -214,9 +216,7 @@ Chronicle tak nebude jen hra o řízení říše, ale nástroj pro tvorbu dějin
 
       {/* Sticky bottom CTA */}
       <div className="sticky bottom-0 w-full py-6 px-6 flex justify-end backdrop-blur-md bg-background/40 border-t border-border/40">
-        <Button size="lg"
-        onClick={() => navigate("/games")}
-        className="font-display text-base tracking-wide gap-2 px-8">
+        <Button size="lg" onClick={() => navigate("/games")} className="font-display text-base tracking-wide gap-2 px-8">
 
           Přejít na moje světy
           <ArrowRight className="h-5 w-5" />
