@@ -11,6 +11,53 @@ const UNIT_WEIGHTS: Record<string, number> = {
   INFANTRY: 1.0, ARCHERS: 1.1, CAVALRY: 1.3, SIEGE: 0.9,
 };
 
+const BIOME_DEFENSE_BONUS: Record<string, number> = {
+  mountains: 0.25, forest: 0.15, swamp: 0.10, hills: 0.10,
+  desert: -0.05, plains: 0, sea: -0.10, tundra: 0.05,
+};
+
+/** Deterministic RNG from seed, returns value in [0, 1) */
+function seededRandom(seed: number): number {
+  let s = seed;
+  s = ((s >>> 16) ^ s) * 0x45d9f3b | 0;
+  s = ((s >>> 16) ^ s) * 0x45d9f3b | 0;
+  s = (s >>> 16) ^ s;
+  return (s & 0x7fffffff) / 0x7fffffff;
+}
+
+/** Compute stack combat strength from compositions */
+function computeStackStrength(compositions: any[], morale: number, formationType: string): number {
+  let raw = 0;
+  for (const comp of compositions) {
+    const weight = UNIT_WEIGHTS[comp.unit_type] || 1.0;
+    const quality = comp.quality || 50;
+    raw += (comp.manpower || 0) * weight * (0.5 + quality / 100);
+  }
+  const moraleMult = 0.75 + (morale / 100) * 0.5;
+  const formationMult = ({ UNIT: 1.0, LEGION: 1.1, ARMY: 1.2 }[formationType] || 1.0);
+  return Math.round(raw * moraleMult * formationMult);
+}
+
+/** Compute implicit city defense strength (no stack) */
+function computeCityDefenseStrength(city: any): number {
+  const garrison = city.military_garrison || 0;
+  const peasantMilitia = Math.floor((city.population_peasants || 0) * 0.1);
+  const stabilityMult = 0.5 + (city.city_stability || 50) / 200; // 0.5-1.0
+  return Math.round((garrison * 1.5 + peasantMilitia) * stabilityMult);
+}
+
+/** Apply casualties proportionally to compositions */
+async function applyCasualties(supabase: any, compositions: any[], totalCasualties: number) {
+  const totalManpower = compositions.reduce((s: number, c: any) => s + (c.manpower || 0), 0);
+  if (totalManpower <= 0) return;
+  for (const comp of compositions) {
+    const ratio = (comp.manpower || 0) / totalManpower;
+    const losses = Math.min(comp.manpower || 0, Math.round(totalCasualties * ratio));
+    const newManpower = Math.max(0, (comp.manpower || 0) - losses);
+    await supabase.from("military_stack_composition").update({ manpower: newManpower }).eq("id", comp.id);
+  }
+}
+
 // Settlement-level production constants
 const SETTLEMENT_PRODUCTION: Record<string, { grain: number; wood: number; stone: number; iron_special: number }> = {
   HAMLET:   { grain: 8,  wood: 6, stone: 2, iron_special: 2 },
@@ -497,6 +544,251 @@ Deno.serve(async (req) => {
         if (oldPower > 0) {
           logEntries.push(`Armáda "${stack.name}": síla ${oldPower} → ${newPower}`);
         }
+      }
+    }
+
+    // ═══ RESET moved_this_turn FOR ALL DEPLOYED STACKS ═══
+    await supabase.from("military_stacks")
+      .update({ moved_this_turn: false })
+      .eq("session_id", sessionId)
+      .eq("player_name", playerName)
+      .eq("is_deployed", true);
+
+    // ═══ BATTLE RESOLUTION ═══
+    // Resolve all pending battle actions from action_queue
+    const { data: pendingBattles } = await supabase
+      .from("action_queue")
+      .select("*")
+      .eq("session_id", sessionId)
+      .eq("player_name", playerName)
+      .eq("action_type", "battle")
+      .eq("status", "pending");
+
+    for (const battleAction of (pendingBattles || [])) {
+      try {
+        const bd = battleAction.action_data as any;
+        const attackerStackId = bd.attacker_stack_id;
+        const defenderCityId = bd.defender_city_id;
+        const defenderStackId = bd.defender_stack_id;
+        const speechMorale = bd.speech_morale_modifier || 0;
+        const battleSeed = bd.seed || Date.now();
+
+        // Load attacker stack with compositions
+        const { data: attackerStack } = await supabase
+          .from("military_stacks")
+          .select("*, military_stack_composition(*)")
+          .eq("id", attackerStackId)
+          .single();
+
+        if (!attackerStack || !attackerStack.is_active) {
+          await supabase.from("action_queue").update({ status: "cancelled" }).eq("id", battleAction.id);
+          continue;
+        }
+
+        // Apply speech morale modifier (clamped 0-100)
+        const attackerMorale = Math.max(0, Math.min(100, (attackerStack.morale || 50) + speechMorale));
+        const attackerStrength = computeStackStrength(
+          attackerStack.military_stack_composition || [],
+          attackerMorale,
+          attackerStack.formation_type
+        );
+
+        // Determine defender strength
+        let defenderStrength = 0;
+        let defenderMorale = 50;
+        let defenderComps: any[] = [];
+        let defenderCity: any = null;
+        let defenderStack: any = null;
+        let biome = bd.biome || "plains";
+        let fortificationBonus = 0;
+
+        if (defenderStackId) {
+          const { data: dStack } = await supabase
+            .from("military_stacks")
+            .select("*, military_stack_composition(*)")
+            .eq("id", defenderStackId)
+            .single();
+          if (dStack) {
+            defenderStack = dStack;
+            defenderMorale = dStack.morale || 50;
+            defenderComps = dStack.military_stack_composition || [];
+            defenderStrength = computeStackStrength(defenderComps, defenderMorale, dStack.formation_type);
+          }
+        }
+
+        if (defenderCityId) {
+          const { data: dCity } = await supabase
+            .from("cities")
+            .select("*")
+            .eq("id", defenderCityId)
+            .single();
+          if (dCity) {
+            defenderCity = dCity;
+            // Add implicit city defense
+            defenderStrength += computeCityDefenseStrength(dCity);
+            defenderMorale = Math.max(defenderMorale, dCity.city_stability || 50);
+            // Fortification from settlement level
+            const fortMap: Record<string, number> = { HAMLET: 0.05, TOWNSHIP: 0.10, CITY: 0.20, POLIS: 0.30 };
+            fortificationBonus = fortMap[dCity.settlement_level] || 0;
+
+            // Load hex biome
+            const { data: hex } = await supabase
+              .from("province_hexes")
+              .select("biome_family")
+              .eq("session_id", sessionId)
+              .eq("q", dCity.province_q)
+              .eq("r", dCity.province_r)
+              .maybeSingle();
+            if (hex) biome = hex.biome_family || biome;
+          }
+        }
+
+        // Apply biome defense bonus
+        const biomeMod = BIOME_DEFENSE_BONUS[biome] || 0;
+        const totalDefenseMultiplier = 1 + fortificationBonus + biomeMod;
+        const effectiveDefenderStrength = Math.round(defenderStrength * totalDefenseMultiplier);
+
+        // RNG luck roll: ±15% from seed
+        const rng = seededRandom(battleSeed);
+        const luckRoll = (rng - 0.5) * 0.30; // -0.15 to +0.15
+
+        // Apply luck to attacker strength
+        const finalAttackerStrength = Math.round(attackerStrength * (1 + luckRoll));
+
+        // Determine result
+        const ratio = effectiveDefenderStrength > 0 ? finalAttackerStrength / effectiveDefenderStrength : 999;
+        let result: string;
+        let casualtyRateAttacker: number;
+        let casualtyRateDefender: number;
+
+        if (ratio >= 2.0) {
+          result = "decisive_victory";
+          casualtyRateAttacker = 0.05;
+          casualtyRateDefender = 0.60;
+        } else if (ratio >= 1.3) {
+          result = "victory";
+          casualtyRateAttacker = 0.15;
+          casualtyRateDefender = 0.40;
+        } else if (ratio >= 0.8) {
+          result = "pyrrhic_victory";
+          casualtyRateAttacker = 0.30;
+          casualtyRateDefender = 0.30;
+        } else if (ratio >= 0.5) {
+          result = "defeat";
+          casualtyRateAttacker = 0.40;
+          casualtyRateDefender = 0.15;
+        } else {
+          result = "rout";
+          casualtyRateAttacker = 0.60;
+          casualtyRateDefender = 0.05;
+        }
+
+        const attackerTotalManpower = (attackerStack.military_stack_composition || [])
+          .reduce((s: number, c: any) => s + (c.manpower || 0), 0);
+        const defenderTotalManpower = defenderComps
+          .reduce((s: number, c: any) => s + (c.manpower || 0), 0)
+          + (defenderCity ? (defenderCity.military_garrison || 0) : 0);
+
+        const casualtiesAttacker = Math.round(attackerTotalManpower * casualtyRateAttacker);
+        const casualtiesDefender = Math.round(defenderTotalManpower * casualtyRateDefender);
+
+        // Apply casualties to attacker
+        await applyCasualties(supabase, attackerStack.military_stack_composition || [], casualtiesAttacker);
+
+        // Apply casualties to defender stack
+        if (defenderComps.length > 0) {
+          await applyCasualties(supabase, defenderComps, Math.round(casualtiesDefender * 0.7));
+        }
+        // Apply garrison/pop losses to defender city
+        if (defenderCity) {
+          const garrisonLoss = Math.min(defenderCity.military_garrison || 0, Math.round(casualtiesDefender * 0.3));
+          const popLoss = Math.round(casualtiesDefender * 0.1);
+          const stabLoss = result.includes("victory") ? Math.min(30, Math.round(casualtiesDefender / 10)) : 5;
+          await supabase.from("cities").update({
+            military_garrison: Math.max(0, (defenderCity.military_garrison || 0) - garrisonLoss),
+            population_total: Math.max(100, (defenderCity.population_total || 0) - popLoss),
+            city_stability: Math.max(0, (defenderCity.city_stability || 50) - stabLoss),
+          }).eq("id", defenderCity.id);
+        }
+
+        // Morale shifts
+        const moraleShiftAttacker = result.includes("victory") ? 5 : -10;
+        const moraleShiftDefender = result.includes("victory") ? -15 : 5;
+        await supabase.from("military_stacks").update({
+          morale: Math.max(0, Math.min(100, (attackerStack.morale || 50) + moraleShiftAttacker)),
+        }).eq("id", attackerStack.id);
+        if (defenderStack) {
+          await supabase.from("military_stacks").update({
+            morale: Math.max(0, Math.min(100, (defenderStack.morale || 50) + moraleShiftDefender)),
+          }).eq("id", defenderStack.id);
+        }
+
+        // Determine if post-battle decision needed
+        const needsDecision = result === "decisive_victory" || result === "victory" || result === "pyrrhic_victory";
+
+        // Write battle record (pure structural)
+        await supabase.from("battles").insert({
+          session_id: sessionId,
+          turn_number: currentTurn,
+          attacker_stack_id: attackerStackId,
+          defender_stack_id: defenderStackId || null,
+          defender_city_id: defenderCityId || null,
+          attacker_strength_snapshot: attackerStrength,
+          defender_strength_snapshot: effectiveDefenderStrength,
+          attacker_morale_snapshot: attackerMorale,
+          defender_morale_snapshot: defenderMorale,
+          speech_text: bd.speech_text || null,
+          speech_morale_modifier: speechMorale,
+          biome,
+          fortification_bonus: fortificationBonus,
+          seed: battleSeed,
+          luck_roll: luckRoll,
+          result,
+          casualties_attacker: casualtiesAttacker,
+          casualties_defender: casualtiesDefender,
+          post_action: needsDecision ? "pending_decision" : null,
+          resolved_at: new Date().toISOString(),
+        });
+
+        // Log game event
+        await supabase.from("game_events").insert({
+          session_id: sessionId,
+          player: playerName,
+          event_type: "battle",
+          turn_number: currentTurn,
+          note: `Bitva: ${attackerStack.name} vs ${defenderCity?.name || "armáda"}. Výsledek: ${result}. Ztráty: ${casualtiesAttacker}/${casualtiesDefender}.`,
+          result,
+          importance: result === "decisive_victory" ? "critical" : "normal",
+        });
+
+        // If decision needed, create action_queue item
+        if (needsDecision && defenderCityId) {
+          await supabase.from("action_queue").insert({
+            session_id: sessionId,
+            player_name: playerName,
+            action_type: "post_battle_decision",
+            status: "pending",
+            action_data: {
+              defender_city_id: defenderCityId,
+              attacker_stack_id: attackerStackId,
+              result,
+              casualties_attacker: casualtiesAttacker,
+              casualties_defender: casualtiesDefender,
+            },
+            completes_at: new Date().toISOString(),
+            created_turn: currentTurn,
+          });
+        }
+
+        // Mark battle action as executed
+        await supabase.from("action_queue").update({ status: "executed" }).eq("id", battleAction.id);
+
+        logEntries.push(`⚔️ Bitva: ${attackerStack.name} → ${defenderCity?.name || "nepřítel"}: ${result} (ztráty ${casualtiesAttacker}/${casualtiesDefender}, luck ${(luckRoll * 100).toFixed(0)}%)`);
+
+      } catch (battleErr) {
+        console.error("Battle resolve error:", battleErr);
+        await supabase.from("action_queue").update({ status: "cancelled" }).eq("id", battleAction.id);
+        logEntries.push(`⚠️ Chyba při řešení bitvy: ${battleErr.message || "unknown"}`);
       }
     }
 
