@@ -55,6 +55,12 @@ interface CityOnHex {
   population: number;
 }
 
+/* ───── Stack on hex ───── */
+interface StackOnHex {
+  id: string; name: string; player_name: string; q: number; r: number;
+  manpower: number; formation_type: string;
+}
+
 /* ───── Props ───── */
 interface Props {
   sessionId: string; playerName: string; myRole: string;
@@ -63,13 +69,14 @@ interface Props {
 
 /* ───── Memoized hex tile ───── */
 const HexTile = memo(({
-  q, r, hex, isFrontier, isCurrent, devMode, loading, onClick, offsetX, offsetY, cities, onCityClick,
+  q, r, hex, isFrontier, isCurrent, devMode, loading, onClick, offsetX, offsetY, cities, onCityClick, stacks,
 }: {
   q: number; r: number; hex?: HexData; isFrontier: boolean; isCurrent: boolean;
   devMode: boolean; loading: boolean;
   onClick: () => void; offsetX: number; offsetY: number;
   cities: CityOnHex[];
   onCityClick?: (cityId: string) => void;
+  stacks: StackOnHex[];
 }) => {
   const pos = hexToPixel(q, r);
   const cx = pos.x + offsetX;
@@ -166,6 +173,37 @@ const HexTile = memo(({
               ({q},{r})
             </text>
           )}
+          {/* Army markers */}
+          {stacks.length > 0 && (
+            <>
+              {stacks.slice(0, 3).map((s, i) => {
+                const isOwn = s.player_name === (hex ? "" : ""); // just for color; we pass playerName via closure
+                const yOff = cities.length > 0 ? 20 : 14;
+                return (
+                  <g key={s.id} style={{ pointerEvents: "none" }}>
+                    <rect
+                      x={cx - 14 + i * 4} y={cy + yOff - 5}
+                      width="28" height="10" rx="3"
+                      fill="hsl(0, 0%, 10%)" fillOpacity="0.75"
+                      stroke="hsl(45, 80%, 55%)" strokeWidth="0.8"
+                    />
+                    <text x={cx + i * 4} y={cy + yOff + 1}
+                      textAnchor="middle" dominantBaseline="middle"
+                      fill="hsl(45, 80%, 60%)" fontSize="6" fontWeight="700">
+                      ⚔ {s.manpower}
+                    </text>
+                  </g>
+                );
+              })}
+              {stacks.length > 3 && (
+                <text x={cx + 16} y={cy + (cities.length > 0 ? 22 : 16)}
+                  textAnchor="middle" dominantBaseline="middle"
+                  fill="hsl(45, 80%, 60%)" fontSize="6" fontWeight="700" style={{ pointerEvents: "none" }}>
+                  +{stacks.length - 3}
+                </text>
+              )}
+            </>
+          )}
         </>
       )}
       {isFrontier && !loading && (
@@ -199,6 +237,7 @@ const WorldHexMap = ({ sessionId, playerName, myRole, onCityClick }: Props) => {
   const [currentPos, setCurrentPos] = useState<{ q: number; r: number } | null>(null);
   const [playerCities, setPlayerCities] = useState<CityOnHex[]>([]);
   const [allCities, setAllCities] = useState<CityOnHex[]>([]);
+  const [allStacks, setAllStacks] = useState<StackOnHex[]>([]);
   const [bootstrapping, setBootstrapping] = useState(false);
 
   // Pan state
@@ -267,9 +306,34 @@ const WorldHexMap = ({ sessionId, playerName, myRole, onCityClick }: Props) => {
     }
   }, [sessionId, playerName]);
 
+  /* ── Fetch deployed military stacks ── */
+  const fetchStacks = useCallback(async () => {
+    const { data: rawStacks } = await supabase
+      .from("military_stacks")
+      .select("id, name, player_name, hex_q, hex_r, formation_type, is_deployed, is_active")
+      .eq("session_id", sessionId)
+      .eq("is_deployed", true)
+      .eq("is_active", true);
+    if (!rawStacks || rawStacks.length === 0) { setAllStacks([]); return; }
+    const stackIds = rawStacks.map(s => s.id);
+    const { data: comps } = await supabase
+      .from("military_stack_composition")
+      .select("stack_id, manpower")
+      .in("stack_id", stackIds);
+    const mpMap = new Map<string, number>();
+    for (const c of comps || []) {
+      mpMap.set(c.stack_id, (mpMap.get(c.stack_id) || 0) + c.manpower);
+    }
+    setAllStacks(rawStacks.map(s => ({
+      id: s.id, name: s.name, player_name: s.player_name,
+      q: s.hex_q ?? 0, r: s.hex_r ?? 0,
+      manpower: mpMap.get(s.id) || 0,
+      formation_type: s.formation_type,
+    })));
+  }, [sessionId]);
+
   /* ── City lookup by coords — supports multiple cities per hex ── */
   const citiesByCoord = useMemo(() => {
-    // Filter by discovery: show own cities always, others only if province discovered
     const visible = allCities.filter(c =>
       c.owner_player === playerName || isAdmin || discoveredCoords.has(hKey(c.q, c.r))
     );
@@ -282,6 +346,21 @@ const WorldHexMap = ({ sessionId, playerName, myRole, onCityClick }: Props) => {
     }
     return m;
   }, [allCities, playerName, isAdmin, discoveredCoords]);
+
+  /* ── Stack lookup by coords ── */
+  const stacksByCoord = useMemo(() => {
+    const visible = allStacks.filter(s =>
+      s.player_name === playerName || isAdmin || discoveredCoords.has(hKey(s.q, s.r))
+    );
+    const m = new Map<string, StackOnHex[]>();
+    for (const s of visible) {
+      const key = hKey(s.q, s.r);
+      const list = m.get(key) || [];
+      list.push(s);
+      m.set(key, list);
+    }
+    return m;
+  }, [allStacks, playerName, isAdmin, discoveredCoords]);
 
   /* ── Load player discoveries ── */
   const fetchDiscoveries = useCallback(async () => {
@@ -406,12 +485,12 @@ const WorldHexMap = ({ sessionId, playerName, myRole, onCityClick }: Props) => {
   /* ── Initial load ── */
   const handleLoadMap = useCallback(async () => {
     setMapLoaded(true);
-    await fetchCities();
+    await Promise.all([fetchCities(), fetchStacks()]);
     if (isAdmin) {
       await loadAllGenerated();
     }
     await fetchDiscoveries();
-  }, [isAdmin, loadAllGenerated, fetchDiscoveries, fetchCities]);
+  }, [isAdmin, loadAllGenerated, fetchDiscoveries, fetchCities, fetchStacks]);
 
   // After discoveries + cities load, bootstrap if needed
   useEffect(() => {
@@ -688,6 +767,7 @@ const WorldHexMap = ({ sessionId, playerName, myRole, onCityClick }: Props) => {
                       offsetY={offsetY}
                       cities={hexCities}
                       onCityClick={onCityClick}
+                      stacks={stacksByCoord.get(hKey(c.q, c.r)) || []}
                     />
                   );
                 })}
