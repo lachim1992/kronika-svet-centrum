@@ -2386,6 +2386,7 @@ export type Database = {
           formation_type: string
           general_id: string | null
           id: string
+          image_confirmed: boolean
           image_prompt: string | null
           image_url: string | null
           is_active: boolean
@@ -2396,6 +2397,7 @@ export type Database = {
           power: number
           province_id: string | null
           session_id: string
+          sigil_confirmed: boolean
           sigil_prompt: string | null
           sigil_url: string | null
         }
@@ -2404,6 +2406,7 @@ export type Database = {
           formation_type?: string
           general_id?: string | null
           id?: string
+          image_confirmed?: boolean
           image_prompt?: string | null
           image_url?: string | null
           is_active?: boolean
@@ -2414,6 +2417,7 @@ export type Database = {
           power?: number
           province_id?: string | null
           session_id: string
+          sigil_confirmed?: boolean
           sigil_prompt?: string | null
           sigil_url?: string | null
         }
@@ -2422,6 +2426,7 @@ export type Database = {
           formation_type?: string
           general_id?: string | null
           id?: string
+          image_confirmed?: boolean
           image_prompt?: string | null
           image_url?: string | null
           is_active?: boolean
@@ -2432,6 +2437,7 @@ export type Database = {
           power?: number
           province_id?: string | null
           session_id?: string
+          sigil_confirmed?: boolean
           sigil_prompt?: string | null
           sigil_url?: string | null
         }
