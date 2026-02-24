@@ -132,18 +132,56 @@ const CityBuildingsPanel = ({
     try {
       const { data, error } = await supabase.functions.invoke("generate-building", {
         body: {
-          session_id: sessionId,
-          city_id: cityId,
-          city_name: cityName,
-          settlement_level: settlementLevel,
-          player_name: currentPlayerName,
-          prompt: aiPrompt,
-          current_turn: currentTurn,
+          sessionId,
+          cityId,
+          cityName,
+          cityLevel: settlementLevel,
+          playerDescription: aiPrompt,
         },
       });
       if (error) throw error;
       if (data?.error) { toast.error(data.error); return; }
-      toast.success(`✨ AI stavba "${data?.name || "nová stavba"}" vytvořena!`);
+
+      // Deduct resources from realm
+      if (realm) {
+        await supabase.from("realm_resources").update({
+          gold_reserve: Math.max(0, (realm.gold_reserve || 0) - (data.cost_wealth || 0)),
+          wood_reserve: Math.max(0, (realm.wood_reserve || 0) - (data.cost_wood || 0)),
+          stone_reserve: Math.max(0, (realm.stone_reserve || 0) - (data.cost_stone || 0)),
+          iron_reserve: Math.max(0, (realm.iron_reserve || 0) - (data.cost_iron || 0)),
+        } as any).eq("id", realm.id);
+      }
+
+      // Insert building into DB
+      const buildDuration = data.build_duration || 1;
+      await supabase.from("city_buildings").insert({
+        session_id: sessionId,
+        city_id: cityId,
+        name: data.name || "Nová stavba",
+        description: data.description || "",
+        category: data.category || "economic",
+        cost_wealth: data.cost_wealth || 0,
+        cost_wood: data.cost_wood || 0,
+        cost_stone: data.cost_stone || 0,
+        cost_iron: data.cost_iron || 0,
+        build_duration: buildDuration,
+        build_started_turn: currentTurn,
+        effects: data.effects || {},
+        flavor_text: data.flavor_text || null,
+        founding_myth: data.founding_myth || null,
+        image_prompt: data.image_prompt || null,
+        is_ai_generated: true,
+        status: buildDuration <= 1 ? "completed" : "building",
+        completed_turn: buildDuration <= 1 ? currentTurn : null,
+      });
+
+      // Chronicle
+      await supabase.from("chronicle_entries").insert({
+        session_id: sessionId,
+        text: `V městě **${cityName}** vzniká unikátní stavba: **${data.name}**. ${data.founding_myth || data.description || ""}`,
+      });
+
+      toast.success(`✨ AI stavba "${data.name}" vytvořena!`);
       setAiPrompt("");
       setShowAI(false);
       onRefetch?.();
