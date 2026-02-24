@@ -165,11 +165,12 @@ const EconomyTab = ({ sessionId, currentPlayerName, currentTurn, cities, resourc
   const handleRecompute = useCallback(async () => {
     setRecomputing(true);
     try {
-      const { data, error } = await supabase.functions.invoke("economy-recompute", {
-        body: { session_id: sessionId, player_name: currentPlayerName },
+      const { data, error } = await supabase.functions.invoke("process-turn", {
+        body: { sessionId, playerName: currentPlayerName },
       });
       if (error) throw error;
-      toast({ title: "Ekonomika přepočítána", description: `Obilí netto = ${data.capped_net?.grain ?? data.net_food}` });
+      const netGrain = data?.summary?.netGrain;
+      toast({ title: "Ekonomika přepočítána", description: `Obilí netto = ${netGrain != null ? (netGrain >= 0 ? "+" : "") + netGrain : "?"}` });
       await fetchData();
       onRefetch?.();
     } catch (e: any) {
