@@ -122,3 +122,6 @@ verify_jwt = false
 
 [functions.generate-civ-start]
 verify_jwt = false
+
+[functions.generate-building]
+verify_jwt = false
