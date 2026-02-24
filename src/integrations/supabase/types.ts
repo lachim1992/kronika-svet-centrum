@@ -20,6 +20,8 @@ export type Database = {
           action_type: string
           completes_at: string
           created_at: string | null
+          created_turn: number | null
+          execute_on_turn: number | null
           id: string
           player_name: string
           session_id: string
@@ -31,6 +33,8 @@ export type Database = {
           action_type: string
           completes_at: string
           created_at?: string | null
+          created_turn?: number | null
+          execute_on_turn?: number | null
           id?: string
           player_name: string
           session_id: string
@@ -42,6 +46,8 @@ export type Database = {
           action_type?: string
           completes_at?: string
           created_at?: string | null
+          created_turn?: number | null
+          execute_on_turn?: number | null
           id?: string
           player_name?: string
           session_id?: string
@@ -139,6 +145,110 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "ai_world_summaries_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      battles: {
+        Row: {
+          attacker_morale_snapshot: number
+          attacker_stack_id: string
+          attacker_strength_snapshot: number
+          biome: string
+          casualties_attacker: number
+          casualties_defender: number
+          created_at: string
+          defender_city_id: string | null
+          defender_morale_snapshot: number
+          defender_stack_id: string | null
+          defender_strength_snapshot: number
+          fortification_bonus: number
+          id: string
+          luck_roll: number
+          post_action: string | null
+          resolved_at: string | null
+          result: string
+          seed: number
+          session_id: string
+          speech_morale_modifier: number
+          speech_text: string | null
+          turn_number: number
+        }
+        Insert: {
+          attacker_morale_snapshot?: number
+          attacker_stack_id: string
+          attacker_strength_snapshot?: number
+          biome?: string
+          casualties_attacker?: number
+          casualties_defender?: number
+          created_at?: string
+          defender_city_id?: string | null
+          defender_morale_snapshot?: number
+          defender_stack_id?: string | null
+          defender_strength_snapshot?: number
+          fortification_bonus?: number
+          id?: string
+          luck_roll?: number
+          post_action?: string | null
+          resolved_at?: string | null
+          result?: string
+          seed?: number
+          session_id: string
+          speech_morale_modifier?: number
+          speech_text?: string | null
+          turn_number?: number
+        }
+        Update: {
+          attacker_morale_snapshot?: number
+          attacker_stack_id?: string
+          attacker_strength_snapshot?: number
+          biome?: string
+          casualties_attacker?: number
+          casualties_defender?: number
+          created_at?: string
+          defender_city_id?: string | null
+          defender_morale_snapshot?: number
+          defender_stack_id?: string | null
+          defender_strength_snapshot?: number
+          fortification_bonus?: number
+          id?: string
+          luck_roll?: number
+          post_action?: string | null
+          resolved_at?: string | null
+          result?: string
+          seed?: number
+          session_id?: string
+          speech_morale_modifier?: number
+          speech_text?: string | null
+          turn_number?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "battles_attacker_stack_id_fkey"
+            columns: ["attacker_stack_id"]
+            isOneToOne: false
+            referencedRelation: "military_stacks"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "battles_defender_city_id_fkey"
+            columns: ["defender_city_id"]
+            isOneToOne: false
+            referencedRelation: "cities"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "battles_defender_stack_id_fkey"
+            columns: ["defender_stack_id"]
+            isOneToOne: false
+            referencedRelation: "military_stacks"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "battles_session_id_fkey"
             columns: ["session_id"]
             isOneToOne: false
             referencedRelation: "game_sessions"
@@ -2658,13 +2768,17 @@ export type Database = {
           created_at: string
           formation_type: string
           general_id: string | null
+          hex_q: number
+          hex_r: number
           id: string
           image_confirmed: boolean
           image_prompt: string | null
           image_url: string | null
           is_active: boolean
+          is_deployed: boolean
           legacy_military_id: string | null
           morale: number
+          moved_this_turn: boolean
           name: string
           player_name: string
           power: number
@@ -2678,13 +2792,17 @@ export type Database = {
           created_at?: string
           formation_type?: string
           general_id?: string | null
+          hex_q?: number
+          hex_r?: number
           id?: string
           image_confirmed?: boolean
           image_prompt?: string | null
           image_url?: string | null
           is_active?: boolean
+          is_deployed?: boolean
           legacy_military_id?: string | null
           morale?: number
+          moved_this_turn?: boolean
           name: string
           player_name: string
           power?: number
@@ -2698,13 +2816,17 @@ export type Database = {
           created_at?: string
           formation_type?: string
           general_id?: string | null
+          hex_q?: number
+          hex_r?: number
           id?: string
           image_confirmed?: boolean
           image_prompt?: string | null
           image_url?: string | null
           is_active?: boolean
+          is_deployed?: boolean
           legacy_military_id?: string | null
           morale?: number
+          moved_this_turn?: boolean
           name?: string
           player_name?: string
           power?: number
