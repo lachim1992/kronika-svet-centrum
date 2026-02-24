@@ -513,7 +513,10 @@ function StackCard({ stack, general, onManage }: { stack: Stack; general?: Gener
         <div className="flex items-center gap-4">
           <div className="text-center">
             <p className="text-2xl font-display font-bold text-primary">{stack.power}</p>
-            <p className="text-[9px] text-muted-foreground">Síla</p>
+            <p className="text-[9px] text-muted-foreground flex items-center gap-0.5 justify-center">
+              Síla
+              <InfoTip>Síla = Σ(muži × váha_typu × kvalita) × bonus_generála × morálka × formace. Váhy: Pěchota 1.0, Lučištníci 1.1, Jízda 1.3, Obléhací 0.9. Formace: Jednotka ×1.0, Legie ×1.1, Armáda ×1.2.</InfoTip>
+            </p>
           </div>
           <div className="flex-1 space-y-1">
             <div className="flex items-center gap-1.5 text-xs">
@@ -856,7 +859,7 @@ function RecruitDialog({
     if (!preset) { toast.error("Neznámý preset"); return; }
 
     const totalManpower = preset.composition.reduce((s, c) => s + c.manpower, 0);
-    const totalGold = preset.composition.reduce((s, c) => s + c.manpower * (UNIT_GOLD_FACTOR[c.unit_type] || 1), 0);
+    const totalGold = preset.gold_override ?? preset.composition.reduce((s, c) => s + c.manpower * (UNIT_GOLD_FACTOR[c.unit_type] || 1), 0);
 
     if (totalManpower > availableManpower) { toast.error(`Nedostatek mužů (${totalManpower} potřeba)`); return; }
     if (totalGold > (realm?.gold_reserve || 0)) { toast.error(`Nedostatek zlata (${totalGold} potřeba)`); return; }
@@ -893,7 +896,7 @@ function RecruitDialog({
             <p className="text-xs font-display font-semibold text-muted-foreground">Vyberte předlohu</p>
             {Object.entries(FORMATION_PRESETS).map(([key, preset]) => {
               const totalMp = preset.composition.reduce((s, c) => s + c.manpower, 0);
-              const totalGold = preset.composition.reduce((s, c) => s + c.manpower * (UNIT_GOLD_FACTOR[c.unit_type] || 1), 0);
+              const totalGold = preset.gold_override ?? preset.composition.reduce((s, c) => s + c.manpower * (UNIT_GOLD_FACTOR[c.unit_type] || 1), 0);
               const isSelected = selectedPreset === key;
               return (
                 <div

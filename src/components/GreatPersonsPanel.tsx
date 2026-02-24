@@ -272,24 +272,24 @@ function PersonCard({ person, cities, isOwner, generatingId, writingToHistoryId,
 
           {/* Action buttons - owner only */}
           {isOwner && (
-            <div className="flex flex-wrap gap-2 mt-2">
+            <div className="flex flex-col gap-2 mt-3">
               <Button
                 size="sm"
                 variant="outline"
-                className="text-xs font-display"
+                className="text-xs font-display w-full"
                 disabled={isGenerating}
                 onClick={() => onGeneratePortrait(person)}
               >
                 {isGenerating ? (
                   <><Loader2 className="h-3 w-3 mr-1 animate-spin" />Generuji portrét...</>
                 ) : (
-                  <><Sparkles className="h-3 w-3 mr-1" />{person.image_url ? "Regenerovat portrét" : "Vygenerovat portrét a životopis"}</>
+                  <><Sparkles className="h-3 w-3 mr-1" />{person.image_url ? "Regenerovat portrét a životopis" : "Vygenerovat portrét a životopis"}</>
                 )}
               </Button>
               <Button
                 size="sm"
-                variant="outline"
-                className="text-xs font-display"
+                variant="default"
+                className="text-xs font-display w-full"
                 disabled={isWriting}
                 onClick={() => onWriteToHistory(person)}
               >
