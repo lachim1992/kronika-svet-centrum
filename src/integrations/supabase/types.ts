@@ -146,6 +146,60 @@ export type Database = {
           },
         ]
       }
+      building_templates: {
+        Row: {
+          build_turns: number
+          category: string
+          cost_iron: number
+          cost_stone: number
+          cost_wealth: number
+          cost_wood: number
+          created_at: string
+          description: string
+          effects: Json
+          flavor_text: string | null
+          id: string
+          image_prompt: string | null
+          is_unique: boolean
+          name: string
+          required_settlement_level: string
+        }
+        Insert: {
+          build_turns?: number
+          category?: string
+          cost_iron?: number
+          cost_stone?: number
+          cost_wealth?: number
+          cost_wood?: number
+          created_at?: string
+          description?: string
+          effects?: Json
+          flavor_text?: string | null
+          id?: string
+          image_prompt?: string | null
+          is_unique?: boolean
+          name: string
+          required_settlement_level?: string
+        }
+        Update: {
+          build_turns?: number
+          category?: string
+          cost_iron?: number
+          cost_stone?: number
+          cost_wealth?: number
+          cost_wood?: number
+          created_at?: string
+          description?: string
+          effects?: Json
+          flavor_text?: string | null
+          id?: string
+          image_prompt?: string | null
+          is_unique?: boolean
+          name?: string
+          required_settlement_level?: string
+        }
+        Relationships: []
+      }
       chronicle_entries: {
         Row: {
           created_at: string
@@ -402,6 +456,103 @@ export type Database = {
             columns: ["session_id"]
             isOneToOne: false
             referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      city_buildings: {
+        Row: {
+          build_duration: number
+          build_started_turn: number
+          category: string
+          city_id: string
+          completed_turn: number | null
+          cost_iron: number
+          cost_stone: number
+          cost_wealth: number
+          cost_wood: number
+          created_at: string
+          description: string
+          effects: Json
+          flavor_text: string | null
+          founding_myth: string | null
+          id: string
+          image_prompt: string | null
+          image_url: string | null
+          is_ai_generated: boolean
+          name: string
+          session_id: string
+          status: string
+          template_id: string | null
+        }
+        Insert: {
+          build_duration?: number
+          build_started_turn?: number
+          category?: string
+          city_id: string
+          completed_turn?: number | null
+          cost_iron?: number
+          cost_stone?: number
+          cost_wealth?: number
+          cost_wood?: number
+          created_at?: string
+          description?: string
+          effects?: Json
+          flavor_text?: string | null
+          founding_myth?: string | null
+          id?: string
+          image_prompt?: string | null
+          image_url?: string | null
+          is_ai_generated?: boolean
+          name: string
+          session_id: string
+          status?: string
+          template_id?: string | null
+        }
+        Update: {
+          build_duration?: number
+          build_started_turn?: number
+          category?: string
+          city_id?: string
+          completed_turn?: number | null
+          cost_iron?: number
+          cost_stone?: number
+          cost_wealth?: number
+          cost_wood?: number
+          created_at?: string
+          description?: string
+          effects?: Json
+          flavor_text?: string | null
+          founding_myth?: string | null
+          id?: string
+          image_prompt?: string | null
+          image_url?: string | null
+          is_ai_generated?: boolean
+          name?: string
+          session_id?: string
+          status?: string
+          template_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "city_buildings_city_id_fkey"
+            columns: ["city_id"]
+            isOneToOne: false
+            referencedRelation: "cities"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "city_buildings_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "city_buildings_template_id_fkey"
+            columns: ["template_id"]
+            isOneToOne: false
+            referencedRelation: "building_templates"
             referencedColumns: ["id"]
           },
         ]

@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Building2, Plus, Search, MapPin, Shield, Flame, Eye, ImageIcon, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import CityDetailPanel from "@/components/CityDetailPanel";
+import CityManagement from "@/components/CityManagement";
 import { getPermissions } from "@/lib/permissions";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -55,6 +56,7 @@ const CityDirectory = ({
 }: CityDirectoryProps) => {
   const perms = getPermissions(myRole);
   const [selectedCity, setSelectedCity] = useState<City | null>(null);
+  const [managingCity, setManagingCity] = useState<City | null>(null);
   const [search, setSearch] = useState("");
   const [filterOwner, setFilterOwner] = useState("__all__");
   const [filterLevel, setFilterLevel] = useState("__all__");
@@ -156,6 +158,20 @@ const CityDirectory = ({
     return true;
   });
 
+  // City Management view (owned cities)
+  if (managingCity) {
+    return (
+      <CityManagement
+        sessionId={sessionId}
+        cityId={managingCity.id}
+        currentPlayerName={currentPlayerName}
+        currentTurn={currentTurn}
+        onBack={() => { setManagingCity(null); onRefetch?.(); }}
+        onRefetch={onRefetch}
+      />
+    );
+  }
+
   if (selectedCity) {
     if (onCityClick) {
       onCityClick(selectedCity.id);
@@ -248,7 +264,7 @@ const CityDirectory = ({
             <div
               key={city.id}
               className={`rounded-lg border bg-card shadow-parchment hover:border-primary/50 transition-colors cursor-pointer overflow-hidden ${city.famine_turn ? "border-destructive/50" : "border-border"}`}
-              onClick={() => setSelectedCity(city)}
+              onClick={() => city.owner_player === currentPlayerName ? setManagingCity(city) : setSelectedCity(city)}
             >
               {/* City image / placeholder */}
               <div className="relative h-28 w-full bg-muted">
@@ -331,9 +347,16 @@ const CityDirectory = ({
                 <div className="flex items-center justify-between text-xs text-muted-foreground mt-2 pt-2 border-t border-border">
                   <span>📜 {cityEventCount} událostí</span>
                   {cityWonderCount > 0 && <span>🏛️ {cityWonderCount} divů</span>}
-                  <Button size="sm" variant="ghost" className="h-6 text-xs gap-1" onClick={e => { e.stopPropagation(); setSelectedCity(city); }}>
-                    <Eye className="h-3 w-3" />Profil
-                  </Button>
+                  <div className="flex gap-1">
+                    {city.owner_player === currentPlayerName && (
+                      <Button size="sm" variant="default" className="h-6 text-xs gap-1" onClick={e => { e.stopPropagation(); setManagingCity(city); }}>
+                        <Building2 className="h-3 w-3" />Spravovat
+                      </Button>
+                    )}
+                    <Button size="sm" variant="ghost" className="h-6 text-xs gap-1" onClick={e => { e.stopPropagation(); setSelectedCity(city); }}>
+                      <Eye className="h-3 w-3" />Profil
+                    </Button>
+                  </div>
                 </div>
               </div>
             </div>
