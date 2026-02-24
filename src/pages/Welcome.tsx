@@ -77,13 +77,13 @@ Chronicle tak nebude jen hra o řízení říše, ale nástroj pro tvorbu dějin
             </p>
 
             <p>
-              Základní myšlenka je jednoduchá: svět nemá být statický. Města
-              mají růst nebo upadat. Aliance mají vznikat i bez přímého zásahu
-              hráče. Konflikty mají mít své příčiny a paměť. Pokud dojde ke
-              zradě, svět si ji zapamatuje. Pokud vznikne významná dohoda, může
-              ovlivnit rovnováhu sil na dlouhá období. Cílem není jen obsazovat
-              území, ale vytvářet celek, který obstojí v čase a zanechá stopu v
-              dějinách světa.
+
+
+
+
+
+
+
             </p>
 
             <p>
