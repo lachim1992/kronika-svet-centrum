@@ -10,7 +10,7 @@ serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response(null, { headers: corsHeaders });
 
   try {
-    const { personId, personName, personType, flavorTrait, cityName, playerName } = await req.json();
+    const { personId, personName, personType, flavorTrait, exceptionalPrompt, cityName, playerName, sessionId } = await req.json();
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
     const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -22,6 +22,60 @@ serve(async (req) => {
         debug: { provider: "placeholder" }
       }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
+
+    const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+
+    // Fetch rich context from DB
+    let worldContext = "";
+    let playerContext = "";
+    let historyContext = "";
+
+    if (sessionId) {
+      const [styleRes, civRes, eventsRes, citiesRes, traitsRes] = await Promise.all([
+        supabaseAdmin.from("game_style_settings").select("lore_bible, prompt_rules").eq("session_id", sessionId).maybeSingle(),
+        supabaseAdmin.from("civilizations").select("civ_name, core_myth, cultural_quirk, architectural_style").eq("session_id", sessionId).eq("player_name", playerName).maybeSingle(),
+        supabaseAdmin.from("game_events").select("event_type, note, turn_number").eq("session_id", sessionId).eq("player", playerName).eq("confirmed", true).order("turn_number", { ascending: false }).limit(10),
+        supabaseAdmin.from("cities").select("name, level, settlement_level, province, tags, flavor_prompt").eq("session_id", sessionId).eq("owner_player", playerName).limit(10),
+        supabaseAdmin.from("entity_traits").select("trait_text, trait_category, intensity").eq("session_id", sessionId).eq("entity_name", personName).limit(10),
+      ]);
+
+      if (styleRes.data) {
+        const s = styleRes.data as any;
+        if (s.lore_bible) worldContext += `Lore Bible světa: ${s.lore_bible}\n`;
+        if (s.prompt_rules) worldContext += `Pravidla narativu: ${s.prompt_rules}\n`;
+      }
+
+      if (civRes.data) {
+        const c = civRes.data as any;
+        playerContext += `Civilizace: ${c.civ_name || "Neznámá"}`;
+        if (c.core_myth) playerContext += `, Zakladatelský mýtus: ${c.core_myth}`;
+        if (c.cultural_quirk) playerContext += `, Kulturní zvláštnost: ${c.cultural_quirk}`;
+        if (c.architectural_style) playerContext += `, Architektonický styl: ${c.architectural_style}`;
+        playerContext += "\n";
+      }
+
+      if (eventsRes.data && eventsRes.data.length > 0) {
+        historyContext += "Nedávné události hráče:\n";
+        for (const ev of eventsRes.data) {
+          historyContext += `- [Rok ${ev.turn_number}] ${ev.event_type}: ${ev.note || "bez poznámky"}\n`;
+        }
+      }
+
+      if (citiesRes.data && citiesRes.data.length > 0) {
+        playerContext += "Města hráče: " + citiesRes.data.map((c: any) => `${c.name} (${c.settlement_level || c.level})`).join(", ") + "\n";
+      }
+
+      if (traitsRes.data && traitsRes.data.length > 0) {
+        playerContext += "Vlastnosti osobnosti: " + traitsRes.data.map((t: any) => `${t.trait_text} (${t.trait_category}, intenzita ${t.intensity})`).join(", ") + "\n";
+      }
+    }
+
+    const fullContext = [
+      worldContext ? `== SVĚT ==\n${worldContext}` : "",
+      playerContext ? `== HRÁČ: ${playerName} ==\n${playerContext}` : "",
+      historyContext ? `== HISTORIE ==\n${historyContext}` : "",
+      exceptionalPrompt ? `== HRÁČŮV POPIS VÝJIMEČNOSTI ==\n${exceptionalPrompt}` : "",
+    ].filter(Boolean).join("\n\n");
 
     // Step 1: Generate bio
     const bioResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
@@ -35,11 +89,11 @@ serve(async (req) => {
         messages: [
           {
             role: "system",
-            content: `Jsi kronikář civilizační hry. Napiš krátký epický životopis osobnosti (3-5 vět, česky, středověkým stylem). Také vytvoř anglický prompt pro generování portrétu v illuminated manuscript stylu.`
+            content: `Jsi kronikář civilizační hry. Napiš epický životopis osobnosti (4-8 vět, česky, středověkým stylem). Životopis musí být zasazen do kontextu světa a civilizace hráče. Pokud hráč poskytl popis výjimečnosti, použij ho jako hlavní zdroj inspirace. Také vytvoř anglický prompt pro generování portrétu v illuminated manuscript stylu.\n\nKONTEXT SVĚTA A HRÁČE:\n${fullContext}`
           },
           {
             role: "user",
-            content: `Jméno: ${personName}\nTyp: ${personType}\nRys: ${flavorTrait || "neznámý"}\nMěsto: ${cityName || "neznámé"}\nHráč: ${playerName}`
+            content: `Jméno: ${personName}\nTyp: ${personType}\nPřezdívka/Rys: ${flavorTrait || "neznámý"}\nMěsto: ${cityName || "neznámé"}\nHráč: ${playerName}${exceptionalPrompt ? `\nVýjimečnost (od hráče): ${exceptionalPrompt}` : ""}`
           }
         ],
         tools: [{
@@ -50,8 +104,8 @@ serve(async (req) => {
             parameters: {
               type: "object",
               properties: {
-                bio: { type: "string", description: "Epic biography in Czech, 3-5 sentences" },
-                imagePrompt: { type: "string", description: "English portrait prompt, illuminated manuscript style, medieval portrait" },
+                bio: { type: "string", description: "Epic biography in Czech, 4-8 sentences, grounded in world lore and player civilization" },
+                imagePrompt: { type: "string", description: "English portrait prompt, illuminated manuscript style, medieval portrait, incorporating world style and character traits" },
               },
               required: ["bio", "imagePrompt"],
               additionalProperties: false
@@ -66,6 +120,11 @@ serve(async (req) => {
       if (bioResponse.status === 429) {
         return new Response(JSON.stringify({ error: "Příliš mnoho požadavků." }), {
           status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" }
+        });
+      }
+      if (bioResponse.status === 402) {
+        return new Response(JSON.stringify({ error: "Nedostatek kreditů." }), {
+          status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" }
         });
       }
       const errText = await bioResponse.text();
@@ -107,7 +166,6 @@ serve(async (req) => {
         const imageBase64 = imgData.choices?.[0]?.message?.images?.[0]?.image_url?.url;
 
         if (imageBase64) {
-          const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
           const base64Data = imageBase64.replace(/^data:image\/\w+;base64,/, "");
           const binaryData = Uint8Array.from(atob(base64Data), c => c.charCodeAt(0));
           const fileName = `persons/${personId || crypto.randomUUID()}/${crypto.randomUUID()}.png`;
@@ -135,7 +193,7 @@ serve(async (req) => {
 
     return new Response(JSON.stringify({
       bio, imageUrl, imagePrompt,
-      debug: { provider: "lovable-ai" }
+      debug: { provider: "lovable-ai", contextLength: fullContext.length }
     }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
   } catch (e) {

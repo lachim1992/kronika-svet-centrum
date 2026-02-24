@@ -135,6 +135,7 @@ const CodexTab = ({
           <GreatPersonsPanel
             sessionId={sessionId} currentPlayerName={currentPlayerName}
             greatPersons={greatPersons} cities={cities} currentTurn={currentTurn} onRefetch={onRefetch}
+            onEntityClick={(type, id, name) => handleEntityClick(type, id)}
           />
         </TabsContent>
 
