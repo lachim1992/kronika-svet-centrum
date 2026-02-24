@@ -6,7 +6,7 @@ import {
   Wheat, Trees, Mountain, Anvil, Zap, Coins, Users, Gauge,
   ChevronDown, Skull
 } from "lucide-react";
-import { computeWealthIncome } from "@/lib/economyConstants";
+import { computeWealthIncome, computeWorkforceBreakdown } from "@/lib/economyConstants";
 
 interface ResourceHUDProps {
   sessionId: string;
@@ -53,9 +53,9 @@ const ResourceHUD = ({ sessionId, playerName, cities }: ResourceHUDProps) => {
 
   const myCities = cities.filter(c => c.owner_player === playerName);
   const famineCities = myCities.filter(c => c.famine_turn);
-  const totalPeasants = myCities.reduce((s, c) => s + (c.population_peasants || 0), 0);
   const mobRate = realm.mobilization_rate || 0.1;
-  const computedPool = Math.floor(totalPeasants * mobRate);
+  const wf = computeWorkforceBreakdown(myCities, mobRate);
+  const computedPool = wf.effectiveActivePop;
   const availableManpower = computedPool - (realm.manpower_committed || 0);
 
   const getRes = (type: string) => {

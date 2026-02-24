@@ -77,17 +77,24 @@ export async function ensureRealmResources(sessionId: string, playerName: string
   return data;
 }
 
-/** Recompute manpower_pool = total population of player's cities × mobilization_rate */
+/** Recompute manpower_pool using the workforce system:
+ * active_pop = (peasants*1.0 + burghers*0.7 + clerics*0.2) * active_pop_ratio
+ * manpower_pool = active_pop (total available), mobilized = active_pop * mob_rate
+ */
 export async function recomputeManpowerPool(sessionId: string, playerName: string, realm: any) {
   const { data: cities } = await supabase
     .from("cities")
-    .select("population_total")
+    .select("population_total, population_peasants, population_burghers, population_clerics, status")
     .eq("session_id", sessionId)
     .eq("owner_player", playerName);
 
-  const totalPopulation = (cities || []).reduce((s, c) => s + (c.population_total || 0), 0);
-  const rate = realm.mobilization_rate || 0.1;
-  const newPool = Math.floor(totalPopulation * rate);
+  const { computeWorkforceBreakdown } = await import("@/lib/economyConstants");
+  const breakdown = computeWorkforceBreakdown(
+    cities || [],
+    realm.mobilization_rate || 0.1,
+  );
+
+  const newPool = breakdown.effectiveActivePop;
 
   if (newPool !== realm.manpower_pool) {
     const { data: updated } = await supabase

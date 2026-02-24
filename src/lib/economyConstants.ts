@@ -41,6 +41,68 @@ export const SETTLEMENT_WEALTH: Record<string, number> = {
   POLIS: 6,
 };
 
+// ═══════════════════════════════════════════
+// WORKFORCE SYSTEM CONSTANTS
+// ═══════════════════════════════════════════
+
+/** Weight of each population layer toward the active population pool */
+export const ACTIVE_POP_WEIGHTS = {
+  peasants: 1.0,
+  burghers: 0.7,
+  clerics: 0.2,
+};
+
+/** Default ratio of active population (can be modified by laws/decrees) */
+export const DEFAULT_ACTIVE_POP_RATIO = 0.5;
+
+/** Default maximum mobilization rate (can be modified by laws/decrees) */
+export const DEFAULT_MAX_MOBILIZATION = 0.3;
+
+/**
+ * Compute the weighted active population for a set of cities.
+ * active_pop_raw = peasants*1.0 + burghers*0.7 + clerics*0.2
+ */
+export function computeActivePopRaw(cities: any[]): number {
+  let total = 0;
+  for (const c of cities) {
+    if (c.status && c.status !== "ok") continue;
+    total += (c.population_peasants || 0) * ACTIVE_POP_WEIGHTS.peasants
+           + (c.population_burghers || 0) * ACTIVE_POP_WEIGHTS.burghers
+           + (c.population_clerics || 0) * ACTIVE_POP_WEIGHTS.clerics;
+  }
+  return Math.floor(total);
+}
+
+/**
+ * Compute effective active population, workforce, and mobilized counts.
+ */
+export function computeWorkforceBreakdown(
+  cities: any[],
+  mobilizationRate: number,
+  activePopRatioModifier = 0,
+  maxMobilizationModifier = 0,
+) {
+  const activePopRaw = computeActivePopRaw(cities);
+  const effectiveRatio = Math.max(0.1, Math.min(0.9, DEFAULT_ACTIVE_POP_RATIO + activePopRatioModifier));
+  const effectiveActivePop = Math.floor(activePopRaw * effectiveRatio);
+  const maxMob = Math.max(0.05, Math.min(0.5, DEFAULT_MAX_MOBILIZATION + maxMobilizationModifier));
+  const clampedMobRate = Math.min(mobilizationRate, maxMob);
+  const mobilized = Math.floor(effectiveActivePop * clampedMobRate);
+  const workforce = effectiveActivePop - mobilized;
+  const workforceRatio = effectiveActivePop > 0 ? workforce / effectiveActivePop : 1;
+
+  return {
+    activePopRaw,
+    effectiveRatio,
+    effectiveActivePop,
+    maxMobilization: maxMob,
+    clampedMobRate,
+    mobilized,
+    workforce,
+    workforceRatio,
+  };
+}
+
 /** Compute total wealth income from cities (client-side mirror of process-turn logic) */
 export function computeWealthIncome(cities: any[]): number {
   let total = 0;

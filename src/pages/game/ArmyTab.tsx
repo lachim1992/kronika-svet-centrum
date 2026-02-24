@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { ensureRealmResources, recomputeManpowerPool, UNIT_TYPE_LABELS, UNIT_GOLD_FACTOR, FORMATION_PRESETS } from "@/lib/turnEngine";
+import { computeWorkforceBreakdown, DEFAULT_MAX_MOBILIZATION } from "@/lib/economyConstants";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -140,13 +141,15 @@ const ArmyTab = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, on
   useEffect(() => { fetchMilitary(); }, [fetchMilitary]);
 
   // Compute population-based manpower
+  // Compute workforce breakdown using new model
   const myCities = cities.filter(c => c.owner_player === currentPlayerName);
-  const totalPopulation = myCities.reduce((s, c) => s + (c.population_total || 0), 0);
   const mobRate = realm?.mobilization_rate || 0.1;
-  const computedPool = Math.floor(totalPopulation * mobRate);
+  const wf = computeWorkforceBreakdown(myCities, mobRate);
+  const computedPool = wf.effectiveActivePop;
   const availableManpower = computedPool - (realm?.manpower_committed || 0);
   const totalPower = stacks.filter(s => s.is_active).reduce((s, st) => s + st.power, 0);
   const totalCommitted = stacks.filter(s => s.is_active).reduce((s, st) => s + st.compositions.reduce((a, c) => a + c.manpower, 0), 0);
+  const maxMobPct = Math.round(wf.maxMobilization * 100);
 
   const grainNet = realm ? realm.last_turn_grain_prod - realm.last_turn_grain_cons : 0;
   const readiness = realm
@@ -215,37 +218,41 @@ const ArmyTab = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, on
           onValueChange={(val) => {
             if (!realm) return;
             const rate = val[0] / 100;
-            setRealm({ ...realm, mobilization_rate: rate, manpower_pool: Math.floor(totalPopulation * rate) });
+            const newWf = computeWorkforceBreakdown(myCities, rate);
+            setRealm({ ...realm, mobilization_rate: rate, manpower_pool: newWf.effectiveActivePop });
           }}
           onValueCommit={async (val) => {
             if (!realm) return;
             const rate = val[0] / 100;
-            const newPool = Math.floor(totalPopulation * rate);
-            await supabase.from("realm_resources").update({ mobilization_rate: rate, manpower_pool: newPool }).eq("id", realm.id);
+            const newWf = computeWorkforceBreakdown(myCities, rate);
+            await supabase.from("realm_resources").update({ mobilization_rate: rate, manpower_pool: newWf.effectiveActivePop }).eq("id", realm.id);
           }}
-          max={30} min={0} step={1}
           className="w-full"
         />
         <div className="flex justify-between text-[10px] text-muted-foreground">
           <span>0% — Mír</span>
-          <span>30% — Totální mobilizace</span>
+          <span>{maxMobPct}% — Totální mobilizace</span>
         </div>
         {(() => {
           const reservesPct = computedPool > 0 ? Math.round(((computedPool - totalCommitted) / computedPool) * 100) : 100;
           const reservesLow = reservesPct < 20;
           return (
-            <div className="grid grid-cols-4 gap-2 text-xs">
+            <div className="grid grid-cols-5 gap-2 text-xs">
               <div className="bg-muted/40 rounded-lg p-2.5 text-center">
-                <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Populace</div>
-                <div className="text-base font-bold font-display mt-0.5">{totalPopulation.toLocaleString()}</div>
+                <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Akt. populace</div>
+                <div className="text-base font-bold font-display mt-0.5">{wf.effectiveActivePop.toLocaleString()}</div>
               </div>
               <div className="bg-muted/40 rounded-lg p-2.5 text-center">
-                <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">K dispozici</div>
-                <div className="text-base font-bold font-display mt-0.5">{computedPool.toLocaleString()}</div>
+                <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Pracovní síla</div>
+                <div className="text-base font-bold font-display mt-0.5">{wf.workforce.toLocaleString()}</div>
               </div>
               <div className="bg-muted/40 rounded-lg p-2.5 text-center">
                 <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Mobilizovaní</div>
                 <div className="text-base font-bold font-display mt-0.5">{totalCommitted.toLocaleString()}</div>
+              </div>
+              <div className="bg-muted/40 rounded-lg p-2.5 text-center">
+                <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">K dispozici</div>
+                <div className="text-base font-bold font-display mt-0.5">{computedPool.toLocaleString()}</div>
               </div>
               <div className={`rounded-lg p-2.5 text-center ${reservesLow ? "bg-destructive/15" : "bg-muted/40"}`}>
                 <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Zálohy</div>
