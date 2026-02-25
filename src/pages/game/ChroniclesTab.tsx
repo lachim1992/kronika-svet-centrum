@@ -1,0 +1,111 @@
+import ChronicleFeed from "@/components/ChronicleFeed";
+import PlayerChroniclePanel from "@/components/PlayerChroniclePanel";
+import WorldFeedPanel from "@/components/WorldFeedPanel";
+import WorldHistoryPanel from "@/components/WorldHistoryPanel";
+import RumorsFeedPanel from "@/components/RumorsFeedPanel";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { BookOpen, BookMarked, Newspaper, MessageCircle } from "lucide-react";
+import type { EntityIndex } from "@/hooks/useEntityIndex";
+
+interface Props {
+  sessionId: string;
+  session: any;
+  events: any[];
+  memories: any[];
+  chronicles: any[];
+  responses: any[];
+  players: any[];
+  cities: any[];
+  entityTraits: any[];
+  civilizations: any[];
+  currentPlayerName: string;
+  currentTurn: number;
+  myRole: string;
+  entityIndex?: EntityIndex;
+  onRefetch: () => void;
+  onEventClick?: (eventId: string) => void;
+  onEntityClick?: (type: string, id: string) => void;
+}
+
+const ChroniclesTab = ({
+  sessionId, session, events, memories, chronicles, responses, players, cities,
+  entityTraits, civilizations, currentPlayerName, currentTurn, myRole,
+  entityIndex, onRefetch, onEventClick, onEntityClick,
+}: Props) => {
+  return (
+    <div className="space-y-4 pb-20">
+      <div className="flex items-center gap-2 py-1">
+        <BookOpen className="h-5 w-5 text-illuminated" />
+        <h2 className="text-lg font-display font-bold">Kroniky</h2>
+      </div>
+
+      <Tabs defaultValue="worldchronicle" className="w-full">
+        <TabsList className="w-full justify-start bg-card border border-border h-auto p-1 gap-1 flex-wrap">
+          <TabsTrigger value="worldchronicle" className="font-display text-xs gap-1">
+            <BookOpen className="h-3 w-3" />Kronika světa
+          </TabsTrigger>
+          <TabsTrigger value="mychronicle" className="font-display text-xs gap-1">
+            <BookMarked className="h-3 w-3" />Moje kronika
+          </TabsTrigger>
+          <TabsTrigger value="history" className="font-display text-xs gap-1">
+            <BookMarked className="h-3 w-3" />Dějiny
+          </TabsTrigger>
+          <TabsTrigger value="feed" className="font-display text-xs gap-1">
+            <Newspaper className="h-3 w-3" />Šuškanda
+          </TabsTrigger>
+          <TabsTrigger value="rumors" className="font-display text-xs gap-1">
+            <MessageCircle className="h-3 w-3" />Zvěsti
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="worldchronicle" className="mt-3">
+          <ChronicleFeed
+            sessionId={sessionId} events={events} memories={memories} chronicles={chronicles}
+            epochStyle={session.epoch_style} currentTurn={currentTurn} players={players}
+            currentPlayerName={currentPlayerName} entityTraits={entityTraits} cities={cities}
+            onRefetch={onRefetch} myRole={myRole} onEventClick={onEventClick}
+            onEntityClick={onEntityClick} entityIndex={entityIndex}
+          />
+        </TabsContent>
+
+        <TabsContent value="mychronicle" className="mt-3">
+          <PlayerChroniclePanel
+            sessionId={sessionId} currentPlayerName={currentPlayerName}
+            events={events} memories={memories} cities={cities}
+            civilizations={civilizations} epochStyle={session.epoch_style} currentTurn={currentTurn}
+            onEventClick={onEventClick} onEntityClick={onEntityClick} entityIndex={entityIndex}
+          />
+        </TabsContent>
+
+        <TabsContent value="history" className="mt-3">
+          <WorldHistoryPanel
+            sessionId={sessionId} events={events} memories={memories}
+            epochStyle={session.epoch_style} currentTurn={currentTurn} onEventClick={onEventClick}
+          />
+        </TabsContent>
+
+        <TabsContent value="feed" className="mt-3">
+          <WorldFeedPanel
+            sessionId={sessionId} currentTurn={currentTurn} events={events}
+            cities={cities} memories={memories} players={players}
+            epochStyle={session.epoch_style} myRole={myRole} onRefetch={onRefetch}
+            onEventClick={onEventClick} onEntityClick={onEntityClick} entityIndex={entityIndex}
+          />
+        </TabsContent>
+
+        <TabsContent value="rumors" className="mt-3">
+          <RumorsFeedPanel
+            sessionId={sessionId}
+            cities={cities}
+            currentTurn={currentTurn}
+            entityIndex={entityIndex}
+            onEventClick={onEventClick}
+            onEntityClick={onEntityClick}
+          />
+        </TabsContent>
+      </Tabs>
+    </div>
+  );
+};
+
+export default ChroniclesTab;
