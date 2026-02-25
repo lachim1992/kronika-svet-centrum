@@ -42,7 +42,8 @@ const BottomNav = ({ activeTab, onTabChange, showDevTab = false, showPersistentT
             <button
               key={tab.id}
               onClick={() => onTabChange(tab.id)}
-              className={`flex flex-col items-center gap-0.5 px-1.5 py-1.5 rounded-lg transition-all duration-200 relative ${
+              style={{ flex: "1 1 0%", minWidth: 0 }}
+              className={`flex flex-col items-center gap-0.5 py-1.5 rounded-lg transition-all duration-200 relative ${
                 isActive
                   ? "text-primary"
                   : "text-muted-foreground hover:text-foreground hover:bg-muted/30"
