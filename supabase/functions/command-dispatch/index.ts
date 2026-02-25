@@ -137,13 +137,7 @@ async function executeCommand(
       return await executeFoundCity(supabase, base, actor, payload);
 
     case "RECRUIT_STACK":
-      return insertEventsWithChronicle(supabase, commandId, sessionId, turnNumber, [{
-        ...base,
-        event_type: "military",
-        note: payload.note || `${actor.name} verboval novou armádu.`,
-        importance: "normal",
-        reference: { stackId: payload.stackId, units: payload.units, ...payload },
-      }], payload.chronicleText);
+      return await executeRecruitStack(supabase, base, actor, payload);
 
     case "REINFORCE_STACK":
       return insertEventsWithChronicle(supabase, commandId, sessionId, turnNumber, [{
@@ -460,6 +454,143 @@ async function executeFoundCity(
   }];
 
   return insertEvents(supabase, base.command_id, events, { cityId });
+}
+
+// ═══════════════════════════════════════════
+// RECRUIT_STACK — full server-side execution
+// ═══════════════════════════════════════════
+
+const FORMATION_PRESETS: Record<string, { label: string; composition: { unit_type: string; manpower: number }[]; formation_type: string; morale: number; gold_override?: number }> = {
+  militia: { label: "Milice", composition: [{ unit_type: "INFANTRY", manpower: 200 }], formation_type: "UNIT", morale: 60 },
+  cohort: { label: "Pohraniční kohorta", composition: [{ unit_type: "INFANTRY", manpower: 300 }, { unit_type: "ARCHERS", manpower: 100 }], formation_type: "UNIT", morale: 65 },
+  cavalry_wing: { label: "Jezdecký pluk", composition: [{ unit_type: "CAVALRY", manpower: 200 }], formation_type: "UNIT", morale: 70 },
+  legion: { label: "Zárodek legie", composition: [{ unit_type: "INFANTRY", manpower: 600 }, { unit_type: "ARCHERS", manpower: 200 }], formation_type: "LEGION", morale: 70, gold_override: 50 },
+};
+
+const UNIT_GOLD_FACTOR: Record<string, number> = { INFANTRY: 1, ARCHERS: 1.5, CAVALRY: 2, SIEGE: 3 };
+const UNIT_TYPE_LABELS: Record<string, string> = { INFANTRY: "Pěchota", ARCHERS: "Lučištníci", CAVALRY: "Jízda", SIEGE: "Obléhací" };
+const ACTIVE_POP_WEIGHTS = { peasants: 1.0, burghers: 0.7, clerics: 0.2 };
+const DEFAULT_ACTIVE_POP_RATIO = 0.5;
+const DEFAULT_MAX_MOBILIZATION = 0.3;
+
+function computeActivePopRaw(cities: any[]): number {
+  let total = 0;
+  for (const c of cities) {
+    if (c.status && c.status !== "ok") continue;
+    total += (c.population_peasants || 0) * ACTIVE_POP_WEIGHTS.peasants
+           + (c.population_burghers || 0) * ACTIVE_POP_WEIGHTS.burghers
+           + (c.population_clerics || 0) * ACTIVE_POP_WEIGHTS.clerics;
+  }
+  return Math.floor(total);
+}
+
+function computeMobilized(cities: any[], mobilizationRate: number): number {
+  const activePopRaw = computeActivePopRaw(cities);
+  const effectiveActivePop = Math.floor(activePopRaw * Math.max(0.1, Math.min(0.9, DEFAULT_ACTIVE_POP_RATIO)));
+  return Math.floor(effectiveActivePop * mobilizationRate);
+}
+
+async function executeRecruitStack(
+  supabase: any, base: any, actor: Actor, payload: any,
+): Promise<CommandResult> {
+  const { stackName, presetKey } = payload;
+  if (!stackName?.trim()) return { events: [], error: "Missing stackName" };
+  if (!presetKey) return { events: [], error: "Missing presetKey" };
+
+  const preset = FORMATION_PRESETS[presetKey];
+  if (!preset) return { events: [], error: `Unknown preset: ${presetKey}` };
+
+  const sessionId = base.session_id;
+  const turnNumber = base.turn_number;
+  const playerName = actor.name;
+
+  const totalManpower = preset.composition.reduce((s: number, c: any) => s + c.manpower, 0);
+  const totalGold = preset.gold_override ?? preset.composition.reduce((s: number, c: any) => s + c.manpower * (UNIT_GOLD_FACTOR[c.unit_type] || 1), 0);
+
+  // ── Load realm resources ──
+  const { data: realm } = await supabase
+    .from("realm_resources").select("*")
+    .eq("session_id", sessionId).eq("player_name", playerName).maybeSingle();
+  if (!realm) return { events: [], error: "Realm resources not found" };
+
+  // ── Compute mobilization cap ──
+  const { data: cities } = await supabase
+    .from("cities")
+    .select("population_total, population_peasants, population_burghers, population_clerics, status")
+    .eq("session_id", sessionId).eq("owner_player", playerName);
+
+  const mobilized = computeMobilized(cities || [], realm.mobilization_rate || 0.1);
+
+  // ── Get actual committed ──
+  const { data: existingStacks } = await supabase
+    .from("military_stacks").select("id")
+    .eq("session_id", sessionId).eq("player_name", playerName).eq("is_active", true);
+  const stackIds = (existingStacks || []).map((s: any) => s.id);
+  let actualCommitted = 0;
+  if (stackIds.length > 0) {
+    const { data: comps } = await supabase
+      .from("military_stack_composition").select("manpower").in("stack_id", stackIds);
+    actualCommitted = (comps || []).reduce((s: number, c: any) => s + (c.manpower || 0), 0);
+  }
+
+  const availableManpower = Math.max(0, mobilized - actualCommitted);
+  if (totalManpower > availableManpower) {
+    return { events: [], error: `Nedostatek mužů: potřeba ${totalManpower}, dostupno ${availableManpower} (mobilizační strop: ${mobilized})` };
+  }
+  if (totalGold > realm.gold_reserve) {
+    return { events: [], error: `Nedostatek zlata: potřeba ${totalGold}, dostupno ${realm.gold_reserve}` };
+  }
+
+  // ── 1. Create stack ──
+  const { data: stack, error: stackErr } = await supabase.from("military_stacks").insert({
+    session_id: sessionId, player_name: playerName, name: stackName.trim(),
+    formation_type: preset.formation_type, morale: preset.morale,
+  }).select("id").single();
+
+  if (stackErr || !stack) return { events: [], error: `Stack creation failed: ${stackErr?.message}` };
+  const stackId = stack.id;
+
+  // ── 2. Create compositions ──
+  for (const comp of preset.composition) {
+    await safeInsert(supabase.from("military_stack_composition").insert({
+      stack_id: stackId, unit_type: comp.unit_type, manpower: comp.manpower,
+    }));
+  }
+
+  // ── 3. Update realm resources ──
+  const newGold = realm.gold_reserve - totalGold;
+  await supabase.from("realm_resources").update({
+    manpower_committed: (realm.manpower_committed || 0) + totalManpower,
+    gold_reserve: newGold,
+  }).eq("id", realm.id);
+
+  await safeInsert(supabase.from("player_resources").update({ stockpile: newGold })
+    .eq("session_id", sessionId).eq("player_name", playerName).eq("resource_type", "wealth"));
+
+  // ── 4. Chronicle ──
+  const chronicleText = `${playerName} zřídil armádu **${stackName.trim()}** (${preset.label}). Síla vojska: ${totalManpower} mužů, náklady: ${totalGold} zlata.`;
+  await safeInsert(supabase.from("chronicle_entries").insert({
+    session_id: sessionId, turn_from: turnNumber, turn_to: turnNumber, text: chronicleText,
+  }));
+
+  // ── 5. Legacy compat ──
+  const mainUnit = preset.composition[0];
+  await safeInsert(supabase.from("military_capacity").insert({
+    session_id: sessionId, player_name: playerName, army_name: stackName.trim(),
+    army_type: UNIT_TYPE_LABELS[mainUnit.unit_type] || mainUnit.unit_type,
+    iron_cost: Math.ceil(totalManpower / 200), migrated: true,
+  }));
+
+  // ── 6. Event ──
+  const events = [{
+    ...base,
+    event_type: "military",
+    note: `${playerName} zřídil armádu ${stackName.trim()} (${preset.label}).`,
+    importance: "normal",
+    reference: { stackId, stackName: stackName.trim(), presetKey, totalManpower, totalGold },
+  }];
+
+  return insertEvents(supabase, base.command_id, events, { stackId });
 }
 
 // ═══════════════════════════════════════════
