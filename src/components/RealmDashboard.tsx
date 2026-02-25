@@ -139,12 +139,13 @@ const RealmDashboard = ({ sessionId, currentPlayerName, currentTurn, myRole, cit
           <Slider
             value={[Math.round((realm?.mobilization_rate || 0.1) * 100)]}
             onValueCommit={handleMobilizationChange}
-            max={30} min={0} step={1}
+            max={50} min={0} step={1}
             className="w-full"
           />
           <div className="flex justify-between text-[10px] text-muted-foreground mt-1">
             <span>0% — Mír</span>
-            <span>30% — Totální mobilizace</span>
+            <span>30% — Soft cap</span>
+            <span>50% — Hard cap</span>
           </div>
           <div className="grid grid-cols-3 gap-2 mt-2 text-xs">
             <div><span className="text-muted-foreground">K dispozici:</span> <strong>{availableManpower}</strong></div>

@@ -18,6 +18,7 @@ import { Swords, Shield, Target, Crosshair, Users, Coins, ChevronUp, Plus, Minus
 import { InfoTip } from "@/components/ui/info-tip";
 import { toast } from "sonner";
 import DeployBattlePanel from "@/components/military/DeployBattlePanel";
+import DemobilizeDialog from "@/components/DemobilizeDialog";
 
 const UNIT_ICONS: Record<string, React.ElementType> = {
   INFANTRY: Shield,
@@ -127,6 +128,8 @@ const ArmyTab = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, on
   const [unitVisuals, setUnitVisuals] = useState<UnitTypeVisual[]>([]);
   const [generatingVisual, setGeneratingVisual] = useState<string | null>(null);
   const [remobilizing, setRemobilizing] = useState<string | null>(null);
+  const [showDemobilize, setShowDemobilize] = useState(false);
+  const [pendingMobRate, setPendingMobRate] = useState<number | null>(null);
 
   const fetchMilitary = useCallback(async () => {
     setLoading(true);
@@ -262,10 +265,11 @@ const ArmyTab = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, on
       </div>
 
       {/* Military Summary Bar */}
-      <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
+      <div className="grid grid-cols-4 sm:grid-cols-7 gap-2">
+        <SummaryChip label="Mob. strop" value={mobilizationCap} icon={Gauge} tip={`Maximální počet mužů odvoditelných při mobilizaci ${Math.round(mobRate * 100)}%. Závisí na aktivní populaci (${wf.effectiveActivePop}) × míře mobilizace.`} />
         <SummaryChip label="Dostupní muži" value={availableManpower} icon={Users} tip={`Mobilizační strop (${mobilizationCap}) minus nasazení muži (${totalCommitted}). Závisí na míře mobilizace.`} />
         <SummaryChip label="Mobilizovaní" value={totalCommitted} icon={Shield} tip="Počet mužů aktuálně sloužících v armádách. Odečítáno z pracovní síly — více vojáků = méně produkce." />
-        <SummaryChip label="Mobilizace" value={`${Math.round(mobRate * 100)}%`} icon={ChevronUp} tip={`Procento aktivní populace odváděné do armády. Maximum ${maxMobPct}%, upravitelné dekrety.`} />
+        <SummaryChip label="Mobilizace" value={`${Math.round(mobRate * 100)}%`} icon={ChevronUp} tip={`Procento aktivní populace odváděné do armády. Soft cap ${maxMobPct}%, hard cap 50%.`} />
         <SummaryChip label="Zlato" value={realm?.gold_reserve || 0} icon={Coins} tip="Zásoby zlata. Armáda spotřebovává 1 zlato za 100 vojáků/kolo." />
         <SummaryChip label="Celková síla" value={totalPower} icon={Swords} highlight tip="Součet bojové síly všech aktivních armád. Závisí na počtu mužů, kvalitě, morálce, generálovi a formaci." />
         <div className="manuscript-card p-2 flex flex-col items-center justify-center gap-0.5">
@@ -288,6 +292,9 @@ const ArmyTab = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, on
         </div>
       <Slider
           value={[Math.round(mobRate * 100)]}
+          max={50}
+          min={0}
+          step={1}
           onValueChange={(val) => {
             if (!realm) return;
             const rate = val[0] / 100;
@@ -298,13 +305,23 @@ const ArmyTab = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, on
             if (!realm) return;
             const rate = val[0] / 100;
             const newWf = computeWorkforceBreakdown(myCities, rate);
+            const newCap = newWf.mobilized;
+            // Check if lowering below committed — force demobilize
+            if (newCap < totalCommitted) {
+              setPendingMobRate(rate);
+              setShowDemobilize(true);
+              // Revert slider visually
+              setRealm({ ...realm, mobilization_rate: mobRate, manpower_pool: wf.effectiveActivePop });
+              return;
+            }
             await supabase.from("realm_resources").update({ mobilization_rate: rate, manpower_pool: newWf.effectiveActivePop }).eq("id", realm.id);
           }}
           className="w-full"
         />
         <div className="flex justify-between text-[10px] text-muted-foreground">
           <span>0% — Mír</span>
-          <span className={mobRate > wf.maxMobilization ? "text-illuminated font-semibold" : ""}>{maxMobPct}% — Doporučené maximum</span>
+          <span className={mobRate > wf.maxMobilization ? "text-illuminated font-semibold" : ""}>{maxMobPct}% — Soft cap</span>
+          <span>50% — Hard cap</span>
         </div>
         {isOverMobCap && (
           <div className="flex items-center gap-1.5 text-xs text-illuminated bg-illuminated/10 rounded-md px-3 py-1.5">
@@ -582,6 +599,38 @@ const ArmyTab = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, on
         currentPlayerName={currentPlayerName}
         goldReserve={realm?.gold_reserve || 0}
         onRefresh={fetchMilitary}
+      />
+
+      {/* Demobilize dialog — triggered when lowering mobilization below committed */}
+      <DemobilizeDialog
+        open={showDemobilize}
+        onClose={() => {
+          setShowDemobilize(false);
+          setPendingMobRate(null);
+        }}
+        stacks={activeStacks.map(s => ({
+          id: s.id,
+          name: s.name,
+          formation_type: s.formation_type,
+          totalManpower: s.compositions.reduce((a, c) => a + c.manpower, 0),
+          morale: s.morale,
+        }))}
+        sessionId={sessionId}
+        playerName={currentPlayerName}
+        currentTurn={currentTurn}
+        realmId={realm?.id || ""}
+        manpowerCommitted={totalCommitted}
+        onDone={async () => {
+          if (pendingMobRate !== null && realm) {
+            const newWf = computeWorkforceBreakdown(myCities, pendingMobRate);
+            await supabase.from("realm_resources").update({
+              mobilization_rate: pendingMobRate,
+              manpower_pool: newWf.effectiveActivePop,
+            }).eq("id", realm.id);
+          }
+          setPendingMobRate(null);
+          fetchMilitary();
+        }}
       />
     </div>
   );
