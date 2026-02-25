@@ -42,10 +42,9 @@ const ChronicleHubLogo = ({ variant = "full", className = "", size = "md" }: Log
           className="relative z-10 w-full h-auto object-contain"
           style={{
             mixBlendMode: "screen",
-            filter: isHero ? "brightness(1.05) drop-shadow(0 0 40px hsl(43 64% 52% / 0.15))" : "brightness(1.1)",
-            opacity: isHero ? 0.92 : 1,
-            maskImage: isHero ? "radial-gradient(ellipse 85% 80% at 50% 45%, black 50%, transparent 100%)" : undefined,
-            WebkitMaskImage: isHero ? "radial-gradient(ellipse 85% 80% at 50% 45%, black 50%, transparent 100%)" : undefined,
+            filter: isHero
+              ? "brightness(1.1) drop-shadow(0 0 30px hsl(43 64% 52% / 0.2))"
+              : "brightness(1.1)",
           }} src="/lovable-uploads/3c000f84-809b-4591-b4a4-49a2b0f60acf.png" />
 
       </div>
