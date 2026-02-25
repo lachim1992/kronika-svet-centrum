@@ -1,33 +1,31 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createAIContext, invokeAI, corsHeaders, jsonResponse, errorResponse } from "../_shared/ai-context.ts";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
-};
-
-serve(async (req) => {
+Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const { round, confirmedEvents, annotations, worldMemories, epochStyle } = await req.json();
+    const {
+      sessionId, round, confirmedEvents, annotations, worldMemories,
+      battles, declarations, completedBuildings, rumors,
+    } = await req.json();
 
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) {
-      return new Response(JSON.stringify({
-        chronicleText: `📜 Rok ${round} — Kronikář odpočívá... (API klíč chybí)`,
+    if (!sessionId) return errorResponse("Missing sessionId", 400);
+
+    const ctx = await createAIContext(sessionId, round);
+
+    // Check if saga generation is enabled
+    const sagaEnabled = ctx.premise.narrativeRules?.saga?.enabled !== false;
+    if (!sagaEnabled) {
+      return jsonResponse({
+        chronicleText: `📜 Rok ${round} — Generování kroniky je vypnuto v narativní konfiguraci.`,
         newSuggestedMemories: [],
         linkedCities: [],
-      }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      });
     }
 
-    const epochInstructions: Record<string, string> = {
-      myty: "Piš jako starověký mytograf. Epický jazyk plný metafor, bohů a legend.",
-      kroniky: "Piš jako středověký kronikář. Formální, vznešený, archaický jazyk.",
-      moderni: "Piš jako moderní novinář. Stručný, faktický zpravodajský styl.",
-    };
-
+    // ── Serialize all data sources ──
     const eventsText = (confirmedEvents || []).map((e: any) =>
-      `[${e.event_type}] ${e.player}${e.location ? ` @ ${e.location}` : ""}${e.note ? ` — "${e.note}"` : ""}${e.result ? ` → ${e.result}` : ""}${e.casualties ? ` (ztráty: ${e.casualties})` : ""}`
+      `[${e.event_type}] ${e.player}${e.location ? ` @ ${e.location}` : ""}${e.note ? ` — "${e.note}"` : ""}${e.result ? ` → ${e.result}` : ""}${e.casualties ? ` (ztráty: ${e.casualties})` : ""}${e.importance === "major" ? " [DŮLEŽITÉ]" : ""}${e.treaty_type ? ` [Smlouva: ${e.treaty_type}]` : ""}${e.terms_summary ? ` Podmínky: ${e.terms_summary}` : ""}`
     ).join("\n");
 
     const annotationsText = (annotations || []).map((a: any) =>
@@ -38,12 +36,32 @@ serve(async (req) => {
       typeof m === "string" ? m : `[${m.category || ""}] ${m.text}`
     ).join("\n");
 
-    const systemPrompt = `Jsi kronikář civilizační deskové hry. ${epochInstructions[epochStyle] || epochInstructions.kroniky}
+    const battlesText = (battles || []).map((b: any) =>
+      `BITVA: Útočník síla ${b.attacker_strength_snapshot} vs Obránce síla ${b.defender_strength_snapshot}. Výsledek: ${b.result}. Ztráty: útočník ${b.casualties_attacker}, obránce ${b.casualties_defender}.${b.speech_text ? ` Proslov: "${b.speech_text}"` : ""}${b.biome ? ` Terén: ${b.biome}` : ""}`
+    ).join("\n");
+
+    const declarationsText = (declarations || []).map((d: any) =>
+      `PROHLÁŠENÍ [${d.declaration_type}] od ${d.player_name}${d.title ? ` — "${d.title}"` : ""}: ${d.epic_text || d.original_text}${d.tone ? ` (tón: ${d.tone})` : ""}`
+    ).join("\n");
+
+    const buildingsText = (completedBuildings || []).map((b: any) =>
+      `STAVBA dokončena: "${b.name}" [${b.category}]${b.founding_myth ? ` — Mýtus: ${b.founding_myth}` : ""}${b.description ? ` Popis: ${b.description}` : ""}`
+    ).join("\n");
+
+    const rumorsText = (rumors || []).map((r: any) =>
+      `ZVĚST z ${r.city_name} [${r.tone_tag}]: ${r.text}`
+    ).join("\n");
+
+    const systemPrompt = `Jsi kronikář civilizační deskové hry.
 
 ÚKOL: Vygeneruj zápis kroniky pro rok ${round}. Tento zápis se stane trvalou součástí dějin světa.
 
 PRAVIDLA:
 - Zahrň VŠECHNY potvrzené události roku — žádná nesmí zůstat nezaznamenaná.
+- Bitvy popiš dramaticky s důrazem na výsledek, ztráty a projevy velitelů.
+- Prohlášení a edikty hráčů cituj nebo parafrázuj jako oficiální dokumenty.
+- Dokončené stavby zaznamenej jako monumentální počiny s odkazem na jejich mýtus.
+- Zvěsti a šuškandu zapracuj jako hlasy lidu nebo atmosféru ulice.
 - Zapracuj poznámky hráčů jako citace, kontext nebo perspektivu do příběhu.
 - Zohledni existující paměti světa pro kontinuitu.
 - NESMÍŠ vymýšlet nové události — pouze narativně zpracuj dodaná data.
@@ -57,75 +75,67 @@ PRAVIDLA:
 POTVRZENÉ UDÁLOSTI:
 ${eventsText || "žádné události"}
 
+BITVY:
+${battlesText || "žádné bitvy"}
+
+PROHLÁŠENÍ A EDIKTY:
+${declarationsText || "žádná prohlášení"}
+
+DOKONČENÉ STAVBY:
+${buildingsText || "žádné stavby"}
+
+ZVĚSTI Z ULIC:
+${rumorsText || "žádné zvěsti"}
+
 POZNÁMKY HRÁČŮ:
 ${annotationsText || "žádné poznámky"}
 
 PAMĚTI SVĚTA:
 ${memoriesText || "žádné paměti"}`;
 
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-3-flash-preview",
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userPrompt },
-        ],
-        tools: [{
-          type: "function",
-          function: {
-            name: "write_round_chronicle",
-            description: "Write chronicle entry for a specific round.",
-            parameters: {
-              type: "object",
-              properties: {
-                chronicleText: { type: "string", description: "Full chronicle text for this round in Czech" },
-                newSuggestedMemories: {
-                  type: "array",
-                  items: { type: "string" },
-                  description: "Suggested new world memory facts in Czech",
-                },
-                linkedCities: {
-                  type: "array",
-                  items: { type: "string" },
-                  description: "Names of cities mentioned in the chronicle",
-                },
+    const result = await invokeAI(ctx, {
+      systemPrompt,
+      userPrompt,
+      tools: [{
+        type: "function",
+        function: {
+          name: "write_round_chronicle",
+          description: "Write chronicle entry for a specific round.",
+          parameters: {
+            type: "object",
+            properties: {
+              chronicleText: { type: "string", description: "Full chronicle text for this round in Czech" },
+              newSuggestedMemories: {
+                type: "array",
+                items: { type: "string" },
+                description: "Suggested new world memory facts in Czech",
               },
-              required: ["chronicleText", "newSuggestedMemories", "linkedCities"],
-              additionalProperties: false,
+              linkedCities: {
+                type: "array",
+                items: { type: "string" },
+                description: "Names of cities mentioned in the chronicle",
+              },
             },
+            required: ["chronicleText", "newSuggestedMemories", "linkedCities"],
+            additionalProperties: false,
           },
-        }],
-        tool_choice: { type: "function", function: { name: "write_round_chronicle" } },
-      }),
+        },
+      }],
+      toolChoice: { type: "function", function: { name: "write_round_chronicle" } },
     });
 
-    if (!response.ok) {
-      if (response.status === 429) {
-        return new Response(JSON.stringify({ error: "Rate limit" }), { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-      }
-      if (response.status === 402) {
-        return new Response(JSON.stringify({ chronicleText: `📜 Rok ${round} — Kronikář nemá prostředky k záznamu. (AI kredity vyčerpány)`, newSuggestedMemories: [], linkedCities: [] }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
-      }
-      throw new Error("AI gateway error");
+    if (!result.ok) {
+      if (result.status === 429) return errorResponse("Rate limit", 429);
+      if (result.status === 402) return jsonResponse({
+        chronicleText: `📜 Rok ${round} — Kronikář nemá prostředky. (AI kredity vyčerpány)`,
+        newSuggestedMemories: [], linkedCities: [],
+      });
+      throw new Error(result.error || "AI error");
     }
 
-    const data = await response.json();
-    const toolCall = data.choices?.[0]?.message?.tool_calls?.[0];
-    if (!toolCall) throw new Error("No tool call");
-
-    const result = JSON.parse(toolCall.function.arguments);
-    return new Response(JSON.stringify(result), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return jsonResponse(result.data);
   } catch (e) {
     console.error("world-chronicle-round error:", e);
-    return new Response(JSON.stringify({ error: e instanceof Error ? e.message : "Unknown error" }), {
-      status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return errorResponse(e instanceof Error ? e.message : "Unknown error");
   }
 });

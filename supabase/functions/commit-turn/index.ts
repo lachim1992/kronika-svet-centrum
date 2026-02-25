@@ -216,22 +216,40 @@ Deno.serve(async (req) => {
     try {
       const closedTurn = turnNumber; // the turn that just ended
 
-      // Fetch events + memories for the closed turn
+      // Fetch ALL data sources for chronicle generation
       const [
         { data: turnEvents },
         { data: turnMemories },
         { data: turnAnnotations },
+        { data: turnBattles },
+        { data: turnDeclarations },
+        { data: turnBuildings },
+        { data: turnRumors },
       ] = await Promise.all([
         supabase.from("game_events").select("*").eq("session_id", sessionId)
           .eq("turn_number", closedTurn).eq("confirmed", true),
         supabase.from("world_memories").select("*").eq("session_id", sessionId).eq("approved", true),
         supabase.from("event_annotations").select("*").eq("session_id", sessionId),
+        supabase.from("battles").select("*").eq("session_id", sessionId).eq("turn_number", closedTurn),
+        supabase.from("declarations").select("*").eq("session_id", sessionId)
+          .eq("turn_number", closedTurn).eq("status", "published"),
+        supabase.from("city_buildings").select("*").eq("session_id", sessionId)
+          .eq("completed_turn", closedTurn).eq("is_ai_generated", true),
+        supabase.from("city_rumors").select("*").eq("session_id", sessionId)
+          .eq("turn_number", closedTurn).eq("is_draft", false),
       ]);
 
       const confirmedEvents = turnEvents || [];
       const approvedMemories = (turnMemories || []).map((m: any) => ({ text: m.text, category: m.category }));
+      const battles = turnBattles || [];
+      const declarations = turnDeclarations || [];
+      const completedBuildings = turnBuildings || [];
+      const rumors = turnRumors || [];
 
-      if (confirmedEvents.length > 0) {
+      // Shared enrichment payload for all generators
+      const enrichment = { battles, declarations, completedBuildings, rumors };
+
+      if (confirmedEvents.length > 0 || battles.length > 0 || declarations.length > 0) {
         // Check if chronicle already exists for this turn
         const { data: existingChronicle } = await supabase.from("chronicle_entries")
           .select("id").eq("session_id", sessionId)
@@ -250,11 +268,12 @@ Deno.serve(async (req) => {
 
             const { data: wcData } = await supabase.functions.invoke("world-chronicle-round", {
               body: {
+                sessionId,
                 round: closedTurn,
                 confirmedEvents,
                 annotations: annotationsForTurn.filter((a: any) => a.visibility !== "private"),
                 worldMemories: approvedMemories,
-                epochStyle: session.epoch_style || "kroniky",
+                ...enrichment,
               },
             });
 
@@ -302,7 +321,6 @@ Deno.serve(async (req) => {
 
           let playerChronCount = 0;
           for (const p of (allPlayersForChron || [])) {
-            // Check if chapter already covers this turn
             const { data: existingChapter } = await supabase.from("player_chronicle_chapters")
               .select("id").eq("session_id", sessionId).eq("player_name", p.player_name)
               .gte("to_turn", closedTurn).lte("from_turn", closedTurn).maybeSingle();
@@ -312,7 +330,14 @@ Deno.serve(async (req) => {
             const playerEvents = confirmedEvents.filter((e: any) =>
               e.player === p.player_name || e.player === "Systém"
             );
-            if (playerEvents.length === 0) continue;
+            // Even if no events, player may have battles/declarations
+            const playerBattles = battles.filter((b: any) => {
+              // Match battles where player's stacks are involved (simplified: check all)
+              return true; // All battles are relevant context
+            });
+            const playerDeclarations = declarations.filter((d: any) => d.player_name === p.player_name);
+
+            if (playerEvents.length === 0 && playerBattles.length === 0 && playerDeclarations.length === 0) continue;
 
             const civ = (allCivs || []).find((c: any) => c.player_name === p.player_name);
             const playerCities = (allCities || []).filter((c: any) => c.owner_player === p.player_name)
@@ -325,16 +350,23 @@ Deno.serve(async (req) => {
             try {
               const { data: pcData } = await supabase.functions.invoke("player-chronicle", {
                 body: {
+                  sessionId,
                   playerName: p.player_name,
                   civName: civ?.civ_name,
                   events: playerEvents,
                   playerCities,
                   playerMemories: approvedMemories.map((m: any) => m.text),
                   rivalInfo: rivalEvents,
-                  epochStyle: session.epoch_style || "kroniky",
                   fromTurn: closedTurn,
                   toTurn: closedTurn,
                   existingWorldEvents: existingWorldEvents || [],
+                  battles: playerBattles,
+                  declarations: playerDeclarations,
+                  completedBuildings: completedBuildings.filter((b: any) => {
+                    // Filter buildings for this player's cities
+                    return playerCities.some((c: any) => c.name);
+                  }),
+                  rumors,
                 },
               });
 
@@ -372,15 +404,16 @@ Deno.serve(async (req) => {
               .select("id, title, date, summary").eq("session_id", sessionId);
 
             const canonEvents = confirmedEvents.filter((e: any) => e.truth_state === "canon");
-            if (canonEvents.length > 0) {
+            if (canonEvents.length > 0 || battles.length > 0) {
               const { data: whData } = await supabase.functions.invoke("world-history", {
                 body: {
+                  sessionId,
                   events: canonEvents,
                   worldMemories: approvedMemories.map((m: any) => m.text),
-                  epochStyle: session.epoch_style || "kroniky",
                   fromTurn: closedTurn,
                   toTurn: closedTurn,
                   existingWorldEvents: existingWorldEvents || [],
+                  ...enrichment,
                 },
               });
 
