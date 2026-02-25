@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Castle, Loader2, MapPin, Sparkles, ScrollText } from "lucide-react";
 import { toast } from "sonner";
+import { dispatchCommand } from "@/lib/commands";
 
 const CITY_TAGS = ["přístav", "pevnost", "svaté město", "obchodní uzel", "hornické město"];
 
@@ -72,157 +73,27 @@ const FoundSettlementDialog = ({
     const selectedProvince = provinces.find(p => p.id === provinceId);
     setCreating(true);
     try {
-      // 0. Find free hex coordinates — fetch all occupied coords in this session
-      const { data: occupiedCities } = await supabase
-        .from("cities")
-        .select("province_q, province_r")
-        .eq("session_id", sessionId);
-      
-      const occupied = new Set(
-        (occupiedCities || []).map(c => `${c.province_q},${c.province_r}`)
-      );
-
-      // Spiral outward from (0,0) to find a free hex
-      let freeQ = 0, freeR = 0, found = false;
-      const directions = [[1,0],[1,-1],[0,-1],[-1,0],[-1,1],[0,1]];
-      if (!occupied.has("0,0")) {
-        found = true;
-      } else {
-        outer:
-        for (let ring = 1; ring <= 20; ring++) {
-          let q = 0, r = -ring;
-          for (let d = 0; d < 6; d++) {
-            for (let step = 0; step < ring; step++) {
-              if (!occupied.has(`${q},${r}`)) {
-                freeQ = q; freeR = r; found = true; break outer;
-              }
-              q += directions[d][0]; r += directions[d][1];
-            }
-          }
-        }
-      }
-      if (!found) { freeQ = Math.floor(Math.random() * 100) + 20; freeR = Math.floor(Math.random() * 100) + 20; }
-
-      // 1. Create city with unique coordinates
-      const { data: cityData, error: cityErr } = await supabase.from("cities").insert({
-        session_id: sessionId,
-        owner_player: currentPlayerName,
-        name: name.trim(),
-        province_id: provinceId,
-        province: selectedProvince?.name || "",
-        level: "Osada",
-        settlement_level: "HAMLET",
-        tags: selectedTags.length > 0 ? selectedTags : null,
-        founded_round: currentTurn,
-        flavor_prompt: flavorPrompt.trim() || null,
-        province_q: freeQ,
-        province_r: freeR,
-        population_total: 1000,
-        population_peasants: 800,
-        population_burghers: 150,
-        population_clerics: 50,
-        city_stability: 70,
-        local_grain_reserve: 0,
-        local_granary_capacity: 0,
-      }).select("id").single();
-
-      if (cityErr) throw cityErr;
-      const cityId = cityData.id;
-
-      // 2. World event (founding legend)
-      const slug = `founding-${name.trim().toLowerCase().replace(/\s+/g, "-")}-${Date.now()}`;
-      const legendText = legend.trim()
-        ? `${currentPlayerName} založil novou osadu ${name.trim()} v provincii ${selectedProvince?.name || ""}. ${legend.trim()}`
-        : `${currentPlayerName} založil novou osadu ${name.trim()} v provincii ${selectedProvince?.name || ""}.`;
-
-      await supabase.from("world_events").insert({
-        session_id: sessionId,
-        title: `Založení osady ${name.trim()}`,
-        slug,
-        summary: legendText,
-        event_category: "founding",
-        created_turn: currentTurn,
-        date: `Rok ${currentTurn}`,
-        status: "published",
-        created_by_type: "player",
-        affected_players: [currentPlayerName],
-        location_id: cityId,
-        participants: JSON.stringify([{ name: currentPlayerName, role: "founder" }]),
-      } as any);
-
-      // 3. Feed item
-      await supabase.from("world_feed_items").insert({
-        session_id: sessionId,
-        turn_number: currentTurn,
-        feed_type: "gossip",
-        text: `V provincii ${selectedProvince?.name || ""} byla založena nová osada ${name.trim()}.`,
-        player_source: currentPlayerName,
-        related_entity_type: "city",
-        related_entity_id: cityId,
-      } as any);
-
-      // 4. Chronicle entry
-      const chronicleText = legend.trim()
-        ? `V roce ${currentTurn} byla založena osada **${name.trim()}** v provincii ${selectedProvince?.name || ""}, pod vládou ${currentPlayerName}. ${legend.trim()}`
-        : `V roce ${currentTurn} byla založena osada **${name.trim()}** v provincii ${selectedProvince?.name || ""}, pod vládou ${currentPlayerName}. Nová osada se rodí z prachu a naděje.`;
-
-      await supabase.from("chronicle_entries").insert({
-        session_id: sessionId,
-        turn_from: currentTurn,
-        turn_to: currentTurn,
-        text: chronicleText,
+      const result = await dispatchCommand({
+        sessionId,
+        turnNumber: currentTurn,
+        actor: { name: currentPlayerName, type: "player" },
+        commandType: "FOUND_CITY",
+        commandPayload: {
+          cityName: name.trim(),
+          provinceId,
+          provinceName: selectedProvince?.name || "",
+          tags: selectedTags.length > 0 ? selectedTags : [],
+          flavorPrompt: flavorPrompt.trim() || null,
+          legend: legend.trim() || null,
+        },
       });
 
-      // 5. Wiki entry with flavor + legend — store player text as ai_description
-      //    so lazy wiki generation doesn't overwrite it
-      const playerSummary = flavorPrompt.trim() || `Nově založená osada v provincii ${selectedProvince?.name || ""}.`;
-      const playerLegend = legend.trim() || null;
-      const playerAiDesc = playerLegend
-        ? `${playerSummary}\n\n${playerLegend}`
-        : playerSummary;
-
-      await supabase.from("wiki_entries").upsert({
-        session_id: sessionId,
-        entity_type: "city",
-        entity_id: cityId,
-        entity_name: name.trim(),
-        summary: playerSummary,
-        body_md: playerLegend,
-        ai_description: playerAiDesc,
-        status: "published",
-      } as any, { onConflict: "session_id,entity_type,entity_id" });
-
-      // 6. Auto-discover entities
-      const discoveryRows: any[] = [
-        { session_id: sessionId, player_name: currentPlayerName, entity_type: "city", entity_id: cityId, source: "founded" },
-        { session_id: sessionId, player_name: currentPlayerName, entity_type: "province", entity_id: provinceId, source: "founded" },
-      ];
-      if (selectedProvince?.region_id) {
-        discoveryRows.push({ session_id: sessionId, player_name: currentPlayerName, entity_type: "region", entity_id: selectedProvince.region_id, source: "founded" });
+      if (!result.ok) {
+        throw new Error(result.error || "Nepodařilo se založit osadu");
       }
-      // Discover sibling cities
-      const { data: siblings } = await supabase.from("cities").select("id").eq("session_id", sessionId).eq("province_id", provinceId).neq("id", cityId);
-      if (siblings) {
-        for (const s of siblings) {
-          discoveryRows.push({ session_id: sessionId, player_name: currentPlayerName, entity_type: "city", entity_id: s.id, source: "founded" });
-        }
-      }
-      await supabase.from("discoveries").upsert(discoveryRows, { onConflict: "session_id,player_name,entity_type,entity_id" });
 
-      // 7. Create settlement resource profile for economic engine
-      const seed = Math.abs(cityId.split("").reduce((h: number, c: string) => ((h << 5) - h + c.charCodeAt(0)) | 0, 0));
-      const roll = seed % 100;
-      const specialType = roll < 25 ? "IRON" : roll < 50 ? "STONE" : "NONE";
-      await supabase.from("settlement_resource_profiles").upsert({
-        city_id: cityId,
-        produces_grain: true,
-        produces_wood: true,
-        special_resource_type: specialType,
-        base_grain: 8,
-        base_wood: 6,
-        base_special: specialType !== "NONE" ? 2 : 0,
-        founded_seed: cityId,
-      } as any, { onConflict: "city_id" });
+      const cityId = result.sideEffects?.cityId;
+      if (!cityId) throw new Error("Server nevrátil cityId");
 
       toast.success(`🏗️ Osada ${name.trim()} založena!`);
       resetForm();
