@@ -416,6 +416,7 @@ export type Database = {
           custom_layers: boolean
           devastated_round: number | null
           development_level: number
+          famine_consecutive_turns: number
           famine_severity: number
           famine_turn: boolean
           flavor_prompt: string | null
@@ -468,6 +469,7 @@ export type Database = {
           custom_layers?: boolean
           devastated_round?: number | null
           development_level?: number
+          famine_consecutive_turns?: number
           famine_severity?: number
           famine_turn?: boolean
           flavor_prompt?: string | null
@@ -520,6 +522,7 @@ export type Database = {
           custom_layers?: boolean
           devastated_round?: number | null
           development_level?: number
+          famine_consecutive_turns?: number
           famine_severity?: number
           famine_turn?: boolean
           flavor_prompt?: string | null
@@ -1054,6 +1057,78 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "city_states_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      city_uprisings: {
+        Row: {
+          advisor_analysis: string | null
+          chosen_concession: string | null
+          city_id: string
+          created_at: string
+          crowd_text: string | null
+          demands: Json
+          effects_applied: Json | null
+          escalation_level: number
+          id: string
+          player_name: string
+          player_response_text: string | null
+          resolved_turn: number | null
+          session_id: string
+          status: string
+          turn_triggered: number
+          updated_at: string
+        }
+        Insert: {
+          advisor_analysis?: string | null
+          chosen_concession?: string | null
+          city_id: string
+          created_at?: string
+          crowd_text?: string | null
+          demands?: Json
+          effects_applied?: Json | null
+          escalation_level?: number
+          id?: string
+          player_name: string
+          player_response_text?: string | null
+          resolved_turn?: number | null
+          session_id: string
+          status?: string
+          turn_triggered?: number
+          updated_at?: string
+        }
+        Update: {
+          advisor_analysis?: string | null
+          chosen_concession?: string | null
+          city_id?: string
+          created_at?: string
+          crowd_text?: string | null
+          demands?: Json
+          effects_applied?: Json | null
+          escalation_level?: number
+          id?: string
+          player_name?: string
+          player_response_text?: string | null
+          resolved_turn?: number | null
+          session_id?: string
+          status?: string
+          turn_triggered?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "city_uprisings_city_id_fkey"
+            columns: ["city_id"]
+            isOneToOne: false
+            referencedRelation: "cities"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "city_uprisings_session_id_fkey"
             columns: ["session_id"]
             isOneToOne: false
             referencedRelation: "game_sessions"
