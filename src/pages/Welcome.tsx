@@ -189,13 +189,13 @@ The game engine will analyze your actions, interpret their intent, and calculate
             </p>
 
             <p>
-              The project is built on the idea of a personalized world in which
-              the player is not limited to predefined choices, but can express
-              actions in their own language. The engine will structure those
-              actions and derive systemic consequences from them. Artificial
-              intelligence will then provide interpretation and context —
-              chronicles, reports, advisory opinions — while the true evolution
-              of the world will emerge from its internal logic.
+
+
+
+
+
+
+
             </p>
 
             <p>
