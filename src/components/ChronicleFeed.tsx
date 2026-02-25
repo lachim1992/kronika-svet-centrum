@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import type { Tables } from "@/integrations/supabase/types";
 import { addChronicleEntry, addWorldMemory } from "@/hooks/useGameSession";
 import { supabase } from "@/integrations/supabase/client";
+import { dispatchCommand } from "@/lib/commands";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
@@ -158,13 +159,13 @@ const ChronicleFeed = ({
         if (error) throw error;
 
         if (data.chronicleText) {
-          await supabase.from("chronicle_entries").insert({
-            session_id: sessionId,
-            text: `📜 Rok ${turn}\n\n${data.chronicleText}`,
-            epoch_style: epochStyle,
-            turn_from: turn,
-            turn_to: turn,
-          } as any);
+          const chronicleText = `📜 Rok ${turn}\n\n${data.chronicleText}`;
+          await dispatchCommand({
+            sessionId, turnNumber: turn,
+            actor: { name: currentPlayerName, type: "system" },
+            commandType: "GENERATE_CHRONICLE",
+            commandPayload: { chronicleText, chronicleTurn: turn, epochStyle },
+          });
         }
 
         if (data.newSuggestedMemories?.length) {

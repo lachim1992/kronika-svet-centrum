@@ -259,6 +259,25 @@ async function executeCommand(
         reference: payload,
       }], payload.chronicleText);
 
+    case "GENERATE_CHRONICLE":
+      return insertEventsWithChronicle(supabase, commandId, sessionId, turnNumber, [{
+        ...base,
+        event_type: "chronicle_generation",
+        note: payload.note || `Kronika vygenerována pro rok ${payload.chronicleTurn || turnNumber}.`,
+        importance: "normal",
+        actor_type: "system",
+        reference: payload,
+      }], payload.chronicleText);
+
+    case "IMPORT_SOURCE":
+      return insertEventsWithChronicle(supabase, commandId, sessionId, turnNumber, [{
+        ...base,
+        event_type: "source_import",
+        note: payload.note || `Import textu do kroniky.`,
+        importance: "normal",
+        reference: payload,
+      }], payload.chronicleText);
+
     case "GENERIC":
       return insertEvents(supabase, commandId, [{
         ...base,
