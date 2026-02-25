@@ -161,7 +161,7 @@ const ChronicleFeed = ({
         if (data.chronicleText) {
           const chronicleText = `📜 Rok ${turn}\n\n${data.chronicleText}`;
           await dispatchCommand({
-            sessionId, turnNumber: turn,
+            sessionId,
             actor: { name: currentPlayerName, type: "system" },
             commandType: "GENERATE_CHRONICLE",
             commandPayload: { chronicleText, chronicleTurn: turn, epochStyle },
