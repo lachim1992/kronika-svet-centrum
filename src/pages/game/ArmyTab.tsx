@@ -258,11 +258,35 @@ const ArmyTab = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, on
 
   return (
     <div className="space-y-4 pb-20">
-      {/* Header */}
-      <div className="flex items-center gap-2 py-1">
-        <Swords className="h-5 w-5 text-illuminated" />
-        <h2 className="text-lg font-display font-bold">Vojenské velení</h2>
-      </div>
+      {/* Header — with confirmed realm sigil as decorative emblem */}
+      {(realm as any)?.army_sigil_confirmed && (realm as any)?.army_sigil_url ? (
+        <div className="flex flex-col items-center gap-2 py-3">
+          <div className="relative w-20 h-20 sm:w-24 sm:h-24">
+            {/* Ornamental frame */}
+            <div className="absolute inset-0 rounded-lg border-2 border-illuminated/60 shadow-[0_0_20px_4px_hsl(var(--illuminated)/0.15)] bg-gradient-to-b from-illuminated/10 via-transparent to-illuminated/5" />
+            <div className="absolute -inset-1 rounded-xl border border-illuminated/20 pointer-events-none" />
+            <img
+              src={(realm as any).army_sigil_url}
+              alt="Říšský erb"
+              className="relative w-full h-full object-cover rounded-lg"
+            />
+            {/* Corner ornaments */}
+            <div className="absolute -top-1 -left-1 w-3 h-3 border-t-2 border-l-2 border-illuminated/50 rounded-tl-sm" />
+            <div className="absolute -top-1 -right-1 w-3 h-3 border-t-2 border-r-2 border-illuminated/50 rounded-tr-sm" />
+            <div className="absolute -bottom-1 -left-1 w-3 h-3 border-b-2 border-l-2 border-illuminated/50 rounded-bl-sm" />
+            <div className="absolute -bottom-1 -right-1 w-3 h-3 border-b-2 border-r-2 border-illuminated/50 rounded-br-sm" />
+          </div>
+          <div className="flex items-center gap-2">
+            <Swords className="h-5 w-5 text-illuminated" />
+            <h2 className="text-lg font-display font-bold">Vojenské velení</h2>
+          </div>
+        </div>
+      ) : (
+        <div className="flex items-center gap-2 py-1">
+          <Swords className="h-5 w-5 text-illuminated" />
+          <h2 className="text-lg font-display font-bold">Vojenské velení</h2>
+        </div>
+      )}
 
       {/* Military Summary Bar */}
       <div className="grid grid-cols-4 sm:grid-cols-7 gap-2">
@@ -1212,6 +1236,9 @@ function MyArmyPanel({
         const resetField = mode === "stack" ? { image_confirmed: false } : { sigil_confirmed: false };
         await supabase.from("military_stacks").update(resetField as any).eq("id", extra.stackId);
       }
+      if (mode === "sigil_realm" && realm) {
+        await supabase.from("realm_resources").update({ army_sigil_confirmed: false } as any).eq("id", realm.id);
+      }
       const { data, error } = await supabase.functions.invoke("army-visualize", {
         body: {
           sessionId, playerName: currentPlayerName, mode,
@@ -1261,16 +1288,36 @@ function MyArmyPanel({
                 onChange={e => setCustomPrompts(p => ({ ...p, "sigil_realm-realm": e.target.value }))}
                 className="h-8 text-xs"
               />
-              <Button
-                size="sm" variant="outline" className="text-xs font-display w-full"
-                disabled={generatingVisual === "sigil_realm-realm"}
-                onClick={() => handleGenerate("sigil_realm")}
-              >
-                {generatingVisual === "sigil_realm-realm"
-                  ? <><Loader2 className="h-3 w-3 mr-1 animate-spin" />Generuji...</>
-                  : <><Sparkles className="h-3 w-3 mr-1" />{(realm as any)?.army_sigil_url ? "Regenerovat znak" : "Vygenerovat znak armády"}</>
-                }
-              </Button>
+              <div className="flex gap-2">
+                <Button
+                  size="sm" variant="outline" className="text-xs font-display flex-1"
+                  disabled={generatingVisual === "sigil_realm-realm"}
+                  onClick={() => handleGenerate("sigil_realm")}
+                >
+                  {generatingVisual === "sigil_realm-realm"
+                    ? <><Loader2 className="h-3 w-3 mr-1 animate-spin" />Generuji...</>
+                    : <><Sparkles className="h-3 w-3 mr-1" />{(realm as any)?.army_sigil_url ? "Regenerovat" : "Vygenerovat znak"}</>
+                  }
+                </Button>
+                {(realm as any)?.army_sigil_url && !(realm as any)?.army_sigil_confirmed && (
+                  <Button
+                    size="sm" variant="default" className="text-xs font-display"
+                    onClick={async () => {
+                      await supabase.from("realm_resources").update({ army_sigil_confirmed: true } as any)
+                        .eq("id", realm!.id);
+                      toast.success("✅ Říšský erb potvrzen!");
+                      onRefresh();
+                    }}
+                  >
+                    <Check className="h-3 w-3 mr-1" />Potvrdit
+                  </Button>
+                )}
+                {(realm as any)?.army_sigil_confirmed && (
+                  <Badge variant="outline" className="text-[9px] h-7 px-2 flex items-center gap-1 border-accent text-accent">
+                    <Check className="h-3 w-3" /> Potvrzeno
+                  </Badge>
+                )}
+              </div>
             </div>
           </div>
         </CardContent>

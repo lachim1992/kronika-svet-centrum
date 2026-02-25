@@ -1,0 +1,1 @@
+ALTER TABLE public.realm_resources ADD COLUMN IF NOT EXISTS army_sigil_confirmed boolean NOT NULL DEFAULT false;

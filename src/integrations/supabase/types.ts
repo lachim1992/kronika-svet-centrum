@@ -3333,6 +3333,7 @@ export type Database = {
       }
       realm_resources: {
         Row: {
+          army_sigil_confirmed: boolean
           army_sigil_prompt: string | null
           army_sigil_url: string | null
           created_at: string
@@ -3368,6 +3369,7 @@ export type Database = {
           wood_reserve: number
         }
         Insert: {
+          army_sigil_confirmed?: boolean
           army_sigil_prompt?: string | null
           army_sigil_url?: string | null
           created_at?: string
@@ -3403,6 +3405,7 @@ export type Database = {
           wood_reserve?: number
         }
         Update: {
+          army_sigil_confirmed?: boolean
           army_sigil_prompt?: string | null
           army_sigil_url?: string | null
           created_at?: string
