@@ -4286,6 +4286,7 @@ export type Database = {
       wiki_entries: {
         Row: {
           ai_description: string | null
+          body_md: string | null
           created_at: string
           entity_id: string | null
           entity_name: string
@@ -4293,15 +4294,18 @@ export type Database = {
           id: string
           image_prompt: string | null
           image_url: string | null
+          last_enriched_turn: number | null
           owner_player: string
           references: Json | null
           session_id: string
+          static_identity: Json | null
           summary: string | null
           tags: string[] | null
           updated_at: string
         }
         Insert: {
           ai_description?: string | null
+          body_md?: string | null
           created_at?: string
           entity_id?: string | null
           entity_name: string
@@ -4309,15 +4313,18 @@ export type Database = {
           id?: string
           image_prompt?: string | null
           image_url?: string | null
+          last_enriched_turn?: number | null
           owner_player: string
           references?: Json | null
           session_id: string
+          static_identity?: Json | null
           summary?: string | null
           tags?: string[] | null
           updated_at?: string
         }
         Update: {
           ai_description?: string | null
+          body_md?: string | null
           created_at?: string
           entity_id?: string | null
           entity_name?: string
@@ -4325,9 +4332,11 @@ export type Database = {
           id?: string
           image_prompt?: string | null
           image_url?: string | null
+          last_enriched_turn?: number | null
           owner_player?: string
           references?: Json | null
           session_id?: string
+          static_identity?: Json | null
           summary?: string | null
           tags?: string[] | null
           updated_at?: string
@@ -4335,6 +4344,56 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "wiki_entries_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      wiki_event_refs: {
+        Row: {
+          created_at: string
+          entity_id: string
+          entity_type: string
+          id: string
+          impact_score: number
+          meta: Json | null
+          ref_id: string
+          ref_label: string
+          ref_type: string
+          session_id: string
+          turn_number: number
+        }
+        Insert: {
+          created_at?: string
+          entity_id: string
+          entity_type: string
+          id?: string
+          impact_score?: number
+          meta?: Json | null
+          ref_id: string
+          ref_label?: string
+          ref_type?: string
+          session_id: string
+          turn_number?: number
+        }
+        Update: {
+          created_at?: string
+          entity_id?: string
+          entity_type?: string
+          id?: string
+          impact_score?: number
+          meta?: Json | null
+          ref_id?: string
+          ref_label?: string
+          ref_type?: string
+          session_id?: string
+          turn_number?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "wiki_event_refs_session_id_fkey"
             columns: ["session_id"]
             isOneToOne: false
             referencedRelation: "game_sessions"

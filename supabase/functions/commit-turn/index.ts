@@ -448,7 +448,149 @@ Deno.serve(async (req) => {
     }
 
     // ═══════════════════════════════════════════
-    // 8. RUMOR GENERATION (Šeptanda)
+    // 8. WIKI EVENT REFS ACCUMULATION (no AI, just structured data)
+    // ═══════════════════════════════════════════
+    try {
+      const closedTurnForRefs = turnNumber;
+      // Gather all events from this turn
+      const { data: turnEventsForRefs } = await supabase.from("game_events")
+        .select("id, event_type, city_id, location, note, importance, player")
+        .eq("session_id", sessionId).eq("turn_number", closedTurnForRefs).eq("confirmed", true);
+
+      const { data: turnBattlesForRefs } = await supabase.from("battles")
+        .select("id, result, defender_city_id, casualties_attacker, casualties_defender")
+        .eq("session_id", sessionId).eq("turn_number", closedTurnForRefs);
+
+      const { data: turnUprisings } = await supabase.from("city_uprisings")
+        .select("id, city_id, status, escalation_level")
+        .eq("session_id", sessionId).eq("turn_triggered", closedTurnForRefs);
+
+      const refsToInsert: any[] = [];
+      const impactScores: Record<string, number> = {};
+
+      const IMPACT_MAP: Record<string, number> = {
+        battle: 5, uprising: 4, founding: 3, conquest: 5,
+        wonder_built: 4, famine: 3, disaster: 4, trade: 1,
+        build: 1, explore: 1, expand: 2, diplomacy: 2,
+      };
+
+      // Process events → link to cities
+      for (const evt of (turnEventsForRefs || [])) {
+        const cityId = evt.city_id;
+        if (cityId) {
+          refsToInsert.push({
+            session_id: sessionId, entity_id: cityId, entity_type: "city",
+            ref_type: "event", ref_id: evt.id,
+            ref_label: `${evt.event_type}: ${(evt.note || "").substring(0, 80)}`,
+            turn_number: closedTurnForRefs,
+            impact_score: IMPACT_MAP[evt.event_type] || 1,
+            meta: { event_type: evt.event_type, importance: evt.importance },
+          });
+          impactScores[cityId] = (impactScores[cityId] || 0) + (IMPACT_MAP[evt.event_type] || 1);
+        }
+      }
+
+      // Process battles → link to defender city
+      for (const battle of (turnBattlesForRefs || [])) {
+        if (battle.defender_city_id) {
+          refsToInsert.push({
+            session_id: sessionId, entity_id: battle.defender_city_id, entity_type: "city",
+            ref_type: "battle", ref_id: battle.id,
+            ref_label: `Bitva: ${battle.result}`,
+            turn_number: closedTurnForRefs,
+            impact_score: 5,
+            meta: { result: battle.result, casualties_a: battle.casualties_attacker, casualties_d: battle.casualties_defender },
+          });
+          impactScores[battle.defender_city_id] = (impactScores[battle.defender_city_id] || 0) + 5;
+        }
+      }
+
+      // Process uprisings → link to city
+      for (const uprising of (turnUprisings || [])) {
+        refsToInsert.push({
+          session_id: sessionId, entity_id: uprising.city_id, entity_type: "city",
+          ref_type: "uprising", ref_id: uprising.id,
+          ref_label: `Vzpoura (eskalace ${uprising.escalation_level})`,
+          turn_number: closedTurnForRefs,
+          impact_score: 4,
+          meta: { status: uprising.status, escalation: uprising.escalation_level },
+        });
+        impactScores[uprising.city_id] = (impactScores[uprising.city_id] || 0) + 4;
+      }
+
+      // Bulk insert refs (ignore duplicates via ON CONFLICT)
+      if (refsToInsert.length > 0) {
+        await supabase.from("wiki_event_refs").upsert(refsToInsert, {
+          onConflict: "session_id,entity_id,ref_type,ref_id",
+          ignoreDuplicates: true,
+        });
+      }
+
+      results.wikiEventRefs = { inserted: refsToInsert.length };
+
+      // ── Check enrichment thresholds ──
+      const { data: enrichCfgData } = await supabase.from("server_config")
+        .select("economic_params").eq("session_id", sessionId).maybeSingle();
+      const enrichCfg = (enrichCfgData as any)?.economic_params?.narrative?.enrichment || {};
+      const autoEnrich = enrichCfg.auto_enrich !== false;
+      const impactThreshold = enrichCfg.impact_threshold || 3;
+      const minEvents = enrichCfg.min_events_for_trigger || 3;
+      const triggerTypes = enrichCfg.trigger_types || ["battle", "uprising", "founding", "conquest", "wonder_built", "famine", "disaster"];
+
+      if (autoEnrich) {
+        const enrichTargets: string[] = [];
+        for (const [entityId, score] of Object.entries(impactScores)) {
+          if (score >= impactThreshold) {
+            // Check if entity has enough total unreported refs
+            const { count } = await supabase.from("wiki_event_refs")
+              .select("id", { count: "exact", head: true })
+              .eq("session_id", sessionId).eq("entity_id", entityId)
+              .gt("turn_number", 0); // all refs
+            
+            const { data: wiki } = await supabase.from("wiki_entries")
+              .select("last_enriched_turn").eq("session_id", sessionId).eq("entity_id", entityId).maybeSingle();
+            
+            const lastEnriched = (wiki as any)?.last_enriched_turn || 0;
+            
+            // Count refs since last enrichment
+            const { count: newRefsCount } = await supabase.from("wiki_event_refs")
+              .select("id", { count: "exact", head: true })
+              .eq("session_id", sessionId).eq("entity_id", entityId)
+              .gt("turn_number", lastEnriched);
+
+            // Check if any trigger-type events exist
+            const hasTriggerEvent = (turnEventsForRefs || []).some((e: any) =>
+              e.city_id === entityId && triggerTypes.includes(e.event_type)
+            ) || (turnBattlesForRefs || []).some((b: any) => b.defender_city_id === entityId)
+              || (turnUprisings || []).some((u: any) => u.city_id === entityId);
+
+            if ((newRefsCount || 0) >= minEvents || hasTriggerEvent) {
+              enrichTargets.push(entityId);
+            }
+          }
+        }
+
+        // Trigger enrichment for qualifying entities (max 5 per turn to avoid overload)
+        let enriched = 0;
+        for (const entityId of enrichTargets.slice(0, 5)) {
+          try {
+            await supabase.functions.invoke("wiki-enrich", {
+              body: { sessionId, entityId, entityType: "city", turnNumber: closedTurnForRefs },
+            });
+            enriched++;
+          } catch (e) {
+            console.error(`Wiki enrich for ${entityId} failed:`, e);
+          }
+        }
+        results.wikiEnrichment = { targets: enrichTargets.length, enriched };
+      }
+    } catch (e) {
+      console.error("Wiki event refs accumulation error:", e);
+      results.wikiEventRefs = { error: (e as Error).message };
+    }
+
+    // ═══════════════════════════════════════════
+    // 8b. RUMOR GENERATION (Šeptanda)
     // ═══════════════════════════════════════════
     try {
       const { data: rumorData, error: rumorErr } = await supabase.functions.invoke("rumor-generate", {
