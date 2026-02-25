@@ -10,7 +10,7 @@ const sizes = {
   sm: 32,
   md: 48,
   lg: 80,
-  hero: 420,
+  hero: 420
 };
 
 const ChronicleHubLogo = ({ variant = "full", className = "", size = "md" }: LogoProps) => {
@@ -24,52 +24,52 @@ const ChronicleHubLogo = ({ variant = "full", className = "", size = "md" }: Log
         style={{
           width: isHero ? undefined : imgSize,
           height: isHero ? "auto" : imgSize,
-          maxWidth: isHero ? "420px" : undefined,
-        }}
-      >
-        {isHero && (
-          <div
-            className="absolute inset-0 pointer-events-none"
-            style={{
-              background: "radial-gradient(circle, hsl(43 64% 52% / 0.08) 0%, transparent 70%)",
-              transform: "scale(1.5)",
-              filter: "blur(20px)",
-            }}
-          />
-        )}
+          maxWidth: isHero ? "420px" : undefined
+        }}>
+
+        {isHero &&
+        <div
+          className="absolute inset-0 pointer-events-none"
+          style={{
+            background: "radial-gradient(circle, hsl(43 64% 52% / 0.08) 0%, transparent 70%)",
+            transform: "scale(1.5)",
+            filter: "blur(20px)"
+          }} />
+
+        }
         <img
-          src={logoImage}
+
           alt="The Chronicle Hub"
           className="relative z-10 w-full h-auto object-contain"
           style={{
             mixBlendMode: "screen",
-            filter: isHero ? undefined : "brightness(1.1)",
-          }}
-        />
-        {isHero && (
-          <p
-            className="relative z-10 text-center uppercase tracking-[0.35em] font-light -mt-2"
-            style={{
-              fontFamily: "'Cinzel', serif",
-              fontSize: "0.7rem",
-              color: "hsl(43 64% 52% / 0.45)",
-            }}
-          >
+            filter: isHero ? undefined : "brightness(1.1)"
+          }} src="/lovable-uploads/3c000f84-809b-4591-b4a4-49a2b0f60acf.png" />
+
+        {isHero &&
+        <p
+          className="relative z-10 text-center uppercase tracking-[0.35em] font-light -mt-2"
+          style={{
+            fontFamily: "'Cinzel', serif",
+            fontSize: "0.7rem",
+            color: "hsl(43 64% 52% / 0.45)"
+          }}>
+
             Let your thoughts shape history
           </p>
-        )}
+        }
       </div>
 
-      {variant === "full" && !isHero && (
-        <span
-          className="tracking-[0.18em] uppercase text-primary font-bold text-lg"
-          style={{ fontFamily: "'Cinzel', serif" }}
-        >
+      {variant === "full" && !isHero &&
+      <span
+        className="tracking-[0.18em] uppercase text-primary font-bold text-lg"
+        style={{ fontFamily: "'Cinzel', serif" }}>
+
           The Chronicle Hub
         </span>
-      )}
-    </div>
-  );
+      }
+    </div>);
+
 };
 
 export default ChronicleHubLogo;
