@@ -79,13 +79,14 @@ interface DeclarationsPanelProps {
   players?: any[];
   events?: any[];
   memories?: any[];
+  gameMode?: string;
   onRefetch?: () => void;
 }
 
 const DeclarationsPanel = ({
   sessionId, currentPlayerName, declarations, currentTurn,
   cities = [], players = [], events = [], memories = [],
-  onRefetch,
+  gameMode, onRefetch,
 }: DeclarationsPanelProps) => {
   // Editor state
   const [showEditor, setShowEditor] = useState(false);
@@ -197,6 +198,25 @@ const DeclarationsPanel = ({
       }
 
       toast.success("📢 Vyhlášení publikováno!");
+      
+      // Trigger AI faction reactions in AI mode
+      if (gameMode === "tb_single_ai" && inserted) {
+        supabase.functions.invoke("declaration-ai-reactions", {
+          body: {
+            sessionId,
+            declarationId: inserted.id,
+            declarationText: text.trim(),
+            declarationType: type || "proclamation",
+            tone,
+            playerName: currentPlayerName,
+          },
+        }).then(({ data }) => {
+          if (data?.reactions?.length) {
+            toast.info(`🏛️ ${data.reactions.length} AI frakcí zareagovalo na vaše vyhlášení`);
+          }
+        }).catch(() => {/* non-blocking */});
+      }
+
       resetEditor();
       onRefetch?.();
     } catch (e: any) {

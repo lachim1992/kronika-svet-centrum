@@ -95,7 +95,7 @@ const CivTab = ({
               sessionId={sessionId} currentPlayerName={currentPlayerName}
               declarations={declarations} currentTurn={currentTurn}
               cities={cities} players={players} events={events} memories={memories}
-              onRefetch={onRefetch}
+              gameMode={undefined} onRefetch={onRefetch}
             />
           </AccordionContent>
         </AccordionItem>

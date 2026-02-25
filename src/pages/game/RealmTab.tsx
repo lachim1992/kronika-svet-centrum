@@ -95,7 +95,7 @@ const RealmTab = ({
             sessionId={sessionId} currentPlayerName={currentPlayerName}
             declarations={declarations} currentTurn={currentTurn}
             cities={cities} players={players} events={events} memories={memories}
-            onRefetch={onRefetch}
+            gameMode={session?.game_mode} onRefetch={onRefetch}
           />
         </TabsContent>
 
