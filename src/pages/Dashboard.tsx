@@ -20,6 +20,7 @@ import HomeTab from "@/pages/game/HomeTab";
 import WorldTab from "@/pages/game/WorldTab";
 import RealmTab from "@/pages/game/RealmTab";
 import FeedTab from "@/pages/game/FeedTab";
+import ChroniclesTab from "@/pages/game/ChroniclesTab";
 import CodexTab from "@/pages/game/CodexTab";
 import ProfileTab from "@/pages/game/ProfileTab";
 import DevTab from "@/pages/game/DevTab";
@@ -134,15 +135,15 @@ const Dashboard = () => {
       send_expedition: "world",
       launch_expedition: "world",
       create_event: "feed",
-      write_chronicle: "feed",
-      add_rumor: "feed",
-      add_city_rumor: "feed",
-      add_aftermath_rumor: "feed",
-      view_drafts: "feed",
-      view_rumors: "feed",
+      write_chronicle: "chronicles",
+      add_rumor: "chronicles",
+      add_city_rumor: "chronicles",
+      add_aftermath_rumor: "chronicles",
+      view_drafts: "chronicles",
+      view_rumors: "chronicles",
       view_declarations: "feed",
-      ai_generate: "feed",
-      generate_city_story: "feed",
+      ai_generate: "chronicles",
+      generate_city_story: "chronicles",
       add_related_entity: "codex",
       no_actions: "feed",
       dev_gen_descriptions: "dev",
@@ -151,7 +152,7 @@ const Dashboard = () => {
       dev_hydrate: "dev",
     };
 
-    const targetTab = tabMap[action] || "feed";
+    const targetTab = tabMap[action] || "chronicles";
     setActiveTab(targetTab);
 
     const implemented = ["open_realm", "manage_armies", "create_event", "write_chronicle", "add_rumor", "view_drafts", "view_rumors", "view_declarations", "view_threats"];
@@ -292,6 +293,7 @@ const Dashboard = () => {
           onTabChange={(tab) => setActiveTab(tab as TabId)}
         />
       )}
+      {activeTab === "chronicles" && <ChroniclesTab {...sharedProps} />}
       {activeTab === "feed" && <FeedTab {...sharedProps} />}
       {activeTab === "engine" && (
         <EngineTab

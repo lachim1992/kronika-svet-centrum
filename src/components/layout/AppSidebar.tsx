@@ -26,7 +26,8 @@ const navItems: { id: TabId; label: string; icon: React.ElementType; group: stri
   { id: "economy", label: "Economy", icon: BarChart3, group: "main" },
   { id: "engine", label: "Engine", icon: Zap, group: "main" },
   { id: "council", label: "Council", icon: Crown, group: "main" },
-  { id: "feed", label: "Whispers", icon: Newspaper, group: "content" },
+  { id: "chronicles", label: "Kroniky", icon: BookOpen, group: "content" },
+  { id: "feed", label: "Šepoty", icon: Newspaper, group: "content" },
   { id: "wiki", label: "ChroWiki", icon: BookOpen, group: "content" },
 ];
 
