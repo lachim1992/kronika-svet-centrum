@@ -3,8 +3,9 @@ import PlayerChroniclePanel from "@/components/PlayerChroniclePanel";
 import WorldFeedPanel from "@/components/WorldFeedPanel";
 import WorldHistoryPanel from "@/components/WorldHistoryPanel";
 import RumorsFeedPanel from "@/components/RumorsFeedPanel";
+import NarrativeConfigEditor from "@/components/NarrativeConfigEditor";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { BookOpen, BookMarked, Newspaper, MessageCircle } from "lucide-react";
+import { BookOpen, BookMarked, Newspaper, MessageCircle, Settings2 } from "lucide-react";
 import type { EntityIndex } from "@/hooks/useEntityIndex";
 
 interface Props {
@@ -56,6 +57,9 @@ const ChroniclesTab = ({
           <TabsTrigger value="rumors" className="font-display text-xs gap-1">
             <MessageCircle className="h-3 w-3" />Zvěsti
           </TabsTrigger>
+          <TabsTrigger value="narrative-config" className="font-display text-xs gap-1">
+            <Settings2 className="h-3 w-3" />Nastavení
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="worldchronicle" className="mt-3">
@@ -101,6 +105,13 @@ const ChroniclesTab = ({
             entityIndex={entityIndex}
             onEventClick={onEventClick}
             onEntityClick={onEntityClick}
+          />
+        </TabsContent>
+
+        <TabsContent value="narrative-config" className="mt-3">
+          <NarrativeConfigEditor
+            sessionId={sessionId}
+            myRole={myRole}
           />
         </TabsContent>
       </Tabs>
