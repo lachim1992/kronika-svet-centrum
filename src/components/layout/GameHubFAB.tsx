@@ -179,7 +179,7 @@ const GameHubFAB = ({
       {/* Chronicles circle above FAB */}
       <button
         onClick={() => onAction?.("open_chronicles")}
-        className={`fixed bottom-[8.5rem] right-4 z-50 h-11 w-11 rounded-full border flex items-center justify-center transition-all duration-300 ${
+        className={`fixed bottom-[9rem] right-4 z-50 h-14 w-14 rounded-full border flex items-center justify-center transition-all duration-300 ${
           activeTab === "chronicles"
             ? "border-primary/60 shadow-[0_0_16px_hsl(var(--primary)/0.35)] text-primary"
             : "border-primary/25 hover:border-primary/45 shadow-[0_4px_12px_hsl(228_40%_3%/0.4)] text-primary/60 hover:text-primary"
@@ -191,7 +191,7 @@ const GameHubFAB = ({
         }}
         aria-label="Kroniky"
       >
-        <ScrollText className="h-5 w-5" strokeWidth={activeTab === "chronicles" ? 2.2 : 1.5} />
+        <ScrollText className="h-6 w-6" strokeWidth={activeTab === "chronicles" ? 2.2 : 1.5} />
       </button>
 
       {/* FAB Button with badge */}
