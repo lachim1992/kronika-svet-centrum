@@ -273,11 +273,7 @@ export async function deleteMemory(memoryId: string) {
 }
 
 // ---- Chronicle ----
-
-export async function addChronicleEntry(sessionId: string, text: string, epochStyle: string, turnNumber: number) {
-  const { error } = await supabase.from("chronicle_entries").insert({ session_id: sessionId, text, epoch_style: epochStyle });
-  if (error) console.error(error);
-}
+// addChronicleEntry removed — all chronicle writes now go through command-dispatch
 
 // ---- City States ----
 
