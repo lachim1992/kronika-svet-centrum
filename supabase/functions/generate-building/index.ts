@@ -113,10 +113,15 @@ Generate building as JSON:
 
     const result = validateBuilding(parsed);
 
-    // Generate image based on image_prompt + visual description
-    const imagePrompt = visualDescription
-      ? `Medieval fantasy building illustration: ${result.image_prompt}. Visual style: ${visualDescription}. Dark moody atmosphere, detailed architecture, painterly style.`
-      : `Medieval fantasy building illustration: ${result.image_prompt}. Dark moody atmosphere, detailed architecture, painterly style.`;
+    // Generate image primarily from player's own inputs
+    const parts: string[] = [];
+    parts.push(`Medieval fantasy building illustration of "${result.name}".`);
+    if (playerDescription) parts.push(`Building concept: ${playerDescription}.`);
+    if (buildingMyth) parts.push(`Legend and story: ${buildingMyth}.`);
+    if (visualDescription) parts.push(`Visual style and appearance: ${visualDescription}.`);
+    parts.push(`Setting: ${cityName || "settlement"}, ${biome || "plains"} biome.`);
+    parts.push("Dark moody atmosphere, dramatic lighting, highly detailed architecture, epic fantasy painterly style, cinematic composition.");
+    const imagePrompt = parts.join(" ");
 
     try {
       const imgRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
