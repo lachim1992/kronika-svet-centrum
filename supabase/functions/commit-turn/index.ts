@@ -208,7 +208,214 @@ Deno.serve(async (req) => {
     }
 
     // ═══════════════════════════════════════════
-    // 7. AI HISTORY COMPRESSION (AI mode only)
+    // 7. AUTO-GENERATE CHRONICLES (all 3 types)
+    // ═══════════════════════════════════════════
+    // Generate chronicles for the just-closed turn (turnNumber) in the background.
+    // Failures are non-critical and won't block turn progression.
+
+    try {
+      const closedTurn = turnNumber; // the turn that just ended
+
+      // Fetch events + memories for the closed turn
+      const [
+        { data: turnEvents },
+        { data: turnMemories },
+        { data: turnAnnotations },
+      ] = await Promise.all([
+        supabase.from("game_events").select("*").eq("session_id", sessionId)
+          .eq("turn_number", closedTurn).eq("confirmed", true),
+        supabase.from("world_memories").select("*").eq("session_id", sessionId).eq("approved", true),
+        supabase.from("event_annotations").select("*").eq("session_id", sessionId),
+      ]);
+
+      const confirmedEvents = turnEvents || [];
+      const approvedMemories = (turnMemories || []).map((m: any) => ({ text: m.text, category: m.category }));
+
+      if (confirmedEvents.length > 0) {
+        // Check if chronicle already exists for this turn
+        const { data: existingChronicle } = await supabase.from("chronicle_entries")
+          .select("id").eq("session_id", sessionId)
+          .eq("turn_from", closedTurn).eq("turn_to", closedTurn)
+          .eq("source_type", "chronicle").maybeSingle();
+
+        // ─── 7a. WORLD CHRONICLE ───
+        if (!existingChronicle) {
+          try {
+            const annotationsForTurn = (turnAnnotations || []).filter((a: any) =>
+              confirmedEvents.some((e: any) => e.id === a.event_id)
+            ).map((a: any) => {
+              const evt = confirmedEvents.find((e: any) => e.id === a.event_id);
+              return { ...a, event_type: evt?.event_type || "unknown" };
+            });
+
+            const { data: wcData } = await supabase.functions.invoke("world-chronicle-round", {
+              body: {
+                round: closedTurn,
+                confirmedEvents,
+                annotations: annotationsForTurn.filter((a: any) => a.visibility !== "private"),
+                worldMemories: approvedMemories,
+                epochStyle: session.epoch_style || "kroniky",
+              },
+            });
+
+            if (wcData?.chronicleText) {
+              await supabase.from("chronicle_entries").insert({
+                session_id: sessionId,
+                turn_from: closedTurn,
+                turn_to: closedTurn,
+                text: `📜 Rok ${closedTurn}\n\n${wcData.chronicleText}`,
+                source_type: "chronicle",
+                epoch_style: session.epoch_style || "kroniky",
+              });
+
+              // Save suggested memories
+              if (wcData.newSuggestedMemories?.length) {
+                for (const mem of wcData.newSuggestedMemories) {
+                  await safeInsert(supabase.from("world_memories").insert({
+                    session_id: sessionId,
+                    text: typeof mem === "string" ? mem : mem.text || "",
+                    approved: false,
+                    category: typeof mem === "object" ? mem.category : "general",
+                  }));
+                }
+              }
+            }
+            results.worldChronicle = { ok: true, turn: closedTurn };
+          } catch (wcErr) {
+            console.error("Auto world-chronicle error:", wcErr);
+            results.worldChronicle = { error: (wcErr as Error).message };
+          }
+        } else {
+          results.worldChronicle = { skipped: true, reason: "already_exists" };
+        }
+
+        // ─── 7b. PLAYER CHRONICLE (for each player) ───
+        try {
+          const { data: allPlayersForChron } = await supabase.from("game_players")
+            .select("player_name").eq("session_id", sessionId);
+          const { data: allCivs } = await supabase.from("civilizations")
+            .select("player_name, civ_name").eq("session_id", sessionId);
+          const { data: allCities } = await supabase.from("cities")
+            .select("name, level, province, owner_player").eq("session_id", sessionId);
+          const { data: existingWorldEvents } = await supabase.from("world_events")
+            .select("id, title, date, summary").eq("session_id", sessionId);
+
+          let playerChronCount = 0;
+          for (const p of (allPlayersForChron || [])) {
+            // Check if chapter already covers this turn
+            const { data: existingChapter } = await supabase.from("player_chronicle_chapters")
+              .select("id").eq("session_id", sessionId).eq("player_name", p.player_name)
+              .gte("to_turn", closedTurn).lte("from_turn", closedTurn).maybeSingle();
+
+            if (existingChapter) continue;
+
+            const playerEvents = confirmedEvents.filter((e: any) =>
+              e.player === p.player_name || e.player === "Systém"
+            );
+            if (playerEvents.length === 0) continue;
+
+            const civ = (allCivs || []).find((c: any) => c.player_name === p.player_name);
+            const playerCities = (allCities || []).filter((c: any) => c.owner_player === p.player_name)
+              .map((c: any) => ({ name: c.name, level: c.level, province: c.province }));
+
+            const rivalEvents = confirmedEvents.filter((e: any) =>
+              e.player !== p.player_name && e.player !== "Systém"
+            ).map((e: any) => `${e.player}: ${e.event_type}${e.note ? ` — ${e.note}` : ""}`);
+
+            try {
+              const { data: pcData } = await supabase.functions.invoke("player-chronicle", {
+                body: {
+                  playerName: p.player_name,
+                  civName: civ?.civ_name,
+                  events: playerEvents,
+                  playerCities,
+                  playerMemories: approvedMemories.map((m: any) => m.text),
+                  rivalInfo: rivalEvents,
+                  epochStyle: session.epoch_style || "kroniky",
+                  fromTurn: closedTurn,
+                  toTurn: closedTurn,
+                  existingWorldEvents: existingWorldEvents || [],
+                },
+              });
+
+              if (pcData?.chapterText) {
+                await supabase.from("player_chronicle_chapters").insert({
+                  session_id: sessionId,
+                  player_name: p.player_name,
+                  chapter_title: pcData.chapterTitle || `Rok ${closedTurn}`,
+                  chapter_text: pcData.chapterText,
+                  from_turn: closedTurn,
+                  to_turn: closedTurn,
+                  epoch_style: session.epoch_style || "kroniky",
+                  references: [],
+                });
+                playerChronCount++;
+              }
+            } catch (pcErr) {
+              console.error(`Player chronicle for ${p.player_name} error:`, pcErr);
+            }
+          }
+          results.playerChronicles = { generated: playerChronCount };
+        } catch (pcAllErr) {
+          console.error("Auto player-chronicles error:", pcAllErr);
+          results.playerChronicles = { error: (pcAllErr as Error).message };
+        }
+
+        // ─── 7c. WORLD HISTORY ───
+        try {
+          const { data: existingHistory } = await supabase.from("world_history_chapters")
+            .select("id").eq("session_id", sessionId)
+            .gte("to_turn", closedTurn).lte("from_turn", closedTurn).maybeSingle();
+
+          if (!existingHistory) {
+            const { data: existingWorldEvents } = await supabase.from("world_events")
+              .select("id, title, date, summary").eq("session_id", sessionId);
+
+            const canonEvents = confirmedEvents.filter((e: any) => e.truth_state === "canon");
+            if (canonEvents.length > 0) {
+              const { data: whData } = await supabase.functions.invoke("world-history", {
+                body: {
+                  events: canonEvents,
+                  worldMemories: approvedMemories.map((m: any) => m.text),
+                  epochStyle: session.epoch_style || "kroniky",
+                  fromTurn: closedTurn,
+                  toTurn: closedTurn,
+                  existingWorldEvents: existingWorldEvents || [],
+                },
+              });
+
+              if (whData?.chapterText) {
+                await supabase.from("world_history_chapters").insert({
+                  session_id: sessionId,
+                  chapter_title: whData.chapterTitle || `Rok ${closedTurn}`,
+                  chapter_text: whData.chapterText,
+                  from_turn: closedTurn,
+                  to_turn: closedTurn,
+                  epoch_style: session.epoch_style || "kroniky",
+                  references: [],
+                });
+              }
+              results.worldHistory = { ok: true, turn: closedTurn };
+            } else {
+              results.worldHistory = { skipped: true, reason: "no_canon_events" };
+            }
+          } else {
+            results.worldHistory = { skipped: true, reason: "already_exists" };
+          }
+        } catch (whErr) {
+          console.error("Auto world-history error:", whErr);
+          results.worldHistory = { error: (whErr as Error).message };
+        }
+      } else {
+        results.chronicles = { skipped: true, reason: "no_events_for_turn" };
+      }
+    } catch (chronErr) {
+      console.error("Chronicle auto-generation error:", chronErr);
+      results.chronicles = { error: (chronErr as Error).message };
+    }
+
+    // ═══════════════════════════════════════════
+    // 8. AI HISTORY COMPRESSION (AI mode only)
     // ═══════════════════════════════════════════
     if (isAIMode) {
       try {

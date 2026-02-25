@@ -53,6 +53,17 @@ export function useNextTurn({ sessionId, currentTurn, playerName, gameMode, onCo
         toast.info("📦 Ekonomika všech hráčů zpracována.");
       }
 
+      // Chronicle auto-generation results
+      if (result?.results?.worldChronicle?.ok) {
+        toast.info("📜 Kronika světa automaticky vygenerována.");
+      }
+      if (result?.results?.playerChronicles?.generated > 0) {
+        toast.info(`📖 ${result.results.playerChronicles.generated} hráčských kronik vygenerováno.`);
+      }
+      if (result?.results?.worldHistory?.ok) {
+        toast.info("🌍 Dějiny světa automaticky doplněny.");
+      }
+
       toast.success(`Kolo ${currentTurn} uzavřeno. Pokračujeme rokem ${currentTurn + 1}.`);
     } catch (e) {
       console.error("commit-turn unexpected error:", e);
