@@ -39,7 +39,7 @@ const BottomNav = ({ activeTab, onTabChange, showDevTab = false, showPersistentT
     <nav className="fixed bottom-0 left-0 right-0 z-50 border-t border-border backdrop-blur-md"
       style={{ background: "hsl(220 28% 8% / 0.95)" }}
     >
-      <div className="flex items-center justify-around max-w-2xl mx-auto h-16 px-1 relative">
+      <div className="flex items-center justify-evenly w-full h-14 px-0.5 relative">
         {/* Left tabs */}
         {leftTabs.map((tab) => {
           const Icon = tab.icon;
@@ -68,12 +68,12 @@ const BottomNav = ({ activeTab, onTabChange, showDevTab = false, showPersistentT
         {/* Center Chronicles pill button */}
         <button
           onClick={() => onTabChange("chronicles")}
-          className="flex flex-col items-center gap-0.5 -mt-5 relative z-10"
+          className="flex flex-col items-center -mt-4 relative z-10"
         >
           <div
-            className={`relative px-5 py-2.5 rounded-2xl flex items-center gap-2 border transition-all duration-300 ${
+            className={`relative w-11 h-11 rounded-full flex items-center justify-center border transition-all duration-300 ${
               isChroniclesActive
-                ? "border-primary/60 shadow-[0_0_20px_hsl(var(--primary)/0.35),0_4px_12px_hsl(228_40%_3%/0.5)]"
+                ? "border-primary/60 shadow-[0_0_16px_hsl(var(--primary)/0.35)]"
                 : "border-primary/25 hover:border-primary/45 shadow-[0_4px_12px_hsl(228_40%_3%/0.4)]"
             }`}
             style={{
@@ -82,24 +82,12 @@ const BottomNav = ({ activeTab, onTabChange, showDevTab = false, showPersistentT
                 : "linear-gradient(135deg, hsl(43 74% 30% / 0.12), hsl(224 34% 12% / 0.95), hsl(43 74% 30% / 0.08))",
             }}
           >
-            {/* Decorative corner accents */}
-            <span className="absolute top-0.5 left-2 w-3 h-px rounded-full" style={{ background: `hsl(var(--primary) / ${isChroniclesActive ? 0.5 : 0.2})` }} />
-            <span className="absolute bottom-0.5 right-2 w-3 h-px rounded-full" style={{ background: `hsl(var(--primary) / ${isChroniclesActive ? 0.5 : 0.2})` }} />
-
             <Scroll
               className={`h-5 w-5 transition-colors duration-200 ${
                 isChroniclesActive ? "text-primary" : "text-primary/60"
               }`}
               strokeWidth={isChroniclesActive ? 2.2 : 1.5}
             />
-            <span
-              className={`text-[10px] uppercase tracking-[0.14em] font-semibold transition-colors duration-200 ${
-                isChroniclesActive ? "text-primary" : "text-primary/60"
-              }`}
-              style={{ fontFamily: "'Cinzel', serif" }}
-            >
-              Kroniky
-            </span>
           </div>
         </button>
 
