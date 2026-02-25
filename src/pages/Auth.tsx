@@ -69,7 +69,7 @@ const Auth = () => {
   return (
     <div
       className="min-h-screen flex items-center justify-center p-6"
-      style={{ background: "linear-gradient(180deg, hsl(220 30% 5%) 0%, hsl(220 30% 10%) 50%, hsl(220 25% 7%) 100%)" }}
+      style={{ background: "radial-gradient(ellipse at 50% 30%, hsl(228 38% 12%) 0%, hsl(228 38% 8%) 50%, hsl(228 40% 5%) 100%)" }}
     >
       <div className="max-w-md w-full space-y-8 animate-fade-in">
         {/* Hero: Logo + Title + Subtitle */}

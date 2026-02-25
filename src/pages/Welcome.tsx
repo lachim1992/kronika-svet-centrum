@@ -11,7 +11,7 @@ const Welcome = () => {
       className="min-h-screen flex flex-col"
       style={{
         background:
-        "linear-gradient(180deg, hsl(220 30% 5%) 0%, hsl(220 30% 10%) 40%, hsl(220 25% 7%) 100%)"
+        "radial-gradient(ellipse at 50% 20%, hsl(228 38% 12%) 0%, hsl(228 38% 8%) 50%, hsl(228 40% 5%) 100%)"
       }}>
 
       {/* Main content – vertically centered */}
