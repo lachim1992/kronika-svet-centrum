@@ -10,16 +10,16 @@ interface Props {
 }
 
 const baseTabs: { id: TabId; label: string; icon: React.ElementType }[] = [
-  { id: "home", label: "My Realm", icon: Home },
-  { id: "world", label: "World", icon: Globe },
-  { id: "worldmap", label: "World Map", icon: Map },
-  { id: "realm", label: "Realm", icon: Shield },
-  { id: "army", label: "Army", icon: Swords },
-  { id: "economy", label: "Economy", icon: BarChart3 },
+  { id: "home", label: "Říše", icon: Home },
+  { id: "world", label: "Svět", icon: Globe },
+  { id: "worldmap", label: "Mapa", icon: Map },
+  { id: "realm", label: "Správa", icon: Shield },
+  { id: "army", label: "Armáda", icon: Swords },
+  { id: "economy", label: "Ekonomika", icon: BarChart3 },
   { id: "engine", label: "Engine", icon: Zap },
-  { id: "council", label: "Council", icon: Crown },
-  { id: "feed", label: "Whispers", icon: Newspaper },
-  { id: "wiki", label: "ChroWiki", icon: BookOpen },
+  { id: "council", label: "Rada", icon: Crown },
+  { id: "feed", label: "Šepoty", icon: Newspaper },
+  { id: "wiki", label: "Kronika", icon: BookOpen },
 ];
 
 const devTab = { id: "dev" as TabId, label: "Dev", icon: Wrench };
@@ -49,7 +49,7 @@ const BottomNav = ({ activeTab, onTabChange, showDevTab = false, showPersistentT
               }`}
             >
               <Icon className="h-5 w-5" strokeWidth={isActive ? 2.2 : 1.5} />
-              <span className="text-[10px] font-display font-semibold tracking-wide">{tab.label}</span>
+              <span className="text-[9px] uppercase tracking-[0.12em]" style={{ fontFamily: "'Cinzel', serif" }}>{tab.label}</span>
               {isActive && (
                 <span className="absolute -bottom-1 w-8 h-[3px] rounded-full bg-primary" 
                   style={{ boxShadow: "0 0 8px hsl(var(--primary) / 0.4)" }} 
