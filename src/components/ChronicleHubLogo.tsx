@@ -48,18 +48,6 @@ const ChronicleHubLogo = ({ variant = "full", className = "", size = "md" }: Log
             WebkitMaskImage: isHero ? "radial-gradient(ellipse 85% 80% at 50% 45%, black 50%, transparent 100%)" : undefined,
           }} src="/lovable-uploads/3c000f84-809b-4591-b4a4-49a2b0f60acf.png" />
 
-        {isHero &&
-        <p
-          className="relative z-10 text-center uppercase tracking-[0.35em] font-light -mt-2"
-          style={{
-            fontFamily: "'Cinzel', serif",
-            fontSize: "0.7rem",
-            color: "hsl(43 64% 52% / 0.45)"
-          }}>
-
-
-        </p>
-        }
       </div>
 
       {variant === "full" && !isHero &&
