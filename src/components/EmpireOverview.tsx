@@ -2,7 +2,8 @@ import type { Tables } from "@/integrations/supabase/types";
 import { Badge } from "@/components/ui/badge";
 import {
   Crown, Castle, Coins,
-  Swords, Landmark, AlertTriangle, Shield, Flame, MapPin, Scroll, BookOpen
+  Swords, Landmark, AlertTriangle, Shield, Flame, MapPin, Scroll, BookOpen,
+  Users, HeartPulse, Home, ArrowRightLeft,
 } from "lucide-react";
 import { InfoTip } from "@/components/ui/info-tip";
 import { RESOURCE_ICONS, RESOURCE_LABELS } from "@/lib/economyConstants";
@@ -175,6 +176,64 @@ const EmpireOverview = ({
           </div>
         </div>
       </div>
+
+      {/* Empire Demographics */}
+      {myCities.length > 0 && (() => {
+        const totalPop = myCities.reduce((s, c) => s + (c.population_total || 0), 0);
+        const totalPeasants = myCities.reduce((s, c) => s + (c.population_peasants || 0), 0);
+        const totalBurghers = myCities.reduce((s, c) => s + (c.population_burghers || 0), 0);
+        const totalClerics = myCities.reduce((s, c) => s + (c.population_clerics || 0), 0);
+        const totalHousing = myCities.reduce((s, c) => s + ((c as any).housing_capacity || 500), 0);
+        const avgStab = Math.round(myCities.reduce((s, c) => s + c.city_stability, 0) / myCities.length);
+        const urbanRatio = totalPop > 0 ? ((totalBurghers + totalClerics) / totalPop * 100).toFixed(0) : "0";
+        const overcrowded = myCities.filter(c => (c.population_total || 0) > ((c as any).housing_capacity || 500)).length;
+        const epidemics = myCities.filter(c => (c as any).epidemic_active).length;
+        return (
+          <div className="manuscript-card p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <Users className="h-5 w-5 text-illuminated" />
+              <h3 className="font-display font-semibold text-sm">Demografie říše</h3>
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+              <div className="text-center">
+                <p className="text-xl font-bold">{totalPop.toLocaleString()}</p>
+                <p className="text-[10px] text-muted-foreground">Celková populace</p>
+              </div>
+              <div className="text-center">
+                <p className="text-xl font-bold">{urbanRatio}%</p>
+                <p className="text-[10px] text-muted-foreground">Urbanizace</p>
+              </div>
+              <div className="text-center">
+                <p className="text-xl font-bold">{avgStab}</p>
+                <p className="text-[10px] text-muted-foreground">Prům. stabilita</p>
+              </div>
+              <div className="text-center">
+                <p className={`text-xl font-bold ${overcrowded > 0 ? "text-destructive" : ""}`}>{overcrowded}</p>
+                <p className="text-[10px] text-muted-foreground">Přelidněná města</p>
+              </div>
+            </div>
+            {/* Population bar */}
+            <div className="mt-3 space-y-1">
+              <div className="flex h-2 rounded-full overflow-hidden bg-muted">
+                <div className="bg-primary/60" style={{ width: `${totalPop > 0 ? totalPeasants / totalPop * 100 : 0}%` }} />
+                <div className="bg-accent" style={{ width: `${totalPop > 0 ? totalBurghers / totalPop * 100 : 0}%` }} />
+                <div className="bg-muted-foreground/50" style={{ width: `${totalPop > 0 ? totalClerics / totalPop * 100 : 0}%` }} />
+              </div>
+              <div className="flex justify-between text-[10px] text-muted-foreground">
+                <span>🌾 Sedláci {totalPeasants.toLocaleString()}</span>
+                <span>⚒️ Měšťané {totalBurghers.toLocaleString()}</span>
+                <span>⛪ Klérus {totalClerics.toLocaleString()}</span>
+              </div>
+            </div>
+            {epidemics > 0 && (
+              <div className="mt-2 flex items-center gap-1.5 text-xs text-destructive">
+                <HeartPulse className="h-3 w-3" />
+                {epidemics} {epidemics === 1 ? "město" : "měst"} zasaženo epidemií
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       {/* Provinces */}
       {provinces.length > 0 && (

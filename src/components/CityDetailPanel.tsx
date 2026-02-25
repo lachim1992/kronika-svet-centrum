@@ -19,6 +19,7 @@ import CityRumorsPanel from "@/components/CityRumorsPanel";
 import SettlementUpgradePanel from "@/components/SettlementUpgradePanel";
 import CityGovernancePanel from "@/components/city/CityGovernancePanel";
 import CityBuildingsPanel from "@/components/city/CityBuildingsPanel";
+import CityDemographyPanel from "@/components/city/CityDemographyPanel";
 import type { EntityIndex } from "@/hooks/useEntityIndex";
 import { getPermissions } from "@/lib/permissions";
 
@@ -477,6 +478,16 @@ const CityDetailPanel = ({
           <div className="flex justify-between"><span className="text-muted-foreground">Zranitelnost</span><span className="font-semibold">{(city.vulnerability_score || 0).toFixed(1)}</span></div>
         </div>
       </div>
+
+      {/* ─── CITY DEMOGRAPHY ─── */}
+      <CityDemographyPanel
+        sessionId={city.session_id}
+        city={city}
+        currentPlayerName={currentPlayerName}
+        currentTurn={currentTurn}
+        isOwner={isOwner}
+        onRefetch={onRefetch}
+      />
 
       {/* ─── CITY GOVERNANCE (Food, Labor, Districts, Factions) ─── */}
       <CityGovernancePanel
