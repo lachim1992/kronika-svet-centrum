@@ -448,7 +448,25 @@ Deno.serve(async (req) => {
     }
 
     // ═══════════════════════════════════════════
-    // 8. AI HISTORY COMPRESSION (AI mode only)
+    // 8. RUMOR GENERATION (Šeptanda)
+    // ═══════════════════════════════════════════
+    try {
+      const { data: rumorData, error: rumorErr } = await supabase.functions.invoke("rumor-generate", {
+        body: { sessionId, turnNumber, playerName },
+      });
+      if (rumorErr) {
+        console.error("Rumor generation error:", rumorErr);
+        results.rumors = { error: rumorErr.message };
+      } else {
+        results.rumors = rumorData;
+      }
+    } catch (e) {
+      console.error("Rumor generation error:", e);
+      results.rumors = { error: (e as Error).message };
+    }
+
+    // ═══════════════════════════════════════════
+    // 9. AI HISTORY COMPRESSION (AI mode only)
     // ═══════════════════════════════════════════
     if (isAIMode) {
       try {
