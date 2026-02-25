@@ -106,19 +106,23 @@ export async function runWorldTick(
   });
 
   if (error) {
-    // 409 = tick already processed, treat as non-fatal
-    const msg = error.message || "";
-    const jsonMatch = msg.match(/\{[\s\S]*\}/);
-    if (jsonMatch) {
-      try {
-        const parsed = JSON.parse(jsonMatch[0]);
-        if (parsed.error === "Tick already processed") {
-          return { ok: false, alreadyProcessed: true, tickId: parsed.tickId };
-        }
-      } catch { /* not JSON, fall through */ }
-    }
+    // Try to read response body from FunctionsHttpError context
+    try {
+      let body: any = null;
+      if (error.context && typeof error.context === "object" && "json" in error.context) {
+        body = await (error.context as Response).json();
+      } else {
+        // Fallback: try regex on message
+        const msg = error.message || "";
+        const jsonMatch = msg.match(/\{[\s\S]*\}/);
+        if (jsonMatch) body = JSON.parse(jsonMatch[0]);
+      }
+      if (body?.error === "Tick already processed") {
+        return { ok: false, alreadyProcessed: true, tickId: body.tickId };
+      }
+    } catch { /* parsing failed, fall through */ }
     console.error("World tick error:", error);
-    return { ok: false, error: msg };
+    return { ok: false, error: error.message || "Unknown error" };
   }
 
   return data;
