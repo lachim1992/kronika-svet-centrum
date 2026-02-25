@@ -1180,6 +1180,7 @@ export type Database = {
         Row: {
           ai_personality: string | null
           architectural_style: string | null
+          civ_bonuses: Json
           civ_name: string
           core_myth: string | null
           created_at: string
@@ -1192,6 +1193,7 @@ export type Database = {
         Insert: {
           ai_personality?: string | null
           architectural_style?: string | null
+          civ_bonuses?: Json
           civ_name?: string
           core_myth?: string | null
           created_at?: string
@@ -1204,6 +1206,7 @@ export type Database = {
         Update: {
           ai_personality?: string | null
           architectural_style?: string | null
+          civ_bonuses?: Json
           civ_name?: string
           core_myth?: string | null
           created_at?: string

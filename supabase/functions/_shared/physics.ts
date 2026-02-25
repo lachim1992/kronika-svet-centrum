@@ -346,3 +346,234 @@ export const REPUTATION_DELTAS = {
 export function clampReputation(value: number): number {
   return Math.max(REPUTATION_MIN, Math.min(REPUTATION_MAX, value));
 }
+
+// ═══════════════════════════════════════════
+// CIV DNA → STRUCTURED BONUSES
+// ═══════════════════════════════════════════
+
+/**
+ * Bonus pool: deterministic assignment based on text hash.
+ * Each civ gets 2-3 bonuses from each text field.
+ */
+const QUIRK_BONUS_POOL: Array<{ key: string; value: number; keywords: string[] }> = [
+  { key: "stability_modifier", value: 5, keywords: ["shromáždění", "rada", "moudrost", "tradice", "řád"] },
+  { key: "diplomacy_modifier", value: 8, keywords: ["obchod", "vyjednávání", "diplomacie", "smír", "mír"] },
+  { key: "trade_modifier", value: 0.1, keywords: ["trh", "kupec", "zlato", "bohatství", "prosperita"] },
+  { key: "growth_modifier", value: 0.005, keywords: ["plodnost", "rodina", "přírůstek", "osídlení", "lid"] },
+  { key: "morale_modifier", value: 5, keywords: ["odvaha", "válečník", "čest", "sláva", "boj"] },
+];
+
+const ARCH_BONUS_POOL: Array<{ key: string; value: number; keywords: string[] }> = [
+  { key: "fortification_bonus", value: 0.1, keywords: ["hradby", "věže", "pevnost", "obrana", "robustní"] },
+  { key: "build_speed_modifier", value: -0.15, keywords: ["rychl", "lehk", "dřev", "jednoduch", "funkční"] },
+  { key: "stability_modifier", value: 3, keywords: ["chrám", "katedrál", "posvát", "víra", "mramor"] },
+  { key: "trade_modifier", value: 0.08, keywords: ["přístav", "most", "cest", "bráně", "tržiště"] },
+];
+
+const MYTH_BONUS_POOL: Array<{ key: string; value: number; keywords: string[] }> = [
+  { key: "legitimacy_base", value: 10, keywords: ["král", "dynastie", "dědic", "koruna", "právo"] },
+  { key: "morale_modifier", value: 5, keywords: ["vytrvalost", "síla", "přežití", "oheň", "krev"] },
+  { key: "growth_modifier", value: 0.003, keywords: ["země", "úroda", "požehnání", "bohové", "příroda"] },
+  { key: "diplomacy_modifier", value: 5, keywords: ["jednota", "spojenectví", "spravedlnost", "zákon", "smlouva"] },
+  { key: "stability_modifier", value: 4, keywords: ["rozhodnutí", "moudrost", "stopa", "postupn", "vytrval"] },
+];
+
+/**
+ * Derive structured bonuses from free-text civ DNA fields.
+ * Uses keyword matching + deterministic hash fallback.
+ */
+export function deriveCivBonuses(
+  coreMíth: string | null,
+  culturalQuirk: string | null,
+  architecturalStyle: string | null
+): Record<string, number> {
+  const bonuses: Record<string, number> = {};
+
+  function applyPool(text: string | null, pool: typeof QUIRK_BONUS_POOL) {
+    if (!text) return;
+    const lower = text.toLowerCase();
+    let matched = false;
+    for (const entry of pool) {
+      if (entry.keywords.some(kw => lower.includes(kw))) {
+        bonuses[entry.key] = (bonuses[entry.key] || 0) + entry.value;
+        matched = true;
+      }
+    }
+    // Fallback: if no keyword matched, assign first bonus based on text hash
+    if (!matched && text.length > 0) {
+      let h = 0;
+      for (let i = 0; i < text.length; i++) h = ((h << 5) - h + text.charCodeAt(i)) | 0;
+      const idx = Math.abs(h) % pool.length;
+      bonuses[pool[idx].key] = (bonuses[pool[idx].key] || 0) + pool[idx].value;
+    }
+  }
+
+  applyPool(culturalQuirk, QUIRK_BONUS_POOL);
+  applyPool(architecturalStyle, ARCH_BONUS_POOL);
+  applyPool(coreMíth, MYTH_BONUS_POOL);
+
+  return bonuses;
+}
+
+// ═══════════════════════════════════════════
+// TRAIT → ENGINE MODIFIERS
+// ═══════════════════════════════════════════
+
+export const TRAIT_INTENSITY_THRESHOLD = 3; // Only traits with intensity >= this affect engine
+export const TRAIT_DECAY_PER_TURN = 1; // Intensity reduction per turn without reinforcement
+export const TRAIT_DECAY_GRACE_TURNS = 5; // Turns before decay starts
+
+/**
+ * Trait categories and their mechanical effects on tension between two players.
+ * Returns additional tension points.
+ */
+export function computeTraitTensionModifier(
+  traitsA: Array<{ trait_category: string; trait_text: string; intensity: number; entity_name: string }>,
+  traitsB: Array<{ trait_category: string; trait_text: string; intensity: number; entity_name: string }>,
+  playerA: string,
+  playerB: string
+): number {
+  let modifier = 0;
+
+  // "Vztah" (relationship) traits mentioning the other player
+  for (const t of traitsA) {
+    if (t.intensity < TRAIT_INTENSITY_THRESHOLD) continue;
+    const lower = t.trait_text.toLowerCase();
+    const mentionsB = lower.includes(playerB.toLowerCase());
+    if (!mentionsB) continue;
+
+    if (t.trait_category === "Vztah" || t.trait_category === "relationship") {
+      // Hostile relationships increase tension
+      if (lower.includes("válčí") || lower.includes("nepřítel") || lower.includes("rival")) {
+        modifier += t.intensity * 3;
+      }
+      // Friendly relationships decrease tension
+      if (lower.includes("spojenec") || lower.includes("přítel") || lower.includes("obchod")) {
+        modifier -= t.intensity * 2;
+      }
+    }
+  }
+
+  // Same for B's traits about A
+  for (const t of traitsB) {
+    if (t.intensity < TRAIT_INTENSITY_THRESHOLD) continue;
+    const lower = t.trait_text.toLowerCase();
+    const mentionsA = lower.includes(playerA.toLowerCase());
+    if (!mentionsA) continue;
+
+    if (t.trait_category === "Vztah" || t.trait_category === "relationship") {
+      if (lower.includes("válčí") || lower.includes("nepřítel") || lower.includes("rival")) {
+        modifier += t.intensity * 3;
+      }
+      if (lower.includes("spojenec") || lower.includes("přítel") || lower.includes("obchod")) {
+        modifier -= t.intensity * 2;
+      }
+    }
+  }
+
+  // "Pověst" (reputation) traits affect general tension
+  for (const t of [...traitsA, ...traitsB]) {
+    if (t.intensity < TRAIT_INTENSITY_THRESHOLD) continue;
+    if (t.trait_category !== "Pověst" && t.trait_category !== "reputation") continue;
+    const lower = t.trait_text.toLowerCase();
+    if (lower.includes("hrozba") || lower.includes("agresivní") || lower.includes("krutý")) {
+      modifier += t.intensity * 1.5;
+    }
+    if (lower.includes("mírumilovný") || lower.includes("spravedlivý") || lower.includes("důvěryhodný")) {
+      modifier -= t.intensity * 1;
+    }
+  }
+
+  return Math.round(modifier * 10) / 10;
+}
+
+/**
+ * Trait-based influence modifier for a player.
+ * Returns additional influence points.
+ */
+export function computeTraitInfluenceModifier(
+  traits: Array<{ trait_category: string; trait_text: string; intensity: number }>
+): { diplomatic: number; military: number; trade: number; reputation: number } {
+  const mods = { diplomatic: 0, military: 0, trade: 0, reputation: 0 };
+
+  for (const t of traits) {
+    if (t.intensity < TRAIT_INTENSITY_THRESHOLD) continue;
+    const lower = t.trait_text.toLowerCase();
+
+    if (t.trait_category === "Pověst" || t.trait_category === "reputation") {
+      if (lower.includes("hrozba") || lower.includes("obávaný")) {
+        mods.military += t.intensity * 2;
+        mods.reputation -= t.intensity * 1;
+      }
+      if (lower.includes("respektovaný") || lower.includes("důvěryhodný")) {
+        mods.diplomatic += t.intensity * 3;
+        mods.reputation += t.intensity * 2;
+      }
+    }
+
+    if (t.trait_category === "Titul" || t.trait_category === "title") {
+      mods.reputation += t.intensity * 1.5;
+    }
+
+    if (t.trait_category === "Historický fakt" || t.trait_category === "historical_fact") {
+      if (lower.includes("obchod") || lower.includes("bohatství")) mods.trade += t.intensity * 2;
+      if (lower.includes("válka") || lower.includes("dobytí")) mods.military += t.intensity * 2;
+      if (lower.includes("růst") || lower.includes("populace")) mods.trade += t.intensity * 1;
+    }
+  }
+
+  return {
+    diplomatic: Math.round(mods.diplomatic),
+    military: Math.round(mods.military),
+    trade: Math.round(mods.trade),
+    reputation: Math.round(mods.reputation * 10) / 10,
+  };
+}
+
+/**
+ * Evaluate myth alignment: do recent traits reinforce or contradict the core myth?
+ * Returns legitimacy delta (-10 to +10).
+ */
+export function evaluateMythAlignment(
+  coreMíth: string | null,
+  recentTraits: Array<{ trait_text: string; trait_category: string; intensity: number }>,
+  recentEvents: Array<{ event_type: string; note?: string | null }>
+): number {
+  if (!coreMíth || coreMíth.length < 10) return 0;
+  const mythLower = coreMíth.toLowerCase();
+
+  // Extract key theme words from myth (words > 4 chars)
+  const mythWords = mythLower
+    .split(/\s+/)
+    .filter(w => w.length > 4)
+    .map(w => w.replace(/[^a-záčďéěíňóřšťúůýž]/gi, ""));
+
+  if (mythWords.length === 0) return 0;
+
+  let alignment = 0;
+
+  // Check if recent traits echo myth themes
+  for (const t of recentTraits) {
+    const traitLower = t.trait_text.toLowerCase();
+    const matches = mythWords.filter(w => traitLower.includes(w)).length;
+    if (matches > 0) alignment += Math.min(matches, 3) * t.intensity * 0.5;
+  }
+
+  // Check if recent events echo myth themes
+  for (const e of recentEvents) {
+    const noteLower = (e.note || "").toLowerCase();
+    const matches = mythWords.filter(w => noteLower.includes(w)).length;
+    if (matches > 0) alignment += Math.min(matches, 2);
+  }
+
+  // Contradiction: betrayal events when myth mentions trust/honor
+  const mythValuesTrust = mythWords.some(w =>
+    ["věrnost", "čest", "spravedlnost", "důvěra", "vytrvalost"].some(v => w.includes(v))
+  );
+  if (mythValuesTrust) {
+    const betrayals = recentEvents.filter(e => e.event_type === "betrayal").length;
+    alignment -= betrayals * 5;
+  }
+
+  return Math.max(-10, Math.min(10, Math.round(alignment)));
+}

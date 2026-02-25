@@ -3,6 +3,9 @@ import {
   computeSettlementGrowth, distributePopLayers,
   computeInfluence, computeTension, evaluateRebellion,
   REPUTATION_DELTAS, REPUTATION_DECAY,
+  computeTraitTensionModifier, computeTraitInfluenceModifier,
+  evaluateMythAlignment, TRAIT_INTENSITY_THRESHOLD,
+  TRAIT_DECAY_PER_TURN, TRAIT_DECAY_GRACE_TURNS,
   type CityForGrowth,
 } from "../_shared/physics.ts";
 
@@ -254,6 +257,8 @@ async function runWorldTickEvents(supabase: any, sessionId: string, turnNumber: 
     { data: prevInfluence },
     { data: aiFactions },
     { data: cityStates },
+    { data: civilizations },
+    { data: entityTraits },
   ] = await Promise.all([
     supabase.from("game_players").select("*").eq("session_id", sessionId),
     supabase.from("cities").select("*").eq("session_id", sessionId),
@@ -265,7 +270,23 @@ async function runWorldTickEvents(supabase: any, sessionId: string, turnNumber: 
     supabase.from("civ_influence").select("*").eq("session_id", sessionId).eq("turn_number", turnNumber - 1),
     supabase.from("ai_factions").select("*").eq("session_id", sessionId).eq("is_active", true),
     supabase.from("city_states").select("*").eq("session_id", sessionId),
+    supabase.from("civilizations").select("*").eq("session_id", sessionId),
+    supabase.from("entity_traits").select("*").eq("session_id", sessionId).eq("is_active", true),
   ]);
+
+  // Build civ bonus lookup
+  const civBonusMap: Record<string, Record<string, number>> = {};
+  for (const civ of (civilizations || [])) {
+    civBonusMap[civ.player_name] = (civ.civ_bonuses as Record<string, number>) || {};
+  }
+
+  // Build trait lookup by entity_name (player_name / city name)
+  const traitsByActor: Record<string, any[]> = {};
+  for (const t of (entityTraits || [])) {
+    const key = t.entity_name || "";
+    if (!traitsByActor[key]) traitsByActor[key] = [];
+    traitsByActor[key].push(t);
+  }
 
   const playerNames = (players || []).map((p: any) => p.player_name);
   const aiFactionNames = (aiFactions || []).map((f: any) => f.faction_name);
@@ -274,39 +295,57 @@ async function runWorldTickEvents(supabase: any, sessionId: string, turnNumber: 
   // ═══ SETTLEMENT GROWTH → emit events ═══
   const cityEvents: any[] = [];
   for (const city of (cities || [])) {
-    const growth = computeSettlementGrowth(city as CityForGrowth);
-    if (growth.delta !== 0) {
+    // Apply civ DNA growth bonus
+    const ownerBonuses = civBonusMap[city.owner_player] || {};
+    const growthBonus = ownerBonuses.growth_modifier || 0;
+
+    const growth = computeSettlementGrowth(city as CityForGrowth, {
+      hasTrade: growthBonus > 0, // reuse trade factor slot for civ bonus
+    });
+
+    // Apply additional civ growth bonus on top
+    const civGrowthDelta = growthBonus > 0 ? Math.round(city.population_total * growthBonus) : 0;
+    const adjustedNewPop = Math.max(50, growth.newPop + civGrowthDelta);
+    const adjustedDelta = adjustedNewPop - city.population_total;
+
+    // Apply civ stability bonus
+    const civStabBonus = ownerBonuses.stability_modifier || 0;
+    const adjustedStability = Math.max(0, Math.min(100, growth.newStability + civStabBonus));
+
+    if (adjustedDelta !== 0 || civStabBonus !== 0) {
       const layers = distributePopLayers(
-        growth.newPop, city.population_total,
+        adjustedNewPop, city.population_total,
         city.population_peasants, city.population_burghers, city.population_clerics
       );
       cityEvents.push({
         cityId: city.id,
         updates: {
-          population_total: growth.newPop,
+          population_total: adjustedNewPop,
           population_peasants: layers.peasants,
           population_burghers: layers.burghers,
           population_clerics: layers.clerics,
-          city_stability: growth.newStability,
+          city_stability: adjustedStability,
           development_level: growth.newDev,
         },
       });
 
-      emittedEvents.push({
-        session_id: sessionId, turn_number: turnNumber,
-        player: "Systém", actor_type: "system",
-        event_type: "city_growth", confirmed: true, truth_state: "canon",
-        city_id: city.id,
-        note: `Populace ${city.name}: ${city.population_total} → ${growth.newPop} (${growth.delta > 0 ? "+" : ""}${growth.delta}).`,
-        importance: "normal",
-        reference: { cityId: city.id, cityName: city.name, oldPop: city.population_total, newPop: growth.newPop, delta: growth.delta, layers },
-      });
+      if (adjustedDelta !== 0) {
+        emittedEvents.push({
+          session_id: sessionId, turn_number: turnNumber,
+          player: "Systém", actor_type: "system",
+          event_type: "city_growth", confirmed: true, truth_state: "canon",
+          city_id: city.id,
+          note: `Populace ${city.name}: ${city.population_total} → ${adjustedNewPop} (${adjustedDelta > 0 ? "+" : ""}${adjustedDelta}).`,
+          importance: "normal",
+          reference: { cityId: city.id, cityName: city.name, oldPop: city.population_total, newPop: adjustedNewPop, delta: adjustedDelta, civBonus: civGrowthDelta },
+        });
+      }
     }
   }
   results.cityEvents = cityEvents;
   results.growthCount = cityEvents.length;
 
-  // ═══ INFLUENCE → compute and emit ═══
+  // ═══ INFLUENCE → compute with trait + civ DNA modifiers ═══
   const influenceRecords: any[] = [];
   for (const pName of allActorNames) {
     const prev = (prevInfluence || []).find((i: any) => i.player_name === pName);
@@ -319,6 +358,31 @@ async function runWorldTickEvents(supabase: any, sessionId: string, turnNumber: 
       treaties: treaties || [],
       previousReputation: prev ? Number(prev.reputation_score) : 0,
     });
+
+    // Apply trait-based influence modifiers
+    const actorTraits = traitsByActor[pName] || [];
+    const traitMods = computeTraitInfluenceModifier(actorTraits);
+    inf.diplomatic_score += traitMods.diplomatic;
+    inf.military_score += traitMods.military;
+    inf.trade_score += traitMods.trade;
+    inf.reputation_score += traitMods.reputation;
+
+    // Apply civ DNA diplomacy/trade bonuses to influence
+    const civBonus = civBonusMap[pName] || {};
+    if (civBonus.diplomacy_modifier) inf.diplomatic_score += civBonus.diplomacy_modifier;
+    if (civBonus.trade_modifier) inf.trade_score += Math.round(inf.trade_score * civBonus.trade_modifier);
+    if (civBonus.morale_modifier) inf.military_score += civBonus.morale_modifier;
+
+    // Recalculate total
+    inf.total_influence =
+      inf.military_score * 0.25 +
+      inf.trade_score * 0.2 +
+      inf.diplomatic_score * 0.15 +
+      inf.territorial_score * 0.2 +
+      inf.law_stability_score * 0.1 +
+      inf.reputation_score * 0.1;
+    inf.total_influence = Math.round(inf.total_influence * 10) / 10;
+
     influenceRecords.push({ session_id: sessionId, turn_number: turnNumber, ...inf });
   }
   results.influenceRecords = influenceRecords;
@@ -385,6 +449,20 @@ async function runWorldTickEvents(supabase: any, sessionId: string, turnNumber: 
         citiesA, citiesB, militaryScoreA: milA, militaryScoreB: milB,
         brokenTreatyCount, embargoCount,
       });
+
+      // Apply trait-based tension modifiers
+      const traitTensionMod = computeTraitTensionModifier(
+        traitsByActor[pA] || [], traitsByActor[pB] || [], pA, pB
+      );
+      tension.total_tension = Math.max(0, tension.total_tension + traitTensionMod);
+      // Re-evaluate crisis/war thresholds with trait modifier
+      tension.crisis_triggered = tension.total_tension >= 65;
+      tension.war_roll_triggered = tension.total_tension >= 88;
+      if (tension.war_roll_triggered && !tension.war_roll_result) {
+        const seed = turnNumber * 31 + pA.length * 7 + pB.length * 13;
+        tension.war_roll_result = (seed % 100) / 100;
+      }
+
       tensionRecords.push({ session_id: sessionId, turn_number: turnNumber, ...tension });
 
       if (tension.crisis_triggered) {
@@ -540,6 +618,66 @@ async function runWorldTickEvents(supabase: any, sessionId: string, turnNumber: 
       inf.total_influence = inf.total_influence + (delta * 0.1);
     }
   }
+
+  // ═══ MYTH ALIGNMENT → LEGITIMACY ═══
+  const mythResults: any[] = [];
+  for (const pName of playerNames) {
+    const civ = (civilizations || []).find((c: any) => c.player_name === pName);
+    if (!civ?.core_myth) continue;
+
+    const playerTraits = traitsByActor[pName] || [];
+    const recentPlayerEvents = (recentKeyEvents || []).filter((e: any) => e.player === pName);
+
+    const mythDelta = evaluateMythAlignment(civ.core_myth, playerTraits, recentPlayerEvents);
+    if (mythDelta !== 0) {
+      // Apply legitimacy change to all player's cities
+      const playerCities = (cities || []).filter((c: any) => c.owner_player === pName);
+      for (const city of playerCities) {
+        const newLeg = Math.max(0, Math.min(100, (city.legitimacy || 50) + mythDelta));
+        cityEvents.push({ cityId: city.id, updates: { legitimacy: newLeg } });
+      }
+      mythResults.push({ player: pName, mythDelta });
+
+      if (Math.abs(mythDelta) >= 5) {
+        emittedEvents.push({
+          session_id: sessionId, turn_number: turnNumber,
+          player: "Systém", actor_type: "system",
+          event_type: "myth_alignment", confirmed: true, truth_state: "canon",
+          note: mythDelta > 0
+            ? `Činy ${pName} resonují s jejich zakladatelským mýtem. Legitimita stoupá (+${mythDelta}).`
+            : `Činy ${pName} se odchylují od jejich zakladatelského mýtu. Legitimita klesá (${mythDelta}).`,
+          importance: "normal",
+          reference: { player: pName, mythDelta, coreMíth: civ.core_myth?.substring(0, 100) },
+        });
+      }
+    }
+  }
+  results.mythAlignment = mythResults;
+
+  // ═══ TRAIT DECAY (intensity -1 for old traits without reinforcement) ═══
+  const traitDecayResults: any[] = [];
+  for (const t of (entityTraits || [])) {
+    if (t.intensity <= 1) continue; // Don't decay below 1
+    const traitAge = turnNumber - (t.source_turn || 0);
+    if (traitAge < TRAIT_DECAY_GRACE_TURNS) continue; // Grace period
+
+    // Decay: reduce intensity by TRAIT_DECAY_PER_TURN
+    const newIntensity = Math.max(1, t.intensity - TRAIT_DECAY_PER_TURN);
+    if (newIntensity !== t.intensity) {
+      await supabase.from("entity_traits").update({ intensity: newIntensity }).eq("id", t.id);
+      traitDecayResults.push({ traitId: t.id, entity: t.entity_name, trait: t.trait_text, oldIntensity: t.intensity, newIntensity });
+    }
+  }
+  // Deactivate traits that have been at intensity 1 for too long
+  for (const t of (entityTraits || [])) {
+    if (t.intensity > 1) continue;
+    const traitAge = turnNumber - (t.source_turn || 0);
+    if (traitAge > TRAIT_DECAY_GRACE_TURNS * 3) {
+      await supabase.from("entity_traits").update({ is_active: false }).eq("id", t.id);
+      traitDecayResults.push({ traitId: t.id, entity: t.entity_name, trait: t.trait_text, deactivated: true });
+    }
+  }
+  results.traitDecay = traitDecayResults;
 
   // ═══ PERSIST ALL EMITTED EVENTS ═══
   if (emittedEvents.length > 0) {
