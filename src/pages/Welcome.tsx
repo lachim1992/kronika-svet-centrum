@@ -95,13 +95,13 @@ Chronicle tak nebude jen hra o řízení říše, ale nástroj pro tvorbu dějin
             </p>
 
             <p>
-              Projekt stojí na myšlence personalizovaného světa, kde hráč není
-              omezen na několik předdefinovaných možností, ale může formulovat
-              své kroky vlastním jazykem. Engine bude tyto kroky strukturovat a
-              vyvozovat z nich systémové důsledky. Umělá inteligence pak
-              poskytne interpretaci a kontext – kroniky, zprávy, poradní
-              stanoviska – ale skutečný vývoj bude vycházet z vnitřní logiky
-              světa.
+
+
+
+
+
+
+
             </p>
 
             <p>
