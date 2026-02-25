@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import type { Tables } from "@/integrations/supabase/types";
-import { addChronicleEntry, addWorldMemory } from "@/hooks/useGameSession";
+import { addWorldMemory } from "@/hooks/useGameSession";
 import { supabase } from "@/integrations/supabase/client";
 import { dispatchCommand } from "@/lib/commands";
 import { Button } from "@/components/ui/button";
