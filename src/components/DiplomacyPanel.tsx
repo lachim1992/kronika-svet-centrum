@@ -190,15 +190,11 @@ const DiplomacyPanel = ({ sessionId, players, cityStates, currentPlayerName, gam
 
         const { data, error } = await supabase.functions.invoke("diplomacy-reply", {
           body: {
-            npc: { name: factionName, type: "ai_faction", mood: faction?.personality || "diplomatic" },
+            sessionId,
+            aiFaction: { faction_name: factionName },
             recentMessages: messages.slice(-10),
             recentConfirmedEvents: [],
             worldFacts: [],
-            factionContext: faction ? {
-              personality: faction.personality,
-              disposition: faction.disposition,
-              goals: faction.goals,
-            } : undefined,
           },
         });
 

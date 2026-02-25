@@ -879,6 +879,49 @@ Generuj kompletní svět.`;
       }
     }
 
+    // ═══ Create diplomacy rooms between player and each AI faction ═══
+    let diplomacyRoomsCreated = 0;
+    for (const faction of (world.factions || [])) {
+      if (faction.isPlayer) continue;
+      const factionPlayerName = factionPlayerMap[faction.name] || faction.name;
+      try {
+        await supabase.from("diplomacy_rooms").insert({
+          session_id: sessionId,
+          room_type: "player_ai",
+          participant_a: playerName,
+          participant_b: factionPlayerName,
+        });
+        diplomacyRoomsCreated++;
+
+        // Send an introductory message from the AI faction
+        const { data: roomData } = await supabase.from("diplomacy_rooms")
+          .select("id")
+          .eq("session_id", sessionId)
+          .eq("participant_a", playerName)
+          .eq("participant_b", factionPlayerName)
+          .single();
+
+        if (roomData) {
+          const disposition = faction.dispositionToPlayer || 0;
+          const greeting = disposition > 30
+            ? `Zdravíme vás, vládce ${realmName || playerName}. Doufáme v plodnou spolupráci mezi našimi národy.`
+            : disposition < -30
+            ? `Bereme na vědomí vaši existenci, ${playerName}. Nečekejte od nás přátelství.`
+            : `Pozdravujeme vás, ${playerName}. Naše frakce ${faction.name} je připravena jednat.`;
+
+          await supabase.from("diplomacy_messages").insert({
+            room_id: roomData.id,
+            sender: factionPlayerName,
+            sender_type: "ai",
+            message_text: greeting,
+            secrecy: "PRIVATE",
+          });
+        }
+      } catch (e) {
+        console.warn("Diplomacy room creation failed for", faction.name, e);
+      }
+    }
+
     // Set session ready
     await supabase.from("game_sessions").update({ current_turn: 1, init_status: "ready" }).eq("id", sessionId);
 
