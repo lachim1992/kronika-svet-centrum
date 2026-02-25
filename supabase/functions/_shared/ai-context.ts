@@ -230,14 +230,36 @@ export function buildPremisePrompt(premise: WorldPremise): string {
 
   // Narrative rules from server_config (saga/history config)
   const saga = premise.narrativeRules?.saga;
-  if (saga?.style_prompt) {
-    parts.push(`STYLOVÝ POKYN PRO SÁGY: ${saga.style_prompt}`);
+  const history = premise.narrativeRules?.history;
+
+  if (saga) {
+    if (saga.stance && saga.stance !== "pro-regime") {
+      const stanceMap: Record<string, string> = {
+        "neutral": "Piš neutrálně, bez zaujatosti k žádné straně.",
+        "critical": "Piš kriticky, zpochybňuj motivy vládců a poukazuj na slabiny.",
+        "mythical": "Piš jako mýtický vypravěč, zesiluj nadpřirozené prvky a osudovost.",
+        "pro-regime": "Piš jako dvorní kronikář, oslavuj vládce a jeho činy.",
+      };
+      parts.push(`POSTOJ KRONIKÁŘE: ${stanceMap[saga.stance] || saga.stance}`);
+    }
+    if (saga.style_prompt) {
+      parts.push(`STYLOVÝ POKYN PRO SÁGY: ${saga.style_prompt}`);
+    }
+    if (saga.keywords?.length) {
+      parts.push(`PREFEROVANÁ KLÍČOVÁ SLOVA: ${saga.keywords.join(", ")}`);
+    }
+    if (saga.forbidden?.length) {
+      parts.push(`ZAKÁZANÁ SLOVA (nikdy nepoužívej): ${saga.forbidden.join(", ")}`);
+    }
   }
-  if (saga?.keywords?.length) {
-    parts.push(`PREFEROVANÁ KLÍČOVÁ SLOVA: ${saga.keywords.join(", ")}`);
-  }
-  if (saga?.forbidden?.length) {
-    parts.push(`ZAKÁZANÁ SLOVA: ${saga.forbidden.join(", ")}`);
+
+  if (history) {
+    if (history.style_prompt) {
+      parts.push(`STYLOVÝ POKYN PRO HISTORII: ${history.style_prompt}`);
+    }
+    if (history.include_metrics) {
+      parts.push("ZAHRNOUT METRIKY: Ano — uváděj populační, ekonomické a vojenské statistiky kde jsou k dispozici.");
+    }
   }
 
   parts.push("=== KONEC PREMISY ===");
