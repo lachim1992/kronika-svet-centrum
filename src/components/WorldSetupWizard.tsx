@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Globe, Sparkles, Swords, Users, X, Plus, Mountain, TreePine, Waves, Sun, Snowflake, Flame, Bot, Pen, UserPlus, Loader2, Server, RotateCcw, Clock, Check, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
+import WorldCreationOverlay from "./WorldCreationOverlay";
 
 const GAME_MODE_CATEGORIES = [
   {
@@ -590,32 +591,17 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
         <Button variant="ghost" size="icon" onClick={onCancel}><X className="h-4 w-4" /></Button>
       </div>
 
-      {/* Progress display during creation */}
+      {/* Full-screen creation overlay */}
       {(creating || creationFailed) && progressSteps.length > 0 && (
-        <div className="space-y-2 p-4 bg-muted/30 rounded-lg border border-border">
-          {progressSteps.map((ps, i) => (
-            <div key={i} className="flex items-center gap-2 text-sm">
-              {ps.status === "done" && <Check className="h-4 w-4 text-green-500" />}
-              {ps.status === "active" && <Loader2 className="h-4 w-4 animate-spin text-primary" />}
-              {ps.status === "error" && <AlertCircle className="h-4 w-4 text-destructive" />}
-              {ps.status === "pending" && <div className="h-4 w-4 rounded-full border border-muted-foreground/30" />}
-              <span className={ps.status === "error" ? "text-destructive" : ps.status === "done" ? "text-muted-foreground" : "text-foreground"}>
-                {ps.label}
-              </span>
-              {ps.error && <span className="text-xs text-destructive ml-auto">{ps.error}</span>}
-            </div>
-          ))}
-          {creationFailed && (
-            <div className="flex gap-2 pt-2">
-              <Button size="sm" onClick={handleRetry}>Zkusit znovu</Button>
-              {failedSessionId && (
-                <Button size="sm" variant="outline" onClick={() => onCreated(failedSessionId)}>
-                  Otevřít i přesto
-                </Button>
-              )}
-            </div>
-          )}
-        </div>
+        <WorldCreationOverlay
+          steps={progressSteps}
+          failed={creationFailed}
+          worldName={worldName}
+          isAIMode={isAIMode}
+          failedSessionId={failedSessionId}
+          onRetry={handleRetry}
+          onForceOpen={() => failedSessionId && onCreated(failedSessionId)}
+        />
       )}
 
       {/* Step 0: Game Mode Selection */}
