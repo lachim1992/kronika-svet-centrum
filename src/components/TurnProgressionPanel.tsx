@@ -1,11 +1,11 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { closeTurnForPlayer, advanceTurn } from "@/hooks/useGameSession";
-import { runWorldTick } from "@/lib/ai";
+import { closeTurnForPlayer } from "@/hooks/useGameSession";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Lock, CheckCircle2, Clock, Play, Bot, Loader2, Zap } from "lucide-react";
+import { Lock, CheckCircle2, Clock, Play, Loader2 } from "lucide-react";
 import { toast } from "sonner";
+import { useNextTurn } from "@/hooks/useNextTurn";
 
 interface Props {
   sessionId: string;
@@ -23,7 +23,14 @@ const TurnProgressionPanel = ({ sessionId, currentTurn, players, currentPlayerNa
   const myTurnClosed = currentPlayer?.turn_closed || false;
   const allClosed = players.length > 0 && players.every(p => p.turn_closed);
   const isAIMode = gameMode === "tb_single_ai";
-  const [processingAI, setProcessingAI] = useState(false);
+
+  const { processing, processNextTurn } = useNextTurn({
+    sessionId,
+    currentTurn,
+    playerName: currentPlayerName,
+    gameMode,
+    onComplete: onRefetch,
+  });
 
   const [turnSummaries, setTurnSummaries] = useState<any[]>([]);
 
@@ -43,8 +50,6 @@ const TurnProgressionPanel = ({ sessionId, currentTurn, players, currentPlayerNa
   const handleCloseTurn = async () => {
     if (!currentPlayer) return;
     await closeTurnForPlayer(sessionId, currentPlayer.player_number);
-
-    // Log to action log
     await supabase.from("world_action_log").insert({
       session_id: sessionId,
       player_name: currentPlayerName,
@@ -52,114 +57,13 @@ const TurnProgressionPanel = ({ sessionId, currentTurn, players, currentPlayerNa
       action_type: "other",
       description: `${currentPlayerName} uzavřel kolo ${currentTurn}`,
     });
-
     toast.success("Kolo uzavřeno.");
     onRefetch();
   };
 
-  const processAIFactions = async () => {
-    // Fetch active AI factions for this session
-    const { data: aiFactions } = await supabase.from("ai_factions")
-      .select("faction_name")
-      .eq("session_id", sessionId)
-      .eq("is_active", true);
-
-    if (!aiFactions || aiFactions.length === 0) return 0;
-
-    let processed = 0;
-    for (const faction of aiFactions) {
-      try {
-        await supabase.functions.invoke("ai-faction-turn", {
-          body: { sessionId, factionName: faction.faction_name },
-        });
-        processed++;
-      } catch (e) {
-        console.error(`AI faction ${faction.faction_name} error:`, e);
-      }
-    }
-    return processed;
-  };
-
-  const handleAdminCloseTurn = async () => {
-    setProcessingAI(true);
-
-    // ===== WORLD TICK: deterministic engine first =====
-    try {
-      const tickResult = await runWorldTick(sessionId, currentTurn);
-      if (tickResult.ok) {
-        const r = tickResult.results || {};
-        const growthCount = r.settlement_growth?.length || 0;
-        const tensionCrises = (r.tensions || []).filter((t: any) => t.crisis_triggered).length;
-        toast.info(`⚙️ World Tick: ${growthCount} měst rostlo, ${tensionCrises} krizí.`);
-      } else {
-        console.warn("World tick warning:", tickResult.error);
-      }
-    } catch (e) {
-      console.error("World tick error:", e);
-    }
-
-    // Process AI factions (if AI mode) — before advance
-    if (isAIMode) {
-      try {
-        const aiCount = await processAIFactions();
-        if (aiCount > 0) toast.info(`${aiCount} AI frakcí provedlo svůj tah.`);
-      } catch (e) {
-        console.error("AI faction processing error:", e);
-      }
-    }
-
-    // Create turn summary record
-    await supabase.from("turn_summaries").insert({
-      session_id: sessionId,
-      turn_number: currentTurn,
-      status: "closed",
-      closed_at: new Date().toISOString(),
-      closed_by: currentPlayerName,
-    });
-
-    // Log
-    await supabase.from("world_action_log").insert({
-      session_id: sessionId,
-      player_name: currentPlayerName,
-      turn_number: currentTurn,
-      action_type: "other",
-      description: `Admin uzavřel kolo ${currentTurn} a posunul hru do roku ${currentTurn + 1}`,
-    });
-
-    // ===== ADVANCE TURN FIRST =====
-    await advanceTurn(sessionId, currentTurn);
-
-    // ===== PROCESS TURN AFTER ADVANCE: resource production & stockpiles for ALL players =====
-    try {
-      const { data: allPlayers } = await supabase.from("game_players")
-        .select("player_name").eq("session_id", sessionId);
-      for (const p of (allPlayers || [])) {
-        const { error: ptErr } = await supabase.functions.invoke("process-turn", {
-          body: { sessionId, playerName: p.player_name },
-        });
-        if (ptErr) console.warn(`process-turn for ${p.player_name}:`, ptErr.message);
-      }
-      toast.info("📦 Ekonomika všech hráčů zpracována.");
-    } catch (e) {
-      console.error("Process turn error:", e);
-    }
-
-    // Compress history in background (AI mode only)
-    if (isAIMode) {
-      try {
-        const { data: sess } = await supabase.from("game_sessions")
-          .select("tier").eq("id", sessionId).single();
-        await supabase.functions.invoke("ai-compress-history", {
-          body: { sessionId, currentTurn: currentTurn + 1, tier: sess?.tier || "free" },
-        });
-      } catch (e) {
-        console.error("History compression error:", e);
-      }
-    }
-
-    setProcessingAI(false);
-    toast.success(`Kolo ${currentTurn} uzavřeno. Pokračujeme rokem ${currentTurn + 1}.`);
-    onRefetch();
+  const handleAIModeTurn = async () => {
+    await handleCloseTurn();
+    processNextTurn();
   };
 
   const turnStatus = allClosed ? "waiting" : "active";
@@ -197,10 +101,9 @@ const TurnProgressionPanel = ({ sessionId, currentTurn, players, currentPlayerNa
 
       {/* Actions */}
       {isAIMode && !myTurnClosed && (
-        <Button onClick={async () => { await handleCloseTurn(); handleAdminCloseTurn(); }} 
-          disabled={processingAI} className="w-full font-display">
-          {processingAI ? (
-            <><Loader2 className="mr-2 h-4 w-4 animate-spin" />AI frakce hrají...</>
+        <Button onClick={handleAIModeTurn} disabled={processing} className="w-full font-display">
+          {processing ? (
+            <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Zpracovávám tah...</>
           ) : (
             <><Play className="mr-2 h-4 w-4" />Ukončit kolo</>
           )}
@@ -221,9 +124,9 @@ const TurnProgressionPanel = ({ sessionId, currentTurn, players, currentPlayerNa
       )}
 
       {!isAIMode && allClosed && isAdmin && (
-        <Button onClick={handleAdminCloseTurn} disabled={processingAI} className="w-full font-display">
-          {processingAI ? (
-            <><Loader2 className="mr-2 h-4 w-4 animate-spin" />AI frakce hrají...</>
+        <Button onClick={processNextTurn} disabled={processing} className="w-full font-display">
+          {processing ? (
+            <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Zpracovávám tah...</>
           ) : (
             <><Play className="mr-2 h-4 w-4" />Uzavřít kolo a pokračovat</>
           )}

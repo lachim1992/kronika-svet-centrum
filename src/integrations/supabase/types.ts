@@ -2039,10 +2039,13 @@ export type Database = {
       }
       game_events: {
         Row: {
+          actor_type: string
           armies_involved: string[] | null
           attacker_city_id: string | null
           casualties: string | null
+          caused_by_event_id: string | null
           city_id: string | null
+          command_id: string | null
           confirmed: boolean
           created_at: string
           defender_city_id: string | null
@@ -2053,6 +2056,7 @@ export type Database = {
           location: string | null
           note: string | null
           player: string
+          reference: Json
           result: string | null
           secondary_city_id: string | null
           session_id: string
@@ -2062,10 +2066,13 @@ export type Database = {
           turn_number: number
         }
         Insert: {
+          actor_type?: string
           armies_involved?: string[] | null
           attacker_city_id?: string | null
           casualties?: string | null
+          caused_by_event_id?: string | null
           city_id?: string | null
+          command_id?: string | null
           confirmed?: boolean
           created_at?: string
           defender_city_id?: string | null
@@ -2076,6 +2083,7 @@ export type Database = {
           location?: string | null
           note?: string | null
           player: string
+          reference?: Json
           result?: string | null
           secondary_city_id?: string | null
           session_id: string
@@ -2085,10 +2093,13 @@ export type Database = {
           turn_number?: number
         }
         Update: {
+          actor_type?: string
           armies_involved?: string[] | null
           attacker_city_id?: string | null
           casualties?: string | null
+          caused_by_event_id?: string | null
           city_id?: string | null
+          command_id?: string | null
           confirmed?: boolean
           created_at?: string
           defender_city_id?: string | null
@@ -2099,6 +2110,7 @@ export type Database = {
           location?: string | null
           note?: string | null
           player?: string
+          reference?: Json
           result?: string | null
           secondary_city_id?: string | null
           session_id?: string
