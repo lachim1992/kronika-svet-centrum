@@ -74,7 +74,7 @@ const Auth = () => {
       <div className="max-w-md w-full space-y-8 animate-fade-in">
         {/* Hero: Logo + Title + Subtitle */}
         <div className="text-center space-y-1 pt-4 pb-2">
-          <ChronicleHubLogo variant="full" size="hero" />
+          <ChronicleHubLogo variant="full" size="hero" showTagline />
           <p className="text-muted-foreground text-sm mt-6" style={{ fontFamily: "'Cinzel', serif", letterSpacing: "0.12em" }}>
             {showReset ? "Reset hesla" : isSignUp ? "Vytvořte si účet" : "Přihlaste se ke svému světu"}
           </p>
