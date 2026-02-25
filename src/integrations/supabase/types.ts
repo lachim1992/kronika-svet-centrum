@@ -4627,6 +4627,71 @@ export type Database = {
           },
         ]
       }
+      world_premise: {
+        Row: {
+          constraints: string | null
+          cosmology: string | null
+          created_at: string
+          economic_bias: string | null
+          epoch_style: string
+          id: string
+          is_active: boolean
+          lore_bible: string | null
+          narrative_rules: Json
+          seed: string | null
+          session_id: string
+          updated_at: string
+          version: number
+          war_bias: string | null
+          world_vibe: string | null
+          writing_style: string | null
+        }
+        Insert: {
+          constraints?: string | null
+          cosmology?: string | null
+          created_at?: string
+          economic_bias?: string | null
+          epoch_style?: string
+          id?: string
+          is_active?: boolean
+          lore_bible?: string | null
+          narrative_rules?: Json
+          seed?: string | null
+          session_id: string
+          updated_at?: string
+          version?: number
+          war_bias?: string | null
+          world_vibe?: string | null
+          writing_style?: string | null
+        }
+        Update: {
+          constraints?: string | null
+          cosmology?: string | null
+          created_at?: string
+          economic_bias?: string | null
+          epoch_style?: string
+          id?: string
+          is_active?: boolean
+          lore_bible?: string | null
+          narrative_rules?: Json
+          seed?: string | null
+          session_id?: string
+          updated_at?: string
+          version?: number
+          war_bias?: string | null
+          world_vibe?: string | null
+          writing_style?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "world_premise_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       world_tick_log: {
         Row: {
           created_at: string

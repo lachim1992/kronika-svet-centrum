@@ -1,36 +1,28 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createAIContext, invokeAI, corsHeaders, jsonResponse, errorResponse } from "../_shared/ai-context.ts";
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
-};
-
-serve(async (req) => {
-  if (req.method === 'OPTIONS') return new Response(null, { headers: corsHeaders });
+Deno.serve(async (req) => {
+  if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const { events, memories, epochStyle, entityTraits, cityMemories } = await req.json();
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+    const { events, memories, epochStyle, entityTraits, cityMemories, sessionId } = await req.json();
 
-    if (!LOVABLE_API_KEY) {
-      return new Response(JSON.stringify({
-        chronicle: "Kronikář právě odpočívá... (API klíč není nakonfigurován)",
-        suggestedMemories: []
-      }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    if (!sessionId) {
+      // Legacy fallback — generate without premise
+      return jsonResponse({ chronicle: "Chybí sessionId pro generování kroniky.", suggestedMemories: [] });
     }
 
-    const styleInstructions: Record<string, string> = {
-      myty: "Piš jako starověký mytograf. Používej legendární, epický jazyk plný metafor a nadpřirozených prvků. Události přetvářej v mýty a báje.",
-      kroniky: "Piš jako středověký kronikář. Používej formální, vznešený jazyk s archaickými obraty. Zaznamenávej události jako důležité historické záznamy.",
-      moderni: "Piš jako moderní novinář. Používej stručný, faktický styl zpravodajství. Události prezentuj jako novinové články s titulky.",
-    };
+    const ctx = await createAIContext(sessionId);
 
     const traitsContext = (entityTraits || [])
       .filter((t: any) => t.is_active)
       .map((t: any) => `${t.entity_name} (${t.entity_type}): [${t.trait_category}] ${t.trait_text}`)
       .join("\n");
 
-    const systemPrompt = `Jsi kronikář civilizační deskové hry. ${styleInstructions[epochStyle] || styleInstructions.kroniky}
+    const cityMemoriesContext = (cityMemories || [])
+      .map((m: any) => `[${m.cityName || "?"}] (${m.category || "tradition"}): ${m.text}`)
+      .join("\n");
+
+    const systemPrompt = `Jsi kronikář civilizační deskové hry.
 
 Tvým úkolem je:
 1. Převést potvrzené herní události do narativního textu kroniky (česky).
@@ -38,106 +30,52 @@ Tvým úkolem je:
 
 DŮLEŽITÉ: Při psaní kroniky MUSÍŠ zohlednit zaznamenané vlastnosti entit (přídomky, pověsti, tituly, vztahy).
 Používej přídomky a tituly vládců, zmiňuj pověsti měst, reflektuj zaznamenané vztahy mezi entitami.
-Např. pokud vládce má přídomek "Krutý", napiš "Lachimm Krutý přitáhl se svými legiemi..."
 
 GEOGRAFICKÁ PAMĚŤ: Musíš přirozeně zapracovat lokální paměti měst, která jsou zapojena v událostech kola.
-Pokud se událost odehrává v Petře a Petra má tradici "růžový mramor", popiš to jako "město růžového mramoru".
-Města musí mít konzistentní identitu napříč kronikami.
 
-Odpověz ve formátu JSON:
-{
-  "chronicle": "text kroniky...",
-  "suggestedMemories": ["fakt 1", "fakt 2"]
-}`;
+Odpověz POUZE voláním funkce write_chronicle.`;
 
-    const cityMemoriesContext = (cityMemories || [])
-      .map((m: any) => `[${m.cityName || "?"}] (${m.category || "tradition"}): ${m.text}`)
-      .join("\n");
+    const userContent = `Potvrzené události:\n${JSON.stringify(events, null, 2)}\n\nExistující paměť světa:\n${JSON.stringify(memories, null, 2)}\n\nLokální paměti měst:\n${cityMemoriesContext || "žádné"}\n\nVlastnosti entit:\n${traitsContext || "žádné"}`;
 
-    const userContent = `Potvrzené události:\n${JSON.stringify(events, null, 2)}\n\nExistující paměť světa:\n${JSON.stringify(memories, null, 2)}\n\nLokální paměti měst zapojených v tomto kole:\n${cityMemoriesContext || "žádné"}\n\nVlastnosti entit (přídomky, pověsti, tituly):\n${traitsContext || "žádné"}`;
-
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-3-flash-preview",
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userContent },
-        ],
-        tools: [{
-          type: "function",
-          function: {
-            name: "write_chronicle",
-            description: "Write chronicle text and suggest world memories",
-            parameters: {
-              type: "object",
-              properties: {
-                chronicle: { type: "string", description: "Chronicle narrative text in Czech" },
-                suggestedMemories: {
-                  type: "array",
-                  items: { type: "string" },
-                  description: "Suggested world memory facts in Czech"
-                }
-              },
-              required: ["chronicle", "suggestedMemories"],
-              additionalProperties: false
-            }
+    const result = await invokeAI(ctx, {
+      systemPrompt,
+      userPrompt: userContent,
+      tools: [{
+        type: "function",
+        function: {
+          name: "write_chronicle",
+          description: "Write chronicle text and suggest world memories",
+          parameters: {
+            type: "object",
+            properties: {
+              chronicle: { type: "string", description: "Chronicle narrative text in Czech" },
+              suggestedMemories: {
+                type: "array",
+                items: { type: "string" },
+                description: "Suggested world memory facts in Czech"
+              }
+            },
+            required: ["chronicle", "suggestedMemories"],
+            additionalProperties: false
           }
-        }],
-        tool_choice: { type: "function", function: { name: "write_chronicle" } },
-      }),
+        }
+      }],
+      toolChoice: { type: "function", function: { name: "write_chronicle" } },
     });
 
-    if (!response.ok) {
-      if (response.status === 429) {
-        return new Response(JSON.stringify({ error: "Příliš mnoho požadavků, zkuste to později." }), {
-          status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" }
-        });
-      }
-      if (response.status === 402) {
-        return new Response(JSON.stringify({ error: "Kredit vyčerpán." }), {
-          status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" }
-        });
-      }
-      const t = await response.text();
-      console.error("AI error:", response.status, t);
-      return new Response(JSON.stringify({
+    if (!result.ok) {
+      if (result.status === 429) return jsonResponse({ error: "Příliš mnoho požadavků, zkuste to později." }, 429);
+      if (result.status === 402) return jsonResponse({ error: "Kredit vyčerpán." }, 402);
+      return jsonResponse({
         chronicle: "Kronikář selhal... zkuste to znovu.",
-        suggestedMemories: []
-      }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
-    }
-
-    const data = await response.json();
-    const toolCall = data.choices?.[0]?.message?.tool_calls?.[0];
-    
-    if (toolCall?.function?.arguments) {
-      const result = JSON.parse(toolCall.function.arguments);
-      return new Response(JSON.stringify(result), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" }
+        suggestedMemories: [],
+        debug: result.debug,
       });
     }
 
-    // Fallback: try parsing content directly
-    const content = data.choices?.[0]?.message?.content || "";
-    try {
-      const parsed = JSON.parse(content);
-      return new Response(JSON.stringify(parsed), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" }
-      });
-    } catch {
-      return new Response(JSON.stringify({
-        chronicle: content || "Kronikář mlčí...",
-        suggestedMemories: []
-      }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
-    }
+    return jsonResponse({ ...result.data, debug: result.debug });
   } catch (e) {
     console.error("chronicle error:", e);
-    return new Response(JSON.stringify({ error: e instanceof Error ? e.message : "Unknown error" }), {
-      status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" }
-    });
+    return errorResponse(e instanceof Error ? e.message : "Unknown error");
   }
 });
