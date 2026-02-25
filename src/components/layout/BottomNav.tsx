@@ -19,7 +19,7 @@ const baseTabs: { id: TabId; label: string; icon: React.ElementType }[] = [
   { id: "engine", label: "Engine", icon: Zap },
   { id: "council", label: "Rada", icon: Crown },
   { id: "feed", label: "Šepoty", icon: Newspaper },
-  { id: "wiki", label: "Kronika", icon: BookOpen },
+  { id: "wiki", label: "ChroWiki", icon: BookOpen },
 ];
 
 const devTab = { id: "dev" as TabId, label: "Dev", icon: Wrench };
