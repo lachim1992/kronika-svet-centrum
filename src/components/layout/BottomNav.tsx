@@ -1,4 +1,4 @@
-import { Home, Globe, Shield, Newspaper, BookOpen, Crown, Swords, BarChart3, Timer, Wrench, Map, Zap } from "lucide-react";
+import { Home, Globe, Shield, Newspaper, BookOpen, Crown, Swords, BarChart3, Timer, Wrench, Map, Zap, Scroll } from "lucide-react";
 
 export type TabId = "home" | "world" | "worldmap" | "realm" | "army" | "economy" | "chronicles" | "feed" | "codex" | "wiki" | "council" | "engine" | "persistent" | "dev";
 
@@ -65,37 +65,42 @@ const BottomNav = ({ activeTab, onTabChange, showDevTab = false, showPersistentT
           );
         })}
 
-        {/* Center gold Chronicles button */}
+        {/* Center Chronicles pill button */}
         <button
           onClick={() => onTabChange("chronicles")}
-          className="flex flex-col items-center gap-0.5 -mt-4 relative z-10"
+          className="flex flex-col items-center gap-0.5 -mt-5 relative z-10"
         >
           <div
-            className={`w-14 h-14 rounded-full flex items-center justify-center border-2 transition-all duration-200 ${
+            className={`relative px-5 py-2.5 rounded-2xl flex items-center gap-2 border transition-all duration-300 ${
               isChroniclesActive
-                ? "border-primary shadow-[0_0_16px_hsl(var(--primary)/0.5)]"
-                : "border-primary/40 hover:border-primary/70"
+                ? "border-primary/60 shadow-[0_0_20px_hsl(var(--primary)/0.35),0_4px_12px_hsl(228_40%_3%/0.5)]"
+                : "border-primary/25 hover:border-primary/45 shadow-[0_4px_12px_hsl(228_40%_3%/0.4)]"
             }`}
             style={{
               background: isChroniclesActive
-                ? "linear-gradient(135deg, hsl(43 74% 49%), hsl(43 74% 38%))"
-                : "linear-gradient(135deg, hsl(43 74% 30%), hsl(43 74% 20%))",
+                ? "linear-gradient(135deg, hsl(43 74% 42% / 0.25), hsl(224 34% 14% / 0.95), hsl(43 74% 42% / 0.15))"
+                : "linear-gradient(135deg, hsl(43 74% 30% / 0.12), hsl(224 34% 12% / 0.95), hsl(43 74% 30% / 0.08))",
             }}
           >
-            <img
-              src="/assets/chronicle-logo.png"
-              alt="Kroniky"
-              className="w-9 h-9 object-contain"
+            {/* Decorative corner accents */}
+            <span className="absolute top-0.5 left-2 w-3 h-px rounded-full" style={{ background: `hsl(var(--primary) / ${isChroniclesActive ? 0.5 : 0.2})` }} />
+            <span className="absolute bottom-0.5 right-2 w-3 h-px rounded-full" style={{ background: `hsl(var(--primary) / ${isChroniclesActive ? 0.5 : 0.2})` }} />
+
+            <Scroll
+              className={`h-5 w-5 transition-colors duration-200 ${
+                isChroniclesActive ? "text-primary" : "text-primary/60"
+              }`}
+              strokeWidth={isChroniclesActive ? 2.2 : 1.5}
             />
+            <span
+              className={`text-[10px] uppercase tracking-[0.14em] font-semibold transition-colors duration-200 ${
+                isChroniclesActive ? "text-primary" : "text-primary/60"
+              }`}
+              style={{ fontFamily: "'Cinzel', serif" }}
+            >
+              Kroniky
+            </span>
           </div>
-          <span
-            className={`text-[9px] uppercase tracking-[0.12em] ${
-              isChroniclesActive ? "text-primary" : "text-muted-foreground"
-            }`}
-            style={{ fontFamily: "'Cinzel', serif" }}
-          >
-            Kroniky
-          </span>
         </button>
 
         {/* Right tabs */}
