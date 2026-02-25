@@ -431,13 +431,15 @@ Deno.serve(async (req) => {
 
       // Clear famine from ALL cities (surplus = no famine)
       for (const city of myCities) {
-        if (city.famine_turn) {
+        if (city.famine_turn || city.famine_consecutive_turns > 0) {
           await supabase.from("cities").update({
             famine_turn: false,
             famine_severity: 0,
+            famine_consecutive_turns: 0,
           }).eq("id", city.id);
           city.famine_turn = false;
           city.famine_severity = 0;
+          city.famine_consecutive_turns = 0;
         }
       }
     } else {
@@ -480,9 +482,14 @@ Deno.serve(async (req) => {
             const popLoss = Math.round(city.population_total * 0.05);
             const newPop = Math.max(100, city.population_total - popLoss);
 
+            // Track consecutive famine turns
+            const prevConsecutive = city.famine_consecutive_turns || 0;
+            const newConsecutive = prevConsecutive + 1;
+
             await supabase.from("cities").update({
               famine_turn: true,
               famine_severity: allocDeficit,
+              famine_consecutive_turns: newConsecutive,
               city_stability: newStab,
               population_total: newPop,
               local_grain_reserve: city.local_grain_reserve,
@@ -490,10 +497,84 @@ Deno.serve(async (req) => {
             }).eq("id", city.id);
 
             city.famine_turn = true;
+            city.famine_consecutive_turns = newConsecutive;
             city.population_total = newPop;
             city.city_stability = newStab;
 
-            logEntries.push(`⚠️ HLADOMOR v ${city.name}: deficit ${allocDeficit}, populace -${popLoss} (${newPop}), stabilita ${newStab}`);
+            logEntries.push(`⚠️ HLADOMOR v ${city.name}: deficit ${allocDeficit}, populace -${popLoss} (${newPop}), stabilita ${newStab}, kolo hladomoru ${newConsecutive}/5`);
+
+            // ═══ UPRISING TRIGGER: 5 consecutive famine turns ═══
+            const UPRISING_THRESHOLD = 5;
+            if (newConsecutive >= UPRISING_THRESHOLD) {
+              // Check if there's already an active uprising for this city
+              const { data: existingUprising } = await supabase
+                .from("city_uprisings")
+                .select("id, escalation_level")
+                .eq("city_id", city.id)
+                .in("status", ["pending", "escalated"])
+                .maybeSingle();
+
+              if (!existingUprising) {
+                // Create new uprising
+                await supabase.from("city_uprisings").insert({
+                  session_id: sessionId,
+                  city_id: city.id,
+                  player_name: playerName,
+                  turn_triggered: currentTurn,
+                  escalation_level: 1,
+                  status: "pending",
+                  demands: JSON.stringify([
+                    { type: "pay_wealth", label: "Vyplatit lid", cost_percent: 30 },
+                    { type: "open_stores", label: "Otevřít královské zásoby" },
+                    { type: "cede_city", label: "Vzdát se města" },
+                    { type: "abdicate", label: "Odstoupit z trůnu" },
+                  ]),
+                });
+
+                // Log as game event
+                await supabase.from("game_events").insert({
+                  session_id: sessionId,
+                  event_type: "rebellion",
+                  player: playerName,
+                  note: `Vzpoura v ${city.name}! Po ${newConsecutive} kolech hladomoru se lid bouří a žádá okamžitou nápravu.`,
+                  importance: "critical",
+                  confirmed: true,
+                  turn_number: currentTurn,
+                  city_id: city.id,
+                });
+
+                // Chronicle entry
+                try {
+                  await supabase.from("chronicle_entries").insert({
+                    session_id: sessionId,
+                    text: `**Vzpoura lidu (rok ${currentTurn}):** V ${city.name} propukla vzpoura hladovějícího lidu. Po ${newConsecutive} letech strádání obyvatelé obklíčili palác a žádají okamžitou nápravu.`,
+                    epoch_style: "kroniky",
+                    turn_from: currentTurn,
+                    turn_to: currentTurn,
+                    source_type: "system",
+                  });
+                } catch (_) { /* non-critical */ }
+
+                logEntries.push(`🔥 VZPOURA v ${city.name}! Lid žádá okamžitou nápravu po ${newConsecutive} kolech hladomoru.`);
+              } else if (existingUprising.escalation_level < 3) {
+                // Escalate existing uprising
+                const newLevel = existingUprising.escalation_level + 1;
+                await supabase.from("city_uprisings").update({
+                  escalation_level: newLevel,
+                  status: "escalated",
+                  demands: JSON.stringify([
+                    { type: "pay_wealth", label: "Vyplatit lid", cost_percent: 30 + newLevel * 20 },
+                    { type: "open_stores", label: "Otevřít královské zásoby" },
+                    { type: "cede_city", label: "Vzdát se města" },
+                    { type: "abdicate", label: "Odstoupit z trůnu" },
+                    ...(newLevel >= 3 ? [{ type: "forced_secession", label: "Město se odtrhne samo" }] : []),
+                  ]),
+                }).eq("id", existingUprising.id);
+
+                logEntries.push(`🔥 ESKALACE vzpoury v ${city.name}! Úroveň ${newLevel}`);
+              }
+            }
+
             remaining -= allocDeficit;
           }
         }
@@ -502,19 +583,20 @@ Deno.serve(async (req) => {
         for (const city of myCities) {
           if (!city.famine_turn) {
             await supabase.from("cities").update({
-              famine_turn: false, famine_severity: 0,
+              famine_turn: false, famine_severity: 0, famine_consecutive_turns: 0,
             }).eq("id", city.id);
           }
         }
       } else {
         // Deficit covered by reserves — no famine
         for (const city of myCities) {
-          if (city.famine_turn) {
+          if (city.famine_turn || city.famine_consecutive_turns > 0) {
             await supabase.from("cities").update({
-              famine_turn: false, famine_severity: 0,
+              famine_turn: false, famine_severity: 0, famine_consecutive_turns: 0,
             }).eq("id", city.id);
             city.famine_turn = false;
             city.famine_severity = 0;
+            city.famine_consecutive_turns = 0;
           }
         }
         logEntries.push(`Deficit obilí ${deficit} pokryt ze zásob (zbývá ${grainReserve})`);

@@ -16,6 +16,7 @@ import ActionChooser from "@/components/layout/ActionChooser";
 import WorldEventDetailPanel from "@/components/WorldEventDetailPanel";
 import GameHubFAB from "@/components/layout/GameHubFAB";
 import FoundSettlementDialog from "@/components/FoundSettlementDialog";
+import UprisingDialog from "@/components/UprisingDialog";
 import HomeTab from "@/pages/game/HomeTab";
 import WorldTab from "@/pages/game/WorldTab";
 import RealmTab from "@/pages/game/RealmTab";
@@ -254,6 +255,12 @@ const Dashboard = () => {
             open={!!eventDetailId}
             onClose={() => setEventDetailId(null)}
             onEventClick={(id) => setEventDetailId(id)}
+          />
+          <UprisingDialog
+            sessionId={session.id}
+            playerName={myPlayerName}
+            currentTurn={currentTurn}
+            onResolved={() => refetch()}
           />
         </>
       }
