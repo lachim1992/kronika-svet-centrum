@@ -2778,6 +2778,7 @@ export type Database = {
       military_stacks: {
         Row: {
           created_at: string
+          demobilized_turn: number | null
           formation_type: string
           general_id: string | null
           hex_q: number
@@ -2795,6 +2796,7 @@ export type Database = {
           player_name: string
           power: number
           province_id: string | null
+          remobilize_ready_turn: number | null
           session_id: string
           sigil_confirmed: boolean
           sigil_prompt: string | null
@@ -2802,6 +2804,7 @@ export type Database = {
         }
         Insert: {
           created_at?: string
+          demobilized_turn?: number | null
           formation_type?: string
           general_id?: string | null
           hex_q?: number
@@ -2819,6 +2822,7 @@ export type Database = {
           player_name: string
           power?: number
           province_id?: string | null
+          remobilize_ready_turn?: number | null
           session_id: string
           sigil_confirmed?: boolean
           sigil_prompt?: string | null
@@ -2826,6 +2830,7 @@ export type Database = {
         }
         Update: {
           created_at?: string
+          demobilized_turn?: number | null
           formation_type?: string
           general_id?: string | null
           hex_q?: number
@@ -2843,6 +2848,7 @@ export type Database = {
           player_name?: string
           power?: number
           province_id?: string | null
+          remobilize_ready_turn?: number | null
           session_id?: string
           sigil_confirmed?: boolean
           sigil_prompt?: string | null

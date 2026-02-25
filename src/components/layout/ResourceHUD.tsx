@@ -7,16 +7,20 @@ import {
   ChevronDown, Skull
 } from "lucide-react";
 import { computeWealthIncome, computeWorkforceBreakdown } from "@/lib/economyConstants";
+import DemobilizeDialog from "@/components/DemobilizeDialog";
 
 interface ResourceHUDProps {
   sessionId: string;
   playerName: string;
   cities: any[];
+  currentTurn: number;
 }
 
-const ResourceHUD = ({ sessionId, playerName, cities }: ResourceHUDProps) => {
+const ResourceHUD = ({ sessionId, playerName, cities, currentTurn }: ResourceHUDProps) => {
   const [realm, setRealm] = useState<any>(null);
   const [playerRes, setPlayerRes] = useState<Record<string, any>>({});
+  const [showDemobilize, setShowDemobilize] = useState(false);
+  const [activeStacks, setActiveStacks] = useState<any[]>([]);
 
   const fetchData = useCallback(async () => {
     const [realmRes, prRes] = await Promise.all([
@@ -49,6 +53,37 @@ const ResourceHUD = ({ sessionId, playerName, cities }: ResourceHUDProps) => {
     return () => { supabase.removeChannel(ch); };
   }, [sessionId, playerName, fetchData]);
 
+  // Fetch active stacks for demobilize dialog
+  const fetchStacks = useCallback(async () => {
+    const { data } = await supabase
+      .from("military_stacks")
+      .select("id, name, formation_type, morale, is_active")
+      .eq("session_id", sessionId)
+      .eq("player_name", playerName)
+      .eq("is_active", true);
+
+    if (!data || data.length === 0) { setActiveStacks([]); return; }
+
+    // Fetch compositions
+    const { data: comps } = await supabase
+      .from("military_stack_composition")
+      .select("stack_id, manpower")
+      .in("stack_id", data.map(s => s.id));
+
+    const compMap: Record<string, number> = {};
+    for (const c of (comps || [])) {
+      compMap[c.stack_id] = (compMap[c.stack_id] || 0) + (c.manpower || 0);
+    }
+
+    setActiveStacks(data.map(s => ({
+      id: s.id,
+      name: s.name,
+      formation_type: s.formation_type,
+      morale: s.morale,
+      totalManpower: compMap[s.id] || 0,
+    })));
+  }, [sessionId, playerName]);
+
   if (!realm) return null;
 
   const myCities = cities.filter(c => c.owner_player === playerName);
@@ -56,7 +91,13 @@ const ResourceHUD = ({ sessionId, playerName, cities }: ResourceHUDProps) => {
   const mobRate = realm.mobilization_rate || 0.1;
   const wf = computeWorkforceBreakdown(myCities, mobRate);
   const computedPool = wf.effectiveActivePop;
-  const availableManpower = computedPool - (realm.manpower_committed || 0);
+  const committed = realm.manpower_committed || 0;
+  const availableManpower = computedPool - committed;
+
+  // Calculate minimum mobilization % based on committed troops
+  const minMobPct = computedPool > 0
+    ? Math.ceil((committed / computedPool) * 100)
+    : 0;
 
   const getRes = (type: string) => {
     const r = playerRes[type];
@@ -112,107 +153,138 @@ const ResourceHUD = ({ sessionId, playerName, cities }: ResourceHUDProps) => {
   ];
 
   const handleMobilizationChange = async (val: number[]) => {
-    const rate = val[0] / 100;
+    const requestedPct = val[0];
+
+    // If trying to go below committed troops, open demobilize dialog
+    if (requestedPct < minMobPct) {
+      await fetchStacks();
+      setShowDemobilize(true);
+      return;
+    }
+
+    const rate = requestedPct / 100;
     await supabase.from("realm_resources").update({ mobilization_rate: rate }).eq("id", realm.id);
     setRealm((r: any) => ({ ...r, mobilization_rate: rate }));
   };
 
   const grainPct = Math.min(100, (grainStock / Math.max(1, grainCapacity)) * 100);
 
-  return (
-    <div className="bg-secondary/80 backdrop-blur-sm border-b border-border px-4 py-2 flex items-center gap-1.5 overflow-x-auto scrollbar-hide">
-      {/* Resource chips */}
-      {chips.map(chip => (
-        <div
-          key={chip.label}
-          className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-semibold shrink-0 border transition-colors ${
-            chip.warning
-              ? "border-destructive/30 bg-destructive/10 text-destructive"
-              : "border-border bg-card/60 text-foreground hover:border-primary/30 hover:bg-card/80"
-          }`}
-          title={chip.label}
-        >
-          <span className={chip.warning ? "" : "text-primary"}>{chip.icon}</span>
-          <span className="hidden sm:inline text-muted-foreground">{chip.label}</span>
-          <span>{chip.value}</span>
-        </div>
-      ))}
+  const currentMobPct = Math.round((realm.mobilization_rate || 0.1) * 100);
 
-      {/* Mobilization chip */}
-      <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-semibold shrink-0 border border-border bg-card/60 hover:border-primary/30 hover:bg-card/80 transition-colors">
-        <Gauge className="h-3 w-3 text-primary" />
-        <span className="hidden sm:inline text-muted-foreground">Mob</span>
-        <span>{Math.round((realm.mobilization_rate || 0.1) * 100)}%</span>
+  return (
+    <>
+      <div className="bg-secondary/80 backdrop-blur-sm border-b border-border px-4 py-2 flex items-center gap-1.5 overflow-x-auto scrollbar-hide">
+        {/* Resource chips */}
+        {chips.map(chip => (
+          <div
+            key={chip.label}
+            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-semibold shrink-0 border transition-colors ${
+              chip.warning
+                ? "border-destructive/30 bg-destructive/10 text-destructive"
+                : "border-border bg-card/60 text-foreground hover:border-primary/30 hover:bg-card/80"
+            }`}
+            title={chip.label}
+          >
+            <span className={chip.warning ? "" : "text-primary"}>{chip.icon}</span>
+            <span className="hidden sm:inline text-muted-foreground">{chip.label}</span>
+            <span>{chip.value}</span>
+          </div>
+        ))}
+
+        {/* Mobilization chip */}
+        <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-semibold shrink-0 border border-border bg-card/60 hover:border-primary/30 hover:bg-card/80 transition-colors">
+          <Gauge className="h-3 w-3 text-primary" />
+          <span className="hidden sm:inline text-muted-foreground">Mob</span>
+          <span>{currentMobPct}%</span>
+        </div>
+
+        {/* Famine indicator */}
+        {famineCities.length > 0 && (
+          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-semibold shrink-0 border border-destructive/25 bg-destructive/8 text-destructive animate-pulse">
+            <Skull className="h-3 w-3" />
+            <span>{famineCities.length}× hlad</span>
+          </div>
+        )}
+
+        {/* Economy detail popover */}
+        <Popover>
+          <PopoverTrigger asChild>
+            <button className="flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-semibold shrink-0 border border-primary/25 bg-primary/10 text-primary hover:bg-primary/20 transition-colors">
+              <ChevronDown className="h-3 w-3" />
+            </button>
+          </PopoverTrigger>
+          <PopoverContent className="w-72 p-3" align="end">
+            <h4 className="font-display font-semibold text-sm mb-2 text-primary">Ekonomický přehled</h4>
+
+            <div className="space-y-1 text-xs mb-3">
+              <div className="flex justify-between"><span className="text-muted-foreground">Produkce sídel</span><span className="font-semibold">{cityGrainProd}</span></div>
+              {grainBuffer > 0 && <div className="flex justify-between"><span className="text-muted-foreground">Bonus malé říše</span><span className="font-semibold text-primary">+{grainBuffer}</span></div>}
+              <div className="flex justify-between"><span className="text-muted-foreground">Spotřeba</span><span className="font-semibold">{grainCons}</span></div>
+              <div className="flex justify-between"><span className="text-muted-foreground">Bilance</span><span className={`font-semibold ${grainNet < 0 ? "text-destructive" : "text-primary"}`}>{grainNet >= 0 ? "+" : ""}{grainNet}</span></div>
+              <div className="w-full bg-muted rounded h-1.5 mt-1">
+                <div className="bg-primary rounded h-1.5 transition-all" style={{ width: `${grainPct}%` }} />
+              </div>
+              <div className="flex justify-between text-[10px] text-muted-foreground">
+                <span>Zásoby: {grainStock}</span>
+                <span>Kapacita: {grainCapacity}</span>
+              </div>
+            </div>
+
+            <div className="space-y-1 mb-3">
+              <div className="flex justify-between text-xs">
+                <span className="text-muted-foreground">Mobilizace</span>
+                <span className="font-semibold">{currentMobPct}%</span>
+              </div>
+              {minMobPct > 0 && (
+                <div className="text-[10px] text-muted-foreground">
+                  Min. {minMobPct}% (nasazeno {committed} mužů)
+                </div>
+              )}
+              <Slider
+                value={[currentMobPct]}
+                onValueCommit={handleMobilizationChange}
+                max={30} min={0} step={1}
+                className="w-full"
+              />
+              <div className="grid grid-cols-2 gap-1 text-[10px] text-muted-foreground">
+                <span>Muži: {availableManpower} volných</span>
+                <span>Odvedení: {committed}</span>
+              </div>
+            </div>
+
+            {myCities.length > 0 && (
+              <div className="space-y-1">
+                <h5 className="text-[10px] font-semibold text-muted-foreground">Nejzranitelnější města</h5>
+                {[...myCities]
+                  .sort((a, b) => (b.vulnerability_score || 0) - (a.vulnerability_score || 0))
+                  .slice(0, 3)
+                  .map(c => (
+                    <div key={c.id} className="flex justify-between text-[10px]">
+                      <span className={c.famine_turn ? "text-destructive font-semibold" : ""}>
+                        {c.famine_turn && "⚠ "}{c.name}
+                      </span>
+                      <span className="text-muted-foreground">zranitelnost {(c.vulnerability_score || 0).toFixed(0)}</span>
+                    </div>
+                  ))}
+              </div>
+            )}
+          </PopoverContent>
+        </Popover>
       </div>
 
-      {/* Famine indicator */}
-      {famineCities.length > 0 && (
-        <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-semibold shrink-0 border border-destructive/25 bg-destructive/8 text-destructive animate-pulse">
-          <Skull className="h-3 w-3" />
-          <span>{famineCities.length}× hlad</span>
-        </div>
-      )}
-
-      {/* Economy detail popover */}
-      <Popover>
-        <PopoverTrigger asChild>
-          <button className="flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-semibold shrink-0 border border-primary/25 bg-primary/10 text-primary hover:bg-primary/20 transition-colors">
-            <ChevronDown className="h-3 w-3" />
-          </button>
-        </PopoverTrigger>
-        <PopoverContent className="w-72 p-3" align="end">
-          <h4 className="font-display font-semibold text-sm mb-2 text-primary">Ekonomický přehled</h4>
-
-          <div className="space-y-1 text-xs mb-3">
-            <div className="flex justify-between"><span className="text-muted-foreground">Produkce sídel</span><span className="font-semibold">{cityGrainProd}</span></div>
-            {grainBuffer > 0 && <div className="flex justify-between"><span className="text-muted-foreground">Bonus malé říše</span><span className="font-semibold text-primary">+{grainBuffer}</span></div>}
-            <div className="flex justify-between"><span className="text-muted-foreground">Spotřeba</span><span className="font-semibold">{grainCons}</span></div>
-            <div className="flex justify-between"><span className="text-muted-foreground">Bilance</span><span className={`font-semibold ${grainNet < 0 ? "text-destructive" : "text-primary"}`}>{grainNet >= 0 ? "+" : ""}{grainNet}</span></div>
-            <div className="w-full bg-muted rounded h-1.5 mt-1">
-              <div className="bg-primary rounded h-1.5 transition-all" style={{ width: `${grainPct}%` }} />
-            </div>
-            <div className="flex justify-between text-[10px] text-muted-foreground">
-              <span>Zásoby: {grainStock}</span>
-              <span>Kapacita: {grainCapacity}</span>
-            </div>
-          </div>
-
-          <div className="space-y-1 mb-3">
-            <div className="flex justify-between text-xs">
-              <span className="text-muted-foreground">Mobilizace</span>
-              <span className="font-semibold">{Math.round((realm.mobilization_rate || 0.1) * 100)}%</span>
-            </div>
-            <Slider
-              value={[Math.round((realm.mobilization_rate || 0.1) * 100)]}
-              onValueCommit={handleMobilizationChange}
-              max={30} min={0} step={1}
-              className="w-full"
-            />
-            <div className="grid grid-cols-2 gap-1 text-[10px] text-muted-foreground">
-              <span>Muži: {availableManpower} volných</span>
-              <span>Odvedení: {realm.manpower_committed || 0}</span>
-            </div>
-          </div>
-
-          {myCities.length > 0 && (
-            <div className="space-y-1">
-              <h5 className="text-[10px] font-semibold text-muted-foreground">Nejzranitelnější města</h5>
-              {[...myCities]
-                .sort((a, b) => (b.vulnerability_score || 0) - (a.vulnerability_score || 0))
-                .slice(0, 3)
-                .map(c => (
-                  <div key={c.id} className="flex justify-between text-[10px]">
-                    <span className={c.famine_turn ? "text-destructive font-semibold" : ""}>
-                      {c.famine_turn && "⚠ "}{c.name}
-                    </span>
-                    <span className="text-muted-foreground">zranitelnost {(c.vulnerability_score || 0).toFixed(0)}</span>
-                  </div>
-                ))}
-            </div>
-          )}
-        </PopoverContent>
-      </Popover>
-    </div>
+      {/* Demobilize dialog */}
+      <DemobilizeDialog
+        open={showDemobilize}
+        onClose={() => setShowDemobilize(false)}
+        stacks={activeStacks}
+        sessionId={sessionId}
+        playerName={playerName}
+        currentTurn={currentTurn}
+        realmId={realm?.id || ""}
+        manpowerCommitted={committed}
+        onDone={fetchData}
+      />
+    </>
   );
 };
 

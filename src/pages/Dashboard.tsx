@@ -212,7 +212,7 @@ const Dashboard = () => {
         />
       }
       resourceHud={
-        <ResourceHUD sessionId={session.id} playerName={myPlayerName} cities={cities} />
+        <ResourceHUD sessionId={session.id} playerName={myPlayerName} cities={cities} currentTurn={currentTurn} />
       }
       bottomExtras={
         <>
