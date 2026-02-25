@@ -361,9 +361,30 @@ Deno.serve(async (req) => {
       if (bldgEff.stability_bonus && bldgEff.stability_bonus > 0) {
         const newStab = Math.min(100, (city.city_stability || 70) + bldgEff.stability_bonus);
         if (newStab !== city.city_stability) {
-          await supabase.from("cities").update({ city_stability: newStab }).eq("id", city.id);
           city.city_stability = newStab;
         }
+      }
+
+      // Apply influence bonus from buildings
+      if (bldgEff.influence_bonus && bldgEff.influence_bonus > 0) {
+        const newInfluence = Math.min(1000, (city.influence_score || 0) + bldgEff.influence_bonus);
+        city.influence_score = newInfluence;
+      }
+
+      // Apply population growth from buildings (added to population_total)
+      if (bldgEff.population_growth && bldgEff.population_growth > 0) {
+        const growthAmount = Math.round(bldgEff.population_growth * (city.population_total || 100) / 100);
+        if (growthAmount > 0) {
+          city.population_total = (city.population_total || 100) + growthAmount;
+          city.population_peasants = (city.population_peasants || 50) + Math.round(growthAmount * 0.6);
+          city.population_burghers = (city.population_burghers || 20) + Math.round(growthAmount * 0.3);
+          city.population_clerics = (city.population_clerics || 5) + Math.round(growthAmount * 0.1);
+        }
+      }
+
+      // Apply defense bonus from buildings (added to military_garrison)
+      if (bldgEff.defense_bonus && bldgEff.defense_bonus > 0) {
+        city.military_garrison = (city.military_garrison || 0) + bldgEff.defense_bonus;
       }
 
       await supabase.from("cities").update({
@@ -373,6 +394,13 @@ Deno.serve(async (req) => {
         last_turn_iron_prod: cityIron,
         last_turn_special_prod: cityIron,
         special_resource_type: specialType,
+        city_stability: city.city_stability,
+        influence_score: city.influence_score,
+        population_total: city.population_total,
+        population_peasants: city.population_peasants,
+        population_burghers: city.population_burghers,
+        population_clerics: city.population_clerics,
+        military_garrison: city.military_garrison,
       }).eq("id", city.id);
     }
 
@@ -499,9 +527,10 @@ Deno.serve(async (req) => {
     // 6) Population growth — handled by world-tick (shared physics), NOT here.
     // process-turn only handles economy (production, consumption, famine, stockpiles).
 
-    // 7) Manpower pool — uses workforce system
+    // 7) Manpower pool — uses workforce system + building manpower bonuses
     const totalPopulation = myCities.reduce((s, c) => s + c.population_total, 0);
-    const manpowerPool = effectiveActivePop;
+    const manpowerBonusFromBuildings = globalBuildingEffects.manpower_bonus || 0;
+    const manpowerPool = effectiveActivePop + manpowerBonusFromBuildings;
 
     // 8) Logistic capacity
     const logisticCapacity = realm.horses_reserve + Math.round((infra?.slavery_factor || 0) * 100);

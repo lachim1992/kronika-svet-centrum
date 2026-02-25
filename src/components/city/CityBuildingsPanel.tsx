@@ -10,6 +10,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
   Building2, Loader2, Plus, Sparkles, Hammer, Shield, Landmark, Coins,
   Factory, Church, ArrowRight, Clock, CheckCircle2, ImageIcon,
 } from "lucide-react";
@@ -35,6 +41,32 @@ const CATEGORY_META: Record<string, { label: string; icon: React.ReactNode }> = 
 };
 
 const SETTLEMENT_ORDER = ["HAMLET", "TOWNSHIP", "CITY", "POLIS"];
+
+const EFFECT_LABELS: Record<string, string> = {
+  food_income: "🌾 Obilí",
+  wood_income: "🪵 Dřevo",
+  stone_income: "🪨 Kámen",
+  iron_income: "⚙️ Železo",
+  wealth_income: "💰 Bohatství",
+  stability_bonus: "🛡️ Stabilita",
+  influence_bonus: "👑 Vliv",
+  population_growth: "👥 Růst populace",
+  manpower_bonus: "⚔️ Branná síla",
+  defense_bonus: "🏰 Obrana",
+};
+
+const EFFECT_DESCRIPTIONS: Record<string, string> = {
+  food_income: "Přidává fixní produkci obilí ve městě každé kolo. Obilí živí obyvatelstvo — nedostatek vede k hladomoru.",
+  wood_income: "Přidává fixní produkci dřeva ve městě každé kolo. Dřevo je potřeba na stavby a infrastrukturu.",
+  stone_income: "Přidává fixní produkci kamene ve městě každé kolo. Kámen je klíčový pro opevnění a monumentální stavby.",
+  iron_income: "Přidává fixní produkci železa ve městě každé kolo. Železo je vzácný zdroj potřebný pro vojsko a zbraně.",
+  wealth_income: "Přidává fixní příjem zlata k celkové pokladně říše každé kolo. Zlato financuje armádu a obchod.",
+  stability_bonus: "Zvyšuje stabilitu města každé kolo (max 100). Vyšší stabilita snižuje riziko rebelií a hladu.",
+  influence_bonus: "Zvyšuje skóre vlivu města každé kolo. Vliv ovlivňuje diplomacii, aliance a respekt AI frakcí.",
+  population_growth: "Procentuální bonus k růstu populace města každé kolo. Více obyvatel = více pracovní síly a daní.",
+  manpower_bonus: "Přidává fixní počet mužů k celkové branné síle říše. Více branců umožňuje větší mobilizaci.",
+  defense_bonus: "Přidává posádku k obraně města. Posádka automaticky brání město při útoku nepřítele.",
+};
 
 const CityBuildingsPanel = ({
   sessionId, cityId, cityName, settlementLevel, realm,
@@ -255,11 +287,21 @@ const CityBuildingsPanel = ({
           )}
           {Object.keys(effects).filter(k => effects[k] > 0).length > 0 && (
             <div className="flex gap-1.5 mt-1.5 flex-wrap">
-              {Object.entries(effects).filter(([, v]) => Number(v) > 0).map(([k, v]) => (
-                <Badge key={k} variant="outline" className="text-[9px]">
-                  {k.replace(/_/g, " ")}: +{String(v)}
-                </Badge>
-              ))}
+              <TooltipProvider delayDuration={150}>
+                {Object.entries(effects).filter(([, v]) => Number(v) > 0).map(([k, v]) => (
+                  <Tooltip key={k}>
+                    <TooltipTrigger asChild>
+                      <Badge variant="outline" className="text-[9px] cursor-help">
+                        {EFFECT_LABELS[k] || k.replace(/_/g, " ")}: +{String(v)}
+                      </Badge>
+                    </TooltipTrigger>
+                    <TooltipContent side="top" className="max-w-[260px] text-xs space-y-1">
+                      <p className="font-semibold">{EFFECT_LABELS[k] || k}</p>
+                      <p className="text-muted-foreground">{EFFECT_DESCRIPTIONS[k] || "Bonus ze stavby."}</p>
+                    </TooltipContent>
+                  </Tooltip>
+                ))}
+              </TooltipProvider>
             </div>
           )}
         </div>
@@ -416,12 +458,22 @@ const CityBuildingsPanel = ({
                               <span>⏱️{t.build_turns}k</span>
                             </div>
                             <ArrowRight className="h-2.5 w-2.5 text-muted-foreground" />
-                            <div className="flex gap-1 text-[9px]">
-                              {Object.entries(t.effects || {}).map(([k, v]) => (
-                                <Badge key={k} variant="outline" className="text-[8px]">
-                                  {k.replace(/_/g, " ")} +{String(v)}
-                                </Badge>
-                              ))}
+                            <div className="flex gap-1 text-[9px] flex-wrap">
+                              <TooltipProvider delayDuration={150}>
+                                {Object.entries(t.effects || {}).map(([k, v]) => (
+                                  <Tooltip key={k}>
+                                    <TooltipTrigger asChild>
+                                      <Badge variant="outline" className="text-[8px] cursor-help">
+                                        {EFFECT_LABELS[k] || k.replace(/_/g, " ")} +{String(v)}
+                                      </Badge>
+                                    </TooltipTrigger>
+                                    <TooltipContent side="top" className="max-w-[260px] text-xs space-y-1">
+                                      <p className="font-semibold">{EFFECT_LABELS[k] || k}</p>
+                                      <p className="text-muted-foreground">{EFFECT_DESCRIPTIONS[k] || "Bonus ze stavby."}</p>
+                                    </TooltipContent>
+                                  </Tooltip>
+                                ))}
+                              </TooltipProvider>
                             </div>
                           </div>
                           {t.flavor_text && (
