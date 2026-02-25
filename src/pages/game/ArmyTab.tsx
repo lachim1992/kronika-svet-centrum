@@ -896,8 +896,13 @@ function RecruitDialog({
 
     setSaving(true);
     try {
-      const { recruitStack } = await import("@/lib/turnEngine");
-      await recruitStack(sessionId, currentPlayerName, name.trim(), selectedPreset);
+      const result = await dispatchCommand({
+        sessionId,
+        actor: { name: currentPlayerName },
+        commandType: "RECRUIT_STACK",
+        commandPayload: { stackName: name.trim(), presetKey: selectedPreset },
+      });
+      if (!result.ok) throw new Error(result.error || "Chyba při rekrutaci");
       toast.success(`${name.trim()} zřízen!`);
       setName("");
       setSelectedPreset(null);
