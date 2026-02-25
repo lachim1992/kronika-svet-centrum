@@ -58,7 +58,7 @@ interface CityOnHex {
 /* ───── Stack on hex ───── */
 interface StackOnHex {
   id: string; name: string; player_name: string; q: number; r: number;
-  manpower: number; formation_type: string;
+  manpower: number; formation_type: string; morale?: number;
 }
 
 /* ───── Props ───── */
@@ -379,7 +379,7 @@ const WorldHexMap = ({ sessionId, playerName, myRole, onCityClick }: Props) => {
   const fetchStacks = useCallback(async () => {
     const { data: rawStacks } = await supabase
       .from("military_stacks")
-      .select("id, name, player_name, hex_q, hex_r, formation_type, is_deployed, is_active")
+      .select("id, name, player_name, hex_q, hex_r, formation_type, is_deployed, is_active, morale")
       .eq("session_id", sessionId)
       .eq("is_deployed", true)
       .eq("is_active", true);
@@ -398,6 +398,7 @@ const WorldHexMap = ({ sessionId, playerName, myRole, onCityClick }: Props) => {
       q: s.hex_q ?? 0, r: s.hex_r ?? 0,
       manpower: mpMap.get(s.id) || 0,
       formation_type: s.formation_type,
+      morale: s.morale ?? 70,
     })));
   }, [sessionId]);
 
@@ -780,12 +781,14 @@ const WorldHexMap = ({ sessionId, playerName, myRole, onCityClick }: Props) => {
           attacker_name: selectedStack.name,
           defender_name: defName,
           biome: "plains",
-          attacker_morale: 70,
+          attacker_morale: selectedStack.morale ?? 70,
         },
       });
       console.log("[battle-speech] response", { data, error });
       if (error) throw error;
-      if (data) {
+      if (data?.error) {
+        toast.error(data.error);
+      } else if (data) {
         setSpeechResult(data);
         toast.success(`Proslov: ${data.morale_modifier >= 0 ? "+" : ""}${data.morale_modifier} morálka`);
       } else {

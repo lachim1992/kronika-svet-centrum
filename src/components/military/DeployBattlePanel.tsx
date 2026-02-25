@@ -397,8 +397,12 @@ function BattleInitDialog({ stack, sessionId, currentPlayerName, currentTurn, ci
         },
       });
       if (error) throw error;
-      setSpeechResult(data);
-      toast.success(`Proslov vyhodnocen: ${data.morale_modifier >= 0 ? "+" : ""}${data.morale_modifier} morálka`);
+      if (data?.error) {
+        toast.error(data.error);
+      } else if (data) {
+        setSpeechResult(data);
+        toast.success(`Proslov vyhodnocen: ${data.morale_modifier >= 0 ? "+" : ""}${data.morale_modifier} morálka`);
+      }
     } catch (e) {
       console.error(e);
       toast.error("Chyba při hodnocení proslovu");
