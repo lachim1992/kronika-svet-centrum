@@ -129,6 +129,7 @@ const Dashboard = () => {
     }
 
     const tabMap: Record<string, TabId> = {
+      open_chronicles: "chronicles",
       open_realm: "realm",
       manage_armies: "realm",
       view_threats: "realm",

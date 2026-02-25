@@ -176,6 +176,24 @@ const GameHubFAB = ({
 
   return (
     <>
+      {/* Chronicles circle above FAB */}
+      <button
+        onClick={() => onAction?.("open_chronicles")}
+        className={`fixed bottom-[8.5rem] right-4 z-50 h-11 w-11 rounded-full border flex items-center justify-center transition-all duration-300 ${
+          activeTab === "chronicles"
+            ? "border-primary/60 shadow-[0_0_16px_hsl(var(--primary)/0.35)] text-primary"
+            : "border-primary/25 hover:border-primary/45 shadow-[0_4px_12px_hsl(228_40%_3%/0.4)] text-primary/60 hover:text-primary"
+        }`}
+        style={{
+          background: activeTab === "chronicles"
+            ? "linear-gradient(135deg, hsl(43 74% 42% / 0.25), hsl(224 34% 14% / 0.95), hsl(43 74% 42% / 0.15))"
+            : "linear-gradient(135deg, hsl(43 74% 30% / 0.12), hsl(224 34% 12% / 0.95), hsl(43 74% 30% / 0.08))",
+        }}
+        aria-label="Kroniky"
+      >
+        <ScrollText className="h-5 w-5" strokeWidth={activeTab === "chronicles" ? 2.2 : 1.5} />
+      </button>
+
       {/* FAB Button with badge */}
       <button
         onClick={() => setOpen(true)}
