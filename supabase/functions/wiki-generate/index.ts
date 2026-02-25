@@ -70,10 +70,26 @@ serve(async (req) => {
       ? "Piš jako bard — vznešeně, epicky, s metaforami a odkazem na mýty."
       : "Piš jako středověký učenec — vzdělaně, s respektem k faktům.";
 
+    // Fetch narrative config for entity-type-specific settings
+    const { data: serverCfgData } = await sb.from("server_config")
+      .select("economic_params").eq("session_id", sessionId).maybeSingle();
+    const narrativeCfg = (serverCfgData as any)?.economic_params?.narrative || {};
+    const entityTypeCfg = narrativeCfg.entity_types?.[entityType] || {};
+    const tone = entityTypeCfg.tone || "encyklopedický";
+    const maxLength = entityTypeCfg.max_length || "4-8 vět";
+    const entityStylePrompt = entityTypeCfg.style_prompt || "";
+    const entityForbidden = (entityTypeCfg.forbidden || []).join(", ");
+    const entityKeywords = (entityTypeCfg.keywords || []).join(", ");
+
     const systemContent = [
-      `Jsi encyklopedický kronikář. Napiš encyklopedický článek (česky, 4-8 vět) o dané entitě.`,
+      `Jsi encyklopedický kronikář. Napiš STATICKOU IDENTITU entity (česky, ${maxLength}).`,
+      `Tón: ${tone}.`,
       writingInstructions,
-      `DŮLEŽITÉ: Pokud hráč napsal vlastní legendu nebo flavor prompt, MUSÍŠ je respektovat a integrovat do svého textu. Nesmíš je ignorovat ani přepisovat vlastním výmyslem.`,
+      `Zaměř se na: geografii, kulturu, ekonomiku a demografii. NEPIŠ historii — ta bude doplněna později.`,
+      `DŮLEŽITÉ: Pokud hráč napsal vlastní legendu nebo flavor prompt, MUSÍŠ je respektovat a integrovat.`,
+      entityStylePrompt ? `Stylový prompt: ${entityStylePrompt}` : "",
+      entityForbidden ? `Zakázaná slova: ${entityForbidden}` : "",
+      entityKeywords ? `Preferovaná klíčová slova: ${entityKeywords}` : "",
       loreBible ? `Lore světa:\n${loreBible.substring(0, 800)}` : "",
       worldVibe ? `Tón světa: ${worldVibe}` : "",
       constraints ? `Omezení: ${constraints}` : "",
@@ -113,13 +129,23 @@ serve(async (req) => {
             type: "function",
             function: {
               name: "create_wiki_entry",
-              description: "Create wiki entry",
+              description: "Create wiki entry with static core identity",
               parameters: {
                 type: "object",
                 properties: {
                   summary: { type: "string", description: "One-sentence Czech summary" },
-                  aiDescription: { type: "string", description: "4-8 sentence encyclopedia article in Czech" },
+                  aiDescription: { type: "string", description: "Static identity article in Czech (geography, culture, economy, demography)" },
                   imagePrompt: { type: "string", description: "English image prompt for illustration" },
+                  staticIdentity: {
+                    type: "object",
+                    description: "Structured static identity data",
+                    properties: {
+                      geography: { type: "string", description: "Geographic description" },
+                      culture: { type: "string", description: "Cultural description" },
+                      economy: { type: "string", description: "Economic profile" },
+                      demography: { type: "string", description: "Demographic composition" },
+                    },
+                  },
                 },
                 required: ["summary", "aiDescription", "imagePrompt"],
                 additionalProperties: false
@@ -130,6 +156,7 @@ serve(async (req) => {
         }),
       });
 
+      let staticIdentity: any = null;
       if (descResponse.ok) {
         const descData = await descResponse.json();
         const tc = descData.choices?.[0]?.message?.tool_calls?.[0];
@@ -138,6 +165,7 @@ serve(async (req) => {
           summary = parsed.summary || summary;
           aiDescription = parsed.aiDescription || aiDescription;
           imagePrompt = parsed.imagePrompt || imagePrompt;
+          staticIdentity = parsed.staticIdentity || null;
         }
       }
 
@@ -181,6 +209,8 @@ serve(async (req) => {
         summary,
         ai_description: aiDescription,
         image_prompt: imagePrompt,
+        static_identity: staticIdentity || {},
+        last_enriched_turn: 0,
         updated_at: new Date().toISOString(),
         references: {
           style_hash: styleHash,
