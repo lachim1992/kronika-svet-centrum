@@ -14,7 +14,7 @@ export default {
     },
     extend: {
       fontFamily: {
-        display: ["Cormorant Garamond", "serif"],
+        display: ["Cinzel", "Georgia", "serif"],
         decorative: ["Cormorant Garamond", "serif"],
         body: ["Inter", "sans-serif"],
       },

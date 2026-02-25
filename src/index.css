@@ -6,108 +6,115 @@
 
 @layer base {
   :root {
-    /* Deep navy palette – #0F1B2E base */
-    --background: 216 50% 12%;
-    --foreground: 220 30% 92%;
+    /* ═══ NEW DARK GOLD PALETTE ═══ */
+    /* Primary bg: #0B0F1C → hsl(228 38% 8%) */
+    --background: 228 38% 8%;
+    --foreground: 40 10% 90%;
 
-    /* Card bg – #1A2F4A */
-    --card: 214 46% 20%;
-    --card-foreground: 220 30% 92%;
+    /* Card / elevated: #121829 → hsl(226 36% 12%) */
+    --card: 226 36% 12%;
+    --card-foreground: 40 10% 90%;
 
     /* Popover matches card */
-    --popover: 214 46% 20%;
-    --popover-foreground: 220 30% 92%;
+    --popover: 226 36% 12%;
+    --popover-foreground: 40 10% 90%;
 
-    /* Gold accents – #C6A85A */
-    --primary: 42 48% 56%;
-    --primary-foreground: 216 50% 10%;
+    /* Gold primary: #D4AF37 → hsl(43 64% 52%) */
+    --primary: 43 64% 52%;
+    --primary-foreground: 228 38% 8%;
 
-    /* Section bg – #14243A */
-    --secondary: 215 48% 16%;
-    --secondary-foreground: 220 25% 82%;
+    /* Secondary surface: #1A2135 → hsl(224 34% 16%) */
+    --secondary: 224 34% 16%;
+    --secondary-foreground: 40 8% 72%;
 
-    --muted: 215 30% 18%;
-    --muted-foreground: 216 20% 58%;
+    --muted: 224 28% 14%;
+    --muted-foreground: 40 8% 55%;
 
-    --accent: 42 48% 56%;
-    --accent-foreground: 216 50% 10%;
+    /* Accent = gold */
+    --accent: 43 64% 52%;
+    --accent-foreground: 228 38% 8%;
 
-    /* Error – #A94444 */
-    --destructive: 0 44% 46%;
-    --destructive-foreground: 0 20% 95%;
+    /* Danger: #8B2E2E → hsl(0 50% 36%) */
+    --destructive: 0 50% 36%;
+    --destructive-foreground: 0 20% 92%;
 
-    --success: 150 40% 42%;
-    --success-foreground: 150 20% 95%;
+    --success: 150 35% 38%;
+    --success-foreground: 150 20% 92%;
 
-    --info: 210 40% 55%;
-    --info-foreground: 210 20% 95%;
+    --info: 43 40% 45%;
+    --info-foreground: 43 20% 92%;
 
-    --border: 215 35% 22%;
-    --input: 215 35% 22%;
-    --ring: 42 48% 56%;
+    /* Border: gold tint */
+    --border: 43 30% 18%;
+    --input: 43 30% 18%;
+    --ring: 43 64% 52%;
 
-    --radius: 0.875rem;
+    --radius: 0.75rem;
 
-    --sidebar-background: 216 48% 10%;
-    --sidebar-foreground: 220 25% 82%;
-    --sidebar-primary: 42 48% 56%;
-    --sidebar-primary-foreground: 216 50% 10%;
-    --sidebar-accent: 215 40% 16%;
-    --sidebar-accent-foreground: 220 25% 82%;
-    --sidebar-border: 215 35% 20%;
-    --sidebar-ring: 42 48% 56%;
+    /* Sidebar */
+    --sidebar-background: 228 40% 6%;
+    --sidebar-foreground: 40 8% 72%;
+    --sidebar-primary: 43 64% 52%;
+    --sidebar-primary-foreground: 228 38% 8%;
+    --sidebar-accent: 224 30% 14%;
+    --sidebar-accent-foreground: 40 8% 72%;
+    --sidebar-border: 43 30% 16%;
+    --sidebar-ring: 43 64% 52%;
 
-    --chronicle-myth: 270 30% 55%;
-    --chronicle-medieval: 35 40% 55%;
-    --chronicle-modern: 210 25% 55%;
+    /* Chronicle era tints */
+    --chronicle-myth: 43 50% 50%;
+    --chronicle-medieval: 35 45% 48%;
+    --chronicle-modern: 43 30% 45%;
 
-    /* Gold glow – #E3C77B hover */
-    --gold-glow: 42 60% 62%;
-    --parchment-dark: 215 30% 24%;
-    --ink: 220 30% 92%;
+    /* Gold variants */
+    --gold-glow: 45 72% 68%;
+    --gold-muted: 40 50% 40%;
+    --parchment-dark: 224 28% 18%;
+    --ink: 40 10% 90%;
 
-    --illuminated: 42 48% 56%;
-    --seal-red: 0 44% 46%;
-    --royal-purple: 270 25% 45%;
-    --forest-green: 162 30% 38%;
+    --illuminated: 43 64% 52%;
+    --seal-red: 0 50% 36%;
+    --royal-purple: 270 20% 38%;
+    --forest-green: 162 28% 34%;
 
-    --surface-elevated: 214 42% 18%;
+    /* Elevated surface: #1A2135 */
+    --surface-elevated: 224 34% 16%;
 
     /* Card premium styling */
-    --card-shadow: 0 4px 24px -8px hsl(216 50% 5% / 0.5), inset 0 1px 0 0 hsl(215 35% 28% / 0.3);
-    --card-shadow-hover: 0 8px 32px -8px hsl(42 48% 56% / 0.15);
-    --card-border-hover: 42 48% 56%;
+    --card-shadow: 0 4px 24px -8px hsl(228 40% 3% / 0.6), inset 0 1px 0 0 hsl(43 64% 52% / 0.05);
+    --card-shadow-hover: 0 8px 32px -8px hsl(43 64% 52% / 0.12);
+    --card-border-hover: 43 64% 52%;
   }
 
-  /* Light mode override (optional, dark-first) */
+  /* Light mode override */
   .light {
-    --background: 37 38% 95%;
-    --foreground: 27 33% 13%;
-    --card: 43 100% 98%;
-    --card-foreground: 27 33% 13%;
-    --popover: 43 100% 98%;
-    --popover-foreground: 27 33% 13%;
-    --primary: 39 52% 47%;
-    --primary-foreground: 43 100% 98%;
-    --secondary: 37 32% 90%;
-    --secondary-foreground: 27 33% 18%;
-    --muted: 37 25% 91%;
-    --muted-foreground: 24 18% 30%;
-    --accent: 162 33% 27%;
-    --accent-foreground: 0 0% 98%;
-    --destructive: 0 52% 36%;
+    --background: 40 20% 95%;
+    --foreground: 30 20% 12%;
+    --card: 42 30% 97%;
+    --card-foreground: 30 20% 12%;
+    --popover: 42 30% 97%;
+    --popover-foreground: 30 20% 12%;
+    --primary: 43 64% 42%;
+    --primary-foreground: 42 30% 97%;
+    --secondary: 40 18% 90%;
+    --secondary-foreground: 30 20% 18%;
+    --muted: 40 15% 91%;
+    --muted-foreground: 30 12% 35%;
+    --accent: 43 64% 42%;
+    --accent-foreground: 42 30% 97%;
+    --destructive: 0 50% 36%;
     --destructive-foreground: 0 0% 98%;
-    --border: 37 32% 85%;
-    --input: 37 32% 85%;
-    --ring: 39 52% 47%;
-    --sidebar-background: 37 30% 93%;
-    --sidebar-foreground: 27 33% 18%;
-    --sidebar-primary: 39 52% 47%;
-    --sidebar-primary-foreground: 43 100% 98%;
-    --sidebar-accent: 37 25% 88%;
-    --sidebar-accent-foreground: 27 33% 18%;
-    --sidebar-border: 37 32% 85%;
-    --sidebar-ring: 39 52% 47%;
+    --border: 40 20% 82%;
+    --input: 40 20% 82%;
+    --ring: 43 64% 42%;
+    --sidebar-background: 40 18% 93%;
+    --sidebar-foreground: 30 20% 18%;
+    --sidebar-primary: 43 64% 42%;
+    --sidebar-primary-foreground: 42 30% 97%;
+    --sidebar-accent: 40 15% 88%;
+    --sidebar-accent-foreground: 30 20% 18%;
+    --sidebar-border: 40 20% 82%;
+    --sidebar-ring: 43 64% 42%;
   }
 }
 
@@ -189,31 +196,32 @@
   }
 
   .illuminated-border {
-    border: 1px solid hsl(var(--illuminated) / 0.2);
+    border: 1px solid hsl(var(--illuminated) / 0.15);
   }
 
   .manuscript-card {
     @apply bg-card rounded-xl;
-    border: 1px solid hsl(var(--border));
-    border-top: 2px solid hsl(var(--illuminated) / 0.3);
+    border: 1px solid hsl(var(--illuminated) / 0.1);
+    border-top: 2px solid hsl(var(--illuminated) / 0.2);
     box-shadow: var(--card-shadow);
     padding: 1.5rem;
     transition: border-color 0.2s ease, box-shadow 0.2s ease;
   }
 
   .manuscript-card:hover {
-    border-color: hsl(var(--card-border-hover) / 0.3);
+    border-color: hsl(var(--card-border-hover) / 0.25);
     box-shadow: var(--card-shadow-hover);
   }
 
   .game-card {
-    @apply bg-card rounded-xl border border-border;
+    @apply bg-card rounded-xl;
+    border: 1px solid hsl(var(--illuminated) / 0.1);
     box-shadow: var(--card-shadow);
     transition: border-color 0.2s ease, box-shadow 0.2s ease;
   }
 
   .game-card:hover {
-    border-color: hsl(var(--card-border-hover) / 0.25);
+    border-color: hsl(var(--card-border-hover) / 0.2);
     box-shadow: var(--card-shadow-hover);
   }
 
@@ -235,9 +243,9 @@
     background: linear-gradient(
       to right,
       transparent,
-      hsl(var(--illuminated) / 0.25),
-      hsl(var(--illuminated) / 0.4),
-      hsl(var(--illuminated) / 0.25),
+      hsl(var(--illuminated) / 0.15),
+      hsl(var(--illuminated) / 0.3),
+      hsl(var(--illuminated) / 0.15),
       transparent
     );
   }
@@ -248,9 +256,9 @@
   }
 
   .imperial-header {
-    background: hsl(216 48% 10%);
-    border-bottom: 1px solid hsl(var(--border));
-    box-shadow: 0 1px 8px -2px hsl(216 50% 5% / 0.5);
+    background: hsl(228 40% 6%);
+    border-bottom: 1px solid hsl(var(--illuminated) / 0.1);
+    box-shadow: 0 1px 8px -2px hsl(228 40% 3% / 0.5);
   }
 
   .prose-chronicle {
@@ -277,17 +285,17 @@
     background: hsl(var(--surface-elevated));
   }
 
-  /* Chronicle parchment card — warm, medieval vibe */
+  /* Chronicle parchment card */
   .chronicle-parchment {
     background:
-      radial-gradient(ellipse at 20% 0%, hsl(35 30% 22% / 0.15) 0%, transparent 60%),
-      radial-gradient(ellipse at 80% 100%, hsl(35 25% 18% / 0.12) 0%, transparent 60%),
-      linear-gradient(180deg, hsl(var(--card)) 0%, hsl(215 40% 17%) 100%);
-    border: 1px solid hsl(var(--primary) / 0.2);
+      radial-gradient(ellipse at 20% 0%, hsl(43 30% 15% / 0.1) 0%, transparent 60%),
+      radial-gradient(ellipse at 80% 100%, hsl(43 25% 12% / 0.08) 0%, transparent 60%),
+      linear-gradient(180deg, hsl(var(--card)) 0%, hsl(224 34% 14%) 100%);
+    border: 1px solid hsl(var(--primary) / 0.15);
     box-shadow:
-      inset 0 0 60px hsl(35 20% 15% / 0.08),
-      0 4px 24px -8px hsl(216 50% 5% / 0.4),
-      0 1px 0 0 hsl(var(--primary) / 0.08);
+      inset 0 0 60px hsl(43 20% 10% / 0.06),
+      0 4px 24px -8px hsl(228 40% 3% / 0.4),
+      0 1px 0 0 hsl(var(--primary) / 0.06);
     position: relative;
   }
 
@@ -298,8 +306,8 @@
     border-radius: inherit;
     pointer-events: none;
     background:
-      linear-gradient(180deg, hsl(var(--primary) / 0.04) 0%, transparent 3%),
-      linear-gradient(0deg, hsl(var(--primary) / 0.03) 0%, transparent 3%);
+      linear-gradient(180deg, hsl(var(--primary) / 0.03) 0%, transparent 3%),
+      linear-gradient(0deg, hsl(var(--primary) / 0.02) 0%, transparent 3%);
   }
 
   /* ═══ ChroWiki scoped book layout ═══ */
@@ -331,18 +339,17 @@
     min-width: 0;
   }
 
-  /* Book frame — parchment/codex feel */
   .chrowiki-book-frame {
     position: relative;
     background:
-      radial-gradient(ellipse at 15% 0%, hsl(35 30% 22% / 0.10) 0%, transparent 50%),
-      radial-gradient(ellipse at 85% 100%, hsl(35 25% 18% / 0.08) 0%, transparent 50%),
+      radial-gradient(ellipse at 15% 0%, hsl(43 30% 15% / 0.06) 0%, transparent 50%),
+      radial-gradient(ellipse at 85% 100%, hsl(43 25% 12% / 0.04) 0%, transparent 50%),
       hsl(var(--card));
-    border: 1px solid hsl(var(--primary) / 0.15);
+    border: 1px solid hsl(var(--primary) / 0.1);
     border-radius: 0.75rem;
     box-shadow:
-      inset 0 0 40px hsl(35 20% 15% / 0.06),
-      0 4px 20px -8px hsl(216 50% 5% / 0.35);
+      inset 0 0 40px hsl(43 20% 10% / 0.04),
+      0 4px 20px -8px hsl(228 40% 3% / 0.35);
     padding: 1.5rem;
   }
 
@@ -351,17 +358,16 @@
     position: absolute;
     inset: 4px;
     border-radius: 0.625rem;
-    border: 1px solid hsl(var(--primary) / 0.07);
+    border: 1px solid hsl(var(--primary) / 0.05);
     pointer-events: none;
   }
 
-  /* Cover image inside the book page */
   .chrowiki-cover {
     width: 100%;
     border-radius: 0.5rem;
     overflow: hidden;
-    border: 1px solid hsl(var(--primary) / 0.15);
-    box-shadow: 0 2px 12px -4px hsl(216 50% 5% / 0.3);
+    border: 1px solid hsl(var(--primary) / 0.1);
+    box-shadow: 0 2px 12px -4px hsl(228 40% 3% / 0.3);
   }
 
   .chrowiki-cover img {
@@ -379,9 +385,9 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    background: linear-gradient(135deg, hsl(var(--primary) / 0.06), hsl(var(--secondary) / 0.4), hsl(var(--primary) / 0.04));
+    background: linear-gradient(135deg, hsl(var(--primary) / 0.04), hsl(var(--secondary) / 0.4), hsl(var(--primary) / 0.03));
     border-radius: 0.5rem;
-    border: 1px solid hsl(var(--primary) / 0.1);
+    border: 1px solid hsl(var(--primary) / 0.08);
   }
 
   @media (max-width: 768px) {
