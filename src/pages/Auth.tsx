@@ -73,9 +73,15 @@ const Auth = () => {
     >
       <div className="max-w-md w-full space-y-8 animate-fade-in">
         {/* Hero: Logo + Title + Subtitle */}
-        <div className="text-center space-y-6 pt-4 pb-2">
+        <div className="text-center space-y-4 pt-4 pb-2">
           <ChronicleHubLogo variant="full" size="hero" />
-          <p className="text-muted-foreground text-sm" style={{ fontFamily: "'Cinzel', serif", letterSpacing: "0.12em" }}>
+          <p
+            className="text-xs md:text-sm uppercase tracking-[0.4em] font-light"
+            style={{ fontFamily: "'Cinzel', serif", color: "hsl(43 64% 52% / 0.45)" }}
+          >
+            Let your thoughts shape history
+          </p>
+          <p className="text-muted-foreground text-sm mt-4" style={{ fontFamily: "'Cinzel', serif", letterSpacing: "0.12em" }}>
             {showReset ? "Reset hesla" : isSignUp ? "Vytvořte si účet" : "Přihlaste se ke svému světu"}
           </p>
         </div>

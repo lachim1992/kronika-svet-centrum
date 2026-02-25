@@ -10,7 +10,7 @@ const sizes = {
   sm: 32,
   md: 48,
   lg: 80,
-  hero: 320,
+  hero: 420,
 };
 
 const ChronicleHubLogo = ({ variant = "full", className = "", size = "md" }: LogoProps) => {
@@ -23,9 +23,9 @@ const ChronicleHubLogo = ({ variant = "full", className = "", size = "md" }: Log
       <div
         className="relative shrink-0"
         style={{
-          width: imgSize,
+          width: isHero ? undefined : imgSize,
           height: isHero ? "auto" : imgSize,
-          maxWidth: isHero ? "320px" : undefined,
+          maxWidth: isHero ? "420px" : undefined,
         }}
       >
         {/* Subtle radial glow behind logo in hero mode */}
