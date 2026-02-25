@@ -6,33 +6,33 @@
 
 @layer base {
   :root {
-    /* ═══ NEW DARK GOLD PALETTE ═══ */
-    /* Primary bg: #0B0F1C → hsl(228 38% 8%) */
-    --background: 228 38% 8%;
+    /* ═══ DARK GOLD PALETTE — matched to logo bg ═══ */
+    /* Primary bg: ~#141B2D → hsl(224 36% 13%) */
+    --background: 224 36% 13%;
     --foreground: 40 10% 90%;
 
-    /* Card / elevated: #121829 → hsl(226 36% 12%) */
-    --card: 226 36% 12%;
+    /* Card / elevated: hsl(224 34% 16%) */
+    --card: 224 34% 16%;
     --card-foreground: 40 10% 90%;
 
     /* Popover matches card */
-    --popover: 226 36% 12%;
+    --popover: 224 34% 16%;
     --popover-foreground: 40 10% 90%;
 
     /* Gold primary: #D4AF37 → hsl(43 64% 52%) */
     --primary: 43 64% 52%;
-    --primary-foreground: 228 38% 8%;
+    --primary-foreground: 224 36% 13%;
 
-    /* Secondary surface: #1A2135 → hsl(224 34% 16%) */
-    --secondary: 224 34% 16%;
+    /* Secondary surface */
+    --secondary: 224 32% 19%;
     --secondary-foreground: 40 8% 72%;
 
-    --muted: 224 28% 14%;
+    --muted: 224 28% 17%;
     --muted-foreground: 40 8% 55%;
 
     /* Accent = gold */
     --accent: 43 64% 52%;
-    --accent-foreground: 228 38% 8%;
+    --accent-foreground: 224 36% 13%;
 
     /* Danger: #8B2E2E → hsl(0 50% 36%) */
     --destructive: 0 50% 36%;
@@ -52,10 +52,10 @@
     --radius: 0.75rem;
 
     /* Sidebar */
-    --sidebar-background: 228 40% 6%;
+    --sidebar-background: 224 36% 10%;
     --sidebar-foreground: 40 8% 72%;
     --sidebar-primary: 43 64% 52%;
-    --sidebar-primary-foreground: 228 38% 8%;
+    --sidebar-primary-foreground: 224 36% 13%;
     --sidebar-accent: 224 30% 14%;
     --sidebar-accent-foreground: 40 8% 72%;
     --sidebar-border: 43 30% 16%;
@@ -77,8 +77,8 @@
     --royal-purple: 270 20% 38%;
     --forest-green: 162 28% 34%;
 
-    /* Elevated surface: #1A2135 */
-    --surface-elevated: 224 34% 16%;
+    /* Elevated surface */
+    --surface-elevated: 224 32% 19%;
 
     /* Card premium styling */
     --card-shadow: 0 4px 24px -8px hsl(228 40% 3% / 0.6), inset 0 1px 0 0 hsl(43 64% 52% / 0.05);
