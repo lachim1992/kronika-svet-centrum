@@ -18,8 +18,8 @@ const Welcome = () => {
       <div className="flex-1 flex items-center justify-center px-6 py-12">
         <div className="max-w-2xl w-full space-y-10 animate-fade-in">
           {/* Logo */}
-          <div className="text-center">
-            <ChronicleHubLogo variant="full" size="hero" />
+          <div className="flex justify-center">
+            <ChronicleHubLogo variant="full" size="hero" className="mx-auto" />
           </div>
 
           {/* Heading */}

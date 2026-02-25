@@ -21,7 +21,7 @@ const ChronicleHubLogo = ({
   const isHero = size === "hero";
 
   return (
-    <div className={`shrink-0 ${className}`}>
+    <div className={`shrink-0 inline-flex justify-center ${className}`}>
       <img
         src="/assets/chronicle-logo.png"
         alt="The Chronicle Hub"
@@ -30,7 +30,7 @@ const ChronicleHubLogo = ({
           maxWidth: isHero ? `${h}px` : undefined,
           width: isHero ? "100%" : "auto",
         }}
-        className="object-contain"
+        className="object-contain block mx-auto"
       />
     </div>
   );
