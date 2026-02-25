@@ -3486,6 +3486,103 @@ export type Database = {
           },
         ]
       }
+      rumor_generation_log: {
+        Row: {
+          created_at: string
+          id: string
+          rumors_generated: number
+          session_id: string
+          source_events_count: number
+          turn_number: number
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          rumors_generated?: number
+          session_id: string
+          source_events_count?: number
+          turn_number: number
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          rumors_generated?: number
+          session_id?: string
+          source_events_count?: number
+          turn_number?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "rumor_generation_log_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      rumors: {
+        Row: {
+          bias: string
+          category: string
+          confidence: number
+          created_at: string
+          entity_refs: Json
+          expanded_text: string | null
+          id: string
+          is_reminder: boolean
+          reminder_of_turn: number | null
+          scope: string
+          session_id: string
+          short_text: string
+          source_hash: string
+          tone: string
+          turn_number: number
+        }
+        Insert: {
+          bias?: string
+          category?: string
+          confidence?: number
+          created_at?: string
+          entity_refs?: Json
+          expanded_text?: string | null
+          id?: string
+          is_reminder?: boolean
+          reminder_of_turn?: number | null
+          scope?: string
+          session_id: string
+          short_text: string
+          source_hash: string
+          tone?: string
+          turn_number?: number
+        }
+        Update: {
+          bias?: string
+          category?: string
+          confidence?: number
+          created_at?: string
+          entity_refs?: Json
+          expanded_text?: string | null
+          id?: string
+          is_reminder?: boolean
+          reminder_of_turn?: number | null
+          scope?: string
+          session_id?: string
+          short_text?: string
+          source_hash?: string
+          tone?: string
+          turn_number?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "rumors_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       saga_versions: {
         Row: {
           author_player: string
