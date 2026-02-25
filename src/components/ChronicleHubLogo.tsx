@@ -55,8 +55,8 @@ const ChronicleHubLogo = ({ variant = "full", className = "", size = "md" }: Log
             color: "hsl(43 64% 52% / 0.45)"
           }}>
 
-            Let your thoughts shape history
-          </p>
+
+        </p>
         }
       </div>
 
