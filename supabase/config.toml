@@ -137,3 +137,9 @@ verify_jwt = false
 
 [functions.generate-promo-world]
 verify_jwt = false
+
+[functions.command-dispatch]
+verify_jwt = false
+
+[functions.commit-turn]
+verify_jwt = false
