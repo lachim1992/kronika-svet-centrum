@@ -1,60 +1,34 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createAIContext, invokeAI, corsHeaders, jsonResponse, errorResponse } from "../_shared/ai-context.ts";
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
-};
-
-serve(async (req) => {
-  if (req.method === 'OPTIONS') return new Response(null, { headers: corsHeaders });
+Deno.serve(async (req) => {
+  if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const { text } = await req.json();
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+    const { text, sessionId } = await req.json();
 
-    if (!LOVABLE_API_KEY) {
-      return new Response(JSON.stringify({ epicText: text }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" }
-      });
+    if (!sessionId) {
+      return jsonResponse({ epicText: text });
     }
 
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-3-flash-preview",
-        messages: [
-          { role: "system", content: "Jsi dvorní kronikář středověkého impéria. Přepiš následující oficiální vyhlášení do epického, slavnostního, středověkého českého stylu. Zachovej význam, ale přidej patos, metafory a slavnostní tón. Odpověz POUZE přepsaným textem, nic dalšího." },
-          { role: "user", content: text },
-        ],
-      }),
+    const ctx = await createAIContext(sessionId);
+
+    const systemPrompt = `Jsi dvorní kronikář středověkého impéria. Přepiš následující oficiální vyhlášení do epického, slavnostního stylu. Zachovej význam, ale přidej patos, metafory a slavnostní tón. Odpověz POUZE přepsaným textem, nic dalšího.`;
+
+    const result = await invokeAI(ctx, {
+      systemPrompt,
+      userPrompt: text,
     });
 
-    if (!response.ok) {
-      const status = response.status;
-      if (status === 429 || status === 402) {
-        return new Response(JSON.stringify({ error: status === 429 ? "Příliš mnoho požadavků" : "Kredit vyčerpán" }), {
-          status, headers: { ...corsHeaders, "Content-Type": "application/json" }
-        });
-      }
-      return new Response(JSON.stringify({ epicText: text }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" }
-      });
+    if (!result.ok) {
+      if (result.status === 429) return jsonResponse({ error: "Příliš mnoho požadavků" }, 429);
+      if (result.status === 402) return jsonResponse({ error: "Kredit vyčerpán" }, 402);
+      return jsonResponse({ epicText: text });
     }
 
-    const data = await response.json();
-    const epicText = data.choices?.[0]?.message?.content || text;
-
-    return new Response(JSON.stringify({ epicText }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" }
-    });
+    const epicText = result.data?.content || text;
+    return jsonResponse({ epicText, debug: result.debug });
   } catch (e) {
     console.error("declaration-rewrite error:", e);
-    return new Response(JSON.stringify({ error: e instanceof Error ? e.message : "Unknown error" }), {
-      status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" }
-    });
+    return errorResponse(e instanceof Error ? e.message : "Unknown error");
   }
 });
