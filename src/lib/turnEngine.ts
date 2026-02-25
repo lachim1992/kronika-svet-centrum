@@ -192,6 +192,8 @@ export async function recruitStack(
   await supabase.from("chronicle_entries").insert({
     session_id: sessionId,
     text: `${playerName} zřídil armádu **${stackName}** (${preset.label}). Síla vojska: ${totalManpower} mužů, náklady: ${totalGold} zlata.`,
+    turn_from: null,
+    turn_to: null,
   });
 
   // Also write to legacy military_capacity for backward compat

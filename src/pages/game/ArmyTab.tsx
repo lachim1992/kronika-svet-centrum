@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { dispatchCommand } from "@/lib/commands";
 import { ensureRealmResources, recomputeManpowerPool, UNIT_TYPE_LABELS, UNIT_GOLD_FACTOR, FORMATION_PRESETS } from "@/lib/turnEngine";
 import { computeWorkforceBreakdown, DEFAULT_MAX_MOBILIZATION } from "@/lib/economyConstants";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -624,9 +625,10 @@ function StackDetailDialog({
       gold_reserve: (realm?.gold_reserve || 0) - addedGold,
     }).eq("id", realm?.id || "");
 
-    await supabase.from("chronicle_entries").insert({
-      session_id: sessionId,
-      text: `${currentPlayerName} posílil **${stack.name}** o ${addedManpower} mužů (náklady: ${Math.round(addedGold)} zlata).`,
+    await dispatchCommand({
+      sessionId, actor: { name: currentPlayerName }, commandType: "REINFORCE_STACK",
+      commandPayload: { stackId: stack.id, stackName: stack.name, addedManpower, addedGold: Math.round(addedGold),
+        chronicleText: `${currentPlayerName} posílil **${stack.name}** o ${addedManpower} mužů (náklady: ${Math.round(addedGold)} zlata).` },
     });
 
     setReinforcements({});
@@ -646,9 +648,10 @@ function StackDetailDialog({
       gold_reserve: (realm?.gold_reserve || 0) - cost,
     }).eq("id", realm?.id || "");
 
-    await supabase.from("chronicle_entries").insert({
-      session_id: sessionId,
-      text: `${currentPlayerName} povýšil **${stack.name}** na ${FORMATION_LABELS[target]}. Náklady: ${cost} zlata.`,
+    await dispatchCommand({
+      sessionId, actor: { name: currentPlayerName }, commandType: "UPGRADE_FORMATION",
+      commandPayload: { stackId: stack.id, stackName: stack.name, target, cost,
+        chronicleText: `${currentPlayerName} povýšil **${stack.name}** na ${FORMATION_LABELS[target]}. Náklady: ${cost} zlata.` },
     });
 
     toast.success(`Povýšeno na ${FORMATION_LABELS[target]}`);
@@ -664,9 +667,10 @@ function StackDetailDialog({
     await supabase.from("military_stacks").update({ general_id: generalId }).eq("id", stack.id);
 
     const gen = generals.find(g => g.id === generalId);
-    await supabase.from("chronicle_entries").insert({
-      session_id: sessionId,
-      text: `${currentPlayerName} jmenoval **${gen?.name || "generála"}** velitelem **${stack.name}**.`,
+    await dispatchCommand({
+      sessionId, actor: { name: currentPlayerName }, commandType: "ASSIGN_GENERAL",
+      commandPayload: { stackId: stack.id, stackName: stack.name, generalId, generalName: gen?.name,
+        chronicleText: `${currentPlayerName} jmenoval **${gen?.name || "generála"}** velitelem **${stack.name}**.` },
     });
 
     toast.success("Generál přiřazen");
@@ -683,9 +687,10 @@ function StackDetailDialog({
       manpower_committed: Math.max(0, (realm?.manpower_committed || 0) - returnedManpower),
     }).eq("id", realm?.id || "");
 
-    await supabase.from("chronicle_entries").insert({
-      session_id: sessionId,
-      text: `${currentPlayerName} rozpustil **${stack.name}**. ${returnedManpower} mužů se vrátilo do manpower pool.`,
+    await dispatchCommand({
+      sessionId, actor: { name: currentPlayerName }, commandType: "DISBAND_STACK",
+      commandPayload: { stackId: stack.id, stackName: stack.name, returnedManpower,
+        chronicleText: `${currentPlayerName} rozpustil **${stack.name}**. ${returnedManpower} mužů se vrátilo do manpower pool.` },
     });
 
     toast.success("Jednotka rozpuštěna");
@@ -1004,9 +1009,10 @@ function CreateGeneralDialog({
       await supabase.from("realm_resources").update({ gold_reserve: realm.gold_reserve - cost }).eq("id", realm.id);
     }
 
-    await supabase.from("chronicle_entries").insert({
-      session_id: sessionId,
-      text: `${currentPlayerName} jmenoval generála **${name.trim()}** (schopnost ${skill}). Náklady: ${cost} zlata.`,
+    await dispatchCommand({
+      sessionId, actor: { name: currentPlayerName }, commandType: "RECRUIT_GENERAL",
+      commandPayload: { generalName: name.trim(), skill, cost, flavorTrait: flavorTrait.trim() || null,
+        chronicleText: `${currentPlayerName} jmenoval generála **${name.trim()}** (schopnost ${skill}). Náklady: ${cost} zlata.` },
     });
 
     toast.success(`Generál ${name.trim()} jmenován (sch. ${skill})`);
