@@ -408,24 +408,32 @@ export type Database = {
       }
       cities: {
         Row: {
+          birth_rate: number
           city_description_cached: string | null
           city_description_last_turn: number
           city_stability: number
           created_at: string
           culture_id: string | null
           custom_layers: boolean
+          death_rate: number
           devastated_round: number | null
           development_level: number
+          disease_level: number
+          epidemic_active: boolean
+          epidemic_turn_start: number | null
           famine_consecutive_turns: number
           famine_severity: number
           famine_turn: boolean
           flavor_prompt: string | null
           founded_round: number
+          housing_capacity: number
           id: string
           influence_score: number
           irrigation_level: number
           labor_allocation: Json
           language_id: string | null
+          last_migration_in: number
+          last_migration_out: number
           last_tick_at: string | null
           last_turn_grain_cons: number
           last_turn_grain_prod: number
@@ -439,8 +447,11 @@ export type Database = {
           local_granary_capacity: number
           market_level: number
           max_districts: number
+          migration_pressure: number
           military_garrison: number
+          mobility_rate: number
           name: string
+          overcrowding_ratio: number
           owner_player: string
           population_burghers: number
           population_clerics: number
@@ -461,24 +472,32 @@ export type Database = {
           vulnerability_score: number
         }
         Insert: {
+          birth_rate?: number
           city_description_cached?: string | null
           city_description_last_turn?: number
           city_stability?: number
           created_at?: string
           culture_id?: string | null
           custom_layers?: boolean
+          death_rate?: number
           devastated_round?: number | null
           development_level?: number
+          disease_level?: number
+          epidemic_active?: boolean
+          epidemic_turn_start?: number | null
           famine_consecutive_turns?: number
           famine_severity?: number
           famine_turn?: boolean
           flavor_prompt?: string | null
           founded_round?: number
+          housing_capacity?: number
           id?: string
           influence_score?: number
           irrigation_level?: number
           labor_allocation?: Json
           language_id?: string | null
+          last_migration_in?: number
+          last_migration_out?: number
           last_tick_at?: string | null
           last_turn_grain_cons?: number
           last_turn_grain_prod?: number
@@ -492,8 +511,11 @@ export type Database = {
           local_granary_capacity?: number
           market_level?: number
           max_districts?: number
+          migration_pressure?: number
           military_garrison?: number
+          mobility_rate?: number
           name: string
+          overcrowding_ratio?: number
           owner_player: string
           population_burghers?: number
           population_clerics?: number
@@ -514,24 +536,32 @@ export type Database = {
           vulnerability_score?: number
         }
         Update: {
+          birth_rate?: number
           city_description_cached?: string | null
           city_description_last_turn?: number
           city_stability?: number
           created_at?: string
           culture_id?: string | null
           custom_layers?: boolean
+          death_rate?: number
           devastated_round?: number | null
           development_level?: number
+          disease_level?: number
+          epidemic_active?: boolean
+          epidemic_turn_start?: number | null
           famine_consecutive_turns?: number
           famine_severity?: number
           famine_turn?: boolean
           flavor_prompt?: string | null
           founded_round?: number
+          housing_capacity?: number
           id?: string
           influence_score?: number
           irrigation_level?: number
           labor_allocation?: Json
           language_id?: string | null
+          last_migration_in?: number
+          last_migration_out?: number
           last_tick_at?: string | null
           last_turn_grain_cons?: number
           last_turn_grain_prod?: number
@@ -545,8 +575,11 @@ export type Database = {
           local_granary_capacity?: number
           market_level?: number
           max_districts?: number
+          migration_pressure?: number
           military_garrison?: number
+          mobility_rate?: number
           name?: string
+          overcrowding_ratio?: number
           owner_player?: string
           population_burghers?: number
           population_clerics?: number

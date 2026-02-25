@@ -13,6 +13,7 @@ import {
   Sparkles, TrendingUp, Castle, ScrollText, BookOpen, ImageIcon,
 } from "lucide-react";
 import CityGovernancePanel from "@/components/city/CityGovernancePanel";
+import CityDemographyPanel from "@/components/city/CityDemographyPanel";
 
 // ═══════════════════════════════════════════
 // TYPES
@@ -94,11 +95,12 @@ const MAX_SLOTS: Record<string, number> = { HAMLET: 3, TOWNSHIP: 5, CITY: 8, POL
 // SECTIONS
 // ═══════════════════════════════════════════
 
-type Section = "overview" | "buildings" | "build-new" | "economy" | "decrees";
+type Section = "overview" | "buildings" | "build-new" | "economy" | "demography" | "decrees";
 
 const SECTIONS: { key: Section; label: string; icon: React.ReactNode }[] = [
   { key: "overview", label: "Přehled", icon: <Castle className="h-4 w-4" /> },
   { key: "buildings", label: "Stavby", icon: <Building2 className="h-4 w-4" /> },
+  { key: "demography", label: "Demografie", icon: <Users className="h-4 w-4" /> },
   { key: "economy", label: "Ekonomika", icon: <Coins className="h-4 w-4" /> },
   { key: "decrees", label: "Dekrety", icon: <ScrollText className="h-4 w-4" /> },
 ];
@@ -681,6 +683,18 @@ const CityManagement = ({ sessionId, cityId, currentPlayerName, currentTurn, onB
               )}
             </div>
           </div>
+        )}
+
+        {/* DEMOGRAPHY */}
+        {section === "demography" && city && (
+          <CityDemographyPanel
+            sessionId={sessionId}
+            city={city}
+            currentPlayerName={currentPlayerName}
+            currentTurn={currentTurn}
+            isOwner={true}
+            onRefetch={() => fetchData()}
+          />
         )}
 
         {/* ECONOMY */}
