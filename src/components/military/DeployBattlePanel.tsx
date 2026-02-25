@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { dispatchCommand } from "@/lib/commands";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -260,9 +261,10 @@ function DeployStackDialog({ stack, cities, sessionId, onClose, onRefresh }: {
       is_deployed: true,
       moved_this_turn: false,
     } as any).eq("id", stack.id);
-    await supabase.from("chronicle_entries").insert({
-      session_id: sessionId,
-      text: `Armáda **${stack.name}** byla rozmístěna u města **${city.name}** (${city.province_q},${city.province_r}).`,
+    await dispatchCommand({
+      sessionId, actor: { name: stack.player_name || "system" }, commandType: "DEPLOY_STACK",
+      commandPayload: { stackId: stack.id, stackName: stack.name, cityId: city.id, cityName: city.name, hexQ: city.province_q, hexR: city.province_r,
+        chronicleText: `Armáda **${stack.name}** byla rozmístěna u města **${city.name}** (${city.province_q},${city.province_r}).` },
     });
     toast.success(`${stack.name} rozmístěna u ${city.name}`);
     setSaving(false);
@@ -579,9 +581,10 @@ function PostBattleDecision({ decision, sessionId, playerName, currentTurn, stac
     // vassalize = no ownership change, just diplomatic entry
 
     await supabase.from("action_queue").update({ status: "executed" }).eq("id", decision.id);
-    await supabase.from("chronicle_entries").insert({
-      session_id: sessionId,
-      text: `Po vítězné bitvě se **${playerName}** rozhodl pro **${labels[action]}** města **${city?.name || "?"}**.`,
+    await dispatchCommand({
+      sessionId, actor: { name: playerName }, commandType: "POST_BATTLE_DECISION",
+      commandPayload: { action, cityId: city?.id, cityName: city?.name, decisionId: decision.id,
+        chronicleText: `Po vítězné bitvě se **${playerName}** rozhodl pro **${labels[action]}** města **${city?.name || "?"}**.` },
     });
     toast.success(`Rozhodnutí: ${labels[action]}`);
     setSaving(false);

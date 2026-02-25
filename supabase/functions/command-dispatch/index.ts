@@ -137,13 +137,76 @@ async function executeCommand(
       return await executeFoundCity(supabase, base, actor, payload);
 
     case "RECRUIT_STACK":
-      return insertEvents(supabase, commandId, [{
+      return insertEventsWithChronicle(supabase, commandId, sessionId, turnNumber, [{
         ...base,
         event_type: "military",
         note: payload.note || `${actor.name} verboval novou armádu.`,
         importance: "normal",
         reference: { stackId: payload.stackId, units: payload.units, ...payload },
-      }]);
+      }], payload.chronicleText);
+
+    case "REINFORCE_STACK":
+      return insertEventsWithChronicle(supabase, commandId, sessionId, turnNumber, [{
+        ...base,
+        event_type: "military",
+        note: payload.note || `${actor.name} posílil armádu.`,
+        importance: "normal",
+        reference: payload,
+      }], payload.chronicleText);
+
+    case "UPGRADE_FORMATION":
+      return insertEventsWithChronicle(supabase, commandId, sessionId, turnNumber, [{
+        ...base,
+        event_type: "military",
+        note: payload.note || `${actor.name} povýšil formaci.`,
+        importance: "normal",
+        reference: payload,
+      }], payload.chronicleText);
+
+    case "ASSIGN_GENERAL":
+      return insertEventsWithChronicle(supabase, commandId, sessionId, turnNumber, [{
+        ...base,
+        event_type: "military",
+        note: payload.note || `${actor.name} jmenoval velitele.`,
+        importance: "normal",
+        reference: payload,
+      }], payload.chronicleText);
+
+    case "DISBAND_STACK":
+      return insertEventsWithChronicle(supabase, commandId, sessionId, turnNumber, [{
+        ...base,
+        event_type: "military",
+        note: payload.note || `${actor.name} rozpustil armádu.`,
+        importance: "normal",
+        reference: payload,
+      }], payload.chronicleText);
+
+    case "RECRUIT_GENERAL":
+      return insertEventsWithChronicle(supabase, commandId, sessionId, turnNumber, [{
+        ...base,
+        event_type: "military",
+        note: payload.note || `${actor.name} jmenoval nového generála.`,
+        importance: "normal",
+        reference: payload,
+      }], payload.chronicleText);
+
+    case "DEPLOY_STACK":
+      return insertEventsWithChronicle(supabase, commandId, sessionId, turnNumber, [{
+        ...base,
+        event_type: "military",
+        note: payload.note || `Armáda byla rozmístěna.`,
+        importance: "normal",
+        reference: payload,
+      }], payload.chronicleText);
+
+    case "POST_BATTLE_DECISION":
+      return insertEventsWithChronicle(supabase, commandId, sessionId, turnNumber, [{
+        ...base,
+        event_type: "battle_outcome",
+        note: payload.note || `${actor.name} rozhodl o osudu města po bitvě.`,
+        importance: "critical",
+        reference: payload,
+      }], payload.chronicleText);
 
     case "DECLARE_WAR":
       return insertEvents(supabase, commandId, [{
@@ -426,6 +489,30 @@ async function insertEvents(
   }
 
   return { events: inserted || [], sideEffects };
+}
+
+async function insertEventsWithChronicle(
+  supabase: any,
+  commandId: string,
+  sessionId: string,
+  turnNumber: number,
+  events: any[],
+  chronicleText?: string,
+  sideEffects?: Record<string, any>,
+): Promise<CommandResult> {
+  const result = await insertEvents(supabase, commandId, events, sideEffects);
+  if (result.error) return result;
+
+  if (chronicleText) {
+    await safeInsert(supabase.from("chronicle_entries").insert({
+      session_id: sessionId,
+      turn_from: turnNumber,
+      turn_to: turnNumber,
+      text: chronicleText,
+    }));
+  }
+
+  return result;
 }
 
 async function safeInsert(query: any) {
