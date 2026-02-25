@@ -20,11 +20,11 @@ const ChronicleHubLogo = ({ variant = "full", className = "", size = "md" }: Log
   return (
     <div className={`flex ${isHero ? "flex-col items-center" : "items-center gap-2.5"} shrink-0 ${className}`}>
       <div
-        className="relative shrink-0"
+        className="relative shrink-0 overflow-hidden"
         style={{
           width: isHero ? undefined : imgSize,
           height: isHero ? "auto" : imgSize,
-          maxWidth: isHero ? "420px" : undefined
+          maxWidth: isHero ? "420px" : undefined,
         }}>
 
         {isHero &&
@@ -39,12 +39,17 @@ const ChronicleHubLogo = ({ variant = "full", className = "", size = "md" }: Log
         }
         <img
           alt="The Chronicle Hub"
-          className="relative z-10 w-full h-auto object-contain"
+          className="relative z-10 object-contain"
           style={{
             mixBlendMode: "screen",
             filter: isHero
               ? "brightness(1.1) drop-shadow(0 0 30px hsl(43 64% 52% / 0.2))"
               : "brightness(1.1)",
+            width: isHero ? "130%" : "100%",
+            height: "auto",
+            marginLeft: isHero ? "-15%" : undefined,
+            marginTop: isHero ? "-10%" : undefined,
+            marginBottom: isHero ? "-10%" : undefined,
           }} src="/lovable-uploads/3c000f84-809b-4591-b4a4-49a2b0f60acf.png" />
 
       </div>
