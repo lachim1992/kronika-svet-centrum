@@ -1,5 +1,3 @@
-import logoImage from "@/assets/chronicle-hub-logo.png";
-
 interface LogoProps {
   variant?: "full" | "mark";
   className?: string;
@@ -20,50 +18,28 @@ const ChronicleHubLogo = ({ variant = "full", className = "", size = "md" }: Log
   return (
     <div className={`flex ${isHero ? "flex-col items-center" : "items-center gap-2.5"} shrink-0 ${className}`}>
       <div
-        className="relative shrink-0 overflow-hidden"
+        className="relative shrink-0"
         style={{
           width: isHero ? undefined : imgSize,
           height: isHero ? "auto" : imgSize,
           maxWidth: isHero ? "420px" : undefined,
         }}>
-
-        {isHero &&
-        <div
-          className="absolute inset-0 pointer-events-none"
-          style={{
-            background: "radial-gradient(circle, hsl(43 64% 52% / 0.08) 0%, transparent 70%)",
-            transform: "scale(1.5)",
-            filter: "blur(20px)"
-          }} />
-
-        }
         <img
           alt="The Chronicle Hub"
-          className="relative z-10 object-contain"
-          style={{
-            mixBlendMode: "screen",
-            filter: isHero
-              ? "brightness(1.1) drop-shadow(0 0 30px hsl(43 64% 52% / 0.2))"
-              : "brightness(1.1)",
-            width: isHero ? "130%" : "100%",
-            height: "auto",
-            marginLeft: isHero ? "-15%" : undefined,
-            marginTop: isHero ? "-10%" : undefined,
-            marginBottom: isHero ? "-10%" : undefined,
-          }} src="/lovable-uploads/3c000f84-809b-4591-b4a4-49a2b0f60acf.png" />
-
+          className="w-full h-auto object-contain"
+          src="/lovable-uploads/3c000f84-809b-4591-b4a4-49a2b0f60acf.png"
+        />
       </div>
 
-      {variant === "full" && !isHero &&
-      <span
-        className="tracking-[0.18em] uppercase text-primary font-bold text-lg"
-        style={{ fontFamily: "'Cinzel', serif" }}>
-
+      {variant === "full" && !isHero && (
+        <span
+          className="tracking-[0.18em] uppercase text-primary font-bold text-lg"
+          style={{ fontFamily: "'Cinzel', serif" }}>
           The Chronicle Hub
         </span>
-      }
-    </div>);
-
+      )}
+    </div>
+  );
 };
 
 export default ChronicleHubLogo;
