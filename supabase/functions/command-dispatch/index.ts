@@ -232,14 +232,32 @@ async function executeCommand(
       }]);
 
     case "BUILD_BUILDING":
-      return insertEvents(supabase, commandId, [{
+      return insertEventsWithChronicle(supabase, commandId, sessionId, turnNumber, [{
         ...base,
         event_type: "construction",
         city_id: payload.cityId,
         note: payload.note || `Stavba ${payload.buildingName} v ${payload.cityName}.`,
         importance: "normal",
         reference: { buildingId: payload.buildingId, buildingName: payload.buildingName, ...payload },
-      }]);
+      }], payload.chronicleText);
+
+    case "CREATE_TRADE_OFFER":
+      return insertEventsWithChronicle(supabase, commandId, sessionId, turnNumber, [{
+        ...base,
+        event_type: "trade",
+        note: payload.note || `${actor.name} odeslal obchodní nabídku.`,
+        importance: "normal",
+        reference: payload,
+      }], payload.chronicleText);
+
+    case "ACCEPT_TRADE_OFFER":
+      return insertEventsWithChronicle(supabase, commandId, sessionId, turnNumber, [{
+        ...base,
+        event_type: "trade",
+        note: payload.note || `Obchodní dohoda uzavřena.`,
+        importance: "normal",
+        reference: payload,
+      }], payload.chronicleText);
 
     case "GENERIC":
       return insertEvents(supabase, commandId, [{

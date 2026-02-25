@@ -12,6 +12,7 @@ import {
   ArrowLeftRight, Loader2, Plus, X, Check, Ban,
   TrendingUp, Ship, HandshakeIcon, AlertTriangle,
 } from "lucide-react";
+import { dispatchCommand } from "@/lib/commands";
 import {
   TRADEABLE_RESOURCES, TRADE_RESOURCE_META, TRADE_STATUS_LABELS,
   MAX_TRADE_ROUTES, computeTradeEfficiency,
@@ -126,9 +127,12 @@ const TradePanel = ({ sessionId, currentPlayerName, currentTurn, myCities, allCi
     if (error) { toast.error("Chyba při vytváření nabídky"); }
     else {
       toast.success("📨 Obchodní nabídka odeslána!");
-      await supabase.from("chronicle_entries").insert({
-        session_id: sessionId,
-        text: `**${currentPlayerName}** odeslal obchodní nabídku hráči **${targetCity.owner_player}**: ${TRADE_RESOURCE_META[offerRes as keyof typeof TRADE_RESOURCE_META]?.icon || ""}${offerAmt} ${TRADE_RESOURCE_META[offerRes as keyof typeof TRADE_RESOURCE_META]?.label || offerRes} za ${TRADE_RESOURCE_META[requestRes as keyof typeof TRADE_RESOURCE_META]?.icon || ""}${requestAmt} ${TRADE_RESOURCE_META[requestRes as keyof typeof TRADE_RESOURCE_META]?.label || requestRes}.`,
+      const chronicleText = `**${currentPlayerName}** odeslal obchodní nabídku hráči **${targetCity.owner_player}**: ${TRADE_RESOURCE_META[offerRes as keyof typeof TRADE_RESOURCE_META]?.icon || ""}${offerAmt} ${TRADE_RESOURCE_META[offerRes as keyof typeof TRADE_RESOURCE_META]?.label || offerRes} za ${TRADE_RESOURCE_META[requestRes as keyof typeof TRADE_RESOURCE_META]?.icon || ""}${requestAmt} ${TRADE_RESOURCE_META[requestRes as keyof typeof TRADE_RESOURCE_META]?.label || requestRes}.`;
+      await dispatchCommand({
+        sessionId, turnNumber: currentTurn,
+        actor: { name: currentPlayerName, type: "player" },
+        commandType: "CREATE_TRADE_OFFER",
+        commandPayload: { chronicleText, toPlayer: targetCity.owner_player },
       });
       setShowNewOffer(false);
       setMessage("");
@@ -168,9 +172,12 @@ const TradePanel = ({ sessionId, currentPlayerName, currentTurn, myCities, allCi
       responded_at: new Date().toISOString(),
     }).eq("id", offer.id);
 
-    await supabase.from("chronicle_entries").insert({
-      session_id: sessionId,
-      text: `Obchodní dohoda uzavřena mezi **${offer.from_player}** a **${offer.to_player}**: trasa ${cityNameMap[offer.from_city_id] || "?"} ↔ ${cityNameMap[offer.to_city_id] || "?"}.`,
+    const chronicleText = `Obchodní dohoda uzavřena mezi **${offer.from_player}** a **${offer.to_player}**: trasa ${cityNameMap[offer.from_city_id] || "?"} ↔ ${cityNameMap[offer.to_city_id] || "?"}.`;
+    await dispatchCommand({
+      sessionId, turnNumber: currentTurn,
+      actor: { name: currentPlayerName, type: "player" },
+      commandType: "ACCEPT_TRADE_OFFER",
+      commandPayload: { chronicleText, fromPlayer: offer.from_player, toPlayer: offer.to_player },
     });
 
     toast.success("✅ Obchodní dohoda uzavřena!");

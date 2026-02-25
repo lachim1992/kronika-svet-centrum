@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { dispatchCommand } from "@/lib/commands";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -114,10 +115,13 @@ const CityBuildingsPanel = ({
       completed_turn: template.build_turns <= 1 ? currentTurn : null,
     });
 
-    // Chronicle
-    await supabase.from("chronicle_entries").insert({
-      session_id: sessionId,
-      text: `V městě **${cityName}** byla zahájena výstavba: **${template.name}**. ${template.flavor_text || template.description}`,
+    // Chronicle via command-dispatch
+    const chronicleText = `V městě **${cityName}** byla zahájena výstavba: **${template.name}**. ${template.flavor_text || template.description}`;
+    await dispatchCommand({
+      sessionId, turnNumber: currentTurn,
+      actor: { name: currentPlayerName, type: "player" },
+      commandType: "BUILD_BUILDING",
+      commandPayload: { cityId, cityName, buildingName: template.name, chronicleText },
     });
 
     toast.success(`🏗️ Stavba "${template.name}" zahájena!`);
@@ -175,10 +179,13 @@ const CityBuildingsPanel = ({
         completed_turn: buildDuration <= 1 ? currentTurn : null,
       });
 
-      // Chronicle
-      await supabase.from("chronicle_entries").insert({
-        session_id: sessionId,
-        text: `V městě **${cityName}** vzniká unikátní stavba: **${data.name}**. ${data.founding_myth || data.description || ""}`,
+      // Chronicle via command-dispatch
+      const chronicleText = `V městě **${cityName}** vzniká unikátní stavba: **${data.name}**. ${data.founding_myth || data.description || ""}`;
+      await dispatchCommand({
+        sessionId, turnNumber: currentTurn,
+        actor: { name: currentPlayerName, type: "player" },
+        commandType: "BUILD_BUILDING",
+        commandPayload: { cityId, cityName, buildingName: data.name, chronicleText, isAiGenerated: true },
       });
 
       toast.success(`✨ AI stavba "${data.name}" vytvořena!`);
