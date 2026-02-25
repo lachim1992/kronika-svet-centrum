@@ -6,11 +6,12 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
-import { InfoTip } from "@/components/ui/info-tip";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import {
   Building2, Loader2, Plus, Sparkles, Hammer, Shield, Landmark, Coins,
-  Factory, Church, ArrowRight, Clock, CheckCircle2,
+  Factory, Church, ArrowRight, Clock, CheckCircle2, ImageIcon,
 } from "lucide-react";
 
 interface Props {
@@ -45,6 +46,8 @@ const CityBuildingsPanel = ({
   const [saving, setSaving] = useState(false);
   const [showAI, setShowAI] = useState(false);
   const [aiPrompt, setAiPrompt] = useState("");
+  const [aiMyth, setAiMyth] = useState("");
+  const [aiVisual, setAiVisual] = useState("");
   const [aiGenerating, setAiGenerating] = useState(false);
   const [activeCategory, setActiveCategory] = useState("economic");
 
@@ -63,7 +66,6 @@ const CityBuildingsPanel = ({
 
   const settlementIdx = SETTLEMENT_ORDER.indexOf(settlementLevel);
 
-  // Filter templates available for current settlement level
   const availableTemplates = templates.filter(t => {
     const reqIdx = SETTLEMENT_ORDER.indexOf(t.required_settlement_level);
     return reqIdx <= settlementIdx;
@@ -87,7 +89,6 @@ const CityBuildingsPanel = ({
     if (template.is_unique && alreadyBuilt.has(template.id)) { toast.error("Tato stavba je unikátní a již stojí."); return; }
     setSaving(true);
 
-    // Deduct resources
     await supabase.from("realm_resources").update({
       gold_reserve: (realm.gold_reserve || 0) - template.cost_wealth,
       wood_reserve: (realm.wood_reserve || 0) - template.cost_wood,
@@ -95,7 +96,6 @@ const CityBuildingsPanel = ({
       iron_reserve: (realm.iron_reserve || 0) - template.cost_iron,
     } as any).eq("id", realm.id);
 
-    // Insert building
     await supabase.from("city_buildings").insert({
       session_id: sessionId,
       city_id: cityId,
@@ -115,7 +115,6 @@ const CityBuildingsPanel = ({
       completed_turn: template.build_turns <= 1 ? currentTurn : null,
     });
 
-    // Chronicle via command-dispatch
     const chronicleText = `V městě **${cityName}** byla zahájena výstavba: **${template.name}**. ${template.flavor_text || template.description}`;
     await dispatchCommand({
       sessionId, turnNumber: currentTurn,
@@ -141,12 +140,13 @@ const CityBuildingsPanel = ({
           cityName,
           cityLevel: settlementLevel,
           playerDescription: aiPrompt,
+          buildingMyth: aiMyth || undefined,
+          visualDescription: aiVisual || undefined,
         },
       });
       if (error) throw error;
       if (data?.error) { toast.error(data.error); return; }
 
-      // Deduct resources from realm
       if (realm) {
         await supabase.from("realm_resources").update({
           gold_reserve: Math.max(0, (realm.gold_reserve || 0) - (data.cost_wealth || 0)),
@@ -156,7 +156,6 @@ const CityBuildingsPanel = ({
         } as any).eq("id", realm.id);
       }
 
-      // Insert building into DB
       const buildDuration = data.build_duration || 1;
       await supabase.from("city_buildings").insert({
         session_id: sessionId,
@@ -174,12 +173,12 @@ const CityBuildingsPanel = ({
         flavor_text: data.flavor_text || null,
         founding_myth: data.founding_myth || null,
         image_prompt: data.image_prompt || null,
+        image_url: data.image_url || null,
         is_ai_generated: true,
         status: buildDuration <= 1 ? "completed" : "building",
         completed_turn: buildDuration <= 1 ? currentTurn : null,
       });
 
-      // Chronicle via command-dispatch
       const chronicleText = `V městě **${cityName}** vzniká unikátní stavba: **${data.name}**. ${data.founding_myth || data.description || ""}`;
       await dispatchCommand({
         sessionId, turnNumber: currentTurn,
@@ -190,6 +189,8 @@ const CityBuildingsPanel = ({
 
       toast.success(`✨ AI stavba "${data.name}" vytvořena!`);
       setAiPrompt("");
+      setAiMyth("");
+      setAiVisual("");
       setShowAI(false);
       onRefetch?.();
       fetchData();
@@ -207,6 +208,65 @@ const CityBuildingsPanel = ({
     return <div className="flex justify-center py-6"><Loader2 className="h-5 w-5 animate-spin text-primary" /></div>;
   }
 
+  const BuildingCard = ({ b, isConstructing = false }: { b: any; isConstructing?: boolean }) => {
+    const effects = (b.effects && typeof b.effects === "object") ? b.effects : {};
+    const turnsLeft = isConstructing ? Math.max(0, b.build_started_turn + b.build_duration - currentTurn) : 0;
+
+    return (
+      <div className={`rounded-lg border overflow-hidden ${isConstructing ? "border-muted bg-muted/20" : "border-border"}`}>
+        {/* Image */}
+        {b.image_url && (
+          <div className="relative w-full h-32 overflow-hidden">
+            <img
+              src={b.image_url}
+              alt={b.name}
+              className="w-full h-full object-cover"
+            />
+            <div className="absolute inset-0 bg-gradient-to-t from-card/90 to-transparent" />
+          </div>
+        )}
+        <div className="p-3">
+          <div className="flex items-center gap-2">
+            {isConstructing ? (
+              <Hammer className="h-4 w-4 text-muted-foreground shrink-0" />
+            ) : (
+              <CheckCircle2 className="h-4 w-4 text-primary shrink-0" />
+            )}
+            <div className="flex-1 min-w-0">
+              <p className="text-xs font-display font-semibold">{b.name}</p>
+              <p className="text-[10px] text-muted-foreground">{b.description}</p>
+            </div>
+            <Badge variant="outline" className="text-[10px] shrink-0">{b.category}</Badge>
+            {b.is_ai_generated && <Badge variant="secondary" className="text-[9px]">✨ AI</Badge>}
+            {isConstructing && (
+              <Badge variant="outline" className="text-[10px]">
+                🏗️ {turnsLeft > 0 ? `${turnsLeft} kol` : "Dokončuje se"}
+              </Badge>
+            )}
+          </div>
+          {b.flavor_text && (
+            <p className="text-[10px] text-muted-foreground/70 italic mt-1">„{b.flavor_text}"</p>
+          )}
+          {b.founding_myth && (
+            <div className="mt-2 p-2 rounded bg-muted/30 border border-border/50">
+              <p className="text-[9px] text-muted-foreground font-display mb-0.5">📜 MÝTUS</p>
+              <p className="text-[10px] text-muted-foreground/80 italic">{b.founding_myth}</p>
+            </div>
+          )}
+          {Object.keys(effects).filter(k => effects[k] > 0).length > 0 && (
+            <div className="flex gap-1.5 mt-1.5 flex-wrap">
+              {Object.entries(effects).filter(([, v]) => Number(v) > 0).map(([k, v]) => (
+                <Badge key={k} variant="outline" className="text-[9px]">
+                  {k.replace(/_/g, " ")}: +{String(v)}
+                </Badge>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
   return (
     <Card>
       <CardHeader className="pb-2">
@@ -219,34 +279,7 @@ const CityBuildingsPanel = ({
         {/* Active buildings */}
         {activeBuildings.length > 0 && (
           <div className="space-y-2">
-            {activeBuildings.map(b => {
-              const effects = (b.effects && typeof b.effects === "object") ? b.effects : {};
-              return (
-                <div key={b.id} className="p-3 rounded-lg border border-border">
-                  <div className="flex items-center gap-2">
-                    <CheckCircle2 className="h-4 w-4 text-primary shrink-0" />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs font-display font-semibold">{b.name}</p>
-                      <p className="text-[10px] text-muted-foreground">{b.description}</p>
-                    </div>
-                    <Badge variant="outline" className="text-[10px] shrink-0">{b.category}</Badge>
-                    {b.is_ai_generated && <Badge variant="secondary" className="text-[9px]">✨ AI</Badge>}
-                  </div>
-                  {b.flavor_text && (
-                    <p className="text-[10px] text-muted-foreground/70 italic mt-1">„{b.flavor_text}"</p>
-                  )}
-                  {Object.keys(effects).length > 0 && (
-                    <div className="flex gap-1.5 mt-1.5 flex-wrap">
-                      {Object.entries(effects).map(([k, v]) => (
-                        <Badge key={k} variant="outline" className="text-[9px]">
-                          {k.replace(/_/g, " ")}: +{String(v)}
-                        </Badge>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
+            {activeBuildings.map(b => <BuildingCard key={b.id} b={b} />)}
           </div>
         )}
 
@@ -256,27 +289,11 @@ const CityBuildingsPanel = ({
             <p className="text-xs font-display font-semibold flex items-center gap-1 text-muted-foreground">
               <Clock className="h-3 w-3" />Ve výstavbě
             </p>
-            {constructing.map(b => {
-              const turnsLeft = Math.max(0, b.build_started_turn + b.build_duration - currentTurn);
-              return (
-                <div key={b.id} className="p-3 rounded-lg border border-muted bg-muted/20 animate-pulse">
-                  <div className="flex items-center gap-2">
-                    <Hammer className="h-4 w-4 text-muted-foreground shrink-0" />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs font-display font-semibold">{b.name}</p>
-                      <p className="text-[10px] text-muted-foreground">{b.description}</p>
-                    </div>
-                    <Badge variant="outline" className="text-[10px]">
-                      🏗️ {turnsLeft > 0 ? `${turnsLeft} kol` : "Dokončuje se"}
-                    </Badge>
-                  </div>
-                </div>
-              );
-            })}
+            {constructing.map(b => <BuildingCard key={b.id} b={b} isConstructing />)}
           </div>
         )}
 
-        {/* Build new — template picker */}
+        {/* Build new — template picker or AI */}
         {isOwner && (
           <div className="space-y-3 pt-2 border-t border-border">
             <div className="flex items-center justify-between">
@@ -289,22 +306,52 @@ const CityBuildingsPanel = ({
                 className="h-6 text-[10px] gap-1"
                 onClick={() => setShowAI(!showAI)}
               >
-                <Sparkles className="h-3 w-3" />{showAI ? "Šablony" : "AI stavba"}
+                <Sparkles className="h-3 w-3" />{showAI ? "Šablony" : "Navrhnout vlastní stavbu (AI)"}
               </Button>
             </div>
 
             {showAI ? (
-              <div className="space-y-2">
-                <p className="text-[10px] text-muted-foreground">
-                  Popište stavbu, kterou chcete vytvořit. AI navrhne mechaniky, popis a příběh.
+              <div className="space-y-3">
+                <p className="text-[10px] font-display uppercase tracking-wider text-muted-foreground flex items-center gap-1">
+                  <Sparkles className="h-3 w-3" />Navrhnout vlastní stavbu (AI)
                 </p>
-                <Textarea
-                  value={aiPrompt}
-                  onChange={e => setAiPrompt(e.target.value)}
-                  placeholder="Např.: Starodávná observatoř na vrcholu kopce, kde mudrci pozorují hvězdy a předpovídají budoucnost..."
-                  rows={3}
-                  className="text-xs"
-                />
+
+                <div className="space-y-2">
+                  <div>
+                    <Label className="text-[11px] font-display">Co chcete postavit? *</Label>
+                    <Textarea
+                      value={aiPrompt}
+                      onChange={e => setAiPrompt(e.target.value)}
+                      placeholder="Např. Věž strážců – vysoká kamenná věž na okraji osady, sloužící jako hlídka a útočiště..."
+                      rows={2}
+                      className="text-xs mt-1"
+                    />
+                  </div>
+
+                  <div>
+                    <Label className="text-[11px] font-display">Zakladatelský mýtus (volitelné)</Label>
+                    <Textarea
+                      value={aiMyth}
+                      onChange={e => setAiMyth(e.target.value)}
+                      placeholder="Podle legendy první kámen položil sám praotec kmene..."
+                      rows={2}
+                      className="text-xs mt-1"
+                    />
+                  </div>
+
+                  <div>
+                    <Label className="text-[11px] font-display flex items-center gap-1">
+                      <ImageIcon className="h-3 w-3" />Vizuální popis (volitelné)
+                    </Label>
+                    <Input
+                      value={aiVisual}
+                      onChange={e => setAiVisual(e.target.value)}
+                      placeholder="Tmavý kámen, vysoká špička, gotický styl..."
+                      className="text-xs mt-1"
+                    />
+                  </div>
+                </div>
+
                 <Button
                   size="sm"
                   onClick={handleAIGenerate}
@@ -312,7 +359,7 @@ const CityBuildingsPanel = ({
                   className="w-full text-xs gap-1"
                 >
                   {aiGenerating ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
-                  {aiGenerating ? "Generuji stavbu..." : "Vygenerovat AI stavbu"}
+                  {aiGenerating ? "Generuji návrh..." : "Vygenerovat návrh"}
                 </Button>
               </div>
             ) : (
@@ -360,7 +407,6 @@ const CityBuildingsPanel = ({
                               </Button>
                             )}
                           </div>
-                          {/* Costs */}
                           <div className="flex gap-2 mt-1.5 flex-wrap items-center">
                             <div className="flex gap-1 text-[9px] text-muted-foreground">
                               {t.cost_wealth > 0 && <span>💰{t.cost_wealth}</span>}

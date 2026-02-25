@@ -112,6 +112,59 @@ Generate building as JSON:
     }
 
     const result = validateBuilding(parsed);
+
+    // Generate image based on image_prompt + visual description
+    const imagePrompt = visualDescription
+      ? `Medieval fantasy building illustration: ${result.image_prompt}. Visual style: ${visualDescription}. Dark moody atmosphere, detailed architecture, painterly style.`
+      : `Medieval fantasy building illustration: ${result.image_prompt}. Dark moody atmosphere, detailed architecture, painterly style.`;
+
+    try {
+      const imgRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${LOVABLE_API_KEY}`,
+        },
+        body: JSON.stringify({
+          model: "google/gemini-2.5-flash-image",
+          messages: [{ role: "user", content: imagePrompt }],
+          modalities: ["image", "text"],
+        }),
+      });
+
+      if (imgRes.ok) {
+        const imgData = await imgRes.json();
+        const imageUrl = imgData.choices?.[0]?.message?.images?.[0]?.image_url?.url;
+        if (imageUrl) {
+          // Store the base64 image in Supabase storage
+          const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+          const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+          const sb = createClient(supabaseUrl, supabaseKey);
+
+          const base64Data = imageUrl.replace(/^data:image\/\w+;base64,/, "");
+          const bytes = Uint8Array.from(atob(base64Data), c => c.charCodeAt(0));
+          const filePath = `buildings/${sessionId}/${crypto.randomUUID()}.png`;
+
+          const { error: uploadErr } = await sb.storage.from("building-images").upload(filePath, bytes, {
+            contentType: "image/png",
+            upsert: true,
+          });
+
+          if (!uploadErr) {
+            const { data: urlData } = sb.storage.from("building-images").getPublicUrl(filePath);
+            result.image_url = urlData.publicUrl;
+          } else {
+            console.error("Storage upload error:", uploadErr);
+            // Fallback: return base64 directly (will be stored in DB)
+            result.image_url = imageUrl;
+          }
+        }
+      }
+    } catch (imgErr) {
+      console.error("Image generation error:", imgErr);
+      // Continue without image - not critical
+    }
+
     return new Response(JSON.stringify(result), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
@@ -137,6 +190,7 @@ function getDefaultBuilding(desc: string) {
     build_duration: 1,
     effects: { wealth_income: 1, stability_bonus: 2 },
     image_prompt: "A medieval building in a small settlement, watercolor style",
+    image_url: null,
   };
 }
 
@@ -171,5 +225,6 @@ function validateBuilding(p: any) {
       defense_bonus: clamp(e.defense_bonus, 0, 25),
     },
     image_prompt: (p.image_prompt || "").slice(0, 500),
+    image_url: null as string | null,
   };
 }

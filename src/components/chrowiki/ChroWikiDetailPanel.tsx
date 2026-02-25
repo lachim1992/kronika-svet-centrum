@@ -34,12 +34,13 @@ const ENTITY_ICONS: Record<string, React.ReactNode> = {
   event: <Calendar className="h-5 w-5" />,
   battle: <Swords className="h-5 w-5" />,
   expedition: <Compass className="h-5 w-5" />,
+  building: <Landmark className="h-5 w-5" />,
 };
 
 const ENTITY_LABELS: Record<string, string> = {
   country: "Stát", region: "Region", province: "Provincie", city: "Město",
   wonder: "Div světa", person: "Osobnost", event: "Událost", battle: "Bitva",
-  expedition: "Objev",
+  expedition: "Objev", building: "Stavba",
 };
 
 const SIGIL_TYPES = new Set(["country", "region", "province", "city"]);
@@ -53,6 +54,7 @@ const TABLE_MAP: Record<string, { table: string; nameCol: string }> = {
   person: { table: "great_persons", nameCol: "name" },
   event: { table: "world_events", nameCol: "title" },
   expedition: { table: "expeditions", nameCol: "narrative" },
+  building: { table: "city_buildings", nameCol: "name" },
 };
 
 const CHRONICLE_CATEGORIES = [
@@ -347,6 +349,11 @@ const ChroWikiDetailPanel = ({
       if (entity.date) facts.push({ label: "Datum", value: entity.date });
       if (entity.event_category) facts.push({ label: "Kategorie", value: entity.event_category });
       if (entity.created_turn) facts.push({ label: "Kolo", value: String(entity.created_turn) });
+    } else if (entityType === "building") {
+      facts.push({ label: "Kategorie", value: entity.category || "—" });
+      facts.push({ label: "Status", value: entity.status === "completed" ? "Dokončena" : "Ve výstavbě" });
+      if (entity.build_started_turn) facts.push({ label: "Založena", value: `Rok ${entity.build_started_turn}` });
+      if (entity.is_ai_generated) facts.push({ label: "Typ", value: "✨ AI navržená" });
     }
     return facts;
   }, [entity, entityType, entityId, cities]);
@@ -381,6 +388,9 @@ const ChroWikiDetailPanel = ({
     } else if (entityType === "person") {
       const city = cities.find(c => c.id === entity?.city_id);
       if (city) related.push({ type: "city", id: city.id, name: city.name, relation: "Sídlo" });
+    } else if (entityType === "building") {
+      const city = cities.find(c => c.id === entity?.city_id);
+      if (city) related.push({ type: "city", id: city.id, name: city.name, relation: "Město" });
     }
     return related;
   }, [entityType, entityId, entity, countries, regions, provinces, cities, wonders, persons]);
@@ -1048,7 +1058,49 @@ const ChroWikiDetailPanel = ({
               </>
             )}
 
-            {/* ═══ CITY-SPECIFIC: Population, Economy, Flavor, Status, Map Icon ═══ */}
+            {/* ═══ BUILDING-SPECIFIC: Image, Myth, Effects ═══ */}
+            {!readingMode && entityType === "building" && entity && (
+              <>
+                <OrnamentalDivider />
+                {entity.image_url && (
+                  <div className="mb-4 rounded-lg overflow-hidden border border-border">
+                    <img src={entity.image_url} alt={entity.name} className="w-full h-48 object-cover" />
+                  </div>
+                )}
+                <section className="mb-3 p-3.5 rounded-lg" style={{ background: 'hsl(var(--secondary) / 0.2)', border: '1px solid hsl(var(--border))' }}>
+                  <h3 className="font-decorative text-sm font-semibold mb-2 flex items-center gap-2">
+                    <Landmark className="h-4 w-4 text-primary" /> Popis stavby
+                  </h3>
+                  <p className="text-xs text-muted-foreground leading-relaxed">{entity.description}</p>
+                  {entity.flavor_text && (
+                    <p className="text-xs text-muted-foreground/70 italic mt-2">„{entity.flavor_text}"</p>
+                  )}
+                </section>
+                {entity.founding_myth && (
+                  <section className="mb-3 p-3.5 rounded-lg" style={{ background: 'hsl(var(--primary) / 0.05)', border: '1px solid hsl(var(--primary) / 0.15)' }}>
+                    <h3 className="font-decorative text-sm font-semibold mb-2 flex items-center gap-2">
+                      <Scroll className="h-4 w-4 text-primary" /> Zakladatelský mýtus
+                    </h3>
+                    <p className="text-xs text-muted-foreground leading-relaxed italic">{entity.founding_myth}</p>
+                  </section>
+                )}
+                {entity.effects && typeof entity.effects === "object" && Object.keys(entity.effects).filter(k => entity.effects[k] > 0).length > 0 && (
+                  <section className="mb-3 p-3.5 rounded-lg" style={{ background: 'hsl(var(--secondary) / 0.2)', border: '1px solid hsl(var(--border))' }}>
+                    <h3 className="font-decorative text-sm font-semibold mb-2 flex items-center gap-2">
+                      <Zap className="h-4 w-4 text-primary" /> Efekty
+                    </h3>
+                    <div className="flex flex-wrap gap-1.5">
+                      {Object.entries(entity.effects).filter(([, v]) => Number(v) > 0).map(([k, v]) => (
+                        <Badge key={k} variant="outline" className="text-xs">
+                          {k.replace(/_/g, " ")}: +{String(v)}
+                        </Badge>
+                      ))}
+                    </div>
+                  </section>
+                )}
+              </>
+            )}
+
             {!readingMode && entityType === "city" && entity && (
               <>
                 <OrnamentalDivider />

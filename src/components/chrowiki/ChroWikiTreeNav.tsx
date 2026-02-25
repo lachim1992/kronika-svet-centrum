@@ -1,7 +1,7 @@
 import { useState, useCallback, useMemo } from "react";
 import {
   Globe, MapPin, Castle, Crown, Swords, Landmark, Calendar,
-  ChevronRight, ChevronDown, Mountain, Scroll, Compass, Flag,
+  ChevronRight, ChevronDown, Mountain, Scroll, Compass, Flag, Building2,
 } from "lucide-react";
 
 interface Props {
@@ -13,6 +13,7 @@ interface Props {
   persons: any[];
   events: any[];
   expeditions: any[];
+  buildings: any[];
   selectedEntity: { type: string; id: string; name: string } | null;
   isEntityVisible: (type: string, id: string, ownerPlayer?: string) => boolean;
   isAdmin: boolean;
@@ -20,7 +21,7 @@ interface Props {
 }
 
 const ChroWikiTreeNav = ({
-  countries, regions, provinces, cities, wonders, persons, events, expeditions,
+  countries, regions, provinces, cities, wonders, persons, events, expeditions, buildings,
   selectedEntity, isEntityVisible, isAdmin, onSelectEntity,
 }: Props) => {
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set());
@@ -42,6 +43,11 @@ const ChroWikiTreeNav = ({
   const discoveries = useMemo(() =>
     expeditions.filter(e => e.status === "resolved"),
     [expeditions]
+  );
+
+  const aiBuildings = useMemo(() =>
+    buildings.filter(b => b.is_ai_generated),
+    [buildings]
   );
 
   const TreeNode = ({ id, label, icon, type, entityId, children, count, indent = 0 }: {
@@ -189,6 +195,16 @@ const ChroWikiTreeNav = ({
             icon={<Landmark className="h-3.5 w-3.5" />} type="wonder" entityId={w.id} indent={1} />
         ))}
       </TreeNode>
+
+      {aiBuildings.length > 0 && (
+        <TreeNode id="cat-buildings" label="Stavby" icon={<Building2 className="h-3.5 w-3.5" />}
+          count={aiBuildings.length} indent={0}>
+          {aiBuildings.map(b => (
+            <TreeNode key={b.id} id={`building-${b.id}`} label={b.name}
+              icon={<Building2 className="h-3.5 w-3.5" />} type="building" entityId={b.id} indent={1} />
+          ))}
+        </TreeNode>
+      )}
 
       <TreeNode id="cat-events" label="Události" icon={<Calendar className="h-3.5 w-3.5" />}
         count={events.length} indent={0}>

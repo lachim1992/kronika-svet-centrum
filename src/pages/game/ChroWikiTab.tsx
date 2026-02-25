@@ -38,6 +38,7 @@ const ENTITY_ICONS: Record<string, React.ReactNode> = {
   battle: <Swords className="h-3.5 w-3.5" />,
   event: <Calendar className="h-3.5 w-3.5" />,
   discovery: <Compass className="h-3.5 w-3.5" />,
+  building: <Landmark className="h-3.5 w-3.5" />,
 };
 
 const ChroWikiTab = ({ sessionId, currentPlayerName = "", myRole = "player", currentTurn, epochStyle, memories, players, entityIndex, onEntityClick, wikiEntityTarget, onClearWikiEntityTarget }: Props) => {
@@ -58,6 +59,7 @@ const ChroWikiTab = ({ sessionId, currentPlayerName = "", myRole = "player", cur
   const [wikiEntries, setWikiEntries] = useState<any[]>([]);
   const [expeditions, setExpeditions] = useState<any[]>([]);
   const [declarations, setDeclarations] = useState<any[]>([]);
+  const [buildings, setBuildings] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   const { isDiscovered, isAdmin } = useDiscoveries(sessionId, currentPlayerName, myRole || "player");
@@ -77,7 +79,8 @@ const ChroWikiTab = ({ sessionId, currentPlayerName = "", myRole = "player", cur
       supabase.from("wiki_entries").select("*").eq("session_id", sessionId),
       supabase.from("expeditions").select("*").eq("session_id", sessionId),
       supabase.from("declarations").select("*").eq("session_id", sessionId).eq("status", "published"),
-    ]).then(([co, r, p, c, w, gp, ev, ch, wi, ex, decl]) => {
+      supabase.from("city_buildings").select("*").eq("session_id", sessionId).eq("is_ai_generated", true),
+    ]).then(([co, r, p, c, w, gp, ev, ch, wi, ex, decl, bld]) => {
       setCountries(co.data || []);
       setRegions(r.data || []);
       setProvinces(p.data || []);
@@ -89,6 +92,7 @@ const ChroWikiTab = ({ sessionId, currentPlayerName = "", myRole = "player", cur
       setWikiEntries(wi.data || []);
       setExpeditions(ex.data || []);
       setDeclarations(decl.data || []);
+      setBuildings(bld.data || []);
       setLoading(false);
     });
   }, [sessionId]);
@@ -143,6 +147,7 @@ const ChroWikiTab = ({ sessionId, currentPlayerName = "", myRole = "player", cur
     wonders.filter(w => w.name.toLowerCase().includes(q) && isEntityVisible("wonder", w.id, w.owner_player)).forEach(w => results.push({ type: "wonder", id: w.id, name: w.name, sub: w.era }));
     persons.filter(p => p.name.toLowerCase().includes(q) && isEntityVisible("person", p.id, p.player_name)).forEach(p => results.push({ type: "person", id: p.id, name: p.name, sub: p.person_type }));
     events.filter(e => e.title?.toLowerCase().includes(q) || e.description?.toLowerCase().includes(q)).forEach(e => results.push({ type: "event", id: e.id, name: e.title, sub: e.event_category }));
+    buildings.filter(b => b.name?.toLowerCase().includes(q) && b.is_ai_generated).forEach(b => results.push({ type: "building", id: b.id, name: b.name, sub: b.category }));
     return results.slice(0, 30);
   }, [search, countries, regions, provinces, cities, wonders, persons, events, isAdmin, isDiscovered]);
 
@@ -227,6 +232,7 @@ const ChroWikiTab = ({ sessionId, currentPlayerName = "", myRole = "player", cur
               persons={persons}
               events={events}
               expeditions={expeditions}
+              buildings={buildings}
               selectedEntity={selectedEntity}
               isEntityVisible={isEntityVisible}
               isAdmin={isAdmin}
