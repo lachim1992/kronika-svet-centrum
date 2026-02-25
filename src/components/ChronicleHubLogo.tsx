@@ -19,7 +19,6 @@ const ChronicleHubLogo = ({ variant = "full", className = "", size = "md" }: Log
 
   return (
     <div className={`flex ${isHero ? "flex-col items-center" : "items-center gap-2.5"} shrink-0 ${className}`}>
-      {/* Logo image with mask to blend into any dark background */}
       <div
         className="relative shrink-0"
         style={{
@@ -28,7 +27,6 @@ const ChronicleHubLogo = ({ variant = "full", className = "", size = "md" }: Log
           maxWidth: isHero ? "420px" : undefined,
         }}
       >
-        {/* Subtle radial glow behind logo in hero mode */}
         {isHero && (
           <div
             className="absolute inset-0 pointer-events-none"
@@ -48,9 +46,20 @@ const ChronicleHubLogo = ({ variant = "full", className = "", size = "md" }: Log
             filter: isHero ? undefined : "brightness(1.1)",
           }}
         />
+        {isHero && (
+          <p
+            className="relative z-10 text-center uppercase tracking-[0.35em] font-light -mt-2"
+            style={{
+              fontFamily: "'Cinzel', serif",
+              fontSize: "0.7rem",
+              color: "hsl(43 64% 52% / 0.45)",
+            }}
+          >
+            Let your thoughts shape history
+          </p>
+        )}
       </div>
 
-      {/* Text label for non-hero inline usage */}
       {variant === "full" && !isHero && (
         <span
           className="tracking-[0.18em] uppercase text-primary font-bold text-lg"
