@@ -259,15 +259,27 @@ async function executeCommand(
         reference: payload,
       }], payload.chronicleText);
 
-    case "GENERATE_CHRONICLE":
-      return insertEventsWithChronicle(supabase, commandId, sessionId, turnNumber, [{
+    case "GENERATE_CHRONICLE": {
+      const chronicleTurn = payload.chronicleTurn || turnNumber;
+      const result = await insertEvents(supabase, commandId, [{
         ...base,
         event_type: "chronicle_generation",
-        note: payload.note || `Kronika vygenerována pro rok ${payload.chronicleTurn || turnNumber}.`,
+        note: payload.note || `Kronika vygenerována pro rok ${chronicleTurn}.`,
         importance: "normal",
         actor_type: "system",
         reference: payload,
-      }], payload.chronicleText);
+      }]);
+      if (result.error) return result;
+      if (payload.chronicleText) {
+        await safeInsert(supabase.from("chronicle_entries").insert({
+          session_id: sessionId,
+          turn_from: chronicleTurn,
+          turn_to: chronicleTurn,
+          text: payload.chronicleText,
+        }));
+      }
+      return result;
+    }
 
     case "IMPORT_SOURCE":
       return insertEventsWithChronicle(supabase, commandId, sessionId, turnNumber, [{
