@@ -61,6 +61,8 @@ interface Stack {
   province_id: string | null;
   player_name: string;
   compositions: Composition[];
+  demobilized_turn?: number | null;
+  remobilize_ready_turn?: number | null;
 }
 
 interface Composition {
@@ -124,6 +126,7 @@ const ArmyTab = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, on
   const [sortBy, setSortBy] = useState<"power" | "morale" | "formation">("power");
   const [unitVisuals, setUnitVisuals] = useState<UnitTypeVisual[]>([]);
   const [generatingVisual, setGeneratingVisual] = useState<string | null>(null);
+  const [remobilizing, setRemobilizing] = useState<string | null>(null);
 
   const fetchMilitary = useCallback(async () => {
     setLoading(true);
@@ -191,12 +194,56 @@ const ArmyTab = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, on
 
   const ReadinessIcon = readinessConfig[readiness].icon;
 
-  const sortedStacks = [...stacks].sort((a, b) => {
+  const activeStacks = stacks.filter(s => s.is_active);
+  const demobilizedStacks = stacks.filter(s => !s.is_active && s.demobilized_turn != null);
+
+  const sortedStacks = [...activeStacks].sort((a, b) => {
     if (sortBy === "power") return b.power - a.power;
     if (sortBy === "morale") return b.morale - a.morale;
     const order = { ARMY: 0, LEGION: 1, UNIT: 2 };
     return (order[a.formation_type as keyof typeof order] ?? 2) - (order[b.formation_type as keyof typeof order] ?? 2);
   });
+
+  const handleRemobilize = async (stack: Stack) => {
+    const totalManpower = stack.compositions.reduce((s, c) => s + c.manpower, 0);
+    if (availableManpower < totalManpower) {
+      toast.error(`Nedostatek volných mužů (potřeba ${totalManpower}, dostupných ${availableManpower})`);
+      return;
+    }
+
+    setRemobilizing(stack.id);
+    try {
+      await supabase.from("military_stacks").update({
+        is_active: true,
+        demobilized_turn: null,
+        remobilize_ready_turn: null,
+        morale: 30, // Start with low morale
+      } as any).eq("id", stack.id);
+
+      await supabase.from("realm_resources").update({
+        manpower_committed: (realm?.manpower_committed || 0) + totalManpower,
+      }).eq("id", realm?.id || "");
+
+      await dispatchCommand({
+        sessionId,
+        actor: { name: currentPlayerName },
+        commandType: "REMOBILIZE_STACK",
+        commandPayload: {
+          stackId: stack.id,
+          stackName: stack.name,
+          manpower: totalManpower,
+          chronicleText: `${currentPlayerName} reaktivoval **${stack.name}** (${totalManpower} mužů). Jednotka nastupuje s nízkou morálkou.`,
+        },
+      });
+
+      toast.success(`${stack.name} reaktivována — morálka 30 (normalizace za 2 kola)`);
+      fetchMilitary();
+    } catch (e: any) {
+      toast.error("Chyba: " + e.message);
+    } finally {
+      setRemobilizing(null);
+    }
+  };
 
   if (loading) {
     return (
@@ -348,6 +395,54 @@ const ArmyTab = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, on
               />
             ))}
           </div>
+
+          {/* Demobilized Stacks */}
+          {demobilizedStacks.length > 0 && (
+            <div className="space-y-2 mt-4">
+              <h4 className="text-xs font-display font-semibold text-muted-foreground uppercase tracking-wider">
+                Demobilizované jednotky
+              </h4>
+              <div className="grid gap-2 md:grid-cols-2">
+                {demobilizedStacks.map(stack => {
+                  const totalMp = stack.compositions.reduce((s, c) => s + c.manpower, 0);
+                  const readyTurn = stack.remobilize_ready_turn || 0;
+                  const canReactivate = currentTurn >= readyTurn;
+                  const turnsLeft = readyTurn - currentTurn;
+                  return (
+                    <Card key={stack.id} className="opacity-60 border-dashed">
+                      <CardContent className="p-3 flex items-center justify-between">
+                        <div>
+                          <div className="font-display font-semibold text-sm">{stack.name}</div>
+                          <div className="text-xs text-muted-foreground">
+                            {totalMp} mužů · {FORMATION_LABELS[stack.formation_type] || stack.formation_type}
+                          </div>
+                          {!canReactivate && (
+                            <div className="text-[10px] text-muted-foreground mt-0.5">
+                              Připravena za {turnsLeft} {turnsLeft === 1 ? "kolo" : turnsLeft <= 4 ? "kola" : "kol"}
+                            </div>
+                          )}
+                        </div>
+                        <Button
+                          size="sm"
+                          variant={canReactivate ? "default" : "ghost"}
+                          disabled={!canReactivate || remobilizing === stack.id}
+                          onClick={() => handleRemobilize(stack)}
+                          className="text-xs font-display"
+                        >
+                          {remobilizing === stack.id ? (
+                            <Loader2 className="h-3 w-3 animate-spin mr-1" />
+                          ) : (
+                            <Shield className="h-3 w-3 mr-1" />
+                          )}
+                          {canReactivate ? "Reaktivovat" : `${turnsLeft} kol`}
+                        </Button>
+                      </CardContent>
+                    </Card>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </TabsContent>
 
         <TabsContent value="generals" className="mt-3 space-y-3">
