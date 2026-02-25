@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { dispatchCommand } from "@/lib/commands";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
@@ -75,16 +76,19 @@ const SourceImportPanel = ({ sessionId, currentPlayerName, onRefetch }: SourceIm
   };
 
   const handleConfirm = async (references: any[], updatedText: string) => {
-    // Create chronicle entry from the imported text
-    const { error: chrErr } = await supabase.from("chronicle_entries").insert({
-      session_id: sessionId,
-      text: updatedText,
-      references: references,
-      epoch_style: "kroniky",
-    } as any);
+    // Create chronicle entry via command-dispatch
+    const result = await dispatchCommand({
+      sessionId,
+      actor: { name: currentPlayerName, type: "player" },
+      commandType: "IMPORT_SOURCE",
+      commandPayload: {
+        chronicleText: updatedText,
+        references,
+      },
+    });
 
-    if (chrErr) {
-      console.error(chrErr);
+    if (!result.ok) {
+      console.error(result.error);
       toast.error("Nepodařilo se vytvořit záznam v kronice");
     } else {
       toast.success("Import dokončen — vytvořen záznam v kronice");
