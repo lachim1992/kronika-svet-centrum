@@ -69,7 +69,7 @@ const LandingPage = () => {
     <div className="min-h-screen flex flex-col items-center justify-center p-6" style={{ background: "radial-gradient(ellipse at 50% 30%, hsl(224 36% 15%) 0%, hsl(224 36% 13%) 50%, hsl(224 36% 11%) 100%)" }}>
       <div className="max-w-md w-full space-y-8 animate-fade-in">
         <div className="text-center space-y-1 py-8">
-          <ChronicleHubLogo variant="full" size="hero" />
+          <ChronicleHubLogo variant="full" size="hero" showTagline />
         </div>
 
         <p className="text-muted-foreground text-base text-center" style={{ fontFamily: "'Cinzel', serif", letterSpacing: "0.15em" }}>
