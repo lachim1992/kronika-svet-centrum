@@ -872,30 +872,84 @@ Deno.serve(async (req) => {
           importance: result === "decisive_victory" ? "critical" : "normal",
         });
 
-        // If decision needed, create action_queue item
-        if (needsDecision && defenderCityId) {
-          await supabase.from("action_queue").insert({
-            session_id: sessionId,
-            player_name: playerName,
-            action_type: "post_battle_decision",
-            status: "pending",
-            action_data: {
-              defender_city_id: defenderCityId,
-              attacker_stack_id: attackerStackId,
-              result,
-              casualties_attacker: casualtiesAttacker,
-              casualties_defender: casualtiesDefender,
-            },
-            completes_at: new Date().toISOString(),
-            created_turn: currentTurn,
-          });
+        // ═══ BATTLE CONSEQUENCES CASCADE ═══
+
+        // 1. City rumor about the battle
+        if (defenderCity) {
+          try {
+            const isVictory = result.includes("victory");
+            await supabase.from("city_rumors").insert({
+              session_id: sessionId,
+              city_id: defenderCity.id,
+              city_name: defenderCity.name,
+              turn_number: currentTurn,
+              text: isVictory
+                ? `Vojsko „${attackerStack.name}" zvítězilo v bitvě u ${defenderCity.name}. Padlo ${casualtiesDefender} obránců. Město se chvěje nejistotou.`
+                : `Obránci ${defenderCity.name} statečně odrazili útok armády „${attackerStack.name}". Nepřítel utrpěl ${casualtiesAttacker} ztrát.`,
+              tone_tag: isVictory ? "alarming" : "triumphant",
+              created_by: "system",
+            });
+          } catch (_) { /* non-critical */ }
         }
 
-        // Mark battle action as executed
-        await supabase.from("action_queue").update({ status: "executed" }).eq("id", battleAction.id);
+        // 2. Chronicle entry for the battle
+        try {
+          const resultLabel: Record<string, string> = {
+            decisive_victory: "drtivé vítězství útočníka",
+            victory: "vítězství útočníka",
+            pyrrhic_victory: "pyrrhovo vítězství",
+            defeat: "porážka útočníka",
+            rout: "zničující porážka útočníka",
+          };
+          await supabase.from("chronicle_entries").insert({
+            session_id: sessionId,
+            text: `**Bitva u ${defenderCity?.name || "neznámého místa"} (rok ${currentTurn}):** Armáda „${attackerStack.name}" se střetla s ${defenderCity ? `obránci města ${defenderCity.name}` : "nepřátelskou armádou"}. Výsledek: ${resultLabel[result] || result}. Padlých útočníků: ${casualtiesAttacker}, obránců: ${casualtiesDefender}. ${result === "decisive_victory" ? "Tato bitva otřásla celým krajem." : ""}`,
+            epoch_style: "kroniky",
+            turn_from: currentTurn,
+            turn_to: currentTurn,
+            source_type: "system",
+          });
+        } catch (_) { /* non-critical */ }
+
+        // 3. Faction loyalty impact in defending city (attacker victory damages defender factions)
+        if (defenderCity && (result === "decisive_victory" || result === "victory" || result === "pyrrhic_victory")) {
+          try {
+            const { data: cityFactions } = await supabase.from("city_factions")
+              .select("id, loyalty, satisfaction, faction_type")
+              .eq("city_id", defenderCity.id)
+              .eq("is_active", true);
+            for (const f of (cityFactions || [])) {
+              const loyaltyLoss = f.faction_type === "military" ? 15 : 8;
+              const satLoss = result === "decisive_victory" ? 15 : 8;
+              await supabase.from("city_factions").update({
+                loyalty: Math.max(0, (f.loyalty || 50) - loyaltyLoss),
+                satisfaction: Math.max(0, (f.satisfaction || 50) - satLoss),
+              }).eq("id", f.id);
+            }
+            logEntries.push(`🏛️ Frakce v ${defenderCity.name}: loajalita a spokojenost sníženy po bitvě`);
+          } catch (_) { /* non-critical */ }
+        }
+
+        // 4. Stability ripple: nearby cities of the defender lose stability
+        if (defenderCity && (result === "decisive_victory" || result === "victory")) {
+          try {
+            const { data: nearbyCities } = await supabase.from("cities")
+              .select("id, name, city_stability")
+              .eq("session_id", sessionId)
+              .eq("owner_player", defenderCity.owner_player)
+              .neq("id", defenderCity.id);
+            const rippleLoss = result === "decisive_victory" ? 5 : 3;
+            for (const nc of (nearbyCities || [])) {
+              const newStab = Math.max(0, (nc.city_stability || 70) - rippleLoss);
+              await supabase.from("cities").update({ city_stability: newStab }).eq("id", nc.id);
+            }
+            if ((nearbyCities || []).length > 0) {
+              logEntries.push(`📉 Porážka u ${defenderCity.name} otřásla stabilitou ${(nearbyCities || []).length} dalších měst (-${rippleLoss})`);
+            }
+          } catch (_) { /* non-critical */ }
+        }
 
         logEntries.push(`⚔️ Bitva: ${attackerStack.name} → ${defenderCity?.name || "nepřítel"}: ${result} (ztráty ${casualtiesAttacker}/${casualtiesDefender}, luck ${(luckRoll * 100).toFixed(0)}%)`);
-
       } catch (battleErr) {
         console.error("Battle resolve error:", battleErr);
         await supabase.from("action_queue").update({ status: "cancelled" }).eq("id", battleAction.id);
@@ -942,7 +996,55 @@ Deno.serve(async (req) => {
       }
 
       const isSender = route.from_player === playerName;
-      const efficiency = Math.min(1.0, 0.7 + (route.route_safety || 1) * 0.2);
+      const routeSafety = route.route_safety || 1;
+      const efficiency = Math.min(1.0, 0.7 + routeSafety * 0.2);
+
+      // ═══ TRADE RAID RISK ═══
+      // Low safety = higher chance of ambush. Safety 1 = 5%, Safety 0 = 25%
+      const raidChance = Math.max(0.02, 0.25 - routeSafety * 0.20);
+      const raidSeed = hashCode(`${route.id}-${currentTurn}-raid`);
+      const raidRoll = (raidSeed % 1000) / 1000;
+      if (raidRoll < raidChance) {
+        // Raid! Lose this turn's goods and generate rumor
+        const lostAmount = isSender ? route.amount_per_turn : Math.round(route.amount_per_turn * efficiency);
+        tradeLogParts.push(`⚠️ Přepadení trasy ${route.id.slice(0, 6)}! Ztráta ${lostAmount} ${route.resource_type}`);
+
+        // Reduce safety after raid
+        const newSafety = Math.max(0, routeSafety - 0.2);
+        await supabase.from("trade_routes").update({ route_safety: newSafety }).eq("id", route.id);
+
+        // Generate rumor about the raid
+        try {
+          const fromCityId = route.from_city_id;
+          if (fromCityId) {
+            const { data: fromCity } = await supabase.from("cities").select("name").eq("id", fromCityId).maybeSingle();
+            await supabase.from("city_rumors").insert({
+              session_id: sessionId,
+              city_id: fromCityId,
+              city_name: fromCity?.name || "?",
+              turn_number: currentTurn,
+              text: `Obchodní karavana na trase z ${fromCity?.name || "?"} byla přepadena lupiči! Ztraceno ${lostAmount} ${route.resource_type}.`,
+              tone_tag: "alarming",
+              created_by: "system",
+            });
+          }
+        } catch (_) { /* non-critical */ }
+
+        // Log game event for the raid
+        try {
+          await supabase.from("game_events").insert({
+            session_id: sessionId,
+            player: playerName,
+            event_type: "trade_raid",
+            turn_number: currentTurn,
+            note: `Přepadení obchodní trasy! Ztráta ${lostAmount} ${route.resource_type}.`,
+            importance: "normal",
+            confirmed: true,
+          });
+        } catch (_) { /* non-critical */ }
+
+        continue; // Skip normal trade processing for this route this turn
+      }
 
       if (isSender) {
         // Sender loses resource_type, gains return_resource_type
