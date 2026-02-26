@@ -100,6 +100,7 @@ serve(async (req) => {
     let aiDescription = "";
     let imagePrompt = `A medieval illuminated manuscript illustration of ${entityName}, ${entityTypeLabels[entityType] || entityType}`;
     const MAX_RETRIES = 2;
+    let staticIdentity: any = null;
 
     for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
       const descResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
@@ -156,7 +157,6 @@ serve(async (req) => {
         }),
       });
 
-      let staticIdentity: any = null;
       if (descResponse.ok) {
         const descData = await descResponse.json();
         const tc = descData.choices?.[0]?.message?.tool_calls?.[0];
