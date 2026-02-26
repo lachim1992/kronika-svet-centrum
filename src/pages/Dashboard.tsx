@@ -17,6 +17,7 @@ import WorldEventDetailPanel from "@/components/WorldEventDetailPanel";
 import GameHubFAB from "@/components/layout/GameHubFAB";
 import FoundSettlementDialog from "@/components/FoundSettlementDialog";
 import UprisingDialog from "@/components/UprisingDialog";
+import Chronicle0Overlay from "@/components/Chronicle0Overlay";
 import HomeTab from "@/pages/game/HomeTab";
 import WorldTab from "@/pages/game/WorldTab";
 import RealmTab from "@/pages/game/RealmTab";
@@ -56,6 +57,8 @@ const Dashboard = () => {
   const [codexEntityTarget, setCodexEntityTarget] = useState<{ type: string; id: string } | null>(null);
   const [wikiEntityTarget, setWikiEntityTarget] = useState<{ type: string; id: string } | null>(null);
   const [showFoundDialog, setShowFoundDialog] = useState(false);
+  const [chronicle0, setChronicle0] = useState<{ text: string; title: string; sidebar: any } | null>(null);
+  const [showChronicle0, setShowChronicle0] = useState(false);
 
   const currentTurn = session?.current_turn ?? 0;
 
@@ -95,8 +98,31 @@ const Dashboard = () => {
       if (data) setWorldFoundation(data);
     };
 
+    const fetchChronicle0 = async () => {
+      const dismissKey = `chronicle0_dismissed_${sessionId}`;
+      if (localStorage.getItem(dismissKey)) return;
+
+      const { data } = await supabase
+        .from("chronicle_entries")
+        .select("text, references")
+        .eq("session_id", sessionId)
+        .eq("source_type", "chronicle_zero")
+        .maybeSingle();
+
+      if (data && data.text) {
+        const refs = data.references as any || {};
+        setChronicle0({
+          text: data.text,
+          title: refs.title || "Kronika Počátku",
+          sidebar: refs.sidebar || {},
+        });
+        setShowChronicle0(true);
+      }
+    };
+
     fetchMembership();
     fetchFoundation();
+    fetchChronicle0();
   }, [user, sessionId]);
 
   if (loading) {
@@ -262,6 +288,20 @@ const Dashboard = () => {
             currentTurn={currentTurn}
             onResolved={() => refetch()}
           />
+          {chronicle0 && (
+            <Chronicle0Overlay
+              open={showChronicle0}
+              onClose={() => {
+                setShowChronicle0(false);
+                localStorage.setItem(`chronicle0_dismissed_${session.id}`, "1");
+              }}
+              title={chronicle0.title}
+              text={chronicle0.text}
+              sidebar={chronicle0.sidebar}
+              worldName={worldFoundation?.world_name}
+              onEntityClick={handleEntityClick}
+            />
+          )}
         </>
       }
     >
