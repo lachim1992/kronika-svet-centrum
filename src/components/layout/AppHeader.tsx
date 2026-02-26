@@ -1,16 +1,18 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { Copy, User, Home, LogOut, Globe, Sun, Moon, Play, Loader2 } from "lucide-react";
+import { Copy, User, Home, LogOut, Globe, Sun, Moon, Play, Loader2, Bell } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem,
   DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { toast } from "sonner";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import ChronicleHubLogo from "@/components/ChronicleHubLogo";
+import { TurnReportPanel } from "@/components/TurnReportPanel";
 
 interface OtherGame {
   session_id: string;
@@ -41,7 +43,8 @@ const AppHeader = ({ roomCode, currentTurn, worldName, playerName, myRole, curre
   };
 
   const [otherGames, setOtherGames] = useState<OtherGame[]>([]);
-
+  const [notifCount, setNotifCount] = useState(0);
+  const [reportOpen, setReportOpen] = useState(false);
   // Restore theme from localStorage on mount
   useEffect(() => {
     const saved = localStorage.getItem("theme");
@@ -95,6 +98,22 @@ const AppHeader = ({ roomCode, currentTurn, worldName, playerName, myRole, curre
     load();
   }, [user, currentSessionId]);
 
+  // Count notifications for current turn
+  useEffect(() => {
+    if (!currentSessionId || currentTurn < 2) return;
+    const lastTurn = currentTurn - 1;
+    const countNotifs = async () => {
+      const [{ count: evtCount }, { count: battleCount }] = await Promise.all([
+        supabase.from("game_events").select("id", { count: "exact", head: true })
+          .eq("session_id", currentSessionId).eq("turn_number", lastTurn).eq("confirmed", true),
+        supabase.from("battles").select("id", { count: "exact", head: true })
+          .eq("session_id", currentSessionId).eq("turn_number", lastTurn),
+      ]);
+      setNotifCount((evtCount || 0) + (battleCount || 0));
+    };
+    countNotifs();
+  }, [currentSessionId, currentTurn]);
+
   return (
     <header className="sticky top-0 z-40 border-b border-border backdrop-blur-md bg-background/95"
       style={{ boxShadow: "0 2px 16px -4px hsl(220 30% 3% / 0.6)" }}
@@ -124,6 +143,24 @@ const AppHeader = ({ roomCode, currentTurn, worldName, playerName, myRole, curre
                 <><Play className="h-3.5 w-3.5" />Další tah</>
               )}
             </Button>
+          )}
+
+          {currentSessionId && currentTurn > 1 && (
+            <Popover open={reportOpen} onOpenChange={setReportOpen}>
+              <PopoverTrigger asChild>
+                <Button variant="ghost" size="icon" className="h-8 w-8 relative text-muted-foreground hover:text-foreground">
+                  <Bell className="h-4 w-4" />
+                  {notifCount > 0 && (
+                    <span className="absolute -top-0.5 -right-0.5 h-4 min-w-[16px] rounded-full bg-primary text-primary-foreground text-[10px] font-bold flex items-center justify-center px-1">
+                      {notifCount > 9 ? "9+" : notifCount}
+                    </span>
+                  )}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-96 p-3" align="end">
+                <TurnReportPanel sessionId={currentSessionId} playerName={playerName} currentTurn={currentTurn} />
+              </PopoverContent>
+            </Popover>
           )}
 
           <Button
