@@ -25,9 +25,9 @@ const Welcome = () => {
           {/* Heading */}
           <h1
             className="text-center text-xl md:text-2xl font-semibold text-primary tracking-wide leading-relaxed"
-            style={{ fontFamily: "'Cinzel', serif" }}>
+            style={{ fontFamily: "'Cinzel', serif" }}>Vítejte v Chronicle Hub.
 
-            Vítejte v The Chronicle Hub.
+
           </h1>
 
           {/* Quote */}
