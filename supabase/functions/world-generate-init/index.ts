@@ -897,11 +897,12 @@ DŮLEŽITÉ: affected_players/faction MUSÍ používat přesná jména frakcí. 
       counters.events++;
     }
 
-    // ═══ STEP K: Pre-history chronicle + founding chronicle ═══
+    // ═══ STEP K: Pre-history chronicle + founding chronicle + CHRONICLE ZERO (epic prolog) ═══
     if (world.preHistoryChronicle) {
       await supabase.from("chronicle_entries").insert({
         session_id: sessionId, text: world.preHistoryChronicle,
         epoch_style: "kroniky", turn_from: 0, turn_to: 0,
+        source_type: "system",
       });
     }
 
@@ -910,7 +911,149 @@ DŮLEŽITÉ: affected_players/faction MUSÍ používat přesná jména frakcí. 
       session_id: sessionId,
       text: `Věk zakládání – V prvním roce letopočtu byly založeny základy civilizací ve státě ${countryInfo.name}. ${counters.cities} měst, ${counters.persons} osobností, ${counters.wonders} divů světa. ${legendaryNames ? `Legendy praví o: ${legendaryNames}.` : ""} ${premise}`,
       epoch_style: "kroniky", turn_from: 1, turn_to: 1,
+      source_type: "founding",
     });
+
+    // ═══ CHRONICLE ZERO — Epic 2000+ word prolog ═══
+    // Second AI call with ALL generated entity data for comprehensive prolog
+    try {
+      const personsSummary = (world.persons || []).map((p: any) => `${p.name} (${p.personType}, rok ${p.bornYear}${p.diedYear ? `, † ${p.diedYear}` : ""}): ${p.bio}`).join("\n");
+      const wondersSummary = (world.wonders || []).map((w: any) => `${w.name} (${w.status}) v ${w.cityName}: ${w.description}${w.destroyedStory ? ` Zánik: ${w.destroyedStory}` : ""}`).join("\n");
+      const battlesSummary = (world.battles || []).map((b: any) => `Rok ${b.year} — ${b.name} u ${b.locationName}: ${b.attackerCommander} vs ${b.defenderCommander}. ${b.outcome}. ${b.description}`).join("\n");
+      const preHistorySummary = (world.preHistoryEvents || []).map((e: any) => `Rok ${e.year} — ${e.title} (${e.eventType}): ${e.description} Odkaz: ${e.legacyImpact}`).join("\n");
+      const citiesSummary = (world.cities || []).map((c: any) => `${c.name} (${c.level}, ${c.ownerFaction}): ${c.description}`).join("\n");
+      const regionsSummary = (world.regions || []).map((r: any) => `${r.name} (${r.biome}): ${r.description}`).join("\n");
+      const factionsSummary = (world.factions || []).map((f: any) => `${f.name}: ${f.description}${f.coreMith ? ` Mýtus: ${f.coreMith}` : ""}`).join("\n");
+
+      const chronicle0SystemPrompt = `Jsi dvorní kronikář, který píše velký úvodní prolog do kroniky světa. Tvůj text je PRVNÍ, co hráč přečte — musí ho vtáhnout do světa.
+
+PRAVIDLA:
+1. Piš v ČEŠTINĚ, v ${tone === "realistic" ? "politickém kronikářském" : tone === "mythic" ? "epickém mýtickém" : "středověkém kronikářském"} stylu.
+2. Text musí mít MINIMÁLNĚ 2000 slov (ideálně 2500-3000).
+3. MUSÍŠ zmínit VŠECHNY osobnosti, bitvy, divy světa a prehistorické události — žádnou nevynechej.
+4. Text musí mít logickou strukturu: od stvoření/počátku → přes dávné věky → legendární bitvy → vzestup a pád říší → současný stav.
+5. Propojuj entity navzájem: generálové velí v bitvách, stavitelé budují divy, proroci ovlivňují události.
+6. Používej dramatické obraty, proroctví, citáty legendárních postav.
+7. Závěr musí naznačit, že nyní začíná NOVÝ věk — hráčův věk.
+8. Nepoužívej nadpisy ani formátování — piš jako plynulý kronikářský text s odstavci.
+
+Odpověz POUZE voláním funkce write_chronicle_zero.`;
+
+      const chronicle0UserPrompt = `SVĚT: ${worldName}
+STÁT: ${countryInfo.name}
+PREMISA: ${premise}
+LORE BIBLE: ${world.loreBible || ""}
+
+OSOBNOSTI (${(world.persons || []).length}):
+${personsSummary}
+
+DIVY SVĚTA (${(world.wonders || []).length}):
+${wondersSummary}
+
+BITVY (${(world.battles || []).length}):
+${battlesSummary}
+
+PREHISTORICKÉ UDÁLOSTI (${(world.preHistoryEvents || []).length}):
+${preHistorySummary}
+
+FRAKCE (${(world.factions || []).length}):
+${factionsSummary}
+
+REGIONY (${(world.regions || []).length}):
+${regionsSummary}
+
+MĚSTA (${(world.cities || []).length}):
+${citiesSummary}
+
+Napiš EPICKÝ PROLOG o minimálně 2000 slovech, který zmíní VŠECHNY výše uvedené entity a vytvoří koherentní příběh od počátku světa až po současnost.`;
+
+      const chronicle0Response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${LOVABLE_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "google/gemini-2.5-flash",
+          messages: [
+            { role: "system", content: chronicle0SystemPrompt },
+            { role: "user", content: chronicle0UserPrompt },
+          ],
+          tools: [{
+            type: "function",
+            function: {
+              name: "write_chronicle_zero",
+              description: "Write the epic Chronicle Zero prolog",
+              parameters: {
+                type: "object",
+                properties: {
+                  chronicle_text: { type: "string", description: "The full 2000+ word epic prolog text in Czech" },
+                  title: { type: "string", description: "Title of the chronicle (e.g. 'Kronika Počátku' or similar)" },
+                },
+                required: ["chronicle_text", "title"],
+                additionalProperties: false,
+              },
+            },
+          }],
+          tool_choice: { type: "function", function: { name: "write_chronicle_zero" } },
+          max_tokens: 16000,
+        }),
+      });
+
+      if (chronicle0Response.ok) {
+        const c0Data = await chronicle0Response.json();
+        const c0ToolCall = c0Data.choices?.[0]?.message?.tool_calls?.[0];
+        if (c0ToolCall) {
+          const c0Result = JSON.parse(c0ToolCall.function.arguments);
+          const chronicleText = c0Result.chronicle_text || c0Result.chronicleText || "";
+          const chronicleTitle = c0Result.title || "Kronika Počátku";
+
+          if (chronicleText.length > 500) {
+            // Build entity sidebar data
+            const sidebarData = {
+              persons: (world.persons || []).map((p: any) => ({
+                name: p.name, type: p.personType, bornYear: p.bornYear,
+                diedYear: p.diedYear || null, faction: p.ownerFaction,
+                id: personIdMap[p.name] || null,
+              })),
+              wonders: (world.wonders || []).map((w: any) => ({
+                name: w.name, city: w.cityName, status: w.status,
+              })),
+              battles: (world.battles || []).map((b: any) => ({
+                name: b.name, year: b.year, location: b.locationName,
+                attacker: b.attackerCommander, defender: b.defenderCommander,
+                outcome: b.outcome,
+              })),
+              preHistoryEvents: (world.preHistoryEvents || []).map((e: any) => ({
+                title: e.title, year: e.year, type: e.eventType,
+              })),
+              factions: (world.factions || []).map((f: any) => ({
+                name: f.name, personality: f.personality, isPlayer: f.isPlayer,
+              })),
+            };
+
+            // Save as chronicle_zero entry
+            await supabase.from("chronicle_entries").insert({
+              session_id: sessionId,
+              text: chronicleText,
+              epoch_style: "kroniky",
+              turn_from: 0,
+              turn_to: 0,
+              source_type: "chronicle_zero",
+              references: { title: chronicleTitle, sidebar: sidebarData, wordCount: chronicleText.split(/\s+/).length },
+            });
+
+            console.log(`Chronicle Zero generated: ${chronicleText.split(/\s+/).length} words, title: ${chronicleTitle}`);
+          } else {
+            console.warn("Chronicle Zero text too short, skipping:", chronicleText.length);
+          }
+        }
+      } else {
+        console.warn("Chronicle Zero AI call failed:", chronicle0Response.status);
+      }
+    } catch (c0Err) {
+      console.warn("Chronicle Zero generation error (non-fatal):", c0Err);
+    }
 
     // ═══ STEP L: Rumors, world memories, feed, diplomacy ═══
 
