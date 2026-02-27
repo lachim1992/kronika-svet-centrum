@@ -711,8 +711,13 @@ Deno.serve(async (req) => {
           continue;
         }
 
-        // Apply speech morale modifier (clamped 0-100)
-        const attackerMorale = Math.max(0, Math.min(100, (attackerStack.morale || 50) + speechMorale));
+        // Apply speech morale modifier PERMANENTLY to the stack (clamped 0-100)
+        const speechAdjustedMorale = Math.max(0, Math.min(100, (attackerStack.morale || 50) + speechMorale));
+        if (speechMorale !== 0) {
+          await supabase.from("military_stacks").update({ morale: speechAdjustedMorale }).eq("id", attackerStack.id);
+          attackerStack.morale = speechAdjustedMorale; // update local ref
+        }
+        const attackerMorale = speechAdjustedMorale;
         const attackerStrength = computeStackStrength(
           attackerStack.military_stack_composition || [],
           attackerMorale,
@@ -857,17 +862,20 @@ Deno.serve(async (req) => {
           }).eq("id", defenderCity.id);
         }
 
-        // Morale shifts
+        // Morale shifts (based on CURRENT morale which already includes speech modifier)
         const moraleShiftAttacker = result.includes("victory") ? 5 : -10;
         const moraleShiftDefender = result.includes("victory") ? -15 : 5;
         await supabase.from("military_stacks").update({
-          morale: Math.max(0, Math.min(100, (attackerStack.morale || 50) + moraleShiftAttacker)),
+          morale: Math.max(0, Math.min(100, attackerMorale + moraleShiftAttacker)),
         }).eq("id", attackerStack.id);
         if (defenderStack) {
           await supabase.from("military_stacks").update({
             morale: Math.max(0, Math.min(100, (defenderStack.morale || 50) + moraleShiftDefender)),
           }).eq("id", defenderStack.id);
         }
+
+        // Mark battle action as completed
+        await supabase.from("action_queue").update({ status: "completed" }).eq("id", battleAction.id);
 
         // Determine if post-battle decision needed
         const needsDecision = result === "decisive_victory" || result === "victory" || result === "pyrrhic_victory";
