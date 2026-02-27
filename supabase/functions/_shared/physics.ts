@@ -628,3 +628,87 @@ export function evaluateMythAlignment(
 
   return Math.max(-10, Math.min(10, Math.round(alignment)));
 }
+
+// ═══════════════════════════════════════════
+// CIV IDENTITY → MECHANICAL MODIFIERS
+// ═══════════════════════════════════════════
+
+export interface CivIdentity {
+  culture_tags: string[];
+  urban_style: string;
+  society_structure: string;
+  military_doctrine: string;
+  economic_focus: string;
+  grain_modifier: number;
+  production_modifier: number;
+  trade_modifier: number;
+  stability_modifier: number;
+  morale_modifier: number;
+  mobilization_speed: number;
+}
+
+/**
+ * Apply civ_identity modifiers to settlement growth calculation.
+ * Returns adjusted growth rate delta and stability delta.
+ */
+export function applyCivIdentityToGrowth(
+  identity: CivIdentity | null,
+  baseGrowthRate: number,
+  baseStability: number,
+): { growthRate: number; stabilityDelta: number; moraleDelta: number } {
+  if (!identity) return { growthRate: baseGrowthRate, stabilityDelta: 0, moraleDelta: 0 };
+
+  let growthRate = baseGrowthRate + identity.grain_modifier;
+  growthRate = Math.max(POP_GROWTH_MIN, Math.min(POP_GROWTH_MAX, growthRate));
+
+  return {
+    growthRate,
+    stabilityDelta: identity.stability_modifier,
+    moraleDelta: identity.morale_modifier,
+  };
+}
+
+/**
+ * Apply civ_identity to influence calculation.
+ * Returns additive modifiers per influence category.
+ */
+export function applyCivIdentityToInfluence(
+  identity: CivIdentity | null,
+): { trade: number; military: number; diplomatic: number } {
+  if (!identity) return { trade: 0, military: 0, diplomatic: 0 };
+
+  let trade = identity.trade_modifier * 100; // scale to influence points
+  let military = 0;
+  let diplomatic = 0;
+
+  // Military doctrine affects military influence
+  if (identity.military_doctrine === "offensive") military += 15;
+  if (identity.military_doctrine === "conscript") military += 10;
+  if (identity.military_doctrine === "naval") { military += 5; trade += 10; }
+  if (identity.military_doctrine === "mercenary") { military += 8; trade += 5; }
+
+  // Society structure affects diplomatic influence
+  if (identity.society_structure === "mercantile") { trade += 15; diplomatic += 5; }
+  if (identity.society_structure === "theocratic") diplomatic += 10;
+  if (identity.society_structure === "feudal") military += 5;
+  if (identity.society_structure === "egalitarian") diplomatic += 8;
+
+  // Economic focus
+  if (identity.economic_focus === "trade") trade += 20;
+  if (identity.economic_focus === "mining") trade += 5;
+  if (identity.economic_focus === "raiding") { military += 10; diplomatic -= 5; }
+
+  return {
+    trade: Math.round(trade),
+    military: Math.round(military),
+    diplomatic: Math.round(diplomatic),
+  };
+}
+
+/**
+ * Get mobilization speed modifier from civ identity.
+ * Used by action_queue for military build times.
+ */
+export function getMobilizationSpeed(identity: CivIdentity | null): number {
+  return identity?.mobilization_speed ?? 1.0;
+}

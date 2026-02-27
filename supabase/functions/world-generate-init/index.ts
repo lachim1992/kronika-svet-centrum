@@ -1447,6 +1447,32 @@ Napiš EPICKÝ PROLOG o minimálně 2000 slovech, který zmíní VŠECHNY výše
       }
     } catch (hexErr) { console.warn("Hex generation warning:", hexErr); }
 
+    // ═══ Extract structured civ identity (fire & forget) ═══
+    const { data: civForIdentity } = await supabase.from("civilizations")
+      .select("core_myth, cultural_quirk, architectural_style")
+      .eq("session_id", sessionId).eq("player_name", playerName).maybeSingle();
+
+    const { data: civCfgForIdentity } = await supabase.from("player_civ_configs")
+      .select("civ_description")
+      .eq("session_id", sessionId).eq("player_name", playerName).maybeSingle();
+
+    if (civCfgForIdentity?.civ_description) {
+      const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
+      const SUPABASE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+      fetch(`${SUPABASE_URL}/functions/v1/extract-civ-identity`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${SUPABASE_KEY}` },
+        body: JSON.stringify({
+          sessionId,
+          playerName,
+          civDescription: civCfgForIdentity.civ_description,
+          coreMythText: civForIdentity?.core_myth || null,
+          culturalQuirkText: civForIdentity?.cultural_quirk || null,
+          architecturalStyleText: civForIdentity?.architectural_style || null,
+        }),
+      }).catch(e => console.warn("civ identity extraction failed:", e));
+    }
+
     // Set session ready
     await supabase.from("game_sessions").update({ current_turn: 1, init_status: "ready" }).eq("id", sessionId);
 

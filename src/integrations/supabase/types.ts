@@ -1193,6 +1193,80 @@ export type Database = {
           },
         ]
       }
+      civ_identity: {
+        Row: {
+          created_at: string
+          culture_tags: string[]
+          economic_focus: string
+          extracted_at: string
+          extraction_model: string | null
+          grain_modifier: number
+          id: string
+          military_doctrine: string
+          mobilization_speed: number
+          morale_modifier: number
+          player_name: string
+          production_modifier: number
+          session_id: string
+          society_structure: string
+          source_description: string | null
+          stability_modifier: number
+          trade_modifier: number
+          updated_at: string
+          urban_style: string
+        }
+        Insert: {
+          created_at?: string
+          culture_tags?: string[]
+          economic_focus?: string
+          extracted_at?: string
+          extraction_model?: string | null
+          grain_modifier?: number
+          id?: string
+          military_doctrine?: string
+          mobilization_speed?: number
+          morale_modifier?: number
+          player_name: string
+          production_modifier?: number
+          session_id: string
+          society_structure?: string
+          source_description?: string | null
+          stability_modifier?: number
+          trade_modifier?: number
+          updated_at?: string
+          urban_style?: string
+        }
+        Update: {
+          created_at?: string
+          culture_tags?: string[]
+          economic_focus?: string
+          extracted_at?: string
+          extraction_model?: string | null
+          grain_modifier?: number
+          id?: string
+          military_doctrine?: string
+          mobilization_speed?: number
+          morale_modifier?: number
+          player_name?: string
+          production_modifier?: number
+          session_id?: string
+          society_structure?: string
+          source_description?: string | null
+          stability_modifier?: number
+          trade_modifier?: number
+          updated_at?: string
+          urban_style?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "civ_identity_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       civ_influence: {
         Row: {
           created_at: string

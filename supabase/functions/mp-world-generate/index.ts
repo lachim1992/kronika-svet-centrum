@@ -1421,6 +1421,31 @@ DŮLEŽITÉ: Hráčské frakce MUSÍ mít isPlayer=true a playerName musí přes
       description: `MP svět s hlubokou prehistorií: ${counters.countries} stát, ${counters.factions} frakcí, ${counters.cities} měst, ${counters.regions} regionů, ${counters.provinces} provincií, ${counters.persons} osobností, ${counters.wonders} divů, ${counters.legendary} prehistorických událostí, ${counters.battles} bitev, ${counters.events} událostí, ${counters.links} propojení, ${counters.wiki} wiki, ${wikiGenerated} AI profilů, ${counters.rumors} pověstí.`,
     });
 
+    // ═══ Extract structured civ identity for all players (fire & forget) ═══
+    const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
+    const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY") || Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    for (const cfg of civConfigs) {
+      const { data: civ } = await sb.from("civilizations")
+        .select("core_myth, cultural_quirk, architectural_style")
+        .eq("session_id", sessionId).eq("player_name", cfg.player_name).maybeSingle();
+
+      fetch(`${SUPABASE_URL}/functions/v1/extract-civ-identity`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+        },
+        body: JSON.stringify({
+          sessionId,
+          playerName: cfg.player_name,
+          civDescription: cfg.civ_description || "",
+          coreMythText: civ?.core_myth || null,
+          culturalQuirkText: civ?.cultural_quirk || null,
+          architecturalStyleText: civ?.architectural_style || null,
+        }),
+      }).catch(e => console.warn("civ identity extraction failed for", cfg.player_name, e));
+    }
+
     // Mark session as ready
     await sb.from("game_sessions").update({ init_status: "ready", current_turn: 1 }).eq("id", sessionId);
 
