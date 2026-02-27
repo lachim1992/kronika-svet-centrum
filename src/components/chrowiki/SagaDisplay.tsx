@@ -1,9 +1,10 @@
 import { useMemo } from "react";
 import { Badge } from "@/components/ui/badge";
-import { Crown, Shield, Sparkles, BookOpen } from "lucide-react";
+import { Crown, Shield, Sparkles, BookOpen, Flame } from "lucide-react";
 
 interface SagaResult {
   chronology: string[];
+  founding_myth_echo?: string;
   saga: string;
   actors: Array<{ name: string; role: string; linkedItems?: string[] }>;
   consequences: string;
@@ -72,7 +73,21 @@ const SagaDisplay = ({ result, onEventClick }: Props) => {
         </ul>
       </section>
 
-      {/* B) Main Saga */}
+      {/* B) Founding Myth Echo */}
+      {result.founding_myth_echo && result.founding_myth_echo.trim().length > 10 && (
+        <section>
+          <h4 className="font-decorative text-sm font-semibold mb-2 flex items-center gap-2 text-foreground">
+            <Flame className="h-3.5 w-3.5 text-primary" /> Zakladatelský mýtus
+          </h4>
+          <div className="text-[15px] leading-[1.85] text-foreground/90 font-body whitespace-pre-wrap p-4 rounded-lg italic"
+            style={{ background: 'hsl(var(--primary) / 0.04)', borderLeft: '4px solid hsl(var(--primary) / 0.4)' }}
+          >
+            {renderWithRefs(result.founding_myth_echo, onEventClick)}
+          </div>
+        </section>
+      )}
+
+      {/* C) Main Saga */}
       <section>
         <h4 className="font-decorative text-sm font-semibold mb-2 flex items-center gap-2 text-foreground">
           <Sparkles className="h-3.5 w-3.5 text-primary" /> Sága místa

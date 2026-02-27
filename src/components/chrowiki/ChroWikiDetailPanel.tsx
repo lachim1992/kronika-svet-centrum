@@ -174,15 +174,34 @@ const ChroWikiDetailPanel = ({
       });
   }, [entityId, entityType]);
 
-  // Lazy generate wiki content on open if ai_description is empty
+  // Lazy generate wiki content on open — ONLY if no ai_description exists in DB
+  // Uses last_enriched_turn as generation marker. TTL: re-offer after 10 turns (manual only).
+  const [wikiStale, setWikiStale] = useState(false);
   useEffect(() => {
     if (!entityId || !sessionId || !entityType) return;
-    const wiki = wikiEntries.find(w => w.entity_id === entityId && w.entity_type === entityType);
-    const aiDesc = wiki?.ai_description;
-    if (aiDesc && typeof aiDesc === "string" && aiDesc.trim().length >= 10) return; // already has content
+    setWikiStale(false);
 
-    const lazyGen = async () => {
-      // Check server_config for lazy_generate_on_open
+    const checkAndGenerate = async () => {
+      // Direct DB check to avoid stale props
+      const { data: dbWiki } = await supabase
+        .from("wiki_entries" as any)
+        .select("id, ai_description, last_enriched_turn")
+        .eq("session_id", sessionId)
+        .eq("entity_type", entityType)
+        .eq("entity_id", entityId)
+        .maybeSingle();
+
+      const aiDesc = (dbWiki as any)?.ai_description;
+      const enrichedTurn = (dbWiki as any)?.last_enriched_turn || 0;
+
+      // Already has content — check TTL staleness
+      if (aiDesc && typeof aiDesc === "string" && aiDesc.trim().length >= 10) {
+        const turnsSinceEnrich = (currentTurn || 1) - enrichedTurn;
+        if (turnsSinceEnrich >= 10) setWikiStale(true);
+        return;
+      }
+
+      // No content yet — check if lazy gen is enabled
       const { data: cfgData } = await supabase
         .from("server_config" as any)
         .select("economic_params")
@@ -193,15 +212,21 @@ const ChroWikiDetailPanel = ({
 
       setLazyGenerating(true);
       try {
-        const entity = wikiEntries.find(w => w.entity_id === entityId);
+        const wikiEntry = wikiEntries.find(w => w.entity_id === entityId);
         const { data: genData, error } = await supabase.functions.invoke("wiki-generate", {
           body: {
             entityType, entityName, entityId, sessionId,
-            ownerPlayer: entity?.owner_player || "",
+            ownerPlayer: wikiEntry?.owner_player || "",
             context: {},
           },
         });
         if (!error && genData?.aiDescription) {
+          // Mark generation turn
+          if (dbWiki) {
+            await supabase.from("wiki_entries" as any)
+              .update({ last_enriched_turn: currentTurn || 1 } as any)
+              .eq("id", (dbWiki as any).id);
+          }
           await onRefreshWiki();
         }
       } catch (e) {
@@ -210,7 +235,7 @@ const ChroWikiDetailPanel = ({
         setLazyGenerating(false);
       }
     };
-    lazyGen();
+    checkAndGenerate();
   }, [entityId, entityType, sessionId]);
 
   // Fetch saga versions + entity links
@@ -475,7 +500,7 @@ const ChroWikiDetailPanel = ({
           await supabase.from("wiki_entries").update({
             summary: data.summary, ai_description: data.aiDescription,
             image_url: data.imageUrl || existing.image_url, image_prompt: data.imagePrompt,
-            updated_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(), last_enriched_turn: currentTurn || 1,
           }).eq("id", existing.id);
         } else {
           await supabase.from("wiki_entries").upsert({
@@ -540,6 +565,7 @@ const ChroWikiDetailPanel = ({
       // 3) Save as new saga version (full structured JSON)
       const sagaText = [
         "## Stručná chronologie\n" + (data.chronology || []).map((c: string) => `- ${c}`).join("\n"),
+        data.founding_myth_echo ? "\n## Zakladatelský mýtus\n" + data.founding_myth_echo : "",
         "\n## Sága místa\n" + (data.saga || ""),
         data.consequences ? "\n## Důsledky pro říši\n" + data.consequences : "",
         data.legends ? "\n## Legenda a šeptanda\n" + data.legends : "",
@@ -1388,14 +1414,22 @@ const ChroWikiDetailPanel = ({
               </>
             )}
 
-            {/* Regenerate button */}
+            {/* Stale indicator + Regenerate button */}
             {descriptionText && (
               <>
                 <OrnamentalDivider />
+                {wikiStale && (
+                  <div className="text-center mb-2 p-2 rounded-lg" style={{ background: 'hsl(var(--accent) / 0.1)', border: '1px dashed hsl(var(--accent) / 0.3)' }}>
+                    <p className="text-xs text-muted-foreground">
+                      <Clock className="h-3 w-3 inline mr-1" />
+                      Záznam je starší než 10 kol — můžete ho aktualizovat
+                    </p>
+                  </div>
+                )}
                 <div className="text-center">
-                  <Button size="sm" variant="ghost" onClick={handleGenerate} disabled={generating} className="text-xs text-muted-foreground">
+                  <Button size="sm" variant={wikiStale ? "outline" : "ghost"} onClick={handleGenerate} disabled={generating} className="text-xs text-muted-foreground">
                     {generating ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <Sparkles className="h-3 w-3 mr-1" />}
-                    Přegenerovat záznam
+                    {wikiStale ? "Aktualizovat záznam" : "Přegenerovat záznam"}
                   </Button>
                 </div>
               </>

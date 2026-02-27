@@ -45,11 +45,12 @@ serve(async (req) => {
     if (narrativeSaga && narrativeSaga.enabled === false) {
       return new Response(JSON.stringify({
         chronology: [], saga: "Generování ság je zakázáno v konfiguraci serveru.",
-        actors: [], consequences: "", legends: "", isProtoSaga: true,
+        actors: [], consequences: "", legends: "", foundingMythEcho: "", isProtoSaga: true,
       }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
     const hasHistory = historySynthesis && historySynthesis.synthesis;
+    const hasFoundingMyth = entity?.foundingLegend && entity.foundingLegend.trim().length > 5;
 
     const timelineText = (timeline || []).map((t: any) =>
       `[Kolo ${t.turn}] ${t.title}${t.summary ? ': ' + t.summary : ''} (ID: ${t.eventId})`
@@ -101,12 +102,42 @@ ${(historySynthesis.themes || []).join(", ")}
       ? `\n\nFLAVOR PROMPT ENTITY (povinně ovlivni tón a atmosféru):\n${entity.flavorPrompt}`
       : "";
 
-    const legendSection = entity?.foundingLegend
-      ? `\n\nZAKLADATELSKÁ LEGENDA OD HRÁČE (povinně integruj do ság a šeptandy — je to autentický hráčský obsah):\n${entity.foundingLegend}`
+    // ─── FOUNDING MYTH: structural framework for the saga ───
+    const foundingMythSection = hasFoundingMyth
+      ? `\n\nZAKLADATELSKÝ MÝTUS OD HRÁČE (TOTO JE NEJDŮLEŽITĚJŠÍ VSTUP — celá sága musí být strukturována kolem tohoto mýtu):
+${entity.foundingLegend}
+
+PRAVIDLA PRO MÝTUS:
+1. Mýtus je RÁMEC celé ságy — každý akt/kapitola se musí k němu vracet.
+2. "founding_myth_echo" MUSÍ mýtus parafrázovat a rozvinout do legendární podoby (200-400 slov).
+3. V hlavní sáze musí být mýtus zmíněn minimálně 3x — na začátku (invokace), uprostřed (zkoušky osudu) a na konci (naplnění/odkaz).
+4. Pokud mýtus zmiňuje konkrétní místa, osoby nebo události, MUSÍŠ je propojit s daty z časové osy.
+5. Důsledky pro říši musí reflektovat, jak mýtus ovlivňuje současné rozhodování.`
       : "";
 
+    // Structural instruction based on whether myth exists
+    const structuralInstruction = hasFoundingMyth
+      ? `POVINNÁ STRUKTURA (mýtus jako rámec):
+A) "chronology" — Stručná chronologie (8-20 bodů) s [[event:ID|text]]. Začni mýtickým aktem založení.
+B) "founding_myth_echo" — Rozvinutý zakladatelský mýtus (200-400 slov): Parafrázuj hráčův mýtus a transformuj ho do legendární, epické podoby. Zachovej klíčové motivy a postavy z originálu.
+C) "saga" — Sága místa (700-1400 slov) strukturovaná jako:
+   I. AKT ZRODU — Mýtické založení, proroctví, prvotní vize (navazuj na zakladatelský mýtus)
+   II. AKT ZKOUŠEK — Výzvy a krize, které testovaly proroctví/vizi z mýtu
+   III. AKT ZLOMU — Rozhodující moment, kdy se mýtus naplnil nebo byl zpochybněn
+   IV. AKT ODKAZU — Současnost ve světle mýtu, co z něj přetrvává
+D) "actors" — Klíčové postavy (name, role, linkedItems). Začni zakladatelem z mýtu.
+E) "consequences" — Důsledky pro říši (jak mýtus formuje současnou politiku/kulturu)
+F) "legends" — Legenda a šeptanda (doplnění mýtu o lidové pověsti)`
+      : `POVINNÁ STRUKTURA:
+A) "chronology" — Stručná chronologie (8-20 bodů) s [[event:ID|text]]
+B) "founding_myth_echo" — Prázdný string (entita nemá zakladatelský mýtus)
+C) "saga" — Sága místa (700-1400 slov): Mýtická invokace → Věk zkoušek → Zlom → Současná sláva → Odkaz
+D) "actors" — Klíčové postavy (name, role, linkedItems)
+E) "consequences" — Důsledky pro říši
+F) "legends" — Legenda a šeptanda (volitelné, jasně oddělené)`;
+
     const systemPrompt = `Jsi královský kronikář, který píše vznešeným, mýtickým stylem dvorní kroniky.
-${stanceInstruction}${customStylePrompt}${keywordsInstruction}${forbiddenInstruction}${flavorSection}${legendSection}${worldNarrativeSection}
+${stanceInstruction}${customStylePrompt}${keywordsInstruction}${forbiddenInstruction}${flavorSection}${foundingMythSection}${worldNarrativeSection}
 
 STRIKTNÍ PRAVIDLA:
 1. Piš VÝHRADNĚ na základě dodaných dat. ${hasHistory ? 'Tvým HLAVNÍM zdrojem je historická syntéza — interpretuj ji mýticky, ale NEPŘIDÁVEJ nové fakty.' : 'NESMÍŠ vymýšlet nové události.'}
@@ -116,13 +147,9 @@ STRIKTNÍ PRAVIDLA:
 5. Zdůrazňuj kontinuitu, dědictví a nevyhnutelnost velikosti.
 6. Pokud má entita flavor prompt, MUSÍŠ ho respektovat jako hlavní tónový pokyn.
 7. Pokud existuje lore bible nebo narativ světa, MUSÍŠ do ság integrovat jeho premisu a atmosféru.
+${hasFoundingMyth ? '8. ZAKLADATELSKÝ MÝTUS JE RÁMEC — celá sága se musí kolem něj otáčet. Není to jen zmínka, je to STRUKTURA.' : ''}
 
-POVINNÁ STRUKTURA:
-A) "chronology" — Stručná chronologie (8-20 bodů) s [[event:ID|text]]
-B) "saga" — Sága místa (700-1400 slov): Mýtická invokace → Věk zkoušek → Zlom → Současná sláva → Odkaz
-C) "actors" — Klíčové postavy (name, role, linkedItems)
-D) "consequences" — Důsledky pro říši
-E) "legends" — Legenda a šeptanda (volitelné, jasně oddělené)
+${structuralInstruction}
 
 ${eventCount < 3 ? 'VAROVÁNÍ: Málo zdrojů (' + eventCount + '). Označ jako proto-ságu.' : ''}`;
 
@@ -165,7 +192,7 @@ ${worldEventsText ? '\n=== SVĚTOVÉ UDÁLOSTI ===\n' + worldEventsText : ''}
 ${diplomacyText ? '\n=== DIPLOMATICKÁ KORESPONDENCE ===\n' + diplomacyText : ''}
 ${declarationsText ? '\n=== VYHLÁŠENÍ A DEKRETY ===\n' + declarationsText : ''}
 
-Napiš dvorní kroniku tohoto místa/entity. Využij VŠECHNY dostupné zdroje.`;
+Napiš dvorní kroniku tohoto místa/entity. ${hasFoundingMyth ? 'STRUKTURUJ CELOU SÁGU KOLEM ZAKLADATELSKÉHO MÝTU.' : 'Využij VŠECHNY dostupné zdroje.'}`;
 
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
@@ -183,12 +210,13 @@ Napiš dvorní kroniku tohoto místa/entity. Využij VŠECHNY dostupné zdroje.`
           type: "function",
           function: {
             name: "write_saga",
-            description: "Write a structured saga with chronology, narrative, actors, consequences and legends",
+            description: "Write a structured saga with chronology, founding myth echo, narrative, actors, consequences and legends",
             parameters: {
               type: "object",
               properties: {
                 chronology: { type: "array", items: { type: "string" }, description: "Bullet points of chronology with [[event:ID|label]] references" },
-                saga: { type: "string", description: "Main saga narrative 700-1400 words with inline [[event:ID|label]] references" },
+                founding_myth_echo: { type: "string", description: "Expanded retelling of the founding myth in legendary style (200-400 words). Empty string if no founding myth exists." },
+                saga: { type: "string", description: "Main saga narrative 700-1400 words structured around founding myth (if exists) with inline [[event:ID|label]] references" },
                 actors: {
                   type: "array",
                   items: {
@@ -197,11 +225,11 @@ Napiš dvorní kroniku tohoto místa/entity. Využij VŠECHNY dostupné zdroje.`
                     required: ["name", "role"], additionalProperties: false,
                   },
                 },
-                consequences: { type: "string", description: "Economy/stability/army impacts grounded in stats/events" },
-                legends: { type: "string", description: "Optional speculative flavor section, clearly labeled as legend" },
+                consequences: { type: "string", description: "Economy/stability/army impacts — how founding myth shapes current politics" },
+                legends: { type: "string", description: "Optional speculative flavor section, folk tales extending the founding myth" },
                 isProtoSaga: { type: "boolean", description: "True if insufficient source data (<3 events)" },
               },
-              required: ["chronology", "saga", "actors", "consequences", "isProtoSaga"],
+              required: ["chronology", "founding_myth_echo", "saga", "actors", "consequences", "isProtoSaga"],
               additionalProperties: false,
             },
           },
@@ -240,7 +268,7 @@ Napiš dvorní kroniku tohoto místa/entity. Využij VŠECHNY dostupné zdroje.`
 
     const content = data.choices?.[0]?.message?.content || "";
     return new Response(JSON.stringify({
-      chronology: [], saga: content || "Sága se nepodařila vygenerovat.",
+      chronology: [], founding_myth_echo: "", saga: content || "Sága se nepodařila vygenerovat.",
       actors: [], consequences: "", legends: "", isProtoSaga: true
     }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
