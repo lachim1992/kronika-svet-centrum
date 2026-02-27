@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
@@ -9,9 +9,11 @@ import { Switch } from "@/components/ui/switch";
 import {
   Crown, Coins, Shield, Swords, Users, Eye, Church, Scroll, ScrollText,
   ChevronRight, Loader2, Sparkles, AlertTriangle, CheckCircle, Gavel,
-  TrendingUp, TrendingDown, Minus,
+  TrendingUp, TrendingDown, Minus, ThumbsUp, ThumbsDown, MinusCircle,
 } from "lucide-react";
 import { toast } from "sonner";
+import { FACTION_TYPES } from "@/lib/cityGovernance";
+import { computeFactionReactions, computeVotingResult, computeDecreeImpacts, type FactionVote } from "@/lib/factionCouncil";
 
 interface Props {
   sessionId: string;
@@ -31,7 +33,7 @@ interface Props {
   onRefetch: () => void;
 }
 
-type AdvisorId = "economy" | "stability" | "military" | "diplomacy" | "intelligence" | "culture";
+type AdvisorId = "economy" | "stability" | "military" | "diplomacy" | "intelligence" | "culture" | "city_council";
 
 const ADVISORS: { id: AdvisorId; label: string; icon: React.ElementType; title: string }[] = [
   { id: "economy", label: "Ekonomie", icon: Coins, title: "Ministr obchodu" },
@@ -40,6 +42,7 @@ const ADVISORS: { id: AdvisorId; label: string; icon: React.ElementType; title: 
   { id: "diplomacy", label: "Diplomacie", icon: Users, title: "Diplomat" },
   { id: "intelligence", label: "Zvědi", icon: Eye, title: "Mistr špiónů" },
   { id: "culture", label: "Kultura", icon: Church, title: "Velekněz" },
+  { id: "city_council", label: "Rada města", icon: Crown, title: "Městská rada" },
 ];
 
 const DECREE_TYPES = [
@@ -64,6 +67,8 @@ const CouncilTab = ({
   const [enacting, setEnacting] = useState(false);
   const [aiReport, setAiReport] = useState<string | null>(null);
   const [reportLoading, setReportLoading] = useState(false);
+  const [allFactions, setAllFactions] = useState<any[]>([]);
+  const [factionVotes, setFactionVotes] = useState<FactionVote[]>([]);
 
   // Law draft generation state
   const [lawDraft, setLawDraft] = useState<{ lawName: string; fullText: string; effects: { type: string; value: number; label: string }[] } | null>(null);
@@ -76,6 +81,28 @@ const CouncilTab = ({
   const recentEvents = useMemo(() => events.filter(e => e.turn_number >= currentTurn - 3).slice(0, 10), [events, currentTurn]);
   const activeCrises = useMemo(() => worldCrises.filter(c => !c.resolved), [worldCrises]);
   const recentTrades = useMemo(() => trades.filter(t => t.turn_number >= currentTurn - 3), [trades, currentTurn]);
+
+  // Fetch all city factions for player's cities
+  useEffect(() => {
+    const cityIds = myCities.map(c => c.id);
+    if (cityIds.length === 0) return;
+    supabase
+      .from("city_factions")
+      .select("*")
+      .in("city_id", cityIds)
+      .then(({ data }) => setAllFactions(data || []));
+  }, [myCities]);
+
+  // Faction demands across all cities
+  const factionDemands = useMemo(() =>
+    allFactions.filter(f => f.current_demand && f.demand_urgency > 3)
+      .map(f => {
+        const city = myCities.find(c => c.id === f.city_id);
+        return { ...f, cityName: city?.name || "?" };
+      })
+      .sort((a, b) => b.demand_urgency - a.demand_urgency),
+    [allFactions, myCities]
+  );
 
   // ── Generate advisor reports from real data ──
   const advisorReport = useMemo(() => {
@@ -170,8 +197,33 @@ const CouncilTab = ({
           recommendation: "Stavba divů a náboženské dekrety posilují loajalitu.",
         };
       }
+      case "city_council": {
+        const avgSatisfaction = allFactions.length > 0
+          ? Math.round(allFactions.reduce((s, f) => s + f.satisfaction, 0) / allFactions.length)
+          : 50;
+        const avgLoyalty = allFactions.length > 0
+          ? Math.round(allFactions.reduce((s, f) => s + f.loyalty, 0) / allFactions.length)
+          : 50;
+        const unhappy = allFactions.filter(f => f.satisfaction < 30);
+        return {
+          summary: unhappy.length > 0
+            ? `⚠ ${unhappy.length} nespokojených frakcí ve vašich městech!`
+            : "Rada města je spokojena s vaší vládou.",
+          metrics: [
+            { label: "Frakce celkem", value: String(allFactions.length), trend: "neutral" as const },
+            { label: "Ø Spokojenost", value: String(avgSatisfaction), trend: avgSatisfaction >= 40 ? "up" as const : "down" as const },
+            { label: "Ø Loajalita", value: String(avgLoyalty), trend: avgLoyalty >= 40 ? "up" as const : "down" as const },
+            { label: "Požadavky", value: String(factionDemands.length), trend: factionDemands.length > 0 ? "down" as const : "up" as const },
+            { label: "Nespokojení", value: String(unhappy.length), trend: unhappy.length > 0 ? "down" as const : "up" as const },
+          ],
+          risk: unhappy.length > 2 ? "Vysoké" : unhappy.length > 0 ? "Střední" : "Nízké",
+          recommendation: unhappy.length > 0
+            ? "Řešte požadavky nespokojených frakcí dekrety, jinak hrozí povstání."
+            : "Pokračujte v moudrém vládnutí. Zvažte dekret posilující slabší frakce.",
+        };
+      }
     }
-  }, [activeAdvisor, myResources, myArmies, myCities, recentEvents, activeCrises, recentTrades, cityStates, players, declarations, events, cities, currentTurn, trades]);
+  }, [activeAdvisor, myResources, myArmies, myCities, recentEvents, activeCrises, recentTrades, cityStates, players, declarations, events, cities, currentTurn, trades, allFactions, factionDemands]);
 
   const TrendIcon = ({ trend }: { trend: "up" | "down" | "neutral" }) => {
     if (trend === "up") return <TrendingUp className="h-3 w-3 text-forest-green" />;
@@ -184,6 +236,7 @@ const CouncilTab = ({
     if (!decreeText.trim()) return;
     setPreviewLoading(true);
     setDecreePreview(null);
+    setFactionVotes([]);
     try {
       const { data, error } = await supabase.functions.invoke("royal-council", {
         body: {
@@ -203,6 +256,10 @@ const CouncilTab = ({
       });
       if (error) throw error;
       setDecreePreview(data);
+
+      // Compute faction votes
+      const votes = computeFactionReactions(allFactions, decreeType, data?.effects);
+      setFactionVotes(votes);
     } catch (e) {
       console.error(e);
       toast.error("Hodnocení rady selhalo");
@@ -228,6 +285,32 @@ const CouncilTab = ({
         effects: decreePreview?.effects || [],
       });
 
+      // Apply faction impacts (mechanical effects on satisfaction & loyalty)
+      if (factionVotes.length > 0) {
+        const impacts = computeDecreeImpacts(factionVotes);
+        const votingResult = computeVotingResult(factionVotes);
+
+        for (const faction of allFactions) {
+          const impact = impacts[faction.faction_type];
+          if (!impact) continue;
+          const newSatisfaction = Math.max(0, Math.min(100, faction.satisfaction + impact.satisfaction));
+          const newLoyalty = Math.max(0, Math.min(100, faction.loyalty + impact.loyalty));
+          await supabase.from("city_factions").update({
+            satisfaction: newSatisfaction,
+            loyalty: newLoyalty,
+          }).eq("id", faction.id);
+        }
+
+        // If forced against council will, apply stability penalty
+        if (!votingResult.approved && votingResult.stabilityPenalty > 0) {
+          for (const city of myCities) {
+            const newStability = Math.max(0, (city.city_stability || 70) - votingResult.stabilityPenalty);
+            await supabase.from("cities").update({ city_stability: newStability } as any).eq("id", city.id);
+          }
+          toast.warning(`⚠ Dekret vynucen proti vůli rady! Stabilita snížena o ${votingResult.stabilityPenalty}.`);
+        }
+      }
+
       // Write to world action log
       await supabase.from("world_action_log").insert({
         session_id: sessionId,
@@ -235,12 +318,13 @@ const CouncilTab = ({
         turn_number: currentTurn,
         action_type: "decree",
         description: `${currentPlayerName} vydal dekret: ${decreeText.slice(0, 100)}`,
-        metadata: { decree_type: decreeType, effects: decreePreview?.effects },
+        metadata: { decree_type: decreeType, effects: decreePreview?.effects, faction_votes: factionVotes.map(v => ({ faction: v.factionType, stance: v.stance })) },
       });
 
       toast.success("📜 Dekret byl vyhlášen a zapsán do kroniky!");
       setDecreeText("");
       setDecreePreview(null);
+      setFactionVotes([]);
       setShowDecree(false);
       onRefetch();
     } catch (e) {
@@ -491,14 +575,80 @@ const CouncilTab = ({
                       </div>
                     )}
 
+                    {/* ── Faction Voting ── */}
+                    {factionVotes.length > 0 && (() => {
+                      const votingResult = computeVotingResult(factionVotes);
+                      return (
+                        <div className="space-y-3">
+                          <div className="scroll-divider"><span className="text-[10px]">👑 Hlasování Rady města 👑</span></div>
+
+                          {/* Voting summary */}
+                          <div className={`p-3 rounded-lg border text-xs font-body ${
+                            votingResult.approved
+                              ? "bg-accent/5 border-accent/20"
+                              : "bg-destructive/5 border-destructive/20"
+                          }`}>
+                            <p className="font-display font-semibold mb-1">
+                              {votingResult.approved ? "✅ Rada schvaluje" : "❌ Rada odmítá"}
+                            </p>
+                            <p>{votingResult.summary}</p>
+                          </div>
+
+                          {/* Individual faction votes */}
+                          <div className="space-y-2">
+                            {factionVotes.map(v => (
+                              <div key={v.factionType} className="p-2.5 rounded-lg border border-border flex items-start gap-2.5">
+                                <span className="text-lg shrink-0">{v.icon}</span>
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-2 mb-0.5">
+                                    <span className="text-xs font-display font-semibold">{v.label}</span>
+                                    {v.stance === "support" && <ThumbsUp className="h-3 w-3 text-forest-green" />}
+                                    {v.stance === "oppose" && <ThumbsDown className="h-3 w-3 text-seal-red" />}
+                                    {v.stance === "neutral" && <MinusCircle className="h-3 w-3 text-muted-foreground" />}
+                                    <Badge variant="outline" className={`text-[9px] ${
+                                      v.stance === "support" ? "border-accent/30 text-forest-green" :
+                                      v.stance === "oppose" ? "border-destructive/30 text-seal-red" :
+                                      "border-border text-muted-foreground"
+                                    }`}>
+                                      {v.stance === "support" ? "Pro" : v.stance === "oppose" ? "Proti" : "Zdržel se"}
+                                    </Badge>
+                                  </div>
+                                  <p className="text-[11px] text-muted-foreground italic">{v.reason}</p>
+                                  <div className="flex gap-2 mt-1 text-[10px]">
+                                    <span className={v.satisfactionImpact >= 0 ? "text-forest-green" : "text-seal-red"}>
+                                      Spokojenost: {v.satisfactionImpact >= 0 ? "+" : ""}{v.satisfactionImpact}
+                                    </span>
+                                    <span className={v.loyaltyImpact >= 0 ? "text-forest-green" : "text-seal-red"}>
+                                      Loajalita: {v.loyaltyImpact >= 0 ? "+" : ""}{v.loyaltyImpact}
+                                    </span>
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+
+                          {!votingResult.approved && (
+                            <div className="p-2.5 rounded-lg bg-destructive/5 border border-destructive/20 text-xs">
+                              <p className="font-display font-semibold text-seal-red mb-0.5">⚠ Vynucení dekretu</p>
+                              <p className="text-muted-foreground">
+                                Můžete dekret vyhlásit i přes nesouhlas rady, ale stabilita všech měst klesne o {votingResult.stabilityPenalty}.
+                              </p>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
+
                     {/* Enact button */}
                     <div className="flex gap-2 justify-end">
-                      <Button size="sm" variant="outline" onClick={() => setDecreePreview(null)} className="text-xs">
+                      <Button size="sm" variant="outline" onClick={() => { setDecreePreview(null); setFactionVotes([]); }} className="text-xs">
                         Zrušit
                       </Button>
                       <Button size="sm" onClick={handleEnactDecree} disabled={enacting} className="text-xs">
                         {enacting ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <CheckCircle className="h-3 w-3 mr-1" />}
-                        Vyhlásit dekret
+                        {factionVotes.length > 0 && !computeVotingResult(factionVotes).approved
+                          ? "Vynutit dekret"
+                          : "Vyhlásit dekret"}
                       </Button>
                     </div>
                   </div>
@@ -599,8 +749,95 @@ const CouncilTab = ({
                   <p className="text-sm font-body leading-relaxed">{advisorReport.recommendation}</p>
                 </div>
 
+                {/* ── City Council: faction details + demands ── */}
+                {activeAdvisor === "city_council" && (
+                  <div className="space-y-4">
+                    {/* Faction demands */}
+                    {factionDemands.length > 0 && (
+                      <div>
+                        <h4 className="font-display text-xs font-semibold mb-2 flex items-center gap-2">
+                          <AlertTriangle className="h-3.5 w-3.5 text-illuminated" /> Požadavky frakcí
+                        </h4>
+                        <div className="space-y-2">
+                          {factionDemands.map(fd => {
+                            const meta = FACTION_TYPES[fd.faction_type];
+                            return (
+                              <div key={fd.id} className="p-3 rounded-lg border border-destructive/20 bg-destructive/5">
+                                <div className="flex items-center gap-2 mb-1">
+                                  <span className="text-base">{meta?.icon || "👥"}</span>
+                                  <span className="text-xs font-display font-semibold">{meta?.label || fd.faction_type}</span>
+                                  <Badge variant="outline" className="text-[9px] ml-auto">{fd.cityName}</Badge>
+                                  {fd.demand_urgency > 7 && <Badge variant="destructive" className="text-[8px]">Kritické</Badge>}
+                                </div>
+                                <p className="text-[11px] text-muted-foreground italic">📢 {fd.current_demand}</p>
+                                <div className="flex gap-2 mt-2">
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="h-6 text-[10px]"
+                                    onClick={() => {
+                                      setDecreeText(fd.current_demand);
+                                      setShowDecree(true);
+                                    }}
+                                  >
+                                    <Gavel className="h-3 w-3 mr-1" />Navrhnout dekret
+                                  </Button>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="scroll-divider"><span className="text-[10px]">👑 Přehled frakcí 👑</span></div>
+
+                    {/* Factions by city */}
+                    {myCities.map(city => {
+                      const cityFactions = allFactions.filter(f => f.city_id === city.id);
+                      if (cityFactions.length === 0) return null;
+                      return (
+                        <div key={city.id} className="space-y-2">
+                          <h4 className="font-display text-xs font-semibold text-muted-foreground">{city.name}</h4>
+                          <div className="grid grid-cols-2 gap-2">
+                            {cityFactions.map(f => {
+                              const meta = FACTION_TYPES[f.faction_type];
+                              const satColor = f.satisfaction >= 50 ? "text-forest-green" : f.satisfaction >= 25 ? "text-illuminated" : "text-seal-red";
+                              return (
+                                <div key={f.id} className="p-2.5 rounded-lg border border-border bg-card">
+                                  <div className="flex items-center gap-1.5 mb-1">
+                                    <span className="text-base">{meta?.icon || "👥"}</span>
+                                    <span className="text-[11px] font-display font-semibold">{meta?.label || f.faction_type}</span>
+                                  </div>
+                                  <div className="grid grid-cols-3 gap-1 text-[10px]">
+                                    <div>
+                                      <p className="text-muted-foreground">Moc</p>
+                                      <p className="font-bold">{f.power}</p>
+                                    </div>
+                                    <div>
+                                      <p className="text-muted-foreground">Spokoj.</p>
+                                      <p className={`font-bold ${satColor}`}>{f.satisfaction}</p>
+                                    </div>
+                                    <div>
+                                      <p className="text-muted-foreground">Loajalita</p>
+                                      <p className="font-bold">{f.loyalty}</p>
+                                    </div>
+                                  </div>
+                                  {f.current_demand && (
+                                    <p className="text-[9px] text-muted-foreground italic mt-1 truncate">📢 {f.current_demand}</p>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
                 {/* Recent events relevant to this advisor */}
-                {recentEvents.length > 0 && (
+                {activeAdvisor !== "city_council" && recentEvents.length > 0 && (
                   <div>
                     <h4 className="font-display text-xs font-semibold mb-2 text-muted-foreground">Poslední události</h4>
                     <div className="space-y-1">
