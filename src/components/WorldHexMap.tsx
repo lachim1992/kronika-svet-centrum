@@ -403,18 +403,18 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
 
   /* ── Lookups ── */
   const citiesByCoord = useMemo(() => {
-    const visible = allCities.filter(c => c.owner_player === playerName || isAdmin || discoveredCoords.has(hKey(c.q, c.r)));
+    const visible = allCities.filter(c => devMode || c.owner_player === playerName || isAdmin || discoveredCoords.has(hKey(c.q, c.r)));
     const m = new Map<string, CityOnHex[]>();
     for (const c of visible) { const key = hKey(c.q, c.r); const list = m.get(key) || []; list.push(c); m.set(key, list); }
     return m;
-  }, [allCities, playerName, isAdmin, discoveredCoords]);
+  }, [allCities, playerName, isAdmin, discoveredCoords, devMode]);
 
   const stacksByCoord = useMemo(() => {
-    const visible = allStacks.filter(s => s.player_name === playerName || isAdmin || discoveredCoords.has(hKey(s.q, s.r)));
+    const visible = allStacks.filter(s => devMode || s.player_name === playerName || isAdmin || discoveredCoords.has(hKey(s.q, s.r)));
     const m = new Map<string, StackOnHex[]>();
     for (const s of visible) { const key = hKey(s.q, s.r); const list = m.get(key) || []; list.push(s); m.set(key, list); }
     return m;
-  }, [allStacks, playerName, isAdmin, discoveredCoords]);
+  }, [allStacks, playerName, isAdmin, discoveredCoords, devMode]);
 
   /* ── Load discoveries ── */
   const fetchDiscoveries = useCallback(async () => {
@@ -436,7 +436,8 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
 
   /* ── Frontier ── */
   const frontierCoords = useMemo(() => {
-    if (isAdmin && !devMode) return new Set<string>();
+    // In devMode, no frontier — everything is revealed
+    if (devMode) return new Set<string>();
     const frontier = new Set<string>();
     for (const coordStr of discoveredCoords) {
       const [q, r] = coordStr.split(",").map(Number);
@@ -446,7 +447,7 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
       }
     }
     return frontier;
-  }, [discoveredCoords, isAdmin, devMode]);
+  }, [discoveredCoords, devMode]);
 
   const frontierFetchedRef = useRef<Set<string>>(new Set());
   useEffect(() => {
@@ -465,15 +466,15 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
   /* ── Render coords ── */
   const renderCoords = useMemo(() => {
     const all = new Map<string, { q: number; r: number; isFrontier: boolean }>();
-    if (isAdmin && devMode) {
+    if (devMode) {
+      // DevMode: show ALL loaded hexes as fully revealed
       for (const key of Object.keys(hexes)) { const [q, r] = key.split(",").map(Number); all.set(key, { q, r, isFrontier: false }); }
-      for (const fk of frontierCoords) { if (!all.has(fk)) { const [q, r] = fk.split(",").map(Number); all.set(fk, { q, r, isFrontier: true }); } }
     } else {
       for (const coordStr of discoveredCoords) { const [q, r] = coordStr.split(",").map(Number); all.set(coordStr, { q, r, isFrontier: false }); }
       for (const fk of frontierCoords) { const [q, r] = fk.split(",").map(Number); all.set(fk, { q, r, isFrontier: true }); }
     }
     return Array.from(all.values());
-  }, [hexes, discoveredCoords, frontierCoords, isAdmin, devMode]);
+  }, [hexes, discoveredCoords, frontierCoords, devMode]);
 
   /* ── Camera center ── */
   const cameraCenter = useMemo(() => {
@@ -510,6 +511,15 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
       await fetchDiscoveries();
     })();
   }, []);
+
+  // Load all hexes when devMode is toggled on
+  const devModeLoadedRef = useRef(false);
+  useEffect(() => {
+    if (devMode && !devModeLoadedRef.current) {
+      devModeLoadedRef.current = true;
+      loadAllGenerated();
+    }
+  }, [devMode, loadAllGenerated]);
 
   useEffect(() => {
     if (bootstrapping) return;
