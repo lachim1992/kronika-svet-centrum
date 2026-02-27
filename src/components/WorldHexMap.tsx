@@ -59,6 +59,7 @@ interface CityOnHex {
 interface StackOnHex {
   id: string; name: string; player_name: string; q: number; r: number;
   manpower: number; formation_type: string; morale?: number;
+  imageUrl?: string | null; sigilUrl?: string | null;
 }
 
 /* ───── Props ───── */
@@ -181,30 +182,101 @@ const HexTile = memo(({
               ({q},{r})
             </text>
           )}
-          {/* Army markers */}
+          {/* Army markers — circular badge style matching cities */}
           {stacks.length > 0 && (
             <>
               {stacks.slice(0, 3).map((s, i) => {
                 const isOwn = s.player_name === myPlayerName;
                 const isSelected = s.id === selectedStackId;
-                const yOff = cities.length > 0 ? 20 : 14;
+                const yOff = cities.length > 0 ? 22 : 0;
+                const xOff = cities.length > 0 ? (i === 0 ? -12 : i === 1 ? 12 : 0) : (i > 0 ? (i === 1 ? -10 : 10) : 0);
+                const stackCx = cx + xOff;
+                const stackCy = cy + yOff + (i > 0 && cities.length > 0 ? 4 : 0);
+                const r = 11;
+                const clipId = `stack-clip-${s.id}`;
+                const hasImage = !!s.imageUrl;
+                const borderColor = isSelected
+                  ? "hsl(45, 90%, 55%)"
+                  : isOwn ? "hsl(45, 80%, 55%)" : "hsl(0, 60%, 55%)";
+
                 return (
                   <g key={s.id} className="cursor-pointer" onClick={(e) => {
                     e.stopPropagation();
                     if (isOwn && onStackClick) onStackClick(s);
                   }}>
-                    <rect
-                      x={cx - 14 + i * 4} y={cy + yOff - 5}
-                      width="28" height="10" rx="3"
-                      fill={isSelected ? "hsl(45, 90%, 20%)" : "hsl(0, 0%, 10%)"} fillOpacity="0.85"
-                      stroke={isSelected ? "hsl(45, 90%, 65%)" : isOwn ? "hsl(45, 80%, 55%)" : "hsl(0, 60%, 55%)"}
-                      strokeWidth={isSelected ? 1.8 : 0.8}
+                    <defs>
+                      <clipPath id={clipId}>
+                        <circle cx={stackCx} cy={stackCy} r={r} />
+                      </clipPath>
+                    </defs>
+
+                    {/* Drop shadow */}
+                    <circle cx={stackCx} cy={stackCy} r={r + 1} fill="black" opacity={0.3} />
+
+                    {/* Background */}
+                    <circle cx={stackCx} cy={stackCy} r={r}
+                      fill="hsl(var(--card))"
+                      stroke={borderColor}
+                      strokeWidth={isSelected ? 2.2 : 1.4}
                     />
-                    <text x={cx + i * 4} y={cy + yOff + 1}
+
+                    {/* Image or fallback icon */}
+                    {hasImage ? (
+                      <>
+                        <image
+                          href={s.imageUrl!}
+                          x={stackCx - r} y={stackCy - r}
+                          width={r * 2} height={r * 2}
+                          clipPath={`url(#${clipId})`}
+                          preserveAspectRatio="xMidYMid slice"
+                          style={{ pointerEvents: "none" }}
+                        />
+                        {/* Border ring on top */}
+                        <circle cx={stackCx} cy={stackCy} r={r}
+                          fill="none" stroke={borderColor}
+                          strokeWidth={isSelected ? 2.2 : 1.4}
+                        />
+                      </>
+                    ) : (
+                      <text x={stackCx} y={stackCy + 1}
+                        textAnchor="middle" dominantBaseline="middle"
+                        fill={isOwn ? "hsl(45, 80%, 60%)" : "hsl(0, 60%, 65%)"} fontSize="10"
+                        style={{ pointerEvents: "none" }}>
+                        ⚔
+                      </text>
+                    )}
+
+                    {/* Sigil badge in top-right */}
+                    {s.sigilUrl && (
+                      <image
+                        href={s.sigilUrl}
+                        x={stackCx + r * 0.3} y={stackCy - r - 2}
+                        width={10} height={10}
+                        preserveAspectRatio="xMidYMid meet"
+                        style={{ pointerEvents: "none" }}
+                      />
+                    )}
+
+                    {/* Manpower count badge */}
+                    <rect
+                      x={stackCx - 10} y={stackCy + r - 2}
+                      width="20" height="9" rx="4"
+                      fill="hsl(0, 0%, 8%)" fillOpacity="0.85"
+                      stroke={borderColor} strokeWidth="0.6"
+                    />
+                    <text x={stackCx} y={stackCy + r + 3.5}
                       textAnchor="middle" dominantBaseline="middle"
-                      fill={isOwn ? "hsl(45, 80%, 60%)" : "hsl(0, 60%, 65%)"} fontSize="6" fontWeight="700"
+                      fill={isOwn ? "hsl(45, 80%, 70%)" : "hsl(0, 60%, 70%)"} fontSize="5.5" fontWeight="700"
                       style={{ pointerEvents: "none" }}>
-                      ⚔ {s.manpower}
+                      {s.manpower}
+                    </text>
+
+                    {/* Stack name below */}
+                    <text x={stackCx} y={stackCy + r + 11}
+                      textAnchor="middle" dominantBaseline="hanging"
+                      fill="white" fontSize="5" fontWeight="600"
+                      style={{ pointerEvents: "none", textShadow: "0 1px 2px rgba(0,0,0,0.8)" }}>
+                      {s.name.length > 10 ? s.name.slice(0, 9) + "…" : s.name}
                     </text>
                   </g>
                 );
@@ -379,7 +451,7 @@ const WorldHexMap = ({ sessionId, playerName, myRole, onCityClick }: Props) => {
   const fetchStacks = useCallback(async () => {
     const { data: rawStacks } = await supabase
       .from("military_stacks")
-      .select("id, name, player_name, hex_q, hex_r, formation_type, is_deployed, is_active, morale")
+      .select("id, name, player_name, hex_q, hex_r, formation_type, is_deployed, is_active, morale, image_url, image_confirmed, sigil_url, sigil_confirmed")
       .eq("session_id", sessionId)
       .eq("is_deployed", true)
       .eq("is_active", true);
@@ -399,6 +471,8 @@ const WorldHexMap = ({ sessionId, playerName, myRole, onCityClick }: Props) => {
       manpower: mpMap.get(s.id) || 0,
       formation_type: s.formation_type,
       morale: s.morale ?? 70,
+      imageUrl: s.image_confirmed && s.image_url ? s.image_url : null,
+      sigilUrl: s.sigil_confirmed && s.sigil_url ? s.sigil_url : null,
     })));
   }, [sessionId]);
 
