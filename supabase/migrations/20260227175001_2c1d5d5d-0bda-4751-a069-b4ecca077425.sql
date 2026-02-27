@@ -1,0 +1,1 @@
+ALTER TABLE public.cities ADD COLUMN IF NOT EXISTS uprising_cooldown_until integer NOT NULL DEFAULT 0;

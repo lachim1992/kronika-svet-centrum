@@ -515,6 +515,11 @@ Deno.serve(async (req) => {
             // ═══ UPRISING TRIGGER: 5 consecutive famine turns ═══
             const UPRISING_THRESHOLD = 5;
             if (newConsecutive >= UPRISING_THRESHOLD) {
+              // Check cooldown — skip if city is still protected
+              const cooldownUntil = city.uprising_cooldown_until || 0;
+              if (currentTurn <= cooldownUntil) {
+                logEntries.push(`⏳ Vzpoura v ${city.name} blokována cooldownem (do roku ${cooldownUntil})`);
+              } else {
               // Check if there's already an active uprising for this city
               const { data: existingUprising } = await supabase
                 .from("city_uprisings")
@@ -582,6 +587,7 @@ Deno.serve(async (req) => {
 
                 logEntries.push(`🔥 ESKALACE vzpoury v ${city.name}! Úroveň ${newLevel}`);
               }
+              } // end cooldown else
             }
 
             remaining -= allocDeficit;

@@ -475,6 +475,7 @@ export type Database = {
           status: string
           tags: string[] | null
           temple_level: number
+          uprising_cooldown_until: number
           vulnerability_score: number
         }
         Insert: {
@@ -539,6 +540,7 @@ export type Database = {
           status?: string
           tags?: string[] | null
           temple_level?: number
+          uprising_cooldown_until?: number
           vulnerability_score?: number
         }
         Update: {
@@ -603,6 +605,7 @@ export type Database = {
           status?: string
           tags?: string[] | null
           temple_level?: number
+          uprising_cooldown_until?: number
           vulnerability_score?: number
         }
         Relationships: [
