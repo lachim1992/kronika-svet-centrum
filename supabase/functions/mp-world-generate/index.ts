@@ -34,49 +34,36 @@ Deno.serve(async (req) => {
     const tone = foundation.tone || "narrative";
     const victoryStyle = foundation.victory_style || "influence";
 
-    // 3. Generate world seed & hex map
+    // ═══ 0) Server config + economic params ═══
+    const defaultEconomic = {
+      world_gen_mode: "cheap_start",
+      auto_generate_city_profiles: false,
+      auto_generate_top_city_profiles: true,
+      top_profiles_count: 3,
+      lazy_generate_on_open: true,
+      dev_unlock_premium: true,
+    };
+
+    const { data: existingCfg } = await sb.from("server_config")
+      .select("id, economic_params").eq("session_id", sessionId).maybeSingle();
+
+    let economic = { ...defaultEconomic };
+    if (existingCfg) {
+      const stored = existingCfg.economic_params as Record<string, unknown> || {};
+      economic = { ...defaultEconomic, ...stored };
+      await sb.from("server_config").update({ economic_params: economic }).eq("id", existingCfg.id);
+    } else {
+      await sb.from("server_config").insert({ session_id: sessionId, economic_params: economic, admin_user_id: session.created_by });
+    }
+
+    const isCheapStart = economic.world_gen_mode === "cheap_start";
+    const topProfilesCount = economic.top_profiles_count || 3;
+
+    // 3. Generate world seed
     const worldSeed = crypto.randomUUID();
     await sb.from("game_sessions").update({ world_seed: worldSeed }).eq("id", sessionId);
 
-    const MAP_RADIUS = 17;
-    const spawnPositions = calculateSpawnPositions(playerCount, MAP_RADIUS);
-
-    // Generate hex map
-    const hexBatch: any[] = [];
-    const seed = hashSeed(worldSeed);
-    for (let q = -MAP_RADIUS; q <= MAP_RADIUS; q++) {
-      for (let r = -MAP_RADIUS; r <= MAP_RADIUS; r++) {
-        if (Math.abs(q + r) > MAP_RADIUS) continue;
-        const hex = generateHexData(q, r, seed, worldSeed);
-        hexBatch.push({
-          session_id: sessionId, q, r, seed: worldSeed,
-          mean_height: hex.mean_height, biome_family: hex.biome_family,
-          coastal: hex.coastal, moisture_band: hex.moisture_band, temp_band: hex.temp_band,
-        });
-      }
-    }
-    const HEX_BATCH_SIZE = 200;
-    for (let i = 0; i < hexBatch.length; i += HEX_BATCH_SIZE) {
-      await sb.from("province_hexes").upsert(hexBatch.slice(i, i + HEX_BATCH_SIZE), { onConflict: "session_id,q,r" });
-    }
-
-    // 4. Set spawn biomes
-    for (let i = 0; i < civConfigs.length; i++) {
-      const cfg = civConfigs[i];
-      const spawn = spawnPositions[i];
-      await sb.from("province_hexes")
-        .update({ biome_family: mapBiomeName(cfg.homeland_biome) })
-        .eq("session_id", sessionId).eq("q", spawn.q).eq("r", spawn.r);
-    }
-
-    // 5. AI GENERATION — full world with persons, wonders, battles, prehistory (same as singleplayer)
-    const playerDescs = civConfigs.map((c: any) =>
-      `${c.player_name} (${c.realm_name || "neznámá říše"}): ${c.civ_description || "neznámý národ"}, biom: ${c.homeland_biome}, sídlo: ${c.settlement_name}`
-    ).join("\n");
-
-    const styleLabel = tone === "realistic" ? "politická kronika" : tone === "mythic" ? "epická sága" : "středověká kronika";
-
-    // Size config for multiplayer (slightly smaller per player but richer overall)
+    // Size config for multiplayer
     const config = {
       cities: Math.max(8, playerCount * 3),
       persons: Math.max(10, playerCount * 4),
@@ -87,9 +74,15 @@ Deno.serve(async (req) => {
       aiFactions: Math.max(2, playerCount),
     };
 
+    // ═══ AI GENERATION ═══
     let world: any = null;
+    const styleLabel = tone === "realistic" ? "politická kronika" : tone === "mythic" ? "epická sága" : "středověká kronika";
 
     if (LOVABLE_API_KEY) {
+      const playerDescs = civConfigs.map((c: any) =>
+        `${c.player_name} (${c.realm_name || "neznámá říše"}): ${c.civ_description || "neznámý národ"}, biom: ${c.homeland_biome}, sídlo: ${c.settlement_name}`
+      ).join("\n");
+
       const systemPrompt = `Jsi generátor světa pro civilizační strategickou hru s ${playerCount} hráči. Tvým úkolem je vytvořit kompletní, tematicky koherentní svět S HLUBOKOU PREHISTORIÍ.
 
 HLAVNÍ PRAVIDLA:
@@ -112,6 +105,7 @@ KRITICKÉ POŽADAVKY NA PROVÁZANOST:
 4. Pre-history events tvoří KOHERENTNÍ MYTOLOGII.
 5. Divy: některé mohou být zničené (status=destroyed).
 6. KAŽDÝ hráč musí mít alespoň 1 město (jejich startovní sídlo) + další města v jejich regionech.
+7. Každý region musí mít alespoň 1 provincii s názvem a popisem.
 
 Odpověz POUZE voláním funkce generate_world.`;
 
@@ -137,9 +131,9 @@ POŽADAVKY:
 - lore_bible: 200-400 slov
 - 5-10 history events pro rok 1
 
-DŮLEŽITÉ: Hráčské frakce MUSÍ mít isPlayer=true a jméno musí přesně odpovídat player_name hráče. Startovní města hráčů MUSÍ odpovídat jejich zadaným názvům sídel.`;
+DŮLEŽITÉ: Hráčské frakce MUSÍ mít isPlayer=true a playerName musí přesně odpovídat player_name hráče. Startovní města hráčů MUSÍ odpovídat jejich zadaným názvům sídel.`;
 
-      // Tool schema (same as singleplayer)
+      // Tool schema
       const toolSchema = {
         type: "function",
         function: {
@@ -172,6 +166,7 @@ DŮLEŽITÉ: Hráčské frakce MUSÍ mít isPlayer=true a jméno musí přesně 
                     culturalQuirk: { type: "string" },
                     isPlayer: { type: "boolean" },
                     goals: { type: "array", items: { type: "string" } },
+                    dispositionToPlayer: { type: "integer", description: "-100 to 100" },
                   },
                   required: ["name", "playerName", "personality", "description", "isPlayer", "goals"],
                   additionalProperties: false,
@@ -215,8 +210,8 @@ DŮLEŽITÉ: Hráčské frakce MUSÍ mít isPlayer=true a jméno musí přesně 
                     tags: { type: "array", items: { type: "string" } },
                     description: { type: "string" },
                     imagePrompt: { type: "string" },
-                    isStartingCity: { type: "boolean", description: "True if this is a player's starting settlement" },
-                    forPlayerName: { type: "string", description: "player_name if isStartingCity" },
+                    isStartingCity: { type: "boolean" },
+                    forPlayerName: { type: "string" },
                   },
                   required: ["name", "ownerFaction", "regionName", "provinceName", "level", "description", "imagePrompt"],
                   additionalProperties: false,
@@ -373,13 +368,14 @@ DŮLEŽITÉ: Hráčské frakce MUSÍ mít isPlayer=true a jméno musí přesně 
     }
 
     // ═══════════════════════════════════════════════════════
-    // DETERMINISTIC ENTITY CREATION (same order as singleplayer)
+    // DETERMINISTIC ENTITY CREATION (aligned with singleplayer)
     // ═══════════════════════════════════════════════════════
 
     const counters = { factions: 0, cities: 0, events: 0, regions: 0, provinces: 0, countries: 0, wiki: 0, rumors: 0, legendary: 0, persons: 0, wonders: 0, battles: 0, links: 0 };
     const factionPlayerMap: Record<string, string> = {};
     const cityIdMap: Record<string, string> = {};
     const personIdMap: Record<string, string> = {};
+    const usedHexes = new Set<string>();
 
     // Map player configs by player_name for quick lookup
     const playerConfigMap: Record<string, any> = {};
@@ -402,7 +398,7 @@ DŮLEŽITÉ: Hráčské frakce MUSÍ mít isPlayer=true a jméno musí přesně 
         entity_name: countryInfo.name, owner_player: "system",
         summary: `${countryInfo.name} — společný stát tohoto světa.`,
         ai_description: countryInfo.description || null,
-        image_prompt: countryInfo.image_prompt || null,
+        image_prompt: countryInfo.image_prompt || `A medieval illuminated manuscript illustration of the kingdom of ${countryInfo.name}`,
         updated_at: new Date().toISOString(),
         references: { generated: true, mode: "mp_world_init" },
       } as any, { onConflict: "session_id,entity_type,entity_id" });
@@ -410,7 +406,6 @@ DŮLEŽITÉ: Hráčské frakce MUSÍ mít isPlayer=true a jméno musí přesně 
     }
 
     // ═══ STEP B: Civilizations + AI Factions + Resources ═══
-    // First, ensure all real players are mapped
     for (const cfg of civConfigs) {
       factionPlayerMap[cfg.realm_name || cfg.player_name] = cfg.player_name;
     }
@@ -418,13 +413,9 @@ DŮLEŽITÉ: Hráčské frakce MUSÍ mít isPlayer=true a jméno musí přesně 
     for (const faction of world?.factions || []) {
       let factionPlayerName: string;
       if (faction.isPlayer) {
-        // Match to actual player
         factionPlayerName = faction.playerName || faction.name;
-        // Try to find matching config
         const matchedCfg = civConfigs.find((c: any) => c.player_name === factionPlayerName || c.realm_name === faction.name);
-        if (matchedCfg) {
-          factionPlayerName = matchedCfg.player_name;
-        }
+        if (matchedCfg) factionPlayerName = matchedCfg.player_name;
       } else {
         factionPlayerName = faction.name;
       }
@@ -438,14 +429,16 @@ DŮLEŽITÉ: Hráčské frakce MUSÍ mít isPlayer=true a jméno musí přesně 
       });
 
       if (!faction.isPlayer) {
+        const disposition: Record<string, number> = {};
+        for (const cfg of civConfigs) {
+          disposition[cfg.player_name] = faction.dispositionToPlayer || 0;
+        }
         await sb.from("ai_factions").insert({
           session_id: sessionId, faction_name: faction.name, personality: faction.personality,
-          disposition: Object.fromEntries(civConfigs.map((c: any) => [c.player_name, 0])),
-          goals: faction.goals || [], is_active: true,
+          disposition, goals: faction.goals || [], is_active: true,
         });
       }
 
-      // Resources for all factions
       for (const rt of ["food", "wood", "stone", "iron", "wealth"]) {
         await sb.from("player_resources").insert({
           session_id: sessionId, player_name: factionPlayerName, resource_type: rt,
@@ -458,7 +451,7 @@ DŮLEŽITÉ: Hráčské frakce MUSÍ mít isPlayer=true a jméno musí přesně 
       await sb.from("realm_resources").insert({
         session_id: sessionId, player_name: factionPlayerName,
         grain_reserve: 20, wood_reserve: 10, stone_reserve: 5, iron_reserve: 3,
-        gold_reserve: 100, stability: 70, granary_capacity: 500,
+        gold_reserve: 100, stability: 70, granary_capacity: 500, mobilization_rate: 0.1,
       });
 
       counters.factions++;
@@ -466,9 +459,8 @@ DŮLEŽITÉ: Hráčské frakce MUSÍ mít isPlayer=true a jméno musí přesně 
 
     // Ensure all real players have factions even if AI missed them
     for (const cfg of civConfigs) {
-      if (!factionPlayerMap[cfg.realm_name || cfg.player_name] || !Object.values(factionPlayerMap).includes(cfg.player_name)) {
+      if (!Object.values(factionPlayerMap).includes(cfg.player_name)) {
         factionPlayerMap[cfg.realm_name || cfg.player_name] = cfg.player_name;
-        // Check if civ already created
         const { data: existingCiv } = await sb.from("civilizations")
           .select("id").eq("session_id", sessionId).eq("player_name", cfg.player_name).maybeSingle();
         if (!existingCiv) {
@@ -487,7 +479,7 @@ DŮLEŽITÉ: Hráčské frakce MUSÍ mít isPlayer=true a jméno musí přesně 
           await sb.from("realm_resources").insert({
             session_id: sessionId, player_name: cfg.player_name,
             grain_reserve: 20, wood_reserve: 10, stone_reserve: 5, iron_reserve: 3,
-            gold_reserve: 100, stability: 70, granary_capacity: 500,
+            gold_reserve: 100, stability: 70, granary_capacity: 500, mobilization_rate: 0.1,
           });
         }
       }
@@ -510,39 +502,138 @@ DŮLEŽITÉ: Hráčské frakce MUSÍ mít isPlayer=true a jméno musí přesně 
           entity_name: region.name, owner_player: ownerPlayer,
           summary: `${region.name} — ${region.biome} region ve státě ${countryInfo.name}.`,
           ai_description: region.description || null,
-          image_prompt: region.imagePrompt || null,
+          image_prompt: region.imagePrompt || `A medieval illuminated manuscript illustration of ${region.name}, ${region.biome} landscape`,
           updated_at: new Date().toISOString(),
-          references: { generated: true, mode: "mp_world_init" },
+          references: { generated: true, mode: "mp_world_init", biome: region.biome },
         } as any, { onConflict: "session_id,entity_type,entity_id" });
         counters.wiki++;
       }
       counters.regions++;
     }
 
-    // ═══ STEP D: Provinces ═══
+    // ═══ STEP D: Provinces with hex layout (same as SP) ═══
     const provinceIdMap: Record<string, string> = {};
+    const provinceRegionMap: Record<string, string> = {};
+    const PROV_SPACING = 5;
+    const provinceCenterOffsets: { q: number; r: number }[] = [
+      { q: 0, r: 0 },
+      { q: PROV_SPACING, r: 0 },
+      { q: -PROV_SPACING, r: 0 },
+      { q: Math.floor(PROV_SPACING / 2), r: PROV_SPACING },
+      { q: -Math.floor(PROV_SPACING / 2), r: -PROV_SPACING },
+      { q: Math.floor(PROV_SPACING / 2), r: -PROV_SPACING },
+      { q: -Math.floor(PROV_SPACING / 2), r: PROV_SPACING },
+      { q: PROV_SPACING * 2, r: 0 },
+      { q: -PROV_SPACING * 2, r: 0 },
+      { q: PROV_SPACING, r: PROV_SPACING },
+      { q: -PROV_SPACING, r: -PROV_SPACING },
+      { q: PROV_SPACING, r: -PROV_SPACING },
+    ];
+
+    function hexRing(cq: number, cr: number, radius: number): { q: number; r: number }[] {
+      if (radius === 0) return [{ q: cq, r: cr }];
+      const results: { q: number; r: number }[] = [];
+      const dirs = [[1, 0], [0, 1], [-1, 1], [-1, 0], [0, -1], [1, -1]];
+      let q = cq + dirs[4][0] * radius;
+      let r = cr + dirs[4][1] * radius;
+      for (let d = 0; d < 6; d++) {
+        for (let s = 0; s < radius; s++) {
+          results.push({ q, r });
+          q += dirs[d][0]; r += dirs[d][1];
+        }
+      }
+      return results;
+    }
+
+    function province19Hexes(cq: number, cr: number): { q: number; r: number }[] {
+      return [{ q: cq, r: cr }, ...hexRing(cq, cr, 1), ...hexRing(cq, cr, 2)];
+    }
+
+    let provColorIndex = 0;
+    const allProvinceHexEntries: any[] = [];
+
     for (const region of world?.regions || []) {
+      const regionId = regionIdMap[region.name];
       const ownerPlayer = factionPlayerMap[region.controlledBy] || civConfigs[0].player_name;
-      for (const prov of region.provinces || []) {
+      const regionProvinces = region.provinces || [];
+      if (regionProvinces.length === 0) {
+        regionProvinces.push({ name: `${region.name} – Centrální`, description: `Hlavní provincie regionu ${region.name}.` });
+      }
+
+      for (const prov of regionProvinces) {
+        const centerOffset = provinceCenterOffsets[provColorIndex] || { q: provColorIndex * PROV_SPACING, r: 0 };
+        const isNeutral = !factionPlayerMap[region.controlledBy];
+
         const { data: provRow } = await sb.from("provinces").insert({
           session_id: sessionId, name: prov.name, description: prov.description || null,
-          region_id: regionIdMap[region.name] || null, owner_player: ownerPlayer,
+          region_id: regionId || null, owner_player: ownerPlayer,
+          center_q: centerOffset.q, center_r: centerOffset.r,
+          color_index: provColorIndex, is_neutral: isNeutral,
         }).select("id").single();
+
         if (provRow) {
           provinceIdMap[prov.name] = provRow.id;
+          provinceRegionMap[prov.name] = region.name;
+
+          // Generate 19 hex entries for this province
+          const hexes19 = province19Hexes(centerOffset.q, centerOffset.r);
+          for (const h of hexes19) {
+            allProvinceHexEntries.push({
+              session_id: sessionId, q: h.q, r: h.r, province_id: provRow.id,
+            });
+          }
+
           await sb.from("wiki_entries").upsert({
             session_id: sessionId, entity_type: "province", entity_id: provRow.id,
             entity_name: prov.name, owner_player: ownerPlayer,
             summary: `${prov.name} — provincie v regionu ${region.name}.`,
             ai_description: prov.description || null,
             updated_at: new Date().toISOString(),
-            references: { generated: true, mode: "mp_world_init" },
+            references: { generated: true, mode: "mp_world_init", regionName: region.name },
           } as any, { onConflict: "session_id,entity_type,entity_id" });
           counters.wiki++;
         }
+        provColorIndex++;
         counters.provinces++;
       }
     }
+
+    // Helper: find province for city
+    const findProvinceId = (city: any): string | null => {
+      if (city.provinceName && provinceIdMap[city.provinceName]) return provinceIdMap[city.provinceName];
+      if (city.regionName) {
+        for (const [provName, regName] of Object.entries(provinceRegionMap)) {
+          if (regName === city.regionName) return provinceIdMap[provName];
+        }
+      }
+      return Object.values(provinceIdMap)[0] || null;
+    };
+
+    // Get province center coords
+    const getProvinceCenter = (provId: string): { q: number; r: number } => {
+      for (const entry of allProvinceHexEntries) {
+        if (entry.province_id === provId) return { q: entry.q, r: entry.r };
+      }
+      return { q: 0, r: 0 };
+    };
+
+    // Place city within province bounds
+    const provincePlacedHexes = new Map<string, Set<string>>();
+    const placeCityInProvince = (provId: string): { q: number; r: number } => {
+      const center = getProvinceCenter(provId);
+      if (!provincePlacedHexes.has(provId)) provincePlacedHexes.set(provId, new Set());
+      const placed = provincePlacedHexes.get(provId)!;
+      const candidates = province19Hexes(center.q, center.r);
+      for (const c of candidates) {
+        const key = `${c.q},${c.r}`;
+        if (!placed.has(key) && !usedHexes.has(key)) {
+          placed.add(key);
+          usedHexes.add(key);
+          return c;
+        }
+      }
+      return center;
+    };
 
     // ═══ STEP E: Cities ═══
     const POP_RANGES: Record<string, { min: number; max: number }> = {
@@ -559,9 +650,9 @@ DŮLEŽITÉ: Hráčské frakce MUSÍ mít isPlayer=true a jméno musí přesně 
       POLIS: { peasants: 0.20, burghers: 0.55, clerics: 0.25 },
     };
 
-    // Track which players got their starting city
-    const playerStartingCityCreated = new Set<string>();
-    let citySpawnIndex = 0;
+    const playerFirstCity = new Set<string>();
+    const createdCityRows: any[] = [];
+    let cityIndex = 0;
 
     for (const city of world?.cities || []) {
       const ownerFactionName = city.ownerFaction;
@@ -569,26 +660,27 @@ DŮLEŽITÉ: Hráčské frakce MUSÍ mít isPlayer=true a jméno musí přesně 
       const isStartingCity = city.isStartingCity && city.forPlayerName;
       const cfgForPlayer = isStartingCity ? playerConfigMap[city.forPlayerName] : null;
 
-      // Determine coords: starting cities use spawn positions
+      const provinceId = findProvinceId(city);
       let coords: { q: number; r: number };
-      if (cfgForPlayer && !playerStartingCityCreated.has(cfgForPlayer.player_name)) {
-        const playerIdx = civConfigs.findIndex((c: any) => c.player_name === cfgForPlayer.player_name);
-        coords = spawnPositions[playerIdx] || spawnPositions[0];
-        playerStartingCityCreated.add(cfgForPlayer.player_name);
+      if (provinceId) {
+        coords = placeCityInProvince(provinceId);
       } else {
-        // Non-starting cities: place around the map
-        coords = { q: (citySpawnIndex * 4) % MAP_RADIUS - MAP_RADIUS / 2, r: Math.floor(citySpawnIndex / 5) * 4 - MAP_RADIUS / 2 };
+        coords = { q: cityIndex * 3, r: 0 };
+        usedHexes.add(`${coords.q},${coords.r}`);
       }
-      citySpawnIndex++;
 
       const cityName = cfgForPlayer ? (cfgForPlayer.settlement_name || city.name) : city.name;
       const level = city.level || "Osada";
+      const isCapital = !playerFirstCity.has(ownerPlayer);
+      if (isCapital) playerFirstCity.add(ownerPlayer);
+
       const range = POP_RANGES[level] || POP_RANGES.Osada;
-      const popTotal = range.min + Math.floor(Math.random() * (range.max - range.min));
+      const popTotal = isCapital ? range.max + Math.floor(Math.random() * 200) : range.min + Math.floor(Math.random() * (range.max - range.min));
       const settlementLevel = SETTLEMENT_MAP[level] || "HAMLET";
       const template = POP_TEMPLATES[settlementLevel];
-
-      const provinceId = provinceIdMap[city.provinceName] || Object.values(provinceIdMap)[0] || null;
+      const popPeasants = Math.round(popTotal * template.peasants);
+      const popBurghers = Math.round(popTotal * template.burghers);
+      const popClerics = popTotal - popPeasants - popBurghers;
 
       const { data: cityRow } = await sb.from("cities").insert({
         session_id: sessionId, name: cityName, owner_player: ownerPlayer, level,
@@ -597,60 +689,73 @@ DŮLEŽITÉ: Hráčské frakce MUSÍ mít isPlayer=true a jméno musí přesně 
         flavor_prompt: city.description || null, founded_round: 1,
         province_q: Math.round(coords.q), province_r: Math.round(coords.r),
         city_stability: 60 + Math.floor(Math.random() * 15),
-        population_total: popTotal,
-        population_peasants: Math.round(popTotal * template.peasants),
-        population_burghers: Math.round(popTotal * template.burghers),
-        population_clerics: popTotal - Math.round(popTotal * template.peasants) - Math.round(popTotal * template.burghers),
+        population_total: popTotal, population_peasants: popPeasants,
+        population_burghers: popBurghers, population_clerics: popClerics,
         settlement_level: settlementLevel,
-        culture_id: cfgForPlayer ? null : null,
-        language_id: cfgForPlayer ? null : null,
       }).select("id").single();
 
       if (cityRow) {
         cityIdMap[cityName] = cityRow.id;
         if (cityName !== city.name) cityIdMap[city.name] = cityRow.id;
 
-        // Wiki entry
+        createdCityRows.push({
+          id: cityRow.id, name: cityName, ownerPlayer, description: city.description,
+          regionName: city.regionName, provinceName: city.provinceName,
+          level, q: coords.q, r: coords.r, isPlayer: !!cfgForPlayer,
+        });
+
         await sb.from("wiki_entries").upsert({
           session_id: sessionId, entity_type: "city", entity_id: cityRow.id,
           entity_name: cityName, owner_player: ownerPlayer,
-          summary: `${cityName} je ${level.toLowerCase()} pod správou ${ownerPlayer}.`,
+          summary: `${cityName} je ${level.toLowerCase()} v regionu ${city.regionName || worldName}, pod správou ${ownerPlayer}.`,
           ai_description: city.description || null, image_prompt: city.imagePrompt || null,
           updated_at: new Date().toISOString(),
           references: { generated: true, mode: "mp_world_init" },
         } as any, { onConflict: "session_id,entity_type,entity_id" });
         counters.wiki++;
 
-        // Founding event
         await sb.from("game_events").insert({
           session_id: sessionId, event_type: "founding", player: ownerPlayer,
           note: `${ownerPlayer} založil osadu ${cityName}.`, turn_number: 1,
           confirmed: true, importance: "high", city_id: cityRow.id,
         });
 
-        // Discoveries
         await sb.from("discoveries").upsert([
           { session_id: sessionId, player_name: ownerPlayer, entity_type: "city", entity_id: cityRow.id, source: "founded" },
         ], { onConflict: "session_id,player_name,entity_type,entity_id" });
 
         counters.cities++;
       }
+      cityIndex++;
     }
 
-    // Ensure all players have starting cities even if AI missed them
+    // Ensure all players have starting cities
     for (const cfg of civConfigs) {
-      if (!playerStartingCityCreated.has(cfg.player_name)) {
-        const playerIdx = civConfigs.indexOf(cfg);
-        const spawn = spawnPositions[playerIdx];
+      if (!playerFirstCity.has(cfg.player_name)) {
+        // Find a province for this player
+        let provId: string | null = null;
+        for (const [provName, regName] of Object.entries(provinceRegionMap)) {
+          const region = (world?.regions || []).find((r: any) => r.name === regName);
+          if (region && factionPlayerMap[region.controlledBy] === cfg.player_name) {
+            provId = provinceIdMap[provName];
+            break;
+          }
+        }
+        const coords = provId ? placeCityInProvince(provId) : { q: cityIndex * 3, r: 0 };
+
         const { data: cityRow } = await sb.from("cities").insert({
           session_id: sessionId, name: cfg.settlement_name || `Město ${cfg.player_name}`,
           owner_player: cfg.player_name, level: "Osada", settlement_level: "HAMLET",
-          founded_round: 1, province_q: spawn.q, province_r: spawn.r,
+          founded_round: 1, province_q: coords.q, province_r: coords.r, province_id: provId,
           population_total: 1000, population_peasants: 800, population_burghers: 150, population_clerics: 50,
           flavor_prompt: cfg.civ_description || null,
         }).select("id").single();
         if (cityRow) {
           cityIdMap[cfg.settlement_name || `Město ${cfg.player_name}`] = cityRow.id;
+          createdCityRows.push({
+            id: cityRow.id, name: cfg.settlement_name, ownerPlayer: cfg.player_name,
+            q: coords.q, r: coords.r, isPlayer: true,
+          });
           await sb.from("discoveries").upsert([
             { session_id: sessionId, player_name: cfg.player_name, entity_type: "city", entity_id: cityRow.id, source: "founded" },
           ], { onConflict: "session_id,player_name,entity_type,entity_id" });
@@ -660,26 +765,8 @@ DŮLEŽITÉ: Hráčské frakce MUSÍ mít isPlayer=true a jméno musí přesně 
             confirmed: true, importance: "high", city_id: cityRow.id,
           });
         }
-        playerStartingCityCreated.add(cfg.player_name);
-      }
-    }
-
-    // Discover nearby hexes for all players
-    for (let i = 0; i < civConfigs.length; i++) {
-      const cfg = civConfigs[i];
-      const spawn = spawnPositions[i];
-      const { data: nearbyHexes } = await sb.from("province_hexes")
-        .select("id").eq("session_id", sessionId)
-        .gte("q", spawn.q - 3).lte("q", spawn.q + 3)
-        .gte("r", spawn.r - 3).lte("r", spawn.r + 3);
-      if (nearbyHexes) {
-        const hexDisc = nearbyHexes.map(h => ({
-          session_id: sessionId, player_name: cfg.player_name,
-          entity_type: "hex", entity_id: h.id, source: "starting_area",
-        }));
-        if (hexDisc.length > 0) {
-          await sb.from("discoveries").upsert(hexDisc, { onConflict: "session_id,player_name,entity_type,entity_id" });
-        }
+        playerFirstCity.add(cfg.player_name);
+        cityIndex++;
       }
     }
 
@@ -863,7 +950,7 @@ DŮLEŽITÉ: Hráčské frakce MUSÍ mít isPlayer=true a jméno musí přesně 
           session_id: sessionId, entity_type: "event", entity_id: weRow.id,
           entity_name: `Bitva: ${battle.name}`, owner_player: "system",
           summary: battle.description.substring(0, 200),
-          ai_description: `${battle.description}\n\n**Útočník:** ${battle.attackerCommander} (${battle.attackerFaction})\n**Obránce:** ${battle.defenderCommander} (${battle.defenderFaction})\n**Výsledek:** ${battle.outcome}`,
+          ai_description: `${battle.description}\n\n**Útočník:** ${battle.attackerCommander} (${battle.attackerFaction})\n**Obránce:** ${battle.defenderCommander} (${battle.defenderFaction})\n**Výsledek:** ${battle.outcome}\n**Ztráty:** ${battle.casualties || "neznámé"}`,
           tags: ["battle"],
           updated_at: new Date().toISOString(),
           references: { generated: true, mode: "battle", year: battle.year },
@@ -920,7 +1007,7 @@ DŮLEŽITÉ: Hráčské frakce MUSÍ mít isPlayer=true a jméno musí přesně 
       counters.events++;
     }
 
-    // ═══ STEP K: Pre-history chronicle + Chronicle Zero ═══
+    // ═══ STEP K: Pre-history chronicle + founding chronicle + CHRONICLE ZERO ═══
     if (world?.preHistoryChronicle) {
       await sb.from("chronicle_entries").insert({
         session_id: sessionId, text: world.preHistoryChronicle,
@@ -928,7 +1015,14 @@ DŮLEŽITÉ: Hráčské frakce MUSÍ mít isPlayer=true a jméno musí přesně 
       });
     }
 
-    // Chronicle Zero with full sidebar
+    const legendaryNames = (world?.preHistoryEvents || []).map((e: any) => e.title).slice(0, 5).join(", ");
+    await sb.from("chronicle_entries").insert({
+      session_id: sessionId,
+      text: `Věk zakládání – V prvním roce letopočtu byly založeny základy civilizací ve státě ${countryInfo.name}. ${counters.cities} měst, ${counters.persons} osobností, ${counters.wonders} divů světa. ${legendaryNames ? `Legendy praví o: ${legendaryNames}.` : ""} ${premise}`,
+      epoch_style: "kroniky", turn_from: 1, turn_to: 1, source_type: "founding",
+    });
+
+    // Chronicle Zero — Epic prolog (2nd AI call)
     if (LOVABLE_API_KEY && world) {
       try {
         const personsSummary = (world.persons || []).map((p: any) => `${p.name} (${p.personType}, rok ${p.bornYear}${p.diedYear ? `, † ${p.diedYear}` : ""}): ${p.bio}`).join("\n");
@@ -1060,14 +1154,30 @@ DŮLEŽITÉ: Hráčské frakce MUSÍ mít isPlayer=true a jméno musí přesně 
       }
     }
 
-    // World feed
+    // World feed items
     await sb.from("world_feed_items").insert({
       session_id: sessionId, turn_number: 1,
       content: `Věk zakládání začíná. V zemi ${countryInfo.name} vznikají nové říše.`,
       feed_type: "gossip", importance: "high",
     } as any);
 
-    // Diplomacy rooms between all players
+    for (const evt of (world?.preHistoryEvents || []).slice(0, 5)) {
+      await sb.from("world_feed_items").insert({
+        session_id: sessionId, turn_number: 0,
+        content: `Z dávných legend: ${evt.title}`,
+        feed_type: "gossip", importance: "high",
+      } as any);
+    }
+
+    for (const city of createdCityRows.slice(0, 5)) {
+      await sb.from("world_feed_items").insert({
+        session_id: sessionId, turn_number: 1,
+        content: `Město ${city.name} bylo založeno v regionu ${city.regionName || worldName}.`,
+        feed_type: "gossip", importance: "normal",
+      } as any);
+    }
+
+    // Diplomacy rooms between all players + AI greetings
     const playerNames = civConfigs.map((c: any) => c.player_name);
     for (let i = 0; i < playerNames.length; i++) {
       for (let j = i + 1; j < playerNames.length; j++) {
@@ -1080,15 +1190,34 @@ DŮLEŽITÉ: Hráčské frakce MUSÍ mít isPlayer=true a jméno musí přesně 
       }
     }
 
-    // AI faction diplomacy rooms
     for (const faction of world?.factions || []) {
       if (faction.isPlayer) continue;
+      const factionPlayerName = factionPlayerMap[faction.name] || faction.name;
       for (const pName of playerNames) {
         try {
           await sb.from("diplomacy_rooms").insert({
             session_id: sessionId, room_type: "player_ai",
-            participant_a: pName, participant_b: factionPlayerMap[faction.name] || faction.name,
+            participant_a: pName, participant_b: factionPlayerName,
           });
+
+          // AI greeting message
+          const { data: roomData } = await sb.from("diplomacy_rooms")
+            .select("id").eq("session_id", sessionId)
+            .eq("participant_a", pName).eq("participant_b", factionPlayerName).single();
+
+          if (roomData) {
+            const disposition = faction.dispositionToPlayer || 0;
+            const greeting = disposition > 30
+              ? `Zdravíme vás, vládce. Doufáme v plodnou spolupráci.`
+              : disposition < -30
+              ? `Bereme na vědomí vaši existenci. Nečekejte přátelství.`
+              : `Pozdravujeme. Frakce ${faction.name} je připravena jednat.`;
+
+            await sb.from("diplomacy_messages").insert({
+              room_id: roomData.id, sender: factionPlayerName,
+              sender_type: "ai", message_text: greeting, secrecy: "PRIVATE",
+            });
+          }
         } catch (e) { console.warn("AI diplomacy room failed:", e); }
       }
     }
@@ -1106,7 +1235,6 @@ DŮLEŽITÉ: Hráčské frakce MUSÍ mít isPlayer=true a jméno musí přesně 
       version: 1, is_active: true,
     });
 
-    const legendaryNames = (world?.preHistoryEvents || []).map((e: any) => e.title).slice(0, 5).join(", ");
     await sb.from("game_style_settings").upsert({
       session_id: sessionId,
       lore_bible: [
@@ -1117,8 +1245,7 @@ DŮLEŽITÉ: Hráčské frakce MUSÍ mít isPlayer=true a jméno musí přesně 
       ].filter(Boolean).join("\n"),
       prompt_rules: JSON.stringify({
         world_vibe: tone, writing_style: writingStyle,
-        player_count: playerCount,
-        country_name: countryInfo.name,
+        player_count: playerCount, country_name: countryInfo.name,
       }),
       updated_at: new Date().toISOString(),
     }, { onConflict: "session_id" });
@@ -1131,12 +1258,6 @@ DŮLEŽITÉ: Hráčské frakce MUSÍ mít isPlayer=true a jméno musí přesně 
       key_facts: world?.worldMemories || [],
     });
 
-    // Server config
-    const { data: existingConfig } = await sb.from("server_config").select("id").eq("session_id", sessionId).maybeSingle();
-    if (!existingConfig) {
-      await sb.from("server_config").insert({ session_id: sessionId, admin_user_id: session.created_by });
-    }
-
     // Simulation log
     await sb.from("simulation_log").insert({
       session_id: sessionId, year_start: 1, year_end: 1,
@@ -1144,14 +1265,170 @@ DŮLEŽITÉ: Hráčské frakce MUSÍ mít isPlayer=true a jméno musí přesně 
       triggered_by: "mp-world-generate",
     });
 
+    // ═══ STEP N: Generate hexes for ALL province territories + discoveries ═══
+    try {
+      const allHexPositions = new Set<string>();
+      for (const entry of allProvinceHexEntries) {
+        allHexPositions.add(`${entry.q},${entry.r}`);
+      }
+
+      const hexPositionArray = Array.from(allHexPositions).map(k => {
+        const [q, r] = k.split(",").map(Number);
+        return { q, r };
+      });
+
+      // Generate hexes in batches via generate-hex function
+      const HEX_BATCH = 10;
+      const allGeneratedHexIds: { id: string; q: number; r: number }[] = [];
+      for (let i = 0; i < hexPositionArray.length; i += HEX_BATCH) {
+        const batch = hexPositionArray.slice(i, i + HEX_BATCH);
+        const hexResults = await Promise.all(batch.map(({ q, r }) =>
+          fetch(`${supabaseUrl}/functions/v1/generate-hex`, {
+            method: "POST",
+            headers: { Authorization: `Bearer ${serviceKey}`, "Content-Type": "application/json" },
+            body: JSON.stringify({ session_id: sessionId, q, r }),
+          }).then(res => res.ok ? res.json() : null).catch(() => null)
+        ));
+        for (const hex of hexResults) {
+          if (hex?.id) allGeneratedHexIds.push({ id: hex.id, q: hex.q, r: hex.r });
+        }
+      }
+
+      // Link generated hexes to their provinces
+      for (const hex of allGeneratedHexIds) {
+        const provEntry = allProvinceHexEntries.find(
+          (e: any) => e.q === hex.q && e.r === hex.r
+        );
+        if (provEntry) {
+          await sb.from("province_hexes")
+            .update({ province_id: provEntry.province_id })
+            .eq("id", hex.id);
+        }
+      }
+
+      // Create discoveries for ALL players for ALL province hexes
+      const allPlayerNames = [...new Set(Object.values(factionPlayerMap))];
+      const discoveryRows: any[] = [];
+      for (const hex of allGeneratedHexIds) {
+        for (const pn of allPlayerNames) {
+          discoveryRows.push({
+            session_id: sessionId, player_name: pn,
+            entity_type: "province_hex", entity_id: hex.id, source: "world_init",
+          });
+        }
+      }
+      if (discoveryRows.length > 0) {
+        for (let i = 0; i < discoveryRows.length; i += 100) {
+          await sb.from("discoveries").upsert(
+            discoveryRows.slice(i, i + 100),
+            { onConflict: "session_id,player_name,entity_type,entity_id" }
+          );
+        }
+      }
+
+      console.log(`Generated ${allGeneratedHexIds.length} hexes, ${discoveryRows.length} discoveries`);
+    } catch (hexErr) {
+      console.warn("Hex generation warning:", hexErr);
+    }
+
+    // ═══ STEP O: Wiki profiles + entity images (best effort) ═══
+    let wikiGenerated = 0;
+    try {
+      let citiesToGenerate: any[] = [];
+      if (isCheapStart) {
+        citiesToGenerate = createdCityRows.slice(0, topProfilesCount);
+      } else {
+        citiesToGenerate = [...createdCityRows];
+      }
+
+      const WIKI_BATCH = 3;
+      for (let i = 0; i < citiesToGenerate.length; i += WIKI_BATCH) {
+        const batch = citiesToGenerate.slice(i, i + WIKI_BATCH);
+        const results = await Promise.allSettled(
+          batch.map(city =>
+            fetch(`${supabaseUrl}/functions/v1/wiki-generate`, {
+              method: "POST",
+              headers: { Authorization: `Bearer ${serviceKey}`, "Content-Type": "application/json" },
+              body: JSON.stringify({
+                entityType: "city", entityName: city.name, entityId: city.id,
+                sessionId, ownerPlayer: city.ownerPlayer,
+                context: { regionName: city.regionName, description: city.description, worldName, premise, tone },
+              }),
+            }).then(async (res) => { if (!res.ok) throw new Error(`wiki-generate ${res.status}`); return res.json(); })
+          )
+        );
+        for (const r of results) { if (r.status === "fulfilled") wikiGenerated++; }
+      }
+
+      // Region images
+      const regionEntries = Object.entries(regionIdMap);
+      for (let i = 0; i < regionEntries.length; i += WIKI_BATCH) {
+        const batch = regionEntries.slice(i, i + WIKI_BATCH);
+        await Promise.allSettled(
+          batch.map(([regionName, regionId]) => {
+            const region = (world?.regions || []).find((r: any) => r.name === regionName);
+            return fetch(`${supabaseUrl}/functions/v1/generate-entity-media`, {
+              method: "POST",
+              headers: { Authorization: `Bearer ${serviceKey}`, "Content-Type": "application/json" },
+              body: JSON.stringify({
+                sessionId, entityId: regionId, entityType: "region", entityName: regionName,
+                kind: "cover",
+                imagePrompt: region?.imagePrompt || `A medieval illuminated manuscript illustration of ${regionName}`,
+                createdBy: "mp-world-generate",
+              }),
+            }).then(async (res) => {
+              if (res.ok) {
+                const d = await res.json();
+                if (d.imageUrl) await sb.from("wiki_entries").update({ image_url: d.imageUrl } as any)
+                  .eq("session_id", sessionId).eq("entity_type", "region").eq("entity_id", regionId);
+              }
+            }).catch(err => console.warn("Region image failed:", regionName, err));
+          })
+        );
+      }
+
+      // Person & wonder images
+      const imageTargets: { entityId: string; entityType: string; entityName: string; imagePrompt: string; kind: string }[] = [];
+      for (const p of world?.persons || []) {
+        const pId = personIdMap[p.name];
+        if (pId && p.imagePrompt) imageTargets.push({ entityId: pId, entityType: "person", entityName: p.name, imagePrompt: p.imagePrompt, kind: "portrait" });
+      }
+      for (const w of world?.wonders || []) {
+        const { data: wd } = await sb.from("wonders").select("id").eq("session_id", sessionId).eq("name", w.name).maybeSingle();
+        if (wd && w.imagePrompt) imageTargets.push({ entityId: wd.id, entityType: "wonder", entityName: w.name, imagePrompt: w.imagePrompt, kind: "cover" });
+      }
+
+      for (let i = 0; i < imageTargets.length; i += 4) {
+        const batch = imageTargets.slice(i, i + 4);
+        await Promise.allSettled(batch.map(t =>
+          fetch(`${supabaseUrl}/functions/v1/generate-entity-media`, {
+            method: "POST",
+            headers: { Authorization: `Bearer ${serviceKey}`, "Content-Type": "application/json" },
+            body: JSON.stringify({
+              sessionId, entityId: t.entityId, entityType: t.entityType, entityName: t.entityName,
+              kind: t.kind, imagePrompt: t.imagePrompt, createdBy: "mp-world-generate",
+            }),
+          }).catch(e => console.warn(`Image gen failed: ${t.entityName}`, e))
+        ));
+      }
+    } catch (mediaErr) {
+      console.warn("Wiki/media generation warning:", mediaErr);
+    }
+
+    // Action log
+    await sb.from("world_action_log").insert({
+      session_id: sessionId, player_name: "system", turn_number: 1, action_type: "other",
+      description: `MP svět s hlubokou prehistorií: ${counters.countries} stát, ${counters.factions} frakcí, ${counters.cities} měst, ${counters.regions} regionů, ${counters.provinces} provincií, ${counters.persons} osobností, ${counters.wonders} divů, ${counters.legendary} prehistorických událostí, ${counters.battles} bitev, ${counters.events} událostí, ${counters.links} propojení, ${counters.wiki} wiki, ${wikiGenerated} AI profilů, ${counters.rumors} pověstí.`,
+    });
+
     // Mark session as ready
-    await sb.from("game_sessions").update({ init_status: "ready" }).eq("id", sessionId);
+    await sb.from("game_sessions").update({ init_status: "ready", current_turn: 1 }).eq("id", sessionId);
 
     return new Response(JSON.stringify({
       ok: true,
       playersInitialized: playerCount,
-      hexesGenerated: hexBatch.length,
       counters,
+      wikiProfilesGenerated: wikiGenerated,
     }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
   } catch (e: any) {
     console.error("mp-world-generate error:", e);
@@ -1161,68 +1438,3 @@ DŮLEŽITÉ: Hráčské frakce MUSÍ mít isPlayer=true a jméno musí přesně 
     });
   }
 });
-
-// ── Helpers ──
-
-function calculateSpawnPositions(playerCount: number, mapRadius: number): { q: number; r: number }[] {
-  const spawnRadius = Math.floor(mapRadius * 0.6);
-  const positions: { q: number; r: number }[] = [];
-  for (let i = 0; i < playerCount; i++) {
-    const angle = (2 * Math.PI * i) / playerCount - Math.PI / 2;
-    const x = Math.round(spawnRadius * Math.cos(angle));
-    const y = Math.round(spawnRadius * Math.sin(angle));
-    positions.push({ q: x, r: y });
-  }
-  return positions;
-}
-
-function hashSeed(seed: string): number {
-  let hash = 0;
-  for (let i = 0; i < seed.length; i++) {
-    const chr = seed.charCodeAt(i);
-    hash = ((hash << 5) - hash) + chr;
-    hash |= 0;
-  }
-  return Math.abs(hash);
-}
-
-function pseudoRandom(seed: number, q: number, r: number): number {
-  let h = seed ^ (q * 374761393 + r * 668265263);
-  h = (h ^ (h >> 13)) * 1274126177;
-  h = h ^ (h >> 16);
-  return (Math.abs(h) % 1000) / 1000;
-}
-
-function generateHexData(q: number, r: number, seed: number, _worldSeed: string) {
-  const noise = pseudoRandom(seed, q, r);
-  const distFromCenter = Math.sqrt(q * q + r * r + q * r);
-  const maxDist = 17;
-  const edgeFactor = distFromCenter / maxDist;
-  let mean_height = noise * 0.7 + (1 - edgeFactor) * 0.3;
-  if (edgeFactor > 0.85) mean_height *= 0.3;
-  const latNorm = (r + maxDist) / (2 * maxDist);
-  const temp_band = Math.round(latNorm * 4);
-  const moistNoise = pseudoRandom(seed + 1, q, r);
-  const moisture_band = Math.round(moistNoise * 4);
-  const coastal = edgeFactor > 0.75 && edgeFactor < 0.88;
-  let biome_family = "grassland";
-  if (mean_height < 0.15) biome_family = "ocean";
-  else if (mean_height < 0.25) biome_family = coastal ? "coast" : "wetland";
-  else if (mean_height > 0.75) biome_family = "mountain";
-  else if (mean_height > 0.6) biome_family = "highland";
-  else if (temp_band <= 1 && moisture_band >= 3) biome_family = "taiga";
-  else if (temp_band <= 0) biome_family = "tundra";
-  else if (temp_band >= 3 && moisture_band <= 1) biome_family = "desert";
-  else if (moisture_band >= 3) biome_family = "forest";
-  else if (moisture_band >= 2) biome_family = "grassland";
-  else biome_family = "plains";
-  return { mean_height, biome_family, coastal, moisture_band, temp_band };
-}
-
-function mapBiomeName(biome: string): string {
-  const map: Record<string, string> = {
-    plains: "plains", coast: "coast", mountains: "mountain",
-    forest: "forest", desert: "desert", tundra: "tundra", volcanic: "highland",
-  };
-  return map[biome] || "grassland";
-}
