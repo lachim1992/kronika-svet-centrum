@@ -150,6 +150,15 @@ Deno.serve(async (req) => {
     const { data: session } = await supabase.from("game_sessions").select("current_turn").eq("id", sessionId).single();
     const currentTurn = session?.current_turn || 1;
 
+    // Load civ DNA bonuses for this player
+    const { data: civRow } = await supabase
+      .from("civilizations")
+      .select("civ_bonuses, architectural_style, cultural_quirk")
+      .eq("session_id", sessionId)
+      .eq("player_name", playerName)
+      .maybeSingle();
+    const civBonuses: Record<string, number> = (civRow?.civ_bonuses as Record<string, number>) || {};
+
     // Idempotency check
     if (realm.last_processed_turn >= currentTurn) {
       return new Response(JSON.stringify({ 
@@ -727,6 +736,22 @@ Deno.serve(async (req) => {
           }
         }
 
+        // Load defender's civ bonuses for fortification
+        const defenderPlayer = defenderStackId
+          ? (await supabase.from("military_stacks").select("player_name").eq("id", defenderStackId).maybeSingle())?.data?.player_name
+          : null;
+        const defenderCivPlayer = defenderCityId
+          ? (await supabase.from("cities").select("owner_player").eq("id", defenderCityId).maybeSingle())?.data?.owner_player
+          : defenderPlayer;
+        let defenderCivBonuses: Record<string, number> = {};
+        if (defenderCivPlayer) {
+          const { data: defCiv } = await supabase.from("civilizations").select("civ_bonuses").eq("session_id", sessionId).eq("player_name", defenderCivPlayer).maybeSingle();
+          defenderCivBonuses = (defCiv?.civ_bonuses as Record<string, number>) || {};
+        }
+
+        // Apply attacker's civ fortification bonus (50% in field battles)
+        const attackerCivFort = civBonuses.fortification_bonus || 0;
+
         if (defenderCityId) {
           const { data: dCity } = await supabase
             .from("cities")
@@ -738,9 +763,9 @@ Deno.serve(async (req) => {
             // Add implicit city defense
             defenderStrength += computeCityDefenseStrength(dCity);
             defenderMorale = Math.max(defenderMorale, dCity.city_stability || 50);
-            // Fortification from settlement level
+            // Fortification from settlement level + defender's civ DNA bonus (full)
             const fortMap: Record<string, number> = { HAMLET: 0.05, TOWNSHIP: 0.10, CITY: 0.20, POLIS: 0.30 };
-            fortificationBonus = fortMap[dCity.settlement_level] || 0;
+            fortificationBonus = (fortMap[dCity.settlement_level] || 0) + (defenderCivBonuses.fortification_bonus || 0);
 
             // Load hex biome
             const { data: hex } = await supabase
@@ -759,12 +784,16 @@ Deno.serve(async (req) => {
         const totalDefenseMultiplier = 1 + fortificationBonus + biomeMod;
         const effectiveDefenderStrength = Math.round(defenderStrength * totalDefenseMultiplier);
 
+        // Apply attacker's civ fortification bonus (50% in field, full in city siege as attacker advantage is separate)
+        const attackerFortBonus = defenderCityId ? 0 : attackerCivFort * 0.5; // field battle only
+        const effectiveAttackerBase = Math.round(attackerStrength * (1 + attackerFortBonus));
+
         // RNG luck roll: ±15% from seed
         const rng = seededRandom(battleSeed);
         const luckRoll = (rng - 0.5) * 0.30; // -0.15 to +0.15
 
-        // Apply luck to attacker strength
-        const finalAttackerStrength = Math.round(attackerStrength * (1 + luckRoll));
+        // Apply luck to attacker strength (using civ-adjusted base)
+        const finalAttackerStrength = Math.round(effectiveAttackerBase * (1 + luckRoll));
 
         // Determine result
         const ratio = effectiveDefenderStrength > 0 ? finalAttackerStrength / effectiveDefenderStrength : 999;

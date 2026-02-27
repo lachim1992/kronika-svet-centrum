@@ -37,6 +37,8 @@ export interface AIRequestContext {
   premise: WorldPremise;
   /** Pre-built system prompt prefix containing premise instructions */
   premisePrompt: string;
+  /** Optional: loaded civ DNA for the relevant player */
+  civContext?: { culturalQuirk?: string; architecturalStyle?: string; civName?: string };
 }
 
 export interface AIInvokeOptions {
@@ -262,7 +264,9 @@ export function buildPremisePrompt(premise: WorldPremise): string {
     }
   }
 
+  // Inject civilization DNA context if available
   parts.push("=== KONEC PREMISY ===");
+  // Note: civ context is injected dynamically via createAIContext playerName param
 
   return parts.join("\n\n");
 }
@@ -276,12 +280,39 @@ export async function createAIContext(
   sessionId: string,
   turnNumber?: number,
   sb?: SupabaseClient,
+  playerName?: string,
 ): Promise<AIRequestContext> {
   const requestId = crypto.randomUUID();
-  const premise = await loadWorldPremise(sessionId, sb);
-  const premisePrompt = buildPremisePrompt(premise);
+  const client = sb || getServiceClient();
+  const premise = await loadWorldPremise(sessionId, client);
+  let premisePrompt = buildPremisePrompt(premise);
 
-  return { sessionId, requestId, turnNumber, premise, premisePrompt };
+  // Load civilization DNA for cultural context injection
+  let civContext: AIRequestContext["civContext"] = undefined;
+  if (playerName) {
+    const { data: civ } = await client
+      .from("civilizations")
+      .select("cultural_quirk, architectural_style, civ_name")
+      .eq("session_id", sessionId)
+      .eq("player_name", playerName)
+      .maybeSingle();
+    if (civ) {
+      civContext = {
+        culturalQuirk: civ.cultural_quirk || undefined,
+        architecturalStyle: civ.architectural_style || undefined,
+        civName: civ.civ_name || undefined,
+      };
+      const civParts: string[] = [];
+      civParts.push("\n=== CIVILIZAČNÍ KONTEXT ===");
+      if (civ.civ_name) civParts.push(`Civilizace: ${civ.civ_name}`);
+      if (civ.cultural_quirk) civParts.push(`KULTURNÍ ZVLÁŠTNOST (MUSÍŠ reflektovat v textu — ovlivňuje chování, rituály, rozhodování): ${civ.cultural_quirk}`);
+      if (civ.architectural_style) civParts.push(`ARCHITEKTONICKÝ STYL (MUSÍŠ reflektovat v popisu budov, měst, vizuálů): ${civ.architectural_style}`);
+      civParts.push("=== KONEC CIV KONTEXTU ===");
+      premisePrompt += civParts.join("\n");
+    }
+  }
+
+  return { sessionId, requestId, turnNumber, premise, premisePrompt, civContext };
 }
 
 /**
