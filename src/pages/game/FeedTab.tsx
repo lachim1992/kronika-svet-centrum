@@ -4,9 +4,8 @@ import EventNetworkPanel from "@/components/EventNetworkPanel";
 import TimelinePanel from "@/components/TimelinePanel";
 import SourceImportPanel from "@/components/SourceImportPanel";
 import WorldActionLog from "@/components/WorldActionLog";
-import SeptandaFeed from "@/components/SeptandaFeed";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Swords, CalendarDays, Network, ScrollText, FileText, MessageCircle } from "lucide-react";
+import { Swords, CalendarDays, Network, ScrollText, FileText } from "lucide-react";
 import type { EntityIndex } from "@/hooks/useEntityIndex";
 
 interface Props {
@@ -39,17 +38,14 @@ const FeedTab = ({
   return (
     <div className="space-y-4 pb-20">
       <div className="flex items-center gap-2 py-1">
-        <MessageCircle className="h-5 w-5 text-illuminated" />
-        <h2 className="text-lg font-display font-bold">Šeptanda</h2>
+        <Swords className="h-5 w-5 text-illuminated" />
+        <h2 className="text-lg font-display font-bold">Události & Nástroje</h2>
       </div>
 
-      <Tabs defaultValue="septanda" className="w-full">
+      <Tabs defaultValue="events" className="w-full">
         <TabsList className="w-full justify-start bg-card border border-border h-auto p-1 gap-1 flex-wrap">
-          <TabsTrigger value="septanda" className="font-display text-xs gap-1">
-            <MessageCircle className="h-3 w-3" />Šeptanda
-          </TabsTrigger>
           <TabsTrigger value="events" className="font-display text-xs gap-1">
-            <Swords className="h-3 w-3" />Události
+            <Swords className="h-3 w-3" />Správa událostí
           </TabsTrigger>
           <TabsTrigger value="timeline" className="font-display text-xs gap-1">
             <CalendarDays className="h-3 w-3" />Časová osa
@@ -68,16 +64,6 @@ const FeedTab = ({
             </TabsTrigger>
           )}
         </TabsList>
-
-        <TabsContent value="septanda" className="mt-3">
-          <SeptandaFeed
-            sessionId={sessionId}
-            currentTurn={currentTurn}
-            entityIndex={entityIndex}
-            onEventClick={onEventClick}
-            onEntityClick={onEntityClick}
-          />
-        </TabsContent>
 
         <TabsContent value="events" className="mt-3">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
