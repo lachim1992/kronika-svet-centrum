@@ -79,7 +79,18 @@ const RealmTab = ({
         </TabsContent>
 
         <TabsContent value="war" className="mt-3">
-          <WarRoomPanel cities={cities} armies={armies} events={events} players={players} currentTurn={currentTurn} worldCrises={worldCrises} />
+          <WarRoomPanel
+            sessionId={sessionId}
+            currentPlayerName={currentPlayerName}
+            currentTurn={currentTurn}
+            gameMode={session?.game_mode}
+            cities={cities}
+            armies={armies}
+            events={events}
+            players={players}
+            worldCrises={worldCrises}
+            onRefetch={onRefetch}
+          />
         </TabsContent>
 
         <TabsContent value="civ" className="mt-3 space-y-4">

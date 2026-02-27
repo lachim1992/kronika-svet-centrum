@@ -10,6 +10,7 @@ import { Sparkles, ScrollText, Feather, Swords, Trophy, Megaphone, Target } from
 
 interface Props {
   sessionId: string;
+  session?: any;
   events: any[];
   memories: any[];
   players: any[];
@@ -31,7 +32,7 @@ interface Props {
 }
 
 const CivTab = ({
-  sessionId, events, memories, players, cities, wonders, armies, entityTraits,
+  sessionId, session, events, memories, players, cities, wonders, armies, entityTraits,
   civilizations, declarations, worldCrises, secretObjectives, cityStates, resources, chronicles,
   currentPlayerName, currentTurn, myRole, onRefetch,
 }: Props) => {
@@ -73,7 +74,7 @@ const CivTab = ({
             <span className="flex items-center gap-2"><Swords className="h-4 w-4 text-primary" />Válečná mapa</span>
           </AccordionTrigger>
           <AccordionContent className="px-4 pb-4">
-            <WarRoomPanel cities={cities} armies={armies} events={events} players={players} currentTurn={currentTurn} worldCrises={worldCrises} />
+            <WarRoomPanel sessionId={sessionId} currentPlayerName={currentPlayerName} currentTurn={currentTurn} gameMode={session?.game_mode} cities={cities} armies={armies} events={events} players={players} worldCrises={worldCrises} onRefetch={onRefetch} />
           </AccordionContent>
         </AccordionItem>
 

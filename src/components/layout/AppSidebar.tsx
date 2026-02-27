@@ -21,7 +21,7 @@ const navItems: { id: TabId; label: string; icon: React.ElementType; group: stri
   { id: "home", label: "My Realm", icon: Home, group: "main" },
   { id: "world", label: "World", icon: Globe, group: "main" },
   { id: "worldmap", label: "World Map", icon: Map, group: "main" },
-  { id: "realm", label: "Provinces", icon: Shield, group: "main" },
+  { id: "realm", label: "Diplomacy", icon: Shield, group: "main" },
   { id: "army", label: "Armies", icon: Swords, group: "main" },
   { id: "economy", label: "Economy", icon: BarChart3, group: "main" },
   { id: "engine", label: "Engine", icon: Zap, group: "main" },
