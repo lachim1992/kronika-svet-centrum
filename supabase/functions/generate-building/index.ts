@@ -9,7 +9,7 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const { sessionId, cityId, playerDescription, buildingMyth, visualDescription, cityName, cityLevel, biome } = await req.json();
+    const { sessionId, cityId, playerDescription, buildingMyth, visualDescription, cityName, cityLevel, biome, buildSpeedModifier: explicitMod } = await req.json();
 
     if (!sessionId || !cityId || !playerDescription) {
       return new Response(JSON.stringify({ error: "Missing required fields" }), {
@@ -18,6 +18,33 @@ Deno.serve(async (req) => {
     }
 
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+
+    // Load civ DNA for building speed + architectural style
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const sb = createClient(supabaseUrl, supabaseKey);
+
+    let buildSpeedModifier = explicitMod || 0;
+    let architecturalStyle = "";
+    let culturalQuirk = "";
+
+    if (sessionId && cityId) {
+      const { data: city } = await sb.from("cities").select("owner_player").eq("id", cityId).maybeSingle();
+      if (city?.owner_player) {
+        const { data: civ } = await sb.from("civilizations")
+          .select("civ_bonuses, architectural_style, cultural_quirk")
+          .eq("session_id", sessionId)
+          .eq("player_name", city.owner_player)
+          .maybeSingle();
+        if (civ) {
+          const bonuses = (civ.civ_bonuses as Record<string, number>) || {};
+          if (!explicitMod && bonuses.build_speed_modifier) buildSpeedModifier = bonuses.build_speed_modifier;
+          architecturalStyle = civ.architectural_style || "";
+          culturalQuirk = civ.cultural_quirk || "";
+        }
+      }
+    }
+
     if (!LOVABLE_API_KEY) {
       return new Response(JSON.stringify(getDefaultBuilding(playerDescription)), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -43,6 +70,8 @@ Respond ONLY with valid JSON, no markdown.`;
     const userPrompt = `Player's building idea: "${playerDescription}"
 ${buildingMyth ? `Founding myth/story: "${buildingMyth}"` : ""}
 ${visualDescription ? `Visual appearance: "${visualDescription}"` : ""}
+${architecturalStyle ? `Civilization's architectural style (MUST influence the building design, materials, and aesthetics): "${architecturalStyle}"` : ""}
+${culturalQuirk ? `Cultural tradition (reflect in flavor text and founding myth): "${culturalQuirk}"` : ""}
 City: "${cityName || "Settlement"}" (level: ${cityLevel || "HAMLET"})
 Biome: "${biome || "plains"}"
 
@@ -113,9 +142,16 @@ Generate building as JSON:
 
     const result = validateBuilding(parsed);
 
-    // Generate image primarily from player's own inputs
+    // Apply civ DNA build_speed_modifier (e.g. -0.15 = 15% faster)
+    if (buildSpeedModifier && buildSpeedModifier !== 0) {
+      const modifiedDuration = Math.max(1, Math.round(result.build_duration * (1 + buildSpeedModifier)));
+      result.build_duration = modifiedDuration;
+    }
+
+    // Generate image primarily from player's own inputs + architectural style
     const parts: string[] = [];
     parts.push(`Medieval fantasy building illustration of "${result.name}".`);
+    if (architecturalStyle) parts.push(`IMPORTANT architectural style of this civilization: ${architecturalStyle}. The building MUST reflect this style in materials, shape, and decoration.`);
     if (playerDescription) parts.push(`Building concept: ${playerDescription}.`);
     if (buildingMyth) parts.push(`Legend and story: ${buildingMyth}.`);
     if (visualDescription) parts.push(`Visual style and appearance: ${visualDescription}.`);

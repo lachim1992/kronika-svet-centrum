@@ -712,7 +712,12 @@ async function runWorldTickEvents(supabase: any, sessionId: string, turnNumber: 
     const civStabBonus = ownerBonuses.stability_modifier || 0;
     const adjustedStability = Math.max(0, Math.min(100, growth.newStability + civStabBonus));
 
-    if (adjustedDelta !== 0 || civStabBonus !== 0) {
+    // Apply civ legitimacy bonus
+    const civLegitBonus = ownerBonuses.legitimacy_base || 0;
+    const currentLegitimacy = city.legitimacy || 50;
+    const adjustedLegitimacy = Math.max(0, Math.min(100, currentLegitimacy + Math.round(civLegitBonus * 0.1)));
+
+    if (adjustedDelta !== 0 || civStabBonus !== 0 || civLegitBonus !== 0) {
       const layers = distributePopLayers(
         adjustedNewPop, city.population_total,
         city.population_peasants, city.population_burghers, city.population_clerics
@@ -725,6 +730,7 @@ async function runWorldTickEvents(supabase: any, sessionId: string, turnNumber: 
           population_burghers: layers.burghers,
           population_clerics: layers.clerics,
           city_stability: adjustedStability,
+          legitimacy: adjustedLegitimacy,
           development_level: growth.newDev,
         },
       });

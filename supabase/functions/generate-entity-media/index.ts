@@ -110,38 +110,62 @@ serve(async (req) => {
       description = wiki.ai_description || wiki.summary || "";
     }
 
-    // Enrich from entity-specific tables
+    // Enrich from entity-specific tables + fetch owner's civ DNA
+    let ownerPlayer = "";
     if (entityType === "city") {
-      const { data: city } = await sb.from("cities").select("flavor_prompt, level, settlement_level").eq("id", entityId).maybeSingle();
-      if (city) flavorText = city.flavor_prompt || "";
+      const { data: city } = await sb.from("cities").select("flavor_prompt, level, settlement_level, owner_player").eq("id", entityId).maybeSingle();
+      if (city) {
+        flavorText = city.flavor_prompt || "";
+        ownerPlayer = city.owner_player || "";
+      }
     } else if (entityType === "wonder") {
-      const { data: wonder } = await sb.from("wonders").select("description, era, bonus").eq("id", entityId).maybeSingle();
+      const { data: wonder } = await sb.from("wonders").select("description, era, bonus, owner_player").eq("id", entityId).maybeSingle();
       if (wonder) {
         description = description || wonder.description || "";
         era = wonder.era || "";
         flavorText = wonder.bonus || "";
+        ownerPlayer = wonder.owner_player || "";
       }
     } else if (entityType === "person") {
-      const { data: person } = await sb.from("great_persons").select("bio, flavor_trait, person_type").eq("id", entityId).maybeSingle();
+      const { data: person } = await sb.from("great_persons").select("bio, flavor_trait, person_type, player_name").eq("id", entityId).maybeSingle();
       if (person) {
         description = description || person.bio || "";
         flavorText = person.flavor_trait || "";
+        ownerPlayer = person.player_name || "";
       }
     } else if (entityType === "region") {
-      const { data: region } = await sb.from("regions").select("description, ai_description, biome").eq("id", entityId).maybeSingle();
+      const { data: region } = await sb.from("regions").select("description, ai_description, biome, owner_player").eq("id", entityId).maybeSingle();
       if (region) {
         description = description || region.ai_description || region.description || "";
         flavorText = region.biome ? `Biome: ${region.biome}` : "";
+        ownerPlayer = region.owner_player || "";
       }
     } else if (entityType === "province") {
-      const { data: prov } = await sb.from("provinces").select("description, ai_description").eq("id", entityId).maybeSingle();
+      const { data: prov } = await sb.from("provinces").select("description, ai_description, owner_player").eq("id", entityId).maybeSingle();
       if (prov) {
         description = description || prov.ai_description || prov.description || "";
+        ownerPlayer = prov.owner_player || "";
       }
     } else if (entityType === "country") {
-      const { data: country } = await sb.from("countries").select("description, ai_description").eq("id", entityId).maybeSingle();
+      const { data: country } = await sb.from("countries").select("description, ai_description, ruler_player").eq("id", entityId).maybeSingle();
       if (country) {
         description = description || country.ai_description || country.description || "";
+        ownerPlayer = country.ruler_player || "";
+      }
+    }
+
+    // Load owner's civilization DNA for architectural style
+    let architecturalStyle = "";
+    let culturalQuirk = "";
+    if (ownerPlayer && sessionId) {
+      const { data: civ } = await sb.from("civilizations")
+        .select("architectural_style, cultural_quirk")
+        .eq("session_id", sessionId)
+        .eq("player_name", ownerPlayer)
+        .maybeSingle();
+      if (civ) {
+        architecturalStyle = civ.architectural_style || "";
+        culturalQuirk = civ.cultural_quirk || "";
       }
     }
 
@@ -176,6 +200,8 @@ serve(async (req) => {
       prompt = `${imagePrompt}. ${typeStr} ${styleStr}`;
     } else {
       const parts: string[] = [];
+      if (architecturalStyle) parts.push(`IMPORTANT — Civilization's architectural style: "${architecturalStyle}". ALL structures, buildings, and urban landscapes MUST visually reflect this style in materials, shapes, and decoration.`);
+      if (culturalQuirk) parts.push(`Cultural tradition: "${culturalQuirk}". Reflect subtle cultural elements in the scene.`);
       if (description) parts.push(description);
       if (flavorText) parts.push(`Atmosphere: ${flavorText}`);
       parts.push(typeStr);
