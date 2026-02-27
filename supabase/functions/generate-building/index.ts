@@ -63,7 +63,7 @@ RULES:
 Respond ONLY with valid JSON.`;
 
     const userPrompt = `Player's building idea: "${playerDescription}"
-${buildingMyth ? `Founding myth: "${buildingMyth}"` : ""}
+${buildingMyth ? `Player's founding myth (THIS IS THE MOST IMPORTANT INPUT — you MUST faithfully rewrite it into epic style while preserving ALL key elements, characters, and motivations from the original): "${buildingMyth}"` : ""}
 ${visualDescription ? `Visual: "${visualDescription}"` : ""}
 ${architecturalStyle ? `Architecture style (MUST influence design): "${architecturalStyle}"` : ""}
 ${culturalQuirk ? `Cultural tradition: "${culturalQuirk}"` : ""}
@@ -76,7 +76,7 @@ Generate building JSON with 5-level upgrade system:
   "category": "<economic|military|cultural|religious|infrastructure>",
   "description": "<1-2 sentences Czech>",
   "flavor_text": "<1 atmospheric sentence Czech>",
-  "founding_myth": "<2-4 sentences Czech>",
+  "founding_myth": "<CRITICAL: If the player provided a founding myth above, you MUST rewrite it faithfully into an epic, legendary style (2-4 sentences Czech). Preserve the player's original story, characters, and meaning. Do NOT invent a completely new myth. If no myth was provided, write a short origin legend inspired by the building concept.>",
   "cost_wood": <int 0-15>,
   "cost_stone": <int 0-15>,
   "cost_iron": <int 0-10>,
