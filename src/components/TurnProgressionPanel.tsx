@@ -123,19 +123,10 @@ const TurnProgressionPanel = ({ sessionId, currentTurn, players, currentPlayerNa
         </p>
       )}
 
-      {!isAIMode && allClosed && isAdmin && (
-        <Button onClick={processNextTurn} disabled={processing} className="w-full font-display">
-          {processing ? (
-            <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Zpracovávám tah...</>
-          ) : (
-            <><Play className="mr-2 h-4 w-4" />Uzavřít kolo a pokračovat</>
-          )}
-        </Button>
-      )}
-
-      {!isAIMode && allClosed && !isAdmin && (
-        <p className="text-xs text-muted-foreground italic text-center">
-          Čekáme na Admina...
+      {!isAIMode && allClosed && (
+        <p className="text-xs text-primary italic text-center flex items-center justify-center gap-1.5">
+          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          Všichni uzavřeli — zpracovávám další kolo…
         </p>
       )}
 
