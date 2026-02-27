@@ -874,17 +874,14 @@ Deno.serve(async (req) => {
           }).eq("id", defenderStack.id);
         }
 
-        // Mark battle action as completed
-        await supabase.from("action_queue").update({ status: "completed" }).eq("id", battleAction.id);
-
         // Determine if post-battle decision needed
         const needsDecision = result === "decisive_victory" || result === "victory" || result === "pyrrhic_victory";
 
         // Use the turn when the battle was queued, not the current processing turn
         const battleTurnNumber = battleAction.created_turn || currentTurn;
 
-        // Write battle record (pure structural)
-        const { data: battleRecord } = await supabase.from("battles").insert({
+        // Write battle record FIRST (before marking action as completed)
+        const { data: battleRecord, error: battleInsertErr } = await supabase.from("battles").insert({
           session_id: sessionId,
           turn_number: battleTurnNumber,
           attacker_stack_id: attackerStackId,
@@ -906,6 +903,16 @@ Deno.serve(async (req) => {
           post_action: needsDecision ? "pending_decision" : null,
           resolved_at: new Date().toISOString(),
         }).select("id").single();
+
+        if (battleInsertErr) {
+          console.error("Battle record insert FAILED:", battleInsertErr.message, JSON.stringify(battleInsertErr));
+          logEntries.push(`⚠️ CHYBA: Nepodařilo se uložit bitevní záznam: ${battleInsertErr.message}`);
+          // Leave action as pending for retry next turn
+          continue;
+        }
+
+        // Mark battle action as completed ONLY after successful battle record insert
+        await supabase.from("action_queue").update({ status: "completed" }).eq("id", battleAction.id);
 
         // ═══ CREATE POST-BATTLE DECISION in action_queue ═══
         if (needsDecision && defenderCityId) {
