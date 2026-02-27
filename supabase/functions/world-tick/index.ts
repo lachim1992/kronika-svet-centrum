@@ -3,7 +3,7 @@ import {
   computeSettlementGrowth, distributePopLayers,
   computeInfluence, computeTension, evaluateRebellion,
   clampReputation, REPUTATION_DELTAS, REPUTATION_DECAY,
-  CRISIS_THRESHOLD, WAR_THRESHOLD,
+  CRISIS_THRESHOLD, WAR_THRESHOLD, SETTLEMENT_LEVEL_THRESHOLDS,
   type CityForGrowth, type InfluenceInput,
 } from "../_shared/physics.ts";
 
@@ -91,25 +91,74 @@ Deno.serve(async (req) => {
 
     // ========== 2. SETTLEMENT GROWTH (shared physics) ==========
     const growthResults: any[] = [];
+    const settlementUpgrades: any[] = [];
     for (const city of (cities || [])) {
       const result = computeSettlementGrowth(city as CityForGrowth);
-      if (result.delta !== 0) {
+      if (result.delta !== 0 || result.settlementUpgrade) {
         const layers = distributePopLayers(
           result.newPop, city.population_total,
           city.population_peasants, city.population_burghers, city.population_clerics
         );
-        await supabase.from("cities").update({
+        const updatePayload: any = {
           population_total: result.newPop,
           population_peasants: layers.peasants,
           population_burghers: layers.burghers,
           population_clerics: layers.clerics,
           city_stability: result.newStability,
           development_level: result.newDev,
-        }).eq("id", city.id);
+        };
+
+        // ── Settlement level auto-upgrade ──
+        if (result.settlementUpgrade) {
+          const up = result.settlementUpgrade;
+          updatePayload.settlement_level = up.newLevel;
+          updatePayload.level = up.newLabel;
+          updatePayload.housing_capacity = up.newHousingCapacity;
+          updatePayload.max_districts = up.newMaxDistricts;
+
+          settlementUpgrades.push({
+            cityId: city.id, cityName: city.name, owner: city.owner_player,
+            oldLevel: up.oldLevel, newLevel: up.newLevel, newLabel: up.newLabel,
+            population: result.newPop,
+          });
+        }
+
+        await supabase.from("cities").update(updatePayload).eq("id", city.id);
         growthResults.push({ city: city.name, change: result.delta, newPop: result.newPop });
       }
     }
     results.settlement_growth = growthResults;
+
+    // ── Create events, chronicles, rumors for settlement upgrades ──
+    for (const up of settlementUpgrades) {
+      const oldLabel = SETTLEMENT_LEVEL_THRESHOLDS.find(t => t.level === up.oldLevel)?.label || up.oldLevel;
+      const eventNote = `${up.cityName} povýšeno z ${oldLabel} na ${up.newLabel} (populace: ${up.population.toLocaleString()}).`;
+
+      // game_event
+      const { data: evt } = await supabase.from("game_events").insert({
+        session_id: sessionId, event_type: "settlement_upgrade", player: up.owner,
+        actor_type: "system", note: eventNote, turn_number: turnNumber,
+        confirmed: true, truth_state: "canon", importance: "critical",
+        city_id: up.cityId,
+        reference: { old_level: up.oldLevel, new_level: up.newLevel, new_label: up.newLabel, population: up.population },
+      }).select("id").single();
+
+      // chronicle_entry
+      if (evt?.id) {
+        await supabase.from("chronicle_entries").insert({
+          session_id: sessionId, text: `Slavný den pro ${up.cityName}! ${oldLabel} se rozrostlo na ${up.newLabel}, když počet obyvatel překročil ${up.population.toLocaleString()} duší.`,
+          event_id: evt.id, source_type: "system", turn_from: turnNumber, turn_to: turnNumber,
+        });
+      }
+
+      // city_rumor
+      await supabase.from("city_rumors").insert({
+        session_id: sessionId, city_id: up.cityId, city_name: up.cityName,
+        text: `Lid šeptá, že ${up.cityName} se stalo ${up.newLabel}! Stavitelé se sjíždějí z celého kraje, obchodníci se předhánějí o místa na tržišti.`,
+        tone_tag: "celebratory", turn_number: turnNumber, created_by: "system", is_draft: false,
+      });
+    }
+    results.settlement_upgrades = settlementUpgrades;
 
     // ========== 3. INFLUENCE CALCULATION (shared physics) ==========
     const influenceResults: any[] = [];
