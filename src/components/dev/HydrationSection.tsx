@@ -9,9 +9,10 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   Sparkles, Loader2, Image, FileText, CheckCircle2, MessageCircle,
-  Zap, AlertTriangle, MapPin, Globe, Users, ChevronDown, ChevronRight,
+  Zap, AlertTriangle, MapPin, Globe, Users, ChevronDown, ChevronRight, Eye,
 } from "lucide-react";
 import { toast } from "sonner";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
 interface Props {
   sessionId: string;
@@ -47,6 +48,42 @@ const HydrationSection = ({ sessionId, onRefetch }: Props) => {
   const [selectedItems, setSelectedItems] = useState<Record<string, Set<string>>>({});
   const [lastRunTime, setLastRunTime] = useState<string | null>(null);
   const [results, setResults] = useState<{ success: number; skipped: number; failed: number } | null>(null);
+  const [inspectEvent, setInspectEvent] = useState<any | null>(null);
+  const [inspectLoading, setInspectLoading] = useState(false);
+
+  const inspectItem = async (item: MissingItem, catKey: string) => {
+    setInspectLoading(true);
+    try {
+      // For event-based categories, fetch from game_events
+      if (["narratives", "rumors"].includes(catKey)) {
+        const { data } = await supabase.from("game_events").select("*").eq("id", item.id).single();
+        setInspectEvent(data);
+      } else if (catKey === "wiki") {
+        const { data } = await supabase.from("wiki_entries").select("*").eq("id", item.id).single();
+        setInspectEvent(data);
+      } else if (catKey === "cities") {
+        const { data } = await supabase.from("cities").select("*").eq("id", item.id).single();
+        setInspectEvent(data);
+      } else if (catKey === "provinces") {
+        const { data } = await supabase.from("provinces").select("*").eq("id", item.id).single();
+        setInspectEvent(data);
+      } else if (catKey === "regions") {
+        const { data } = await supabase.from("regions").select("*").eq("id", item.id).single();
+        setInspectEvent(data);
+      } else if (["wonderDescs", "wonderImages"].includes(catKey)) {
+        const { data } = await supabase.from("wonders").select("*").eq("id", item.id).single();
+        setInspectEvent(data);
+      } else if (["personBios", "personImages"].includes(catKey)) {
+        const { data } = await supabase.from("great_persons").select("*").eq("id", item.id).single();
+        setInspectEvent(data);
+      } else {
+        setInspectEvent({ id: item.id, name: item.name });
+      }
+    } catch {
+      toast.error("Nepodařilo se načíst detail");
+    }
+    setInspectLoading(false);
+  };
 
   const hLog = useCallback((msg: string) => {
     setHydrationLog(prev => [...prev.slice(-100), `[${new Date().toLocaleTimeString("cs")}] ${msg}`]);
@@ -500,7 +537,13 @@ const HydrationSection = ({ sessionId, onRefetch }: Props) => {
                             checked={sel.has(item.id)}
                             onCheckedChange={() => toggleItem(cat.key, item.id)}
                           />
-                          <span className="truncate">{item.name}</span>
+                          <span
+                            className="truncate cursor-pointer hover:text-primary hover:underline"
+                            onClick={(e) => { e.preventDefault(); e.stopPropagation(); inspectItem(item, cat.key); }}
+                            title="Zobrazit detail"
+                          >
+                            {item.name}
+                          </span>
                           {item.owner && <span className="text-muted-foreground ml-auto shrink-0">{item.owner}</span>}
                         </label>
                       ))}
@@ -526,6 +569,26 @@ const HydrationSection = ({ sessionId, onRefetch }: Props) => {
           </div>
         </ScrollArea>
       )}
+
+      {/* Inspect dialog */}
+      <Dialog open={!!inspectEvent} onOpenChange={(open) => { if (!open) setInspectEvent(null); }}>
+        <DialogContent className="max-w-lg max-h-[80vh] overflow-auto">
+          <DialogHeader>
+            <DialogTitle className="font-display text-sm">
+              Detail položky
+            </DialogTitle>
+          </DialogHeader>
+          {inspectLoading ? (
+            <div className="flex justify-center py-8"><Loader2 className="h-5 w-5 animate-spin" /></div>
+          ) : inspectEvent ? (
+            <ScrollArea className="max-h-[60vh]">
+              <pre className="text-xs font-mono whitespace-pre-wrap break-all p-3 bg-muted/30 rounded border">
+                {JSON.stringify(inspectEvent, null, 2)}
+              </pre>
+            </ScrollArea>
+          ) : null}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
