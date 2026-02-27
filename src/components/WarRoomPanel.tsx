@@ -1,6 +1,7 @@
 import type { Tables } from "@/integrations/supabase/types";
 import { Badge } from "@/components/ui/badge";
 import { Shield, Flame, Swords, MapPin, AlertTriangle, Castle } from "lucide-react";
+import WarDeclarationPanel from "@/components/WarDeclarationPanel";
 
 type City = Tables<"cities">;
 type MilitaryCapacity = Tables<"military_capacity">;
@@ -8,15 +9,19 @@ type GameEvent = Tables<"game_events">;
 type GamePlayer = Tables<"game_players">;
 
 interface WarRoomPanelProps {
+  sessionId: string;
+  currentPlayerName: string;
+  currentTurn: number;
+  gameMode?: string;
   cities: City[];
   armies: MilitaryCapacity[];
   events: GameEvent[];
   players: GamePlayer[];
-  currentTurn: number;
   worldCrises: any[];
+  onRefetch: () => void;
 }
 
-const WarRoomPanel = ({ cities, armies, events, players, currentTurn, worldCrises }: WarRoomPanelProps) => {
+const WarRoomPanel = ({ sessionId, currentPlayerName, currentTurn, gameMode, cities, armies, events, players, worldCrises, onRefetch }: WarRoomPanelProps) => {
   const provinces = [...new Set(cities.map(c => c.province).filter(Boolean))];
   const devastatedCities = cities.filter(c => c.status === "devastated" || c.status === "besieged");
   const recentBattles = events.filter(e => e.turn_number >= currentTurn - 2 && (e.event_type === "battle" || e.event_type === "raid") && e.confirmed);
@@ -31,6 +36,17 @@ const WarRoomPanel = ({ cities, armies, events, players, currentTurn, worldCrise
         </h1>
         <p className="text-sm text-muted-foreground">Strategický přehled světa — Rok {currentTurn}</p>
       </div>
+
+      {/* War Declaration Module */}
+      <WarDeclarationPanel
+        sessionId={sessionId}
+        currentPlayerName={currentPlayerName}
+        currentTurn={currentTurn}
+        players={players}
+        cities={cities}
+        gameMode={gameMode}
+        onRefetch={onRefetch}
+      />
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {/* Province overview */}
@@ -58,7 +74,7 @@ const WarRoomPanel = ({ cities, armies, events, players, currentTurn, worldCrise
                     </span>
                     <span className="text-muted-foreground">({c.owner_player})</span>
                     {c.status === "devastated" && <Flame className="h-3 w-3 text-destructive" />}
-                    {c.status === "besieged" && <Shield className="h-3 w-3 text-yellow-600" />}
+                    {c.status === "besieged" && <Shield className="h-3 w-3 text-illuminated" />}
                   </div>
                 ))}
               </div>

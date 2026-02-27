@@ -4319,6 +4319,71 @@ export type Database = {
         }
         Relationships: []
       }
+      war_declarations: {
+        Row: {
+          created_at: string
+          declared_turn: number
+          declaring_player: string
+          diplomatic_effects: Json | null
+          ended_turn: number | null
+          epic_text: string | null
+          id: string
+          manifest_text: string | null
+          peace_conditions: Json | null
+          peace_offer_text: string | null
+          peace_offered_by: string | null
+          session_id: string
+          stability_penalty_applied: boolean
+          status: string
+          target_player: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          declared_turn?: number
+          declaring_player: string
+          diplomatic_effects?: Json | null
+          ended_turn?: number | null
+          epic_text?: string | null
+          id?: string
+          manifest_text?: string | null
+          peace_conditions?: Json | null
+          peace_offer_text?: string | null
+          peace_offered_by?: string | null
+          session_id: string
+          stability_penalty_applied?: boolean
+          status?: string
+          target_player: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          declared_turn?: number
+          declaring_player?: string
+          diplomatic_effects?: Json | null
+          ended_turn?: number | null
+          epic_text?: string | null
+          id?: string
+          manifest_text?: string | null
+          peace_conditions?: Json | null
+          peace_offer_text?: string | null
+          peace_offered_by?: string | null
+          session_id?: string
+          stability_penalty_applied?: boolean
+          status?: string
+          target_player?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "war_declarations_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       wiki_entries: {
         Row: {
           ai_description: string | null
