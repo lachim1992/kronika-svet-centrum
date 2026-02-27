@@ -644,6 +644,7 @@ const ArmyTab = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, on
         currentTurn={currentTurn}
         realmId={realm?.id || ""}
         manpowerCommitted={totalCommitted}
+        targetCap={pendingMobRate !== null ? computeWorkforceBreakdown(myCities, pendingMobRate).mobilized : totalCommitted}
         onDone={async () => {
           if (pendingMobRate !== null && realm) {
             const newWf = computeWorkforceBreakdown(myCities, pendingMobRate);
