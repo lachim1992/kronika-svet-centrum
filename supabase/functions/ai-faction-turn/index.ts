@@ -1,12 +1,13 @@
 /**
- * ai-faction-turn: Enhanced AI faction decision-making.
+ * ai-faction-turn: Enhanced AI faction decision-making with FULL military capability.
  *
  * Situational AI that:
  * - Reads full economic state (realm_resources, cities, buildings)
  * - Reads diplomatic context (diplomacy_messages, war_declarations, tensions)
  * - Reads military state (military_stacks, battles)
- * - Decides actions: build, recruit, diplomacy, war, peace, threats
- * - Executes via existing infrastructure (command-dispatch, direct DB)
+ * - Computes mobilization metrics (safe rate, war readiness)
+ * - Decides actions: build, recruit, deploy, move, attack, diplomacy, war, peace
+ * - Executes via existing infrastructure (command-dispatch, direct DB, action_queue)
  * - Must send ultimatum before declaring war
  */
 
@@ -22,6 +23,148 @@ function json(data: any, status = 200) {
     status, headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
 }
+
+// ═══════════════════════════════════════════
+// HEX MATH
+// ═══════════════════════════════════════════
+
+const AXIAL_NEIGHBORS = [
+  { dq: 1, dr: 0 }, { dq: -1, dr: 0 },
+  { dq: 0, dr: 1 }, { dq: 0, dr: -1 },
+  { dq: 1, dr: -1 }, { dq: -1, dr: 1 },
+];
+
+function hexDistance(q1: number, r1: number, q2: number, r2: number): number {
+  return (Math.abs(q1 - q2) + Math.abs(q1 + r1 - q2 - r2) + Math.abs(r1 - r2)) / 2;
+}
+
+/** Returns the neighbor hex of (fromQ, fromR) that is closest to (toQ, toR). */
+function stepToward(fromQ: number, fromR: number, toQ: number, toR: number): { q: number; r: number } {
+  let best = { q: fromQ, r: fromR };
+  let bestDist = Infinity;
+  for (const n of AXIAL_NEIGHBORS) {
+    const nq = fromQ + n.dq;
+    const nr = fromR + n.dr;
+    const d = hexDistance(nq, nr, toQ, toR);
+    if (d < bestDist) {
+      bestDist = d;
+      best = { q: nq, r: nr };
+    }
+  }
+  return best;
+}
+
+// ═══════════════════════════════════════════
+// MOBILIZATION SCALING (Aggressive profile)
+// ═══════════════════════════════════════════
+
+interface MilitaryMetrics {
+  warState: "peace" | "tension" | "war";
+  suggestedMobilizationRate: number;
+  maxSafeMobilization: number;
+  currentMobilizationRate: number;
+  armyMaintenanceCost: { gold: number; grain: number };
+  canAffordMoreTroops: boolean;
+  warReadiness: number; // 0-100
+  totalArmyPower: number;
+  deployedArmyPower: number;
+  enemyVisiblePower: number;
+  vulnerableCities: Array<{ name: string; hexQ: number; hexR: number; stability: number; garrison: number }>;
+  suggestedTargets: Array<{ name: string; hexQ: number; hexR: number; ownerPlayer: string; distanceFromNearest: number }>;
+  undeployedStacks: Array<{ id: string; name: string; power: number }>;
+  deployedStacks: Array<{ id: string; name: string; power: number; hexQ: number; hexR: number; movedThisTurn: boolean }>;
+}
+
+function computeMilitaryMetrics(
+  resources: { gold: number; grain: number; manpower: number; manpowerCommitted: number },
+  mobilizationRate: number,
+  activeWars: any[],
+  tensionData: any[],
+  factionName: string,
+  myStacks: any[],
+  myCities: any[],
+  allCities: any[],
+  enemyStacks: any[],
+): MilitaryMetrics {
+  // Determine war state
+  const atWar = activeWars.length > 0;
+  const maxTension = tensionData
+    .filter((t: any) => t.player_a === factionName || t.player_b === factionName)
+    .reduce((max: number, t: any) => Math.max(max, t.total_tension || 0), 0);
+  const warState = atWar ? "war" : maxTension >= 40 ? "tension" : "peace";
+
+  // Mobilization targets (aggressive profile)
+  const targetRates: Record<string, number> = { peace: 0.20, tension: 0.35, war: 0.55 };
+  const suggestedMobilizationRate = targetRates[warState];
+
+  // Economic safety checks
+  const totalPop = myCities.reduce((s: number, c: any) => s + (c.population_total || 0), 0);
+  const totalArmy = myStacks.reduce((s: number, st: any) => s + (st.power || 0), 0);
+  const armyGoldCost = Math.ceil(totalArmy / 100); // 1 gold per 100 troops
+  const armyGrainCost = Math.ceil(totalArmy / 500); // 1 grain per 500 troops
+
+  // Safety: never mobilize if it would crash economy within 3 turns
+  const grainSafetyMargin = resources.grain - armyGrainCost * 3;
+  const goldSafetyMargin = resources.gold - armyGoldCost * 3;
+  const maxSafe = grainSafetyMargin > 0 && goldSafetyMargin > 0
+    ? suggestedMobilizationRate
+    : Math.min(suggestedMobilizationRate, mobilizationRate * 0.8); // Don't increase if broke
+
+  const canAfford = grainSafetyMargin > 10 && goldSafetyMargin > 5;
+
+  // War readiness = army power relative to threats
+  const enemyPower = enemyStacks.reduce((s: number, st: any) => s + (st.power || 0), 0);
+  const warReadiness = enemyPower > 0
+    ? Math.min(100, Math.round((totalArmy / enemyPower) * 100))
+    : totalArmy > 0 ? 100 : 0;
+
+  // Vulnerable own cities (low stability/garrison)
+  const vulnerable = myCities
+    .filter((c: any) => (c.city_stability || 70) < 50 || (c.military_garrison || 0) < 100)
+    .map((c: any) => ({ name: c.name, hexQ: c.province_q, hexR: c.province_r, stability: c.city_stability || 0, garrison: c.military_garrison || 0 }));
+
+  // Enemy targets: find enemy cities, sorted by distance from nearest own city
+  const warTargetPlayers = activeWars.map((w: any) =>
+    w.declaring_player === factionName ? w.target_player : w.declaring_player
+  );
+  const enemyCities = allCities.filter((c: any) =>
+    warTargetPlayers.includes(c.owner_player)
+  );
+
+  const suggestedTargets = enemyCities.map((ec: any) => {
+    const minDist = myCities.reduce((min: number, mc: any) =>
+      Math.min(min, hexDistance(mc.province_q, mc.province_r, ec.province_q, ec.province_r)), Infinity
+    );
+    return { name: ec.name, hexQ: ec.province_q, hexR: ec.province_r, ownerPlayer: ec.owner_player, distanceFromNearest: minDist };
+  }).sort((a, b) => a.distanceFromNearest - b.distanceFromNearest);
+
+  const deployed = myStacks.filter((s: any) => s.is_deployed);
+  const undeployed = myStacks.filter((s: any) => !s.is_deployed);
+
+  return {
+    warState,
+    suggestedMobilizationRate,
+    maxSafeMobilization: maxSafe,
+    currentMobilizationRate: mobilizationRate,
+    armyMaintenanceCost: { gold: armyGoldCost, grain: armyGrainCost },
+    canAffordMoreTroops: canAfford,
+    warReadiness,
+    totalArmyPower: totalArmy,
+    deployedArmyPower: deployed.reduce((s: number, st: any) => s + (st.power || 0), 0),
+    enemyVisiblePower: enemyPower,
+    vulnerableCities: vulnerable,
+    suggestedTargets,
+    undeployedStacks: undeployed.map((s: any) => ({ id: s.id, name: s.name, power: s.power || 0 })),
+    deployedStacks: deployed.map((s: any) => ({
+      id: s.id, name: s.name, power: s.power || 0,
+      hexQ: s.hex_q ?? 0, hexR: s.hex_r ?? 0, movedThisTurn: !!s.moved_this_turn,
+    })),
+  };
+}
+
+// ═══════════════════════════════════════════
+// MAIN HANDLER
+// ═══════════════════════════════════════════
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
@@ -52,8 +195,10 @@ Deno.serve(async (req) => {
     // ── Parallel data fetch ──
     const [
       { data: cities },
+      { data: allCities },
       { data: realmRes },
       { data: stacks },
+      { data: enemyStacks },
       { data: recentEvents },
       { data: worldSummary },
       { data: influenceData },
@@ -63,12 +208,16 @@ Deno.serve(async (req) => {
       { data: civ },
       { data: buildingTemplates },
     ] = await Promise.all([
-      supabase.from("cities").select("id, name, level, status, population_total, city_stability, settlement_level, military_garrison")
+      supabase.from("cities").select("id, name, level, status, population_total, city_stability, settlement_level, military_garrison, province_q, province_r")
         .eq("session_id", sessionId).eq("owner_player", factionName),
+      supabase.from("cities").select("id, name, owner_player, population_total, city_stability, military_garrison, province_q, province_r, settlement_level")
+        .eq("session_id", sessionId),
       supabase.from("realm_resources").select("*")
         .eq("session_id", sessionId).eq("player_name", factionName).maybeSingle(),
-      supabase.from("military_stacks").select("id, name, formation_type, morale, power, is_deployed, player_name")
+      supabase.from("military_stacks").select("id, name, formation_type, morale, power, is_deployed, player_name, hex_q, hex_r, moved_this_turn")
         .eq("session_id", sessionId).eq("player_name", factionName).eq("is_active", true),
+      supabase.from("military_stacks").select("id, name, power, player_name, is_deployed, hex_q, hex_r")
+        .eq("session_id", sessionId).neq("player_name", factionName).eq("is_active", true).eq("is_deployed", true),
       supabase.from("game_events").select("event_type, player, turn_number, note, result, location")
         .eq("session_id", sessionId).eq("confirmed", true)
         .gte("turn_number", Math.max(1, turn - 3)).order("turn_number", { ascending: false }).limit(20),
@@ -120,10 +269,24 @@ Deno.serve(async (req) => {
       stone: realmRes?.stone_reserve || 0,
       iron: realmRes?.iron_reserve || 0,
       manpower: realmRes?.manpower_pool || 0,
+      manpowerCommitted: realmRes?.manpower_committed || 0,
     };
 
     const activeWars = (warDeclarations || []).filter((w: any) => w.status === "active");
     const peaceOffers = (warDeclarations || []).filter((w: any) => w.status === "peace_offered");
+
+    // ── MILITARY METRICS ──
+    const milMetrics = computeMilitaryMetrics(
+      resources,
+      realmRes?.mobilization_rate || 0.1,
+      activeWars,
+      tensionData || [],
+      factionName,
+      stacks || [],
+      cities || [],
+      allCities || [],
+      enemyStacks || [],
+    );
 
     // Affordable buildings
     const affordableBuildings = (buildingTemplates || []).filter((t: any) =>
@@ -147,11 +310,21 @@ PRAVIDLA ROZHODOVÁNÍ:
 2. DIPLOMACIE: Vyhrožuj, nabízej smír, komunikuj — vše skrze diplomatické zprávy.
 3. VÁLKA: PŘED vyhlášením války MUSÍŠ nejdřív poslat ultimátum (send_ultimatum). Válku můžeš vyhlásit až v DALŠÍM kole po ultimátu.
 4. MÍR: Pokud válka trvá a jsi v nevýhodě, nabídni mír. Pokud jsi silný, požaduj podmínky.
-5. ARMÁDA: Verbuj vojsko úměrně hrozbám a zdrojům.
+5. ARMÁDA: Verbuj vojsko úměrně hrozbám a zdrojům. DODRŽUJ doporučenou mobilizační sazbu.
 6. STAVBY: Stavěj budovy které odpovídají tvé situaci (obrana při válce, ekonomika v míru).
-7. Max 4 akce za kolo.
+7. Max 6 akcí za kolo (více v době války).
 8. Odpovídej ČESKY. Diplomatické zprávy piš v dobovém středověkém tónu odpovídajícím tvé osobnosti.
 9. Nesmíš měnit číselné hodnoty — pouze rozhoduj o akcích.
+
+VOJENSKÁ PRAVIDLA:
+- Za VÁLKY musíš VŽDY nasadit armády a útočit na nepřátelská města.
+- Priorita cílů: 1. Nepřátelská města (cíl je dobytí), 2. Nepřátelské stacky na cestě.
+- Nasaď nerozmístěné stacky u vlastních měst blízkých nepříteli.
+- Posuň rozmístěné stacky směrem k cílovým městům (1 hex/kolo).
+- Zaútoč na cíl, když je tvůj stack na sousedním hexu.
+- V MÍRU: drž garnizon, minimální mobilizace. Za NAPĚTÍ: zvyš mobilizaci, připrav se.
+- BRAŇ vlastní města — pokud nepřátelský stack je blízko, posuň obranu tam.
+- set_mobilization: nastavuje globální mobilizační sazbu dle situace.
 
 OSOBNOSTNÍ VZORCE:
 - aggressive: Přímé hrozby, časté verbování, rychlá eskalace
@@ -163,13 +336,38 @@ OSOBNOSTNÍ VZORCE:
     const userPrompt = `ROK: ${turn}
 
 EKONOMIKA FRAKCE:
-Zlato: ${resources.gold}, Obilí: ${resources.grain}, Dřevo: ${resources.wood}, Kámen: ${resources.stone}, Železo: ${resources.iron}, Lidská síla: ${resources.manpower}
+Zlato: ${resources.gold}, Obilí: ${resources.grain}, Dřevo: ${resources.wood}, Kámen: ${resources.stone}, Železo: ${resources.iron}
+Lidská síla (pool): ${resources.manpower}, Nasazeno: ${resources.manpowerCommitted}
 
 MĚSTA (${(cities || []).length}):
-${JSON.stringify((cities || []).map((c: any) => ({ name: c.name, pop: c.population_total, stabilita: c.city_stability, úroveň: c.settlement_level, garnizona: c.military_garrison })), null, 2)}
+${JSON.stringify((cities || []).map((c: any) => ({ name: c.name, pop: c.population_total, stabilita: c.city_stability, úroveň: c.settlement_level, garnizona: c.military_garrison, hex: [c.province_q, c.province_r] })), null, 2)}
 
-ARMÁDA (${(stacks || []).length} jednotek):
-${JSON.stringify((stacks || []).map((s: any) => ({ name: s.name, síla: s.power, morálka: s.morale, nasazena: s.is_deployed })), null, 2)}
+═══ VOJENSKÝ STAV ═══
+Válečný stav: ${milMetrics.warState === "war" ? "🔴 VÁLKA" : milMetrics.warState === "tension" ? "🟡 NAPĚTÍ" : "🟢 MÍR"}
+Připravenost: ${milMetrics.warReadiness}/100
+Celková síla: ${milMetrics.totalArmyPower} (nasazeno: ${milMetrics.deployedArmyPower})
+Viditelná síla nepřítele: ${milMetrics.enemyVisiblePower}
+Údržba armády: ${milMetrics.armyMaintenanceCost.gold} zlata + ${milMetrics.armyMaintenanceCost.grain} obilí/kolo
+Může si dovolit více vojáků: ${milMetrics.canAffordMoreTroops ? "ANO" : "NE"}
+
+Aktuální mobilizační sazba: ${(milMetrics.currentMobilizationRate * 100).toFixed(0)}%
+Doporučená mobilizační sazba: ${(milMetrics.suggestedMobilizationRate * 100).toFixed(0)}%
+Maximální bezpečná sazba: ${(milMetrics.maxSafeMobilization * 100).toFixed(0)}%
+
+Nerozmístěné armády (v garnizóně):
+${milMetrics.undeployedStacks.length > 0 ? JSON.stringify(milMetrics.undeployedStacks) : "žádné"}
+
+Rozmístěné armády na mapě:
+${milMetrics.deployedStacks.length > 0 ? JSON.stringify(milMetrics.deployedStacks) : "žádné"}
+
+Zranitelná vlastní města (nízká stabilita/garnizona):
+${milMetrics.vulnerableCities.length > 0 ? JSON.stringify(milMetrics.vulnerableCities) : "žádná"}
+
+Cíle k útoku (nepřátelská města, seřazeno dle vzdálenosti):
+${milMetrics.suggestedTargets.length > 0 ? JSON.stringify(milMetrics.suggestedTargets) : "žádné (nejsme ve válce)"}
+
+Viditelné nepřátelské stacky:
+${(enemyStacks || []).length > 0 ? JSON.stringify((enemyStacks || []).map((s: any) => ({ name: s.name, síla: s.power, hráč: s.player_name, hex: [s.hex_q, s.hex_r] }))) : "žádné"}
 
 DOSTUPNÉ STAVBY: ${affordableBuildings.join(", ") || "žádné (nedostatek zdrojů)"}
 
@@ -192,7 +390,7 @@ ${JSON.stringify((recentEvents || []).slice(0, 10), null, 2)}
 
 STAV SVĚTA: ${worldSummary?.summary_text || "Žádný souhrn"}
 
-Rozhodni, co frakce udělá v tomto kole. Buď strategický a situační.`;
+Rozhodni, co frakce udělá v tomto kole. ${milMetrics.warState === "war" ? "JSTE VE VÁLCE — PRIORITA: nasadit armády, útočit na města, bránit vlastní území!" : ""} Buď strategický a situační.`;
 
     // ── Call AI ──
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
@@ -214,7 +412,7 @@ Rozhodni, co frakce udělá v tomto kole. Buď strategický a situační.`;
               properties: {
                 actions: {
                   type: "array",
-                  maxItems: 4,
+                  maxItems: 6,
                   items: {
                     type: "object",
                     properties: {
@@ -223,6 +421,10 @@ Rozhodni, co frakce udělá v tomto kole. Buď strategický a situační.`;
                         enum: [
                           "build_building",
                           "recruit_army",
+                          "deploy_army",
+                          "move_army",
+                          "attack_target",
+                          "set_mobilization",
                           "send_diplomacy_message",
                           "send_ultimatum",
                           "declare_war",
@@ -235,10 +437,14 @@ Rozhodni, co frakce udělá v tomto kole. Buď strategický a situační.`;
                       },
                       description: { type: "string", description: "Stručný popis akce" },
                       targetPlayer: { type: "string", description: "Cílový hráč/frakce (pro diplomatické akce)" },
-                      targetCity: { type: "string", description: "Cílové město (pro stavby)" },
+                      targetCity: { type: "string", description: "Cílové město (pro stavby, nasazení, útok)" },
                       buildingName: { type: "string", description: "Název budovy ze seznamu dostupných" },
                       armyName: { type: "string", description: "Název nové armády" },
                       armyPreset: { type: "string", enum: ["patrol", "warband", "legion", "siege_company"], description: "Typ armády" },
+                      stackId: { type: "string", description: "ID existujícího stacku (pro deploy/move/attack)" },
+                      stackName: { type: "string", description: "Jméno stacku (alternativa k ID)" },
+                      targetStackName: { type: "string", description: "Jméno nepřátelského stacku (pro attack_target na stack)" },
+                      mobilizationRate: { type: "number", description: "Nová mobilizační sazba 0.0-0.6 (pro set_mobilization)" },
                       messageText: { type: "string", description: "Text diplomatické zprávy / ultimáta / prohlášení" },
                       peaceConditions: {
                         type: "object",
@@ -281,9 +487,12 @@ Rozhodni, co frakce udělá v tomto kole. Buď strategický a situační.`;
     const executedActions: any[] = [];
 
     // ── Execute each action ──
-    for (const action of (result.actions || []).slice(0, 4)) {
+    for (const action of (result.actions || []).slice(0, 6)) {
       try {
-        const executed = await executeAction(supabase, supabaseUrl, supabaseKey, sessionId, turn, factionName, action, faction, sentUltimatums.length > 0);
+        const executed = await executeAction(
+          supabase, supabaseUrl, supabaseKey, sessionId, turn, factionName, action, faction,
+          sentUltimatums.length > 0, stacks || [], cities || [], allCities || [], enemyStacks || [],
+        );
         executedActions.push({ ...action, executed: true, result: executed });
       } catch (err) {
         console.error(`Action ${action.actionType} failed:`, err);
@@ -308,7 +517,7 @@ Rozhodni, co frakce udělá v tomto kole. Buď strategický a situační.`;
       player_name: factionName,
       turn_number: turn,
       action_type: "ai_faction_turn",
-      description: `AI frakce ${factionName}: ${executedActions.filter(a => a.executed).length}/${executedActions.length} akcí. ${result.internalThought || ""}`,
+      description: `AI frakce ${factionName}: ${executedActions.filter(a => a.executed).length}/${executedActions.length} akcí [${milMetrics.warState}]. ${result.internalThought || ""}`,
     }).then(() => {}, () => {});
 
     // ── Process economy for AI faction ──
@@ -324,6 +533,7 @@ Rozhodni, co frakce udělá v tomto kole. Buď strategický a situační.`;
       faction: factionName,
       actionsCount: executedActions.filter(a => a.executed).length,
       actions: executedActions,
+      militaryMetrics: milMetrics,
       internalThought: result.internalThought,
     });
   } catch (e) {
@@ -346,6 +556,10 @@ async function executeAction(
   action: any,
   faction: any,
   hasUltimatum: boolean,
+  myStacks: any[],
+  myCities: any[],
+  allCities: any[],
+  enemyStacks: any[],
 ): Promise<string> {
   const commandId = crypto.randomUUID();
 
@@ -353,17 +567,14 @@ async function executeAction(
     // ─── BUILD BUILDING ───
     case "build_building": {
       if (!action.buildingName || !action.targetCity) return "missing_params";
-      // Find template
       const { data: tmpl } = await supabase.from("building_templates")
         .select("*").ilike("name", action.buildingName).limit(1).maybeSingle();
       if (!tmpl) return "template_not_found";
-      // Find city
       const { data: city } = await supabase.from("cities")
         .select("id, name").eq("session_id", sessionId)
         .eq("owner_player", factionName).ilike("name", action.targetCity).limit(1).maybeSingle();
       if (!city) return "city_not_found";
 
-      // Call command-dispatch
       await invokeFunction(supabaseUrl, supabaseKey, "command-dispatch", {
         sessionId, turnNumber: turn,
         actor: { name: factionName, type: "ai_faction" },
@@ -397,6 +608,162 @@ async function executeAction(
       return "ok";
     }
 
+    // ─── DEPLOY ARMY (garrison → map hex at own city) ───
+    case "deploy_army": {
+      const stack = findStack(myStacks, action.stackId, action.stackName);
+      if (!stack) return "stack_not_found";
+      if (stack.is_deployed) return "already_deployed";
+
+      // Find target city to deploy at
+      const city = findCityByName(myCities, action.targetCity);
+      if (!city) return "city_not_found";
+
+      await supabase.from("military_stacks").update({
+        hex_q: city.province_q,
+        hex_r: city.province_r,
+        is_deployed: true,
+        moved_this_turn: false,
+      }).eq("id", stack.id);
+
+      await invokeFunction(supabaseUrl, supabaseKey, "command-dispatch", {
+        sessionId, turnNumber: turn,
+        actor: { name: factionName, type: "ai_faction" },
+        commandType: "DEPLOY_STACK",
+        commandPayload: {
+          stackId: stack.id, stackName: stack.name,
+          cityId: city.id, cityName: city.name,
+          hexQ: city.province_q, hexR: city.province_r,
+          chronicleText: action.narrativeNote || `Armáda ${stack.name} frakce ${factionName} byla rozmístěna u ${city.name}.`,
+        },
+        commandId,
+      });
+      return "ok";
+    }
+
+    // ─── MOVE ARMY (1 hex toward target city/hex) ───
+    case "move_army": {
+      const stack = findStack(myStacks, action.stackId, action.stackName);
+      if (!stack) return "stack_not_found";
+      if (!stack.is_deployed) return "not_deployed";
+      if (stack.moved_this_turn) return "already_moved";
+
+      // Determine target hex: find target city by name
+      let targetQ: number, targetR: number;
+      const targetCity = action.targetCity
+        ? allCities.find((c: any) => c.name.toLowerCase() === action.targetCity.toLowerCase())
+        : null;
+
+      if (targetCity) {
+        targetQ = targetCity.province_q;
+        targetR = targetCity.province_r;
+      } else {
+        // Fallback: move toward nearest enemy city
+        const enemyCities = allCities.filter((c: any) => c.owner_player !== factionName);
+        if (enemyCities.length === 0) return "no_target";
+        const nearest = enemyCities.reduce((best: any, c: any) => {
+          const d = hexDistance(stack.hex_q, stack.hex_r, c.province_q, c.province_r);
+          return d < (best.d || Infinity) ? { city: c, d } : best;
+        }, { d: Infinity });
+        targetQ = nearest.city.province_q;
+        targetR = nearest.city.province_r;
+      }
+
+      // Already at target?
+      if (stack.hex_q === targetQ && stack.hex_r === targetR) return "already_at_target";
+
+      const next = stepToward(stack.hex_q, stack.hex_r, targetQ, targetR);
+      await supabase.from("military_stacks").update({
+        hex_q: next.q, hex_r: next.r, moved_this_turn: true,
+      }).eq("id", stack.id);
+
+      return `moved_to_${next.q}_${next.r}`;
+    }
+
+    // ─── ATTACK TARGET (city or stack) ───
+    case "attack_target": {
+      const stack = findStack(myStacks, action.stackId, action.stackName);
+      if (!stack) return "stack_not_found";
+      if (!stack.is_deployed) return "not_deployed";
+
+      const sq = stack.hex_q ?? 0;
+      const sr = stack.hex_r ?? 0;
+      const reachableHexes = new Set([
+        `${sq},${sr}`,
+        ...AXIAL_NEIGHBORS.map(n => `${sq + n.dq},${sr + n.dr}`),
+      ]);
+
+      // Try city target
+      let defenderCityId: string | null = null;
+      let defenderStackId: string | null = null;
+
+      if (action.targetCity) {
+        const targetCity = allCities.find((c: any) =>
+          c.name.toLowerCase() === action.targetCity.toLowerCase() &&
+          c.owner_player !== factionName &&
+          reachableHexes.has(`${c.province_q},${c.province_r}`)
+        );
+        if (targetCity) defenderCityId = targetCity.id;
+      }
+
+      if (!defenderCityId && action.targetStackName) {
+        const targetStack = enemyStacks.find((s: any) =>
+          s.name.toLowerCase() === action.targetStackName.toLowerCase() &&
+          reachableHexes.has(`${s.hex_q},${s.hex_r}`)
+        );
+        if (targetStack) defenderStackId = targetStack.id;
+      }
+
+      // Fallback: attack any reachable enemy
+      if (!defenderCityId && !defenderStackId) {
+        // Try enemy city in range
+        const enemyCity = allCities.find((c: any) =>
+          c.owner_player !== factionName && reachableHexes.has(`${c.province_q},${c.province_r}`)
+        );
+        if (enemyCity) defenderCityId = enemyCity.id;
+        else {
+          const enemyStack = enemyStacks.find((s: any) =>
+            reachableHexes.has(`${s.hex_q},${s.hex_r}`)
+          );
+          if (enemyStack) defenderStackId = enemyStack.id;
+        }
+      }
+
+      if (!defenderCityId && !defenderStackId) return "no_target_in_range";
+
+      // Create battle in action_queue
+      const seed = Date.now() + Math.floor(Math.random() * 100000);
+      await supabase.from("action_queue").insert({
+        session_id: sessionId,
+        player_name: factionName,
+        action_type: "battle",
+        status: "pending",
+        action_data: {
+          attacker_stack_id: stack.id,
+          defender_city_id: defenderCityId,
+          defender_stack_id: defenderStackId,
+          speech_text: action.narrativeNote || `Za slávu ${factionName}!`,
+          speech_morale_modifier: 0,
+          seed,
+          biome: "plains",
+        },
+        completes_at: new Date().toISOString(),
+        created_turn: turn,
+        execute_on_turn: turn,
+      });
+
+      return `battle_queued_${defenderCityId ? "city" : "stack"}`;
+    }
+
+    // ─── SET MOBILIZATION RATE ───
+    case "set_mobilization": {
+      const rate = Math.max(0.05, Math.min(0.6, action.mobilizationRate || 0.2));
+      await supabase.from("realm_resources")
+        .update({ mobilization_rate: rate })
+        .eq("session_id", sessionId)
+        .eq("player_name", factionName);
+      return `mobilization_set_to_${(rate * 100).toFixed(0)}%`;
+    }
+
     // ─── SEND DIPLOMACY MESSAGE ───
     case "send_diplomacy_message": {
       if (!action.targetPlayer || !action.messageText) return "missing_params";
@@ -408,7 +775,6 @@ async function executeAction(
       if (!action.targetPlayer) return "missing_target";
       const text = `[ULTIMÁTUM] ${action.messageText || `Frakce ${factionName} žádá podřízení se jejím podmínkám. Neuposlechnutí bude znamenat válku.`}`;
       await sendDiplomacyMessage(supabase, sessionId, factionName, action.targetPlayer, text);
-      // Also issue as public declaration
       await supabase.from("declarations").insert({
         session_id: sessionId, player_name: factionName,
         turn_number: turn, declaration_type: "ultimatum",
@@ -424,14 +790,12 @@ async function executeAction(
       if (!action.targetPlayer) return "missing_target";
       if (!hasUltimatum) return "ultimatum_required_first";
 
-      // Check no active war already
       const { data: existing } = await supabase.from("war_declarations")
         .select("id").eq("session_id", sessionId).eq("status", "active")
         .or(`and(declaring_player.eq.${factionName},target_player.eq.${action.targetPlayer}),and(declaring_player.eq.${action.targetPlayer},target_player.eq.${factionName})`)
         .maybeSingle();
       if (existing) return "war_already_active";
 
-      // Create war declaration
       const manifest = action.messageText || `Frakce ${factionName} vyhlašuje válku!`;
       await supabase.from("war_declarations").insert({
         session_id: sessionId, declaring_player: factionName,
@@ -440,7 +804,6 @@ async function executeAction(
         stability_penalty_applied: true,
       });
 
-      // Apply stability penalties
       const { data: attackerCities } = await supabase.from("cities")
         .select("id, city_stability").eq("session_id", sessionId).eq("owner_player", factionName);
       for (const c of (attackerCities || [])) {
@@ -452,7 +815,6 @@ async function executeAction(
         await supabase.from("cities").update({ city_stability: Math.max(0, (c.city_stability || 50) - 8) }).eq("id", c.id);
       }
 
-      // Game event + declaration
       await supabase.from("game_events").insert({
         session_id: sessionId, event_type: "war", player: factionName,
         turn_number: turn, confirmed: true, note: manifest,
@@ -488,7 +850,6 @@ async function executeAction(
         peace_conditions: conditions,
       }).eq("id", war.id);
 
-      // Send as diplomacy message
       const peaceMsg = action.messageText || `Nabízíme mír. Podmínky: ${conditions.type}.`;
       await sendDiplomacyMessage(supabase, sessionId, factionName, action.targetPlayer, `[MÍROVÁ NABÍDKA] ${peaceMsg}`);
 
@@ -564,10 +925,25 @@ async function executeAction(
 // HELPERS
 // ═══════════════════════════════════════════
 
+function findStack(stacks: any[], id?: string, name?: string): any | null {
+  if (id) {
+    const byId = stacks.find((s: any) => s.id === id);
+    if (byId) return byId;
+  }
+  if (name) {
+    return stacks.find((s: any) => s.name.toLowerCase() === name.toLowerCase()) || null;
+  }
+  return null;
+}
+
+function findCityByName(cities: any[], name?: string): any | null {
+  if (!name) return cities[0] || null; // fallback to first city
+  return cities.find((c: any) => c.name.toLowerCase() === name.toLowerCase()) || cities[0] || null;
+}
+
 async function sendDiplomacyMessage(
   supabase: any, sessionId: string, sender: string, target: string, text: string,
 ): Promise<string> {
-  // Find or create room
   const { data: room } = await supabase.from("diplomacy_rooms")
     .select("id").eq("session_id", sessionId)
     .or(`and(participant_a.eq.${sender},participant_b.eq.${target}),and(participant_a.eq.${target},participant_b.eq.${sender})`)
