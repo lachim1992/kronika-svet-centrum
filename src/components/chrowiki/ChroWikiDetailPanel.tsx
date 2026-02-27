@@ -666,6 +666,7 @@ const ChroWikiDetailPanel = ({
       const sagaText = sagaResult
         ? [
             "## Stručná chronologie\n" + (sagaResult.chronology || []).map((c: string) => `- ${c}`).join("\n"),
+            sagaResult.founding_myth_echo ? "\n## Zakladatelský mýtus\n" + sagaResult.founding_myth_echo : "",
             "\n## Sága\n" + (sagaResult.saga || ""),
             sagaResult.consequences ? "\n## Důsledky\n" + sagaResult.consequences : "",
             sagaResult.legends ? "\n## Legenda\n" + sagaResult.legends : "",
@@ -698,6 +699,48 @@ const ChroWikiDetailPanel = ({
         },
       });
       if (error) throw error;
+
+      // ── Create game_event for this chronicle publication ──
+      const eventNote = entityType === "building"
+        ? `Dvorní kronikář ${chroniclerName} sepsal ságu památníku „${entityName}".`
+        : `Dvorní kronikář ${chroniclerName} sepsal kroniku „${bookTitle}".`;
+      
+      const { data: newEvent } = await supabase.from("game_events").insert({
+        session_id: sessionId,
+        event_type: "chronicle_published",
+        player: currentPlayerName || "system",
+        actor_type: "system",
+        note: eventNote,
+        turn_number: currentTurn || 1,
+        confirmed: true,
+        truth_state: "canon",
+        importance: "normal",
+        city_id: entity?.city_id || null,
+        reference: {
+          entity_type: entityType,
+          entity_id: entityId,
+          entity_name: entityName,
+          chronicler: chroniclerName,
+          book_title: bookTitle,
+          saga_version: nextVersion,
+        },
+      }).select("id").single();
+
+      // ── Create chronicle_entry linked to the event ──
+      if (newEvent?.id) {
+        const chronicleText = entityType === "building"
+          ? `${chroniclerName} dokončil monumentální dílo: ságu o stavbě „${entityName}". ${sagaResult?.founding_myth_echo ? 'Zakladatelský mýtus praví: ' + (sagaResult.founding_myth_echo || '').slice(0, 200) + '…' : ''}`
+          : `${chroniclerName} sepsal kroniku „${bookTitle}" a předal ji do královského archivu.`;
+        
+        await supabase.from("chronicle_entries").insert({
+          session_id: sessionId,
+          text: chronicleText,
+          event_id: newEvent.id,
+          source_type: "chronicle",
+          turn_from: currentTurn || 1,
+          turn_to: currentTurn || 1,
+        });
+      }
 
       const newEntry = {
         version: nextVersion, saga_text: sagaText, history_text: historyText,
