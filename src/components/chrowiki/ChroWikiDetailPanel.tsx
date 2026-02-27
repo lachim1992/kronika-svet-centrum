@@ -262,7 +262,7 @@ const ChroWikiDetailPanel = ({
     });
   }, [entityId, entityType, sessionId]);
 
-  // Reset state on entity change
+  // Reset state on entity change + load cached history/saga
   useEffect(() => {
     setSelectedSagaVersion("latest");
     setEditingSaga(false);
@@ -274,6 +274,20 @@ const ChroWikiDetailPanel = ({
     setSagaResult(null);
     setHistoryResult(null);
     setActiveTab("historie");
+
+    // Load cached history/saga from wiki_entries
+    if (entityId && sessionId) {
+      supabase.from("wiki_entries" as any)
+        .select("history_cache, saga_cache")
+        .eq("session_id", sessionId)
+        .eq("entity_type", entityType)
+        .eq("entity_id", entityId)
+        .maybeSingle()
+        .then(({ data }: any) => {
+          if (data?.history_cache) setHistoryResult(data.history_cache as HistoryResult);
+          if (data?.saga_cache) setSagaResult(data.saga_cache);
+        });
+    }
   }, [entityId]);
 
   const memoryEntity = useMemo(() => {
@@ -299,8 +313,8 @@ const ChroWikiDetailPanel = ({
     [wikiEntries, entityId, entityType, entityName]
   );
 
-  const isOwner = entity?.owner_player === currentPlayerName || entity?.player_name === currentPlayerName;
-  const isAdmin = myRole === "admin" || !myRole;
+  const isOwner = entity?.owner_player === currentPlayerName || entity?.player_name === currentPlayerName || entity?.ruler_player === currentPlayerName;
+  const isAdmin = myRole === "admin";
   const canGenerate = isOwner || isAdmin;
   const descriptionText = lazyGenerating ? "Generuji encyklopedický záznam…" : (wiki?.ai_description || entity?.ai_description || entity?.description || entity?.bio || entity?.summary || null);
   const imageUrl = coverImage || wiki?.image_url || entity?.image_url || entity?.ai_image_url || null;
@@ -581,7 +595,14 @@ const ChroWikiDetailPanel = ({
         version: nextVersion, saga_text: sagaText, author_player: "AI",
         created_at: new Date().toISOString(), is_ai_generated: true
       }, ...prev]);
-      toast.success("📜 Dvorní kronika vygenerována!");
+
+      // Persist structured saga to wiki_entries cache
+      const existingWiki = wikiEntries.find(w => w.entity_id === entityId && w.entity_type === entityType);
+      if (existingWiki) {
+        await supabase.from("wiki_entries").update({ saga_cache: data } as any).eq("id", existingWiki.id);
+      }
+
+      toast.success("📜 Dvorní kronika vygenerována a uložena!");
     } catch (e: any) {
       console.error("Saga generation failed:", e);
       toast.error("Chyba: " + (e.message || "Generování selhalo"));
@@ -605,7 +626,21 @@ const ChroWikiDetailPanel = ({
       if (data?.error) throw new Error(data.error);
 
       setHistoryResult(data);
-      toast.success("📋 Historická syntéza vygenerována!");
+
+      // Persist to wiki_entries cache
+      const existing = wikiEntries.find(w => w.entity_id === entityId && w.entity_type === entityType);
+      if (existing) {
+        await supabase.from("wiki_entries").update({ history_cache: data, last_enriched_turn: currentTurn || 1 } as any).eq("id", existing.id);
+      } else {
+        await supabase.from("wiki_entries").upsert({
+          session_id: sessionId, entity_type: entityType, entity_id: entityId, entity_name: entityName,
+          owner_player: entity?.owner_player || entity?.player_name || "",
+          history_cache: data, last_enriched_turn: currentTurn || 1, updated_at: new Date().toISOString(),
+        } as any);
+        await onRefreshWiki();
+      }
+
+      toast.success("📋 Historická syntéza vygenerována a uložena!");
     } catch (e: any) {
       console.error("History synthesis failed:", e);
       toast.error("Chyba: " + (e.message || "Generování selhalo"));
@@ -821,10 +856,14 @@ const ChroWikiDetailPanel = ({
                 >
                   <Scroll className="h-10 w-10 text-primary/30 mx-auto mb-3" />
                   <p className="text-sm text-muted-foreground italic font-body mb-3">Tento záznam dosud nebyl sepsán kronikáři.</p>
-                  <Button size="sm" variant="outline" onClick={handleGenerate} disabled={generating} className="border-primary/30">
-                    {generating ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <Sparkles className="h-3 w-3 mr-1" />}
-                    Zapsat do kroniky
-                  </Button>
+                  {canGenerate ? (
+                    <Button size="sm" variant="outline" onClick={handleGenerate} disabled={generating} className="border-primary/30">
+                      {generating ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <Sparkles className="h-3 w-3 mr-1" />}
+                      Zapsat do kroniky
+                    </Button>
+                  ) : (
+                    <p className="text-[10px] text-muted-foreground italic">Pouze vlastník nebo admin může generovat</p>
+                  )}
                 </div>
               )}
             </section>

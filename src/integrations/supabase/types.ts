@@ -4472,12 +4472,14 @@ export type Database = {
           entity_id: string | null
           entity_name: string
           entity_type: string
+          history_cache: Json | null
           id: string
           image_prompt: string | null
           image_url: string | null
           last_enriched_turn: number | null
           owner_player: string
           references: Json | null
+          saga_cache: Json | null
           session_id: string
           static_identity: Json | null
           summary: string | null
@@ -4491,12 +4493,14 @@ export type Database = {
           entity_id?: string | null
           entity_name: string
           entity_type?: string
+          history_cache?: Json | null
           id?: string
           image_prompt?: string | null
           image_url?: string | null
           last_enriched_turn?: number | null
           owner_player: string
           references?: Json | null
+          saga_cache?: Json | null
           session_id: string
           static_identity?: Json | null
           summary?: string | null
@@ -4510,12 +4514,14 @@ export type Database = {
           entity_id?: string | null
           entity_name?: string
           entity_type?: string
+          history_cache?: Json | null
           id?: string
           image_prompt?: string | null
           image_url?: string | null
           last_enriched_turn?: number | null
           owner_player?: string
           references?: Json | null
+          saga_cache?: Json | null
           session_id?: string
           static_identity?: Json | null
           summary?: string | null
