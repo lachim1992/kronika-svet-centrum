@@ -3246,6 +3246,7 @@ export type Database = {
           macro_region_id: string | null
           mean_height: number
           moisture_band: number
+          province_id: string | null
           q: number
           r: number
           seed: string
@@ -3260,6 +3261,7 @@ export type Database = {
           macro_region_id?: string | null
           mean_height?: number
           moisture_band?: number
+          province_id?: string | null
           q: number
           r: number
           seed: string
@@ -3274,6 +3276,7 @@ export type Database = {
           macro_region_id?: string | null
           mean_height?: number
           moisture_band?: number
+          province_id?: string | null
           q?: number
           r?: number
           seed?: string
@@ -3289,6 +3292,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "province_hexes_province_id_fkey"
+            columns: ["province_id"]
+            isOneToOne: false
+            referencedRelation: "provinces"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "province_hexes_session_id_fkey"
             columns: ["session_id"]
             isOneToOne: false
@@ -3301,12 +3311,17 @@ export type Database = {
         Row: {
           ai_description: string | null
           capital_city_id: string | null
+          center_q: number | null
+          center_r: number | null
+          color_index: number | null
           created_at: string
           description: string | null
           id: string
           image_prompt: string | null
           image_url: string | null
+          is_neutral: boolean | null
           name: string
+          npc_city_state_id: string | null
           owner_player: string
           region_id: string | null
           session_id: string
@@ -3316,12 +3331,17 @@ export type Database = {
         Insert: {
           ai_description?: string | null
           capital_city_id?: string | null
+          center_q?: number | null
+          center_r?: number | null
+          color_index?: number | null
           created_at?: string
           description?: string | null
           id?: string
           image_prompt?: string | null
           image_url?: string | null
+          is_neutral?: boolean | null
           name: string
+          npc_city_state_id?: string | null
           owner_player: string
           region_id?: string | null
           session_id: string
@@ -3331,12 +3351,17 @@ export type Database = {
         Update: {
           ai_description?: string | null
           capital_city_id?: string | null
+          center_q?: number | null
+          center_r?: number | null
+          color_index?: number | null
           created_at?: string
           description?: string | null
           id?: string
           image_prompt?: string | null
           image_url?: string | null
+          is_neutral?: boolean | null
           name?: string
+          npc_city_state_id?: string | null
           owner_player?: string
           region_id?: string | null
           session_id?: string
@@ -3349,6 +3374,13 @@ export type Database = {
             columns: ["capital_city_id"]
             isOneToOne: false
             referencedRelation: "cities"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "provinces_npc_city_state_id_fkey"
+            columns: ["npc_city_state_id"]
+            isOneToOne: false
+            referencedRelation: "city_states"
             referencedColumns: ["id"]
           },
           {

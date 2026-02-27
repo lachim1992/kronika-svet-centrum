@@ -45,6 +45,37 @@ const BIOME_ICONS: Record<string, string> = {
 };
 const FOG_COLOR = "#111318";
 
+/* Province palette — 10 distinct, muted colors for overlay */
+const PROVINCE_COLORS = [
+  "hsla(210, 60%, 50%, 0.15)", // blue
+  "hsla(30, 70%, 50%, 0.15)",  // orange
+  "hsla(120, 50%, 40%, 0.15)", // green
+  "hsla(0, 60%, 50%, 0.15)",   // red
+  "hsla(270, 50%, 50%, 0.15)", // purple
+  "hsla(60, 60%, 45%, 0.15)",  // yellow
+  "hsla(180, 50%, 40%, 0.15)", // teal
+  "hsla(330, 50%, 50%, 0.15)", // pink
+  "hsla(150, 50%, 40%, 0.15)", // emerald
+  "hsla(45, 70%, 50%, 0.15)",  // gold
+];
+const PROVINCE_BORDER_COLORS = [
+  "hsla(210, 70%, 55%, 0.4)",
+  "hsla(30, 80%, 55%, 0.4)",
+  "hsla(120, 60%, 45%, 0.4)",
+  "hsla(0, 70%, 55%, 0.4)",
+  "hsla(270, 60%, 55%, 0.4)",
+  "hsla(60, 70%, 50%, 0.4)",
+  "hsla(180, 60%, 45%, 0.4)",
+  "hsla(330, 60%, 55%, 0.4)",
+  "hsla(150, 60%, 45%, 0.4)",
+  "hsla(45, 80%, 55%, 0.4)",
+];
+const PROVINCE_LEGEND_COLORS = [
+  "hsl(210, 60%, 50%)", "hsl(30, 70%, 50%)", "hsl(120, 50%, 40%)",
+  "hsl(0, 60%, 50%)", "hsl(270, 50%, 50%)", "hsl(60, 60%, 45%)",
+  "hsl(180, 50%, 40%)", "hsl(330, 50%, 50%)", "hsl(150, 50%, 40%)", "hsl(45, 70%, 50%)",
+];
+
 /* ───── Hex math ───── */
 function hexToPixel(q: number, r: number) {
   return { x: HEX_SIZE * (SQRT3 * q + (SQRT3 / 2) * r), y: HEX_SIZE * 1.5 * r };
@@ -276,6 +307,11 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
   const [bootstrapping, setBootstrapping] = useState(false);
   const [showLegend, setShowLegend] = useState(false);
   const [showFoundDialog, setShowFoundDialog] = useState(false);
+  const [showProvinceLayer, setShowProvinceLayer] = useState(true);
+
+  // Province data
+  const [provinceHexMap, setProvinceHexMap] = useState<Map<string, { provinceId: string; colorIndex: number }>>(new Map());
+  const [provinceLegend, setProvinceLegend] = useState<{ id: string; name: string; colorIndex: number; ownerPlayer: string }[]>([]);
 
   // Pan state
   const [pan, setPan] = useState({ x: 0, y: 0 });
@@ -332,6 +368,36 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
       imageUrl: s.image_confirmed && s.image_url ? s.image_url : null,
       sigilUrl: s.sigil_confirmed && s.sigil_url ? s.sigil_url : null,
     })));
+  }, [sessionId]);
+
+  /* ── Fetch province data ── */
+  const fetchProvinces = useCallback(async () => {
+    const [{ data: provs }, { data: provHexes }] = await Promise.all([
+      supabase.from("provinces").select("id, name, color_index, owner_player, is_neutral")
+        .eq("session_id", sessionId),
+      supabase.from("province_hexes").select("q, r, province_id")
+        .eq("session_id", sessionId).not("province_id", "is", null),
+    ]);
+    if (provHexes) {
+      const provColorMap = new Map<string, number>();
+      for (const p of provs || []) provColorMap.set(p.id, p.color_index ?? 0);
+      const hexMap = new Map<string, { provinceId: string; colorIndex: number }>();
+      for (const ph of provHexes) {
+        if (ph.province_id) {
+          hexMap.set(hKey(ph.q, ph.r), {
+            provinceId: ph.province_id,
+            colorIndex: provColorMap.get(ph.province_id) ?? 0,
+          });
+        }
+      }
+      setProvinceHexMap(hexMap);
+    }
+    if (provs) {
+      setProvinceLegend(provs.map(p => ({
+        id: p.id, name: p.name, colorIndex: p.color_index ?? 0,
+        ownerPlayer: p.owner_player,
+      })));
+    }
   }, [sessionId]);
 
   /* ── Lookups ── */
@@ -438,7 +504,7 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
     if (loadedRef.current) return;
     loadedRef.current = true;
     (async () => {
-      await Promise.all([fetchCities(), fetchStacks()]);
+      await Promise.all([fetchCities(), fetchStacks(), fetchProvinces()]);
       if (isAdmin) await loadAllGenerated();
       await fetchDiscoveries();
     })();
@@ -709,6 +775,22 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
           </pattern>
         </defs>
         <g transform={`translate(${pan.x / zoom}, ${pan.y / zoom}) scale(${zoom})`}>
+          {/* Province overlay layer (behind everything else) */}
+          {showProvinceLayer && renderCoords.map(c => {
+            const provData = provinceHexMap.get(hKey(c.q, c.r));
+            if (!provData || c.isFrontier) return null;
+            const pos = hexToPixel(c.q, c.r);
+            const cx = pos.x + offsetX;
+            const cy = pos.y + offsetY;
+            const pts = hexPoints(cx, cy);
+            const ci = provData.colorIndex % PROVINCE_COLORS.length;
+            return (
+              <g key={`prov-${hKey(c.q, c.r)}`} style={{ pointerEvents: "none" }}>
+                <polygon points={pts} fill={PROVINCE_COLORS[ci]} />
+                <polygon points={pts} fill="none" stroke={PROVINCE_BORDER_COLORS[ci]} strokeWidth={0.6} />
+              </g>
+            );
+          })}
           {renderCoords.map(c => {
             const hex = getHex(c.q, c.r);
             const isCurrent = currentPos !== null && c.q === currentPos.q && c.r === currentPos.r && !c.isFrontier;
@@ -805,7 +887,28 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
           Legenda {showLegend ? <ChevronDown className="h-3 w-3" /> : <ChevronUp className="h-3 w-3" />}
         </Button>
         {showLegend && (
-          <div className="mt-1.5 p-3 rounded-lg bg-card/90 backdrop-blur-md border border-border shadow-xl max-w-[280px]">
+          <div className="mt-1.5 p-3 rounded-lg bg-card/90 backdrop-blur-md border border-border shadow-xl max-w-[320px]">
+            {/* Province legend */}
+            {provinceLegend.length > 0 && (
+              <div className="mb-2 pb-2 border-b border-border">
+                <div className="flex items-center justify-between mb-1.5">
+                  <p className="text-[10px] font-display font-semibold text-foreground">Provincie</p>
+                  <label className="flex items-center gap-1 text-[9px] text-muted-foreground cursor-pointer">
+                    <input type="checkbox" checked={showProvinceLayer} onChange={e => setShowProvinceLayer(e.target.checked)} className="w-3 h-3" />
+                    Zobrazit
+                  </label>
+                </div>
+                <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[9px]">
+                  {provinceLegend.map(p => (
+                    <div key={p.id} className="flex items-center gap-1.5 truncate">
+                      <span className="w-2.5 h-2.5 rounded-sm inline-block flex-shrink-0 border border-border"
+                        style={{ backgroundColor: PROVINCE_LEGEND_COLORS[p.colorIndex % PROVINCE_LEGEND_COLORS.length] }} />
+                      <span className="text-muted-foreground truncate">{p.name}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
             <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-[10px]">
               {Object.entries(BIOME_LABELS).map(([key, label]) => (
                 <div key={key} className="flex items-center gap-1.5">
