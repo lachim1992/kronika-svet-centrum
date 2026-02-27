@@ -21,6 +21,7 @@ const ResourceHUD = ({ sessionId, playerName, cities, currentTurn }: ResourceHUD
   const [playerRes, setPlayerRes] = useState<Record<string, any>>({});
   const [showDemobilize, setShowDemobilize] = useState(false);
   const [activeStacks, setActiveStacks] = useState<any[]>([]);
+  const [pendingMobRate, setPendingMobRate] = useState<number | null>(null);
 
   const fetchData = useCallback(async () => {
     const [realmRes, prRes] = await Promise.all([
@@ -152,11 +153,15 @@ const ResourceHUD = ({ sessionId, playerName, cities, currentTurn }: ResourceHUD
     },
   ];
 
+  const targetCap = pendingMobRate !== null ? Math.floor(computedPool * pendingMobRate) : committed;
+
   const handleMobilizationChange = async (val: number[]) => {
     const requestedPct = val[0];
+    const newCap = Math.floor(computedPool * (requestedPct / 100));
 
-    // If trying to go below committed troops, open demobilize dialog
-    if (requestedPct < minMobPct) {
+    // If committed troops exceed the new cap, force demobilize
+    if (committed > newCap) {
+      setPendingMobRate(requestedPct / 100);
       await fetchStacks();
       setShowDemobilize(true);
       return;
@@ -165,6 +170,16 @@ const ResourceHUD = ({ sessionId, playerName, cities, currentTurn }: ResourceHUD
     const rate = requestedPct / 100;
     await supabase.from("realm_resources").update({ mobilization_rate: rate }).eq("id", realm.id);
     setRealm((r: any) => ({ ...r, mobilization_rate: rate }));
+  };
+
+  const handleDemobilizeDone = async () => {
+    // After demobilize completes, apply the pending mobilization rate
+    if (pendingMobRate !== null) {
+      await supabase.from("realm_resources").update({ mobilization_rate: pendingMobRate }).eq("id", realm.id);
+      setRealm((r: any) => ({ ...r, mobilization_rate: pendingMobRate }));
+      setPendingMobRate(null);
+    }
+    fetchData();
   };
 
   const grainPct = Math.min(100, (grainStock / Math.max(1, grainCapacity)) * 100);
@@ -275,14 +290,15 @@ const ResourceHUD = ({ sessionId, playerName, cities, currentTurn }: ResourceHUD
       {/* Demobilize dialog */}
       <DemobilizeDialog
         open={showDemobilize}
-        onClose={() => setShowDemobilize(false)}
+        onClose={() => { setShowDemobilize(false); setPendingMobRate(null); }}
         stacks={activeStacks}
         sessionId={sessionId}
         playerName={playerName}
         currentTurn={currentTurn}
         realmId={realm?.id || ""}
         manpowerCommitted={committed}
-        onDone={fetchData}
+        targetCap={targetCap}
+        onDone={handleDemobilizeDone}
       />
     </>
   );
