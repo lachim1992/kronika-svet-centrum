@@ -106,6 +106,7 @@ const WorldHistoryPanel = ({ sessionId, events, memories, epochStyle, currentTur
     try {
       const { data, error } = await supabase.functions.invoke("world-history", {
         body: {
+          sessionId,
           events: confirmedEvents,
           worldMemories: approvedMemories,
           epochStyle,
