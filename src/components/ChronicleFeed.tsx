@@ -148,6 +148,7 @@ const ChronicleFeed = ({
 
         const { data, error } = await supabase.functions.invoke("world-chronicle-round", {
           body: {
+            sessionId,
             round: turn,
             confirmedEvents: roundEvents,
             annotations: annotationsWithType.filter(a => a.visibility !== "private"),
@@ -222,6 +223,7 @@ const ChronicleFeed = ({
 
       const { data, error } = await supabase.functions.invoke("world-chronicle-round", {
         body: {
+          sessionId,
           round: turn,
           confirmedEvents: roundEvents,
           annotations: [],
