@@ -1,11 +1,11 @@
 import ChronicleFeed from "@/components/ChronicleFeed";
 import PlayerChroniclePanel from "@/components/PlayerChroniclePanel";
-import WorldFeedPanel from "@/components/WorldFeedPanel";
 import WorldHistoryPanel from "@/components/WorldHistoryPanel";
-import RumorsFeedPanel from "@/components/RumorsFeedPanel";
+import SeptandaFeed from "@/components/SeptandaFeed";
+import EventsLogPanel from "@/components/EventsLogPanel";
 import NarrativeConfigEditor from "@/components/NarrativeConfigEditor";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { BookOpen, BookMarked, Newspaper, MessageCircle, Settings2 } from "lucide-react";
+import { BookOpen, BookMarked, List, MessageCircle, Settings2 } from "lucide-react";
 import type { EntityIndex } from "@/hooks/useEntityIndex";
 
 interface Props {
@@ -40,8 +40,11 @@ const ChroniclesTab = ({
         <h2 className="text-lg font-display font-bold">Kroniky</h2>
       </div>
 
-      <Tabs defaultValue="worldchronicle" className="w-full">
+      <Tabs defaultValue="events" className="w-full">
         <TabsList className="w-full justify-start bg-card border border-border h-auto p-1 gap-1 flex-wrap">
+          <TabsTrigger value="events" className="font-display text-xs gap-1">
+            <List className="h-3 w-3" />Události
+          </TabsTrigger>
           <TabsTrigger value="worldchronicle" className="font-display text-xs gap-1">
             <BookOpen className="h-3 w-3" />Kronika světa
           </TabsTrigger>
@@ -51,16 +54,24 @@ const ChroniclesTab = ({
           <TabsTrigger value="history" className="font-display text-xs gap-1">
             <BookMarked className="h-3 w-3" />Dějiny
           </TabsTrigger>
-          <TabsTrigger value="feed" className="font-display text-xs gap-1">
-            <Newspaper className="h-3 w-3" />Šuškanda
-          </TabsTrigger>
-          <TabsTrigger value="rumors" className="font-display text-xs gap-1">
-            <MessageCircle className="h-3 w-3" />Zvěsti
+          <TabsTrigger value="septanda" className="font-display text-xs gap-1">
+            <MessageCircle className="h-3 w-3" />Šeptanda
           </TabsTrigger>
           <TabsTrigger value="narrative-config" className="font-display text-xs gap-1">
             <Settings2 className="h-3 w-3" />Nastavení
           </TabsTrigger>
         </TabsList>
+
+        <TabsContent value="events" className="mt-3">
+          <EventsLogPanel
+            sessionId={sessionId}
+            events={events}
+            currentTurn={currentTurn}
+            entityIndex={entityIndex}
+            onEventClick={onEventClick}
+            onEntityClick={onEntityClick}
+          />
+        </TabsContent>
 
         <TabsContent value="worldchronicle" className="mt-3">
           <ChronicleFeed
@@ -88,19 +99,9 @@ const ChroniclesTab = ({
           />
         </TabsContent>
 
-        <TabsContent value="feed" className="mt-3">
-          <WorldFeedPanel
-            sessionId={sessionId} currentTurn={currentTurn} events={events}
-            cities={cities} memories={memories} players={players}
-            epochStyle={session.epoch_style} myRole={myRole} onRefetch={onRefetch}
-            onEventClick={onEventClick} onEntityClick={onEntityClick} entityIndex={entityIndex}
-          />
-        </TabsContent>
-
-        <TabsContent value="rumors" className="mt-3">
-          <RumorsFeedPanel
+        <TabsContent value="septanda" className="mt-3">
+          <SeptandaFeed
             sessionId={sessionId}
-            cities={cities}
             currentTurn={currentTurn}
             entityIndex={entityIndex}
             onEventClick={onEventClick}
