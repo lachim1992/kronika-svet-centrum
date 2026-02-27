@@ -23,7 +23,7 @@ const PersistentTab = ({
   sessionId, currentPlayerName, myRole, cities, armies,
   players, resources, events, worldCrises,
 }: Props) => {
-  const isAdmin = myRole === "admin";
+  const isAdmin = myRole === "admin" || myRole === "moderator";
 
   return (
     <div className="space-y-4 pb-20">

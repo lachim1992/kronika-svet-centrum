@@ -109,7 +109,7 @@ const ServerConfigPanel = ({ sessionId, myRole }: Props) => {
         <CardContent className="p-6 text-center space-y-3">
           <Settings className="h-10 w-10 mx-auto text-muted-foreground" />
           <p className="text-sm text-muted-foreground">Tento svět ještě nemá konfiguraci persistentního serveru.</p>
-          {myRole === "admin" && (
+          {(myRole === "admin" || myRole === "moderator") && (
             <Button onClick={handleInit} disabled={saving}>
               Inicializovat persistentní server
             </Button>
@@ -119,7 +119,7 @@ const ServerConfigPanel = ({ sessionId, myRole }: Props) => {
     );
   }
 
-  const isAdmin = myRole === "admin";
+  const isAdmin = myRole === "admin" || myRole === "moderator";
 
   return (
     <div className="space-y-4">

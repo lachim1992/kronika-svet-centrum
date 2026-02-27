@@ -33,7 +33,7 @@ const FeedTab = ({
   entityTraits, civilizations, currentPlayerName, currentTurn, myRole,
   entityIndex, onRefetch, onEventClick, onEntityClick,
 }: Props) => {
-  const isAdmin = myRole === "admin" || !myRole;
+  const isAdmin = myRole === "admin" || myRole === "moderator" || !myRole;
 
   return (
     <div className="space-y-4 pb-20">

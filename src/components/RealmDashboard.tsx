@@ -178,14 +178,14 @@ const RealmDashboard = ({ sessionId, currentPlayerName, currentTurn, myRole, cit
       </Card>
 
       {/* Legacy migration (admin only) */}
-      {myRole === "admin" && (
+      {(myRole === "admin" || myRole === "moderator") && (
         <Button variant="outline" size="sm" onClick={handleMigrateLegacy} className="text-xs">
           Migrovat starý vojenský systém
         </Button>
       )}
 
       {/* Debug toggle (dev only) */}
-      {myRole === "admin" && (
+      {(myRole === "admin" || myRole === "moderator") && (
         <div>
           <Button variant="ghost" size="sm" onClick={() => setShowDebug(!showDebug)} className="text-xs gap-1">
             <Code className="h-3 w-3" />{showDebug ? "Skrýt" : "Debug"} realm_resources

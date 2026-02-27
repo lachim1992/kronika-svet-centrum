@@ -36,7 +36,7 @@ const FoundSettlementDialog = ({
   const [loadingProvinces, setLoadingProvinces] = useState(true);
   const [hasNoProvince, setHasNoProvince] = useState(false);
 
-  const isAdmin = myRole === "admin";
+  const isAdmin = myRole === "admin" || myRole === "moderator";
 
   // Fetch player's provinces
   useEffect(() => {

@@ -314,7 +314,7 @@ const ChroWikiDetailPanel = ({
   );
 
   const isOwner = entity?.owner_player === currentPlayerName || entity?.player_name === currentPlayerName || entity?.ruler_player === currentPlayerName;
-  const isAdmin = myRole === "admin";
+  const isAdmin = myRole === "admin" || myRole === "moderator";
   const canGenerate = isOwner || isAdmin;
   const descriptionText = lazyGenerating ? "Generuji encyklopedický záznam…" : (wiki?.ai_description || entity?.ai_description || entity?.description || entity?.bio || entity?.summary || null);
   const imageUrl = coverImage || wiki?.image_url || entity?.image_url || entity?.ai_image_url || null;

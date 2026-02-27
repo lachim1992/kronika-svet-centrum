@@ -100,7 +100,7 @@ const WikiPanel = ({
   const [entityImages, setEntityImages] = useState<EncImage[]>([]);
   const [worldMemories, setWorldMemories] = useState<string[]>([]);
 
-  const isAdmin = myRole === "admin" || !myRole;
+  const isAdmin = myRole === "admin" || myRole === "moderator" || !myRole;
 
   useEffect(() => {
     fetchAll();

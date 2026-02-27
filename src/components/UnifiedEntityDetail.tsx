@@ -114,7 +114,7 @@ const UnifiedEntityDetail = ({
   const [flavorPrompt, setFlavorPrompt] = useState("");
   const [editingFlavor, setEditingFlavor] = useState(false);
 
-  const isAdmin = myRole === "admin" || !myRole;
+  const isAdmin = myRole === "admin" || myRole === "moderator" || !myRole;
 
   // Find the entity data
   const city = entityType === "city" ? cities.find(c => c.id === entityId) : null;

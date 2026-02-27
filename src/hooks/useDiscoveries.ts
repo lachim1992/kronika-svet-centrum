@@ -14,7 +14,7 @@ export interface Discovery {
 export function useDiscoveries(sessionId: string | undefined, playerName: string, myRole: string) {
   const [discoveries, setDiscoveries] = useState<Discovery[]>([]);
   const [loading, setLoading] = useState(true);
-  const isAdmin = myRole === "admin";
+  const isAdmin = myRole === "admin" || myRole === "moderator";
 
   const fetchDiscoveries = useCallback(async () => {
     if (!sessionId || isAdmin) {
