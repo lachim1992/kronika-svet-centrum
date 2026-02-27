@@ -304,6 +304,7 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
   const [speechResult, setSpeechResult] = useState<{ morale_modifier: number; ai_feedback: string } | null>(null);
   const [evaluatingSpeech, setEvaluatingSpeech] = useState(false);
   const [submittingBattle, setSubmittingBattle] = useState(false);
+  const [battleResult, setBattleResult] = useState<any>(null);
   const [bootstrapping, setBootstrapping] = useState(false);
   const [showLegend, setShowLegend] = useState(false);
   const [showFoundDialog, setShowFoundDialog] = useState(false);
@@ -698,16 +699,29 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
       const { data: session } = await supabase.from("game_sessions").select("current_turn").eq("id", sessionId).single();
       const turn = session?.current_turn || 1;
       const seed = Math.floor(Math.random() * 1000000);
-      await supabase.from("action_queue").insert({
-        session_id: sessionId, player_name: playerName, action_type: "battle",
-        action_data: { attacker_stack_id: selectedStack.id, defender_city_id: enemyCity?.id || null, defender_stack_id: enemyStack?.id || null, speech_text: battleSpeech || null, speech_morale_modifier: speechResult?.morale_modifier || 0, seed },
-        execute_on_turn: turn, completes_at: new Date().toISOString(),
+
+      // Resolve battle immediately
+      const { data, error } = await supabase.functions.invoke("resolve-battle", {
+        body: {
+          session_id: sessionId, player_name: playerName, current_turn: turn,
+          attacker_stack_id: selectedStack.id,
+          defender_city_id: enemyCity?.id || null,
+          defender_stack_id: enemyStack?.id || null,
+          speech_text: battleSpeech || null,
+          speech_morale_modifier: speechResult?.morale_modifier || 0,
+          seed,
+        },
       });
-      toast.success("Bitva zahájena!");
-      setBattleTarget(null); setSelectedStack(null); await fetchStacks();
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+
+      // Show result immediately
+      setBattleResult(data);
+      setBattleTarget(null); setSelectedStack(null);
+      await Promise.all([fetchStacks(), fetchCities()]);
     } catch (e: any) { toast.error("Chyba: " + (e.message || "neznámá")); }
     setSubmittingBattle(false);
-  }, [selectedStack, battleTarget, citiesByCoord, stacksByCoord, playerName, sessionId, battleSpeech, speechResult, fetchStacks]);
+  }, [selectedStack, battleTarget, citiesByCoord, stacksByCoord, playerName, sessionId, battleSpeech, speechResult, fetchStacks, fetchCities]);
 
   const handleTileClick = useCallback((q: number, r: number, isFrontier: boolean) => {
     if (dragRef.current?.moved) return;
@@ -1119,6 +1133,63 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
               </div>
             );
           })()}
+        </DialogContent>
+      </Dialog>
+
+      {/* Battle result dialog */}
+      <Dialog open={!!battleResult} onOpenChange={(open) => { if (!open) setBattleResult(null); }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="font-display flex items-center gap-2">
+              <Swords className="h-5 w-5 text-primary" /> Výsledek bitvy
+            </DialogTitle>
+          </DialogHeader>
+          {battleResult && (
+            <div className="space-y-3">
+              <div className={`p-4 rounded-lg border text-center space-y-1 ${
+                battleResult.result?.includes("victory") ? "border-accent/40 bg-accent/10" : "border-destructive/40 bg-destructive/10"
+              }`}>
+                <p className={`text-lg font-display font-bold ${
+                  battleResult.result?.includes("victory") ? "text-accent" : "text-destructive"
+                }`}>
+                  {battleResult.result_label}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {battleResult.attacker_name} vs {battleResult.defender_name}
+                </p>
+              </div>
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <div className="p-2 rounded border border-border bg-card">
+                  <p className="text-muted-foreground">Síla útočníka</p>
+                  <p className="font-display font-semibold">{battleResult.attacker_strength}</p>
+                </div>
+                <div className="p-2 rounded border border-border bg-card">
+                  <p className="text-muted-foreground">Síla obránce</p>
+                  <p className="font-display font-semibold">{battleResult.defender_strength}</p>
+                </div>
+                <div className="p-2 rounded border border-border bg-card">
+                  <p className="text-muted-foreground">Ztráty útočníka</p>
+                  <p className="font-display font-semibold text-destructive">{battleResult.casualties_attacker}</p>
+                </div>
+                <div className="p-2 rounded border border-border bg-card">
+                  <p className="text-muted-foreground">Ztráty obránce</p>
+                  <p className="font-display font-semibold text-destructive">{battleResult.casualties_defender}</p>
+                </div>
+              </div>
+              <div className="text-[10px] text-muted-foreground text-center">
+                Luck: {((battleResult.luck_roll || 0) * 100).toFixed(0)}%
+              </div>
+              {battleResult.needs_decision && (
+                <div className="p-2 rounded border border-illuminated/30 bg-illuminated/5 text-xs text-center">
+                  <p className="font-display font-semibold text-illuminated">⚖️ Rozhodnutí po bitvě čeká!</p>
+                  <p className="text-muted-foreground">Přejděte na záložku Armáda.</p>
+                </div>
+              )}
+              <Button className="w-full font-display" onClick={() => setBattleResult(null)}>
+                Zavřít
+              </Button>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
 
