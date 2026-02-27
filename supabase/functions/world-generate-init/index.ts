@@ -491,9 +491,53 @@ DŮLEŽITÉ: affected_players/faction MUSÍ používat přesná jména frakcí. 
       counters.regions++;
     }
 
-    // ═══ STEP D: Provinces with wiki ═══
+    // ═══ STEP D: Provinces with wiki + hex layout ═══
     const provinceIdMap: Record<string, string> = {};
     const provinceRegionMap: Record<string, string> = {};
+
+    // Province center layout — spiral arrangement with spacing 5
+    const PROV_SPACING = 5;
+    const provinceCenterOffsets: { q: number; r: number }[] = [
+      { q: 0, r: 0 },
+      { q: PROV_SPACING, r: 0 },
+      { q: -PROV_SPACING, r: 0 },
+      { q: Math.floor(PROV_SPACING / 2), r: PROV_SPACING },
+      { q: -Math.floor(PROV_SPACING / 2), r: -PROV_SPACING },
+      { q: Math.floor(PROV_SPACING / 2), r: -PROV_SPACING },
+      { q: -Math.floor(PROV_SPACING / 2), r: PROV_SPACING },
+      { q: PROV_SPACING * 2, r: 0 },
+      { q: -PROV_SPACING * 2, r: 0 },
+      { q: PROV_SPACING, r: PROV_SPACING },
+      { q: -PROV_SPACING, r: -PROV_SPACING },
+      { q: PROV_SPACING, r: -PROV_SPACING },
+    ];
+
+    // Generate ring hexes (center + ring1 + ring2 = 19 hexes)
+    function hexRing(cq: number, cr: number, radius: number): { q: number; r: number }[] {
+      if (radius === 0) return [{ q: cq, r: cr }];
+      const results: { q: number; r: number }[] = [];
+      const dirs = [[1, 0], [0, 1], [-1, 1], [-1, 0], [0, -1], [1, -1]];
+      let q = cq + dirs[4][0] * radius;
+      let r = cr + dirs[4][1] * radius;
+      for (let d = 0; d < 6; d++) {
+        for (let s = 0; s < radius; s++) {
+          results.push({ q, r });
+          q += dirs[d][0]; r += dirs[d][1];
+        }
+      }
+      return results;
+    }
+
+    function province19Hexes(cq: number, cr: number): { q: number; r: number }[] {
+      return [
+        { q: cq, r: cr },
+        ...hexRing(cq, cr, 1),
+        ...hexRing(cq, cr, 2),
+      ];
+    }
+
+    let provColorIndex = 0;
+    const allProvinceHexEntries: any[] = [];
 
     for (const region of world.regions || []) {
       const regionId = regionIdMap[region.name];
@@ -504,14 +548,28 @@ DŮLEŽITÉ: affected_players/faction MUSÍ používat přesná jména frakcí. 
       }
 
       for (const prov of regionProvinces) {
+        const centerOffset = provinceCenterOffsets[provColorIndex] || { q: provColorIndex * PROV_SPACING, r: 0 };
+        const isNeutral = !factionPlayerMap[region.controlledBy];
+
         const { data: provRow } = await supabase.from("provinces").insert({
           session_id: sessionId, name: prov.name, description: prov.description || null,
           region_id: regionId || null, owner_player: ownerPlayer,
+          center_q: centerOffset.q, center_r: centerOffset.r,
+          color_index: provColorIndex, is_neutral: isNeutral,
         }).select("id").single();
 
         if (provRow) {
           provinceIdMap[prov.name] = provRow.id;
           provinceRegionMap[prov.name] = region.name;
+
+          // Generate 19 hex entries for this province
+          const hexes19 = province19Hexes(centerOffset.q, centerOffset.r);
+          for (const h of hexes19) {
+            allProvinceHexEntries.push({
+              session_id: sessionId, q: h.q, r: h.r, province_id: provRow.id,
+            });
+          }
+
           await supabase.from("wiki_entries").upsert({
             session_id: sessionId, entity_type: "province", entity_id: provRow.id,
             entity_name: prov.name, owner_player: ownerPlayer,
@@ -522,8 +580,20 @@ DŮLEŽITÉ: affected_players/faction MUSÍ používat přesná jména frakcí. 
           } as any, { onConflict: "session_id,entity_type,entity_id" });
           counters.wiki++;
         }
+        provColorIndex++;
         counters.provinces++;
       }
+    }
+
+    // Bulk-update province_hexes with province_id
+    // The hexes may already exist (from generate-hex), so we update them or insert stubs
+    for (const entry of allProvinceHexEntries) {
+      const { data: existing } = await supabase.from("province_hexes")
+        .select("id").eq("session_id", sessionId).eq("q", entry.q).eq("r", entry.r).maybeSingle();
+      if (existing) {
+        await supabase.from("province_hexes").update({ province_id: entry.province_id }).eq("id", existing.id);
+      }
+      // If hex doesn't exist yet, it will be generated later and linked
     }
 
     // Helper: find best province for a city
@@ -537,25 +607,34 @@ DŮLEŽITÉ: affected_players/faction MUSÍ používat přesná jména frakcí. 
       return Object.values(provinceIdMap)[0] || null;
     };
 
-    // ═══ STEP E: Cities with wiki ═══
-    const usedHexes = new Set<string>();
-    const createdCityRows: any[] = [];
+    // Get province center coords for city placement
+    const getProvinceCenter = (provId: string): { q: number; r: number } => {
+      for (const entry of allProvinceHexEntries) {
+        // The first hex entry per province is the center
+        if (entry.province_id === provId) return { q: entry.q, r: entry.r };
+      }
+      return { q: 0, r: 0 };
+    };
 
-    const placeCityHex = (index: number): { q: number; r: number } => {
-      if (index === 0) return { q: 0, r: 0 };
-      const ring = Math.floor((index - 1) / 6) + 1;
-      const pos = (index - 1) % 6;
-      const directions = [[1, 0], [0, 1], [-1, 1], [-1, 0], [0, -1], [1, -1]];
-      const dir = directions[pos];
-      let q = dir[0] * ring * 2;
-      let r = dir[1] * ring * 2;
-      const offset = Math.floor(index / 7);
-      q += offset % 2;
-      r += (offset + 1) % 2;
-      let key = `${q},${r}`;
-      let attempts = 0;
-      while (usedHexes.has(key) && attempts < 20) { q += 1; attempts++; key = `${q},${r}`; }
-      return { q, r };
+    // Place city within province bounds (within radius 2 of province center)
+    const provincePlacedHexes = new Map<string, Set<string>>();
+    const placeCityInProvince = (provId: string): { q: number; r: number } => {
+      const center = getProvinceCenter(provId);
+      if (!provincePlacedHexes.has(provId)) provincePlacedHexes.set(provId, new Set());
+      const placed = provincePlacedHexes.get(provId)!;
+      
+      // Try center first, then ring 1, then ring 2
+      const candidates = province19Hexes(center.q, center.r);
+      for (const c of candidates) {
+        const key = `${c.q},${c.r}`;
+        if (!placed.has(key) && !usedHexes.has(key)) {
+          placed.add(key);
+          usedHexes.add(key);
+          return c;
+        }
+      }
+      // Fallback
+      return center;
     };
 
     const POP_RANGES: Record<string, { min: number; max: number }> = {
@@ -577,8 +656,15 @@ DŮLEŽITÉ: affected_players/faction MUSÍ používat přesná jména frakcí. 
     for (const city of world.cities || []) {
       const ownerPlayer = factionPlayerMap[city.ownerFaction] || playerName;
       const isPlayerCity = ownerPlayer === playerName;
-      let coords = isPlayerCity && cityIndex === 0 ? { q: 0, r: 0 } : placeCityHex(cityIndex);
-      usedHexes.add(`${coords.q},${coords.r}`);
+      const provinceId = findProvinceId(city);
+      // Place city within its province's hex area
+      let coords: { q: number; r: number };
+      if (provinceId) {
+        coords = placeCityInProvince(provinceId);
+      } else {
+        coords = { q: cityIndex * 3, r: 0 };
+        usedHexes.add(`${coords.q},${coords.r}`);
+      }
 
       const cityName = (isPlayerCity && cityIndex === 0 && settlementName) ? settlementName : city.name;
       const provinceId = findProvinceId(city);
@@ -1304,24 +1390,52 @@ Napiš EPICKÝ PROLOG o minimálně 2000 slovech, který zmíní VŠECHNY výše
       }
     }
 
-    // Generate hexes around player start (2-ring)
+    // Generate hexes for ALL province territories (19 hexes per province)
     try {
-      const hexPositions = [
-        [0, 0], [1, 0], [-1, 0], [0, 1], [0, -1], [1, -1], [-1, 1],
-        [2, 0], [-2, 0], [0, 2], [0, -2], [2, -2], [-2, 2], [2, -1], [-2, 1], [1, 1], [-1, -1], [1, -2], [-1, 2],
-      ];
-      const hexResults = await Promise.all(hexPositions.map(([q, r]) =>
-        fetch(`${supabaseUrl}/functions/v1/generate-hex`, {
-          method: "POST",
-          headers: { Authorization: `Bearer ${supabaseKey}`, "Content-Type": "application/json" },
-          body: JSON.stringify({ session_id: sessionId, q, r }),
-        }).then(res => res.ok ? res.json() : null).catch(() => null)
-      ));
+      // Collect unique hex positions from all provinces
+      const allHexPositions = new Set<string>();
+      for (const entry of allProvinceHexEntries) {
+        allHexPositions.add(`${entry.q},${entry.r}`);
+      }
 
+      const hexPositionArray = Array.from(allHexPositions).map(k => {
+        const [q, r] = k.split(",").map(Number);
+        return { q, r };
+      });
+
+      // Generate hexes in batches of 10
+      const HEX_BATCH = 10;
+      const allGeneratedHexIds: { id: string; q: number; r: number }[] = [];
+      for (let i = 0; i < hexPositionArray.length; i += HEX_BATCH) {
+        const batch = hexPositionArray.slice(i, i + HEX_BATCH);
+        const hexResults = await Promise.all(batch.map(({ q, r }) =>
+          fetch(`${supabaseUrl}/functions/v1/generate-hex`, {
+            method: "POST",
+            headers: { Authorization: `Bearer ${supabaseKey}`, "Content-Type": "application/json" },
+            body: JSON.stringify({ session_id: sessionId, q, r }),
+          }).then(res => res.ok ? res.json() : null).catch(() => null)
+        ));
+        for (const hex of hexResults) {
+          if (hex?.id) allGeneratedHexIds.push({ id: hex.id, q: hex.q, r: hex.r });
+        }
+      }
+
+      // Link generated hexes to their provinces
+      for (const hex of allGeneratedHexIds) {
+        const provEntry = allProvinceHexEntries.find(
+          (e: any) => e.q === hex.q && e.r === hex.r
+        );
+        if (provEntry) {
+          await supabase.from("province_hexes")
+            .update({ province_id: provEntry.province_id })
+            .eq("id", hex.id);
+        }
+      }
+
+      // Create discoveries for ALL players for ALL province hexes
       const allPlayerNames = Object.values(factionPlayerMap);
       const discoveryRows: any[] = [];
-      for (const hex of hexResults) {
-        if (!hex?.id) continue;
+      for (const hex of allGeneratedHexIds) {
         for (const pn of allPlayerNames) {
           discoveryRows.push({ session_id: sessionId, player_name: pn, entity_type: "province_hex", entity_id: hex.id, source: "world_init" });
         }
