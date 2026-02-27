@@ -18,8 +18,6 @@ Deno.serve(async (req) => {
     }
 
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-
-    // Load civ DNA for building speed + architectural style
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const sb = createClient(supabaseUrl, supabaseKey);
@@ -33,9 +31,7 @@ Deno.serve(async (req) => {
       if (city?.owner_player) {
         const { data: civ } = await sb.from("civilizations")
           .select("civ_bonuses, architectural_style, cultural_quirk")
-          .eq("session_id", sessionId)
-          .eq("player_name", city.owner_player)
-          .maybeSingle();
+          .eq("session_id", sessionId).eq("player_name", city.owner_player).maybeSingle();
         if (civ) {
           const bonuses = (civ.civ_bonuses as Record<string, number>) || {};
           if (!explicitMod && bonuses.build_speed_modifier) buildSpeedModifier = bonuses.build_speed_modifier;
@@ -51,55 +47,50 @@ Deno.serve(async (req) => {
       });
     }
 
-    const systemPrompt = `You are a medieval building designer for a civilization strategy game. Based on the player's description, generate a realistic building with balanced economic effects.
+    const systemPrompt = `You are a medieval building designer for a civilization strategy game. Based on the player's description, generate a building with 5 UPGRADE LEVELS.
 
 RULES:
 - Category must be one of: economic, military, cultural, religious, infrastructure
-- Effects are a JSON object with numeric values. Valid keys:
-  food_income (0-4), wood_income (0-4), stone_income (0-3), iron_income (0-3),
-  wealth_income (0-5), stability_bonus (0-10), influence_bonus (0-10),
-  population_growth (0-2), manpower_bonus (0-20), defense_bonus (0-25)
-- Costs must be balanced: more powerful effects = higher costs
-- Build duration: 1-4 turns based on complexity
-- Generate name, description, flavor_text, founding_myth in Czech language
-- Generate an image_prompt in English for medieval illustration style
-- All text must reflect the player's vision while staying balanced
+- Level 1 = base building. Each subsequent level adds +50-100% effects AND unlocks a NEW bonus.
+- Level 5 = WONDER OF THE WORLD transformation — massive bonuses + global influence.
+- Effects keys: grain_production, iron_production, wood_production, stone_production, wealth, stability, influence, defense, recruitment, military_quality, military_garrison, morale_bonus, trade_bonus, granary_capacity, population_capacity, legitimacy, cleric_attraction, burgher_attraction, disease_resistance, siege_power, siege_resistance, cavalry_bonus, ranged_bonus, mobility, vision, espionage_defense, special_production, naval_power, research
+- Costs escalate: Lvl2=2x, Lvl3=4x, Lvl4=8x, Lvl5=16x of base
+- Generate ALL text in Czech language
+- Level names should evolve (e.g. Kovárna → Zbrojnice → Arsenal → Královská zbrojírna → Legenda Oceli)
+- Level 5 name should sound legendary/mythical
+- Each level has an "unlock" text describing the new bonus
 
-Respond ONLY with valid JSON, no markdown.`;
+Respond ONLY with valid JSON.`;
 
     const userPrompt = `Player's building idea: "${playerDescription}"
-${buildingMyth ? `Founding myth/story: "${buildingMyth}"` : ""}
-${visualDescription ? `Visual appearance: "${visualDescription}"` : ""}
-${architecturalStyle ? `Civilization's architectural style (MUST influence the building design, materials, and aesthetics): "${architecturalStyle}"` : ""}
-${culturalQuirk ? `Cultural tradition (reflect in flavor text and founding myth): "${culturalQuirk}"` : ""}
+${buildingMyth ? `Founding myth: "${buildingMyth}"` : ""}
+${visualDescription ? `Visual: "${visualDescription}"` : ""}
+${architecturalStyle ? `Architecture style (MUST influence design): "${architecturalStyle}"` : ""}
+${culturalQuirk ? `Cultural tradition: "${culturalQuirk}"` : ""}
 City: "${cityName || "Settlement"}" (level: ${cityLevel || "HAMLET"})
 Biome: "${biome || "plains"}"
 
-Generate building as JSON:
+Generate building JSON with 5-level upgrade system:
 {
-  "name": "<Czech name>",
+  "name": "<Czech name for level 1>",
   "category": "<economic|military|cultural|religious|infrastructure>",
-  "description": "<1-2 sentences in Czech describing function>",
-  "flavor_text": "<1 atmospheric sentence in Czech>",
-  "founding_myth": "<2-4 sentences in Czech, incorporating player's myth if provided>",
+  "description": "<1-2 sentences Czech>",
+  "flavor_text": "<1 atmospheric sentence Czech>",
+  "founding_myth": "<2-4 sentences Czech>",
   "cost_wood": <int 0-15>,
   "cost_stone": <int 0-15>,
   "cost_iron": <int 0-10>,
   "cost_wealth": <int 0-30>,
   "build_duration": <int 1-4>,
-  "effects": {
-    "food_income": <int 0-4>,
-    "wood_income": <int 0-4>,
-    "stone_income": <int 0-3>,
-    "iron_income": <int 0-3>,
-    "wealth_income": <int 0-5>,
-    "stability_bonus": <int 0-10>,
-    "influence_bonus": <int 0-10>,
-    "population_growth": <float 0-2>,
-    "manpower_bonus": <int 0-20>,
-    "defense_bonus": <int 0-25>
-  },
-  "image_prompt": "<English prompt for medieval building illustration>"
+  "effects": { <level 1 effects, moderate values> },
+  "level_data": [
+    {"level": 1, "name": "<Czech>", "effects": {<same as base>}, "cost_mult": 1, "unlock": "<what Lvl1 provides>"},
+    {"level": 2, "name": "<Czech>", "effects": {<+50-80% of lvl1>}, "cost_mult": 2, "unlock": "<new bonus description>"},
+    {"level": 3, "name": "<Czech>", "effects": {<+100% of lvl1 + new effect>}, "cost_mult": 4, "unlock": "<new bonus>"},
+    {"level": 4, "name": "<Czech>", "effects": {<+200% of lvl1 + 2 new effects>}, "cost_mult": 8, "unlock": "<powerful new bonus>"},
+    {"level": 5, "name": "<LEGENDARY Czech name>", "effects": {<massive + global_influence + diplomatic_prestige>}, "cost_mult": 16, "unlock": "<Div světa: popis legendárního bonusu>"}
+  ],
+  "image_prompt": "<English prompt for medieval illustration>"
 }`;
 
     const aiRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
@@ -115,7 +106,7 @@ Generate building as JSON:
           { role: "user", content: userPrompt },
         ],
         temperature: 0.7,
-        max_tokens: 1500,
+        max_tokens: 2500,
       }),
     });
 
@@ -142,33 +133,27 @@ Generate building as JSON:
 
     const result = validateBuilding(parsed);
 
-    // Apply civ DNA build_speed_modifier (e.g. -0.15 = 15% faster)
     if (buildSpeedModifier && buildSpeedModifier !== 0) {
-      const modifiedDuration = Math.max(1, Math.round(result.build_duration * (1 + buildSpeedModifier)));
-      result.build_duration = modifiedDuration;
+      result.build_duration = Math.max(1, Math.round(result.build_duration * (1 + buildSpeedModifier)));
     }
 
-    // Generate image primarily from player's own inputs + architectural style
+    // Generate image
     const parts: string[] = [];
     parts.push(`Medieval fantasy building illustration of "${result.name}".`);
-    if (architecturalStyle) parts.push(`IMPORTANT architectural style of this civilization: ${architecturalStyle}. The building MUST reflect this style in materials, shape, and decoration.`);
-    if (playerDescription) parts.push(`Building concept: ${playerDescription}.`);
-    if (buildingMyth) parts.push(`Legend and story: ${buildingMyth}.`);
-    if (visualDescription) parts.push(`Visual style and appearance: ${visualDescription}.`);
+    if (architecturalStyle) parts.push(`Architecture style: ${architecturalStyle}.`);
+    if (playerDescription) parts.push(`Concept: ${playerDescription}.`);
+    if (buildingMyth) parts.push(`Legend: ${buildingMyth}.`);
+    if (visualDescription) parts.push(`Visual: ${visualDescription}.`);
     parts.push(`Setting: ${cityName || "settlement"}, ${biome || "plains"} biome.`);
-    parts.push("Dark moody atmosphere, dramatic lighting, highly detailed architecture, epic fantasy painterly style, cinematic composition.");
-    const imagePrompt = parts.join(" ");
+    parts.push("Dark moody atmosphere, dramatic lighting, highly detailed architecture, epic fantasy painterly style.");
 
     try {
       const imgRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${LOVABLE_API_KEY}`,
-        },
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${LOVABLE_API_KEY}` },
         body: JSON.stringify({
           model: "google/gemini-2.5-flash-image",
-          messages: [{ role: "user", content: imagePrompt }],
+          messages: [{ role: "user", content: parts.join(" ") }],
           modalities: ["image", "text"],
         }),
       });
@@ -177,33 +162,22 @@ Generate building as JSON:
         const imgData = await imgRes.json();
         const imageUrl = imgData.choices?.[0]?.message?.images?.[0]?.image_url?.url;
         if (imageUrl) {
-          // Store the base64 image in Supabase storage
-          const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-          const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-          const sb = createClient(supabaseUrl, supabaseKey);
-
           const base64Data = imageUrl.replace(/^data:image\/\w+;base64,/, "");
           const bytes = Uint8Array.from(atob(base64Data), c => c.charCodeAt(0));
           const filePath = `buildings/${sessionId}/${crypto.randomUUID()}.png`;
-
           const { error: uploadErr } = await sb.storage.from("building-images").upload(filePath, bytes, {
-            contentType: "image/png",
-            upsert: true,
+            contentType: "image/png", upsert: true,
           });
-
           if (!uploadErr) {
             const { data: urlData } = sb.storage.from("building-images").getPublicUrl(filePath);
             result.image_url = urlData.publicUrl;
           } else {
-            console.error("Storage upload error:", uploadErr);
-            // Fallback: return base64 directly (will be stored in DB)
             result.image_url = imageUrl;
           }
         }
       }
     } catch (imgErr) {
       console.error("Image generation error:", imgErr);
-      // Continue without image - not critical
     }
 
     return new Response(JSON.stringify(result), {
@@ -222,15 +196,18 @@ function getDefaultBuilding(desc: string) {
     name: "Nová stavba",
     category: "economic",
     description: desc || "Stavba založená hráčem.",
-    flavor_text: "",
-    founding_myth: "",
-    cost_wood: 5,
-    cost_stone: 3,
-    cost_iron: 0,
-    cost_wealth: 10,
+    flavor_text: "", founding_myth: "",
+    cost_wood: 5, cost_stone: 3, cost_iron: 0, cost_wealth: 10,
     build_duration: 1,
-    effects: { wealth_income: 1, stability_bonus: 2 },
-    image_prompt: "A medieval building in a small settlement, watercolor style",
+    effects: { wealth: 2, stability: 2 },
+    level_data: [
+      { level: 1, name: "Nová stavba", effects: { wealth: 2, stability: 2 }, cost_mult: 1, unlock: "Základní stavba" },
+      { level: 2, name: "Vylepšená stavba", effects: { wealth: 4, stability: 4 }, cost_mult: 2, unlock: "Zdvojnásobení efektů" },
+      { level: 3, name: "Pokročilá stavba", effects: { wealth: 7, stability: 7, influence: 3 }, cost_mult: 4, unlock: "Vliv +3" },
+      { level: 4, name: "Mistrovská stavba", effects: { wealth: 12, stability: 12, influence: 6 }, cost_mult: 8, unlock: "Mistrovská úroveň" },
+      { level: 5, name: "Div světa", effects: { wealth: 20, stability: 20, influence: 15, global_influence: 10 }, cost_mult: 16, unlock: "Div světa: globální vliv" },
+    ],
+    image_prompt: "A medieval building, watercolor style",
     image_url: null,
   };
 }
@@ -253,18 +230,8 @@ function validateBuilding(p: any) {
     cost_iron: clamp(p.cost_iron, 0, 10),
     cost_wealth: clamp(p.cost_wealth, 0, 30),
     build_duration: clamp(p.build_duration, 1, 4),
-    effects: {
-      food_income: clamp(e.food_income, 0, 4),
-      wood_income: clamp(e.wood_income, 0, 4),
-      stone_income: clamp(e.stone_income, 0, 3),
-      iron_income: clamp(e.iron_income, 0, 3),
-      wealth_income: clamp(e.wealth_income, 0, 5),
-      stability_bonus: clamp(e.stability_bonus, 0, 10),
-      influence_bonus: clamp(e.influence_bonus, 0, 10),
-      population_growth: Math.max(0, Math.min(2, parseFloat(e.population_growth) || 0)),
-      manpower_bonus: clamp(e.manpower_bonus, 0, 20),
-      defense_bonus: clamp(e.defense_bonus, 0, 25),
-    },
+    effects: e,
+    level_data: Array.isArray(p.level_data) ? p.level_data : [],
     image_prompt: (p.image_prompt || "").slice(0, 500),
     image_url: null as string | null,
   };
