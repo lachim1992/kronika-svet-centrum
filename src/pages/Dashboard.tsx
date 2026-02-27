@@ -330,6 +330,7 @@ const Dashboard = () => {
           currentPlayerName={myPlayerName}
           myRole={myRole}
           worldName={worldFoundation?.world_name}
+          currentTurn={session.current_turn}
           onCityClick={handleCityClickToWiki}
         />
       )}
