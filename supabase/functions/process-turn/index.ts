@@ -880,10 +880,13 @@ Deno.serve(async (req) => {
         // Determine if post-battle decision needed
         const needsDecision = result === "decisive_victory" || result === "victory" || result === "pyrrhic_victory";
 
+        // Use the turn when the battle was queued, not the current processing turn
+        const battleTurnNumber = battleAction.created_turn || currentTurn;
+
         // Write battle record (pure structural)
-        await supabase.from("battles").insert({
+        const { data: battleRecord } = await supabase.from("battles").insert({
           session_id: sessionId,
-          turn_number: currentTurn,
+          turn_number: battleTurnNumber,
           attacker_stack_id: attackerStackId,
           defender_stack_id: defenderStackId || null,
           defender_city_id: defenderCityId || null,
@@ -902,7 +905,28 @@ Deno.serve(async (req) => {
           casualties_defender: casualtiesDefender,
           post_action: needsDecision ? "pending_decision" : null,
           resolved_at: new Date().toISOString(),
-        });
+        }).select("id").single();
+
+        // ═══ CREATE POST-BATTLE DECISION in action_queue ═══
+        if (needsDecision && defenderCityId) {
+          await supabase.from("action_queue").insert({
+            session_id: sessionId,
+            player_name: playerName,
+            action_type: "post_battle_decision",
+            status: "pending",
+            action_data: {
+              battle_id: battleRecord?.id || null,
+              attacker_stack_id: attackerStackId,
+              defender_city_id: defenderCityId,
+              result,
+              casualties_attacker: casualtiesAttacker,
+              casualties_defender: casualtiesDefender,
+            },
+            completes_at: new Date().toISOString(),
+            created_turn: battleTurnNumber,
+          });
+          logEntries.push(`📋 Rozhodnutí po bitvě: čeká na hráče (${result})`);
+        }
 
         // Log game event
         await supabase.from("game_events").insert({
