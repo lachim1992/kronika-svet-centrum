@@ -57,7 +57,7 @@ const ChronicleFeed = ({
   currentTurn, players, currentPlayerName, entityTraits, cities = [], onRefetch, myRole, onEventClick,
   onEntityClick, entityIndex,
 }: ChronicleFeedProps) => {
-  const isAdmin = myRole === "admin" || !myRole;
+  const isAdmin = myRole === "admin" || myRole === "moderator" || !myRole;
   const [generating, setGenerating] = useState(false);
   const [viewingRound, setViewingRound] = useState<number | null>(null);
   const [rangeMode, setRangeMode] = useState("last_turn");

@@ -92,18 +92,32 @@ const Dashboard = () => {
     if (!user || !sessionId) return;
 
     const fetchMembership = async () => {
-      const { data } = await supabase
-        .from("game_memberships")
-        .select("player_name, role")
-        .eq("user_id", user.id)
-        .eq("session_id", sessionId)
-        .single();
-      if (data) {
-        setMyRole(data.role);
-        setMyPlayerName(data.player_name);
+      const [membershipRes, globalRoleRes] = await Promise.all([
+        supabase
+          .from("game_memberships")
+          .select("player_name, role")
+          .eq("user_id", user.id)
+          .eq("session_id", sessionId)
+          .single(),
+        supabase
+          .from("user_roles")
+          .select("role")
+          .eq("user_id", user.id)
+          .in("role", ["admin", "moderator"])
+          .maybeSingle(),
+      ]);
+
+      if (membershipRes.data) {
+        let role = membershipRes.data.role;
+        // Elevate to moderator if global role exists and game role is lower
+        if (globalRoleRes.data && role === "player") {
+          role = globalRoleRes.data.role === "admin" ? "admin" : "moderator";
+        }
+        setMyRole(role);
+        setMyPlayerName(membershipRes.data.player_name);
       } else {
         setMyPlayerName(localStorage.getItem("ch_playerName") || "Hráč");
-        setMyRole("admin");
+        setMyRole(globalRoleRes.data?.role === "moderator" ? "moderator" : "admin");
       }
     };
 
@@ -259,7 +273,7 @@ const Dashboard = () => {
     <AppShell
       activeTab={activeTab}
       onTabChange={setActiveTab}
-      showDevTab={true}
+      showDevTab={myRole === "admin"}
       showPersistentTab={session?.game_mode === "time_persistent"}
       worldName={worldFoundation?.world_name}
       header={

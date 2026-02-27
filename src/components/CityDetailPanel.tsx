@@ -62,7 +62,7 @@ const CityDetailPanel = ({
   onEntityClick, entityIndex, epochStyle, myRole = "player",
 }: CityDetailPanelProps) => {
   const perms = getPermissions(myRole);
-  const isAdmin = myRole === "admin";
+  const isAdmin = myRole === "admin" || myRole === "moderator";
   const [generating, setGenerating] = useState(false);
   const [introduction, setIntroduction] = useState<string | null>(null);
   const [history, setHistory] = useState<string | null>(null);

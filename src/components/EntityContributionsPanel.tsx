@@ -75,7 +75,7 @@ const EntityContributionsPanel = ({
   const [title, setTitle] = useState("");
   const [text, setText] = useState("");
 
-  const isAdmin = myRole === "admin";
+  const isAdmin = myRole === "admin" || myRole === "moderator";
   const totalPlayers = players.length || 2;
 
   useEffect(() => { fetchContributions(); }, [sessionId, entityId]);

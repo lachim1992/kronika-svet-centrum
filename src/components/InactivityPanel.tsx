@@ -88,7 +88,7 @@ const InactivityPanel = ({ sessionId, currentPlayerName, myRole, players }: Prop
   if (loading) return <p className="text-sm text-muted-foreground">Načítání...</p>;
 
   const threshold = serverConfig?.inactivity_threshold_hours || 48;
-  const isAdmin = myRole === "admin";
+  const isAdmin = myRole === "admin" || myRole === "moderator";
 
   // Get all players and their activity status
   const playerNames = [...new Set(players.map(p => p.player_name))];

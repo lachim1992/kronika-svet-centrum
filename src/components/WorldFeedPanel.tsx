@@ -44,7 +44,7 @@ const FEED_TYPE_LABELS: Record<string, { label: string; emoji: string }> = {
 };
 
 const WorldFeedPanel = ({ sessionId, currentTurn, events, cities, memories, players, epochStyle, myRole, onRefetch, onEventClick, onEntityClick, entityIndex }: Props) => {
-  const isAdmin = myRole === "admin" || !myRole;
+  const isAdmin = myRole === "admin" || myRole === "moderator" || !myRole;
   const [feedItems, setFeedItems] = useState<WorldFeedItem[]>([]);
   const [generating, setGenerating] = useState(false);
   const [rangeMode, setRangeMode] = useState("last_turn");

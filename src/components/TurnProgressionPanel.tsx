@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { closeTurnForPlayer } from "@/hooks/useGameSession";
+import { isElevatedRole } from "@/lib/permissions";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Lock, CheckCircle2, Clock, Play, Loader2 } from "lucide-react";
@@ -18,7 +19,7 @@ interface Props {
 }
 
 const TurnProgressionPanel = ({ sessionId, currentTurn, players, currentPlayerName, myRole, gameMode, onRefetch }: Props) => {
-  const isAdmin = myRole === "admin" || !myRole;
+  const isAdmin = isElevatedRole(myRole) || !myRole;
   const currentPlayer = players.find(p => p.player_name === currentPlayerName);
   const myTurnClosed = currentPlayer?.turn_closed || false;
   const allClosed = players.length > 0 && players.every(p => p.turn_closed);

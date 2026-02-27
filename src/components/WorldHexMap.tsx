@@ -283,7 +283,7 @@ HexTile.displayName = "HexTile";
    MAIN COMPONENT
    ═══════════════════════════════════════════════════ */
 const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }: Props) => {
-  const isAdmin = myRole === "admin";
+  const isAdmin = myRole === "admin" || myRole === "moderator";
   const [devMode, setDevMode] = useState(isAdmin);
   const [selectedHex, setSelectedHex] = useState<HexData | null>(null);
   const [editBiome, setEditBiome] = useState<string | null>(null);

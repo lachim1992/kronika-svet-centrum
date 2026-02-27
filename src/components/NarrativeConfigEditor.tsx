@@ -176,7 +176,7 @@ const NarrativeConfigEditor = ({ sessionId, myRole, readOnly = false }: Props) =
 
   if (loading) return <p className="text-sm text-muted-foreground">Načítání narativní konfigurace…</p>;
 
-  const isAdmin = myRole === "admin";
+  const isAdmin = myRole === "admin" || myRole === "moderator";
   const disabled = readOnly || !isAdmin;
 
   const renderEntityTypeTab = (key: "city" | "person" | "event", label: string, icon: React.ReactNode) => {
