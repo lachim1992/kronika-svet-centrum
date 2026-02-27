@@ -111,9 +111,12 @@ export async function buildSagaContext(
   const tags = entity?.tags || [];
   const flavorPrompt = entity?.flavor_prompt || null;
 
-  // Fetch player's founding legend from wiki_entries
+  // Fetch player's founding legend
   let foundingLegend: string | null = null;
-  {
+  if (entityType === "building") {
+    // For buildings, use founding_myth from city_buildings (player's myth rewritten by AI)
+    foundingLegend = entity?.founding_myth || null;
+  } else {
     const { data: wikiRow } = await supabase
       .from("wiki_entries" as any)
       .select("body_md")
@@ -131,6 +134,21 @@ export async function buildSagaContext(
       province: entity?.province, founded_round: entity?.founded_round,
       population: entity?.population_total, stability: entity?.city_stability,
       status: entity?.status,
+    });
+  } else if (entityType === "building") {
+    // For buildings, include parent city context for richer saga generation
+    const parentCity = allData.cities.find(c => c.id === entity?.city_id);
+    Object.assign(extra, {
+      category: entity?.category, description: entity?.description,
+      flavor_text: entity?.flavor_text, founding_myth: entity?.founding_myth,
+      status: entity?.status, build_started_turn: entity?.build_started_turn,
+      completed_turn: entity?.completed_turn, is_wonder: entity?.is_wonder,
+      effects: entity?.effects,
+      parent_city_name: parentCity?.name || null,
+      parent_city_population: parentCity?.population_total || null,
+      parent_city_stability: parentCity?.city_stability || null,
+      parent_city_settlement_level: parentCity?.settlement_level || null,
+      parent_city_province: parentCity?.province || null,
     });
   } else if (entityType === "region") {
     Object.assign(extra, { biome: entity?.biome, description: entity?.description, is_homeland: entity?.is_homeland });
@@ -183,6 +201,17 @@ export async function buildSagaContext(
     const cityPersons = allData.persons.filter(p => p.city_id === entityId);
     cityPersons.forEach(p => relatedEntityIds.add(p.id));
     relations.persons = cityPersons.map(p => ({ id: p.id, name: p.name }));
+  } else if (entityType === "building") {
+    // Add parent city and its persons/wonders to related entities
+    const parentCity = allData.cities.find(c => c.id === entity?.city_id);
+    if (parentCity) {
+      relatedEntityIds.add(parentCity.id);
+      relatedCityIds.add(parentCity.id);
+      relations.parentCity = { id: parentCity.id, name: parentCity.name };
+      const cityPersons = allData.persons.filter(p => p.city_id === parentCity.id);
+      cityPersons.forEach(p => relatedEntityIds.add(p.id));
+      relations.persons = cityPersons.map(p => ({ id: p.id, name: p.name }));
+    }
   }
 
   // 2) Parallel DB queries — event links, stats, traits, rumors, world_events, civ, diplomacy
