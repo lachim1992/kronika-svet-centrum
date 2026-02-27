@@ -18,9 +18,16 @@ export function useNextTurn({ sessionId, currentTurn, playerName, gameMode, onCo
     setProcessing(true);
 
     try {
+      // commit-turn can take 60s+ due to world tick + chronicles + economy
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 120_000); // 2 min timeout
+
       const { data, error } = await supabase.functions.invoke("commit-turn", {
         body: { sessionId, playerName },
+        signal: controller.signal,
       });
+
+      clearTimeout(timeout);
 
       if (error) {
         // Handle FunctionsHttpError
