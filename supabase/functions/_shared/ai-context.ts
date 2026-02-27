@@ -287,15 +287,26 @@ export async function createAIContext(
   const premise = await loadWorldPremise(sessionId, client);
   let premisePrompt = buildPremisePrompt(premise);
 
-  // Load civilization DNA for cultural context injection
+  // Load civilization DNA + structured identity for cultural context injection
   let civContext: AIRequestContext["civContext"] = undefined;
   if (playerName) {
-    const { data: civ } = await client
-      .from("civilizations")
-      .select("cultural_quirk, architectural_style, civ_name")
-      .eq("session_id", sessionId)
-      .eq("player_name", playerName)
-      .maybeSingle();
+    const [civRes, identityRes] = await Promise.all([
+      client
+        .from("civilizations")
+        .select("cultural_quirk, architectural_style, civ_name")
+        .eq("session_id", sessionId)
+        .eq("player_name", playerName)
+        .maybeSingle(),
+      client
+        .from("civ_identity")
+        .select("culture_tags, urban_style, society_structure, military_doctrine, economic_focus")
+        .eq("session_id", sessionId)
+        .eq("player_name", playerName)
+        .maybeSingle(),
+    ]);
+    const civ = civRes.data;
+    const identity = identityRes.data;
+
     if (civ) {
       civContext = {
         culturalQuirk: civ.cultural_quirk || undefined,
@@ -307,6 +318,18 @@ export async function createAIContext(
       if (civ.civ_name) civParts.push(`Civilizace: ${civ.civ_name}`);
       if (civ.cultural_quirk) civParts.push(`KULTURNÍ ZVLÁŠTNOST (MUSÍŠ reflektovat v textu — ovlivňuje chování, rituály, rozhodování): ${civ.cultural_quirk}`);
       if (civ.architectural_style) civParts.push(`ARCHITEKTONICKÝ STYL (MUSÍŠ reflektovat v popisu budov, měst, vizuálů): ${civ.architectural_style}`);
+
+      // Inject structured identity tags
+      if (identity) {
+        civParts.push(`\nSTRUKTUROVANÁ IDENTITA CIVILIZACE:`);
+        if (identity.culture_tags?.length) civParts.push(`  Kulturní tagy: ${identity.culture_tags.join(", ")}`);
+        civParts.push(`  Urbanismus: ${identity.urban_style}`);
+        civParts.push(`  Společenská struktura: ${identity.society_structure}`);
+        civParts.push(`  Vojenská doktrína: ${identity.military_doctrine}`);
+        civParts.push(`  Ekonomické zaměření: ${identity.economic_focus}`);
+        civParts.push(`MUSÍŠ tyto tagy reflektovat ve veškerém generovaném obsahu — popisy měst, budov, strategické rady, kroniky.`);
+      }
+
       civParts.push("=== KONEC CIV KONTEXTU ===");
       premisePrompt += civParts.join("\n");
     }

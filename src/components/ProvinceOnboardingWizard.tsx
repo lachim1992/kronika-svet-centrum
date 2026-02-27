@@ -237,6 +237,34 @@ const ProvinceOnboardingWizard = ({ sessionId, currentPlayerName, currentTurn, m
       }
       await supabase.from("discoveries").upsert(discoveryRows, { onConflict: "session_id,player_name,entity_type,entity_id" });
 
+      // Fire & forget: extract structured civ identity from player's civ description
+      supabase.from("player_civ_configs")
+        .select("civ_description")
+        .eq("session_id", sessionId)
+        .eq("player_name", currentPlayerName)
+        .maybeSingle()
+        .then(({ data: civCfg }) => {
+          if (civCfg?.civ_description) {
+            supabase.from("civilizations")
+              .select("core_myth, cultural_quirk, architectural_style")
+              .eq("session_id", sessionId)
+              .eq("player_name", currentPlayerName)
+              .maybeSingle()
+              .then(({ data: civ }) => {
+                supabase.functions.invoke("extract-civ-identity", {
+                  body: {
+                    sessionId,
+                    playerName: currentPlayerName,
+                    civDescription: civCfg.civ_description,
+                    coreMythText: civ?.core_myth || null,
+                    culturalQuirkText: civ?.cultural_quirk || null,
+                    architecturalStyleText: civ?.architectural_style || null,
+                  },
+                });
+              });
+          }
+        });
+
       toast.success(`Osada ${settlementName} založena!`);
       onComplete();
     } catch (err: any) {
