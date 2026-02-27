@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useGameSession } from "@/hooks/useGameSession";
 import { useAuth } from "@/hooks/useAuth";
@@ -63,6 +63,8 @@ const Dashboard = () => {
 
   const currentTurn = session?.current_turn ?? 0;
 
+  const isMultiplayer = session?.game_mode === "tb_multi";
+
   const { processing: turnProcessing, processNextTurn } = useNextTurn({
     sessionId: session?.id || sessionId || "",
     currentTurn,
@@ -70,6 +72,21 @@ const Dashboard = () => {
     gameMode: session?.game_mode,
     onComplete: refetch,
   });
+
+  // Auto-trigger next turn when all multiplayer players have closed
+  const allPlayersClosed = players.length > 1 && players.every(p => p.turn_closed);
+  const prevAllClosed = useRef(false);
+
+  useEffect(() => {
+    if (!isMultiplayer) return;
+    if (allPlayersClosed && !prevAllClosed.current && !turnProcessing) {
+      // All players just closed — auto-trigger next turn
+      prevAllClosed.current = true;
+      processNextTurn();
+    } else if (!allPlayersClosed) {
+      prevAllClosed.current = false;
+    }
+  }, [allPlayersClosed, isMultiplayer, turnProcessing, processNextTurn]);
 
   useEffect(() => {
     if (!user || !sessionId) return;
@@ -255,6 +272,8 @@ const Dashboard = () => {
           currentSessionId={session.id}
           onNextTurn={processNextTurn}
           turnProcessing={turnProcessing}
+          players={players}
+          gameMode={session?.game_mode}
         />
       }
       resourceHud={

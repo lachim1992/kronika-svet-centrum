@@ -13,6 +13,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import ChronicleHubLogo from "@/components/ChronicleHubLogo";
 import { TurnReportPanel } from "@/components/TurnReportPanel";
+import TurnCloseBadge from "@/components/layout/TurnCloseBadge";
 
 interface OtherGame {
   session_id: string;
@@ -30,9 +31,11 @@ interface Props {
   currentSessionId?: string;
   onNextTurn?: () => void;
   turnProcessing?: boolean;
+  players?: any[];
+  gameMode?: string;
 }
 
-const AppHeader = ({ roomCode, currentTurn, worldName, playerName, myRole, currentSessionId, onNextTurn, turnProcessing }: Props) => {
+const AppHeader = ({ roomCode, currentTurn, worldName, playerName, myRole, currentSessionId, onNextTurn, turnProcessing, players = [], gameMode }: Props) => {
   const navigate = useNavigate();
   const { signOut, user } = useAuth();
   const [isLight, setIsLight] = useState(() => document.documentElement.classList.contains("light"));
@@ -130,7 +133,19 @@ const AppHeader = ({ roomCode, currentTurn, worldName, playerName, myRole, curre
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
-          {onNextTurn && (
+          {/* Multiplayer turn close badge */}
+          {gameMode === "tb_multi" && players.length > 1 && currentSessionId && (
+            <TurnCloseBadge
+              players={players}
+              sessionId={currentSessionId}
+              currentTurn={currentTurn}
+              isAdmin={myRole === "admin" || !myRole}
+              turnProcessing={!!turnProcessing}
+            />
+          )}
+
+          {/* Single-player / AI mode next turn button */}
+          {onNextTurn && gameMode !== "tb_multi" && (
             <Button
               size="sm"
               onClick={onNextTurn}
