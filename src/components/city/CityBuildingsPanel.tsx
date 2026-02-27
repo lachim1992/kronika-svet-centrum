@@ -17,7 +17,7 @@ import {
 } from "@/components/ui/tooltip";
 import {
   Building2, Loader2, Plus, Sparkles, Hammer, Shield, Landmark, Coins,
-  Factory, Church, ArrowRight, Clock, CheckCircle2, ImageIcon,
+  Factory, Church, ArrowRight, Clock, CheckCircle2, ImageIcon, ArrowUp, Star, Crown,
 } from "lucide-react";
 
 interface Props {
@@ -36,36 +36,31 @@ const CATEGORY_META: Record<string, { label: string; icon: React.ReactNode }> = 
   economic: { label: "Ekonomické", icon: <Coins className="h-3.5 w-3.5" /> },
   military: { label: "Vojenské", icon: <Shield className="h-3.5 w-3.5" /> },
   cultural: { label: "Kulturní", icon: <Landmark className="h-3.5 w-3.5" /> },
-  religious: { label: "Náboženské", icon: <Church className="h-3.5 w-3.5" /> },
   infrastructure: { label: "Infrastruktura", icon: <Factory className="h-3.5 w-3.5" /> },
 };
 
 const SETTLEMENT_ORDER = ["HAMLET", "TOWNSHIP", "CITY", "POLIS"];
 
 const EFFECT_LABELS: Record<string, string> = {
-  food_income: "🌾 Obilí",
-  wood_income: "🪵 Dřevo",
-  stone_income: "🪨 Kámen",
-  iron_income: "⚙️ Železo",
-  wealth_income: "💰 Bohatství",
-  stability_bonus: "🛡️ Stabilita",
-  influence_bonus: "👑 Vliv",
-  population_growth: "👥 Růst populace",
-  manpower_bonus: "⚔️ Branná síla",
-  defense_bonus: "🏰 Obrana",
-};
-
-const EFFECT_DESCRIPTIONS: Record<string, string> = {
-  food_income: "Přidává fixní produkci obilí ve městě každé kolo. Obilí živí obyvatelstvo — nedostatek vede k hladomoru.",
-  wood_income: "Přidává fixní produkci dřeva ve městě každé kolo. Dřevo je potřeba na stavby a infrastrukturu.",
-  stone_income: "Přidává fixní produkci kamene ve městě každé kolo. Kámen je klíčový pro opevnění a monumentální stavby.",
-  iron_income: "Přidává fixní produkci železa ve městě každé kolo. Železo je vzácný zdroj potřebný pro vojsko a zbraně.",
-  wealth_income: "Přidává fixní příjem zlata k celkové pokladně říše každé kolo. Zlato financuje armádu a obchod.",
-  stability_bonus: "Zvyšuje stabilitu města každé kolo (max 100). Vyšší stabilita snižuje riziko rebelií a hladu.",
-  influence_bonus: "Zvyšuje skóre vlivu města každé kolo. Vliv ovlivňuje diplomacii, aliance a respekt AI frakcí.",
-  population_growth: "Procentuální bonus k růstu populace města každé kolo. Více obyvatel = více pracovní síly a daní.",
-  manpower_bonus: "Přidává fixní počet mužů k celkové branné síle říše. Více branců umožňuje větší mobilizaci.",
-  defense_bonus: "Přidává posádku k obraně města. Posádka automaticky brání město při útoku nepřítele.",
+  food_income: "🌾 Obilí", wood_income: "🪵 Dřevo", stone_income: "🪨 Kámen",
+  iron_income: "⚙️ Železo", wealth_income: "💰 Bohatství", stability_bonus: "🛡️ Stabilita",
+  influence_bonus: "👑 Vliv", population_growth: "👥 Růst populace",
+  manpower_bonus: "⚔️ Branná síla", defense_bonus: "🏰 Obrana",
+  grain_production: "🌾 Obilí", iron_production: "⚙️ Železo",
+  wood_production: "🪵 Dřevo", stone_production: "🪨 Kámen",
+  wealth: "💰 Zlato", stability: "🛡️ Stabilita", influence: "👑 Vliv",
+  defense: "🏰 Obrana", recruitment: "⚔️ Rekrutace", military_quality: "🗡️ Kvalita vojsk",
+  military_garrison: "🛡️ Posádka", morale_bonus: "💪 Morálka",
+  trade_bonus: "📦 Obchod", granary_capacity: "🏺 Sýpka",
+  population_capacity: "🏠 Kapacita", legitimacy: "⚖️ Legitimita",
+  cleric_attraction: "✝️ Duchovní", burgher_attraction: "🏘️ Měšťané",
+  disease_resistance: "💊 Zdraví", siege_power: "🪨 Obléhání",
+  siege_resistance: "🏰 Odolnost", build_speed: "⏱️ Rychlost stavby",
+  famine_resistance: "🌾 Odolnost hladu", cavalry_bonus: "🐴 Jízda",
+  ranged_bonus: "🏹 Střelci", mobility: "🏃 Mobilita", vision: "👁️ Výhled",
+  espionage_defense: "🕵️ Kontrašpionáž", recruitment_bonus: "⚔️ Rekrutace+",
+  special_production: "✨ Speciální", naval_power: "⚓ Námořní síla",
+  research: "📚 Výzkum",
 };
 
 const CityBuildingsPanel = ({
@@ -82,6 +77,7 @@ const CityBuildingsPanel = ({
   const [aiVisual, setAiVisual] = useState("");
   const [aiGenerating, setAiGenerating] = useState(false);
   const [activeCategory, setActiveCategory] = useState("economic");
+  const [upgradingId, setUpgradingId] = useState<string | null>(null);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -110,11 +106,134 @@ const CityBuildingsPanel = ({
 
   const alreadyBuilt = new Set(buildings.filter(b => b.template_id).map(b => b.template_id));
 
-  const canAfford = (t: any) => realm &&
-    (realm.gold_reserve || 0) >= t.cost_wealth &&
-    (realm.wood_reserve || 0) >= t.cost_wood &&
-    (realm.stone_reserve || 0) >= t.cost_stone &&
-    (realm.iron_reserve || 0) >= t.cost_iron;
+  const canAfford = (costs: { cost_wealth?: number; cost_wood?: number; cost_stone?: number; cost_iron?: number }) =>
+    realm &&
+    (realm.gold_reserve || 0) >= (costs.cost_wealth || 0) &&
+    (realm.wood_reserve || 0) >= (costs.cost_wood || 0) &&
+    (realm.stone_reserve || 0) >= (costs.cost_stone || 0) &&
+    (realm.iron_reserve || 0) >= (costs.cost_iron || 0);
+
+  // Get upgrade info for a building
+  const getUpgradeInfo = (b: any) => {
+    const currentLevel = b.current_level || 1;
+    const maxLevel = b.max_level || (b.is_ai_generated ? 5 : 3);
+    const levelData = (b.level_data && Array.isArray(b.level_data) ? b.level_data : []) as any[];
+    
+    if (currentLevel >= maxLevel) return null;
+    
+    const nextLevel = levelData.find((l: any) => l.level === currentLevel + 1);
+    if (!nextLevel) {
+      // For template buildings, check template level_data
+      const template = templates.find(t => t.id === b.template_id);
+      const templateLevelData = template?.level_data || [];
+      const tNext = (Array.isArray(templateLevelData) ? templateLevelData : []).find((l: any) => l.level === currentLevel + 1);
+      if (!tNext) return null;
+      return tNext;
+    }
+    return nextLevel;
+  };
+
+  const getUpgradeCost = (b: any, nextLevel: any) => {
+    const costMult = nextLevel.cost_mult || Math.pow(2, (nextLevel.level || 2) - 1);
+    return {
+      cost_wealth: Math.round((b.cost_wealth || 0) * costMult),
+      cost_wood: Math.round((b.cost_wood || 0) * costMult),
+      cost_stone: Math.round((b.cost_stone || 0) * costMult),
+      cost_iron: Math.round((b.cost_iron || 0) * costMult),
+    };
+  };
+
+  const handleUpgrade = async (b: any) => {
+    const nextLevelInfo = getUpgradeInfo(b);
+    if (!nextLevelInfo) return;
+    
+    const costs = getUpgradeCost(b, nextLevelInfo);
+    if (!canAfford(costs)) { toast.error("Nedostatek surovin pro vylepšení!"); return; }
+
+    setUpgradingId(b.id);
+    const newLevel = (b.current_level || 1) + 1;
+    const maxLevel = b.max_level || (b.is_ai_generated ? 5 : 3);
+    const isWonderConversion = b.is_ai_generated && newLevel === 5;
+
+    // Deduct resources
+    await supabase.from("realm_resources").update({
+      gold_reserve: Math.max(0, (realm.gold_reserve || 0) - costs.cost_wealth),
+      wood_reserve: Math.max(0, (realm.wood_reserve || 0) - costs.cost_wood),
+      stone_reserve: Math.max(0, (realm.stone_reserve || 0) - costs.cost_stone),
+      iron_reserve: Math.max(0, (realm.iron_reserve || 0) - costs.cost_iron),
+    } as any).eq("id", realm.id);
+
+    // Update building
+    const newName = nextLevelInfo.name || b.name;
+    const newEffects = nextLevelInfo.effects || b.effects;
+
+    const updateData: any = {
+      current_level: newLevel,
+      name: newName,
+      effects: newEffects,
+    };
+
+    if (isWonderConversion) {
+      updateData.is_wonder = true;
+      // Create a wonder entry
+      const { data: wonder } = await supabase.from("wonders").insert({
+        session_id: sessionId,
+        name: newName,
+        description: b.description || "",
+        owner_player: currentPlayerName,
+        city_id: cityId,
+        era: "current",
+        status: "completed",
+        effects: {
+          ...newEffects,
+          global_influence: 10,
+          diplomatic_prestige: 15,
+        },
+        completed_turn: currentTurn,
+        image_url: b.image_url,
+        image_prompt: b.image_prompt,
+      }).select("id").single();
+
+      if (wonder) {
+        updateData.wonder_id = wonder.id;
+      }
+
+      // Create chronicle event
+      await dispatchCommand({
+        sessionId, turnNumber: currentTurn,
+        actor: { name: currentPlayerName, type: "player" },
+        commandType: "WONDER_COMPLETED",
+        commandPayload: {
+          cityId, cityName,
+          wonderName: newName,
+          chronicleText: `🏛️ V městě **${cityName}** se stavba **${b.name}** transformovala v **Div světa: ${newName}**! Tato legendární stavba nyní vyzařuje vliv po celém světě.`,
+        },
+      });
+
+      toast.success(`🏛️ ${newName} se stal Divem světa!`, {
+        description: "Stavba byla přepsána do divů světa s globálními bonusy.",
+        duration: 6000,
+      });
+    } else {
+      const chronicleText = `Ve městě **${cityName}** byla budova **${b.name}** vylepšena na **${newName}** (úroveň ${newLevel}).${nextLevelInfo.unlock ? ` Nový bonus: ${nextLevelInfo.unlock}` : ""}`;
+      await dispatchCommand({
+        sessionId, turnNumber: currentTurn,
+        actor: { name: currentPlayerName, type: "player" },
+        commandType: "UPGRADE_BUILDING",
+        commandPayload: { cityId, cityName, buildingName: newName, level: newLevel, chronicleText },
+      });
+
+      toast.success(`⬆️ ${newName} — úroveň ${newLevel}!`, {
+        description: nextLevelInfo.unlock || undefined,
+      });
+    }
+
+    await supabase.from("city_buildings").update(updateData).eq("id", b.id);
+
+    setUpgradingId(null);
+    onRefetch?.();
+    fetchData();
+  };
 
   const handleBuild = async (template: any) => {
     if (!canAfford(template)) { toast.error("Nedostatek surovin!"); return; }
@@ -145,7 +264,10 @@ const CityBuildingsPanel = ({
       flavor_text: template.flavor_text,
       status: template.build_turns <= 1 ? "completed" : "building",
       completed_turn: template.build_turns <= 1 ? currentTurn : null,
-    });
+      current_level: 1,
+      max_level: template.max_level || 3,
+      level_data: template.level_data || [],
+    } as any);
 
     const chronicleText = `V městě **${cityName}** byla zahájena výstavba: **${template.name}**. ${template.flavor_text || template.description}`;
     await dispatchCommand({
@@ -167,10 +289,7 @@ const CityBuildingsPanel = ({
     try {
       const { data, error } = await supabase.functions.invoke("generate-building", {
         body: {
-          sessionId,
-          cityId,
-          cityName,
-          cityLevel: settlementLevel,
+          sessionId, cityId, cityName, cityLevel: settlementLevel,
           playerDescription: aiPrompt,
           buildingMyth: aiMyth || undefined,
           visualDescription: aiVisual || undefined,
@@ -190,8 +309,7 @@ const CityBuildingsPanel = ({
 
       const buildDuration = data.build_duration || 1;
       await supabase.from("city_buildings").insert({
-        session_id: sessionId,
-        city_id: cityId,
+        session_id: sessionId, city_id: cityId,
         name: data.name || "Nová stavba",
         description: data.description || "",
         category: data.category || "economic",
@@ -209,7 +327,10 @@ const CityBuildingsPanel = ({
         is_ai_generated: true,
         status: buildDuration <= 1 ? "completed" : "building",
         completed_turn: buildDuration <= 1 ? currentTurn : null,
-      });
+        current_level: 1,
+        max_level: 5,
+        level_data: data.level_data || [],
+      } as any);
 
       const chronicleText = `V městě **${cityName}** vzniká unikátní stavba: **${data.name}**. ${data.founding_myth || data.description || ""}`;
       await dispatchCommand({
@@ -219,10 +340,8 @@ const CityBuildingsPanel = ({
         commandPayload: { cityId, cityName, buildingName: data.name, chronicleText, isAiGenerated: true },
       });
 
-      toast.success(`✨ AI stavba "${data.name}" vytvořena!`);
-      setAiPrompt("");
-      setAiMyth("");
-      setAiVisual("");
+      toast.success(`✨ AI stavba "${data.name}" vytvořena! (5 úrovní, Lvl5 = Div světa)`);
+      setAiPrompt(""); setAiMyth(""); setAiVisual("");
       setShowAI(false);
       onRefetch?.();
       fetchData();
@@ -243,23 +362,36 @@ const CityBuildingsPanel = ({
   const BuildingCard = ({ b, isConstructing = false }: { b: any; isConstructing?: boolean }) => {
     const effects = (b.effects && typeof b.effects === "object") ? b.effects : {};
     const turnsLeft = isConstructing ? Math.max(0, b.build_started_turn + b.build_duration - currentTurn) : 0;
+    const currentLevel = b.current_level || 1;
+    const maxLevel = b.max_level || (b.is_ai_generated ? 5 : 3);
+    const upgradeInfo = !isConstructing ? getUpgradeInfo(b) : null;
+    const upgradeCosts = upgradeInfo ? getUpgradeCost(b, upgradeInfo) : null;
+    const canUpgrade = upgradeCosts ? canAfford(upgradeCosts) : false;
+    const isWonderLevel = b.is_wonder;
 
     return (
-      <div className={`rounded-lg border overflow-hidden ${isConstructing ? "border-muted bg-muted/20" : "border-border"}`}>
-        {/* Image */}
+      <div className={`rounded-lg border overflow-hidden ${
+        isWonderLevel ? "border-yellow-500/50 bg-gradient-to-br from-yellow-500/5 to-amber-500/10" :
+        isConstructing ? "border-muted bg-muted/20" : "border-border"
+      }`}>
         {b.image_url && (
           <div className="relative w-full h-32 overflow-hidden">
-            <img
-              src={b.image_url}
-              alt={b.name}
-              className="w-full h-full object-cover"
-            />
+            <img src={b.image_url} alt={b.name} className="w-full h-full object-cover" />
             <div className="absolute inset-0 bg-gradient-to-t from-card/90 to-transparent" />
+            {isWonderLevel && (
+              <div className="absolute top-2 right-2">
+                <Badge className="bg-yellow-500/90 text-black text-[9px] gap-0.5">
+                  <Crown className="h-2.5 w-2.5" />Div světa
+                </Badge>
+              </div>
+            )}
           </div>
         )}
         <div className="p-3">
           <div className="flex items-center gap-2">
-            {isConstructing ? (
+            {isWonderLevel ? (
+              <Crown className="h-4 w-4 text-yellow-500 shrink-0" />
+            ) : isConstructing ? (
               <Hammer className="h-4 w-4 text-muted-foreground shrink-0" />
             ) : (
               <CheckCircle2 className="h-4 w-4 text-primary shrink-0" />
@@ -269,13 +401,32 @@ const CityBuildingsPanel = ({
               <p className="text-[10px] text-muted-foreground">{b.description}</p>
             </div>
             <Badge variant="outline" className="text-[10px] shrink-0">{b.category}</Badge>
-            {b.is_ai_generated && <Badge variant="secondary" className="text-[9px]">✨ AI</Badge>}
+            {b.is_ai_generated && !isWonderLevel && <Badge variant="secondary" className="text-[9px]">✨ AI</Badge>}
             {isConstructing && (
               <Badge variant="outline" className="text-[10px]">
                 🏗️ {turnsLeft > 0 ? `${turnsLeft} kol` : "Dokončuje se"}
               </Badge>
             )}
           </div>
+
+          {/* Level indicator */}
+          <div className="flex items-center gap-1 mt-1.5">
+            <span className="text-[9px] text-muted-foreground">Úroveň:</span>
+            <div className="flex gap-0.5">
+              {Array.from({ length: maxLevel }).map((_, i) => (
+                <div key={i} className={`w-3 h-1.5 rounded-sm ${
+                  i < currentLevel
+                    ? (i === 4 ? "bg-yellow-500" : "bg-primary")
+                    : "bg-muted"
+                }`} />
+              ))}
+            </div>
+            <span className="text-[9px] font-semibold text-primary">{currentLevel}/{maxLevel}</span>
+            {b.is_ai_generated && currentLevel < 5 && (
+              <span className="text-[8px] text-yellow-500/70 ml-1">Lvl5 = Div světa</span>
+            )}
+          </div>
+
           {b.flavor_text && (
             <p className="text-[10px] text-muted-foreground/70 italic mt-1">„{b.flavor_text}"</p>
           )}
@@ -285,23 +436,61 @@ const CityBuildingsPanel = ({
               <p className="text-[10px] text-muted-foreground/80 italic">{b.founding_myth}</p>
             </div>
           )}
-          {Object.keys(effects).filter(k => effects[k] > 0).length > 0 && (
+
+          {/* Current effects */}
+          {Object.keys(effects).filter(k => effects[k] && Number(effects[k]) > 0).length > 0 && (
             <div className="flex gap-1.5 mt-1.5 flex-wrap">
-              <TooltipProvider delayDuration={150}>
-                {Object.entries(effects).filter(([, v]) => Number(v) > 0).map(([k, v]) => (
-                  <Tooltip key={k}>
-                    <TooltipTrigger asChild>
-                      <Badge variant="outline" className="text-[9px] cursor-help">
-                        {EFFECT_LABELS[k] || k.replace(/_/g, " ")}: +{String(v)}
+              {Object.entries(effects).filter(([, v]) => Number(v) > 0).map(([k, v]) => (
+                <Badge key={k} variant="outline" className="text-[9px]">
+                  {EFFECT_LABELS[k] || k.replace(/_/g, " ")}: +{String(v)}
+                </Badge>
+              ))}
+            </div>
+          )}
+
+          {/* Upgrade section */}
+          {isOwner && upgradeInfo && !isConstructing && (
+            <div className="mt-2 pt-2 border-t border-border/50">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex-1 min-w-0">
+                  <p className="text-[10px] font-display font-semibold flex items-center gap-1">
+                    <ArrowUp className="h-3 w-3 text-primary" />
+                    Vylepšit na: {upgradeInfo.name} (Lvl{(currentLevel || 1) + 1})
+                    {b.is_ai_generated && currentLevel + 1 === 5 && (
+                      <Badge className="bg-yellow-500/80 text-black text-[8px] ml-1 gap-0.5">
+                        <Star className="h-2 w-2" />Div světa!
                       </Badge>
-                    </TooltipTrigger>
-                    <TooltipContent side="top" className="max-w-[260px] text-xs space-y-1">
-                      <p className="font-semibold">{EFFECT_LABELS[k] || k}</p>
-                      <p className="text-muted-foreground">{EFFECT_DESCRIPTIONS[k] || "Bonus ze stavby."}</p>
-                    </TooltipContent>
-                  </Tooltip>
-                ))}
-              </TooltipProvider>
+                    )}
+                  </p>
+                  {upgradeInfo.unlock && (
+                    <p className="text-[9px] text-primary/80 mt-0.5">🔓 {upgradeInfo.unlock}</p>
+                  )}
+                  {upgradeCosts && (
+                    <div className="flex gap-1 text-[9px] text-muted-foreground mt-0.5">
+                      {upgradeCosts.cost_wealth > 0 && <span>💰{upgradeCosts.cost_wealth}</span>}
+                      {upgradeCosts.cost_wood > 0 && <span>🪵{upgradeCosts.cost_wood}</span>}
+                      {upgradeCosts.cost_stone > 0 && <span>🪨{upgradeCosts.cost_stone}</span>}
+                      {upgradeCosts.cost_iron > 0 && <span>⚙️{upgradeCosts.cost_iron}</span>}
+                    </div>
+                  )}
+                </div>
+                <Button
+                  size="sm"
+                  variant={b.is_ai_generated && currentLevel + 1 === 5 ? "default" : "outline"}
+                  className={`h-7 text-[10px] gap-1 shrink-0 ${
+                    b.is_ai_generated && currentLevel + 1 === 5 ? "bg-yellow-600 hover:bg-yellow-700 text-black" : ""
+                  }`}
+                  disabled={!canUpgrade || upgradingId === b.id}
+                  onClick={() => handleUpgrade(b)}
+                >
+                  {upgradingId === b.id ? (
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                  ) : (
+                    <ArrowUp className="h-3 w-3" />
+                  )}
+                  {b.is_ai_generated && currentLevel + 1 === 5 ? "Povýšit na Div" : "Vylepšit"}
+                </Button>
+              </div>
             </div>
           )}
         </div>
@@ -318,14 +507,12 @@ const CityBuildingsPanel = ({
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
-        {/* Active buildings */}
         {activeBuildings.length > 0 && (
           <div className="space-y-2">
             {activeBuildings.map(b => <BuildingCard key={b.id} b={b} />)}
           </div>
         )}
 
-        {/* Under construction */}
         {constructing.length > 0 && (
           <div className="space-y-2">
             <p className="text-xs font-display font-semibold flex items-center gap-1 text-muted-foreground">
@@ -335,7 +522,6 @@ const CityBuildingsPanel = ({
           </div>
         )}
 
-        {/* Build new — template picker or AI */}
         {isOwner && (
           <div className="space-y-3 pt-2 border-t border-border">
             <div className="flex items-center justify-between">
@@ -348,60 +534,42 @@ const CityBuildingsPanel = ({
                 className="h-6 text-[10px] gap-1"
                 onClick={() => setShowAI(!showAI)}
               >
-                <Sparkles className="h-3 w-3" />{showAI ? "Šablony" : "Navrhnout vlastní stavbu (AI)"}
+                <Sparkles className="h-3 w-3" />{showAI ? "Šablony" : "Navrhnout vlastní (AI, 5 Lvl)"}
               </Button>
             </div>
 
             {showAI ? (
               <div className="space-y-3">
-                <p className="text-[10px] font-display uppercase tracking-wider text-muted-foreground flex items-center gap-1">
-                  <Sparkles className="h-3 w-3" />Navrhnout vlastní stavbu (AI)
-                </p>
+                <div className="p-2 rounded bg-yellow-500/10 border border-yellow-500/20">
+                  <p className="text-[10px] text-yellow-200/80">
+                    <Star className="h-3 w-3 inline mr-1" />
+                    AI stavba má <strong>5 úrovní</strong>. Na úrovni 5 se promění v <strong>Div světa</strong> s globálními bonusy a zápisem do kroniky!
+                  </p>
+                </div>
 
                 <div className="space-y-2">
                   <div>
                     <Label className="text-[11px] font-display">Co chcete postavit? *</Label>
-                    <Textarea
-                      value={aiPrompt}
-                      onChange={e => setAiPrompt(e.target.value)}
-                      placeholder="Např. Věž strážců – vysoká kamenná věž na okraji osady, sloužící jako hlídka a útočiště..."
-                      rows={2}
-                      className="text-xs mt-1"
-                    />
+                    <Textarea value={aiPrompt} onChange={e => setAiPrompt(e.target.value)}
+                      placeholder="Např. Věž strážců – vysoká kamenná věž na okraji osady..." rows={2} className="text-xs mt-1" />
                   </div>
-
                   <div>
                     <Label className="text-[11px] font-display">Zakladatelský mýtus (volitelné)</Label>
-                    <Textarea
-                      value={aiMyth}
-                      onChange={e => setAiMyth(e.target.value)}
-                      placeholder="Podle legendy první kámen položil sám praotec kmene..."
-                      rows={2}
-                      className="text-xs mt-1"
-                    />
+                    <Textarea value={aiMyth} onChange={e => setAiMyth(e.target.value)}
+                      placeholder="Podle legendy první kámen položil sám praotec kmene..." rows={2} className="text-xs mt-1" />
                   </div>
-
                   <div>
                     <Label className="text-[11px] font-display flex items-center gap-1">
                       <ImageIcon className="h-3 w-3" />Vizuální popis (volitelné)
                     </Label>
-                    <Input
-                      value={aiVisual}
-                      onChange={e => setAiVisual(e.target.value)}
-                      placeholder="Tmavý kámen, vysoká špička, gotický styl..."
-                      className="text-xs mt-1"
-                    />
+                    <Input value={aiVisual} onChange={e => setAiVisual(e.target.value)}
+                      placeholder="Tmavý kámen, vysoká špička, gotický styl..." className="text-xs mt-1" />
                   </div>
                 </div>
 
-                <Button
-                  size="sm"
-                  onClick={handleAIGenerate}
-                  disabled={aiGenerating || !aiPrompt.trim()}
-                  className="w-full text-xs gap-1"
-                >
+                <Button size="sm" onClick={handleAIGenerate} disabled={aiGenerating || !aiPrompt.trim()} className="w-full text-xs gap-1">
                   {aiGenerating ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
-                  {aiGenerating ? "Generuji návrh..." : "Vygenerovat návrh"}
+                  {aiGenerating ? "Generuji návrh..." : "Vygenerovat návrh (5 úrovní)"}
                 </Button>
               </div>
             ) : (
@@ -423,28 +591,26 @@ const CityBuildingsPanel = ({
                     {(categorized[catKey] || []).map(t => {
                       const built = t.is_unique && alreadyBuilt.has(t.id);
                       const affordable = canAfford(t);
+                      const levelData = Array.isArray(t.level_data) ? t.level_data : [];
                       return (
-                        <div
-                          key={t.id}
-                          className={`p-3 rounded-lg border transition-colors ${
-                            built ? "border-muted bg-muted/10 opacity-50" : "border-border hover:border-primary/40"
-                          }`}
-                        >
+                        <div key={t.id} className={`p-3 rounded-lg border transition-colors ${
+                          built ? "border-muted bg-muted/10 opacity-50" : "border-border hover:border-primary/40"
+                        }`}>
                           <div className="flex items-center gap-2">
                             <div className="flex-1 min-w-0">
                               <p className="text-xs font-display font-semibold">{t.name}</p>
                               <p className="text-[10px] text-muted-foreground">{t.description}</p>
+                              {levelData.length > 1 && (
+                                <p className="text-[9px] text-primary/60 mt-0.5">
+                                  3 úrovně: {levelData.map((l: any) => l.name).join(" → ")}
+                                </p>
+                              )}
                             </div>
                             {built ? (
                               <Badge variant="secondary" className="text-[9px] shrink-0">Postaveno</Badge>
                             ) : (
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                className="h-6 text-[10px] gap-1 shrink-0"
-                                disabled={saving || !affordable}
-                                onClick={() => handleBuild(t)}
-                              >
+                              <Button size="sm" variant="outline" className="h-6 text-[10px] gap-1 shrink-0"
+                                disabled={saving || !affordable} onClick={() => handleBuild(t)}>
                                 <Hammer className="h-3 w-3" />Stavět
                               </Button>
                             )}
@@ -459,26 +625,13 @@ const CityBuildingsPanel = ({
                             </div>
                             <ArrowRight className="h-2.5 w-2.5 text-muted-foreground" />
                             <div className="flex gap-1 text-[9px] flex-wrap">
-                              <TooltipProvider delayDuration={150}>
-                                {Object.entries(t.effects || {}).map(([k, v]) => (
-                                  <Tooltip key={k}>
-                                    <TooltipTrigger asChild>
-                                      <Badge variant="outline" className="text-[8px] cursor-help">
-                                        {EFFECT_LABELS[k] || k.replace(/_/g, " ")} +{String(v)}
-                                      </Badge>
-                                    </TooltipTrigger>
-                                    <TooltipContent side="top" className="max-w-[260px] text-xs space-y-1">
-                                      <p className="font-semibold">{EFFECT_LABELS[k] || k}</p>
-                                      <p className="text-muted-foreground">{EFFECT_DESCRIPTIONS[k] || "Bonus ze stavby."}</p>
-                                    </TooltipContent>
-                                  </Tooltip>
-                                ))}
-                              </TooltipProvider>
+                              {Object.entries(t.effects || {}).filter(([, v]) => Number(v) > 0).map(([k, v]) => (
+                                <Badge key={k} variant="outline" className="text-[8px]">
+                                  {EFFECT_LABELS[k] || k.replace(/_/g, " ")} +{String(v)}
+                                </Badge>
+                              ))}
                             </div>
                           </div>
-                          {t.flavor_text && (
-                            <p className="text-[9px] text-muted-foreground/60 italic mt-1">„{t.flavor_text}"</p>
-                          )}
                         </div>
                       );
                     })}

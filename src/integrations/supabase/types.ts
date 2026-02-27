@@ -271,6 +271,8 @@ export type Database = {
           id: string
           image_prompt: string | null
           is_unique: boolean
+          level_data: Json
+          max_level: number
           name: string
           required_settlement_level: string
         }
@@ -288,6 +290,8 @@ export type Database = {
           id?: string
           image_prompt?: string | null
           is_unique?: boolean
+          level_data?: Json
+          max_level?: number
           name: string
           required_settlement_level?: string
         }
@@ -305,6 +309,8 @@ export type Database = {
           id?: string
           image_prompt?: string | null
           is_unique?: boolean
+          level_data?: Json
+          max_level?: number
           name?: string
           required_settlement_level?: string
         }
@@ -642,6 +648,7 @@ export type Database = {
           cost_wealth: number
           cost_wood: number
           created_at: string
+          current_level: number
           description: string
           effects: Json
           flavor_text: string | null
@@ -650,10 +657,14 @@ export type Database = {
           image_prompt: string | null
           image_url: string | null
           is_ai_generated: boolean
+          is_wonder: boolean
+          level_data: Json
+          max_level: number
           name: string
           session_id: string
           status: string
           template_id: string | null
+          wonder_id: string | null
         }
         Insert: {
           build_duration?: number
@@ -666,6 +677,7 @@ export type Database = {
           cost_wealth?: number
           cost_wood?: number
           created_at?: string
+          current_level?: number
           description?: string
           effects?: Json
           flavor_text?: string | null
@@ -674,10 +686,14 @@ export type Database = {
           image_prompt?: string | null
           image_url?: string | null
           is_ai_generated?: boolean
+          is_wonder?: boolean
+          level_data?: Json
+          max_level?: number
           name: string
           session_id: string
           status?: string
           template_id?: string | null
+          wonder_id?: string | null
         }
         Update: {
           build_duration?: number
@@ -690,6 +706,7 @@ export type Database = {
           cost_wealth?: number
           cost_wood?: number
           created_at?: string
+          current_level?: number
           description?: string
           effects?: Json
           flavor_text?: string | null
@@ -698,10 +715,14 @@ export type Database = {
           image_prompt?: string | null
           image_url?: string | null
           is_ai_generated?: boolean
+          is_wonder?: boolean
+          level_data?: Json
+          max_level?: number
           name?: string
           session_id?: string
           status?: string
           template_id?: string | null
+          wonder_id?: string | null
         }
         Relationships: [
           {
