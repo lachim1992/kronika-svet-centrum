@@ -415,25 +415,42 @@ function BattleInitDialog({ stack, sessionId, currentPlayerName, currentTurn, ci
     setSubmitting(true);
     try {
       const seed = Date.now() + Math.floor(Math.random() * 100000);
-      await supabase.from("action_queue").insert({
-        session_id: sessionId,
-        player_name: currentPlayerName,
-        action_type: "battle",
-        status: "pending",
-        action_data: {
+
+      // Resolve battle immediately via edge function
+      const { data, error } = await supabase.functions.invoke("resolve-battle", {
+        body: {
+          session_id: sessionId,
+          player_name: currentPlayerName,
+          current_turn: currentTurn,
           attacker_stack_id: stack.id,
           defender_city_id: targetType === "city" ? targetId : null,
           defender_stack_id: targetType === "stack" ? targetId : null,
           speech_text: speechText || null,
           speech_morale_modifier: speechResult?.morale_modifier || 0,
           seed,
-          biome: "plains",
         },
-        completes_at: new Date().toISOString(),
-        created_turn: currentTurn,
-        execute_on_turn: currentTurn,
       });
-      toast.success(`⚔️ Bitva naplánována! Bude vyhodnocena při zpracování kola.`);
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+
+      // Show result
+      const LABELS: Record<string, string> = {
+        decisive_victory: "Drtivé vítězství! ⚔️🔥",
+        victory: "Vítězství! ⚔️",
+        pyrrhic_victory: "Pyrrhovo vítězství ⚔️",
+        defeat: "Porážka 💀",
+        rout: "Rozprášení 💀💀",
+      };
+      const resultMsg = `${LABELS[data.result] || data.result}\n${data.attacker_name} vs ${data.defender_name}\nZtráty: ${data.casualties_attacker}/${data.casualties_defender}`;
+      if (data.result?.includes("victory")) {
+        toast.success(resultMsg);
+      } else {
+        toast.error(resultMsg);
+      }
+      if (data.needs_decision) {
+        toast.info("⚖️ Rozhodnutí po bitvě čeká!");
+      }
+
       onRefresh();
       onClose();
     } catch (e: any) {
