@@ -11,7 +11,7 @@ export const SETTLEMENT_TEMPLATES: Record<string, { peasants: number; burghers: 
 };
 
 export const SETTLEMENT_DEFAULTS: Record<string, number> = {
-  HAMLET: 1000, TOWNSHIP: 3000, CITY: 8000, POLIS: 15000,
+  HAMLET: 800, TOWNSHIP: 2000, CITY: 5000, POLIS: 10000,
 };
 
 export const LEVEL_TO_SETTLEMENT: Record<string, string> = {

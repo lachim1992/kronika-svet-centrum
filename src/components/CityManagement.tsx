@@ -90,6 +90,7 @@ const EFFECT_LABELS: Record<string, { label: string; icon: React.ReactNode }> = 
 const SETTLEMENT_ORDER = ["HAMLET", "TOWNSHIP", "CITY", "POLIS"];
 const SETTLEMENT_LABELS: Record<string, string> = { HAMLET: "Osada", TOWNSHIP: "Městečko", CITY: "Město", POLIS: "Polis" };
 const MAX_SLOTS: Record<string, number> = { HAMLET: 3, TOWNSHIP: 5, CITY: 8, POLIS: 12 };
+const SETTLEMENT_POP_THRESHOLDS: Record<string, number> = { HAMLET: 0, TOWNSHIP: 2000, CITY: 5000, POLIS: 10000 };
 
 // ═══════════════════════════════════════════
 // SECTIONS
@@ -443,6 +444,42 @@ const CityManagement = ({ sessionId, cityId, currentPlayerName, currentTurn, onB
               <StatCard label="Úroveň" value={SETTLEMENT_LABELS[city.settlement_level] || city.level} icon={<Crown className="h-4 w-4" />}
                 tip="Osada → Městečko → Město → Polis. Vyšší úroveň = více slotů a ekonomických bonusů." />
             </div>
+
+            {/* ── Settlement Upgrade Progress ── */}
+            {(() => {
+              const currentLevel = city.settlement_level || "HAMLET";
+              const currentIdx = SETTLEMENT_ORDER.indexOf(currentLevel);
+              const nextLevel = currentIdx < SETTLEMENT_ORDER.length - 1 ? SETTLEMENT_ORDER[currentIdx + 1] : null;
+              if (!nextLevel) return null;
+              const nextThreshold = SETTLEMENT_POP_THRESHOLDS[nextLevel];
+              const currentPop = city.population_total || 0;
+              const prevThreshold = SETTLEMENT_POP_THRESHOLDS[currentLevel] || 0;
+              const progress = Math.min(100, Math.max(0, ((currentPop - prevThreshold) / (nextThreshold - prevThreshold)) * 100));
+              return (
+                <Card className="border-primary/30">
+                  <CardContent className="pt-4 pb-3 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2 text-sm font-display">
+                        <TrendingUp className="h-4 w-4 text-primary" />
+                        Postup k povýšení na <span className="font-bold text-primary">{SETTLEMENT_LABELS[nextLevel]}</span>
+                      </div>
+                      <span className="text-xs text-muted-foreground">
+                        {currentPop.toLocaleString()} / {nextThreshold.toLocaleString()} obyvatel
+                      </span>
+                    </div>
+                    <div className="w-full rounded-full h-2.5" style={{ background: 'hsl(var(--muted))' }}>
+                      <div
+                        className="h-2.5 rounded-full transition-all duration-500"
+                        style={{ width: `${progress}%`, background: 'hsl(var(--primary))' }}
+                      />
+                    </div>
+                    <p className="text-[10px] text-muted-foreground">
+                      Při dosažení {nextThreshold.toLocaleString()} obyvatel se město automaticky povýší — odemkne {MAX_SLOTS[nextLevel]} stavebních slotů a vyšší kapacitu bydlení.
+                    </p>
+                  </CardContent>
+                </Card>
+              );
+            })()}
 
             {/* ── CITY GOVERNANCE (Food, Labor, Districts, Factions) ── */}
             <CityGovernancePanel

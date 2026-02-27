@@ -55,6 +55,34 @@ export const DEV_THRESHOLDS = [
 ];
 
 // ═══════════════════════════════════════════
+// SETTLEMENT LEVEL PROGRESSION
+// ═══════════════════════════════════════════
+
+/** Population thresholds for automatic settlement level upgrades */
+export const SETTLEMENT_LEVEL_THRESHOLDS: Array<{ minPop: number; level: string; label: string; maxSlots: number; maxDistricts: number; housingCapacity: number }> = [
+  { minPop: 0,     level: "HAMLET",   label: "Osada",     maxSlots: 3,  maxDistricts: 2,  housingCapacity: 500 },
+  { minPop: 2000,  level: "TOWNSHIP", label: "Městečko",  maxSlots: 5,  maxDistricts: 4,  housingCapacity: 1200 },
+  { minPop: 5000,  level: "CITY",     label: "Město",     maxSlots: 8,  maxDistricts: 6,  housingCapacity: 3000 },
+  { minPop: 10000, level: "POLIS",    label: "Polis",     maxSlots: 12, maxDistricts: 10, housingCapacity: 8000 },
+];
+
+/** Determine the correct settlement level for a given population */
+export function getSettlementLevelForPop(pop: number): typeof SETTLEMENT_LEVEL_THRESHOLDS[0] {
+  let result = SETTLEMENT_LEVEL_THRESHOLDS[0];
+  for (const tier of SETTLEMENT_LEVEL_THRESHOLDS) {
+    if (pop >= tier.minPop) result = tier;
+  }
+  return result;
+}
+
+/** Get the next settlement tier (or null if already max) */
+export function getNextSettlementTier(currentLevel: string): typeof SETTLEMENT_LEVEL_THRESHOLDS[0] | null {
+  const idx = SETTLEMENT_LEVEL_THRESHOLDS.findIndex(t => t.level === currentLevel);
+  if (idx < 0 || idx >= SETTLEMENT_LEVEL_THRESHOLDS.length - 1) return null;
+  return SETTLEMENT_LEVEL_THRESHOLDS[idx + 1];
+}
+
+// ═══════════════════════════════════════════
 // SETTLEMENT GROWTH
 // ═══════════════════════════════════════════
 
@@ -70,6 +98,7 @@ export interface CityForGrowth {
   city_stability: number;
   famine_turn: boolean;
   development_level: number;
+  settlement_level?: string;
 }
 
 export interface GrowthResult {
@@ -80,6 +109,8 @@ export interface GrowthResult {
   delta: number;
   newDev: number;
   newStability: number;
+  /** If settlement level changed, contains old and new level */
+  settlementUpgrade?: { oldLevel: string; newLevel: string; newLabel: string; newMaxSlots: number; newMaxDistricts: number; newHousingCapacity: number };
 }
 
 export function computeSettlementGrowth(
@@ -124,10 +155,30 @@ export function computeSettlementGrowth(
     if (newPop > pop && newDev < level) newDev = level;
   }
 
+  // Settlement level auto-upgrade
+  let settlementUpgrade: GrowthResult["settlementUpgrade"] = undefined;
+  const currentLevel = city.settlement_level || "HAMLET";
+  const correctTier = getSettlementLevelForPop(newPop);
+  if (correctTier.level !== currentLevel) {
+    const currentIdx = SETTLEMENT_LEVEL_THRESHOLDS.findIndex(t => t.level === currentLevel);
+    const newIdx = SETTLEMENT_LEVEL_THRESHOLDS.findIndex(t => t.level === correctTier.level);
+    // Only upgrade (never downgrade)
+    if (newIdx > currentIdx) {
+      settlementUpgrade = {
+        oldLevel: currentLevel,
+        newLevel: correctTier.level,
+        newLabel: correctTier.label,
+        newMaxSlots: correctTier.maxSlots,
+        newMaxDistricts: correctTier.maxDistricts,
+        newHousingCapacity: correctTier.housingCapacity,
+      };
+    }
+  }
+
   return {
     cityId: city.id, cityName: city.name,
     oldPop: city.population_total, newPop, delta,
-    newDev, newStability,
+    newDev, newStability, settlementUpgrade,
   };
 }
 
