@@ -203,23 +203,39 @@ Vygeneruj hlas lidu a analýzu poradců.`;
         }).eq("session_id", sessionId).eq("player_name", playerName);
         effects.wealth_lost = loss;
 
-        // Stabilize: clear famine, boost stability
+        // Stabilize: clear famine, boost stability, 3-turn cooldown
+        const cooldownUntil = currentTurn + 3;
         await supabase.from("cities").update({
           famine_consecutive_turns: 0,
+          famine_turn: false,
+          famine_severity: 0,
           city_stability: Math.min(100, (uprising.city_stability || 30) + 20),
+          uprising_cooldown_until: cooldownUntil,
         }).eq("id", uprising.city_id);
+        effects.cooldown_until = cooldownUntil;
       }
 
       if (selectedConcession === "open_stores") {
-        // All reserves → 0, famine immediately ends
+        // All material reserves → 0 (not gold), famine immediately ends
         await supabase.from("realm_resources").update({
           grain_reserve: 0, wood_reserve: 0, stone_reserve: 0, iron_reserve: 0,
         }).eq("session_id", sessionId).eq("player_name", playerName);
+
+        // Sync player_resources stockpiles to 0 for food/wood/stone/iron
+        for (const resType of ["food", "wood", "stone", "iron"]) {
+          await supabase.from("player_resources").update({
+            stockpile: 0,
+          }).eq("session_id", sessionId).eq("player_name", playerName).eq("resource_type", resType);
+        }
+
+        const cooldownUntil = currentTurn + 5;
         await supabase.from("cities").update({
           famine_turn: false, famine_severity: 0, famine_consecutive_turns: 0,
           city_stability: Math.min(100, (uprising.city_stability || 30) + 30),
+          uprising_cooldown_until: cooldownUntil,
         }).eq("id", uprising.city_id);
         effects.stores_emptied = true;
+        effects.cooldown_until = cooldownUntil;
       }
 
       if (selectedConcession === "cede_city") {
@@ -228,6 +244,7 @@ Vygeneruj hlas lidu a analýzu poradců.`;
           owner_player: "Nezávislé",
           famine_turn: false, famine_severity: 0, famine_consecutive_turns: 0,
           city_stability: 60,
+          uprising_cooldown_until: currentTurn + 99,
         }).eq("id", uprising.city_id);
         effects.city_ceded = true;
 
