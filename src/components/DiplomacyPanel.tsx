@@ -200,17 +200,39 @@ const DiplomacyPanel = ({ sessionId, players, cityStates, currentPlayerName, gam
 
         if (error) throw error;
 
-        await supabase.from("diplomacy_messages").insert({
-          room_id: selectedRoom.id,
-          sender: factionName,
-          sender_type: "npc",
-          message_text: data.replyText || "... vyslanec mlčí ...",
-          secrecy: "PRIVATE",
-          message_tag: null,
-          leak_chance: 0,
-        });
+        // The edge function now posts action messages itself (ultimatums, war, etc.)
+        // We only insert the reply text if there is one
+        if (data.replyText) {
+          await supabase.from("diplomacy_messages").insert({
+            room_id: selectedRoom.id,
+            sender: factionName,
+            sender_type: "npc",
+            message_text: data.replyText,
+            secrecy: "PRIVATE",
+            message_tag: null,
+            leak_chance: 0,
+          });
+        }
 
-        toast.success(`${factionName} odpověděl(a)`);
+        // Show action notifications
+        const actions = data.actionsTaken || [];
+        if (actions.includes("declare_war")) {
+          toast.error(`⚔️ ${factionName} vyhlásil VÁLKU!`);
+        } else if (actions.includes("send_ultimatum")) {
+          toast.warning(`⚠️ ${factionName} poslal ultimátum!`);
+        } else if (actions.includes("offer_peace")) {
+          toast.info(`🕊️ ${factionName} nabízí mír`);
+        } else if (actions.includes("offer_trade")) {
+          toast.success(`💰 ${factionName} nabízí obchod`);
+        } else if (actions.includes("offer_alliance")) {
+          toast.success(`🤝 ${factionName} navrhuje spojenectví`);
+        } else if (actions.includes("trade_embargo")) {
+          toast.error(`🚫 ${factionName} uvalil embargo!`);
+        } else if (actions.includes("threaten")) {
+          toast.warning(`⚠️ ${factionName} vám vyhrožuje`);
+        } else {
+          toast.success(`${factionName} odpověděl(a)`);
+        }
       } else if (isNpcRoom && selectedRoom.npc_city_state_id) {
         const npc = cityStates.find(cs => cs.id === selectedRoom.npc_city_state_id);
         if (!npc) throw new Error("NPC nenalezeno");
