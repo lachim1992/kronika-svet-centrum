@@ -129,6 +129,76 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
     if (!worldName.trim() || !premise.trim()) { toast.error("Vyplňte název a premisu světa"); return; }
     if (!playerName.trim()) { toast.error("Zadejte jméno hráče"); return; }
     if (!settlementName.trim()) { toast.error("Zadejte název startovního sídla"); return; }
+
+    // ── MULTIPLAYER LOBBY MODE ──
+    // For tb_multi, create a minimal session + world_foundation + membership + civ_config,
+    // then navigate to lobby instead of full world generation
+    if (isMultiMode) {
+      setCreating(true);
+      try {
+        const roomCode = Math.random().toString(36).substring(2, 8).toUpperCase();
+        const { data: session, error: sessErr } = await supabase.from("game_sessions").insert({
+          room_code: roomCode,
+          player1_name: playerName.trim(),
+          max_players: 10,
+          created_by: userId,
+          game_mode: "tb_multi",
+          tier: "premium",
+          init_status: "lobby",
+        } as any).select().single();
+        if (sessErr || !session) throw sessErr || new Error("Session creation failed");
+
+        // World foundation
+        await supabase.from("world_foundations").insert({
+          session_id: session.id,
+          world_name: worldName.trim(),
+          premise: premise.trim(),
+          tone,
+          victory_style: victoryStyle,
+          initial_factions: factions.filter(f => f.trim()),
+          created_by: userId,
+        } as any);
+
+        // Game player record
+        await supabase.from("game_players").insert({
+          session_id: session.id,
+          player_name: playerName.trim(),
+          player_number: 1,
+          user_id: userId,
+        } as any);
+
+        // Membership (admin + ready since host already configured)
+        await supabase.from("game_memberships").insert({
+          user_id: userId,
+          session_id: session.id,
+          player_name: playerName.trim(),
+          role: "admin",
+          setup_status: "ready",
+        });
+
+        // Save host's civ config
+        await supabase.from("player_civ_configs").upsert({
+          session_id: session.id,
+          user_id: userId,
+          player_name: playerName.trim(),
+          realm_name: realmName.trim(),
+          settlement_name: settlementName.trim(),
+          people_name: peopleName.trim(),
+          culture_name: cultureName.trim(),
+          language_name: languageName.trim(),
+          civ_description: civDescription.trim(),
+          homeland_biome: homelandBiome,
+        }, { onConflict: "session_id,user_id" });
+
+        toast.success(`Lobby vytvořena! Kód: ${roomCode}`);
+        onCreated(session.id);
+        return;
+      } catch (err: any) {
+        toast.error("Vytvoření lobby selhalo: " + (err.message || "Neznámá chyba"));
+        setCreating(false);
+        return;
+      }
+    }
     if (!isAIMode && !homelandName.trim()) { toast.error("Zadejte název domovského regionu"); return; }
 
     setCreating(true);

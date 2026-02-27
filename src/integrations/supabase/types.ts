@@ -2275,6 +2275,7 @@ export type Database = {
           player_name: string
           role: string
           session_id: string
+          setup_status: string
           user_id: string
         }
         Insert: {
@@ -2283,6 +2284,7 @@ export type Database = {
           player_name: string
           role?: string
           session_id: string
+          setup_status?: string
           user_id: string
         }
         Update: {
@@ -2291,6 +2293,7 @@ export type Database = {
           player_name?: string
           role?: string
           session_id?: string
+          setup_status?: string
           user_id?: string
         }
         Relationships: [
@@ -3070,6 +3073,62 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "player_chronicle_chapters_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      player_civ_configs: {
+        Row: {
+          civ_description: string
+          created_at: string
+          culture_name: string
+          homeland_biome: string
+          id: string
+          language_name: string
+          people_name: string
+          player_name: string
+          realm_name: string
+          session_id: string
+          settlement_name: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          civ_description?: string
+          created_at?: string
+          culture_name?: string
+          homeland_biome?: string
+          id?: string
+          language_name?: string
+          people_name?: string
+          player_name: string
+          realm_name?: string
+          session_id: string
+          settlement_name?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          civ_description?: string
+          created_at?: string
+          culture_name?: string
+          homeland_biome?: string
+          id?: string
+          language_name?: string
+          people_name?: string
+          player_name?: string
+          realm_name?: string
+          session_id?: string
+          settlement_name?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "player_civ_configs_session_id_fkey"
             columns: ["session_id"]
             isOneToOne: false
             referencedRelation: "game_sessions"

@@ -18,6 +18,7 @@ import GameHubFAB from "@/components/layout/GameHubFAB";
 import FoundSettlementDialog from "@/components/FoundSettlementDialog";
 import UprisingDialog from "@/components/UprisingDialog";
 import Chronicle0Overlay from "@/components/Chronicle0Overlay";
+import MultiplayerLobby from "@/components/MultiplayerLobby";
 import HomeTab from "@/pages/game/HomeTab";
 import WorldTab from "@/pages/game/WorldTab";
 import RealmTab from "@/pages/game/RealmTab";
@@ -144,6 +145,22 @@ const Dashboard = () => {
           <Button onClick={() => navigate("/games")}>Zpět na úvod</Button>
         </div>
       </div>
+    );
+  }
+
+  // Show multiplayer lobby if game is in lobby/generating state
+  const initStatus = (session as any).init_status;
+  if (session.game_mode === "tb_multi" && (initStatus === "lobby" || initStatus === "generating")) {
+    return (
+      <MultiplayerLobby
+        sessionId={session.id}
+        roomCode={session.room_code}
+        worldName={worldFoundation?.world_name || "Nový svět"}
+        maxPlayers={session.max_players}
+        isHost={myRole === "admin"}
+        myPlayerName={myPlayerName}
+        onGameStart={() => refetch()}
+      />
     );
   }
 
