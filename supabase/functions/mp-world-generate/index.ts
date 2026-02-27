@@ -358,9 +358,19 @@ DŮLEŽITÉ: Hráčské frakce MUSÍ mít isPlayer=true a playerName musí přes
           const toolCall = data.choices?.[0]?.message?.tool_calls?.[0];
           if (toolCall) {
             world = JSON.parse(toolCall.function.arguments);
+            // Validate critical arrays exist
+            const requiredArrays = ["persons", "wonders", "preHistoryEvents", "battles", "factions", "cities", "regions"];
+            for (const key of requiredArrays) {
+              if (!world[key] || !Array.isArray(world[key]) || world[key].length === 0) {
+                console.warn(`[mp-world-generate] WARNING: AI returned empty/missing '${key}' array (${JSON.stringify(world[key]?.length ?? 'undefined')})`);
+              } else {
+                console.log(`[mp-world-generate] ✓ ${key}: ${world[key].length} items`);
+              }
+            }
           }
         } else {
-          console.warn("AI world gen failed:", response.status, await response.text());
+          const errText = await response.text();
+          console.error("[mp-world-generate] AI generation failed:", response.status, errText.substring(0, 500));
         }
       } catch (e) {
         console.warn("AI world generation failed:", e);
@@ -1444,6 +1454,21 @@ DŮLEŽITÉ: Hráčské frakce MUSÍ mít isPlayer=true a playerName musí přes
           architecturalStyleText: civ?.architectural_style || null,
         }),
       }).catch(e => console.warn("civ identity extraction failed for", cfg.player_name, e));
+    }
+
+    // Log final counters for debugging
+    console.log(`[mp-world-generate] COMPLETE for ${sessionId}:`, JSON.stringify(counters));
+
+    // Auto-backfill if persons/wonders/events are missing but chronicle exists
+    if (counters.persons === 0 && counters.wonders === 0 && counters.legendary === 0) {
+      console.warn(`[mp-world-generate] WARNING: No prehistory entities created! Triggering auto-backfill...`);
+      const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
+      const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY") || Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+      fetch(`${SUPABASE_URL}/functions/v1/backfill-prehistory`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${SUPABASE_ANON_KEY}` },
+        body: JSON.stringify({ sessionId }),
+      }).catch(e => console.warn("Auto-backfill trigger failed:", e));
     }
 
     // Mark session as ready
