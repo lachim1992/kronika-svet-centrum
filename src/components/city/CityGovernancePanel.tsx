@@ -404,10 +404,15 @@ const CityGovernancePanel = ({ sessionId, city, realm, currentPlayerName, curren
                       </span>
                     </div>
                     {f.current_demand && (
-                      <p className="text-[10px] mt-1 p-1.5 bg-muted/30 rounded italic">
-                        📢 {f.current_demand}
-                        {f.demand_urgency > 5 && <Badge variant="destructive" className="text-[8px] ml-1">Naléhavé</Badge>}
-                      </p>
+                      <div className="mt-1 p-1.5 bg-muted/30 rounded">
+                        <p className="text-[10px] italic">
+                          📢 {f.current_demand}
+                          {f.demand_urgency > 5 && <Badge variant="destructive" className="text-[8px] ml-1">Naléhavé</Badge>}
+                        </p>
+                        <p className="text-[9px] text-primary mt-0.5">
+                          💡 Řešte požadavek dekretem v Královské radě
+                        </p>
+                      </div>
                     )}
                   </div>
                 );
