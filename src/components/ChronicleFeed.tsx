@@ -71,6 +71,13 @@ const ChronicleFeed = ({
   const displayRound = viewingRound ?? currentTurn;
   const displayEvents = events.filter(e => e.turn_number === displayRound);
 
+  // Check if Chronicle Zero exists
+  const hasChronicleZero = chronicles.some(c => {
+    const cf = c as any;
+    return cf.source_type === "chronicle_zero" || cf.source_type === "founding" ||
+      (cf.turn_from != null && cf.turn_from < 1 && cf.turn_to != null && cf.turn_to <= 0);
+  });
+
   // Filter chronicles by source_type
   const filteredChronicles = sourceFilter === "all"
     ? chronicles
@@ -79,7 +86,12 @@ const ChronicleFeed = ({
   // Match chronicles by turn_from/turn_to or text
   const roundChronicles = filteredChronicles.filter(c => {
     const cf = c as any;
-    if (cf.turn_from && cf.turn_to) {
+    // Round 0 = show chronicle_zero / founding entries
+    if (displayRound === 0) {
+      return cf.source_type === "chronicle_zero" || cf.source_type === "founding" ||
+        (cf.turn_from != null && cf.turn_from < 1 && cf.turn_to != null && cf.turn_to <= 0);
+    }
+    if (cf.turn_from != null && cf.turn_to != null) {
       return displayRound >= cf.turn_from && displayRound <= cf.turn_to;
     }
     return c.text.includes(`Rok ${displayRound}`) || c.text.includes(`rok ${displayRound}`);
@@ -251,7 +263,9 @@ const ChronicleFeed = ({
     epochStyle === "myty" ? "text-chronicle-myth" :
     epochStyle === "moderni" ? "text-chronicle-modern" : "text-chronicle-medieval";
 
-  const allRounds = Array.from({ length: currentTurn }, (_, i) => i + 1);
+  const allRounds = hasChronicleZero
+    ? [0, ...Array.from({ length: currentTurn }, (_, i) => i + 1)]
+    : Array.from({ length: currentTurn }, (_, i) => i + 1);
 
   return (
     <div className="space-y-4">
@@ -317,21 +331,23 @@ const ChronicleFeed = ({
 
       {/* Round Navigation */}
       <div className="flex items-center gap-2 p-2 rounded-lg border border-border bg-muted/20">
-        <Button variant="ghost" size="icon" className="h-7 w-7" disabled={displayRound <= 1}
-          onClick={() => setViewingRound(Math.max(1, displayRound - 1))}>
+        <Button variant="ghost" size="icon" className="h-7 w-7" disabled={displayRound <= (hasChronicleZero ? 0 : 1)}
+          onClick={() => setViewingRound(Math.max(hasChronicleZero ? 0 : 1, displayRound - 1))}>
           <ChevronLeft className="h-4 w-4" />
         </Button>
         <div className="flex gap-1 flex-wrap flex-1 justify-center">
           {allRounds.map(r => {
             const hasChr = chronicles.some(c => {
               const cf = c as any;
+              if (r === 0) return cf.source_type === "chronicle_zero" || cf.source_type === "founding" ||
+                (cf.turn_from != null && cf.turn_from < 1 && cf.turn_to != null && cf.turn_to <= 0);
               if (cf.turn_from && cf.turn_to) return r >= cf.turn_from && r <= cf.turn_to;
               return c.text.includes(`Rok ${r}`);
             });
             return (
               <Button key={r} variant={r === displayRound ? "default" : hasChr ? "secondary" : "ghost"}
-                size="sm" className={`h-7 w-7 p-0 text-xs ${!hasChr && r !== displayRound ? "opacity-40" : ""}`}
-                onClick={() => setViewingRound(r)}>{r}</Button>
+                size="sm" className={`h-7 ${r === 0 ? "px-2" : "w-7 p-0"} text-xs ${!hasChr && r !== displayRound ? "opacity-40" : ""}`}
+                onClick={() => setViewingRound(r)}>{r === 0 ? "⚡0" : r}</Button>
             );
           })}
         </div>
@@ -353,7 +369,9 @@ const ChronicleFeed = ({
                 className={`p-5 rounded-lg border-2 border-primary/30 bg-card shadow-parchment animate-fade-in ${epochClass}`}>
                 <div className="flex items-center gap-2 mb-3">
                   <BookOpen className="h-5 w-5 text-primary" />
-                  <span className="font-display font-semibold">Kronika roku {displayRound}</span>
+                  <span className="font-display font-semibold">
+                    {displayRound === 0 ? "⚡ Prahistorie — Kronika Prvních Věků" : `Kronika roku ${displayRound}`}
+                  </span>
                   <Badge variant="secondary" className="text-xs ml-auto">
                     {EPOCH_LABELS[entry.epoch_style] || entry.epoch_style}
                   </Badge>
