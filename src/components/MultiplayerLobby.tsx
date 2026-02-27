@@ -173,6 +173,8 @@ const MultiplayerLobby = ({ sessionId, roomCode, worldName, maxPlayers, isHost, 
       setMySetupStatus("ready");
       setShowCivWizard(false);
       toast.success("Civilizace připravena!");
+      // Immediately refresh player list so host sees updated status
+      await fetchPlayers();
     } catch (e: any) {
       toast.error("Chyba při ukládání: " + e.message);
     }
