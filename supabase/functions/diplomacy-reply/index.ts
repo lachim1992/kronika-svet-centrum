@@ -191,16 +191,22 @@ Odpověz jako vládce frakce ${aiFaction.faction_name} a vyber diplomatickou akc
         return jsonResponse({ replyText: `${aiFaction.faction_name} mlčí...`, suggestedActionEvent: null, actionsTaken: [], debug: result.debug });
       }
 
-      // Parse AI response
+      // Parse AI response — invokeAI already extracts tool_call arguments into result.data
       let responseData: any;
-      const toolCall = result.data?.tool_calls?.[0];
-      if (toolCall?.function?.arguments) {
-        responseData = JSON.parse(toolCall.function.arguments);
+      if (result.data?.reply_text) {
+        // Tool call was parsed by invokeAI — data IS the diplomatic_response object
+        responseData = result.data;
       } else if (result.data?.content) {
+        // AI returned plain text instead of using the tool
         responseData = { reply_text: result.data.content, disposition_change: 0, action: "none" };
+      } else if (typeof result.data === "object" && result.data) {
+        // Fallback: try to use whatever came back
+        responseData = result.data;
       } else {
         return jsonResponse({ replyText: `${aiFaction.faction_name} mlčí...`, suggestedActionEvent: null, actionsTaken: [] });
       }
+      
+      console.log(`[diplomacy-reply] Parsed response: action=${responseData.action}, disposition=${responseData.disposition_change}, text=${(responseData.reply_text || "").substring(0, 80)}`)
 
       const actionsTaken: string[] = [];
 
