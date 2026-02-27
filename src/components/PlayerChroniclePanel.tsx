@@ -119,6 +119,7 @@ const PlayerChroniclePanel = ({
     try {
       const { data, error } = await supabase.functions.invoke("player-chronicle", {
         body: {
+          sessionId,
           playerName: currentPlayerName,
           civName: civ?.civ_name,
           events: periodEvents,
