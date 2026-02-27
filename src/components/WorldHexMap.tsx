@@ -478,13 +478,23 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
 
   /* ── Camera center ── */
   const cameraCenter = useMemo(() => {
+    // In devMode, center on the midpoint of ALL hexes for a full overview
+    if (devMode && Object.keys(hexes).length > 0) {
+      let sx = 0, sy = 0, n = 0;
+      for (const key of Object.keys(hexes)) {
+        const [q, r] = key.split(",").map(Number);
+        const p = hexToPixel(q, r);
+        sx += p.x; sy += p.y; n++;
+      }
+      return { x: sx / n, y: sy / n };
+    }
     if (currentPos) return hexToPixel(currentPos.q, currentPos.r);
     if (playerCities.length > 0) return hexToPixel(playerCities[0].q, playerCities[0].r);
     if (discoveredCoords.size === 0) return { x: 0, y: 0 };
     let sx = 0, sy = 0, n = 0;
     for (const coordStr of discoveredCoords) { const [q, r] = coordStr.split(",").map(Number); const p = hexToPixel(q, r); sx += p.x; sy += p.y; n++; }
     return { x: sx / n, y: sy / n };
-  }, [currentPos, playerCities, discoveredCoords]);
+  }, [currentPos, playerCities, discoveredCoords, devMode, hexes]);
 
   /* ── Bootstrap ── */
   const bootstrapCityDiscoveries = useCallback(async (cities: CityOnHex[]) => {
