@@ -2246,6 +2246,44 @@ export type Database = {
           },
         ]
       }
+      game_chat: {
+        Row: {
+          channel: string
+          created_at: string
+          id: string
+          message: string
+          player_name: string
+          session_id: string
+          turn_number: number
+        }
+        Insert: {
+          channel?: string
+          created_at?: string
+          id?: string
+          message: string
+          player_name: string
+          session_id: string
+          turn_number?: number
+        }
+        Update: {
+          channel?: string
+          created_at?: string
+          id?: string
+          message?: string
+          player_name?: string
+          session_id?: string
+          turn_number?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "game_chat_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       game_events: {
         Row: {
           actor_type: string
