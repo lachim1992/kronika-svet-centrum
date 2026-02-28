@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import CityManagement from "@/components/CityManagement";
+import VictoryProgressPanel from "@/components/VictoryProgressPanel";
+import OnboardingChecklist from "@/components/OnboardingChecklist";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -255,6 +257,24 @@ const HomeTab = ({
           </Button>
         </div>
       </div>
+
+      {/* Victory Progress */}
+      <VictoryProgressPanel
+        sessionId={sessionId}
+        currentPlayerName={currentPlayerName}
+        currentTurn={currentTurn}
+      />
+
+      {/* Onboarding Checklist */}
+      <OnboardingChecklist
+        sessionId={sessionId}
+        currentPlayerName={currentPlayerName}
+        currentTurn={currentTurn}
+        cities={myCities}
+        armies={stacks}
+        onTabChange={(tab) => {/* handled by parent */}}
+        onDismiss={() => {}}
+      />
 
       {/* Realm Overview Strip */}
       <div className="grid grid-cols-5 gap-3">

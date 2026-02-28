@@ -674,17 +674,34 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
 
   const handleMoveStackToHex = useCallback(async (targetQ: number, targetR: number) => {
     if (!selectedStack || movingStack) return;
-    const { data: stackData } = await supabase.from("military_stacks").select("moved_this_turn").eq("id", selectedStack.id).single();
+    const { data: stackData } = await supabase.from("military_stacks").select("moved_this_turn, name").eq("id", selectedStack.id).single();
     if (stackData?.moved_this_turn) { toast.error("Tato jednotka se již tento tah přesunula!"); return; }
     setMovingStack(true);
     try {
+      // 1. Update position
       const { error } = await supabase.from("military_stacks").update({ hex_q: targetQ, hex_r: targetR, moved_this_turn: true }).eq("id", selectedStack.id);
       if (error) throw error;
+      // 2. Log via event sourcing
+      const { dispatchCommand } = await import("@/lib/commands");
+      await dispatchCommand({
+        sessionId,
+        actor: { name: playerName },
+        commandType: "MOVE_STACK",
+        commandPayload: {
+          stackId: selectedStack.id,
+          stackName: selectedStack.name || stackData?.name || "Armáda",
+        fromQ: selectedStack.q,
+        fromR: selectedStack.r,
+          toQ: targetQ,
+          toR: targetR,
+          chronicleText: `${playerName} přesunul **${selectedStack.name || "armádu"}** na pozici (${targetQ}, ${targetR}).`,
+        },
+      });
       toast.success(`${selectedStack.name} přesunuta na (${targetQ}, ${targetR})`);
       setSelectedStack(null); await fetchStacks();
     } catch (e: any) { toast.error("Přesun selhal: " + (e.message || "neznámá chyba")); }
     finally { setMovingStack(false); }
-  }, [selectedStack, movingStack, fetchStacks]);
+  }, [selectedStack, movingStack, fetchStacks, sessionId, playerName]);
 
   const handleAttackClick = useCallback((q: number, r: number) => {
     if (dragRef.current?.moved) return;
