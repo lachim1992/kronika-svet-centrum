@@ -3410,6 +3410,44 @@ export type Database = {
           },
         ]
       }
+      player_watches: {
+        Row: {
+          created_at: string
+          entity_id: string
+          entity_name: string
+          entity_type: string
+          id: string
+          player_name: string
+          session_id: string
+        }
+        Insert: {
+          created_at?: string
+          entity_id: string
+          entity_name: string
+          entity_type: string
+          id?: string
+          player_name: string
+          session_id: string
+        }
+        Update: {
+          created_at?: string
+          entity_id?: string
+          entity_name?: string
+          entity_type?: string
+          id?: string
+          player_name?: string
+          session_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "player_watches_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           avatar_url: string | null
@@ -4536,6 +4574,47 @@ export type Database = {
             columns: ["to_province_id"]
             isOneToOne: false
             referencedRelation: "provinces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      turn_briefings: {
+        Row: {
+          briefing_text: string
+          created_at: string
+          data_summary: Json | null
+          id: string
+          player_name: string
+          session_id: string
+          turn_number: number
+          watched_reports: Json | null
+        }
+        Insert: {
+          briefing_text: string
+          created_at?: string
+          data_summary?: Json | null
+          id?: string
+          player_name: string
+          session_id: string
+          turn_number: number
+          watched_reports?: Json | null
+        }
+        Update: {
+          briefing_text?: string
+          created_at?: string
+          data_summary?: Json | null
+          id?: string
+          player_name?: string
+          session_id?: string
+          turn_number?: number
+          watched_reports?: Json | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "turn_briefings_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
             referencedColumns: ["id"]
           },
         ]

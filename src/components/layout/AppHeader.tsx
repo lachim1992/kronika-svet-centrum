@@ -172,7 +172,7 @@ const AppHeader = ({ roomCode, currentTurn, worldName, playerName, myRole, curre
                   )}
                 </Button>
               </PopoverTrigger>
-              <PopoverContent className="w-96 p-3" align="end">
+              <PopoverContent className="w-[420px] p-3" align="end">
                 <TurnReportPanel sessionId={currentSessionId} playerName={playerName} currentTurn={currentTurn} />
               </PopoverContent>
             </Popover>
