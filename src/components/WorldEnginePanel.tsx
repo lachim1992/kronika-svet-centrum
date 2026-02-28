@@ -2,7 +2,8 @@ import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Badge } from "@/components/ui/badge";
 import { InfoTip } from "@/components/ui/info-tip";
-import { Zap, TrendingUp, AlertTriangle, Swords, Handshake, Shield, BarChart3, Crown, Flame, ScrollText, Users } from "lucide-react";
+import { Zap, TrendingUp, AlertTriangle, Swords, Handshake, Shield, BarChart3, Crown, Flame, ScrollText, Users, Activity, Building2, Route, Bot, ChevronDown, ChevronUp } from "lucide-react";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 
 interface Props {
   sessionId: string;
@@ -10,16 +11,34 @@ interface Props {
   currentPlayerName: string;
 }
 
+interface CumulativeStats {
+  totalBattles: number;
+  totalEvents: number;
+  totalBuildings: number;
+  totalTradeRoutes: number;
+  totalDeclarations: number;
+  totalChronicleEntries: number;
+  totalRumors: number;
+  totalAIActions: number;
+  totalWars: number;
+  totalTreaties: number;
+  totalRebellions: number;
+  totalCrises: number;
+  totalPopulation: number;
+  totalCities: number;
+  totalArmies: number;
+}
+
 const WorldEnginePanel = ({ sessionId, currentTurn, currentPlayerName }: Props) => {
   const [influence, setInfluence] = useState<any[]>([]);
   const [tensions, setTensions] = useState<any[]>([]);
   const [tickLog, setTickLog] = useState<any | null>(null);
   const [dataTurn, setDataTurn] = useState(0);
+  const [cumulativeStats, setCumulativeStats] = useState<CumulativeStats | null>(null);
+  const [statsOpen, setStatsOpen] = useState(false);
 
   useEffect(() => {
-    const fetch = async () => {
-      // Data is stored for the CLOSED turn (currentTurn - 1).
-      // Try current first, then fall back to previous turn.
+    const fetchData = async () => {
       const lastTurn = currentTurn - 1;
 
       const [infRes, tenRes, logCurr, logPrev] = await Promise.all([
@@ -39,7 +58,6 @@ const WorldEnginePanel = ({ sessionId, currentTurn, currentPlayerName }: Props) 
 
       const tickData = logCurr.data || logPrev.data;
 
-      // If no data for lastTurn, try even older
       if ((infRes.data?.length || 0) === 0 && lastTurn > 1) {
         const { data: olderInf } = await supabase.from("civ_influence").select("*")
           .eq("session_id", sessionId).order("turn_number", { ascending: false }).limit(20);
@@ -63,8 +81,61 @@ const WorldEnginePanel = ({ sessionId, currentTurn, currentPlayerName }: Props) 
       }
 
       setTickLog(tickData);
+
+      // Fetch cumulative stats
+      const [
+        { count: battleCount },
+        { count: eventCount },
+        { count: buildingCount },
+        { count: tradeRouteCount },
+        { count: declarationCount },
+        { count: chronicleCount },
+        { count: rumorCount },
+        { count: aiActionCount },
+        { count: warCount },
+        { count: treatyCount },
+        { count: rebellionCount },
+        { count: crisisCount },
+        { data: citiesData },
+        { count: armyCount },
+      ] = await Promise.all([
+        supabase.from("battles").select("id", { count: "exact", head: true }).eq("session_id", sessionId),
+        supabase.from("game_events").select("id", { count: "exact", head: true }).eq("session_id", sessionId),
+        supabase.from("city_buildings").select("id", { count: "exact", head: true }).eq("session_id", sessionId).eq("status", "completed"),
+        supabase.from("trade_routes" as any).select("id", { count: "exact", head: true }).eq("session_id", sessionId),
+        supabase.from("declarations").select("id", { count: "exact", head: true }).eq("session_id", sessionId),
+        supabase.from("chronicle_entries").select("id", { count: "exact", head: true }).eq("session_id", sessionId),
+        supabase.from("city_rumors").select("id", { count: "exact", head: true }).eq("session_id", sessionId),
+        supabase.from("world_action_log" as any).select("id", { count: "exact", head: true }).eq("session_id", sessionId).eq("action_type", "ai_faction_turn"),
+        supabase.from("war_declarations" as any).select("id", { count: "exact", head: true }).eq("session_id", sessionId),
+        supabase.from("game_events").select("id", { count: "exact", head: true }).eq("session_id", sessionId).eq("event_type", "treaty"),
+        supabase.from("game_events").select("id", { count: "exact", head: true }).eq("session_id", sessionId).eq("event_type", "rebellion"),
+        supabase.from("game_events").select("id", { count: "exact", head: true }).eq("session_id", sessionId).eq("event_type", "crisis"),
+        supabase.from("cities").select("population_total").eq("session_id", sessionId).eq("status", "ok"),
+        supabase.from("military_stacks" as any).select("id", { count: "exact", head: true }).eq("session_id", sessionId).eq("is_active", true),
+      ]);
+
+      const totalPop = (citiesData || []).reduce((s: number, c: any) => s + (c.population_total || 0), 0);
+
+      setCumulativeStats({
+        totalBattles: battleCount || 0,
+        totalEvents: eventCount || 0,
+        totalBuildings: buildingCount || 0,
+        totalTradeRoutes: tradeRouteCount || 0,
+        totalDeclarations: declarationCount || 0,
+        totalChronicleEntries: chronicleCount || 0,
+        totalRumors: rumorCount || 0,
+        totalAIActions: aiActionCount || 0,
+        totalWars: warCount || 0,
+        totalTreaties: treatyCount || 0,
+        totalRebellions: rebellionCount || 0,
+        totalCrises: crisisCount || 0,
+        totalPopulation: totalPop,
+        totalCities: (citiesData || []).length,
+        totalArmies: armyCount || 0,
+      });
     };
-    fetch();
+    fetchData();
   }, [sessionId, currentTurn]);
 
   const maxInfluence = Math.max(1, ...influence.map(i => Number(i.total_influence)));
@@ -208,6 +279,49 @@ const WorldEnginePanel = ({ sessionId, currentTurn, currentPlayerName }: Props) 
             ))}
           </div>
         </section>
+      )}
+
+      {/* ═══ CUMULATIVE GAME STATISTICS ═══ */}
+      {cumulativeStats && (
+        <Collapsible open={statsOpen} onOpenChange={setStatsOpen}>
+          <CollapsibleTrigger className="w-full">
+            <div className="flex items-center gap-2 py-2 cursor-pointer hover:opacity-80">
+              <Activity className="h-4 w-4 text-primary" />
+              <h4 className="font-display font-semibold text-sm">Statistiky celé hry</h4>
+              <InfoTip>Kumulativní přehled všech dat od začátku kampaně — bitvy, události, AI rozhodnutí, budovy, populace.</InfoTip>
+              {statsOpen ? <ChevronUp className="h-3 w-3 ml-auto" /> : <ChevronDown className="h-3 w-3 ml-auto" />}
+            </div>
+          </CollapsibleTrigger>
+          <CollapsibleContent>
+            <div className="game-card p-3 space-y-3">
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                <StatCard icon="⚔️" label="Bitvy" value={cumulativeStats.totalBattles} />
+                <StatCard icon="📜" label="Události" value={cumulativeStats.totalEvents} />
+                <StatCard icon="🏛️" label="Budovy" value={cumulativeStats.totalBuildings} />
+                <StatCard icon="🏙️" label="Města" value={cumulativeStats.totalCities} />
+                <StatCard icon="👥" label="Celk. populace" value={cumulativeStats.totalPopulation.toLocaleString()} />
+                <StatCard icon="🗡️" label="Armády" value={cumulativeStats.totalArmies} />
+                <StatCard icon="🔴" label="Války" value={cumulativeStats.totalWars} />
+                <StatCard icon="🤝" label="Smlouvy" value={cumulativeStats.totalTreaties} />
+                <StatCard icon="🔥" label="Rebelie" value={cumulativeStats.totalRebellions} />
+                <StatCard icon="⚡" label="Krize" value={cumulativeStats.totalCrises} />
+                <StatCard icon="📣" label="Vyhlášení" value={cumulativeStats.totalDeclarations} />
+                <StatCard icon="📖" label="Kroniky" value={cumulativeStats.totalChronicleEntries} />
+                <StatCard icon="💬" label="Zvěsti" value={cumulativeStats.totalRumors} />
+                <StatCard icon="🤖" label="AI akce" value={cumulativeStats.totalAIActions} />
+                <StatCard icon="🛤️" label="Obch. trasy" value={cumulativeStats.totalTradeRoutes} />
+              </div>
+              <div className="text-[10px] text-muted-foreground pt-1 border-t border-border">
+                <p><strong>Mechaniky:</strong></p>
+                <p>• <strong>Stabilita</strong>: baseline 60 %, klesá daněmi/válkou, roste reformami. Pod 30 % = rebelie, pod 15 % = 40 % šance.</p>
+                <p>• <strong>Vliv</strong>: Vojsko 25 % + Obchod 20 % + Území 20 % + Diplomacie 15 % + Zákony 10 % + Reputace 10 %.</p>
+                <p>• <strong>Tenze</strong>: Hranice ×15 + Vojsko ×0.1 + Smlouvy ×20 + Embarga ×15. Prahy: ≥65 krize, ≥88 válka.</p>
+                <p>• <strong>Reputace</strong>: Decay ×0.9/kolo. Aliance +10, zrada -25, válka -15, rebelie -8.</p>
+                <p>• <strong>AI frakce</strong>: Plně autonomní — obchodují, uzavírají pakty, útočí i mezi sebou.</p>
+              </div>
+            </div>
+          </CollapsibleContent>
+        </Collapsible>
       )}
 
       {/* ═══ INFLUENCE LEADERBOARD ═══ */}
@@ -364,5 +478,17 @@ const WorldEnginePanel = ({ sessionId, currentTurn, currentPlayerName }: Props) 
     </div>
   );
 };
+
+function StatCard({ icon, label, value }: { icon: string; label: string; value: string | number }) {
+  return (
+    <div className="flex items-center gap-2 bg-muted/30 rounded-md p-2">
+      <span className="text-sm">{icon}</span>
+      <div>
+        <div className="text-xs text-muted-foreground">{label}</div>
+        <div className="font-display font-bold text-sm">{value}</div>
+      </div>
+    </div>
+  );
+}
 
 export default WorldEnginePanel;
