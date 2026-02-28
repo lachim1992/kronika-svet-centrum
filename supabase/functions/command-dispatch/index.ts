@@ -291,13 +291,7 @@ async function executeCommand(
       }], payload.chronicleText);
 
     case "MOVE_STACK":
-      return insertEventsWithChronicle(supabase, commandId, sessionId, turnNumber, [{
-        ...base,
-        event_type: "military",
-        note: payload.note || `${actor.name} přesunul armádu ${payload.stackName || ""}.`,
-        importance: "normal",
-        reference: payload,
-      }], payload.chronicleText);
+      return await executeMoveStack(supabase, base, actor, payload, commandId, sessionId, turnNumber);
 
     case "GENERIC":
       return insertEvents(supabase, commandId, [{
@@ -512,6 +506,35 @@ async function executeFoundCity(
   }];
 
   return insertEvents(supabase, base.command_id, events, { cityId });
+}
+
+// ═══════════════════════════════════════════
+// MOVE_STACK — update hex position + event
+// ═══════════════════════════════════════════
+
+async function executeMoveStack(
+  supabase: any, base: any, actor: Actor, payload: any,
+  commandId: string, sessionId: string, turnNumber: number,
+): Promise<CommandResult> {
+  const { stackId, toQ, toR } = payload;
+  if (!stackId) return { events: [], error: "Missing stackId" };
+  if (toQ === undefined || toR === undefined) return { events: [], error: "Missing toQ/toR" };
+
+  // Update stack position
+  const { error: moveErr } = await supabase.from("military_stacks")
+    .update({ hex_q: toQ, hex_r: toR })
+    .eq("id", stackId)
+    .eq("session_id", sessionId);
+
+  if (moveErr) return { events: [], error: `Move failed: ${moveErr.message}` };
+
+  return insertEventsWithChronicle(supabase, commandId, sessionId, turnNumber, [{
+    ...base,
+    event_type: "military",
+    note: payload.note || `${actor.name} přesunul armádu ${payload.stackName || ""} na [${toQ},${toR}].`,
+    importance: "normal",
+    reference: payload,
+  }], payload.chronicleText);
 }
 
 // ═══════════════════════════════════════════
