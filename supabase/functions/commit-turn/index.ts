@@ -636,6 +636,19 @@ Deno.serve(async (req) => {
       }
     }
 
+    // ═══════════════════════════════════════════
+    // 10. VICTORY CHECK
+    // ═══════════════════════════════════════════
+    try {
+      const victoryRes = await supabase.functions.invoke("check-victory", {
+        body: { sessionId, playerName },
+      });
+      results.victory = victoryRes.data || {};
+    } catch (e) {
+      console.error("Victory check error:", e);
+      results.victory = { error: (e as Error).message };
+    }
+
     return new Response(JSON.stringify({
       ok: true,
       turnClosed: turnNumber,

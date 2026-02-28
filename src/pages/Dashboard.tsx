@@ -19,6 +19,7 @@ import GameChatFAB from "@/components/GameChatFAB";
 import FoundSettlementDialog from "@/components/FoundSettlementDialog";
 import UprisingDialog from "@/components/UprisingDialog";
 import Chronicle0Overlay from "@/components/Chronicle0Overlay";
+import VictoryScreen from "@/components/VictoryScreen";
 import MultiplayerLobby from "@/components/MultiplayerLobby";
 import HomeTab from "@/pages/game/HomeTab";
 import WorldTab from "@/pages/game/WorldTab";
@@ -61,6 +62,7 @@ const Dashboard = () => {
   const [showFoundDialog, setShowFoundDialog] = useState(false);
   const [chronicle0, setChronicle0] = useState<{ text: string; title: string; sidebar: any } | null>(null);
   const [showChronicle0, setShowChronicle0] = useState(false);
+  const [showVictory, setShowVictory] = useState(false);
 
   const currentTurn = session?.current_turn ?? 0;
 
@@ -359,6 +361,11 @@ const Dashboard = () => {
               onEntityClick={handleEntityClick}
             />
           )}
+          <VictoryScreen
+            sessionId={session.id}
+            open={showVictory}
+            onClose={() => setShowVictory(false)}
+          />
         </>
       }
     >

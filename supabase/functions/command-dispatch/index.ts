@@ -290,6 +290,15 @@ async function executeCommand(
         reference: payload,
       }], payload.chronicleText);
 
+    case "MOVE_STACK":
+      return insertEventsWithChronicle(supabase, commandId, sessionId, turnNumber, [{
+        ...base,
+        event_type: "military",
+        note: payload.note || `${actor.name} přesunul armádu ${payload.stackName || ""}.`,
+        importance: "normal",
+        reference: payload,
+      }], payload.chronicleText);
+
     case "GENERIC":
       return insertEvents(supabase, commandId, [{
         ...base,

@@ -436,6 +436,7 @@ export type Database = {
           id: string
           influence_score: number
           irrigation_level: number
+          is_capital: boolean | null
           labor_allocation: Json
           language_id: string | null
           last_migration_in: number
@@ -501,6 +502,7 @@ export type Database = {
           id?: string
           influence_score?: number
           irrigation_level?: number
+          is_capital?: boolean | null
           labor_allocation?: Json
           language_id?: string | null
           last_migration_in?: number
@@ -566,6 +568,7 @@ export type Database = {
           id?: string
           influence_score?: number
           irrigation_level?: number
+          is_capital?: boolean | null
           labor_allocation?: Json
           language_id?: string | null
           last_migration_in?: number
@@ -2576,6 +2579,9 @@ export type Database = {
           tier: string
           turn_closed_p1: boolean
           turn_closed_p2: boolean
+          victory_data: Json | null
+          victory_status: string | null
+          victory_winner: string | null
           world_seed: string | null
         }
         Insert: {
@@ -2594,6 +2600,9 @@ export type Database = {
           tier?: string
           turn_closed_p1?: boolean
           turn_closed_p2?: boolean
+          victory_data?: Json | null
+          victory_status?: string | null
+          victory_winner?: string | null
           world_seed?: string | null
         }
         Update: {
@@ -2612,6 +2621,9 @@ export type Database = {
           tier?: string
           turn_closed_p1?: boolean
           turn_closed_p2?: boolean
+          victory_data?: Json | null
+          victory_status?: string | null
+          victory_winner?: string | null
           world_seed?: string | null
         }
         Relationships: []
