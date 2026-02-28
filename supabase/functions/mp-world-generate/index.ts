@@ -801,6 +801,52 @@ DŮLEŽITÉ: Hráčské frakce MUSÍ mít isPlayer=true a playerName musí přes
       }
     }
 
+    // Ensure all AI factions also have at least one starting city
+    for (const faction of world?.factions || []) {
+      if (faction.isPlayer) continue; // players handled above
+      const factionPlayer = factionPlayerMap[faction.name] || faction.name;
+      if (playerFirstCity.has(factionPlayer)) continue; // already has a city
+
+      // Find a province for this AI faction
+      let provId: string | null = null;
+      for (const [provName, regName] of Object.entries(provinceRegionMap)) {
+        const region = (world?.regions || []).find((r: any) => r.name === regName);
+        if (region && factionPlayerMap[region.controlledBy] === factionPlayer) {
+          provId = provinceIdMap[provName];
+          break;
+        }
+      }
+      const coords = provId ? placeCityInProvince(provId) : { q: cityIndex * 3, r: 0 };
+
+      const aiFactionCityName = `Sídlo ${faction.name}`;
+      const { data: cityRow } = await sb.from("cities").insert({
+        session_id: sessionId, name: aiFactionCityName,
+        owner_player: factionPlayer, level: "Osada", settlement_level: "HAMLET",
+        founded_round: 1, province_q: Math.round(coords.q), province_r: Math.round(coords.r), province_id: provId,
+        population_total: 800, population_peasants: 640, population_burghers: 120, population_clerics: 40,
+        city_stability: 65, flavor_prompt: `Hlavní sídlo AI frakce ${faction.name}.`,
+      }).select("id").single();
+
+      if (cityRow) {
+        cityIdMap[aiFactionCityName] = cityRow.id;
+        createdCityRows.push({
+          id: cityRow.id, name: aiFactionCityName, ownerPlayer: factionPlayer,
+          q: coords.q, r: coords.r, isPlayer: false,
+        });
+        await sb.from("discoveries").upsert([
+          { session_id: sessionId, player_name: factionPlayer, entity_type: "city", entity_id: cityRow.id, source: "founded" },
+        ], { onConflict: "session_id,player_name,entity_type,entity_id" });
+        await sb.from("game_events").insert({
+          session_id: sessionId, event_type: "founding", player: factionPlayer,
+          note: `AI frakce ${faction.name} založila osadu ${aiFactionCityName}.`, turn_number: 1,
+          confirmed: true, importance: "medium", city_id: cityRow.id,
+        });
+        counters.cities++;
+      }
+      playerFirstCity.add(factionPlayer);
+      cityIndex++;
+    }
+
     // ═══ STEP F: Great Persons with wiki + entity_links ═══
     for (const person of world?.persons || []) {
       const ownerPlayer = factionPlayerMap[person.ownerFaction] || civConfigs[0].player_name;

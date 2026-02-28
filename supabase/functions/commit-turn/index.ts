@@ -130,16 +130,17 @@ Deno.serve(async (req) => {
     }
 
     // ═══════════════════════════════════════════
-    // 3. AI FACTIONS (if AI mode)
+    // 3. AI FACTIONS (all modes — any active AI faction gets a turn)
     // ═══════════════════════════════════════════
-    if (isAIMode) {
-      try {
-        const { data: aiFactions } = await supabase.from("ai_factions")
-          .select("faction_name")
-          .eq("session_id", sessionId)
-          .eq("is_active", true);
+    try {
+      const { data: aiFactions } = await supabase.from("ai_factions")
+        .select("faction_name")
+        .eq("session_id", sessionId)
+        .eq("is_active", true);
+
+      if (aiFactions && aiFactions.length > 0) {
         let processed = 0;
-        for (const faction of (aiFactions || [])) {
+        for (const faction of aiFactions) {
           try {
             await supabase.functions.invoke("ai-faction-turn", {
               body: { sessionId, factionName: faction.faction_name },
@@ -150,10 +151,12 @@ Deno.serve(async (req) => {
           }
         }
         results.aiFactions = { processed };
-      } catch (e) {
-        console.error("AI faction processing error:", e);
-        results.aiFactions = { error: (e as Error).message };
+      } else {
+        results.aiFactions = { skipped: true, reason: "no_active_factions" };
       }
+    } catch (e) {
+      console.error("AI faction processing error:", e);
+      results.aiFactions = { error: (e as Error).message };
     }
 
     // ═══════════════════════════════════════════
@@ -188,20 +191,31 @@ Deno.serve(async (req) => {
       .eq("session_id", sessionId);
 
     // ═══════════════════════════════════════════
-    // 6. PROCESS TURN (economy for all players)
+    // 6. PROCESS TURN (economy for all players + AI factions)
     // ═══════════════════════════════════════════
     try {
       const { data: allPlayers } = await supabase.from("game_players")
         .select("player_name").eq("session_id", sessionId);
+
+      // Also include AI factions that own cities (they need economy processing too)
+      const { data: activeFactions } = await supabase.from("ai_factions")
+        .select("faction_name").eq("session_id", sessionId).eq("is_active", true);
+      const aiFactionNames = (activeFactions || []).map((f: any) => f.faction_name);
+
+      // Combine human players + AI factions, deduplicate
+      const allEconEntities = new Set<string>();
+      for (const p of (allPlayers || [])) allEconEntities.add(p.player_name);
+      for (const name of aiFactionNames) allEconEntities.add(name);
+
       let econProcessed = 0;
-      for (const p of (allPlayers || [])) {
+      for (const name of allEconEntities) {
         const { error: ptErr } = await supabase.functions.invoke("process-turn", {
-          body: { sessionId, playerName: p.player_name },
+          body: { sessionId, playerName: name },
         });
-        if (ptErr) console.warn(`process-turn for ${p.player_name}:`, ptErr.message);
+        if (ptErr) console.warn(`process-turn for ${name}:`, ptErr.message);
         else econProcessed++;
       }
-      results.economy = { processed: econProcessed };
+      results.economy = { processed: econProcessed, entities: allEconEntities.size };
     } catch (e) {
       console.error("Process turn error:", e);
       results.economy = { error: (e as Error).message };
