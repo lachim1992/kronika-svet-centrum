@@ -194,13 +194,7 @@ async function executeCommand(
       }], payload.chronicleText);
 
     case "POST_BATTLE_DECISION":
-      return insertEventsWithChronicle(supabase, commandId, sessionId, turnNumber, [{
-        ...base,
-        event_type: "battle_outcome",
-        note: payload.note || `${actor.name} rozhodl o osudu města po bitvě.`,
-        importance: "critical",
-        reference: payload,
-      }], payload.chronicleText);
+      return await executePostBattleDecision(supabase, base, actor, payload, commandId, sessionId, turnNumber);
 
     case "DECLARE_WAR":
       return await executeDeclareWar(supabase, base, actor, payload, commandId, sessionId, turnNumber);
@@ -557,6 +551,176 @@ async function executeMoveStack(
     importance: "normal",
     reference: payload,
   }], payload.chronicleText);
+}
+
+// ═══════════════════════════════════════════
+// POST_BATTLE_DECISION — Conquer / Pillage / Vassalize
+// ═══════════════════════════════════════════
+
+async function executePostBattleDecision(
+  supabase: any, base: any, actor: Actor, payload: any,
+  commandId: string, sessionId: string, turnNumber: number,
+): Promise<CommandResult> {
+  const { battleId, decision, cityId } = payload;
+  // decision: "conquer" | "pillage" | "vassalize"
+  if (!battleId) return { events: [], error: "Missing battleId" };
+  if (!decision) return { events: [], error: "Missing decision" };
+  if (!cityId) return { events: [], error: "Missing cityId" };
+
+  // Validate battle exists and belongs to actor
+  const { data: battle } = await supabase.from("battles")
+    .select("*").eq("id", battleId).eq("session_id", sessionId).single();
+  if (!battle) return { events: [], error: "Battle not found" };
+  if (battle.post_action !== "pending_decision") {
+    return { events: [], error: "Battle already resolved", status: 409 };
+  }
+
+  // Get the city
+  const { data: city } = await supabase.from("cities")
+    .select("*").eq("id", cityId).eq("session_id", sessionId).single();
+  if (!city) return { events: [], error: "City not found" };
+
+  const previousOwner = city.owner_player;
+  const cityName = city.name;
+  let chronicleText = "";
+  const sideEffects: Record<string, any> = { decision, cityId, previousOwner };
+
+  switch (decision) {
+    case "conquer": {
+      // Transfer city ownership
+      await supabase.from("cities").update({
+        owner_player: actor.name,
+        city_stability: Math.max(5, Math.floor((city.city_stability || 50) * 0.4)),
+        legitimacy: Math.max(0, (city.legitimacy || 50) - 30),
+      }).eq("id", cityId);
+
+      // Transfer province ownership if exists
+      if (city.province_id) {
+        await safeInsert(supabase.from("provinces").update({
+          owner_player: actor.name,
+        }).eq("id", city.province_id).eq("owner_player", previousOwner));
+      }
+
+      // Update wiki
+      await safeInsert(supabase.from("wiki_entries").update({
+        owner_player: actor.name,
+      }).eq("session_id", sessionId).eq("entity_type", "city").eq("entity_id", cityId));
+
+      // Auto-discover for new owner
+      await safeInsert(supabase.from("discoveries").upsert({
+        session_id: sessionId, player_name: actor.name,
+        entity_type: "city", entity_id: cityId, source: "conquered",
+      }, { onConflict: "session_id,player_name,entity_type,entity_id" }));
+
+      chronicleText = `V roce ${turnNumber} dobyl **${actor.name}** město **${cityName}**, které dříve patřilo ${previousOwner}. Nový pořádek se etabluje za cenu stability a legitimity.`;
+      sideEffects.newOwner = actor.name;
+      sideEffects.stabilityAfter = Math.max(5, Math.floor((city.city_stability || 50) * 0.4));
+      break;
+    }
+
+    case "pillage": {
+      // Calculate loot based on city development
+      const lootGold = Math.floor(50 + (city.development_level || 1) * 20 + (city.population_total || 1000) * 0.02);
+      const lootGrain = Math.floor((city.local_grain_reserve || 0) * 0.6);
+      const popLoss = Math.floor((city.population_total || 1000) * 0.25);
+
+      // Devastate the city
+      await supabase.from("cities").update({
+        status: "devastated",
+        devastated_round: turnNumber,
+        ruins_note: `Zpustošeno armádou ${actor.name} v roce ${turnNumber}.`,
+        population_total: Math.max(100, (city.population_total || 1000) - popLoss),
+        population_peasants: Math.max(50, (city.population_peasants || 500) - Math.floor(popLoss * 0.6)),
+        population_burghers: Math.max(20, (city.population_burghers || 200) - Math.floor(popLoss * 0.3)),
+        population_clerics: Math.max(10, (city.population_clerics || 100) - Math.floor(popLoss * 0.1)),
+        city_stability: Math.max(0, (city.city_stability || 50) - 30),
+        local_grain_reserve: Math.max(0, (city.local_grain_reserve || 0) - lootGrain),
+        development_level: Math.max(0, (city.development_level || 1) - 1),
+      }).eq("id", cityId);
+
+      // Give loot to attacker
+      const { data: realm } = await supabase.from("realm_resources")
+        .select("id, gold_reserve, grain_reserve")
+        .eq("session_id", sessionId).eq("player_name", actor.name).maybeSingle();
+      if (realm) {
+        await supabase.from("realm_resources").update({
+          gold_reserve: (realm.gold_reserve || 0) + lootGold,
+          grain_reserve: (realm.grain_reserve || 0) + lootGrain,
+        }).eq("id", realm.id);
+      }
+
+      chronicleText = `V roce ${turnNumber} **${actor.name}** zpustošil město **${cityName}** (${previousOwner}). Kořist: ${lootGold} zlata, ${lootGrain} obilí. Obyvatelé oplakávají ${popLoss} mrtvých.`;
+      sideEffects.lootGold = lootGold;
+      sideEffects.lootGrain = lootGrain;
+      sideEffects.populationLoss = popLoss;
+      break;
+    }
+
+    case "vassalize": {
+      // City stays with owner but becomes vassal — tribute is tracked
+      await supabase.from("cities").update({
+        city_stability: Math.max(10, (city.city_stability || 50) - 15),
+        tags: [...(city.tags || []), `vassal_of:${actor.name}`],
+      }).eq("id", cityId);
+
+      // Create a tribute trade agreement via game_events reference
+      const tributeGold = Math.max(5, Math.floor((city.development_level || 1) * 8));
+
+      chronicleText = `V roce ${turnNumber} přijalo město **${cityName}** (${previousOwner}) vazalství pod **${actor.name}**. Roční tribut: ${tributeGold} zlata. Město si zachovává autonomii, ale pod stínem nového pána.`;
+      sideEffects.tributeGold = tributeGold;
+      sideEffects.vassalOf = actor.name;
+      break;
+    }
+
+    default:
+      return { events: [], error: `Unknown decision: ${decision}` };
+  }
+
+  // Mark battle as resolved
+  await supabase.from("battles").update({
+    post_action: decision,
+    resolved_at: new Date().toISOString(),
+  }).eq("id", battleId);
+
+  // Add city rumor
+  await safeInsert(supabase.from("city_rumors").insert({
+    session_id: sessionId, city_id: cityId, city_name: cityName,
+    turn_number: turnNumber, created_by: "system",
+    tone_tag: decision === "conquer" ? "dramatic" : decision === "pillage" ? "alarming" : "tense",
+    text: decision === "conquer"
+      ? `Město ${cityName} padlo do rukou ${actor.name}! Nový vladař přebírá vládu.`
+      : decision === "pillage"
+      ? `Hrůza! Armáda ${actor.name} zpustošila ${cityName}. Ruiny a popel jsou vše, co zbylo.`
+      : `Město ${cityName} se poddalo ${actor.name} jako vazal. Tribut bude placen výměnou za přežití.`,
+  }));
+
+  // World feed item
+  await safeInsert(supabase.from("world_feed_items").insert({
+    session_id: sessionId, turn_number: turnNumber, feed_type: "war",
+    text: chronicleText, player_source: actor.name,
+    related_entity_type: "city", related_entity_id: cityId,
+  }));
+
+  // Faction loyalty impacts in the city
+  if (decision !== "vassalize") {
+    const { data: factions } = await supabase.from("city_factions")
+      .select("id, loyalty, satisfaction").eq("city_id", cityId);
+    for (const f of (factions || [])) {
+      await supabase.from("city_factions").update({
+        loyalty: Math.max(0, (f.loyalty || 50) - (decision === "pillage" ? 25 : 15)),
+        satisfaction: Math.max(0, (f.satisfaction || 50) - (decision === "pillage" ? 30 : 10)),
+      }).eq("id", f.id);
+    }
+  }
+
+  return insertEventsWithChronicle(supabase, commandId, sessionId, turnNumber, [{
+    ...base,
+    event_type: "battle_outcome",
+    city_id: cityId,
+    note: `${actor.name} rozhodl o osudu města ${cityName}: ${decision === "conquer" ? "Dobytí" : decision === "pillage" ? "Drancování" : "Vazalství"}.`,
+    importance: "critical",
+    reference: { battleId, decision, cityId, previousOwner, ...sideEffects },
+  }], chronicleText, sideEffects);
 }
 
 // ═══════════════════════════════════════════
