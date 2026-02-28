@@ -210,6 +210,9 @@ Deno.serve(async (req) => {
       { data: allFactions },
       { data: allTensionData },
       { data: tradeRoutes },
+      { data: myPastActions },
+      { data: pendingPactEvents },
+      { data: myProvinces },
     ] = await Promise.all([
       supabase.from("cities").select("id, name, level, status, population_total, city_stability, settlement_level, military_garrison, province_q, province_r")
         .eq("session_id", sessionId).eq("owner_player", factionName),
@@ -255,6 +258,18 @@ Deno.serve(async (req) => {
       // Trade routes
       supabase.from("trade_routes").select("player_a, player_b, resource_type, amount, route_safety, is_active")
         .eq("session_id", sessionId).eq("is_active", true),
+      // AI MEMORY: what did this faction do last turn?
+      supabase.from("world_action_log").select("action_type, description, turn_number")
+        .eq("session_id", sessionId).eq("player_name", factionName)
+        .gte("turn_number", Math.max(1, turn - 2)).order("turn_number", { ascending: false }).limit(15),
+      // Pending pact proposals directed at this faction
+      supabase.from("game_events").select("id, event_type, player, note, reference, turn_number")
+        .eq("session_id", sessionId).eq("confirmed", true)
+        .in("event_type", ["treaty"])
+        .gte("turn_number", Math.max(1, turn - 1)).limit(20),
+      // Provinces for settlement founding
+      supabase.from("provinces").select("id, name, owner_player, hex_q, hex_r")
+        .eq("session_id", sessionId),
     ]);
 
     // Fetch recent diplomacy messages for all rooms involving this faction
@@ -451,6 +466,14 @@ ${JSON.stringify((recentEvents || []).slice(0, 10), null, 2)}
 
 STAV SVĚTA: ${worldSummary?.summary_text || "Žádný souhrn"}
 
+═══ TVOJE MINULÉ AKCE (paměť) ═══
+${(myPastActions || []).map((a: any) => `  [Rok ${a.turn_number}] ${a.action_type}: ${a.description}`).join("\n") || "žádné záznamy"}
+
+═══ ZAKLÁDÁNÍ OSAD ═══
+Můžeš založit novou osadu na volném hexu ve vlastní provincii. Stojí: 200 zlata, 50 dřeva, 30 kamene.
+Tvé provincie: ${(myProvinces || []).map((p: any) => `${p.name} [${p.hex_q},${p.hex_r}]`).join(", ") || "žádné"}
+Volné hexy existují, pokud v provincii není přelidněno.
+
 Rozhodni, co frakce udělá v tomto kole. ${milMetrics.warState === "war" ? "JSTE VE VÁLCE — PRIORITA: nasadit armády, útočit na města, bránit vlastní území!" : ""} Buď strategický a situační. Zvažuj akce vůči VŠEM hráčům i AI frakcím — obchod, pakty, společné útoky.`;
 
     // ── Call AI ──
@@ -458,7 +481,7 @@ Rozhodni, co frakce udělá v tomto kole. ${milMetrics.warState === "war" ? "JST
       method: "POST",
       headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
       body: JSON.stringify({
-        model: "google/gemini-3-flash-preview",
+        model: "google/gemini-2.5-pro",
         messages: [
           { role: "system", content: systemPrompt },
           { role: "user", content: userPrompt },
@@ -494,6 +517,7 @@ Rozhodni, co frakce udělá v tomto kole. ${milMetrics.warState === "war" ? "JST
                           "issue_declaration",
                           "propose_trade_pact",
                           "propose_alliance_pact",
+                          "found_settlement",
                           "trade",
                           "explore",
                         ],
@@ -507,6 +531,9 @@ Rozhodni, co frakce udělá v tomto kole. ${milMetrics.warState === "war" ? "JST
                       stackId: { type: "string", description: "ID existujícího stacku (pro deploy/move/attack)" },
                       stackName: { type: "string", description: "Jméno stacku (alternativa k ID)" },
                       targetStackName: { type: "string", description: "Jméno nepřátelského stacku (pro attack_target na stack)" },
+                      targetHexQ: { type: "number", description: "Hex Q souřadnice (pro found_settlement)" },
+                      targetHexR: { type: "number", description: "Hex R souřadnice (pro found_settlement)" },
+                      settlementName: { type: "string", description: "Jméno nové osady (pro found_settlement)" },
                       mobilizationRate: { type: "number", description: "Nová mobilizační sazba 0.0-0.6 (pro set_mobilization)" },
                       messageText: { type: "string", description: "Text diplomatické zprávy / ultimáta / prohlášení" },
                       peaceConditions: {
@@ -549,8 +576,11 @@ Rozhodni, co frakce udělá v tomto kole. ${milMetrics.warState === "war" ? "JST
     const result = JSON.parse(toolCall.function.arguments);
     const executedActions: any[] = [];
 
+    // ── Auto-accept incoming pacts from other AI factions ──
+    await autoAcceptPendingPacts(supabase, sessionId, factionName, faction, allFactions || [], turn);
+
     // ── Execute each action ──
-    for (const action of (result.actions || []).slice(0, 6)) {
+    for (const action of (result.actions || []).slice(0, 8)) {
       try {
         const executed = await executeAction(
           supabase, supabaseUrl, supabaseKey, sessionId, turn, factionName, action, faction,
@@ -583,14 +613,7 @@ Rozhodni, co frakce udělá v tomto kole. ${milMetrics.warState === "war" ? "JST
       description: `AI frakce ${factionName}: ${executedActions.filter(a => a.executed).length}/${executedActions.length} akcí [${milMetrics.warState}]. ${result.internalThought || ""}`,
     }).then(() => {}, () => {});
 
-    // ── Process economy for AI faction ──
-    try {
-      await supabase.functions.invoke("process-turn", {
-        body: { sessionId, playerName: factionName },
-      });
-    } catch (ptErr) {
-      console.warn("process-turn for AI faction failed:", ptErr);
-    }
+    // Economy is now handled centrally by commit-turn (no duplicate processing)
 
     return json({
       faction: factionName,
@@ -1045,6 +1068,56 @@ async function executeAction(
       return "ok";
     }
 
+    // ─── FOUND SETTLEMENT ───
+    case "found_settlement": {
+      const name = action.settlementName || `${factionName} Osada ${turn}`;
+      const hexQ = action.targetHexQ;
+      const hexR = action.targetHexR;
+
+      // Cost check
+      if (resources.gold < 200 || resources.wood < 50 || resources.stone < 30) return "insufficient_resources";
+      if (hexQ === undefined || hexR === undefined) return "missing_hex_coords";
+
+      // Check hex is not occupied by another city
+      const existingCity = allCities.find((c: any) => c.province_q === hexQ && c.province_r === hexR);
+      if (existingCity) return "hex_occupied";
+
+      // Deduct resources
+      await supabase.from("realm_resources").update({
+        gold_reserve: resources.gold - 200,
+        wood_reserve: resources.wood - 50,
+        stone_reserve: resources.stone - 30,
+      }).eq("session_id", sessionId).eq("player_name", factionName);
+
+      // Find province for this hex
+      const province = (myProvinces || []).find((p: any) => p.owner_player === factionName);
+
+      // Create settlement via command-dispatch
+      await invokeFunction(supabaseUrl, supabaseKey, "command-dispatch", {
+        sessionId, turnNumber: turn,
+        actor: { name: factionName, type: "ai_faction" },
+        commandType: "FOUND_CITY",
+        commandPayload: {
+          cityName: name,
+          provinceQ: hexQ, provinceR: hexR,
+          provinceId: province?.id || null,
+          flavorPrompt: action.narrativeNote || `Osada založená frakcí ${factionName}.`,
+          note: action.description,
+          chronicleText: action.narrativeNote || `Frakce ${factionName} založila novou osadu ${name} na souřadnicích [${hexQ},${hexR}].`,
+        },
+        commandId,
+      });
+
+      // Chronicle entry
+      await supabase.from("chronicle_entries").insert({
+        session_id: sessionId,
+        text: action.narrativeNote || `V roce ${turn} frakce ${factionName} založila nové sídlo ${name}. Osadníci se vydali na dlouhou cestu k novému domovu.`,
+        source_type: "ai_faction", turn_from: turn, turn_to: turn,
+      }).then(() => {}, () => {});
+
+      return "ok";
+    }
+
     // ─── TRADE / EXPLORE (legacy) ───
     case "trade":
     case "explore":
@@ -1057,6 +1130,57 @@ async function executeAction(
         importance: "normal", truth_state: "canon", actor_type: "ai_faction",
       }).then(() => {}, () => {});
       return "ok";
+    }
+  }
+}
+
+// ═══════════════════════════════════════════
+// AUTO-ACCEPT PACTS (AI-to-AI)
+// ═══════════════════════════════════════════
+
+async function autoAcceptPendingPacts(
+  supabase: any, sessionId: string, factionName: string, faction: any,
+  allFactions: any[], turn: number,
+) {
+  // Check unread diplomacy messages with pact proposals from other AI factions
+  const { data: rooms } = await supabase.from("diplomacy_rooms")
+    .select("id, participant_a, participant_b")
+    .eq("session_id", sessionId)
+    .or(`participant_a.eq.${factionName},participant_b.eq.${factionName}`);
+
+  if (!rooms || rooms.length === 0) return;
+
+  const aiFactionNames = allFactions.map((f: any) => f.faction_name);
+
+  for (const room of rooms) {
+    const otherParty = room.participant_a === factionName ? room.participant_b : room.participant_a;
+    // Only auto-accept from other AI factions
+    if (!aiFactionNames.includes(otherParty)) continue;
+
+    // Check disposition toward this faction
+    const disposition = (faction.disposition || {})[otherParty] ?? 0;
+    const otherFaction = allFactions.find((f: any) => f.faction_name === otherParty);
+    const otherDisposition = otherFaction ? ((otherFaction.disposition || {})[factionName] ?? 0) : 0;
+
+    // Auto-accept trade pacts if disposition > 20 for both parties
+    if (disposition > 20 || otherDisposition > 20) {
+      // Check for recent pact proposals
+      const { data: recentMsgs } = await supabase.from("diplomacy_messages")
+        .select("message_text, sender, created_at")
+        .eq("room_id", room.id).eq("sender", otherParty)
+        .order("created_at", { ascending: false }).limit(3);
+
+      for (const msg of (recentMsgs || [])) {
+        if (msg.message_text?.includes("[OBCHODNÍ DOHODA]") || msg.message_text?.includes("[OBRANNÝ PAKT]")) {
+          // Send acceptance message
+          await supabase.from("diplomacy_messages").insert({
+            room_id: room.id, sender: factionName, sender_type: "ai_faction",
+            message_text: `[PŘIJATO] ${factionName} přijímá návrh od ${otherParty}. Ať tato dohoda prospívá oběma stranám.`,
+            secrecy: "PRIVATE",
+          });
+          break; // One acceptance per room per turn
+        }
+      }
     }
   }
 }
