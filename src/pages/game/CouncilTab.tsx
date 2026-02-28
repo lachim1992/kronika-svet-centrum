@@ -10,6 +10,7 @@ import {
   Crown, Coins, Shield, Swords, Users, Eye, Church, Scroll, ScrollText,
   ChevronRight, Loader2, Sparkles, AlertTriangle, CheckCircle, Gavel,
   TrendingUp, TrendingDown, Minus, ThumbsUp, ThumbsDown, MinusCircle,
+  Landmark, ArrowRight, Zap, Target,
 } from "lucide-react";
 import { toast } from "sonner";
 import { FACTION_TYPES } from "@/lib/cityGovernance";
@@ -70,6 +71,14 @@ const CouncilTab = ({
   const [allFactions, setAllFactions] = useState<any[]>([]);
   const [factionVotes, setFactionVotes] = useState<FactionVote[]>([]);
 
+  // Council session state
+  const [councilSession, setCouncilSession] = useState<any>(null);
+  const [councilLoading, setCouncilLoading] = useState(false);
+  const [showCouncilSession, setShowCouncilSession] = useState(false);
+  const [councilUsedThisTurn, setCouncilUsedThisTurn] = useState(false);
+  const [selectedDirection, setSelectedDirection] = useState<string | null>(null);
+  const [enactingAgenda, setEnactingAgenda] = useState<number | null>(null);
+
   // Law draft generation state
   const [lawDraft, setLawDraft] = useState<{ lawName: string; fullText: string; effects: { type: string; value: number; label: string }[] } | null>(null);
   const [generatingLaw, setGeneratingLaw] = useState(false);
@@ -92,6 +101,18 @@ const CouncilTab = ({
       .in("city_id", cityIds)
       .then(({ data }) => setAllFactions(data || []));
   }, [myCities]);
+
+  // Check if council already used this turn
+  useEffect(() => {
+    supabase
+      .from("council_evaluations")
+      .select("id")
+      .eq("session_id", sessionId)
+      .eq("player_name", currentPlayerName)
+      .eq("round_number", currentTurn)
+      .maybeSingle()
+      .then(({ data }) => setCouncilUsedThisTurn(!!data));
+  }, [sessionId, currentPlayerName, currentTurn]);
 
   // Faction demands across all cities
   const factionDemands = useMemo(() =>
@@ -231,7 +252,132 @@ const CouncilTab = ({
     return <Minus className="h-3 w-3 text-muted-foreground" />;
   };
 
-  // ── AI Decree Preview ──
+  // ── Convene Council Session ──
+  const handleConveneCouncil = async () => {
+    if (councilLoading || councilUsedThisTurn) return;
+    setCouncilLoading(true);
+    setCouncilSession(null);
+    setSelectedDirection(null);
+    try {
+      const { data, error } = await supabase.functions.invoke("council-session", {
+        body: { sessionId, playerName: currentPlayerName, currentTurn },
+      });
+      if (error) {
+        let body: any = null;
+        try {
+          if (error.context && typeof error.context === "object" && "json" in error.context) {
+            body = await (error.context as Response).json();
+          }
+        } catch { /* ignore */ }
+        const msg = body?.error || error.message;
+        if (msg?.includes("již v tomto kole")) {
+          setCouncilUsedThisTurn(true);
+          toast.info("Rada již v tomto kole zasedala.");
+        } else {
+          toast.error(`Svolání rady selhalo: ${msg}`);
+        }
+        setCouncilLoading(false);
+        return;
+      }
+      setCouncilSession(data);
+      setShowCouncilSession(true);
+      setCouncilUsedThisTurn(true);
+      toast.success("👑 Královská rada zasedla!");
+    } catch (e) {
+      console.error(e);
+      toast.error("Neočekávaná chyba při svolání rady");
+    }
+    setCouncilLoading(false);
+  };
+
+  // ── Enact suggested decree from agenda ──
+  const handleEnactAgendaDecree = async (agendaItem: any, idx: number) => {
+    if (enactingAgenda !== null) return;
+    setEnactingAgenda(idx);
+    try {
+      const decree = agendaItem.suggestedDecree;
+      // Write declaration
+      await supabase.from("declarations").insert({
+        session_id: sessionId,
+        player_name: currentPlayerName,
+        original_text: decree.decreeText,
+        declaration_type: decree.decreeType,
+        turn_number: currentTurn,
+        status: "published",
+        title: `Dekret rady: ${agendaItem.title}`,
+        effects: decree.effects || [],
+      });
+
+      // Apply faction impacts
+      const votes = computeFactionReactions(allFactions, decree.decreeType, decree.effects);
+      if (votes.length > 0) {
+        const impacts = computeDecreeImpacts(votes);
+        for (const faction of allFactions) {
+          const impact = impacts[faction.faction_type];
+          if (!impact) continue;
+          await supabase.from("city_factions").update({
+            satisfaction: Math.max(0, Math.min(100, faction.satisfaction + impact.satisfaction)),
+            loyalty: Math.max(0, Math.min(100, faction.loyalty + impact.loyalty)),
+          }).eq("id", faction.id);
+        }
+      }
+
+      // Log
+      await supabase.from("world_action_log").insert({
+        session_id: sessionId,
+        player_name: currentPlayerName,
+        turn_number: currentTurn,
+        action_type: "decree",
+        description: `${currentPlayerName} přijal doporučení rady: ${agendaItem.title}`,
+        metadata: { source: "council_session", decree_type: decree.decreeType, effects: decree.effects },
+      });
+
+      toast.success(`📜 Dekret "${agendaItem.title}" vyhlášen!`);
+      onRefetch();
+    } catch (e) {
+      console.error(e);
+      toast.error("Vyhlášení dekretu selhalo");
+    }
+    setEnactingAgenda(null);
+  };
+
+  // ── Apply strategic direction ──
+  const handleApplyDirection = async (direction: any) => {
+    setSelectedDirection(direction.id);
+    try {
+      // Log strategic direction
+      await supabase.from("world_action_log").insert({
+        session_id: sessionId,
+        player_name: currentPlayerName,
+        turn_number: currentTurn,
+        action_type: "strategic_direction",
+        description: `${currentPlayerName} zvolil strategický směr: ${direction.label}`,
+        metadata: { direction_id: direction.id, effects: direction.effects },
+      });
+
+      // Apply effects as temporary bonuses via entity_traits
+      for (const eff of (direction.effects || [])) {
+        await supabase.from("entity_traits").insert({
+          session_id: sessionId,
+          entity_type: "empire",
+          entity_name: `Směr: ${direction.label}`,
+          trait_category: "strategic_direction",
+          trait_text: eff.label,
+          description: direction.description,
+          source_type: "Council",
+          source_turn: currentTurn,
+          intensity: Math.abs(eff.value) > 3 ? 3 : Math.max(1, Math.abs(eff.value)),
+          is_active: true,
+        } as any);
+      }
+
+      toast.success(`🧭 Strategický směr zvolen: ${direction.label}`);
+    } catch (e) {
+      console.error(e);
+      toast.error("Uložení směru selhalo");
+    }
+  };
+
   const handleDecreePreview = async () => {
     if (!decreeText.trim()) return;
     setPreviewLoading(true);
@@ -434,11 +580,21 @@ const CouncilTab = ({
             <h2 className="font-decorative text-lg text-foreground tracking-wide">Královská rada</h2>
             <p className="text-[11px] text-muted-foreground font-body">Poradní sbor vládce • Kolo {currentTurn}</p>
           </div>
-          <div className="ml-auto">
+          <div className="ml-auto flex gap-2">
+            <Button
+              size="sm"
+              variant="default"
+              onClick={handleConveneCouncil}
+              disabled={councilLoading || councilUsedThisTurn}
+              className="text-xs"
+            >
+              {councilLoading ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : <Landmark className="h-3.5 w-3.5 mr-1" />}
+              {councilUsedThisTurn ? "Rada zasedla" : "Svolat radu"}
+            </Button>
             <Button
               size="sm"
               variant={showDecree ? "default" : "outline"}
-              onClick={() => setShowDecree(!showDecree)}
+              onClick={() => { setShowDecree(!showDecree); setShowCouncilSession(false); }}
               className="text-xs"
             >
               <Gavel className="h-3.5 w-3.5 mr-1" />
@@ -485,7 +641,167 @@ const CouncilTab = ({
         {/* RIGHT: Report / Decree Panel */}
         <div className="flex-1 min-w-0">
           <ScrollArea className="h-[calc(100vh-320px)]">
-            {showDecree ? (
+            {showCouncilSession && councilSession ? (
+              /* ── COUNCIL SESSION RESULTS ── */
+              <div className="manuscript-card p-5 space-y-5">
+                {/* Overall assessment */}
+                <div className="flex items-center gap-3 mb-2">
+                  <Landmark className="h-5 w-5 text-royal-purple" />
+                  <h3 className="font-decorative text-base text-foreground">Zasedání rady — Kolo {currentTurn}</h3>
+                  <Badge variant="outline" className={`ml-auto text-[10px] font-display
+                    ${councilSession.riskLevel === "Kritické" || councilSession.riskLevel === "Vysoké" ? "border-destructive/40 text-seal-red" :
+                      councilSession.riskLevel === "Střední" ? "border-primary/40 text-illuminated" :
+                      "border-accent/40 text-forest-green"}`}
+                  >
+                    Riziko: {councilSession.riskLevel}
+                  </Badge>
+                </div>
+
+                <div className="p-3 rounded-lg bg-primary/5 border border-primary/20">
+                  <p className="text-sm font-body leading-relaxed">{councilSession.overallAssessment}</p>
+                </div>
+
+                {/* Advisor reports */}
+                {councilSession.advisorReports?.length > 0 && (
+                  <>
+                    <div className="scroll-divider"><span className="text-[10px]">👥 Hlášení rádců 👥</span></div>
+                    <div className="space-y-2">
+                      {councilSession.advisorReports.map((report: any, i: number) => {
+                        const advisorIcons: Record<string, React.ElementType> = {
+                          economy: Coins, stability: Shield, military: Swords, diplomacy: Users, culture: Church,
+                        };
+                        const Icon = advisorIcons[report.advisorRole] || Crown;
+                        return (
+                          <div key={i} className="p-3 rounded-lg border border-border bg-card">
+                            <div className="flex items-center gap-2 mb-1.5">
+                              <Icon className="h-4 w-4 text-illuminated" />
+                              <span className="text-xs font-display font-semibold">{report.advisorTitle}</span>
+                            </div>
+                            <p className="text-[11px] font-body text-foreground mb-1">{report.summary}</p>
+                            {report.keyIssues?.length > 0 && (
+                              <div className="flex gap-1 flex-wrap mb-1">
+                                {report.keyIssues.map((issue: string, j: number) => (
+                                  <Badge key={j} variant="outline" className="text-[9px]">{issue}</Badge>
+                                ))}
+                              </div>
+                            )}
+                            <p className="text-[10px] text-muted-foreground italic">💡 {report.recommendation}</p>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </>
+                )}
+
+                {/* Priority agenda */}
+                {councilSession.priorityAgenda?.length > 0 && (
+                  <>
+                    <div className="scroll-divider"><span className="text-[10px]">🎯 Prioritní agenda 🎯</span></div>
+                    <div className="space-y-3">
+                      {councilSession.priorityAgenda.map((item: any, i: number) => (
+                        <div key={i} className="p-4 rounded-lg border-2 border-primary/20 bg-card space-y-2">
+                          <div className="flex items-center gap-2">
+                            <div className="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center">
+                              <span className="text-xs font-display font-bold text-primary">#{item.priority}</span>
+                            </div>
+                            <h4 className="font-display font-semibold text-sm flex-1">{item.title}</h4>
+                            <Target className="h-4 w-4 text-illuminated shrink-0" />
+                          </div>
+                          <p className="text-[11px] font-body text-muted-foreground">{item.description}</p>
+
+                          {/* Suggested decree */}
+                          <div className="p-3 rounded-lg bg-muted/30 border border-border space-y-2">
+                            <div className="flex items-center gap-2">
+                              <Gavel className="h-3.5 w-3.5 text-primary" />
+                              <span className="text-[10px] font-display font-semibold uppercase tracking-wider text-muted-foreground">Navržený dekret</span>
+                              <Badge variant="outline" className="text-[9px] ml-auto">
+                                {DECREE_TYPES.find(d => d.value === item.suggestedDecree?.decreeType)?.label || item.suggestedDecree?.decreeType}
+                              </Badge>
+                            </div>
+                            <p className="text-xs font-body">{item.suggestedDecree?.decreeText}</p>
+                            {item.suggestedDecree?.effects?.length > 0 && (
+                              <div className="flex gap-1.5 flex-wrap">
+                                {item.suggestedDecree.effects.map((eff: any, j: number) => (
+                                  <Badge key={j} variant="outline" className={`text-[9px] ${eff.value > 0 ? "text-forest-green border-accent/30" : "text-seal-red border-destructive/30"}`}>
+                                    {eff.value > 0 ? "+" : ""}{eff.value} {eff.label}
+                                  </Badge>
+                                ))}
+                              </div>
+                            )}
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="text-xs w-full"
+                              disabled={enactingAgenda !== null}
+                              onClick={() => handleEnactAgendaDecree(item, i)}
+                            >
+                              {enactingAgenda === i ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <CheckCircle className="h-3 w-3 mr-1" />}
+                              Přijmout a vyhlásit dekret
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                )}
+
+                {/* Strategic direction */}
+                {councilSession.strategicDirection?.options?.length > 0 && (
+                  <>
+                    <div className="scroll-divider"><span className="text-[10px]">🧭 Strategický směr 🧭</span></div>
+                    {councilSession.strategicDirection.recommendation && (
+                      <div className="p-3 rounded-lg bg-muted/30 border border-border">
+                        <p className="text-[11px] font-body italic text-muted-foreground">
+                          💡 Doporučení rady: {councilSession.strategicDirection.recommendation}
+                        </p>
+                      </div>
+                    )}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                      {councilSession.strategicDirection.options.map((dir: any) => (
+                        <button
+                          key={dir.id}
+                          onClick={() => !selectedDirection && handleApplyDirection(dir)}
+                          disabled={!!selectedDirection}
+                          className={`p-3 rounded-lg border-2 text-left transition-all
+                            ${selectedDirection === dir.id
+                              ? "border-primary bg-primary/10"
+                              : selectedDirection
+                                ? "border-border opacity-50 cursor-not-allowed"
+                                : "border-border hover:border-primary/50 hover:bg-primary/5 cursor-pointer"
+                            }`}
+                        >
+                          <div className="flex items-center gap-2 mb-1">
+                            <ArrowRight className={`h-3.5 w-3.5 ${selectedDirection === dir.id ? "text-primary" : "text-muted-foreground"}`} />
+                            <span className="font-display font-semibold text-xs">{dir.label}</span>
+                            {selectedDirection === dir.id && <CheckCircle className="h-3 w-3 text-primary ml-auto" />}
+                          </div>
+                          <p className="text-[10px] text-muted-foreground font-body mb-1.5">{dir.description}</p>
+                          {dir.effects?.length > 0 && (
+                            <div className="flex gap-1 flex-wrap">
+                              {dir.effects.map((eff: any, j: number) => (
+                                <Badge key={j} variant="outline" className={`text-[8px] ${eff.value > 0 ? "text-forest-green" : "text-seal-red"}`}>
+                                  {eff.value > 0 ? "+" : ""}{eff.value} {eff.label}
+                                </Badge>
+                              ))}
+                            </div>
+                          )}
+                          {dir.supportingAdvisors?.length > 0 && (
+                            <p className="text-[9px] text-muted-foreground mt-1">Podporují: {dir.supportingAdvisors.join(", ")}</p>
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                )}
+
+                {/* Back button */}
+                <div className="flex justify-center pt-2">
+                  <Button size="sm" variant="outline" onClick={() => setShowCouncilSession(false)} className="text-xs">
+                    Zpět k rádcům
+                  </Button>
+                </div>
+              </div>
+            ) : showDecree ? (
               /* ── DECREE PLANNING ── */
               <div className="manuscript-card p-5 space-y-5">
                 <div className="flex items-center gap-3 mb-2">
