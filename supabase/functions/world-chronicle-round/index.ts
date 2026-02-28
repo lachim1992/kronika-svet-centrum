@@ -6,7 +6,7 @@ Deno.serve(async (req) => {
   try {
     const {
       sessionId, round, confirmedEvents, annotations, worldMemories,
-      battles, declarations, completedBuildings, rumors,
+      battles, declarations, completedBuildings, rumors, playerReactions,
     } = await req.json();
 
     if (!sessionId) return errorResponse("Missing sessionId", 400);
@@ -52,6 +52,10 @@ Deno.serve(async (req) => {
       `ZVĚST z ${r.city_name} [${r.tone_tag}]: ${r.text}`
     ).join("\n");
 
+    const reactionsText = (playerReactions || []).map((r: any) =>
+      `REAKCE HRÁČE ${r.player}${r.event_type ? ` na [${r.event_type}]` : ""}: "${r.text}"`
+    ).join("\n");
+
     const systemPrompt = `Jsi kronikář civilizační deskové hry.
 
 ÚKOL: Vygeneruj zápis kroniky pro rok ${round}. Tento zápis se stane trvalou součástí dějin světa.
@@ -62,7 +66,8 @@ PRAVIDLA:
 - Prohlášení a edikty hráčů cituj nebo parafrázuj jako oficiální dokumenty.
 - Dokončené stavby zaznamenej jako monumentální počiny s odkazem na jejich mýtus.
 - Zvěsti a šuškandu zapracuj jako hlasy lidu nebo atmosféru ulice.
-- Zapracuj poznámky hráčů jako citace, kontext nebo perspektivu do příběhu.
+- Zapracuj poznámky a anotace hráčů jako citace, kontext nebo perspektivu do příběhu.
+- REAKCE HRÁČŮ (komentáře, reakce na události) zapracuj jako hlasy účastníků, diplomatické poznámky, výroky vládců nebo městskou šuškandu.
 - Zohledni existující paměti světa pro kontinuitu.
 - NESMÍŠ vymýšlet nové události — pouze narativně zpracuj dodaná data.
 - Navrhni 0-3 nové paměti světa vyplývající z událostí roku.
@@ -89,6 +94,9 @@ ${rumorsText || "žádné zvěsti"}
 
 POZNÁMKY HRÁČŮ:
 ${annotationsText || "žádné poznámky"}
+
+REAKCE A KOMENTÁŘE HRÁČŮ:
+${reactionsText || "žádné reakce"}
 
 PAMĚTI SVĚTA:
 ${memoriesText || "žádné paměti"}`;
