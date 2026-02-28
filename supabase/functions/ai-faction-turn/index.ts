@@ -207,6 +207,9 @@ Deno.serve(async (req) => {
       { data: diplomacyRooms },
       { data: civ },
       { data: buildingTemplates },
+      { data: allFactions },
+      { data: allTensionData },
+      { data: tradeRoutes },
     ] = await Promise.all([
       supabase.from("cities").select("id, name, level, status, population_total, city_stability, settlement_level, military_garrison, province_q, province_r")
         .eq("session_id", sessionId).eq("owner_player", factionName),
@@ -243,6 +246,15 @@ Deno.serve(async (req) => {
         .eq("session_id", sessionId).eq("player_name", factionName).maybeSingle(),
       supabase.from("building_templates").select("name, category, cost_wood, cost_stone, cost_iron, cost_wealth, required_settlement_level")
         .limit(20),
+      // NPC-NPC: fetch all AI factions for inter-faction awareness
+      supabase.from("ai_factions").select("faction_name, personality, disposition, goals, is_active")
+        .eq("session_id", sessionId).eq("is_active", true),
+      // All tensions (not just involving this faction)
+      supabase.from("civ_tensions").select("player_a, player_b, total_tension, crisis_triggered")
+        .eq("session_id", sessionId).order("turn_number", { ascending: false }).limit(50),
+      // Trade routes
+      supabase.from("trade_routes").select("player_a, player_b, resource_type, amount, route_safety, is_active")
+        .eq("session_id", sessionId).eq("is_active", true),
     ]);
 
     // Fetch recent diplomacy messages for all rooms involving this faction
@@ -303,7 +315,7 @@ OSOBNOST: ${personality}
 MÝTUS: ${civ?.core_myth || "neznámý"}
 KULTURNÍ ZVLÁŠTNOST: ${civ?.cultural_quirk || "žádná"}
 CÍLE: ${JSON.stringify(goals)}
-POSTOJ K HRÁČI: ${JSON.stringify(faction.disposition)}
+POSTOJ K OSTATNÍM: ${JSON.stringify(faction.disposition)}
 
 PRAVIDLA ROZHODOVÁNÍ:
 1. EKONOMIE: Rozhoduj na základě aktuálních zdrojů. Nestavěj/neverbuj bez zdrojů.
@@ -312,9 +324,25 @@ PRAVIDLA ROZHODOVÁNÍ:
 4. MÍR: Pokud válka trvá a jsi v nevýhodě, nabídni mír. Pokud jsi silný, požaduj podmínky.
 5. ARMÁDA: Verbuj vojsko úměrně hrozbám a zdrojům. DODRŽUJ doporučenou mobilizační sazbu.
 6. STAVBY: Stavěj budovy které odpovídají tvé situaci (obrana při válce, ekonomika v míru).
-7. Max 6 akcí za kolo (více v době války).
+7. Max 8 akcí za kolo (více v době války).
 8. Odpovídej ČESKY. Diplomatické zprávy piš v dobovém středověkém tónu odpovídajícím tvé osobnosti.
 9. Nesmíš měnit číselné hodnoty — pouze rozhoduj o akcích.
+
+═══ NPC-NPC INTERAKCE ═══
+DŮLEŽITÉ: Jednáš nejen s hráčem, ale i s OSTATNÍMI AI FRAKCEMI! Můžeš:
+- Uzavírat OBCHODNÍ DOHODY s jinými AI frakcemi (propose_trade_pact)
+- Navrhovat OBRANNÉ PAKTY proti silnějšímu nepříteli (propose_alliance_pact)
+- Organizovat SPOLEČNÉ ÚTOKY na silnou frakci, pokud jste oba ve válce s ní
+- Posílat zprávy JINÝM AI FRAKCÍM (send_diplomacy_message s targetPlayer = jméno AI frakce)
+- Vyhlašovat válku JINÝM AI FRAKCÍM (stejná pravidla — ultimátum → válka)
+- Reagovat na diplomacii od jiných AI frakcí
+
+STRATEGIE NPC-NPC:
+- Pokud je někdo příliš silný (vliv > 2× tvůj), hledej spojence mezi slabšími
+- Pokud sdílíte nepřítele, navrhni společný útok
+- Obchoduj s frakcemi s nízkou tenzí — zlepšuje vztahy i ekonomiku
+- Při vysoké tenzi s AI frakcí: eskaluj diplomacii, ultimáta, válku
+- Neopakuj zbytečně stejné zprávy — komunikuj jen když je důvod
 
 VOJENSKÁ PRAVIDLA:
 - Za VÁLKY musíš VŽDY nasadit armády a útočit na nepřátelská města.
@@ -327,11 +355,35 @@ VOJENSKÁ PRAVIDLA:
 - set_mobilization: nastavuje globální mobilizační sazbu dle situace.
 
 OSOBNOSTNÍ VZORCE:
-- aggressive: Přímé hrozby, časté verbování, rychlá eskalace
-- diplomatic: Preferuje jednání, kompromisy, mírová řešení
-- mercantile: Obchod, ekonomický růst, stavby, obchodní dohody
-- isolationist: Opatrnost, fortifikace, minimální interakce
-- expansionist: Územní růst, kolonizace, strategická válka`;
+- aggressive: Přímé hrozby, časné verbování, rychlá eskalace. Cílí na slabší.
+- diplomatic: Preferuje jednání, kompromisy, mírová řešení. Buduje aliance.
+- mercantile: Obchod, ekonomický růst, stavby, obchodní dohody. Obchoduje se všemi.
+- isolationist: Opatrnost, fortifikace, minimální interakce. Uzavírá jen obranné pakty.
+- expansionist: Územní růst, kolonizace, strategická válka. Hledá příležitosti.`;
+
+    // Build NPC-NPC context
+    const otherFactions = (allFactions || []).filter((f: any) => f.faction_name !== factionName);
+    const otherFactionsContext = otherFactions.map((f: any) => {
+      const fCities = (allCities || []).filter((c: any) => c.owner_player === f.faction_name);
+      const fInf = (influenceData || []).find((i: any) => i.player_name === f.faction_name);
+      const fTension = (allTensionData || []).find((t: any) =>
+        (t.player_a === factionName && t.player_b === f.faction_name) ||
+        (t.player_a === f.faction_name && t.player_b === factionName)
+      );
+      const fTrade = (tradeRoutes || []).filter((tr: any) =>
+        (tr.player_a === factionName && tr.player_b === f.faction_name) ||
+        (tr.player_a === f.faction_name && tr.player_b === factionName)
+      );
+      const myDisposition = (faction.disposition || {})[f.faction_name] ?? 0;
+      return `  ${f.faction_name} [${f.personality}]: Města: ${fCities.length}, Vliv: ${fInf?.total_influence || "?"}, Tenze s tebou: ${fTension?.total_tension?.toFixed(0) || 0}, Tvůj postoj: ${myDisposition}, Obch. trasy: ${fTrade.length}, Cíle: ${JSON.stringify(f.goals || [])}`;
+    }).join("\n");
+
+    // Inter-faction tensions (between OTHER factions)
+    const interFactionTensions = (allTensionData || [])
+      .filter((t: any) => t.player_a !== factionName && t.player_b !== factionName && t.total_tension > 20)
+      .slice(0, 10)
+      .map((t: any) => `  ${t.player_a} ⟷ ${t.player_b}: tenze ${t.total_tension?.toFixed(0)}${t.crisis_triggered ? " [KRIZE]" : ""}`)
+      .join("\n");
 
     const userPrompt = `ROK: ${turn}
 
@@ -371,6 +423,15 @@ ${(enemyStacks || []).length > 0 ? JSON.stringify((enemyStacks || []).map((s: an
 
 DOSTUPNÉ STAVBY: ${affordableBuildings.join(", ") || "žádné (nedostatek zdrojů)"}
 
+═══ OSTATNÍ FRAKCE (NPC i hráči) ═══
+${otherFactionsContext || "žádné další frakce"}
+
+═══ TENZE MEZI OSTATNÍMI (příležitosti pro diplomacii) ═══
+${interFactionTensions || "žádné významné tenze mezi ostatními"}
+
+═══ AKTIVNÍ OBCHODNÍ TRASY ═══
+${(tradeRoutes || []).filter((tr: any) => tr.player_a === factionName || tr.player_b === factionName).map((tr: any) => `  ${tr.player_a} ⟷ ${tr.player_b}: ${tr.resource_type} (${tr.amount}), bezpečnost: ${tr.route_safety}`).join("\n") || "žádné"}
+
 VLIV CIVILIZACÍ:
 ${JSON.stringify(influenceData || [], null, 2)}
 
@@ -390,7 +451,7 @@ ${JSON.stringify((recentEvents || []).slice(0, 10), null, 2)}
 
 STAV SVĚTA: ${worldSummary?.summary_text || "Žádný souhrn"}
 
-Rozhodni, co frakce udělá v tomto kole. ${milMetrics.warState === "war" ? "JSTE VE VÁLCE — PRIORITA: nasadit armády, útočit na města, bránit vlastní území!" : ""} Buď strategický a situační.`;
+Rozhodni, co frakce udělá v tomto kole. ${milMetrics.warState === "war" ? "JSTE VE VÁLCE — PRIORITA: nasadit armády, útočit na města, bránit vlastní území!" : ""} Buď strategický a situační. Zvažuj akce vůči VŠEM hráčům i AI frakcím — obchod, pakty, společné útoky.`;
 
     // ── Call AI ──
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
@@ -412,7 +473,7 @@ Rozhodni, co frakce udělá v tomto kole. ${milMetrics.warState === "war" ? "JST
               properties: {
                 actions: {
                   type: "array",
-                  maxItems: 6,
+                  maxItems: 8,
                   items: {
                     type: "object",
                     properties: {
@@ -431,6 +492,8 @@ Rozhodni, co frakce udělá v tomto kole. ${milMetrics.warState === "war" ? "JST
                           "offer_peace",
                           "accept_peace",
                           "issue_declaration",
+                          "propose_trade_pact",
+                          "propose_alliance_pact",
                           "trade",
                           "explore",
                         ],
@@ -902,6 +965,83 @@ async function executeAction(
         status: "published", ai_generated: true,
         target_empire_ids: action.targetPlayer ? [action.targetPlayer] : [],
       }).then(() => {}, () => {});
+      return "ok";
+    }
+
+    // ─── PROPOSE TRADE PACT (NPC-NPC or NPC-Player) ───
+    case "propose_trade_pact": {
+      if (!action.targetPlayer) return "missing_target";
+      const resourceType = action.description?.match(/(\w+)/)?.[1] || "grain";
+
+      // Create trade route
+      await supabase.from("trade_routes").insert({
+        session_id: sessionId,
+        player_a: factionName,
+        player_b: action.targetPlayer,
+        resource_type: resourceType,
+        amount: 5,
+        route_safety: 80,
+        is_active: true,
+      }).then(() => {}, () => {});
+
+      // Diplomatic message
+      await sendDiplomacyMessage(supabase, sessionId, factionName, action.targetPlayer,
+        `[OBCHODNÍ DOHODA] ${action.messageText || `${factionName} navrhuje obchodní spojenectví. Nechť naše trhy vzkvétají společně.`}`);
+
+      // Event
+      await supabase.from("game_events").insert({
+        session_id: sessionId, event_type: "treaty", player: factionName,
+        turn_number: turn, confirmed: true,
+        note: `${factionName} uzavřel obchodní dohodu s ${action.targetPlayer}.`,
+        importance: "major", truth_state: "canon", actor_type: "ai_faction",
+        treaty_type: "trade_pact",
+        reference: { targetPlayer: action.targetPlayer, resourceType },
+      }).then(() => {}, () => {});
+
+      // Chronicle
+      await supabase.from("chronicle_entries").insert({
+        session_id: sessionId,
+        text: action.narrativeNote || `V roce ${turn} uzavřely ${factionName} a ${action.targetPlayer} obchodní dohodu. Karavany začaly proudit mezi oběma říšemi.`,
+        source_type: "ai_faction", turn_from: turn, turn_to: turn,
+      }).then(() => {}, () => {});
+
+      return "ok";
+    }
+
+    // ─── PROPOSE ALLIANCE PACT (defensive pact) ───
+    case "propose_alliance_pact": {
+      if (!action.targetPlayer) return "missing_target";
+
+      // Diplomatic message
+      await sendDiplomacyMessage(supabase, sessionId, factionName, action.targetPlayer,
+        `[OBRANNÝ PAKT] ${action.messageText || `${factionName} navrhuje obranný pakt. Společně budeme silnější proti našim nepřátelům.`}`);
+
+      // Event — alliance
+      await supabase.from("game_events").insert({
+        session_id: sessionId, event_type: "alliance", player: factionName,
+        turn_number: turn, confirmed: true,
+        note: `${factionName} uzavřel obranný pakt s ${action.targetPlayer}.`,
+        importance: "critical", truth_state: "canon", actor_type: "ai_faction",
+        reference: { targetPlayer: action.targetPlayer, pactType: "defensive" },
+      }).then(() => {}, () => {});
+
+      // Declaration
+      await supabase.from("declarations").insert({
+        session_id: sessionId, player_name: factionName,
+        turn_number: turn, declaration_type: "alliance",
+        original_text: `${factionName} a ${action.targetPlayer} uzavřely obranný pakt.`,
+        tone: "Friendly", visibility: "PUBLIC",
+        status: "published", ai_generated: true,
+        target_empire_ids: [action.targetPlayer],
+      }).then(() => {}, () => {});
+
+      // Chronicle
+      await supabase.from("chronicle_entries").insert({
+        session_id: sessionId,
+        text: action.narrativeNote || `V roce ${turn} spojily ${factionName} a ${action.targetPlayer} své síly v obranném paktu. „Útok na jednoho bude útokem na oba," zněla přísaha.`,
+        source_type: "ai_faction", turn_from: turn, turn_to: turn,
+      }).then(() => {}, () => {});
+
       return "ok";
     }
 
