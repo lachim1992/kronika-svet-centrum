@@ -355,10 +355,14 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
 
   /* ── Fetch stacks ── */
   const fetchStacks = useCallback(async () => {
-    const { data: rawStacks } = await supabase.from("military_stacks")
+    console.log("Fetching stacks for session:", sessionId);
+    const { data: rawStacks, error } = await supabase.from("military_stacks")
       .select("id, name, player_name, hex_q, hex_r, formation_type, is_deployed, is_active, morale, image_url, image_confirmed, sigil_url, sigil_confirmed")
       .eq("session_id", sessionId).eq("is_deployed", true).eq("is_active", true);
-    if (!rawStacks || rawStacks.length === 0) { setAllStacks([]); return; }
+    
+    if (error) console.error("Error fetching stacks:", error);
+    if (!rawStacks || rawStacks.length === 0) { console.log("No stacks found"); setAllStacks([]); return; }
+    console.log("Found stacks:", rawStacks.length);
     const stackIds = rawStacks.map(s => s.id);
     const { data: comps } = await supabase.from("military_stack_composition").select("stack_id, manpower").in("stack_id", stackIds);
     const mpMap = new Map<string, number>();
@@ -512,16 +516,17 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
   }, [sessionId, playerName, fetchDiscoveries, bootstrapping]);
 
   /* ── AUTO-LOAD on mount ── */
-  const loadedRef = useRef(false);
   useEffect(() => {
-    if (loadedRef.current) return;
-    loadedRef.current = true;
+    let cancelled = false;
     (async () => {
       await Promise.all([fetchCities(), fetchStacks(), fetchProvinces()]);
+      if (cancelled) return;
       if (isAdmin) await loadAllGenerated();
       await fetchDiscoveries();
     })();
-  }, []);
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionId]);
 
   // Load all hexes when devMode is toggled on
   const devModeLoadedRef = useRef(false);
