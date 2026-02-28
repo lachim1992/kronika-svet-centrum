@@ -309,6 +309,7 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
   const [showLegend, setShowLegend] = useState(false);
   const [showFoundDialog, setShowFoundDialog] = useState(false);
   const [showProvinceLayer, setShowProvinceLayer] = useState(true);
+  const [expandingProvince, setExpandingProvince] = useState(false);
 
   // Province data
   const [provinceHexMap, setProvinceHexMap] = useState<Map<string, { provinceId: string; colorIndex: number }>>(new Map());
@@ -761,6 +762,49 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
     return existingCities.length === 0;
   }, [selectedHex, citiesByCoord]);
 
+  /* ── Check if hex can be annexed to player's province ── */
+  const expandableProvinceInfo = useMemo(() => {
+    if (!selectedHex) return null;
+    // Check if hex is already in a province
+    const provData = provinceHexMap.get(hKey(selectedHex.q, selectedHex.r));
+    if (provData) return null; // already assigned
+    // Check if any adjacent hex belongs to the player's province
+    for (const { dq, dr } of AXIAL_NEIGHBORS) {
+      const nk = hKey(selectedHex.q + dq, selectedHex.r + dr);
+      const neighborProv = provinceHexMap.get(nk);
+      if (neighborProv) {
+        const legend = provinceLegend.find(p => p.id === neighborProv.provinceId);
+        if (legend && legend.ownerPlayer === playerName) {
+          return { provinceId: neighborProv.provinceId, provinceName: legend.name };
+        }
+      }
+    }
+    return null;
+  }, [selectedHex, provinceHexMap, provinceLegend, playerName]);
+
+  /* ── Handle province expansion ── */
+  const handleExpandProvince = useCallback(async () => {
+    if (!selectedHex || !expandableProvinceInfo || expandingProvince) return;
+    setExpandingProvince(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("expand-province", {
+        body: {
+          session_id: sessionId,
+          player_name: playerName,
+          province_id: expandableProvinceInfo.provinceId,
+          target_q: selectedHex.q,
+          target_r: selectedHex.r,
+        },
+      });
+      if (error) throw error;
+      if (data?.error) { toast.error(data.error); return; }
+      toast.success(`Hex (${selectedHex.q}, ${selectedHex.r}) přidán do ${expandableProvinceInfo.provinceName}`);
+      await Promise.all([fetchProvinces(), fetchDiscoveries()]);
+      setSelectedHex(null);
+    } catch (e: any) { toast.error("Expanze selhala: " + (e.message || "neznámá chyba")); }
+    finally { setExpandingProvince(false); }
+  }, [selectedHex, expandableProvinceInfo, expandingProvince, sessionId, playerName, fetchProvinces, fetchDiscoveries]);
+
   /* ── SVG layout ── */
   const svgW = 2000;
   const svgH = 1400;
@@ -1038,6 +1082,25 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
                 <InfoRow label="Seed" value={selectedHex.seed.slice(-8)} />
               </div>
 
+              {/* Province info */}
+              {(() => {
+                const provData = provinceHexMap.get(hKey(selectedHex.q, selectedHex.r));
+                const legend = provData ? provinceLegend.find(p => p.id === provData.provinceId) : null;
+                return legend ? (
+                  <div className="p-3 rounded-lg border border-border bg-muted/30">
+                    <p className="text-xs font-display font-semibold mb-1 flex items-center gap-1.5">
+                      <MapIcon className="h-3 w-3" /> Provincie
+                    </p>
+                    <p className="text-sm font-display">{legend.name}</p>
+                    <p className="text-[10px] text-muted-foreground mt-1">Vlastník: {legend.ownerPlayer}</p>
+                  </div>
+                ) : (
+                  <div className="p-2 rounded-lg border border-dashed border-muted-foreground/30">
+                    <p className="text-[10px] text-muted-foreground text-center">Volné území — nepatří žádné provincii</p>
+                  </div>
+                );
+              })()}
+
               {/* Macro region */}
               {selectedHex.macro_region && (
                 <div className="p-3 rounded-lg border border-border bg-muted/30">
@@ -1099,6 +1162,16 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
                   <Button variant="default" size="sm" className="w-full font-display text-xs gap-2"
                     onClick={() => { setShowFoundDialog(true); }}>
                     <Castle className="h-3.5 w-3.5" /> Založit osadu zde
+                  </Button>
+                )}
+
+                {/* Expand province button */}
+                {expandableProvinceInfo && (
+                  <Button variant="secondary" size="sm" className="w-full font-display text-xs gap-2"
+                    onClick={handleExpandProvince} disabled={expandingProvince}>
+                    {expandingProvince ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <MapIcon className="h-3.5 w-3.5" />}
+                    Připojit k {expandableProvinceInfo.provinceName}
+                    <span className="text-muted-foreground ml-auto text-[9px]">20💰 5🪵</span>
                   </Button>
                 )}
               </div>
