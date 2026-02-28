@@ -23,6 +23,7 @@ import CityRumorsPanel from "@/components/CityRumorsPanel";
 import WorldMemoryPanel from "@/components/WorldMemoryPanel";
 import EntityContributionsPanel from "@/components/EntityContributionsPanel";
 import SettlementUpgradePanel from "@/components/SettlementUpgradePanel";
+import CityWatchButton from "@/components/CityWatchButton";
 
 const ENTITY_ICONS: Record<string, React.ReactNode> = {
   country: <Flag className="h-5 w-5" />,
@@ -836,9 +837,21 @@ const ChroWikiDetailPanel = ({
               ))}
             </div>
           </div>
-          <Button variant="ghost" size="sm" onClick={() => setReadingMode(!readingMode)} className="shrink-0 text-xs">
-            {readingMode ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
-          </Button>
+          <div className="flex items-center gap-1 shrink-0">
+            {(entityType === "city" || entityType === "province") && currentPlayerName && (
+              <CityWatchButton
+                sessionId={sessionId}
+                playerName={currentPlayerName}
+                entityType={entityType as "city" | "province"}
+                entityId={entityId}
+                entityName={entityName}
+                size="icon"
+              />
+            )}
+            <Button variant="ghost" size="sm" onClick={() => setReadingMode(!readingMode)} className="text-xs">
+              {readingMode ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+            </Button>
+          </div>
         </div>
 
         {/* ═══ COVER IMAGE (inline, inside book frame) ═══ */}
