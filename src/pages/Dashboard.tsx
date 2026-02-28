@@ -15,6 +15,7 @@ import type { TabId } from "@/components/layout/BottomNav";
 import ActionChooser from "@/components/layout/ActionChooser";
 import WorldEventDetailPanel from "@/components/WorldEventDetailPanel";
 import GameHubFAB from "@/components/layout/GameHubFAB";
+import GameChatFAB from "@/components/GameChatFAB";
 import FoundSettlementDialog from "@/components/FoundSettlementDialog";
 import UprisingDialog from "@/components/UprisingDialog";
 import Chronicle0Overlay from "@/components/Chronicle0Overlay";
@@ -295,6 +296,12 @@ const Dashboard = () => {
       }
       bottomExtras={
         <>
+          <GameChatFAB
+            sessionId={session.id}
+            playerName={myPlayerName}
+            currentTurn={currentTurn}
+            players={players.map((p: any) => p.player_name)}
+          />
           <GameHubFAB
             currentSessionId={session.id}
             worldName={worldFoundation?.world_name}
