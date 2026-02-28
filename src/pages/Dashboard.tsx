@@ -288,9 +288,25 @@ const Dashboard = () => {
           myRole={myRole}
           currentSessionId={session.id}
           onNextTurn={processNextTurn}
+          onCloseTurn={async () => {
+            const me = players.find((p: any) => p.player_name === myPlayerName);
+            if (!me) return;
+            const { closeTurnForPlayer } = await import("@/hooks/useGameSession");
+            await closeTurnForPlayer(session.id, me.player_number);
+            await supabase.from("world_action_log").insert({
+              session_id: session.id,
+              player_name: myPlayerName,
+              turn_number: currentTurn,
+              action_type: "other",
+              description: `${myPlayerName} uzavřel kolo ${currentTurn}`,
+            });
+            toast.success("Kolo uzavřeno.");
+            refetch();
+          }}
           turnProcessing={turnProcessing}
           players={players}
           gameMode={session?.game_mode}
+          myTurnClosed={players.find((p: any) => p.player_name === myPlayerName)?.turn_closed || false}
         />
       }
       resourceHud={
@@ -298,12 +314,14 @@ const Dashboard = () => {
       }
       bottomExtras={
         <>
-          <GameChatFAB
-            sessionId={session.id}
-            playerName={myPlayerName}
-            currentTurn={currentTurn}
-            players={players.map((p: any) => p.player_name)}
-          />
+          {isMultiplayer && (
+            <GameChatFAB
+              sessionId={session.id}
+              playerName={myPlayerName}
+              currentTurn={currentTurn}
+              players={players.map((p: any) => p.player_name)}
+            />
+          )}
           <GameHubFAB
             currentSessionId={session.id}
             worldName={worldFoundation?.world_name}
