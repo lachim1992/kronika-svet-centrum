@@ -103,6 +103,8 @@ const ChroniclesTab = ({
           <SeptandaFeed
             sessionId={sessionId}
             currentTurn={currentTurn}
+            currentPlayerName={currentPlayerName}
+            players={players.map((p: any) => p.player_name)}
             entityIndex={entityIndex}
             onEventClick={onEventClick}
             onEntityClick={onEntityClick}
