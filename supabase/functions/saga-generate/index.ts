@@ -22,6 +22,23 @@ serve(async (req) => {
     const { entity, timeline, actors, rumors, worldEvents, civilizationInfo, diplomacySnippets, declarations, worldNarrative } = sagaContext;
     const sessionId = sagaContext.sessionId || entity?.sessionId;
 
+    // ─── Load Chronicle 0 (Prolog) for narrative grounding ───
+    let chronicle0Text = "";
+    if (sessionId) {
+      try {
+        const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+        const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+        const sb = createClient(supabaseUrl, supabaseKey);
+        const { data: c0 } = await sb
+          .from("chronicle_entries")
+          .select("text")
+          .eq("session_id", sessionId)
+          .eq("source_type", "chronicle_zero")
+          .maybeSingle();
+        chronicle0Text = (c0 as any)?.text || "";
+      } catch { /* ignore */ }
+    }
+
     // ─── Load narrative config from server_config ───
     let narrativeSaga: any = null;
     if (sessionId) {
@@ -136,8 +153,12 @@ D) "actors" — Klíčové postavy (name, role, linkedItems)
 E) "consequences" — Důsledky pro říši
 F) "legends" — Legenda a šeptanda (volitelné, jasně oddělené)`;
 
+    const chronicle0Section = chronicle0Text
+      ? `\n\nKRONIKA NULTÉHO ROKU (Prolog světa — kanonický zdroj o prehistorii, legendárních postavách a mýtech. MUSÍŠ na něj navázat!):\n${chronicle0Text.substring(0, 3000)}`
+      : "";
+
     const systemPrompt = `Jsi královský kronikář, který píše vznešeným, mýtickým stylem dvorní kroniky.
-${stanceInstruction}${customStylePrompt}${keywordsInstruction}${forbiddenInstruction}${flavorSection}${foundingMythSection}${worldNarrativeSection}
+${stanceInstruction}${customStylePrompt}${keywordsInstruction}${forbiddenInstruction}${chronicle0Section}${flavorSection}${foundingMythSection}${worldNarrativeSection}
 
 STRIKTNÍ PRAVIDLA:
 1. Piš VÝHRADNĚ na základě dodaných dat. ${hasHistory ? 'Tvým HLAVNÍM zdrojem je historická syntéza — interpretuj ji mýticky, ale NEPŘIDÁVEJ nové fakty.' : 'NESMÍŠ vymýšlet nové události.'}

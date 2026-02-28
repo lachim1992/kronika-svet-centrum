@@ -9,10 +9,26 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const { entityType, entityName, context, relatedEvents, worldMemories, epochStyle } = await req.json();
+    const { entityType, entityName, context, relatedEvents, worldMemories, epochStyle, sessionId } = await req.json();
 
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY not configured");
+
+    // Fetch Chronicle 0 (Prolog) for narrative grounding
+    let chronicle0Text = "";
+    if (sessionId) {
+      try {
+        const { createClient } = await import("https://esm.sh/@supabase/supabase-js@2");
+        const sb = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+        const { data: c0 } = await sb
+          .from("chronicle_entries")
+          .select("text")
+          .eq("session_id", sessionId)
+          .eq("source_type", "chronicle_zero")
+          .maybeSingle();
+        chronicle0Text = (c0 as any)?.text || "";
+      } catch { /* ignore */ }
+    }
 
     const typeInstructions: Record<string, string> = {
       city: `Piš encyklopedický článek o městě "${entityName}". Zahrň jeho historii, architekturu, kulturu a význam.`,
@@ -36,7 +52,9 @@ PRAVIDLA:
 - Zpracuj POUZE dodaná data, NEVYMÝŠLEJ nové události.
 - Zmiň důležité události, které se odehrály v/kolem entity.
 - Článek musí mít: úvodní odstavec, historii, a závěrečné shrnutí.
-- Odpověz POUZE voláním funkce write_encyclopedia_entry.`;
+- Pokud existuje Prolog světa, MUSÍŠ na něj navázat — legendární postavy, války a mýty z Prologu musí být konzistentně reflektovány.
+- Odpověz POUZE voláním funkce write_encyclopedia_entry.
+${chronicle0Text ? `\nKRONIKA NULTÉHO ROKU (Prolog — kanonický zdroj pravdy o prehistorii):\n${chronicle0Text.substring(0, 3000)}` : ""}`;
 
     const userPrompt = `Napiš encyklopedický článek o: ${entityName} (${entityType})
 

@@ -54,6 +54,18 @@ Deno.serve(async (req) => {
     let styleRules: any = {};
     try { styleRules = styleCfg?.prompt_rules ? JSON.parse(styleCfg.prompt_rules) : {}; } catch { /* ignore */ }
 
+    // Fetch Chronicle 0 (Prolog) — the canonical founding narrative
+    let chronicle0Text = "";
+    try {
+      const { data: c0 } = await sb
+        .from("chronicle_entries")
+        .select("text")
+        .eq("session_id", sessionId)
+        .eq("source_type", "chronicle_zero")
+        .maybeSingle();
+      chronicle0Text = (c0 as any)?.text || "";
+    } catch { /* ignore */ }
+
     const worldVibe = styleRules.world_vibe || "";
     const writingStyle = styleRules.writing_style || "narrative";
     const constraints = styleRules.constraints || "";
@@ -86,6 +98,8 @@ Deno.serve(async (req) => {
       writingInstructions,
       `Zaměř se na: geografii, kulturu, ekonomiku a demografii. NEPIŠ historii — ta bude doplněna později.`,
       `DŮLEŽITÉ: Pokud hráč napsal vlastní legendu nebo flavor prompt, MUSÍŠ je respektovat a integrovat.`,
+      `DŮLEŽITÉ: Pokud existuje Prolog světa (Kronika 0), MUSÍŠ navázat na jeho kontext — legendární postavy, mýty, války a místa z Prologu musí být konzistentně reflektovány.`,
+      chronicle0Text ? `KRONIKA NULTÉHO ROKU (Prolog světa — kanonický zdroj pravdy o prehistorii):\n${chronicle0Text.substring(0, 3000)}` : "",
       entityStylePrompt ? `Stylový prompt: ${entityStylePrompt}` : "",
       entityForbidden ? `Zakázaná slova: ${entityForbidden}` : "",
       entityKeywords ? `Preferovaná klíčová slova: ${entityKeywords}` : "",
