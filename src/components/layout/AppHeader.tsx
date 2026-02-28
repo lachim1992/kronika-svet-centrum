@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { Copy, User, Home, LogOut, Globe, Sun, Moon, Play, Loader2, Bell } from "lucide-react";
+import { Copy, User, Home, LogOut, Globe, Sun, Moon, Play, Loader2, Bell, Lock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -30,12 +30,14 @@ interface Props {
   myRole: string;
   currentSessionId?: string;
   onNextTurn?: () => void;
+  onCloseTurn?: () => void;
   turnProcessing?: boolean;
   players?: any[];
   gameMode?: string;
+  myTurnClosed?: boolean;
 }
 
-const AppHeader = ({ roomCode, currentTurn, worldName, playerName, myRole, currentSessionId, onNextTurn, turnProcessing, players = [], gameMode }: Props) => {
+const AppHeader = ({ roomCode, currentTurn, worldName, playerName, myRole, currentSessionId, onNextTurn, onCloseTurn, turnProcessing, players = [], gameMode, myTurnClosed }: Props) => {
   const navigate = useNavigate();
   const { signOut, user } = useAuth();
   const [isLight, setIsLight] = useState(() => document.documentElement.classList.contains("light"));
@@ -144,20 +146,37 @@ const AppHeader = ({ roomCode, currentTurn, worldName, playerName, myRole, curre
             />
           )}
 
-          {/* Single-player / AI mode next turn button */}
-          {onNextTurn && gameMode !== "tb_multi" && (
-            <Button
-              size="sm"
-              onClick={onNextTurn}
-              disabled={turnProcessing}
-              className="h-8 px-3 font-display text-xs gap-1.5"
-            >
-              {turnProcessing ? (
-                <><Loader2 className="h-3.5 w-3.5 animate-spin" />Zpracovávám…</>
-              ) : (
-                <><Play className="h-3.5 w-3.5" />Další tah</>
-              )}
-            </Button>
+          {/* Unified turn button: SP = next turn, MP = close my turn */}
+          {gameMode === "tb_multi" ? (
+            onCloseTurn && !myTurnClosed && (
+              <Button
+                size="sm"
+                onClick={onCloseTurn}
+                disabled={turnProcessing}
+                className="h-8 px-3 font-display text-xs gap-1.5"
+              >
+                {turnProcessing ? (
+                  <><Loader2 className="h-3.5 w-3.5 animate-spin" />Zpracovávám…</>
+                ) : (
+                  <><Lock className="h-3.5 w-3.5" />Uzavřít kolo</>
+                )}
+              </Button>
+            )
+          ) : (
+            onNextTurn && (
+              <Button
+                size="sm"
+                onClick={onNextTurn}
+                disabled={turnProcessing}
+                className="h-8 px-3 font-display text-xs gap-1.5"
+              >
+                {turnProcessing ? (
+                  <><Loader2 className="h-3.5 w-3.5 animate-spin" />Zpracovávám…</>
+                ) : (
+                  <><Play className="h-3.5 w-3.5" />Další tah</>
+                )}
+              </Button>
+            )
           )}
 
           {currentSessionId && currentTurn > 1 && (
