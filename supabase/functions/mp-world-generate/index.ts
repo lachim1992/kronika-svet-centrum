@@ -335,45 +335,66 @@ DŮLEŽITÉ: Hráčské frakce MUSÍ mít isPlayer=true a playerName musí přes
         },
       };
 
-      try {
-        const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${LOVABLE_API_KEY}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            model: "google/gemini-2.5-flash",
-            messages: [
-              { role: "system", content: systemPrompt },
-              { role: "user", content: userPrompt },
-            ],
-            tools: [toolSchema],
-            tool_choice: { type: "function", function: { name: "generate_world" } },
-          }),
-        });
+      const MAX_RETRIES = 2;
+      for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+        try {
+          console.log(`[mp-world-generate] AI attempt ${attempt + 1}/${MAX_RETRIES + 1}...`);
+          const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${LOVABLE_API_KEY}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              model: "google/gemini-2.5-flash",
+              messages: [
+                { role: "system", content: systemPrompt },
+                { role: "user", content: userPrompt },
+              ],
+              tools: [toolSchema],
+              tool_choice: { type: "function", function: { name: "generate_world" } },
+            }),
+          });
 
-        if (response.ok) {
-          const data = await response.json();
-          const toolCall = data.choices?.[0]?.message?.tool_calls?.[0];
-          if (toolCall) {
-            world = JSON.parse(toolCall.function.arguments);
-            // Validate critical arrays exist
-            const requiredArrays = ["persons", "wonders", "preHistoryEvents", "battles", "factions", "cities", "regions"];
-            for (const key of requiredArrays) {
-              if (!world[key] || !Array.isArray(world[key]) || world[key].length === 0) {
-                console.warn(`[mp-world-generate] WARNING: AI returned empty/missing '${key}' array (${JSON.stringify(world[key]?.length ?? 'undefined')})`);
-              } else {
-                console.log(`[mp-world-generate] ✓ ${key}: ${world[key].length} items`);
+          if (response.ok) {
+            const data = await response.json();
+            const toolCall = data.choices?.[0]?.message?.tool_calls?.[0];
+            if (toolCall) {
+              world = JSON.parse(toolCall.function.arguments);
+              // Validate critical arrays exist
+              const requiredArrays = ["persons", "wonders", "preHistoryEvents", "battles", "factions", "cities", "regions"];
+              let allValid = true;
+              for (const key of requiredArrays) {
+                if (!world[key] || !Array.isArray(world[key]) || world[key].length === 0) {
+                  console.warn(`[mp-world-generate] WARNING: AI returned empty/missing '${key}' array (${JSON.stringify(world[key]?.length ?? 'undefined')})`);
+                  allValid = false;
+                } else {
+                  console.log(`[mp-world-generate] ✓ ${key}: ${world[key].length} items`);
+                }
               }
+              if (allValid || attempt === MAX_RETRIES) {
+                if (!allValid) console.warn(`[mp-world-generate] Proceeding with partial data after ${MAX_RETRIES + 1} attempts`);
+                break; // Success or last attempt
+              } else {
+                console.warn(`[mp-world-generate] Incomplete data, retrying...`);
+                world = null; // Reset for retry
+              }
+            } else {
+              console.warn(`[mp-world-generate] No tool call in response, attempt ${attempt + 1}`);
+              if (attempt === MAX_RETRIES) break;
             }
+          } else {
+            const errText = await response.text();
+            console.error(`[mp-world-generate] AI failed (attempt ${attempt + 1}):`, response.status, errText.substring(0, 500));
+            if (attempt === MAX_RETRIES) break;
+            // Wait before retry
+            await new Promise(r => setTimeout(r, 2000 * (attempt + 1)));
           }
-        } else {
-          const errText = await response.text();
-          console.error("[mp-world-generate] AI generation failed:", response.status, errText.substring(0, 500));
+        } catch (e) {
+          console.warn(`[mp-world-generate] AI error (attempt ${attempt + 1}):`, e);
+          if (attempt === MAX_RETRIES) break;
+          await new Promise(r => setTimeout(r, 2000 * (attempt + 1)));
         }
-      } catch (e) {
-        console.warn("AI world generation failed:", e);
       }
     }
 
