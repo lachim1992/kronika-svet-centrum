@@ -152,6 +152,129 @@ export type Database = {
           },
         ]
       }
+      battle_lobbies: {
+        Row: {
+          attacker_formation: string
+          attacker_player: string
+          attacker_ready: boolean
+          attacker_speech: string | null
+          attacker_speech_feedback: string | null
+          attacker_speech_modifier: number | null
+          attacker_stack_id: string
+          battle_id: string | null
+          created_at: string
+          defender_city_id: string | null
+          defender_formation: string
+          defender_player: string
+          defender_ready: boolean
+          defender_speech: string | null
+          defender_speech_feedback: string | null
+          defender_speech_modifier: number | null
+          defender_stack_id: string | null
+          id: string
+          resolved_at: string | null
+          session_id: string
+          status: string
+          surrender_accepted: boolean | null
+          surrender_offered_by: string | null
+          surrender_terms: Json | null
+          turn_number: number
+          updated_at: string
+        }
+        Insert: {
+          attacker_formation?: string
+          attacker_player: string
+          attacker_ready?: boolean
+          attacker_speech?: string | null
+          attacker_speech_feedback?: string | null
+          attacker_speech_modifier?: number | null
+          attacker_stack_id: string
+          battle_id?: string | null
+          created_at?: string
+          defender_city_id?: string | null
+          defender_formation?: string
+          defender_player: string
+          defender_ready?: boolean
+          defender_speech?: string | null
+          defender_speech_feedback?: string | null
+          defender_speech_modifier?: number | null
+          defender_stack_id?: string | null
+          id?: string
+          resolved_at?: string | null
+          session_id: string
+          status?: string
+          surrender_accepted?: boolean | null
+          surrender_offered_by?: string | null
+          surrender_terms?: Json | null
+          turn_number?: number
+          updated_at?: string
+        }
+        Update: {
+          attacker_formation?: string
+          attacker_player?: string
+          attacker_ready?: boolean
+          attacker_speech?: string | null
+          attacker_speech_feedback?: string | null
+          attacker_speech_modifier?: number | null
+          attacker_stack_id?: string
+          battle_id?: string | null
+          created_at?: string
+          defender_city_id?: string | null
+          defender_formation?: string
+          defender_player?: string
+          defender_ready?: boolean
+          defender_speech?: string | null
+          defender_speech_feedback?: string | null
+          defender_speech_modifier?: number | null
+          defender_stack_id?: string | null
+          id?: string
+          resolved_at?: string | null
+          session_id?: string
+          status?: string
+          surrender_accepted?: boolean | null
+          surrender_offered_by?: string | null
+          surrender_terms?: Json | null
+          turn_number?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "battle_lobbies_attacker_stack_id_fkey"
+            columns: ["attacker_stack_id"]
+            isOneToOne: false
+            referencedRelation: "military_stacks"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "battle_lobbies_battle_id_fkey"
+            columns: ["battle_id"]
+            isOneToOne: false
+            referencedRelation: "battles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "battle_lobbies_defender_city_id_fkey"
+            columns: ["defender_city_id"]
+            isOneToOne: false
+            referencedRelation: "cities"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "battle_lobbies_defender_stack_id_fkey"
+            columns: ["defender_stack_id"]
+            isOneToOne: false
+            referencedRelation: "military_stacks"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "battle_lobbies_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       battles: {
         Row: {
           attacker_morale_snapshot: number
