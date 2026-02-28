@@ -14,6 +14,25 @@ const BIOME_DEFENSE_BONUS: Record<string, number> = {
   desert: -0.05, plains: 0, sea: -0.10, tundra: 0.05,
 };
 
+// ═══ FORMATION ROCK-PAPER-SCISSORS ═══
+// ASSAULT > SIEGE, DEFENSIVE > ASSAULT, FLANK > DEFENSIVE, SIEGE > city (special)
+const FORMATION_MATCHUPS: Record<string, Record<string, number>> = {
+  ASSAULT:   { ASSAULT: 0, DEFENSIVE: -0.15, FLANK: 0.10, SIEGE: 0.15 },
+  DEFENSIVE: { ASSAULT: 0.15, DEFENSIVE: 0, FLANK: -0.15, SIEGE: 0.05 },
+  FLANK:     { ASSAULT: -0.10, DEFENSIVE: 0.15, FLANK: 0, SIEGE: 0.05 },
+  SIEGE:     { ASSAULT: -0.15, DEFENSIVE: -0.05, FLANK: -0.05, SIEGE: 0 },
+};
+
+const FORMATION_BASE_BONUSES: Record<string, { attack: number; defense: number; fortIgnore: number }> = {
+  ASSAULT:   { attack: 0.15, defense: -0.10, fortIgnore: 0 },
+  DEFENSIVE: { attack: -0.05, defense: 0.20, fortIgnore: 0 },
+  FLANK:     { attack: 0.10, defense: 0, fortIgnore: 0.50 },
+  SIEGE:     { attack: -0.10, defense: -0.05, fortIgnore: 0 },
+};
+
+// SIEGE gets +30% vs cities
+const SIEGE_CITY_BONUS = 0.30;
+
 function seededRandom(seed: number): number {
   let s = seed;
   s = ((s >>> 16) ^ s) * 0x45d9f3b | 0;
@@ -56,7 +75,15 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const { session_id, attacker_stack_id, defender_city_id, defender_stack_id, speech_text, speech_morale_modifier, seed, biome: inputBiome, player_name, current_turn } = await req.json();
+    const {
+      session_id, attacker_stack_id, defender_city_id, defender_stack_id,
+      speech_text, speech_morale_modifier,
+      defender_speech_text, defender_speech_morale_modifier,
+      attacker_formation: inputAttackerFormation,
+      defender_formation: inputDefenderFormation,
+      seed, biome: inputBiome, player_name, current_turn,
+      lobby_id,
+    } = await req.json();
 
     if (!session_id || !attacker_stack_id) {
       return new Response(JSON.stringify({ error: "Missing session_id or attacker_stack_id" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
@@ -67,7 +94,10 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
+    const attackerFormation = inputAttackerFormation || "ASSAULT";
+    const defenderFormation = inputDefenderFormation || "DEFENSIVE";
     const speechMorale = speech_morale_modifier || 0;
+    const defenderSpeechMorale = defender_speech_morale_modifier || 0;
     const battleSeed = seed || Date.now();
     const turnNumber = current_turn || 1;
 
@@ -82,7 +112,7 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ error: "Attacker stack not found or inactive" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    // Apply speech morale modifier
+    // Apply attacker speech morale
     const speechAdjustedMorale = Math.max(0, Math.min(100, (attackerStack.morale || 50) + speechMorale));
     if (speechMorale !== 0) {
       await supabase.from("military_stacks").update({ morale: speechAdjustedMorale }).eq("id", attackerStack.id);
@@ -101,7 +131,7 @@ Deno.serve(async (req) => {
       attackerStack.formation_type
     );
 
-    // Determine defender
+    // ── Determine defender ──
     let defenderStrength = 0;
     let defenderMorale = 50;
     let defenderComps: any[] = [];
@@ -118,7 +148,11 @@ Deno.serve(async (req) => {
         .single();
       if (dStack) {
         defenderStack = dStack;
-        defenderMorale = dStack.morale || 50;
+        // Apply defender speech morale
+        defenderMorale = Math.max(0, Math.min(100, (dStack.morale || 50) + defenderSpeechMorale));
+        if (defenderSpeechMorale !== 0) {
+          await supabase.from("military_stacks").update({ morale: defenderMorale }).eq("id", dStack.id);
+        }
         defenderComps = dStack.military_stack_composition || [];
         defenderStrength = computeStackStrength(defenderComps, defenderMorale, dStack.formation_type);
       }
@@ -134,8 +168,6 @@ Deno.serve(async (req) => {
         .eq("session_id", session_id).eq("player_name", defenderCivPlayer).maybeSingle();
       defenderCivBonuses = (defCiv?.civ_bonuses as Record<string, number>) || {};
     }
-
-    const attackerCivFort = civBonuses.fortification_bonus || 0;
 
     if (defender_city_id) {
       const { data: dCity } = await supabase.from("cities").select("*").eq("id", defender_city_id).single();
@@ -154,13 +186,26 @@ Deno.serve(async (req) => {
       }
     }
 
+    // ═══ FORMATION BONUSES ═══
+    const atkFormBonus = FORMATION_BASE_BONUSES[attackerFormation] || { attack: 0, defense: 0, fortIgnore: 0 };
+    const defFormBonus = FORMATION_BASE_BONUSES[defenderFormation] || { attack: 0, defense: 0, fortIgnore: 0 };
+    const matchupBonus = (FORMATION_MATCHUPS[attackerFormation] || {})[defenderFormation] || 0;
+
+    // Fort ignore from FLANK
+    const effectiveFortification = fortificationBonus * (1 - atkFormBonus.fortIgnore);
+
+    // SIEGE city bonus
+    const siegeCityBonus = (attackerFormation === "SIEGE" && defender_city_id) ? SIEGE_CITY_BONUS : 0;
+
     // Defense multipliers
     const biomeMod = BIOME_DEFENSE_BONUS[biome] || 0;
-    const totalDefenseMultiplier = 1 + fortificationBonus + biomeMod;
+    const defTerrainMult = defenderFormation === "DEFENSIVE" ? 1.5 : 1.0;
+    const totalDefenseMultiplier = 1 + effectiveFortification + (biomeMod * defTerrainMult) + defFormBonus.defense;
     const effectiveDefenderStrength = Math.round(defenderStrength * totalDefenseMultiplier);
 
-    const attackerFortBonus = defender_city_id ? 0 : attackerCivFort * 0.5;
-    const effectiveAttackerBase = Math.round(attackerStrength * (1 + attackerFortBonus));
+    // Attack multipliers
+    const attackerCivFort = defender_city_id ? 0 : (civBonuses.fortification_bonus || 0) * 0.5;
+    const effectiveAttackerBase = Math.round(attackerStrength * (1 + attackerCivFort + atkFormBonus.attack + matchupBonus + siegeCityBonus));
 
     // RNG
     const rng = seededRandom(battleSeed);
@@ -212,7 +257,7 @@ Deno.serve(async (req) => {
     }).eq("id", attackerStack.id);
     if (defenderStack) {
       await supabase.from("military_stacks").update({
-        morale: Math.max(0, Math.min(100, (defenderStack.morale || 50) + moraleShiftDefender)),
+        morale: Math.max(0, Math.min(100, defenderMorale + moraleShiftDefender)),
       }).eq("id", defenderStack.id);
     }
 
@@ -222,10 +267,10 @@ Deno.serve(async (req) => {
     const { data: battleRecord, error: battleErr } = await supabase.from("battles").insert({
       session_id, turn_number: turnNumber,
       attacker_stack_id, defender_stack_id: defender_stack_id || null, defender_city_id: defender_city_id || null,
-      attacker_strength_snapshot: attackerStrength, defender_strength_snapshot: effectiveDefenderStrength,
+      attacker_strength_snapshot: effectiveAttackerBase, defender_strength_snapshot: effectiveDefenderStrength,
       attacker_morale_snapshot: attackerMorale, defender_morale_snapshot: defenderMorale,
       speech_text: speech_text || null, speech_morale_modifier: speechMorale,
-      biome, fortification_bonus: fortificationBonus, seed: battleSeed, luck_roll: luckRoll,
+      biome, fortification_bonus: effectiveFortification, seed: battleSeed, luck_roll: luckRoll,
       result, casualties_attacker: casualtiesAttacker, casualties_defender: casualtiesDefender,
       post_action: needsDecision ? "pending_decision" : null,
       resolved_at: new Date().toISOString(),
@@ -233,6 +278,13 @@ Deno.serve(async (req) => {
 
     if (battleErr) {
       return new Response(JSON.stringify({ error: "Failed to save battle record: " + battleErr.message }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
+    // Update lobby if provided
+    if (lobby_id && battleRecord) {
+      await supabase.from("battle_lobbies").update({
+        status: "resolved", battle_id: battleRecord.id, resolved_at: new Date().toISOString(),
+      }).eq("id", lobby_id);
     }
 
     // Post-battle decision
@@ -250,10 +302,11 @@ Deno.serve(async (req) => {
     }
 
     // Game event
+    const formationNote = `Formace: ${attackerFormation} vs ${defenderFormation}.`;
     await supabase.from("game_events").insert({
       session_id, player: player_name || attackerStack.player_name,
       event_type: "battle", turn_number: turnNumber,
-      note: `Bitva: ${attackerStack.name} vs ${defenderCity?.name || "armáda"}. Výsledek: ${result}. Ztráty: ${casualtiesAttacker}/${casualtiesDefender}.`,
+      note: `Bitva: ${attackerStack.name} vs ${defenderCity?.name || defenderStack?.name || "armáda"}. ${formationNote} Výsledek: ${result}. Ztráty: ${casualtiesAttacker}/${casualtiesDefender}.`,
       result, importance: result === "decisive_victory" ? "critical" : "normal",
     });
 
@@ -265,7 +318,7 @@ Deno.serve(async (req) => {
           session_id, city_id: defenderCity.id, city_name: defenderCity.name,
           turn_number: turnNumber,
           text: isVictory
-            ? `Vojsko „${attackerStack.name}" zvítězilo v bitvě u ${defenderCity.name}. Padlo ${casualtiesDefender} obránců.`
+            ? `Vojsko „${attackerStack.name}" (formace ${attackerFormation}) zvítězilo v bitvě u ${defenderCity.name}. Padlo ${casualtiesDefender} obránců.`
             : `Obránci ${defenderCity.name} statečně odrazili útok armády „${attackerStack.name}". Nepřítel utrpěl ${casualtiesAttacker} ztrát.`,
           tone_tag: isVictory ? "alarming" : "triumphant",
           created_by: "system",
@@ -281,7 +334,7 @@ Deno.serve(async (req) => {
       };
       await supabase.from("chronicle_entries").insert({
         session_id,
-        text: `**Bitva u ${defenderCity?.name || "neznámého místa"} (rok ${turnNumber}):** Armáda „${attackerStack.name}" se střetla s ${defenderCity ? `obránci města ${defenderCity.name}` : "nepřátelskou armádou"}. Výsledek: ${resultLabel[result] || result}. Padlých útočníků: ${casualtiesAttacker}, obránců: ${casualtiesDefender}.`,
+        text: `**Bitva u ${defenderCity?.name || "neznámého místa"} (rok ${turnNumber}):** Armáda „${attackerStack.name}" (${attackerFormation}) se střetla s ${defenderCity ? `obránci města ${defenderCity.name}` : `armádou „${defenderStack?.name || "nepřítel"}"`} (${defenderFormation}). Výsledek: ${resultLabel[result] || result}. Padlých útočníků: ${casualtiesAttacker}, obránců: ${casualtiesDefender}.`,
         epoch_style: "kroniky", turn_from: turnNumber, turn_to: turnNumber, source_type: "system",
       });
     } catch (_) { /* non-critical */ }
@@ -329,8 +382,11 @@ Deno.serve(async (req) => {
       result_label: RESULT_LABELS[result] || result,
       attacker_name: attackerStack.name,
       defender_name: defenderCity?.name || defenderStack?.name || "nepřítel",
-      attacker_strength: attackerStrength,
+      attacker_strength: effectiveAttackerBase,
       defender_strength: effectiveDefenderStrength,
+      attacker_formation: attackerFormation,
+      defender_formation: defenderFormation,
+      formation_matchup_bonus: matchupBonus,
       casualties_attacker: casualtiesAttacker,
       casualties_defender: casualtiesDefender,
       luck_roll: luckRoll,

@@ -5,7 +5,6 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Progress } from "@/components/ui/progress";
 import {
@@ -13,6 +12,7 @@ import {
   ChevronRight, Scroll, ArrowRight, Castle, Flag,
 } from "lucide-react";
 import { toast } from "sonner";
+import BattleLobbyPanel from "./BattleLobbyPanel";
 
 interface Stack {
   id: string;
@@ -59,34 +59,113 @@ const RESULT_LABELS: Record<string, { label: string; className: string }> = {
 export default function DeployBattlePanel({ sessionId, currentPlayerName, currentTurn, stacks, cities, onRefresh }: Props) {
   const [deployDialog, setDeployDialog] = useState<Stack | null>(null);
   const [moveDialog, setMoveDialog] = useState<Stack | null>(null);
-  const [battleDialog, setBattleDialog] = useState<Stack | null>(null);
+  const [battleTargetDialog, setBattleTargetDialog] = useState<Stack | null>(null);
+  const [activeLobby, setActiveLobby] = useState<any | null>(null);
   const [pendingDecisions, setPendingDecisions] = useState<any[]>([]);
   const [recentBattles, setRecentBattles] = useState<any[]>([]);
+  const [activeLobbies, setActiveLobbies] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
 
   const myCities = cities.filter(c => c.owner_player === currentPlayerName);
   const deployedStacks = stacks.filter(s => s.is_active && s.is_deployed);
   const garrisonStacks = stacks.filter(s => s.is_active && !s.is_deployed);
 
-  // Load pending decisions and recent battles
+  // Load pending decisions, recent battles, and active lobbies
   useEffect(() => {
     const load = async () => {
-      const [decRes, batRes] = await Promise.all([
+      const [decRes, batRes, lobbyRes] = await Promise.all([
         supabase.from("action_queue").select("*")
           .eq("session_id", sessionId).eq("player_name", currentPlayerName)
           .eq("action_type", "post_battle_decision").eq("status", "pending"),
         supabase.from("battles").select("*")
           .eq("session_id", sessionId)
           .order("created_at", { ascending: false }).limit(5),
+        supabase.from("battle_lobbies").select("*")
+          .eq("session_id", sessionId).eq("status", "preparing")
+          .or(`attacker_player.eq.${currentPlayerName},defender_player.eq.${currentPlayerName}`),
       ]);
       setPendingDecisions(decRes.data || []);
       setRecentBattles(batRes.data || []);
+      setActiveLobbies(lobbyRes.data || []);
     };
     load();
   }, [sessionId, currentPlayerName, stacks]);
 
+  // Create a new battle lobby
+  const createLobby = async (attackerStack: Stack, targetType: "city" | "stack", targetId: string) => {
+    const targetCity = targetType === "city" ? cities.find(c => c.id === targetId) : null;
+    const targetStack = targetType === "stack" ? stacks.find(s => s.id === targetId) : null;
+    const defenderPlayer = targetCity?.owner_player || targetStack?.player_name || "unknown";
+
+    const { data, error } = await supabase.from("battle_lobbies").insert({
+      session_id: sessionId,
+      turn_number: currentTurn,
+      attacker_stack_id: attackerStack.id,
+      attacker_player: currentPlayerName,
+      defender_stack_id: targetStack?.id || null,
+      defender_city_id: targetCity?.id || null,
+      defender_player: defenderPlayer,
+      attacker_formation: "ASSAULT",
+      defender_formation: "DEFENSIVE",
+      status: "preparing",
+    }).select("*").single();
+
+    if (error) {
+      toast.error("Chyba při vytváření bitevního lobby: " + error.message);
+      return;
+    }
+
+    toast.success(`Bitevní lobby vytvořeno — ${attackerStack.name} vs ${targetCity?.name || targetStack?.name}`);
+    setActiveLobby(data);
+    setBattleTargetDialog(null);
+  };
+
   return (
     <div className="space-y-4">
+      {/* Active battle lobby dialog */}
+      {activeLobby && (
+        <BattleLobbyPanel
+          lobby={activeLobby}
+          currentPlayerName={currentPlayerName}
+          sessionId={sessionId}
+          currentTurn={currentTurn}
+          onClose={() => setActiveLobby(null)}
+          onRefresh={onRefresh}
+        />
+      )}
+
+      {/* Active lobbies waiting for action */}
+      {activeLobbies.length > 0 && (
+        <Card className="border-destructive/30">
+          <CardContent className="p-4 space-y-3">
+            <h3 className="font-display font-semibold text-sm flex items-center gap-2 text-destructive">
+              <Swords className="h-4 w-4" /> Aktivní bitevní lobby ({activeLobbies.length})
+            </h3>
+            {activeLobbies.map(lb => {
+              const isAtk = lb.attacker_player === currentPlayerName;
+              return (
+                <div key={lb.id} className="flex items-center gap-2 p-2 rounded-lg border border-border bg-card">
+                  <Swords className="h-3.5 w-3.5 text-destructive shrink-0" />
+                  <span className="text-xs font-display font-semibold">
+                    {isAtk ? "Vy" : lb.attacker_player} vs {isAtk ? lb.defender_player : "Vy"}
+                  </span>
+                  <Badge variant="outline" className="text-[10px]">
+                    {isAtk
+                      ? (lb.attacker_ready ? "✓ Připraven" : "Čeká na vás")
+                      : (lb.defender_ready ? "✓ Připraven" : "Čeká na vás")}
+                  </Badge>
+                  <span className="ml-auto" />
+                  <Button size="sm" variant="default" className="text-xs font-display h-7"
+                    onClick={() => setActiveLobby(lb)}>
+                    <ChevronRight className="h-3 w-3 mr-1" />Otevřít
+                  </Button>
+                </div>
+              );
+            })}
+          </CardContent>
+        </Card>
+      )}
+
       {/* Pending post-battle decisions */}
       {pendingDecisions.length > 0 && (
         <Card className="border-illuminated/30">
@@ -170,7 +249,7 @@ export default function DeployBattlePanel({ sessionId, currentPlayerName, curren
                       <Navigation className="h-3 w-3 mr-1" />Přesunout
                     </Button>
                     <Button size="sm" variant="default" className="text-xs font-display h-7"
-                      onClick={() => setBattleDialog(s)}>
+                      onClick={() => setBattleTargetDialog(s)}>
                       <Swords className="h-3 w-3 mr-1" />Útok
                     </Button>
                     <Button size="sm" variant="ghost" className="text-xs font-display h-7"
@@ -233,12 +312,12 @@ export default function DeployBattlePanel({ sessionId, currentPlayerName, curren
           onClose={() => setMoveDialog(null)} onRefresh={onRefresh} />
       )}
 
-      {/* Battle dialog */}
-      {battleDialog && (
-        <BattleInitDialog stack={battleDialog} sessionId={sessionId}
-          currentPlayerName={currentPlayerName} currentTurn={currentTurn}
-          cities={cities} stacks={stacks}
-          onClose={() => setBattleDialog(null)} onRefresh={onRefresh} />
+      {/* Battle target selection dialog */}
+      {battleTargetDialog && (
+        <BattleTargetDialog stack={battleTargetDialog} sessionId={sessionId}
+          currentPlayerName={currentPlayerName} cities={cities} stacks={stacks}
+          onClose={() => setBattleTargetDialog(null)}
+          onCreateLobby={createLobby} />
       )}
     </div>
   );
@@ -348,19 +427,15 @@ function MoveStackDialog({ stack, sessionId, onClose, onRefresh }: {
   );
 }
 
-// ═══ Battle Init Dialog (with speech) ═══
-function BattleInitDialog({ stack, sessionId, currentPlayerName, currentTurn, cities, stacks, onClose, onRefresh }: {
-  stack: Stack; sessionId: string; currentPlayerName: string; currentTurn: number;
-  cities: any[]; stacks: Stack[]; onClose: () => void; onRefresh: () => void;
+// ═══ Battle Target Selection Dialog ═══
+function BattleTargetDialog({ stack, sessionId, currentPlayerName, cities, stacks, onClose, onCreateLobby }: {
+  stack: Stack; sessionId: string; currentPlayerName: string;
+  cities: any[]; stacks: Stack[];
+  onClose: () => void; onCreateLobby: (stack: Stack, type: "city" | "stack", targetId: string) => void;
 }) {
   const [targetType, setTargetType] = useState<"city" | "stack">("city");
   const [targetId, setTargetId] = useState("");
-  const [speechText, setSpeechText] = useState("");
-  const [speechResult, setSpeechResult] = useState<{ morale_modifier: number; ai_feedback: string } | null>(null);
-  const [evaluatingSpeech, setEvaluatingSpeech] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
 
-  // Find valid targets (enemy cities at same or adjacent hex, enemy stacks nearby)
   const q = stack.hex_q ?? 0;
   const r = stack.hex_r ?? 0;
   const reachableHexes = new Set([
@@ -379,195 +454,71 @@ function BattleInitDialog({ stack, sessionId, currentPlayerName, currentTurn, ci
     reachableHexes.has(`${s.hex_q},${s.hex_r}`)
   );
 
-  const handleEvaluateSpeech = async () => {
-    if (!speechText.trim()) { toast.error("Napište proslov"); return; }
-    setEvaluatingSpeech(true);
-    try {
-      const targetName = targetType === "city"
-        ? enemyCities.find(c => c.id === targetId)?.name || "město"
-        : enemyStacks.find(s => s.id === targetId)?.name || "nepřítel";
-
-      const { data, error } = await supabase.functions.invoke("battle-speech", {
-        body: {
-          speech_text: speechText,
-          attacker_name: stack.name,
-          defender_name: targetName,
-          biome: "plains",
-          attacker_morale: stack.morale,
-        },
-      });
-      if (error) throw error;
-      if (data?.error) {
-        toast.error(data.error);
-      } else if (data) {
-        setSpeechResult(data);
-        toast.success(`Proslov vyhodnocen: ${data.morale_modifier >= 0 ? "+" : ""}${data.morale_modifier} morálka`);
-      }
-    } catch (e) {
-      console.error(e);
-      toast.error("Chyba při hodnocení proslovu");
-    }
-    setEvaluatingSpeech(false);
-  };
-
-  const handleInitiateBattle = async () => {
-    if (!targetId) { toast.error("Vyberte cíl"); return; }
-    setSubmitting(true);
-    try {
-      const seed = Date.now() + Math.floor(Math.random() * 100000);
-
-      // Resolve battle immediately via edge function
-      const { data, error } = await supabase.functions.invoke("resolve-battle", {
-        body: {
-          session_id: sessionId,
-          player_name: currentPlayerName,
-          current_turn: currentTurn,
-          attacker_stack_id: stack.id,
-          defender_city_id: targetType === "city" ? targetId : null,
-          defender_stack_id: targetType === "stack" ? targetId : null,
-          speech_text: speechText || null,
-          speech_morale_modifier: speechResult?.morale_modifier || 0,
-          seed,
-        },
-      });
-      if (error) throw error;
-      if (data?.error) throw new Error(data.error);
-
-      // Show result
-      const LABELS: Record<string, string> = {
-        decisive_victory: "Drtivé vítězství! ⚔️🔥",
-        victory: "Vítězství! ⚔️",
-        pyrrhic_victory: "Pyrrhovo vítězství ⚔️",
-        defeat: "Porážka 💀",
-        rout: "Rozprášení 💀💀",
-      };
-      const resultMsg = `${LABELS[data.result] || data.result}\n${data.attacker_name} vs ${data.defender_name}\nZtráty: ${data.casualties_attacker}/${data.casualties_defender}`;
-      if (data.result?.includes("victory")) {
-        toast.success(resultMsg);
-      } else {
-        toast.error(resultMsg);
-      }
-      if (data.needs_decision) {
-        toast.info("⚖️ Rozhodnutí po bitvě čeká!");
-      }
-
-      onRefresh();
-      onClose();
-    } catch (e: any) {
-      toast.error(e.message || "Chyba");
-    }
-    setSubmitting(false);
-  };
-
   return (
     <Dialog open onOpenChange={onClose}>
-      <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-sm">
         <DialogHeader>
           <DialogTitle className="font-display flex items-center gap-2">
-            <Swords className="h-5 w-5 text-destructive" /> Zahájit bitvu — {stack.name}
+            <Swords className="h-5 w-5 text-destructive" /> Vybrat cíl — {stack.name}
           </DialogTitle>
         </DialogHeader>
-        <div className="space-y-4">
-          {/* Target selection */}
-          <div className="space-y-2">
-            <p className="text-xs font-display font-semibold text-muted-foreground">Cíl útoku</p>
-            <div className="flex gap-2">
-              <Button size="sm" variant={targetType === "city" ? "default" : "outline"}
-                className="text-xs font-display" onClick={() => { setTargetType("city"); setTargetId(""); }}>
-                <Castle className="h-3 w-3 mr-1" />Město
-              </Button>
-              <Button size="sm" variant={targetType === "stack" ? "default" : "outline"}
-                className="text-xs font-display" onClick={() => { setTargetType("stack"); setTargetId(""); }}>
-                <Shield className="h-3 w-3 mr-1" />Armáda
-              </Button>
-            </div>
+        <div className="space-y-3">
+          <div className="flex gap-2">
+            <Button size="sm" variant={targetType === "city" ? "default" : "outline"}
+              className="text-xs font-display" onClick={() => { setTargetType("city"); setTargetId(""); }}>
+              <Castle className="h-3 w-3 mr-1" />Město
+            </Button>
+            <Button size="sm" variant={targetType === "stack" ? "default" : "outline"}
+              className="text-xs font-display" onClick={() => { setTargetType("stack"); setTargetId(""); }}>
+              <Shield className="h-3 w-3 mr-1" />Armáda
+            </Button>
+          </div>
 
-            {targetType === "city" && (
-              enemyCities.length === 0 ? (
-                <p className="text-xs text-muted-foreground italic">Žádná nepřátelská města v dosahu.</p>
-              ) : (
-                <Select value={targetId} onValueChange={setTargetId}>
-                  <SelectTrigger className="h-9 text-xs"><SelectValue placeholder="Vyberte cíl..." /></SelectTrigger>
-                  <SelectContent>
-                    {enemyCities.map(c => (
-                      <SelectItem key={c.id} value={c.id}>
-                        {c.name} ({c.owner_player}) — ({c.province_q},{c.province_r})
+          {targetType === "city" && (
+            enemyCities.length === 0 ? (
+              <p className="text-xs text-muted-foreground italic">Žádná nepřátelská města v dosahu.</p>
+            ) : (
+              <Select value={targetId} onValueChange={setTargetId}>
+                <SelectTrigger className="h-9 text-xs"><SelectValue placeholder="Vyberte cíl..." /></SelectTrigger>
+                <SelectContent>
+                  {enemyCities.map(c => (
+                    <SelectItem key={c.id} value={c.id}>
+                      {c.name} ({c.owner_player}) — ({c.province_q},{c.province_r})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )
+          )}
+
+          {targetType === "stack" && (
+            enemyStacks.length === 0 ? (
+              <p className="text-xs text-muted-foreground italic">Žádné nepřátelské armády v dosahu.</p>
+            ) : (
+              <Select value={targetId} onValueChange={setTargetId}>
+                <SelectTrigger className="h-9 text-xs"><SelectValue placeholder="Vyberte cíl..." /></SelectTrigger>
+                <SelectContent>
+                  {enemyStacks.map(s => {
+                    const mp = s.compositions.reduce((a, c) => a + c.manpower, 0);
+                    return (
+                      <SelectItem key={s.id} value={s.id}>
+                        {s.name} ({s.player_name}) — {mp} mužů
                       </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              )
-            )}
+                    );
+                  })}
+                </SelectContent>
+              </Select>
+            )
+          )}
 
-            {targetType === "stack" && (
-              enemyStacks.length === 0 ? (
-                <p className="text-xs text-muted-foreground italic">Žádné nepřátelské armády v dosahu.</p>
-              ) : (
-                <Select value={targetId} onValueChange={setTargetId}>
-                  <SelectTrigger className="h-9 text-xs"><SelectValue placeholder="Vyberte cíl..." /></SelectTrigger>
-                  <SelectContent>
-                    {enemyStacks.map(s => {
-                      const mp = s.compositions.reduce((a, c) => a + c.manpower, 0);
-                      return (
-                        <SelectItem key={s.id} value={s.id}>
-                          {s.name} ({s.player_name}) — {mp} mužů
-                        </SelectItem>
-                      );
-                    })}
-                  </SelectContent>
-                </Select>
-              )
-            )}
-          </div>
+          <p className="text-[10px] text-muted-foreground">
+            Po výběru cíle se otevře bitevní lobby, kde zvolíte formaci, napíšete proslov a potvrdíte připravenost.
+          </p>
 
-          {/* Battle speech */}
-          <div className="space-y-2">
-            <p className="text-xs font-display font-semibold text-muted-foreground">
-              Bitevní proslov <span className="text-[10px] font-normal">(ovlivní morálku ±10)</span>
-            </p>
-            <Textarea
-              placeholder="Vojáci! Dnes je den, kdy se rozhodne osud naší říše..."
-              value={speechText}
-              onChange={e => { setSpeechText(e.target.value); setSpeechResult(null); }}
-              className="text-sm min-h-[80px]"
-            />
-            <div className="flex items-center gap-2">
-              <Button size="sm" variant="outline" className="text-xs font-display"
-                disabled={evaluatingSpeech || !speechText.trim()}
-                onClick={handleEvaluateSpeech}>
-                {evaluatingSpeech
-                  ? <><Loader2 className="h-3 w-3 mr-1 animate-spin" />Hodnotím...</>
-                  : <><Scroll className="h-3 w-3 mr-1" />Vyhodnotit proslov</>
-                }
-              </Button>
-              {speechResult && (
-                <Badge className={`text-xs ${speechResult.morale_modifier >= 0 ? "bg-accent/20 text-accent" : "bg-destructive/20 text-destructive"}`}>
-                  {speechResult.morale_modifier >= 0 ? "+" : ""}{speechResult.morale_modifier} morálka
-                </Badge>
-              )}
-            </div>
-            {speechResult?.ai_feedback && (
-              <p className="text-xs text-muted-foreground italic bg-muted/30 rounded p-2">
-                „{speechResult.ai_feedback}"
-              </p>
-            )}
-          </div>
-
-          {/* Summary */}
-          <div className="p-3 rounded-lg border border-border bg-muted/20 space-y-1 text-xs">
-            <div className="flex items-center gap-2">
-              <Swords className="h-3 w-3 text-primary" />
-              <span className="font-display font-semibold">{stack.name}</span>
-              <span className="text-muted-foreground">Síla: {stack.power} · Morálka: {stack.morale}{speechResult ? ` → ${Math.max(0, Math.min(100, stack.morale + speechResult.morale_modifier))}` : ""}</span>
-            </div>
-            <p className="text-muted-foreground">
-              Bitva bude vyhodnocena deterministicky při zpracování kola (process-turn).
-            </p>
-          </div>
-
-          <Button onClick={handleInitiateBattle} disabled={submitting || !targetId}
+          <Button onClick={() => { if (targetId) onCreateLobby(stack, targetType, targetId); }}
+            disabled={!targetId}
             className="w-full font-display" variant="destructive">
-            <Swords className="h-4 w-4 mr-1" />Zahájit útok
+            <Swords className="h-4 w-4 mr-1" />Vytvořit bitevní lobby
           </Button>
         </div>
       </DialogContent>
@@ -599,7 +550,6 @@ function PostBattleDecision({ decision, sessionId, playerName, currentTurn, stac
         city_stability: Math.max(0, (city.city_stability || 50) - 30),
       }).eq("id", city.id);
     }
-    // vassalize = no ownership change, just diplomatic entry
 
     await supabase.from("action_queue").update({ status: "executed" }).eq("id", decision.id);
     await dispatchCommand({
