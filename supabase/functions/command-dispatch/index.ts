@@ -203,13 +203,7 @@ async function executeCommand(
       }], payload.chronicleText);
 
     case "DECLARE_WAR":
-      return insertEvents(supabase, commandId, [{
-        ...base,
-        event_type: "war",
-        note: payload.note || `${actor.name} vyhlásil válku ${payload.targetPlayer}.`,
-        importance: "critical",
-        reference: { targetPlayer: payload.targetPlayer, ...payload },
-      }]);
+      return await executeDeclareWar(supabase, base, actor, payload, commandId, sessionId, turnNumber);
 
     case "SIGN_TREATY":
       return insertEvents(supabase, commandId, [{
@@ -516,9 +510,37 @@ async function executeMoveStack(
   supabase: any, base: any, actor: Actor, payload: any,
   commandId: string, sessionId: string, turnNumber: number,
 ): Promise<CommandResult> {
-  const { stackId, toQ, toR } = payload;
+  const { stackId, toQ, toR, fromQ, fromR } = payload;
   if (!stackId) return { events: [], error: "Missing stackId" };
   if (toQ === undefined || toR === undefined) return { events: [], error: "Missing toQ/toR" };
+
+  // Validate move range (max 3 hexes per turn using hex distance)
+  if (fromQ !== undefined && fromR !== undefined) {
+    const dq = toQ - fromQ;
+    const dr = toR - fromR;
+    const dist = Math.max(Math.abs(dq), Math.abs(dr), Math.abs(dq + dr));
+    if (dist > 3) {
+      return { events: [], error: `Move too far: distance ${dist} exceeds max 3 hexes per turn` };
+    }
+  }
+
+  // Verify stack belongs to actor
+  const { data: stack } = await supabase.from("military_stacks")
+    .select("id, player_name, hex_q, hex_r")
+    .eq("id", stackId).eq("session_id", sessionId).single();
+
+  if (!stack) return { events: [], error: "Stack not found" };
+  if (stack.player_name !== actor.name) return { events: [], error: "Not your stack" };
+
+  // Server-side distance check if fromQ/fromR not provided
+  const actualFromQ = fromQ ?? stack.hex_q;
+  const actualFromR = fromR ?? stack.hex_r;
+  const dq2 = toQ - actualFromQ;
+  const dr2 = toR - actualFromR;
+  const actualDist = Math.max(Math.abs(dq2), Math.abs(dr2), Math.abs(dq2 + dr2));
+  if (actualDist > 3) {
+    return { events: [], error: `Move too far: distance ${actualDist} exceeds max 3 hexes per turn` };
+  }
 
   // Update stack position
   const { error: moveErr } = await supabase.from("military_stacks")
@@ -535,6 +557,91 @@ async function executeMoveStack(
     importance: "normal",
     reference: payload,
   }], payload.chronicleText);
+}
+
+// ═══════════════════════════════════════════
+// DECLARE_WAR — create war record + stability penalties + event
+// ═══════════════════════════════════════════
+
+async function executeDeclareWar(
+  supabase: any, base: any, actor: Actor, payload: any,
+  commandId: string, sessionId: string, turnNumber: number,
+): Promise<CommandResult> {
+  const { targetPlayer, reason, manifestText } = payload;
+  if (!targetPlayer) return { events: [], error: "Missing targetPlayer" };
+
+  // Check for existing active war
+  const { data: existingWar } = await supabase.from("war_declarations")
+    .select("id").eq("session_id", sessionId)
+    .eq("declaring_player", actor.name).eq("target_player", targetPlayer)
+    .eq("status", "active").maybeSingle();
+
+  if (existingWar) {
+    return { events: [], error: "War already active between these players", status: 409 };
+  }
+
+  // Create war declaration record
+  const { data: warRecord, error: warErr } = await supabase.from("war_declarations").insert({
+    session_id: sessionId,
+    declaring_player: actor.name,
+    target_player: targetPlayer,
+    declared_turn: turnNumber,
+    status: "active",
+    manifest_text: manifestText || reason || null,
+  }).select("id").single();
+
+  if (warErr) return { events: [], error: `War declaration failed: ${warErr.message}` };
+
+  // Apply stability penalties: -5 attacker, -8 defender
+  const applyStabilityPenalty = async (player: string, penalty: number) => {
+    const { data: cities } = await supabase.from("cities")
+      .select("id, city_stability").eq("session_id", sessionId).eq("owner_player", player);
+    for (const c of (cities || [])) {
+      await supabase.from("cities").update({
+        city_stability: Math.max(0, (c.city_stability || 50) - penalty),
+      }).eq("id", c.id);
+    }
+  };
+
+  await Promise.all([
+    applyStabilityPenalty(actor.name, 5),
+    applyStabilityPenalty(targetPlayer, 8),
+  ]);
+
+  // Mark stability penalty as applied
+  await supabase.from("war_declarations").update({ stability_penalty_applied: true }).eq("id", warRecord.id);
+
+  // Chronicle entry
+  const chronicleText = `V roce ${turnNumber} vyhlásil **${actor.name}** válku **${targetPlayer}**. ${reason ? `Důvod: ${reason}.` : "Příčiny konfliktu zůstávají zahaleny tajemstvím."}`;
+  await safeInsert(supabase.from("chronicle_entries").insert({
+    session_id: sessionId, turn_from: turnNumber, turn_to: turnNumber,
+    text: chronicleText, source_type: "system",
+  }));
+
+  // City rumors for both sides
+  const addWarRumors = async (player: string, isAttacker: boolean) => {
+    const { data: cities } = await supabase.from("cities")
+      .select("id, name").eq("session_id", sessionId).eq("owner_player", player);
+    for (const c of (cities || [])) {
+      await safeInsert(supabase.from("city_rumors").insert({
+        session_id: sessionId, city_id: c.id, city_name: c.name, turn_number: turnNumber,
+        text: isAttacker
+          ? `Vladař ${actor.name} vyhlásil válku ${targetPlayer}. Město se připravuje na konflikt.`
+          : `${actor.name} vyhlásil válku naší říši! Obavy se šíří mezi obyvateli ${c.name}.`,
+        tone_tag: isAttacker ? "tense" : "alarming", created_by: "system",
+      }));
+    }
+  };
+
+  await Promise.all([addWarRumors(actor.name, true), addWarRumors(targetPlayer, false)]);
+
+  return insertEvents(supabase, commandId, [{
+    ...base,
+    event_type: "war",
+    note: payload.note || `${actor.name} vyhlásil válku ${targetPlayer}.`,
+    importance: "critical",
+    reference: { targetPlayer, warId: warRecord.id, reason, ...payload },
+  }], { warId: warRecord.id });
 }
 
 // ═══════════════════════════════════════════
