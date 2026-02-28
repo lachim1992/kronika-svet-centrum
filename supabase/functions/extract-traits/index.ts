@@ -72,7 +72,7 @@ ${existingTraitsSummary || "žádné"}`;
                       properties: {
                         entity_type: {
                           type: "string",
-                          enum: ["city", "ruler", "person", "army", "province"],
+                          enum: ["city", "ruler", "person", "army", "province", "civilization", "empire", "country"],
                         },
                         entity_name: { type: "string" },
                         trait_category: {
