@@ -130,6 +130,49 @@ Deno.serve(async (req) => {
     }
 
     // ═══════════════════════════════════════════
+    // 2b. AUTO-RESOLVE UNRESOLVED BATTLE LOBBIES
+    // If a player didn't confirm readiness, resolve with current data.
+    // ═══════════════════════════════════════════
+    try {
+      const { data: unresolvedLobbies } = await supabase.from("battle_lobbies")
+        .select("*")
+        .eq("session_id", sessionId)
+        .eq("status", "preparing")
+        .eq("turn_number", turnNumber);
+
+      let autoResolved = 0;
+      for (const lb of (unresolvedLobbies || [])) {
+        try {
+          await supabase.functions.invoke("resolve-battle", {
+            body: {
+              session_id: sessionId,
+              player_name: lb.attacker_player,
+              current_turn: turnNumber,
+              attacker_stack_id: lb.attacker_stack_id,
+              defender_city_id: lb.defender_city_id || null,
+              defender_stack_id: lb.defender_stack_id || null,
+              speech_text: lb.attacker_speech || null,
+              speech_morale_modifier: lb.attacker_speech_modifier || 0,
+              defender_speech_text: lb.defender_speech || null,
+              defender_speech_morale_modifier: lb.defender_speech_modifier || 0,
+              attacker_formation: lb.attacker_formation || "ASSAULT",
+              defender_formation: lb.defender_formation || "DEFENSIVE",
+              seed: Date.now() + autoResolved,
+              lobby_id: lb.id,
+            },
+          });
+          autoResolved++;
+        } catch (lbErr) {
+          console.error(`Auto-resolve lobby ${lb.id}:`, lbErr);
+        }
+      }
+      results.autoResolvedLobbies = { count: autoResolved };
+    } catch (e) {
+      console.error("Auto-resolve lobbies error:", e);
+      results.autoResolvedLobbies = { error: (e as Error).message };
+    }
+
+    // ═══════════════════════════════════════════
     // 3. AI FACTIONS — SEQUENTIAL with reactions & battle resolution
     // Each faction acts, then its queued battles are resolved immediately.
     // Factions run in order so later factions see earlier factions' actions.
@@ -167,15 +210,16 @@ Deno.serve(async (req) => {
                 const bd = battle.action_data as any;
                 await supabase.functions.invoke("resolve-battle", {
                   body: {
-                    sessionId,
-                    attackerStackId: bd.attacker_stack_id,
-                    defenderCityId: bd.defender_city_id || null,
-                    defenderStackId: bd.defender_stack_id || null,
-                    speechText: bd.speech_text || "",
-                    speechMoraleModifier: bd.speech_morale_modifier || 0,
+                    session_id: sessionId,
+                    attacker_stack_id: bd.attacker_stack_id,
+                    defender_city_id: bd.defender_city_id || null,
+                    defender_stack_id: bd.defender_stack_id || null,
+                    speech_text: bd.speech_text || "",
+                    speech_morale_modifier: bd.speech_morale_modifier || 0,
                     seed: bd.seed || Date.now(),
                     biome: bd.biome || "plains",
-                    turnNumber,
+                    current_turn: turnNumber,
+                    player_name: faction.faction_name,
                   },
                 });
                 // Mark battle as resolved
