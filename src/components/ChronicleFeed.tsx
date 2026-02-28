@@ -146,13 +146,32 @@ const ChronicleFeed = ({
         if (roundEvents.length === 0) continue;
 
         const eventIds = roundEvents.map(e => e.id);
-        const { data: annotationsData } = await supabase
-          .from("event_annotations").select("*").in("event_id", eventIds);
+        const [{ data: annotationsData }, { data: responsesData }, { data: feedCommentsData }] = await Promise.all([
+          supabase.from("event_annotations").select("*").in("event_id", eventIds),
+          supabase.from("event_responses").select("*").in("event_id", eventIds),
+          supabase.from("feed_comments").select("*").eq("session_id", sessionId).eq("target_type", "event").in("target_id", eventIds),
+        ]);
 
         const annotationsWithType = (annotationsData || []).map(a => {
           const evt = roundEvents.find(e => e.id === a.event_id);
           return { ...a, event_type: evt?.event_type || "unknown" };
         });
+
+        // Merge event_responses + feed_comments into player reactions
+        const playerReactions = [
+          ...(responsesData || []).map((r: any) => ({
+            player: r.player,
+            text: r.note,
+            event_id: r.event_id,
+            event_type: roundEvents.find(e => e.id === r.event_id)?.event_type || "unknown",
+          })),
+          ...(feedCommentsData || []).map((c: any) => ({
+            player: c.player_name,
+            text: c.comment_text,
+            event_id: c.target_id,
+            event_type: roundEvents.find(e => e.id === c.target_id)?.event_type || "unknown",
+          })),
+        ];
 
         const approvedMemories = memories
           .filter(m => m.approved)
@@ -165,6 +184,7 @@ const ChronicleFeed = ({
             confirmedEvents: roundEvents,
             annotations: annotationsWithType.filter(a => a.visibility !== "private"),
             worldMemories: approvedMemories,
+            playerReactions,
             epochStyle,
           },
         });
@@ -231,7 +251,18 @@ const ChronicleFeed = ({
     setRewriting(entryId);
     try {
       const roundEvents = events.filter(e => e.turn_number === turn);
+      const eventIds = roundEvents.map(e => e.id);
       const approvedMemories = memories.filter(m => m.approved).map(m => ({ text: m.text, category: (m as any).category }));
+
+      const [{ data: responsesData }, { data: feedCommentsData }] = await Promise.all([
+        supabase.from("event_responses").select("*").in("event_id", eventIds),
+        supabase.from("feed_comments").select("*").eq("session_id", sessionId).eq("target_type", "event").in("target_id", eventIds),
+      ]);
+
+      const playerReactions = [
+        ...(responsesData || []).map((r: any) => ({ player: r.player, text: r.note, event_id: r.event_id })),
+        ...(feedCommentsData || []).map((c: any) => ({ player: c.player_name, text: c.comment_text, event_id: c.target_id })),
+      ];
 
       const { data, error } = await supabase.functions.invoke("world-chronicle-round", {
         body: {
@@ -240,6 +271,7 @@ const ChronicleFeed = ({
           confirmedEvents: roundEvents,
           annotations: [],
           worldMemories: approvedMemories,
+          playerReactions,
           epochStyle,
         },
       });
