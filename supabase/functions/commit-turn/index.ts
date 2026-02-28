@@ -130,7 +130,9 @@ Deno.serve(async (req) => {
     }
 
     // ═══════════════════════════════════════════
-    // 3. AI FACTIONS (all modes — any active AI faction gets a turn)
+    // 3. AI FACTIONS — SEQUENTIAL with reactions & battle resolution
+    // Each faction acts, then its queued battles are resolved immediately.
+    // Factions run in order so later factions see earlier factions' actions.
     // ═══════════════════════════════════════════
     try {
       const { data: aiFactions } = await supabase.from("ai_factions")
@@ -140,17 +142,58 @@ Deno.serve(async (req) => {
 
       if (aiFactions && aiFactions.length > 0) {
         let processed = 0;
+        const factionResults: Record<string, any> = {};
+
         for (const faction of aiFactions) {
           try {
-            await supabase.functions.invoke("ai-faction-turn", {
+            // 3a. AI faction makes decisions
+            const { data: factionData } = await supabase.functions.invoke("ai-faction-turn", {
               body: { sessionId, factionName: faction.faction_name },
             });
+            factionResults[faction.faction_name] = factionData;
             processed++;
+
+            // 3b. Resolve any battles queued by this faction
+            const { data: pendingBattles } = await supabase.from("action_queue")
+              .select("id, action_data")
+              .eq("session_id", sessionId)
+              .eq("player_name", faction.faction_name)
+              .eq("action_type", "battle")
+              .eq("status", "pending")
+              .eq("execute_on_turn", turnNumber);
+
+            for (const battle of (pendingBattles || [])) {
+              try {
+                const bd = battle.action_data as any;
+                await supabase.functions.invoke("resolve-battle", {
+                  body: {
+                    sessionId,
+                    attackerStackId: bd.attacker_stack_id,
+                    defenderCityId: bd.defender_city_id || null,
+                    defenderStackId: bd.defender_stack_id || null,
+                    speechText: bd.speech_text || "",
+                    speechMoraleModifier: bd.speech_morale_modifier || 0,
+                    seed: bd.seed || Date.now(),
+                    biome: bd.biome || "plains",
+                    turnNumber,
+                  },
+                });
+                // Mark battle as resolved
+                await supabase.from("action_queue")
+                  .update({ status: "completed" })
+                  .eq("id", battle.id);
+              } catch (battleErr) {
+                console.error(`Battle resolution for ${faction.faction_name}:`, battleErr);
+                await supabase.from("action_queue")
+                  .update({ status: "failed" })
+                  .eq("id", battle.id);
+              }
+            }
           } catch (e) {
             console.error(`AI faction ${faction.faction_name} error:`, e);
           }
         }
-        results.aiFactions = { processed };
+        results.aiFactions = { processed, details: factionResults };
       } else {
         results.aiFactions = { skipped: true, reason: "no_active_factions" };
       }
