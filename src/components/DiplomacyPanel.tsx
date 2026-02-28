@@ -172,6 +172,12 @@ const DiplomacyPanel = ({ sessionId, players, cityStates, currentPlayerName, gam
     if (error) { toast.error("Nepodařilo se odeslat zprávu"); return; }
     setNewMessage("");
     setMessageTag("__none__");
+
+    // Auto-trigger AI reply for AI faction and NPC rooms
+    if (selectedRoom.room_type === "player_ai_faction" || selectedRoom.room_type === "player_npc") {
+      // Small delay to let the message propagate, then trigger AI reply
+      setTimeout(() => handleNpcReply(), 500);
+    }
   };
 
   const handleNpcReply = async () => {
