@@ -22,6 +22,23 @@ serve(async (req) => {
     const { entity, timeline, actors, relations, stats, chronicleNotes, declarations: decls } = sagaContext;
     const sessionId = sagaContext.sessionId || entity?.sessionId;
 
+    // ─── Load Chronicle 0 (Prolog) for narrative grounding ───
+    let chronicle0Text = "";
+    if (sessionId) {
+      try {
+        const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+        const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+        const sb = createClient(supabaseUrl, supabaseKey);
+        const { data: c0 } = await sb
+          .from("chronicle_entries")
+          .select("text")
+          .eq("session_id", sessionId)
+          .eq("source_type", "chronicle_zero")
+          .maybeSingle();
+        chronicle0Text = (c0 as any)?.text || "";
+      } catch { /* ignore */ }
+    }
+
     // ─── Load narrative config from server_config ───
     let narrativeHistory: any = null;
     if (sessionId) {
@@ -73,7 +90,11 @@ serve(async (req) => {
       ? "\nNEZAHRNUJ numerické metriky (populace, stabilita atd.) do syntézy."
       : "\nZahrnuj konkrétní čísla (kola, populace, stabilita) pokud jsou dostupná.";
 
-    const systemPrompt = `Jsi historický analytik herního světa. Tvým úkolem je vytvořit OBJEKTIVNÍ, NEUTRÁLNÍ historickou syntézu entity na základě dodaných dat.${customStylePrompt}
+    const chronicle0Instruction = chronicle0Text
+      ? `\n\nKRONIKA NULTÉHO ROKU (Prolog — kanonický zdroj o prehistorii, MUSÍŠ na něj navázat):\n${chronicle0Text.substring(0, 2000)}`
+      : "";
+
+    const systemPrompt = `Jsi historický analytik herního světa. Tvým úkolem je vytvořit OBJEKTIVNÍ, NEUTRÁLNÍ historickou syntézu entity na základě dodaných dat.${customStylePrompt}${chronicle0Instruction}
 
 STRIKTNÍ PRAVIDLA:
 1. Piš VÝHRADNĚ na základě dodaných dat. NESMÍŠ vymýšlet nové události, postavy ani fakta.

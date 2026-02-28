@@ -28,6 +28,8 @@ export interface WorldPremise {
   writingStyle: string;
   constraints: string;
   version: number;
+  /** Chronicle 0 (Prolog) text — the canonical founding narrative of the world */
+  chronicle0: string;
 }
 
 export interface AIRequestContext {
@@ -101,6 +103,18 @@ export function getServiceClient(): SupabaseClient {
 export async function loadWorldPremise(sessionId: string, sb?: SupabaseClient): Promise<WorldPremise> {
   const client = sb || getServiceClient();
 
+  // 0. Load Chronicle 0 (prolog) text — canonical founding narrative
+  let chronicle0Text = "";
+  try {
+    const { data: c0 } = await client
+      .from("chronicle_entries")
+      .select("text")
+      .eq("session_id", sessionId)
+      .eq("source_type", "chronicle_zero")
+      .maybeSingle();
+    chronicle0Text = (c0 as any)?.text || "";
+  } catch { /* ignore */ }
+
   // 1. Try canonical world_premise table
   const { data: premise } = await client
     .from("world_premise")
@@ -124,6 +138,7 @@ export async function loadWorldPremise(sessionId: string, sb?: SupabaseClient): 
       writingStyle: premise.writing_style || "narrative",
       constraints: premise.constraints || "",
       version: premise.version,
+      chronicle0: chronicle0Text,
     };
   }
 
@@ -157,6 +172,7 @@ export async function loadWorldPremise(sessionId: string, sb?: SupabaseClient): 
     writingStyle: promptRules.writing_style || "narrative",
     constraints: promptRules.constraints || "",
     version: 1,
+    chronicle0: chronicle0Text,
   };
 
   // 3. Persist as canonical world_premise (auto-migration)
@@ -195,6 +211,14 @@ export function buildPremisePrompt(premise: WorldPremise): string {
   const parts: string[] = [];
 
   parts.push("=== PREMISA SVĚTA (povinný kontext — MUSÍŠ respektovat) ===");
+
+  // Chronicle 0 (Prolog) — the canonical founding narrative
+  if (premise.chronicle0) {
+    const c0Truncated = premise.chronicle0.length > 3000
+      ? premise.chronicle0.substring(0, 3000) + "\n[...zkráceno]"
+      : premise.chronicle0;
+    parts.push(`KRONIKA NULTÉHO ROKU (Prolog světa — kanonický zdroj pravdy o prehistorii, legendárních postavách, válkách a mýtech. MUSÍŠ na něj navazovat!):\n${c0Truncated}`);
+  }
 
   if (premise.loreBible) {
     parts.push(`LORE BIBLE:\n${premise.loreBible.substring(0, 1200)}`);
