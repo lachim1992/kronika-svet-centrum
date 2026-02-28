@@ -2246,6 +2246,85 @@ export type Database = {
           },
         ]
       }
+      feed_comments: {
+        Row: {
+          comment_text: string
+          created_at: string
+          id: string
+          player_name: string
+          session_id: string
+          target_id: string
+          target_type: string
+          turn_number: number
+        }
+        Insert: {
+          comment_text: string
+          created_at?: string
+          id?: string
+          player_name: string
+          session_id: string
+          target_id: string
+          target_type?: string
+          turn_number?: number
+        }
+        Update: {
+          comment_text?: string
+          created_at?: string
+          id?: string
+          player_name?: string
+          session_id?: string
+          target_id?: string
+          target_type?: string
+          turn_number?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "feed_comments_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      feed_reactions: {
+        Row: {
+          created_at: string
+          emoji: string
+          id: string
+          player_name: string
+          session_id: string
+          target_id: string
+          target_type: string
+        }
+        Insert: {
+          created_at?: string
+          emoji: string
+          id?: string
+          player_name: string
+          session_id: string
+          target_id: string
+          target_type?: string
+        }
+        Update: {
+          created_at?: string
+          emoji?: string
+          id?: string
+          player_name?: string
+          session_id?: string
+          target_id?: string
+          target_type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "feed_reactions_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       game_chat: {
         Row: {
           channel: string
