@@ -27,6 +27,10 @@ interface CumulativeStats {
   totalPopulation: number;
   totalCities: number;
   totalArmies: number;
+  totalOlympiads: number;
+  totalMedals: number;
+  totalAcademies: number;
+  totalChampions: number;
 }
 
 const WorldEnginePanel = ({ sessionId, currentTurn, currentPlayerName }: Props) => {
@@ -98,6 +102,10 @@ const WorldEnginePanel = ({ sessionId, currentTurn, currentPlayerName }: Props) 
         { count: crisisCount },
         { data: citiesData },
         { count: armyCount },
+        { count: olympiadCount },
+        { count: medalCount },
+        { count: academyCount },
+        { data: champData },
       ] = await Promise.all([
         supabase.from("battles").select("id", { count: "exact", head: true }).eq("session_id", sessionId),
         supabase.from("game_events").select("id", { count: "exact", head: true }).eq("session_id", sessionId),
@@ -113,9 +121,14 @@ const WorldEnginePanel = ({ sessionId, currentTurn, currentPlayerName }: Props) 
         supabase.from("game_events").select("id", { count: "exact", head: true }).eq("session_id", sessionId).eq("event_type", "crisis"),
         supabase.from("cities").select("population_total").eq("session_id", sessionId).eq("status", "ok"),
         supabase.from("military_stacks" as any).select("id", { count: "exact", head: true }).eq("session_id", sessionId).eq("is_active", true),
+        supabase.from("games_festivals").select("id", { count: "exact", head: true }).eq("session_id", sessionId).eq("status", "concluded"),
+        supabase.from("games_results").select("id", { count: "exact", head: true }).eq("session_id", sessionId).not("medal", "is", null),
+        supabase.from("academies").select("id", { count: "exact", head: true }).eq("session_id", sessionId),
+        supabase.from("academies").select("total_champions").eq("session_id", sessionId),
       ]);
 
       const totalPop = (citiesData || []).reduce((s: number, c: any) => s + (c.population_total || 0), 0);
+      const totalChampions = ((champData as any) || []).reduce((s: number, a: any) => s + (a.total_champions || 0), 0);
 
       setCumulativeStats({
         totalBattles: battleCount || 0,
@@ -133,6 +146,10 @@ const WorldEnginePanel = ({ sessionId, currentTurn, currentPlayerName }: Props) 
         totalPopulation: totalPop,
         totalCities: (citiesData || []).length,
         totalArmies: armyCount || 0,
+        totalOlympiads: olympiadCount || 0,
+        totalMedals: medalCount || 0,
+        totalAcademies: academyCount || 0,
+        totalChampions,
       });
     };
     fetchData();
@@ -310,13 +327,19 @@ const WorldEnginePanel = ({ sessionId, currentTurn, currentPlayerName }: Props) 
                 <StatCard icon="💬" label="Zvěsti" value={cumulativeStats.totalRumors} />
                 <StatCard icon="🤖" label="AI akce" value={cumulativeStats.totalAIActions} />
                 <StatCard icon="🛤️" label="Obch. trasy" value={cumulativeStats.totalTradeRoutes} />
+                <StatCard icon="🏟️" label="Olympiády" value={cumulativeStats.totalOlympiads} />
+                <StatCard icon="🏅" label="Medaile" value={cumulativeStats.totalMedals} />
+                <StatCard icon="🏫" label="Akademie" value={cumulativeStats.totalAcademies} />
+                <StatCard icon="🏆" label="Šampioni" value={cumulativeStats.totalChampions} />
               </div>
               <div className="text-[10px] text-muted-foreground pt-1 border-t border-border">
                 <p><strong>Mechaniky:</strong></p>
                 <p>• <strong>Stabilita</strong>: baseline 60 %, klesá daněmi/válkou, roste reformami. Pod 30 % = rebelie, pod 15 % = 40 % šance.</p>
-                <p>• <strong>Vliv</strong>: Vojsko 25 % + Obchod 20 % + Území 20 % + Diplomacie 15 % + Zákony 10 % + Reputace 10 %.</p>
+                <p>• <strong>Vliv</strong>: Vojsko 22 % + Obchod 18 % + Území 18 % + Diplomacie 13 % + Kultura 10 % + Zákony 9 % + Reputace 10 %.</p>
+                <p>• <strong>Kultura</strong>: Zlato ×3 + ostatní medaile ×1.5 + hostování ×15 + prům. reputace akademií ×0.3.</p>
                 <p>• <strong>Tenze</strong>: Hranice ×15 + Vojsko ×0.1 + Smlouvy ×20 + Embarga ×15. Prahy: ≥65 krize, ≥88 válka.</p>
-                <p>• <strong>Reputace</strong>: Decay ×0.9/kolo. Aliance +10, zrada -25, válka -15, rebelie -8.</p>
+                <p>• <strong>Reputace</strong>: Decay ×0.9/kolo. Aliance +10, zrada -25, válka -15, rebelie -8. Hostitel her +8, šampion +5.</p>
+                <p>• <strong>Akademie</strong>: Reputace školy dává hybridní bonus +1-5 % ke skóre atletů v soutěžích.</p>
                 <p>• <strong>AI frakce</strong>: Plně autonomní — obchodují, uzavírají pakty, útočí i mezi sebou.</p>
               </div>
             </div>
@@ -331,12 +354,13 @@ const WorldEnginePanel = ({ sessionId, currentTurn, currentPlayerName }: Props) 
           <h4 className="font-display font-semibold text-sm">Vliv civilizací</h4>
           <InfoTip side="right">
             <div className="space-y-1">
-              <p className="font-semibold">Celkový vliv = vážený součet 6 složek:</p>
-              <p>⚔️ Vojenský (25 %) — síla armádních stacků</p>
-              <p>📊 Obchod (20 %) — počet měšťanů ve městech</p>
-              <p>🤝 Diplomacie (15 %) — smlouvy a aliance (×10 bodů)</p>
-              <p>🛡️ Území (20 %) — provincie (×20) + města (×10)</p>
-              <p>⚖️ Zákony (10 %) — aktivní zákony (×5) + prům. stabilita</p>
+              <p className="font-semibold">Celkový vliv = vážený součet 7 složek:</p>
+              <p>⚔️ Vojenský (22 %) — síla armádních stacků</p>
+              <p>📊 Obchod (18 %) — počet měšťanů ve městech</p>
+              <p>🤝 Diplomacie (13 %) — smlouvy a aliance (×10 bodů)</p>
+              <p>🛡️ Území (18 %) — provincie (×20) + města (×10)</p>
+              <p>🏟️ Kultura (10 %) — medaile, hostování her, reputace akademií</p>
+              <p>⚖️ Zákony (9 %) — aktivní zákony (×5) + prům. stabilita</p>
               <p>👑 Reputace (10 %) — historická pověst (decay ×0.9/kolo)</p>
               <p className="text-muted-foreground mt-1">Vliv ovlivňuje: gravitaci NPC městských států, AI rozhodování, diplomatické páky a komu se NPC přikloní.</p>
             </div>
@@ -364,30 +388,34 @@ const WorldEnginePanel = ({ sessionId, currentTurn, currentPlayerName }: Props) 
                   <div className="h-2 rounded-full bg-muted overflow-hidden mb-2">
                     <div className="h-full bg-primary/70 rounded-full transition-all" style={{ width: `${pct}%` }} />
                   </div>
-                  <div className="grid grid-cols-3 gap-x-4 gap-y-1 text-[10px] text-muted-foreground">
+                    <div className="grid grid-cols-3 lg:grid-cols-4 gap-x-4 gap-y-1 text-[10px] text-muted-foreground">
                     <span className="flex items-center gap-1">
                       <Swords className="h-3 w-3" />Vojenský: {Math.round(Number(inf.military_score))}
-                      <InfoTip>Součet síly (power) všech aktivních armádních stacků. Váha ve vlivu: 25 %.</InfoTip>
+                      <InfoTip>Součet síly (power) všech aktivních armádních stacků. Váha: 22 %.</InfoTip>
                     </span>
                     <span className="flex items-center gap-1">
                       <BarChart3 className="h-3 w-3" />Obchod: {Math.round(Number(inf.trade_score))}
-                      <InfoTip>Součet měšťanů (burghers) ve všech městech. Váha ve vlivu: 20 %.</InfoTip>
+                      <InfoTip>Součet měšťanů (burghers) ve všech městech. Váha: 18 %.</InfoTip>
                     </span>
                     <span className="flex items-center gap-1">
                       <Handshake className="h-3 w-3" />Diplomacie: {Math.round(Number(inf.diplomatic_score))}
-                      <InfoTip>Počet diplomatických událostí (smlouvy, aliance) × 10 bodů. Váha: 15 %.</InfoTip>
+                      <InfoTip>Počet diplomatických událostí (smlouvy, aliance) × 10 bodů. Váha: 13 %.</InfoTip>
                     </span>
                     <span className="flex items-center gap-1">
                       <Shield className="h-3 w-3" />Území: {Math.round(Number(inf.territorial_score))}
-                      <InfoTip>Provincie × 20 + města × 10 bodů. Váha ve vlivu: 20 %.</InfoTip>
+                      <InfoTip>Provincie × 20 + města × 10 bodů. Váha: 18 %.</InfoTip>
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <Activity className="h-3 w-3" />Kultura: {Number(inf.cultural_score || 0).toFixed(1)}
+                      <InfoTip>Medaile (🥇×3 + ostatní ×1.5) + hostování her (×15) + prům. reputace akademií (×0.3). Váha: 10 %.</InfoTip>
                     </span>
                     <span className="flex items-center gap-1">
                       <TrendingUp className="h-3 w-3" />Zákony: {Number(inf.law_stability_score).toFixed(1)}
-                      <InfoTip>Aktivní zákony × 5 + průměrná stabilita měst × 0.5. Váha: 10 %.</InfoTip>
+                      <InfoTip>Aktivní zákony × 5 + průměrná stabilita měst × 0.5. Váha: 9 %.</InfoTip>
                     </span>
                     <span className="flex items-center gap-1">
                       <Crown className="h-3 w-3" />Reputace: {Number(inf.reputation_score).toFixed(1)}
-                      <InfoTip>Historická pověst (-100 až +100). Decay ×0.9 za kolo. Aliance +10, zrada -25, válka -15. Váha: 10 %.</InfoTip>
+                      <InfoTip>Historická pověst (-100 až +100). Decay ×0.9/kolo. Hostitel her +8, šampion +5. Váha: 10 %.</InfoTip>
                     </span>
                   </div>
                 </div>

@@ -232,6 +232,19 @@ Deno.serve(async (req) => {
       }
     }
 
+    // ═══ LOAD ACADEMY REPUTATION FOR HYBRID BONUS ═══
+    const academyRepMap = new Map<string, number>(); // participant.id → academy reputation
+    for (const p of participants) {
+      if (!p.student_id) continue;
+      try {
+        const { data: stud } = await sb.from("academy_students").select("academy_id").eq("id", p.student_id).maybeSingle();
+        if (stud?.academy_id) {
+          const { data: acad } = await sb.from("academies").select("reputation").eq("id", stud.academy_id).maybeSingle();
+          if (acad) academyRepMap.set(p.id, acad.reputation || 0);
+        }
+      } catch (_) {}
+    }
+
     // ═══════════════════════════════════════════
     // RESOLVE EACH DISCIPLINE WITH 3 PHASES
     // ═══════════════════════════════════════════
@@ -274,6 +287,11 @@ Deno.serve(async (req) => {
       bonus += p.city_infrastructure_bonus * 0.3;
       bonus += p.civ_modifier * 0.2;
       bonus += p.morale_modifier * cfg.moraleInfluence;
+
+      // ═══ HYBRID ACADEMY BONUS (1-5%) ═══
+      // Academy reputation gives a small edge: rep 0-100 → +0 to +5% of baseScore
+      const academyRep = academyRepMap.get(p.id) || 0;
+      bonus += baseScore * (academyRep / 100) * 0.05;
 
       if (p.form === "peak") bonus += 8;
       if (p.form === "tired") bonus -= 5;

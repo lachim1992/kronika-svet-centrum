@@ -1721,6 +1721,7 @@ export type Database = {
       civ_influence: {
         Row: {
           created_at: string
+          cultural_score: number | null
           diplomatic_score: number
           id: string
           law_stability_score: number
@@ -1735,6 +1736,7 @@ export type Database = {
         }
         Insert: {
           created_at?: string
+          cultural_score?: number | null
           diplomatic_score?: number
           id?: string
           law_stability_score?: number
@@ -1749,6 +1751,7 @@ export type Database = {
         }
         Update: {
           created_at?: string
+          cultural_score?: number | null
           diplomatic_score?: number
           id?: string
           law_stability_score?: number
