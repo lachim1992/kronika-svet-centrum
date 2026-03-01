@@ -401,6 +401,21 @@ const LeaguePanel = ({ sessionId, currentPlayerName, currentTurn }: Props) => {
                  <Badge className="bg-yellow-500 text-black hover:bg-yellow-400 border-none">🏆 Sezóna ukončena! 🏆</Badge>
               </div>
             )}
+            {roundResult.playoff && roundResult.playoff.matches?.length > 0 && (
+              <div className="mt-2 space-y-1">
+                <span className="text-xs font-display font-bold text-yellow-400 flex items-center gap-1">🏆 Playoff</span>
+                {roundResult.playoff.matches.map((m: any, i: number) => (
+                  <div key={i} className="flex items-center gap-2 text-xs bg-yellow-500/5 border border-yellow-500/20 p-1.5 rounded">
+                    <Badge variant="outline" className="text-[8px] border-yellow-500/30 text-yellow-400">{m.playoffRound}</Badge>
+                    <span className="flex-1 text-right truncate font-medium">{m.home}</span>
+                    <span className="font-display font-bold min-w-[3rem] text-center bg-background/60 rounded px-1">
+                      {m.homeScore} : {m.awayScore}
+                    </span>
+                    <span className="flex-1 truncate font-medium">{m.away}</span>
+                  </div>
+                ))}
+              </div>
+            )}
           </CardContent>
         </Card>
       )}
@@ -415,12 +430,13 @@ const LeaguePanel = ({ sessionId, currentPlayerName, currentTurn }: Props) => {
         </Card>
       ) : (
         <Tabs defaultValue="table" className="space-y-3">
-          <TabsList className="grid w-full grid-cols-5 bg-muted/20">
+          <TabsList className="grid w-full grid-cols-6 bg-muted/20">
             <TabsTrigger value="table" className="text-xs data-[state=active]:bg-primary/10 data-[state=active]:text-primary"><Trophy className="h-3 w-3 mr-1" />Tabulka</TabsTrigger>
             <TabsTrigger value="matches" className="text-xs data-[state=active]:bg-primary/10 data-[state=active]:text-primary"><Calendar className="h-3 w-3 mr-1" />Zápasy</TabsTrigger>
+            <TabsTrigger value="playoff" className="text-xs data-[state=active]:bg-yellow-500/20 data-[state=active]:text-yellow-400"><Award className="h-3 w-3 mr-1" />Pohár</TabsTrigger>
             <TabsTrigger value="scorers" className="text-xs data-[state=active]:bg-primary/10 data-[state=active]:text-primary"><Target className="h-3 w-3 mr-1" />Střelci</TabsTrigger>
             <TabsTrigger value="team" className="text-xs data-[state=active]:bg-primary/10 data-[state=active]:text-primary"><Users className="h-3 w-3 mr-1" />Týmy</TabsTrigger>
-            <TabsTrigger value="assoc" className="text-xs data-[state=active]:bg-primary/10 data-[state=active]:text-primary"><Award className="h-3 w-3 mr-1" />Svaz</TabsTrigger>
+            <TabsTrigger value="assoc" className="text-xs data-[state=active]:bg-primary/10 data-[state=active]:text-primary"><Shield className="h-3 w-3 mr-1" />Svaz</TabsTrigger>
           </TabsList>
 
           {/* ═══ STANDINGS ═══ */}
@@ -545,6 +561,169 @@ const LeaguePanel = ({ sessionId, currentPlayerName, currentTurn }: Props) => {
                    Žádné zápasy v rozpisu.
                 </div>
              )}
+          </TabsContent>
+
+          {/* ═══ PLAYOFF / POHÁR ═══ */}
+          <TabsContent value="playoff" className="space-y-3">
+            {(() => {
+              const playoffSeason = activeSeason;
+              const bracket: any[] = (playoffSeason as any)?.playoff_bracket || [];
+              const playoffStatus = (playoffSeason as any)?.playoff_status || "none";
+              const qfMatches = bracket.filter((m: any) => m.round === "quarterfinals");
+              const sfMatches = bracket.filter((m: any) => m.round === "semifinals");
+              const finalMatch = bracket.find((m: any) => m.round === "final");
+
+              const getTeamName = (id: string) => teamMap.get(id)?.team_name || "?";
+              const getTeamColor = (id: string) => teamMap.get(id)?.color_primary || "hsl(var(--muted))";
+
+              const statusLabels: Record<string, string> = {
+                none: "Základní část",
+                quarterfinals: "⚔️ Čtvrtfinále",
+                semifinals: "⚔️ Semifinále",
+                final: "🏆 Finále",
+                completed: "✅ Ukončeno",
+              };
+
+              const renderMatchBox = (m: any, showSeed?: boolean) => {
+                const isPlayed = m.status === "played";
+                const homeWon = isPlayed && m.home_score > m.away_score;
+                const awayWon = isPlayed && m.away_score > m.home_score;
+                return (
+                  <div key={`${m.round}-${m.match_index}`} className="border border-border rounded bg-card/60 overflow-hidden text-[10px] min-w-[160px]">
+                    <div className={`flex items-center gap-1.5 px-2 py-1.5 border-b border-border/50 ${homeWon ? "bg-green-500/10 font-bold" : isPlayed && !homeWon ? "opacity-50" : ""}`}>
+                      <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: getTeamColor(m.home_team_id) }} />
+                      <span className="flex-1 truncate">{showSeed && m.home_seed ? `[${m.home_seed}] ` : ""}{getTeamName(m.home_team_id)}</span>
+                      <span className="font-mono font-bold min-w-[16px] text-right">{isPlayed ? m.home_score : "-"}</span>
+                    </div>
+                    <div className={`flex items-center gap-1.5 px-2 py-1.5 ${awayWon ? "bg-green-500/10 font-bold" : isPlayed && !awayWon ? "opacity-50" : ""}`}>
+                      <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: getTeamColor(m.away_team_id) }} />
+                      <span className="flex-1 truncate">{showSeed && m.away_seed ? `[${m.away_seed}] ` : ""}{getTeamName(m.away_team_id)}</span>
+                      <span className="font-mono font-bold min-w-[16px] text-right">{isPlayed ? m.away_score : "-"}</span>
+                    </div>
+                  </div>
+                );
+              };
+
+              if (playoffStatus === "none" && bracket.length === 0) {
+                return (
+                  <Card className="border-border bg-card/50">
+                    <CardContent className="p-8 text-center">
+                      <Award className="h-10 w-10 text-muted-foreground mx-auto mb-2 opacity-40" />
+                      <p className="text-sm text-muted-foreground">Playoff začne po skončení základní části.</p>
+                      <p className="text-[10px] text-muted-foreground mt-1">Prvních 8 týmů postoupí do vyřazovacího pavouku.</p>
+                    </CardContent>
+                  </Card>
+                );
+              }
+
+              return (
+                <div className="space-y-3">
+                  <Card className="border-yellow-500/20 bg-yellow-500/5">
+                    <CardContent className="p-3">
+                      <div className="flex items-center justify-between mb-3">
+                        <h4 className="font-display font-bold text-sm flex items-center gap-2">
+                          🏆 Pohár Sphaery
+                          <Badge variant="outline" className="text-[9px] border-yellow-500/30 text-yellow-400">
+                            {statusLabels[playoffStatus] || playoffStatus}
+                          </Badge>
+                        </h4>
+                        {playoffStatus === "completed" && finalMatch?.winner_team_id && (
+                          <Badge className="bg-yellow-500 text-black border-none text-xs gap-1">
+                            🏆 {getTeamName(finalMatch.winner_team_id)}
+                          </Badge>
+                        )}
+                      </div>
+
+                      {/* Bracket visualization */}
+                      <div className="flex items-start gap-4 overflow-x-auto pb-2">
+                        {/* Quarterfinals */}
+                        {qfMatches.length > 0 && (
+                          <div className="space-y-1 shrink-0">
+                            <div className="text-[9px] uppercase tracking-wider text-muted-foreground font-semibold text-center mb-1">Čtvrtfinále</div>
+                            <div className="space-y-2">
+                              {qfMatches.map(m => renderMatchBox(m, true))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Connector */}
+                        {qfMatches.length > 0 && sfMatches.length > 0 && (
+                          <div className="flex items-center self-center text-muted-foreground/30 text-lg">→</div>
+                        )}
+
+                        {/* Semifinals */}
+                        {sfMatches.length > 0 && (
+                          <div className="space-y-1 shrink-0">
+                            <div className="text-[9px] uppercase tracking-wider text-muted-foreground font-semibold text-center mb-1">Semifinále</div>
+                            <div className="space-y-2 flex flex-col justify-center" style={{ minHeight: qfMatches.length > 0 ? "200px" : undefined }}>
+                              {sfMatches.map(m => renderMatchBox(m))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Connector */}
+                        {sfMatches.length > 0 && finalMatch && (
+                          <div className="flex items-center self-center text-muted-foreground/30 text-lg">→</div>
+                        )}
+
+                        {/* Final */}
+                        {finalMatch && (
+                          <div className="space-y-1 shrink-0">
+                            <div className="text-[9px] uppercase tracking-wider text-yellow-400 font-semibold text-center mb-1">🏆 Finále</div>
+                            <div className="flex flex-col justify-center" style={{ minHeight: sfMatches.length > 0 ? "200px" : undefined }}>
+                              {renderMatchBox(finalMatch)}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  {/* Titles History Table */}
+                  <Card className="border-border bg-card/50">
+                    <CardHeader className="py-2 px-3 border-b border-border/50">
+                      <CardTitle className="text-xs font-display flex items-center gap-1">
+                        <Trophy className="h-3.5 w-3.5 text-yellow-500" /> Tabulka titulů
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="p-0">
+                      <table className="w-full text-xs">
+                        <thead>
+                          <tr className="border-b border-border text-muted-foreground bg-muted/10">
+                            <th className="p-2 text-left w-8">#</th>
+                            <th className="p-2 text-left">Tým</th>
+                            <th className="p-2 text-left text-[9px]">Hráč</th>
+                            <th className="p-2 text-center w-12">🏆</th>
+                            <th className="p-2 text-center w-12">Sezón</th>
+                            <th className="p-2 text-center w-16">V/R/P</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {[...teams].sort((a, b) => (b.titles_won || 0) - (a.titles_won || 0)).map((t, i) => (
+                            <tr key={t.id} className={`border-b border-border/50 hover:bg-accent/5 cursor-pointer ${t.player_name === currentPlayerName ? "bg-primary/5" : ""}`}
+                              onClick={() => setSelectedTeam(t.id)}>
+                              <td className="p-2 text-muted-foreground">
+                                {(t.titles_won || 0) > 0 && i === 0 ? "🥇" : (t.titles_won || 0) > 0 && i === 1 ? "🥈" : (t.titles_won || 0) > 0 && i === 2 ? "🥉" : `${i+1}.`}
+                              </td>
+                              <td className="p-2">
+                                <div className="flex items-center gap-1.5">
+                                  <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: t.color_primary }} />
+                                  <span className="font-medium">{t.team_name}</span>
+                                </div>
+                              </td>
+                              <td className="p-2 text-muted-foreground text-[9px] truncate max-w-[60px]">{t.player_name}</td>
+                              <td className="p-2 text-center font-bold text-yellow-400">{t.titles_won || 0}</td>
+                              <td className="p-2 text-center text-muted-foreground">{t.seasons_played || 0}</td>
+                              <td className="p-2 text-center text-[9px] font-mono text-muted-foreground">{t.total_wins||0}/{0}/{0}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </CardContent>
+                  </Card>
+                </div>
+              );
+            })()}
           </TabsContent>
 
           {/* ═══ SCORERS ═══ */}
@@ -893,10 +1072,15 @@ const LeaguePanel = ({ sessionId, currentPlayerName, currentTurn }: Props) => {
               </section>
 
               <section>
-                <h4 className="font-display font-bold text-sm text-primary mb-1">🏆 Liga</h4>
+                <h4 className="font-display font-bold text-sm text-primary mb-1">🏆 Liga & Pohár</h4>
                 <p className="text-muted-foreground">
                   Každé město s arénou = 1 tým. Liga běží sezónně, každý s každým 2×.
                   Výhra 3 body, remíza 1, prohra 0. Max 20 týmů v 1. lize, přebytek → 2. liga s postupem a sestupem.
+                </p>
+                <p className="text-muted-foreground mt-1">
+                  <strong>Pohár:</strong> Po základní části prvních 8 týmů hraje vyřazovací pavouk.
+                  Čtvrtfinále: 1. vs 8., 2. vs 7., 3. vs 6., 4. vs 5.
+                  Vítěz finále získává titul Mistra Sphaery! 🏆
                 </p>
               </section>
 
