@@ -33,9 +33,9 @@ const GAME_MODE_CATEGORIES = [
 const ALL_MODES = GAME_MODE_CATEGORIES.flatMap(c => c.modes);
 
 const WORLD_SIZES = [
-  { value: "small", label: "Malý", desc: "5 měst, 2 regiony", cities: 5, regions: 2 },
-  { value: "medium", label: "Střední", desc: "12 měst, 4 regiony", cities: 12, regions: 4 },
-  { value: "large", label: "Velký", desc: "20 měst, 6 regionů", cities: 20, regions: 6 },
+  { value: "small", label: "Malý", desc: "5 měst, 2 regiony · 21×21 hexů", cities: 5, regions: 2, mapW: 21, mapH: 21 },
+  { value: "medium", label: "Střední", desc: "12 měst, 4 regiony · 35×35 hexů", cities: 12, regions: 4, mapW: 35, mapH: 35 },
+  { value: "large", label: "Velký", desc: "20 měst, 6 regionů · 51×51 hexů", cities: 20, regions: 6, mapW: 51, mapH: 51 },
 ];
 
 const TONES = [
@@ -149,6 +149,7 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
         if (sessErr || !session) throw sessErr || new Error("Session creation failed");
 
         // World foundation
+        const sizeConfig = WORLD_SIZES.find(s => s.value === worldSize) || WORLD_SIZES[0];
         await supabase.from("world_foundations").insert({
           session_id: session.id,
           world_name: worldName.trim(),
@@ -157,6 +158,8 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
           victory_style: victoryStyle,
           initial_factions: factions.filter(f => f.trim()),
           created_by: userId,
+          map_width: sizeConfig.mapW,
+          map_height: sizeConfig.mapH,
         } as any);
 
         // Game player record
@@ -241,15 +244,18 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
 
       // ── STEP 2: Create player records ──
       setStepStatus(progress, 1, "active");
-      await supabase.from("world_foundations").insert({
-        session_id: session.id,
-        world_name: worldName.trim(),
-        premise: premise.trim(),
-        tone,
-        victory_style: victoryStyle,
-        initial_factions: factions.filter(f => f.trim()),
-        created_by: userId,
-      } as any);
+        const sizeConfig = WORLD_SIZES.find(s => s.value === worldSize) || WORLD_SIZES[0];
+        await supabase.from("world_foundations").insert({
+          session_id: session.id,
+          world_name: worldName.trim(),
+          premise: premise.trim(),
+          tone,
+          victory_style: victoryStyle,
+          initial_factions: factions.filter(f => f.trim()),
+          created_by: userId,
+          map_width: sizeConfig.mapW,
+          map_height: sizeConfig.mapH,
+        } as any);
 
       await supabase.from("game_players").insert({
         session_id: session.id,
@@ -557,20 +563,24 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
         } as any);
       }
 
-      // Generate initial hexes (skip for AI mode — world-generate-init handles it)
+      // Generate batch hex map for all modes
+      const mapSizeConfig = WORLD_SIZES.find(s => s.value === worldSize) || WORLD_SIZES[0];
+      try {
+        await supabase.functions.invoke("generate-world-map", {
+          body: { session_id: session.id, width: mapSizeConfig.mapW, height: mapSizeConfig.mapH },
+        });
+      } catch (e) {
+        console.warn("Batch map generation warning:", e);
+      }
+
+      // Bootstrap initial hex discoveries for player
       if (!isAIMode) {
         try {
-          await supabase.functions.invoke("generate-hex", {
-            body: { sessionId: session.id, q: 0, r: 0 },
+          await supabase.functions.invoke("explore-hex", {
+            body: { session_id: session.id, player_name: playerName.trim(), q: 0, r: 0 },
           });
-          const neighbors = [
-            [1, 0], [-1, 0], [0, 1], [0, -1], [1, -1], [-1, 1],
-          ];
-          await Promise.all(neighbors.map(([q, r]) =>
-            supabase.functions.invoke("generate-hex", { body: { sessionId: session.id, q, r } })
-          ));
         } catch (e) {
-          console.warn("Hex generation warning:", e);
+          console.warn("Hex discovery bootstrap warning:", e);
         }
       }
 

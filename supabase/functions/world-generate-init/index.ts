@@ -1391,59 +1391,90 @@ Napiš EPICKÝ PROLOG o minimálně 2000 slovech, který zmíní VŠECHNY výše
       }
     }
 
-    // Generate hexes for ALL province territories (19 hexes per province)
+    // ═══ BATCH MAP GENERATION ═══
+    // Generate the entire hex map using the batch generator
     try {
-      // Collect unique hex positions from all provinces
-      const allHexPositions = new Set<string>();
-      for (const entry of allProvinceHexEntries) {
-        allHexPositions.add(`${entry.q},${entry.r}`);
-      }
+      // Read map dimensions from world_foundations
+      const { data: wfData } = await supabase.from("world_foundations")
+        .select("map_width, map_height")
+        .eq("session_id", sessionId)
+        .maybeSingle();
+      const mapWidth = (wfData as any)?.map_width || 21;
+      const mapHeight = (wfData as any)?.map_height || 21;
 
-      const hexPositionArray = Array.from(allHexPositions).map(k => {
-        const [q, r] = k.split(",").map(Number);
-        return { q, r };
+      console.log(`Generating batch map: ${mapWidth}x${mapHeight}`);
+
+      const mapRes = await fetch(`${supabaseUrl}/functions/v1/generate-world-map`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${supabaseKey}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ session_id: sessionId, width: mapWidth, height: mapHeight }),
       });
 
-      // Generate hexes in batches of 10
-      const HEX_BATCH = 10;
-      const allGeneratedHexIds: { id: string; q: number; r: number }[] = [];
-      for (let i = 0; i < hexPositionArray.length; i += HEX_BATCH) {
-        const batch = hexPositionArray.slice(i, i + HEX_BATCH);
-        const hexResults = await Promise.all(batch.map(({ q, r }) =>
-          fetch(`${supabaseUrl}/functions/v1/generate-hex`, {
-            method: "POST",
-            headers: { Authorization: `Bearer ${supabaseKey}`, "Content-Type": "application/json" },
-            body: JSON.stringify({ session_id: sessionId, q, r }),
-          }).then(res => res.ok ? res.json() : null).catch(() => null)
-        ));
-        for (const hex of hexResults) {
-          if (hex?.id) allGeneratedHexIds.push({ id: hex.id, q: hex.q, r: hex.r });
-        }
+      if (mapRes.ok) {
+        const mapData = await mapRes.json();
+        console.log(`Map generated: ${mapData.hexCount} hexes, ${mapData.macroRegions} macro regions`);
+      } else {
+        const errText = await mapRes.text();
+        console.warn("Batch map generation failed:", errText);
       }
 
-      // Link generated hexes to their provinces
-      for (const hex of allGeneratedHexIds) {
-        const provEntry = allProvinceHexEntries.find(
-          (e: any) => e.q === hex.q && e.r === hex.r
-        );
-        if (provEntry) {
-          await supabase.from("province_hexes")
-            .update({ province_id: provEntry.province_id })
-            .eq("id", hex.id);
-        }
+      // Link province hexes to provinces + set owner_player
+      for (const entry of allProvinceHexEntries) {
+        const ownerPlayer = (() => {
+          // Find which faction owns this province
+          for (const region of world.regions || []) {
+            for (const prov of region.provinces || []) {
+              if (provinceIdMap[prov.name] === entry.province_id) {
+                return factionPlayerMap[region.controlledBy] || playerName;
+              }
+            }
+          }
+          return playerName;
+        })();
+
+        await supabase.from("province_hexes")
+          .update({ province_id: entry.province_id, owner_player: ownerPlayer })
+          .eq("session_id", sessionId)
+          .eq("q", entry.q)
+          .eq("r", entry.r);
       }
 
-      // Create discoveries for ALL players for ALL province hexes
+      // Create discoveries for each player — their own province hexes
       const allPlayerNames = Object.values(factionPlayerMap);
-      const discoveryRows: any[] = [];
-      for (const hex of allGeneratedHexIds) {
-        for (const pn of allPlayerNames) {
-          discoveryRows.push({ session_id: sessionId, player_name: pn, entity_type: "province_hex", entity_id: hex.id, source: "world_init" });
-        }
-      }
-      if (discoveryRows.length > 0) {
-        for (let i = 0; i < discoveryRows.length; i += 100) {
-          await supabase.from("discoveries").upsert(discoveryRows.slice(i, i + 100), { onConflict: "session_id,player_name,entity_type,entity_id" });
+      for (const pn of allPlayerNames) {
+        // Find hexes belonging to this player's provinces
+        const playerProvEntries = allProvinceHexEntries.filter((e: any) => {
+          for (const region of world.regions || []) {
+            const ownerPlayer = factionPlayerMap[region.controlledBy] || playerName;
+            if (ownerPlayer !== pn) continue;
+            for (const prov of region.provinces || []) {
+              if (provinceIdMap[prov.name] === e.province_id) return true;
+            }
+          }
+          return false;
+        });
+
+        if (playerProvEntries.length === 0) continue;
+
+        // Get hex IDs for these positions
+        const coords = playerProvEntries.map((e: any) => `and(q.eq.${e.q},r.eq.${e.r})`);
+        const COORD_BATCH = 50;
+        for (let i = 0; i < coords.length; i += COORD_BATCH) {
+          const batch = coords.slice(i, i + COORD_BATCH);
+          const { data: hexData } = await supabase.from("province_hexes")
+            .select("id")
+            .eq("session_id", sessionId)
+            .or(batch.join(","));
+
+          if (hexData && hexData.length > 0) {
+            const discRows = hexData.map((h: any) => ({
+              session_id: sessionId, player_name: pn, entity_type: "province_hex",
+              entity_id: h.id, source: "world_init",
+            }));
+            await supabase.from("discoveries").upsert(discRows, {
+              onConflict: "session_id,player_name,entity_type,entity_id",
+            });
+          }
         }
       }
     } catch (hexErr) { console.warn("Hex generation warning:", hexErr); }
