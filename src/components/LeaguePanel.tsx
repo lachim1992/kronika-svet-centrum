@@ -21,7 +21,8 @@ interface Team {
   motto: string | null; attack_rating: number; defense_rating: number;
   tactics_rating: number; discipline_rating: number; popularity: number;
   fan_base: number; titles_won: number; color_primary: string; color_secondary: string;
-  seasons_played: number; total_wins: number; total_goals_for: number; total_goals_against: number;
+  seasons_played: number; total_wins: number; total_draws: number; total_losses: number;
+  total_goals_for: number; total_goals_against: number;
   league_tier: number;
 }
 
@@ -714,7 +715,7 @@ const LeaguePanel = ({ sessionId, currentPlayerName, currentTurn }: Props) => {
                               <td className="p-2 text-muted-foreground text-[9px] truncate max-w-[60px]">{t.player_name}</td>
                               <td className="p-2 text-center font-bold text-yellow-400">{t.titles_won || 0}</td>
                               <td className="p-2 text-center text-muted-foreground">{t.seasons_played || 0}</td>
-                              <td className="p-2 text-center text-[9px] font-mono text-muted-foreground">{t.total_wins||0}/{0}/{0}</td>
+                              <td className="p-2 text-center text-[9px] font-mono text-muted-foreground">{t.total_wins||0}/{t.total_draws||0}/{t.total_losses||0}</td>
                             </tr>
                           ))}
                         </tbody>
