@@ -67,6 +67,8 @@ export function useAuthProvider() {
         fetchProfile(existing.user.id);
       }
       setLoading(false);
+    }).catch(() => {
+      setLoading(false);
     });
 
     return () => subscription.unsubscribe();
