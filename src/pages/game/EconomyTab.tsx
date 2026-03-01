@@ -135,6 +135,9 @@ const EconomyTab = ({ sessionId, currentPlayerName, currentTurn, cities, resourc
   if (popTaxTotal > 0) wealthSources.push({ label: "Daň z populace", value: popTaxTotal, type: "income" });
   if (burgherTradeTotal > 0) wealthSources.push({ label: "Obchod měšťanů", value: burgherTradeTotal, type: "income" });
   if (wealthUpkeep > 0) wealthSources.push({ label: "Výdaje správy & armády", value: wealthUpkeep, type: "expense" });
+  const sportFundingPct = realm?.sport_funding_pct || 0;
+  const sportFundingExpense = sportFundingPct > 0 ? Math.floor(wealthStock * sportFundingPct / 100) : 0;
+  if (sportFundingExpense > 0) wealthSources.push({ label: `Sportovní financování (${sportFundingPct}%)`, value: sportFundingExpense, type: "expense" });
 
   // Alerts
   const alerts: { text: string; severity: "error" | "warning" }[] = [];
@@ -304,6 +307,7 @@ const EconomyTab = ({ sessionId, currentPlayerName, currentTurn, cities, resourc
                       {src.label === "Daň z populace" && "1 zlato za každých 500 obyvatel v říši. Čím víc lidí, tím víc příjmů."}
                       {src.label === "Obchod měšťanů" && "1 zlato za každých 200 měšťanů. Měšťané jsou obchodnická třída ve městech."}
                       {src.label === "Výdaje správy & armády" && "1 zlato za každých 100 vojáků v aktivních armádách."}
+                      {src.label.startsWith("Sportovní financování") && `Podíl zlata investovaný do akademií a arén. Zvyšuje infrastrukturu, výživu a úroveň trenérů ve školách.`}
                     </TooltipContent>
                   </Tooltip>
                 </TooltipProvider>

@@ -379,6 +379,50 @@ Deno.serve(async (req) => {
       },
     });
 
+    // ═══ CHRONICLE & WIKI INTEGRATION ═══
+    // Write chronicle entry for the festival conclusion
+    try {
+      const legendNames = Object.entries(medalTally).filter(([, t]) => t.gold >= 2).map(([name]) => name);
+      const deadAthletes = participants.filter(p => p.form === "dead");
+      
+      let chronicleText = `**${festival.name} (rok ${turn_number || festival.announced_turn}):** `;
+      chronicleText += `Velké hry skončily. Nejúspěšnějším atletem se stal ${topMedalist?.[0] || "neznámý"} s ${topMedalist?.[1]?.gold || 0} zlatými medailemi. `;
+      if (legendNames.length > 0) {
+        chronicleText += `Legendami her se stali: ${legendNames.join(", ")}. `;
+      }
+      if (deadAthletes.length > 0) {
+        chronicleText += `V aréně zahynul${deadAthletes.length > 1 ? "i" : ""}: ${deadAthletes.map(d => d.athlete_name).join(", ")}. Truchlí celá říše. `;
+      }
+      if (incidents.length > 0) {
+        chronicleText += `Hry poznamenalo ${incidents.length} incident${incidents.length > 1 ? "ů" : ""}.`;
+      }
+
+      await sb.from("chronicle_entries").insert({
+        session_id,
+        text: chronicleText,
+        epoch_style: "kroniky",
+        turn_from: turn_number || festival.announced_turn,
+        turn_to: turn_number || festival.announced_turn,
+        source_type: "system",
+      });
+
+      // Create wiki entries for new legends
+      for (const legendName of legendNames) {
+        const legendParticipant = participants.find(p => p.athlete_name === legendName);
+        if (legendParticipant?.great_person_id) {
+          try {
+            await sb.from("wiki_entries").insert({
+              session_id,
+              entity_type: "person",
+              entity_id: legendParticipant.great_person_id,
+              entity_name: legendName,
+              owner_player: legendParticipant.player_name,
+            });
+          } catch (_) { /* may already exist via trigger */ }
+        }
+      }
+    } catch (_) { /* non-critical */ }
+
     return new Response(JSON.stringify({
       ok: true,
       results: allResults,
