@@ -762,34 +762,34 @@ Deno.serve(async (req) => {
             .in("status", ["ok", "active"])
             .order("influence_score", { ascending: false });
 
-          for (const fc of (facCities || [])) {
-            // Check for completed arena
-            const { data: arena } = await supabase.from("city_buildings")
-              .select("id").eq("city_id", fc.id).eq("session_id", sessionId)
-              .eq("status", "completed").eq("is_arena", true)
-              .maybeSingle();
+          // AI factions bid with their best city — arena gives bonus, not requirement
+          const bestCity = (facCities || [])[0];
+          if (!bestCity) continue;
 
-            if (!arena) continue;
+          // Check for arena — bonus if present, penalty if not
+          const { data: arena } = await supabase.from("city_buildings")
+            .select("id").eq("city_id", bestCity.id).eq("session_id", sessionId)
+            .eq("status", "completed").eq("is_arena", true)
+            .maybeSingle();
 
-            // Place auto-bid
-            const culturalScore = fc.influence_score * 2;
-            const logisticsScore = fc.development_level * 10 + fc.city_stability;
-            const lobbyBonus = 0;
-            const legacyBonus = (fc.hosting_count || 0) * 8;
-            const popBonus = Math.log((fc.population_total || 1) + 1) * 3;
-            const totalBidScore = culturalScore + logisticsScore + lobbyBonus + legacyBonus + popBonus;
+          const arenaBonus = arena ? 30 : -20; // penalty without arena
 
-            await supabase.from("games_bids").insert({
-              session_id: sessionId, festival_id: cf.id, player_name: fac.faction_name,
-              city_id: fc.id, gold_invested: 0,
-              pitch_text: `${fc.name} se uchází o pořadatelství Velkých her jménem ${fac.faction_name}.`,
-              cultural_score: culturalScore, logistics_score: logisticsScore,
-              stability_score: fc.city_stability, hosting_legacy_bonus: legacyBonus,
-              total_bid_score: totalBidScore, is_winner: false,
-            });
-            aiBidsPlaced++;
-            break; // one bid per faction
-          }
+          const culturalScore = bestCity.influence_score * 2;
+          const logisticsScore = bestCity.development_level * 10 + bestCity.city_stability;
+          const lobbyBonus = arenaBonus;
+          const legacyBonus = (bestCity.hosting_count || 0) * 8;
+          const popBonus = Math.log((bestCity.population_total || 1) + 1) * 3;
+          const totalBidScore = Math.max(1, culturalScore + logisticsScore + lobbyBonus + legacyBonus + popBonus);
+
+          await supabase.from("games_bids").insert({
+            session_id: sessionId, festival_id: cf.id, player_name: fac.faction_name,
+            city_id: bestCity.id, gold_invested: 0,
+            pitch_text: `${bestCity.name} se uchází o pořadatelství Velkých her jménem ${fac.faction_name}.${arena ? "" : " (bez arény)"}`,
+            cultural_score: culturalScore, logistics_score: logisticsScore,
+            stability_score: bestCity.city_stability, hosting_legacy_bonus: legacyBonus,
+            total_bid_score: totalBidScore, is_winner: false,
+          });
+          aiBidsPlaced++;
         }
       }
       results.gamesAiBids = { placed: aiBidsPlaced };

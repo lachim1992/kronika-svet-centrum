@@ -739,6 +739,23 @@ DŮLEŽITÉ: affected_players/faction MUSÍ používat přesná jména frakcí. 
       counters.wiki++;
       counters.cities++;
       cityIndex++;
+
+      // ═══ SEED ARENA for AI faction capital cities ═══
+      if (!isPlayerCity && isCapital) {
+        try {
+          await supabase.from("city_buildings").insert({
+            session_id: sessionId, city_id: cityId, name: "Aréna",
+            category: "culture", description: "Závodiště a aréna pro sportovní i gladiátorské hry.",
+            status: "completed", build_duration: 0, build_started_turn: 0, completed_turn: 1,
+            current_level: 1, max_level: 3, cost_wood: 0, cost_stone: 0, cost_iron: 0, cost_wealth: 0,
+            is_arena: true, is_ai_generated: false, is_wonder: false,
+            effects: { stability: 2, influence: 3 },
+            level_data: { 1: { name: "Závodiště" }, 2: { name: "Stadion" }, 3: { name: "Velký amfiteátr" } },
+            flavor_text: "Písek arény pamatuje první zápasy zakladatelů.",
+          });
+          counters.buildings = (counters.buildings || 0) + 1;
+        } catch (_) { /* arena already exists or other constraint */ }
+      }
     }
 
     // ═══ STEP F: Great Persons with wiki + entity_links ═══
