@@ -14,7 +14,7 @@ import SchoolRankings from "@/components/SchoolRankings";
 import LiveGamesFeed from "@/components/LiveGamesFeed";
 import GladiatorPanel from "@/components/GladiatorPanel";
 import NationalQualificationPanel from "@/components/NationalQualificationPanel";
-import GamesRevealPlayer from "@/components/GamesRevealPlayer";
+import GamesRevealOverlay from "@/components/GamesRevealOverlay";
 
 interface Props {
   sessionId: string;
@@ -215,6 +215,7 @@ const GamesTab = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, o
 
   const [revealScript, setRevealScript] = useState<any[] | null>(null);
   const [revealFestivalId, setRevealFestivalId] = useState<string | null>(null);
+  const [revealStartWithReport, setRevealStartWithReport] = useState(false);
 
   const handleResolve = async (festivalId: string) => {
     setResolving(true);
@@ -240,12 +241,25 @@ const GamesTab = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, o
     }
   };
 
-  const handleRevealComplete = async () => {
+  const handleRevealClose = async () => {
     setRevealScript(null);
     setRevealFestivalId(null);
-    toast.success("🏅 Hry dokončeny!");
+    setRevealStartWithReport(false);
     await fetchData();
     onRefetch();
+  };
+
+  // Archive replay: load reveal_script from DB
+  const handleArchiveReplay = async (festivalId: string) => {
+    const { data } = await supabase.from("games_festivals")
+      .select("reveal_script").eq("id", festivalId).single();
+    const script = (data as any)?.reveal_script;
+    if (script && Array.isArray(script) && script.length > 0) {
+      setRevealScript(script);
+      setRevealFestivalId(festivalId);
+    } else {
+      toast.info("Reveal script není k dispozici pro tento festival.");
+    }
   };
 
   const activeFestival = festivals.find(f => !["concluded", "cancelled"].includes(f.status));
@@ -294,11 +308,14 @@ const GamesTab = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, o
 
         {/* ─── ACTIVE GAMES ─── */}
         <TabsContent value="active" className="space-y-4">
-          {/* Cinematic Reveal Player */}
+          {/* Fullscreen Reveal Overlay */}
           {revealScript && revealFestivalId && (
-            <GamesRevealPlayer
+            <GamesRevealOverlay
               revealScript={revealScript}
-              onComplete={handleRevealComplete}
+              festivalId={revealFestivalId}
+              sessionId={sessionId}
+              onClose={handleRevealClose}
+              startWithReport={revealStartWithReport}
             />
           )}
 
@@ -525,6 +542,15 @@ const GamesTab = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, o
 
                     {isExpanded && (
                       <div className="mt-4 space-y-4" onClick={e => e.stopPropagation()}>
+                        {/* Replay + Report buttons */}
+                        <div className="flex gap-2">
+                          <Button size="sm" variant="outline" className="text-xs gap-1" onClick={() => handleArchiveReplay(f.id)}>
+                            <Trophy className="h-3 w-3" /> Přehrát znovu
+                          </Button>
+                          <Button size="sm" variant="outline" className="text-xs gap-1" onClick={() => { setRevealFestivalId(f.id); setRevealScript([]); setRevealStartWithReport(true); }}>
+                            <BookOpen className="h-3 w-3" /> Zobrazit report
+                          </Button>
+                        </div>
                         {/* AI Narrative */}
                         {(f as any).description && (
                           <div className="prose prose-xs prose-invert max-w-none text-[11px] leading-relaxed whitespace-pre-wrap border-l-2 border-primary/30 pl-3 bg-primary/5 rounded-r p-3">

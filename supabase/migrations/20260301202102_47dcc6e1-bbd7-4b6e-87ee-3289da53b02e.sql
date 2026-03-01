@@ -1,0 +1,1 @@
+ALTER TABLE public.games_festivals ADD COLUMN IF NOT EXISTS newspaper_report TEXT;
