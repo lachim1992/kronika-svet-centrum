@@ -76,6 +76,7 @@ const AcademyPanel = ({ sessionId, currentPlayerName, currentTurn }: Props) => {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [championStudentIds, setChampionStudentIds] = useState<Set<string>>(new Set());
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -87,6 +88,19 @@ const AcademyPanel = ({ sessionId, currentPlayerName, currentTurn }: Props) => {
     setAcademies((acads || []) as any);
     setStudents((studs || []) as any);
     setSportFunding(realm?.sport_funding_pct || 0);
+
+    // Fetch Olympic Champions (best_athlete_id from concluded festivals)
+    try {
+      const { data: festivals } = await supabase.from("games_festivals")
+        .select("best_athlete_id").eq("session_id", sessionId).eq("status", "concluded").not("best_athlete_id", "is", null);
+      if (festivals && festivals.length > 0) {
+        const champPartIds = festivals.map(f => f.best_athlete_id).filter(Boolean) as string[];
+        const { data: champParts } = await supabase.from("games_participants")
+          .select("student_id").in("id", champPartIds).not("student_id", "is", null);
+        setChampionStudentIds(new Set((champParts || []).map(p => p.student_id).filter(Boolean) as string[]));
+      }
+    } catch (_) {}
+
     setLoading(false);
   }, [sessionId, currentPlayerName]);
 
@@ -243,19 +257,24 @@ const AcademyPanel = ({ sessionId, currentPlayerName, currentTurn }: Props) => {
           ) : (
             students.filter(s => s.status === "graduated" || s.status === "promoted").map(s => {
               const acad = academies.find(a => a.id === s.academy_id);
+              const isChampion = championStudentIds.has(s.id);
               return (
                 <div
                   key={s.id}
-                  className="p-2 rounded border border-border bg-card flex items-center gap-2 cursor-pointer hover:bg-card/70 transition-colors"
+                  className={`p-2 rounded border bg-card flex items-center gap-2 cursor-pointer hover:bg-card/70 transition-colors ${
+                    isChampion ? "border-yellow-500/50 ring-1 ring-yellow-500/30 bg-yellow-500/5" : "border-border"
+                  }`}
                   onClick={() => setDetailStudent(s)}
                 >
                   {(s as any).portrait_url && (
-                    <img src={(s as any).portrait_url} alt={s.name} className="w-8 h-8 rounded-full object-cover border border-border" />
+                    <img src={(s as any).portrait_url} alt={s.name} className={`w-8 h-8 rounded-full object-cover border ${isChampion ? "border-yellow-500/50" : "border-border"}`} />
                   )}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-1">
+                      {isChampion && <span className="text-xs">🏆</span>}
                       <span className="font-display text-xs font-semibold truncate">{s.name}</span>
                       <Badge variant="outline" className="text-[7px]">{s.specialty}</Badge>
+                      {isChampion && <Badge variant="outline" className="text-[7px] border-yellow-500/40 text-yellow-400 bg-yellow-500/10">Vítěz olympiády</Badge>}
                       {s.status === "promoted" && <Badge variant="outline" className="text-[7px] border-primary/50 text-primary">🏅 Nominován</Badge>}
                     </div>
                     <p className="text-[9px] text-muted-foreground truncate">{acad?.name || "?"} | Rok {s.graduation_turn}</p>
