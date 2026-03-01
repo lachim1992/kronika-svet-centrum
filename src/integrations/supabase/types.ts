@@ -4382,16 +4382,25 @@ export type Database = {
         Row: {
           aggression: number | null
           assists: number | null
+          association_id: string | null
+          bio: string | null
+          condition: number
           created_at: string
+          form: number
+          goals: number
           goals_scored: number | null
           id: string
+          injury_turns: number
           is_captain: boolean | null
           is_injured: boolean | null
           leadership: number | null
           matches_played: number | null
           name: string
+          overall_rating: number
+          portrait_url: string | null
           position: string
           red_cards: number | null
+          season_rating_avg: number
           session_id: string
           speed: number | null
           stamina: number | null
@@ -4403,16 +4412,25 @@ export type Database = {
         Insert: {
           aggression?: number | null
           assists?: number | null
+          association_id?: string | null
+          bio?: string | null
+          condition?: number
           created_at?: string
+          form?: number
+          goals?: number
           goals_scored?: number | null
           id?: string
+          injury_turns?: number
           is_captain?: boolean | null
           is_injured?: boolean | null
           leadership?: number | null
           matches_played?: number | null
           name: string
+          overall_rating?: number
+          portrait_url?: string | null
           position?: string
           red_cards?: number | null
+          season_rating_avg?: number
           session_id: string
           speed?: number | null
           stamina?: number | null
@@ -4424,16 +4442,25 @@ export type Database = {
         Update: {
           aggression?: number | null
           assists?: number | null
+          association_id?: string | null
+          bio?: string | null
+          condition?: number
           created_at?: string
+          form?: number
+          goals?: number
           goals_scored?: number | null
           id?: string
+          injury_turns?: number
           is_captain?: boolean | null
           is_injured?: boolean | null
           leadership?: number | null
           matches_played?: number | null
           name?: string
+          overall_rating?: number
+          portrait_url?: string | null
           position?: string
           red_cards?: number | null
+          season_rating_avg?: number
           session_id?: string
           speed?: number | null
           stamina?: number | null
@@ -4443,6 +4470,13 @@ export type Database = {
           yellow_cards?: number | null
         }
         Relationships: [
+          {
+            foreignKeyName: "league_players_association_id_fkey"
+            columns: ["association_id"]
+            isOneToOne: false
+            referencedRelation: "sports_associations"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "league_players_session_id_fkey"
             columns: ["session_id"]
@@ -5969,6 +6003,106 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "simulation_log_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      sports_associations: {
+        Row: {
+          budget: number
+          building_id: string | null
+          city_id: string
+          color_primary: string | null
+          color_secondary: string | null
+          created_at: string
+          description: string | null
+          emblem_url: string | null
+          fan_base: number
+          founded_turn: number
+          id: string
+          intake_cycle_turns: number
+          last_intake_turn: number
+          motto: string | null
+          name: string
+          player_name: string
+          reputation: number
+          scouting_level: number
+          session_id: string
+          status: string
+          training_quality: number
+          updated_at: string
+          youth_development: number
+        }
+        Insert: {
+          budget?: number
+          building_id?: string | null
+          city_id: string
+          color_primary?: string | null
+          color_secondary?: string | null
+          created_at?: string
+          description?: string | null
+          emblem_url?: string | null
+          fan_base?: number
+          founded_turn?: number
+          id?: string
+          intake_cycle_turns?: number
+          last_intake_turn?: number
+          motto?: string | null
+          name?: string
+          player_name: string
+          reputation?: number
+          scouting_level?: number
+          session_id: string
+          status?: string
+          training_quality?: number
+          updated_at?: string
+          youth_development?: number
+        }
+        Update: {
+          budget?: number
+          building_id?: string | null
+          city_id?: string
+          color_primary?: string | null
+          color_secondary?: string | null
+          created_at?: string
+          description?: string | null
+          emblem_url?: string | null
+          fan_base?: number
+          founded_turn?: number
+          id?: string
+          intake_cycle_turns?: number
+          last_intake_turn?: number
+          motto?: string | null
+          name?: string
+          player_name?: string
+          reputation?: number
+          scouting_level?: number
+          session_id?: string
+          status?: string
+          training_quality?: number
+          updated_at?: string
+          youth_development?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sports_associations_building_id_fkey"
+            columns: ["building_id"]
+            isOneToOne: false
+            referencedRelation: "city_buildings"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sports_associations_city_id_fkey"
+            columns: ["city_id"]
+            isOneToOne: false
+            referencedRelation: "cities"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sports_associations_session_id_fkey"
             columns: ["session_id"]
             isOneToOne: false
             referencedRelation: "game_sessions"
