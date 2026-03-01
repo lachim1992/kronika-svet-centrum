@@ -740,21 +740,87 @@ DŮLEŽITÉ: affected_players/faction MUSÍ používat přesná jména frakcí. 
       counters.cities++;
       cityIndex++;
 
-      // ═══ SEED ARENA for AI faction capital cities ═══
+      // ═══ SEED STADIUM + 3 LEAGUE TEAMS for AI faction capital cities ═══
       if (!isPlayerCity && isCapital) {
         try {
-          await supabase.from("city_buildings").insert({
-            session_id: sessionId, city_id: cityId, name: "Aréna",
-            category: "culture", description: "Závodiště a aréna pro sportovní i gladiátorské hry.",
+          const { data: stadiumRow } = await supabase.from("city_buildings").insert({
+            session_id: sessionId, city_id: cityId, name: `Stadion ${cityName}`,
+            category: "cultural", description: `Sportovní stadion ve městě ${cityName}.`,
             status: "completed", build_duration: 0, build_started_turn: 0, completed_turn: 1,
             current_level: 1, max_level: 3, cost_wood: 0, cost_stone: 0, cost_iron: 0, cost_wealth: 0,
-            is_arena: true, is_ai_generated: false, is_wonder: false,
-            effects: { stability: 2, influence: 3 },
-            level_data: { 1: { name: "Závodiště" }, 2: { name: "Stadion" }, 3: { name: "Velký amfiteátr" } },
+            is_arena: false, is_ai_generated: false, is_wonder: false,
+            building_tags: ["stadium"],
+            effects: { stability: 2, influence: 3, population_capacity: 50 },
+            level_data: [{ level: 1, name: "Závodiště", effects: { influence: 3, stability: 2 }, cost_mult: 1, unlock: "Ligový tým" }],
             flavor_text: "Písek arény pamatuje první zápasy zakladatelů.",
-          });
+          }).select("id").single();
           counters.buildings = (counters.buildings || 0) + 1;
-        } catch (_) { /* arena already exists or other constraint */ }
+
+          // Generate 3 teams with 11 players each
+          if (stadiumRow) {
+            const TEAM_PREFIXES = ["Legie", "Gladiátoři", "Válečníci", "Štíty", "Orel", "Drakouni", "Krkavci", "Titáni", "Býci", "Blesky"];
+            const TEAM_COLORS = [
+              { p: "#4a90d9", s: "#1a1a2e" }, { p: "#10b981", s: "#0f172a" }, { p: "#dc2626", s: "#1c1917" },
+              { p: "#8b5cf6", s: "#1e1b4b" }, { p: "#f59e0b", s: "#1c1917" }, { p: "#374151", s: "#f9fafb" },
+            ];
+            const FIRST_NAMES = [
+              "Aethon","Brutus","Cassian","Darius","Eneas","Felix","Gaius","Hector",
+              "Icarus","Julius","Kaelen","Leon","Marcus","Nero","Orion","Primus",
+              "Quintus","Rex","Servius","Titus","Ulric","Varro","Xander","Zeno",
+              "Ajax","Balthus","Corvus","Drago","Erebus","Falco","Gryphon","Hadrian",
+            ];
+            const POSITIONS = [
+              { pos: "goalkeeper", count: 1 }, { pos: "defender", count: 4 },
+              { pos: "midfielder", count: 3 }, { pos: "attacker", count: 3 },
+            ];
+            const baseRating = 30 + Math.floor((popTotal / 200) * 3);
+            const usedPrefixes = new Set<string>();
+
+            for (let ti = 0; ti < 3; ti++) {
+              let prefix: string;
+              do { prefix = TEAM_PREFIXES[Math.floor(Math.random() * TEAM_PREFIXES.length)]; } while (usedPrefixes.has(prefix));
+              usedPrefixes.add(prefix);
+              const colors = TEAM_COLORS[(ti + (cityIndex % 3)) % TEAM_COLORS.length];
+
+              const { data: teamRow } = await supabase.from("league_teams").insert({
+                session_id: sessionId, city_id: cityId, stadium_building_id: stadiumRow.id,
+                player_name: ownerPlayer, team_name: `${prefix} ${cityName}`,
+                motto: `Za slávu ${cityName}!`,
+                color_primary: colors.p, color_secondary: colors.s,
+                attack_rating: baseRating + Math.floor(Math.random() * 20) - 10,
+                defense_rating: baseRating + Math.floor(Math.random() * 20) - 10,
+                tactics_rating: baseRating + Math.floor(Math.random() * 15) - 7,
+                discipline_rating: baseRating + Math.floor(Math.random() * 15) - 7,
+                popularity: Math.floor(popTotal / 300),
+                fan_base: Math.floor(popTotal / 15),
+              }).select("id").single();
+
+              if (teamRow) {
+                const usedNames = new Set<string>();
+                const playerRows: any[] = [];
+                for (const posGroup of POSITIONS) {
+                  for (let pi = 0; pi < posGroup.count; pi++) {
+                    let pName: string;
+                    do { pName = FIRST_NAMES[Math.floor(Math.random() * FIRST_NAMES.length)]; } while (usedNames.has(pName));
+                    usedNames.add(pName);
+                    const isCap = posGroup.pos === "midfielder" && pi === 0;
+                    playerRows.push({
+                      session_id: sessionId, team_id: teamRow.id, name: pName,
+                      position: posGroup.pos, is_captain: isCap,
+                      strength: 35 + Math.floor(Math.random() * 30),
+                      speed: 35 + Math.floor(Math.random() * 30),
+                      technique: 35 + Math.floor(Math.random() * 30),
+                      stamina: 40 + Math.floor(Math.random() * 25),
+                      aggression: 25 + Math.floor(Math.random() * 30),
+                      leadership: isCap ? 70 + Math.floor(Math.random() * 20) : Math.floor(Math.random() * 40),
+                    });
+                  }
+                }
+                await supabase.from("league_players").insert(playerRows);
+              }
+            }
+          }
+        } catch (e) { console.error("Stadium/team seed error:", e); }
       }
     }
 
