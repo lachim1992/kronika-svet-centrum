@@ -232,15 +232,19 @@ Deno.serve(async (req) => {
       }
     }
 
-    // ═══ LOAD ACADEMY REPUTATION FOR HYBRID BONUS ═══
+    // ═══ LOAD ACADEMY STATS FOR HYBRID BONUS ═══
     const academyRepMap = new Map<string, number>(); // participant.id → academy reputation
+    const academyFanBaseMap = new Map<string, number>(); // participant.id → academy fan_base
     for (const p of participants) {
       if (!p.student_id) continue;
       try {
         const { data: stud } = await sb.from("academy_students").select("academy_id").eq("id", p.student_id).maybeSingle();
         if (stud?.academy_id) {
-          const { data: acad } = await sb.from("academies").select("reputation").eq("id", stud.academy_id).maybeSingle();
-          if (acad) academyRepMap.set(p.id, acad.reputation || 0);
+          const { data: acad } = await sb.from("academies").select("reputation, fan_base, crowd_popularity").eq("id", stud.academy_id).maybeSingle();
+          if (acad) {
+            academyRepMap.set(p.id, acad.reputation || 0);
+            academyFanBaseMap.set(p.id, acad.fan_base || 0);
+          }
         }
       } catch (_) {}
     }
@@ -949,7 +953,9 @@ Odpověz POUZE jako JSON: {"bio": "...", "imagePrompt": "..."}`
     for (const p of participants) {
       const tally = medalTally[p.athlete_name];
       const goldCount = tally?.gold || 0;
-      const crowdScore = p.charisma * 0.5 + goldCount * 20 + (p.traits?.includes("Charismatický") ? 15 : 0) + Math.random() * 10;
+      // fan_base from academy boosts crowd popularity in games
+      const fanBaseBonus = (academyFanBaseMap.get(p.id) || 0) * 0.2;
+      const crowdScore = p.charisma * 0.5 + goldCount * 20 + fanBaseBonus + (p.traits?.includes("Charismatický") ? 15 : 0) + Math.random() * 10;
       popularityScores.push({ participant: p, score: crowdScore });
       await sb.from("games_participants").update({ crowd_popularity: Math.round(crowdScore) }).eq("id", p.id);
     }
