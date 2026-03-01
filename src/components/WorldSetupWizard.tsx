@@ -32,6 +32,94 @@ const GAME_MODE_CATEGORIES = [
 
 const ALL_MODES = GAME_MODE_CATEGORIES.flatMap(c => c.modes);
 
+// ═══ DnD/RPG WORLD TEMPLATES ═══
+const WORLD_TEMPLATES = [
+  {
+    id: "blank",
+    label: "🗺️ Prázdný svět",
+    desc: "Začněte s čistým listem — vše nastavíte ručně.",
+    worldName: "",
+    premise: "",
+    tone: "mythic",
+    victoryStyle: "story",
+    biome: "plains",
+    homelandName: "",
+    factions: [""],
+  },
+  {
+    id: "classic_fantasy",
+    label: "⚔️ Klasické Fantasy",
+    desc: "Středověký svět s elfími lesy, trpasličími horami a lidskými královstvími.",
+    worldName: "Středosvět",
+    premise: "Dávná spojenectví se hroutí, nová království povstávají z prachu starých říší. Elfové se stahují do lesů, trpaslíci brání horské průsmyky a lidská královská se přetahují o úrodné nížiny. Stará magie slábne, ale nová proroctví se šíří od chrámu k chrámu.",
+    tone: "mythic",
+    victoryStyle: "story",
+    biome: "forest",
+    homelandName: "Královské hvozdy",
+    factions: ["Elfí spojenectví", "Trpasličí klan", "Jižní království"],
+  },
+  {
+    id: "dark_ages",
+    label: "🏰 Temný středověk",
+    desc: "Realistický politický thriller — feudální intriky, mor, křížové výpravy.",
+    worldName: "Starý kontinent",
+    premise: "Rok 1247. Papežský stolec je prázdný, císař je slabý a provinční vévodové se chystají rozdělit říši. Mor decimuje vesnice, obchodní gildy získávají politickou moc a na východě se formuje nová hrozba. Kdo ovládne trůn?",
+    tone: "realistic",
+    victoryStyle: "domination",
+    biome: "plains",
+    homelandName: "Vévodství západní marky",
+    factions: ["Korunní vévodství", "Církevní stát", "Obchodní liga"],
+  },
+  {
+    id: "horror_gothic",
+    label: "🌑 Gotický horor",
+    desc: "Temné síly, prokletá území, přežití v nepřátelském světě.",
+    worldName: "Stínosvět",
+    premise: "Mlhy pohltily staré cesty a stíny oživly. Prokletí se šíří z opuštěných hradů, vlkodlaci řádí v lesích a upíří rody ovládají noční města. Přeživší se opevňují v posledních bezpečných osadách a hledají způsob, jak zlomit pradávnou kletbu.",
+    tone: "dark_fantasy",
+    victoryStyle: "survival",
+    biome: "forest",
+    homelandName: "Poslední útočiště",
+    factions: ["Lovci nestvůr", "Upíří dvůr", "Církev světla"],
+  },
+  {
+    id: "sci_fi_colony",
+    label: "🚀 Sci-Fi kolonie",
+    desc: "Kolonizace nové planety — frakce, zdroje, technologie, mimozemský terén.",
+    worldName: "Nova Terra",
+    premise: "Koloniální loď Aurora přistála na planetě designované jako NT-7. Tři tisíce kolonistů se rozptýlilo do osad dle svých ideologií. Planeta ukrývá mimozemské ruiny, nestabilní biosféru a zdroje, o které se rozpoutá boj. Komunikace se Zemí trvá 4 roky.",
+    tone: "sci_fi",
+    victoryStyle: "survival",
+    biome: "desert",
+    homelandName: "Přistávací zóna Alpha",
+    factions: ["Korporátní sektor", "Techno-utopisté", "Separatisté"],
+  },
+  {
+    id: "dnd_campaign",
+    label: "🐉 DnD kampaň",
+    desc: "Optimalizováno pro herní skupiny — dungeon master + hráči, quest-based.",
+    worldName: "Země draků",
+    premise: "Dračí proroctvá se naplňují — starý drak Vorthax se probudil pod Šedými horami. Gildy dobrodruhů se sjíždějí do královského města, aby přijaly královskou výzvu. Osud světa závisí na hrdinech, kteří se odváží vstoupit do temných jeskyní. Kdo získá Korunu draků?",
+    tone: "mythic",
+    victoryStyle: "story",
+    biome: "mountains",
+    homelandName: "Dragonspire valley",
+    factions: ["Gilda dobrodruhů", "Královská stráž", "Temný kult"],
+  },
+  {
+    id: "ancient_empires",
+    label: "🏛️ Starověké říše",
+    desc: "Řím, Řecko, Egypt, Persie — klasické civilizační drama.",
+    worldName: "Středomoří",
+    premise: "Velké civilizace se střetávají na březích Vnitřního moře. Faraonové budují pyramidy, řečtí filozofové debatují o demokracii a římští legionáři pochodují na sever. Obchodní cesty propojují kontinent, ale ambice vládců hrozí vším otřást.",
+    tone: "realistic",
+    victoryStyle: "domination",
+    biome: "coast",
+    homelandName: "Pobřežní polis",
+    factions: ["Nilská říše", "Městské státy", "Severní legie"],
+  },
+];
+
 const WORLD_SIZES = [
   { value: "small", label: "Malý", desc: "5 měst, 2 regiony · 21×21 hexů", cities: 5, regions: 2, mapW: 21, mapH: 21 },
   { value: "medium", label: "Střední", desc: "12 měst, 4 regiony · 35×35 hexů", cities: 12, regions: 4, mapW: 35, mapH: 35 },
@@ -776,7 +864,41 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
 
       {/* Step 2: World basics */}
       {step === 2 && !creating && (
-        <div className="space-y-3">
+        <div className="space-y-4">
+          {/* Template selector */}
+          <div className="space-y-2">
+            <Label className="text-base font-display flex items-center gap-2">
+              <Sparkles className="h-4 w-4 text-primary" />
+              Šablona světa
+            </Label>
+            <p className="text-xs text-muted-foreground">Zvolte přednastavený scénář nebo začněte s prázdným světem.</p>
+            <div className="grid grid-cols-2 gap-2 max-h-[280px] overflow-y-auto pr-1">
+              {WORLD_TEMPLATES.map(t => (
+                <button key={t.id} onClick={() => {
+                  if (t.id !== "blank") {
+                    setWorldName(t.worldName);
+                    setPremise(t.premise);
+                    setTone(t.tone);
+                    setVictoryStyle(t.victoryStyle);
+                    setHomelandBiome(t.biome);
+                    if (t.homelandName) setHomelandName(t.homelandName);
+                    if (t.factions.length > 0 && t.factions[0]) setFactions(t.factions);
+                    toast.success(`Šablona "${t.label}" aplikována!`);
+                  } else {
+                    setWorldName(""); setPremise(""); setTone("mythic"); setVictoryStyle("story");
+                    setHomelandBiome("plains"); setHomelandName(""); setFactions([""]);
+                  }
+                }}
+                className={`p-2.5 rounded-lg border text-left text-xs transition-colors hover:border-primary/30 ${
+                  worldName === t.worldName && t.id !== "blank" ? "border-primary bg-primary/10" : "border-border"
+                }`}>
+                  <div className="font-display font-semibold text-sm">{t.label}</div>
+                  <div className="text-[10px] text-muted-foreground mt-0.5 line-clamp-2">{t.desc}</div>
+                </button>
+              ))}
+            </div>
+          </div>
+
           <div className="space-y-2">
             <Label>Název světa</Label>
             <Input value={worldName} onChange={e => setWorldName(e.target.value)} placeholder="např. Archipelago Sardos" />
