@@ -3251,6 +3251,7 @@ export type Database = {
           is_global: boolean
           most_popular_id: string | null
           name: string
+          newspaper_report: string | null
           prestige_pool: number
           reveal_phase: string | null
           reveal_script: Json | null
@@ -3279,6 +3280,7 @@ export type Database = {
           is_global?: boolean
           most_popular_id?: string | null
           name: string
+          newspaper_report?: string | null
           prestige_pool?: number
           reveal_phase?: string | null
           reveal_script?: Json | null
@@ -3307,6 +3309,7 @@ export type Database = {
           is_global?: boolean
           most_popular_id?: string | null
           name?: string
+          newspaper_report?: string | null
           prestige_pool?: number
           reveal_phase?: string | null
           reveal_script?: Json | null
