@@ -220,6 +220,7 @@ export type Database = {
         Row: {
           academy_id: string
           agility: number
+          bio: string | null
           charisma: number
           created_at: string
           endurance: number
@@ -228,6 +229,7 @@ export type Database = {
           id: string
           name: string
           player_name: string
+          portrait_url: string | null
           promoted_to_participant_id: string | null
           session_id: string
           specialty: string
@@ -240,6 +242,7 @@ export type Database = {
         Insert: {
           academy_id: string
           agility?: number
+          bio?: string | null
           charisma?: number
           created_at?: string
           endurance?: number
@@ -248,6 +251,7 @@ export type Database = {
           id?: string
           name: string
           player_name: string
+          portrait_url?: string | null
           promoted_to_participant_id?: string | null
           session_id: string
           specialty?: string
@@ -260,6 +264,7 @@ export type Database = {
         Update: {
           academy_id?: string
           agility?: number
+          bio?: string | null
           charisma?: number
           created_at?: string
           endurance?: number
@@ -268,6 +273,7 @@ export type Database = {
           id?: string
           name?: string
           player_name?: string
+          portrait_url?: string | null
           promoted_to_participant_id?: string | null
           session_id?: string
           specialty?: string
@@ -3223,6 +3229,7 @@ export type Database = {
       games_festivals: {
         Row: {
           announced_turn: number
+          best_athlete_id: string | null
           candidacy_deadline_turn: number | null
           concluded_turn: number | null
           created_at: string
@@ -3238,6 +3245,7 @@ export type Database = {
           id: string
           incident_chance: number
           is_global: boolean
+          most_popular_id: string | null
           name: string
           prestige_pool: number
           session_id: string
@@ -3246,6 +3254,7 @@ export type Database = {
         }
         Insert: {
           announced_turn?: number
+          best_athlete_id?: string | null
           candidacy_deadline_turn?: number | null
           concluded_turn?: number | null
           created_at?: string
@@ -3261,6 +3270,7 @@ export type Database = {
           id?: string
           incident_chance?: number
           is_global?: boolean
+          most_popular_id?: string | null
           name: string
           prestige_pool?: number
           session_id: string
@@ -3269,6 +3279,7 @@ export type Database = {
         }
         Update: {
           announced_turn?: number
+          best_athlete_id?: string | null
           candidacy_deadline_turn?: number | null
           concluded_turn?: number | null
           created_at?: string
@@ -3284,6 +3295,7 @@ export type Database = {
           id?: string
           incident_chance?: number
           is_global?: boolean
+          most_popular_id?: string | null
           name?: string
           prestige_pool?: number
           session_id?: string
@@ -3292,10 +3304,24 @@ export type Database = {
         }
         Relationships: [
           {
+            foreignKeyName: "games_festivals_best_athlete_id_fkey"
+            columns: ["best_athlete_id"]
+            isOneToOne: false
+            referencedRelation: "games_participants"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "games_festivals_host_city_id_fkey"
             columns: ["host_city_id"]
             isOneToOne: false
             referencedRelation: "cities"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "games_festivals_most_popular_id_fkey"
+            columns: ["most_popular_id"]
+            isOneToOne: false
+            referencedRelation: "games_participants"
             referencedColumns: ["id"]
           },
           {
@@ -3518,6 +3544,7 @@ export type Database = {
           city_infrastructure_bonus: number
           civ_modifier: number
           created_at: string
+          crowd_popularity: number
           endurance: number
           festival_id: string
           form: string
@@ -3529,6 +3556,7 @@ export type Database = {
           session_id: string
           sponsor_player: string | null
           strength: number
+          student_id: string | null
           tactics: number
           total_medals: number
           training_bonus: number
@@ -3543,6 +3571,7 @@ export type Database = {
           city_infrastructure_bonus?: number
           civ_modifier?: number
           created_at?: string
+          crowd_popularity?: number
           endurance?: number
           festival_id: string
           form?: string
@@ -3554,6 +3583,7 @@ export type Database = {
           session_id: string
           sponsor_player?: string | null
           strength?: number
+          student_id?: string | null
           tactics?: number
           total_medals?: number
           training_bonus?: number
@@ -3568,6 +3598,7 @@ export type Database = {
           city_infrastructure_bonus?: number
           civ_modifier?: number
           created_at?: string
+          crowd_popularity?: number
           endurance?: number
           festival_id?: string
           form?: string
@@ -3579,6 +3610,7 @@ export type Database = {
           session_id?: string
           sponsor_player?: string | null
           strength?: number
+          student_id?: string | null
           tactics?: number
           total_medals?: number
           training_bonus?: number
@@ -3611,6 +3643,74 @@ export type Database = {
             columns: ["session_id"]
             isOneToOne: false
             referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "games_participants_student_id_fkey"
+            columns: ["student_id"]
+            isOneToOne: false
+            referencedRelation: "academy_students"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      games_qualifications: {
+        Row: {
+          created_at: string
+          discipline_key: string
+          festival_id: string
+          id: string
+          player_name: string
+          rank: number
+          score: number
+          selected: boolean
+          session_id: string
+          student_id: string
+        }
+        Insert: {
+          created_at?: string
+          discipline_key: string
+          festival_id: string
+          id?: string
+          player_name: string
+          rank?: number
+          score?: number
+          selected?: boolean
+          session_id: string
+          student_id: string
+        }
+        Update: {
+          created_at?: string
+          discipline_key?: string
+          festival_id?: string
+          id?: string
+          player_name?: string
+          rank?: number
+          score?: number
+          selected?: boolean
+          session_id?: string
+          student_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "games_qualifications_festival_id_fkey"
+            columns: ["festival_id"]
+            isOneToOne: false
+            referencedRelation: "games_festivals"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "games_qualifications_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "games_qualifications_student_id_fkey"
+            columns: ["student_id"]
+            isOneToOne: false
+            referencedRelation: "academy_students"
             referencedColumns: ["id"]
           },
         ]

@@ -13,6 +13,7 @@ import AcademyPanel from "@/components/AcademyPanel";
 import SchoolRankings from "@/components/SchoolRankings";
 import LiveGamesFeed from "@/components/LiveGamesFeed";
 import GladiatorPanel from "@/components/GladiatorPanel";
+import NationalQualificationPanel from "@/components/NationalQualificationPanel";
 
 interface Props {
   sessionId: string;
@@ -289,18 +290,29 @@ const GamesTab = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, o
                 onRefetchParent={onRefetch}
               />
             ) : (
-              <FestivalDetail
-                festival={activeFestival}
-                participants={participants.filter(p => p.festival_id === activeFestival.id)}
-                results={results.filter(r => r.festival_id === activeFestival.id)}
-                disciplines={disciplines}
-                incidents={incidents.filter(i => i.festival_id === activeFestival.id)}
-                currentPlayerName={currentPlayerName}
-                isAdmin={isAdmin}
-                resolving={resolving}
-                onResolve={() => handleResolve(activeFestival.id)}
-                currentTurn={currentTurn}
-              />
+              <>
+                {/* Show qualification panel during nomination for the current player */}
+                {activeFestival.status === "nomination" && (
+                  <NationalQualificationPanel
+                    sessionId={sessionId}
+                    festivalId={activeFestival.id}
+                    playerName={currentPlayerName}
+                    onComplete={fetchData}
+                  />
+                )}
+                <FestivalDetail
+                  festival={activeFestival}
+                  participants={participants.filter(p => p.festival_id === activeFestival.id)}
+                  results={results.filter(r => r.festival_id === activeFestival.id)}
+                  disciplines={disciplines}
+                  incidents={incidents.filter(i => i.festival_id === activeFestival.id)}
+                  currentPlayerName={currentPlayerName}
+                  isAdmin={isAdmin}
+                  resolving={resolving}
+                  onResolve={() => handleResolve(activeFestival.id)}
+                  currentTurn={currentTurn}
+                />
+              </>
             )
           ) : (
             <Card className="border-border bg-card/50">

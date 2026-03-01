@@ -248,7 +248,52 @@ Deno.serve(async (req) => {
           traits.push("Divoch");
         }
 
-        await sb.from("academy_students").insert({
+        // Generate bio based on school and stats
+        const topStat = [
+          { s: "Síla", v: strength }, { s: "Výdrž", v: endurance },
+          { s: "Obratnost", v: agility }, { s: "Taktika", v: tactics }, { s: "Charisma", v: charisma },
+        ].sort((a, b) => b.v - a.v)[0];
+
+        const bioFragments = [
+          `Absolvent ${acad.name}, specialista na ${specialty}.`,
+          `Vyniká v ${topStat.s.toLowerCase()} (${topStat.v}).`,
+          traits.length > 0 ? `Vlastnosti: ${traits.join(", ")}.` : "",
+        ].filter(Boolean);
+
+        const bio = bioFragments.join(" ");
+
+        // Generate portrait via AI
+        let portraitUrl: string | null = null;
+        try {
+          const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+          if (LOVABLE_API_KEY) {
+            const portraitPrompt = `Ancient Greek/Roman athlete portrait, ${name}, ${specialty} specialist, ${traits.join(", ")} personality. Athletic physique, historical setting, dramatic lighting. Oil painting style.`;
+            const aiResp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+              method: "POST",
+              headers: {
+                Authorization: `Bearer ${LOVABLE_API_KEY}`,
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                model: "google/gemini-2.5-flash-image",
+                messages: [{ role: "user", content: portraitPrompt }],
+                modalities: ["image", "text"],
+              }),
+            });
+
+            if (aiResp.ok) {
+              const aiData = await aiResp.json();
+              const imageData = aiData.choices?.[0]?.message?.images?.[0]?.image_url?.url;
+              if (imageData) {
+                portraitUrl = imageData;
+              }
+            }
+          }
+        } catch (portraitErr) {
+          console.error("Portrait generation failed (non-critical):", portraitErr);
+        }
+
+        const { data: insertedStudent } = await sb.from("academy_students").insert({
           academy_id: acad.id,
           session_id,
           player_name,
@@ -259,7 +304,9 @@ Deno.serve(async (req) => {
           training_started_turn: turn - acad.training_cycle_turns,
           graduation_turn: turn,
           status: "graduated",
-        });
+          bio,
+          portrait_url: portraitUrl,
+        }).select("id").single();
 
         results.students_graduated++;
       }
