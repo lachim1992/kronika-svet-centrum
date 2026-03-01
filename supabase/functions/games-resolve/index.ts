@@ -315,7 +315,8 @@ Deno.serve(async (req) => {
 
     for (const disc of disciplines) {
       const cfg = DISC_CONFIGS[disc.key] || DEFAULT_DISC_CONFIG;
-      const discParts = participants.filter(p => p.disciplines.includes(disc.id));
+      // All participants compete in all disciplines (no disciplines column on participants)
+      const discParts = [...participants];
       if (discParts.length < 2) continue;
 
       // 1. QUALIFICATION

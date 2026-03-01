@@ -3297,6 +3297,58 @@ export type Database = {
           },
         ]
       }
+      games_comments: {
+        Row: {
+          created_at: string
+          festival_id: string
+          id: string
+          message: string
+          player_name: string
+          reply_to_id: string | null
+          session_id: string
+        }
+        Insert: {
+          created_at?: string
+          festival_id: string
+          id?: string
+          message: string
+          player_name: string
+          reply_to_id?: string | null
+          session_id: string
+        }
+        Update: {
+          created_at?: string
+          festival_id?: string
+          id?: string
+          message?: string
+          player_name?: string
+          reply_to_id?: string | null
+          session_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "games_comments_festival_id_fkey"
+            columns: ["festival_id"]
+            isOneToOne: false
+            referencedRelation: "games_festivals"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "games_comments_reply_to_id_fkey"
+            columns: ["reply_to_id"]
+            isOneToOne: false
+            referencedRelation: "games_comments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "games_comments_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       games_disciplines: {
         Row: {
           category: string
