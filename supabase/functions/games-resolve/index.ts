@@ -148,7 +148,7 @@ Deno.serve(async (req) => {
       const challenger = sorted[1];
       
       // Opening tension
-      await writeFeed("narration", `${leader.participant.athlete_name} z ${leader.participant.player_name} vyrážívpřed s odhodlaným výrazem. ${challenger.participant.athlete_name} je mu v patách!`, 2, disc.id);
+      await writeFeed("narration", `${leader.participant.athlete_name} z ${leader.participant.player_name} vyráží vpřed s odhodlaným výrazem. ${challenger.participant.athlete_name} je mu v patách!`, 2, disc.id);
       
       // Key roll moment
       const rollDiff = Math.abs(leader.total - challenger.total);
@@ -251,17 +251,26 @@ Deno.serve(async (req) => {
           // Record death
           await sb.from("games_participants").update({ form: "dead" }).eq("id", victim.participant.id);
 
-          // Try to create gladiator record
+          // Try to create gladiator record — find linked academy student
           try {
-            await sb.from("gladiator_records").insert({
-              session_id,
-              student_id: victim.participant.id, // Using participant id as proxy
-              academy_id: victim.participant.city_id || victim.participant.id, // fallback
-              status: "dead",
-              died_turn: turn_number,
-              cause_of_death: `Padl v gladiátorském klání v ${disc.name}`,
-              fights: 1,
-            });
+            const { data: linkedStudent } = await sb.from("academy_students")
+              .select("id, academy_id")
+              .eq("session_id", session_id)
+              .eq("name", victim.participant.athlete_name)
+              .eq("player_name", victim.participant.player_name)
+              .maybeSingle();
+
+            if (linkedStudent) {
+              await sb.from("gladiator_records").insert({
+                session_id,
+                student_id: linkedStudent.id,
+                academy_id: linkedStudent.academy_id,
+                status: "dead",
+                died_turn: turn_number,
+                cause_of_death: `Padl v gladiátorském klání v ${disc.name}`,
+                fights: 1,
+              });
+            }
           } catch (_) { /* non-critical */ }
         }
       }
@@ -326,13 +335,7 @@ Deno.serve(async (req) => {
     }
 
     for (const [playerName, medals] of Object.entries(playerMedals)) {
-      // Boost influence on player's cities
-      await sb.from("cities")
-        .update({ influence_score: sb.rpc ? medals * 2 : 0 }) // Fallback
-        .eq("session_id", session_id)
-        .eq("owner_player", playerName);
-      
-      // Actually, just increment
+      // Increment influence on player's cities
       const { data: pCities } = await sb.from("cities")
         .select("id, influence_score").eq("session_id", session_id).eq("owner_player", playerName);
       for (const c of (pCities || [])) {
@@ -383,7 +386,10 @@ Deno.serve(async (req) => {
     // Write chronicle entry for the festival conclusion
     try {
       const legendNames = Object.entries(medalTally).filter(([, t]) => t.gold >= 2).map(([name]) => name);
-      const deadAthletes = participants.filter(p => p.form === "dead");
+      // Re-fetch participants to get updated form (dead athletes)
+      const { data: updatedParts } = await sb.from("games_participants")
+        .select("athlete_name, form").eq("festival_id", festival_id);
+      const deadAthletes = (updatedParts || []).filter(p => p.form === "dead");
       
       let chronicleText = `**${festival.name} (rok ${turn_number || festival.announced_turn}):** `;
       chronicleText += `Velké hry skončily. Nejúspěšnějším atletem se stal ${topMedalist?.[0] || "neznámý"} s ${topMedalist?.[1]?.gold || 0} zlatými medailemi. `;
