@@ -11,6 +11,9 @@ const corsHeaders = {
  *
  * Performance = BaseStats(80%) + Infrastructure + CivMod + SmallVariance(5-15%)
  *
+ * NEW: Generates a reveal_script (pre-computed cinematic steps) for frontend playback.
+ * The reveal_script is stored on games_festivals and played back by GamesRevealPlayer.
+ *
  * Input: { session_id, festival_id, turn_number }
  */
 Deno.serve(async (req) => {
@@ -86,14 +89,16 @@ Deno.serve(async (req) => {
     }
 
     // ═══════════════════════════════════════════
-    // RESOLVE EACH DISCIPLINE + GENERATE LIVE FEED
+    // RESOLVE EACH DISCIPLINE + BUILD REVEAL SCRIPT
     // ═══════════════════════════════════════════
     const allResults: any[] = [];
-    const medalTally: Record<string, { gold: number; silver: number; bronze: number; player: string }> = {};
+    const medalTally: Record<string, { gold: number; silver: number; bronze: number; player: string; participantId: string }> = {};
     const incidents: any[] = [];
+    const revealScript: any[] = [];
     let feedSeq = 0;
+    let revealSeq = 0;
 
-    // Helper to write live feed entry
+    // Helper to write live feed entry (kept for legacy/flat log)
     const writeFeed = async (type: string, text: string, drama: number = 1, discId?: string, partId?: string, roll?: number) => {
       feedSeq++;
       await sb.from("games_live_feed").insert({
@@ -109,8 +114,23 @@ Deno.serve(async (req) => {
       });
     };
 
-    // Opening narration
+    // Helper to add reveal step
+    const addReveal = (type: string, data: any, delayMs: number = 2000, drama: number = 2) => {
+      revealSeq++;
+      revealScript.push({ seq: revealSeq, type, delay_ms: delayMs, drama, ...data });
+    };
+
+    // ═══ OPENING CEREMONY ═══
+    addReveal("ceremony_open", {
+      text: `🏟️ ${festival.name} začínají! Tribuny se plní diváky ze všech říší.`,
+      athletes_count: participants.length,
+      empires: [...new Set(participants.map(p => p.player_name))],
+    }, 3000, 3);
+
     await writeFeed("narration", `🏟️ ${festival.name} začínají! Tribuny se plní, napětí stoupá. Atleti ze všech říší se shromáždili v aréně.`, 3);
+
+    // Running medal tally for reveal steps
+    const runningMedals: Record<string, { gold: number; silver: number; bronze: number }> = {};
 
     for (const disc of disciplines) {
       // Discipline start
@@ -152,70 +172,144 @@ Deno.serve(async (req) => {
         performances.push({ participant: p, baseScore, bonus, variance, total });
       }
 
-      // Narrate the competition
-      const sorted = [...performances].sort((a, b) => b.total - a.total);
-      const leader = sorted[0];
-      const challenger = sorted[1];
-      
-      // Opening tension
-      await writeFeed("narration", `${leader.participant.athlete_name} z ${leader.participant.player_name} vyráží vpřed s odhodlaným výrazem. ${challenger.participant.athlete_name} je mu v patách!`, 2, disc.id);
-      
-      // Key roll moment
-      const rollDiff = Math.abs(leader.total - challenger.total);
-      const tension = rollDiff < 5 ? 5 : rollDiff < 10 ? 4 : rollDiff < 20 ? 3 : 2;
-      await writeFeed("roll", `Hod výkonu: ${leader.participant.athlete_name} ${leader.total.toFixed(1)} vs ${challenger.participant.athlete_name} ${challenger.total.toFixed(1)}`, tension, disc.id, leader.participant.id, leader.total);
-
-      // Drama moment
-      if (rollDiff < 5) {
-        await writeFeed("narration", `Neuvěřitelný souboj! Pouhé setiny dělí soupeře!`, 5, disc.id);
-      } else if (rollDiff < 15) {
-        await writeFeed("narration", `Těsné finále! ${challenger.participant.athlete_name} se nevzdává!`, 4, disc.id);
-      }
-
-      // Sort and assign medals
+      // Sort by total score
       performances.sort((a, b) => b.total - a.total);
 
+      const leader = performances[0];
+      const challenger = performances[1];
+      const rollDiff = Math.abs(leader.total - challenger.total);
+      const tension = rollDiff < 5 ? 5 : rollDiff < 10 ? 4 : rollDiff < 20 ? 3 : 2;
+
+      // ═══ REVEAL SCRIPT: DISCIPLINE PHASES ═══
+
+      // Phase 1: Discipline intro
+      addReveal("disc_intro", {
+        disc_key: disc.key,
+        disc_name: disc.name,
+        disc_emoji: disc.icon_emoji,
+        disc_category: disc.category,
+        text: `${disc.icon_emoji} ${disc.name} — soutěž začíná!`,
+        athletes: performances.map(p => ({
+          id: p.participant.id,
+          name: p.participant.athlete_name,
+          player: p.participant.player_name,
+          portrait_url: null, // could be enriched
+        })),
+      }, 2500, 2);
+
+      // Phase 2: Mid-competition update (show scrambled standings to build tension)
+      // Create a "fake" intermediate standing where 2nd place leads temporarily
+      const midStandings = performances.map((p, i) => ({
+        id: p.participant.id,
+        name: p.participant.athlete_name,
+        player: p.participant.player_name,
+        score: Math.round((p.total + (i === 0 ? -rollDiff * 0.6 : (i === 1 ? rollDiff * 0.3 : 0))) * 10) / 10,
+      }));
+      midStandings.sort((a, b) => b.score - a.score);
+
+      addReveal("phase_update", {
+        disc_key: disc.key,
+        disc_name: disc.name,
+        standings: midStandings,
+        text: `${challenger.participant.athlete_name} vede průběžně! ${leader.participant.athlete_name} ztrácí!`,
+        phase_label: "Průběžné pořadí",
+      }, 3000, 3);
+
+      // Phase 3: Drama moment
+      let dramaText = "";
+      if (rollDiff < 5) {
+        dramaText = `Neuvěřitelný souboj! Pouhé setiny dělí ${leader.participant.athlete_name} a ${challenger.participant.athlete_name}!`;
+      } else if (rollDiff < 15) {
+        dramaText = `${leader.participant.athlete_name} zrychluje v závěrečné fázi! ${challenger.participant.athlete_name} se nevzdává!`;
+      } else {
+        dramaText = `${leader.participant.athlete_name} dominuje disciplíně s jasným náskokem!`;
+      }
+
+      addReveal("drama_moment", {
+        disc_key: disc.key,
+        disc_name: disc.name,
+        text: dramaText,
+        tension,
+      }, 3000, tension);
+
+      // Phase 4: Final result
+      const finalStandings = performances.map((p, i) => ({
+        id: p.participant.id,
+        name: p.participant.athlete_name,
+        player: p.participant.player_name,
+        score: Math.round(p.total * 100) / 100,
+        rank: i + 1,
+        medal: i === 0 ? "gold" : i === 1 ? "silver" : i === 2 ? "bronze" : null,
+      }));
+
+      addReveal("disc_result", {
+        disc_key: disc.key,
+        disc_name: disc.name,
+        disc_emoji: disc.icon_emoji,
+        text: `🥇 ${leader.participant.athlete_name} (${leader.participant.player_name}) vítězí v ${disc.name}!`,
+        standings: finalStandings,
+        winner: {
+          id: leader.participant.id,
+          name: leader.participant.athlete_name,
+          player: leader.participant.player_name,
+          score: Math.round(leader.total * 100) / 100,
+        },
+      }, 3500, 4);
+
+      // Write legacy feed entries
+      await writeFeed("narration", `${leader.participant.athlete_name} z ${leader.participant.player_name} vyráží vpřed s odhodlaným výrazem. ${challenger.participant.athlete_name} je mu v patách!`, 2, disc.id);
+      await writeFeed("roll", `Hod výkonu: ${leader.participant.athlete_name} ${leader.total.toFixed(1)} vs ${challenger.participant.athlete_name} ${challenger.total.toFixed(1)}`, tension, disc.id, leader.participant.id, leader.total);
+      if (rollDiff < 5) await writeFeed("narration", `Neuvěřitelný souboj! Pouhé setiny dělí soupeře!`, 5, disc.id);
+      else if (rollDiff < 15) await writeFeed("narration", `Těsné finále! ${challenger.participant.athlete_name} se nevzdává!`, 4, disc.id);
+
+      // Save results to DB
       for (let i = 0; i < performances.length; i++) {
         const perf = performances[i];
         const medal = i === 0 ? "gold" : i === 1 ? "silver" : i === 2 ? "bronze" : null;
 
         await sb.from("games_results").insert({
-          session_id,
-          festival_id,
-          discipline_id: disc.id,
+          session_id, festival_id, discipline_id: disc.id,
           participant_id: perf.participant.id,
           base_score: Math.round(perf.baseScore * 100) / 100,
           bonus_score: Math.round(perf.bonus * 100) / 100,
           variance_score: Math.round(perf.variance * 100) / 100,
           total_score: Math.round(perf.total * 100) / 100,
-          rank: i + 1,
-          medal,
+          rank: i + 1, medal,
         });
 
         if (medal) {
           const key = perf.participant.athlete_name;
-          if (!medalTally[key]) medalTally[key] = { gold: 0, silver: 0, bronze: 0, player: perf.participant.player_name };
+          if (!medalTally[key]) medalTally[key] = { gold: 0, silver: 0, bronze: 0, player: perf.participant.player_name, participantId: perf.participant.id };
           if (medal === "gold") medalTally[key].gold++;
           if (medal === "silver") medalTally[key].silver++;
           if (medal === "bronze") medalTally[key].bronze++;
+
+          // Running empire medals
+          const empire = perf.participant.player_name;
+          if (!runningMedals[empire]) runningMedals[empire] = { gold: 0, silver: 0, bronze: 0 };
+          if (medal === "gold") runningMedals[empire].gold++;
+          if (medal === "silver") runningMedals[empire].silver++;
+          if (medal === "bronze") runningMedals[empire].bronze++;
         }
 
         allResults.push({
-          discipline: disc.name,
-          athlete: perf.participant.athlete_name,
-          player: perf.participant.player_name,
-          rank: i + 1,
-          medal,
+          discipline: disc.name, athlete: perf.participant.athlete_name,
+          player: perf.participant.player_name, rank: i + 1, medal,
           total: Math.round(perf.total * 100) / 100,
         });
       }
 
-      // Winner announcement
-      const winner = performances[0];
-      const medalEmoji = "🥇";
-      await writeFeed("result", `${medalEmoji} ${winner.participant.athlete_name} (${winner.participant.player_name}) vítězí v ${disc.name}!`, 4, disc.id, winner.participant.id);
+      // Winner announcement feed
+      await writeFeed("result", `🥇 ${leader.participant.athlete_name} (${leader.participant.player_name}) vítězí v ${disc.name}!`, 4, disc.id, leader.participant.id);
 
-      // Check for incident
+      // Phase 5: Medal table update (after each discipline)
+      addReveal("medal_update", {
+        disc_key: disc.key,
+        medals: JSON.parse(JSON.stringify(runningMedals)),
+        new_medal: { empire: leader.participant.player_name, type: "gold", athlete: leader.participant.athlete_name },
+      }, 2000, 2);
+
+      // ═══ INCIDENT CHECK ═══
       const incidentChance = 0.05 + (intrigues || []).length * 0.03 + festival.incident_chance;
       if (Math.random() < incidentChance) {
         const incidentTypes = ["injury", "bribery", "riot", "protest"];
@@ -230,9 +324,7 @@ Deno.serve(async (req) => {
         };
 
         const incident = {
-          session_id,
-          festival_id,
-          incident_type: incType,
+          session_id, festival_id, incident_type: incType,
           severity: Math.random() > 0.7 ? "major" : "minor",
           target_participant_id: target.participant.id,
           description: incidentDescs[incType],
@@ -242,26 +334,35 @@ Deno.serve(async (req) => {
 
         await sb.from("games_incidents").insert(incident);
         incidents.push(incident);
-
-        // Live feed incident
         await writeFeed("incident", incidentDescs[incType], 4, disc.id, target.participant.id);
+
+        // Reveal script: incident
+        addReveal("incident", {
+          disc_key: disc.key,
+          incident_type: incType,
+          severity: incident.severity,
+          text: `⚠️ ${incidentDescs[incType]}`,
+          target_athlete: target.participant.athlete_name,
+        }, 3000, 4);
 
         if (incType === "injury") {
           await sb.from("games_participants").update({ form: "injured" }).eq("id", target.participant.id);
         }
       }
 
-      // Gladiator death check (for brutal festivals with combat)
+      // ═══ GLADIATOR DEATH CHECK ═══
       if (disc.category === "physical" && festival.festival_type === "local_gladiator") {
-        const brutalityRoll = Math.random();
-        if (brutalityRoll < 0.08) { // 8% death chance in gladiator games
-          const victim = performances[performances.length - 1]; // Weakest dies
+        if (Math.random() < 0.08) {
+          const victim = performances[performances.length - 1];
           await writeFeed("gladiator_death", `${victim.participant.athlete_name} padl v aréně! Dav zuří!`, 5, disc.id, victim.participant.id);
-          
-          // Record death
           await sb.from("games_participants").update({ form: "dead" }).eq("id", victim.participant.id);
 
-          // Create gladiator record using student_id FK from participant
+          addReveal("gladiator_death", {
+            disc_key: disc.key,
+            text: `💀 ${victim.participant.athlete_name} padl v aréně! Dav zuří!`,
+            victim: { id: victim.participant.id, name: victim.participant.athlete_name, player: victim.participant.player_name },
+          }, 4000, 5);
+
           try {
             const studentId = victim.participant.student_id;
             if (studentId) {
@@ -269,27 +370,102 @@ Deno.serve(async (req) => {
                 .select("id, academy_id").eq("id", studentId).maybeSingle();
               if (linkedStudent) {
                 await sb.from("gladiator_records").insert({
-                  session_id,
-                  student_id: linkedStudent.id,
-                  academy_id: linkedStudent.academy_id,
-                  status: "dead",
-                  died_turn: turn_number,
-                  cause_of_death: `Padl v gladiátorském klání v ${disc.name}`,
-                  fights: 1,
+                  session_id, student_id: linkedStudent.id, academy_id: linkedStudent.academy_id,
+                  status: "dead", died_turn: turn_number,
+                  cause_of_death: `Padl v gladiátorském klání v ${disc.name}`, fights: 1,
                 });
               }
             }
           } catch (_) { /* non-critical */ }
         }
       }
+
+      // ═══ LEGEND DETECTION (after each discipline) ═══
+      for (const [name, tally] of Object.entries(medalTally)) {
+        if (tally.gold >= 2) {
+          // Check if we already emitted a legend moment for this athlete
+          const alreadyEmitted = revealScript.some(s => s.type === "legend_moment" && s.athlete_name === name);
+          if (!alreadyEmitted) {
+            const legendScore = tally.gold * 30 + (rollDiff < 5 ? 15 : 0) + (tally.gold >= 3 ? 20 : 0);
+            addReveal("legend_moment", {
+              athlete_name: name,
+              athlete_player: tally.player,
+              text: `⭐ ${name} — LEGENDA HER! ${tally.gold}× zlato! Tento výkon se zapíše do dějin.`,
+              legend_score: legendScore,
+              gold_count: tally.gold,
+            }, 4000, 5);
+          }
+        }
+      }
     }
 
-    // Final narration
+    // ═══ CLOSING CEREMONY REVEAL STEPS ═══
+    const topMedalist = Object.entries(medalTally).sort((a, b) => b[1].gold - a[1].gold)[0];
+    const playerMedals: Record<string, number> = {};
+    for (const [, tally] of Object.entries(medalTally)) {
+      playerMedals[tally.player] = (playerMedals[tally.player] || 0) + tally.gold * 3 + tally.silver * 2 + tally.bronze;
+    }
+    const topPlayer = Object.entries(playerMedals).sort((a, b) => b[1] - a[1])[0];
+    const legendNames = Object.entries(medalTally).filter(([, t]) => t.gold >= 2).map(([name]) => name);
+
+    addReveal("ceremony_close", {
+      text: `🏆 ${festival.name} se chýlí ke konci! Medailisté vystupují na stupně vítězů.`,
+      final_medals: runningMedals,
+      best_athlete: topMedalist ? { name: topMedalist[0], ...topMedalist[1] } : null,
+      top_empire: topPlayer ? { name: topPlayer[0], score: topPlayer[1] } : null,
+      legends: legendNames,
+    }, 5000, 4);
+
     await writeFeed("narration", `🏆 ${festival.name} se chýlí ke konci! Medailisté vystupují na stupně vítězů.`, 4);
 
-    // ═══════════════════════════════════════════
-    // APPLY EFFECTS
-    // ═══════════════════════════════════════════
+    // ═══ AI COMMENTARY (batch for all disciplines — 1 call) ═══
+    try {
+      const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+      if (LOVABLE_API_KEY) {
+        const commentaryPrompt = `Jsi starověký kronikář. Pro každou z těchto ${disciplines.length} disciplín napiš JEDNU krátkou dramatickou větu (max 15 slov). Odpověz jako JSON pole stringů, ve stejném pořadí jako disciplíny.
+
+Disciplíny a vítězové:
+${disciplines.map((d, i) => {
+  const discResults = allResults.filter(r => r.discipline === d.name);
+  const winner = discResults.find(r => r.rank === 1);
+  const second = discResults.find(r => r.rank === 2);
+  return `${i+1}. ${d.name}: Vítěz ${winner?.athlete} (${winner?.player}), 2. ${second?.athlete} (${second?.player}), rozdíl ${Math.abs((winner?.total || 0) - (second?.total || 0)).toFixed(1)}`;
+}).join("\n")}
+
+Styl: epický, stručný, dramatický. Odpověz POUZE JSON pole.`;
+
+        const aiResp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${LOVABLE_API_KEY}` },
+          body: JSON.stringify({
+            model: "google/gemini-2.5-flash-lite",
+            messages: [{ role: "user", content: commentaryPrompt }],
+            max_tokens: 500,
+          }),
+        });
+
+        if (aiResp.ok) {
+          const aiData = await aiResp.json();
+          const content = aiData.choices?.[0]?.message?.content?.trim();
+          if (content) {
+            try {
+              // Parse JSON array from AI response (handle markdown wrapping)
+              const cleaned = content.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
+              const commentaries: string[] = JSON.parse(cleaned);
+              // Inject AI commentary into reveal script — find disc_result steps and add ai_commentary
+              for (let i = 0; i < disciplines.length && i < commentaries.length; i++) {
+                const resultStep = revealScript.find(s => s.type === "disc_result" && s.disc_key === disciplines[i].key);
+                if (resultStep && commentaries[i]) {
+                  resultStep.ai_commentary = commentaries[i];
+                }
+              }
+            } catch (_) { /* ignore parse errors */ }
+          }
+        }
+      }
+    } catch (_) { /* AI commentary is optional */ }
+
+    // ═══ APPLY EFFECTS (same as before) ═══
 
     // Update medal counts on participants
     for (const p of participants) {
@@ -297,53 +473,33 @@ Deno.serve(async (req) => {
       if (tally) {
         const totalMedals = tally.gold + tally.silver + tally.bronze;
         const isLegend = tally.gold >= 2;
-        await sb.from("games_participants").update({
-          total_medals: totalMedals,
-          is_legend: isLegend,
-        }).eq("id", p.id);
+        await sb.from("games_participants").update({ total_medals: totalMedals, is_legend: isLegend }).eq("id", p.id);
 
-        // Legend → create great_person
         if (isLegend) {
           const { data: gp } = await sb.from("great_persons").insert({
-            session_id,
-            name: p.athlete_name,
-            player_name: p.player_name,
-            person_type: "Hero",
-            flavor_trait: "Hrdina Her",
-            born_round: turn_number || 1,
-            is_alive: true,
-            city_id: p.city_id,
+            session_id, name: p.athlete_name, player_name: p.player_name,
+            person_type: "Hero", flavor_trait: "Hrdina Her",
+            born_round: turn_number || 1, is_alive: true, city_id: p.city_id,
             bio: `Legendární atlet, vítěz ${tally.gold} zlatých medailí na Velkých hrách.`,
           }).select("id").single();
 
           if (gp) {
             await sb.from("games_participants").update({ great_person_id: gp.id }).eq("id", p.id);
-
             try {
               await sb.from("entity_traits").insert({
-                session_id,
-                entity_type: "person",
-                entity_id: gp.id,
-                trait_key: "hero_of_games",
-                trait_label: "Hrdina Her",
+                session_id, entity_type: "person", entity_id: gp.id,
+                trait_key: "hero_of_games", trait_label: "Hrdina Her",
                 description: `Vítěz ${tally.gold}× zlato na Velkých hrách v ${festival.name}.`,
-                intensity: tally.gold * 20,
-                source: "games",
+                intensity: tally.gold * 20, source: "games",
               });
-            } catch (_) { /* non-critical */ }
+            } catch (_) {}
           }
         }
       }
     }
 
     // Prestige effects on cities
-    const playerMedals: Record<string, number> = {};
-    for (const [, tally] of Object.entries(medalTally)) {
-      playerMedals[tally.player] = (playerMedals[tally.player] || 0) + tally.gold * 3 + tally.silver * 2 + tally.bronze;
-    }
-
     for (const [playerName, medals] of Object.entries(playerMedals)) {
-      // Increment influence on player's cities
       const { data: pCities } = await sb.from("cities")
         .select("id, influence_score").eq("session_id", session_id).eq("owner_player", playerName);
       for (const c of (pCities || [])) {
@@ -351,7 +507,7 @@ Deno.serve(async (req) => {
       }
     }
 
-    // ═══ HOST CITY ECONOMIC EFFECTS (BOOM / COLLAPSE) ═══
+    // Host city economic effects
     if (festival.host_city_id) {
       const { data: hostCity } = await sb.from("cities")
         .select("id, name, owner_player, influence_score, city_stability, development_level, population_total, hosting_count, housing_capacity")
@@ -366,18 +522,15 @@ Deno.serve(async (req) => {
         let hostNarrative = "";
 
         if (isPrepared) {
-          // ═══ BOOM: city was ready ═══
           influenceDelta = 15 + hostingCount * 3;
           stabilityDelta = 5;
           hostNarrative = `Město ${hostCity.name} zvládlo pořadatelství skvěle — obchod vzkvétá, prestiž roste.`;
         } else {
-          // ═══ COLLAPSE RISK: city was unprepared ═══
           const collapseRoll = Math.random();
           if (collapseRoll < 0.3) {
             stabilityDelta = -15;
-            influenceDelta = 5; // still some prestige
+            influenceDelta = 5;
             hostNarrative = `Město ${hostCity.name} se zhroutilo pod tíhou pořadatelství — nepokoje, přetížená infrastruktura!`;
-            // Create incident
             await sb.from("games_incidents").insert({
               session_id, festival_id, incident_type: "riot", severity: "major",
               target_participant_id: null,
@@ -397,15 +550,13 @@ Deno.serve(async (req) => {
           city_stability: Math.max(0, Math.min(100, hostCity.city_stability + stabilityDelta)),
         }).eq("id", festival.host_city_id);
 
-        // ═══ LEGACY TITLES ═══
-        const newHostingCount = hostingCount + 1; // already incremented in select-host, but check
+        // Legacy titles
+        const newHostingCount = hostingCount + 1;
         try {
           if (newHostingCount >= 3) {
-            // "Kolébka her" — unique world status
             const { data: existingTrait } = await sb.from("entity_traits")
               .select("id").eq("session_id", session_id).eq("entity_type", "city")
               .eq("entity_id", hostCity.id).eq("trait_key", "cradle_of_games").maybeSingle();
-
             if (!existingTrait) {
               await sb.from("entity_traits").insert({
                 session_id, entity_type: "city", entity_id: hostCity.id,
@@ -413,13 +564,12 @@ Deno.serve(async (req) => {
                 description: `${hostCity.name} hostilo Velké hry ${newHostingCount}× a získalo legendární status Kolébky her.`,
                 intensity: newHostingCount * 25, source: "games",
               });
-              await writeFeed("narration", `🏛️ ${hostCity.name} získává titul KOLÉBKA HER! ${newHostingCount}× hostitel Velkých her!`, 5);
+              await writeFeed("narration", `🏛️ ${hostCity.name} získává titul KOLÉBKA HER!`, 5);
             }
           } else if (newHostingCount >= 2) {
             const { data: existingTrait } = await sb.from("entity_traits")
               .select("id").eq("session_id", session_id).eq("entity_type", "city")
               .eq("entity_id", hostCity.id).eq("trait_key", "cultural_center_games").maybeSingle();
-
             if (!existingTrait) {
               await sb.from("entity_traits").insert({
                 session_id, entity_type: "city", entity_id: hostCity.id,
@@ -429,29 +579,25 @@ Deno.serve(async (req) => {
               });
             }
           }
-        } catch (_) { /* non-critical */ }
+        } catch (_) {}
 
-        // Add host narrative to feed
         await writeFeed("narration", hostNarrative, isPrepared ? 3 : 4);
       }
     }
 
     // ═══ BEST ATHLETE & MOST POPULAR ═══
-    // Best athlete = most gold medals (total score as tiebreaker)
     const bestAthleteEntry = Object.entries(medalTally)
       .sort((a, b) => {
         if (b[1].gold !== a[1].gold) return b[1].gold - a[1].gold;
         return (b[1].silver * 10 + b[1].bronze) - (a[1].silver * 10 + a[1].bronze);
       })[0];
 
-    // Most popular = highest crowd_popularity (computed from charisma + gold + drama moments)
     const popularityScores: { participant: any; score: number }[] = [];
     for (const p of participants) {
       const tally = medalTally[p.athlete_name];
       const goldCount = tally?.gold || 0;
       const crowdScore = p.charisma * 0.5 + goldCount * 20 + (p.traits?.includes("Charismatický") ? 15 : 0) + Math.random() * 10;
       popularityScores.push({ participant: p, score: crowdScore });
-      // Update crowd_popularity on participant
       await sb.from("games_participants").update({ crowd_popularity: Math.round(crowdScore) }).eq("id", p.id);
     }
     popularityScores.sort((a, b) => b.score - a.score);
@@ -461,39 +607,33 @@ Deno.serve(async (req) => {
       ? participants.find(p => p.athlete_name === bestAthleteEntry[0])
       : null;
 
-    // Save best_athlete_id and most_popular_id on festival
     const festivalUpdate: any = {};
     if (bestAthleteParticipant) festivalUpdate.best_athlete_id = bestAthleteParticipant.id;
     if (mostPopular) festivalUpdate.most_popular_id = mostPopular.participant.id;
 
-    // Write ChroWiki entries for best athlete & most popular (only if they're different or both exist)
+    // ChroWiki entries for champions
     const championsToWrite: { participantId: string; name: string; player: string; title: string; traitKey: string; bio: string }[] = [];
 
     if (bestAthleteParticipant && bestAthleteEntry) {
       championsToWrite.push({
         participantId: bestAthleteParticipant.id,
-        name: bestAthleteEntry[0],
-        player: bestAthleteEntry[1].player,
-        title: "Nejlepší sportovec Her",
-        traitKey: "best_athlete_of_games",
-        bio: `Absolutní vítěz ${festival.name} s ${bestAthleteEntry[1].gold} zlatými medailemi. Jeho jméno bude navždy spojeno s těmito hrami.`,
+        name: bestAthleteEntry[0], player: bestAthleteEntry[1].player,
+        title: "Nejlepší sportovec Her", traitKey: "best_athlete_of_games",
+        bio: `Absolutní vítěz ${festival.name} s ${bestAthleteEntry[1].gold} zlatými medailemi.`,
       });
     }
 
     if (mostPopular && (!bestAthleteParticipant || mostPopular.participant.id !== bestAthleteParticipant.id)) {
       championsToWrite.push({
         participantId: mostPopular.participant.id,
-        name: mostPopular.participant.athlete_name,
-        player: mostPopular.participant.player_name,
-        title: "Nejoblíbenější sportovec Her",
-        traitKey: "most_popular_of_games",
-        bio: `Favorit davu na ${festival.name}. Publikum ho/ji zbožňovalo — charisma a styl předčily samotné výsledky.`,
+        name: mostPopular.participant.athlete_name, player: mostPopular.participant.player_name,
+        title: "Nejoblíbenější sportovec Her", traitKey: "most_popular_of_games",
+        bio: `Favorit davu na ${festival.name}. Publikum ho/ji zbožňovalo.`,
       });
     }
 
     for (const champ of championsToWrite) {
       try {
-        // Create great_person if not already legend
         const existingP = participants.find(p => p.id === champ.participantId);
         let gpId = existingP?.great_person_id;
 
@@ -517,64 +657,42 @@ Deno.serve(async (req) => {
             description: champ.bio, intensity: 80, source: "games",
           });
 
-          // ChroWiki entry
           try {
             await sb.from("wiki_entries").insert({
               session_id, entity_type: "person", entity_id: gpId,
               entity_name: champ.name, owner_player: champ.player,
             });
-          } catch (_) { /* may exist */ }
+          } catch (_) {}
         }
-      } catch (_) { /* non-critical */ }
+      } catch (_) {}
 
       await writeFeed("narration", `🌟 ${champ.name} získává titul "${champ.title}"!`, 5);
     }
 
-    // ═══ HYBRID NARRATIVE: Template + AI highlight ═══
-    const topMedalist = Object.entries(medalTally).sort((a, b) => b[1].gold - a[1].gold)[0];
-    const topPlayer = Object.entries(playerMedals).sort((a, b) => b[1] - a[1])[0];
-    const legendNames = Object.entries(medalTally).filter(([, t]) => t.gold >= 2).map(([name]) => name);
-
-    // Re-fetch participants to get updated form (dead athletes)
+    // ═══ BUILD DESCRIPTION ═══
     const { data: updatedParts } = await sb.from("games_participants")
       .select("athlete_name, form, player_name").eq("festival_id", festival_id);
     const deadAthletes = (updatedParts || []).filter(p => p.form === "dead");
 
-    // Build structured narrative template
     let description = `## ${festival.name}\n\n`;
     description += `**Hostitel:** ${festival.host_player}\n`;
     description += `**Účastníků:** ${participants.length} atletů\n`;
     description += `**Disciplín:** ${disciplines.length}\n\n`;
     description += `### 🏅 Nejlepší sportovec\n${bestAthleteEntry?.[0] || "—"} (${bestAthleteEntry?.[1]?.gold || 0}× 🥇, ${bestAthleteEntry?.[1]?.silver || 0}× 🥈, ${bestAthleteEntry?.[1]?.bronze || 0}× 🥉)\n\n`;
     if (mostPopular) {
-      description += `### 🌟 Nejoblíbenější sportovec\n${mostPopular.participant.athlete_name} (${mostPopular.participant.player_name}) — oblíbenost: ${Math.round(mostPopular.score)}\n\n`;
+      description += `### 🌟 Nejoblíbenější sportovec\n${mostPopular.participant.athlete_name} (${mostPopular.participant.player_name})\n\n`;
     }
-    description += `### 🏛 Nejúspěšnější říše\n${topPlayer?.[0] || "—"} (${topPlayer?.[1] || 0} medailí)\n\n`;
-    if (legendNames.length > 0) {
-      description += `### ⭐ Nové legendy\n${legendNames.join(", ")}\n\n`;
-    }
-    if (deadAthletes.length > 0) {
-      description += `### 💀 Padlí v aréně\n${deadAthletes.map(d => `${d.athlete_name} (${d.player_name})`).join(", ")}\n\n`;
-    }
-    if (incidents.length > 0) {
-      description += `### ⚠️ Incidenty\n${incidents.map(i => `- ${i.description}`).join("\n")}\n\n`;
-    }
+    description += `### 🏛 Nejúspěšnější říše\n${topPlayer?.[0] || "—"} (${topPlayer?.[1] || 0} bodů)\n\n`;
+    if (legendNames.length > 0) description += `### ⭐ Nové legendy\n${legendNames.join(", ")}\n\n`;
+    if (deadAthletes.length > 0) description += `### 💀 Padlí v aréně\n${deadAthletes.map(d => `${d.athlete_name} (${d.player_name})`).join(", ")}\n\n`;
+    if (incidents.length > 0) description += `### ⚠️ Incidenty\n${incidents.map(i => i.description).join("\n")}\n\n`;
 
-    // Generate short AI highlight (non-blocking)
+    // AI highlight (non-blocking)
     try {
       const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
       if (LOVABLE_API_KEY) {
-        const highlightPrompt = `Jsi kronikář starověkého světa. Na základě těchto dat napiš JEDEN odstavec (max 3 věty) o nejdramatičtějším momentu her. Styl: epický, faktický.
-
-Data:
-- Hry: ${festival.name}
-- Nejlepší sportovec: ${bestAthleteEntry?.[0]} s ${bestAthleteEntry?.[1]?.gold} zlatými
-- Nejoblíbenější: ${mostPopular?.participant?.athlete_name || "—"}
-- Nejsilnější říše: ${topPlayer?.[0]}
-- Legendy: ${legendNames.join(", ") || "žádné"}
-- Mrtví: ${deadAthletes.map(d => d.athlete_name).join(", ") || "žádní"}
-- Incidenty: ${incidents.map(i => i.description).join("; ") || "žádné"}
-- Počet atletů: ${participants.length}`;
+        const highlightPrompt = `Jsi kronikář starověkého světa. Napiš JEDEN odstavec (max 3 věty) o nejdramatičtějším momentu her. Styl: epický, faktický.
+Data: Nejlepší: ${bestAthleteEntry?.[0]} (${bestAthleteEntry?.[1]?.gold} zlatých). Nejsilnější: ${topPlayer?.[0]}. Legendy: ${legendNames.join(", ") || "žádné"}. Mrtví: ${deadAthletes.map(d => d.athlete_name).join(", ") || "žádní"}.`;
 
         const aiResp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
           method: "POST",
@@ -588,63 +706,47 @@ Data:
         if (aiResp.ok) {
           const aiData = await aiResp.json();
           const highlight = aiData.choices?.[0]?.message?.content?.trim();
-          if (highlight) {
-            description += `### ✨ Nejdramatičtější moment\n> ${highlight}\n`;
-          }
+          if (highlight) description += `### ✨ Nejdramatičtější moment\n> ${highlight}\n`;
         }
       }
-    } catch (_) { /* AI highlight is optional */ }
+    } catch (_) {}
 
-    // Mark festival concluded with description + champion IDs
+    // ═══ SAVE FESTIVAL WITH REVEAL SCRIPT ═══
     await sb.from("games_festivals").update({
       status: "concluded",
       concluded_turn: turn_number || festival.announced_turn,
       effects_applied: true,
       description,
+      reveal_script: revealScript,
+      reveal_phase: "computed",
       ...festivalUpdate,
     }).eq("id", festival_id);
 
-    // Create conclusion event
+    // Game event
     await sb.from("game_events").insert({
-      session_id,
-      event_type: "games_concluded",
-      note: `Velké hry v ${festival.name} skončily! Největším hrdinou se stal ${topMedalist?.[0] || "neznámý"} (${topMedalist?.[1]?.gold || 0}× zlato). Nejúspěšnější říší: ${topPlayer?.[0] || "neznámá"}.`,
+      session_id, event_type: "games_concluded",
+      note: `Velké hry ${festival.name} skončily! Hrdinou se stal ${topMedalist?.[0] || "neznámý"} (${topMedalist?.[1]?.gold || 0}× zlato). Nejúspěšnější říší: ${topPlayer?.[0] || "neznámá"}.`,
       player: festival.host_player,
       turn_number: turn_number || festival.announced_turn,
       confirmed: true,
-      reference: {
-        festival_id,
-        medal_tally: medalTally,
-        player_medals: playerMedals,
-        incidents_count: incidents.length,
-        legends_created: legendNames.length,
-      },
+      reference: { festival_id, medal_tally: medalTally, player_medals: playerMedals, incidents_count: incidents.length, legends_created: legendNames.length },
     });
 
-    // ═══ CHRONICLE & WIKI INTEGRATION ═══
+    // Chronicle entry
     try {
       let chronicleText = `**${festival.name} (rok ${turn_number || festival.announced_turn}):** `;
       chronicleText += `Velké hry skončily. Nejúspěšnějším atletem se stal ${topMedalist?.[0] || "neznámý"} s ${topMedalist?.[1]?.gold || 0} zlatými medailemi. `;
-      if (legendNames.length > 0) {
-        chronicleText += `Legendami her se stali: ${legendNames.join(", ")}. `;
-      }
-      if (deadAthletes.length > 0) {
-        chronicleText += `V aréně zahynul${deadAthletes.length > 1 ? "i" : ""}: ${deadAthletes.map(d => d.athlete_name).join(", ")}. Truchlí celá říše. `;
-      }
-      if (incidents.length > 0) {
-        chronicleText += `Hry poznamenalo ${incidents.length} incident${incidents.length > 1 ? "ů" : ""}.`;
-      }
+      if (legendNames.length > 0) chronicleText += `Legendami her se stali: ${legendNames.join(", ")}. `;
+      if (deadAthletes.length > 0) chronicleText += `V aréně zahynul${deadAthletes.length > 1 ? "i" : ""}: ${deadAthletes.map(d => d.athlete_name).join(", ")}. `;
+      if (incidents.length > 0) chronicleText += `Hry poznamenalo ${incidents.length} incident${incidents.length > 1 ? "ů" : ""}.`;
 
       await sb.from("chronicle_entries").insert({
-        session_id,
-        text: chronicleText,
-        epoch_style: "kroniky",
+        session_id, text: chronicleText, epoch_style: "kroniky",
         turn_from: turn_number || festival.announced_turn,
         turn_to: turn_number || festival.announced_turn,
         source_type: "system",
       });
 
-      // Create wiki entries for new legends
       for (const legendName of legendNames) {
         const legendParticipant = participants.find(p => p.athlete_name === legendName);
         if (legendParticipant?.great_person_id) {
@@ -653,10 +755,10 @@ Data:
               session_id, entity_type: "person", entity_id: legendParticipant.great_person_id,
               entity_name: legendName, owner_player: legendParticipant.player_name,
             });
-          } catch (_) { /* may already exist via trigger */ }
+          } catch (_) {}
         }
       }
-    } catch (_) { /* non-critical */ }
+    } catch (_) {}
 
     return new Response(JSON.stringify({
       ok: true,
@@ -664,7 +766,8 @@ Data:
       medal_tally: medalTally,
       player_medals: playerMedals,
       incidents,
-      legends: Object.entries(medalTally).filter(([, t]) => t.gold >= 2).map(([name]) => name),
+      legends: legendNames,
+      reveal_steps: revealScript.length,
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });

@@ -3248,6 +3248,8 @@ export type Database = {
           most_popular_id: string | null
           name: string
           prestige_pool: number
+          reveal_phase: string | null
+          reveal_script: Json | null
           session_id: string
           status: string
           total_investment_gold: number
@@ -3273,6 +3275,8 @@ export type Database = {
           most_popular_id?: string | null
           name: string
           prestige_pool?: number
+          reveal_phase?: string | null
+          reveal_script?: Json | null
           session_id: string
           status?: string
           total_investment_gold?: number
@@ -3298,6 +3302,8 @@ export type Database = {
           most_popular_id?: string | null
           name?: string
           prestige_pool?: number
+          reveal_phase?: string | null
+          reveal_script?: Json | null
           session_id?: string
           status?: string
           total_investment_gold?: number
