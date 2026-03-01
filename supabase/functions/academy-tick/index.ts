@@ -290,6 +290,101 @@ Deno.serve(async (req) => {
           reference: { academy_id: acad.id, city_id: acad.city_id },
         });
       }
+
+      // ═══ GLADIATORIAL MECHANICS ═══
+      if (acad.profile_brutality > 20) {
+        // Mark as gladiatorial if brutality threshold met
+        if (!acad.is_gladiatorial) {
+          await sb.from("academies").update({ is_gladiatorial: true }).eq("id", acad.id);
+        }
+
+        // Update favor dynamics
+        const peopleFavor = Math.min(100, Math.max(0,
+          (acad.people_favor || 50) + (acad.total_graduates > 0 ? 2 : 0) - (acad.total_fatalities > 3 ? 3 : 0)
+        ));
+        const eliteFavor = Math.min(100, Math.max(0,
+          (acad.elite_favor || 50) + (acad.profile_brutality > 60 ? -1 : 1)
+        ));
+        const crowdPop = Math.min(100, (acad.crowd_popularity || 0) + 1 + Math.floor(acad.profile_brutality / 30));
+        
+        // Revolt risk: high brutality + low elite favor + high people favor = rebellion
+        const revoltRisk = Math.max(0, Math.min(100,
+          Math.floor(acad.profile_brutality * 0.3 + (100 - eliteFavor) * 0.3 + peopleFavor * 0.2 - 30)
+        ));
+
+        await sb.from("academies").update({
+          people_favor: peopleFavor,
+          elite_favor: eliteFavor,
+          crowd_popularity: crowdPop,
+          revolt_risk: revoltRisk,
+        }).eq("id", acad.id);
+
+        // Gladiator revolt event
+        if (revoltRisk > 80 && Math.random() < 0.15) {
+          await sb.from("game_events").insert({
+            session_id,
+            event_type: "gladiator_revolt",
+            note: `Vzpoura gladiátorů v ${acad.name}! Ozbrojení bojovníci se obrátili proti svým pánům. Stabilita města klesá.`,
+            player: player_name,
+            turn_number: turn,
+            confirmed: true,
+            reference: { academy_id: acad.id, city_id: acad.city_id, revolt_risk: revoltRisk },
+          });
+
+          // Reduce city stability
+          const { data: city } = await sb.from("cities")
+            .select("id, city_stability").eq("id", acad.city_id).maybeSingle();
+          if (city) {
+            await sb.from("cities").update({
+              city_stability: Math.max(0, city.city_stability - 15),
+            }).eq("id", city.id);
+          }
+
+          // Reset revolt risk
+          await sb.from("academies").update({ revolt_risk: 10 }).eq("id", acad.id);
+          results.gladiator_revolts = (results.gladiator_revolts || 0) + 1;
+        }
+
+        // Religious crisis if brutality too high + clerics present
+        if (acad.profile_brutality > 70 && Math.random() < 0.05) {
+          await sb.from("game_events").insert({
+            session_id,
+            event_type: "religious_crisis",
+            note: `Duchovní vůdci odsoudili brutalitu v ${acad.name}. Náboženské frakce žádají zákaz krvavých her.`,
+            player: player_name,
+            turn_number: turn,
+            confirmed: true,
+            reference: { academy_id: acad.id, brutality: acad.profile_brutality },
+          });
+        }
+      }
+    }
+
+    // ═══════════════════════════════════════════
+    // 4. UPDATE ACADEMY RANKINGS
+    // ═══════════════════════════════════════════
+    const { data: allAcademies } = await sb.from("academies")
+      .select("id, reputation, total_graduates, total_champions, infrastructure, trainer_level, nutrition, corruption")
+      .eq("session_id", session_id).eq("status", "active");
+
+    if (allAcademies && allAcademies.length > 0) {
+      const scored = allAcademies.map(a => ({
+        id: a.id,
+        score: a.reputation * 3 + a.total_champions * 50 + a.total_graduates * 5 +
+          (a.infrastructure + a.trainer_level + a.nutrition) * 0.5 - (a.corruption || 0) * 2,
+      })).sort((a, b) => b.score - a.score);
+
+      for (let i = 0; i < scored.length; i++) {
+        await sb.from("academy_rankings").upsert({
+          session_id,
+          academy_id: scored[i].id,
+          turn_number: turn,
+          rank_position: i + 1,
+          score: Math.round(scored[i].score),
+          prestige: Math.max(0, 100 - i * 15),
+        }, { onConflict: "academy_id,turn_number" });
+      }
+      results.rankings_updated = scored.length;
     }
 
     return new Response(JSON.stringify({ ok: true, ...results }), {

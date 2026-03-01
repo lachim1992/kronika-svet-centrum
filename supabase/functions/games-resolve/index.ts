@@ -76,48 +76,65 @@ Deno.serve(async (req) => {
     }
 
     // ═══════════════════════════════════════════
-    // RESOLVE EACH DISCIPLINE
+    // RESOLVE EACH DISCIPLINE + GENERATE LIVE FEED
     // ═══════════════════════════════════════════
     const allResults: any[] = [];
     const medalTally: Record<string, { gold: number; silver: number; bronze: number; player: string }> = {};
     const incidents: any[] = [];
+    let feedSeq = 0;
+
+    // Helper to write live feed entry
+    const writeFeed = async (type: string, text: string, drama: number = 1, discId?: string, partId?: string, roll?: number) => {
+      feedSeq++;
+      await sb.from("games_live_feed").insert({
+        session_id,
+        festival_id,
+        discipline_id: discId || null,
+        sequence_num: feedSeq,
+        feed_type: type,
+        text,
+        participant_id: partId || null,
+        roll_value: roll || null,
+        drama_level: drama,
+      });
+    };
+
+    // Opening narration
+    await writeFeed("narration", `🏟️ ${festival.name} začínají! Tribuny se plní, napětí stoupá. Atleti ze všech říší se shromáždili v aréně.`, 3);
 
     for (const disc of disciplines) {
+      // Discipline start
+      await writeFeed("discipline_start", `${disc.icon_emoji} ${disc.name}`, 2, disc.id);
+
       // Calculate performance for each participant
       const performances: { participant: any; baseScore: number; bonus: number; variance: number; total: number }[] = [];
 
       for (const p of participants) {
-        // Base score from stats (primary stat weights 60%, secondary 25%, average of rest 15%)
         const primaryVal = (p as any)[disc.primary_stat] || 50;
         const secondaryVal = disc.secondary_stat ? (p as any)[disc.secondary_stat] || 50 : 50;
         const allStats = [p.strength, p.endurance, p.agility, p.tactics, p.charisma];
-        const avgStat = allStats.reduce((a, b) => a + b, 0) / allStats.length;
+        const avgStat = allStats.reduce((a: number, b: number) => a + b, 0) / allStats.length;
 
         const baseScore = primaryVal * 0.6 + secondaryVal * 0.25 + avgStat * 0.15;
 
-        // Bonuses
         let bonus = 0;
         bonus += p.training_bonus * 0.5;
         bonus += p.city_infrastructure_bonus * 0.3;
         bonus += p.civ_modifier * 0.2;
         bonus += p.morale_modifier * 0.3;
 
-        // Form modifier
         if (p.form === "peak") bonus += 8;
         if (p.form === "tired") bonus -= 5;
         if (p.form === "injured") bonus -= 15;
 
-        // Trait modifiers
         if (p.traits.includes("Železný")) bonus += 5;
         if (p.traits.includes("Křehký")) bonus -= 3;
         if (p.traits.includes("Charismatický") && disc.category === "cultural") bonus += 8;
         if (p.traits.includes("Odvážný") && disc.category === "physical") bonus += 5;
         if (p.traits.includes("Stoický") && disc.category === "strategic") bonus += 6;
 
-        // Intrigue effects
         bonus += intrigueEffects.get(p.id) || 0;
 
-        // Drama variance: 5-15%
         const varianceRange = baseScore * 0.15;
         const variance = (Math.random() - 0.5) * 2 * varianceRange;
 
@@ -125,10 +142,29 @@ Deno.serve(async (req) => {
         performances.push({ participant: p, baseScore, bonus, variance, total });
       }
 
-      // Sort by total score descending
+      // Narrate the competition
+      const sorted = [...performances].sort((a, b) => b.total - a.total);
+      const leader = sorted[0];
+      const challenger = sorted[1];
+      
+      // Opening tension
+      await writeFeed("narration", `${leader.participant.athlete_name} z ${leader.participant.player_name} vyrážívpřed s odhodlaným výrazem. ${challenger.participant.athlete_name} je mu v patách!`, 2, disc.id);
+      
+      // Key roll moment
+      const rollDiff = Math.abs(leader.total - challenger.total);
+      const tension = rollDiff < 5 ? 5 : rollDiff < 10 ? 4 : rollDiff < 20 ? 3 : 2;
+      await writeFeed("roll", `Hod výkonu: ${leader.participant.athlete_name} ${leader.total.toFixed(1)} vs ${challenger.participant.athlete_name} ${challenger.total.toFixed(1)}`, tension, disc.id, leader.participant.id, leader.total);
+
+      // Drama moment
+      if (rollDiff < 5) {
+        await writeFeed("narration", `Neuvěřitelný souboj! Pouhé setiny dělí soupeře!`, 5, disc.id);
+      } else if (rollDiff < 15) {
+        await writeFeed("narration", `Těsné finále! ${challenger.participant.athlete_name} se nevzdává!`, 4, disc.id);
+      }
+
+      // Sort and assign medals
       performances.sort((a, b) => b.total - a.total);
 
-      // Assign medals
       for (let i = 0; i < performances.length; i++) {
         const perf = performances[i];
         const medal = i === 0 ? "gold" : i === 1 ? "silver" : i === 2 ? "bronze" : null;
@@ -164,7 +200,12 @@ Deno.serve(async (req) => {
         });
       }
 
-      // Check for incident (5-15% chance, higher with tensions/intrigues)
+      // Winner announcement
+      const winner = performances[0];
+      const medalEmoji = "🥇";
+      await writeFeed("result", `${medalEmoji} ${winner.participant.athlete_name} (${winner.participant.player_name}) vítězí v ${disc.name}!`, 4, disc.id, winner.participant.id);
+
+      // Check for incident
       const incidentChance = 0.05 + (intrigues || []).length * 0.03 + festival.incident_chance;
       if (Math.random() < incidentChance) {
         const incidentTypes = ["injury", "bribery", "riot", "protest"];
@@ -192,12 +233,42 @@ Deno.serve(async (req) => {
         await sb.from("games_incidents").insert(incident);
         incidents.push(incident);
 
-        // If injury, mark participant
+        // Live feed incident
+        await writeFeed("incident", incidentDescs[incType], 4, disc.id, target.participant.id);
+
         if (incType === "injury") {
           await sb.from("games_participants").update({ form: "injured" }).eq("id", target.participant.id);
         }
       }
+
+      // Gladiator death check (for brutal festivals with combat)
+      if (disc.category === "physical" && festival.festival_type === "local_gladiator") {
+        const brutalityRoll = Math.random();
+        if (brutalityRoll < 0.08) { // 8% death chance in gladiator games
+          const victim = performances[performances.length - 1]; // Weakest dies
+          await writeFeed("gladiator_death", `${victim.participant.athlete_name} padl v aréně! Dav zuří!`, 5, disc.id, victim.participant.id);
+          
+          // Record death
+          await sb.from("games_participants").update({ form: "dead" }).eq("id", victim.participant.id);
+
+          // Try to create gladiator record
+          try {
+            await sb.from("gladiator_records").insert({
+              session_id,
+              student_id: victim.participant.id, // Using participant id as proxy
+              academy_id: victim.participant.city_id || victim.participant.id, // fallback
+              status: "dead",
+              died_turn: turn_number,
+              cause_of_death: `Padl v gladiátorském klání v ${disc.name}`,
+              fights: 1,
+            });
+          } catch (_) { /* non-critical */ }
+        }
+      }
     }
+
+    // Final narration
+    await writeFeed("narration", `🏆 ${festival.name} se chýlí ke konci! Medailisté vystupují na stupně vítězů.`, 4);
 
     // ═══════════════════════════════════════════
     // APPLY EFFECTS
