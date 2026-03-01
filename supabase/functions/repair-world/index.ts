@@ -2,8 +2,8 @@
  * repair-world — Fixes broken sessions missing country, regions, AI factions.
  * 
  * Analyzes session data and creates missing structural entities:
- * 1. Country (if missing)
- * 2. Regions (if missing) — one per player + neutral
+ * 1. Countries — one per faction (human + AI)
+ * 2. Regions — one per faction + neutral
  * 3. Links orphaned provinces to regions
  * 4. AI factions (if missing)
  * 5. Wiki entries for all created entities
@@ -48,101 +48,123 @@ Deno.serve(async (req) => {
     const humanCivs = (civs || []).filter((c: any) => !c.is_ai);
     const aiCivs = (civs || []).filter((c: any) => c.is_ai);
 
-    // ═══ 1. Country ═══
-    let countryId: string | null = countries?.[0]?.id || null;
-    if (!countryId) {
-      push(`Creating country: ${worldName}`);
+    // Build a unified list of all faction names (human players + AI)
+    const allFactionNames = new Set<string>();
+    for (const civ of (civs || [])) allFactionNames.add(civ.player_name);
+    for (const af of (aiFactions || [])) allFactionNames.add(af.faction_name);
+    // Also check cities for any owner not yet known
+    for (const city of (cities || [])) allFactionNames.add(city.owner_player);
+
+    // ═══ 1. COUNTRIES — one per faction ═══
+    const existingCountries = countries || [];
+    const countryByRuler = new Map<string, string>();
+    for (const c of existingCountries) {
+      if (c.ruler_player) countryByRuler.set(c.ruler_player, c.id);
+    }
+
+    for (const factionName of allFactionNames) {
+      if (countryByRuler.has(factionName)) {
+        push(`Country exists for ${factionName}`);
+        continue;
+      }
+
+      // Check if there's an unassigned country we can claim
+      const unassigned = existingCountries.find((c: any) => !c.ruler_player && !countryByRuler.has(c.id));
+      if (unassigned && existingCountries.length === 1 && allFactionNames.size > 1) {
+        // Don't reuse the single shared country — create new ones
+      }
+
+      const civ = (civs || []).find((c: any) => c.player_name === factionName);
+      const countryName = civ?.civ_name || factionName;
+      push(`Creating country for ${factionName}: ${countryName}`);
+
       const { data: countryRow } = await sb.from("countries").insert({
         session_id: sessionId,
-        name: worldName,
-        description: foundation?.premise || `Společný stát světa ${worldName}.`,
+        name: `Říše ${countryName}`,
+        description: `Suverénní stát frakce ${countryName}.`,
+        ruler_player: factionName,
       }).select("id").single();
-      countryId = countryRow?.id || null;
 
-      if (countryId) {
+      if (countryRow) {
+        countryByRuler.set(factionName, countryRow.id);
         await sb.from("wiki_entries").upsert({
-          session_id: sessionId, entity_type: "country", entity_id: countryId,
-          entity_name: worldName, owner_player: "system",
-          summary: `${worldName} — společný stát tohoto světa.`,
+          session_id: sessionId, entity_type: "country", entity_id: countryRow.id,
+          entity_name: `Říše ${countryName}`, owner_player: factionName,
+          summary: `${countryName} — suverénní stát.`,
           updated_at: new Date().toISOString(),
           references: { generated: true, mode: "repair" },
         } as any, { onConflict: "session_id,entity_type,entity_id" });
       }
-    } else {
-      push(`Country already exists: ${countries![0].name}`);
     }
 
-    // ═══ 2. Regions ═══
+    // ═══ 2. REGIONS — one per faction ═══
     const existingRegions = regions || [];
-    if (existingRegions.length === 0 && humanCivs.length > 0) {
-      push(`Creating regions for ${humanCivs.length} players...`);
-      const regionIdMap: Record<string, string> = {};
+    const regionByOwner = new Map<string, string>();
+    for (const r of existingRegions) {
+      if (r.owner_player) regionByOwner.set(r.owner_player, r.id);
+    }
 
-      for (const civ of humanCivs) {
-        const regionName = `${civ.civ_name} – Domovina`;
-        const { data: regRow } = await sb.from("regions").insert({
-          session_id: sessionId, name: regionName,
-          description: `Domovský region frakce ${civ.civ_name}.`,
-          biome: "plains", owner_player: civ.player_name,
-          is_homeland: true, discovered_turn: 1, discovered_by: civ.player_name,
-          country_id: countryId,
-        }).select("id").single();
-
-        if (regRow) {
-          regionIdMap[civ.player_name] = regRow.id;
-          push(`  → Region: ${regionName} (${regRow.id})`);
-
-          await sb.from("wiki_entries").upsert({
-            session_id: sessionId, entity_type: "region", entity_id: regRow.id,
-            entity_name: regionName, owner_player: civ.player_name,
-            summary: `${regionName} — domovský region.`,
-            updated_at: new Date().toISOString(),
-            references: { generated: true, mode: "repair" },
-          } as any, { onConflict: "session_id,entity_type,entity_id" });
-        }
+    for (const factionName of allFactionNames) {
+      if (regionByOwner.has(factionName)) {
+        push(`Region exists for ${factionName}: ${existingRegions.find((r: any) => r.owner_player === factionName)?.name}`);
+        continue;
       }
 
-      // Create a neutral region
-      const { data: neutralReg } = await sb.from("regions").insert({
-        session_id: sessionId, name: "Neutrální území",
-        description: "Neobsazené území mezi frakcemi.",
-        biome: "plains", owner_player: humanCivs[0].player_name,
-        is_homeland: false, discovered_turn: 1, country_id: countryId,
-      }).select("id").single();
-      if (neutralReg) push(`  → Neutral region: ${neutralReg.id}`);
+      const civ = (civs || []).find((c: any) => c.player_name === factionName);
+      const regionName = `${civ?.civ_name || factionName} – Domovina`;
+      const countryId = countryByRuler.get(factionName) || null;
 
-      // ═══ 3. Link orphan provinces to regions ═══
-      const orphanProvs = (provinces || []).filter((p: any) => !p.region_id);
+      push(`Creating region for ${factionName}: ${regionName}`);
+      const { data: regRow } = await sb.from("regions").insert({
+        session_id: sessionId, name: regionName,
+        description: `Domovský region frakce ${civ?.civ_name || factionName}.`,
+        biome: "plains", owner_player: factionName,
+        is_homeland: true, discovered_turn: 1, discovered_by: factionName,
+        country_id: countryId,
+      }).select("id").single();
+
+      if (regRow) {
+        regionByOwner.set(factionName, regRow.id);
+        await sb.from("wiki_entries").upsert({
+          session_id: sessionId, entity_type: "region", entity_id: regRow.id,
+          entity_name: regionName, owner_player: factionName,
+          summary: `${regionName} — domovský region.`,
+          updated_at: new Date().toISOString(),
+          references: { generated: true, mode: "repair" },
+        } as any, { onConflict: "session_id,entity_type,entity_id" });
+      }
+    }
+
+    // ═══ 3. Link orphan provinces to regions ═══
+    const allProvinces = provinces || [];
+    const orphanProvs = allProvinces.filter((p: any) => !p.region_id);
+    if (orphanProvs.length > 0) {
+      push(`Fixing ${orphanProvs.length} orphan provinces...`);
       for (const prov of orphanProvs) {
-        // Match province to player's region
-        const matchedRegionId = regionIdMap[prov.owner_player] || neutralReg?.id;
+        const matchedRegionId = regionByOwner.get(prov.owner_player);
         if (matchedRegionId) {
           await sb.from("provinces").update({ region_id: matchedRegionId }).eq("id", prov.id);
-          push(`  → Linked province "${prov.name}" to region ${matchedRegionId}`);
-        }
-      }
-    } else {
-      push(`Regions exist: ${existingRegions.length}`);
-      // Still check orphan provinces
-      const orphanProvs = (provinces || []).filter((p: any) => !p.region_id);
-      if (orphanProvs.length > 0) {
-        push(`Fixing ${orphanProvs.length} orphan provinces...`);
-        for (const prov of orphanProvs) {
-          // Find a matching region by owner
-          const matchRegion = existingRegions.find((r: any) => r.owner_player === prov.owner_player);
-          if (matchRegion) {
-            await sb.from("provinces").update({ region_id: matchRegion.id }).eq("id", prov.id);
-            push(`  → Linked "${prov.name}" to region "${matchRegion.name}"`);
-          }
+          push(`  → Linked "${prov.name}" to region of ${prov.owner_player}`);
         }
       }
     }
 
-    // ═══ 4. AI Factions ═══
+    // ═══ 4. Link regions to countries ═══
+    const allRegionsNow = [...existingRegions];
+    for (const reg of allRegionsNow) {
+      if (!reg.country_id && reg.owner_player) {
+        const countryId = countryByRuler.get(reg.owner_player);
+        if (countryId) {
+          await sb.from("regions").update({ country_id: countryId }).eq("id", reg.id);
+          push(`  → Linked region "${reg.name}" to country of ${reg.owner_player}`);
+        }
+      }
+    }
+
+    // ═══ 5. AI Factions ═══
     const existingAI = aiFactions || [];
     if (existingAI.length === 0) {
       const targetAICount = Math.max(2, humanCivs.length);
-      // Check if there are AI civilizations without ai_factions entries
       if (aiCivs.length > 0) {
         push(`Creating ai_factions entries for ${aiCivs.length} existing AI civs...`);
         for (const aiCiv of aiCivs) {
@@ -156,7 +178,6 @@ Deno.serve(async (req) => {
           push(`  → AI faction from civ: ${aiCiv.civ_name}`);
         }
       } else {
-        // No AI civs exist at all — create them
         push(`Creating ${targetAICount} AI factions from scratch...`);
         const aiNames = ["Stínová Liga", "Severní Klan", "Pouštní Nomádi", "Železná Gilda", "Mlžný Řád"];
         const personalities = ["aggressive", "diplomatic", "mercantile", "isolationist", "expansionist"];
@@ -176,7 +197,6 @@ Deno.serve(async (req) => {
             disposition, goals: ["Přežití", "Expanze"], is_active: true,
           });
 
-          // Create resources for AI
           for (const rt of ["food", "wood", "stone", "iron", "wealth"]) {
             await sb.from("player_resources").insert({
               session_id: sessionId, player_name: aiNames[i], resource_type: rt,
