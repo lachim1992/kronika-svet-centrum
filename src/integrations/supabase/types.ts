@@ -2822,6 +2822,508 @@ export type Database = {
           },
         ]
       }
+      games_bids: {
+        Row: {
+          city_id: string
+          created_at: string
+          cultural_score: number
+          festival_id: string
+          gold_invested: number
+          id: string
+          influence_invested: number
+          is_winner: boolean
+          logistics_score: number
+          pitch_text: string | null
+          player_name: string
+          session_id: string
+          total_bid_score: number
+        }
+        Insert: {
+          city_id: string
+          created_at?: string
+          cultural_score?: number
+          festival_id: string
+          gold_invested?: number
+          id?: string
+          influence_invested?: number
+          is_winner?: boolean
+          logistics_score?: number
+          pitch_text?: string | null
+          player_name: string
+          session_id: string
+          total_bid_score?: number
+        }
+        Update: {
+          city_id?: string
+          created_at?: string
+          cultural_score?: number
+          festival_id?: string
+          gold_invested?: number
+          id?: string
+          influence_invested?: number
+          is_winner?: boolean
+          logistics_score?: number
+          pitch_text?: string | null
+          player_name?: string
+          session_id?: string
+          total_bid_score?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "games_bids_city_id_fkey"
+            columns: ["city_id"]
+            isOneToOne: false
+            referencedRelation: "cities"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "games_bids_festival_id_fkey"
+            columns: ["festival_id"]
+            isOneToOne: false
+            referencedRelation: "games_festivals"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "games_bids_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      games_disciplines: {
+        Row: {
+          category: string
+          description: string | null
+          icon_emoji: string
+          id: string
+          key: string
+          name: string
+          prestige_weight: number
+          primary_stat: string
+          secondary_stat: string | null
+        }
+        Insert: {
+          category: string
+          description?: string | null
+          icon_emoji?: string
+          id?: string
+          key: string
+          name: string
+          prestige_weight?: number
+          primary_stat?: string
+          secondary_stat?: string | null
+        }
+        Update: {
+          category?: string
+          description?: string | null
+          icon_emoji?: string
+          id?: string
+          key?: string
+          name?: string
+          prestige_weight?: number
+          primary_stat?: string
+          secondary_stat?: string | null
+        }
+        Relationships: []
+      }
+      games_festivals: {
+        Row: {
+          announced_turn: number
+          concluded_turn: number | null
+          created_at: string
+          description: string | null
+          effects_applied: boolean
+          festival_type: string
+          finals_turn: number | null
+          host_city_id: string | null
+          host_player: string | null
+          id: string
+          incident_chance: number
+          is_global: boolean
+          name: string
+          prestige_pool: number
+          session_id: string
+          status: string
+          total_investment_gold: number
+        }
+        Insert: {
+          announced_turn?: number
+          concluded_turn?: number | null
+          created_at?: string
+          description?: string | null
+          effects_applied?: boolean
+          festival_type?: string
+          finals_turn?: number | null
+          host_city_id?: string | null
+          host_player?: string | null
+          id?: string
+          incident_chance?: number
+          is_global?: boolean
+          name: string
+          prestige_pool?: number
+          session_id: string
+          status?: string
+          total_investment_gold?: number
+        }
+        Update: {
+          announced_turn?: number
+          concluded_turn?: number | null
+          created_at?: string
+          description?: string | null
+          effects_applied?: boolean
+          festival_type?: string
+          finals_turn?: number | null
+          host_city_id?: string | null
+          host_player?: string | null
+          id?: string
+          incident_chance?: number
+          is_global?: boolean
+          name?: string
+          prestige_pool?: number
+          session_id?: string
+          status?: string
+          total_investment_gold?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "games_festivals_host_city_id_fkey"
+            columns: ["host_city_id"]
+            isOneToOne: false
+            referencedRelation: "cities"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "games_festivals_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      games_incidents: {
+        Row: {
+          created_at: string
+          description: string
+          effects: Json
+          festival_id: string
+          id: string
+          incident_type: string
+          instigator_player: string | null
+          session_id: string
+          severity: string
+          target_participant_id: string | null
+          turn_number: number
+        }
+        Insert: {
+          created_at?: string
+          description: string
+          effects?: Json
+          festival_id: string
+          id?: string
+          incident_type: string
+          instigator_player?: string | null
+          session_id: string
+          severity?: string
+          target_participant_id?: string | null
+          turn_number?: number
+        }
+        Update: {
+          created_at?: string
+          description?: string
+          effects?: Json
+          festival_id?: string
+          id?: string
+          incident_type?: string
+          instigator_player?: string | null
+          session_id?: string
+          severity?: string
+          target_participant_id?: string | null
+          turn_number?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "games_incidents_festival_id_fkey"
+            columns: ["festival_id"]
+            isOneToOne: false
+            referencedRelation: "games_festivals"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "games_incidents_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "games_incidents_target_participant_id_fkey"
+            columns: ["target_participant_id"]
+            isOneToOne: false
+            referencedRelation: "games_participants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      games_intrigues: {
+        Row: {
+          action_type: string
+          created_at: string
+          description: string | null
+          discovered: boolean
+          effects: Json
+          festival_id: string
+          gold_spent: number
+          id: string
+          player_name: string
+          session_id: string
+          success: boolean | null
+          target_participant_id: string | null
+          target_player: string | null
+          turn_number: number
+        }
+        Insert: {
+          action_type: string
+          created_at?: string
+          description?: string | null
+          discovered?: boolean
+          effects?: Json
+          festival_id: string
+          gold_spent?: number
+          id?: string
+          player_name: string
+          session_id: string
+          success?: boolean | null
+          target_participant_id?: string | null
+          target_player?: string | null
+          turn_number?: number
+        }
+        Update: {
+          action_type?: string
+          created_at?: string
+          description?: string | null
+          discovered?: boolean
+          effects?: Json
+          festival_id?: string
+          gold_spent?: number
+          id?: string
+          player_name?: string
+          session_id?: string
+          success?: boolean | null
+          target_participant_id?: string | null
+          target_player?: string | null
+          turn_number?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "games_intrigues_festival_id_fkey"
+            columns: ["festival_id"]
+            isOneToOne: false
+            referencedRelation: "games_festivals"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "games_intrigues_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "games_intrigues_target_participant_id_fkey"
+            columns: ["target_participant_id"]
+            isOneToOne: false
+            referencedRelation: "games_participants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      games_participants: {
+        Row: {
+          agility: number
+          athlete_name: string
+          background: string | null
+          charisma: number
+          city_id: string | null
+          city_infrastructure_bonus: number
+          civ_modifier: number
+          created_at: string
+          endurance: number
+          festival_id: string
+          form: string
+          great_person_id: string | null
+          id: string
+          is_legend: boolean
+          morale_modifier: number
+          player_name: string
+          session_id: string
+          sponsor_player: string | null
+          strength: number
+          tactics: number
+          total_medals: number
+          training_bonus: number
+          traits: string[]
+        }
+        Insert: {
+          agility?: number
+          athlete_name: string
+          background?: string | null
+          charisma?: number
+          city_id?: string | null
+          city_infrastructure_bonus?: number
+          civ_modifier?: number
+          created_at?: string
+          endurance?: number
+          festival_id: string
+          form?: string
+          great_person_id?: string | null
+          id?: string
+          is_legend?: boolean
+          morale_modifier?: number
+          player_name: string
+          session_id: string
+          sponsor_player?: string | null
+          strength?: number
+          tactics?: number
+          total_medals?: number
+          training_bonus?: number
+          traits?: string[]
+        }
+        Update: {
+          agility?: number
+          athlete_name?: string
+          background?: string | null
+          charisma?: number
+          city_id?: string | null
+          city_infrastructure_bonus?: number
+          civ_modifier?: number
+          created_at?: string
+          endurance?: number
+          festival_id?: string
+          form?: string
+          great_person_id?: string | null
+          id?: string
+          is_legend?: boolean
+          morale_modifier?: number
+          player_name?: string
+          session_id?: string
+          sponsor_player?: string | null
+          strength?: number
+          tactics?: number
+          total_medals?: number
+          training_bonus?: number
+          traits?: string[]
+        }
+        Relationships: [
+          {
+            foreignKeyName: "games_participants_city_id_fkey"
+            columns: ["city_id"]
+            isOneToOne: false
+            referencedRelation: "cities"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "games_participants_festival_id_fkey"
+            columns: ["festival_id"]
+            isOneToOne: false
+            referencedRelation: "games_festivals"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "games_participants_great_person_id_fkey"
+            columns: ["great_person_id"]
+            isOneToOne: false
+            referencedRelation: "great_persons"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "games_participants_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      games_results: {
+        Row: {
+          base_score: number
+          bonus_score: number
+          created_at: string
+          discipline_id: string
+          festival_id: string
+          id: string
+          medal: string | null
+          participant_id: string
+          performance_description: string | null
+          rank: number | null
+          session_id: string
+          total_score: number
+          variance_score: number
+        }
+        Insert: {
+          base_score?: number
+          bonus_score?: number
+          created_at?: string
+          discipline_id: string
+          festival_id: string
+          id?: string
+          medal?: string | null
+          participant_id: string
+          performance_description?: string | null
+          rank?: number | null
+          session_id: string
+          total_score?: number
+          variance_score?: number
+        }
+        Update: {
+          base_score?: number
+          bonus_score?: number
+          created_at?: string
+          discipline_id?: string
+          festival_id?: string
+          id?: string
+          medal?: string | null
+          participant_id?: string
+          performance_description?: string | null
+          rank?: number | null
+          session_id?: string
+          total_score?: number
+          variance_score?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "games_results_discipline_id_fkey"
+            columns: ["discipline_id"]
+            isOneToOne: false
+            referencedRelation: "games_disciplines"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "games_results_festival_id_fkey"
+            columns: ["festival_id"]
+            isOneToOne: false
+            referencedRelation: "games_festivals"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "games_results_participant_id_fkey"
+            columns: ["participant_id"]
+            isOneToOne: false
+            referencedRelation: "games_participants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "games_results_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       generals: {
         Row: {
           bio: string | null
