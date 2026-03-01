@@ -59,6 +59,7 @@ interface Player {
   goals_scored: number; assists: number; matches_played: number;
   overall_rating: number; form: number; condition: number;
   injury_turns: number; yellow_cards: number; red_cards: number;
+  injury_severity?: string; is_dead?: boolean; death_turn?: number; death_cause?: string;
 }
 
 interface Stadium {
@@ -117,8 +118,11 @@ const LeaguePanel = ({ sessionId, currentPlayerName, currentTurn }: Props) => {
   const [selectedTeam, setSelectedTeam] = useState<string | null>(null);
   const [selectedPlayer, setSelectedPlayer] = useState<Player | null>(null);
   const [playingRound, setPlayingRound] = useState(false);
+  const [playingBulk, setPlayingBulk] = useState(false);
+  const [generatingTeams, setGeneratingTeams] = useState(false);
   const [creatingAssoc, setCreatingAssoc] = useState(false);
   const [roundResult, setRoundResult] = useState<any>(null);
+  const [bulkResults, setBulkResults] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [showRules, setShowRules] = useState(false);
 
@@ -180,6 +184,39 @@ const LeaguePanel = ({ sessionId, currentPlayerName, currentTurn }: Props) => {
       toast.success(`⚔️ Kolo ${data.round} odehráno!`);
       await fetchData();
     } catch (e: any) { toast.error(e.message); } finally { setPlayingRound(false); }
+  };
+
+  const handlePlay10Rounds = async () => {
+    setPlayingBulk(true);
+    setBulkResults([]);
+    try {
+      const allResults: any[] = [];
+      for (let i = 0; i < 10; i++) {
+        const { data, error } = await supabase.functions.invoke("league-play-round", {
+          body: { session_id: sessionId, player_name: currentPlayerName },
+        });
+        if (error) throw error;
+        if (data?.error && !data?.seasonComplete) { toast.error(data.error); break; }
+        allResults.push(data);
+        if (data?.seasonComplete) { toast.info("🏆 Sezóna ukončena!"); break; }
+      }
+      setBulkResults(allResults);
+      toast.success(`⚔️ Odehráno ${allResults.length} kol!`);
+      await fetchData();
+    } catch (e: any) { toast.error(e.message); } finally { setPlayingBulk(false); }
+  };
+
+  const handleGenerateTeams = async () => {
+    setGeneratingTeams(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("bulk-generate-teams", {
+        body: { session_id: sessionId },
+      });
+      if (error) throw error;
+      if (data?.error) { toast.error(data.error); return; }
+      toast.success(data.message || `Vytvořeno ${data.teamsCreated} týmů, ${data.playersCreated} hráčů`);
+      await fetchData();
+    } catch (e: any) { toast.error(e.message); } finally { setGeneratingTeams(false); }
   };
 
   const handleCreateAssociation = async () => {
@@ -277,7 +314,15 @@ const LeaguePanel = ({ sessionId, currentPlayerName, currentTurn }: Props) => {
             <CardHeader className="py-2 px-3 border-b border-border/50">
               <CardTitle className="text-xs font-display flex justify-between items-center">
                 Sestava Sphaery
-                <span className="text-[10px] font-normal text-muted-foreground">{teamPlayers.length} bojovníků</span>
+                <span className="text-[10px] font-normal text-muted-foreground">
+                  {teamPlayers.filter(p => !p.is_dead).length} k dispozici / {teamPlayers.length} celkem
+                  {teamPlayers.filter(p => p.injury_turns > 0 && !p.is_dead).length > 0 && (
+                    <span className="text-destructive ml-1">🏥{teamPlayers.filter(p => p.injury_turns > 0 && !p.is_dead).length}</span>
+                  )}
+                  {teamPlayers.filter(p => p.is_dead).length > 0 && (
+                    <span className="text-muted-foreground ml-1">☠️{teamPlayers.filter(p => p.is_dead).length}</span>
+                  )}
+                </span>
               </CardTitle>
             </CardHeader>
             <div className="overflow-x-auto">
@@ -297,23 +342,32 @@ const LeaguePanel = ({ sessionId, currentPlayerName, currentTurn }: Props) => {
                 <tbody>
                   {teamPlayers.map(p => {
                     const fl = formLabel(p.form);
+                    const isDead = p.is_dead;
+                    const injSeverityLabel: Record<string, string> = { light: "Lehké", medium: "Střední", severe: "Těžké", career_ending: "Konec kariéry" };
                     return (
                       <tr key={p.id} 
-                        className="border-b border-border/50 hover:bg-primary/5 cursor-pointer transition-colors"
+                        className={`border-b border-border/50 hover:bg-primary/5 cursor-pointer transition-colors ${isDead ? "opacity-40 line-through" : ""}`}
                         onClick={() => setSelectedPlayer(p)}>
                         <td className="px-2 py-1.5 font-semibold">
                           {POS_ICONS[p.position] || "👤"}{" "}
                           {p.is_captain && <span className="text-yellow-400 mr-0.5" title="Praetor">©</span>}
                           {p.name}
-                          {p.injury_turns > 0 && <span className="text-red-400 ml-1" title="Zraněn">🏥</span>}
+                          {isDead && <span className="text-muted-foreground ml-1" title={p.death_cause || "Mrtvý"}>☠️</span>}
+                          {!isDead && p.injury_turns > 0 && (
+                            <span className="text-red-400 ml-1" title={`${injSeverityLabel[p.injury_severity || "light"] || "Zraněn"} (${p.injury_turns} kol)`}>
+                              🏥{p.injury_severity === "severe" ? "!" : ""}
+                            </span>
+                          )}
                         </td>
                         <td className="px-1 py-1.5 text-center text-muted-foreground">{POS_LABELS[p.position]}</td>
                         <td className={`px-1 py-1.5 text-center font-bold font-mono ${ratingColor(p.overall_rating)}`}>{p.overall_rating}</td>
-                        <td className={`px-1 py-1.5 text-center ${fl.cls}`}>{p.form}</td>
+                        <td className={`px-1 py-1.5 text-center ${fl.cls}`}>{isDead ? "—" : p.form}</td>
                         <td className="px-1 py-1.5 text-center">
-                          <div className="w-12 h-1.5 bg-secondary rounded-full mx-auto overflow-hidden">
-                            <div className={`h-full ${p.condition < 60 ? 'bg-red-500' : p.condition < 85 ? 'bg-yellow-500' : 'bg-green-500'}`} style={{ width: `${p.condition}%` }} />
-                          </div>
+                          {isDead ? <span className="text-[9px] text-muted-foreground">☠️</span> : (
+                            <div className="w-12 h-1.5 bg-secondary rounded-full mx-auto overflow-hidden">
+                              <div className={`h-full ${p.condition < 60 ? 'bg-destructive' : p.condition < 85 ? 'bg-yellow-500' : 'bg-green-500'}`} style={{ width: `${p.condition}%` }} />
+                            </div>
+                          )}
                         </td>
                         <td className="px-1 py-1.5 text-center">{p.matches_played}</td>
                         <td className="px-1 py-1.5 text-center font-bold">{p.goals_scored || 0}</td>
@@ -348,21 +402,31 @@ const LeaguePanel = ({ sessionId, currentPlayerName, currentTurn }: Props) => {
           </Badge>
         </div>
         
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
           <Button size="sm" variant="ghost" className="text-xs gap-1" onClick={() => setShowRules(true)} title="Pravidla Sphaery">
             <Scroll className="h-3.5 w-3.5" />
           </Button>
+          <Button size="sm" variant="outline" className="text-xs gap-1" onClick={handleGenerateTeams} disabled={generatingTeams} title="Doplnit týmy na 8 per město + 22 hráčů">
+            {generatingTeams ? <Loader2 className="h-3 w-3 animate-spin" /> : <Plus className="h-3 w-3" />}
+            Doplnit týmy
+          </Button>
           {!myAssociation && (
             <Button size="sm" variant="outline" className="text-xs gap-1" onClick={handleCreateAssociation} disabled={creatingAssoc}>
-              {creatingAssoc ? <Loader2 className="h-3 w-3 animate-spin" /> : <Plus className="h-3 w-3" />}
+              {creatingAssoc ? <Loader2 className="h-3 w-3 animate-spin" /> : <Shield className="h-3 w-3" />}
               Založit Svaz
             </Button>
           )}
           {teams.length > 1 && (
-             <Button size="sm" className="text-xs gap-1 shadow-lg shadow-primary/10" onClick={handlePlayRound} disabled={playingRound}>
-               {playingRound ? <Loader2 className="h-3 w-3 animate-spin" /> : <Flame className="h-3 w-3" />}
-               Odehrát kolo
-             </Button>
+            <>
+              <Button size="sm" className="text-xs gap-1 shadow-lg shadow-primary/10" onClick={handlePlayRound} disabled={playingRound || playingBulk}>
+                {playingRound ? <Loader2 className="h-3 w-3 animate-spin" /> : <Flame className="h-3 w-3" />}
+                Odehrát kolo
+              </Button>
+              <Button size="sm" variant="secondary" className="text-xs gap-1" onClick={handlePlay10Rounds} disabled={playingBulk || playingRound}>
+                {playingBulk ? <Loader2 className="h-3 w-3 animate-spin" /> : <Play className="h-3 w-3" />}
+                Odehrát 10 kol
+              </Button>
+            </>
           )}
         </div>
       </div>

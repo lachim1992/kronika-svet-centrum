@@ -4504,12 +4504,16 @@ export type Database = {
           birth_turn: number
           condition: number
           created_at: string
+          death_cause: string | null
+          death_turn: number | null
           form: number
           goals: number
           goals_scored: number | null
           id: string
+          injury_severity: string
           injury_turns: number
           is_captain: boolean | null
+          is_dead: boolean
           is_injured: boolean | null
           leadership: number | null
           matches_played: number | null
@@ -4538,12 +4542,16 @@ export type Database = {
           birth_turn?: number
           condition?: number
           created_at?: string
+          death_cause?: string | null
+          death_turn?: number | null
           form?: number
           goals?: number
           goals_scored?: number | null
           id?: string
+          injury_severity?: string
           injury_turns?: number
           is_captain?: boolean | null
+          is_dead?: boolean
           is_injured?: boolean | null
           leadership?: number | null
           matches_played?: number | null
@@ -4572,12 +4580,16 @@ export type Database = {
           birth_turn?: number
           condition?: number
           created_at?: string
+          death_cause?: string | null
+          death_turn?: number | null
           form?: number
           goals?: number
           goals_scored?: number | null
           id?: string
+          injury_severity?: string
           injury_turns?: number
           is_captain?: boolean | null
+          is_dead?: boolean
           is_injured?: boolean | null
           leadership?: number | null
           matches_played?: number | null
