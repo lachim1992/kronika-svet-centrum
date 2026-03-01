@@ -353,15 +353,88 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Host city bonus
+    // ═══ HOST CITY ECONOMIC EFFECTS (BOOM / COLLAPSE) ═══
     if (festival.host_city_id) {
       const { data: hostCity } = await sb.from("cities")
-        .select("id, influence_score, city_stability").eq("id", festival.host_city_id).single();
+        .select("id, name, owner_player, influence_score, city_stability, development_level, population_total, hosting_count, housing_capacity")
+        .eq("id", festival.host_city_id).single();
       if (hostCity) {
+        const preparedness = hostCity.development_level + hostCity.city_stability / 10;
+        const isPrepared = preparedness >= 12;
+        const hostingCount = hostCity.hosting_count || 0;
+
+        let stabilityDelta = 0;
+        let influenceDelta = 0;
+        let hostNarrative = "";
+
+        if (isPrepared) {
+          // ═══ BOOM: city was ready ═══
+          influenceDelta = 15 + hostingCount * 3;
+          stabilityDelta = 5;
+          hostNarrative = `Město ${hostCity.name} zvládlo pořadatelství skvěle — obchod vzkvétá, prestiž roste.`;
+        } else {
+          // ═══ COLLAPSE RISK: city was unprepared ═══
+          const collapseRoll = Math.random();
+          if (collapseRoll < 0.3) {
+            stabilityDelta = -15;
+            influenceDelta = 5; // still some prestige
+            hostNarrative = `Město ${hostCity.name} se zhroutilo pod tíhou pořadatelství — nepokoje, přetížená infrastruktura!`;
+            // Create incident
+            await sb.from("games_incidents").insert({
+              session_id, festival_id, incident_type: "riot", severity: "major",
+              target_participant_id: null,
+              description: `Masové nepokoje v ${hostCity.name} kvůli přetížení infrastruktury během her!`,
+              turn_number: turn_number || festival.announced_turn,
+              effects: { stability_loss: 15, host_collapse: true },
+            });
+          } else {
+            stabilityDelta = -5;
+            influenceDelta = 10;
+            hostNarrative = `Město ${hostCity.name} ustálo tlak pořadatelství, ale infrastruktura utrpěla.`;
+          }
+        }
+
         await sb.from("cities").update({
-          influence_score: hostCity.influence_score + 10,
-          city_stability: Math.min(100, hostCity.city_stability + 5),
+          influence_score: hostCity.influence_score + influenceDelta,
+          city_stability: Math.max(0, Math.min(100, hostCity.city_stability + stabilityDelta)),
         }).eq("id", festival.host_city_id);
+
+        // ═══ LEGACY TITLES ═══
+        const newHostingCount = hostingCount + 1; // already incremented in select-host, but check
+        try {
+          if (newHostingCount >= 3) {
+            // "Kolébka her" — unique world status
+            const { data: existingTrait } = await sb.from("entity_traits")
+              .select("id").eq("session_id", session_id).eq("entity_type", "city")
+              .eq("entity_id", hostCity.id).eq("trait_key", "cradle_of_games").maybeSingle();
+
+            if (!existingTrait) {
+              await sb.from("entity_traits").insert({
+                session_id, entity_type: "city", entity_id: hostCity.id,
+                trait_key: "cradle_of_games", trait_label: "Kolébka her",
+                description: `${hostCity.name} hostilo Velké hry ${newHostingCount}× a získalo legendární status Kolébky her.`,
+                intensity: newHostingCount * 25, source: "games",
+              });
+              await writeFeed("narration", `🏛️ ${hostCity.name} získává titul KOLÉBKA HER! ${newHostingCount}× hostitel Velkých her!`, 5);
+            }
+          } else if (newHostingCount >= 2) {
+            const { data: existingTrait } = await sb.from("entity_traits")
+              .select("id").eq("session_id", session_id).eq("entity_type", "city")
+              .eq("entity_id", hostCity.id).eq("trait_key", "cultural_center_games").maybeSingle();
+
+            if (!existingTrait) {
+              await sb.from("entity_traits").insert({
+                session_id, entity_type: "city", entity_id: hostCity.id,
+                trait_key: "cultural_center_games", trait_label: "Kulturní centrum her",
+                description: `${hostCity.name} je uznávaným kulturním centrem — ${newHostingCount}× hostitel Velkých her.`,
+                intensity: newHostingCount * 15, source: "games",
+              });
+            }
+          }
+        } catch (_) { /* non-critical */ }
+
+        // Add host narrative to feed
+        await writeFeed("narration", hostNarrative, isPrepared ? 3 : 4);
       }
     }
 

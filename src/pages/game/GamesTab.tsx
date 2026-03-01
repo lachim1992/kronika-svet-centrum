@@ -7,7 +7,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Loader2, Trophy, Sword, BookOpen, Theater, Target, Flame, Star, Crown, AlertTriangle, Coins, School, Skull, TrendingUp, MapPin, Gavel } from "lucide-react";
+import { Loader2, Trophy, Sword, BookOpen, Theater, Target, Flame, Star, Crown, AlertTriangle, Coins, School, Skull, TrendingUp, MapPin, Gavel, Medal } from "lucide-react";
 import { toast } from "sonner";
 import AcademyPanel from "@/components/AcademyPanel";
 import SchoolRankings from "@/components/SchoolRankings";
@@ -249,9 +249,12 @@ const GamesTab = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, o
       </div>
 
       <Tabs defaultValue="active" className="space-y-4">
-        <TabsList className="grid w-full grid-cols-3 sm:grid-cols-6">
+        <TabsList className="grid w-full grid-cols-4 sm:grid-cols-7">
           <TabsTrigger value="active" className="font-display text-xs">
             <Flame className="h-3.5 w-3.5 mr-1" />Aktivní
+          </TabsTrigger>
+          <TabsTrigger value="medals" className="font-display text-xs">
+            <Medal className="h-3.5 w-3.5 mr-1" />Medaile
           </TabsTrigger>
           <TabsTrigger value="academy" className="font-display text-xs">
             <School className="h-3.5 w-3.5 mr-1" />Akademie
@@ -311,6 +314,17 @@ const GamesTab = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, o
           {activeFestival && activeFestival.status !== "candidacy" && (
             <LiveGamesFeed sessionId={sessionId} festivalId={activeFestival.id} />
           )}
+        </TabsContent>
+
+        {/* ─── GLOBAL MEDAL TALLY ─── */}
+        <TabsContent value="medals">
+          <GlobalMedalTally
+            sessionId={sessionId}
+            festivals={concludedFestivals}
+            participants={participants}
+            results={results}
+            disciplines={disciplines}
+          />
         </TabsContent>
 
         {/* ─── ACADEMY ─── */}
@@ -766,6 +780,154 @@ function MedalTable({ participants, results, disciplines }: {
           );
         })}
       </div>
+    </div>
+  );
+}
+
+/* ─── Global Medal Tally ─── */
+function GlobalMedalTally({ sessionId, festivals, participants, results, disciplines }: {
+  sessionId: string;
+  festivals: Festival[];
+  participants: Participant[];
+  results: Result[];
+  disciplines: Discipline[];
+}) {
+  // Aggregate medals per empire across ALL concluded festivals
+  const empireTally: Record<string, { gold: number; silver: number; bronze: number; hosted: number; legends: number; participations: number }> = {};
+
+  for (const p of participants) {
+    if (!empireTally[p.player_name]) {
+      empireTally[p.player_name] = { gold: 0, silver: 0, bronze: 0, hosted: 0, legends: 0, participations: 0 };
+    }
+    empireTally[p.player_name].participations++;
+    if (p.is_legend) empireTally[p.player_name].legends++;
+  }
+
+  for (const r of results) {
+    const p = participants.find(pp => pp.id === r.participant_id);
+    if (!p) continue;
+    if (!empireTally[p.player_name]) {
+      empireTally[p.player_name] = { gold: 0, silver: 0, bronze: 0, hosted: 0, legends: 0, participations: 0 };
+    }
+    if (r.medal === "gold") empireTally[p.player_name].gold++;
+    if (r.medal === "silver") empireTally[p.player_name].silver++;
+    if (r.medal === "bronze") empireTally[p.player_name].bronze++;
+  }
+
+  // Count hostings
+  for (const f of festivals) {
+    if (f.host_player && empireTally[f.host_player]) {
+      empireTally[f.host_player].hosted++;
+    }
+  }
+
+  const sorted = Object.entries(empireTally).sort((a, b) => {
+    const aScore = a[1].gold * 100 + a[1].silver * 10 + a[1].bronze;
+    const bScore = b[1].gold * 100 + b[1].silver * 10 + b[1].bronze;
+    return bScore - aScore;
+  });
+
+  // Find rivalries: top 2 empires with smallest gap
+  const rivalryPairs: string[] = [];
+  if (sorted.length >= 2) {
+    const [first, second] = sorted;
+    const gap = (first[1].gold * 100 + first[1].silver * 10 + first[1].bronze) -
+                (second[1].gold * 100 + second[1].silver * 10 + second[1].bronze);
+    if (gap < 200) {
+      rivalryPairs.push(`${first[0]} vs ${second[0]}`);
+    }
+  }
+
+  if (sorted.length === 0) {
+    return (
+      <Card className="border-border bg-card/50">
+        <CardContent className="p-8 text-center">
+          <Medal className="h-12 w-12 text-muted-foreground mx-auto mb-3 opacity-50" />
+          <p className="text-sm text-muted-foreground">Žádné medailové záznamy.</p>
+          <p className="text-xs text-muted-foreground mt-1">Uspořádejte Velké hry pro zahájení soutěže říší.</p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* Empire Medal Table */}
+      <Card className="border-primary/20 bg-card/50">
+        <CardHeader className="pb-2">
+          <CardTitle className="font-display text-sm flex items-center gap-2">
+            <Trophy className="h-4 w-4 text-primary" />
+            Medailová tabulka říší
+          </CardTitle>
+          <p className="text-[10px] text-muted-foreground">
+            Celkem {festivals.length} olympiád | {results.filter(r => r.medal).length} medailí
+          </p>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-1">
+            <div className="grid grid-cols-[auto_1fr_repeat(5,_40px)] gap-1 text-[9px] text-muted-foreground font-display pb-1 border-b border-border">
+              <span className="w-5">#</span>
+              <span>Říše</span>
+              <span className="text-center">🥇</span>
+              <span className="text-center">🥈</span>
+              <span className="text-center">🥉</span>
+              <span className="text-center">🏟️</span>
+              <span className="text-center">⭐</span>
+            </div>
+            {sorted.map(([name, t], idx) => (
+              <div key={name} className={`grid grid-cols-[auto_1fr_repeat(5,_40px)] gap-1 text-xs items-center py-1 ${idx === 0 ? "bg-primary/5 rounded" : ""}`}>
+                <span className="font-display text-muted-foreground w-5 text-center font-bold">{idx + 1}</span>
+                <span className="font-display font-semibold truncate">{name}</span>
+                <span className="text-center font-mono font-bold text-yellow-400">{t.gold}</span>
+                <span className="text-center font-mono text-muted-foreground">{t.silver}</span>
+                <span className="text-center font-mono text-muted-foreground">{t.bronze}</span>
+                <span className="text-center font-mono text-muted-foreground">{t.hosted}</span>
+                <span className="text-center font-mono text-muted-foreground">{t.legends}</span>
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Rivalries */}
+      {rivalryPairs.length > 0 && (
+        <Card className="border-orange-500/20 bg-orange-500/5">
+          <CardContent className="p-3">
+            <p className="text-xs font-display font-semibold flex items-center gap-1">
+              <Sword className="h-3.5 w-3.5 text-orange-400" />
+              Rivalita
+            </p>
+            {rivalryPairs.map(r => (
+              <p key={r} className="text-[10px] text-muted-foreground mt-1">
+                ⚔️ {r} — těsný souboj o dominanci ve Velkých hrách!
+              </p>
+            ))}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Hosting history */}
+      <Card className="border-border bg-card/50">
+        <CardHeader className="pb-2">
+          <CardTitle className="font-display text-sm flex items-center gap-2">
+            <MapPin className="h-4 w-4 text-muted-foreground" />
+            Historie pořadatelství
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-1">
+            {festivals.map(f => (
+              <div key={f.id} className="flex items-center justify-between text-xs py-1 border-b border-border/50 last:border-0">
+                <div className="flex items-center gap-2">
+                  <span className="font-mono text-muted-foreground">Rok {f.announced_turn}</span>
+                  <span className="font-display font-semibold">{f.name}</span>
+                </div>
+                <Badge variant="outline" className="text-[8px]">{f.host_player}</Badge>
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }
