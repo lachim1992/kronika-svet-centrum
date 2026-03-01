@@ -1,0 +1,1 @@
+ALTER TABLE games_festivals ADD COLUMN IF NOT EXISTS reveal_script JSONB;

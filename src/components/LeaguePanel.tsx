@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Progress } from "@/components/ui/progress";
-import { Trophy, Users, Calendar, Star, Target, Shield, Swords, Play, Loader2, ChevronLeft, Building2 } from "lucide-react";
+import { Trophy, Users, Calendar, Star, Target, Shield, Swords, Play, Loader2, ChevronLeft, Building2, Plus } from "lucide-react";
 import { toast } from "sonner";
 
 interface Props {
@@ -20,6 +20,11 @@ interface Team {
   motto: string | null; attack_rating: number; defense_rating: number;
   tactics_rating: number; discipline_rating: number; popularity: number;
   fan_base: number; titles_won: number; color_primary: string; color_secondary: string;
+}
+
+interface Association {
+  id: string; name: string; player_name: string; scouting_level: number; youth_development: number;
+  fan_base: number; reputation: number; city_id: string;
 }
 
 interface Standing {
@@ -90,25 +95,29 @@ const LeaguePanel = ({ sessionId, currentPlayerName, currentTurn }: Props) => {
   const [seasons, setSeasons] = useState<Season[]>([]);
   const [players, setPlayers] = useState<Player[]>([]);
   const [stadiums, setStadiums] = useState<Stadium[]>([]);
+  const [associations, setAssociations] = useState<Association[]>([]);
   const [cities, setCities] = useState<Map<string, string>>(new Map());
   const [selectedTeam, setSelectedTeam] = useState<string | null>(null);
   const [selectedPlayer, setSelectedPlayer] = useState<Player | null>(null);
   const [playingRound, setPlayingRound] = useState(false);
+  const [creatingAssoc, setCreatingAssoc] = useState(false);
   const [roundResult, setRoundResult] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
-    const [{ data: t }, { data: s }, { data: seas }, { data: blds }, { data: cits }] = await Promise.all([
+    const [{ data: t }, { data: s }, { data: seas }, { data: blds }, { data: cits }, { data: assocs }] = await Promise.all([
       supabase.from("league_teams").select("*").eq("session_id", sessionId).eq("is_active", true),
       supabase.from("league_seasons").select("*").eq("session_id", sessionId).order("season_number", { ascending: false }),
       supabase.from("league_seasons").select("id").eq("session_id", sessionId).eq("status", "active").maybeSingle(),
       supabase.from("city_buildings").select("id, name, city_id, current_level").eq("session_id", sessionId).eq("status", "completed").contains("building_tags", ["stadium"]),
       supabase.from("cities").select("id, name").eq("session_id", sessionId),
+      supabase.from("sports_associations").select("*").eq("session_id", sessionId).eq("player_name", currentPlayerName),
     ]);
     setTeams((t || []) as any);
     setSeasons((s || []) as any);
     setStadiums((blds || []) as any);
+    setAssociations((assocs || []) as any);
     const cityMap = new Map<string, string>();
     for (const c of (cits || [])) cityMap.set(c.id, c.name);
     setCities(cityMap);
@@ -125,7 +134,7 @@ const LeaguePanel = ({ sessionId, currentPlayerName, currentTurn }: Props) => {
       setPlayers((pl || []) as any);
     }
     setLoading(false);
-  }, [sessionId]);
+  }, [sessionId, currentPlayerName]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
@@ -143,6 +152,30 @@ const LeaguePanel = ({ sessionId, currentPlayerName, currentTurn }: Props) => {
       toast.success(`⚽ Kolo ${data.round} odehráno!`);
       await fetchData();
     } catch (e: any) { toast.error(e.message); } finally { setPlayingRound(false); }
+  };
+
+  const handleCreateAssociation = async () => {
+    if (cities.size === 0) { toast.error("Potřebuješ město."); return; }
+    setCreatingAssoc(true);
+    try {
+      const cityId = Array.from(cities.keys())[0]; // Pick first city
+      const { error } = await supabase.from("sports_associations").insert({
+        session_id: sessionId,
+        city_id: cityId,
+        player_name: currentPlayerName,
+        name: "Národní Fotbalová Asociace",
+        reputation: 10,
+        scouting_level: 1,
+        youth_development: 1,
+      });
+      if (error) throw error;
+      toast.success("Asociace založena!");
+      await fetchData();
+    } catch (e: any) {
+      toast.error(e.message);
+    } finally {
+      setCreatingAssoc(false);
+    }
   };
 
   const teamMap = new Map(teams.map(t => [t.id, t]));
@@ -279,13 +312,33 @@ const LeaguePanel = ({ sessionId, currentPlayerName, currentTurn }: Props) => {
           )}
         </div>
         
-        {teams.length > 1 && (
-           <Button size="sm" className="text-xs gap-1 shadow-lg shadow-primary/10" onClick={handlePlayRound} disabled={playingRound}>
-             {playingRound ? <Loader2 className="h-3 w-3 animate-spin" /> : <Play className="h-3 w-3" />}
-             Odehrát ligové kolo
-           </Button>
-        )}
+        <div className="flex gap-2">
+          {associations.length === 0 && (
+            <Button size="sm" variant="outline" className="text-xs gap-1" onClick={handleCreateAssociation} disabled={creatingAssoc}>
+              {creatingAssoc ? <Loader2 className="h-3 w-3 animate-spin" /> : <Plus className="h-3 w-3" />}
+              Založit Asociaci
+            </Button>
+          )}
+          {teams.length > 1 && (
+             <Button size="sm" className="text-xs gap-1 shadow-lg shadow-primary/10" onClick={handlePlayRound} disabled={playingRound}>
+               {playingRound ? <Loader2 className="h-3 w-3 animate-spin" /> : <Play className="h-3 w-3" />}
+               Odehrát ligové kolo
+             </Button>
+          )}
+        </div>
       </div>
+
+      {/* Association Status */}
+      {associations.map(assoc => (
+        <div key={assoc.id} className="bg-primary/5 border border-primary/20 rounded p-2 flex items-center justify-between text-xs mb-2">
+          <div className="flex items-center gap-2">
+            <span className="font-semibold">{assoc.name}</span>
+            <Badge variant="outline" className="text-[9px]">Scouting: {assoc.scouting_level}</Badge>
+            <Badge variant="outline" className="text-[9px]">Mládež: {assoc.youth_development}</Badge>
+          </div>
+          <span className="text-muted-foreground">Fanoušci: {assoc.fan_base}</span>
+        </div>
+      ))}
 
       {/* Round result overlay */}
       {roundResult && (
