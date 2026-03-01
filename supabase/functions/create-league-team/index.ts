@@ -88,7 +88,7 @@ Deno.serve(async (req) => {
 
     if (teamErr) throw teamErr;
 
-    // Generate 11 players
+    // Generate 11 players with varied stats
     const usedNames = new Set<string>();
     const playerRows: any[] = [];
     for (const posGroup of POSITIONS) {
@@ -100,21 +100,33 @@ Deno.serve(async (req) => {
         usedNames.add(name);
 
         const isCaptain = posGroup.pos === "midfielder" && i === 0;
-        const posBonus: Record<string, number> =
-          posGroup.pos === "goalkeeper" ? { technique: 15, speed: -5 } :
-          posGroup.pos === "defender" ? { strength: 10, aggression: 5 } :
-          posGroup.pos === "attacker" ? { speed: 10, technique: 5 } :
-          { stamina: 5, technique: 5 };
+        const age = 17 + Math.floor(Math.random() * 16); // 17-32
+        const talentPotential = 25 + Math.floor(Math.random() * 70); // 25-94
+        const peakAge = 26 + Math.floor(Math.random() * 6); // 26-31
+
+        // Position-specific stat ranges with wide variance
+        const posStats: Record<string, { str: number[], spd: number[], tch: number[], sta: number[], agg: number[] }> = {
+          goalkeeper: { str: [30,40], spd: [25,35], tch: [40,45], sta: [40,30], agg: [10,30] },
+          defender:   { str: [40,45], spd: [30,40], tch: [20,40], sta: [45,35], agg: [25,40] },
+          midfielder: { str: [30,45], spd: [35,45], tch: [40,50], sta: [50,40], agg: [15,35] },
+          attacker:   { str: [25,50], spd: [40,50], tch: [35,55], sta: [35,35], agg: [20,40] },
+        };
+        const ps = posStats[posGroup.pos] || posStats.midfielder;
 
         playerRows.push({
           session_id: sessionId, team_id: team.id, name,
           position: posGroup.pos, is_captain: isCaptain,
-          strength: 35 + Math.floor(Math.random() * 30) + (posBonus.strength || 0),
-          speed: 35 + Math.floor(Math.random() * 30) + (posBonus.speed || 0),
-          technique: 35 + Math.floor(Math.random() * 30) + (posBonus.technique || 0),
-          stamina: 40 + Math.floor(Math.random() * 25) + (posBonus.stamina || 0),
-          aggression: 25 + Math.floor(Math.random() * 30) + (posBonus.aggression || 0),
-          leadership: isCaptain ? 70 + Math.floor(Math.random() * 20) : Math.floor(Math.random() * 40),
+          strength: ps.str[0] + Math.floor(Math.random() * ps.str[1]),
+          speed: ps.spd[0] + Math.floor(Math.random() * ps.spd[1]),
+          technique: ps.tch[0] + Math.floor(Math.random() * ps.tch[1]),
+          stamina: ps.sta[0] + Math.floor(Math.random() * ps.sta[1]),
+          aggression: ps.agg[0] + Math.floor(Math.random() * ps.agg[1]),
+          leadership: isCaptain ? 60 + Math.floor(Math.random() * 35) : 5 + Math.floor(Math.random() * 50),
+          overall_rating: 30 + Math.floor(Math.random() * 50),
+          form: 30 + Math.floor(Math.random() * 60),
+          condition: 70 + Math.floor(Math.random() * 30),
+          age, talent_potential: talentPotential, peak_age: peakAge,
+          birth_turn: 0,
         });
       }
     }

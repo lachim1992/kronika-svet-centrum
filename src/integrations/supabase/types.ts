@@ -4380,10 +4380,12 @@ export type Database = {
       }
       league_players: {
         Row: {
+          age: number
           aggression: number | null
           assists: number | null
           association_id: string | null
           bio: string | null
+          birth_turn: number
           condition: number
           created_at: string
           form: number
@@ -4397,6 +4399,7 @@ export type Database = {
           matches_played: number | null
           name: string
           overall_rating: number
+          peak_age: number
           portrait_url: string | null
           position: string
           red_cards: number | null
@@ -4405,15 +4408,18 @@ export type Database = {
           speed: number | null
           stamina: number | null
           strength: number | null
+          talent_potential: number
           team_id: string
           technique: number | null
           yellow_cards: number | null
         }
         Insert: {
+          age?: number
           aggression?: number | null
           assists?: number | null
           association_id?: string | null
           bio?: string | null
+          birth_turn?: number
           condition?: number
           created_at?: string
           form?: number
@@ -4427,6 +4433,7 @@ export type Database = {
           matches_played?: number | null
           name: string
           overall_rating?: number
+          peak_age?: number
           portrait_url?: string | null
           position?: string
           red_cards?: number | null
@@ -4435,15 +4442,18 @@ export type Database = {
           speed?: number | null
           stamina?: number | null
           strength?: number | null
+          talent_potential?: number
           team_id: string
           technique?: number | null
           yellow_cards?: number | null
         }
         Update: {
+          age?: number
           aggression?: number | null
           assists?: number | null
           association_id?: string | null
           bio?: string | null
+          birth_turn?: number
           condition?: number
           created_at?: string
           form?: number
@@ -4457,6 +4467,7 @@ export type Database = {
           matches_played?: number | null
           name?: string
           overall_rating?: number
+          peak_age?: number
           portrait_url?: string | null
           position?: string
           red_cards?: number | null
@@ -4465,6 +4476,7 @@ export type Database = {
           speed?: number | null
           stamina?: number | null
           strength?: number | null
+          talent_potential?: number
           team_id?: string
           technique?: number | null
           yellow_cards?: number | null
