@@ -187,7 +187,7 @@ const WorldEnginePanel = ({ sessionId, currentTurn, currentPlayerName }: Props) 
             <span>⚖️ Zákony aplikovány: {tickResults.laws_applied?.length || tickResults.lawEvents?.length || 0}</span>
             <span>📜 Smlouvy ohroženy: {tickResults.treaty_stability?.filter((t: any) => t.strained || t.broken)?.length || 0}</span>
             <span>🔥 Vzpoury: {tickResults.rebellions?.filter((r: any) => r.rebelled)?.length || 0}</span>
-            <span>🏛️ NPC diplomacie: {tickResults.npc_diplomacy?.length || tickResults.cityStateUpdates?.length || 0}</span>
+            <span>💪 Morálka garnizonů: {tickResults.garrison_morale_boosts?.length || 0}</span>
             <span>⭐ Reputační změny: {tickResults.reputation_changes?.length || 0}</span>
             <span>📡 Emitované události: {tickResults.emittedEventsCount || 0}</span>
             <span>🧬 Trait decay: {tickResults.traitDecay?.length || 0}</span>
@@ -340,6 +340,8 @@ const WorldEnginePanel = ({ sessionId, currentTurn, currentPlayerName }: Props) 
                 <p>• <strong>Tenze</strong>: Hranice ×15 + Vojsko ×0.1 + Smlouvy ×20 + Embarga ×15. Prahy: ≥65 krize, ≥88 válka.</p>
                 <p>• <strong>Reputace</strong>: Decay ×0.9/kolo. Aliance +10, zrada -25, válka -15, rebelie -8. Hostitel her +8, šampion +5.</p>
                 <p>• <strong>Akademie</strong>: Reputace školy dává hybridní bonus +1-5 % ke skóre atletů v soutěžích.</p>
+                <p>• <strong>Fan base → Morálka</strong>: Fan base akademií boostuje morálku garnizonů ve městech hráče (+1 až +5 dle fan_base/20).</p>
+                <p>• <strong>Hostitelské město</strong>: Připravené město (dev + stab/10 ≥ 12): +5 stabilita, +15 vliv. Nepřipravené: -5 až -15 stabilita, riziko nepokojů.</p>
                 <p>• <strong>AI frakce</strong>: Plně autonomní — obchodují, uzavírají pakty, útočí i mezi sebou.</p>
               </div>
             </div>

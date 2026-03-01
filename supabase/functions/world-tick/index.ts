@@ -97,7 +97,7 @@ Deno.serve(async (req) => {
       { data: concludedFestivals },
     ] = await Promise.all([
       supabase.from("games_results").select("participant_id, medal").eq("session_id", sessionId),
-      supabase.from("academies").select("player_name, reputation").eq("session_id", sessionId),
+      supabase.from("academies").select("player_name, reputation, fan_base").eq("session_id", sessionId),
       supabase.from("cities").select("owner_player, hosting_count").eq("session_id", sessionId),
       supabase.from("games_festivals").select("host_player, best_athlete_id, concluded_turn, status")
         .eq("session_id", sessionId).eq("status", "concluded"),
@@ -230,6 +230,32 @@ Deno.serve(async (req) => {
       influenceResults.push(record);
     }
     results.influence = influenceResults;
+
+    // ========== 3b. FAN_BASE → GARRISON MORALE BOOST ==========
+    // Academies with high fan_base boost morale of military garrisons in their cities
+    const garrisonBoosts: any[] = [];
+    for (const acad of (academiesData || [])) {
+      if (!acad.fan_base || acad.fan_base < 10) continue;
+      // Find cities owned by this player
+      const playerCities = (cities || []).filter((c: any) => c.owner_player === acad.player_name);
+      const moraleBoost = Math.min(5, Math.round(acad.fan_base / 20)); // fan_base 20→+1, 100→+5
+      if (moraleBoost <= 0) continue;
+      for (const city of playerCities) {
+        // Boost garrison stacks in this city's province
+        const cityStacks = (militaryStacks || []).filter((s: any) =>
+          s.player_name === acad.player_name && s.current_hex_q === city.province_q && s.current_hex_r === city.province_r
+        );
+        for (const stack of cityStacks) {
+          await supabase.from("military_stacks").update({
+            morale: Math.min(100, (stack.morale || 70) + moraleBoost),
+          }).eq("id", stack.id);
+        }
+        if (cityStacks.length > 0) {
+          garrisonBoosts.push({ city: city.name, player: acad.player_name, boost: moraleBoost, stacks: cityStacks.length });
+        }
+      }
+    }
+    results.garrison_morale_boosts = garrisonBoosts;
 
     // ========== 4. SCAN RECENT KEY EVENTS FOR MEMORY LINKS ==========
     const { data: recentKeyEvents } = await supabase.from("game_events")
