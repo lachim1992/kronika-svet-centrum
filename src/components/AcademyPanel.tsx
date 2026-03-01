@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Slider } from "@/components/ui/slider";
 import { Textarea } from "@/components/ui/textarea";
-import { Loader2, GraduationCap, Swords, Users, Star, Skull, TrendingUp, School, Palette } from "lucide-react";
+import { Loader2, GraduationCap, Swords, Users, Star, Skull, TrendingUp, School, Palette, Plus } from "lucide-react";
 import { toast } from "sonner";
 import StudentDetailModal from "@/components/StudentDetailModal";
 
@@ -75,19 +75,23 @@ const AcademyPanel = ({ sessionId, currentPlayerName, currentTurn }: Props) => {
   const [sportFunding, setSportFunding] = useState(0);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [creating, setCreating] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [championStudentIds, setChampionStudentIds] = useState<Set<string>>(new Set());
+  const [cities, setCities] = useState<any[]>([]);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
-    const [{ data: acads }, { data: studs }, { data: realm }] = await Promise.all([
+    const [{ data: acads }, { data: studs }, { data: realm }, { data: cits }] = await Promise.all([
       supabase.from("academies").select("*").eq("session_id", sessionId).eq("player_name", currentPlayerName).order("founded_turn"),
       supabase.from("academy_students").select("*").eq("session_id", sessionId).eq("player_name", currentPlayerName).order("graduation_turn", { ascending: false }),
       supabase.from("realm_resources").select("sport_funding_pct").eq("session_id", sessionId).eq("player_name", currentPlayerName).maybeSingle(),
+      supabase.from("cities").select("id, name").eq("session_id", sessionId).eq("owner_player", currentPlayerName),
     ]);
     setAcademies((acads || []) as any);
     setStudents((studs || []) as any);
     setSportFunding(realm?.sport_funding_pct || 0);
+    setCities(cits || []);
 
     // Fetch Olympic Champions (best_athlete_id from concluded festivals)
     try {
@@ -124,9 +128,41 @@ const AcademyPanel = ({ sessionId, currentPlayerName, currentTurn }: Props) => {
     toast.success("Akademie aktualizována");
   };
 
+  const handleCreateAcademy = async () => {
+    if (cities.length === 0) {
+      toast.error("Potřebuješ alespoň jedno město");
+      return;
+    }
+    setCreating(true);
+    try {
+      // Create manually via building system logic simulation or direct insert
+      // For now direct insert as it's a special action
+      const cityId = cities[0].id; // Pick first city
+      const { data, error } = await supabase.from("academies").insert({
+        session_id: sessionId,
+        city_id: cityId,
+        player_name: currentPlayerName,
+        name: "Královská Akademie",
+        color_primary: "#3b82f6",
+        color_secondary: "#ffffff",
+        founded_turn: currentTurn,
+        status: "active",
+        infrastructure: 10,
+        reputation: 10,
+      }).select().single();
+      
+      if (error) throw error;
+      toast.success("Akademie založena!");
+      await fetchData();
+    } catch (e: any) {
+      toast.error(e.message);
+    } finally {
+      setCreating(false);
+    }
+  };
+
   const [detailStudent, setDetailStudent] = useState<Student | null>(null);
 
-  const selected = academies.find(a => a.id === selectedId);
   const selectedStudents = students.filter(s => s.academy_id === selectedId);
 
   if (loading) {
@@ -140,10 +176,18 @@ const AcademyPanel = ({ sessionId, currentPlayerName, currentTurn }: Props) => {
   return (
     <div className="space-y-4 p-4 max-w-4xl mx-auto">
       {/* Header */}
-      <div className="flex items-center gap-2 mb-4">
-        <School className="h-5 w-5 text-primary" />
-        <h2 className="font-display font-bold text-lg">Academia & Aréna</h2>
-        <Badge variant="outline" className="text-[9px] ml-auto">{academies.length} škol</Badge>
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-2">
+          <School className="h-5 w-5 text-primary" />
+          <h2 className="font-display font-bold text-lg">Academia & Aréna</h2>
+          <Badge variant="outline" className="text-[9px] ml-auto">{academies.length} škol</Badge>
+        </div>
+        {academies.length === 0 && (
+          <Button size="sm" onClick={handleCreateAcademy} disabled={creating} className="text-xs gap-1">
+            {creating ? <Loader2 className="h-3 w-3 animate-spin" /> : <Plus className="h-3 w-3" />}
+            Založit Akademii
+          </Button>
+        )}
       </div>
 
       {/* Sport Funding Slider */}
@@ -163,7 +207,7 @@ const AcademyPanel = ({ sessionId, currentPlayerName, currentTurn }: Props) => {
             className="w-full"
           />
           <p className="text-[10px] text-muted-foreground">
-            Každé kolo se strhne {sportFunding}% ze zlaté rezervy na rozvoj akademií (infrastruktura, výživa, trenéři).
+            Každé kolo se strhne {sportFunding}% ze zlaté rezervy na rozvoj akademií a šanci na vznik nových asociací.
           </p>
         </CardContent>
       </Card>
@@ -186,7 +230,7 @@ const AcademyPanel = ({ sessionId, currentPlayerName, currentTurn }: Props) => {
                 <School className="h-12 w-12 text-muted-foreground mx-auto mb-3 opacity-50" />
                 <p className="text-sm text-muted-foreground">Žádné akademie.</p>
                 <p className="text-xs text-muted-foreground mt-1">
-                  Postavte budovu typu Aréna, Stadion nebo Akademie ve vašem městě. Škola vznikne automaticky.
+                  Založte první akademii tlačítkem nahoře. Další mohou vzniknout investicemi do sportu.
                 </p>
               </CardContent>
             </Card>
