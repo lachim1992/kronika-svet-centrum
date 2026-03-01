@@ -62,11 +62,56 @@ Deno.serve(async (req) => {
         .eq("festival_id", festival_id).eq("player_name", player_name);
 
       if (existingCount && existingCount > 0) {
-        // Return existing results
-        const { data: existing } = await sb.from("games_qualifications")
-          .select("*").eq("festival_id", festival_id).eq("player_name", player_name)
-          .order("rank");
-        return new Response(JSON.stringify({ ok: true, results: existing, already_simulated: true }), {
+        // Reconstruct enriched results from saved qualification data
+        const { data: qualRows } = await sb.from("games_qualifications")
+          .select("*").eq("festival_id", festival_id).eq("player_name", player_name);
+
+        // Get unique student IDs
+        const studentIds = [...new Set((qualRows || []).map(q => q.student_id))];
+        const { data: studentsData } = await sb.from("academy_students")
+          .select("*, academies!inner(name)")
+          .in("id", studentIds);
+
+        const studentMap = new Map((studentsData || []).map(s => [s.id, s]));
+
+        // Aggregate per student
+        const studentAgg: Record<string, { rank: number; totalScore: number; disciplines: any[] }> = {};
+        for (const q of (qualRows || [])) {
+          if (!studentAgg[q.student_id]) {
+            studentAgg[q.student_id] = { rank: q.rank, totalScore: 0, disciplines: [] };
+          }
+          studentAgg[q.student_id].totalScore += q.score || 0;
+          studentAgg[q.student_id].disciplines.push({
+            discipline_key: q.discipline_key,
+            discipline_name: q.discipline_key,
+            score: q.score || 0,
+          });
+        }
+
+        const results = Object.entries(studentAgg)
+          .sort((a, b) => b[1].totalScore - a[1].totalScore)
+          .map(([sid, agg], idx) => {
+            const s = studentMap.get(sid);
+            return {
+              rank: idx + 1,
+              student_id: sid,
+              student_name: s?.name || "?",
+              academy_name: (s as any)?.academies?.name || "?",
+              specialty: s?.specialty || "",
+              traits: s?.traits || [],
+              strength: s?.strength || 0,
+              endurance: s?.endurance || 0,
+              agility: s?.agility || 0,
+              tactics: s?.tactics || 0,
+              charisma: s?.charisma || 0,
+              portrait_url: s?.portrait_url || null,
+              bio: s?.bio || null,
+              totalScore: Math.round(agg.totalScore * 100) / 100,
+              disciplines: agg.disciplines,
+            };
+          });
+
+        return new Response(JSON.stringify({ ok: true, results, already_simulated: true }), {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
