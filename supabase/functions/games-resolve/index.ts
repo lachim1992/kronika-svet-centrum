@@ -767,6 +767,7 @@ Data: Nejlepší: ${bestAthleteEntry?.[0]} (${bestAthleteEntry?.[1]?.gold} zlat�
       player_medals: playerMedals,
       incidents,
       legends: legendNames,
+      reveal_script: revealScript,
       reveal_steps: revealScript.length,
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },

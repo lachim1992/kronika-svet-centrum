@@ -14,6 +14,7 @@ import SchoolRankings from "@/components/SchoolRankings";
 import LiveGamesFeed from "@/components/LiveGamesFeed";
 import GladiatorPanel from "@/components/GladiatorPanel";
 import NationalQualificationPanel from "@/components/NationalQualificationPanel";
+import GamesRevealPlayer from "@/components/GamesRevealPlayer";
 
 interface Props {
   sessionId: string;
@@ -212,6 +213,9 @@ const GamesTab = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, o
     }
   };
 
+  const [revealScript, setRevealScript] = useState<any[] | null>(null);
+  const [revealFestivalId, setRevealFestivalId] = useState<string | null>(null);
+
   const handleResolve = async (festivalId: string) => {
     setResolving(true);
     try {
@@ -220,14 +224,28 @@ const GamesTab = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, o
       });
       if (error) throw error;
       if (data?.error) { toast.error(data.error); return; }
-      toast.success(`🏅 Hry vyhodnoceny! ${data.legends?.length || 0} legend vzniklo.`);
-      await fetchData();
-      onRefetch();
+      // If reveal script returned, show the cinematic player
+      if (data?.reveal_script && Array.isArray(data.reveal_script) && data.reveal_script.length > 0) {
+        setRevealScript(data.reveal_script);
+        setRevealFestivalId(festivalId);
+      } else {
+        toast.success(`🏅 Hry vyhodnoceny! ${data.legends?.length || 0} legend vzniklo.`);
+        await fetchData();
+        onRefetch();
+      }
     } catch (e: any) {
       toast.error(e.message || "Chyba");
     } finally {
       setResolving(false);
     }
+  };
+
+  const handleRevealComplete = async () => {
+    setRevealScript(null);
+    setRevealFestivalId(null);
+    toast.success("🏅 Hry dokončeny!");
+    await fetchData();
+    onRefetch();
   };
 
   const activeFestival = festivals.find(f => !["concluded", "cancelled"].includes(f.status));
@@ -276,7 +294,15 @@ const GamesTab = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, o
 
         {/* ─── ACTIVE GAMES ─── */}
         <TabsContent value="active" className="space-y-4">
-          {activeFestival ? (
+          {/* Cinematic Reveal Player */}
+          {revealScript && revealFestivalId && (
+            <GamesRevealPlayer
+              revealScript={revealScript}
+              onComplete={handleRevealComplete}
+            />
+          )}
+
+          {!revealScript && activeFestival ? (
             activeFestival.status === "candidacy" ? (
               <CandidacyPhase
                 festival={activeFestival}
@@ -291,7 +317,6 @@ const GamesTab = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, o
               />
             ) : (
               <>
-                {/* Show qualification panel during nomination for the current player */}
                 {activeFestival.status === "nomination" && (
                   <NationalQualificationPanel
                     sessionId={sessionId}
@@ -314,7 +339,7 @@ const GamesTab = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, o
                 />
               </>
             )
-          ) : (
+          ) : !revealScript ? (
             <Card className="border-border bg-card/50">
               <CardContent className="p-8 text-center">
                 <Trophy className="h-12 w-12 text-muted-foreground mx-auto mb-3 opacity-50" />
@@ -322,7 +347,7 @@ const GamesTab = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, o
                 <p className="text-xs text-muted-foreground mt-1">Vyhlaste Olympijské hry nebo uspořádejte lokální festival.</p>
               </CardContent>
             </Card>
-          )}
+          ) : null}
           {activeFestival && activeFestival.status !== "candidacy" && (
             <LiveGamesFeed sessionId={sessionId} festivalId={activeFestival.id} />
           )}
