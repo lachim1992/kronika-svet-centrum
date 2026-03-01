@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -48,6 +48,21 @@ const NationalQualificationPanel = ({ sessionId, festivalId, playerName, onCompl
   const [simulated, setSimulated] = useState(false);
   const [alreadyNominated, setAlreadyNominated] = useState(false);
 
+  // Check if already nominated on mount
+  useEffect(() => {
+    const checkExisting = async () => {
+      const { count } = await supabase
+        .from("games_participants")
+        .select("id", { count: "exact", head: true })
+        .eq("festival_id", festivalId)
+        .eq("player_name", playerName);
+      if (count && count > 0) {
+        setAlreadyNominated(true);
+      }
+    };
+    checkExisting();
+  }, [festivalId, playerName]);
+
   const handleSimulate = useCallback(async () => {
     setSimulating(true);
     try {
@@ -94,12 +109,36 @@ const NationalQualificationPanel = ({ sessionId, festivalId, playerName, onCompl
           action: "select", selected_student_ids: Array.from(selected),
         },
       });
-      if (error) throw error;
-      if (data?.error) { toast.error(data.error); return; }
+      if (error) {
+        // Handle 409 - already nominated
+        if (error.message?.includes("409") || data?.error?.includes("Již jste nominovali")) {
+          setAlreadyNominated(true);
+          toast.info("Již jste nominovali své zástupce.");
+          onComplete();
+          return;
+        }
+        throw error;
+      }
+      if (data?.error) {
+        if (data.error.includes("Již jste nominovali")) {
+          setAlreadyNominated(true);
+          toast.info("Již jste nominovali své zástupce.");
+          onComplete();
+          return;
+        }
+        toast.error(data.error);
+        return;
+      }
       toast.success(`🏅 Nominováno ${data.count} atletů na Velké hry!`);
       setAlreadyNominated(true);
       onComplete();
     } catch (e: any) {
+      if (e.message?.includes("409") || e.message?.includes("Již jste nominovali")) {
+        setAlreadyNominated(true);
+        toast.info("Již jste nominovali své zástupce.");
+        onComplete();
+        return;
+      }
       toast.error(e.message || "Chyba");
     } finally {
       setSubmitting(false);
