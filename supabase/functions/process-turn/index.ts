@@ -5,7 +5,7 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-import { SETTLEMENT_TEMPLATES, SETTLEMENT_WEALTH } from "../_shared/physics.ts";
+import { SETTLEMENT_TEMPLATES, SETTLEMENT_WEALTH, computePrestigeEffects } from "../_shared/physics.ts";
 
 const UNIT_WEIGHTS: Record<string, number> = {
   INFANTRY: 1.0, ARCHERS: 1.1, CAVALRY: 1.3, SIEGE: 0.9,
@@ -1307,7 +1307,29 @@ Deno.serve(async (req) => {
     // Apply trade grain delta
     grainReserve = Math.max(0, grainReserve + tradeGrainDelta);
 
-    const wealthIncome = Math.round(computeWealthIncome(myCities, cityDistrictEffects) * (1 + wealthMod)) + (globalBuildingEffects.wealth_income || 0);
+    // ═══ PRESTIGE GAMEPLAY EFFECTS ═══
+    const prestigeEffects = computePrestigeEffects(
+      realm.military_prestige || 0, realm.economic_prestige || 0, realm.cultural_prestige || 0
+    );
+
+    // Apply cultural prestige → stability bonus to all cities
+    if (prestigeEffects.stabilityBonus > 0) {
+      for (const city of myCities) {
+        if (city.city_stability < 100) {
+          const newStab = Math.min(100, city.city_stability + prestigeEffects.stabilityBonus);
+          if (newStab !== city.city_stability) {
+            city.city_stability = newStab;
+            await supabase.from("cities").update({ city_stability: newStab }).eq("id", city.id);
+          }
+        }
+      }
+      if (prestigeEffects.stabilityBonus >= 3) {
+        logEntries.push(`📚 Kulturní prestiž: stabilita měst +${prestigeEffects.stabilityBonus}`);
+      }
+    }
+
+    // Wealth income with economic prestige trade multiplier
+    const wealthIncome = Math.round(computeWealthIncome(myCities, cityDistrictEffects) * (1 + wealthMod) * prestigeEffects.tradeMultiplier) + (globalBuildingEffects.wealth_income || 0);
     
     // Sport funding deduction (academy-tick handles the actual boost, but we track it as expense here too)
     const sportFundingPct = realm.sport_funding_pct || 0;

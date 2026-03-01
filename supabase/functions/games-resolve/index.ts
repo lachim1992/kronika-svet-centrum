@@ -952,12 +952,92 @@ Odpověz POUZE jako JSON: {"bio": "...", "imagePrompt": "..."}`
       } catch (e) { console.error("Wiki/portrait update failed for", p.athlete_name, e); }
     }
 
+    // ═══ INFLUENCE + TYPED PRESTIGE FROM MEDALS ═══
+    // Each medal gives typed prestige based on discipline category:
+    //   physical → military_prestige, cultural → cultural_prestige, strategic → economic_prestige
+    // Plus a small amount of the other two types (Olympics are complex)
     for (const [playerName, medals] of Object.entries(playerMedals)) {
+      // Influence on cities
       const { data: pCities } = await sb.from("cities")
         .select("id, influence_score").eq("session_id", session_id).eq("owner_player", playerName);
       for (const c of (pCities || [])) {
         await sb.from("cities").update({ influence_score: c.influence_score + medals * 2 }).eq("id", c.id);
       }
+
+      // Typed prestige from medals — aggregate per discipline category
+      let milPrestige = 0, ecoPrestige = 0, culPrestige = 0;
+      for (const r of allResults.filter(ar => ar.player === playerName && ar.medal)) {
+        const disc = disciplines.find((d: any) => d.name === r.discipline);
+        const cfg = disc ? (DISC_CONFIGS[disc.key] || DEFAULT_DISC_CONFIG) : DEFAULT_DISC_CONFIG;
+        const medalValue = r.medal === "gold" ? 10 : r.medal === "silver" ? 5 : 2;
+
+        // Primary: 70% to matching type, 15%+15% to others
+        if (cfg.category === "physical") {
+          milPrestige += Math.round(medalValue * 0.7);
+          culPrestige += Math.round(medalValue * 0.15);
+          ecoPrestige += Math.round(medalValue * 0.15);
+        } else if (cfg.category === "cultural") {
+          culPrestige += Math.round(medalValue * 0.7);
+          milPrestige += Math.round(medalValue * 0.15);
+          ecoPrestige += Math.round(medalValue * 0.15);
+        } else { // strategic
+          ecoPrestige += Math.round(medalValue * 0.7);
+          milPrestige += Math.round(medalValue * 0.15);
+          culPrestige += Math.round(medalValue * 0.15);
+        }
+      }
+
+      if (milPrestige + ecoPrestige + culPrestige > 0) {
+        try {
+          const { data: realm } = await sb.from("realm_resources")
+            .select("military_prestige, economic_prestige, cultural_prestige, prestige")
+            .eq("session_id", session_id).eq("player_name", playerName).single();
+          if (realm) {
+            await sb.from("realm_resources").update({
+              military_prestige: (realm.military_prestige || 0) + milPrestige,
+              economic_prestige: (realm.economic_prestige || 0) + ecoPrestige,
+              cultural_prestige: (realm.cultural_prestige || 0) + culPrestige,
+              prestige: (realm.prestige || 0) + Math.floor((milPrestige + ecoPrestige + culPrestige) / 3),
+            }).eq("session_id", session_id).eq("player_name", playerName);
+          }
+        } catch (_) {}
+      }
+    }
+
+    // ═══ PRESTIGE POOL DISTRIBUTION (70% host, 30% champion) ═══
+    const prestigePool = festival.prestige_pool || 50;
+    const hostShare = Math.round(prestigePool * 0.7);
+    const champShare = prestigePool - hostShare;
+
+    // Host gets economic_prestige (successful event management)
+    if (festival.host_player) {
+      try {
+        const { data: hostRealm } = await sb.from("realm_resources")
+          .select("economic_prestige, prestige")
+          .eq("session_id", session_id).eq("player_name", festival.host_player).single();
+        if (hostRealm) {
+          await sb.from("realm_resources").update({
+            economic_prestige: (hostRealm.economic_prestige || 0) + hostShare,
+            prestige: (hostRealm.prestige || 0) + Math.floor(hostShare / 2),
+          }).eq("session_id", session_id).eq("player_name", festival.host_player);
+        }
+      } catch (_) {}
+    }
+
+    // Champion gets cultural_prestige
+    if (bestAthleteEntry) {
+      const champPlayer = bestAthleteEntry[1].player;
+      try {
+        const { data: champRealm } = await sb.from("realm_resources")
+          .select("cultural_prestige, prestige")
+          .eq("session_id", session_id).eq("player_name", champPlayer).single();
+        if (champRealm) {
+          await sb.from("realm_resources").update({
+            cultural_prestige: (champRealm.cultural_prestige || 0) + champShare,
+            prestige: (champRealm.prestige || 0) + Math.floor(champShare / 2),
+          }).eq("session_id", session_id).eq("player_name", champPlayer);
+        }
+      } catch (_) {}
     }
 
     // Host city effects
@@ -998,6 +1078,7 @@ Odpověz POUZE jako JSON: {"bio": "...", "imagePrompt": "..."}`
         await sb.from("cities").update({
           influence_score: hostCity.influence_score + influenceDelta,
           city_stability: Math.max(0, Math.min(100, hostCity.city_stability + stabilityDelta)),
+          local_renown: (hostCity as any).local_renown + 10 + (hostingCount * 3),
         }).eq("id", festival.host_city_id);
 
         const newHostingCount = hostingCount + 1;

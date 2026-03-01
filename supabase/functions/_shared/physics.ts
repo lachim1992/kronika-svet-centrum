@@ -213,6 +213,8 @@ export interface InfluenceInput {
   previousReputation: number;
   /** Cultural score from Games & Academies — medals, hosting, academy reputation */
   culturalData?: { totalMedals: number; goldMedals: number; hostingCount: number; avgAcademyReputation: number };
+  /** Typed prestige from realm_resources */
+  prestigeData?: { military_prestige: number; economic_prestige: number; cultural_prestige: number };
 }
 
 export interface InfluenceResult {
@@ -233,13 +235,20 @@ export function computeInfluence(input: InfluenceInput): InfluenceResult {
   const myLaws = input.laws.filter(l => l.player_name === input.playerName);
   const myProvinces = input.provinces.filter(p => p.owner_player === input.playerName);
 
-  const militaryScore = myStacks.reduce((s, st) => s + (st.power || 0), 0);
-  const tradeScore = myCities.reduce((s, c) => s + (c.population_burghers || 0), 0);
+  // Typed prestige amplifies existing scores
+  const pd = input.prestigeData || { military_prestige: 0, economic_prestige: 0, cultural_prestige: 0 };
+  const milPrestigeMult = 1 + Math.min(pd.military_prestige, 200) * 0.002; // up to +40%
+  const ecoPrestigeMult = 1 + Math.min(pd.economic_prestige, 200) * 0.002;
+
+  const militaryScore = myStacks.reduce((s, st) => s + (st.power || 0), 0) * milPrestigeMult;
+  const tradeScore = myCities.reduce((s, c) => s + (c.population_burghers || 0), 0) * ecoPrestigeMult;
 
   const diplomaticEvents = input.treaties.filter(e =>
     e.player === input.playerName || (e.note && e.note.includes(input.playerName))
   );
-  const diplomaticScore = diplomaticEvents.length * 10;
+  // Total prestige reduces diplomatic friction (more prestige = more diplomatic weight)
+  const totalPrestige = pd.military_prestige + pd.economic_prestige + pd.cultural_prestige;
+  const diplomaticScore = diplomaticEvents.length * 10 + Math.min(totalPrestige, 300) * 0.1;
 
   const territorialScore = myProvinces.length * 20 + myCities.length * 10;
 
@@ -250,9 +259,9 @@ export function computeInfluence(input: InfluenceInput): InfluenceResult {
 
   const reputationScore = input.previousReputation * REPUTATION_DECAY;
 
-  // Cultural score: medals (🥇+3, 🥈+2, 🥉+1) + hosting (+15) + avg academy rep
+  // Cultural score: medals + hosting + academy rep + cultural_prestige
   const cd = input.culturalData || { totalMedals: 0, goldMedals: 0, hostingCount: 0, avgAcademyReputation: 0 };
-  const culturalScore = cd.goldMedals * 3 + (cd.totalMedals - cd.goldMedals) * 1.5 + cd.hostingCount * 15 + cd.avgAcademyReputation * 0.3;
+  const culturalScore = cd.goldMedals * 3 + (cd.totalMedals - cd.goldMedals) * 1.5 + cd.hostingCount * 15 + cd.avgAcademyReputation * 0.3 + pd.cultural_prestige * 0.5;
 
   const totalInfluence =
     militaryScore * 0.22 +
@@ -277,6 +286,37 @@ export function computeInfluence(input: InfluenceInput): InfluenceResult {
 }
 
 // ═══════════════════════════════════════════
+// PRESTIGE GAMEPLAY EFFECTS
+// Used by process-turn to apply bonuses from typed prestige
+// ═══════════════════════════════════════════
+
+export interface PrestigeEffects {
+  /** Military prestige: morale bonus for new units, recruit cost discount % */
+  moraleBonus: number;
+  recruitDiscount: number;
+  /** Economic prestige: trade income multiplier, build cost discount % */
+  tradeMultiplier: number;
+  buildDiscount: number;
+  /** Cultural prestige: stability bonus, population growth modifier */
+  stabilityBonus: number;
+  popGrowthBonus: number;
+  /** Total prestige: tension reduction factor */
+  tensionReduction: number;
+}
+
+export function computePrestigeEffects(mil: number, eco: number, cul: number): PrestigeEffects {
+  return {
+    moraleBonus: Math.min(15, Math.floor(mil / 10)),        // +1 morale per 10 mil prestige, cap 15
+    recruitDiscount: Math.min(0.20, mil * 0.001),            // up to 20% recruit cost reduction
+    tradeMultiplier: 1 + Math.min(0.30, eco * 0.0015),      // up to +30% trade income
+    buildDiscount: Math.min(0.15, eco * 0.001),              // up to 15% build cost reduction
+    stabilityBonus: Math.min(10, Math.floor(cul / 10)),      // +1 stability drift per 10 cul prestige, cap 10
+    popGrowthBonus: Math.min(0.01, cul * 0.00005),           // up to +1% pop growth
+    tensionReduction: Math.min(15, (mil + eco + cul) * 0.03), // total prestige reduces tension, cap 15
+  };
+}
+
+// ═══════════════════════════════════════════
 // TENSION CALCULATION
 // ═══════════════════════════════════════════
 
@@ -292,6 +332,9 @@ export interface TensionInput {
   brokenTreatyCount: number;
   embargoCount: number;
   tradeImbalance?: number;
+  /** Total prestige of both players — reduces tension via diplomatic weight */
+  totalPrestigeA?: number;
+  totalPrestigeB?: number;
 }
 
 export interface TensionResult {
@@ -301,6 +344,7 @@ export interface TensionResult {
   military_diff: number;
   broken_treaties: number;
   trade_embargo: number;
+  prestige_reduction: number;
   total_tension: number;
   crisis_triggered: boolean;
   war_roll_triggered: boolean;
@@ -308,7 +352,6 @@ export interface TensionResult {
 }
 
 export function computeTension(input: TensionInput): TensionResult {
-  // Border proximity: shared provinces
   const provIdsA = new Set(input.citiesA.map(c => c.province_id).filter(Boolean));
   const provIdsB = new Set(input.citiesB.map(c => c.province_id).filter(Boolean));
   const sharedProvs = [...provIdsA].filter(id => provIdsB.has(id));
@@ -319,7 +362,12 @@ export function computeTension(input: TensionInput): TensionResult {
   const tradeEmbargo = input.embargoCount * 15;
   const tradeImbalance = (input.tradeImbalance || 0) * 0.05;
 
-  const totalTension = borderProximity + militaryDiff + brokenTreaties + tradeEmbargo + tradeImbalance;
+  // Prestige reduces tension — higher combined prestige = more diplomatic stability
+  const combinedPrestige = (input.totalPrestigeA || 0) + (input.totalPrestigeB || 0);
+  const prestigeReduction = Math.min(15, combinedPrestige * 0.02);
+
+  const rawTension = borderProximity + militaryDiff + brokenTreaties + tradeEmbargo + tradeImbalance;
+  const totalTension = Math.max(0, rawTension - prestigeReduction);
   const crisisTriggered = totalTension >= CRISIS_THRESHOLD;
   const warRollTriggered = totalTension >= WAR_THRESHOLD;
 
@@ -336,6 +384,7 @@ export function computeTension(input: TensionInput): TensionResult {
     military_diff: Math.round(militaryDiff * 10) / 10,
     broken_treaties: brokenTreaties,
     trade_embargo: tradeEmbargo,
+    prestige_reduction: Math.round(prestigeReduction * 10) / 10,
     total_tension: Math.round(totalTension * 10) / 10,
     crisis_triggered: crisisTriggered,
     war_roll_triggered: warRollTriggered,

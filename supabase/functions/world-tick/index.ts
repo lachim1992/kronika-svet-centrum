@@ -89,18 +89,21 @@ Deno.serve(async (req) => {
     const aiFactionNames = (aiFactions || []).map((f: any) => f.faction_name);
     const allActorNames = [...new Set([...playerNames, ...aiFactionNames])];
 
-    // ========== 1b. FETCH CULTURAL DATA (Games & Academies) ==========
+    // ========== 1b. FETCH CULTURAL DATA + PRESTIGE (Games & Academies) ==========
     const [
       { data: gamesResults },
       { data: academiesData },
       { data: hostCities },
       { data: concludedFestivals },
+      { data: realmResources },
     ] = await Promise.all([
       supabase.from("games_results").select("participant_id, medal").eq("session_id", sessionId),
       supabase.from("academies").select("player_name, reputation, fan_base").eq("session_id", sessionId),
       supabase.from("cities").select("owner_player, hosting_count").eq("session_id", sessionId),
       supabase.from("games_festivals").select("host_player, best_athlete_id, concluded_turn, status")
         .eq("session_id", sessionId).eq("status", "concluded"),
+      supabase.from("realm_resources").select("player_name, military_prestige, economic_prestige, cultural_prestige")
+        .eq("session_id", sessionId),
     ]);
 
     const { data: allParticipants } = await supabase.from("games_participants")
@@ -119,6 +122,16 @@ Deno.serve(async (req) => {
         ? playerAcademies.reduce((s: number, a: any) => s + (a.reputation || 0), 0) / playerAcademies.length
         : 0;
       culturalDataMap[pName] = { totalMedals, goldMedals, hostingCount, avgAcademyReputation };
+    }
+
+    // Build prestige data map
+    const prestigeDataMap: Record<string, { military_prestige: number; economic_prestige: number; cultural_prestige: number }> = {};
+    for (const r of (realmResources || [])) {
+      prestigeDataMap[r.player_name] = {
+        military_prestige: r.military_prestige || 0,
+        economic_prestige: r.economic_prestige || 0,
+        cultural_prestige: r.cultural_prestige || 0,
+      };
     }
 
     // ========== 1c. GAMES REPUTATION DELTAS ==========
@@ -221,8 +234,8 @@ Deno.serve(async (req) => {
         treaties: treaties || [],
         previousReputation: prev ? Number(prev.reputation_score) : 0,
         culturalData: culturalDataMap[pName] || { totalMedals: 0, goldMedals: 0, hostingCount: 0, avgAcademyReputation: 0 },
+        prestigeData: prestigeDataMap[pName] || { military_prestige: 0, economic_prestige: 0, cultural_prestige: 0 },
       });
-
       const record = { session_id: sessionId, turn_number: turnNumber, ...result };
       await supabase.from("civ_influence").upsert(record, {
         onConflict: "session_id,player_name,turn_number",
@@ -350,10 +363,15 @@ Deno.serve(async (req) => {
            (d.player_name === pB && d.original_text?.includes(pA)))
         ).length;
 
+        const prestigeA = prestigeDataMap[pA] || { military_prestige: 0, economic_prestige: 0, cultural_prestige: 0 };
+        const prestigeB = prestigeDataMap[pB] || { military_prestige: 0, economic_prestige: 0, cultural_prestige: 0 };
+        const totalPrestigeA = prestigeA.military_prestige + prestigeA.economic_prestige + prestigeA.cultural_prestige;
+        const totalPrestigeB = prestigeB.military_prestige + prestigeB.economic_prestige + prestigeB.cultural_prestige;
+
         const tension = computeTension({
           sessionId, turnNumber, playerA: pA, playerB: pB,
           citiesA, citiesB, militaryScoreA: milA, militaryScoreB: milB,
-          brokenTreatyCount, embargoCount,
+          brokenTreatyCount, embargoCount, totalPrestigeA, totalPrestigeB,
         });
 
         const tensionRecord = { session_id: sessionId, turn_number: turnNumber, ...tension };
