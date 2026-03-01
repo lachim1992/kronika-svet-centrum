@@ -168,7 +168,7 @@ const QATestSection = ({ sessionId, onRefetch }: Props) => {
       { data: events }, { data: chronicles },
       { data: cities }, { data: players },
     ] = await Promise.all([
-      supabase.from("game_events").select("id, event_type, turn_number, location, player, city_id, confirmed, note, attacker_city_id, defender_city_id, result").eq("session_id", sessionId),
+      supabase.from("game_events").select("id, event_type, turn_number, location, player, city_id, confirmed, note, attacker_city_id, defender_city_id, result, actor_type").eq("session_id", sessionId),
       supabase.from("chronicle_entries").select("id, text, turn_from, turn_to").eq("session_id", sessionId),
       supabase.from("cities").select("id").eq("session_id", sessionId),
       supabase.from("game_players").select("player_name").eq("session_id", sessionId),
@@ -196,7 +196,7 @@ const QATestSection = ({ sessionId, onRefetch }: Props) => {
       // Battle-specific
       if (evt.event_type === "battle") {
         total++;
-        if (!evt.attacker_city_id && !evt.defender_city_id) {
+        if (!evt.attacker_city_id && !evt.defender_city_id && evt.actor_type !== "historical") {
           issues.push({ severity: "warning", group: g, entityType: "event", entityId: evt.id, message: "Bitva bez účastníků (attacker/defender)", fix: "Doplnit strany konfliktu" });
         } else passed++;
 
