@@ -140,6 +140,16 @@ export interface MigrationCity {
   famine_turn: boolean;
   overcrowding_ratio: number;
   housing_capacity: number;
+  demo_policy?: string; // active demographic policy key
+}
+  name: string;
+  owner_player: string;
+  population_total: number;
+  population_peasants: number;
+  city_stability: number;
+  famine_turn: boolean;
+  overcrowding_ratio: number;
+  housing_capacity: number;
 }
 
 export interface MigrationFlow {
@@ -173,11 +183,13 @@ export function computeMigrationFlows(cities: MigrationCity[]): MigrationFlow[] 
       c.famine_turn || 
       c.overcrowding_ratio > EPIDEMIC_OVERCROWDING_THRESHOLD
     );
-    const pullCities = ownerCities.filter(c => 
-      c.city_stability >= MIGRATION_ATTRACT_THRESHOLD && 
-      !c.famine_turn && 
-      c.overcrowding_ratio < 0.9
-    );
+    const pullCities = ownerCities.filter(c => {
+      const isOpen = c.demo_policy === "open_gates";
+      const stabThreshold = isOpen ? MIGRATION_ATTRACT_THRESHOLD - 10 : MIGRATION_ATTRACT_THRESHOLD;
+      return c.city_stability >= stabThreshold && 
+        !c.famine_turn && 
+        c.overcrowding_ratio < (isOpen ? 1.0 : 0.9);
+    });
 
     if (pushCities.length === 0 || pullCities.length === 0) continue;
 
@@ -194,6 +206,10 @@ export function computeMigrationFlows(cities: MigrationCity[]): MigrationFlow[] 
         pushRate += (src.overcrowding_ratio - 1) * 0.01;
         reason = reason ? `${reason} + přelidnění` : "přelidnění";
       }
+      // Demographic policy: closed_gates reduces emigration, open_gates increases
+      const srcPolicy = src.demo_policy;
+      if (srcPolicy === "closed_gates") pushRate *= 0.3; // drastically reduce
+      else if (srcPolicy === "open_gates") pushRate *= 1.3;
       pushRate = Math.min(MIGRATION_MAX_RATE, pushRate);
       const totalMigrants = Math.round(src.population_peasants * pushRate);
       if (totalMigrants < 1) continue;
@@ -364,6 +380,7 @@ export const DEMOGRAPHIC_POLICIES: Record<string, {
 
 /**
  * Compute birth/death rates for a city.
+ * Now integrates active demographic policy effects.
  */
 export function computeBirthDeathRate(city: {
   population_total: number;
@@ -371,14 +388,16 @@ export function computeBirthDeathRate(city: {
   famine_turn: boolean;
   overcrowding_ratio: number;
   epidemic_active: boolean;
-}): { birthRate: number; deathRate: number; naturalGrowth: number } {
+}, activeDemoPolicy?: string): { birthRate: number; deathRate: number; naturalGrowth: number } {
+  const policyEffects = activeDemoPolicy ? DEMOGRAPHIC_POLICIES[activeDemoPolicy]?.effects : undefined;
+
   // Base rates
   let birthRate = 0.012;
   let deathRate = 0.005;
 
   // Stability modifier
-  birthRate += (city.city_stability - 50) / 5000; // slight increase with stability
-  deathRate -= (city.city_stability - 50) / 10000; // slight decrease with stability
+  birthRate += (city.city_stability - 50) / 5000;
+  deathRate -= (city.city_stability - 50) / 10000;
 
   // Famine
   if (city.famine_turn) {
@@ -395,6 +414,15 @@ export function computeBirthDeathRate(city: {
   if (city.epidemic_active) {
     deathRate += 0.02;
     birthRate *= 0.7;
+  }
+
+  // Demographic policy effects
+  if (policyEffects) {
+    birthRate += policyEffects.birth_rate_modifier || 0;
+    // Quarantine reduces disease → slightly lower death rate
+    if (activeDemoPolicy === "quarantine") {
+      deathRate *= 0.85;
+    }
   }
 
   birthRate = Math.max(0, Math.min(0.03, birthRate));
