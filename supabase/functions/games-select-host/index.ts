@@ -128,7 +128,9 @@ Deno.serve(async (req) => {
 });
 
 /**
- * Advance festival from candidacy → nomination, set host, generate athletes.
+ * Advance festival from candidacy → nomination, set host.
+ * Human players run their own national qualification via games-qualify.
+ * AI factions get auto-generated athletes.
  */
 async function advanceToNomination(
   sb: any,
@@ -144,20 +146,13 @@ async function advanceToNomination(
     status: "nomination",
     host_city_id: hostCity.id,
     host_player: hostCity.owner_player,
-    finals_turn: currentTurn + 2,
+    finals_turn: currentTurn + 3, // extra turn for qualification
     host_selection_method: "candidacy",
   }).eq("id", festival.id);
 
-  // Get all factions
-  const [{ data: players }, { data: aiFactions }] = await Promise.all([
-    sb.from("game_players").select("player_name").eq("session_id", sessionId),
-    sb.from("ai_factions").select("faction_name").eq("session_id", sessionId).eq("is_active", true),
-  ]);
-
-  const allFactions = [
-    ...(players || []).map((p: any) => p.player_name),
-    ...(aiFactions || []).map((f: any) => f.faction_name),
-  ];
+  // Get AI factions only — human players will use games-qualify
+  const { data: aiFactions } = await sb.from("ai_factions")
+    .select("faction_name").eq("session_id", sessionId).eq("is_active", true);
 
   const STAT_NAMES = ["strength", "endurance", "agility", "tactics", "charisma"];
   const athleteNames = [
@@ -167,8 +162,10 @@ async function advanceToNomination(
   ];
   let nameIdx = 0;
 
-  for (const factionName of allFactions) {
-    // Try academy graduates first
+  for (const faction of (aiFactions || [])) {
+    const factionName = faction.faction_name;
+
+    // Try academy graduates first for AI factions too
     const { data: graduates } = await sb.from("academy_students")
       .select("*").eq("session_id", sessionId).eq("player_name", factionName)
       .eq("status", "graduated").order("strength", { ascending: false }).limit(3);
@@ -189,14 +186,17 @@ async function advanceToNomination(
         await sb.from("games_participants").insert({
           session_id: sessionId, festival_id: festival.id, player_name: factionName,
           city_id: bestCity?.id || null, athlete_name: grad.name,
+          student_id: grad.id,
           strength: grad.strength, endurance: grad.endurance, agility: grad.agility,
           tactics: grad.tactics, charisma: grad.charisma,
           training_bonus: infraBonus + 10, city_infrastructure_bonus: infraBonus,
           civ_modifier: civMod * 10, traits: grad.traits || [], form: "peak",
+          background: grad.bio,
         });
         await sb.from("academy_students").update({ status: "promoted" }).eq("id", grad.id);
       }
     } else {
+      // Generate random athletes for AI factions without academies
       const count = 2 + Math.floor(Math.random() * 2);
       for (let i = 0; i < count && nameIdx < athleteNames.length; i++) {
         const name = athleteNames[nameIdx++];

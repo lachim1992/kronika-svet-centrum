@@ -438,6 +438,100 @@ Deno.serve(async (req) => {
       }
     }
 
+    // ═══ BEST ATHLETE & MOST POPULAR ═══
+    // Best athlete = most gold medals (total score as tiebreaker)
+    const bestAthleteEntry = Object.entries(medalTally)
+      .sort((a, b) => {
+        if (b[1].gold !== a[1].gold) return b[1].gold - a[1].gold;
+        return (b[1].silver * 10 + b[1].bronze) - (a[1].silver * 10 + a[1].bronze);
+      })[0];
+
+    // Most popular = highest crowd_popularity (computed from charisma + gold + drama moments)
+    const popularityScores: { participant: any; score: number }[] = [];
+    for (const p of participants) {
+      const tally = medalTally[p.athlete_name];
+      const goldCount = tally?.gold || 0;
+      const crowdScore = p.charisma * 0.5 + goldCount * 20 + (p.traits?.includes("Charismatický") ? 15 : 0) + Math.random() * 10;
+      popularityScores.push({ participant: p, score: crowdScore });
+      // Update crowd_popularity on participant
+      await sb.from("games_participants").update({ crowd_popularity: Math.round(crowdScore) }).eq("id", p.id);
+    }
+    popularityScores.sort((a, b) => b.score - a.score);
+    const mostPopular = popularityScores[0];
+
+    const bestAthleteParticipant = bestAthleteEntry
+      ? participants.find(p => p.athlete_name === bestAthleteEntry[0])
+      : null;
+
+    // Save best_athlete_id and most_popular_id on festival
+    const festivalUpdate: any = {};
+    if (bestAthleteParticipant) festivalUpdate.best_athlete_id = bestAthleteParticipant.id;
+    if (mostPopular) festivalUpdate.most_popular_id = mostPopular.participant.id;
+
+    // Write ChroWiki entries for best athlete & most popular (only if they're different or both exist)
+    const championsToWrite: { participantId: string; name: string; player: string; title: string; traitKey: string; bio: string }[] = [];
+
+    if (bestAthleteParticipant && bestAthleteEntry) {
+      championsToWrite.push({
+        participantId: bestAthleteParticipant.id,
+        name: bestAthleteEntry[0],
+        player: bestAthleteEntry[1].player,
+        title: "Nejlepší sportovec Her",
+        traitKey: "best_athlete_of_games",
+        bio: `Absolutní vítěz ${festival.name} s ${bestAthleteEntry[1].gold} zlatými medailemi. Jeho jméno bude navždy spojeno s těmito hrami.`,
+      });
+    }
+
+    if (mostPopular && (!bestAthleteParticipant || mostPopular.participant.id !== bestAthleteParticipant.id)) {
+      championsToWrite.push({
+        participantId: mostPopular.participant.id,
+        name: mostPopular.participant.athlete_name,
+        player: mostPopular.participant.player_name,
+        title: "Nejoblíbenější sportovec Her",
+        traitKey: "most_popular_of_games",
+        bio: `Favorit davu na ${festival.name}. Publikum ho/ji zbožňovalo — charisma a styl předčily samotné výsledky.`,
+      });
+    }
+
+    for (const champ of championsToWrite) {
+      try {
+        // Create great_person if not already legend
+        const existingP = participants.find(p => p.id === champ.participantId);
+        let gpId = existingP?.great_person_id;
+
+        if (!gpId) {
+          const { data: gp } = await sb.from("great_persons").insert({
+            session_id, name: champ.name, player_name: champ.player,
+            person_type: "Hero", flavor_trait: champ.title,
+            born_round: turn_number || 1, is_alive: true,
+            city_id: existingP?.city_id, bio: champ.bio,
+          }).select("id").single();
+          if (gp) {
+            gpId = gp.id;
+            await sb.from("games_participants").update({ great_person_id: gp.id }).eq("id", champ.participantId);
+          }
+        }
+
+        if (gpId) {
+          await sb.from("entity_traits").insert({
+            session_id, entity_type: "person", entity_id: gpId,
+            trait_key: champ.traitKey, trait_label: champ.title,
+            description: champ.bio, intensity: 80, source: "games",
+          });
+
+          // ChroWiki entry
+          try {
+            await sb.from("wiki_entries").insert({
+              session_id, entity_type: "person", entity_id: gpId,
+              entity_name: champ.name, owner_player: champ.player,
+            });
+          } catch (_) { /* may exist */ }
+        }
+      } catch (_) { /* non-critical */ }
+
+      await writeFeed("narration", `🌟 ${champ.name} získává titul "${champ.title}"!`, 5);
+    }
+
     // ═══ HYBRID NARRATIVE: Template + AI highlight ═══
     const topMedalist = Object.entries(medalTally).sort((a, b) => b[1].gold - a[1].gold)[0];
     const topPlayer = Object.entries(playerMedals).sort((a, b) => b[1] - a[1])[0];
@@ -453,7 +547,10 @@ Deno.serve(async (req) => {
     description += `**Hostitel:** ${festival.host_player}\n`;
     description += `**Účastníků:** ${participants.length} atletů\n`;
     description += `**Disciplín:** ${disciplines.length}\n\n`;
-    description += `### 🏅 Nejúspěšnější atlet\n${topMedalist?.[0] || "—"} (${topMedalist?.[1]?.gold || 0}× 🥇, ${topMedalist?.[1]?.silver || 0}× 🥈, ${topMedalist?.[1]?.bronze || 0}× 🥉)\n\n`;
+    description += `### 🏅 Nejlepší sportovec\n${bestAthleteEntry?.[0] || "—"} (${bestAthleteEntry?.[1]?.gold || 0}× 🥇, ${bestAthleteEntry?.[1]?.silver || 0}× 🥈, ${bestAthleteEntry?.[1]?.bronze || 0}× 🥉)\n\n`;
+    if (mostPopular) {
+      description += `### 🌟 Nejoblíbenější sportovec\n${mostPopular.participant.athlete_name} (${mostPopular.participant.player_name}) — oblíbenost: ${Math.round(mostPopular.score)}\n\n`;
+    }
     description += `### 🏛 Nejúspěšnější říše\n${topPlayer?.[0] || "—"} (${topPlayer?.[1] || 0} medailí)\n\n`;
     if (legendNames.length > 0) {
       description += `### ⭐ Nové legendy\n${legendNames.join(", ")}\n\n`;
@@ -473,14 +570,15 @@ Deno.serve(async (req) => {
 
 Data:
 - Hry: ${festival.name}
-- Vítěz: ${topMedalist?.[0]} s ${topMedalist?.[1]?.gold} zlatými
+- Nejlepší sportovec: ${bestAthleteEntry?.[0]} s ${bestAthleteEntry?.[1]?.gold} zlatými
+- Nejoblíbenější: ${mostPopular?.participant?.athlete_name || "—"}
 - Nejsilnější říše: ${topPlayer?.[0]}
 - Legendy: ${legendNames.join(", ") || "žádné"}
 - Mrtví: ${deadAthletes.map(d => d.athlete_name).join(", ") || "žádní"}
 - Incidenty: ${incidents.map(i => i.description).join("; ") || "žádné"}
 - Počet atletů: ${participants.length}`;
 
-        const aiResp = await fetch("https://ai.lovable.dev/api/v1/chat/completions", {
+        const aiResp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
           method: "POST",
           headers: { "Content-Type": "application/json", Authorization: `Bearer ${LOVABLE_API_KEY}` },
           body: JSON.stringify({
@@ -499,12 +597,13 @@ Data:
       }
     } catch (_) { /* AI highlight is optional */ }
 
-    // Mark festival concluded with description
+    // Mark festival concluded with description + champion IDs
     await sb.from("games_festivals").update({
       status: "concluded",
       concluded_turn: turn_number || festival.announced_turn,
       effects_applied: true,
       description,
+      ...festivalUpdate,
     }).eq("id", festival_id);
 
     // Create conclusion event
