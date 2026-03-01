@@ -653,6 +653,7 @@ DŮLEŽITÉ: affected_players/faction MUSÍ používat přesná jména frakcí. 
     };
 
     const playerFirstCity = new Set<string>();
+    const createdCityRows: any[] = [];
     let cityIndex = 0;
     for (const city of world.cities || []) {
       const ownerPlayer = factionPlayerMap[city.ownerFaction] || playerName;
