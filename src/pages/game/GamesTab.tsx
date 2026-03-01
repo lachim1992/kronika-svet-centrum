@@ -204,7 +204,22 @@ const GamesTab = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, o
       });
       if (error) throw error;
       if (data?.error) { toast.error(data.error); return; }
-      toast.success(`🎭 ${data.festival?.name || "Festival"} uspořádán!`);
+
+      const results = data?.results;
+      const festName = data?.festival?.name || "Festival";
+
+      // Show rich result toasts
+      toast.success(`🎭 ${festName} uspořádán!`);
+      if (results?.highlights) {
+        for (const h of results.highlights) toast.info(h);
+      }
+      if (data?.prestige) {
+        const typeLabels: Record<string, string> = {
+          military_prestige: "⚔️ Vojenská", economic_prestige: "💰 Ekonomická", cultural_prestige: "📚 Kulturní",
+        };
+        toast.info(`${typeLabels[data.prestige.type] || "Prestiž"} prestiž +${data.prestige.gained}`);
+      }
+
       await fetchData();
       onRefetch();
     } catch (e: any) {
@@ -445,7 +460,7 @@ const GamesTab = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, o
             </CardHeader>
             <CardContent className="space-y-3">
               <p className="text-xs text-muted-foreground">
-                Uspořádejte festival ve vašem městě. Zvyšuje stabilitu a morálku za cenu zlata.
+                Každý typ festivalu má unikátní mechaniky a typ prestiže.
               </p>
 
               <div className="grid grid-cols-2 gap-2">
@@ -474,9 +489,28 @@ const GamesTab = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, o
                 </Select>
               </div>
 
-              <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
-                <Coins className="h-3 w-3" />
-                Cena: 10-30 zlata | Stabilita: +3 až +15 | Morálka: +5 až +15
+              {/* Type-specific info */}
+              <div className="text-[10px] text-muted-foreground space-y-0.5 bg-muted/20 rounded p-2">
+                {festivalType === "local_gladiator" && <>
+                  <p>⚔️ <strong>Vojenská prestiž +8</strong> | Cena: 30 💰 | Vyžaduje arénu</p>
+                  <p>Gladiátoři z akademie bojují. Mohou zemřít nebo se zranit. Plní gladiator_records.</p>
+                </>}
+                {festivalType === "local_harvest" && <>
+                  <p>💰 <strong>Ekonomická prestiž +5</strong> | Cena: 15 💰 | Stabilita +8</p>
+                  <p>Boost zásobám obilí +25%. Zastavuje hladomor. Rolníci slaví.</p>
+                </>}
+                {festivalType === "local_tournament" && <>
+                  <p>⚔️ <strong>Vojenská prestiž +6</strong> | Cena: 25 💰 | Vyžaduje armádu</p>
+                  <p>Všechny jednotky +10 morálky, +5 zkušeností. Legitimita města +5.</p>
+                </>}
+                {festivalType === "local_academic" && <>
+                  <p>📚 <strong>Kulturní prestiž +7</strong> | Cena: 20 💰 | Stabilita +10</p>
+                  <p>Akademie +8 reputace, +1 úroveň trenéra. Boost k výzkumu.</p>
+                </>}
+                {festivalType === "local_religious" && <>
+                  <p>📚 <strong>Kulturní prestiž +3</strong> | Cena: 10 💰 | Stabilita +15</p>
+                  <p>Legitimita města +10. Nejlevnější a nejstabilnější festival.</p>
+                </>}
               </div>
 
               <Button
@@ -550,7 +584,38 @@ const GamesTab = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, o
 
                     {isExpanded && (
                       <div className="mt-4 space-y-4" onClick={e => e.stopPropagation()}>
-                        {/* Replay + Report buttons */}
+                        {/* Local festival rich results */}
+                        {!f.is_global && (f as any).festival_results?.highlights && (
+                          <div className="space-y-2">
+                            {((f as any).festival_results.highlights as string[]).map((h: string, i: number) => (
+                              <p key={i} className="text-xs text-muted-foreground">{h}</p>
+                            ))}
+                            {((f as any).festival_results.events as any[])?.length > 0 && f.festival_type === "local_gladiator" && (
+                              <div>
+                                <p className="text-xs font-display font-semibold mb-1">⚔️ Souboje</p>
+                                {((f as any).festival_results.events as any[]).map((d: any, i: number) => (
+                                  <div key={i} className="flex items-center justify-between text-[10px] py-1 px-2 bg-muted/20 rounded mb-0.5">
+                                    <span>{d.winner} 🏆 vs {d.loser} {d.death ? "💀" : d.injury ? "🩸" : ""}</span>
+                                    <span className="font-mono">{d.winner_score} — {d.loser_score}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                            {((f as any).festival_results.deaths as any[])?.length > 0 && (
+                              <div>
+                                <p className="text-xs font-display font-semibold text-destructive mb-1">💀 Padlí</p>
+                                {((f as any).festival_results.deaths as any[]).map((d: any, i: number) => (
+                                  <p key={i} className="text-[10px] text-muted-foreground">
+                                    {d.name} — zabit {d.killedBy}
+                                  </p>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        {/* Replay + Report buttons (global festivals only) */}
+                        {f.is_global && (
                         <div className="flex gap-2">
                           <Button size="sm" variant="outline" className="text-xs gap-1" onClick={() => handleArchiveReplay(f.id)}>
                             <Trophy className="h-3 w-3" /> Přehrát znovu
@@ -559,6 +624,7 @@ const GamesTab = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, o
                             <BookOpen className="h-3 w-3" /> Zobrazit report
                           </Button>
                         </div>
+                        )}
                         {/* AI Narrative */}
                         {(f as any).description && (
                           <div className="prose prose-xs prose-invert max-w-none text-[11px] leading-relaxed whitespace-pre-wrap border-l-2 border-primary/30 pl-3 bg-primary/5 rounded-r p-3">
