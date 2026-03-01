@@ -221,10 +221,13 @@ function validateBuilding(p: any) {
   const e = p.effects || {};
   const name = (p.name || "Nová stavba").slice(0, 100);
   const nameLC = name.toLowerCase();
-  const ARENA_KEYWORDS = ["aréna", "arena", "stadion", "amfiteátr", "závodiště", "colosseum", "koloseum", "hippodrome", "hippodrom"];
+  const ARENA_KEYWORDS = ["aréna", "arena", "amfiteátr", "colosseum", "koloseum", "gladiátor"];
+  const STADIUM_KEYWORDS = ["stadion", "závodiště", "hippodrome", "hippodrom", "hřiště", "sphaera"];
   const isArena = ARENA_KEYWORDS.some(kw => nameLC.includes(kw));
+  const isStadium = STADIUM_KEYWORDS.some(kw => nameLC.includes(kw));
   const tags: string[] = [];
   if (isArena) tags.push("arena");
+  if (isStadium) tags.push("stadium");
   if (nameLC.includes("akademi") || nameLC.includes("škola") || nameLC.includes("gymnasium")) tags.push("academy");
 
   return {

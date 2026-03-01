@@ -55,79 +55,8 @@ Deno.serve(async (req) => {
 
     const results: any = { teamsCreated: 0, matchesPlayed: 0, seasonAction: null };
 
-    // ═══ STEP 1: Auto-create teams from cities with stadiums ═══
-    const { data: citiesWithStadiums } = await sb.from("cities")
-      .select("id, name, owner_player, influence_score, development_level, city_stability, population_total")
-      .eq("session_id", session_id).in("status", ["ok", "active"]);
-
-    const { data: existingTeams } = await sb.from("league_teams")
-      .select("city_id").eq("session_id", session_id);
-
-    const existingCityIds = new Set((existingTeams || []).map(t => t.city_id));
-
-    for (const city of (citiesWithStadiums || [])) {
-      if (existingCityIds.has(city.id)) continue;
-
-      // Check for stadium (arena)
-      const { data: stadium } = await sb.from("city_buildings")
-        .select("id, name, current_level")
-        .eq("city_id", city.id).eq("session_id", session_id)
-        .eq("status", "completed").eq("is_arena", true)
-        .maybeSingle();
-
-      if (!stadium) continue;
-
-      // Generate team name
-      const prefix = TEAM_PREFIXES[Math.floor(Math.random() * TEAM_PREFIXES.length)];
-      const teamName = `${prefix} ${city.name}`;
-
-      // Base ratings from city stats
-      const baseRating = 30 + Math.floor(city.development_level * 3) + Math.floor(city.city_stability * 0.2);
-
-      const { data: team } = await sb.from("league_teams").insert({
-        session_id, city_id: city.id, stadium_building_id: stadium.id,
-        player_name: city.owner_player, team_name: teamName,
-        motto: `Za slávu ${city.name}!`,
-        attack_rating: baseRating + Math.floor(Math.random() * 20) - 10,
-        defense_rating: baseRating + Math.floor(Math.random() * 20) - 10,
-        tactics_rating: baseRating + Math.floor(Math.random() * 15) - 7,
-        discipline_rating: baseRating + Math.floor(Math.random() * 15) - 7,
-        popularity: Math.floor(city.population_total / 100),
-        fan_base: Math.floor(city.population_total / 5),
-      }).select("id").single();
-
-      if (team) {
-        // Generate 11 players
-        const usedNames = new Set<string>();
-        for (const posGroup of POSITIONS) {
-          for (let i = 0; i < posGroup.count; i++) {
-            let name: string;
-            do {
-              name = FIRST_NAMES[Math.floor(Math.random() * FIRST_NAMES.length)];
-            } while (usedNames.has(name));
-            usedNames.add(name);
-
-            const isCaptain = posGroup.pos === "midfielder" && i === 0 && usedNames.size <= 6;
-            const posBonus = posGroup.pos === "goalkeeper" ? { technique: 15, speed: -5 }
-              : posGroup.pos === "defender" ? { strength: 10, aggression: 5 }
-              : posGroup.pos === "attacker" ? { speed: 10, technique: 5 }
-              : { stamina: 5, technique: 5 };
-
-            await sb.from("league_players").insert({
-              session_id, team_id: team.id, name,
-              position: posGroup.pos, is_captain: isCaptain,
-              strength: 35 + Math.floor(Math.random() * 30) + (posBonus as any).strength || 0,
-              speed: 35 + Math.floor(Math.random() * 30) + (posBonus as any).speed || 0,
-              technique: 35 + Math.floor(Math.random() * 30) + (posBonus as any).technique || 0,
-              stamina: 40 + Math.floor(Math.random() * 25) + (posBonus as any).stamina || 0,
-              aggression: 25 + Math.floor(Math.random() * 30) + (posBonus as any).aggression || 0,
-              leadership: isCaptain ? 70 + Math.floor(Math.random() * 20) : Math.floor(Math.random() * 40),
-            });
-          }
-        }
-        results.teamsCreated++;
-      }
-    }
+    // ═══ STEP 1: Teams are now created manually via create-league-team ═══
+    // (removed auto-creation logic)
 
     // ═══ STEP 2: Season management ═══
     const { data: allTeams } = await sb.from("league_teams")

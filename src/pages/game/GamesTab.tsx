@@ -12,7 +12,7 @@ import { toast } from "sonner";
 import AcademyPanel from "@/components/AcademyPanel";
 import SchoolRankings from "@/components/SchoolRankings";
 import LiveGamesFeed from "@/components/LiveGamesFeed";
-import GladiatorPanel from "@/components/GladiatorPanel";
+import StadiumArenaPanel from "@/components/StadiumArenaPanel";
 import NationalQualificationPanel from "@/components/NationalQualificationPanel";
 import GamesRevealOverlay from "@/components/GamesRevealOverlay";
 import HallOfRecords from "@/components/HallOfRecords";
@@ -319,7 +319,7 @@ const GamesTab = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, o
             <Trophy className="h-3.5 w-3.5 mr-1" />Rekordy
           </TabsTrigger>
           <TabsTrigger value="gladiators" className="font-display text-xs">
-            <Skull className="h-3.5 w-3.5 mr-1" />Aréna
+            <Sword className="h-3.5 w-3.5 mr-1" />Stadiony
           </TabsTrigger>
           <TabsTrigger value="create" className="font-display text-xs">
             <Star className="h-3.5 w-3.5 mr-1" />Vyhlásit
@@ -425,7 +425,7 @@ const GamesTab = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, o
         </TabsContent>
 
         <TabsContent value="gladiators">
-          <GladiatorPanel sessionId={sessionId} currentPlayerName={currentPlayerName} />
+          <StadiumArenaPanel sessionId={sessionId} currentPlayerName={currentPlayerName} currentTurn={currentTurn} cities={cities} />
         </TabsContent>
 
         {/* ─── CREATE GAMES ─── */}
