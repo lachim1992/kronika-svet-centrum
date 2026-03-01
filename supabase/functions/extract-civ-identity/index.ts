@@ -2,9 +2,9 @@
  * Extract Civ Identity — AI-powered extraction of structured civilization tags
  * from free-text civ_description.
  * 
- * Called during onboarding (ProvinceOnboardingWizard) and world generation.
- * Outputs: culture_tags, urban_style, society_structure, military_doctrine,
- *          economic_focus, and derived numeric modifiers.
+ * UNIFIED faction system: single source of truth for all civ modifiers.
+ * Called during onboarding (WorldSetupWizard) and later editing.
+ * Outputs: culture_tags, display_name, flavor_summary, all mechanical modifiers.
  */
 
 import { createAIContext, invokeAI, corsHeaders, jsonResponse, errorResponse, getServiceClient } from "../_shared/ai-context.ts";
@@ -26,7 +26,6 @@ Deno.serve(async (req) => {
     if (architecturalStyleText) fullText += `\nArchitektonický styl: ${architecturalStyleText}`;
 
     if (!fullText.trim()) {
-      // No text to analyze — insert defaults
       const { data } = await sb.from("civ_identity").upsert({
         session_id: sessionId,
         player_name: playerName,
@@ -40,37 +39,68 @@ Deno.serve(async (req) => {
 
     const result = await invokeAI(ctx, {
       model: "google/gemini-3-flash-preview",
-      systemPrompt: `Jsi analytik herních civilizací. Na základě popisu civilizace extrahuj strukturované tagy.
-Buď přesný — vycházej POUZE z textu, nevymýšlej. Pokud text neobsahuje relevantní informaci, použij výchozí hodnotu.
+      systemPrompt: `Jsi herní designér strategické hry. Na základě popisu civilizace od hráče vygeneruj kompletní sadu mechanických modifikátorů.
 
-Výchozí hodnoty:
-- urban_style: "organic" (alternativy: planned, fortified, scattered, coastal, underground)
-- society_structure: "tribal" (alternativy: hierarchical, egalitarian, theocratic, feudal, mercantile)
-- military_doctrine: "defensive" (alternativy: offensive, guerrilla, naval, mercenary, conscript)
-- economic_focus: "agrarian" (alternativy: trade, mining, crafting, raiding, mixed)
+PRAVIDLA:
+- Vycházej STRIKTNĚ z textu hráče. Nevymýšlej informace, které text neobsahuje.
+- Modifikátory musí být vyvážené: silný bonus v jedné oblasti = malus v jiné.
+- Součet všech produkčních modifikátorů (grain + wood + stone + iron + wealth) nesmí přesáhnout +0.3.
+- Každá civilizace musí mít alespoň jednu slabinu.
 
-Pro culture_tags vyber 3–6 výstižných slov (anglicky): discipline, agriculture, stone_architecture, logistics, seafaring, cavalry, mysticism, iron_working, diplomacy, artisan, nomadic, scholarly, warrior_culture, engineering, maritime_trade atd.
+KATEGORIE MODIFIKÁTORŮ:
 
-Pro modifikátory:
-- grain_modifier: -0.1 až +0.2 (agriculture/fertility → kladné, raiding/nomadic → záporné)
-- production_modifier: -0.1 až +0.2 (crafting/engineering → kladné)
-- trade_modifier: -0.1 až +0.2 (trade/maritime → kladné)
-- stability_modifier: -10 až +10 (discipline/tradition → kladné, nomadic/raiding → záporné)
-- morale_modifier: -5 až +10 (warrior_culture → kladné)
-- mobilization_speed: 0.5 až 1.5 (conscript/warrior → vyšší, peaceful → nižší)`,
-      userPrompt: `Analyzuj tento popis civilizace a extrahuj strukturované tagy:\n\n"${fullText}"`,
+1. PRODUKCE (multiplikativní, aplikované na základní produkci měst):
+- grain_modifier: -0.15 až +0.25 (zemědělství, fertilita → kladné; nájezdníci, nomádi → záporné)
+- wood_modifier: -0.15 až +0.25 (lesní národy → kladné; pouštní → záporné)  
+- stone_modifier: -0.15 až +0.25 (horští, stavitelé → kladné; nomádi → záporné)
+- iron_modifier: -0.15 až +0.25 (kovářství → kladné; primitivní → záporné)
+- wealth_modifier: -0.15 až +0.25 (obchodníci → kladné; izolacionisté → záporné)
+
+2. POPULACE:
+- pop_growth_modifier: -0.01 až +0.02 (plodní, usedlí → kladné; válečníci, asketi → záporné)
+- initial_burgher_ratio: -0.15 až +0.20 (obchodní → kladné; rurální → záporné). Určuje odchylku od základního šablonového rozložení populace.
+- initial_cleric_ratio: -0.10 až +0.15 (teokratičtí → kladné; pragmatici → záporné)
+
+3. VOJENSTVÍ:
+- morale_modifier: -5 až +10 (válečnická kultura → kladné; pacifisté → záporné)
+- mobilization_speed: 0.5 až 1.5 (1.0 = normální; branná povinnost → vyšší; mírumilovní → nižší)
+- cavalry_bonus: 0 až 0.3 (jezdecké národy → vyšší; ostrované → 0)
+- fortification_bonus: 0 až 0.25 (stavitelé hradeb → vyšší; nomádi → 0)
+
+4. STABILITA & DIPLOMACIE:
+- stability_modifier: -10 až +10 (tradice, řád → kladné; anarchistické → záporné)
+- trade_modifier: -0.1 až +0.2 (obchod → kladné; izolace → záporné)
+
+5. KULTURNÍ TAGY:
+- culture_tags: 3-6 anglických klíčových slov (discipline, agriculture, seafaring, cavalry, mysticism, iron_working, diplomacy, artisan, nomadic, scholarly, warrior_culture, engineering, maritime_trade, horse_lords, mountain_folk, forest_dwellers, desert_nomads, river_culture)
+
+6. STRUKTURÁLNÍ KATEGORIE:
+- urban_style: organic|planned|fortified|scattered|coastal|underground
+- society_structure: tribal|hierarchical|egalitarian|theocratic|feudal|mercantile
+- military_doctrine: defensive|offensive|guerrilla|naval|mercenary|conscript
+- economic_focus: agrarian|trade|mining|crafting|raiding|mixed
+
+7. IDENTITA:
+- display_name: Krátký název frakce (max 30 znaků, např. "Děti Železné hory")
+- flavor_summary: Jednořádkový popis frakce v epickém stylu (max 100 znaků)
+
+8. SPECIÁLNÍ BUDOVY:
+- building_tags: 0-3 speciální typy budov dostupné pouze této civilizaci (anglicky, snake_case, např. horse_stable, sacred_grove, sea_port, iron_forge, trade_depot)`,
+      userPrompt: `Analyzuj tento popis civilizace a extrahuj kompletní sadu modifikátorů:\n\n"${fullText}"`,
       tools: [{
         type: "function",
         function: {
           name: "extract_identity",
-          description: "Extract structured civilization identity tags",
+          description: "Extract complete civilization identity with all mechanical modifiers",
           parameters: {
             type: "object",
             properties: {
+              display_name: { type: "string", description: "Short faction display name" },
+              flavor_summary: { type: "string", description: "One-line epic flavor summary" },
               culture_tags: {
                 type: "array",
                 items: { type: "string" },
-                description: "3-6 English keyword tags describing the culture",
+                description: "3-6 English keyword tags",
               },
               urban_style: {
                 type: "string",
@@ -88,15 +118,40 @@ Pro modifikátory:
                 type: "string",
                 enum: ["agrarian", "trade", "mining", "crafting", "raiding", "mixed"],
               },
+              // Production modifiers
               grain_modifier: { type: "number" },
-              production_modifier: { type: "number" },
-              trade_modifier: { type: "number" },
-              stability_modifier: { type: "number" },
+              wood_modifier: { type: "number" },
+              stone_modifier: { type: "number" },
+              iron_modifier: { type: "number" },
+              wealth_modifier: { type: "number" },
+              // Population
+              pop_growth_modifier: { type: "number" },
+              initial_burgher_ratio: { type: "number" },
+              initial_cleric_ratio: { type: "number" },
+              // Military
               morale_modifier: { type: "number" },
               mobilization_speed: { type: "number" },
+              cavalry_bonus: { type: "number" },
+              fortification_bonus: { type: "number" },
+              // Stability
+              stability_modifier: { type: "number" },
+              trade_modifier: { type: "number" },
+              // Buildings
+              building_tags: {
+                type: "array",
+                items: { type: "string" },
+                description: "0-3 special building type tags",
+              },
             },
-            required: ["culture_tags", "urban_style", "society_structure", "military_doctrine", "economic_focus",
-                       "grain_modifier", "production_modifier", "trade_modifier", "stability_modifier", "morale_modifier", "mobilization_speed"],
+            required: [
+              "display_name", "flavor_summary", "culture_tags",
+              "urban_style", "society_structure", "military_doctrine", "economic_focus",
+              "grain_modifier", "wood_modifier", "stone_modifier", "iron_modifier", "wealth_modifier",
+              "pop_growth_modifier", "initial_burgher_ratio", "initial_cleric_ratio",
+              "morale_modifier", "mobilization_speed", "cavalry_bonus", "fortification_bonus",
+              "stability_modifier", "trade_modifier", "building_tags",
+            ],
+            additionalProperties: false,
           },
         },
       }],
@@ -105,7 +160,6 @@ Pro modifikátory:
 
     if (!result.ok) {
       console.error("AI extraction failed:", result.error);
-      // Fallback: insert defaults
       const { data } = await sb.from("civ_identity").upsert({
         session_id: sessionId,
         player_name: playerName,
@@ -114,25 +168,46 @@ Pro modifikátory:
       return jsonResponse({ ...data, ai_error: result.error });
     }
 
-    const extracted = result.data;
-
-    // Clamp modifiers to safe ranges
+    const ex = result.data;
     const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(max, v || 0));
+
+    // Enforce balance: total production bonus cap
+    let prodSum = (ex.grain_modifier || 0) + (ex.wood_modifier || 0) + (ex.stone_modifier || 0) + (ex.iron_modifier || 0) + (ex.wealth_modifier || 0);
+    const prodScale = prodSum > 0.3 ? 0.3 / prodSum : 1;
 
     const row = {
       session_id: sessionId,
       player_name: playerName,
-      culture_tags: extracted.culture_tags || [],
-      urban_style: extracted.urban_style || "organic",
-      society_structure: extracted.society_structure || "tribal",
-      military_doctrine: extracted.military_doctrine || "defensive",
-      economic_focus: extracted.economic_focus || "agrarian",
-      grain_modifier: clamp(extracted.grain_modifier, -0.1, 0.2),
-      production_modifier: clamp(extracted.production_modifier, -0.1, 0.2),
-      trade_modifier: clamp(extracted.trade_modifier, -0.1, 0.2),
-      stability_modifier: clamp(extracted.stability_modifier, -10, 10),
-      morale_modifier: clamp(extracted.morale_modifier, -5, 10),
-      mobilization_speed: clamp(extracted.mobilization_speed, 0.5, 1.5),
+      display_name: (ex.display_name || "").slice(0, 30) || null,
+      flavor_summary: (ex.flavor_summary || "").slice(0, 100) || null,
+      culture_tags: ex.culture_tags || [],
+      urban_style: ex.urban_style || "organic",
+      society_structure: ex.society_structure || "tribal",
+      military_doctrine: ex.military_doctrine || "defensive",
+      economic_focus: ex.economic_focus || "agrarian",
+      // Production (scaled if over cap)
+      grain_modifier: clamp((ex.grain_modifier || 0) * prodScale, -0.15, 0.25),
+      wood_modifier: clamp((ex.wood_modifier || 0) * prodScale, -0.15, 0.25),
+      stone_modifier: clamp((ex.stone_modifier || 0) * prodScale, -0.15, 0.25),
+      iron_modifier: clamp((ex.iron_modifier || 0) * prodScale, -0.15, 0.25),
+      wealth_modifier: clamp((ex.wealth_modifier || 0) * prodScale, -0.15, 0.25),
+      // Population
+      pop_growth_modifier: clamp(ex.pop_growth_modifier, -0.01, 0.02),
+      initial_burgher_ratio: clamp(ex.initial_burgher_ratio, -0.15, 0.20),
+      initial_cleric_ratio: clamp(ex.initial_cleric_ratio, -0.10, 0.15),
+      // Repurpose existing production_modifier as combined wood+stone for backwards compat
+      production_modifier: clamp(((ex.wood_modifier || 0) + (ex.stone_modifier || 0)) / 2, -0.15, 0.25),
+      // Military
+      morale_modifier: clamp(ex.morale_modifier, -5, 10),
+      mobilization_speed: clamp(ex.mobilization_speed, 0.5, 1.5),
+      cavalry_bonus: clamp(ex.cavalry_bonus, 0, 0.3),
+      fortification_bonus: clamp(ex.fortification_bonus, 0, 0.25),
+      // Stability
+      stability_modifier: clamp(ex.stability_modifier, -10, 10),
+      trade_modifier: clamp(ex.trade_modifier, -0.1, 0.2),
+      // Buildings
+      building_tags: (ex.building_tags || []).slice(0, 3),
+      // Meta
       source_description: fullText,
       extraction_model: "gemini-3-flash-preview",
       extracted_at: new Date().toISOString(),
@@ -147,6 +222,12 @@ Pro modifikátory:
     if (error) {
       console.error("DB insert error:", error);
       return errorResponse("Failed to save identity: " + error.message);
+    }
+
+    // Also sync display_name to civilizations table if it exists
+    if (row.display_name) {
+      await sb.from("civilizations").update({ civ_name: row.display_name })
+        .eq("session_id", sessionId).eq("player_name", playerName);
     }
 
     return jsonResponse(data);

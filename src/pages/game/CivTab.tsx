@@ -1,3 +1,4 @@
+import FactionDesigner from "@/components/FactionDesigner";
 import CivilizationDNA from "@/components/CivilizationDNA";
 import EntityTraitsPanel from "@/components/EntityTraitsPanel";
 import DiplomacyPanel from "@/components/DiplomacyPanel";
@@ -44,7 +45,7 @@ const CivTab = ({
             <span className="flex items-center gap-2"><Sparkles className="h-4 w-4 text-primary" />Moje civilizace</span>
           </AccordionTrigger>
           <AccordionContent className="px-4 pb-4">
-            <CivilizationDNA sessionId={sessionId} playerName={currentPlayerName} civilizations={civilizations} onRefetch={onRefetch} />
+            <FactionDesigner sessionId={sessionId} playerName={currentPlayerName} onComplete={onRefetch} />
           </AccordionContent>
         </AccordionItem>
 
