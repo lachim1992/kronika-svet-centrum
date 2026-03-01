@@ -640,11 +640,23 @@ export interface CivIdentity {
   military_doctrine: string;
   economic_focus: string;
   grain_modifier: number;
+  wood_modifier: number;
+  stone_modifier: number;
+  iron_modifier: number;
+  wealth_modifier: number;
   production_modifier: number;
   trade_modifier: number;
   stability_modifier: number;
   morale_modifier: number;
   mobilization_speed: number;
+  pop_growth_modifier: number;
+  initial_burgher_ratio: number;
+  initial_cleric_ratio: number;
+  cavalry_bonus: number;
+  fortification_bonus: number;
+  building_tags: string[];
+  display_name: string | null;
+  flavor_summary: string | null;
 }
 
 /**

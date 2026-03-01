@@ -1321,67 +1321,103 @@ export type Database = {
       }
       civ_identity: {
         Row: {
+          building_tags: string[]
+          cavalry_bonus: number
           created_at: string
           culture_tags: string[]
+          display_name: string | null
           economic_focus: string
           extracted_at: string
           extraction_model: string | null
+          flavor_summary: string | null
+          fortification_bonus: number
           grain_modifier: number
           id: string
+          initial_burgher_ratio: number
+          initial_cleric_ratio: number
+          iron_modifier: number
           military_doctrine: string
           mobilization_speed: number
           morale_modifier: number
           player_name: string
+          pop_growth_modifier: number
           production_modifier: number
           session_id: string
           society_structure: string
           source_description: string | null
           stability_modifier: number
+          stone_modifier: number
           trade_modifier: number
           updated_at: string
           urban_style: string
+          wealth_modifier: number
+          wood_modifier: number
         }
         Insert: {
+          building_tags?: string[]
+          cavalry_bonus?: number
           created_at?: string
           culture_tags?: string[]
+          display_name?: string | null
           economic_focus?: string
           extracted_at?: string
           extraction_model?: string | null
+          flavor_summary?: string | null
+          fortification_bonus?: number
           grain_modifier?: number
           id?: string
+          initial_burgher_ratio?: number
+          initial_cleric_ratio?: number
+          iron_modifier?: number
           military_doctrine?: string
           mobilization_speed?: number
           morale_modifier?: number
           player_name: string
+          pop_growth_modifier?: number
           production_modifier?: number
           session_id: string
           society_structure?: string
           source_description?: string | null
           stability_modifier?: number
+          stone_modifier?: number
           trade_modifier?: number
           updated_at?: string
           urban_style?: string
+          wealth_modifier?: number
+          wood_modifier?: number
         }
         Update: {
+          building_tags?: string[]
+          cavalry_bonus?: number
           created_at?: string
           culture_tags?: string[]
+          display_name?: string | null
           economic_focus?: string
           extracted_at?: string
           extraction_model?: string | null
+          flavor_summary?: string | null
+          fortification_bonus?: number
           grain_modifier?: number
           id?: string
+          initial_burgher_ratio?: number
+          initial_cleric_ratio?: number
+          iron_modifier?: number
           military_doctrine?: string
           mobilization_speed?: number
           morale_modifier?: number
           player_name?: string
+          pop_growth_modifier?: number
           production_modifier?: number
           session_id?: string
           society_structure?: string
           source_description?: string | null
           stability_modifier?: number
+          stone_modifier?: number
           trade_modifier?: number
           updated_at?: string
           urban_style?: string
+          wealth_modifier?: number
+          wood_modifier?: number
         }
         Relationships: [
           {

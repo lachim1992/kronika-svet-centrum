@@ -26,10 +26,14 @@ function seededRandom(seed: number): number {
 }
 
 /** Compute stack combat strength from compositions */
-function computeStackStrength(compositions: any[], morale: number, formationType: string): number {
+function computeStackStrength(compositions: any[], morale: number, formationType: string, cavalryBonus = 0): number {
   let raw = 0;
   for (const comp of compositions) {
-    const weight = UNIT_WEIGHTS[comp.unit_type] || 1.0;
+    let weight = UNIT_WEIGHTS[comp.unit_type] || 1.0;
+    // Apply civ cavalry bonus to CAVALRY units
+    if (comp.unit_type === "CAVALRY" && cavalryBonus > 0) {
+      weight *= (1 + cavalryBonus);
+    }
     const quality = comp.quality || 50;
     raw += (comp.manpower || 0) * weight * (0.5 + quality / 100);
   }
@@ -150,14 +154,27 @@ Deno.serve(async (req) => {
     const { data: session } = await supabase.from("game_sessions").select("current_turn").eq("id", sessionId).single();
     const currentTurn = session?.current_turn || 1;
 
-    // Load civ DNA bonuses for this player
+    // Load unified civ_identity modifiers (single source of truth for faction bonuses)
+    const { data: civIdentity } = await supabase
+      .from("civ_identity")
+      .select("grain_modifier, wood_modifier, stone_modifier, iron_modifier, wealth_modifier, production_modifier, trade_modifier, stability_modifier, morale_modifier, mobilization_speed, pop_growth_modifier, cavalry_bonus, fortification_bonus")
+      .eq("session_id", sessionId)
+      .eq("player_name", playerName)
+      .maybeSingle();
+    // Backwards compat: also load old civ_bonuses as fallback
     const { data: civRow } = await supabase
       .from("civilizations")
-      .select("civ_bonuses, architectural_style, cultural_quirk")
+      .select("civ_bonuses")
       .eq("session_id", sessionId)
       .eq("player_name", playerName)
       .maybeSingle();
     const civBonuses: Record<string, number> = (civRow?.civ_bonuses as Record<string, number>) || {};
+    // Effective modifiers: prefer civ_identity, fallback to civBonuses
+    const grainMod = civIdentity?.grain_modifier ?? civBonuses.growth_modifier ?? 0;
+    const woodMod = civIdentity?.wood_modifier ?? civBonuses.production_modifier ?? 0;
+    const stoneMod = civIdentity?.stone_modifier ?? 0;
+    const ironMod = civIdentity?.iron_modifier ?? 0;
+    const wealthMod = civIdentity?.wealth_modifier ?? civBonuses.trade_modifier ?? 0;
 
     // Idempotency check
     if (realm.last_processed_turn >= currentTurn) {
@@ -348,22 +365,23 @@ Deno.serve(async (req) => {
       const prodConsts = SETTLEMENT_PRODUCTION[city.settlement_level] || SETTLEMENT_PRODUCTION.HAMLET;
       const bldgEff = cityBuildingEffects[city.id] || {};
 
+      // Apply civ_identity production modifiers (multiplicative on base)
       const cityGrainBase = profile ? profile.base_grain : prodConsts.grain;
-      const cityGrain = Math.round(cityGrainBase * effectiveWorkforceRatio) + (bldgEff.food_income || 0);
+      const cityGrain = Math.round(cityGrainBase * effectiveWorkforceRatio * (1 + grainMod)) + (bldgEff.food_income || 0);
       totalGrainProd += cityGrain;
 
       const cityWoodBase = profile ? profile.base_wood : prodConsts.wood;
-      const cityWood = Math.round(cityWoodBase * effectiveWorkforceRatio) + (bldgEff.wood_income || 0);
+      const cityWood = Math.round(cityWoodBase * effectiveWorkforceRatio * (1 + woodMod)) + (bldgEff.wood_income || 0);
       totalWoodProd += cityWood;
 
-      // Stone scaled by workforce + building bonus
-      const cityStone = Math.round(prodConsts.stone * effectiveWorkforceRatio) + (bldgEff.stone_income || 0);
+      // Stone scaled by workforce + civ modifier + building bonus
+      const cityStone = Math.round(prodConsts.stone * effectiveWorkforceRatio * (1 + stoneMod)) + (bldgEff.stone_income || 0);
       totalStoneProd += cityStone;
 
-      // Iron scaled by workforce (only for IRON cities) + building bonus
+      // Iron scaled by workforce + civ modifier (only for IRON cities) + building bonus
       const specialType = profile?.special_resource_type || "NONE";
       const cityIronBase = specialType === "IRON" ? (profile ? profile.base_special : prodConsts.iron_special) : 0;
-      const cityIron = Math.round(cityIronBase * effectiveWorkforceRatio) + (bldgEff.iron_income || 0);
+      const cityIron = Math.round(cityIronBase * effectiveWorkforceRatio * (1 + ironMod)) + (bldgEff.iron_income || 0);
       totalIronProd += cityIron;
 
       // Apply stability bonus from buildings (clamp 0-100)
@@ -718,10 +736,12 @@ Deno.serve(async (req) => {
           attackerStack.morale = speechAdjustedMorale; // update local ref
         }
         const attackerMorale = speechAdjustedMorale;
+        const attackerCavBonus = civIdentity?.cavalry_bonus ?? civBonuses.cavalry_bonus ?? 0;
         const attackerStrength = computeStackStrength(
           attackerStack.military_stack_composition || [],
           attackerMorale,
-          attackerStack.formation_type
+          attackerStack.formation_type,
+          attackerCavBonus
         );
 
         // Determine defender strength
@@ -756,12 +776,24 @@ Deno.serve(async (req) => {
           : defenderPlayer;
         let defenderCivBonuses: Record<string, number> = {};
         if (defenderCivPlayer) {
+          // Load civ_identity for defender (unified system)
+          const { data: defCivId } = await supabase.from("civ_identity").select("fortification_bonus, cavalry_bonus, morale_modifier").eq("session_id", sessionId).eq("player_name", defenderCivPlayer).maybeSingle();
           const { data: defCiv } = await supabase.from("civilizations").select("civ_bonuses").eq("session_id", sessionId).eq("player_name", defenderCivPlayer).maybeSingle();
-          defenderCivBonuses = (defCiv?.civ_bonuses as Record<string, number>) || {};
+          const legacyBonuses = (defCiv?.civ_bonuses as Record<string, number>) || {};
+          defenderCivBonuses = {
+            fortification_bonus: defCivId?.fortification_bonus ?? legacyBonuses.fortification_bonus ?? 0,
+            cavalry_bonus: defCivId?.cavalry_bonus ?? 0,
+            morale_modifier: defCivId?.morale_modifier ?? legacyBonuses.morale_modifier ?? 0,
+          };
+        }
+
+        // Recalculate defender stack strength with cavalry bonus
+        if (defenderStack && defenderCivBonuses.cavalry_bonus) {
+          defenderStrength = computeStackStrength(defenderComps, defenderMorale, defenderStack.formation_type, defenderCivBonuses.cavalry_bonus);
         }
 
         // Apply attacker's civ fortification bonus (50% in field battles)
-        const attackerCivFort = civBonuses.fortification_bonus || 0;
+        const attackerCivFort = civIdentity?.fortification_bonus ?? civBonuses.fortification_bonus ?? 0;
 
         if (defenderCityId) {
           const { data: dCity } = await supabase
@@ -1171,7 +1203,7 @@ Deno.serve(async (req) => {
     // Apply trade grain delta
     grainReserve = Math.max(0, grainReserve + tradeGrainDelta);
 
-    const wealthIncome = computeWealthIncome(myCities) + (globalBuildingEffects.wealth_income || 0);
+    const wealthIncome = Math.round(computeWealthIncome(myCities) * (1 + wealthMod)) + (globalBuildingEffects.wealth_income || 0);
     const newGoldReserve = Math.max(0, (realm.gold_reserve || 0) + wealthIncome - wealthUpkeep + tradeGoldDelta);
 
     const famineCityCount = myCities.filter(c => c.famine_turn).length;

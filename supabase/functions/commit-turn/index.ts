@@ -773,6 +773,7 @@ async function runWorldTickEvents(supabase: any, sessionId: string, turnNumber: 
     { data: cityStates },
     { data: civilizations },
     { data: entityTraits },
+    { data: civIdentities },
   ] = await Promise.all([
     supabase.from("game_players").select("*").eq("session_id", sessionId),
     supabase.from("cities").select("*").eq("session_id", sessionId),
@@ -786,12 +787,29 @@ async function runWorldTickEvents(supabase: any, sessionId: string, turnNumber: 
     supabase.from("city_states").select("*").eq("session_id", sessionId),
     supabase.from("civilizations").select("*").eq("session_id", sessionId),
     supabase.from("entity_traits").select("*").eq("session_id", sessionId).eq("is_active", true),
+    supabase.from("civ_identity").select("*").eq("session_id", sessionId),
   ]);
 
-  // Build civ bonus lookup
+  // Build unified civ modifier lookup: prefer civ_identity (AI-generated), fallback to civ_bonuses
+  const civIdentityMap: Record<string, any> = {};
+  for (const ci of (civIdentities || [])) {
+    civIdentityMap[ci.player_name] = ci;
+  }
   const civBonusMap: Record<string, Record<string, number>> = {};
   for (const civ of (civilizations || [])) {
-    civBonusMap[civ.player_name] = (civ.civ_bonuses as Record<string, number>) || {};
+    const legacy = (civ.civ_bonuses as Record<string, number>) || {};
+    const ci = civIdentityMap[civ.player_name];
+    // Merge: civ_identity values take precedence
+    civBonusMap[civ.player_name] = {
+      growth_modifier: ci?.pop_growth_modifier ?? ci?.grain_modifier ?? legacy.growth_modifier ?? 0,
+      stability_modifier: ci?.stability_modifier ?? legacy.stability_modifier ?? 0,
+      legitimacy_base: legacy.legitimacy_base ?? 0,
+      diplomacy_modifier: ci?.trade_modifier ? ci.trade_modifier * 50 : legacy.diplomacy_modifier ?? 0,
+      trade_modifier: ci?.wealth_modifier ?? ci?.trade_modifier ?? legacy.trade_modifier ?? 0,
+      morale_modifier: ci?.morale_modifier ?? legacy.morale_modifier ?? 0,
+      fortification_bonus: ci?.fortification_bonus ?? legacy.fortification_bonus ?? 0,
+      cavalry_bonus: ci?.cavalry_bonus ?? 0,
+    };
   }
 
   // Build trait lookup by entity_name (player_name / city name)
