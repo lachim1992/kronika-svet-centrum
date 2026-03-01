@@ -5,7 +5,9 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Loader2, Trophy, Sword, BookOpen, Theater, Target, Flame, Star, Crown, AlertTriangle, Coins, School, Skull, TrendingUp } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Loader2, Trophy, Sword, BookOpen, Theater, Target, Flame, Star, Crown, AlertTriangle, Coins, School, Skull, TrendingUp, MapPin, Gavel } from "lucide-react";
 import { toast } from "sonner";
 import AcademyPanel from "@/components/AcademyPanel";
 import SchoolRankings from "@/components/SchoolRankings";
@@ -25,15 +27,17 @@ interface Festival {
   id: string;
   festival_type: string;
   name: string;
-  host_city_id: string;
-  host_player: string;
+  host_city_id: string | null;
+  host_player: string | null;
   status: string;
   announced_turn: number;
   finals_turn: number | null;
   concluded_turn: number | null;
+  candidacy_deadline_turn: number | null;
   is_global: boolean;
   prestige_pool: number;
   total_investment_gold: number;
+  host_selection_method: string;
 }
 
 interface Participant {
@@ -80,6 +84,19 @@ interface Incident {
   description: string;
 }
 
+interface Bid {
+  id: string;
+  festival_id: string;
+  player_name: string;
+  city_id: string;
+  gold_invested: number;
+  pitch_text: string;
+  cultural_score: number;
+  logistics_score: number;
+  total_bid_score: number;
+  is_winner: boolean;
+}
+
 const CATEGORY_ICONS: Record<string, React.ReactNode> = {
   physical: <Sword className="h-3.5 w-3.5" />,
   intellectual: <BookOpen className="h-3.5 w-3.5" />,
@@ -104,6 +121,7 @@ const FESTIVAL_TYPE_LABELS: Record<string, string> = {
 };
 
 const STATUS_LABELS: Record<string, { label: string; color: string }> = {
+  candidacy: { label: "Kandidatura", color: "bg-indigo-500/15 text-indigo-400" },
   announced: { label: "Vyhlášeno", color: "bg-blue-500/15 text-blue-400" },
   nomination: { label: "Nominace", color: "bg-yellow-500/15 text-yellow-400" },
   qualifying: { label: "Kvalifikace", color: "bg-orange-500/15 text-orange-400" },
@@ -118,6 +136,7 @@ const GamesTab = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, o
   const [results, setResults] = useState<Result[]>([]);
   const [disciplines, setDisciplines] = useState<Discipline[]>([]);
   const [incidents, setIncidents] = useState<Incident[]>([]);
+  const [bids, setBids] = useState<Bid[]>([]);
   const [loading, setLoading] = useState(true);
   const [announcing, setAnnouncing] = useState(false);
   const [resolving, setResolving] = useState(false);
@@ -137,17 +156,18 @@ const GamesTab = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, o
     setFestivals((f || []) as any);
     setDisciplines((d || []) as any);
 
-    // Load participants and results for all festivals
     if (f && f.length > 0) {
       const festIds = f.map(ff => ff.id);
-      const [{ data: p }, { data: r }, { data: inc }] = await Promise.all([
+      const [{ data: p }, { data: r }, { data: inc }, { data: b }] = await Promise.all([
         supabase.from("games_participants").select("*").in("festival_id", festIds),
         supabase.from("games_results").select("*").in("festival_id", festIds),
         supabase.from("games_incidents").select("*").in("festival_id", festIds),
+        supabase.from("games_bids").select("*").in("festival_id", festIds).order("total_bid_score", { ascending: false }),
       ]);
       setParticipants((p || []) as any);
       setResults((r || []) as any);
       setIncidents((inc || []) as any);
+      setBids((b || []) as any);
     }
     setLoading(false);
   }, [sessionId]);
@@ -162,7 +182,7 @@ const GamesTab = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, o
       });
       if (error) throw error;
       if (data?.error) { toast.error(data.error); return; }
-      toast.success(`🏟️ ${data.festival?.name || "Velké hry"} byly vyhlášeny!`);
+      toast.success(`🏟️ Kandidatura na Velké hry otevřena!`);
       await fetchData();
       onRefetch();
     } catch (e: any) {
@@ -209,7 +229,7 @@ const GamesTab = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, o
     }
   };
 
-  const activeFestival = festivals.find(f => f.status !== "concluded" && f.status !== "cancelled");
+  const activeFestival = festivals.find(f => !["concluded", "cancelled"].includes(f.status));
   const concludedFestivals = festivals.filter(f => f.status === "concluded");
 
   if (loading) {
@@ -253,18 +273,32 @@ const GamesTab = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, o
         {/* ─── ACTIVE GAMES ─── */}
         <TabsContent value="active" className="space-y-4">
           {activeFestival ? (
-            <FestivalDetail
-              festival={activeFestival}
-              participants={participants.filter(p => p.festival_id === activeFestival.id)}
-              results={results.filter(r => r.festival_id === activeFestival.id)}
-              disciplines={disciplines}
-              incidents={incidents.filter(i => i.festival_id === activeFestival.id)}
-              currentPlayerName={currentPlayerName}
-              isAdmin={isAdmin}
-              resolving={resolving}
-              onResolve={() => handleResolve(activeFestival.id)}
-              currentTurn={currentTurn}
-            />
+            activeFestival.status === "candidacy" ? (
+              <CandidacyPhase
+                festival={activeFestival}
+                bids={bids.filter(b => b.festival_id === activeFestival.id)}
+                myCities={myCities}
+                currentPlayerName={currentPlayerName}
+                sessionId={sessionId}
+                currentTurn={currentTurn}
+                isAdmin={isAdmin}
+                onRefetch={fetchData}
+                onRefetchParent={onRefetch}
+              />
+            ) : (
+              <FestivalDetail
+                festival={activeFestival}
+                participants={participants.filter(p => p.festival_id === activeFestival.id)}
+                results={results.filter(r => r.festival_id === activeFestival.id)}
+                disciplines={disciplines}
+                incidents={incidents.filter(i => i.festival_id === activeFestival.id)}
+                currentPlayerName={currentPlayerName}
+                isAdmin={isAdmin}
+                resolving={resolving}
+                onResolve={() => handleResolve(activeFestival.id)}
+                currentTurn={currentTurn}
+              />
+            )
           ) : (
             <Card className="border-border bg-card/50">
               <CardContent className="p-8 text-center">
@@ -274,8 +308,7 @@ const GamesTab = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, o
               </CardContent>
             </Card>
           )}
-          {/* Live Feed for active festival */}
-          {activeFestival && (
+          {activeFestival && activeFestival.status !== "candidacy" && (
             <LiveGamesFeed sessionId={sessionId} festivalId={activeFestival.id} />
           )}
         </TabsContent>
@@ -307,13 +340,12 @@ const GamesTab = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, o
             </CardHeader>
             <CardContent className="space-y-3">
               <p className="text-xs text-muted-foreground">
-                Globální událost jednou za 20 kol. Hostitelské město je vybráno automaticky podle kulturního vlivu.
-                Všechny říše nominují sportovce do 10 disciplín.
+                Globální událost jednou za 20 kol. Otevře se fáze <strong>kandidatury</strong> — města soutěží o pořadatelství investicemi a prestiží.
               </p>
               <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                <Badge variant="outline" className="text-[9px]">8+ disciplín</Badge>
-                <Badge variant="outline" className="text-[9px]">Automatičtí sportovci</Badge>
-                <Badge variant="outline" className="text-[9px]">Intriky povoleny</Badge>
+                <Badge variant="outline" className="text-[9px]">Kandidatura měst</Badge>
+                <Badge variant="outline" className="text-[9px]">Lobbying</Badge>
+                <Badge variant="outline" className="text-[9px]">Legacy bonus</Badge>
               </div>
               <Button
                 onClick={handleAnnounceOlympics}
@@ -322,7 +354,7 @@ const GamesTab = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, o
                 variant={activeFestival ? "outline" : "default"}
               >
                 {announcing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trophy className="h-4 w-4" />}
-                {activeFestival ? "Hry již probíhají" : "Vyhlásit Olympijské hry"}
+                {activeFestival ? "Hry již probíhají" : "Vyhlásit kandidaturu na Velké hry"}
               </Button>
             </CardContent>
           </Card>
@@ -407,7 +439,12 @@ const GamesTab = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, o
                   </p>
 
                   {selectedFestival === f.id && (
-                    <div className="mt-3 space-y-2">
+                    <div className="mt-3 space-y-3">
+                      {(f as any).description && (
+                        <div className="prose prose-xs prose-invert max-w-none text-[11px] leading-relaxed whitespace-pre-wrap border-l-2 border-primary/30 pl-3">
+                          {(f as any).description}
+                        </div>
+                      )}
                       <MedalTable
                         participants={participants.filter(p => p.festival_id === f.id)}
                         results={results.filter(r => r.festival_id === f.id)}
@@ -424,6 +461,162 @@ const GamesTab = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, o
     </div>
   );
 };
+
+/* ─── Candidacy Phase Component ─── */
+function CandidacyPhase({
+  festival, bids, myCities, currentPlayerName, sessionId, currentTurn, isAdmin, onRefetch, onRefetchParent,
+}: {
+  festival: Festival;
+  bids: Bid[];
+  myCities: any[];
+  currentPlayerName: string;
+  sessionId: string;
+  currentTurn: number;
+  isAdmin: boolean;
+  onRefetch: () => void;
+  onRefetchParent: () => void;
+}) {
+  const [bidCityId, setBidCityId] = useState("");
+  const [bidGold, setBidGold] = useState(10);
+  const [bidPitch, setBidPitch] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [selectingHost, setSelectingHost] = useState(false);
+
+  const myBid = bids.find(b => b.player_name === currentPlayerName);
+  const deadlinePassed = currentTurn > (festival.candidacy_deadline_turn || Infinity);
+
+  const handleSubmitBid = async () => {
+    if (!bidCityId) { toast.error("Vyber město pro kandidaturu"); return; }
+    setSubmitting(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("games-bid", {
+        body: { session_id: sessionId, player_name: currentPlayerName, festival_id: festival.id, city_id: bidCityId, gold_invested: bidGold, pitch_text: bidPitch },
+      });
+      if (error) throw error;
+      if (data?.error) { toast.error(data.error); return; }
+      toast.success(`🏛️ Kandidatura podána! Skóre: ${data.scores?.total?.toFixed(1)}`);
+      await onRefetch();
+    } catch (e: any) {
+      toast.error(e.message || "Chyba");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleSelectHost = async () => {
+    setSelectingHost(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("games-select-host", {
+        body: { session_id: sessionId, festival_id: festival.id, turn_number: currentTurn },
+      });
+      if (error) throw error;
+      if (data?.error) { toast.error(data.error); return; }
+      toast.success(`🏟️ ${data.host?.city} zvoleno hostitelem!`);
+      await onRefetch();
+      onRefetchParent();
+    } catch (e: any) {
+      toast.error(e.message || "Chyba");
+    } finally {
+      setSelectingHost(false);
+    }
+  };
+
+  return (
+    <Card className="border-indigo-500/30 bg-indigo-500/5">
+      <CardHeader className="pb-2">
+        <div className="flex items-center justify-between">
+          <CardTitle className="font-display text-sm flex items-center gap-2">
+            <Gavel className="h-4 w-4 text-indigo-400" />
+            {festival.name} — Kandidatura
+          </CardTitle>
+          <Badge className="bg-indigo-500/15 text-indigo-400" variant="outline">
+            Uzávěrka: rok {festival.candidacy_deadline_turn}
+          </Badge>
+        </div>
+        <p className="text-[10px] text-muted-foreground">
+          Města soupeří o pořadatelství. Investujte zlato, budujte prestiž.
+          {deadlinePassed && " Uzávěrka uplynula — čas na výběr hostitele!"}
+        </p>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {/* Existing bids */}
+        {bids.length > 0 && (
+          <div>
+            <p className="text-xs font-display font-semibold mb-2">Kandidáti ({bids.length})</p>
+            <div className="space-y-1.5">
+              {bids.map((b, idx) => {
+                const city = myCities.find(c => c.id === b.city_id);
+                return (
+                  <div key={b.id} className={`p-2 rounded border ${idx === 0 ? "border-primary/30 bg-primary/5" : "border-border bg-card/50"} flex items-center gap-2`}>
+                    <span className="font-display text-xs font-bold text-muted-foreground w-5">{idx + 1}.</span>
+                    <MapPin className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="font-display text-xs font-semibold truncate">{b.pitch_text}</p>
+                      <p className="text-[9px] text-muted-foreground">{b.player_name} | Investice: {b.gold_invested} 💰</p>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <p className="font-mono text-xs font-bold text-primary">{b.total_bid_score.toFixed(1)}</p>
+                      <p className="text-[8px] text-muted-foreground">skóre</p>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Submit bid form */}
+        {!myBid && !deadlinePassed && (
+          <div className="border border-border rounded p-3 space-y-2 bg-card/50">
+            <p className="text-xs font-display font-semibold flex items-center gap-1">
+              <Crown className="h-3.5 w-3.5 text-primary" /> Podat kandidaturu
+            </p>
+            <Select value={bidCityId} onValueChange={setBidCityId}>
+              <SelectTrigger className="text-xs h-8">
+                <SelectValue placeholder="Vyberte město..." />
+              </SelectTrigger>
+              <SelectContent>
+                {myCities.map(c => (
+                  <SelectItem key={c.id} value={c.id}>
+                    {c.name} (vliv: {c.influence_score}, úr.: {c.development_level})
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="text-[9px] text-muted-foreground">Investice (zlato)</label>
+                <Input type="number" min={0} max={100} value={bidGold}
+                  onChange={e => setBidGold(Number(e.target.value))} className="h-8 text-xs" />
+              </div>
+              <div>
+                <label className="text-[9px] text-muted-foreground">Heslo kandidatury</label>
+                <Input value={bidPitch} onChange={e => setBidPitch(e.target.value)}
+                  placeholder="Naše město je připraveno..." className="h-8 text-xs" />
+              </div>
+            </div>
+            <Button onClick={handleSubmitBid} disabled={submitting || !bidCityId} className="w-full font-display gap-2 text-xs">
+              {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Gavel className="h-4 w-4" />}
+              Podat kandidaturu
+            </Button>
+          </div>
+        )}
+
+        {myBid && (
+          <p className="text-xs text-green-400 text-center">✓ Vaše kandidatura podána (skóre: {myBid.total_bid_score.toFixed(1)})</p>
+        )}
+
+        {/* Select host button (admin or deadline passed) */}
+        {(isAdmin || deadlinePassed) && bids.length > 0 && (
+          <Button onClick={handleSelectHost} disabled={selectingHost} variant="default" className="w-full font-display gap-2">
+            {selectingHost ? <Loader2 className="h-4 w-4 animate-spin" /> : <Crown className="h-4 w-4" />}
+            Vybrat hostitele a zahájit nominace
+          </Button>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
 
 /* ─── Festival Detail Component ─── */
 function FestivalDetail({
@@ -463,7 +656,6 @@ function FestivalDetail({
         </p>
       </CardHeader>
       <CardContent className="space-y-4">
-        {/* Participants */}
         <div>
           <p className="text-xs font-display font-semibold mb-2">Sportovci ({participants.length})</p>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -493,12 +685,10 @@ function FestivalDetail({
           </div>
         </div>
 
-        {/* Results */}
         {isResolved && (
           <MedalTable participants={participants} results={results} disciplines={disciplines} />
         )}
 
-        {/* Incidents */}
         {incidents.length > 0 && (
           <div>
             <p className="text-xs font-display font-semibold mb-1 flex items-center gap-1">
@@ -513,7 +703,6 @@ function FestivalDetail({
           </div>
         )}
 
-        {/* Resolve button */}
         {canResolve && !isResolved && (
           <Button onClick={onResolve} disabled={resolving} className="w-full font-display gap-2">
             {resolving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trophy className="h-4 w-4" />}
@@ -534,7 +723,6 @@ function MedalTable({ participants, results, disciplines }: {
   const discMap = new Map(disciplines.map(d => [d.id, d]));
   const partMap = new Map(participants.map(p => [p.id, p]));
 
-  // Group results by discipline
   const byDisc = new Map<string, Result[]>();
   for (const r of results) {
     const list = byDisc.get(r.discipline_id) || [];

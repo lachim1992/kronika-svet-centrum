@@ -365,17 +365,76 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Mark festival concluded
+    // ═══ HYBRID NARRATIVE: Template + AI highlight ═══
+    const topMedalist = Object.entries(medalTally).sort((a, b) => b[1].gold - a[1].gold)[0];
+    const topPlayer = Object.entries(playerMedals).sort((a, b) => b[1] - a[1])[0];
+    const legendNames = Object.entries(medalTally).filter(([, t]) => t.gold >= 2).map(([name]) => name);
+
+    // Re-fetch participants to get updated form (dead athletes)
+    const { data: updatedParts } = await sb.from("games_participants")
+      .select("athlete_name, form, player_name").eq("festival_id", festival_id);
+    const deadAthletes = (updatedParts || []).filter(p => p.form === "dead");
+
+    // Build structured narrative template
+    let description = `## ${festival.name}\n\n`;
+    description += `**Hostitel:** ${festival.host_player}\n`;
+    description += `**Účastníků:** ${participants.length} atletů\n`;
+    description += `**Disciplín:** ${disciplines.length}\n\n`;
+    description += `### 🏅 Nejúspěšnější atlet\n${topMedalist?.[0] || "—"} (${topMedalist?.[1]?.gold || 0}× 🥇, ${topMedalist?.[1]?.silver || 0}× 🥈, ${topMedalist?.[1]?.bronze || 0}× 🥉)\n\n`;
+    description += `### 🏛 Nejúspěšnější říše\n${topPlayer?.[0] || "—"} (${topPlayer?.[1] || 0} medailí)\n\n`;
+    if (legendNames.length > 0) {
+      description += `### ⭐ Nové legendy\n${legendNames.join(", ")}\n\n`;
+    }
+    if (deadAthletes.length > 0) {
+      description += `### 💀 Padlí v aréně\n${deadAthletes.map(d => `${d.athlete_name} (${d.player_name})`).join(", ")}\n\n`;
+    }
+    if (incidents.length > 0) {
+      description += `### ⚠️ Incidenty\n${incidents.map(i => `- ${i.description}`).join("\n")}\n\n`;
+    }
+
+    // Generate short AI highlight (non-blocking)
+    try {
+      const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+      if (LOVABLE_API_KEY) {
+        const highlightPrompt = `Jsi kronikář starověkého světa. Na základě těchto dat napiš JEDEN odstavec (max 3 věty) o nejdramatičtějším momentu her. Styl: epický, faktický.
+
+Data:
+- Hry: ${festival.name}
+- Vítěz: ${topMedalist?.[0]} s ${topMedalist?.[1]?.gold} zlatými
+- Nejsilnější říše: ${topPlayer?.[0]}
+- Legendy: ${legendNames.join(", ") || "žádné"}
+- Mrtví: ${deadAthletes.map(d => d.athlete_name).join(", ") || "žádní"}
+- Incidenty: ${incidents.map(i => i.description).join("; ") || "žádné"}
+- Počet atletů: ${participants.length}`;
+
+        const aiResp = await fetch("https://ai.lovable.dev/api/v1/chat/completions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${LOVABLE_API_KEY}` },
+          body: JSON.stringify({
+            model: "google/gemini-2.5-flash-lite",
+            messages: [{ role: "user", content: highlightPrompt }],
+            max_tokens: 200,
+          }),
+        });
+        if (aiResp.ok) {
+          const aiData = await aiResp.json();
+          const highlight = aiData.choices?.[0]?.message?.content?.trim();
+          if (highlight) {
+            description += `### ✨ Nejdramatičtější moment\n> ${highlight}\n`;
+          }
+        }
+      }
+    } catch (_) { /* AI highlight is optional */ }
+
+    // Mark festival concluded with description
     await sb.from("games_festivals").update({
       status: "concluded",
       concluded_turn: turn_number || festival.announced_turn,
       effects_applied: true,
+      description,
     }).eq("id", festival_id);
 
     // Create conclusion event
-    const topMedalist = Object.entries(medalTally).sort((a, b) => b[1].gold - a[1].gold)[0];
-    const topPlayer = Object.entries(playerMedals).sort((a, b) => b[1] - a[1])[0];
-
     await sb.from("game_events").insert({
       session_id,
       event_type: "games_concluded",
@@ -388,19 +447,12 @@ Deno.serve(async (req) => {
         medal_tally: medalTally,
         player_medals: playerMedals,
         incidents_count: incidents.length,
-        legends_created: Object.values(medalTally).filter(t => t.gold >= 2).length,
+        legends_created: legendNames.length,
       },
     });
 
     // ═══ CHRONICLE & WIKI INTEGRATION ═══
-    // Write chronicle entry for the festival conclusion
     try {
-      const legendNames = Object.entries(medalTally).filter(([, t]) => t.gold >= 2).map(([name]) => name);
-      // Re-fetch participants to get updated form (dead athletes)
-      const { data: updatedParts } = await sb.from("games_participants")
-        .select("athlete_name, form").eq("festival_id", festival_id);
-      const deadAthletes = (updatedParts || []).filter(p => p.form === "dead");
-      
       let chronicleText = `**${festival.name} (rok ${turn_number || festival.announced_turn}):** `;
       chronicleText += `Velké hry skončily. Nejúspěšnějším atletem se stal ${topMedalist?.[0] || "neznámý"} s ${topMedalist?.[1]?.gold || 0} zlatými medailemi. `;
       if (legendNames.length > 0) {
@@ -428,11 +480,8 @@ Deno.serve(async (req) => {
         if (legendParticipant?.great_person_id) {
           try {
             await sb.from("wiki_entries").insert({
-              session_id,
-              entity_type: "person",
-              entity_id: legendParticipant.great_person_id,
-              entity_name: legendName,
-              owner_player: legendParticipant.player_name,
+              session_id, entity_type: "person", entity_id: legendParticipant.great_person_id,
+              entity_name: legendName, owner_player: legendParticipant.player_name,
             });
           } catch (_) { /* may already exist via trigger */ }
         }
