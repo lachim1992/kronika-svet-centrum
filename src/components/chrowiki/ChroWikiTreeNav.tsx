@@ -173,7 +173,7 @@ const ChroWikiTreeNav = ({
       <TreeNode id="cat-persons" label="Osobnosti" icon={<Crown className="h-3.5 w-3.5" />}
         count={visiblePersons.length} indent={0}>
         {visiblePersons.map(p => (
-          <TreeNode key={p.id} id={`person-${p.id}`} label={p.name}
+          <TreeNode key={p.id} id={`person-${p.id}`} label={`${p.name}${p.player_name ? ` (${p.player_name})` : ""}`}
             icon={<Crown className="h-3.5 w-3.5" />} type="person" entityId={p.id} indent={1} />
         ))}
       </TreeNode>
