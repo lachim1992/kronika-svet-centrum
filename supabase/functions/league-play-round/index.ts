@@ -273,13 +273,16 @@ async function playTierRound(sb: any, session_id: string, currentTurn: number, t
   if (!season) {
     const { count: past } = await sb.from("league_seasons").select("id", { count: "exact", head: true }).eq("session_id", session_id).eq("league_tier", tier);
     const n = tierTeams.length, adj = n % 2 === 0 ? n : n + 1;
-    const { data: ns } = await sb.from("league_seasons").insert({
+    const { data: ns, error: seasonErr } = await sb.from("league_seasons").insert({
       session_id, season_number: (past || 0) + 1, status: "active", started_turn: currentTurn,
       total_rounds: (adj - 1) * 2, current_round: 0, matches_per_round: Math.floor(n / 2),
       league_tier: tier, promotion_count: tier > 1 ? 2 : 0, relegation_count: tier === 1 ? 2 : 0,
       playoff_status: "none", playoff_bracket: [],
     }).select("*").single();
-    if (!ns) throw new Error(`Failed season tier ${tier}`);
+    if (seasonErr || !ns) {
+      console.error(`Failed to create season tier ${tier}:`, seasonErr);
+      throw new Error(`Failed season tier ${tier}: ${seasonErr?.message || "unknown"}`);
+    }
     season = ns;
     for (const t of tierTeams) await sb.from("league_standings").insert({ session_id, season_id: season.id, team_id: t.id });
     const schedule = generateDoubleRoundRobin(tierTeams.map(t => t.id));
