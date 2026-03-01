@@ -60,15 +60,18 @@ function computeCityDefenseStrength(city: any): number {
   return Math.round((garrison * 1.5 + peasantMilitia) * stabilityMult);
 }
 
-async function applyCasualties(supabase: any, compositions: any[], totalCasualties: number) {
+async function applyCasualties(supabase: any, compositions: any[], totalCasualties: number): Promise<number> {
   const totalManpower = compositions.reduce((s: number, c: any) => s + (c.manpower || 0), 0);
-  if (totalManpower <= 0) return;
+  if (totalManpower <= 0) return 0;
+  let remainingManpower = 0;
   for (const comp of compositions) {
     const ratio = (comp.manpower || 0) / totalManpower;
     const losses = Math.min(comp.manpower || 0, Math.round(totalCasualties * ratio));
     const newManpower = Math.max(0, (comp.manpower || 0) - losses);
+    remainingManpower += newManpower;
     await supabase.from("military_stack_composition").update({ manpower: newManpower }).eq("id", comp.id);
   }
+  return remainingManpower;
 }
 
 Deno.serve(async (req) => {
@@ -233,10 +236,18 @@ Deno.serve(async (req) => {
     const casualtiesAttacker = Math.round(attackerTotalManpower * casualtyRateAttacker);
     const casualtiesDefender = Math.round(defenderTotalManpower * casualtyRateDefender);
 
-    // Apply casualties
-    await applyCasualties(supabase, attackerStack.military_stack_composition || [], casualtiesAttacker);
+    // Apply casualties and check for destruction
+    const attackerRemaining = await applyCasualties(supabase, attackerStack.military_stack_composition || [], casualtiesAttacker);
+    if (attackerRemaining <= 0) {
+      await supabase.from("military_stacks").update({ is_active: false, is_deployed: false }).eq("id", attackerStack.id);
+    }
+
+    let defenderStackRemaining = -1;
     if (defenderComps.length > 0) {
-      await applyCasualties(supabase, defenderComps, Math.round(casualtiesDefender * 0.7));
+      defenderStackRemaining = await applyCasualties(supabase, defenderComps, Math.round(casualtiesDefender * 0.7));
+      if (defenderStackRemaining <= 0 && defenderStack) {
+        await supabase.from("military_stacks").update({ is_active: false, is_deployed: false }).eq("id", defenderStack.id);
+      }
     }
     if (defenderCity) {
       const garrisonLoss = Math.min(defenderCity.military_garrison || 0, Math.round(casualtiesDefender * 0.3));
@@ -375,6 +386,22 @@ Deno.serve(async (req) => {
       pyrrhic_victory: "Pyrrhovo vítězství", defeat: "Porážka", rout: "Rozprášení",
     };
 
+    const attackerDestroyed = attackerRemaining <= 0;
+    const defenderDestroyed = defenderStack && defenderStackRemaining === 0;
+
+    // Chronicle destroyed armies
+    if (attackerDestroyed || defenderDestroyed) {
+      try {
+        const destroyedName = attackerDestroyed ? attackerStack.name : defenderStack?.name;
+        const victorName = attackerDestroyed ? (defenderCity?.name || defenderStack?.name || "obránce") : attackerStack.name;
+        await supabase.from("chronicle_entries").insert({
+          session_id,
+          text: `**Zničení armády (rok ${turnNumber}):** Armáda „${destroyedName}" byla zcela zničena v bitvě s ${victorName}. Žádný voják nepřežil.`,
+          epoch_style: "kroniky", turn_from: turnNumber, turn_to: turnNumber, source_type: "system",
+        });
+      } catch (_) { /* non-critical */ }
+    }
+
     return new Response(JSON.stringify({
       ok: true,
       battle_id: battleRecord?.id,
@@ -391,6 +418,8 @@ Deno.serve(async (req) => {
       casualties_defender: casualtiesDefender,
       luck_roll: luckRoll,
       needs_decision: needsDecision && !!defender_city_id,
+      attacker_destroyed: attackerDestroyed,
+      defender_destroyed: !!defenderDestroyed,
     }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
   } catch (err) {
