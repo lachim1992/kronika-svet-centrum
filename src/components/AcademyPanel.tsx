@@ -93,10 +93,13 @@ const AcademyPanel = ({ sessionId, currentPlayerName, currentTurn }: Props) => {
 
   const handleFundingChange = async (val: number[]) => {
     const pct = val[0];
-    setSportFunding(pct);
     setSaving(true);
-    await supabase.from("realm_resources").update({ sport_funding_pct: pct }).eq("session_id", sessionId).eq("player_name", currentPlayerName);
+    const { error } = await supabase.from("realm_resources").update({ sport_funding_pct: pct }).eq("session_id", sessionId).eq("player_name", currentPlayerName);
     setSaving(false);
+    if (error) {
+      toast.error("Nepodařilo se uložit financování");
+      return;
+    }
     toast.success(`Financování sportu: ${pct}%`);
   };
 
@@ -135,6 +138,7 @@ const AcademyPanel = ({ sessionId, currentPlayerName, currentTurn }: Props) => {
           </div>
           <Slider
             value={[sportFunding]}
+            onValueChange={(val) => setSportFunding(val[0])}
             onValueCommit={handleFundingChange}
             min={0}
             max={20}
