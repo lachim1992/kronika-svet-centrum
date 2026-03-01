@@ -191,7 +191,7 @@ const NationalQualificationPanel = ({ sessionId, festivalId, playerName, onCompl
                             <StatPill label="C" value={r.charisma} />
                           </div>
 
-                          {r.traits.length > 0 && (
+                          {r.traits && r.traits.length > 0 && (
                             <div className="flex gap-1 mt-1">
                               {r.traits.map((t, i) => (
                                 <Badge key={i} variant="outline" className="text-[7px]">{t}</Badge>
