@@ -6,7 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Trophy, Star, BookOpen, User, Eye, Swords, AlertTriangle, MessageSquare } from "lucide-react";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Trophy, Star, BookOpen, User, Eye, Swords, AlertTriangle, MessageSquare, ChevronDown } from "lucide-react";
 
 interface StudentDetailModalProps {
   open: boolean;
@@ -103,6 +104,7 @@ const StudentDetailModal = ({
   const [participations, setParticipations] = useState<Participation[]>([]);
   const [wikiEntry, setWikiEntry] = useState<any>(null);
   const [loading, setLoading] = useState(false);
+  const [detailOpen, setDetailOpen] = useState(false);
 
   useEffect(() => {
     if (!open || !student) return;
@@ -148,7 +150,7 @@ const StudentDetailModal = ({
           .select("participant_id, discipline_id, medal, rank, total_score, festival_id")
           .in("participant_id", partIds),
         supabase.from("games_disciplines").select("id, name, icon_emoji"),
-        supabase.from("games_festivals").select("id, name, concluded_turn").in("id", festivalIds),
+        supabase.from("games_festivals").select("id, name, concluded_turn, best_athlete_id").in("id", festivalIds),
         supabase.from("games_intrigues")
           .select("action_type, description, success, discovered, player_name, festival_id, gold_spent")
           .in("target_participant_id", partIds),
@@ -168,11 +170,15 @@ const StudentDetailModal = ({
       const discMap = new Map((disciplines || []).map(d => [d.id, d]));
       const festMap = new Map((festivals || []).map(f => [f.id, f]));
 
-      // Participations
-      setParticipations(parts.map(p => ({
-        ...p,
-        festival_name: festMap.get(p.festival_id)?.name || "?",
-      })) as Participation[]);
+      // Participations — check if athlete was Olympic Champion
+      setParticipations(parts.map(p => {
+        const fest = festMap.get(p.festival_id);
+        return {
+          ...p,
+          festival_name: fest?.name || "?",
+          is_best_athlete: (fest as any)?.best_athlete_id === p.id,
+        };
+      }) as any);
 
       // Results (ALL, not just medals)
       const resultRecords: ResultRecord[] = (allResults || []).map(r => {
@@ -223,9 +229,12 @@ const StudentDetailModal = ({
   const goldCount = results.filter(r => r.medal === "gold").length;
   const silverCount = results.filter(r => r.medal === "silver").length;
   const bronzeCount = results.filter(r => r.medal === "bronze").length;
+  const weightedScore = goldCount * 5 + silverCount * 3 + bronzeCount;
   const totalGames = participations.length;
   const latestForm = participations.length > 0 ? participations[participations.length - 1].form : null;
   const maxPopularity = participations.length > 0 ? Math.max(...participations.map(p => p.crowd_popularity)) : 0;
+  // Check if this athlete was ever Olympic Champion (best_athlete_id on any festival)
+  const isOlympicChampion = participations.some(p => (p as any).is_best_athlete);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -235,6 +244,11 @@ const StudentDetailModal = ({
             <User className="h-4 w-4 text-primary" />
             {student.name}
             <Badge variant="outline" className="text-[8px]">{student.specialty}</Badge>
+            {isOlympicChampion && (
+              <Badge variant="outline" className="text-[7px] border-yellow-500/50 text-yellow-400 bg-yellow-500/10">
+                🏆 Vítěz olympiády
+              </Badge>
+            )}
             {goldCount >= 2 && (
               <Badge variant="outline" className="text-[7px] border-yellow-500/50 text-yellow-400">
                 <Star className="h-2.5 w-2.5 mr-0.5" />Legenda
@@ -326,33 +340,46 @@ const StudentDetailModal = ({
 
                 {/* ── RESULTS TAB ── */}
                 <TabsContent value="results" className="space-y-2 mt-0">
-                  {/* Medal summary */}
+                  {/* Compact medal summary */}
                   {(goldCount + silverCount + bronzeCount > 0) && (
-                    <div className="flex items-center gap-3 text-xs p-2 rounded bg-muted/20 border border-border">
+                    <div className={`flex items-center gap-3 text-xs p-2.5 rounded border ${isOlympicChampion ? "bg-yellow-500/10 border-yellow-500/30" : "bg-muted/20 border-border"}`}>
+                      {isOlympicChampion && <span className="text-sm">🏆</span>}
                       {goldCount > 0 && <span>🥇 {goldCount}</span>}
                       {silverCount > 0 && <span>🥈 {silverCount}</span>}
                       {bronzeCount > 0 && <span>🥉 {bronzeCount}</span>}
+                      <span className="font-mono font-bold text-primary ml-1">{weightedScore} b.</span>
                       <span className="text-muted-foreground ml-auto text-[9px]">{totalGames} her</span>
                     </div>
                   )}
 
+                  {/* Expandable detailed table */}
                   {results.length > 0 ? (
-                    <div className="space-y-1 max-h-40 overflow-y-auto">
-                      {results.map((r, i) => (
-                        <div key={i} className="flex items-center justify-between text-[9px] p-1.5 rounded bg-muted/20 border border-border">
-                          <span className="flex items-center gap-1">
-                            <span>{r.discipline_emoji}</span>
-                            <span className="font-semibold">{r.discipline_name}</span>
-                          </span>
-                          <span className="flex items-center gap-2 text-muted-foreground">
-                            <span className="truncate max-w-[80px]">{r.festival_name}</span>
-                            <span className="font-mono">#{r.rank}</span>
-                            <span className="font-mono text-[8px]">({r.total_score.toFixed(1)})</span>
-                            {r.medal && <span>{r.medal === "gold" ? "🥇" : r.medal === "silver" ? "🥈" : "🥉"}</span>}
-                          </span>
+                    <Collapsible open={detailOpen} onOpenChange={setDetailOpen}>
+                      <CollapsibleTrigger asChild>
+                        <Button variant="ghost" size="sm" className="w-full h-6 text-[9px] text-muted-foreground">
+                          <ChevronDown className={`h-3 w-3 mr-1 transition-transform ${detailOpen ? "rotate-180" : ""}`} />
+                          {detailOpen ? "Skrýt" : "Zobrazit"} detailní výsledky ({results.length})
+                        </Button>
+                      </CollapsibleTrigger>
+                      <CollapsibleContent>
+                        <div className="space-y-1 max-h-48 overflow-y-auto mt-1">
+                          {results.map((r, i) => (
+                            <div key={i} className="flex items-center justify-between text-[9px] p-1.5 rounded bg-muted/20 border border-border">
+                              <span className="flex items-center gap-1">
+                                <span>{r.discipline_emoji}</span>
+                                <span className="font-semibold">{r.discipline_name}</span>
+                              </span>
+                              <span className="flex items-center gap-2 text-muted-foreground">
+                                <span className="truncate max-w-[80px]">{r.festival_name}</span>
+                                <span className="font-mono">#{r.rank}</span>
+                                <span className="font-mono text-[8px]">({r.total_score.toFixed(1)})</span>
+                                {r.medal && <span>{r.medal === "gold" ? "🥇" : r.medal === "silver" ? "🥈" : "🥉"}</span>}
+                              </span>
+                            </div>
+                          ))}
                         </div>
-                      ))}
-                    </div>
+                      </CollapsibleContent>
+                    </Collapsible>
                   ) : (
                     <p className="text-[9px] text-muted-foreground text-center p-4">
                       {totalGames > 0 ? "Žádné zaznamenané výsledky." : "Zatím se nezúčastnil žádných her."}
@@ -365,7 +392,10 @@ const StudentDetailModal = ({
                       <p className="text-[9px] font-display font-semibold text-muted-foreground">Účast na hrách</p>
                       {participations.map(p => (
                         <div key={p.id} className="flex items-center justify-between text-[9px] p-1 rounded bg-muted/10">
-                          <span>{p.festival_name}</span>
+                          <span className="flex items-center gap-1">
+                            {(p as any).is_best_athlete && <span>🏆</span>}
+                            {p.festival_name}
+                          </span>
                           <div className="flex items-center gap-1.5">
                             {p.total_medals > 0 && <span>🏅 {p.total_medals}</span>}
                             {p.is_legend && <Star className="h-2.5 w-2.5 text-yellow-400" />}

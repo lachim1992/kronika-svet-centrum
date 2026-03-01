@@ -760,17 +760,59 @@ Odpověz POUZE jako JSON: {"bio": "...", "imagePrompt": "..."}`
         const totalParticipations = (allParts || []).length;
 
         // Build medal table markdown
+        // Check if this athlete was Olympic Champion in any festival
+        const isChampionThisFestival = bestAthleteEntry && bestAthleteEntry[0] === p.athlete_name;
+        const { data: champFestivals } = await sb.from("games_festivals")
+          .select("id, name, best_athlete_id, concluded_turn")
+          .eq("session_id", session_id).eq("status", "concluded");
+        const championTitles: string[] = [];
+        for (const cf of (champFestivals || [])) {
+          if (cf.best_athlete_id) {
+            const { data: champPart } = await sb.from("games_participants")
+              .select("athlete_name").eq("id", cf.best_athlete_id).maybeSingle();
+            if (champPart?.athlete_name === p.athlete_name) {
+              championTitles.push(`${cf.name} (rok ${cf.concluded_turn})`);
+            }
+          }
+        }
+        if (isChampionThisFestival && !championTitles.some(t => t.includes(festival.name))) {
+          championTitles.push(`${festival.name} (rok ${turn_number || festival.announced_turn})`);
+        }
+
         let medalMd = `## ${p.athlete_name}\n\n`;
+        if (championTitles.length > 0) {
+          medalMd += `### 🏆 Vítěz olympiády\n\n`;
+          for (const ct of championTitles) {
+            medalMd += `- 🏆 **${ct}**\n`;
+          }
+          medalMd += `\n`;
+        }
         medalMd += `**Účast na hrách:** ${totalParticipations} | `;
-        medalMd += `🥇 ${golds} | 🥈 ${silvers} | 🥉 ${bronzes}\n\n`;
+        medalMd += `🥇 ${golds} | 🥈 ${silvers} | 🥉 ${bronzes}`;
+        const weightedTotal = golds * 5 + silvers * 3 + bronzes;
+        medalMd += ` | **Celkem: ${weightedTotal} b.**\n\n`;
 
         if ((allMedals || []).length > 0) {
-          medalMd += `### Medaile\n\n| Disciplína | Hry | Medaile |\n|---|---|---|\n`;
+          medalMd += `### Medaile\n\n| Disciplína | Hry | Medaile | Skóre |\n|---|---|---|---|\n`;
           for (const m of (allMedals || [])) {
             const d = discLookup[m.discipline_id];
             const f = festLookup[m.festival_id];
             const medalEmoji = m.medal === "gold" ? "🥇" : m.medal === "silver" ? "🥈" : "🥉";
-            medalMd += `| ${d?.icon_emoji || ""} ${d?.name || "?"} | ${f?.name || "?"} (rok ${f?.concluded_turn || "?"}) | ${medalEmoji} |\n`;
+            medalMd += `| ${d?.icon_emoji || ""} ${d?.name || "?"} | ${f?.name || "?"} (rok ${f?.concluded_turn || "?"}) | ${medalEmoji} | ${m.total_score?.toFixed(1) || "?"} |\n`;
+          }
+        }
+
+        // All results (including non-medal)
+        const { data: allResultsForStudent } = await sb.from("games_results")
+          .select("participant_id, discipline_id, medal, rank, total_score, festival_id")
+          .in("participant_id", allPartIds.length > 0 ? allPartIds : ["__none__"]);
+        const nonMedalResults = (allResultsForStudent || []).filter(r => !r.medal);
+        if (nonMedalResults.length > 0) {
+          medalMd += `\n### Ostatní výsledky\n\n| Disciplína | Hry | Umístění | Skóre |\n|---|---|---|---|\n`;
+          for (const r of nonMedalResults) {
+            const d = discLookup[r.discipline_id];
+            const f = festLookup[r.festival_id];
+            medalMd += `| ${d?.icon_emoji || ""} ${d?.name || "?"} | ${f?.name || "?"} | #${r.rank} | ${r.total_score?.toFixed(1) || "?"} |\n`;
           }
         }
 
@@ -879,9 +921,11 @@ Odpověz POUZE jako JSON: {"bio": "...", "imagePrompt": "..."}`
       }
     }
 
-    // ═══ BEST ATHLETE & MOST POPULAR ═══
+    // ═══ BEST ATHLETE (OLYMPIC CHAMPION) & MOST POPULAR ═══
+    // Weighted scoring: Gold=5, Silver=3, Bronze=1
     const bestAthleteEntry = Object.entries(medalTally)
-      .sort((a, b) => b[1].gold !== a[1].gold ? b[1].gold - a[1].gold : (b[1].silver * 10 + b[1].bronze) - (a[1].silver * 10 + a[1].bronze))[0];
+      .map(([name, t]) => [name, { ...t, weightedScore: t.gold * 5 + t.silver * 3 + t.bronze * 1 }] as const)
+      .sort((a, b) => b[1].weightedScore !== a[1].weightedScore ? b[1].weightedScore - a[1].weightedScore : b[1].gold - a[1].gold)[0];
 
     const popularityScores: { participant: any; score: number }[] = [];
     for (const p of participants) {
@@ -894,6 +938,26 @@ Odpověz POUZE jako JSON: {"bio": "...", "imagePrompt": "..."}`
     popularityScores.sort((a, b) => b.score - a.score);
     const mostPopular = popularityScores[0];
     const bestAthleteParticipant = bestAthleteEntry ? participants.find((p: any) => p.athlete_name === bestAthleteEntry[0]) : null;
+
+    // ═══ ACADEMY REPUTATION BONUS FOR CHAMPION ═══
+    if (bestAthleteParticipant?.student_id) {
+      try {
+        const { data: champStudent } = await sb.from("academy_students")
+          .select("academy_id").eq("id", bestAthleteParticipant.student_id).maybeSingle();
+        if (champStudent?.academy_id) {
+          const { data: champAcad } = await sb.from("academies")
+            .select("id, reputation, fan_base, total_champions")
+            .eq("id", champStudent.academy_id).maybeSingle();
+          if (champAcad) {
+            await sb.from("academies").update({
+              reputation: Math.min(100, champAcad.reputation + 10),
+              fan_base: champAcad.fan_base + 15,
+              total_champions: champAcad.total_champions + 1,
+            }).eq("id", champAcad.id);
+          }
+        }
+      } catch (_) {}
+    }
 
     const festivalUpdate: any = {};
     if (bestAthleteParticipant) festivalUpdate.best_athlete_id = bestAthleteParticipant.id;
@@ -1014,11 +1078,16 @@ Odpověz POUZE jako JSON: {"bio": "...", "imagePrompt": "..."}`
       reference: { festival_id, medal_tally: medalTally, player_medals: playerMedals },
     });
 
-    // Chronicle
+    // Chronicle — enhanced with Olympic Champion
     try {
+      const champName = bestAthleteEntry?.[0] || "?";
+      const champTally = bestAthleteEntry?.[1];
+      const champScore = champTally ? `${champTally.gold}🥇 ${champTally.silver}🥈 ${champTally.bronze}🥉 (${champTally.weightedScore} b.)` : "";
       let cText = `**${festival.name} (rok ${turn_number || festival.announced_turn}):** `;
-      cText += `Nejlepší: ${topMedalist?.[0] || "?"} (${topMedalist?.[1]?.gold || 0}🥇). `;
-      if (legendNames.length > 0) cText += `Legendy: ${legendNames.join(", ")}. `;
+      cText += `🏆 Vítězem olympiády se stal **${champName}** z říše ${champTally?.player || "?"} — ${champScore}. `;
+      cText += `Nejúspěšnější říše: ${topPlayer?.[0] || "?"}. `;
+      if (legendNames.length > 0) cText += `Legendy her: ${legendNames.join(", ")}. `;
+      if (deadAthletes.length > 0) cText += `Padlí: ${deadAthletes.map((d: any) => d.athlete_name).join(", ")}. `;
       await sb.from("chronicle_entries").insert({
         session_id, text: cText, epoch_style: "kroniky",
         turn_from: turn_number || festival.announced_turn,
