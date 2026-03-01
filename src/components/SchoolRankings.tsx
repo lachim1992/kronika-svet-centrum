@@ -67,14 +67,41 @@ const SchoolRankings = ({ sessionId, currentPlayerName }: Props) => {
     const academyMedals = new Map<string, { gold: number; silver: number; bronze: number }>();
     const academyVictories = new Map<string, number>();
 
-    // Map student academy links
+    // Map student_id → academy_id
     const studentAcademyMap = new Map<string, string>();
     for (const s of (students || [])) {
       studentAcademyMap.set(s.id, s.academy_id);
     }
 
-    // For now, count academy medals based on promoted students
-    // and overall reputation as proxy
+    // Map participant_id → student_id (via games_participants.student_id)
+    // We need student_id on participants - fetch it
+    const { data: partsWithStudent } = await supabase.from("games_participants")
+      .select("id, student_id")
+      .eq("session_id", sessionId)
+      .not("student_id", "is", null);
+
+    const participantToStudent = new Map<string, string>();
+    for (const p of (partsWithStudent || [])) {
+      if (p.student_id) participantToStudent.set(p.id, p.student_id);
+    }
+
+    // Link results → participant → student → academy to count medals
+    for (const r of (results || [])) {
+      const studentId = participantToStudent.get(r.participant_id);
+      if (!studentId) continue;
+      const academyId = studentAcademyMap.get(studentId);
+      if (!academyId) continue;
+
+      if (!academyMedals.has(academyId)) {
+        academyMedals.set(academyId, { gold: 0, silver: 0, bronze: 0 });
+      }
+      const m = academyMedals.get(academyId)!;
+      if (r.medal === "gold") m.gold++;
+      else if (r.medal === "silver") m.silver++;
+      else if (r.medal === "bronze") m.bronze++;
+    }
+
+    // Count graduates per academy
     for (const acad of academies) {
       const gradCount = (students || []).filter(s => s.academy_id === acad.id && (s.status === "graduated" || s.status === "promoted")).length;
       academyVictories.set(acad.id, gradCount);
