@@ -21,10 +21,14 @@ interface Props {
   currentTurn: number;
   myRole: string;
   onCreated: (cityId: string) => void;
+  /** Pre-selected hex coordinates from the map */
+  targetQ?: number;
+  targetR?: number;
 }
 
 const FoundSettlementDialog = ({
   open, onClose, sessionId, currentPlayerName, currentTurn, myRole, onCreated,
+  targetQ, targetR,
 }: Props) => {
   const [name, setName] = useState("");
   const [flavorPrompt, setFlavorPrompt] = useState("");
@@ -85,6 +89,7 @@ const FoundSettlementDialog = ({
           tags: selectedTags.length > 0 ? selectedTags : [],
           flavorPrompt: flavorPrompt.trim() || null,
           legend: legend.trim() || null,
+          ...(targetQ !== undefined && targetR !== undefined ? { provinceQ: targetQ, provinceR: targetR } : {}),
         },
       });
 
