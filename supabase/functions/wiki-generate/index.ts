@@ -39,9 +39,31 @@ Deno.serve(async (req) => {
 
     // Fetch flavor_prompt from the source entity (city, province, etc.)
     let flavorPrompt = "";
+    let athleteContext = "";
     if (entityType === "city") {
       const { data: cityData } = await sb.from("cities").select("flavor_prompt").eq("id", entityId).maybeSingle();
       flavorPrompt = (cityData as any)?.flavor_prompt || "";
+    }
+
+    // ═══ ATHLETE CONTEXT: If entity is a person, check if they're a games athlete ═══
+    if (entityType === "person" && entityId) {
+      const { data: gpData } = await sb.from("great_persons")
+        .select("person_type, flavor_trait, bio, city_id")
+        .eq("id", entityId).maybeSingle();
+      if (gpData && gpData.person_type === "Hero") {
+        athleteContext = `DŮLEŽITÉ: Tato osoba je SPORTOVEC/ATLET — ${gpData.flavor_trait || "Hrdina Her"}. ${gpData.bio || ""}. Piš o něm jako o sportovci — jeho atletické úspěchy, tělesné schopnosti, tréninky, sláva na hrách. NEPIŠ o něm jako o diplomatovi nebo politikovi.`;
+        // Also fetch medals from games_results via games_participants
+        try {
+          const { data: participations } = await sb.from("games_participants")
+            .select("athlete_name, total_medals, is_legend, form, festival_id")
+            .eq("great_person_id", entityId);
+          if (participations && participations.length > 0) {
+            const totalMedals = participations.reduce((acc: number, p: any) => acc + (p.total_medals || 0), 0);
+            const isLegend = participations.some((p: any) => p.is_legend);
+            athleteContext += ` Celkem ${totalMedals} medailí. ${isLegend ? "Je LEGENDOU HER." : ""}`;
+          }
+        } catch (_) {}
+      }
     }
 
     // Fetch lore bible + prompt_rules for consistency
@@ -96,7 +118,9 @@ Deno.serve(async (req) => {
       `Jsi encyklopedický kronikář. Napiš STATICKOU IDENTITU entity (česky, ${maxLength}).`,
       `Tón: ${tone}.`,
       writingInstructions,
-      `Zaměř se na: geografii, kulturu, ekonomiku a demografii. NEPIŠ historii — ta bude doplněna později.`,
+      entityType === "person" && athleteContext
+        ? `${athleteContext}`
+        : `Zaměř se na: geografii, kulturu, ekonomiku a demografii. NEPIŠ historii — ta bude doplněna později.`,
       `DŮLEŽITÉ: Pokud hráč napsal vlastní legendu nebo flavor prompt, MUSÍŠ je respektovat a integrovat.`,
       `DŮLEŽITÉ: Pokud existuje Prolog světa (Kronika 0), MUSÍŠ navázat na jeho kontext — legendární postavy, mýty, války a místa z Prologu musí být konzistentně reflektovány.`,
       chronicle0Text ? `KRONIKA NULTÉHO ROKU (Prolog světa — kanonický zdroj pravdy o prehistorii):\n${chronicle0Text.substring(0, 3000)}` : "",
