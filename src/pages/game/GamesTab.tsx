@@ -435,40 +435,161 @@ const GamesTab = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, o
           {concludedFestivals.length === 0 ? (
             <p className="text-sm text-muted-foreground text-center p-8">Žádné ukončené hry v historii.</p>
           ) : (
-            concludedFestivals.map(f => (
-              <Card key={f.id} className="border-border bg-card/50 cursor-pointer hover:bg-card/70 transition-colors"
-                onClick={() => setSelectedFestival(selectedFestival === f.id ? null : f.id)}>
-                <CardContent className="p-3">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      {f.is_global ? <Trophy className="h-4 w-4 text-primary" /> : <Theater className="h-4 w-4 text-muted-foreground" />}
-                      <span className="font-display text-sm font-semibold">{f.name}</span>
-                    </div>
-                    <Badge className={STATUS_LABELS[f.status]?.color || ""} variant="outline">
-                      {STATUS_LABELS[f.status]?.label || f.status}
-                    </Badge>
-                  </div>
-                  <p className="text-[10px] text-muted-foreground mt-1">
-                    Rok {f.announced_turn}{f.concluded_turn ? ` – ${f.concluded_turn}` : ""} | Hostitel: {f.host_player}
-                  </p>
+            concludedFestivals.map(f => {
+              const fParticipants = participants.filter(p => p.festival_id === f.id);
+              const fResults = results.filter(r => r.festival_id === f.id);
+              const fIncidents = incidents.filter(i => i.festival_id === f.id);
+              const fBids = bids.filter(b => b.festival_id === f.id);
+              const legends = fParticipants.filter(p => p.is_legend);
+              const dead = fParticipants.filter(p => p.form === "dead");
 
-                  {selectedFestival === f.id && (
-                    <div className="mt-3 space-y-3">
-                      {(f as any).description && (
-                        <div className="prose prose-xs prose-invert max-w-none text-[11px] leading-relaxed whitespace-pre-wrap border-l-2 border-primary/30 pl-3">
-                          {(f as any).description}
-                        </div>
-                      )}
-                      <MedalTable
-                        participants={participants.filter(p => p.festival_id === f.id)}
-                        results={results.filter(r => r.festival_id === f.id)}
-                        disciplines={disciplines}
-                      />
+              // Build empire medal summary for this festival
+              const empireMedals: Record<string, { gold: number; silver: number; bronze: number }> = {};
+              for (const r of fResults) {
+                if (!r.medal) continue;
+                const p = fParticipants.find(pp => pp.id === r.participant_id);
+                if (!p) continue;
+                if (!empireMedals[p.player_name]) empireMedals[p.player_name] = { gold: 0, silver: 0, bronze: 0 };
+                if (r.medal === "gold") empireMedals[p.player_name].gold++;
+                if (r.medal === "silver") empireMedals[p.player_name].silver++;
+                if (r.medal === "bronze") empireMedals[p.player_name].bronze++;
+              }
+              const topEmpire = Object.entries(empireMedals).sort((a, b) =>
+                (b[1].gold * 100 + b[1].silver * 10 + b[1].bronze) - (a[1].gold * 100 + a[1].silver * 10 + a[1].bronze)
+              )[0];
+
+              const isExpanded = selectedFestival === f.id;
+
+              return (
+                <Card key={f.id} className={`border-border bg-card/50 cursor-pointer transition-colors ${isExpanded ? "border-primary/30" : "hover:bg-card/70"}`}
+                  onClick={() => setSelectedFestival(isExpanded ? null : f.id)}>
+                  <CardContent className="p-3">
+                    {/* Header */}
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        {f.is_global ? <Trophy className="h-4 w-4 text-primary" /> : <Theater className="h-4 w-4 text-muted-foreground" />}
+                        <span className="font-display text-sm font-semibold">{f.name}</span>
+                      </div>
+                      <Badge className={STATUS_LABELS[f.status]?.color || ""} variant="outline">
+                        {STATUS_LABELS[f.status]?.label || f.status}
+                      </Badge>
                     </div>
-                  )}
-                </CardContent>
-              </Card>
-            ))
+
+                    {/* Quick stats row */}
+                    <div className="flex items-center gap-3 mt-1.5 text-[10px] text-muted-foreground">
+                      <span>📅 Rok {f.announced_turn}{f.concluded_turn ? `–${f.concluded_turn}` : ""}</span>
+                      <span>🏟️ {f.host_player}</span>
+                      <span>👤 {fParticipants.length} atletů</span>
+                      {topEmpire && <span>🏅 {topEmpire[0]} ({topEmpire[1].gold}🥇)</span>}
+                      {legends.length > 0 && <span>⭐ {legends.length} legend</span>}
+                      {dead.length > 0 && <span className="text-red-400">💀 {dead.length}</span>}
+                      {fIncidents.length > 0 && <span className="text-orange-400">⚠ {fIncidents.length}</span>}
+                    </div>
+
+                    {isExpanded && (
+                      <div className="mt-4 space-y-4" onClick={e => e.stopPropagation()}>
+                        {/* AI Narrative */}
+                        {(f as any).description && (
+                          <div className="prose prose-xs prose-invert max-w-none text-[11px] leading-relaxed whitespace-pre-wrap border-l-2 border-primary/30 pl-3 bg-primary/5 rounded-r p-3">
+                            {(f as any).description}
+                          </div>
+                        )}
+
+                        {/* Empire standings for this festival */}
+                        {Object.keys(empireMedals).length > 0 && (
+                          <div>
+                            <p className="text-xs font-display font-semibold mb-1.5 flex items-center gap-1">
+                              <Crown className="h-3.5 w-3.5 text-primary" /> Pořadí říší
+                            </p>
+                            <div className="space-y-1">
+                              {Object.entries(empireMedals)
+                                .sort((a, b) => (b[1].gold * 100 + b[1].silver * 10 + b[1].bronze) - (a[1].gold * 100 + a[1].silver * 10 + a[1].bronze))
+                                .map(([name, m], idx) => (
+                                  <div key={name} className={`flex items-center justify-between text-xs py-1 px-2 rounded ${idx === 0 ? "bg-primary/10" : "bg-card"}`}>
+                                    <span className="font-display">{idx + 1}. {name}</span>
+                                    <span className="font-mono text-[10px]">{m.gold}🥇 {m.silver}🥈 {m.bronze}🥉</span>
+                                  </div>
+                                ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Legends */}
+                        {legends.length > 0 && (
+                          <div>
+                            <p className="text-xs font-display font-semibold mb-1 flex items-center gap-1">
+                              <Star className="h-3.5 w-3.5 text-yellow-400" /> Legendy her
+                            </p>
+                            <div className="flex flex-wrap gap-1.5">
+                              {legends.map(l => (
+                                <Badge key={l.id} variant="outline" className="bg-yellow-500/10 text-yellow-400 border-yellow-500/30 text-[10px]">
+                                  ⭐ {l.athlete_name} ({l.player_name})
+                                </Badge>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Fallen athletes */}
+                        {dead.length > 0 && (
+                          <div>
+                            <p className="text-xs font-display font-semibold mb-1 flex items-center gap-1">
+                              <Skull className="h-3.5 w-3.5 text-red-400" /> Padlí v aréně
+                            </p>
+                            <div className="flex flex-wrap gap-1.5">
+                              {dead.map(d => (
+                                <Badge key={d.id} variant="outline" className="bg-red-500/10 text-red-400 border-red-500/30 text-[10px]">
+                                  💀 {d.athlete_name} ({d.player_name})
+                                </Badge>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Incidents */}
+                        {fIncidents.length > 0 && (
+                          <div>
+                            <p className="text-xs font-display font-semibold mb-1 flex items-center gap-1">
+                              <AlertTriangle className="h-3.5 w-3.5 text-orange-400" /> Incidenty
+                            </p>
+                            {fIncidents.map(inc => (
+                              <div key={inc.id} className="p-2 rounded border border-orange-500/20 bg-orange-500/5 text-[10px] mb-1">
+                                <Badge variant="outline" className="text-[8px] mr-1">{inc.severity}</Badge>
+                                {inc.description}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        {/* Candidacy bids */}
+                        {fBids.length > 0 && (
+                          <div>
+                            <p className="text-xs font-display font-semibold mb-1 flex items-center gap-1">
+                              <Gavel className="h-3.5 w-3.5 text-muted-foreground" /> Kandidatura ({fBids.length} měst)
+                            </p>
+                            <div className="space-y-1">
+                              {fBids.map((b, idx) => (
+                                <div key={b.id} className={`flex items-center justify-between text-[10px] py-1 px-2 rounded ${b.is_winner ? "bg-primary/10 border border-primary/20" : "bg-card"}`}>
+                                  <span>{b.is_winner ? "🏆" : `${idx + 1}.`} {b.pitch_text || b.player_name} — {b.gold_invested}💰</span>
+                                  <span className="font-mono">{b.total_bid_score.toFixed(1)}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Full results */}
+                        <MedalTable
+                          participants={fParticipants}
+                          results={fResults}
+                          disciplines={disciplines}
+                        />
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              );
+            })
           )}
         </TabsContent>
       </Tabs>
@@ -886,6 +1007,83 @@ function GlobalMedalTally({ sessionId, festivals, participants, results, discipl
               </div>
             ))}
           </div>
+        </CardContent>
+      </Card>
+
+      {/* Rivalries */}
+      {rivalryPairs.length > 0 && (
+        <Card className="border-orange-500/20 bg-orange-500/5">
+          <CardContent className="p-3">
+            <p className="text-xs font-display font-semibold flex items-center gap-1">
+              <Sword className="h-3.5 w-3.5 text-orange-400" />
+              Rivalita
+            </p>
+            {rivalryPairs.map(r => (
+              <p key={r} className="text-[10px] text-muted-foreground mt-1">
+                ⚔️ {r} — těsný souboj o dominanci ve Velkých hrách!
+              </p>
+            ))}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Hall of Fame — Top Athletes */}
+      <Card className="border-yellow-500/20 bg-card/50">
+        <CardHeader className="pb-2">
+          <CardTitle className="font-display text-sm flex items-center gap-2">
+            <Star className="h-4 w-4 text-yellow-400" />
+            Síň slávy — Nejlepší atleti
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {(() => {
+            // Build per-athlete stats
+            const athleteStats: Record<string, { name: string; player: string; gold: number; silver: number; bronze: number; isLegend: boolean; traits: string[] }> = {};
+            for (const p of participants) {
+              const key = `${p.athlete_name}_${p.player_name}`;
+              if (!athleteStats[key]) {
+                athleteStats[key] = { name: p.athlete_name, player: p.player_name, gold: 0, silver: 0, bronze: 0, isLegend: p.is_legend, traits: p.traits || [] };
+              }
+              if (p.is_legend) athleteStats[key].isLegend = true;
+            }
+            for (const r of results) {
+              if (!r.medal) continue;
+              const p = participants.find(pp => pp.id === r.participant_id);
+              if (!p) continue;
+              const key = `${p.athlete_name}_${p.player_name}`;
+              if (!athleteStats[key]) continue;
+              if (r.medal === "gold") athleteStats[key].gold++;
+              if (r.medal === "silver") athleteStats[key].silver++;
+              if (r.medal === "bronze") athleteStats[key].bronze++;
+            }
+            const topAthletes = Object.values(athleteStats)
+              .filter(a => a.gold + a.silver + a.bronze > 0)
+              .sort((a, b) => (b.gold * 100 + b.silver * 10 + b.bronze) - (a.gold * 100 + a.silver * 10 + a.bronze))
+              .slice(0, 10);
+
+            if (topAthletes.length === 0) return <p className="text-xs text-muted-foreground">Žádní medailisté.</p>;
+
+            return (
+              <div className="space-y-1">
+                {topAthletes.map((a, idx) => (
+                  <div key={`${a.name}_${a.player}`} className={`flex items-center justify-between text-xs py-1.5 px-2 rounded ${idx === 0 ? "bg-yellow-500/10 border border-yellow-500/20" : "bg-card"}`}>
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="font-display text-muted-foreground font-bold w-4">{idx + 1}.</span>
+                      <span className="font-display font-semibold truncate">{a.name}</span>
+                      {a.isLegend && <Star className="h-3 w-3 text-yellow-400 shrink-0" />}
+                      <span className="text-[9px] text-muted-foreground truncate">({a.player})</span>
+                    </div>
+                    <div className="flex items-center gap-1 shrink-0">
+                      <span className="font-mono text-[10px]">{a.gold}🥇 {a.silver}🥈 {a.bronze}🥉</span>
+                      {a.traits.length > 0 && (
+                        <Badge variant="outline" className="text-[7px] ml-1">{a.traits[0]}</Badge>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            );
+          })()}
         </CardContent>
       </Card>
 
