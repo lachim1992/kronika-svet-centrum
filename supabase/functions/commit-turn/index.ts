@@ -830,14 +830,21 @@ Deno.serve(async (req) => {
 
     // ═══════════════════════════════════════════
     // 8d. ACADEMY TICK — auto-create schools, training cycles, funding
+    //     Runs for BOTH human players AND AI factions
     // ═══════════════════════════════════════════
     try {
-      // Run academy-tick for each player
-      const allPlayers = [
-        ...(players || []).map((p: any) => p.player_name),
-      ];
+      // Gather all faction names (human + AI)
+      const { data: academyPlayers } = await supabase.from("game_players")
+        .select("player_name").eq("session_id", sessionId);
+      const { data: academyAIFactions } = await supabase.from("ai_factions")
+        .select("faction_name").eq("session_id", sessionId).eq("is_active", true);
+
+      const academyEntities = new Set<string>();
+      for (const p of (academyPlayers || [])) academyEntities.add(p.player_name);
+      for (const f of (academyAIFactions || [])) academyEntities.add(f.faction_name);
+
       let academyResults: any[] = [];
-      for (const pName of allPlayers) {
+      for (const pName of academyEntities) {
         try {
           const { data: atData } = await supabase.functions.invoke("academy-tick", {
             body: { session_id: sessionId, player_name: pName, turn_number: turnNumber + 1 },
