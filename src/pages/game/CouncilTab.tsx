@@ -10,11 +10,12 @@ import {
   Crown, Coins, Shield, Swords, Users, Eye, Church, Scroll, ScrollText,
   ChevronRight, Loader2, Sparkles, AlertTriangle, CheckCircle, Gavel,
   TrendingUp, TrendingDown, Minus, ThumbsUp, ThumbsDown, MinusCircle,
-  Landmark, ArrowRight, Zap, Target,
+  Landmark, ArrowRight, Zap, Target, Bell,
 } from "lucide-react";
 import { toast } from "sonner";
 import { FACTION_TYPES } from "@/lib/cityGovernance";
 import { computeFactionReactions, computeVotingResult, computeDecreeImpacts, type FactionVote } from "@/lib/factionCouncil";
+import { TurnReportPanel } from "@/components/TurnReportPanel";
 
 interface Props {
   sessionId: string;
@@ -34,9 +35,10 @@ interface Props {
   onRefetch: () => void;
 }
 
-type AdvisorId = "economy" | "stability" | "military" | "diplomacy" | "intelligence" | "culture" | "city_council";
+type AdvisorId = "briefing" | "economy" | "stability" | "military" | "diplomacy" | "intelligence" | "culture" | "city_council";
 
 const ADVISORS: { id: AdvisorId; label: string; icon: React.ElementType; title: string }[] = [
+  { id: "briefing", label: "Hlášení", icon: Bell, title: "Hlášení rádců" },
   { id: "economy", label: "Ekonomie", icon: Coins, title: "Ministr obchodu" },
   { id: "stability", label: "Stabilita", icon: Shield, title: "Ministr vnitra" },
   { id: "military", label: "Vojenství", icon: Swords, title: "Vojevůdce" },
@@ -59,7 +61,7 @@ const CouncilTab = ({
   events, cities, resources, armies, trades, declarations, worldCrises, cityStates, players,
   onRefetch,
 }: Props) => {
-  const [activeAdvisor, setActiveAdvisor] = useState<AdvisorId>("economy");
+  const [activeAdvisor, setActiveAdvisor] = useState<AdvisorId>("briefing");
   const [showDecree, setShowDecree] = useState(false);
   const [decreeType, setDecreeType] = useState("law");
   const [decreeText, setDecreeText] = useState("");
@@ -1015,6 +1017,24 @@ const CouncilTab = ({
                     </div>
                   </div>
                 )}
+              </div>
+            ) : activeAdvisor === "briefing" ? (
+              /* ── TURN BRIEFING (integrated) ── */
+              <div className="manuscript-card p-5 space-y-4">
+                <div className="flex items-center gap-3 mb-2">
+                  <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                    <Bell className="h-5 w-5 text-illuminated" />
+                  </div>
+                  <div>
+                    <h3 className="font-decorative text-base text-foreground">Hlášení rádců</h3>
+                    <p className="text-[11px] text-muted-foreground font-body">Sumarizace minulého kola • Rok {currentTurn - 1}</p>
+                  </div>
+                </div>
+                <TurnReportPanel
+                  sessionId={sessionId}
+                  playerName={currentPlayerName}
+                  currentTurn={currentTurn}
+                />
               </div>
             ) : (
               /* ── ADVISOR REPORT ── */

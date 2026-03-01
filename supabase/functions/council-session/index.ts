@@ -50,6 +50,7 @@ serve(async (req) => {
       { data: aiFactions },
       { data: academies },
       { data: realm },
+      { data: cachedBriefing },
     ] = await Promise.all([
       sb.from("cities").select("*").eq("session_id", sessionId).eq("owner_player", playerName),
       sb.from("player_resources").select("*").eq("session_id", sessionId).eq("player_name", playerName),
@@ -67,6 +68,7 @@ serve(async (req) => {
       sb.from("ai_factions").select("*").eq("session_id", sessionId).eq("is_active", true),
       sb.from("academies").select("*").eq("session_id", sessionId).eq("player_name", playerName),
       sb.from("realm_resources").select("sport_funding_pct, gold_reserve").eq("session_id", sessionId).eq("player_name", playerName).maybeSingle(),
+      sb.from("turn_briefings").select("briefing_text").eq("session_id", sessionId).eq("player_name", playerName).eq("turn_number", currentTurn - 1).maybeSingle(),
     ]);
 
     // ── Analyze key metrics ──
@@ -139,7 +141,7 @@ PRAVIDLA:
     const userPrompt = `=== ZASEDÁNÍ KRÁLOVSKÉ RADY ===
 Vládce: ${playerName}
 Kolo: ${currentTurn}
-
+${cachedBriefing?.briefing_text ? `\n=== HLÁŠENÍ RÁDCŮ Z MINULÉHO KOLA ===\n${cachedBriefing.briefing_text}\n` : ""}
 === MĚSTA (${cityData.length}) ===
 ${cityData.map(c => `- ${c.name}: pop ${c.population}, stabilita ${c.stability}, úroveň ${c.level}, status ${c.status}${c.famine ? `, HLADOMOR (závažnost ${c.famineSeverity}, ${c.famineConsecutive} kol)` : ""}${c.epidemic ? ", EPIDEMIE" : ""}, obilí: ${c.grainProd} prod / ${c.grainCons} spotř, rezerva ${c.grainReserve}, legitimita ${c.legitimacy}`).join("\n")}
 

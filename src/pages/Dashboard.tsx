@@ -308,6 +308,7 @@ const Dashboard = () => {
           players={players}
           gameMode={session?.game_mode}
           myTurnClosed={players.find((p: any) => p.player_name === myPlayerName)?.turn_closed || false}
+          onOpenCouncil={() => setActiveTab("council")}
         />
       }
       resourceHud={

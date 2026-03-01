@@ -7,12 +7,10 @@ import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem,
   DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { toast } from "sonner";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import ChronicleHubLogo from "@/components/ChronicleHubLogo";
-import { TurnReportPanel } from "@/components/TurnReportPanel";
 import TurnCloseBadge from "@/components/layout/TurnCloseBadge";
 
 interface OtherGame {
@@ -35,9 +33,10 @@ interface Props {
   players?: any[];
   gameMode?: string;
   myTurnClosed?: boolean;
+  onOpenCouncil?: () => void;
 }
 
-const AppHeader = ({ roomCode, currentTurn, worldName, playerName, myRole, currentSessionId, onNextTurn, onCloseTurn, turnProcessing, players = [], gameMode, myTurnClosed }: Props) => {
+const AppHeader = ({ roomCode, currentTurn, worldName, playerName, myRole, currentSessionId, onNextTurn, onCloseTurn, turnProcessing, players = [], gameMode, myTurnClosed, onOpenCouncil }: Props) => {
   const navigate = useNavigate();
   const { signOut, user } = useAuth();
   const [isLight, setIsLight] = useState(() => document.documentElement.classList.contains("light"));
@@ -49,7 +48,7 @@ const AppHeader = ({ roomCode, currentTurn, worldName, playerName, myRole, curre
 
   const [otherGames, setOtherGames] = useState<OtherGame[]>([]);
   const [notifCount, setNotifCount] = useState(0);
-  const [reportOpen, setReportOpen] = useState(false);
+  
   // Restore theme from localStorage on mount
   useEffect(() => {
     const saved = localStorage.getItem("theme");
@@ -180,21 +179,20 @@ const AppHeader = ({ roomCode, currentTurn, worldName, playerName, myRole, curre
           )}
 
           {currentSessionId && currentTurn > 1 && (
-            <Popover open={reportOpen} onOpenChange={setReportOpen}>
-              <PopoverTrigger asChild>
-                <Button variant="ghost" size="icon" className="h-8 w-8 relative text-muted-foreground hover:text-foreground">
-                  <Bell className="h-4 w-4" />
-                  {notifCount > 0 && (
-                    <span className="absolute -top-0.5 -right-0.5 h-4 min-w-[16px] rounded-full bg-primary text-primary-foreground text-[10px] font-bold flex items-center justify-center px-1">
-                      {notifCount > 9 ? "9+" : notifCount}
-                    </span>
-                  )}
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-[420px] p-3" align="end">
-                <TurnReportPanel sessionId={currentSessionId} playerName={playerName} currentTurn={currentTurn} />
-              </PopoverContent>
-            </Popover>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 relative text-muted-foreground hover:text-foreground"
+              onClick={onOpenCouncil}
+              title="Hlášení rádců"
+            >
+              <Bell className="h-4 w-4" />
+              {notifCount > 0 && (
+                <span className="absolute -top-0.5 -right-0.5 h-4 min-w-[16px] rounded-full bg-primary text-primary-foreground text-[10px] font-bold flex items-center justify-center px-1">
+                  {notifCount > 9 ? "9+" : notifCount}
+                </span>
+              )}
+            </Button>
           )}
 
           <Button
