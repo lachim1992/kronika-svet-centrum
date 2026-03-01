@@ -118,17 +118,40 @@ const StudentDetailModal = ({
         .eq("session_id", sessionId)
         .eq("student_id", student.id);
 
+      // Find great_person_id from participant records or directly from great_persons
+      const gpIdFromParts = parts?.find(p => p.great_person_id)?.great_person_id;
+
+      // Fetch wiki: first try via great_person entity_id, fallback to name
+      const fetchWiki = async () => {
+        if (gpIdFromParts) {
+          const { data } = await supabase.from("wiki_entries")
+            .select("id, entity_name, summary, image_url, body_md, ai_description")
+            .eq("session_id", sessionId).eq("entity_type", "person").eq("entity_id", gpIdFromParts).maybeSingle();
+          if (data) return data;
+        }
+        // Fallback: search by name + player_name via great_persons
+        const { data: gp } = await supabase.from("great_persons")
+          .select("id").eq("session_id", sessionId).eq("name", student.name).eq("person_type", "Hero").maybeSingle();
+        if (gp) {
+          const { data } = await supabase.from("wiki_entries")
+            .select("id, entity_name, summary, image_url, body_md, ai_description")
+            .eq("session_id", sessionId).eq("entity_type", "person").eq("entity_id", gp.id).maybeSingle();
+          if (data) return data;
+        }
+        // Last resort: name match
+        const { data } = await supabase.from("wiki_entries")
+          .select("id, entity_name, summary, image_url, body_md, ai_description")
+          .eq("session_id", sessionId).eq("entity_type", "person").eq("entity_name", student.name).maybeSingle();
+        return data;
+      };
+
       if (!parts || parts.length === 0) {
         setParticipations([]);
         setResults([]);
         setIntrigues([]);
         setIncidents([]);
         setFeedMentions([]);
-        // Still fetch wiki
-        const { data: wiki } = await supabase.from("wiki_entries")
-          .select("id, entity_name, summary, image_url, body_md, ai_description")
-          .eq("session_id", sessionId).eq("entity_type", "person").eq("entity_name", student.name).maybeSingle();
-        setWikiEntry(wiki);
+        setWikiEntry(await fetchWiki());
         setLoading(false);
         return;
       }
@@ -144,7 +167,7 @@ const StudentDetailModal = ({
         { data: allIntrigues },
         { data: allIncidents },
         { data: allFeed },
-        { data: wiki },
+        wiki,
       ] = await Promise.all([
         supabase.from("games_results")
           .select("participant_id, discipline_id, medal, rank, total_score, festival_id")
@@ -162,9 +185,7 @@ const StudentDetailModal = ({
           .in("participant_id", partIds)
           .order("sequence_num", { ascending: true })
           .limit(30),
-        supabase.from("wiki_entries")
-          .select("id, entity_name, summary, image_url, body_md, ai_description")
-          .eq("session_id", sessionId).eq("entity_type", "person").eq("entity_name", student.name).maybeSingle(),
+        fetchWiki(),
       ]);
 
       const discMap = new Map((disciplines || []).map(d => [d.id, d]));
