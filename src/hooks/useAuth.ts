@@ -45,13 +45,18 @@ export function useAuthProvider() {
   };
 
   useEffect(() => {
+    // Safety timeout - if auth doesn't resolve in 5s, stop loading
+    const timeout = setTimeout(() => {
+      setLoading(false);
+    }, 5000);
+
     // Set up listener BEFORE getSession
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (_event, newSession) => {
+      (_event, newSession) => {
+        clearTimeout(timeout);
         setSession(newSession);
         setUser(newSession?.user ?? null);
         if (newSession?.user) {
-          // Use setTimeout to avoid Supabase deadlock
           setTimeout(() => fetchProfile(newSession.user.id), 0);
         } else {
           setProfile(null);
@@ -61,6 +66,7 @@ export function useAuthProvider() {
     );
 
     supabase.auth.getSession().then(({ data: { session: existing } }) => {
+      clearTimeout(timeout);
       setSession(existing);
       setUser(existing?.user ?? null);
       if (existing?.user) {
@@ -68,10 +74,14 @@ export function useAuthProvider() {
       }
       setLoading(false);
     }).catch(() => {
+      clearTimeout(timeout);
       setLoading(false);
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      clearTimeout(timeout);
+      subscription.unsubscribe();
+    };
   }, []);
 
   const signOut = async () => {
