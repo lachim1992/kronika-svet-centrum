@@ -201,7 +201,7 @@ const NationalQualificationPanel = ({ sessionId, festivalId, playerName, onCompl
                         </div>
 
                         <div className="text-right shrink-0">
-                          <span className="font-mono text-sm font-bold text-primary">{r.totalScore.toFixed(1)}</span>
+                          <span className="font-mono text-sm font-bold text-primary">{(r.totalScore ?? 0).toFixed(1)}</span>
                           <p className="text-[8px] text-muted-foreground">celkem</p>
                         </div>
                       </div>
@@ -211,7 +211,7 @@ const NationalQualificationPanel = ({ sessionId, festivalId, playerName, onCompl
                         <div className="mt-2 pt-2 border-t border-border/50 flex flex-wrap gap-1">
                           {r.disciplines.map((d, i) => (
                             <span key={i} className="text-[8px] font-mono text-muted-foreground bg-muted/30 px-1.5 py-0.5 rounded">
-                              {d.discipline_key}: {d.score.toFixed(1)}
+                              {d.discipline_key}: {(d.score ?? 0).toFixed(1)}
                             </span>
                           ))}
                         </div>
