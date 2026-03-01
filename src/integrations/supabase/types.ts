@@ -3013,6 +3013,98 @@ export type Database = {
           },
         ]
       }
+      game_records: {
+        Row: {
+          battle_id: string | null
+          category: string
+          created_at: string
+          description: string
+          discipline_id: string | null
+          discipline_name: string | null
+          entity_id: string | null
+          entity_name: string
+          entity_type: string
+          festival_id: string | null
+          festival_name: string | null
+          id: string
+          image_prompt: string | null
+          image_url: string | null
+          margin: number | null
+          player_name: string
+          portrait_url: string | null
+          previous_record: number | null
+          record_type: string
+          score: number | null
+          session_id: string
+          title: string
+          turn_number: number
+          wiki_entry_id: string | null
+          world_event_id: string | null
+        }
+        Insert: {
+          battle_id?: string | null
+          category?: string
+          created_at?: string
+          description: string
+          discipline_id?: string | null
+          discipline_name?: string | null
+          entity_id?: string | null
+          entity_name: string
+          entity_type?: string
+          festival_id?: string | null
+          festival_name?: string | null
+          id?: string
+          image_prompt?: string | null
+          image_url?: string | null
+          margin?: number | null
+          player_name: string
+          portrait_url?: string | null
+          previous_record?: number | null
+          record_type?: string
+          score?: number | null
+          session_id: string
+          title: string
+          turn_number?: number
+          wiki_entry_id?: string | null
+          world_event_id?: string | null
+        }
+        Update: {
+          battle_id?: string | null
+          category?: string
+          created_at?: string
+          description?: string
+          discipline_id?: string | null
+          discipline_name?: string | null
+          entity_id?: string | null
+          entity_name?: string
+          entity_type?: string
+          festival_id?: string | null
+          festival_name?: string | null
+          id?: string
+          image_prompt?: string | null
+          image_url?: string | null
+          margin?: number | null
+          player_name?: string
+          portrait_url?: string | null
+          previous_record?: number | null
+          record_type?: string
+          score?: number | null
+          session_id?: string
+          title?: string
+          turn_number?: number
+          wiki_entry_id?: string | null
+          world_event_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "game_records_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       game_sessions: {
         Row: {
           created_at: string

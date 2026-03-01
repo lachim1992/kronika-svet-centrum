@@ -15,6 +15,7 @@ import LiveGamesFeed from "@/components/LiveGamesFeed";
 import GladiatorPanel from "@/components/GladiatorPanel";
 import NationalQualificationPanel from "@/components/NationalQualificationPanel";
 import GamesRevealOverlay from "@/components/GamesRevealOverlay";
+import HallOfRecords from "@/components/HallOfRecords";
 
 interface Props {
   sessionId: string;
@@ -282,7 +283,7 @@ const GamesTab = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, o
       </div>
 
       <Tabs defaultValue="active" className="space-y-4">
-        <TabsList className="grid w-full grid-cols-4 sm:grid-cols-7">
+        <TabsList className="grid w-full grid-cols-4 sm:grid-cols-8">
           <TabsTrigger value="active" className="font-display text-xs">
             <Flame className="h-3.5 w-3.5 mr-1" />Aktivní
           </TabsTrigger>
@@ -294,6 +295,9 @@ const GamesTab = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, o
           </TabsTrigger>
           <TabsTrigger value="rankings" className="font-display text-xs">
             <TrendingUp className="h-3.5 w-3.5 mr-1" />Žebříček
+          </TabsTrigger>
+          <TabsTrigger value="records" className="font-display text-xs">
+            <Trophy className="h-3.5 w-3.5 mr-1" />Rekordy
           </TabsTrigger>
           <TabsTrigger value="gladiators" className="font-display text-xs">
             <Skull className="h-3.5 w-3.5 mr-1" />Aréna
@@ -391,7 +395,11 @@ const GamesTab = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, o
           <SchoolRankings sessionId={sessionId} currentPlayerName={currentPlayerName} />
         </TabsContent>
 
-        {/* ─── GLADIATORS ─── */}
+        {/* ─── HALL OF RECORDS ─── */}
+        <TabsContent value="records">
+          <HallOfRecords sessionId={sessionId} currentPlayerName={currentPlayerName} />
+        </TabsContent>
+
         <TabsContent value="gladiators">
           <GladiatorPanel sessionId={sessionId} currentPlayerName={currentPlayerName} />
         </TabsContent>
