@@ -174,12 +174,15 @@ Tvým úkolem je shrnout události minulého roku (kola ${lastTurn}) do krátké
 Formátuj v Markdown. Používej **tučné** pro důležitá jména a čísla. Nepoužívej nadpisy #, jen odstavce.
 Piš max 400 slov. Nikdy nevymýšlej data — interpretuj jen to, co dostáváš.`;
 
-    const result = await invokeAI({
-      model: "google/gemini-2.5-flash",
-      systemPrompt,
-      userPrompt: `Data pro briefing roku ${lastTurn}:\n\n${dataBlock}`,
-      maxTokens: 800,
-    }, { sessionId, requestId: `briefing-${sessionId}-${lastTurn}`, premise, premisePrompt: "", turnNumber: lastTurn });
+    const result = await invokeAI(
+      { sessionId, requestId: `briefing-${sessionId}-${lastTurn}`, premise, premisePrompt: "", turnNumber: lastTurn },
+      {
+        model: "google/gemini-2.5-flash",
+        systemPrompt,
+        userPrompt: `Data pro briefing roku ${lastTurn}:\n\n${dataBlock}`,
+        maxTokens: 800,
+      },
+    );
 
     const briefingText = result.ok && result.data?.choices?.[0]?.message?.content
       ? result.data.choices[0].message.content
