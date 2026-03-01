@@ -56,8 +56,23 @@ Deno.serve(async (req) => {
 
     const allResults: any[] = [];
     let anySeasonComplete = false;
+    let playoffResults: any = null;
+
     for (const [tier, tierTeams] of tierMap.entries()) {
       if (tierTeams.length < 2) continue;
+
+      // Check if there's an active season in playoff phase
+      const { data: activeSeason } = await sb.from("league_seasons").select("*")
+        .eq("session_id", session_id).eq("league_tier", tier).eq("status", "active").maybeSingle();
+
+      if (activeSeason && activeSeason.playoff_status && activeSeason.playoff_status !== "none" && activeSeason.playoff_status !== "completed") {
+        // Play playoff round
+        const result = await playPlayoffRound(sb, session_id, currentTurn, activeSeason, tierTeams);
+        playoffResults = result;
+        if (result.seasonComplete) anySeasonComplete = true;
+        continue;
+      }
+
       const result = await playTierRound(sb, session_id, currentTurn, tier, tierTeams);
       if (result.matches) allResults.push(...result.matches);
       if (result.seasonComplete) anySeasonComplete = true;
@@ -65,17 +80,19 @@ Deno.serve(async (req) => {
 
     if (anySeasonComplete) await handlePromotionRelegation(sb, session_id);
 
-    // Dynamic stat changes (form, aging, growth, injuries)
+    // Dynamic stat changes
     await applyDynamicStatChanges(sb, session_id, currentTurn);
 
     // AI commentary
     let commentary = "";
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (LOVABLE_API_KEY && allResults.length > 0) {
+    const commentaryMatches = playoffResults?.matches || allResults;
+    if (LOVABLE_API_KEY && commentaryMatches.length > 0) {
       try {
-        const prompt = `Jsi kronikář starověké ligy Sphaera – brutálního týmového sportu s kovovou koulí, kde se hráči mohou fyzicky napadat. Napiš krátký komentář (5-8 vět, česky) k výsledkům kola:
-${allResults.map(m => `${m.home} ${m.homeScore}:${m.awayScore} ${m.away} (vyřazení: ${m.knockouts || 0})`).join("\n")}
-Styl: dramatický, kronikářský, krvavý. Zmín brutální momenty, vyřazené hráče, crowd reakce. NEPOUŽÍVEJ markdown.`;
+        const isPlayoff = !!playoffResults;
+        const prompt = `Jsi kronikář starověké ligy Sphaera – brutálního týmového sportu s kovovou koulí. Napiš krátký komentář (5-8 vět, česky) k výsledkům ${isPlayoff ? "playoff zápasů" : "kola"}:
+${commentaryMatches.map((m: any) => `${m.home} ${m.homeScore}:${m.awayScore} ${m.away} (vyřazení: ${m.knockouts || 0})${m.playoffRound ? ` [${m.playoffRound}]` : ""}`).join("\n")}
+Styl: dramatický, kronikářský, krvavý. ${isPlayoff ? "Zdůrazni váhu vyřazovacích zápasů, kdo postupuje, kdo je eliminován." : "Zmín brutální momenty, vyřazené hráče, crowd reakce."} NEPOUŽÍVEJ markdown.`;
         const aiResp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
           method: "POST",
           headers: { "Content-Type": "application/json", Authorization: `Bearer ${LOVABLE_API_KEY}` },
@@ -85,7 +102,14 @@ Styl: dramatický, kronikářský, krvavý. Zmín brutální momenty, vyřazené
       } catch (e) { console.error("AI commentary:", e); }
     }
 
-    return new Response(JSON.stringify({ ok: true, round: allResults[0]?.round || 0, matches: allResults, commentary, seasonComplete: anySeasonComplete }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    return new Response(JSON.stringify({
+      ok: true,
+      round: allResults[0]?.round || 0,
+      matches: allResults,
+      commentary,
+      seasonComplete: anySeasonComplete,
+      playoff: playoffResults || null,
+    }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
   } catch (e: any) {
     console.error("league-play-round error:", e);
     return new Response(JSON.stringify({ error: e.message }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
@@ -118,13 +142,120 @@ async function applyDynamicStatChanges(sb: any, session_id: string, currentTurn:
     const posW: Record<string, number[]> = {
       praetor: [0.15, 0.15, 0.35, 0.2], guardian: [0.35, 0.1, 0.2, 0.25],
       striker: [0.15, 0.35, 0.3, 0.1], carrier: [0.1, 0.2, 0.45, 0.15], exactor: [0.4, 0.15, 0.1, 0.2],
-      // Legacy fallback
       goalkeeper: [0.15, 0.1, 0.4, 0.2], defender: [0.3, 0.15, 0.2, 0.25], midfielder: [0.15, 0.2, 0.35, 0.25], attacker: [0.15, 0.35, 0.3, 0.1],
     };
     const w = posW[p.position] || [0.25, 0.25, 0.25, 0.25];
     u.overall_rating = Math.round((str * w[0] + spd * w[1] + tch * w[2] + sta * w[3]) * 0.7 + (u.form ?? form) * 0.3);
     if (Object.keys(u).length > 0) await sb.from("league_players").update(u).eq("id", p.id);
   }
+}
+
+// ========== PLAY PLAYOFF ROUND ==========
+async function playPlayoffRound(sb: any, session_id: string, currentTurn: number, season: any, tierTeams: any[]) {
+  const bracket: any[] = season.playoff_bracket || [];
+  const status = season.playoff_status;
+
+  // Find scheduled matches for current playoff phase
+  const scheduled = bracket.filter((m: any) => m.round === status && m.status === "scheduled");
+  if (scheduled.length === 0) {
+    return { matches: [], seasonComplete: false };
+  }
+
+  const teamMap = new Map(tierTeams.map(t => [t.id, t]));
+  const teamIds = tierTeams.map(t => t.id);
+  const { data: allPlayers } = await sb.from("league_players").select("*").in("team_id", teamIds);
+  const playersByTeam = new Map<string, any[]>();
+  for (const p of (allPlayers || [])) { const l = playersByTeam.get(p.team_id) || []; l.push(p); playersByTeam.set(p.team_id, l); }
+
+  const matchResults: any[] = [];
+  const roundLabels: Record<string, string> = { quarterfinals: "Čtvrtfinále", semifinals: "Semifinále", final: "Finále" };
+
+  for (const pm of scheduled) {
+    const home = teamMap.get(pm.home_team_id), away = teamMap.get(pm.away_team_id);
+    if (!home || !away) continue;
+    const hp = (playersByTeam.get(home.id) || []).filter(p => !p.is_injured && (p.injury_turns || 0) === 0);
+    const ap = (playersByTeam.get(away.id) || []).filter(p => !p.is_injured && (p.injury_turns || 0) === 0);
+    const result = simulateSphaera(home, away, hp, ap);
+
+    pm.home_score = result.homeScore;
+    pm.away_score = result.awayScore;
+    pm.status = "played";
+    pm.winner_team_id = result.homeScore >= result.awayScore ? pm.home_team_id : pm.away_team_id;
+    pm.events = result.events;
+
+    // Update player stats from events
+    for (const evt of result.events) {
+      if (evt.type === "goal" && evt.player_id) { const { data: pl } = await sb.from("league_players").select("goals_scored, goals, form").eq("id", evt.player_id).maybeSingle(); if (pl) await sb.from("league_players").update({ goals_scored: (pl.goals_scored||0)+1, goals: (pl.goals||0)+1, form: Math.min(95, (pl.form||50)+4) }).eq("id", evt.player_id); }
+      if (evt.type === "breakthrough" && evt.player_id) { const { data: pl } = await sb.from("league_players").select("goals_scored, goals, form").eq("id", evt.player_id).maybeSingle(); if (pl) await sb.from("league_players").update({ goals_scored: (pl.goals_scored||0)+1, goals: (pl.goals||0)+1, form: Math.min(95, (pl.form||50)+6) }).eq("id", evt.player_id); }
+      if (evt.type === "assist" && evt.player_id) { const { data: pl } = await sb.from("league_players").select("assists, form").eq("id", evt.player_id).maybeSingle(); if (pl) await sb.from("league_players").update({ assists: (pl.assists||0)+1, form: Math.min(95, (pl.form||50)+2) }).eq("id", evt.player_id); }
+      if (evt.type === "knockout" && evt.player_id) { const { data: pl } = await sb.from("league_players").select("yellow_cards, form").eq("id", evt.player_id).maybeSingle(); if (pl) await sb.from("league_players").update({ yellow_cards: (pl.yellow_cards||0)+1, form: Math.min(95, (pl.form||50)+3) }).eq("id", evt.player_id); }
+      if (evt.type === "injury" && evt.player_id) await sb.from("league_players").update({ is_injured: true, injury_turns: 1+Math.floor(Math.random()*3) }).eq("id", evt.player_id);
+    }
+    for (const pid of [...result.homePlayed, ...result.awayPlayed]) { const { data: pl } = await sb.from("league_players").select("matches_played, condition, form").eq("id", pid).maybeSingle(); if (pl) await sb.from("league_players").update({ matches_played: (pl.matches_played||0)+1, condition: Math.max(20, (pl.condition||100)-12-Math.floor(Math.random()*12)), form: Math.max(10, Math.min(95, (pl.form||50)+(Math.random()>0.5?2:-2))) }).eq("id", pid); }
+
+    matchResults.push({
+      home: home.team_name, away: away.team_name,
+      homeScore: result.homeScore, awayScore: result.awayScore,
+      knockouts: result.knockouts, highlight: result.highlight,
+      events: result.events, playoffRound: roundLabels[status] || status,
+      crowdMood: result.crowdMood, tier: season.league_tier,
+    });
+  }
+
+  // Advance to next phase
+  let nextStatus = status;
+  let seasonComplete = false;
+  const allCurrentPlayed = bracket.filter((m: any) => m.round === status).every((m: any) => m.status === "played");
+
+  if (allCurrentPlayed) {
+    const winners = bracket.filter((m: any) => m.round === status && m.status === "played").map((m: any) => m.winner_team_id);
+
+    if (status === "quarterfinals" && winners.length === 4) {
+      // Create semifinals: winner of match 0 vs winner of match 3, winner of match 1 vs winner of match 2
+      bracket.push(
+        { round: "semifinals", match_index: 0, home_team_id: winners[0], away_team_id: winners[3], status: "scheduled" },
+        { round: "semifinals", match_index: 1, home_team_id: winners[1], away_team_id: winners[2], status: "scheduled" },
+      );
+      nextStatus = "semifinals";
+    } else if (status === "semifinals" && winners.length === 2) {
+      bracket.push(
+        { round: "final", match_index: 0, home_team_id: winners[0], away_team_id: winners[1], status: "scheduled" },
+      );
+      nextStatus = "final";
+    } else if (status === "final" && winners.length === 1) {
+      nextStatus = "completed";
+      seasonComplete = true;
+      // Crown champion
+      const championId = winners[0];
+      const ct = await sb.from("league_teams").select("titles_won, player_name").eq("id", championId).single();
+      if (ct?.data) {
+        await sb.from("league_teams").update({ titles_won: (ct.data.titles_won || 0) + 1 }).eq("id", championId);
+        const { data: a } = await sb.from("sports_associations").select("id, reputation").eq("session_id", session_id).eq("player_name", ct.data.player_name).maybeSingle();
+        if (a) await sb.from("sports_associations").update({ reputation: (a.reputation || 0) + 15 }).eq("id", a.id);
+      }
+      // Update season stats
+      const { data: fs } = await sb.from("league_standings").select("*").eq("season_id", season.id);
+      for (const st of (fs || [])) {
+        const { data: t } = await sb.from("league_teams").select("seasons_played, total_wins, total_draws, total_losses, total_goals_for, total_goals_against").eq("id", st.team_id).single();
+        if (t) await sb.from("league_teams").update({ seasons_played: (t.seasons_played||0)+1, total_wins: (t.total_wins||0)+st.wins, total_draws: (t.total_draws||0)+st.draws, total_losses: (t.total_losses||0)+st.losses, total_goals_for: (t.total_goals_for||0)+st.goals_for, total_goals_against: (t.total_goals_against||0)+st.goals_against }).eq("id", st.team_id);
+      }
+      await sb.from("league_seasons").update({
+        status: "concluded",
+        ended_turn: currentTurn,
+        champion_team_id: championId,
+        playoff_status: "completed",
+        playoff_bracket: bracket,
+      }).eq("id", season.id);
+      return { matches: matchResults, seasonComplete: true };
+    }
+  }
+
+  await sb.from("league_seasons").update({
+    playoff_status: nextStatus,
+    playoff_bracket: bracket,
+  }).eq("id", season.id);
+
+  return { matches: matchResults, seasonComplete };
 }
 
 // ========== PLAY TIER ROUND ==========
@@ -137,6 +268,7 @@ async function playTierRound(sb: any, session_id: string, currentTurn: number, t
       session_id, season_number: (past || 0) + 1, status: "active", started_turn: currentTurn,
       total_rounds: (adj - 1) * 2, current_round: 0, matches_per_round: Math.floor(n / 2),
       league_tier: tier, promotion_count: tier > 1 ? 2 : 0, relegation_count: tier === 1 ? 2 : 0,
+      playoff_status: "none", playoff_bracket: [],
     }).select("*").single();
     if (!ns) throw new Error(`Failed season tier ${tier}`);
     season = ns;
@@ -147,7 +279,13 @@ async function playTierRound(sb: any, session_id: string, currentTurn: number, t
   }
 
   const { data: nextMatches } = await sb.from("league_matches").select("*").eq("season_id", season.id).eq("status", "scheduled").order("round_number", { ascending: true });
-  if (!nextMatches || nextMatches.length === 0) return { matches: [], seasonComplete: true };
+  if (!nextMatches || nextMatches.length === 0) {
+    // Regular season done — start playoffs if enough teams
+    if (season.playoff_status === "none") {
+      return await startPlayoffs(sb, session_id, season);
+    }
+    return { matches: [], seasonComplete: true };
+  }
 
   const roundNumber = nextMatches[0].round_number;
   const roundMatches = nextMatches.filter(m => m.round_number === roundNumber);
@@ -169,7 +307,6 @@ async function playTierRound(sb: any, session_id: string, currentTurn: number, t
     await updateStandings(sb, season.id, match.home_team_id, result.homeScore, result.awayScore);
     await updateStandings(sb, season.id, match.away_team_id, result.awayScore, result.homeScore);
 
-    // Process player stat updates from events
     for (const evt of result.events) {
       if (evt.type === "goal" && evt.player_id) { const { data: pl } = await sb.from("league_players").select("goals_scored, goals, form").eq("id", evt.player_id).maybeSingle(); if (pl) await sb.from("league_players").update({ goals_scored: (pl.goals_scored||0)+1, goals: (pl.goals||0)+1, form: Math.min(95, (pl.form||50)+4) }).eq("id", evt.player_id); }
       if (evt.type === "breakthrough" && evt.player_id) { const { data: pl } = await sb.from("league_players").select("goals_scored, goals, form").eq("id", evt.player_id).maybeSingle(); if (pl) await sb.from("league_players").update({ goals_scored: (pl.goals_scored||0)+1, goals: (pl.goals||0)+1, form: Math.min(95, (pl.form||50)+6) }).eq("id", evt.player_id); }
@@ -189,113 +326,128 @@ async function playTierRound(sb: any, session_id: string, currentTurn: number, t
   for (let i = 0; i < sorted.length; i++) await sb.from("league_standings").update({ position: i+1 }).eq("id", sorted[i].id);
 
   const { count: remaining } = await sb.from("league_matches").select("id", { count: "exact", head: true }).eq("season_id", season.id).eq("status", "scheduled");
-  let seasonComplete = false;
-  if (remaining === 0) { seasonComplete = true; await concludeSeason(sb, session_id, season, tierTeams); }
-  return { matches: matchResults, seasonComplete };
+  if (remaining === 0) {
+    // Regular season complete — start playoffs
+    return await startPlayoffs(sb, session_id, season, matchResults);
+  }
+  return { matches: matchResults, seasonComplete: false };
+}
+
+// ========== START PLAYOFFS ==========
+async function startPlayoffs(sb: any, session_id: string, season: any, matchResults?: any[]) {
+  // Get final standings
+  const { data: fs } = await sb.from("league_standings").select("*, league_teams(team_name, player_name)").eq("season_id", season.id).order("position", { ascending: true });
+  const sorted = (fs || []).sort((a: any, b: any) => { if (b.points !== a.points) return b.points - a.points; const dA = a.goals_for-a.goals_against, dB = b.goals_for-b.goals_against; if (dB !== dA) return dB-dA; return b.goals_for-a.goals_for; });
+
+  const qualifiedCount = Math.min(8, sorted.length);
+  if (qualifiedCount < 4) {
+    // Not enough teams for playoffs, just crown #1
+    const champ = sorted[0];
+    if (champ) {
+      const { data: ct } = await sb.from("league_teams").select("titles_won").eq("id", champ.team_id).single();
+      if (ct) await sb.from("league_teams").update({ titles_won: (ct.titles_won || 0) + 1 }).eq("id", champ.team_id);
+    }
+    await sb.from("league_seasons").update({
+      status: "concluded", ended_turn: season.started_turn + season.total_rounds,
+      champion_team_id: champ?.team_id || null, playoff_status: "completed", playoff_bracket: [],
+    }).eq("id", season.id);
+    for (const st of sorted) { const { data: t } = await sb.from("league_teams").select("seasons_played, total_wins, total_draws, total_losses, total_goals_for, total_goals_against").eq("id", st.team_id).single(); if (t) await sb.from("league_teams").update({ seasons_played: (t.seasons_played||0)+1, total_wins: (t.total_wins||0)+st.wins, total_draws: (t.total_draws||0)+st.draws, total_losses: (t.total_losses||0)+st.losses, total_goals_for: (t.total_goals_for||0)+st.goals_for, total_goals_against: (t.total_goals_against||0)+st.goals_against }).eq("id", st.team_id); }
+    return { matches: matchResults || [], seasonComplete: true };
+  }
+
+  // Create bracket: 1v8, 2v7, 3v6, 4v5
+  const top = sorted.slice(0, qualifiedCount);
+  const bracket: any[] = [];
+
+  if (qualifiedCount >= 8) {
+    // Full quarterfinals
+    bracket.push(
+      { round: "quarterfinals", match_index: 0, home_team_id: top[0].team_id, away_team_id: top[7].team_id, status: "scheduled", home_seed: 1, away_seed: 8 },
+      { round: "quarterfinals", match_index: 1, home_team_id: top[1].team_id, away_team_id: top[6].team_id, status: "scheduled", home_seed: 2, away_seed: 7 },
+      { round: "quarterfinals", match_index: 2, home_team_id: top[2].team_id, away_team_id: top[5].team_id, status: "scheduled", home_seed: 3, away_seed: 6 },
+      { round: "quarterfinals", match_index: 3, home_team_id: top[3].team_id, away_team_id: top[4].team_id, status: "scheduled", home_seed: 4, away_seed: 5 },
+    );
+    await sb.from("league_seasons").update({ playoff_status: "quarterfinals", playoff_bracket: bracket }).eq("id", season.id);
+  } else {
+    // 4-7 teams: skip to semifinals
+    bracket.push(
+      { round: "semifinals", match_index: 0, home_team_id: top[0].team_id, away_team_id: top[3]?.team_id || top[top.length-1].team_id, status: "scheduled", home_seed: 1, away_seed: 4 },
+      { round: "semifinals", match_index: 1, home_team_id: top[1].team_id, away_team_id: top[2].team_id, status: "scheduled", home_seed: 2, away_seed: 3 },
+    );
+    await sb.from("league_seasons").update({ playoff_status: "semifinals", playoff_bracket: bracket }).eq("id", season.id);
+  }
+
+  return { matches: matchResults || [], seasonComplete: false, playoffStarted: true };
 }
 
 // ========== SPHAERA MATCH SIMULATION ==========
-// 3 periods, actions per period, Sphaera scoring: goal=3, breakthrough=5, knockout=+1
 function simulateSphaera(home: any, away: any, homePlayers: any[], awayPlayers: any[]) {
   const hEff = calcTeamEffective(homePlayers), aEff = calcTeamEffective(awayPlayers);
   const hAtk = hEff.attack * 0.8 + (home.attack_rating || 40) * 0.2;
   const hDef = hEff.defense * 0.8 + (home.defense_rating || 40) * 0.2;
-  const hBrut = hEff.brutality;
   const aAtk = aEff.attack * 0.8 + (away.attack_rating || 40) * 0.2;
   const aDef = aEff.defense * 0.8 + (away.defense_rating || 40) * 0.2;
-  const aBrut = aEff.brutality;
 
   let homeScore = 0, awayScore = 0;
   const events: any[] = [];
   let knockouts = 0;
-
-  // Crowd meter: starts neutral, shifts based on action
-  let crowdMeter = 50; // 0=hostile, 100=ecstatic
+  let crowdMeter = 50;
 
   const hStrikers = homePlayers.filter(p => ["attacker", "striker"].includes(p.position));
   const hCarriers = homePlayers.filter(p => ["midfielder", "carrier"].includes(p.position));
-  const hExactors = homePlayers.filter(p => ["exactor"].includes(p.position));
   const aStrikers = awayPlayers.filter(p => ["attacker", "striker"].includes(p.position));
   const aCarriers = awayPlayers.filter(p => ["midfielder", "carrier"].includes(p.position));
-  const aExactors = awayPlayers.filter(p => ["exactor"].includes(p.position));
+  const hExactors = homePlayers.filter(p => p.position === "exactor");
+  const aExactors = awayPlayers.filter(p => p.position === "exactor");
 
-  // 3 periods, 5-7 actions each
   for (let period = 1; period <= 3; period++) {
     const actions = 5 + Math.floor(Math.random() * 3);
     for (let action = 0; action < actions; action++) {
       const minute = (period - 1) * 30 + Math.floor((action / actions) * 30) + 1;
       const homeAdvantage = crowdMeter > 60 ? 1.08 : crowdMeter < 40 ? 0.95 : 1.03;
 
-      // === HOME ATTACK ===
       const hChance = (hAtk * homeAdvantage - aDef * 0.5) / 80;
       if (Math.random() < hChance) {
-        // Breakthrough (solo run, no assist) — rarer, worth 5 pts
         if (Math.random() < 0.15) {
           const scorer = pickWeighted([...hStrikers, ...hCarriers], p => (p.technique||50) + (p.speed||50)*0.7 + (p.form||50)*0.3);
-          if (scorer) {
-            homeScore += 5;
-            events.push({ minute, type: "breakthrough", team: "home", player_name: scorer.name, player_id: scorer.id, points: 5, period });
-            crowdMeter = Math.min(100, crowdMeter + 10);
-          }
+          if (scorer) { homeScore += 5; events.push({ minute, type: "breakthrough", team: "home", player_name: scorer.name, player_id: scorer.id, points: 5, period }); crowdMeter = Math.min(100, crowdMeter + 10); }
         } else {
-          // Normal goal — worth 3 pts
           const scorer = pickWeighted([...hStrikers, ...hCarriers], p => (p.technique||50) + (p.speed||50)*0.5 + (p.form||50)*0.3);
           const assister = pickWeighted(homePlayers.filter(p => p.id !== scorer?.id), p => (p.technique||50) + (p.leadership||20)*0.3);
-          if (scorer) {
-            homeScore += 3;
-            events.push({ minute, type: "goal", team: "home", player_name: scorer.name, player_id: scorer.id, points: 3, period });
-            if (assister && Math.random() > 0.3) events.push({ minute, type: "assist", team: "home", player_name: assister.name, player_id: assister.id, period });
-            crowdMeter = Math.min(100, crowdMeter + 5);
-          }
+          if (scorer) { homeScore += 3; events.push({ minute, type: "goal", team: "home", player_name: scorer.name, player_id: scorer.id, points: 3, period }); if (assister && Math.random() > 0.3) events.push({ minute, type: "assist", team: "home", player_name: assister.name, player_id: assister.id, period }); crowdMeter = Math.min(100, crowdMeter + 5); }
         }
       }
 
-      // === AWAY ATTACK ===
       const aChance = (aAtk - hDef * 0.5) / 80;
       if (Math.random() < aChance) {
         if (Math.random() < 0.15) {
           const scorer = pickWeighted([...aStrikers, ...aCarriers], p => (p.technique||50) + (p.speed||50)*0.7 + (p.form||50)*0.3);
-          if (scorer) {
-            awayScore += 5;
-            events.push({ minute, type: "breakthrough", team: "away", player_name: scorer.name, player_id: scorer.id, points: 5, period });
-            crowdMeter = Math.max(0, crowdMeter - 8);
-          }
+          if (scorer) { awayScore += 5; events.push({ minute, type: "breakthrough", team: "away", player_name: scorer.name, player_id: scorer.id, points: 5, period }); crowdMeter = Math.max(0, crowdMeter - 8); }
         } else {
           const scorer = pickWeighted([...aStrikers, ...aCarriers], p => (p.technique||50) + (p.speed||50)*0.5 + (p.form||50)*0.3);
           const assister = pickWeighted(awayPlayers.filter(p => p.id !== scorer?.id), p => (p.technique||50) + (p.leadership||20)*0.3);
-          if (scorer) {
-            awayScore += 3;
-            events.push({ minute, type: "goal", team: "away", player_name: scorer.name, player_id: scorer.id, points: 3, period });
-            if (assister && Math.random() > 0.3) events.push({ minute, type: "assist", team: "away", player_name: assister.name, player_id: assister.id, period });
-            crowdMeter = Math.max(0, crowdMeter - 5);
-          }
+          if (scorer) { awayScore += 3; events.push({ minute, type: "goal", team: "away", player_name: scorer.name, player_id: scorer.id, points: 3, period }); if (assister && Math.random() > 0.3) events.push({ minute, type: "assist", team: "away", player_name: assister.name, player_id: assister.id, period }); crowdMeter = Math.max(0, crowdMeter - 5); }
         }
       }
 
-      // === KNOCKOUTS (Exactor special) ===
-      // Home exactor tries to knock out opponent
       const allExactors = [...(hExactors.length > 0 ? hExactors : homePlayers.filter(p => (p.aggression||30) > 50)), ...(aExactors.length > 0 ? aExactors : awayPlayers.filter(p => (p.aggression||30) > 50))];
       for (const ex of allExactors) {
         const isHome = homePlayers.some(p => p.id === ex.id);
         const targets = isHome ? awayPlayers : homePlayers;
         const koChance = ((ex.strength||50) + (ex.aggression||30)) / 800;
         if (Math.random() < koChance) {
-          const victim = pickWeighted(targets, p => 100 - (p.strength||50)); // weaker targets more likely
+          const victim = pickWeighted(targets, p => 100 - (p.strength||50));
           if (victim) {
             const team = isHome ? "home" : "away";
             if (isHome) homeScore += 1; else awayScore += 1;
             knockouts++;
             events.push({ minute, type: "knockout", team, player_name: ex.name, player_id: ex.id, victim_name: victim.name, victim_id: victim.id, points: 1, period });
-            // Victim might get injured
-            if (Math.random() < 0.4) {
-              events.push({ minute, type: "injury", team: isHome ? "away" : "home", player_name: victim.name, player_id: victim.id, period });
-            }
+            if (Math.random() < 0.4) events.push({ minute, type: "injury", team: isHome ? "away" : "home", player_name: victim.name, player_id: victim.id, period });
             crowdMeter = Math.min(100, crowdMeter + (isHome ? 4 : -3));
           }
         }
       }
 
-      // === BRUTAL FOULS ===
       for (const pool of [{ players: homePlayers, team: "home" }, { players: awayPlayers, team: "away" }]) {
         for (const p of pool.players) {
           if (Math.random() < (p.aggression || 30) / 600) {
@@ -305,34 +457,22 @@ function simulateSphaera(home: any, away: any, homePlayers: any[], awayPlayers: 
         }
       }
 
-      // === INJURIES (condition-based) ===
       for (const pool of [{ players: homePlayers, team: "home" }, { players: awayPlayers, team: "away" }]) {
         for (const p of pool.players) {
           const injuryChance = (100 - (p.condition || 100)) / 1000 + 0.008;
-          if (Math.random() < injuryChance) {
-            events.push({ minute, type: "injury", team: pool.team, player_name: p.name, player_id: p.id, period });
-          }
+          if (Math.random() < injuryChance) events.push({ minute, type: "injury", team: pool.team, player_name: p.name, player_id: p.id, period });
         }
       }
 
-      // === CROWD EVENTS ===
-      if (crowdMeter < 25 && Math.random() < 0.15) {
-        events.push({ minute, type: "crowd_riot", period, description: "Dav hází předměty na hřiště!" });
-        crowdMeter = Math.max(0, crowdMeter - 5);
-      } else if (crowdMeter > 85 && Math.random() < 0.1) {
-        events.push({ minute, type: "crowd_chant", period, description: "Tribuny se otřásají skandováním!" });
-      }
+      if (crowdMeter < 25 && Math.random() < 0.15) { events.push({ minute, type: "crowd_riot", period, description: "Dav hází předměty na hřiště!" }); crowdMeter = Math.max(0, crowdMeter - 5); }
+      else if (crowdMeter > 85 && Math.random() < 0.1) { events.push({ minute, type: "crowd_chant", period, description: "Tribuny se otřásají skandováním!" }); }
     }
   }
 
   events.sort((a, b) => a.minute - b.minute);
-
-  // Crowd mood label
   const crowdMood = crowdMeter > 75 ? "Extáze" : crowdMeter > 55 ? "Nadšení" : crowdMeter > 40 ? "Napětí" : crowdMeter > 20 ? "Hněv" : "Chaos";
-
   const totalGoals = events.filter(e => e.type === "goal" || e.type === "breakthrough").length;
-  const highlight = totalGoals === 0
-    ? "Krutý boj bez jediného bodu. Sphaera zůstala mrtvá."
+  const highlight = totalGoals === 0 ? "Krutý boj bez jediného bodu. Sphaera zůstala mrtvá."
     : homeScore > awayScore + 5 ? "Domácí dominance! Aréna řvala krví a slávou."
     : awayScore > homeScore + 5 ? "Hosté ztrhali domácí obranu na kusy!"
     : knockouts >= 3 ? "Brutální masakr! Více vyřazených než bodů."
@@ -372,30 +512,12 @@ function pickWeighted<T>(arr: T[], wFn: (i: T) => number): T | null {
   return arr[arr.length-1];
 }
 function pickRandom<T>(a: T[]): T { return a[Math.floor(Math.random()*a.length)]; }
-function poissonRandom(l: number): number { const L = Math.exp(-l); let k=0, p=1; do { k++; p*=Math.random(); } while (p > L); return Math.min(k-1, 6); }
 
 async function updateStandings(sb: any, sid: string, tid: string, gf: number, ga: number) {
   const { data: st } = await sb.from("league_standings").select("*").eq("season_id", sid).eq("team_id", tid).single();
   if (!st) return;
   const w = gf > ga, d = gf === ga, pts = w ? 3 : d ? 1 : 0;
   await sb.from("league_standings").update({ played: st.played+1, wins: st.wins+(w?1:0), draws: st.draws+(d?1:0), losses: st.losses+(!w&&!d?1:0), goals_for: st.goals_for+gf, goals_against: st.goals_against+ga, points: st.points+pts, form: ((w?"W":d?"D":"L")+(st.form||"")).slice(0,5) }).eq("id", st.id);
-}
-
-async function concludeSeason(sb: any, session_id: string, season: any, tierTeams: any[]) {
-  const { data: fs } = await sb.from("league_standings").select("*, league_teams(team_name, player_name)").eq("season_id", season.id);
-  const sorted = (fs||[]).sort((a: any,b: any) => { if (b.points!==a.points) return b.points-a.points; const dA=a.goals_for-a.goals_against, dB=b.goals_for-b.goals_against; if (dB!==dA) return dB-dA; return b.goals_for-a.goals_for; });
-  const champ = sorted[0];
-  const tids = sorted.map((s: any) => s.team_id);
-  const { data: ts } = await sb.from("league_players").select("id, goals_scored").in("team_id", tids).order("goals_scored", { ascending: false }).limit(1).maybeSingle();
-  const bestDef = [...sorted].sort((a: any,b: any) => a.goals_against-b.goals_against)[0];
-  await sb.from("league_seasons").update({ status: "concluded", ended_turn: (await sb.from("game_sessions").select("current_turn").eq("id", session_id).single()).data?.current_turn||0, champion_team_id: champ?.team_id||null, top_scorer_player_id: ts?.id||null, best_defense_team_id: bestDef?.team_id||null }).eq("id", season.id);
-  if (champ?.team_id) {
-    const { data: ct } = await sb.from("league_teams").select("titles_won").eq("id", champ.team_id).single();
-    if (ct) await sb.from("league_teams").update({ titles_won: (ct.titles_won||0)+1 }).eq("id", champ.team_id);
-    const cp = (champ as any).league_teams?.player_name;
-    if (cp) { const { data: a } = await sb.from("sports_associations").select("id, reputation").eq("session_id", session_id).eq("player_name", cp).maybeSingle(); if (a) await sb.from("sports_associations").update({ reputation: (a.reputation||0)+10 }).eq("id", a.id); }
-  }
-  for (const st of sorted) { const { data: t } = await sb.from("league_teams").select("seasons_played, total_wins, total_draws, total_losses, total_goals_for, total_goals_against").eq("id", st.team_id).single(); if (t) await sb.from("league_teams").update({ seasons_played: (t.seasons_played||0)+1, total_wins: (t.total_wins||0)+st.wins, total_draws: (t.total_draws||0)+st.draws, total_losses: (t.total_losses||0)+st.losses, total_goals_for: (t.total_goals_for||0)+st.goals_for, total_goals_against: (t.total_goals_against||0)+st.goals_against }).eq("id", st.team_id); }
 }
 
 async function handlePromotionRelegation(sb: any, sid: string) {

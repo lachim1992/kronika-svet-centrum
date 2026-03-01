@@ -4515,6 +4515,8 @@ export type Database = {
           id: string
           league_tier: number
           matches_per_round: number
+          playoff_bracket: Json | null
+          playoff_status: string
           promotion_count: number
           relegation_count: number
           season_number: number
@@ -4533,6 +4535,8 @@ export type Database = {
           id?: string
           league_tier?: number
           matches_per_round?: number
+          playoff_bracket?: Json | null
+          playoff_status?: string
           promotion_count?: number
           relegation_count?: number
           season_number?: number
@@ -4551,6 +4555,8 @@ export type Database = {
           id?: string
           league_tier?: number
           matches_per_round?: number
+          playoff_bracket?: Json | null
+          playoff_status?: string
           promotion_count?: number
           relegation_count?: number
           season_number?: number
