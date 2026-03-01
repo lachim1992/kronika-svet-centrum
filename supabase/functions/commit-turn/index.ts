@@ -883,6 +883,20 @@ Deno.serve(async (req) => {
     }
 
     // ═══════════════════════════════════════════
+    // 8d-pre. SPHAERA LEAGUE TICK — auto-create teams, simulate matches
+    // ═══════════════════════════════════════════
+    try {
+      const { data: leagueData, error: leagueErr } = await supabase.functions.invoke("league-tick", {
+        body: { session_id: sessionId, turn_number: turnNumber + 1 },
+      });
+      if (leagueErr) console.error("League tick error:", leagueErr);
+      results.league = leagueData || { error: leagueErr?.message };
+    } catch (e) {
+      console.error("League tick error:", e);
+      results.league = { error: (e as Error).message };
+    }
+
+    // ═══════════════════════════════════════════
     // 8d. ACADEMY TICK — auto-create schools, training cycles, funding
     //     Runs for BOTH human players AND AI factions
     // ═══════════════════════════════════════════

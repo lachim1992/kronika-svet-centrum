@@ -4295,6 +4295,423 @@ export type Database = {
           },
         ]
       }
+      league_matches: {
+        Row: {
+          attendance: number | null
+          away_score: number | null
+          away_team_id: string
+          created_at: string
+          highlight_text: string | null
+          home_score: number | null
+          home_team_id: string
+          id: string
+          match_events: Json | null
+          played_turn: number | null
+          round_number: number
+          season_id: string
+          session_id: string
+          status: string
+          turn_number: number
+        }
+        Insert: {
+          attendance?: number | null
+          away_score?: number | null
+          away_team_id: string
+          created_at?: string
+          highlight_text?: string | null
+          home_score?: number | null
+          home_team_id: string
+          id?: string
+          match_events?: Json | null
+          played_turn?: number | null
+          round_number: number
+          season_id: string
+          session_id: string
+          status?: string
+          turn_number: number
+        }
+        Update: {
+          attendance?: number | null
+          away_score?: number | null
+          away_team_id?: string
+          created_at?: string
+          highlight_text?: string | null
+          home_score?: number | null
+          home_team_id?: string
+          id?: string
+          match_events?: Json | null
+          played_turn?: number | null
+          round_number?: number
+          season_id?: string
+          session_id?: string
+          status?: string
+          turn_number?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "league_matches_away_team_id_fkey"
+            columns: ["away_team_id"]
+            isOneToOne: false
+            referencedRelation: "league_teams"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "league_matches_home_team_id_fkey"
+            columns: ["home_team_id"]
+            isOneToOne: false
+            referencedRelation: "league_teams"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "league_matches_season_id_fkey"
+            columns: ["season_id"]
+            isOneToOne: false
+            referencedRelation: "league_seasons"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "league_matches_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      league_players: {
+        Row: {
+          aggression: number | null
+          assists: number | null
+          created_at: string
+          goals_scored: number | null
+          id: string
+          is_captain: boolean | null
+          is_injured: boolean | null
+          leadership: number | null
+          matches_played: number | null
+          name: string
+          position: string
+          red_cards: number | null
+          session_id: string
+          speed: number | null
+          stamina: number | null
+          strength: number | null
+          team_id: string
+          technique: number | null
+          yellow_cards: number | null
+        }
+        Insert: {
+          aggression?: number | null
+          assists?: number | null
+          created_at?: string
+          goals_scored?: number | null
+          id?: string
+          is_captain?: boolean | null
+          is_injured?: boolean | null
+          leadership?: number | null
+          matches_played?: number | null
+          name: string
+          position?: string
+          red_cards?: number | null
+          session_id: string
+          speed?: number | null
+          stamina?: number | null
+          strength?: number | null
+          team_id: string
+          technique?: number | null
+          yellow_cards?: number | null
+        }
+        Update: {
+          aggression?: number | null
+          assists?: number | null
+          created_at?: string
+          goals_scored?: number | null
+          id?: string
+          is_captain?: boolean | null
+          is_injured?: boolean | null
+          leadership?: number | null
+          matches_played?: number | null
+          name?: string
+          position?: string
+          red_cards?: number | null
+          session_id?: string
+          speed?: number | null
+          stamina?: number | null
+          strength?: number | null
+          team_id?: string
+          technique?: number | null
+          yellow_cards?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "league_players_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "league_players_team_id_fkey"
+            columns: ["team_id"]
+            isOneToOne: false
+            referencedRelation: "league_teams"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      league_seasons: {
+        Row: {
+          best_defense_team_id: string | null
+          champion_team_id: string | null
+          created_at: string
+          current_round: number
+          ended_turn: number | null
+          id: string
+          matches_per_round: number
+          season_number: number
+          session_id: string
+          started_turn: number
+          status: string
+          top_scorer_player_id: string | null
+          total_rounds: number
+        }
+        Insert: {
+          best_defense_team_id?: string | null
+          champion_team_id?: string | null
+          created_at?: string
+          current_round?: number
+          ended_turn?: number | null
+          id?: string
+          matches_per_round?: number
+          season_number?: number
+          session_id: string
+          started_turn: number
+          status?: string
+          top_scorer_player_id?: string | null
+          total_rounds?: number
+        }
+        Update: {
+          best_defense_team_id?: string | null
+          champion_team_id?: string | null
+          created_at?: string
+          current_round?: number
+          ended_turn?: number | null
+          id?: string
+          matches_per_round?: number
+          season_number?: number
+          session_id?: string
+          started_turn?: number
+          status?: string
+          top_scorer_player_id?: string | null
+          total_rounds?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "league_seasons_best_defense_team_id_fkey"
+            columns: ["best_defense_team_id"]
+            isOneToOne: false
+            referencedRelation: "league_teams"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "league_seasons_champion_team_id_fkey"
+            columns: ["champion_team_id"]
+            isOneToOne: false
+            referencedRelation: "league_teams"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "league_seasons_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "league_seasons_top_scorer_player_id_fkey"
+            columns: ["top_scorer_player_id"]
+            isOneToOne: false
+            referencedRelation: "league_players"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      league_standings: {
+        Row: {
+          draws: number | null
+          form: string | null
+          goals_against: number | null
+          goals_for: number | null
+          id: string
+          losses: number | null
+          played: number | null
+          points: number | null
+          position: number | null
+          season_id: string
+          session_id: string
+          team_id: string
+          wins: number | null
+        }
+        Insert: {
+          draws?: number | null
+          form?: string | null
+          goals_against?: number | null
+          goals_for?: number | null
+          id?: string
+          losses?: number | null
+          played?: number | null
+          points?: number | null
+          position?: number | null
+          season_id: string
+          session_id: string
+          team_id: string
+          wins?: number | null
+        }
+        Update: {
+          draws?: number | null
+          form?: string | null
+          goals_against?: number | null
+          goals_for?: number | null
+          id?: string
+          losses?: number | null
+          played?: number | null
+          points?: number | null
+          position?: number | null
+          season_id?: string
+          session_id?: string
+          team_id?: string
+          wins?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "league_standings_season_id_fkey"
+            columns: ["season_id"]
+            isOneToOne: false
+            referencedRelation: "league_seasons"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "league_standings_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "league_standings_team_id_fkey"
+            columns: ["team_id"]
+            isOneToOne: false
+            referencedRelation: "league_teams"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      league_teams: {
+        Row: {
+          attack_rating: number | null
+          city_id: string
+          color_primary: string | null
+          color_secondary: string | null
+          created_at: string
+          defense_rating: number | null
+          discipline_rating: number | null
+          fan_base: number | null
+          id: string
+          is_active: boolean | null
+          motto: string | null
+          player_name: string
+          popularity: number | null
+          seasons_played: number | null
+          session_id: string
+          stadium_building_id: string | null
+          tactics_rating: number | null
+          team_name: string
+          titles_won: number | null
+          total_draws: number | null
+          total_goals_against: number | null
+          total_goals_for: number | null
+          total_losses: number | null
+          total_wins: number | null
+          updated_at: string
+        }
+        Insert: {
+          attack_rating?: number | null
+          city_id: string
+          color_primary?: string | null
+          color_secondary?: string | null
+          created_at?: string
+          defense_rating?: number | null
+          discipline_rating?: number | null
+          fan_base?: number | null
+          id?: string
+          is_active?: boolean | null
+          motto?: string | null
+          player_name: string
+          popularity?: number | null
+          seasons_played?: number | null
+          session_id: string
+          stadium_building_id?: string | null
+          tactics_rating?: number | null
+          team_name: string
+          titles_won?: number | null
+          total_draws?: number | null
+          total_goals_against?: number | null
+          total_goals_for?: number | null
+          total_losses?: number | null
+          total_wins?: number | null
+          updated_at?: string
+        }
+        Update: {
+          attack_rating?: number | null
+          city_id?: string
+          color_primary?: string | null
+          color_secondary?: string | null
+          created_at?: string
+          defense_rating?: number | null
+          discipline_rating?: number | null
+          fan_base?: number | null
+          id?: string
+          is_active?: boolean | null
+          motto?: string | null
+          player_name?: string
+          popularity?: number | null
+          seasons_played?: number | null
+          session_id?: string
+          stadium_building_id?: string | null
+          tactics_rating?: number | null
+          team_name?: string
+          titles_won?: number | null
+          total_draws?: number | null
+          total_goals_against?: number | null
+          total_goals_for?: number | null
+          total_losses?: number | null
+          total_wins?: number | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "league_teams_city_id_fkey"
+            columns: ["city_id"]
+            isOneToOne: false
+            referencedRelation: "cities"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "league_teams_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "league_teams_stadium_building_id_fkey"
+            columns: ["stadium_building_id"]
+            isOneToOne: false
+            referencedRelation: "city_buildings"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       legacy_military_map: {
         Row: {
           id: string

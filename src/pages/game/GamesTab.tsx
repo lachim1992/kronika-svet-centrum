@@ -16,6 +16,7 @@ import GladiatorPanel from "@/components/GladiatorPanel";
 import NationalQualificationPanel from "@/components/NationalQualificationPanel";
 import GamesRevealOverlay from "@/components/GamesRevealOverlay";
 import HallOfRecords from "@/components/HallOfRecords";
+import LeaguePanel from "@/components/LeaguePanel";
 
 interface Props {
   sessionId: string;
@@ -298,9 +299,12 @@ const GamesTab = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, o
       </div>
 
       <Tabs defaultValue="active" className="space-y-4">
-        <TabsList className="grid w-full grid-cols-4 sm:grid-cols-8">
+        <TabsList className="grid w-full grid-cols-4 sm:grid-cols-9">
           <TabsTrigger value="active" className="font-display text-xs">
             <Flame className="h-3.5 w-3.5 mr-1" />Aktivní
+          </TabsTrigger>
+          <TabsTrigger value="league" className="font-display text-xs">
+            <Sword className="h-3.5 w-3.5 mr-1" />Liga
           </TabsTrigger>
           <TabsTrigger value="medals" className="font-display text-xs">
             <Medal className="h-3.5 w-3.5 mr-1" />Medaile
@@ -387,6 +391,11 @@ const GamesTab = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, o
           {activeFestival && activeFestival.status !== "candidacy" && !revealScript && (
             <LiveGamesFeed sessionId={sessionId} festivalId={activeFestival.id} />
           )}
+        </TabsContent>
+
+        {/* ─── SPHAERA LEAGUE ─── */}
+        <TabsContent value="league">
+          <LeaguePanel sessionId={sessionId} currentPlayerName={currentPlayerName} currentTurn={currentTurn} />
         </TabsContent>
 
         {/* ─── GLOBAL MEDAL TALLY ─── */}
