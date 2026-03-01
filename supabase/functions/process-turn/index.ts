@@ -88,28 +88,45 @@ const CONSUMPTION_PER_CAPITA = {
 // Fallback: if no layer data, use flat rate
 const CONSUMPTION_PER_CAPITA_FLAT = 0.006;
 
+// Ration policy modifiers for grain consumption
+const RATION_CONSUMPTION_MULT: Record<string, number> = {
+  equal: 1.0,
+  elite: 0.95,      // slightly less total (elite eats better but fewer get fed)
+  austerity: 0.80,  // significant savings
+  sacrifice: 1.15,  // extra grain burned as offerings
+};
+
 function computeGrainConsumption(city: any): number {
   const peas = city.population_peasants || 0;
   const burg = city.population_burghers || 0;
   const cler = city.population_clerics || 0;
+  const rationMult = RATION_CONSUMPTION_MULT[city.ration_policy] || 1.0;
   if (peas + burg + cler > 0) {
     return Math.round(
-      peas * CONSUMPTION_PER_CAPITA.peasants +
-      burg * CONSUMPTION_PER_CAPITA.burghers +
-      cler * CONSUMPTION_PER_CAPITA.clerics
+      (peas * CONSUMPTION_PER_CAPITA.peasants +
+       burg * CONSUMPTION_PER_CAPITA.burghers +
+       cler * CONSUMPTION_PER_CAPITA.clerics) * rationMult
     );
   }
-  return Math.round((city.population_total || 0) * CONSUMPTION_PER_CAPITA_FLAT);
+  return Math.round((city.population_total || 0) * CONSUMPTION_PER_CAPITA_FLAT * rationMult);
 }
 
-function computeWealthIncome(cities: any[]): number {
+function computeWealthIncome(cities: any[], districtEffectsMap: Record<string, Record<string, number>> = {}): number {
   let total = 0;
   for (const c of cities) {
     if (c.status && c.status !== "ok") continue;
     const tierBase = SETTLEMENT_WEALTH[c.settlement_level] || 1;
     const popTax = Math.floor((c.population_total || 0) / 500);
     const burgherTrade = Math.floor((c.population_burghers || 0) / 200);
-    total += tierBase + popTax + burgherTrade;
+    // Labor: crafting % boosts wealth
+    const labor = (c.labor_allocation && typeof c.labor_allocation === "object") ? c.labor_allocation : {};
+    const craftingBonus = Math.round((labor.crafting || 0) / 100 * 5); // up to +4 wealth
+    // Infrastructure: market_level +4 wealth/level
+    const marketBonus = (c.market_level || 0) * 4;
+    // District wealth modifiers
+    const distEff = districtEffectsMap[c.id] || {};
+    const distWealth = distEff.wealth_modifier || 0;
+    total += tierBase + popTax + burgherTrade + craftingBonus + marketBonus + distWealth;
   }
   return total;
 }
@@ -270,6 +287,46 @@ Deno.serve(async (req) => {
     const granaryCapacity = 500 * (infra?.granary_level || 1) * (infra?.granaries_count || 1);
     const stablesCapacity = 100 * (infra?.stables_level || 1) * (infra?.stables_count || 1);
 
+    // ═══ DISTRICT EFFECTS ═══
+    // Load completed districts for all cities and aggregate modifiers
+    const { data: completedDistricts } = await supabase
+      .from("city_districts")
+      .select("city_id, grain_modifier, wealth_modifier, production_modifier, stability_modifier, influence_modifier")
+      .eq("session_id", sessionId)
+      .eq("status", "completed")
+      .in("city_id", myCities.length > 0 ? myCities.map(c => c.id) : ["00000000-0000-0000-0000-000000000000"]);
+
+    const cityDistrictEffects: Record<string, Record<string, number>> = {};
+    for (const d of (completedDistricts || [])) {
+      if (!cityDistrictEffects[d.city_id]) cityDistrictEffects[d.city_id] = {};
+      const eff = cityDistrictEffects[d.city_id];
+      eff.grain_modifier = (eff.grain_modifier || 0) + (d.grain_modifier || 0);
+      eff.wealth_modifier = (eff.wealth_modifier || 0) + (d.wealth_modifier || 0);
+      eff.production_modifier = (eff.production_modifier || 0) + (d.production_modifier || 0);
+      eff.stability_modifier = (eff.stability_modifier || 0) + (d.stability_modifier || 0);
+      eff.influence_modifier = (eff.influence_modifier || 0) + (d.influence_modifier || 0);
+    }
+
+    // ═══ DISTRICT COMPLETION ═══
+    const { data: buildingDistricts } = await supabase
+      .from("city_districts")
+      .select("*")
+      .eq("session_id", sessionId)
+      .eq("status", "building")
+      .in("city_id", myCities.length > 0 ? myCities.map(c => c.id) : ["00000000-0000-0000-0000-000000000000"]);
+
+    for (const d of (buildingDistricts || [])) {
+      const finishTurn = (d.build_started_turn || 0) + (d.build_turns || 1);
+      if (currentTurn >= finishTurn) {
+        await supabase.from("city_districts").update({
+          status: "completed",
+          completed_turn: currentTurn,
+        }).eq("id", d.id);
+        const cityName = myCities.find(c => c.id === d.city_id)?.name || "?";
+        logEntries.push(`🏘️ Čtvrť "${d.name}" v ${cityName} dokončena!`);
+      }
+    }
+
     // Settlement layers are computed by world-tick (shared physics). 
     // process-turn trusts those values and only handles economy.
 
@@ -364,38 +421,84 @@ Deno.serve(async (req) => {
       const profile = profileMap[city.id];
       const prodConsts = SETTLEMENT_PRODUCTION[city.settlement_level] || SETTLEMENT_PRODUCTION.HAMLET;
       const bldgEff = cityBuildingEffects[city.id] || {};
+      const distEff = cityDistrictEffects[city.id] || {};
 
-      // Apply civ_identity production modifiers (multiplicative on base)
+      // ═══ LABOR ALLOCATION MODIFIERS ═══
+      const labor = (city.labor_allocation && typeof city.labor_allocation === "object") ? city.labor_allocation : { farming: 60, crafting: 25, scribes: 5, canal: 10 };
+      const farmingRatio = (labor.farming || 0) / 100;   // boosts grain
+      const craftingRatio = (labor.crafting || 0) / 100;  // boosts wood/production
+      // scribes → legitimacy (applied below)
+      // canal → irrigation level increment (applied below)
+
+      // ═══ INFRASTRUCTURE BONUSES ═══
+      const irrigationBonus = (city.irrigation_level || 0) * 3; // +3 grain per level
+      const marketBonus_infra = (city.market_level || 0) * 4;   // +4 wealth (handled in computeWealthIncome)
+      const templeBonus = (city.temple_level || 0) * 5;         // +5 legitimacy per level
+
+      // ═══ GRAIN: base × workforce × civ + farming labor bonus + irrigation + district + buildings ═══
       const cityGrainBase = profile ? profile.base_grain : prodConsts.grain;
-      const cityGrain = Math.round(cityGrainBase * effectiveWorkforceRatio * (1 + grainMod)) + (bldgEff.food_income || 0);
+      const laborFarmMult = 0.5 + farmingRatio; // 50% base + up to 80% from farming allocation
+      const cityGrain = Math.round(cityGrainBase * effectiveWorkforceRatio * laborFarmMult * (1 + grainMod))
+        + irrigationBonus + (distEff.grain_modifier || 0) + (bldgEff.food_income || 0);
       totalGrainProd += cityGrain;
 
+      // ═══ WOOD: base × workforce × civ + crafting bonus + district + buildings ═══
       const cityWoodBase = profile ? profile.base_wood : prodConsts.wood;
-      const cityWood = Math.round(cityWoodBase * effectiveWorkforceRatio * (1 + woodMod)) + (bldgEff.wood_income || 0);
+      const laborCraftMult = 0.7 + craftingRatio * 0.6; // crafting boosts wood slightly
+      const cityWood = Math.round(cityWoodBase * effectiveWorkforceRatio * laborCraftMult * (1 + woodMod))
+        + (distEff.production_modifier || 0) + (bldgEff.wood_income || 0);
       totalWoodProd += cityWood;
 
-      // Stone scaled by workforce + civ modifier + building bonus
+      // ═══ STONE: base × workforce × civ + buildings ═══
       const cityStone = Math.round(prodConsts.stone * effectiveWorkforceRatio * (1 + stoneMod)) + (bldgEff.stone_income || 0);
       totalStoneProd += cityStone;
 
-      // Iron scaled by workforce + civ modifier (only for IRON cities) + building bonus
+      // ═══ IRON: only for IRON cities ═══
       const specialType = profile?.special_resource_type || "NONE";
       const cityIronBase = specialType === "IRON" ? (profile ? profile.base_special : prodConsts.iron_special) : 0;
       const cityIron = Math.round(cityIronBase * effectiveWorkforceRatio * (1 + ironMod)) + (bldgEff.iron_income || 0);
       totalIronProd += cityIron;
 
-      // Apply stability bonus from buildings (clamp 0-100)
-      if (bldgEff.stability_bonus && bldgEff.stability_bonus > 0) {
-        const newStab = Math.min(100, (city.city_stability || 70) + bldgEff.stability_bonus);
-        if (newStab !== city.city_stability) {
-          city.city_stability = newStab;
+      // ═══ CANAL → IRRIGATION INCREMENT ═══
+      // canal labor gradually increases irrigation_level (0.1 per turn per 10% canal allocation)
+      const canalAlloc = (labor.canal || 0);
+      if (canalAlloc > 0 && (city.irrigation_level || 0) < 5) {
+        // Accumulate: every 10 turns at 10% canal = +1 irrigation level
+        // Simplified: if canal >= 20, +1 level every 5 turns
+        const canalProgress = canalAlloc / 100;
+        const irrigationGainChance = canalProgress * 0.2; // 20% chance at full allocation
+        const irrigSeed = (currentTurn * 17 + hashCode(city.id)) % 100;
+        if (irrigSeed / 100 < irrigationGainChance) {
+          const newIrrig = Math.min(5, (city.irrigation_level || 0) + 1);
+          await supabase.from("cities").update({ irrigation_level: newIrrig } as any).eq("id", city.id);
+          city.irrigation_level = newIrrig;
+          logEntries.push(`🏗️ ${city.name}: Zavlažování vylepšeno na úroveň ${newIrrig}!`);
         }
       }
 
-      // Apply influence bonus from buildings
-      if (bldgEff.influence_bonus && bldgEff.influence_bonus > 0) {
-        const newInfluence = Math.min(1000, (city.influence_score || 0) + bldgEff.influence_bonus);
-        city.influence_score = newInfluence;
+      // ═══ SCRIBES → LEGITIMACY ═══
+      const scribesAlloc = (labor.scribes || 0);
+      if (scribesAlloc > 0) {
+        const legGain = Math.round(scribesAlloc / 100 * 3); // up to +2.4 legitimacy/turn
+        const newLeg = Math.min(100, (city.legitimacy || 50) + legGain);
+        city.legitimacy = newLeg;
+      }
+
+      // ═══ TEMPLE → LEGITIMACY ═══
+      if (templeBonus > 0) {
+        city.legitimacy = Math.min(100, (city.legitimacy || 50) + Math.round(templeBonus / 5));
+      }
+
+      // Apply stability bonus from buildings + districts (clamp 0-100)
+      const stabBonus = (bldgEff.stability_bonus || 0) + (distEff.stability_modifier || 0);
+      if (stabBonus !== 0) {
+        city.city_stability = Math.max(0, Math.min(100, (city.city_stability || 70) + stabBonus));
+      }
+
+      // Apply influence bonus from buildings + districts
+      const inflBonus = (bldgEff.influence_bonus || 0) + (distEff.influence_modifier || 0);
+      if (inflBonus !== 0) {
+        city.influence_score = Math.max(0, Math.min(1000, (city.influence_score || 0) + inflBonus));
       }
 
       // Apply population growth from buildings (added to population_total)
@@ -423,6 +526,7 @@ Deno.serve(async (req) => {
         special_resource_type: specialType,
         city_stability: city.city_stability,
         influence_score: city.influence_score,
+        legitimacy: city.legitimacy,
         population_total: city.population_total,
         population_peasants: city.population_peasants,
         population_burghers: city.population_burghers,
@@ -1203,7 +1307,7 @@ Deno.serve(async (req) => {
     // Apply trade grain delta
     grainReserve = Math.max(0, grainReserve + tradeGrainDelta);
 
-    const wealthIncome = Math.round(computeWealthIncome(myCities) * (1 + wealthMod)) + (globalBuildingEffects.wealth_income || 0);
+    const wealthIncome = Math.round(computeWealthIncome(myCities, cityDistrictEffects) * (1 + wealthMod)) + (globalBuildingEffects.wealth_income || 0);
     
     // Sport funding deduction (academy-tick handles the actual boost, but we track it as expense here too)
     const sportFundingPct = realm.sport_funding_pct || 0;
@@ -1212,6 +1316,106 @@ Deno.serve(async (req) => {
     const newGoldReserve = Math.max(0, (realm.gold_reserve || 0) + wealthIncome - wealthUpkeep - sportFundingExpense + tradeGoldDelta);
 
     const famineCityCount = myCities.filter(c => c.famine_turn).length;
+
+    // ═══ FACTION SATISFACTION DRIFT & DEMAND GENERATION ═══
+    // For each city, load factions and apply drift based on ration policy, labor, districts, famine
+    for (const city of myCities) {
+      const { data: factions } = await supabase.from("city_factions")
+        .select("*").eq("city_id", city.id).eq("is_active", true);
+      if (!factions || factions.length === 0) continue;
+
+      const ration = city.ration_policy || "equal";
+      const labor = (city.labor_allocation && typeof city.labor_allocation === "object") ? city.labor_allocation : {};
+      const distEff = cityDistrictEffects[city.id] || {};
+
+      // Ration faction impact
+      const rationImpact: Record<string, number> = {
+        equal: { peasants: 2, burghers: 0, clergy: 0, military: 0 },
+        elite: { peasants: -4, burghers: 3, clergy: 3, military: 0 },
+        austerity: { peasants: -5, burghers: -3, clergy: -2, military: 0 },
+        sacrifice: { peasants: -3, burghers: -2, clergy: 8, military: 0 },
+      }[ration] || { peasants: 0, burghers: 0, clergy: 0, military: 0 };
+
+      for (const f of factions) {
+        let satDrift = 0;
+        let loyDrift = 0;
+
+        // Ration effect
+        satDrift += (rationImpact as any)[f.faction_type] || 0;
+
+        // Famine → massive negative
+        if (city.famine_turn) {
+          satDrift -= f.faction_type === "peasants" ? 10 : 5;
+          loyDrift -= 3;
+        }
+
+        // District attraction bonuses
+        const attrKey = `${f.faction_type === "clergy" ? "cleric" : f.faction_type}_attraction`;
+        if (typeof distEff[attrKey] === "number" && distEff[attrKey] > 0) {
+          satDrift += Math.min(5, Math.round(distEff[attrKey] / 2));
+        }
+
+        // Labor allocation impact
+        if (f.faction_type === "peasants") {
+          satDrift += (labor.farming || 0) > 50 ? 2 : (labor.farming || 0) < 30 ? -3 : 0;
+        } else if (f.faction_type === "burghers") {
+          satDrift += (labor.crafting || 0) > 30 ? 2 : (labor.crafting || 0) < 15 ? -2 : 0;
+        } else if (f.faction_type === "clergy") {
+          satDrift += (labor.scribes || 0) > 10 ? 2 : -1;
+          satDrift += (city.temple_level || 0) >= 3 ? 2 : 0;
+        } else if (f.faction_type === "military") {
+          const garrison = city.military_garrison || 0;
+          satDrift += garrison > 100 ? 2 : garrison < 20 ? -3 : 0;
+        }
+
+        // Stability-based loyalty drift
+        loyDrift += city.city_stability > 60 ? 1 : city.city_stability < 30 ? -3 : 0;
+
+        // Clamp
+        const newSat = Math.max(0, Math.min(100, (f.satisfaction || 50) + satDrift));
+        const newLoy = Math.max(0, Math.min(100, (f.loyalty || 50) + loyDrift));
+
+        // Demand generation: if satisfaction drops below 35, generate a demand
+        let newDemand = f.current_demand;
+        let newUrgency = f.demand_urgency || 0;
+        if (newSat < 35 && !f.current_demand) {
+          const demands: Record<string, string[]> = {
+            peasants: ["Víc obilí pro lid!", "Snížit daně!", "Otevřít sýpky!"],
+            burghers: ["Investovat do tržiště!", "Více stavebních projektů!", "Podpora obchodu!"],
+            clergy: ["Stavba chrámu!", "Více písařů!", "Oběť bohům!"],
+            military: ["Vyzbrojit posádku!", "Zvýšit žold!", "Nová kasárna!"],
+          };
+          const options = demands[f.faction_type] || ["Požadujeme změnu!"];
+          const pick = (currentTurn + hashCode(f.id)) % options.length;
+          newDemand = options[pick];
+          newUrgency = 1;
+        } else if (f.current_demand) {
+          if (newSat >= 50) {
+            // Demand resolved naturally
+            newDemand = null;
+            newUrgency = 0;
+          } else {
+            newUrgency = Math.min(10, (f.demand_urgency || 0) + 1);
+          }
+        }
+
+        // Update faction power from demographics
+        const pop = city.population_total || 1;
+        let newPower = f.power;
+        if (f.faction_type === "peasants") newPower = Math.round(((city.population_peasants || 0) / pop) * 40);
+        else if (f.faction_type === "burghers") newPower = Math.round(((city.population_burghers || 0) / pop) * 40);
+        else if (f.faction_type === "clergy") newPower = Math.round(((city.population_clerics || 0) / pop) * 40);
+        else if (f.faction_type === "military") newPower = Math.min(20, Math.round((city.military_garrison || 0) / 50));
+
+        await supabase.from("city_factions").update({
+          satisfaction: newSat,
+          loyalty: newLoy,
+          power: newPower,
+          current_demand: newDemand,
+          demand_urgency: newUrgency,
+        }).eq("id", f.id);
+      }
+    }
 
     await supabase.from("realm_resources").update({
       grain_reserve: grainReserve,
@@ -1244,7 +1448,7 @@ Deno.serve(async (req) => {
       wood: totalWoodProd,
       stone: totalStoneProd,
       iron: totalIronProd,
-      wealth: computeWealthIncome(myCities),
+      wealth: computeWealthIncome(myCities, cityDistrictEffects),
     };
     const upkeeps: Record<string, number> = {
       food: totalConsumption + armyFoodUpkeep,
