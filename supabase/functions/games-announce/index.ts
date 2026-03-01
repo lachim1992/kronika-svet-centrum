@@ -107,8 +107,8 @@ Deno.serve(async (req) => {
       // Get disciplines
       const { data: disciplines } = await sb.from("games_disciplines").select("*");
 
-      // Auto-generate athletes for each faction (AI-style names)
-      const athleteNames = [
+      // ═══ ACADEMY COEXISTENCE: Source athletes from academy graduates first ═══
+      const athleteNamesFallback = [
         "Aethon", "Kallistos", "Lykaon", "Theron", "Nikias", "Demetrios", "Kassandros",
         "Herakleidos", "Agathos", "Philon", "Solon", "Kyros", "Andronikos", "Timotheos",
         "Ariston", "Leontios", "Xenophon", "Ptolemaios", "Diogenes", "Epikouros",
@@ -118,6 +118,14 @@ Deno.serve(async (req) => {
       let nameIdx = 0;
 
       for (const factionName of allFactions) {
+        // 1. Try to source from academy graduates
+        const { data: graduates } = await sb.from("academy_students")
+          .select("*")
+          .eq("session_id", session_id).eq("player_name", factionName)
+          .eq("status", "graduated")
+          .order("strength", { ascending: false })
+          .limit(3);
+
         // Get faction's cities for infrastructure bonus
         const { data: fCities } = await sb.from("cities")
           .select("id, name, development_level, settlement_level")
@@ -133,39 +141,66 @@ Deno.serve(async (req) => {
 
         const civMod = civId?.morale_modifier || 0;
 
-        // Generate 2-3 athletes per faction
-        const athleteCount = 2 + Math.floor(Math.random() * 2);
-        for (let i = 0; i < athleteCount && nameIdx < athleteNames.length; i++) {
-          const name = athleteNames[nameIdx++];
+        if (graduates && graduates.length > 0) {
+          // Use academy graduates — superior athletes
+          for (const grad of graduates) {
+            await sb.from("games_participants").insert({
+              session_id,
+              festival_id: festival.id,
+              player_name: factionName,
+              city_id: grad.academy_id ? bestCity?.id : null,
+              athlete_name: grad.name,
+              strength: grad.strength,
+              endurance: grad.endurance,
+              agility: grad.agility,
+              tactics: grad.tactics,
+              charisma: grad.charisma,
+              training_bonus: infraBonus + 10, // Academy bonus
+              city_infrastructure_bonus: infraBonus,
+              civ_modifier: civMod * 10,
+              traits: grad.traits || [],
+              form: "peak", // Academy graduates are in peak form
+            });
 
-          // Random stats with slight specialization
-          const stats: Record<string, number> = {};
-          const primary = STAT_NAMES[Math.floor(Math.random() * STAT_NAMES.length)];
-          for (const s of STAT_NAMES) {
-            stats[s] = 30 + Math.floor(Math.random() * 40) + (s === primary ? 15 : 0);
+            // Mark student as promoted
+            await sb.from("academy_students").update({
+              status: "promoted",
+              promoted_to_participant_id: null, // Will be linked after insert
+            }).eq("id", grad.id);
           }
+        } else {
+          // 2. Fallback: auto-generate athletes (no academy)
+          const athleteCount = 2 + Math.floor(Math.random() * 2);
+          for (let i = 0; i < athleteCount && nameIdx < athleteNamesFallback.length; i++) {
+            const name = athleteNamesFallback[nameIdx++];
 
-          // Random traits
-          const allTraits = ["Železný", "Křehký", "Zbožný", "Nervózní", "Charismatický", "Lstivý", "Odvážný", "Stoický"];
-          const traits = [allTraits[Math.floor(Math.random() * allTraits.length)]];
+            const stats: Record<string, number> = {};
+            const primary = STAT_NAMES[Math.floor(Math.random() * STAT_NAMES.length)];
+            for (const s of STAT_NAMES) {
+              stats[s] = 30 + Math.floor(Math.random() * 40) + (s === primary ? 15 : 0);
+            }
 
-          await sb.from("games_participants").insert({
-            session_id,
-            festival_id: festival.id,
-            player_name: factionName,
-            city_id: bestCity?.id || null,
-            athlete_name: name,
-            strength: stats.strength,
-            endurance: stats.endurance,
-            agility: stats.agility,
-            tactics: stats.tactics,
-            charisma: stats.charisma,
-            training_bonus: infraBonus,
-            city_infrastructure_bonus: infraBonus,
-            civ_modifier: civMod * 10,
-            traits,
-            form: Math.random() > 0.8 ? "peak" : "normal",
-          });
+            const allTraits = ["Železný", "Křehký", "Zbožný", "Nervózní", "Charismatický", "Lstivý", "Odvážný", "Stoický"];
+            const traits = [allTraits[Math.floor(Math.random() * allTraits.length)]];
+
+            await sb.from("games_participants").insert({
+              session_id,
+              festival_id: festival.id,
+              player_name: factionName,
+              city_id: bestCity?.id || null,
+              athlete_name: name,
+              strength: stats.strength,
+              endurance: stats.endurance,
+              agility: stats.agility,
+              tactics: stats.tactics,
+              charisma: stats.charisma,
+              training_bonus: infraBonus,
+              city_infrastructure_bonus: infraBonus,
+              civ_modifier: civMod * 10,
+              traits,
+              form: Math.random() > 0.8 ? "peak" : "normal",
+            });
+          }
         }
       }
 
