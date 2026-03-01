@@ -311,6 +311,7 @@ const GamesTab = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, o
               hostPlayer={festivals.find(f => f.id === revealFestivalId)?.host_player || currentPlayerName}
               onClose={handleRevealClose}
               startWithReport={revealStartWithReport}
+              currentTurn={currentTurn}
             />
           )}
 
