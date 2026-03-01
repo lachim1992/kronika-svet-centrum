@@ -1334,10 +1334,12 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
           currentPlayerName={playerName}
           currentTurn={currentTurn || 1}
           myRole={myRole}
+          targetQ={selectedHex.q}
+          targetR={selectedHex.r}
           onCreated={(cityId) => {
             setShowFoundDialog(false);
             setSelectedHex(null);
-            fetchCities();
+            Promise.all([fetchCities(), fetchProvinces()]);
             onCityClick?.(cityId);
           }}
         />

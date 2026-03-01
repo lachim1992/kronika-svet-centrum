@@ -478,7 +478,29 @@ async function executeFoundCity(
     founded_seed: cityId,
   }, { onConflict: "city_id" }));
 
-  // ── 8. Insert canonical event ──
+  // ── 8. Claim surrounding hexes (center + ring 1 = 7 hexes) ──
+  const RING1_DIRS = [[1,0],[0,1],[-1,1],[-1,0],[0,-1],[1,-1]];
+  const claimHexes = [{ q: freeQ, r: freeR }];
+  for (const [dq, dr] of RING1_DIRS) {
+    claimHexes.push({ q: freeQ + dq, r: freeR + dr });
+  }
+  for (const h of claimHexes) {
+    const { data: existing } = await supabase.from("province_hexes")
+      .select("id, owner_player")
+      .eq("session_id", sessionId).eq("q", h.q).eq("r", h.r)
+      .maybeSingle();
+    if (existing) {
+      // Only claim if unclaimed
+      if (!existing.owner_player) {
+        await supabase.from("province_hexes")
+          .update({ owner_player: actor.name, province_id: provinceId || null })
+          .eq("id", existing.id);
+      }
+    }
+    // If hex doesn't exist in province_hexes yet, it will be claimed when generated
+  }
+
+  // ── 9. Insert canonical event ──
   const events = [{
     ...base,
     event_type: "founding",
