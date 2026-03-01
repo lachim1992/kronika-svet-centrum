@@ -44,15 +44,12 @@ const GladiatorPanel = ({ sessionId, currentPlayerName }: Props) => {
 
   const fetchData = useCallback(async () => {
     setLoading(true);
-    const [{ data: acads }, { data: recs }, { data: studs }] = await Promise.all([
+    const [{ data: acads }, { data: studs }] = await Promise.all([
       supabase.from("academies")
         .select("id, name, profile_brutality, crowd_popularity, elite_favor, people_favor, revolt_risk, total_fatalities, is_gladiatorial")
         .eq("session_id", sessionId)
         .eq("player_name", currentPlayerName)
         .gt("profile_brutality", 20),
-      supabase.from("gladiator_records")
-        .select("*")
-        .eq("session_id", sessionId),
       supabase.from("academy_students")
         .select("id, name, academy_id")
         .eq("session_id", sessionId)
@@ -60,10 +57,22 @@ const GladiatorPanel = ({ sessionId, currentPlayerName }: Props) => {
     ]);
 
     setAcademies((acads || []) as any);
-    setRecords((recs || []) as any);
     const nameMap = new Map<string, string>();
     for (const s of (studs || [])) nameMap.set(s.id, s.name);
     setStudentNames(nameMap);
+
+    // Fetch gladiator records only for player's academies
+    if (acads && acads.length > 0) {
+      const acadIds = acads.map(a => a.id);
+      const { data: recs } = await supabase.from("gladiator_records")
+        .select("*")
+        .eq("session_id", sessionId)
+        .in("academy_id", acadIds);
+      setRecords((recs || []) as any);
+    } else {
+      setRecords([]);
+    }
+
     setLoading(false);
   }, [sessionId, currentPlayerName]);
 
