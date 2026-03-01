@@ -107,11 +107,13 @@ const SchoolRankings = ({ sessionId, currentPlayerName }: Props) => {
       academyVictories.set(acad.id, gradCount);
     }
 
-    // Score calculation
+    // Score calculation — unified with server (academy-tick) formula
     const ranked: RankedAcademy[] = (academies as any[]).map(acad => {
       const victories = academyVictories.get(acad.id) || 0;
       const medals = academyMedals.get(acad.id) || { gold: 0, silver: 0, bronze: 0 };
       const medalCount = medals.gold * 3 + medals.silver * 2 + medals.bronze;
+      // Non-gladiatorial schools suffer fatality penalty
+      const fatalityPenalty = acad.is_gladiatorial ? 0 : (acad.total_fatalities || 0) * 10;
 
       const score =
         acad.reputation * 3 +
@@ -120,8 +122,11 @@ const SchoolRankings = ({ sessionId, currentPlayerName }: Props) => {
         medals.gold * 30 +
         medals.silver * 15 +
         medals.bronze * 5 +
+        (acad.fan_base || 0) * 0.5 +
+        (acad.crowd_popularity || 0) * 0.3 +
         (acad.infrastructure + acad.trainer_level + acad.nutrition) * 0.5 -
-        acad.corruption * 2;
+        acad.corruption * 2 -
+        fatalityPenalty;
 
       return {
         ...acad,

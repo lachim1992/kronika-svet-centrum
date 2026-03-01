@@ -238,10 +238,16 @@ Deno.serve(async (req) => {
             const nutritionBoost = Math.min(3, Math.floor(perSchool / 8));
             const trainerBoost = Math.min(2, Math.floor(perSchool / 10));
 
+            // Funding → reputation + prestige: over 10% funding gives direct rep boost
+            const repBoost = realm.sport_funding_pct >= 10
+              ? Math.min(3, 1 + Math.floor((realm.sport_funding_pct - 10) / 5))
+              : 0;
+
             await sb.from("academies").update({
               infrastructure: Math.min(100, acad.infrastructure + infraBoost),
               nutrition: Math.min(100, acad.nutrition + nutritionBoost),
               trainer_level: Math.min(100, acad.trainer_level + trainerBoost),
+              reputation: Math.min(100, acad.reputation + repBoost),
             }).eq("id", acad.id);
           }
         }
@@ -386,18 +392,21 @@ Deno.serve(async (req) => {
 
       // Fatality risk for brutal schools
       if (acad.profile_brutality > 40 && Math.random() < acad.profile_brutality / 300) {
+        // Non-gladiatorial schools suffer reputation penalty for deaths
+        const repPenalty = acad.is_gladiatorial ? 0 : 5;
         await sb.from("academies").update({
           total_fatalities: acad.total_fatalities + 1,
+          reputation: Math.max(0, acad.reputation - repPenalty),
         }).eq("id", acad.id);
 
         await sb.from("game_events").insert({
           session_id,
           event_type: "arena_fatality",
-          note: `Tragédie v ${acad.name}: student zahynul při brutálním výcviku. Veřejnost je šokována.`,
+          note: `Tragédie v ${acad.name}: student zahynul při brutálním výcviku.${!acad.is_gladiatorial ? " Reputace školy utrpěla (-5)." : " Dav je zděšen, ale gladiátorská tradice pokračuje."}`,
           player: player_name,
           turn_number: turn,
           confirmed: true,
-          reference: { academy_id: acad.id, city_id: acad.city_id },
+          reference: { academy_id: acad.id, city_id: acad.city_id, rep_penalty: repPenalty },
         });
       }
 
@@ -429,12 +438,12 @@ Deno.serve(async (req) => {
           revolt_risk: revoltRisk,
         }).eq("id", acad.id);
 
-        // Gladiator revolt event
+        // Gladiator revolt event → reputation & fan_base penalty
         if (revoltRisk > 80 && Math.random() < 0.15) {
           await sb.from("game_events").insert({
             session_id,
             event_type: "gladiator_revolt",
-            note: `Vzpoura gladiátorů v ${acad.name}! Ozbrojení bojovníci se obrátili proti svým pánům. Stabilita města klesá.`,
+            note: `Vzpoura gladiátorů v ${acad.name}! Ozbrojení bojovníci se obrátili proti svým pánům. Stabilita města klesá. Reputace -15, fanoušci -20.`,
             player: player_name,
             turn_number: turn,
             confirmed: true,
@@ -450,48 +459,113 @@ Deno.serve(async (req) => {
             }).eq("id", city.id);
           }
 
-          // Reset revolt risk
-          await sb.from("academies").update({ revolt_risk: 10 }).eq("id", acad.id);
+          // Crisis → reputation & fan_base penalty
+          await sb.from("academies").update({
+            revolt_risk: 10,
+            reputation: Math.max(0, (acad.reputation || 0) - 15),
+            fan_base: Math.max(0, (acad.fan_base || 0) - 20),
+          }).eq("id", acad.id);
           results.gladiator_revolts = (results.gladiator_revolts || 0) + 1;
         }
 
-        // Religious crisis if brutality too high + clerics present
+        // Religious crisis → reputation & fan_base penalty
         if (acad.profile_brutality > 70 && Math.random() < 0.05) {
           await sb.from("game_events").insert({
             session_id,
             event_type: "religious_crisis",
-            note: `Duchovní vůdci odsoudili brutalitu v ${acad.name}. Náboženské frakce žádají zákaz krvavých her.`,
+            note: `Duchovní vůdci odsoudili brutalitu v ${acad.name}. Náboženské frakce žádají zákaz krvavých her. Reputace -10, fanoušci -15.`,
             player: player_name,
             turn_number: turn,
             confirmed: true,
             reference: { academy_id: acad.id, brutality: acad.profile_brutality },
           });
+
+          // Religious crisis → reputation & fan_base penalty
+          await sb.from("academies").update({
+            reputation: Math.max(0, (acad.reputation || 0) - 10),
+            fan_base: Math.max(0, (acad.fan_base || 0) - 15),
+          }).eq("id", acad.id);
         }
       }
     }
 
     // ═══════════════════════════════════════════
-    // 4. UPDATE ACADEMY RANKINGS
+    // 4. UPDATE ACADEMY RANKINGS (with medals, fan_base, fatality penalty)
     // ═══════════════════════════════════════════
     const { data: allAcademies } = await sb.from("academies")
-      .select("id, reputation, total_graduates, total_champions, infrastructure, trainer_level, nutrition, corruption")
+      .select("id, reputation, total_graduates, total_champions, total_fatalities, infrastructure, trainer_level, nutrition, corruption, fan_base, crowd_popularity, is_gladiatorial, player_name")
       .eq("session_id", session_id).eq("status", "active");
 
     if (allAcademies && allAcademies.length > 0) {
-      const scored = allAcademies.map(a => ({
-        id: a.id,
-        score: a.reputation * 3 + a.total_champions * 50 + a.total_graduates * 5 +
-          (a.infrastructure + a.trainer_level + a.nutrition) * 0.5 - (a.corruption || 0) * 2,
-      })).sort((a, b) => b.score - a.score);
+      // Fetch all medals linked to academies for scoring
+      const { data: allStudents } = await sb.from("academy_students")
+        .select("id, academy_id").eq("session_id", session_id);
+      const { data: allParts } = await sb.from("games_participants")
+        .select("id, student_id").eq("session_id", session_id).not("student_id", "is", null);
+      const { data: allResults } = await sb.from("games_results")
+        .select("participant_id, medal").eq("session_id", session_id).not("medal", "is", null);
+
+      // Build academy → medal counts
+      const studentToAcademy = new Map<string, string>();
+      for (const s of (allStudents || [])) studentToAcademy.set(s.id, s.academy_id);
+      const partToStudent = new Map<string, string>();
+      for (const p of (allParts || [])) if (p.student_id) partToStudent.set(p.id, p.student_id);
+
+      const academyMedals = new Map<string, { gold: number; silver: number; bronze: number }>();
+      for (const r of (allResults || [])) {
+        const sid = partToStudent.get(r.participant_id);
+        if (!sid) continue;
+        const aid = studentToAcademy.get(sid);
+        if (!aid) continue;
+        if (!academyMedals.has(aid)) academyMedals.set(aid, { gold: 0, silver: 0, bronze: 0 });
+        const m = academyMedals.get(aid)!;
+        if (r.medal === "gold") m.gold++;
+        else if (r.medal === "silver") m.silver++;
+        else if (r.medal === "bronze") m.bronze++;
+      }
+
+      // Fetch sport funding for prestige bonus
+      const fundingMap = new Map<string, number>();
+      const playerNames = [...new Set(allAcademies.map(a => a.player_name))];
+      for (const pn of playerNames) {
+        const { data: r } = await sb.from("realm_resources")
+          .select("sport_funding_pct").eq("session_id", session_id).eq("player_name", pn).maybeSingle();
+        if (r) fundingMap.set(pn, r.sport_funding_pct || 0);
+      }
+
+      const scored = allAcademies.map(a => {
+        const medals = academyMedals.get(a.id) || { gold: 0, silver: 0, bronze: 0 };
+        const fundingPct = fundingMap.get(a.player_name) || 0;
+        const prestigeBonus = fundingPct >= 10 ? Math.floor(fundingPct * 1.5) : 0;
+        // Fatality penalty: non-gladiatorial schools lose points per death
+        const fatalityPenalty = a.is_gladiatorial ? 0 : (a.total_fatalities || 0) * 10;
+
+        const score =
+          a.reputation * 3 +
+          a.total_champions * 50 +
+          a.total_graduates * 5 +
+          medals.gold * 30 + medals.silver * 15 + medals.bronze * 5 +
+          (a.fan_base || 0) * 0.5 +
+          (a.crowd_popularity || 0) * 0.3 +
+          (a.infrastructure + a.trainer_level + a.nutrition) * 0.5 +
+          prestigeBonus -
+          (a.corruption || 0) * 2 -
+          fatalityPenalty;
+
+        return { id: a.id, score, medals };
+      }).sort((a, b) => b.score - a.score);
 
       for (let i = 0; i < scored.length; i++) {
+        const s = scored[i];
         await sb.from("academy_rankings").upsert({
           session_id,
-          academy_id: scored[i].id,
+          academy_id: s.id,
           turn_number: turn,
           rank_position: i + 1,
-          score: Math.round(scored[i].score),
+          score: Math.round(s.score),
           prestige: Math.max(0, 100 - i * 15),
+          victories: s.medals.gold,
+          champions: allAcademies.find(a => a.id === s.id)?.total_champions || 0,
         }, { onConflict: "academy_id,turn_number" });
       }
       results.rankings_updated = scored.length;

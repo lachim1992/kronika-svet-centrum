@@ -1312,8 +1312,32 @@ Deno.serve(async (req) => {
     // Sport funding deduction (academy-tick handles the actual boost, but we track it as expense here too)
     const sportFundingPct = realm.sport_funding_pct || 0;
     const sportFundingExpense = sportFundingPct > 0 ? Math.floor((realm.gold_reserve || 0) * sportFundingPct / 100) : 0;
-    
-    const newGoldReserve = Math.max(0, (realm.gold_reserve || 0) + wealthIncome - wealthUpkeep - sportFundingExpense + tradeGoldDelta);
+
+    // ═══ ACADEMY SOCIAL MECHANICS ═══
+    // elite_favor → gold sponsorship income, people_favor → city stability bonus
+    let academySponsorshipIncome = 0;
+    const { data: playerAcademies } = await supabase.from("academies")
+      .select("id, city_id, elite_favor, people_favor, fan_base")
+      .eq("session_id", sessionId).eq("player_name", playerName).eq("status", "active");
+
+    for (const acad of (playerAcademies || [])) {
+      // elite_favor (0-100) → gold sponsorship: 1 gold per 25 elite_favor
+      const sponsorship = Math.floor((acad.elite_favor || 0) / 25);
+      academySponsorshipIncome += sponsorship;
+
+      // people_favor (0-100) → city stability boost: +1 per 30 people_favor
+      const stabilityBoost = Math.floor((acad.people_favor || 0) / 30);
+      if (stabilityBoost > 0) {
+        const city = myCities.find(c => c.id === acad.city_id);
+        if (city) {
+          await supabase.from("cities").update({
+            city_stability: Math.min(100, (city.city_stability || 50) + stabilityBoost),
+          }).eq("id", city.id);
+        }
+      }
+    }
+
+    const newGoldReserve = Math.max(0, (realm.gold_reserve || 0) + wealthIncome + academySponsorshipIncome - wealthUpkeep - sportFundingExpense + tradeGoldDelta);
 
     const famineCityCount = myCities.filter(c => c.famine_turn).length;
 
