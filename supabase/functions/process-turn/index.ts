@@ -1204,7 +1204,12 @@ Deno.serve(async (req) => {
     grainReserve = Math.max(0, grainReserve + tradeGrainDelta);
 
     const wealthIncome = Math.round(computeWealthIncome(myCities) * (1 + wealthMod)) + (globalBuildingEffects.wealth_income || 0);
-    const newGoldReserve = Math.max(0, (realm.gold_reserve || 0) + wealthIncome - wealthUpkeep + tradeGoldDelta);
+    
+    // Sport funding deduction (academy-tick handles the actual boost, but we track it as expense here too)
+    const sportFundingPct = realm.sport_funding_pct || 0;
+    const sportFundingExpense = sportFundingPct > 0 ? Math.floor((realm.gold_reserve || 0) * sportFundingPct / 100) : 0;
+    
+    const newGoldReserve = Math.max(0, (realm.gold_reserve || 0) + wealthIncome - wealthUpkeep - sportFundingExpense + tradeGoldDelta);
 
     const famineCityCount = myCities.filter(c => c.famine_turn).length;
 
@@ -1246,7 +1251,7 @@ Deno.serve(async (req) => {
       wood: 0,
       stone: 0,
       iron: 0,
-      wealth: wealthUpkeep,
+      wealth: wealthUpkeep + sportFundingExpense,
     };
 
     for (const resType of resourceTypes) {
@@ -1319,6 +1324,7 @@ Deno.serve(async (req) => {
         grain_consumption: totalConsumption,
         army_food_upkeep: armyFoodUpkeep,
         army_gold_upkeep: wealthUpkeep,
+        sport_funding_expense: sportFundingExpense,
         net_grain: netGrain,
         grain_reserve: grainReserve,
         manpower_pool: manpowerPool,

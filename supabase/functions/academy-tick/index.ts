@@ -165,11 +165,9 @@ Deno.serve(async (req) => {
       .eq("session_id", session_id).eq("player_name", player_name).maybeSingle();
 
     if (realm && realm.sport_funding_pct > 0 && realm.gold_reserve > 0) {
+      // Gold deduction is handled by process-turn; here we only compute boost amount
       const fundingAmount = Math.floor(realm.gold_reserve * realm.sport_funding_pct / 100);
       if (fundingAmount > 0) {
-        await sb.from("realm_resources").update({
-          gold_reserve: realm.gold_reserve - fundingAmount,
-        }).eq("id", realm.id);
         results.funding_deducted = fundingAmount;
 
         // Boost all player's academies based on funding

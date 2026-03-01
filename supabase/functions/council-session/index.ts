@@ -48,6 +48,8 @@ serve(async (req) => {
       { data: uprisings },
       { data: cityStates },
       { data: aiFactions },
+      { data: academies },
+      { data: realm },
     ] = await Promise.all([
       sb.from("cities").select("*").eq("session_id", sessionId).eq("owner_player", playerName),
       sb.from("player_resources").select("*").eq("session_id", sessionId).eq("player_name", playerName),
@@ -63,6 +65,8 @@ serve(async (req) => {
       sb.from("city_uprisings").select("*").eq("session_id", sessionId).eq("player_name", playerName).eq("status", "pending"),
       sb.from("city_states").select("*").eq("session_id", sessionId),
       sb.from("ai_factions").select("*").eq("session_id", sessionId).eq("is_active", true),
+      sb.from("academies").select("*").eq("session_id", sessionId).eq("player_name", playerName),
+      sb.from("realm_resources").select("sport_funding_pct, gold_reserve").eq("session_id", sessionId).eq("player_name", playerName).maybeSingle(),
     ]);
 
     // ── Analyze key metrics ──
@@ -129,7 +133,8 @@ PRAVIDLA:
 3. Identifikuj TOP problémy a navrhni KONKRÉTNÍ dekrety k řešení
 4. Každý navržený dekret musí mít typ a mechanické efekty
 5. Navrhni strategický směr pro příští kolo s odůvodněním
-6. Zohledni: hladomory, epidemie, nízkou spokojenost frakcí, diplomatické tenze, ekonomický deficit`;
+6. Zohledni: hladomory, epidemie, nízkou spokojenost frakcí, diplomatické tenze, ekonomický deficit
+7. Pokud existují akademie/arény: zhodnoť jejich stav, riziko vzpoury gladiátorů, a doporuč úpravu sportovního financování`;
 
     const userPrompt = `=== ZASEDÁNÍ KRÁLOVSKÉ RADY ===
 Vládce: ${playerName}
@@ -168,6 +173,12 @@ ${(aiFactions || []).map((f: any) => `- ${f.faction_name}: osobnost ${f.personal
 
 === MĚSTSKÉ STÁTY ===
 ${(cityStates || []).map((cs: any) => `- ${cs.name}: typ ${cs.type}, nálada ${cs.mood}`).join("\n") || "Žádné."}
+
+=== AKADEMIE A ARÉNY ===
+${(academies || []).map((a: any) => `- ${a.name}${a.is_gladiatorial ? " [GLADIÁTORSKÁ]" : ""}: reputace ${a.reputation}, infrastruktura ${a.infrastructure}, absolventi ${a.total_graduates}, šampioni ${a.total_champions}, úmrtnost ${a.total_fatalities}${a.revolt_risk > 50 ? `, ⚠ RIZIKO VZPOURY ${a.revolt_risk}%` : ""}${a.people_favor != null ? `, lid_favor ${a.people_favor}, elita_favor ${a.elite_favor}` : ""}`).join("\n") || "Žádné akademie."}
+
+=== SPORTOVNÍ FINANCOVÁNÍ ===
+${realm ? `Podíl financování sportu: ${realm.sport_funding_pct || 0}% ze zlata (${Math.floor((realm.gold_reserve || 0) * (realm.sport_funding_pct || 0) / 100)} zlata/kolo)` : "Není nastaveno."}
 
 Proveď kompletní zasedání rady a vrať strukturovaný výstup.`;
 
