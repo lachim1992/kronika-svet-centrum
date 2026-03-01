@@ -855,28 +855,25 @@ Deno.serve(async (req) => {
       }
       results.aiQualification = { qualified: aiQualified };
 
-      // ─── Auto-resolve festivals in nomination/qualifying/finals (2+ turns after nomination) ───
-      const { data: festivalsToResolve } = await supabase.from("games_festivals")
+      // ─── Move festivals to "finals" when ready (host resolves disciplines manually) ───
+      const { data: festivalsToAdvance } = await supabase.from("games_festivals")
         .select("id, is_global, announced_turn, finals_turn")
         .eq("session_id", sessionId)
-        .in("status", ["nomination", "qualifying", "finals"]);
+        .in("status", ["nomination", "qualifying"]);
 
-      let gamesResolved = 0;
-      for (const fest of (festivalsToResolve || [])) {
-        // Resolve when we reach or pass the finals_turn, or 2 turns after announcement
+      let gamesAdvanced = 0;
+      for (const fest of (festivalsToAdvance || [])) {
         const resolveAt = fest.finals_turn || (fest.announced_turn + 2);
         if (turnNumber >= resolveAt) {
           try {
-            await supabase.functions.invoke("games-resolve", {
-              body: { session_id: sessionId, festival_id: fest.id, turn_number: turnNumber },
-            });
-            gamesResolved++;
+            await supabase.from("games_festivals").update({ status: "finals" }).eq("id", fest.id);
+            gamesAdvanced++;
           } catch (grErr) {
-            console.error(`Games resolve ${fest.id}:`, grErr);
+            console.error(`Games advance to finals ${fest.id}:`, grErr);
           }
         }
       }
-      results.gamesResolve = { resolved: gamesResolved };
+      results.gamesResolve = { advanced: gamesAdvanced };
     } catch (e) {
       console.error("Games processing error:", e);
       results.games = { error: (e as Error).message };

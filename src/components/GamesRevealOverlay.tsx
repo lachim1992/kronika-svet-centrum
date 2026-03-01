@@ -12,11 +12,12 @@ interface Props {
   hostPlayer: string;
   onClose: () => void;
   startWithReport?: boolean;
+  currentTurn?: number;
 }
 
 type Phase = "reveal" | "report";
 
-const GamesRevealOverlay = ({ festivalId, sessionId, playerName, hostPlayer, onClose, startWithReport }: Props) => {
+const GamesRevealOverlay = ({ festivalId, sessionId, playerName, hostPlayer, onClose, startWithReport, currentTurn }: Props) => {
   const [phase, setPhase] = useState<Phase>(startWithReport ? "report" : "reveal");
   const [disciplines, setDisciplines] = useState<any[]>([]);
   const isHost = playerName === hostPlayer;
@@ -64,6 +65,7 @@ const GamesRevealOverlay = ({ festivalId, sessionId, playerName, hostPlayer, onC
               disciplines={disciplines}
               isHost={isHost}
               onComplete={() => setPhase("report")}
+              currentTurn={currentTurn}
             />
           )}
           {phase === "report" && (

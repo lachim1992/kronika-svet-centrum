@@ -6,8 +6,9 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { supabase } from "@/integrations/supabase/client";
 import {
   Play, Pause, SkipForward, Trophy, Star, Skull, AlertTriangle, Medal,
-  Volume2, VolumeX, MessageSquare, Swords, Palette, Shield
+  Volume2, VolumeX, MessageSquare, Swords, Palette, Shield, Flag
 } from "lucide-react";
+import { toast } from "sonner";
 
 // ═══ CATEGORY COLORS ═══
 const CAT_COLORS: Record<string, { border: string; bg: string; text: string; glow: string }> = {
@@ -131,9 +132,10 @@ interface Props {
   disciplines: any[];
   isHost: boolean;
   onComplete?: () => void;
+  currentTurn?: number;
 }
 
-const GamesRevealPlayer = ({ festivalId, sessionId, disciplines, isHost, onComplete }: Props) => {
+const GamesRevealPlayer = ({ festivalId, sessionId, disciplines, isHost, onComplete, currentTurn }: Props) => {
   const [disciplineReveals, setDisciplineReveals] = useState<DisciplineReveal[]>([]);
   const [activeDisciplineId, setActiveDisciplineId] = useState<string | null>(null);
   const [currentStep, setCurrentStep] = useState(0);
@@ -142,6 +144,7 @@ const GamesRevealPlayer = ({ festivalId, sessionId, disciplines, isHost, onCompl
   const [crowdReactions, setCrowdReactions] = useState<any[]>([]);
   const [resolvingDisc, setResolvingDisc] = useState<string | null>(null);
   const [muted, setMuted] = useState(false);
+  const [concluding, setConcluding] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const ambienceRef = useRef<HTMLAudioElement | null>(null);
@@ -273,6 +276,30 @@ const GamesRevealPlayer = ({ festivalId, sessionId, disciplines, isHost, onCompl
     if (lastMedal?.medals) setCurrentMedals(lastMedal.medals);
   };
 
+
+  const handleConcludeGames = async () => {
+    setConcluding(true);
+    try {
+      // Find champion from medal tally
+      const sorted = Object.entries(currentMedals).sort((a, b) =>
+        (b[1].gold * 5 + b[1].silver * 3 + b[1].bronze) - (a[1].gold * 5 + a[1].silver * 3 + a[1].bronze)
+      );
+
+      await supabase.from("games_festivals").update({
+        status: "concluded",
+        concluded_turn: currentTurn || null,
+        reveal_phase: "concluded",
+      }).eq("id", festivalId);
+
+      toast.success("🏟️ Hry slavnostně uzavřeny!");
+      onComplete?.();
+    } catch (e: any) {
+      toast.error(e.message || "Chyba při uzavírání her");
+    } finally {
+      setConcluding(false);
+    }
+  };
+
   const sortedEmpires = Object.entries(currentMedals)
     .sort((a, b) => (b[1].gold * 100 + b[1].silver * 10 + b[1].bronze) - (a[1].gold * 100 + a[1].silver * 10 + a[1].bronze));
 
@@ -313,9 +340,19 @@ const GamesRevealPlayer = ({ festivalId, sessionId, disciplines, isHost, onCompl
                     {isResolved && <span className="text-green-400">✓</span>}
                     {isResolving && <span className="animate-spin">⏳</span>}
                   </Button>
-                );
-              })}
-            </div>
+                  );
+                })}
+              </div>
+              {allResolved && (
+                <Button
+                  onClick={handleConcludeGames}
+                  disabled={concluding}
+                  className="w-full mt-3 font-display gap-2"
+                >
+                  <Flag className="h-4 w-4" />
+                  {concluding ? "Uzavírám hry…" : "🏟️ Slavnostně uzavřít hry"}
+                </Button>
+              )}
           </CardContent>
         </Card>
       )}

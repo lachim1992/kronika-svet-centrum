@@ -329,7 +329,7 @@ Deno.serve(async (req) => {
       });
     }
     if (dbResults.length > 0) {
-      await sb.from("games_results").insert(dbResults);
+      await sb.from("games_results").upsert(dbResults, { onConflict: "festival_id,discipline_id,participant_id" });
     }
 
     // Compute cumulative medal tally
@@ -362,33 +362,14 @@ Deno.serve(async (req) => {
       resolved_at: new Date().toISOString(),
     }).eq("festival_id", festival_id).eq("discipline_id", discipline_id);
 
-    // Check if ALL disciplines are resolved — if so, conclude festival
+    // Check if ALL disciplines are resolved
     const { data: allDiscs } = await sb.from("games_disciplines").select("id");
     const { data: allReveals } = await sb.from("games_discipline_reveals")
       .select("discipline_id, status").eq("festival_id", festival_id).eq("status", "resolved");
 
     const allResolved = (allDiscs || []).every(d => (allReveals || []).some(r => r.discipline_id === d.id));
 
-    if (allResolved) {
-      // Find champion
-      let championId = null;
-      const sortedTally = Object.entries(medalTally).sort((a, b) => {
-        const pA = a[1].gold * 5 + a[1].silver * 3 + a[1].bronze;
-        const pB = b[1].gold * 5 + b[1].silver * 3 + b[1].bronze;
-        return pB - pA;
-      });
-      if (sortedTally.length > 0) {
-        const champPlayer = sortedTally[0][0];
-        const champPart = participants.find(p => p.player_name === champPlayer);
-        if (champPart) championId = champPart.id;
-      }
-
-      await sb.from("games_festivals").update({
-        status: "concluded",
-        best_athlete_id: championId,
-        reveal_phase: "concluded",
-      }).eq("id", festival_id);
-    }
+    // Do NOT auto-conclude — host clicks "Uzavřít hry" button
 
     return new Response(JSON.stringify({
       ok: true,
