@@ -230,10 +230,16 @@ Deno.serve(async (req) => {
         }
 
         // Update team titles
-        await sb.from("league_teams").update({
-          titles_won: (champion as any).wins || 0, // we'll fix this
-          seasons_played: season.season_number,
-        }).eq("id", champion.team_id);
+        // Properly increment titles_won and seasons_played
+        const { data: champTeamData } = await sb.from("league_teams")
+          .select("titles_won, seasons_played")
+          .eq("id", champion.team_id).single();
+        if (champTeamData) {
+          await sb.from("league_teams").update({
+            titles_won: (champTeamData.titles_won || 0) + 1,
+            seasons_played: (champTeamData.seasons_played || 0) + 1,
+          }).eq("id", champion.team_id);
+        }
 
         // Game event
         await sb.from("game_events").insert({
