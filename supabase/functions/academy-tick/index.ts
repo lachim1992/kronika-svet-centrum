@@ -143,6 +143,61 @@ Deno.serve(async (req) => {
         nutrition: 10 + Math.floor(Math.random() * 10),
       });
 
+      // ── Auto-generate 10 initial graduates (no portrait — generated on demand later) ──
+      const { data: newAcad } = await sb.from("academies")
+        .select("id, profile_athletics, profile_combat, profile_culture, profile_strategy, profile_brutality, reputation, infrastructure, trainer_level, nutrition")
+        .eq("session_id", session_id).eq("building_id", bldg.id).maybeSingle();
+
+      if (newAcad) {
+        const initialGraduates: any[] = [];
+        for (let gi = 0; gi < 10; gi++) {
+          const gName = ATHLETE_NAMES[Math.floor(Math.random() * ATHLETE_NAMES.length)];
+          const baseQuality = newAcad.reputation * 0.4 + newAcad.infrastructure * 0.2 + newAcad.trainer_level * 0.2 + newAcad.nutrition * 0.1;
+          const gVariance = Math.floor(Math.random() * 20) - 10;
+          const totalProf = newAcad.profile_athletics + newAcad.profile_combat + newAcad.profile_culture + newAcad.profile_strategy;
+          const norm = (v: number) => v / Math.max(totalProf, 1);
+          const sBase = baseQuality + gVariance;
+          const cs = (v: number) => Math.max(10, Math.min(99, Math.floor(v)));
+
+          const gStrength = cs(sBase * (0.5 + norm(newAcad.profile_combat) * 0.8) + Math.random() * 15);
+          const gEndurance = cs(sBase * (0.5 + norm(newAcad.profile_athletics) * 0.8) + Math.random() * 15);
+          const gAgility = cs(sBase * (0.4 + norm(newAcad.profile_athletics) * 0.6) + Math.random() * 15);
+          const gTactics = cs(sBase * (0.4 + norm(newAcad.profile_strategy) * 0.8) + Math.random() * 15);
+          const gCharisma = cs(sBase * (0.3 + norm(newAcad.profile_culture) * 0.8) + Math.random() * 15);
+
+          const gProfiles = [
+            { key: "sprint", val: newAcad.profile_athletics },
+            { key: "combat", val: newAcad.profile_combat },
+            { key: "rhetoric", val: newAcad.profile_culture },
+            { key: "tactics", val: newAcad.profile_strategy },
+          ].sort((a, b) => b.val - a.val);
+          const gSpecialty = gProfiles[Math.floor(Math.random() * 2)].key; // top-2 random
+
+          const gTraits = [TRAITS_POOL[Math.floor(Math.random() * TRAITS_POOL.length)]];
+          if (newAcad.profile_brutality > 30 && Math.random() < newAcad.profile_brutality / 200) {
+            gTraits.push("Divoch");
+          }
+
+          initialGraduates.push({
+            academy_id: newAcad.id,
+            session_id,
+            player_name,
+            name: gName,
+            strength: gStrength, endurance: gEndurance, agility: gAgility, tactics: gTactics, charisma: gCharisma,
+            specialty: gSpecialty,
+            traits: gTraits,
+            training_started_turn: Math.max(0, turn - 5),
+            graduation_turn: turn,
+            status: "graduated",
+            bio: `Absolvent ${academyName}, specialista na ${gSpecialty}.`,
+            portrait_url: null,
+          });
+        }
+
+        await sb.from("academy_students").insert(initialGraduates);
+        await sb.from("academies").update({ total_graduates: 10 }).eq("id", newAcad.id);
+      }
+
       // Log event
       await sb.from("game_events").insert({
         session_id,
