@@ -5,9 +5,12 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Loader2, Trophy, Sword, BookOpen, Theater, Target, Flame, Star, Crown, AlertTriangle, Coins, School } from "lucide-react";
+import { Loader2, Trophy, Sword, BookOpen, Theater, Target, Flame, Star, Crown, AlertTriangle, Coins, School, Skull, TrendingUp } from "lucide-react";
 import { toast } from "sonner";
 import AcademyPanel from "@/components/AcademyPanel";
+import SchoolRankings from "@/components/SchoolRankings";
+import LiveGamesFeed from "@/components/LiveGamesFeed";
+import GladiatorPanel from "@/components/GladiatorPanel";
 
 interface Props {
   sessionId: string;
@@ -226,12 +229,18 @@ const GamesTab = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, o
       </div>
 
       <Tabs defaultValue="active" className="space-y-4">
-        <TabsList className="grid w-full grid-cols-4">
+        <TabsList className="grid w-full grid-cols-3 sm:grid-cols-6">
           <TabsTrigger value="active" className="font-display text-xs">
             <Flame className="h-3.5 w-3.5 mr-1" />Aktivní
           </TabsTrigger>
           <TabsTrigger value="academy" className="font-display text-xs">
             <School className="h-3.5 w-3.5 mr-1" />Akademie
+          </TabsTrigger>
+          <TabsTrigger value="rankings" className="font-display text-xs">
+            <TrendingUp className="h-3.5 w-3.5 mr-1" />Žebříček
+          </TabsTrigger>
+          <TabsTrigger value="gladiators" className="font-display text-xs">
+            <Skull className="h-3.5 w-3.5 mr-1" />Aréna
           </TabsTrigger>
           <TabsTrigger value="create" className="font-display text-xs">
             <Star className="h-3.5 w-3.5 mr-1" />Vyhlásit
@@ -265,11 +274,25 @@ const GamesTab = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, o
               </CardContent>
             </Card>
           )}
+          {/* Live Feed for active festival */}
+          {activeFestival && (
+            <LiveGamesFeed sessionId={sessionId} festivalId={activeFestival.id} />
+          )}
         </TabsContent>
 
         {/* ─── ACADEMY ─── */}
         <TabsContent value="academy">
           <AcademyPanel sessionId={sessionId} currentPlayerName={currentPlayerName} currentTurn={currentTurn} />
+        </TabsContent>
+
+        {/* ─── RANKINGS ─── */}
+        <TabsContent value="rankings">
+          <SchoolRankings sessionId={sessionId} currentPlayerName={currentPlayerName} />
+        </TabsContent>
+
+        {/* ─── GLADIATORS ─── */}
+        <TabsContent value="gladiators">
+          <GladiatorPanel sessionId={sessionId} currentPlayerName={currentPlayerName} />
         </TabsContent>
 
         {/* ─── CREATE GAMES ─── */}

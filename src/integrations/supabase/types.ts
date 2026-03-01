@@ -22,16 +22,20 @@ export type Database = {
           color_secondary: string | null
           corruption: number
           created_at: string
+          crowd_popularity: number
           description: string | null
+          elite_favor: number
           emblem_url: string | null
           fan_base: number
           founded_turn: number
           id: string
           infrastructure: number
+          is_gladiatorial: boolean
           last_training_turn: number
           motto: string | null
           name: string
           nutrition: number
+          people_favor: number
           player_name: string
           profile_athletics: number
           profile_brutality: number
@@ -39,6 +43,7 @@ export type Database = {
           profile_culture: number
           profile_strategy: number
           reputation: number
+          revolt_risk: number
           session_id: string
           status: string
           total_champions: number
@@ -56,16 +61,20 @@ export type Database = {
           color_secondary?: string | null
           corruption?: number
           created_at?: string
+          crowd_popularity?: number
           description?: string | null
+          elite_favor?: number
           emblem_url?: string | null
           fan_base?: number
           founded_turn?: number
           id?: string
           infrastructure?: number
+          is_gladiatorial?: boolean
           last_training_turn?: number
           motto?: string | null
           name?: string
           nutrition?: number
+          people_favor?: number
           player_name: string
           profile_athletics?: number
           profile_brutality?: number
@@ -73,6 +82,7 @@ export type Database = {
           profile_culture?: number
           profile_strategy?: number
           reputation?: number
+          revolt_risk?: number
           session_id: string
           status?: string
           total_champions?: number
@@ -90,16 +100,20 @@ export type Database = {
           color_secondary?: string | null
           corruption?: number
           created_at?: string
+          crowd_popularity?: number
           description?: string | null
+          elite_favor?: number
           emblem_url?: string | null
           fan_base?: number
           founded_turn?: number
           id?: string
           infrastructure?: number
+          is_gladiatorial?: boolean
           last_training_turn?: number
           motto?: string | null
           name?: string
           nutrition?: number
+          people_favor?: number
           player_name?: string
           profile_athletics?: number
           profile_brutality?: number
@@ -107,6 +121,7 @@ export type Database = {
           profile_culture?: number
           profile_strategy?: number
           reputation?: number
+          revolt_risk?: number
           session_id?: string
           status?: string
           total_champions?: number
@@ -134,6 +149,66 @@ export type Database = {
           },
           {
             foreignKeyName: "academies_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      academy_rankings: {
+        Row: {
+          academy_id: string
+          champions: number
+          created_at: string
+          id: string
+          international_participations: number
+          prestige: number
+          rank_position: number
+          score: number
+          session_id: string
+          survivors: number
+          turn_number: number
+          victories: number
+        }
+        Insert: {
+          academy_id: string
+          champions?: number
+          created_at?: string
+          id?: string
+          international_participations?: number
+          prestige?: number
+          rank_position?: number
+          score?: number
+          session_id: string
+          survivors?: number
+          turn_number?: number
+          victories?: number
+        }
+        Update: {
+          academy_id?: string
+          champions?: number
+          created_at?: string
+          id?: string
+          international_participations?: number
+          prestige?: number
+          rank_position?: number
+          score?: number
+          session_id?: string
+          survivors?: number
+          turn_number?: number
+          victories?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "academy_rankings_academy_id_fkey"
+            columns: ["academy_id"]
+            isOneToOne: false
+            referencedRelation: "academies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "academy_rankings_session_id_fkey"
             columns: ["session_id"]
             isOneToOne: false
             referencedRelation: "game_sessions"
@@ -3345,6 +3420,70 @@ export type Database = {
           },
         ]
       }
+      games_live_feed: {
+        Row: {
+          created_at: string
+          discipline_id: string | null
+          drama_level: number
+          feed_type: string
+          festival_id: string
+          id: string
+          participant_id: string | null
+          roll_value: number | null
+          sequence_num: number
+          session_id: string
+          text: string
+        }
+        Insert: {
+          created_at?: string
+          discipline_id?: string | null
+          drama_level?: number
+          feed_type?: string
+          festival_id: string
+          id?: string
+          participant_id?: string | null
+          roll_value?: number | null
+          sequence_num?: number
+          session_id: string
+          text: string
+        }
+        Update: {
+          created_at?: string
+          discipline_id?: string | null
+          drama_level?: number
+          feed_type?: string
+          festival_id?: string
+          id?: string
+          participant_id?: string | null
+          roll_value?: number | null
+          sequence_num?: number
+          session_id?: string
+          text?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "games_live_feed_discipline_id_fkey"
+            columns: ["discipline_id"]
+            isOneToOne: false
+            referencedRelation: "games_disciplines"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "games_live_feed_festival_id_fkey"
+            columns: ["festival_id"]
+            isOneToOne: false
+            referencedRelation: "games_festivals"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "games_live_feed_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       games_participants: {
         Row: {
           agility: number
@@ -3575,6 +3714,79 @@ export type Database = {
             columns: ["session_id"]
             isOneToOne: false
             referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      gladiator_records: {
+        Row: {
+          academy_id: string
+          cause_of_death: string | null
+          created_at: string
+          crowd_favor: number
+          died_turn: number | null
+          fights: number
+          id: string
+          injuries: number
+          is_icon: boolean
+          kills: number
+          session_id: string
+          status: string
+          student_id: string
+          victories: number
+        }
+        Insert: {
+          academy_id: string
+          cause_of_death?: string | null
+          created_at?: string
+          crowd_favor?: number
+          died_turn?: number | null
+          fights?: number
+          id?: string
+          injuries?: number
+          is_icon?: boolean
+          kills?: number
+          session_id: string
+          status?: string
+          student_id: string
+          victories?: number
+        }
+        Update: {
+          academy_id?: string
+          cause_of_death?: string | null
+          created_at?: string
+          crowd_favor?: number
+          died_turn?: number | null
+          fights?: number
+          id?: string
+          injuries?: number
+          is_icon?: boolean
+          kills?: number
+          session_id?: string
+          status?: string
+          student_id?: string
+          victories?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "gladiator_records_academy_id_fkey"
+            columns: ["academy_id"]
+            isOneToOne: false
+            referencedRelation: "academies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "gladiator_records_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "gladiator_records_student_id_fkey"
+            columns: ["student_id"]
+            isOneToOne: false
+            referencedRelation: "academy_students"
             referencedColumns: ["id"]
           },
         ]
