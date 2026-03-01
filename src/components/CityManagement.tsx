@@ -81,10 +81,18 @@ const EFFECT_LABELS: Record<string, { label: string; icon: React.ReactNode }> = 
   iron_income: { label: "Železo", icon: <Anvil className="h-3 w-3" /> },
   wealth_income: { label: "Bohatství", icon: <Coins className="h-3 w-3" /> },
   stability_bonus: { label: "Stabilita", icon: <Shield className="h-3 w-3" /> },
+  stability: { label: "Stabilita", icon: <Shield className="h-3 w-3" /> },
   influence_bonus: { label: "Vliv", icon: <TrendingUp className="h-3 w-3" /> },
+  influence: { label: "Vliv", icon: <TrendingUp className="h-3 w-3" /> },
   population_growth: { label: "Růst pop.", icon: <Users className="h-3 w-3" /> },
+  population_capacity: { label: "Kapacita pop.", icon: <Users className="h-3 w-3" /> },
   manpower_bonus: { label: "Vojenská síla", icon: <Swords className="h-3 w-3" /> },
+  manpower: { label: "Vojenská síla", icon: <Swords className="h-3 w-3" /> },
   defense_bonus: { label: "Obrana", icon: <Shield className="h-3 w-3" /> },
+  defense: { label: "Obrana", icon: <Shield className="h-3 w-3" /> },
+  granary_capacity: { label: "Kapacita sýpky", icon: <Wheat className="h-3 w-3" /> },
+  production: { label: "Produkce", icon: <Anvil className="h-3 w-3" /> },
+  garrison: { label: "Posádka", icon: <Swords className="h-3 w-3" /> },
 };
 
 const SETTLEMENT_ORDER = ["HAMLET", "TOWNSHIP", "CITY", "POLIS"];
