@@ -65,8 +65,10 @@ Deno.serve(async (req) => {
       case "survival":
         victoryResult = await checkSurvival(sb, sessionId, humanPlayers);
         break;
+      case "cultural":
+        victoryResult = await checkCultural(sb, sessionId, humanPlayers);
+        break;
       case "story":
-        // Manual — never auto-triggers
         victoryResult = { won: false };
         break;
       default:
@@ -217,6 +219,33 @@ async function checkSurvival(sb: any, sessionId: string, humanPlayers: string[])
   return { won: false };
 }
 
+// ── Cultural: reach 100+ cultural_prestige ──
+async function checkCultural(sb: any, sessionId: string, humanPlayers: string[]) {
+  const { data: realms } = await sb
+    .from("realm_resources")
+    .select("player_name, cultural_prestige, military_prestige, economic_prestige")
+    .eq("session_id", sessionId)
+    .in("player_name", humanPlayers);
+
+  for (const realm of (realms || [])) {
+    if ((realm.cultural_prestige || 0) >= 100) {
+      return {
+        won: true,
+        winner: realm.player_name,
+        data: {
+          type: "cultural",
+          cultural_prestige: realm.cultural_prestige,
+          military_prestige: realm.military_prestige || 0,
+          economic_prestige: realm.economic_prestige || 0,
+          total_prestige: (realm.cultural_prestige || 0) + (realm.military_prestige || 0) + (realm.economic_prestige || 0),
+        },
+      };
+    }
+  }
+
+  return { won: false };
+}
+
 // ── Progress computation for UI ──
 async function computeProgress(sb: any, sessionId: string, victoryStyle: string, humanPlayers: string[]) {
   switch (victoryStyle) {
@@ -291,6 +320,26 @@ async function computeProgress(sb: any, sessionId: string, victoryStyle: string,
       };
     }
 
+    case "cultural": {
+      const { data: realms } = await sb
+        .from("realm_resources")
+        .select("player_name, cultural_prestige")
+        .eq("session_id", sessionId)
+        .in("player_name", humanPlayers);
+
+      const best = (realms || []).sort((a: any, b: any) => (b.cultural_prestige || 0) - (a.cultural_prestige || 0))[0];
+      const current = best?.cultural_prestige || 0;
+
+      return {
+        type: "cultural",
+        label: "Kulturní vítězství (100 kulturní prestiže)",
+        current,
+        target: 100,
+        pct: Math.round(Math.min(current, 100)),
+        details: { note: `Dosáhni 100+ kulturní prestiže skrze olympiádu, festivaly a akademie.` },
+      };
+    }
+
     case "story":
     default:
       return {
@@ -310,6 +359,8 @@ function buildVictoryChronicle(style: string, winner: string, turn: number): str
       return `**V roce ${turn} dosáhl ${winner} naprosté dominance.** Všechna hlavní města nepřátelských říší padla pod jeho vládu. Svět se sklání před novým hegemonem — éra válek končí, začíná éra jednoty pod jedním praporem.`;
     case "survival":
       return `**V roce ${turn} prokázal ${winner} nevídanou odolnost.** Tři velké krize otřásly základy civilizace, ale říše ${winner} přežila každou z nich. Kde jiní padli, on vytrvale budoval a bránil svůj lid.`;
+    case "cultural":
+      return `**V roce ${turn} dosáhl ${winner} kulturního triumfu.** Prestiž jeho říšea je nepřekonatelná — olympijské vítězství, slavné akademie a úchvatné festivaly proslavily jeho národ po celém známém světě. Kultura zvítězila nad mečem.`;
     default:
       return `**V roce ${turn} uzavřel ${winner} kapitolu dějin svého světa.** Příběh jeho říše se stává legendou předávanou z generace na generaci.`;
   }

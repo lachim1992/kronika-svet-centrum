@@ -136,6 +136,7 @@ const TONES = [
 const VICTORY_STYLES = [
   { value: "domination", label: "⚔️ Dominace", desc: "Vojenská nadvláda" },
   { value: "survival", label: "🛡️ Přežití", desc: "Přežijte krize a katastrofy" },
+  { value: "cultural", label: "🏛️ Kultura", desc: "Dosáhni 100 kulturní prestiže" },
   { value: "story", label: "📖 Příběh", desc: "Nejlepší příběh vyhrává" },
 ];
 
