@@ -862,6 +862,7 @@ export type Database = {
           level: string
           local_grain_reserve: number
           local_granary_capacity: number
+          local_renown: number
           market_level: number
           max_districts: number
           migration_pressure: number
@@ -929,6 +930,7 @@ export type Database = {
           level?: string
           local_grain_reserve?: number
           local_granary_capacity?: number
+          local_renown?: number
           market_level?: number
           max_districts?: number
           migration_pressure?: number
@@ -996,6 +998,7 @@ export type Database = {
           level?: string
           local_grain_reserve?: number
           local_granary_capacity?: number
+          local_renown?: number
           market_level?: number
           max_districts?: number
           migration_pressure?: number
@@ -3340,6 +3343,7 @@ export type Database = {
           created_at: string
           description: string | null
           effects_applied: boolean
+          festival_results: Json | null
           festival_type: string
           finals_turn: number | null
           host_city_id: string | null
@@ -3369,6 +3373,7 @@ export type Database = {
           created_at?: string
           description?: string | null
           effects_applied?: boolean
+          festival_results?: Json | null
           festival_type?: string
           finals_turn?: number | null
           host_city_id?: string | null
@@ -3398,6 +3403,7 @@ export type Database = {
           created_at?: string
           description?: string | null
           effects_applied?: boolean
+          festival_results?: Json | null
           festival_type?: string
           finals_turn?: number | null
           host_city_id?: string | null
@@ -5021,6 +5027,8 @@ export type Database = {
           army_sigil_prompt: string | null
           army_sigil_url: string | null
           created_at: string
+          cultural_prestige: number
+          economic_prestige: number
           famine_city_count: number
           gold_reserve: number
           grain_reserve: number
@@ -5040,6 +5048,7 @@ export type Database = {
           logistic_capacity: number
           manpower_committed: number
           manpower_pool: number
+          military_prestige: number
           mobilization_rate: number
           player_name: string
           prestige: number
@@ -5058,6 +5067,8 @@ export type Database = {
           army_sigil_prompt?: string | null
           army_sigil_url?: string | null
           created_at?: string
+          cultural_prestige?: number
+          economic_prestige?: number
           famine_city_count?: number
           gold_reserve?: number
           grain_reserve?: number
@@ -5077,6 +5088,7 @@ export type Database = {
           logistic_capacity?: number
           manpower_committed?: number
           manpower_pool?: number
+          military_prestige?: number
           mobilization_rate?: number
           player_name: string
           prestige?: number
@@ -5095,6 +5107,8 @@ export type Database = {
           army_sigil_prompt?: string | null
           army_sigil_url?: string | null
           created_at?: string
+          cultural_prestige?: number
+          economic_prestige?: number
           famine_city_count?: number
           gold_reserve?: number
           grain_reserve?: number
@@ -5114,6 +5128,7 @@ export type Database = {
           logistic_capacity?: number
           manpower_committed?: number
           manpower_pool?: number
+          military_prestige?: number
           mobilization_rate?: number
           player_name?: string
           prestige?: number
