@@ -381,18 +381,35 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
     const [{ data: provs }, { data: provHexes }] = await Promise.all([
       supabase.from("provinces").select("id, name, color_index, owner_player, is_neutral")
         .eq("session_id", sessionId),
-      supabase.from("province_hexes").select("q, r, province_id")
-        .eq("session_id", sessionId).not("province_id", "is", null),
+      supabase.from("province_hexes").select("q, r, province_id, owner_player")
+        .eq("session_id", sessionId),
     ]);
     if (provHexes) {
       const provColorMap = new Map<string, number>();
       for (const p of provs || []) provColorMap.set(p.id, p.color_index ?? 0);
+      
+      // Build a color index for owner_player as fallback
+      const ownerColorMap = new Map<string, number>();
+      let ownerIdx = 0;
+      for (const p of provs || []) {
+        if (p.owner_player && !ownerColorMap.has(p.owner_player)) {
+          ownerColorMap.set(p.owner_player, ownerIdx++);
+        }
+      }
+      
       const hexMap = new Map<string, { provinceId: string; colorIndex: number }>();
       for (const ph of provHexes) {
-        if (ph.province_id) {
+        const provId = ph.province_id;
+        if (provId) {
           hexMap.set(hKey(ph.q, ph.r), {
-            provinceId: ph.province_id,
-            colorIndex: provColorMap.get(ph.province_id) ?? 0,
+            provinceId: provId,
+            colorIndex: provColorMap.get(provId) ?? (ph.owner_player ? (ownerColorMap.get(ph.owner_player) ?? 0) : 0),
+          });
+        } else if (ph.owner_player) {
+          // Hex owned but not in a province yet — show with faction color
+          hexMap.set(hKey(ph.q, ph.r), {
+            provinceId: "",
+            colorIndex: ownerColorMap.get(ph.owner_player) ?? 0,
           });
         }
       }

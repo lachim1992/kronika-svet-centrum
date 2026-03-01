@@ -3646,6 +3646,7 @@ export type Database = {
           macro_region_id: string | null
           mean_height: number
           moisture_band: number
+          owner_player: string | null
           province_id: string | null
           q: number
           r: number
@@ -3661,6 +3662,7 @@ export type Database = {
           macro_region_id?: string | null
           mean_height?: number
           moisture_band?: number
+          owner_player?: string | null
           province_id?: string | null
           q: number
           r: number
@@ -3676,6 +3678,7 @@ export type Database = {
           macro_region_id?: string | null
           mean_height?: number
           moisture_band?: number
+          owner_player?: string | null
           province_id?: string | null
           q?: number
           r?: number
@@ -5402,6 +5405,10 @@ export type Database = {
           created_by: string | null
           id: string
           initial_factions: string[] | null
+          map_height: number | null
+          map_width: number | null
+          npc_count: number | null
+          npc_placement: string | null
           premise: string
           session_id: string
           tone: string
@@ -5413,6 +5420,10 @@ export type Database = {
           created_by?: string | null
           id?: string
           initial_factions?: string[] | null
+          map_height?: number | null
+          map_width?: number | null
+          npc_count?: number | null
+          npc_placement?: string | null
           premise: string
           session_id: string
           tone?: string
@@ -5424,6 +5435,10 @@ export type Database = {
           created_by?: string | null
           id?: string
           initial_factions?: string[] | null
+          map_height?: number | null
+          map_width?: number | null
+          npc_count?: number | null
+          npc_placement?: string | null
           premise?: string
           session_id?: string
           tone?: string
