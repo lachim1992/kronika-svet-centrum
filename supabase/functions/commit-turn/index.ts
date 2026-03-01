@@ -766,8 +766,7 @@ Deno.serve(async (req) => {
             // Check for completed arena
             const { data: arena } = await supabase.from("city_buildings")
               .select("id").eq("city_id", fc.id).eq("session_id", sessionId)
-              .eq("status", "completed")
-              .or("name.ilike.%aréna%,name.ilike.%arena%,name.ilike.%stadion%,name.ilike.%amfiteátr%")
+              .eq("status", "completed").eq("is_arena", true)
               .maybeSingle();
 
             if (!arena) continue;

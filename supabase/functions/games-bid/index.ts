@@ -56,12 +56,12 @@ Deno.serve(async (req) => {
       });
     }
 
-    // ═══ ARENA CHECK: City must have a completed Arena/stadium ═══
+    // ═══ ARENA CHECK: City must have a completed Arena (is_arena flag) ═══
     const { data: arenaBuilding } = await sb.from("city_buildings")
       .select("id, name, current_level, status")
       .eq("city_id", city_id).eq("session_id", session_id)
       .eq("status", "completed")
-      .or("name.ilike.%aréna%,name.ilike.%arena%,name.ilike.%stadion%,name.ilike.%amfiteátr%")
+      .eq("is_arena", true)
       .maybeSingle();
 
     if (!arenaBuilding) {

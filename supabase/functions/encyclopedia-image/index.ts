@@ -26,6 +26,10 @@ function buildTypeInstructions(entityType: string): string {
       return "Grand panoramic landscape, vast wilderness or terrain, distant horizons.";
     case "person":
       return "Portrait-style illustration, character study, expressive face, period-appropriate clothing and accessories.";
+    case "arena":
+      return "Ancient arena or stadium, tiered stone seating, open sky above, athletic grounds or gladiatorial sand floor, dramatic architecture with columns and arches.";
+    case "building":
+      return "Detailed medieval fantasy building, clear architectural features, dramatic lighting, stone and wood construction.";
     default:
       return "Detailed fantasy illustration with clear scale indicators.";
   }

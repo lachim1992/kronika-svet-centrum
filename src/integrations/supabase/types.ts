@@ -1056,8 +1056,10 @@ export type Database = {
       }
       city_buildings: {
         Row: {
+          architectural_style: string | null
           build_duration: number
           build_started_turn: number
+          building_tags: string[] | null
           category: string
           city_id: string
           completed_turn: number | null
@@ -1075,6 +1077,7 @@ export type Database = {
           image_prompt: string | null
           image_url: string | null
           is_ai_generated: boolean
+          is_arena: boolean
           is_wonder: boolean
           level_data: Json
           max_level: number
@@ -1085,8 +1088,10 @@ export type Database = {
           wonder_id: string | null
         }
         Insert: {
+          architectural_style?: string | null
           build_duration?: number
           build_started_turn?: number
+          building_tags?: string[] | null
           category?: string
           city_id: string
           completed_turn?: number | null
@@ -1104,6 +1109,7 @@ export type Database = {
           image_prompt?: string | null
           image_url?: string | null
           is_ai_generated?: boolean
+          is_arena?: boolean
           is_wonder?: boolean
           level_data?: Json
           max_level?: number
@@ -1114,8 +1120,10 @@ export type Database = {
           wonder_id?: string | null
         }
         Update: {
+          architectural_style?: string | null
           build_duration?: number
           build_started_turn?: number
+          building_tags?: string[] | null
           category?: string
           city_id?: string
           completed_turn?: number | null
@@ -1133,6 +1141,7 @@ export type Database = {
           image_prompt?: string | null
           image_url?: string | null
           is_ai_generated?: boolean
+          is_arena?: boolean
           is_wonder?: boolean
           level_data?: Json
           max_level?: number
