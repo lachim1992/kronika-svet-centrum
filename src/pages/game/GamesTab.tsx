@@ -348,7 +348,7 @@ const GamesTab = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, o
               </CardContent>
             </Card>
           ) : null}
-          {activeFestival && activeFestival.status !== "candidacy" && (
+          {activeFestival && activeFestival.status !== "candidacy" && !revealScript && (
             <LiveGamesFeed sessionId={sessionId} festivalId={activeFestival.id} />
           )}
         </TabsContent>
