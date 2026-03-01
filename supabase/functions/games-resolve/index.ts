@@ -629,7 +629,187 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Prestige effects on cities
+    // ═══ ATHLETE PORTRAIT + WIKI INTEGRATION ═══
+    // For each participant with a student_id, generate portrait on first participation
+    // and create/update wiki entry with cumulative results
+    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+    for (const p of participants) {
+      if (!p.student_id) continue;
+      try {
+        // Check if student already has a portrait
+        const { data: studentRec } = await sb.from("academy_students")
+          .select("id, name, portrait_url, bio, academy_id")
+          .eq("id", p.student_id).maybeSingle();
+        if (!studentRec) continue;
+
+        // Check if this is first participation (no prior participations in other festivals)
+        const { count: priorCount } = await sb.from("games_participants")
+          .select("id", { count: "exact", head: true })
+          .eq("session_id", session_id)
+          .eq("student_id", p.student_id)
+          .neq("festival_id", festival_id);
+        const isFirstParticipation = !priorCount || priorCount === 0;
+
+        // Generate portrait + bio on first participation if not already present
+        if (isFirstParticipation && !studentRec.portrait_url && LOVABLE_API_KEY) {
+          try {
+            // Get world context for portrait style
+            const { data: styleData } = await sb.from("game_style_settings")
+              .select("lore_bible, prompt_rules").eq("session_id", session_id).maybeSingle();
+            const { data: civData } = await sb.from("civilizations")
+              .select("civ_name, core_myth, architectural_style")
+              .eq("session_id", session_id).eq("player_name", p.player_name).maybeSingle();
+            const { data: acadData } = await sb.from("academies")
+              .select("name, motto").eq("id", studentRec.academy_id).maybeSingle();
+
+            const worldStyle = styleData?.lore_bible ? `Styl světa: ${styleData.lore_bible.substring(0, 300)}` : "";
+            const civContext = civData ? `Civilizace: ${civData.civ_name || ""}, Mýtus: ${civData.core_myth || ""}, Architektura: ${civData.architectural_style || ""}` : "";
+            const traitsText = (p.traits || []).join(", ");
+
+            // Generate bio via AI
+            const bioResp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+              method: "POST",
+              headers: { "Content-Type": "application/json", Authorization: `Bearer ${LOVABLE_API_KEY}` },
+              body: JSON.stringify({
+                model: "google/gemini-3-flash-preview",
+                messages: [{
+                  role: "user",
+                  content: `Jsi kronikář starověkých her. Napiš krátký životopis atleta (3-5 vět, česky).
+Jméno: ${p.athlete_name}, Specializace: ${p.specialty || "atlet"}, Vlastnosti: ${traitsText || "žádné"}
+Akademie: ${acadData?.name || "?"} (motto: ${acadData?.motto || "?"})
+${civContext}
+${worldStyle}
+Také vytvoř anglický prompt pro portrét atleta ve stylu starověké busty/fresky s atributy jeho sportu (vavřín, diskus, luk...).
+Odpověz POUZE jako JSON: {"bio": "...", "imagePrompt": "..."}`
+                }],
+                max_tokens: 500,
+              }),
+            });
+
+            if (bioResp.ok) {
+              const bioData = await bioResp.json();
+              const content = bioData.choices?.[0]?.message?.content?.trim();
+              let bio = `${p.athlete_name} je absolvent akademie ${acadData?.name || "neznámé"}.`;
+              let imgPrompt = `Ancient fresco portrait of athlete ${p.athlete_name}, with laurel wreath and sport attributes, parchment style`;
+
+              try {
+                const cleaned = content?.replace(/```json\n?/g, "").replace(/```/g, "").trim();
+                const parsed = JSON.parse(cleaned || "{}");
+                if (parsed.bio) bio = parsed.bio;
+                if (parsed.imagePrompt) imgPrompt = parsed.imagePrompt;
+              } catch (_) {}
+
+              // Generate portrait image
+              let portraitUrl: string | null = null;
+              try {
+                const imgResp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json", Authorization: `Bearer ${LOVABLE_API_KEY}` },
+                  body: JSON.stringify({
+                    model: "google/gemini-2.5-flash-image",
+                    messages: [{ role: "user", content: imgPrompt }],
+                    modalities: ["image", "text"],
+                  }),
+                });
+                if (imgResp.ok) {
+                  const imgData = await imgResp.json();
+                  const base64Url = imgData.choices?.[0]?.message?.images?.[0]?.image_url?.url;
+                  if (base64Url) {
+                    const b64 = base64Url.replace(/^data:image\/\w+;base64,/, "");
+                    const bin = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+                    const fileName = `athletes/${p.student_id}/${crypto.randomUUID()}.png`;
+                    const { error: upErr } = await sb.storage.from("wonder-images").upload(fileName, bin, { contentType: "image/png", upsert: true });
+                    if (!upErr) {
+                      const { data: urlData } = sb.storage.from("wonder-images").getPublicUrl(fileName);
+                      portraitUrl = urlData.publicUrl;
+                    }
+                  }
+                }
+              } catch (_) {}
+
+              // Update student record
+              await sb.from("academy_students").update({
+                portrait_url: portraitUrl, bio,
+              }).eq("id", p.student_id);
+            }
+          } catch (e) { console.error("Portrait gen failed for", p.athlete_name, e); }
+        }
+
+        // ═══ WIKI ENTRY: Create or update with cumulative results ═══
+        // Fetch all results for this student across all festivals
+        const { data: allParts } = await sb.from("games_participants")
+          .select("id, festival_id, total_medals, is_legend, great_person_id")
+          .eq("session_id", session_id).eq("student_id", p.student_id);
+
+        const allPartIds = (allParts || []).map(ap => ap.id);
+        const { data: allMedals } = await sb.from("games_results")
+          .select("participant_id, discipline_id, medal, rank, total_score, festival_id")
+          .in("participant_id", allPartIds.length > 0 ? allPartIds : ["__none__"])
+          .not("medal", "is", null);
+
+        const { data: allDiscs } = await sb.from("games_disciplines").select("id, name, icon_emoji");
+        const { data: allFests } = await sb.from("games_festivals").select("id, name, concluded_turn")
+          .eq("session_id", session_id);
+
+        const discLookup = Object.fromEntries((allDiscs || []).map(d => [d.id, d]));
+        const festLookup = Object.fromEntries((allFests || []).map(f => [f.id, f]));
+
+        const golds = (allMedals || []).filter(m => m.medal === "gold").length;
+        const silvers = (allMedals || []).filter(m => m.medal === "silver").length;
+        const bronzes = (allMedals || []).filter(m => m.medal === "bronze").length;
+        const totalParticipations = (allParts || []).length;
+
+        // Build medal table markdown
+        let medalMd = `## ${p.athlete_name}\n\n`;
+        medalMd += `**Účast na hrách:** ${totalParticipations} | `;
+        medalMd += `🥇 ${golds} | 🥈 ${silvers} | 🥉 ${bronzes}\n\n`;
+
+        if ((allMedals || []).length > 0) {
+          medalMd += `### Medaile\n\n| Disciplína | Hry | Medaile |\n|---|---|---|\n`;
+          for (const m of (allMedals || [])) {
+            const d = discLookup[m.discipline_id];
+            const f = festLookup[m.festival_id];
+            const medalEmoji = m.medal === "gold" ? "🥇" : m.medal === "silver" ? "🥈" : "🥉";
+            medalMd += `| ${d?.icon_emoji || ""} ${d?.name || "?"} | ${f?.name || "?"} (rok ${f?.concluded_turn || "?"}) | ${medalEmoji} |\n`;
+          }
+        }
+
+        // Upsert wiki entry
+        const { data: existingWiki } = await sb.from("wiki_entries")
+          .select("id").eq("session_id", session_id)
+          .eq("entity_type", "person").eq("entity_name", p.athlete_name).maybeSingle();
+
+        const updatedStudent = studentRec.portrait_url || (await sb.from("academy_students").select("portrait_url, bio").eq("id", p.student_id).maybeSingle()).data;
+        const wikiBio = (updatedStudent as any)?.bio || `Absolvent akademie, účastník Velkých her.`;
+        const wikiImageUrl = (updatedStudent as any)?.portrait_url || null;
+
+        if (existingWiki) {
+          await sb.from("wiki_entries").update({
+            body_md: medalMd,
+            summary: wikiBio,
+            image_url: wikiImageUrl,
+            last_enriched_turn: turn_number || festival.announced_turn,
+          }).eq("id", existingWiki.id);
+        } else {
+          // Only create wiki for athletes with medals or who are legends
+          if (golds + silvers + bronzes > 0 || (allParts || []).some(ap => ap.is_legend)) {
+            const gpId = (allParts || []).find(ap => ap.great_person_id)?.great_person_id;
+            await sb.from("wiki_entries").insert({
+              session_id,
+              entity_type: "person",
+              entity_id: gpId || p.student_id,
+              entity_name: p.athlete_name,
+              owner_player: p.player_name,
+              body_md: medalMd,
+              summary: wikiBio,
+              image_url: wikiImageUrl,
+              last_enriched_turn: turn_number || festival.announced_turn,
+            });
+          }
+        }
+      } catch (e) { console.error("Wiki/portrait update failed for", p.athlete_name, e); }
+    }
+
     for (const [playerName, medals] of Object.entries(playerMedals)) {
       const { data: pCities } = await sb.from("cities")
         .select("id, influence_score").eq("session_id", session_id).eq("owner_player", playerName);

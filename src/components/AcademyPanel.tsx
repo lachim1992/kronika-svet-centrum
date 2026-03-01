@@ -8,6 +8,7 @@ import { Slider } from "@/components/ui/slider";
 import { Textarea } from "@/components/ui/textarea";
 import { Loader2, GraduationCap, Swords, Users, Star, Skull, TrendingUp, School, Palette } from "lucide-react";
 import { toast } from "sonner";
+import StudentDetailModal from "@/components/StudentDetailModal";
 
 interface Props {
   sessionId: string;
@@ -108,6 +109,8 @@ const AcademyPanel = ({ sessionId, currentPlayerName, currentTurn }: Props) => {
     setAcademies(prev => prev.map(a => a.id === id ? { ...a, ...updates } : a));
     toast.success("Akademie aktualizována");
   };
+
+  const [detailStudent, setDetailStudent] = useState<Student | null>(null);
 
   const selected = academies.find(a => a.id === selectedId);
   const selectedStudents = students.filter(s => s.academy_id === selectedId);
@@ -241,7 +244,14 @@ const AcademyPanel = ({ sessionId, currentPlayerName, currentTurn }: Props) => {
             students.filter(s => s.status === "graduated" || s.status === "promoted").map(s => {
               const acad = academies.find(a => a.id === s.academy_id);
               return (
-                <div key={s.id} className="p-2 rounded border border-border bg-card flex items-center gap-2">
+                <div
+                  key={s.id}
+                  className="p-2 rounded border border-border bg-card flex items-center gap-2 cursor-pointer hover:bg-card/70 transition-colors"
+                  onClick={() => setDetailStudent(s)}
+                >
+                  {(s as any).portrait_url && (
+                    <img src={(s as any).portrait_url} alt={s.name} className="w-8 h-8 rounded-full object-cover border border-border" />
+                  )}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-1">
                       <span className="font-display text-xs font-semibold truncate">{s.name}</span>
@@ -266,6 +276,14 @@ const AcademyPanel = ({ sessionId, currentPlayerName, currentTurn }: Props) => {
           )}
         </TabsContent>
       </Tabs>
+
+      <StudentDetailModal
+        open={!!detailStudent}
+        onOpenChange={(open) => { if (!open) setDetailStudent(null); }}
+        student={detailStudent}
+        sessionId={sessionId}
+        academyName={detailStudent ? academies.find(a => a.id === detailStudent.academy_id)?.name : undefined}
+      />
     </div>
   );
 };
