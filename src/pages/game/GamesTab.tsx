@@ -230,53 +230,24 @@ const GamesTab = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, o
     }
   };
 
-  const [revealScript, setRevealScript] = useState<any[] | null>(null);
   const [revealFestivalId, setRevealFestivalId] = useState<string | null>(null);
   const [revealStartWithReport, setRevealStartWithReport] = useState(false);
 
   const handleResolve = async (festivalId: string) => {
-    setResolving(true);
-    try {
-      const { data, error } = await supabase.functions.invoke("games-resolve", {
-        body: { session_id: sessionId, festival_id: festivalId, turn_number: currentTurn },
-      });
-      if (error) throw error;
-      if (data?.error) { toast.error(data.error); return; }
-      // If reveal script returned, show the cinematic player
-      if (data?.reveal_script && Array.isArray(data.reveal_script) && data.reveal_script.length > 0) {
-        setRevealScript(data.reveal_script);
-        setRevealFestivalId(festivalId);
-      } else {
-        toast.success(`🏅 Hry vyhodnoceny! ${data.legends?.length || 0} legend vzniklo.`);
-        await fetchData();
-        onRefetch();
-      }
-    } catch (e: any) {
-      toast.error(e.message || "Chyba");
-    } finally {
-      setResolving(false);
-    }
+    setRevealFestivalId(festivalId);
   };
 
   const handleRevealClose = async () => {
-    setRevealScript(null);
     setRevealFestivalId(null);
     setRevealStartWithReport(false);
     await fetchData();
     onRefetch();
   };
 
-  // Archive replay: load reveal_script from DB
+  // Archive replay: open overlay with report
   const handleArchiveReplay = async (festivalId: string) => {
-    const { data } = await supabase.from("games_festivals")
-      .select("reveal_script").eq("id", festivalId).single();
-    const script = (data as any)?.reveal_script;
-    if (script && Array.isArray(script) && script.length > 0) {
-      setRevealScript(script);
-      setRevealFestivalId(festivalId);
-    } else {
-      toast.info("Reveal script není k dispozici pro tento festival.");
-    }
+    setRevealFestivalId(festivalId);
+    setRevealStartWithReport(true);
   };
 
   const activeFestival = festivals.find(f => !["concluded", "cancelled"].includes(f.status));
@@ -332,17 +303,18 @@ const GamesTab = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, o
         {/* ─── ACTIVE GAMES ─── */}
         <TabsContent value="active" className="space-y-4">
           {/* Fullscreen Reveal Overlay */}
-          {revealScript && revealFestivalId && (
+          {revealFestivalId && (
             <GamesRevealOverlay
-              revealScript={revealScript}
               festivalId={revealFestivalId}
               sessionId={sessionId}
+              playerName={currentPlayerName}
+              hostPlayer={festivals.find(f => f.id === revealFestivalId)?.host_player || currentPlayerName}
               onClose={handleRevealClose}
               startWithReport={revealStartWithReport}
             />
           )}
 
-          {!revealScript && activeFestival ? (
+          {!revealFestivalId && activeFestival ? (
             activeFestival.status === "candidacy" ? (
               <CandidacyPhase
                 festival={activeFestival}
@@ -379,7 +351,7 @@ const GamesTab = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, o
                 />
               </>
             )
-          ) : !revealScript ? (
+          ) : !revealFestivalId ? (
             <Card className="border-border bg-card/50">
               <CardContent className="p-8 text-center">
                 <Trophy className="h-12 w-12 text-muted-foreground mx-auto mb-3 opacity-50" />
@@ -388,7 +360,7 @@ const GamesTab = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, o
               </CardContent>
             </Card>
           ) : null}
-          {activeFestival && activeFestival.status !== "candidacy" && !revealScript && (
+          {activeFestival && activeFestival.status !== "candidacy" && !revealFestivalId && (
             <LiveGamesFeed sessionId={sessionId} festivalId={activeFestival.id} currentPlayerName={currentPlayerName} />
           )}
         </TabsContent>
@@ -629,7 +601,7 @@ const GamesTab = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, o
                           <Button size="sm" variant="outline" className="text-xs gap-1" onClick={() => handleArchiveReplay(f.id)}>
                             <Trophy className="h-3 w-3" /> Přehrát znovu
                           </Button>
-                          <Button size="sm" variant="outline" className="text-xs gap-1" onClick={() => { setRevealFestivalId(f.id); setRevealScript([]); setRevealStartWithReport(true); }}>
+                          <Button size="sm" variant="outline" className="text-xs gap-1" onClick={() => { setRevealFestivalId(f.id); setRevealStartWithReport(true); }}>
                             <BookOpen className="h-3 w-3" /> Zobrazit report
                           </Button>
                         </div>

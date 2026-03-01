@@ -3349,6 +3349,67 @@ export type Database = {
           },
         ]
       }
+      games_discipline_reveals: {
+        Row: {
+          created_at: string
+          crowd_reactions: Json | null
+          discipline_id: string
+          festival_id: string
+          id: string
+          medal_snapshot: Json | null
+          resolved_at: string | null
+          reveal_script: Json | null
+          session_id: string
+          status: string
+        }
+        Insert: {
+          created_at?: string
+          crowd_reactions?: Json | null
+          discipline_id: string
+          festival_id: string
+          id?: string
+          medal_snapshot?: Json | null
+          resolved_at?: string | null
+          reveal_script?: Json | null
+          session_id: string
+          status?: string
+        }
+        Update: {
+          created_at?: string
+          crowd_reactions?: Json | null
+          discipline_id?: string
+          festival_id?: string
+          id?: string
+          medal_snapshot?: Json | null
+          resolved_at?: string | null
+          reveal_script?: Json | null
+          session_id?: string
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "games_discipline_reveals_discipline_id_fkey"
+            columns: ["discipline_id"]
+            isOneToOne: false
+            referencedRelation: "games_disciplines"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "games_discipline_reveals_festival_id_fkey"
+            columns: ["festival_id"]
+            isOneToOne: false
+            referencedRelation: "games_festivals"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "games_discipline_reveals_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       games_disciplines: {
         Row: {
           category: string
@@ -3359,6 +3420,7 @@ export type Database = {
           name: string
           prestige_weight: number
           primary_stat: string
+          reveal_order: number | null
           secondary_stat: string | null
         }
         Insert: {
@@ -3370,6 +3432,7 @@ export type Database = {
           name: string
           prestige_weight?: number
           primary_stat?: string
+          reveal_order?: number | null
           secondary_stat?: string | null
         }
         Update: {
@@ -3381,6 +3444,7 @@ export type Database = {
           name?: string
           prestige_weight?: number
           primary_stat?: string
+          reveal_order?: number | null
           secondary_stat?: string | null
         }
         Relationships: []
