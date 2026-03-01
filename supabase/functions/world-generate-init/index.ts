@@ -617,6 +617,7 @@ DŮLEŽITÉ: affected_players/faction MUSÍ používat přesná jména frakcí. 
     };
 
     // Place city within province bounds (within radius 2 of province center)
+    const usedHexes = new Set<string>();
     const provincePlacedHexes = new Map<string, Set<string>>();
     const placeCityInProvince = (provId: string): { q: number; r: number } => {
       const center = getProvinceCenter(provId);
@@ -667,7 +668,6 @@ DŮLEŽITÉ: affected_players/faction MUSÍ používat přesná jména frakcí. 
       }
 
       const cityName = (isPlayerCity && cityIndex === 0 && settlementName) ? settlementName : city.name;
-      const provinceId = findProvinceId(city);
       const level = city.level || "Osada";
       const isCapital = !playerFirstCity.has(ownerPlayer);
       if (isCapital) playerFirstCity.add(ownerPlayer);
