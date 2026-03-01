@@ -46,20 +46,31 @@ Deno.serve(async (req) => {
       .select("*").eq("festival_id", festival_id).order("total_bid_score", { ascending: false });
 
     if (!bids || bids.length === 0) {
-      // No bids → auto-select like before (fallback)
+      // No bids → auto-select city with arena (fallback)
       const { data: cities } = await sb.from("cities")
         .select("id, name, owner_player, influence_score, development_level, city_stability, population_total, hosting_count")
         .eq("session_id", session_id).in("status", ["ok", "active"])
-        .order("influence_score", { ascending: false }).limit(1);
+        .order("influence_score", { ascending: false });
 
-      if (!cities || cities.length === 0) {
+      // Find first city with a completed arena
+      let hostCity: any = null;
+      for (const c of (cities || [])) {
+        const { data: arena } = await sb.from("city_buildings")
+          .select("id").eq("city_id", c.id).eq("session_id", session_id)
+          .eq("status", "completed")
+          .or("name.ilike.%aréna%,name.ilike.%arena%,name.ilike.%stadion%,name.ilike.%amfiteátr%")
+          .maybeSingle();
+        if (arena) { hostCity = c; break; }
+      }
+
+      // Ultimate fallback: highest influence city even without arena
+      if (!hostCity) hostCity = cities?.[0];
+
+      if (!hostCity) {
         return new Response(JSON.stringify({ error: "Žádné město pro hostování" }), {
           status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
-
-      // Use fallback city
-      const hostCity = cities[0];
       await advanceToNomination(sb, festival, hostCity, session_id, turn_number);
 
       return new Response(JSON.stringify({
