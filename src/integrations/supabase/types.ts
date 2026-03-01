@@ -4501,7 +4501,10 @@ export type Database = {
           current_round: number
           ended_turn: number | null
           id: string
+          league_tier: number
           matches_per_round: number
+          promotion_count: number
+          relegation_count: number
           season_number: number
           session_id: string
           started_turn: number
@@ -4516,7 +4519,10 @@ export type Database = {
           current_round?: number
           ended_turn?: number | null
           id?: string
+          league_tier?: number
           matches_per_round?: number
+          promotion_count?: number
+          relegation_count?: number
           season_number?: number
           session_id: string
           started_turn: number
@@ -4531,7 +4537,10 @@ export type Database = {
           current_round?: number
           ended_turn?: number | null
           id?: string
+          league_tier?: number
           matches_per_round?: number
+          promotion_count?: number
+          relegation_count?: number
           season_number?: number
           session_id?: string
           started_turn?: number
@@ -4652,6 +4661,7 @@ export type Database = {
           fan_base: number | null
           id: string
           is_active: boolean | null
+          league_tier: number
           motto: string | null
           player_name: string
           popularity: number | null
@@ -4679,6 +4689,7 @@ export type Database = {
           fan_base?: number | null
           id?: string
           is_active?: boolean | null
+          league_tier?: number
           motto?: string | null
           player_name: string
           popularity?: number | null
@@ -4706,6 +4717,7 @@ export type Database = {
           fan_base?: number | null
           id?: string
           is_active?: boolean | null
+          league_tier?: number
           motto?: string | null
           player_name?: string
           popularity?: number | null

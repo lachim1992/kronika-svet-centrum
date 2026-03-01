@@ -21,6 +21,7 @@ interface Team {
   tactics_rating: number; discipline_rating: number; popularity: number;
   fan_base: number; titles_won: number; color_primary: string; color_secondary: string;
   seasons_played: number; total_wins: number; total_goals_for: number; total_goals_against: number;
+  league_tier: number;
 }
 
 interface Association {
@@ -46,7 +47,7 @@ interface Season {
   id: string; season_number: number; status: string; started_turn: number;
   ended_turn: number | null; total_rounds: number; current_round: number;
   champion_team_id: string | null; top_scorer_player_id: string | null;
-  best_defense_team_id: string | null;
+  best_defense_team_id: string | null; league_tier: number;
 }
 
 interface Player {
@@ -108,10 +109,9 @@ const LeaguePanel = ({ sessionId, currentPlayerName, currentTurn }: Props) => {
 
   const fetchData = useCallback(async () => {
     setLoading(true);
-    const [{ data: t }, { data: s }, { data: seas }, { data: blds }, { data: cits }, { data: assocs }] = await Promise.all([
+    const [{ data: t }, { data: s }, { data: blds }, { data: cits }, { data: assocs }] = await Promise.all([
       supabase.from("league_teams").select("*").eq("session_id", sessionId).eq("is_active", true),
       supabase.from("league_seasons").select("*").eq("session_id", sessionId).order("season_number", { ascending: false }),
-      supabase.from("league_seasons").select("id").eq("session_id", sessionId).eq("status", "active").maybeSingle(),
       supabase.from("city_buildings").select("id, name, city_id, current_level").eq("session_id", sessionId).eq("status", "completed").contains("building_tags", ["stadium"]),
       supabase.from("cities").select("id, name").eq("session_id", sessionId),
       supabase.from("sports_associations").select("*").eq("session_id", sessionId),
@@ -124,14 +124,27 @@ const LeaguePanel = ({ sessionId, currentPlayerName, currentTurn }: Props) => {
     for (const c of (cits || [])) cityMap.set(c.id, c.name);
     setCities(cityMap);
 
-    const activeSeasonId = seas?.id || (s && s.length > 0 ? s[0].id : null);
+    // Find the active tier-1 season, or latest season
+    const activeSeason = (s || []).find((ss: any) => ss.status === "active" && (ss.league_tier || 1) === 1)
+      || (s || []).find((ss: any) => ss.status === "active")
+      || (s && s.length > 0 ? s[0] : null);
+    const activeSeasonId = activeSeason?.id;
+    
     if (activeSeasonId) {
       const [{ data: st }, { data: m }, { data: pl }] = await Promise.all([
-        supabase.from("league_standings").select("*").eq("season_id", activeSeasonId).order("position", { ascending: true }),
+        supabase.from("league_standings").select("*").eq("season_id", activeSeasonId).order("points", { ascending: false }),
         supabase.from("league_matches").select("*").eq("season_id", activeSeasonId).order("round_number", { ascending: true }),
         supabase.from("league_players").select("*").in("team_id", (t || []).map((tt: any) => tt.id)).order("goals_scored", { ascending: false }),
       ]);
-      setStandings((st || []) as any);
+      // Sort standings properly: points DESC, goal diff DESC, goals_for DESC
+      const sortedSt = (st || []).sort((a: any, b: any) => {
+        if (b.points !== a.points) return b.points - a.points;
+        const diffA = a.goals_for - a.goals_against;
+        const diffB = b.goals_for - b.goals_against;
+        if (diffB !== diffA) return diffB - diffA;
+        return b.goals_for - a.goals_for;
+      });
+      setStandings(sortedSt as any);
       setMatches((m || []) as any);
       setPlayers((pl || []) as any);
     }
@@ -187,7 +200,7 @@ const LeaguePanel = ({ sessionId, currentPlayerName, currentTurn }: Props) => {
   };
 
   const teamMap = new Map(teams.map(t => [t.id, t]));
-  const activeSeason = seasons.find(s => s.status === "active") || seasons[0];
+  const activeSeason = seasons.find(s => s.status === "active" && (s.league_tier || 1) === 1) || seasons.find(s => s.status === "active") || seasons[0];
   const concludedSeasons = seasons.filter(s => s.status === "concluded");
   const playedMatches = matches.filter(m => m.status === "played").sort((a, b) => b.round_number - a.round_number);
   const upcomingMatches = matches.filter(m => m.status === "scheduled").sort((a, b) => a.round_number - b.round_number);
@@ -199,6 +212,11 @@ const LeaguePanel = ({ sessionId, currentPlayerName, currentTurn }: Props) => {
 
   // Title leaderboard
   const titleLeaderboard = [...teams].filter(t => (t.titles_won || 0) > 0).sort((a, b) => (b.titles_won || 0) - (a.titles_won || 0));
+
+  // Tier info
+  const tier1Teams = teams.filter(t => (t.league_tier || 1) === 1);
+  const tier2Teams = teams.filter(t => (t.league_tier || 1) === 2);
+  const hasTier2 = tier2Teams.length > 0;
 
   if (loading) {
     return (
@@ -243,6 +261,9 @@ const LeaguePanel = ({ sessionId, currentPlayerName, currentTurn }: Props) => {
                    </Badge>
                    <Badge variant="outline" className="gap-1 text-muted-foreground">
                      👤 {t.player_name}
+                   </Badge>
+                   <Badge variant="outline" className="gap-1 text-muted-foreground">
+                     {(t.league_tier || 1) === 1 ? "1. liga" : `${t.league_tier}. liga`}
                    </Badge>
                    {(t.titles_won || 0) > 0 && (
                      <Badge className="bg-yellow-500/20 text-yellow-500 border-yellow-500/30 gap-1">🏆 {t.titles_won}×</Badge>
@@ -323,14 +344,18 @@ const LeaguePanel = ({ sessionId, currentPlayerName, currentTurn }: Props) => {
     <div className="space-y-4">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <Swords className="h-5 w-5 text-primary" />
           <h3 className="font-display font-bold text-base">Sphaera Liga</h3>
           {activeSeason && (
             <Badge variant="outline" className="text-[9px]">
+              {(activeSeason.league_tier || 1) > 1 ? `${activeSeason.league_tier}. liga · ` : ""}
               {activeSeason.season_number}. sezóna — kolo {activeSeason.current_round}/{activeSeason.total_rounds}
             </Badge>
           )}
+          <Badge variant="secondary" className="text-[9px]">
+            {teams.length} týmů{hasTier2 ? ` (1.liga: ${tier1Teams.length}, 2.liga: ${tier2Teams.length})` : ""}
+          </Badge>
         </div>
         
         <div className="flex gap-2">
