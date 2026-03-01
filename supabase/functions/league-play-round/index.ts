@@ -127,13 +127,10 @@ Deno.serve(async (req) => {
       // Update player stats
       for (const evt of result.events) {
         if (evt.type === "goal" && evt.player_id) {
-          await sb.from("league_players").update({
-            goals: sb.rpc ? undefined : undefined, // will use raw
-          }).eq("id", "never"); // placeholder
-          // Direct update
-          const { data: pl } = await sb.from("league_players").select("goals, assists, matches_played, form, condition, overall_rating").eq("id", evt.player_id).maybeSingle();
+          const { data: pl } = await sb.from("league_players").select("goals_scored, goals, form").eq("id", evt.player_id).maybeSingle();
           if (pl) {
             await sb.from("league_players").update({
+              goals_scored: (pl.goals_scored || 0) + 1,
               goals: (pl.goals || 0) + 1,
               form: Math.min(99, (pl.form || 50) + 3),
             }).eq("id", evt.player_id);
@@ -181,10 +178,64 @@ Deno.serve(async (req) => {
         .select("*, league_teams(team_name, player_name)").eq("season_id", season.id)
         .order("points", { ascending: false }).order("goals_for", { ascending: false });
       const champion = finalStandings?.[0];
+
+      // Find top scorer
+      const teamIdsForSeason = (finalStandings || []).map((s: any) => s.team_id);
+      const { data: topScorer } = await sb.from("league_players")
+        .select("id, goals_scored").in("team_id", teamIdsForSeason)
+        .order("goals_scored", { ascending: false }).limit(1).maybeSingle();
+
+      // Find best defense (least goals_against)
+      const bestDef = [...(finalStandings || [])].sort((a: any, b: any) => a.goals_against - b.goals_against)[0];
+
       await sb.from("league_seasons").update({
         status: "concluded", ended_turn: currentTurn,
         champion_team_id: champion?.team_id || null,
+        top_scorer_player_id: topScorer?.id || null,
+        best_defense_team_id: bestDef?.team_id || null,
       }).eq("id", season.id);
+
+      // Update titles_won + total stats on champion team
+      if (champion?.team_id) {
+        const { data: champTeam } = await sb.from("league_teams")
+          .select("titles_won, seasons_played, total_wins, total_draws, total_losses, total_goals_for, total_goals_against")
+          .eq("id", champion.team_id).single();
+        if (champTeam) {
+          await sb.from("league_teams").update({
+            titles_won: (champTeam.titles_won || 0) + 1,
+          }).eq("id", champion.team_id);
+        }
+
+        // Boost association prestige for champion's player
+        const champPlayer = (champion as any).league_teams?.player_name;
+        if (champPlayer) {
+          const { data: assoc } = await sb.from("sports_associations")
+            .select("id, reputation").eq("session_id", session_id)
+            .eq("player_name", champPlayer).maybeSingle();
+          if (assoc) {
+            await sb.from("sports_associations").update({
+              reputation: (assoc.reputation || 0) + 10,
+            }).eq("id", assoc.id);
+          }
+        }
+      }
+
+      // Update seasons_played for all teams
+      for (const st of (finalStandings || [])) {
+        const { data: t } = await sb.from("league_teams")
+          .select("seasons_played, total_wins, total_draws, total_losses, total_goals_for, total_goals_against")
+          .eq("id", st.team_id).single();
+        if (t) {
+          await sb.from("league_teams").update({
+            seasons_played: (t.seasons_played || 0) + 1,
+            total_wins: (t.total_wins || 0) + st.wins,
+            total_draws: (t.total_draws || 0) + st.draws,
+            total_losses: (t.total_losses || 0) + st.losses,
+            total_goals_for: (t.total_goals_for || 0) + st.goals_for,
+            total_goals_against: (t.total_goals_against || 0) + st.goals_against,
+          }).eq("id", st.team_id);
+        }
+      }
     }
 
     // Recompute positions
