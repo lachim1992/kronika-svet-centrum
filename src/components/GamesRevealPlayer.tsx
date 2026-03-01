@@ -1,9 +1,39 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Play, Pause, SkipForward, Trophy, Star, Skull, AlertTriangle, Medal } from "lucide-react";
+
+/** Typewriter that reveals text sentence-by-sentence */
+function TypewriterText({ text, speed = 40 }: { text: string; speed?: number }) {
+  const [charIndex, setCharIndex] = useState(0);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    setCharIndex(0);
+    intervalRef.current = setInterval(() => {
+      setCharIndex(prev => {
+        if (prev >= text.length) {
+          if (intervalRef.current) clearInterval(intervalRef.current);
+          return prev;
+        }
+        return prev + 1;
+      });
+    }, speed);
+    return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
+  }, [text, speed]);
+
+  const visible = text.slice(0, charIndex);
+  const cursor = charIndex < text.length;
+
+  return (
+    <span>
+      {visible}
+      {cursor && <span className="inline-block w-[2px] h-3 bg-muted-foreground/60 animate-pulse ml-0.5 align-text-bottom" />}
+    </span>
+  );
+}
 
 interface RevealStep {
   seq: number;
@@ -220,7 +250,9 @@ function RevealStepCard({ step, isLatest }: { step: RevealStep; isLatest: boolea
       <div className={`p-2.5 rounded border ${bg} ${isLatest ? "animate-in fade-in duration-500" : ""}`}>
         <p className="text-[11px] font-display font-bold text-yellow-400">🏅 {step.text}</p>
         {step.ai_commentary && (
-          <p className="text-[9px] italic text-muted-foreground mt-1">📜 {step.ai_commentary}</p>
+          <p className="text-[9px] italic text-muted-foreground mt-1">
+            📜 {isLatest ? <TypewriterText text={step.ai_commentary} speed={25} /> : step.ai_commentary}
+          </p>
         )}
         {step.standings && (
           <div className="mt-1.5 space-y-0.5">
