@@ -252,15 +252,19 @@ Deno.serve(async (req) => {
         });
       }
 
-      // Check if already selected
-      const { count: existingParticipants } = await sb.from("games_participants")
-        .select("id", { count: "exact", head: true })
+      // Delete old participants if re-nominating (allow overwrite while in nomination phase)
+      const { data: oldParticipants } = await sb.from("games_participants")
+        .select("id, student_id")
         .eq("festival_id", festival_id).eq("player_name", player_name);
 
-      if (existingParticipants && existingParticipants > 0) {
-        return new Response(JSON.stringify({ error: "Již jste nominovali své zástupce" }), {
-          status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
+      if (oldParticipants && oldParticipants.length > 0) {
+        // Revert old students back to graduated
+        const oldStudentIds = oldParticipants.map(p => p.student_id).filter(Boolean);
+        if (oldStudentIds.length > 0) {
+          await sb.from("academy_students").update({ status: "graduated" }).in("id", oldStudentIds);
+        }
+        await sb.from("games_participants")
+          .delete().eq("festival_id", festival_id).eq("player_name", player_name);
       }
 
       // Get selected students
