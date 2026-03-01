@@ -3229,6 +3229,7 @@ export type Database = {
       games_festivals: {
         Row: {
           announced_turn: number
+          arena_building_id: string | null
           best_athlete_id: string | null
           candidacy_deadline_turn: number | null
           concluded_turn: number | null
@@ -3256,6 +3257,7 @@ export type Database = {
         }
         Insert: {
           announced_turn?: number
+          arena_building_id?: string | null
           best_athlete_id?: string | null
           candidacy_deadline_turn?: number | null
           concluded_turn?: number | null
@@ -3283,6 +3285,7 @@ export type Database = {
         }
         Update: {
           announced_turn?: number
+          arena_building_id?: string | null
           best_athlete_id?: string | null
           candidacy_deadline_turn?: number | null
           concluded_turn?: number | null
@@ -3309,6 +3312,13 @@ export type Database = {
           total_investment_gold?: number
         }
         Relationships: [
+          {
+            foreignKeyName: "games_festivals_arena_building_id_fkey"
+            columns: ["arena_building_id"]
+            isOneToOne: false
+            referencedRelation: "city_buildings"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "games_festivals_best_athlete_id_fkey"
             columns: ["best_athlete_id"]

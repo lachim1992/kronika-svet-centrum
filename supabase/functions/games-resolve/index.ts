@@ -6,10 +6,143 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
+// ═══════════════════════════════════════════════
+// DISCIPLINE-SPECIFIC CONFIG
+// Each discipline defines:
+//   - stat weights (primary 55%, secondary 25%, tertiary 10%, avg 10%)
+//   - luck factor (variance multiplier)
+//   - morale influence (how much morale_modifier matters)
+//   - narrative templates for qualification, semifinal, final, and result
+// ═══════════════════════════════════════════════
+interface DiscConfig {
+  primaryWeight: number;
+  secondaryWeight: number;
+  tertiaryWeight: number;
+  tertiaryStat?: string;
+  luckFactor: number;
+  moraleInfluence: number;
+  qualNarrative: (survivors: string[], eliminated: string[]) => string;
+  semiNarrative: (finalists: string[], eliminated: string[]) => string;
+  finalDrama: (leader: string, challenger: string, diff: number) => string;
+  resultNarrative: (winner: string, player: string) => string;
+}
+
+const DISC_CONFIGS: Record<string, DiscConfig> = {
+  sprint: {
+    primaryWeight: 0.55, secondaryWeight: 0.25, tertiaryWeight: 0.10, tertiaryStat: "strength",
+    luckFactor: 0.18, moraleInfluence: 0.2,
+    qualNarrative: (s, e) => e.length > 0
+      ? `Kvalifikační rozběhy: ${e.join(", ")} zaostávají a končí. ${s.length} závodníků postupuje.`
+      : `Všichni závodníci překonali kvalifikační čas!`,
+    semiNarrative: (f, e) => `Semifinálové běhy zúží pole na finalisty: ${f.join(", ")}. ${e.length > 0 ? `${e.join(", ")} nestačí tempu.` : ""}`,
+    finalDrama: (l, c, d) => d < 3 ? `${l} a ${c} se řítí bok po boku k cíli! Rozhodují setiny!` : d < 10 ? `${l} zrychluje v posledních krocích! ${c} ztrácí!` : `${l} dominuje sprintu s jasným náskokem!`,
+    resultNarrative: (w, p) => `🥇 ${w} (${p}) — nejrychlejší běžec her!`,
+  },
+  wrestling: {
+    primaryWeight: 0.55, secondaryWeight: 0.25, tertiaryWeight: 0.10, tertiaryStat: "tactics",
+    luckFactor: 0.12, moraleInfluence: 0.4,
+    qualNarrative: (s, e) => e.length > 0
+      ? `Kvalifikační zápasy: ${e.join(", ")} padají. Postupuje ${s.length} borců.`
+      : `Všichni zápasníci prošli kvalifikací!`,
+    semiNarrative: (f, e) => `Semifinálové souboje — do finále postupují: ${f.join(", ")}. ${e.length > 0 ? `${e.join(", ")} jsou poraženi.` : ""}`,
+    finalDrama: (l, c, d) => d < 3 ? `${l} a ${c} se svírají v železném sevření! Nikdo nechce povolit!` : d < 10 ? `${l} získává převahu! ${c} se brání z posledních sil!` : `${l} srazil soupeře k zemi dominantním výkonem!`,
+    resultNarrative: (w, p) => `🥇 ${w} (${p}) — neporazitelný zápasník!`,
+  },
+  archery: {
+    primaryWeight: 0.55, secondaryWeight: 0.25, tertiaryWeight: 0.10, tertiaryStat: "endurance",
+    luckFactor: 0.15, moraleInfluence: 0.3,
+    qualNarrative: (s, e) => e.length > 0
+      ? `Kvalifikační střelba: ${e.join(", ")} míjejí terče. ${s.length} lučištníků postupuje.`
+      : `Všichni střelci zasáhli kvalifikační mety!`,
+    semiNarrative: (f, e) => `Semifinále — šípy hvízdí vzduchem. Finalisté: ${f.join(", ")}.`,
+    finalDrama: (l, c, d) => d < 3 ? `${l} a ${c} — oba mají téměř dokonalou mušku! Rozhodne poslední šíp!` : d < 10 ? `${l} s klidem střílí zásah za zásahem. ${c} zaváhá!` : `${l} zasahuje střed terče s chirurgickou přesností!`,
+    resultNarrative: (w, p) => `🥇 ${w} (${p}) — mistr lukostřelby!`,
+  },
+  horse_racing: {
+    primaryWeight: 0.55, secondaryWeight: 0.25, tertiaryWeight: 0.10, tertiaryStat: "endurance",
+    luckFactor: 0.20, moraleInfluence: 0.25,
+    qualNarrative: (s, e) => e.length > 0
+      ? `Kvalifikační jízdy: ${e.join(", ")} ztrácejí kontrolu nad koněm. ${s.length} jezdců postupuje.`
+      : `Všichni jezdci projeli kvalifikačním kolem!`,
+    semiNarrative: (f, e) => `Semifinálové dostihy — do velkého finále postupují: ${f.join(", ")}.`,
+    finalDrama: (l, c, d) => d < 3 ? `${l} a ${c} cválají bok po boku! Koně pění, dav řve!` : d < 10 ? `${l} pobízí koně do trysku! ${c} ztrácí v zatáčce!` : `${l} proletěl cílem s obrovským náskokem!`,
+    resultNarrative: (w, p) => `🥇 ${w} (${p}) — vítěz dostihů!`,
+  },
+  rhetoric: {
+    primaryWeight: 0.55, secondaryWeight: 0.25, tertiaryWeight: 0.10, tertiaryStat: "endurance",
+    luckFactor: 0.10, moraleInfluence: 0.5,
+    qualNarrative: (s, e) => e.length > 0
+      ? `Kvalifikační řeči: ${e.join(", ")} nezaujali publikum. ${s.length} řečníků postupuje.`
+      : `Všichni řečníci prošli kvalifikací!`,
+    semiNarrative: (f, e) => `Semifinálové debaty — do finále postupují: ${f.join(", ")}. Argumenty se ostří.`,
+    finalDrama: (l, c, d) => d < 3 ? `${l} a ${c} vedou slovní souboj plný brilantních obratů!` : d < 10 ? `${l} přesvědčuje porotu svou výmluvností! ${c} ztrácí půdu pod nohama!` : `${l} okouzlil publikum řečí, která vstoupí do dějin!`,
+    resultNarrative: (w, p) => `🥇 ${w} (${p}) — mistr rétoriky!`,
+  },
+  philosophy: {
+    primaryWeight: 0.55, secondaryWeight: 0.25, tertiaryWeight: 0.10, tertiaryStat: "endurance",
+    luckFactor: 0.08, moraleInfluence: 0.4,
+    qualNarrative: (s, e) => e.length > 0
+      ? `Kvalifikační disputace: ${e.join(", ")} se zamotali ve vlastních tezích. ${s.length} filozofů postupuje.`
+      : `Všichni filozofové prokázali hloubku myšlení!`,
+    semiNarrative: (f, e) => `Semifinálové dialogy — finalisté: ${f.join(", ")}. Myšlenky se tříbí.`,
+    finalDrama: (l, c, d) => d < 3 ? `${l} a ${c} vedou brilantní dialog! Porota je rozpolcena!` : d < 10 ? `${l} překvapuje nečekaným argumentem! ${c} nemá odpověď!` : `${l} přednesl tezi takové hloubky, že porota aplauduje vestoje!`,
+    resultNarrative: (w, p) => `🥇 ${w} (${p}) — nejmoudřejší myslitel!`,
+  },
+  poetry: {
+    primaryWeight: 0.55, secondaryWeight: 0.25, tertiaryWeight: 0.10, tertiaryStat: "endurance",
+    luckFactor: 0.12, moraleInfluence: 0.35,
+    qualNarrative: (s, e) => e.length > 0
+      ? `Kvalifikační recitace: ${e.join(", ")} neunesli tlak jeviště. ${s.length} básníků postupuje.`
+      : `Všichni básníci okouzlili publikum!`,
+    semiNarrative: (f, e) => `Semifinálové souboje veršů — do finále postupují: ${f.join(", ")}.`,
+    finalDrama: (l, c, d) => d < 3 ? `${l} a ${c} — oba přednesli verše, které dojímají k slzám!` : d < 10 ? `${l} nadchl publikum nádhernou metaforou! ${c} nestačí.` : `${l} přednesl báseň, která se stane legendou!`,
+    resultNarrative: (w, p) => `🥇 ${w} (${p}) — korunovaný básník her!`,
+  },
+  sculpture: {
+    primaryWeight: 0.55, secondaryWeight: 0.25, tertiaryWeight: 0.10, tertiaryStat: "tactics",
+    luckFactor: 0.10, moraleInfluence: 0.3,
+    qualNarrative: (s, e) => e.length > 0
+      ? `Kvalifikační tvorba: ${e.join(", ")} nedokončili díla včas. ${s.length} sochařů postupuje.`
+      : `Všichni sochaři dokončili kvalifikační díla!`,
+    semiNarrative: (f, e) => `Semifinále — porota hodnotí detaily. Finalisté: ${f.join(", ")}.`,
+    finalDrama: (l, c, d) => d < 3 ? `${l} a ${c} — obě sochy jsou mistrovská díla! Porota váhá!` : d < 10 ? `${l} ohromuje dokonalostí detailů! ${c} nedosahuje té úrovně.` : `${l} vytvořil dílo takové krásy, že diváci oněmí!`,
+    resultNarrative: (w, p) => `🥇 ${w} (${p}) — mistr sochařského umění!`,
+  },
+  war_simulation: {
+    primaryWeight: 0.55, secondaryWeight: 0.25, tertiaryWeight: 0.10, tertiaryStat: "endurance",
+    luckFactor: 0.14, moraleInfluence: 0.45,
+    qualNarrative: (s, e) => e.length > 0
+      ? `Kvalifikační manévry: ${e.join(", ")} padli v taktických chybách. ${s.length} stratégů postupuje.`
+      : `Všichni stratégové prokázali vojenský um!`,
+    semiNarrative: (f, e) => `Semifinálové bitvy — do finále postupují: ${f.join(", ")}. Válečné pole se zužuje.`,
+    finalDrama: (l, c, d) => d < 3 ? `${l} a ${c} vedou vyrovnanou bitvu! Rozhoduje poslední manévr!` : d < 10 ? `${l} obchvatem překvapuje soupeře! ${c} přichází o pozici!` : `${l} zničil nepřítele brilantní strategií!`,
+    resultNarrative: (w, p) => `🥇 ${w} (${p}) — geniální vojevůdce!`,
+  },
+  engineering: {
+    primaryWeight: 0.55, secondaryWeight: 0.25, tertiaryWeight: 0.10, tertiaryStat: "strength",
+    luckFactor: 0.10, moraleInfluence: 0.25,
+    qualNarrative: (s, e) => e.length > 0
+      ? `Kvalifikační stavby: ${e.join(", ")} — konstrukce selhaly. ${s.length} inženýrů postupuje.`
+      : `Všichni inženýři splnili kvalifikační výzvu!`,
+    semiNarrative: (f, e) => `Semifinále — kreativita pod tlakem. Finalisté: ${f.join(", ")}.`,
+    finalDrama: (l, c, d) => d < 3 ? `${l} a ${c} — obě stavby jsou geniální! Porota měří do milimetru!` : d < 10 ? `${l} překvapuje inovativním řešením! ${c} nedokáže konkurovat.` : `${l} postavil konstrukci, která ohromuje svou dokonalostí!`,
+    resultNarrative: (w, p) => `🥇 ${w} (${p}) — mistr inženýrství!`,
+  },
+};
+
+const DEFAULT_DISC_CONFIG: DiscConfig = {
+  primaryWeight: 0.55, secondaryWeight: 0.25, tertiaryWeight: 0.10,
+  luckFactor: 0.12, moraleInfluence: 0.3,
+  qualNarrative: (s, e) => e.length > 0 ? `${e.join(", ")} vypadávají. ${s.length} postupuje.` : `Všichni postupují!`,
+  semiNarrative: (f, _) => `Finalisté: ${f.join(", ")}.`,
+  finalDrama: (l, c, d) => d < 3 ? `${l} a ${c} — těsný souboj!` : `${l} dominuje!`,
+  resultNarrative: (w, p) => `🥇 ${w} (${p}) vítězí!`,
+};
+
 /**
  * games-resolve: Resolve all disciplines for a festival.
  * 3-phase per discipline: Qualification → Semifinal → Final
- * Performance = BaseStats(80%) + Infrastructure + CivMod + Variance
+ * Performance = Stats(weighted) + Training + Infrastructure + CivMod + Morale + Luck
  */
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
@@ -95,22 +228,29 @@ Deno.serve(async (req) => {
       revealScript.push({ seq: revealSeq, type, delay_ms: delayMs, drama, ...data });
     };
 
-    // Helper: compute score for a participant in a discipline
-    function computeScore(p: any, disc: any, varianceFactor: number = 0.12): number {
+    // Discipline-aware scoring
+    function computeScore(p: any, disc: any, phaseVarianceMult: number = 1.0): number {
+      const cfg = DISC_CONFIGS[disc.key] || DEFAULT_DISC_CONFIG;
+
       const primaryVal = (p as any)[disc.primary_stat] || 50;
       const secondaryVal = disc.secondary_stat ? (p as any)[disc.secondary_stat] || 50 : 50;
+      const tertiaryStat = cfg.tertiaryStat || "endurance";
+      const tertiaryVal = (p as any)[tertiaryStat] || 50;
       const allStats = [p.strength, p.endurance, p.agility, p.tactics, p.charisma];
       const avgStat = allStats.reduce((a: number, b: number) => a + b, 0) / allStats.length;
 
-      const baseScore = primaryVal * 0.6 + secondaryVal * 0.25 + avgStat * 0.15;
+      const baseScore = primaryVal * cfg.primaryWeight + secondaryVal * cfg.secondaryWeight + tertiaryVal * cfg.tertiaryWeight + avgStat * 0.10;
+
       let bonus = 0;
       bonus += p.training_bonus * 0.5;
       bonus += p.city_infrastructure_bonus * 0.3;
       bonus += p.civ_modifier * 0.2;
-      bonus += p.morale_modifier * 0.3;
+      bonus += p.morale_modifier * cfg.moraleInfluence;
+
       if (p.form === "peak") bonus += 8;
       if (p.form === "tired") bonus -= 5;
       if (p.form === "injured") bonus -= 15;
+
       if (p.traits?.includes("Železný")) bonus += 5;
       if (p.traits?.includes("Křehký")) bonus -= 3;
       if (p.traits?.includes("Charismatický") && disc.category === "cultural") bonus += 8;
@@ -118,7 +258,8 @@ Deno.serve(async (req) => {
       if (p.traits?.includes("Stoický") && disc.category === "strategic") bonus += 6;
       bonus += intrigueEffects.get(p.id) || 0;
 
-      const varianceRange = baseScore * varianceFactor;
+      // Luck (variance) — discipline-specific
+      const varianceRange = baseScore * cfg.luckFactor * phaseVarianceMult;
       const variance = (Math.random() - 0.5) * 2 * varianceRange;
       return baseScore + bonus + variance;
     }
@@ -134,25 +275,30 @@ Deno.serve(async (req) => {
     const runningMedals: Record<string, { gold: number; silver: number; bronze: number }> = {};
 
     for (const disc of disciplines) {
+      const cfg = DISC_CONFIGS[disc.key] || DEFAULT_DISC_CONFIG;
+
       await writeFeed("discipline_start", `${disc.icon_emoji} ${disc.name}`, 2, disc.id);
 
-      // Discipline intro
       addReveal("disc_intro", {
         disc_key: disc.key, disc_name: disc.name, disc_emoji: disc.icon_emoji,
         text: `${disc.icon_emoji} ${disc.name} — soutěž začíná!`,
         athletes_count: participants.length,
       }, 3500, 2);
 
-      // ═══ PHASE 1: QUALIFICATION ═══
+      // ═══ PHASE 1: QUALIFICATION (high luck) ═══
       const qualScores = participants.map(p => ({
-        participant: p, score: computeScore(p, disc, 0.15),
+        participant: p, score: computeScore(p, disc, 1.2),
       }));
       qualScores.sort((a, b) => b.score - a.score);
 
-      // Eliminate bottom ~40% (keep at least 4)
       const qualCutoff = Math.max(4, Math.ceil(qualScores.length * 0.6));
       const qualSurvivors = qualScores.slice(0, qualCutoff);
       const qualEliminated = qualScores.slice(qualCutoff);
+
+      const qualText = cfg.qualNarrative(
+        qualSurvivors.map(q => q.participant.athlete_name),
+        qualEliminated.map(q => q.participant.athlete_name),
+      );
 
       const qualStandings = qualScores.map((q, i) => ({
         id: q.participant.id, name: q.participant.athlete_name,
@@ -163,24 +309,24 @@ Deno.serve(async (req) => {
       addReveal("phase_update", {
         disc_key: disc.key, disc_name: disc.name,
         phase_label: "⚡ Kvalifikace — výsledky",
-        standings: qualStandings,
-        text: qualEliminated.length > 0
-          ? `${qualEliminated.map(e => e.participant.athlete_name).join(", ")} vypadávají! Postupuje ${qualSurvivors.length} atletů.`
-          : `Všichni postupují do semifinále!`,
+        standings: qualStandings, text: qualText,
       }, 4000, 3);
+      await writeFeed("narration", qualText, 2, disc.id);
 
-      await writeFeed("narration", `Kvalifikace v ${disc.name}: ${qualSurvivors.length} atletů postupuje, ${qualEliminated.length} vyřazeno.`, 2, disc.id);
-
-      // ═══ PHASE 2: SEMIFINAL ═══
+      // ═══ PHASE 2: SEMIFINAL (medium luck) ═══
       const semiScores = qualSurvivors.map(q => ({
-        participant: q.participant, score: computeScore(q.participant, disc, 0.10),
+        participant: q.participant, score: computeScore(q.participant, disc, 0.8),
       }));
       semiScores.sort((a, b) => b.score - a.score);
 
-      // Keep top 3 (or all if ≤3)
       const semiCutoff = Math.min(3, semiScores.length);
       const finalists = semiScores.slice(0, semiCutoff);
       const semiEliminated = semiScores.slice(semiCutoff);
+
+      const semiText = cfg.semiNarrative(
+        finalists.map(f => f.participant.athlete_name),
+        semiEliminated.map(f => f.participant.athlete_name),
+      );
 
       const semiStandings = semiScores.map((s, i) => ({
         id: s.participant.id, name: s.participant.athlete_name,
@@ -191,17 +337,13 @@ Deno.serve(async (req) => {
       addReveal("phase_update", {
         disc_key: disc.key, disc_name: disc.name,
         phase_label: "🔥 Semifinále — výsledky",
-        standings: semiStandings,
-        text: semiEliminated.length > 0
-          ? `${semiEliminated.map(e => e.participant.athlete_name).join(", ")} končí! Do finále postupují: ${finalists.map(f => f.participant.athlete_name).join(", ")}.`
-          : `Všichni postupují do finále!`,
+        standings: semiStandings, text: semiText,
       }, 4000, 3);
+      await writeFeed("narration", semiText, 3, disc.id);
 
-      await writeFeed("narration", `Semifinále ${disc.name}: Do finále postupují ${finalists.map(f => f.participant.athlete_name).join(", ")}.`, 3, disc.id);
-
-      // ═══ PHASE 3: FINAL ═══
+      // ═══ PHASE 3: FINAL (low luck, highest skill matters) ═══
       const finalScores = finalists.map(f => ({
-        participant: f.participant, score: computeScore(f.participant, disc, 0.08),
+        participant: f.participant, score: computeScore(f.participant, disc, 0.5),
       }));
       finalScores.sort((a, b) => b.score - a.score);
 
@@ -210,22 +352,18 @@ Deno.serve(async (req) => {
       const rollDiff = challenger ? Math.abs(leader.score - challenger.score) : 30;
       const tension = rollDiff < 3 ? 5 : rollDiff < 8 ? 4 : rollDiff < 15 ? 3 : 2;
 
-      // Drama moment
-      let dramaText = "";
-      if (rollDiff < 3) {
-        dramaText = `Neuvěřitelné finále! ${leader.participant.athlete_name} a ${challenger?.participant.athlete_name} bojují o setiny!`;
-      } else if (rollDiff < 10 && challenger) {
-        dramaText = `${leader.participant.athlete_name} zrychluje v závěrečné fázi! ${challenger.participant.athlete_name} se nevzdává!`;
-      } else {
-        dramaText = `${leader.participant.athlete_name} dominuje finále s jasným náskokem!`;
-      }
+      const dramaText = cfg.finalDrama(
+        leader.participant.athlete_name,
+        challenger?.participant.athlete_name || "",
+        rollDiff,
+      );
 
       addReveal("drama_moment", {
         disc_key: disc.key, disc_name: disc.name, text: dramaText, tension,
       }, 4000, tension);
 
-      if (rollDiff < 5) await writeFeed("narration", `Neuvěřitelné finále! Pouhé setiny dělí soupeře!`, 5, disc.id);
-      else if (rollDiff < 15 && challenger) await writeFeed("narration", `Těsné finále! ${challenger.participant.athlete_name} se nevzdává!`, 4, disc.id);
+      if (rollDiff < 5) await writeFeed("narration", dramaText, 5, disc.id);
+      else if (rollDiff < 15) await writeFeed("narration", dramaText, 4, disc.id);
 
       // Final standings with medals
       const finalStandings = finalScores.map((f, i) => ({
@@ -236,9 +374,11 @@ Deno.serve(async (req) => {
         medal: i === 0 ? "gold" : i === 1 ? "silver" : i === 2 ? "bronze" : null,
       }));
 
+      const resultText = cfg.resultNarrative(leader.participant.athlete_name, leader.participant.player_name);
+
       addReveal("disc_result", {
         disc_key: disc.key, disc_name: disc.name, disc_emoji: disc.icon_emoji,
-        text: `🥇 ${leader.participant.athlete_name} (${leader.participant.player_name}) vítězí v ${disc.name}!`,
+        text: resultText,
         standings: finalStandings,
         winner: {
           id: leader.participant.id, name: leader.participant.athlete_name,
@@ -246,9 +386,9 @@ Deno.serve(async (req) => {
         },
       }, 5000, 4);
 
-      await writeFeed("result", `🥇 ${leader.participant.athlete_name} (${leader.participant.player_name}) vítězí v ${disc.name}!`, 4, disc.id, leader.participant.id);
+      await writeFeed("result", resultText, 4, disc.id, leader.participant.id);
 
-      // Save results to DB — all participants get a result (eliminated ones too)
+      // Save results to DB
       const allPerformances = [
         ...finalScores.map((f, i) => ({ ...f, rank: i + 1, medal: i === 0 ? "gold" : i === 1 ? "silver" : i === 2 ? "bronze" : null })),
         ...semiEliminated.map((s, i) => ({ ...s, rank: semiCutoff + i + 1, medal: null })),
@@ -391,12 +531,12 @@ Deno.serve(async (req) => {
     try {
       const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
       if (LOVABLE_API_KEY) {
-        const commentaryPrompt = `Jsi starověký kronikář. Pro každou z těchto ${disciplines.length} disciplín napiš JEDNU krátkou dramatickou větu (max 15 slov). Odpověz jako JSON pole stringů.\n\nDisciplíny a vítězové:\n${disciplines.map((d: any, i: number) => {
+        const commentaryPrompt = `Jsi starověký kronikář. Pro každou z těchto ${disciplines.length} disciplín napiš JEDNU krátkou dramatickou větu (max 15 slov) specifickou pro danou disciplínu. Odpověz jako JSON pole stringů.\n\nDisciplíny a vítězové:\n${disciplines.map((d: any, i: number) => {
   const discResults = allResults.filter((r: any) => r.discipline === d.name);
   const winner = discResults.find((r: any) => r.rank === 1);
   const second = discResults.find((r: any) => r.rank === 2);
-  return `${i+1}. ${d.name}: Vítěz ${winner?.athlete} (${winner?.player}), 2. ${second?.athlete}`;
-}).join("\n")}\n\nStyl: epický, stručný. Odpověz POUZE JSON pole.`;
+  return `${i+1}. ${d.name} (${d.category}): Vítěz ${winner?.athlete} (${winner?.player}), 2. ${second?.athlete}`;
+}).join("\n")}\n\nStyl: epický, stručný, specifický pro typ disciplíny. Odpověz POUZE JSON pole.`;
 
         const aiResp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
           method: "POST",
@@ -503,7 +643,6 @@ Deno.serve(async (req) => {
           city_stability: Math.max(0, Math.min(100, hostCity.city_stability + stabilityDelta)),
         }).eq("id", festival.host_city_id);
 
-        // Legacy titles
         const newHostingCount = hostingCount + 1;
         try {
           if (newHostingCount >= 3) {
@@ -545,7 +684,6 @@ Deno.serve(async (req) => {
     if (bestAthleteParticipant) festivalUpdate.best_athlete_id = bestAthleteParticipant.id;
     if (mostPopular) festivalUpdate.most_popular_id = mostPopular.participant.id;
 
-    // Champion great persons
     const championsToWrite: any[] = [];
     if (bestAthleteParticipant && bestAthleteEntry) {
       championsToWrite.push({
