@@ -573,22 +573,59 @@ Deno.serve(async (req) => {
         await sb.from("games_participants").update({ total_medals: totalMedals, is_legend: isLegend }).eq("id", p.id);
 
         if (isLegend) {
-          const { data: gp } = await sb.from("great_persons").insert({
-            session_id, name: p.athlete_name, player_name: p.player_name,
-            person_type: "Hero", flavor_trait: "Hrdina Her",
-            born_round: turn_number || 1, is_alive: true, city_id: p.city_id,
-            bio: `Legendární atlet, vítěz ${tally.gold} zlatých medailí na Velkých hrách.`,
-          }).select("id").single();
-          if (gp) {
-            await sb.from("games_participants").update({ great_person_id: gp.id }).eq("id", p.id);
-            try {
-              await sb.from("entity_traits").insert({
-                session_id, entity_type: "person", entity_id: gp.id,
-                trait_key: "hero_of_games", trait_label: "Hrdina Her",
+          // ═══ DEDUP: Check if great_person already exists for this athlete ═══
+          const { data: existingGP } = await sb.from("great_persons")
+            .select("id")
+            .eq("session_id", session_id)
+            .eq("name", p.athlete_name)
+            .eq("player_name", p.player_name)
+            .eq("person_type", "Hero")
+            .maybeSingle();
+
+          let gpId = existingGP?.id;
+          if (!gpId) {
+            const { data: gp } = await sb.from("great_persons").insert({
+              session_id, name: p.athlete_name, player_name: p.player_name,
+              person_type: "Hero", flavor_trait: "Hrdina Her",
+              born_round: turn_number || 1, is_alive: true, city_id: p.city_id,
+              bio: `Legendární atlet, vítěz ${tally.gold} zlatých medailí na Velkých hrách.`,
+            }).select("id").single();
+            gpId = gp?.id;
+          } else {
+            // Update bio with latest medal count
+            await sb.from("great_persons").update({
+              bio: `Legendární atlet, vítěz ${tally.gold} zlatých medailí na Velkých hrách.`,
+            }).eq("id", gpId);
+          }
+
+          if (gpId) {
+            await sb.from("games_participants").update({ great_person_id: gpId }).eq("id", p.id);
+            // DEDUP: upsert trait
+            const { data: existingTrait } = await sb.from("entity_traits")
+              .select("id").eq("entity_id", gpId).eq("trait_key", "hero_of_games").maybeSingle();
+            if (!existingTrait) {
+              try {
+                await sb.from("entity_traits").insert({
+                  session_id, entity_type: "person", entity_id: gpId,
+                  trait_key: "hero_of_games", trait_label: "Hrdina Her",
+                  description: `Vítěz ${tally.gold}× zlato na Velkých hrách.`,
+                  intensity: tally.gold * 20, source: "games",
+                });
+              } catch (_) {}
+            } else {
+              await sb.from("entity_traits").update({
                 description: `Vítěz ${tally.gold}× zlato na Velkých hrách.`,
-                intensity: tally.gold * 20, source: "games",
-              });
-            } catch (_) {}
+                intensity: tally.gold * 20,
+              }).eq("id", existingTrait.id);
+            }
+            // DEDUP: wiki entry
+            const { data: existingWiki } = await sb.from("wiki_entries")
+              .select("id").eq("session_id", session_id)
+              .eq("entity_type", "person").eq("entity_name", p.athlete_name)
+              .maybeSingle();
+            if (!existingWiki) {
+              try { await sb.from("wiki_entries").insert({ session_id, entity_type: "person", entity_id: gpId, entity_name: p.athlete_name, owner_player: p.player_name }); } catch (_) {}
+            }
           }
         }
       }
@@ -706,23 +743,45 @@ Deno.serve(async (req) => {
         const existingP = participants.find((p: any) => p.id === champ.participantId);
         let gpId = (existingP as any)?.great_person_id;
         if (!gpId) {
-          const { data: gp } = await sb.from("great_persons").insert({
-            session_id, name: champ.name, player_name: champ.player,
-            person_type: "Hero", flavor_trait: champ.title,
-            born_round: turn_number || 1, is_alive: true, city_id: (existingP as any)?.city_id, bio: champ.bio,
-          }).select("id").single();
-          if (gp) {
-            gpId = gp.id;
-            await sb.from("games_participants").update({ great_person_id: gp.id }).eq("id", champ.participantId);
+          // ═══ DEDUP: Check if great_person already exists ═══
+          const { data: existingGP } = await sb.from("great_persons")
+            .select("id").eq("session_id", session_id)
+            .eq("name", champ.name).eq("player_name", champ.player)
+            .eq("person_type", "Hero").maybeSingle();
+
+          if (existingGP) {
+            gpId = existingGP.id;
+            await sb.from("great_persons").update({ bio: champ.bio, flavor_trait: champ.title }).eq("id", gpId);
+          } else {
+            const { data: gp } = await sb.from("great_persons").insert({
+              session_id, name: champ.name, player_name: champ.player,
+              person_type: "Hero", flavor_trait: champ.title,
+              born_round: turn_number || 1, is_alive: true, city_id: (existingP as any)?.city_id, bio: champ.bio,
+            }).select("id").single();
+            if (gp) gpId = gp.id;
+          }
+          if (gpId) {
+            await sb.from("games_participants").update({ great_person_id: gpId }).eq("id", champ.participantId);
           }
         }
         if (gpId) {
-          await sb.from("entity_traits").insert({
-            session_id, entity_type: "person", entity_id: gpId,
-            trait_key: champ.traitKey, trait_label: champ.title,
-            description: champ.bio, intensity: 80, source: "games",
-          });
-          try { await sb.from("wiki_entries").insert({ session_id, entity_type: "person", entity_id: gpId, entity_name: champ.name, owner_player: champ.player }); } catch (_) {}
+          // DEDUP: upsert trait
+          const { data: existingTrait } = await sb.from("entity_traits")
+            .select("id").eq("entity_id", gpId).eq("trait_key", champ.traitKey).maybeSingle();
+          if (!existingTrait) {
+            await sb.from("entity_traits").insert({
+              session_id, entity_type: "person", entity_id: gpId,
+              trait_key: champ.traitKey, trait_label: champ.title,
+              description: champ.bio, intensity: 80, source: "games",
+            });
+          }
+          // DEDUP: wiki entry
+          const { data: existingWiki } = await sb.from("wiki_entries")
+            .select("id").eq("session_id", session_id)
+            .eq("entity_type", "person").eq("entity_name", champ.name).maybeSingle();
+          if (!existingWiki) {
+            try { await sb.from("wiki_entries").insert({ session_id, entity_type: "person", entity_id: gpId, entity_name: champ.name, owner_player: champ.player }); } catch (_) {}
+          }
         }
       } catch (_) {}
       await writeFeed("narration", `🌟 ${champ.name} získává titul "${champ.title}"!`, 5);
