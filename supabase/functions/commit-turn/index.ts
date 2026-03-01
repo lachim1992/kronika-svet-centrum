@@ -709,7 +709,7 @@ Deno.serve(async (req) => {
     }
 
     // ═══════════════════════════════════════════
-    // 8c. GAMES & FESTIVALS — AUTO-ANNOUNCE OLYMPICS + RESOLVE ACTIVE
+    // 8c. GAMES & FESTIVALS — AUTO-ANNOUNCE, AUTO-SELECT HOST, AUTO-RESOLVE
     // ═══════════════════════════════════════════
     try {
       const nextTurn = turnNumber + 1;
@@ -717,10 +717,9 @@ Deno.serve(async (req) => {
 
       // Auto-announce Olympics every OLYMPIC_PERIOD turns (turn 20, 40, 60…)
       if (nextTurn > 0 && nextTurn % OLYMPIC_PERIOD === 0) {
-        // Check if there's already an active global festival
         const { data: activeGlobal } = await supabase.from("games_festivals")
           .select("id").eq("session_id", sessionId).eq("is_global", true)
-          .in("status", ["announced", "nomination", "qualifying", "finals"])
+          .in("status", ["candidacy", "announced", "nomination", "qualifying", "finals"])
           .maybeSingle();
 
         if (!activeGlobal) {
@@ -738,19 +737,37 @@ Deno.serve(async (req) => {
         }
       }
 
-      // Auto-resolve festivals that are ready (announced 2+ turns ago for global, immediate for local)
+      // ─── Auto-select host for festivals past candidacy deadline ───
+      const { data: candidacyFestivals } = await supabase.from("games_festivals")
+        .select("id, candidacy_deadline_turn")
+        .eq("session_id", sessionId).eq("status", "candidacy");
+
+      let hostsSelected = 0;
+      for (const cf of (candidacyFestivals || [])) {
+        if (cf.candidacy_deadline_turn && turnNumber >= cf.candidacy_deadline_turn) {
+          try {
+            await supabase.functions.invoke("games-select-host", {
+              body: { session_id: sessionId, festival_id: cf.id, turn_number: turnNumber },
+            });
+            hostsSelected++;
+          } catch (shErr) {
+            console.error(`Auto select-host ${cf.id}:`, shErr);
+          }
+        }
+      }
+      results.gamesHostSelection = { selected: hostsSelected };
+
+      // ─── Auto-resolve festivals in nomination/qualifying/finals (2+ turns after nomination) ───
       const { data: festivalsToResolve } = await supabase.from("games_festivals")
-        .select("id, is_global, announced_turn")
+        .select("id, is_global, announced_turn, finals_turn")
         .eq("session_id", sessionId)
-        .in("status", ["announced", "nomination", "qualifying", "finals"])
-        .neq("status", "concluded");
+        .in("status", ["nomination", "qualifying", "finals"]);
 
       let gamesResolved = 0;
       for (const fest of (festivalsToResolve || [])) {
-        const turnsElapsed = turnNumber - fest.announced_turn;
-        // Global: resolve after 2 turns (nomination + qualifying); Local: resolve immediately
-        const readyToResolve = fest.is_global ? turnsElapsed >= 2 : turnsElapsed >= 1;
-        if (readyToResolve) {
+        // Resolve when we reach or pass the finals_turn, or 2 turns after announcement
+        const resolveAt = fest.finals_turn || (fest.announced_turn + 2);
+        if (turnNumber >= resolveAt) {
           try {
             await supabase.functions.invoke("games-resolve", {
               body: { session_id: sessionId, festival_id: fest.id, turn_number: turnNumber },
