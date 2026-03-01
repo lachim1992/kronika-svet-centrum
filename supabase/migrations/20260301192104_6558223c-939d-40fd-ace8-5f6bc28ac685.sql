@@ -1,0 +1,1 @@
+ALTER TABLE public.civ_influence ADD COLUMN cultural_score numeric DEFAULT 0;

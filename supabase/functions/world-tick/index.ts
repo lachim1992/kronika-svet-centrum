@@ -89,6 +89,54 @@ Deno.serve(async (req) => {
     const aiFactionNames = (aiFactions || []).map((f: any) => f.faction_name);
     const allActorNames = [...new Set([...playerNames, ...aiFactionNames])];
 
+    // ========== 1b. FETCH CULTURAL DATA (Games & Academies) ==========
+    const [
+      { data: gamesResults },
+      { data: academiesData },
+      { data: hostCities },
+      { data: concludedFestivals },
+    ] = await Promise.all([
+      supabase.from("games_results").select("participant_id, medal").eq("session_id", sessionId),
+      supabase.from("academies").select("player_name, reputation").eq("session_id", sessionId),
+      supabase.from("cities").select("owner_player, hosting_count").eq("session_id", sessionId),
+      supabase.from("games_festivals").select("host_player, best_athlete_id, concluded_turn, status")
+        .eq("session_id", sessionId).eq("status", "concluded"),
+    ]);
+
+    const { data: allParticipants } = await supabase.from("games_participants")
+      .select("id, player_name").eq("session_id", sessionId);
+    const partPlayerMap = new Map((allParticipants || []).map((p: any) => [p.id, p.player_name]));
+
+    const culturalDataMap: Record<string, { totalMedals: number; goldMedals: number; hostingCount: number; avgAcademyReputation: number }> = {};
+    for (const pName of allActorNames) {
+      const playerMedals = (gamesResults || []).filter((r: any) => r.medal && partPlayerMap.get(r.participant_id) === pName);
+      const totalMedals = playerMedals.length;
+      const goldMedals = playerMedals.filter((r: any) => r.medal === "gold").length;
+      const playerHostCities = (hostCities || []).filter((c: any) => c.owner_player === pName);
+      const hostingCount = playerHostCities.reduce((s: number, c: any) => s + (c.hosting_count || 0), 0);
+      const playerAcademies = (academiesData || []).filter((a: any) => a.player_name === pName);
+      const avgAcademyReputation = playerAcademies.length > 0
+        ? playerAcademies.reduce((s: number, a: any) => s + (a.reputation || 0), 0) / playerAcademies.length
+        : 0;
+      culturalDataMap[pName] = { totalMedals, goldMedals, hostingCount, avgAcademyReputation };
+    }
+
+    // ========== 1c. GAMES REPUTATION DELTAS ==========
+    const gamesRepDeltas: Record<string, number> = {};
+    for (const fest of (concludedFestivals || [])) {
+      if (fest.concluded_turn === turnNumber || fest.concluded_turn === turnNumber - 1) {
+        if (fest.host_player) {
+          gamesRepDeltas[fest.host_player] = (gamesRepDeltas[fest.host_player] || 0) + 8;
+        }
+        if (fest.best_athlete_id) {
+          const champPart = (allParticipants || []).find((p: any) => p.id === fest.best_athlete_id);
+          if (champPart) {
+            gamesRepDeltas[champPart.player_name] = (gamesRepDeltas[champPart.player_name] || 0) + 5;
+          }
+        }
+      }
+    }
+
     // ========== 2. SETTLEMENT GROWTH (shared physics) ==========
     const growthResults: any[] = [];
     const settlementUpgrades: any[] = [];
@@ -172,6 +220,7 @@ Deno.serve(async (req) => {
         provinces: provinces || [],
         treaties: treaties || [],
         previousReputation: prev ? Number(prev.reputation_score) : 0,
+        culturalData: culturalDataMap[pName] || { totalMedals: 0, goldMedals: 0, hostingCount: 0, avgAcademyReputation: 0 },
       });
 
       const record = { session_id: sessionId, turn_number: turnNumber, ...result };
@@ -190,7 +239,7 @@ Deno.serve(async (req) => {
       .eq("confirmed", true)
       .in("event_type", ["alliance", "betrayal", "treaty"]);
 
-    const reputationDeltas: Record<string, number> = {};
+    const reputationDeltas: Record<string, number> = { ...gamesRepDeltas };
 
     // Process alliance/betrayal events into memories + chronicles
     for (const evt of (recentKeyEvents || [])) {

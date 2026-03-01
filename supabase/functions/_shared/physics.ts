@@ -211,6 +211,8 @@ export interface InfluenceInput {
   provinces: Array<{ owner_player: string }>;
   treaties: Array<{ player: string; note?: string; event_type?: string }>;
   previousReputation: number;
+  /** Cultural score from Games & Academies — medals, hosting, academy reputation */
+  culturalData?: { totalMedals: number; goldMedals: number; hostingCount: number; avgAcademyReputation: number };
 }
 
 export interface InfluenceResult {
@@ -221,6 +223,7 @@ export interface InfluenceResult {
   territorial_score: number;
   law_stability_score: number;
   reputation_score: number;
+  cultural_score: number;
   total_influence: number;
 }
 
@@ -247,13 +250,18 @@ export function computeInfluence(input: InfluenceInput): InfluenceResult {
 
   const reputationScore = input.previousReputation * REPUTATION_DECAY;
 
+  // Cultural score: medals (🥇+3, 🥈+2, 🥉+1) + hosting (+15) + avg academy rep
+  const cd = input.culturalData || { totalMedals: 0, goldMedals: 0, hostingCount: 0, avgAcademyReputation: 0 };
+  const culturalScore = cd.goldMedals * 3 + (cd.totalMedals - cd.goldMedals) * 1.5 + cd.hostingCount * 15 + cd.avgAcademyReputation * 0.3;
+
   const totalInfluence =
-    militaryScore * 0.25 +
-    tradeScore * 0.2 +
-    diplomaticScore * 0.15 +
-    territorialScore * 0.2 +
-    lawStabilityScore * 0.1 +
-    reputationScore * 0.1;
+    militaryScore * 0.22 +
+    tradeScore * 0.18 +
+    diplomaticScore * 0.13 +
+    territorialScore * 0.18 +
+    lawStabilityScore * 0.09 +
+    reputationScore * 0.10 +
+    culturalScore * 0.10;
 
   return {
     player_name: input.playerName,
@@ -263,6 +271,7 @@ export function computeInfluence(input: InfluenceInput): InfluenceResult {
     territorial_score: Math.round(territorialScore),
     law_stability_score: Math.round(lawStabilityScore * 10) / 10,
     reputation_score: Math.round(reputationScore * 10) / 10,
+    cultural_score: Math.round(culturalScore * 10) / 10,
     total_influence: Math.round(totalInfluence * 10) / 10,
   };
 }
