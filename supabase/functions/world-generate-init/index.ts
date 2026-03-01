@@ -491,13 +491,39 @@ DŮLEŽITÉ: affected_players/faction MUSÍ používat přesná jména frakcí. 
       counters.regions++;
     }
 
+    // ═══ STEP D-pre: Generate batch hex map FIRST to get terrain + start positions ═══
+    let mapStartPositions: { q: number; r: number }[] = [];
+    {
+      const { data: wfData } = await supabase.from("world_foundations")
+        .select("map_width, map_height")
+        .eq("session_id", sessionId)
+        .maybeSingle();
+      const mapWidth = (wfData as any)?.map_width || 21;
+      const mapHeight = (wfData as any)?.map_height || 21;
+
+      console.log(`Pre-generating batch map: ${mapWidth}x${mapHeight}`);
+      const mapRes = await fetch(`${supabaseUrl}/functions/v1/generate-world-map`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${supabaseKey}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ session_id: sessionId, width: mapWidth, height: mapHeight }),
+      });
+      if (mapRes.ok) {
+        const mapData = await mapRes.json();
+        console.log(`Map generated: ${mapData.hexCount} hexes, startPositions: ${mapData.startPositions?.length}`);
+        mapStartPositions = mapData.startPositions || [];
+      } else {
+        console.warn("Batch map pre-generation failed:", await mapRes.text());
+      }
+    }
+
     // ═══ STEP D: Provinces with wiki + hex layout ═══
     const provinceIdMap: Record<string, string> = {};
     const provinceRegionMap: Record<string, string> = {};
 
-    // Province center layout — spiral arrangement with spacing 5
+    // Use startPositions from map generation for province centers (terrain-aware)
+    // Fallback to spiral arrangement if not enough start positions
     const PROV_SPACING = 5;
-    const provinceCenterOffsets: { q: number; r: number }[] = [
+    const fallbackOffsets: { q: number; r: number }[] = [
       { q: 0, r: 0 },
       { q: PROV_SPACING, r: 0 },
       { q: -PROV_SPACING, r: 0 },
@@ -511,6 +537,7 @@ DŮLEŽITÉ: affected_players/faction MUSÍ používat přesná jména frakcí. 
       { q: -PROV_SPACING, r: -PROV_SPACING },
       { q: PROV_SPACING, r: -PROV_SPACING },
     ];
+    const provinceCenterOffsets = mapStartPositions.length > 0 ? mapStartPositions : fallbackOffsets;
 
     // Generate ring hexes (center + ring1 + ring2 = 19 hexes)
     function hexRing(cq: number, cr: number, radius: number): { q: number; r: number }[] {
@@ -562,12 +589,18 @@ DŮLEŽITÉ: affected_players/faction MUSÍ používat přesná jména frakcí. 
           provinceIdMap[prov.name] = provRow.id;
           provinceRegionMap[prov.name] = region.name;
 
-          // Generate 19 hex entries for this province
+          // Link 19 hexes to this province (hexes already exist from batch generation)
           const hexes19 = province19Hexes(centerOffset.q, centerOffset.r);
           for (const h of hexes19) {
             allProvinceHexEntries.push({
               session_id: sessionId, q: h.q, r: h.r, province_id: provRow.id,
             });
+            // Immediately update the existing hex with province + owner
+            await supabase.from("province_hexes")
+              .update({ province_id: provRow.id, owner_player: ownerPlayer })
+              .eq("session_id", sessionId)
+              .eq("q", h.q)
+              .eq("r", h.r);
           }
 
           await supabase.from("wiki_entries").upsert({
@@ -583,17 +616,6 @@ DŮLEŽITÉ: affected_players/faction MUSÍ používat přesná jména frakcí. 
         provColorIndex++;
         counters.provinces++;
       }
-    }
-
-    // Bulk-update province_hexes with province_id
-    // The hexes may already exist (from generate-hex), so we update them or insert stubs
-    for (const entry of allProvinceHexEntries) {
-      const { data: existing } = await supabase.from("province_hexes")
-        .select("id").eq("session_id", sessionId).eq("q", entry.q).eq("r", entry.r).maybeSingle();
-      if (existing) {
-        await supabase.from("province_hexes").update({ province_id: entry.province_id }).eq("id", existing.id);
-      }
-      // If hex doesn't exist yet, it will be generated later and linked
     }
 
     // Helper: find best province for a city
@@ -1391,58 +1413,12 @@ Napiš EPICKÝ PROLOG o minimálně 2000 slovech, který zmíní VŠECHNY výše
       }
     }
 
-    // ═══ BATCH MAP GENERATION ═══
-    // Generate the entire hex map using the batch generator
+    // ═══ PROVINCE HEX DISCOVERIES ═══
+    // Map already generated in STEP D-pre. Province hexes already linked in STEP D.
+    // Now create discoveries for each player's province hexes.
     try {
-      // Read map dimensions from world_foundations
-      const { data: wfData } = await supabase.from("world_foundations")
-        .select("map_width, map_height")
-        .eq("session_id", sessionId)
-        .maybeSingle();
-      const mapWidth = (wfData as any)?.map_width || 21;
-      const mapHeight = (wfData as any)?.map_height || 21;
-
-      console.log(`Generating batch map: ${mapWidth}x${mapHeight}`);
-
-      const mapRes = await fetch(`${supabaseUrl}/functions/v1/generate-world-map`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${supabaseKey}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ session_id: sessionId, width: mapWidth, height: mapHeight }),
-      });
-
-      if (mapRes.ok) {
-        const mapData = await mapRes.json();
-        console.log(`Map generated: ${mapData.hexCount} hexes, ${mapData.macroRegions} macro regions`);
-      } else {
-        const errText = await mapRes.text();
-        console.warn("Batch map generation failed:", errText);
-      }
-
-      // Link province hexes to provinces + set owner_player
-      for (const entry of allProvinceHexEntries) {
-        const ownerPlayer = (() => {
-          // Find which faction owns this province
-          for (const region of world.regions || []) {
-            for (const prov of region.provinces || []) {
-              if (provinceIdMap[prov.name] === entry.province_id) {
-                return factionPlayerMap[region.controlledBy] || playerName;
-              }
-            }
-          }
-          return playerName;
-        })();
-
-        await supabase.from("province_hexes")
-          .update({ province_id: entry.province_id, owner_player: ownerPlayer })
-          .eq("session_id", sessionId)
-          .eq("q", entry.q)
-          .eq("r", entry.r);
-      }
-
-      // Create discoveries for each player — their own province hexes
       const allPlayerNames = Object.values(factionPlayerMap);
       for (const pn of allPlayerNames) {
-        // Find hexes belonging to this player's provinces
         const playerProvEntries = allProvinceHexEntries.filter((e: any) => {
           for (const region of world.regions || []) {
             const ownerPlayer = factionPlayerMap[region.controlledBy] || playerName;
@@ -1456,7 +1432,6 @@ Napiš EPICKÝ PROLOG o minimálně 2000 slovech, který zmíní VŠECHNY výše
 
         if (playerProvEntries.length === 0) continue;
 
-        // Get hex IDs for these positions
         const coords = playerProvEntries.map((e: any) => `and(q.eq.${e.q},r.eq.${e.r})`);
         const COORD_BATCH = 50;
         for (let i = 0; i < coords.length; i += COORD_BATCH) {
@@ -1477,7 +1452,7 @@ Napiš EPICKÝ PROLOG o minimálně 2000 slovech, který zmíní VŠECHNY výše
           }
         }
       }
-    } catch (hexErr) { console.warn("Hex generation warning:", hexErr); }
+    } catch (hexErr) { console.warn("Hex discovery warning:", hexErr); }
 
     // ═══ Extract structured civ identity (fire & forget) ═══
     const { data: civForIdentity } = await supabase.from("civilizations")
