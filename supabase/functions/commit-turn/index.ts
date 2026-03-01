@@ -709,6 +709,65 @@ Deno.serve(async (req) => {
     }
 
     // ═══════════════════════════════════════════
+    // 8c. GAMES & FESTIVALS — AUTO-ANNOUNCE OLYMPICS + RESOLVE ACTIVE
+    // ═══════════════════════════════════════════
+    try {
+      const nextTurn = turnNumber + 1;
+      const OLYMPIC_PERIOD = 20;
+
+      // Auto-announce Olympics every OLYMPIC_PERIOD turns (turn 20, 40, 60…)
+      if (nextTurn > 0 && nextTurn % OLYMPIC_PERIOD === 0) {
+        // Check if there's already an active global festival
+        const { data: activeGlobal } = await supabase.from("games_festivals")
+          .select("id").eq("session_id", sessionId).eq("is_global", true)
+          .in("status", ["announced", "nomination", "qualifying", "finals"])
+          .maybeSingle();
+
+        if (!activeGlobal) {
+          try {
+            await supabase.functions.invoke("games-announce", {
+              body: { session_id: sessionId, player_name: playerName, type: "olympic", turn_number: nextTurn },
+            });
+            results.gamesAnnounce = { ok: true, turn: nextTurn };
+          } catch (gaErr) {
+            console.error("Auto games-announce error:", gaErr);
+            results.gamesAnnounce = { error: (gaErr as Error).message };
+          }
+        } else {
+          results.gamesAnnounce = { skipped: true, reason: "active_global_exists" };
+        }
+      }
+
+      // Auto-resolve festivals that are ready (announced 2+ turns ago for global, immediate for local)
+      const { data: festivalsToResolve } = await supabase.from("games_festivals")
+        .select("id, is_global, announced_turn")
+        .eq("session_id", sessionId)
+        .in("status", ["announced", "nomination", "qualifying", "finals"])
+        .neq("status", "concluded");
+
+      let gamesResolved = 0;
+      for (const fest of (festivalsToResolve || [])) {
+        const turnsElapsed = turnNumber - fest.announced_turn;
+        // Global: resolve after 2 turns (nomination + qualifying); Local: resolve immediately
+        const readyToResolve = fest.is_global ? turnsElapsed >= 2 : turnsElapsed >= 1;
+        if (readyToResolve) {
+          try {
+            await supabase.functions.invoke("games-resolve", {
+              body: { session_id: sessionId, festival_id: fest.id, turn_number: turnNumber },
+            });
+            gamesResolved++;
+          } catch (grErr) {
+            console.error(`Games resolve ${fest.id}:`, grErr);
+          }
+        }
+      }
+      results.gamesResolve = { resolved: gamesResolved };
+    } catch (e) {
+      console.error("Games processing error:", e);
+      results.games = { error: (e as Error).message };
+    }
+
+    // ═══════════════════════════════════════════
     // 9. AI HISTORY COMPRESSION (AI mode only)
     // ═══════════════════════════════════════════
     if (isAIMode) {
