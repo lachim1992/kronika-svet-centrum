@@ -221,27 +221,28 @@ Deno.serve(async (req) => {
             name: p.athlete_name,
             player_name: p.player_name,
             person_type: "Hero",
-            title: "Hrdina Her",
-            birth_year: -(turn_number || 1),
+            flavor_trait: "Hrdina Her",
+            born_round: turn_number || 1,
             is_alive: true,
             city_id: p.city_id,
-            backstory: `Legendární atlet, vítěz ${tally.gold} zlatých medailí na Velkých hrách.`,
+            bio: `Legendární atlet, vítěz ${tally.gold} zlatých medailí na Velkých hrách.`,
           }).select("id").single();
 
           if (gp) {
             await sb.from("games_participants").update({ great_person_id: gp.id }).eq("id", p.id);
 
-            // Add entity trait
-            await sb.from("entity_traits").insert({
-              session_id,
-              entity_type: "person",
-              entity_id: gp.id,
-              trait_key: "hero_of_games",
-              trait_label: "Hrdina Her",
-              description: `Vítěz ${tally.gold}× zlato na Velkých hrách v ${festival.name}.`,
-              intensity: tally.gold * 20,
-              source: "games",
-            }).catch(() => {});
+            try {
+              await sb.from("entity_traits").insert({
+                session_id,
+                entity_type: "person",
+                entity_id: gp.id,
+                trait_key: "hero_of_games",
+                trait_label: "Hrdina Her",
+                description: `Vítěz ${tally.gold}× zlato na Velkých hrách v ${festival.name}.`,
+                intensity: tally.gold * 20,
+                source: "games",
+              });
+            } catch (_) { /* non-critical */ }
           }
         }
       }
@@ -294,11 +295,11 @@ Deno.serve(async (req) => {
     await sb.from("game_events").insert({
       session_id,
       event_type: "games_concluded",
-      description: `Velké hry v ${festival.name} skončily! Největším hrdinou se stal ${topMedalist?.[0] || "neznámý"} (${topMedalist?.[1]?.gold || 0}× zlato). Nejúspěšnější říší: ${topPlayer?.[0] || "neznámá"}.`,
-      player_name: festival.host_player,
+      note: `Velké hry v ${festival.name} skončily! Největším hrdinou se stal ${topMedalist?.[0] || "neznámý"} (${topMedalist?.[1]?.gold || 0}× zlato). Nejúspěšnější říší: ${topPlayer?.[0] || "neznámá"}.`,
+      player: festival.host_player,
       turn_number: turn_number || festival.announced_turn,
       confirmed: true,
-      data: {
+      reference: {
         festival_id,
         medal_tally: medalTally,
         player_medals: playerMedals,

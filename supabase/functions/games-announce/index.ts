@@ -59,7 +59,7 @@ Deno.serve(async (req) => {
       const { data: cities } = await sb.from("cities")
         .select("id, name, owner_player, influence_score, development_level, city_stability, population_total")
         .eq("session_id", session_id)
-        .eq("status", "active")
+        .in("status", ["ok", "active"])
         .order("influence_score", { ascending: false })
         .limit(5);
 
@@ -173,11 +173,11 @@ Deno.serve(async (req) => {
       await sb.from("game_events").insert({
         session_id,
         event_type: "games_announced",
-        description: `Velké hry byly vyhlášeny v ${hostCity.name}! Všechny říše nominují své nejlepší atlety. Finále proběhne v roce ${currentTurn + 2}.`,
-        player_name: hostCity.owner_player,
+        note: `Velké hry byly vyhlášeny v ${hostCity.name}! Všechny říše nominují své nejlepší atlety. Finále proběhne v roce ${currentTurn + 2}.`,
+        player: hostCity.owner_player,
         turn_number: currentTurn,
         confirmed: true,
-        data: {
+        reference: {
           festival_id: festival.id,
           host_city: hostCity.name,
           host_player: hostCity.owner_player,
@@ -275,11 +275,11 @@ Deno.serve(async (req) => {
     await sb.from("game_events").insert({
       session_id,
       event_type: "local_festival",
-      description: `${festivalNames[type] || "Festival"} byl uspořádán. Stabilita města vzrostla o ${costs.stability_boost}.`,
-      player_name,
+      note: `${festivalNames[type] || "Festival"} byl uspořádán. Stabilita města vzrostla o ${costs.stability_boost}.`,
+      player: player_name,
       turn_number: currentTurn,
       confirmed: true,
-      data: {
+      reference: {
         festival_id: festival?.id,
         city_name: city.name,
         type,
