@@ -261,25 +261,23 @@ Deno.serve(async (req) => {
           // Record death
           await sb.from("games_participants").update({ form: "dead" }).eq("id", victim.participant.id);
 
-          // Try to create gladiator record — find linked academy student
+          // Create gladiator record using student_id FK from participant
           try {
-            const { data: linkedStudent } = await sb.from("academy_students")
-              .select("id, academy_id")
-              .eq("session_id", session_id)
-              .eq("name", victim.participant.athlete_name)
-              .eq("player_name", victim.participant.player_name)
-              .maybeSingle();
-
-            if (linkedStudent) {
-              await sb.from("gladiator_records").insert({
-                session_id,
-                student_id: linkedStudent.id,
-                academy_id: linkedStudent.academy_id,
-                status: "dead",
-                died_turn: turn_number,
-                cause_of_death: `Padl v gladiátorském klání v ${disc.name}`,
-                fights: 1,
-              });
+            const studentId = victim.participant.student_id;
+            if (studentId) {
+              const { data: linkedStudent } = await sb.from("academy_students")
+                .select("id, academy_id").eq("id", studentId).maybeSingle();
+              if (linkedStudent) {
+                await sb.from("gladiator_records").insert({
+                  session_id,
+                  student_id: linkedStudent.id,
+                  academy_id: linkedStudent.academy_id,
+                  status: "dead",
+                  died_turn: turn_number,
+                  cause_of_death: `Padl v gladiátorském klání v ${disc.name}`,
+                  fights: 1,
+                });
+              }
             }
           } catch (_) { /* non-critical */ }
         }
