@@ -14,6 +14,211 @@ export type Database = {
   }
   public: {
     Tables: {
+      academies: {
+        Row: {
+          building_id: string | null
+          city_id: string
+          color_primary: string | null
+          color_secondary: string | null
+          corruption: number
+          created_at: string
+          description: string | null
+          emblem_url: string | null
+          fan_base: number
+          founded_turn: number
+          id: string
+          infrastructure: number
+          last_training_turn: number
+          motto: string | null
+          name: string
+          nutrition: number
+          player_name: string
+          profile_athletics: number
+          profile_brutality: number
+          profile_combat: number
+          profile_culture: number
+          profile_strategy: number
+          reputation: number
+          session_id: string
+          status: string
+          total_champions: number
+          total_fatalities: number
+          total_graduates: number
+          trainer_level: number
+          training_cycle_turns: number
+          training_philosophy: string | null
+          updated_at: string
+        }
+        Insert: {
+          building_id?: string | null
+          city_id: string
+          color_primary?: string | null
+          color_secondary?: string | null
+          corruption?: number
+          created_at?: string
+          description?: string | null
+          emblem_url?: string | null
+          fan_base?: number
+          founded_turn?: number
+          id?: string
+          infrastructure?: number
+          last_training_turn?: number
+          motto?: string | null
+          name?: string
+          nutrition?: number
+          player_name: string
+          profile_athletics?: number
+          profile_brutality?: number
+          profile_combat?: number
+          profile_culture?: number
+          profile_strategy?: number
+          reputation?: number
+          session_id: string
+          status?: string
+          total_champions?: number
+          total_fatalities?: number
+          total_graduates?: number
+          trainer_level?: number
+          training_cycle_turns?: number
+          training_philosophy?: string | null
+          updated_at?: string
+        }
+        Update: {
+          building_id?: string | null
+          city_id?: string
+          color_primary?: string | null
+          color_secondary?: string | null
+          corruption?: number
+          created_at?: string
+          description?: string | null
+          emblem_url?: string | null
+          fan_base?: number
+          founded_turn?: number
+          id?: string
+          infrastructure?: number
+          last_training_turn?: number
+          motto?: string | null
+          name?: string
+          nutrition?: number
+          player_name?: string
+          profile_athletics?: number
+          profile_brutality?: number
+          profile_combat?: number
+          profile_culture?: number
+          profile_strategy?: number
+          reputation?: number
+          session_id?: string
+          status?: string
+          total_champions?: number
+          total_fatalities?: number
+          total_graduates?: number
+          trainer_level?: number
+          training_cycle_turns?: number
+          training_philosophy?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "academies_building_id_fkey"
+            columns: ["building_id"]
+            isOneToOne: false
+            referencedRelation: "city_buildings"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "academies_city_id_fkey"
+            columns: ["city_id"]
+            isOneToOne: false
+            referencedRelation: "cities"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "academies_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      academy_students: {
+        Row: {
+          academy_id: string
+          agility: number
+          charisma: number
+          created_at: string
+          endurance: number
+          graduation_turn: number | null
+          great_person_id: string | null
+          id: string
+          name: string
+          player_name: string
+          promoted_to_participant_id: string | null
+          session_id: string
+          specialty: string
+          status: string
+          strength: number
+          tactics: number
+          training_started_turn: number
+          traits: string[] | null
+        }
+        Insert: {
+          academy_id: string
+          agility?: number
+          charisma?: number
+          created_at?: string
+          endurance?: number
+          graduation_turn?: number | null
+          great_person_id?: string | null
+          id?: string
+          name: string
+          player_name: string
+          promoted_to_participant_id?: string | null
+          session_id: string
+          specialty?: string
+          status?: string
+          strength?: number
+          tactics?: number
+          training_started_turn?: number
+          traits?: string[] | null
+        }
+        Update: {
+          academy_id?: string
+          agility?: number
+          charisma?: number
+          created_at?: string
+          endurance?: number
+          graduation_turn?: number | null
+          great_person_id?: string | null
+          id?: string
+          name?: string
+          player_name?: string
+          promoted_to_participant_id?: string | null
+          session_id?: string
+          specialty?: string
+          status?: string
+          strength?: number
+          tactics?: number
+          training_started_turn?: number
+          traits?: string[] | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "academy_students_academy_id_fkey"
+            columns: ["academy_id"]
+            isOneToOne: false
+            referencedRelation: "academies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "academy_students_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       action_queue: {
         Row: {
           action_data: Json
@@ -4382,6 +4587,7 @@ export type Database = {
           realm_report_cached: string | null
           realm_report_last_turn: number
           session_id: string
+          sport_funding_pct: number
           stability: number
           stables_capacity: number
           stone_reserve: number
@@ -4418,6 +4624,7 @@ export type Database = {
           realm_report_cached?: string | null
           realm_report_last_turn?: number
           session_id: string
+          sport_funding_pct?: number
           stability?: number
           stables_capacity?: number
           stone_reserve?: number
@@ -4454,6 +4661,7 @@ export type Database = {
           realm_report_cached?: string | null
           realm_report_last_turn?: number
           session_id?: string
+          sport_funding_pct?: number
           stability?: number
           stables_capacity?: number
           stone_reserve?: number

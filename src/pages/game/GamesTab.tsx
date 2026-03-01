@@ -5,8 +5,9 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Loader2, Trophy, Sword, BookOpen, Theater, Target, Flame, Star, Crown, AlertTriangle, Coins } from "lucide-react";
+import { Loader2, Trophy, Sword, BookOpen, Theater, Target, Flame, Star, Crown, AlertTriangle, Coins, School } from "lucide-react";
 import { toast } from "sonner";
+import AcademyPanel from "@/components/AcademyPanel";
 
 interface Props {
   sessionId: string;
@@ -225,9 +226,12 @@ const GamesTab = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, o
       </div>
 
       <Tabs defaultValue="active" className="space-y-4">
-        <TabsList className="grid w-full grid-cols-3">
+        <TabsList className="grid w-full grid-cols-4">
           <TabsTrigger value="active" className="font-display text-xs">
             <Flame className="h-3.5 w-3.5 mr-1" />Aktivní
+          </TabsTrigger>
+          <TabsTrigger value="academy" className="font-display text-xs">
+            <School className="h-3.5 w-3.5 mr-1" />Akademie
           </TabsTrigger>
           <TabsTrigger value="create" className="font-display text-xs">
             <Star className="h-3.5 w-3.5 mr-1" />Vyhlásit
@@ -261,6 +265,11 @@ const GamesTab = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, o
               </CardContent>
             </Card>
           )}
+        </TabsContent>
+
+        {/* ─── ACADEMY ─── */}
+        <TabsContent value="academy">
+          <AcademyPanel sessionId={sessionId} currentPlayerName={currentPlayerName} currentTurn={currentTurn} />
         </TabsContent>
 
         {/* ─── CREATE GAMES ─── */}

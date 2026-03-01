@@ -768,6 +768,31 @@ Deno.serve(async (req) => {
     }
 
     // ═══════════════════════════════════════════
+    // 8d. ACADEMY TICK — auto-create schools, training cycles, funding
+    // ═══════════════════════════════════════════
+    try {
+      // Run academy-tick for each player
+      const allPlayers = [
+        ...(players || []).map((p: any) => p.player_name),
+      ];
+      let academyResults: any[] = [];
+      for (const pName of allPlayers) {
+        try {
+          const { data: atData } = await supabase.functions.invoke("academy-tick", {
+            body: { session_id: sessionId, player_name: pName, turn_number: turnNumber + 1 },
+          });
+          academyResults.push({ player: pName, ...atData });
+        } catch (atErr) {
+          console.error(`Academy tick for ${pName}:`, atErr);
+        }
+      }
+      results.academyTick = { players: academyResults };
+    } catch (e) {
+      console.error("Academy tick error:", e);
+      results.academyTick = { error: (e as Error).message };
+    }
+
+    // ═══════════════════════════════════════════
     // 9. AI HISTORY COMPRESSION (AI mode only)
     // ═══════════════════════════════════════════
     if (isAIMode) {
