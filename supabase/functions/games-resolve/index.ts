@@ -1087,6 +1087,17 @@ Odpověz POUZE jako JSON: {"bio": "...", "imagePrompt": "..."}`
       reveal_phase: "computed", ...festivalUpdate,
     }).eq("id", festival_id);
 
+    // ═══ RESET promoted students back to graduated for future festivals ═══
+    const { data: festParticipants } = await sb.from("games_participants")
+      .select("student_id").eq("festival_id", festival_id).not("student_id", "is", null);
+    const promotedStudentIds = (festParticipants || []).map(p => p.student_id).filter(Boolean);
+    if (promotedStudentIds.length > 0) {
+      await sb.from("academy_students")
+        .update({ status: "graduated" })
+        .in("id", promotedStudentIds)
+        .eq("status", "promoted");
+    }
+
     // Game event
     await sb.from("game_events").insert({
       session_id, event_type: "games_concluded",
