@@ -109,7 +109,10 @@ function formLabel(f: number) {
 const LeaguePanel = ({ sessionId, currentPlayerName, currentTurn }: Props) => {
   const [teams, setTeams] = useState<Team[]>([]);
   const [standings, setStandings] = useState<Standing[]>([]);
+  const [standings2, setStandings2] = useState<Standing[]>([]);
   const [matches, setMatches] = useState<Match[]>([]);
+  const [matches2, setMatches2] = useState<Match[]>([]);
+  const [activeSeason2, setActiveSeason2] = useState<Season | null>(null);
   const [seasons, setSeasons] = useState<Season[]>([]);
   const [players, setPlayers] = useState<Player[]>([]);
   const [stadiums, setStadiums] = useState<Stadium[]>([]);
@@ -143,27 +146,44 @@ const LeaguePanel = ({ sessionId, currentPlayerName, currentTurn }: Props) => {
     for (const c of (cits || [])) cityMap.set(c.id, c.name);
     setCities(cityMap);
 
-    const activeSeason = (s || []).find((ss: any) => ss.status === "active" && (ss.league_tier || 1) === 1)
-      || (s || []).find((ss: any) => ss.status === "active")
-      || (s && s.length > 0 ? s[0] : null);
-    const activeSeasonId = activeSeason?.id;
+    const allSeasons = s || [];
+    const activeSeason1 = allSeasons.find((ss: any) => ss.status === "active" && (ss.league_tier || 1) === 1)
+      || allSeasons.find((ss: any) => ss.status === "active")
+      || (allSeasons.length > 0 ? allSeasons[0] : null);
+    const activeSeason2Found = allSeasons.find((ss: any) => ss.status === "active" && (ss.league_tier || 1) === 2) || null;
+    setActiveSeason2(activeSeason2Found as any);
+
+    const seasonIds = [activeSeason1?.id, activeSeason2Found?.id].filter(Boolean) as string[];
     
-    if (activeSeasonId) {
-      const [{ data: st }, { data: m }, { data: pl }] = await Promise.all([
-        supabase.from("league_standings").select("*").eq("season_id", activeSeasonId).order("points", { ascending: false }),
-        supabase.from("league_matches").select("*").eq("season_id", activeSeasonId).order("round_number", { ascending: true }),
+    if (seasonIds.length > 0) {
+      const queries: PromiseLike<any>[] = [
         supabase.from("league_players").select("*").in("team_id", (t || []).map((tt: any) => tt.id)).order("goals_scored", { ascending: false }),
-      ]);
-      const sortedSt = (st || []).sort((a: any, b: any) => {
+      ];
+      for (const sid of seasonIds) {
+        queries.push(supabase.from("league_standings").select("*").eq("season_id", sid).order("points", { ascending: false }));
+        queries.push(supabase.from("league_matches").select("*").eq("season_id", sid).order("round_number", { ascending: true }));
+      }
+      const results = await Promise.all(queries);
+      setPlayers((results[0].data || []) as any);
+
+      const sortStandings = (st: any[]) => [...st].sort((a, b) => {
         if (b.points !== a.points) return b.points - a.points;
         const diffA = a.goals_for - a.goals_against;
         const diffB = b.goals_for - b.goals_against;
         if (diffB !== diffA) return diffB - diffA;
         return b.goals_for - a.goals_for;
       });
-      setStandings(sortedSt as any);
-      setMatches((m || []) as any);
-      setPlayers((pl || []) as any);
+
+      setStandings(sortStandings(results[1].data || []) as any);
+      setMatches((results[2].data || []) as any);
+
+      if (seasonIds.length > 1) {
+        setStandings2(sortStandings(results[3].data || []) as any);
+        setMatches2((results[4].data || []) as any);
+      } else {
+        setStandings2([]);
+        setMatches2([]);
+      }
     }
     setLoading(false);
   }, [sessionId]);
@@ -250,6 +270,75 @@ const LeaguePanel = ({ sessionId, currentPlayerName, currentTurn }: Props) => {
   const tier1Teams = teams.filter(t => (t.league_tier || 1) === 1);
   const tier2Teams = teams.filter(t => (t.league_tier || 1) === 2);
   const hasTier2 = tier2Teams.length > 0;
+
+  const renderStandingsTable = (sts: Standing[], tMap: Map<string, Team>, myName: string, onSelect: (id: string) => void, key: string) => (
+    <div className="overflow-x-auto">
+      <table className="w-full text-xs">
+        <thead>
+          <tr className="border-b border-border text-muted-foreground bg-muted/10">
+            <th className="p-2 text-left w-8">#</th>
+            <th className="p-2 text-left">Tým</th>
+            <th className="p-2 text-left text-[9px]">Hráč</th>
+            <th className="p-2 text-center w-8">Z</th>
+            <th className="p-2 text-center w-8">V</th>
+            <th className="p-2 text-center w-8">R</th>
+            <th className="p-2 text-center w-8">P</th>
+            <th className="p-2 text-center w-16">Skóre</th>
+            <th className="p-2 text-center w-8 font-bold">B</th>
+            <th className="p-2 text-center w-16">Forma</th>
+          </tr>
+        </thead>
+        <tbody>
+          {sts.length > 0 ? sts.map((st, i) => {
+            const team = tMap.get(st.team_id);
+            if (!team) return null;
+            const isMyTeam = team.player_name === myName;
+            const isPromoZone = key === "tier2" && i < 2;
+            const isRelegZone = key === "tier1" && i >= sts.length - 2;
+            return (
+              <tr key={st.id}
+                className={`border-b border-border/50 hover:bg-accent/10 cursor-pointer transition-colors ${isMyTeam ? "bg-primary/5" : ""} ${i === 0 ? "font-medium" : ""} ${isPromoZone ? "border-l-2 border-l-green-500/50" : ""} ${isRelegZone ? "border-l-2 border-l-red-500/50" : ""}`}
+                onClick={() => onSelect(team.id)}
+              >
+                <td className="p-2">
+                  {i === 0 ? <span className="text-yellow-400">🏆</span> : 
+                   i < 3 ? <span className="text-muted-foreground font-bold">{i + 1}.</span> : 
+                   <span className="text-muted-foreground">{i + 1}.</span>}
+                </td>
+                <td className="p-2">
+                  <div className="flex items-center gap-2">
+                    <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: team.color_primary }} />
+                    <span className={isMyTeam ? "text-primary font-medium" : ""}>{team.team_name}</span>
+                    {(team.titles_won || 0) > 0 && <span className="text-yellow-400 text-[9px]">🏆{team.titles_won}</span>}
+                    {isPromoZone && <span className="text-green-400 text-[9px]">▲</span>}
+                    {isRelegZone && <span className="text-red-400 text-[9px]">▼</span>}
+                  </div>
+                </td>
+                <td className="p-2 text-[9px] text-muted-foreground truncate max-w-[60px]">{team.player_name}</td>
+                <td className="p-2 text-center text-muted-foreground">{st.played}</td>
+                <td className="p-2 text-center text-green-400/80">{st.wins}</td>
+                <td className="p-2 text-center text-yellow-400/80">{st.draws}</td>
+                <td className="p-2 text-center text-red-400/80">{st.losses}</td>
+                <td className="p-2 text-center tracking-tighter">{st.goals_for}:{st.goals_against}</td>
+                <td className="p-2 text-center font-bold text-sm">{st.points}</td>
+                <td className="p-2 text-center">
+                  <div className="flex gap-0.5 justify-center">
+                    {(st.form || "").split("").map((f, fi) => (
+                      <span key={fi} className={`w-3.5 h-3.5 rounded-[2px] text-[7px] flex items-center justify-center font-bold ${FORM_COLORS[f] || "bg-muted text-muted-foreground"}`}>
+                        {f}
+                      </span>
+                    ))}
+                  </div>
+                </td>
+              </tr>
+            );
+          }) : (
+            <tr><td colSpan={10} className="p-8 text-center text-muted-foreground">Zatím žádná data.</td></tr>
+          )}
+        </tbody>
+      </table>
+    </div>
+  );
 
   if (loading) {
     return (
@@ -505,73 +594,38 @@ const LeaguePanel = ({ sessionId, currentPlayerName, currentTurn }: Props) => {
           </TabsList>
 
           {/* ═══ STANDINGS ═══ */}
-          <TabsContent value="table">
+          <TabsContent value="table" className="space-y-4">
+            {/* 1. Liga */}
             <Card className="border-border bg-card/50">
+              <CardHeader className="py-2 px-3 border-b border-border/50">
+                <CardTitle className="text-xs font-display flex items-center gap-2">
+                  🏟️ 1. Liga
+                  {activeSeason && <Badge variant="outline" className="text-[9px]">{activeSeason.season_number}. sezóna — kolo {activeSeason.current_round}/{activeSeason.total_rounds}</Badge>}
+                </CardTitle>
+              </CardHeader>
               <CardContent className="p-0">
-                <div className="overflow-x-auto">
-                  <table className="w-full text-xs">
-                    <thead>
-                      <tr className="border-b border-border text-muted-foreground bg-muted/10">
-                        <th className="p-2 text-left w-8">#</th>
-                        <th className="p-2 text-left">Tým</th>
-                        <th className="p-2 text-left text-[9px]">Hráč</th>
-                        <th className="p-2 text-center w-8">Z</th>
-                        <th className="p-2 text-center w-8">V</th>
-                        <th className="p-2 text-center w-8">R</th>
-                        <th className="p-2 text-center w-8">P</th>
-                        <th className="p-2 text-center w-16">Skóre</th>
-                        <th className="p-2 text-center w-8 font-bold">B</th>
-                        <th className="p-2 text-center w-16">Forma</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {standings.length > 0 ? standings.map((st, i) => {
-                        const team = teamMap.get(st.team_id);
-                        if (!team) return null;
-                        const isMyTeam = team.player_name === currentPlayerName;
-                        return (
-                          <tr key={st.id}
-                            className={`border-b border-border/50 hover:bg-accent/10 cursor-pointer transition-colors ${isMyTeam ? "bg-primary/5" : ""} ${i === 0 ? "font-medium" : ""}`}
-                            onClick={() => setSelectedTeam(team.id)}
-                          >
-                            <td className="p-2">
-                              {i === 0 ? <span className="text-yellow-400">🏆</span> : 
-                               i < 3 ? <span className="text-muted-foreground font-bold">{i + 1}.</span> : 
-                               <span className="text-muted-foreground">{i + 1}.</span>}
-                            </td>
-                            <td className="p-2">
-                              <div className="flex items-center gap-2">
-                                <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: team.color_primary }} />
-                                <span className={isMyTeam ? "text-primary font-medium" : ""}>{team.team_name}</span>
-                                {(team.titles_won || 0) > 0 && <span className="text-yellow-400 text-[9px]">🏆{team.titles_won}</span>}
-                              </div>
-                            </td>
-                            <td className="p-2 text-[9px] text-muted-foreground truncate max-w-[60px]">{team.player_name}</td>
-                            <td className="p-2 text-center text-muted-foreground">{st.played}</td>
-                            <td className="p-2 text-center text-green-400/80">{st.wins}</td>
-                            <td className="p-2 text-center text-yellow-400/80">{st.draws}</td>
-                            <td className="p-2 text-center text-red-400/80">{st.losses}</td>
-                            <td className="p-2 text-center tracking-tighter">{st.goals_for}:{st.goals_against}</td>
-                            <td className="p-2 text-center font-bold text-sm">{st.points}</td>
-                            <td className="p-2 text-center">
-                              <div className="flex gap-0.5 justify-center">
-                                {(st.form || "").split("").map((f, fi) => (
-                                  <span key={fi} className={`w-3.5 h-3.5 rounded-[2px] text-[7px] flex items-center justify-center font-bold ${FORM_COLORS[f] || "bg-muted text-muted-foreground"}`}>
-                                    {f}
-                                  </span>
-                                ))}
-                              </div>
-                            </td>
-                          </tr>
-                        );
-                      }) : (
-                        <tr><td colSpan={10} className="p-8 text-center text-muted-foreground">Zatím žádná data.</td></tr>
-                      )}
-                    </tbody>
-                  </table>
-                </div>
+                {renderStandingsTable(standings, teamMap, currentPlayerName, setSelectedTeam, "tier1")}
               </CardContent>
             </Card>
+
+            {/* 2. Liga */}
+            {hasTier2 && (
+              <Card className="border-border bg-card/50">
+                <CardHeader className="py-2 px-3 border-b border-border/50">
+                  <CardTitle className="text-xs font-display flex items-center gap-2">
+                    ⚔️ 2. Liga
+                    {activeSeason2 && <Badge variant="outline" className="text-[9px]">{activeSeason2.season_number}. sezóna — kolo {activeSeason2.current_round}/{activeSeason2.total_rounds}</Badge>}
+                    {!activeSeason2 && <Badge variant="secondary" className="text-[9px]">Sezóna nezahájena — odehrajte kolo</Badge>}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="p-0">
+                  {standings2.length > 0
+                    ? renderStandingsTable(standings2, teamMap, currentPlayerName, setSelectedTeam, "tier2")
+                    : <div className="p-4 text-center text-xs text-muted-foreground">Zatím žádná data. Klikněte „Odehrát kolo" pro zahájení 2. ligy.</div>
+                  }
+                </CardContent>
+              </Card>
+            )}
           </TabsContent>
 
           {/* ═══ MATCHES ═══ */}
