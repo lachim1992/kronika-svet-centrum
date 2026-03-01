@@ -737,10 +737,65 @@ Deno.serve(async (req) => {
         }
       }
 
-      // ─── Auto-select host for festivals past candidacy deadline ───
+      // ─── Auto-bid AI factions for festivals in candidacy phase ───
       const { data: candidacyFestivals } = await supabase.from("games_festivals")
         .select("id, candidacy_deadline_turn")
         .eq("session_id", sessionId).eq("status", "candidacy");
+
+      let aiBidsPlaced = 0;
+      for (const cf of (candidacyFestivals || [])) {
+        // Get AI factions
+        const { data: aiFacs } = await supabase.from("ai_factions")
+          .select("faction_name").eq("session_id", sessionId).eq("is_active", true);
+
+        for (const fac of (aiFacs || [])) {
+          // Check if already bid
+          const { count: existingBid } = await supabase.from("games_bids")
+            .select("id", { count: "exact", head: true })
+            .eq("festival_id", cf.id).eq("player_name", fac.faction_name);
+          if (existingBid && existingBid > 0) continue;
+
+          // Find best AI city with an arena
+          const { data: facCities } = await supabase.from("cities")
+            .select("id, name, influence_score, development_level, city_stability, population_total, hosting_count, owner_player")
+            .eq("session_id", sessionId).eq("owner_player", fac.faction_name)
+            .in("status", ["ok", "active"])
+            .order("influence_score", { ascending: false });
+
+          for (const fc of (facCities || [])) {
+            // Check for completed arena
+            const { data: arena } = await supabase.from("city_buildings")
+              .select("id").eq("city_id", fc.id).eq("session_id", sessionId)
+              .eq("status", "completed")
+              .or("name.ilike.%aréna%,name.ilike.%arena%,name.ilike.%stadion%,name.ilike.%amfiteátr%")
+              .maybeSingle();
+
+            if (!arena) continue;
+
+            // Place auto-bid
+            const culturalScore = fc.influence_score * 2;
+            const logisticsScore = fc.development_level * 10 + fc.city_stability;
+            const lobbyBonus = 0;
+            const legacyBonus = (fc.hosting_count || 0) * 8;
+            const popBonus = Math.log((fc.population_total || 1) + 1) * 3;
+            const totalBidScore = culturalScore + logisticsScore + lobbyBonus + legacyBonus + popBonus;
+
+            await supabase.from("games_bids").insert({
+              session_id: sessionId, festival_id: cf.id, player_name: fac.faction_name,
+              city_id: fc.id, gold_invested: 0,
+              pitch_text: `${fc.name} se uchází o pořadatelství Velkých her jménem ${fac.faction_name}.`,
+              cultural_score: culturalScore, logistics_score: logisticsScore,
+              stability_score: fc.city_stability, hosting_legacy_bonus: legacyBonus,
+              total_bid_score: totalBidScore, is_winner: false,
+            });
+            aiBidsPlaced++;
+            break; // one bid per faction
+          }
+        }
+      }
+      results.gamesAiBids = { placed: aiBidsPlaced };
+
+      // ─── Auto-select host for festivals past candidacy deadline ───
 
       let hostsSelected = 0;
       for (const cf of (candidacyFestivals || [])) {
