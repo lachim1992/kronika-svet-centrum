@@ -78,6 +78,10 @@ const CityBuildingsPanel = ({
   const [aiGenerating, setAiGenerating] = useState(false);
   const [activeCategory, setActiveCategory] = useState("economic");
   const [upgradingId, setUpgradingId] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editFlavor, setEditFlavor] = useState("");
+  const [editArchStyle, setEditArchStyle] = useState("");
+  const [regeneratingId, setRegeneratingId] = useState<string | null>(null);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -325,6 +329,8 @@ const CityBuildingsPanel = ({
         image_prompt: data.image_prompt || null,
         image_url: data.image_url || null,
         is_ai_generated: true,
+        is_arena: data.is_arena || false,
+        building_tags: data.building_tags || [],
         status: buildDuration <= 1 ? "completed" : "building",
         completed_turn: buildDuration <= 1 ? currentTurn : null,
         current_level: 1,
@@ -349,6 +355,56 @@ const CityBuildingsPanel = ({
       toast.error("AI generování selhalo: " + (e.message || "neznámá chyba"));
     } finally {
       setAiGenerating(false);
+    }
+  };
+
+  const handleSaveVisual = async (b: any) => {
+    await supabase.from("city_buildings").update({
+      flavor_text: editFlavor || b.flavor_text,
+      architectural_style: editArchStyle || b.architectural_style,
+    } as any).eq("id", b.id);
+    // Also update wiki_entry if exists
+    await supabase.from("wiki_entries").update({
+      summary: editFlavor || b.flavor_text || b.description,
+    } as any).eq("entity_id", b.id).eq("entity_type", "building");
+    setEditingId(null);
+    toast.success("Vizuální popis uložen.");
+    fetchData();
+  };
+
+  const handleRegenerateImage = async (b: any) => {
+    setRegeneratingId(b.id);
+    try {
+      const { data, error } = await supabase.functions.invoke("encyclopedia-image", {
+        body: {
+          entityType: b.is_arena ? "arena" : "building",
+          entityName: b.name,
+          entityId: b.id,
+          sessionId,
+          description: b.architectural_style || b.flavor_text || b.description,
+          flavorText: b.founding_myth || "",
+        },
+      });
+      if (error) throw error;
+      if (data?.imageUrl) {
+        await supabase.from("city_buildings").update({
+          image_url: data.imageUrl,
+          image_prompt: data.imagePrompt,
+        } as any).eq("id", b.id);
+        // Sync to wiki
+        await supabase.from("wiki_entries").update({
+          image_url: data.imageUrl,
+          image_prompt: data.imagePrompt,
+        } as any).eq("entity_id", b.id).eq("entity_type", "building");
+        toast.success("Nový obrázek vygenerován!");
+        fetchData();
+      } else {
+        toast.error("Generování obrázku selhalo.");
+      }
+    } catch (e: any) {
+      toast.error("Chyba: " + (e.message || "neznámá chyba"));
+    } finally {
+      setRegeneratingId(null);
     }
   };
 
@@ -491,6 +547,65 @@ const CityBuildingsPanel = ({
                   {b.is_ai_generated && currentLevel + 1 === 5 ? "Povýšit na Div" : "Vylepšit"}
                 </Button>
               </div>
+            </div>
+          )}
+
+          {/* Visual editing section */}
+          {isOwner && !isConstructing && (
+            <div className="mt-2 pt-2 border-t border-border/50">
+              {editingId === b.id ? (
+                <div className="space-y-2">
+                  <div>
+                    <Label className="text-[9px] text-muted-foreground">Popis architektury</Label>
+                    <Textarea
+                      value={editArchStyle}
+                      onChange={e => setEditArchStyle(e.target.value)}
+                      placeholder="Kamenné sloupy, korintské hlavice, otevřená tribuna..."
+                      className="text-[10px] h-14 mt-0.5"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-[9px] text-muted-foreground">Atmosféra / flavor</Label>
+                    <Input
+                      value={editFlavor}
+                      onChange={e => setEditFlavor(e.target.value)}
+                      placeholder="Monumentální aréna zalitá sluncem..."
+                      className="text-[10px] h-7 mt-0.5"
+                    />
+                  </div>
+                  <div className="flex gap-1.5">
+                    <Button size="sm" variant="outline" className="h-6 text-[9px] gap-1"
+                      onClick={() => { handleSaveVisual(b); }}>
+                      <CheckCircle2 className="h-2.5 w-2.5" />Uložit
+                    </Button>
+                    <Button size="sm" variant="outline" className="h-6 text-[9px] gap-1"
+                      disabled={regeneratingId === b.id}
+                      onClick={() => { handleSaveVisual(b).then(() => handleRegenerateImage(b)); }}>
+                      {regeneratingId === b.id ? <Loader2 className="h-2.5 w-2.5 animate-spin" /> : <ImageIcon className="h-2.5 w-2.5" />}
+                      Uložit & přegenerovat obrázek
+                    </Button>
+                    <Button size="sm" variant="ghost" className="h-6 text-[9px]"
+                      onClick={() => setEditingId(null)}>Zrušit</Button>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex gap-1.5">
+                  <Button size="sm" variant="ghost" className="h-6 text-[9px] gap-1"
+                    onClick={() => {
+                      setEditingId(b.id);
+                      setEditFlavor(b.flavor_text || "");
+                      setEditArchStyle((b as any).architectural_style || "");
+                    }}>
+                    <Sparkles className="h-2.5 w-2.5" />Upravit vizuál
+                  </Button>
+                  <Button size="sm" variant="ghost" className="h-6 text-[9px] gap-1"
+                    disabled={regeneratingId === b.id}
+                    onClick={() => handleRegenerateImage(b)}>
+                    {regeneratingId === b.id ? <Loader2 className="h-2.5 w-2.5 animate-spin" /> : <ImageIcon className="h-2.5 w-2.5" />}
+                    Přegenerovat obrázek
+                  </Button>
+                </div>
+              )}
             </div>
           )}
         </div>

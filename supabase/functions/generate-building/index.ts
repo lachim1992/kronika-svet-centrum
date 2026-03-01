@@ -219,8 +219,16 @@ function clamp(val: number, min: number, max: number): number {
 function validateBuilding(p: any) {
   const categories = ["economic", "military", "cultural", "religious", "infrastructure"];
   const e = p.effects || {};
+  const name = (p.name || "Nová stavba").slice(0, 100);
+  const nameLC = name.toLowerCase();
+  const ARENA_KEYWORDS = ["aréna", "arena", "stadion", "amfiteátr", "závodiště", "colosseum", "koloseum", "hippodrome", "hippodrom"];
+  const isArena = ARENA_KEYWORDS.some(kw => nameLC.includes(kw));
+  const tags: string[] = [];
+  if (isArena) tags.push("arena");
+  if (nameLC.includes("akademi") || nameLC.includes("škola") || nameLC.includes("gymnasium")) tags.push("academy");
+
   return {
-    name: (p.name || "Nová stavba").slice(0, 100),
+    name,
     category: categories.includes(p.category) ? p.category : "economic",
     description: (p.description || "").slice(0, 500),
     flavor_text: (p.flavor_text || "").slice(0, 300),
@@ -234,5 +242,7 @@ function validateBuilding(p: any) {
     level_data: Array.isArray(p.level_data) ? p.level_data : [],
     image_prompt: (p.image_prompt || "").slice(0, 500),
     image_url: null as string | null,
+    is_arena: isArena,
+    building_tags: tags,
   };
 }

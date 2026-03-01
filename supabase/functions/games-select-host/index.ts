@@ -57,8 +57,7 @@ Deno.serve(async (req) => {
       for (const c of (cities || [])) {
         const { data: arena } = await sb.from("city_buildings")
           .select("id").eq("city_id", c.id).eq("session_id", session_id)
-          .eq("status", "completed")
-          .or("name.ilike.%aréna%,name.ilike.%arena%,name.ilike.%stadion%,name.ilike.%amfiteátr%")
+          .eq("status", "completed").eq("is_arena", true)
           .maybeSingle();
         if (arena) { hostCity = c; break; }
       }

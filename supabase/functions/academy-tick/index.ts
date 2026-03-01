@@ -69,7 +69,7 @@ Deno.serve(async (req) => {
     // ═══════════════════════════════════════════
     // Find completed buildings that look like academies/arenas and don't have an academy yet
     const { data: buildings } = await sb.from("city_buildings")
-      .select("id, name, city_id, session_id, category, description, effects")
+      .select("id, name, city_id, session_id, category, description, effects, is_arena, building_tags")
       .eq("session_id", session_id)
       .eq("status", "completed");
 
@@ -100,12 +100,14 @@ Deno.serve(async (req) => {
 
       const nameLC = bldg.name.toLowerCase();
       const descLC = (bldg.description || "").toLowerCase();
-      const isAcademyBuilding = ACADEMY_BUILDING_KEYWORDS.some(kw => nameLC.includes(kw) || descLC.includes(kw));
+      const tags = (bldg as any).building_tags || [];
+      const isArenaFlag = (bldg as any).is_arena === true;
+      const isAcademyBuilding = isArenaFlag || tags.includes("academy") || ACADEMY_BUILDING_KEYWORDS.some(kw => nameLC.includes(kw) || descLC.includes(kw));
       if (!isAcademyBuilding) continue;
 
       // Determine base profile from building category/name
       let baseProfile = { athletics: 50, combat: 30, culture: 20, strategy: 10, brutality: 5 };
-      if (nameLC.includes("aréna") || nameLC.includes("arena") || nameLC.includes("colosseum") || nameLC.includes("koloseum")) {
+      if (isArenaFlag || nameLC.includes("aréna") || nameLC.includes("arena") || nameLC.includes("colosseum") || nameLC.includes("koloseum")) {
         baseProfile = { athletics: 30, combat: 50, culture: 10, strategy: 15, brutality: 40 };
       } else if (nameLC.includes("akademi") || nameLC.includes("škola") || nameLC.includes("school")) {
         baseProfile = { athletics: 30, combat: 10, culture: 50, strategy: 40, brutality: 0 };
