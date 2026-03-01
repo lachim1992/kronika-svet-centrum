@@ -496,7 +496,6 @@ Rozhodni, co frakce udělá v tomto kole. ${milMetrics.warState === "war" ? "JST
               properties: {
                 actions: {
                   type: "array",
-                  maxItems: 8,
                   items: {
                     type: "object",
                     properties: {
@@ -547,6 +546,7 @@ Rozhodni, co frakce udělá v tomto kole. ${milMetrics.warState === "war" ? "JST
                       narrativeNote: { type: "string", description: "Krátký narativní text pro kroniku" },
                     },
                     required: ["actionType", "description"],
+                    additionalProperties: false,
                   },
                 },
                 dispositionChanges: {
@@ -556,6 +556,7 @@ Rozhodni, co frakce udělá v tomto kole. ${milMetrics.warState === "war" ? "JST
                 internalThought: { type: "string", description: "Interní úvaha AI (pro debug/narativ)" },
               },
               required: ["actions", "internalThought"],
+              additionalProperties: false,
             },
           },
         }],
@@ -566,6 +567,8 @@ Rozhodni, co frakce udělá v tomto kole. ${milMetrics.warState === "war" ? "JST
     if (!response.ok) {
       if (response.status === 429) return json({ error: "Rate limit" }, 429);
       if (response.status === 402) return json({ error: "Credits exhausted" }, 402);
+      const errBody = await response.text();
+      console.error("AI gateway error body:", errBody);
       throw new Error(`AI gateway error: ${response.status}`);
     }
 
