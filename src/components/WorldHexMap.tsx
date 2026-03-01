@@ -47,34 +47,60 @@ const FOG_COLOR = "#111318";
 
 /* Province palette — 10 distinct, muted colors for overlay */
 const PROVINCE_COLORS = [
-  "hsla(210, 60%, 50%, 0.15)", // blue
-  "hsla(30, 70%, 50%, 0.15)",  // orange
-  "hsla(120, 50%, 40%, 0.15)", // green
-  "hsla(0, 60%, 50%, 0.15)",   // red
-  "hsla(270, 50%, 50%, 0.15)", // purple
-  "hsla(60, 60%, 45%, 0.15)",  // yellow
-  "hsla(180, 50%, 40%, 0.15)", // teal
-  "hsla(330, 50%, 50%, 0.15)", // pink
-  "hsla(150, 50%, 40%, 0.15)", // emerald
-  "hsla(45, 70%, 50%, 0.15)",  // gold
+  "hsla(210, 60%, 50%, 0.12)", // blue
+  "hsla(30, 70%, 50%, 0.12)",  // orange
+  "hsla(120, 50%, 40%, 0.12)", // green
+  "hsla(0, 60%, 50%, 0.12)",   // red
+  "hsla(270, 50%, 50%, 0.12)", // purple
+  "hsla(60, 60%, 45%, 0.12)",  // yellow
+  "hsla(180, 50%, 40%, 0.12)", // teal
+  "hsla(330, 50%, 50%, 0.12)", // pink
+  "hsla(150, 50%, 40%, 0.12)", // emerald
+  "hsla(45, 70%, 50%, 0.12)",  // gold
 ];
 const PROVINCE_BORDER_COLORS = [
-  "hsla(210, 70%, 55%, 0.4)",
-  "hsla(30, 80%, 55%, 0.4)",
-  "hsla(120, 60%, 45%, 0.4)",
-  "hsla(0, 70%, 55%, 0.4)",
-  "hsla(270, 60%, 55%, 0.4)",
-  "hsla(60, 70%, 50%, 0.4)",
-  "hsla(180, 60%, 45%, 0.4)",
-  "hsla(330, 60%, 55%, 0.4)",
-  "hsla(150, 60%, 45%, 0.4)",
-  "hsla(45, 80%, 55%, 0.4)",
+  "hsla(210, 70%, 60%, 0.7)",
+  "hsla(30, 80%, 60%, 0.7)",
+  "hsla(120, 60%, 50%, 0.7)",
+  "hsla(0, 70%, 60%, 0.7)",
+  "hsla(270, 60%, 60%, 0.7)",
+  "hsla(60, 70%, 55%, 0.7)",
+  "hsla(180, 60%, 50%, 0.7)",
+  "hsla(330, 60%, 60%, 0.7)",
+  "hsla(150, 60%, 50%, 0.7)",
+  "hsla(45, 80%, 60%, 0.7)",
 ];
 const PROVINCE_LEGEND_COLORS = [
   "hsl(210, 60%, 50%)", "hsl(30, 70%, 50%)", "hsl(120, 50%, 40%)",
   "hsl(0, 60%, 50%)", "hsl(270, 50%, 50%)", "hsl(60, 60%, 45%)",
   "hsl(180, 50%, 40%)", "hsl(330, 50%, 50%)", "hsl(150, 50%, 40%)", "hsl(45, 70%, 50%)",
 ];
+
+/* ───── Hex edge math for province borders ───── */
+// Returns the two vertices of a hex edge for a given direction index (0-5)
+// Direction indices correspond to AXIAL_NEIGHBORS order
+const HEX_EDGE_DIRS: [number, number][] = [
+  [1, 0], [-1, 0], [0, 1], [0, -1], [1, -1], [-1, 1],
+];
+function hexEdgeVertices(cx: number, cy: number, edgeIdx: number): [number, number, number, number] {
+  // Each edge connects vertex[i] to vertex[(i+1)%6]
+  // Map neighbor direction to the edge between two vertices
+  const EDGE_TO_VERTICES: Record<number, [number, number]> = {
+    0: [0, 5], // +q direction → right edge (vertices 0,5)
+    1: [3, 2], // -q direction → left edge (vertices 3,2)
+    2: [5, 4], // +r direction → bottom-right (vertices 5,4)
+    3: [2, 1], // -r direction → top-left (vertices 2,1)
+    4: [1, 0], // +q,-r direction → top-right (vertices 1,0)
+    5: [4, 3], // -q,+r direction → bottom-left (vertices 4,3)
+  };
+  const [v1, v2] = EDGE_TO_VERTICES[edgeIdx];
+  const a1 = (Math.PI / 180) * (60 * v1 - 30);
+  const a2 = (Math.PI / 180) * (60 * v2 - 30);
+  return [
+    cx + HEX_SIZE * Math.cos(a1), cy + HEX_SIZE * Math.sin(a1),
+    cx + HEX_SIZE * Math.cos(a2), cy + HEX_SIZE * Math.sin(a2),
+  ];
+}
 
 /* ───── Hex math ───── */
 function hexToPixel(q: number, r: number) {
@@ -892,7 +918,7 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
           </pattern>
         </defs>
         <g transform={`translate(${pan.x / zoom}, ${pan.y / zoom}) scale(${zoom})`}>
-          {/* Province overlay layer (behind everything else) */}
+          {/* Province overlay layer — fill + border edges */}
           {showProvinceLayer && renderCoords.map(c => {
             const provData = provinceHexMap.get(hKey(c.q, c.r));
             if (!provData || c.isFrontier) return null;
@@ -901,10 +927,25 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
             const cy = pos.y + offsetY;
             const pts = hexPoints(cx, cy);
             const ci = provData.colorIndex % PROVINCE_COLORS.length;
+            // Find edges where neighbor belongs to a different owner/province
+            const borderEdges: { x1: number; y1: number; x2: number; y2: number }[] = [];
+            for (let di = 0; di < HEX_EDGE_DIRS.length; di++) {
+              const [dq, dr] = HEX_EDGE_DIRS[di];
+              const nk = hKey(c.q + dq, c.r + dr);
+              const neighborProv = provinceHexMap.get(nk);
+              // Draw border if neighbor is different owner OR is unowned
+              if (!neighborProv || neighborProv.colorIndex !== provData.colorIndex) {
+                const [x1, y1, x2, y2] = hexEdgeVertices(cx, cy, di);
+                borderEdges.push({ x1, y1, x2, y2 });
+              }
+            }
             return (
               <g key={`prov-${hKey(c.q, c.r)}`} style={{ pointerEvents: "none" }}>
                 <polygon points={pts} fill={PROVINCE_COLORS[ci]} />
-                <polygon points={pts} fill="none" stroke={PROVINCE_BORDER_COLORS[ci]} strokeWidth={0.6} />
+                {borderEdges.map((e, i) => (
+                  <line key={i} x1={e.x1} y1={e.y1} x2={e.x2} y2={e.y2}
+                    stroke={PROVINCE_BORDER_COLORS[ci]} strokeWidth={2.5} strokeLinecap="round" />
+                ))}
               </g>
             );
           })}
