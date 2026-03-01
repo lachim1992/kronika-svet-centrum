@@ -118,7 +118,7 @@ Styl: dramatický, kronikářský, krvavý. ${isPlayoff ? "Zdůrazni váhu vyřa
 
 // ========== DYNAMIC STAT CHANGES ==========
 async function applyDynamicStatChanges(sb: any, session_id: string, currentTurn: number) {
-  const { data: players } = await sb.from("league_players").select("*").eq("session_id", session_id);
+  const { data: players } = await sb.from("league_players").select("*").eq("session_id", session_id).eq("is_dead", false);
   if (!players) return;
   for (const p of players) {
     const age = p.age || 20, potential = p.talent_potential || 50, peakAge = p.peak_age || 28;
@@ -134,8 +134,11 @@ async function applyDynamicStatChanges(sb: any, session_id: string, currentTurn:
       u[stat] = Math.max(10, (p[stat] || 50) - 1 - Math.floor(Math.random() * 2));
     }
     if ((p.condition || 100) < 100) u.condition = Math.min(100, (p.condition || 70) + 8 + Math.floor(Math.random() * 8));
-    if ((p.injury_turns || 0) > 0) { u.injury_turns = p.injury_turns - 1; if (u.injury_turns <= 0) { u.is_injured = false; u.injury_turns = 0; } }
-    if (!p.is_injured && Math.random() < 0.03) { u.is_injured = true; u.injury_turns = 1 + Math.floor(Math.random() * 3); }
+    // Heal injuries
+    if ((p.injury_turns || 0) > 0) {
+      u.injury_turns = p.injury_turns - 1;
+      if (u.injury_turns <= 0) { u.is_injured = false; u.injury_turns = 0; u.injury_severity = "none"; }
+    }
     const form = p.form || 50;
     u.form = Math.max(10, Math.min(95, form + (form > 50 ? -Math.floor(Math.random() * 4) : Math.floor(Math.random() * 4))));
     const str = u.strength ?? p.strength ?? 50, spd = u.speed ?? p.speed ?? 50, tch = u.technique ?? p.technique ?? 50, sta = u.stamina ?? p.stamina ?? 50;
@@ -189,7 +192,13 @@ async function playPlayoffRound(sb: any, session_id: string, currentTurn: number
       if (evt.type === "breakthrough" && evt.player_id) { const { data: pl } = await sb.from("league_players").select("goals_scored, goals, form").eq("id", evt.player_id).maybeSingle(); if (pl) await sb.from("league_players").update({ goals_scored: (pl.goals_scored||0)+1, goals: (pl.goals||0)+1, form: Math.min(95, (pl.form||50)+6) }).eq("id", evt.player_id); }
       if (evt.type === "assist" && evt.player_id) { const { data: pl } = await sb.from("league_players").select("assists, form").eq("id", evt.player_id).maybeSingle(); if (pl) await sb.from("league_players").update({ assists: (pl.assists||0)+1, form: Math.min(95, (pl.form||50)+2) }).eq("id", evt.player_id); }
       if (evt.type === "knockout" && evt.player_id) { const { data: pl } = await sb.from("league_players").select("yellow_cards, form").eq("id", evt.player_id).maybeSingle(); if (pl) await sb.from("league_players").update({ yellow_cards: (pl.yellow_cards||0)+1, form: Math.min(95, (pl.form||50)+3) }).eq("id", evt.player_id); }
-      if (evt.type === "injury" && evt.player_id) await sb.from("league_players").update({ is_injured: true, injury_turns: 1+Math.floor(Math.random()*3) }).eq("id", evt.player_id);
+      if (evt.type === "injury" && evt.player_id) {
+        if (evt.is_death) {
+          await sb.from("league_players").update({ is_dead: true, is_injured: true, death_turn: currentTurn, death_cause: evt.death_cause || "Sphaera" }).eq("id", evt.player_id);
+        } else {
+          await sb.from("league_players").update({ is_injured: true, injury_turns: evt.injury_turns || (1+Math.floor(Math.random()*3)), injury_severity: evt.severity || "light" }).eq("id", evt.player_id);
+        }
+      }
     }
     for (const pid of [...result.homePlayed, ...result.awayPlayed]) { const { data: pl } = await sb.from("league_players").select("matches_played, condition, form").eq("id", pid).maybeSingle(); if (pl) await sb.from("league_players").update({ matches_played: (pl.matches_played||0)+1, condition: Math.max(20, (pl.condition||100)-12-Math.floor(Math.random()*12)), form: Math.max(10, Math.min(95, (pl.form||50)+(Math.random()>0.5?2:-2))) }).eq("id", pid); }
 
@@ -312,7 +321,13 @@ async function playTierRound(sb: any, session_id: string, currentTurn: number, t
       if (evt.type === "breakthrough" && evt.player_id) { const { data: pl } = await sb.from("league_players").select("goals_scored, goals, form").eq("id", evt.player_id).maybeSingle(); if (pl) await sb.from("league_players").update({ goals_scored: (pl.goals_scored||0)+1, goals: (pl.goals||0)+1, form: Math.min(95, (pl.form||50)+6) }).eq("id", evt.player_id); }
       if (evt.type === "assist" && evt.player_id) { const { data: pl } = await sb.from("league_players").select("assists, form").eq("id", evt.player_id).maybeSingle(); if (pl) await sb.from("league_players").update({ assists: (pl.assists||0)+1, form: Math.min(95, (pl.form||50)+2) }).eq("id", evt.player_id); }
       if (evt.type === "knockout" && evt.player_id) { const { data: pl } = await sb.from("league_players").select("yellow_cards, form").eq("id", evt.player_id).maybeSingle(); if (pl) await sb.from("league_players").update({ yellow_cards: (pl.yellow_cards||0)+1, form: Math.min(95, (pl.form||50)+3) }).eq("id", evt.player_id); }
-      if (evt.type === "injury" && evt.player_id) await sb.from("league_players").update({ is_injured: true, injury_turns: 1+Math.floor(Math.random()*3) }).eq("id", evt.player_id);
+      if (evt.type === "injury" && evt.player_id) {
+        if (evt.is_death) {
+          await sb.from("league_players").update({ is_dead: true, is_injured: true, death_turn: currentTurn, death_cause: evt.death_cause || "Sphaera" }).eq("id", evt.player_id);
+        } else {
+          await sb.from("league_players").update({ is_injured: true, injury_turns: evt.injury_turns || (1+Math.floor(Math.random()*3)), injury_severity: evt.severity || "light" }).eq("id", evt.player_id);
+        }
+      }
       if (evt.type === "brutal_foul" && evt.player_id) { const { data: pl } = await sb.from("league_players").select("yellow_cards").eq("id", evt.player_id).maybeSingle(); if (pl) await sb.from("league_players").update({ yellow_cards: (pl.yellow_cards||0)+1 }).eq("id", evt.player_id); }
     }
     for (const pid of [...result.homePlayed, ...result.awayPlayed]) { const { data: pl } = await sb.from("league_players").select("matches_played, condition, form").eq("id", pid).maybeSingle(); if (pl) await sb.from("league_players").update({ matches_played: (pl.matches_played||0)+1, condition: Math.max(20, (pl.condition||100)-12-Math.floor(Math.random()*12)), form: Math.max(10, Math.min(95, (pl.form||50)+(Math.random()>0.5?2:-2))) }).eq("id", pid); }
@@ -380,9 +395,89 @@ async function startPlayoffs(sb: any, session_id: string, season: any, matchResu
   return { matches: matchResults || [], seasonComplete: false, playoffStarted: true };
 }
 
+// ========== AUTO-LINEUP: Select best 11 from roster ==========
+function selectLineup(allPlayers: any[]): any[] {
+  // Filter out injured/dead
+  const available = allPlayers.filter(p => !p.is_injured && !p.is_dead && (p.injury_turns || 0) === 0);
+  if (available.length <= 11) return available;
+
+  // Target composition: 1 praetor, 3 guardians, 4 strikers, 2 carriers, 1 exactor
+  const targetComp: Record<string, number> = { praetor: 1, guardian: 3, striker: 4, carrier: 2, exactor: 1 };
+  const lineup: any[] = [];
+  const used = new Set<string>();
+
+  // Fill each position by best form+condition+overall
+  for (const [pos, count] of Object.entries(targetComp)) {
+    const posPlayers = available
+      .filter(p => !used.has(p.id) && (p.position === pos || legacyPos(p.position) === pos))
+      .sort((a, b) => effectiveScore(b) - effectiveScore(a));
+    for (let i = 0; i < count && i < posPlayers.length; i++) {
+      lineup.push(posPlayers[i]);
+      used.add(posPlayers[i].id);
+    }
+  }
+
+  // Fill remaining slots with best available
+  if (lineup.length < 11) {
+    const remaining = available.filter(p => !used.has(p.id)).sort((a, b) => effectiveScore(b) - effectiveScore(a));
+    for (const p of remaining) {
+      if (lineup.length >= 11) break;
+      lineup.push(p);
+      used.add(p.id);
+    }
+  }
+
+  return lineup;
+}
+
+function legacyPos(pos: string): string {
+  const map: Record<string, string> = { goalkeeper: "praetor", defender: "guardian", midfielder: "carrier", attacker: "striker" };
+  return map[pos] || pos;
+}
+
+function effectiveScore(p: any): number {
+  return (p.overall_rating || 50) * 0.4 + (p.form || 50) * 0.3 + (p.condition || 80) * 0.3;
+}
+
+// ========== INJURY SYSTEM: 4 severity levels + death ==========
+interface InjuryResult {
+  severity: "light" | "medium" | "severe" | "career_ending";
+  turns: number;
+  isDeath: boolean;
+  deathCause?: string;
+}
+
+function rollInjury(aggression: number, victimCondition: number): InjuryResult {
+  const roll = Math.random() * 100;
+  const conditionFactor = (100 - (victimCondition || 80)) / 100; // worse condition = worse injury
+
+  if (roll < 50 + conditionFactor * 10) {
+    // Light: 1-2 rounds
+    return { severity: "light", turns: 1 + Math.floor(Math.random() * 2), isDeath: false };
+  } else if (roll < 80 + conditionFactor * 5) {
+    // Medium: 3-5 rounds
+    return { severity: "medium", turns: 3 + Math.floor(Math.random() * 3), isDeath: false };
+  } else if (roll < 97) {
+    // Severe: 6-10 rounds, 10% death chance
+    const isDeath = Math.random() < 0.10;
+    return {
+      severity: "severe", turns: 6 + Math.floor(Math.random() * 5),
+      isDeath,
+      deathCause: isDeath ? "Smrtelné zranění v aréně Sphaery" : undefined,
+    };
+  } else {
+    // Career ending
+    return { severity: "career_ending", turns: 99, isDeath: false };
+  }
+}
+
 // ========== SPHAERA MATCH SIMULATION ==========
 function simulateSphaera(home: any, away: any, homePlayers: any[], awayPlayers: any[]) {
-  const hEff = calcTeamEffective(homePlayers), aEff = calcTeamEffective(awayPlayers);
+  // Auto-select best 11 from each roster
+  const homeLineup = selectLineup(homePlayers);
+  const awayLineup = selectLineup(awayPlayers);
+
+  const hEff = calcTeamEffective(homeLineup), aEff = calcTeamEffective(awayLineup);
   const hAtk = hEff.attack * 0.8 + (home.attack_rating || 40) * 0.2;
   const hDef = hEff.defense * 0.8 + (home.defense_rating || 40) * 0.2;
   const aAtk = aEff.attack * 0.8 + (away.attack_rating || 40) * 0.2;
@@ -392,13 +487,15 @@ function simulateSphaera(home: any, away: any, homePlayers: any[], awayPlayers: 
   const events: any[] = [];
   let knockouts = 0;
   let crowdMeter = 50;
+  const injuries: InjuryResult[] = [];
+  const deaths: { playerId: string; playerName: string; team: string }[] = [];
 
-  const hStrikers = homePlayers.filter(p => ["attacker", "striker"].includes(p.position));
-  const hCarriers = homePlayers.filter(p => ["midfielder", "carrier"].includes(p.position));
-  const aStrikers = awayPlayers.filter(p => ["attacker", "striker"].includes(p.position));
-  const aCarriers = awayPlayers.filter(p => ["midfielder", "carrier"].includes(p.position));
-  const hExactors = homePlayers.filter(p => p.position === "exactor");
-  const aExactors = awayPlayers.filter(p => p.position === "exactor");
+  const hStrikers = homeLineup.filter(p => ["attacker", "striker"].includes(p.position));
+  const hCarriers = homeLineup.filter(p => ["midfielder", "carrier"].includes(p.position));
+  const aStrikers = awayLineup.filter(p => ["attacker", "striker"].includes(p.position));
+  const aCarriers = awayLineup.filter(p => ["midfielder", "carrier"].includes(p.position));
+  const hExactors = homeLineup.filter(p => p.position === "exactor");
+  const aExactors = awayLineup.filter(p => p.position === "exactor");
 
   for (let period = 1; period <= 3; period++) {
     const actions = 5 + Math.floor(Math.random() * 3);
@@ -406,6 +503,7 @@ function simulateSphaera(home: any, away: any, homePlayers: any[], awayPlayers: 
       const minute = (period - 1) * 30 + Math.floor((action / actions) * 30) + 1;
       const homeAdvantage = crowdMeter > 60 ? 1.08 : crowdMeter < 40 ? 0.95 : 1.03;
 
+      // Home attack
       const hChance = (hAtk * homeAdvantage - aDef * 0.5) / 80;
       if (Math.random() < hChance) {
         if (Math.random() < 0.15) {
@@ -413,11 +511,12 @@ function simulateSphaera(home: any, away: any, homePlayers: any[], awayPlayers: 
           if (scorer) { homeScore += 5; events.push({ minute, type: "breakthrough", team: "home", player_name: scorer.name, player_id: scorer.id, points: 5, period }); crowdMeter = Math.min(100, crowdMeter + 10); }
         } else {
           const scorer = pickWeighted([...hStrikers, ...hCarriers], p => (p.technique||50) + (p.speed||50)*0.5 + (p.form||50)*0.3);
-          const assister = pickWeighted(homePlayers.filter(p => p.id !== scorer?.id), p => (p.technique||50) + (p.leadership||20)*0.3);
+          const assister = pickWeighted(homeLineup.filter(p => p.id !== scorer?.id), p => (p.technique||50) + (p.leadership||20)*0.3);
           if (scorer) { homeScore += 3; events.push({ minute, type: "goal", team: "home", player_name: scorer.name, player_id: scorer.id, points: 3, period }); if (assister && Math.random() > 0.3) events.push({ minute, type: "assist", team: "home", player_name: assister.name, player_id: assister.id, period }); crowdMeter = Math.min(100, crowdMeter + 5); }
         }
       }
 
+      // Away attack
       const aChance = (aAtk - hDef * 0.5) / 80;
       if (Math.random() < aChance) {
         if (Math.random() < 0.15) {
@@ -425,15 +524,16 @@ function simulateSphaera(home: any, away: any, homePlayers: any[], awayPlayers: 
           if (scorer) { awayScore += 5; events.push({ minute, type: "breakthrough", team: "away", player_name: scorer.name, player_id: scorer.id, points: 5, period }); crowdMeter = Math.max(0, crowdMeter - 8); }
         } else {
           const scorer = pickWeighted([...aStrikers, ...aCarriers], p => (p.technique||50) + (p.speed||50)*0.5 + (p.form||50)*0.3);
-          const assister = pickWeighted(awayPlayers.filter(p => p.id !== scorer?.id), p => (p.technique||50) + (p.leadership||20)*0.3);
+          const assister = pickWeighted(awayLineup.filter(p => p.id !== scorer?.id), p => (p.technique||50) + (p.leadership||20)*0.3);
           if (scorer) { awayScore += 3; events.push({ minute, type: "goal", team: "away", player_name: scorer.name, player_id: scorer.id, points: 3, period }); if (assister && Math.random() > 0.3) events.push({ minute, type: "assist", team: "away", player_name: assister.name, player_id: assister.id, period }); crowdMeter = Math.max(0, crowdMeter - 5); }
         }
       }
 
-      const allExactors = [...(hExactors.length > 0 ? hExactors : homePlayers.filter(p => (p.aggression||30) > 50)), ...(aExactors.length > 0 ? aExactors : awayPlayers.filter(p => (p.aggression||30) > 50))];
+      // Knockouts by exactors
+      const allExactors = [...(hExactors.length > 0 ? hExactors : homeLineup.filter(p => (p.aggression||30) > 50)), ...(aExactors.length > 0 ? aExactors : awayLineup.filter(p => (p.aggression||30) > 50))];
       for (const ex of allExactors) {
-        const isHome = homePlayers.some(p => p.id === ex.id);
-        const targets = isHome ? awayPlayers : homePlayers;
+        const isHome = homeLineup.some(p => p.id === ex.id);
+        const targets = isHome ? awayLineup : homeLineup;
         const koChance = ((ex.strength||50) + (ex.aggression||30)) / 800;
         if (Math.random() < koChance) {
           const victim = pickWeighted(targets, p => 100 - (p.strength||50));
@@ -442,13 +542,28 @@ function simulateSphaera(home: any, away: any, homePlayers: any[], awayPlayers: 
             if (isHome) homeScore += 1; else awayScore += 1;
             knockouts++;
             events.push({ minute, type: "knockout", team, player_name: ex.name, player_id: ex.id, victim_name: victim.name, victim_id: victim.id, points: 1, period });
-            if (Math.random() < 0.4) events.push({ minute, type: "injury", team: isHome ? "away" : "home", player_name: victim.name, player_id: victim.id, period });
+
+            // Roll injury with severity system
+            if (Math.random() < 0.5) {
+              const inj = rollInjury(ex.aggression || 30, victim.condition || 80);
+              events.push({
+                minute, type: "injury", team: isHome ? "away" : "home",
+                player_name: victim.name, player_id: victim.id, period,
+                severity: inj.severity, injury_turns: inj.turns,
+                is_death: inj.isDeath, death_cause: inj.deathCause,
+              });
+              injuries.push(inj);
+              if (inj.isDeath) {
+                deaths.push({ playerId: victim.id, playerName: victim.name, team: isHome ? "away" : "home" });
+              }
+            }
             crowdMeter = Math.min(100, crowdMeter + (isHome ? 4 : -3));
           }
         }
       }
 
-      for (const pool of [{ players: homePlayers, team: "home" }, { players: awayPlayers, team: "away" }]) {
+      // Brutal fouls
+      for (const pool of [{ players: homeLineup, team: "home" }, { players: awayLineup, team: "away" }]) {
         for (const p of pool.players) {
           if (Math.random() < (p.aggression || 30) / 600) {
             events.push({ minute, type: "brutal_foul", team: pool.team, player_name: p.name, player_id: p.id, period });
@@ -457,13 +572,23 @@ function simulateSphaera(home: any, away: any, homePlayers: any[], awayPlayers: 
         }
       }
 
-      for (const pool of [{ players: homePlayers, team: "home" }, { players: awayPlayers, team: "away" }]) {
+      // Fatigue injuries
+      for (const pool of [{ players: homeLineup, team: "home" }, { players: awayLineup, team: "away" }]) {
         for (const p of pool.players) {
-          const injuryChance = (100 - (p.condition || 100)) / 1000 + 0.008;
-          if (Math.random() < injuryChance) events.push({ minute, type: "injury", team: pool.team, player_name: p.name, player_id: p.id, period });
+          const injuryChance = (100 - (p.condition || 100)) / 1200 + 0.005;
+          if (Math.random() < injuryChance) {
+            const inj = rollInjury(0, p.condition || 80);
+            events.push({
+              minute, type: "injury", team: pool.team,
+              player_name: p.name, player_id: p.id, period,
+              severity: inj.severity, injury_turns: inj.turns,
+            });
+            injuries.push(inj);
+          }
         }
       }
 
+      // Crowd events
       if (crowdMeter < 25 && Math.random() < 0.15) { events.push({ minute, type: "crowd_riot", period, description: "Dav hází předměty na hřiště!" }); crowdMeter = Math.max(0, crowdMeter - 5); }
       else if (crowdMeter > 85 && Math.random() < 0.1) { events.push({ minute, type: "crowd_chant", period, description: "Tribuny se otřásají skandováním!" }); }
     }
@@ -472,7 +597,8 @@ function simulateSphaera(home: any, away: any, homePlayers: any[], awayPlayers: 
   events.sort((a, b) => a.minute - b.minute);
   const crowdMood = crowdMeter > 75 ? "Extáze" : crowdMeter > 55 ? "Nadšení" : crowdMeter > 40 ? "Napětí" : crowdMeter > 20 ? "Hněv" : "Chaos";
   const totalGoals = events.filter(e => e.type === "goal" || e.type === "breakthrough").length;
-  const highlight = totalGoals === 0 ? "Krutý boj bez jediného bodu. Sphaera zůstala mrtvá."
+  const highlight = deaths.length > 0 ? `☠️ Smrtelná Sphaera! ${deaths.map(d => d.playerName).join(", ")} zaplatil${deaths.length > 1 ? "i" : ""} nejvyšší cenu.`
+    : totalGoals === 0 ? "Krutý boj bez jediného bodu. Sphaera zůstala mrtvá."
     : homeScore > awayScore + 5 ? "Domácí dominance! Aréna řvala krví a slávou."
     : awayScore > homeScore + 5 ? "Hosté ztrhali domácí obranu na kusy!"
     : knockouts >= 3 ? "Brutální masakr! Více vyřazených než bodů."
@@ -482,8 +608,9 @@ function simulateSphaera(home: any, away: any, homePlayers: any[], awayPlayers: 
   return {
     homeScore, awayScore, events, highlight, knockouts, crowdMood,
     attendance: 500 + Math.floor(Math.random() * 2500),
-    homePlayed: homePlayers.slice(0, 11).map(p => p.id),
-    awayPlayed: awayPlayers.slice(0, 11).map(p => p.id),
+    homePlayed: homeLineup.map(p => p.id),
+    awayPlayed: awayLineup.map(p => p.id),
+    injuries, deaths,
   };
 }
 
