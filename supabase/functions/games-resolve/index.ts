@@ -46,6 +46,16 @@ Deno.serve(async (req) => {
       });
     }
 
+    // Check if results already exist (idempotency guard)
+    const { count: existingResults } = await sb.from("games_results")
+      .select("id", { count: "exact", head: true })
+      .eq("festival_id", festival_id);
+    if (existingResults && existingResults > 0) {
+      return new Response(JSON.stringify({ error: "Hry již byly vyhodnoceny" }), {
+        status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     // Get participants
     const { data: participants } = await sb.from("games_participants")
       .select("*").eq("festival_id", festival_id);

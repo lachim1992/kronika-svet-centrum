@@ -110,7 +110,7 @@ const UprisingDialog = ({ sessionId, playerName, currentTurn, onResolved }: Prop
     };
 
     check();
-    const interval = setInterval(check, 10000);
+    const interval = setInterval(check, 30000);
     return () => clearInterval(interval);
   }, [sessionId, playerName, currentTurn]);
 
