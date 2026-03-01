@@ -835,6 +835,7 @@ export type Database = {
           famine_turn: boolean
           flavor_prompt: string | null
           founded_round: number
+          hosting_count: number
           housing_capacity: number
           id: string
           influence_score: number
@@ -901,6 +902,7 @@ export type Database = {
           famine_turn?: boolean
           flavor_prompt?: string | null
           founded_round?: number
+          hosting_count?: number
           housing_capacity?: number
           id?: string
           influence_score?: number
@@ -967,6 +969,7 @@ export type Database = {
           famine_turn?: boolean
           flavor_prompt?: string | null
           founded_round?: number
+          hosting_count?: number
           housing_capacity?: number
           id?: string
           influence_score?: number
@@ -3107,8 +3110,10 @@ export type Database = {
           city_id: string
           created_at: string
           cultural_score: number
+          diplomatic_support: Json
           festival_id: string
           gold_invested: number
+          hosting_legacy_bonus: number
           id: string
           influence_invested: number
           is_winner: boolean
@@ -3116,14 +3121,17 @@ export type Database = {
           pitch_text: string | null
           player_name: string
           session_id: string
+          stability_score: number
           total_bid_score: number
         }
         Insert: {
           city_id: string
           created_at?: string
           cultural_score?: number
+          diplomatic_support?: Json
           festival_id: string
           gold_invested?: number
+          hosting_legacy_bonus?: number
           id?: string
           influence_invested?: number
           is_winner?: boolean
@@ -3131,14 +3139,17 @@ export type Database = {
           pitch_text?: string | null
           player_name: string
           session_id: string
+          stability_score?: number
           total_bid_score?: number
         }
         Update: {
           city_id?: string
           created_at?: string
           cultural_score?: number
+          diplomatic_support?: Json
           festival_id?: string
           gold_invested?: number
+          hosting_legacy_bonus?: number
           id?: string
           influence_invested?: number
           is_winner?: boolean
@@ -3146,6 +3157,7 @@ export type Database = {
           pitch_text?: string | null
           player_name?: string
           session_id?: string
+          stability_score?: number
           total_bid_score?: number
         }
         Relationships: [
@@ -3211,6 +3223,7 @@ export type Database = {
       games_festivals: {
         Row: {
           announced_turn: number
+          candidacy_deadline_turn: number | null
           concluded_turn: number | null
           created_at: string
           description: string | null
@@ -3218,7 +3231,10 @@ export type Database = {
           festival_type: string
           finals_turn: number | null
           host_city_id: string | null
+          host_economic_result: Json | null
+          host_effects_applied: boolean
           host_player: string | null
+          host_selection_method: string
           id: string
           incident_chance: number
           is_global: boolean
@@ -3230,6 +3246,7 @@ export type Database = {
         }
         Insert: {
           announced_turn?: number
+          candidacy_deadline_turn?: number | null
           concluded_turn?: number | null
           created_at?: string
           description?: string | null
@@ -3237,7 +3254,10 @@ export type Database = {
           festival_type?: string
           finals_turn?: number | null
           host_city_id?: string | null
+          host_economic_result?: Json | null
+          host_effects_applied?: boolean
           host_player?: string | null
+          host_selection_method?: string
           id?: string
           incident_chance?: number
           is_global?: boolean
@@ -3249,6 +3269,7 @@ export type Database = {
         }
         Update: {
           announced_turn?: number
+          candidacy_deadline_turn?: number | null
           concluded_turn?: number | null
           created_at?: string
           description?: string | null
@@ -3256,7 +3277,10 @@ export type Database = {
           festival_type?: string
           finals_turn?: number | null
           host_city_id?: string | null
+          host_economic_result?: Json | null
+          host_effects_applied?: boolean
           host_player?: string | null
+          host_selection_method?: string
           id?: string
           incident_chance?: number
           is_global?: boolean
