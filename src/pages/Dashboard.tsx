@@ -36,6 +36,7 @@ import EconomyTab from "@/pages/game/EconomyTab";
 import PersistentTab from "@/pages/game/PersistentTab";
 import WorldMapTab from "@/pages/game/WorldMapTab";
 import EngineTab from "@/pages/game/EngineTab";
+import GamesTab from "@/pages/game/GamesTab";
 
 const Dashboard = () => {
   const { sessionId } = useParams<{ sessionId: string }>();
@@ -435,6 +436,16 @@ const Dashboard = () => {
         />
       )}
       {activeTab === "codex" && <CodexTab {...sharedProps} codexEntityTarget={codexEntityTarget} onClearEntityTarget={() => setCodexEntityTarget(null)} />}
+      {activeTab === "games" && (
+        <GamesTab
+          sessionId={session.id}
+          currentPlayerName={myPlayerName}
+          currentTurn={currentTurn}
+          myRole={myRole}
+          cities={cities}
+          onRefetch={refetch}
+        />
+      )}
       {activeTab === "wiki" && <ChroWikiTab sessionId={session.id} currentPlayerName={myPlayerName} myRole={myRole} currentTurn={currentTurn} epochStyle={session.epoch_style} memories={memories} players={players} entityIndex={entityIndex} onEntityClick={handleEntityClick} wikiEntityTarget={wikiEntityTarget} onClearWikiEntityTarget={() => setWikiEntityTarget(null)} />}
       {activeTab === "council" && (
         <CouncilTab

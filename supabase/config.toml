@@ -143,3 +143,9 @@ verify_jwt = false
 
 [functions.commit-turn]
 verify_jwt = false
+
+[functions.games-announce]
+verify_jwt = false
+
+[functions.games-resolve]
+verify_jwt = false

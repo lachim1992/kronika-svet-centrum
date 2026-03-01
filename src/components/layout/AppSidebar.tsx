@@ -1,6 +1,6 @@
 import {
   Home, Globe, Shield, Swords, BarChart3, Crown,
-  Newspaper, BookOpen, Timer, Wrench, PanelLeftClose, PanelLeft, Map, Zap,
+  Newspaper, BookOpen, Timer, Wrench, PanelLeftClose, PanelLeft, Map, Zap, Trophy,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -29,6 +29,7 @@ const navItems: { id: TabId; label: string; icon: React.ElementType; group: stri
   { id: "chronicles", label: "Kroniky", icon: BookOpen, group: "content" },
   { id: "feed", label: "Šepoty", icon: Newspaper, group: "content" },
   { id: "wiki", label: "ChroWiki", icon: BookOpen, group: "content" },
+  { id: "games", label: "Hry", icon: Trophy, group: "main" },
 ];
 
 const AppSidebar = ({
