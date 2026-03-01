@@ -13,11 +13,13 @@ const FIRST_NAMES = [
   "Ajax", "Balthus", "Corvus", "Drago", "Erebus", "Falco", "Gryphon", "Hadrian",
 ];
 
+// Sphaera positions: 1 Praetor (captain), 3 Guardians (defense), 4 Strikers (attack), 2 Carriers (ball specialists), 1 Exactor (brutal enforcer)
 const POSITIONS = [
-  { pos: "goalkeeper", count: 1 },
-  { pos: "defender", count: 4 },
-  { pos: "midfielder", count: 3 },
-  { pos: "attacker", count: 3 },
+  { pos: "praetor", count: 1 },
+  { pos: "guardian", count: 3 },
+  { pos: "striker", count: 4 },
+  { pos: "carrier", count: 2 },
+  { pos: "exactor", count: 1 },
 ];
 
 Deno.serve(async (req) => {
@@ -34,7 +36,6 @@ Deno.serve(async (req) => {
 
     const sb = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 
-    // Check city ownership
     const { data: city } = await sb.from("cities").select("name, owner_player, development_level, city_stability, population_total")
       .eq("id", cityId).eq("session_id", sessionId).single();
     if (!city || city.owner_player !== playerName) {
@@ -43,7 +44,6 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Check for existing team in this city
     const { data: existing } = await sb.from("league_teams")
       .select("id").eq("session_id", sessionId).eq("city_id", cityId).eq("is_active", true).maybeSingle();
     if (existing) {
@@ -52,21 +52,19 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Check stadium building exists
     if (buildingId) {
       const { data: building } = await sb.from("city_buildings")
         .select("id, building_tags, name").eq("id", buildingId).eq("status", "completed").maybeSingle();
       const tags = (building?.building_tags as string[]) || [];
       const nameLC = (building?.name || "").toLowerCase();
-      const isStadium = tags.includes("stadium") || nameLC.includes("stadion") || nameLC.includes("závodiště") || nameLC.includes("hippodrom");
+      const isStadium = tags.includes("stadium") || nameLC.includes("stadion") || nameLC.includes("závodiště") || nameLC.includes("hippodrom") || nameLC.includes("aréna") || nameLC.includes("arena");
       if (!building || !isStadium) {
-        return new Response(JSON.stringify({ error: "Budova není stadion" }), {
+        return new Response(JSON.stringify({ error: "Budova není aréna/stadion" }), {
           status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
     }
 
-    // Base ratings from city
     const baseRating = 30 + Math.floor((city.development_level || 1) * 3) + Math.floor((city.city_stability || 50) * 0.2);
 
     const { data: team, error: teamErr } = await sb.from("league_teams").insert({
@@ -75,8 +73,8 @@ Deno.serve(async (req) => {
       stadium_building_id: buildingId || null,
       player_name: playerName,
       team_name: teamName,
-      motto: motto || `Za slávu ${city.name}!`,
-      color_primary: colorPrimary || "#c4a000",
+      motto: motto || `Za čest ${city.name}! Sphaera si žádá krev.`,
+      color_primary: colorPrimary || "#8b0000",
       color_secondary: colorSecondary || "#1a1a2e",
       attack_rating: baseRating + Math.floor(Math.random() * 20) - 10,
       defense_rating: baseRating + Math.floor(Math.random() * 20) - 10,
@@ -88,7 +86,7 @@ Deno.serve(async (req) => {
 
     if (teamErr) throw teamErr;
 
-    // Generate 11 players with varied stats
+    // Generate 11 Sphaera players
     const usedNames = new Set<string>();
     const playerRows: any[] = [];
     for (const posGroup of POSITIONS) {
@@ -99,19 +97,20 @@ Deno.serve(async (req) => {
         } while (usedNames.has(name));
         usedNames.add(name);
 
-        const isCaptain = posGroup.pos === "midfielder" && i === 0;
-        const age = 17 + Math.floor(Math.random() * 16); // 17-32
-        const talentPotential = 25 + Math.floor(Math.random() * 70); // 25-94
-        const peakAge = 26 + Math.floor(Math.random() * 6); // 26-31
+        const isCaptain = posGroup.pos === "praetor";
+        const age = 17 + Math.floor(Math.random() * 16);
+        const talentPotential = 25 + Math.floor(Math.random() * 70);
+        const peakAge = 26 + Math.floor(Math.random() * 6);
 
-        // Position-specific stat ranges with wide variance
+        // Position-specific stat ranges: [base, range]
         const posStats: Record<string, { str: number[], spd: number[], tch: number[], sta: number[], agg: number[] }> = {
-          goalkeeper: { str: [30,40], spd: [25,35], tch: [40,45], sta: [40,30], agg: [10,30] },
-          defender:   { str: [40,45], spd: [30,40], tch: [20,40], sta: [45,35], agg: [25,40] },
-          midfielder: { str: [30,45], spd: [35,45], tch: [40,50], sta: [50,40], agg: [15,35] },
-          attacker:   { str: [25,50], spd: [40,50], tch: [35,55], sta: [35,35], agg: [20,40] },
+          praetor:   { str: [35, 40], spd: [30, 35], tch: [45, 45], sta: [45, 35], agg: [15, 30] },
+          guardian:  { str: [45, 45], spd: [25, 35], tch: [20, 35], sta: [50, 35], agg: [30, 40] },
+          striker:   { str: [25, 45], spd: [45, 50], tch: [40, 50], sta: [35, 30], agg: [20, 35] },
+          carrier:   { str: [25, 35], spd: [35, 40], tch: [50, 45], sta: [40, 35], agg: [10, 25] },
+          exactor:   { str: [55, 40], spd: [25, 30], tch: [15, 30], sta: [45, 35], agg: [55, 40] },
         };
-        const ps = posStats[posGroup.pos] || posStats.midfielder;
+        const ps = posStats[posGroup.pos] || posStats.striker;
 
         playerRows.push({
           session_id: sessionId, team_id: team.id, name,
