@@ -402,6 +402,109 @@ Deno.serve(async (req) => {
       } catch (_) { /* non-critical */ }
     }
 
+    // ═══ MILITARY MERIT: Record significant battle achievements ═══
+    const isSignificant = result === "decisive_victory" || 
+      (result === "victory" && casualtiesDefender > 200) ||
+      (result === "pyrrhic_victory" && casualtiesAttacker > 300);
+    
+    if (isSignificant) {
+      try {
+        const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+        const attackerPlayer = player_name || attackerStack.player_name;
+        const defenderName = defenderCity?.name || defenderStack?.name || "nepřítel";
+        const totalCasualties = casualtiesAttacker + casualtiesDefender;
+
+        const meritTitle = result === "decisive_victory"
+          ? `Drtivé vítězství u ${defenderName}`
+          : result === "pyrrhic_victory"
+            ? `Pyrrhovo vítězství u ${defenderName}`
+            : `Velká bitva u ${defenderName}`;
+
+        const meritDesc = result === "decisive_victory"
+          ? `Armáda „${attackerStack.name}" drtivě porazila ${defenderName}. Celkem ${totalCasualties} padlých, z toho ${casualtiesDefender} obránců. ${attackerFormation} formace se ukázala jako klíčová.`
+          : result === "pyrrhic_victory"
+            ? `Armáda „${attackerStack.name}" zvítězila u ${defenderName}, ale za strašlivou cenu — ${casualtiesAttacker} vlastních padlých. Krvavé vítězství, které zanechalo hluboké jizvy.`
+            : `Armáda „${attackerStack.name}" porazila ${defenderName} v krvavé bitvě s ${totalCasualties} celkovými ztrátami.`;
+
+        let imageUrl: string | null = null;
+        if (LOVABLE_API_KEY) {
+          try {
+            const imgPrompt = `Epic ancient battle scene: ${result === "decisive_victory" ? "a commander on horseback triumphantly surveying a decisive battlefield victory" : "a bloody pyrrhic battlefield with exhausted victorious soldiers among the fallen"}. Dramatic oil painting, golden and crimson lighting, ancient Greek/Roman style.`;
+            const aiResp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+              method: "POST",
+              headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
+              body: JSON.stringify({
+                model: "google/gemini-2.5-flash-image",
+                messages: [{ role: "user", content: `Generate ONE dramatic battle scene image: ${imgPrompt} Do not include any text.` }],
+                modalities: ["image", "text"],
+              }),
+            });
+            if (aiResp.ok) {
+              const aiData = await aiResp.json();
+              const imgData = aiData.choices?.[0]?.message?.images?.[0]?.image_url?.url;
+              if (imgData) {
+                const base64 = imgData.replace(/^data:image\/\w+;base64,/, "");
+                const bytes = Uint8Array.from(atob(base64), c => c.charCodeAt(0));
+                const fn = `battle-${crypto.randomUUID()}.png`;
+                const { error: upErr } = await supabase.storage.from("building-images")
+                  .upload(`records/${fn}`, bytes, { contentType: "image/png", upsert: true });
+                if (!upErr) {
+                  const { data: urlD } = supabase.storage.from("building-images").getPublicUrl(`records/${fn}`);
+                  imageUrl = urlD?.publicUrl || null;
+                }
+              }
+            }
+          } catch (_) {}
+        }
+
+        // Create world event
+        const { data: worldEvt } = await supabase.from("world_events").insert({
+          session_id,
+          event_type: "military_merit",
+          title: meritTitle,
+          description: meritDesc,
+          impact: result === "decisive_victory" ? "high" : "medium",
+          turn_number: turnNumber,
+          image_url: imageUrl,
+          tags: ["military", result],
+        }).select("id").maybeSingle();
+
+        // Wiki entry
+        const wikiBody = `## ${meritTitle}\n\n${meritDesc}\n\n**Formace útočníka:** ${attackerFormation}\n**Formace obránce:** ${defenderFormation}\n**Ztráty:** ${casualtiesAttacker} (útočník) / ${casualtiesDefender} (obránce)`;
+        await supabase.from("wiki_entries").insert({
+          session_id,
+          entity_type: "event",
+          entity_id: worldEvt?.id || battleRecord?.id || crypto.randomUUID(),
+          entity_name: meritTitle,
+          summary: meritDesc,
+          body_md: wikiBody,
+          image_url: imageUrl,
+          source_turn: turnNumber,
+        });
+
+        // Save record
+        await supabase.from("game_records").insert({
+          session_id,
+          record_type: "military_merit",
+          category: "military",
+          entity_id: attacker_stack_id,
+          entity_name: attackerStack.name,
+          entity_type: "army",
+          player_name: attackerPlayer,
+          title: meritTitle,
+          description: meritDesc,
+          battle_id: battleRecord?.id,
+          score: totalCasualties,
+          margin: casualtiesDefender - casualtiesAttacker,
+          image_url: imageUrl,
+          world_event_id: worldEvt?.id,
+          turn_number: turnNumber,
+        });
+      } catch (meritErr) {
+        console.error("Military merit failed:", meritErr);
+      }
+    }
+
     return new Response(JSON.stringify({
       ok: true,
       battle_id: battleRecord?.id,

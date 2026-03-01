@@ -323,6 +323,7 @@ Deno.serve(async (req) => {
     await writeFeed("narration", `🏟️ ${festival.name} začínají! Atleti ze všech říší se shromáždili v aréně.`, 3);
 
     const runningMedals: Record<string, { gold: number; silver: number; bronze: number }> = {};
+    const pendingRecords: any[] = []; // records to write after all disciplines
 
     for (const disc of disciplines) {
       const cfg = DISC_CONFIGS[disc.key] || DEFAULT_DISC_CONFIG;
@@ -478,6 +479,83 @@ Deno.serve(async (req) => {
           discipline: disc.name, athlete: perf.participant.athlete_name,
           player: perf.participant.player_name, rank: perf.rank, medal: perf.medal,
           total: Math.round(perf.score * 100) / 100,
+        });
+      }
+
+      // ═══ RECORD & ACHIEVEMENT DETECTION ═══
+      const winnerScore = Math.round(leader.score * 100) / 100;
+
+      // 1. Check discipline record (best score ever in this discipline across all festivals)
+      const { data: prevBest } = await sb.from("games_results")
+        .select("total_score, participant_id")
+        .eq("session_id", session_id).eq("discipline_id", disc.id)
+        .neq("festival_id", festival_id) // exclude current festival
+        .order("total_score", { ascending: false }).limit(1).maybeSingle();
+
+      const previousRecord = prevBest?.total_score || 0;
+      if (winnerScore > previousRecord && previousRecord > 0) {
+        const margin = Math.round((winnerScore - previousRecord) * 100) / 100;
+        pendingRecords.push({
+          record_type: "discipline_record",
+          entity_id: leader.participant.id,
+          entity_name: leader.participant.athlete_name,
+          player_name: leader.participant.player_name,
+          portrait_url: leader.participant.portrait_url || null,
+          title: `Nový rekord: ${disc.name}`,
+          description: `${leader.participant.athlete_name} překonal dosavadní rekord v ${disc.name} skórem ${winnerScore} (předchozí: ${previousRecord}, rozdíl: +${margin}).`,
+          discipline_id: disc.id,
+          discipline_name: disc.name,
+          festival_id,
+          festival_name: festival.name,
+          score: winnerScore,
+          previous_record: previousRecord,
+          margin,
+          student_id: leader.participant.student_id,
+        });
+      }
+
+      // 2. Close match detection (diff < 2 between gold and silver)
+      if (challenger && rollDiff < 2) {
+        pendingRecords.push({
+          record_type: "close_match",
+          entity_id: leader.participant.id,
+          entity_name: `${leader.participant.athlete_name} vs ${challenger.participant.athlete_name}`,
+          player_name: leader.participant.player_name,
+          portrait_url: leader.participant.portrait_url || null,
+          title: `Těsný souboj: ${disc.name}`,
+          description: `Dramatický souboj v ${disc.name}! ${leader.participant.athlete_name} porazil ${challenger.participant.athlete_name} o pouhých ${rollDiff.toFixed(2)} bodu. Výkon obou atletů překonal všechna očekávání.`,
+          discipline_id: disc.id,
+          discipline_name: disc.name,
+          festival_id,
+          festival_name: festival.name,
+          score: winnerScore,
+          previous_record: Math.round(challenger.score * 100) / 100,
+          margin: Math.round(rollDiff * 100) / 100,
+          student_id: leader.participant.student_id,
+          challenger_name: challenger.participant.athlete_name,
+          challenger_portrait: challenger.participant.portrait_url,
+          challenger_player: challenger.participant.player_name,
+        });
+      }
+
+      // 3. Dominant win detection (winner > 20 points above second)
+      if (challenger && rollDiff > 20) {
+        pendingRecords.push({
+          record_type: "dominant_win",
+          entity_id: leader.participant.id,
+          entity_name: leader.participant.athlete_name,
+          player_name: leader.participant.player_name,
+          portrait_url: leader.participant.portrait_url || null,
+          title: `Dominantní vítězství: ${disc.name}`,
+          description: `${leader.participant.athlete_name} totálně ovládl disciplínu ${disc.name} s náskokem ${rollDiff.toFixed(1)} bodů. Legendární výkon, který bude inspirovat generace.`,
+          discipline_id: disc.id,
+          discipline_name: disc.name,
+          festival_id,
+          festival_name: festival.name,
+          score: winnerScore,
+          previous_record: Math.round(challenger.score * 100) / 100,
+          margin: Math.round(rollDiff * 100) / 100,
+          student_id: leader.participant.student_id,
         });
       }
 
@@ -1130,9 +1208,148 @@ Odpověz POUZE jako JSON: {"bio": "...", "imagePrompt": "..."}`
       });
     } catch (_) {}
 
+    // ═══ WRITE RECORDS & GENERATE AI IMAGES (non-blocking) ═══
+    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+    const recordResults: any[] = [];
+
+    for (const rec of pendingRecords) {
+      try {
+        // Fetch portrait of the athlete for image context
+        let portraitRef = rec.portrait_url;
+        if (!portraitRef && rec.student_id) {
+          const { data: st } = await sb.from("academy_students")
+            .select("portrait_url").eq("id", rec.student_id).maybeSingle();
+          if (st?.portrait_url) portraitRef = st.portrait_url;
+        }
+        // Also check wiki for portrait
+        if (!portraitRef && rec.student_id) {
+          const { data: gp } = await sb.from("great_persons")
+            .select("id").eq("session_id", session_id)
+            .eq("name", rec.entity_name.split(" vs ")[0]).maybeSingle();
+          if (gp) {
+            const { data: wi } = await sb.from("wiki_entries")
+              .select("image_url").eq("entity_id", gp.id).eq("entity_type", "person").maybeSingle();
+            if (wi?.image_url) portraitRef = wi.image_url;
+          }
+        }
+
+        // Generate contextual AI image
+        let imageUrl: string | null = null;
+        let imagePrompt = "";
+        if (LOVABLE_API_KEY) {
+          const typePrompts: Record<string, string> = {
+            discipline_record: `Epic ancient Greek/Roman scene: victorious athlete ${rec.entity_name} breaking a record in ${rec.discipline_name}. Crowd cheering, laurel crown, dramatic golden lighting. Oil painting style.`,
+            close_match: `Dramatic ancient Greek/Roman competition scene: two athletes in an incredibly close finish in ${rec.discipline_name}. Tension, sweat, the crowd holding their breath. Epic oil painting style.`,
+            dominant_win: `Legendary ancient Greek/Roman scene: a dominant athlete ${rec.entity_name} standing triumphant after utterly dominating ${rec.discipline_name}. Awe-struck opponents, golden aura. Epic oil painting.`,
+          };
+          imagePrompt = typePrompts[rec.record_type] || typePrompts.discipline_record;
+
+          try {
+            const messages: any[] = [{ role: "user", content: [] as any[] }];
+            const contentParts: any[] = [{ type: "text", text: `Generate ONE dramatic scene image: ${imagePrompt} Do not include any text in the image.` }];
+
+            // Include portrait reference if available
+            if (portraitRef && (portraitRef.startsWith("http") || portraitRef.startsWith("data:"))) {
+              contentParts.push({ type: "image_url", image_url: { url: portraitRef } });
+              contentParts[0].text += ` The main athlete should resemble the person in the reference image.`;
+            }
+            messages[0].content = contentParts;
+
+            const aiResp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+              method: "POST",
+              headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
+              body: JSON.stringify({ model: "google/gemini-2.5-flash-image", messages, modalities: ["image", "text"] }),
+            });
+
+            if (aiResp.ok) {
+              const aiData = await aiResp.json();
+              const imgData = aiData.choices?.[0]?.message?.images?.[0]?.image_url?.url;
+              if (imgData) {
+                const base64 = imgData.replace(/^data:image\/\w+;base64,/, "");
+                const bytes = Uint8Array.from(atob(base64), c => c.charCodeAt(0));
+                const fn = `record-${crypto.randomUUID()}.png`;
+                const { error: upErr } = await sb.storage.from("building-images")
+                  .upload(`records/${fn}`, bytes, { contentType: "image/png", upsert: true });
+                if (!upErr) {
+                  const { data: urlD } = sb.storage.from("building-images").getPublicUrl(`records/${fn}`);
+                  imageUrl = urlD?.publicUrl || null;
+                }
+              }
+            }
+          } catch (imgErr) { console.error("Record image gen failed:", imgErr); }
+        }
+
+        // Create world_event for wiki integration
+        const { data: worldEvt } = await sb.from("world_events").insert({
+          session_id,
+          event_type: rec.record_type,
+          title: rec.title,
+          description: rec.description,
+          impact: rec.record_type === "discipline_record" ? "high" : rec.record_type === "dominant_win" ? "high" : "medium",
+          turn_number: turn_number || festival.announced_turn,
+          image_url: imageUrl,
+          tags: ["sport", rec.record_type, rec.discipline_name || ""].filter(Boolean),
+        }).select("id").maybeSingle();
+
+        // Create wiki entry for the achievement
+        const wikiBody = `## ${rec.title}\n\n${rec.description}\n\n**Festival:** ${rec.festival_name}\n**Skóre:** ${rec.score}${rec.previous_record ? ` (předchozí: ${rec.previous_record})` : ""}\n**Hráč:** ${rec.player_name}`;
+        const { data: wikiEnt } = await sb.from("wiki_entries").insert({
+          session_id,
+          entity_type: "event",
+          entity_id: worldEvt?.id || rec.entity_id,
+          entity_name: rec.title,
+          summary: rec.description,
+          body_md: wikiBody,
+          image_url: imageUrl,
+          source_turn: turn_number || festival.announced_turn,
+        }).select("id").maybeSingle();
+
+        // Save record
+        const { data: savedRec } = await sb.from("game_records").insert({
+          session_id,
+          record_type: rec.record_type,
+          category: "sports",
+          entity_id: rec.entity_id,
+          entity_name: rec.entity_name,
+          entity_type: "person",
+          player_name: rec.player_name,
+          portrait_url: portraitRef,
+          title: rec.title,
+          description: rec.description,
+          discipline_id: rec.discipline_id,
+          discipline_name: rec.discipline_name,
+          festival_id: rec.festival_id,
+          festival_name: rec.festival_name,
+          score: rec.score,
+          previous_record: rec.previous_record,
+          margin: rec.margin,
+          image_url: imageUrl,
+          image_prompt: imagePrompt,
+          wiki_entry_id: wikiEnt?.id,
+          world_event_id: worldEvt?.id,
+          turn_number: turn_number || festival.announced_turn,
+        }).select("id").maybeSingle();
+
+        recordResults.push({ id: savedRec?.id, type: rec.record_type, title: rec.title });
+
+        // Chronicle entry for the record
+        await sb.from("chronicle_entries").insert({
+          session_id,
+          text: `📜 **${rec.title}:** ${rec.description}`,
+          epoch_style: "kroniky",
+          turn_from: turn_number || festival.announced_turn,
+          turn_to: turn_number || festival.announced_turn,
+          source_type: "system",
+        });
+      } catch (recErr) {
+        console.error("Record writing failed:", recErr);
+      }
+    }
+
     return new Response(JSON.stringify({
       ok: true, results_count: allResults.length, incidents_count: incidents.length,
       legends: legendNames, reveal_script: revealScript,
+      records: recordResults,
     }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
   } catch (e: any) {
     console.error("games-resolve error:", e);
