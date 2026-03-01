@@ -757,6 +757,50 @@ Deno.serve(async (req) => {
       }
       results.gamesHostSelection = { selected: hostsSelected };
 
+      // ─── Auto-qualify AI factions for festivals in nomination phase ───
+      const { data: nominationFestivals } = await supabase.from("games_festivals")
+        .select("id, announced_turn, finals_turn")
+        .eq("session_id", sessionId)
+        .eq("status", "nomination");
+
+      let aiQualified = 0;
+      for (const nf of (nominationFestivals || [])) {
+        // Get all players in session
+        const { data: allSessionPlayers } = await supabase.from("realm_resources")
+          .select("player_name").eq("session_id", sessionId);
+
+        for (const sp of (allSessionPlayers || [])) {
+          // Skip the human player — they nominate manually
+          if (sp.player_name === playerName) continue;
+
+          // Check if this player already has participants
+          const { count: existingCount } = await supabase.from("games_participants")
+            .select("id", { count: "exact", head: true })
+            .eq("festival_id", nf.id).eq("player_name", sp.player_name);
+
+          if (existingCount && existingCount > 0) continue;
+
+          // Auto-simulate qualification
+          try {
+            const { data: simData } = await supabase.functions.invoke("games-qualify", {
+              body: { session_id: sessionId, player_name: sp.player_name, festival_id: nf.id, action: "simulate" },
+            });
+
+            // Auto-select top 3
+            if (simData?.results && simData.results.length > 0) {
+              const top3 = simData.results.slice(0, 3).map((r: any) => r.student_id);
+              await supabase.functions.invoke("games-qualify", {
+                body: { session_id: sessionId, player_name: sp.player_name, festival_id: nf.id, action: "select", selected_student_ids: top3 },
+              });
+              aiQualified++;
+            }
+          } catch (qErr) {
+            console.error(`Auto-qualify ${sp.player_name} for ${nf.id}:`, qErr);
+          }
+        }
+      }
+      results.aiQualification = { qualified: aiQualified };
+
       // ─── Auto-resolve festivals in nomination/qualifying/finals (2+ turns after nomination) ───
       const { data: festivalsToResolve } = await supabase.from("games_festivals")
         .select("id, is_global, announced_turn, finals_turn")

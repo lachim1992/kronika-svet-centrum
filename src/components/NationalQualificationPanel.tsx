@@ -145,13 +145,16 @@ const NationalQualificationPanel = ({ sessionId, festivalId, playerName, onCompl
     }
   };
 
-  if (alreadyNominated) {
+  if (alreadyNominated && !simulated) {
     return (
       <Card className="border-green-500/30 bg-green-500/5">
-        <CardContent className="p-6 text-center">
+        <CardContent className="p-6 text-center space-y-3">
           <CheckCircle className="h-8 w-8 text-green-400 mx-auto mb-2" />
           <p className="text-sm font-display font-semibold">Nominace odeslána!</p>
           <p className="text-xs text-muted-foreground mt-1">Vaši atleti byli úspěšně nominováni na Velké hry.</p>
+          <Button variant="outline" size="sm" onClick={() => { setAlreadyNominated(false); }} className="font-display text-xs">
+            Změnit nominaci
+          </Button>
         </CardContent>
       </Card>
     );
