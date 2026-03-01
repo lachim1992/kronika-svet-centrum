@@ -13,7 +13,7 @@ import ChronicleHubLogo from "@/components/ChronicleHubLogo";
 import { toast } from "sonner";
 import WorldSetupWizard from "@/components/WorldSetupWizard";
 import PromoWorldGenerator from "@/components/PromoWorldGenerator";
-
+import AdminWorldsPanel from "@/components/AdminWorldsPanel";
 interface GameMembership {
   id: string;
   session_id: string;
@@ -48,6 +48,8 @@ const getModeMeta = (mode?: string) => {
 
 /* Logo moved to ChronicleHubLogo component */
 
+const DEV_EMAIL = "svarcbrats@gmail.com";
+
 const MyGames = () => {
   const navigate = useNavigate();
   const { user, profile, signOut } = useAuth();
@@ -60,6 +62,13 @@ const MyGames = () => {
   const [playerName, setPlayerName] = useState("");
   const [joining, setJoining] = useState(false);
   const [showPromo, setShowPromo] = useState(false);
+  const [userEmail, setUserEmail] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (user) setUserEmail(user.email || null);
+  }, [user]);
+
+  const isDev = userEmail === DEV_EMAIL;
 
   const fetchGames = async () => {
     if (!user) return;
@@ -308,6 +317,13 @@ const MyGames = () => {
           onOpenChange={setShowPromo}
           onCreated={handleGameCreated}
         />
+
+        {/* ====== SECTION D: Dev Admin Panel ====== */}
+        {isDev && (
+          <section className="border-t border-border pt-6">
+            <AdminWorldsPanel />
+          </section>
+        )}
       </main>
     </div>
   );

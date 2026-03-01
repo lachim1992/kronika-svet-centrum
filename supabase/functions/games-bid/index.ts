@@ -56,6 +56,20 @@ Deno.serve(async (req) => {
       });
     }
 
+    // ═══ ARENA CHECK: City must have a completed Arena/stadium ═══
+    const { data: arenaBuilding } = await sb.from("city_buildings")
+      .select("id, name, current_level, status")
+      .eq("city_id", city_id).eq("session_id", session_id)
+      .eq("status", "completed")
+      .or("name.ilike.%aréna%,name.ilike.%arena%,name.ilike.%stadion%,name.ilike.%amfiteátr%")
+      .maybeSingle();
+
+    if (!arenaBuilding) {
+      return new Response(JSON.stringify({ error: "Město musí mít postavenou Arénu pro kandidaturu na pořadatelství her." }), {
+        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     // Check if already bid for this festival
     const { data: existingBid } = await sb.from("games_bids")
       .select("id").eq("festival_id", festival_id).eq("player_name", player_name).maybeSingle();
