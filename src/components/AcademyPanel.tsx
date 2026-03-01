@@ -157,7 +157,7 @@ const AcademyPanel = ({ sessionId, currentPlayerName, currentTurn }: Props) => {
             <School className="h-3.5 w-3.5 mr-1" />Školy ({academies.length})
           </TabsTrigger>
           <TabsTrigger value="graduates" className="font-display text-xs">
-            <Users className="h-3.5 w-3.5 mr-1" />Absolventi ({students.filter(s => s.status === "graduated").length})
+            <Users className="h-3.5 w-3.5 mr-1" />Absolventi ({students.filter(s => s.status === "graduated" || s.status === "promoted").length})
           </TabsTrigger>
         </TabsList>
 
@@ -235,10 +235,10 @@ const AcademyPanel = ({ sessionId, currentPlayerName, currentTurn }: Props) => {
 
         {/* ─── GRADUATES ─── */}
         <TabsContent value="graduates" className="space-y-2">
-          {students.filter(s => s.status === "graduated").length === 0 ? (
+          {students.filter(s => s.status === "graduated" || s.status === "promoted").length === 0 ? (
             <p className="text-sm text-muted-foreground text-center p-8">Žádní absolventi. Počkejte na dokončení výcvikového cyklu.</p>
           ) : (
-            students.filter(s => s.status === "graduated").map(s => {
+            students.filter(s => s.status === "graduated" || s.status === "promoted").map(s => {
               const acad = academies.find(a => a.id === s.academy_id);
               return (
                 <div key={s.id} className="p-2 rounded border border-border bg-card flex items-center gap-2">
@@ -246,6 +246,7 @@ const AcademyPanel = ({ sessionId, currentPlayerName, currentTurn }: Props) => {
                     <div className="flex items-center gap-1">
                       <span className="font-display text-xs font-semibold truncate">{s.name}</span>
                       <Badge variant="outline" className="text-[7px]">{s.specialty}</Badge>
+                      {s.status === "promoted" && <Badge variant="outline" className="text-[7px] border-primary/50 text-primary">🏅 Nominován</Badge>}
                     </div>
                     <p className="text-[9px] text-muted-foreground truncate">{acad?.name || "?"} | Rok {s.graduation_turn}</p>
                   </div>
