@@ -129,8 +129,11 @@ const ResourceHUD = ({ sessionId, playerName, cities, currentTurn }: ResourceHUD
   // Compute wealth client-side using shared formula
   const computedWealthIncome = computeWealthIncome(myCities);
   const wealth = getRes("wealth");
-  const wealthNet = (computedWealthIncome > 0 ? computedWealthIncome : wealth.income) - wealth.upkeep;
-  const wealthStock = realm.gold_reserve ?? wealth.stockpile ?? 0;
+  const sportFundingPct = realm.sport_funding_pct || 0;
+  const wealthStockRaw = realm.gold_reserve ?? wealth.stockpile ?? 0;
+  const sportFundingExpense = sportFundingPct > 0 ? Math.floor(wealthStockRaw * sportFundingPct / 100) : 0;
+  const wealthNet = (computedWealthIncome > 0 ? computedWealthIncome : wealth.income) - wealth.upkeep - sportFundingExpense;
+  const wealthStock = wealthStockRaw;
 
   const grainCapacity = realm.granary_capacity || 500;
 
