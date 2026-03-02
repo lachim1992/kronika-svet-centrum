@@ -8,6 +8,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Progress } from "@/components/ui/progress";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Trophy, Users, Calendar, Star, Target, Shield, Swords, Play, Loader2, ChevronLeft, Building2, Plus, Award, TrendingUp, Scroll, Skull, Flame } from "lucide-react";
+import InMemoriamTab from "@/components/league/InMemoriamTab";
 import { toast } from "sonner";
 
 interface Props {
@@ -584,12 +585,13 @@ const LeaguePanel = ({ sessionId, currentPlayerName, currentTurn }: Props) => {
         </Card>
       ) : (
         <Tabs defaultValue="table" className="space-y-3">
-          <TabsList className="grid w-full grid-cols-6 bg-muted/20">
+          <TabsList className="grid w-full grid-cols-7 bg-muted/20">
             <TabsTrigger value="table" className="text-xs data-[state=active]:bg-primary/10 data-[state=active]:text-primary"><Trophy className="h-3 w-3 mr-1" />Tabulka</TabsTrigger>
             <TabsTrigger value="matches" className="text-xs data-[state=active]:bg-primary/10 data-[state=active]:text-primary"><Calendar className="h-3 w-3 mr-1" />Zápasy</TabsTrigger>
             <TabsTrigger value="playoff" className="text-xs data-[state=active]:bg-yellow-500/20 data-[state=active]:text-yellow-400"><Award className="h-3 w-3 mr-1" />Pohár</TabsTrigger>
             <TabsTrigger value="scorers" className="text-xs data-[state=active]:bg-primary/10 data-[state=active]:text-primary"><Target className="h-3 w-3 mr-1" />Střelci</TabsTrigger>
             <TabsTrigger value="team" className="text-xs data-[state=active]:bg-primary/10 data-[state=active]:text-primary"><Users className="h-3 w-3 mr-1" />Týmy</TabsTrigger>
+            <TabsTrigger value="memoriam" className="text-xs data-[state=active]:bg-destructive/10 data-[state=active]:text-destructive"><Skull className="h-3 w-3 mr-1" />Memoriam</TabsTrigger>
             <TabsTrigger value="assoc" className="text-xs data-[state=active]:bg-primary/10 data-[state=active]:text-primary"><Shield className="h-3 w-3 mr-1" />Svaz</TabsTrigger>
           </TabsList>
 
@@ -960,6 +962,11 @@ const LeaguePanel = ({ sessionId, currentPlayerName, currentTurn }: Props) => {
                 );
               })}
             </div>
+          </TabsContent>
+
+          {/* ═══ IN MEMORIAM ═══ */}
+          <TabsContent value="memoriam" className="space-y-3">
+            <InMemoriamTab sessionId={sessionId} currentPlayerName={currentPlayerName} />
           </TabsContent>
 
           {/* ═══ ASSOCIATIONS ═══ */}
