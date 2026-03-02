@@ -31,12 +31,12 @@ serve(async (req) => {
     if (aiPlayerNames.length > 0) {
       const { data } = await sb
         .from("game_events")
-        .select("id, event_type, event_data, created_at, player_name, turn_number")
+        .select("id, event_type, note, created_at, player, turn_number, command_id, actor_type")
         .eq("session_id", sessionId)
-        .in("player_name", aiPlayerNames)
+        .in("player", aiPlayerNames)
         .order("created_at", { ascending: false })
         .limit(50);
-      aiActions = data || [];
+      aiActions = (data || []).map((e: any) => ({ ...e, player_name: e.player, event_data: { note: e.note, command_id: e.command_id, actor_type: e.actor_type } }));
     }
 
     // ── 2. AI Economy & Military ──
@@ -50,13 +50,13 @@ serve(async (req) => {
 
       const { data: stacks } = await sb
         .from("military_stacks")
-        .select("id, stack_name, total_strength, morale, status")
+        .select("id, name, power, morale, is_active, is_deployed")
         .eq("session_id", sessionId)
         .eq("player_name", faction.faction_name);
 
       const { data: res } = await sb
         .from("realm_resources")
-        .select("grain_stockpile, wood_stockpile, stone_stockpile, iron_stockpile, gold_reserve, horses")
+        .select("grain_reserve, wood_reserve, stone_reserve, iron_reserve, gold_reserve, horses_reserve, manpower_pool, manpower_committed, mobilization_rate")
         .eq("session_id", sessionId)
         .eq("player_name", faction.faction_name)
         .maybeSingle();
@@ -71,7 +71,7 @@ serve(async (req) => {
         totalPop: (cities || []).reduce((s: number, c: any) => s + (c.population_total || 0), 0),
         totalGarrison: (cities || []).reduce((s: number, c: any) => s + (c.military_garrison || 0), 0),
         stacks: stacks || [],
-        totalStrength: (stacks || []).reduce((s: number, st: any) => s + (st.total_strength || 0), 0),
+        totalStrength: (stacks || []).reduce((s: number, st: any) => s + (st.power || 0), 0),
         resources: res || null,
       });
     }

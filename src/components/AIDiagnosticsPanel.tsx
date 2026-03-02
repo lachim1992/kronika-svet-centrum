@@ -155,12 +155,14 @@ const AIDiagnosticsPanel = ({ sessionId }: Props) => {
                 </div>
                 {es.resources && (
                   <div className="grid grid-cols-3 gap-2 text-xs">
-                    <StatBox label="Obilí" value={es.resources.grain_stockpile} warn={es.resources.grain_stockpile < 10} />
-                    <StatBox label="Dřevo" value={es.resources.wood_stockpile} />
-                    <StatBox label="Kámen" value={es.resources.stone_stockpile} />
-                    <StatBox label="Železo" value={es.resources.iron_stockpile} />
+                    <StatBox label="Obilí" value={es.resources.grain_reserve} warn={es.resources.grain_reserve < 10} />
+                    <StatBox label="Dřevo" value={es.resources.wood_reserve} />
+                    <StatBox label="Kámen" value={es.resources.stone_reserve} />
+                    <StatBox label="Železo" value={es.resources.iron_reserve} />
                     <StatBox label="Zlato" value={es.resources.gold_reserve} />
-                    <StatBox label="Koně" value={es.resources.horses} />
+                    <StatBox label="Koně" value={es.resources.horses_reserve} />
+                    <StatBox label="Manpower" value={es.resources.manpower_pool} />
+                    <StatBox label="Mobilizace" value={`${Math.round((es.resources.mobilization_rate || 0) * 100)}%`} />
                   </div>
                 )}
                 {!es.resources && (
@@ -347,7 +349,7 @@ const AIDiagnosticsPanel = ({ sessionId }: Props) => {
 
 /* ── Helper components ── */
 
-const StatBox = ({ label, value, warn }: { label: string; value: number; warn?: boolean }) => (
+const StatBox = ({ label, value, warn }: { label: string; value: number | string; warn?: boolean }) => (
   <div className={`bg-muted/30 rounded p-1.5 text-center ${warn ? "border border-destructive/50" : ""}`}>
     <div className={`font-mono font-bold text-sm ${warn ? "text-destructive" : ""}`}>{value}</div>
     <div className="text-[10px] text-muted-foreground">{label}</div>
