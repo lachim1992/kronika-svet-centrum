@@ -91,6 +91,17 @@ const PRESET_REQUESTS = [
   "Přidej vnitrozemské moře nebo velký záliv",
 ];
 
+/** Compute a style fingerprint from generation settings for per-style learning */
+function computeStyleKey(s: GenSettings): string {
+  const landBucket = Math.round(s.targetLandRatio * 10); // 0-10
+  const contBucket = s.continentCount;
+  const mtnBucket = Math.round(s.mountainDensity * 4);   // 0-4
+  // Find dominant biome
+  const dominant = Object.entries(s.biomeWeights)
+    .sort((a, b) => b[1] - a[1])[0]?.[0] || "plains";
+  return `land${landBucket}_cont${contBucket}_mtn${mtnBucket}_${dominant}`;
+}
+
 // ── Mini Hex Preview Component (axial coordinates) ──
 const HexPreview = ({ hexes, bounds }: {
   hexes: HexPreviewData[];
@@ -177,11 +188,13 @@ const SeedMapManager = ({ sessionId, onRefetch }: Props) => {
   const [dislikedAspects, setDislikedAspects] = useState<string[]>([]);
   const [feedbackNote, setFeedbackNote] = useState("");
   const [learnedPrefs, setLearnedPrefs] = useState<{ style_notes: string[]; avg_rating: number; total_ratings: number } | null>(null);
+  const [globalPrefs, setGlobalPrefs] = useState<{ style_notes: string[]; avg_rating: number; total_ratings: number } | null>(null);
   const [savingFeedback, setSavingFeedback] = useState(false);
+
+  const currentStyleKey = useMemo(() => computeStyleKey(settings), [settings]);
 
   // Load map dimensions from world_foundations + user preferences on mount
   useEffect(() => {
-    // Load actual map dimensions from world_foundations
     supabase
       .from("world_foundations")
       .select("map_width, map_height")
@@ -196,31 +209,49 @@ const SeedMapManager = ({ sessionId, onRefetch }: Props) => {
           }
         }
       });
+  }, [sessionId]);
 
+  // Load per-style + global preferences when style key or user changes
+  useEffect(() => {
     if (!user?.id) return;
+
+    // Load global fallback
     supabase
       .from("map_gen_preferences")
-      .select("preferred_land_ratio, preferred_biome_weights, preferred_continent_count, preferred_mountain_density, preferred_coastal_richness, style_notes, avg_rating, total_ratings")
+      .select("preferred_land_ratio, preferred_biome_weights, preferred_continent_count, preferred_mountain_density, preferred_coastal_richness, style_notes, avg_rating, total_ratings, style_key")
       .eq("user_id", user.id)
+      .eq("style_key", "global")
       .maybeSingle()
       .then(({ data }) => {
         if (data) {
-          setSettings(prev => ({
-            ...prev,
-            targetLandRatio: Number(data.preferred_land_ratio) || prev.targetLandRatio,
-            continentCount: data.preferred_continent_count || prev.continentCount,
-            mountainDensity: Number(data.preferred_mountain_density) || prev.mountainDensity,
-            coastalRichness: Number(data.preferred_coastal_richness) || prev.coastalRichness,
-            biomeWeights: (data.preferred_biome_weights as Record<string, number>) || prev.biomeWeights,
-          }));
-          setLearnedPrefs({
+          setGlobalPrefs({
             style_notes: (data.style_notes as string[]) || [],
             avg_rating: Number(data.avg_rating) || 0,
             total_ratings: data.total_ratings || 0,
           });
         }
       });
-  }, [user?.id, sessionId]);
+
+    // Load per-style preferences
+    supabase
+      .from("map_gen_preferences")
+      .select("preferred_land_ratio, preferred_biome_weights, preferred_continent_count, preferred_mountain_density, preferred_coastal_richness, style_notes, avg_rating, total_ratings, style_key")
+      .eq("user_id", user.id)
+      .eq("style_key", currentStyleKey)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (data) {
+          setLearnedPrefs({
+            style_notes: (data.style_notes as string[]) || [],
+            avg_rating: Number(data.avg_rating) || 0,
+            total_ratings: data.total_ratings || 0,
+          });
+        } else {
+          // No per-style data yet — use global as fallback display
+          setLearnedPrefs(null);
+        }
+      });
+  }, [user?.id, currentStyleKey]);
 
   const loadStats = useCallback(async () => {
     setLoadingStats(true);
@@ -320,10 +351,11 @@ const SeedMapManager = ({ sessionId, onRefetch }: Props) => {
     if (!userRequest.trim()) return;
     setPatching(true);
     try {
-      // Include learned preferences in patch context
+      // Include per-style learned preferences (with global fallback)
       let augmentedRequest = userRequest;
-      if (learnedPrefs?.style_notes?.length) {
-        augmentedRequest += `\n\n[Learned user preferences from previous feedback: ${learnedPrefs.style_notes.slice(-5).join("; ")}]`;
+      const prefs = learnedPrefs || globalPrefs;
+      if (prefs?.style_notes?.length) {
+        augmentedRequest += `\n\n[Learned user preferences for style "${currentStyleKey}": ${prefs.style_notes.slice(-5).join("; ")}]`;
       }
 
       const { data, error } = await supabase.functions.invoke("seedmap-patch", {
@@ -346,24 +378,27 @@ const SeedMapManager = ({ sessionId, onRefetch }: Props) => {
       toast.error("Patch selhal: " + (e.message || "unknown"));
     }
     setPatching(false);
-  }, [sessionId, loadStats, onRefetch, learnedPrefs]);
+  }, [sessionId, loadStats, onRefetch, learnedPrefs, globalPrefs, currentStyleKey]);
 
   const runStrategicPass = useCallback(async () => {
+    const prefs = learnedPrefs || globalPrefs;
     let prompt = `Analyze and improve this map for strategic quality:
 1. Ensure 2-3 natural chokepoints (mountain passes, land bridges)
 2. Smooth biome transitions (no desert next to forest)
 3. At least 30% plains for settlements
 4. Create inland sea or large bay for naval gameplay`;
-    if (learnedPrefs?.style_notes?.length) {
-      prompt += `\n\nUser's learned style preferences: ${learnedPrefs.style_notes.slice(-5).join("; ")}`;
+    if (prefs?.style_notes?.length) {
+      prompt += `\n\nUser's learned style preferences (${currentStyleKey}): ${prefs.style_notes.slice(-5).join("; ")}`;
     }
     await runPatch(prompt);
-  }, [runPatch, learnedPrefs]);
+  }, [runPatch, learnedPrefs, globalPrefs, currentStyleKey]);
 
   // ── Feedback / Learning ──
   const toggleAspect = (aspect: string, list: string[], setList: (v: string[]) => void) => {
     setList(list.includes(aspect) ? list.filter(a => a !== aspect) : [...list, aspect]);
   };
+
+  const activePrefs = learnedPrefs || globalPrefs;
 
   const submitFeedback = useCallback(async () => {
     if (!user?.id || rating === 0) {
@@ -372,7 +407,7 @@ const SeedMapManager = ({ sessionId, onRefetch }: Props) => {
     }
     setSavingFeedback(true);
     try {
-      // Save feedback
+      // Save feedback with style_key
       await supabase.from("map_gen_feedback").insert([{
         session_id: sessionId,
         user_id: user.id,
@@ -381,23 +416,25 @@ const SeedMapManager = ({ sessionId, onRefetch }: Props) => {
         liked_aspects: likedAspects,
         disliked_aspects: dislikedAspects,
         notes: feedbackNote || null,
+        style_key: currentStyleKey,
         map_snapshot: stats ? { biome_counts: stats.biome_counts, land_ratio: stats.land_ratio, settings } as any : null,
       }]);
 
-      // Update / create learned preferences
       const styleNotes: string[] = [];
       if (likedAspects.length) styleNotes.push(`Likes: ${likedAspects.map(a => ASPECT_LABELS[a] || a).join(", ")}`);
       if (dislikedAspects.length) styleNotes.push(`Dislikes: ${dislikedAspects.map(a => ASPECT_LABELS[a] || a).join(", ")}`);
       if (feedbackNote) styleNotes.push(`Note: ${feedbackNote}`);
       if (rating >= 4) styleNotes.push(`High-rated map had land_ratio=${stats?.land_ratio?.toFixed(2)}, biomes=${Object.keys(stats?.biome_counts || {}).join(",")}`);
 
+      // Update per-style preferences
       const existing = learnedPrefs;
       const newTotal = (existing?.total_ratings || 0) + 1;
       const newAvg = ((existing?.avg_rating || 0) * (existing?.total_ratings || 0) + rating) / newTotal;
-      const allNotes = [...(existing?.style_notes || []), ...styleNotes].slice(-20); // keep last 20
+      const allNotes = [...(existing?.style_notes || []), ...styleNotes].slice(-20);
 
       const { error } = await supabase.from("map_gen_preferences").upsert({
         user_id: user.id,
+        style_key: currentStyleKey,
         preferred_land_ratio: settings.targetLandRatio,
         preferred_biome_weights: settings.biomeWeights,
         preferred_continent_count: settings.continentCount,
@@ -407,12 +444,27 @@ const SeedMapManager = ({ sessionId, onRefetch }: Props) => {
         total_ratings: newTotal,
         avg_rating: Math.round(newAvg * 100) / 100,
         updated_at: new Date().toISOString(),
-      }, { onConflict: "user_id" });
+      }, { onConflict: "user_id,style_key" });
 
       if (error) throw error;
 
+      // Also update global aggregate
+      const gExisting = globalPrefs;
+      const gTotal = (gExisting?.total_ratings || 0) + 1;
+      const gAvg = ((gExisting?.avg_rating || 0) * (gExisting?.total_ratings || 0) + rating) / gTotal;
+      const gNotes = [...(gExisting?.style_notes || []), ...styleNotes].slice(-20);
+      await supabase.from("map_gen_preferences").upsert({
+        user_id: user.id,
+        style_key: "global",
+        style_notes: gNotes,
+        total_ratings: gTotal,
+        avg_rating: Math.round(gAvg * 100) / 100,
+        updated_at: new Date().toISOString(),
+      }, { onConflict: "user_id,style_key" });
+
       setLearnedPrefs({ style_notes: allNotes, avg_rating: newAvg, total_ratings: newTotal });
-      toast.success("Zpětná vazba uložena — budu se učit! 🧠");
+      setGlobalPrefs({ style_notes: gNotes, avg_rating: gAvg, total_ratings: gTotal });
+      toast.success(`Naučeno pro styl "${currentStyleKey}" 🧠`);
       setRating(0);
       setLikedAspects([]);
       setDislikedAspects([]);
@@ -421,7 +473,7 @@ const SeedMapManager = ({ sessionId, onRefetch }: Props) => {
       toast.error("Uložení selhalo: " + (e.message || "unknown"));
     }
     setSavingFeedback(false);
-  }, [user?.id, sessionId, rating, likedAspects, dislikedAspects, feedbackNote, stats, settings, learnedPrefs]);
+  }, [user?.id, sessionId, rating, likedAspects, dislikedAspects, feedbackNote, stats, settings, learnedPrefs, globalPrefs, currentStyleKey]);
 
   const ratePatch = useCallback(async (histIdx: number, liked: boolean) => {
     if (!user?.id) return;
@@ -439,26 +491,28 @@ const SeedMapManager = ({ sessionId, onRefetch }: Props) => {
         feedback_type: "patch_feedback",
         rating: liked ? 5 : 1,
         notes: note,
+        style_key: currentStyleKey,
         patch_request: entry.request,
         patch_result: entry.result as any,
       }]);
 
-      // Append to style notes
+      // Append to per-style notes
       const existing = learnedPrefs;
       const allNotes = [...(existing?.style_notes || []), note].slice(-20);
       await supabase.from("map_gen_preferences").upsert({
         user_id: user.id,
+        style_key: currentStyleKey,
         style_notes: allNotes,
         updated_at: new Date().toISOString(),
-      }, { onConflict: "user_id" });
+      }, { onConflict: "user_id,style_key" });
 
-      setLearnedPrefs(prev => prev ? { ...prev, style_notes: allNotes } : prev);
+      setLearnedPrefs(prev => prev ? { ...prev, style_notes: allNotes } : { style_notes: allNotes, avg_rating: 0, total_ratings: 0 });
       setHistory(prev => prev.map((h, i) => i === histIdx ? { ...h, rated: liked ? 5 : 1 } : h));
-      toast.success(liked ? "👍 Zapamatováno jako dobrý patch" : "👎 Zapamatováno — příště jinak");
+      toast.success(liked ? "👍 Zapamatováno pro tento styl" : "👎 Zapamatováno — příště jinak");
     } catch (e: any) {
       toast.error("Chyba: " + (e.message || "unknown"));
     }
-  }, [user?.id, sessionId, history, learnedPrefs]);
+  }, [user?.id, sessionId, history, learnedPrefs, currentStyleKey]);
 
   // Quality score
   const qualityScore = stats ? (() => {
@@ -620,9 +674,9 @@ const SeedMapManager = ({ sessionId, onRefetch }: Props) => {
           <CardHeader className="pb-2">
             <CardTitle className="text-sm flex items-center gap-2">
               <Wand2 className="h-4 w-4 text-accent-foreground" /> AI Map Patch
-              {learnedPrefs && learnedPrefs.total_ratings > 0 && (
+              {activePrefs && activePrefs.total_ratings > 0 && (
                 <Badge variant="secondary" className="text-[10px] ml-auto">
-                  🧠 {learnedPrefs.total_ratings}x naučeno
+                  🧠 {activePrefs.total_ratings}x {learnedPrefs ? currentStyleKey : "global"}
                 </Badge>
               )}
             </CardTitle>
@@ -693,27 +747,42 @@ const SeedMapManager = ({ sessionId, onRefetch }: Props) => {
 
       {/* ══ LEARNING TAB ══ */}
       <TabsContent value="learn" className="space-y-3">
+        {/* Current style indicator */}
+        <div className="flex items-center gap-2 text-xs text-muted-foreground bg-muted/30 rounded px-3 py-2">
+          <Settings className="h-3 w-3" />
+          <span>Aktuální styl: <code className="font-mono text-primary">{currentStyleKey}</code></span>
+          {learnedPrefs ? (
+            <Badge variant="default" className="text-[9px] ml-auto">Per-style data</Badge>
+          ) : globalPrefs?.total_ratings ? (
+            <Badge variant="secondary" className="text-[9px] ml-auto">Fallback: globální</Badge>
+          ) : null}
+        </div>
+
         {/* Current knowledge */}
-        {learnedPrefs && learnedPrefs.total_ratings > 0 && (
+        {activePrefs && activePrefs.total_ratings > 0 && (
           <Card className="border-primary/20">
             <CardHeader className="pb-2">
               <CardTitle className="text-sm flex items-center gap-2">
-                <GraduationCap className="h-4 w-4 text-primary" /> Naučené preference
+                <GraduationCap className="h-4 w-4 text-primary" />
+                Naučené preference
+                <Badge variant="outline" className="text-[9px] ml-auto font-mono">
+                  {learnedPrefs ? currentStyleKey : "global (fallback)"}
+                </Badge>
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-2">
               <div className="flex gap-2 flex-wrap">
                 <Badge variant="outline" className="text-xs">
-                  ⭐ Průměr: {learnedPrefs.avg_rating.toFixed(1)}/5
+                  ⭐ Průměr: {activePrefs.avg_rating.toFixed(1)}/5
                 </Badge>
                 <Badge variant="outline" className="text-xs">
-                  📊 {learnedPrefs.total_ratings} hodnocení
+                  📊 {activePrefs.total_ratings} hodnocení
                 </Badge>
               </div>
-              {learnedPrefs.style_notes.length > 0 && (
+              {activePrefs.style_notes.length > 0 && (
                 <ScrollArea className="max-h-32">
                   <div className="space-y-1">
-                    {learnedPrefs.style_notes.slice(-8).map((note, i) => (
+                    {activePrefs.style_notes.slice(-8).map((note, i) => (
                       <p key={i} className="text-[10px] text-muted-foreground bg-muted/30 rounded px-2 py-1">{note}</p>
                     ))}
                   </div>

@@ -5055,6 +5055,7 @@ export type Database = {
           patch_result: Json | null
           rating: number | null
           session_id: string
+          style_key: string | null
           user_id: string
         }
         Insert: {
@@ -5069,6 +5070,7 @@ export type Database = {
           patch_result?: Json | null
           rating?: number | null
           session_id: string
+          style_key?: string | null
           user_id: string
         }
         Update: {
@@ -5083,6 +5085,7 @@ export type Database = {
           patch_result?: Json | null
           rating?: number | null
           session_id?: string
+          style_key?: string | null
           user_id?: string
         }
         Relationships: [
@@ -5104,6 +5107,7 @@ export type Database = {
           preferred_continent_count: number | null
           preferred_land_ratio: number | null
           preferred_mountain_density: number | null
+          style_key: string
           style_notes: string[] | null
           total_ratings: number | null
           updated_at: string
@@ -5117,6 +5121,7 @@ export type Database = {
           preferred_continent_count?: number | null
           preferred_land_ratio?: number | null
           preferred_mountain_density?: number | null
+          style_key?: string
           style_notes?: string[] | null
           total_ratings?: number | null
           updated_at?: string
@@ -5130,6 +5135,7 @@ export type Database = {
           preferred_continent_count?: number | null
           preferred_land_ratio?: number | null
           preferred_mountain_density?: number | null
+          style_key?: string
           style_notes?: string[] | null
           total_ratings?: number | null
           updated_at?: string
