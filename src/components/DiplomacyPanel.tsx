@@ -431,17 +431,6 @@ const DiplomacyPanel = ({ sessionId, players, cityStates, currentPlayerName, gam
 
       {/* Input */}
       <div className="border-t border-border pt-3 space-y-2">
-        {canRequestReply && (
-          <Button
-            onClick={handleNpcReply}
-            disabled={loadingNpc || messages.length === 0}
-            className="w-full font-display bg-primary/20 hover:bg-primary/30 border border-primary/40 text-primary"
-            variant="outline"
-          >
-            <Sparkles className="h-4 w-4 mr-2" />
-            {loadingNpc ? "Diplomat přemýšlí… (s důsledky)" : "⚡ Generovat odpověď diplomata (s důsledky)"}
-          </Button>
-        )}
         <div className="flex gap-2">
           <Select value={secrecy} onValueChange={setSecrecy}>
             <SelectTrigger className="w-32 h-9 text-xs"><SelectValue /></SelectTrigger>
@@ -472,6 +461,17 @@ const DiplomacyPanel = ({ sessionId, players, cityStates, currentPlayerName, gam
           <Button onClick={handleSendMessage} disabled={!newMessage.trim()} className="font-display">
             <Send className="h-4 w-4 mr-1" />Odeslat
           </Button>
+          {canRequestReply && (
+            <Button
+              onClick={handleNpcReply}
+              disabled={loadingNpc || messages.length === 0}
+              variant="outline"
+              className="font-display border-primary/40 text-primary hover:bg-primary/20"
+            >
+              <Sparkles className="h-4 w-4 mr-1" />
+              {loadingNpc ? "…" : "⚡ AI"}
+            </Button>
+          )}
         </div>
       </div>
     </div>
