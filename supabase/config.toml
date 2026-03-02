@@ -152,3 +152,6 @@ verify_jwt = false
 
 [functions.academy-tick]
 verify_jwt = false
+
+[functions.seedmap-patch]
+verify_jwt = false
