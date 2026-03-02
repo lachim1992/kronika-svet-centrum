@@ -536,30 +536,42 @@ DŮLEŽITÉ: affected_players/faction MUSÍ používat přesná jména frakcí. 
       }
     }
 
+    // ═══ Load hex terrain for terrain-aware placement ═══
+    const { data: allHexTerrain } = await supabase
+      .from("province_hexes")
+      .select("q, r, biome_family, is_passable, has_river")
+      .eq("session_id", sessionId)
+      .limit(5000);
+    const hexTerrainMap = new Map<string, { biome: string; passable: boolean; hasRiver: boolean }>();
+    for (const h of allHexTerrain || []) {
+      hexTerrainMap.set(`${h.q},${h.r}`, {
+        biome: h.biome_family,
+        passable: h.is_passable !== false,
+        hasRiver: h.has_river === true,
+      });
+    }
+    const CITY_ALLOWED = new Set(["plains", "hills", "forest", "swamp"]);
+    console.log(`Loaded ${hexTerrainMap.size} hex terrain entries for placement`);
+
     // ═══ STEP D: Provinces with wiki + hex layout ═══
     const provinceIdMap: Record<string, string> = {};
     const provinceRegionMap: Record<string, string> = {};
 
     // Use startPositions from map generation for province centers (terrain-aware)
-    // Fallback to spiral arrangement if not enough start positions
     const PROV_SPACING = 5;
     const fallbackOffsets: { q: number; r: number }[] = [
-      { q: 0, r: 0 },
-      { q: PROV_SPACING, r: 0 },
-      { q: -PROV_SPACING, r: 0 },
+      { q: 0, r: 0 }, { q: PROV_SPACING, r: 0 }, { q: -PROV_SPACING, r: 0 },
       { q: Math.floor(PROV_SPACING / 2), r: PROV_SPACING },
       { q: -Math.floor(PROV_SPACING / 2), r: -PROV_SPACING },
       { q: Math.floor(PROV_SPACING / 2), r: -PROV_SPACING },
       { q: -Math.floor(PROV_SPACING / 2), r: PROV_SPACING },
-      { q: PROV_SPACING * 2, r: 0 },
-      { q: -PROV_SPACING * 2, r: 0 },
-      { q: PROV_SPACING, r: PROV_SPACING },
-      { q: -PROV_SPACING, r: -PROV_SPACING },
+      { q: PROV_SPACING * 2, r: 0 }, { q: -PROV_SPACING * 2, r: 0 },
+      { q: PROV_SPACING, r: PROV_SPACING }, { q: -PROV_SPACING, r: -PROV_SPACING },
       { q: PROV_SPACING, r: -PROV_SPACING },
     ];
     const provinceCenterOffsets = mapStartPositions.length > 0 ? mapStartPositions : fallbackOffsets;
 
-    // Generate ring hexes (center + ring1 + ring2 = 19 hexes)
+    // Generate ring hexes
     function hexRing(cq: number, cr: number, radius: number): { q: number; r: number }[] {
       if (radius === 0) return [{ q: cq, r: cr }];
       const results: { q: number; r: number }[] = [];
@@ -575,47 +587,70 @@ DŮLEŽITÉ: affected_players/faction MUSÍ používat přesná jména frakcí. 
       return results;
     }
 
-    function province19Hexes(cq: number, cr: number): { q: number; r: number }[] {
-      return [
+    /** Get candidate hexes for a province — only passable land hexes */
+    function provinceValidHexes(cq: number, cr: number): { q: number; r: number }[] {
+      const candidates = [
         { q: cq, r: cr },
         ...hexRing(cq, cr, 1),
         ...hexRing(cq, cr, 2),
+        ...hexRing(cq, cr, 3), // extend to ring 3 for fallback
       ];
+      return candidates.filter(h => {
+        const t = hexTerrainMap.get(`${h.q},${h.r}`);
+        if (!t) return false;
+        if (!t.passable) return false; // sea, mountains
+        if (t.hasRiver) return false;  // rivers are impassable barriers
+        return true;
+      });
     }
 
-    let provColorIndex = 0;
+    // Build faction → color index map (same faction = same color on map)
+    const factionColorMap = new Map<string, number>();
+    let factionColorIdx = 0;
+    for (const faction of world.factions || []) {
+      const fp = factionPlayerMap[faction.name] || faction.name;
+      if (!factionColorMap.has(fp)) {
+        factionColorMap.set(fp, factionColorIdx++);
+      }
+    }
+
+    let provPositionIndex = 0;
     const allProvinceHexEntries: any[] = [];
 
     for (const region of world.regions || []) {
       const regionId = regionIdMap[region.name];
       const ownerPlayer = factionPlayerMap[region.controlledBy] || playerName;
+      const ownerColor = factionColorMap.get(ownerPlayer) ?? provPositionIndex;
       const regionProvinces = region.provinces || [];
       if (regionProvinces.length === 0) {
         regionProvinces.push({ name: `${region.name} – Centrální`, description: `Hlavní provincie regionu ${region.name}.` });
       }
 
       for (const prov of regionProvinces) {
-        const centerOffset = provinceCenterOffsets[provColorIndex] || { q: provColorIndex * PROV_SPACING, r: 0 };
+        const centerOffset = provinceCenterOffsets[provPositionIndex] || { q: provPositionIndex * PROV_SPACING, r: 0 };
         const isNeutral = !factionPlayerMap[region.controlledBy];
 
         const { data: provRow } = await supabase.from("provinces").insert({
           session_id: sessionId, name: prov.name, description: prov.description || null,
           region_id: regionId || null, owner_player: ownerPlayer,
           center_q: centerOffset.q, center_r: centerOffset.r,
-          color_index: provColorIndex, is_neutral: isNeutral,
+          color_index: ownerColor, is_neutral: isNeutral,
         }).select("id").single();
 
         if (provRow) {
           provinceIdMap[prov.name] = provRow.id;
           provinceRegionMap[prov.name] = region.name;
 
-          // Link 19 hexes to this province (hexes already exist from batch generation)
-          const hexes19 = province19Hexes(centerOffset.q, centerOffset.r);
-          for (const h of hexes19) {
+          // Link only passable hexes to this province
+          const validHexes = provinceValidHexes(centerOffset.q, centerOffset.r);
+          // Take at most 19 hexes (center + 2 rings worth)
+          const assignedHexes = validHexes.slice(0, 19);
+          console.log(`Province ${prov.name}: ${assignedHexes.length} valid hexes of ${validHexes.length} candidates (owner: ${ownerPlayer})`);
+
+          for (const h of assignedHexes) {
             allProvinceHexEntries.push({
               session_id: sessionId, q: h.q, r: h.r, province_id: provRow.id,
             });
-            // Immediately update the existing hex with province + owner
             await supabase.from("province_hexes")
               .update({ province_id: provRow.id, owner_player: ownerPlayer })
               .eq("session_id", sessionId)
@@ -633,7 +668,7 @@ DŮLEŽITÉ: affected_players/faction MUSÍ používat přesná jména frakcí. 
           } as any, { onConflict: "session_id,entity_type,entity_id" });
           counters.wiki++;
         }
-        provColorIndex++;
+        provPositionIndex++;
         counters.provinces++;
       }
     }
@@ -658,7 +693,7 @@ DŮLEŽITÉ: affected_players/faction MUSÍ používat přesná jména frakcí. 
       return { q: 0, r: 0 };
     };
 
-    // Place city within province bounds (within radius 2 of province center)
+    // Place city within province bounds — ONLY on valid biomes
     const usedHexes = new Set<string>();
     const provincePlacedHexes = new Map<string, Set<string>>();
     const placeCityInProvince = (provId: string): { q: number; r: number } => {
@@ -666,17 +701,19 @@ DŮLEŽITÉ: affected_players/faction MUSÍ používat přesná jména frakcí. 
       if (!provincePlacedHexes.has(provId)) provincePlacedHexes.set(provId, new Set());
       const placed = provincePlacedHexes.get(provId)!;
       
-      // Try center first, then ring 1, then ring 2
-      const candidates = province19Hexes(center.q, center.r);
+      // Try hexes that belong to this province and have city-allowed biomes
+      const candidates = provinceValidHexes(center.q, center.r);
       for (const c of candidates) {
         const key = `${c.q},${c.r}`;
-        if (!placed.has(key) && !usedHexes.has(key)) {
-          placed.add(key);
-          usedHexes.add(key);
-          return c;
-        }
+        if (placed.has(key) || usedHexes.has(key)) continue;
+        const terrain = hexTerrainMap.get(key);
+        if (!terrain || !CITY_ALLOWED.has(terrain.biome)) continue;
+        placed.add(key);
+        usedHexes.add(key);
+        return c;
       }
-      // Fallback
+      // Fallback — return center (should still be valid from startPositions)
+      console.warn(`No valid city hex in province ${provId}, falling back to center`);
       return center;
     };
 
