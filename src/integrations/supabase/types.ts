@@ -7626,7 +7626,31 @@ export type Database = {
       }
     }
     Views: {
-      [_ in never]: never
+      chronicle_source: {
+        Row: {
+          affected_player: string | null
+          ai_image_prompt: string | null
+          ai_image_url: string | null
+          city_id: string | null
+          confirmed: boolean | null
+          created_at: string | null
+          description: string | null
+          event_category: string | null
+          event_type: string | null
+          id: string | null
+          importance: string | null
+          location: string | null
+          participants: Json | null
+          reference: Json | null
+          session_id: string | null
+          source_table: string | null
+          summary: string | null
+          tags: string[] | null
+          title: string | null
+          turn_number: number | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
       has_role: {
