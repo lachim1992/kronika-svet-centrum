@@ -11,6 +11,11 @@ export interface HexData {
   moisture_band: number;
   temp_band: number;
   seed: string;
+  has_river: boolean;
+  has_bridge: boolean;
+  is_passable: boolean;
+  movement_cost: number;
+  river_direction: string | null;
   macro_region?: {
     id: string;
     name: string;
@@ -92,6 +97,11 @@ export function useHexMap(sessionId: string) {
             moisture_band: row.moisture_band,
             temp_band: row.temp_band,
             seed: row.seed,
+            has_river: (row as any).has_river ?? false,
+            has_bridge: (row as any).has_bridge ?? false,
+            is_passable: (row as any).is_passable ?? true,
+            movement_cost: (row as any).movement_cost ?? 1,
+            river_direction: (row as any).river_direction ?? null,
             macro_region: (row as any).macro_regions || null,
           };
           mapped[hexKey(h.q, h.r)] = h;
@@ -121,6 +131,11 @@ export function useHexMap(sessionId: string) {
           moisture_band: row.moisture_band,
           temp_band: row.temp_band,
           seed: row.seed,
+          has_river: (row as any).has_river ?? false,
+          has_bridge: (row as any).has_bridge ?? false,
+          is_passable: (row as any).is_passable ?? true,
+          movement_cost: (row as any).movement_cost ?? 1,
+          river_direction: (row as any).river_direction ?? null,
           macro_region: (row as any).macro_regions || null,
         };
         mapped[hexKey(h.q, h.r)] = h;

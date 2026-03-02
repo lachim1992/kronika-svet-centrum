@@ -5586,14 +5586,19 @@ export type Database = {
           biome_family: string
           coastal: boolean
           created_at: string
+          has_bridge: boolean
+          has_river: boolean
           id: string
+          is_passable: boolean
           macro_region_id: string | null
           mean_height: number
           moisture_band: number
+          movement_cost: number
           owner_player: string | null
           province_id: string | null
           q: number
           r: number
+          river_direction: string | null
           seed: string
           session_id: string
           temp_band: number
@@ -5602,14 +5607,19 @@ export type Database = {
           biome_family?: string
           coastal?: boolean
           created_at?: string
+          has_bridge?: boolean
+          has_river?: boolean
           id?: string
+          is_passable?: boolean
           macro_region_id?: string | null
           mean_height?: number
           moisture_band?: number
+          movement_cost?: number
           owner_player?: string | null
           province_id?: string | null
           q: number
           r: number
+          river_direction?: string | null
           seed: string
           session_id: string
           temp_band?: number
@@ -5618,14 +5628,19 @@ export type Database = {
           biome_family?: string
           coastal?: boolean
           created_at?: string
+          has_bridge?: boolean
+          has_river?: boolean
           id?: string
+          is_passable?: boolean
           macro_region_id?: string | null
           mean_height?: number
           moisture_band?: number
+          movement_cost?: number
           owner_player?: string | null
           province_id?: string | null
           q?: number
           r?: number
+          river_direction?: string | null
           seed?: string
           session_id?: string
           temp_band?: number
