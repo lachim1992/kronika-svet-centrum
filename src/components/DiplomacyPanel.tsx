@@ -77,7 +77,7 @@ const DiplomacyPanel = ({ sessionId, players, cityStates, currentPlayerName, gam
   // Fetch rooms + AI factions
   useEffect(() => {
     fetchRooms();
-    if (isAIMode) fetchAIFactions();
+    fetchAIFactions();
   }, [sessionId]);
 
   const fetchAIFactions = async () => {
