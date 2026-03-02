@@ -5,7 +5,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Loader2, Map, Wand2, BarChart3, RefreshCw } from "lucide-react";
+import { Loader2, Map, Wand2, BarChart3, RefreshCw, Trash2, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 
 interface Props {
@@ -19,6 +19,7 @@ interface MapStats {
   biome_counts: Record<string, number>;
   blocked_ratio: number;
   coastal_count: number;
+  land_ratio: number;
 }
 
 interface PatchResult {
@@ -42,9 +43,9 @@ const PRESET_REQUESTS = [
   "Přidej horský hřeben oddělující sever a jih mapy",
   "Vytvoř pobřežní pás na západní straně",
   "Přidej velký les do středu mapy",
-  "Přeměň izolované púštní hexy na pláně pro lepší koherenci",
-  "Vytvoř úzký průsmyk (chokepoint) mezi dvěma horskými masivy",
-  "Přidej bažinatou oblast podél řeky ve středu",
+  "Přeměň izolované púštní hexy na pláně",
+  "Vytvoř úzký průsmyk mezi dvěma horskými masivy",
+  "Vybalancuj startovní pozice — každá frakce potřebuje přístup k lesu, pláním a pobřeží",
 ];
 
 const SeedMapManager = ({ sessionId, onRefetch }: Props) => {
@@ -52,6 +53,7 @@ const SeedMapManager = ({ sessionId, onRefetch }: Props) => {
   const [loadingStats, setLoadingStats] = useState(false);
   const [request, setRequest] = useState("");
   const [patching, setPatching] = useState(false);
+  const [regenerating, setRegenerating] = useState(false);
   const [history, setHistory] = useState<{ request: string; result: PatchResult; timestamp: string }[]>([]);
 
   const loadStats = useCallback(async () => {
@@ -73,11 +75,13 @@ const SeedMapManager = ({ sessionId, onRefetch }: Props) => {
       const biomeCounts: Record<string, number> = {};
       let blockedCount = 0;
       let coastalCount = 0;
+      let landCount = 0;
       let minQ = Infinity, maxQ = -Infinity, minR = Infinity, maxR = -Infinity;
 
       for (const h of data) {
         biomeCounts[h.biome_family] = (biomeCounts[h.biome_family] || 0) + 1;
         if (h.biome_family === "sea" || h.biome_family === "mountains") blockedCount++;
+        if (h.biome_family !== "sea") landCount++;
         if (h.coastal) coastalCount++;
         if (h.q < minQ) minQ = h.q;
         if (h.q > maxQ) maxQ = h.q;
@@ -91,12 +95,46 @@ const SeedMapManager = ({ sessionId, onRefetch }: Props) => {
         biome_counts: biomeCounts,
         blocked_ratio: blockedCount / data.length,
         coastal_count: coastalCount,
+        land_ratio: landCount / data.length,
       });
     } catch (e: any) {
       toast.error("Chyba: " + (e.message || "unknown"));
     }
     setLoadingStats(false);
   }, [sessionId]);
+
+  const regenerateMap = useCallback(async () => {
+    setRegenerating(true);
+    try {
+      // Delete existing hexes
+      const { error: delErr } = await supabase
+        .from("province_hexes")
+        .delete()
+        .eq("session_id", sessionId);
+      if (delErr) throw delErr;
+
+      // Reset world_seed to force new generation
+      const { error: seedErr } = await supabase
+        .from("game_sessions")
+        .update({ world_seed: crypto.randomUUID() })
+        .eq("id", sessionId);
+      if (seedErr) throw seedErr;
+
+      // Generate new map
+      const { data, error } = await supabase.functions.invoke("generate-world-map", {
+        body: { session_id: sessionId, width: 31, height: 31 },
+      });
+      if (error) throw error;
+
+      toast.success(`Nová mapa vygenerována: ${data.hexCount} hexů, ${(data.stats?.landRatio * 100 || 0).toFixed(0)}% souše`);
+      setHistory([]);
+      loadStats();
+      onRefetch?.();
+    } catch (e: any) {
+      toast.error("Regenerace selhala: " + (e.message || "unknown"));
+    }
+    setRegenerating(false);
+  }, [sessionId, loadStats, onRefetch]);
 
   const runPatch = useCallback(async (userRequest: string) => {
     if (!userRequest.trim()) return;
@@ -116,7 +154,6 @@ const SeedMapManager = ({ sessionId, onRefetch }: Props) => {
 
       toast.success(`Patch aplikován: ${result.applied_count} změn`);
       setRequest("");
-      // Refresh stats
       loadStats();
       onRefetch?.();
     } catch (e: any) {
@@ -124,6 +161,32 @@ const SeedMapManager = ({ sessionId, onRefetch }: Props) => {
     }
     setPatching(false);
   }, [sessionId, loadStats, onRefetch]);
+
+  const runStrategicPass = useCallback(async () => {
+    const strategicPrompt = `Analyze the map for strategic quality. Fix these issues if present:
+1. Ensure at least 2-3 natural chokepoints (mountain passes, land bridges between seas)
+2. Make biome transitions smooth (no desert next to forest)
+3. Add strategic resources variety near each potential starting position
+4. Ensure at least 30% of land hexes are plains for settlements
+5. Create at least one inland sea or large bay for naval gameplay`;
+    
+    await runPatch(strategicPrompt);
+  }, [runPatch]);
+
+  // Quality indicators
+  const qualityScore = stats ? (() => {
+    const biomeDiv = Object.keys(stats.biome_counts).length;
+    const landOk = stats.land_ratio > 0.35 && stats.land_ratio < 0.75;
+    const coastOk = stats.coastal_count > stats.total_hexes * 0.05;
+    const blockOk = stats.blocked_ratio < 0.5;
+    let score = 0;
+    if (biomeDiv >= 5) score += 25;
+    else if (biomeDiv >= 3) score += 15;
+    if (landOk) score += 25;
+    if (coastOk) score += 25;
+    if (blockOk) score += 25;
+    return score;
+  })() : null;
 
   return (
     <div className="space-y-4">
@@ -133,6 +196,14 @@ const SeedMapManager = ({ sessionId, onRefetch }: Props) => {
           <CardTitle className="text-sm flex items-center gap-2">
             <BarChart3 className="h-4 w-4 text-primary" />
             Stav mapy
+            {qualityScore !== null && (
+              <Badge
+                variant={qualityScore >= 75 ? "default" : qualityScore >= 50 ? "secondary" : "destructive"}
+                className="ml-1 text-[10px]"
+              >
+                Kvalita: {qualityScore}/100
+              </Badge>
+            )}
             <Button size="sm" variant="ghost" onClick={loadStats} disabled={loadingStats} className="ml-auto h-7 gap-1">
               {loadingStats ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
               Načíst
@@ -145,10 +216,7 @@ const SeedMapManager = ({ sessionId, onRefetch }: Props) => {
               <div className="flex gap-2 flex-wrap">
                 <Badge variant="outline" className="text-xs">{stats.total_hexes} hexů</Badge>
                 <Badge variant="outline" className="text-xs">
-                  Q: [{stats.grid_bounds.minQ}, {stats.grid_bounds.maxQ}]
-                </Badge>
-                <Badge variant="outline" className="text-xs">
-                  R: [{stats.grid_bounds.minR}, {stats.grid_bounds.maxR}]
+                  Souš: {(stats.land_ratio * 100).toFixed(0)}%
                 </Badge>
                 <Badge variant="outline" className="text-xs">
                   🌊 Pobřeží: {stats.coastal_count}
@@ -177,6 +245,28 @@ const SeedMapManager = ({ sessionId, onRefetch }: Props) => {
           )}
         </CardContent>
       </Card>
+
+      {/* Regenerate */}
+      <div className="flex gap-2">
+        <Button
+          onClick={regenerateMap}
+          disabled={regenerating}
+          variant="destructive"
+          className="flex-1 gap-2"
+        >
+          {regenerating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+          {regenerating ? "Generuji novou mapu…" : "Regenerovat mapu"}
+        </Button>
+        <Button
+          onClick={runStrategicPass}
+          disabled={patching}
+          variant="secondary"
+          className="flex-1 gap-2"
+        >
+          {patching ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+          AI Strategic Pass
+        </Button>
+      </div>
 
       {/* AI Patch Request */}
       <Card className="border-accent/20">
