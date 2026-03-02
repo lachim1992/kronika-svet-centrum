@@ -234,6 +234,30 @@ Odpověz jako vládce frakce ${aiFaction.faction_name} a vyber diplomatickou akc
         }
       }
 
+      // ── Insert immediate chronicle entry for critical actions ──
+      const criticalActions = ["declare_war", "offer_peace", "accept_peace", "send_ultimatum"];
+      if (criticalActions.includes(action)) {
+        const chronicleTexts: Record<string, string> = {
+          declare_war: `⚔️ ${aiFaction.faction_name} vyhlásil válku hráči ${playerName}! ${responseData.action_detail || ""}`,
+          send_ultimatum: `⚠️ ${aiFaction.faction_name} poslal ultimátum hráči ${playerName}: ${responseData.action_detail || "Splňte naše podmínky."}`,
+          offer_peace: `🕊️ ${aiFaction.faction_name} nabízí mír hráči ${playerName}. ${responseData.action_detail || ""}`,
+          accept_peace: `🕊️ Mír uzavřen mezi ${aiFaction.faction_name} a ${playerName}.`,
+        };
+        try {
+          await supabase.from("chronicle_entries").insert({
+            session_id: sessionId,
+            text: chronicleTexts[action] || `Diplomatická akce: ${action}`,
+            epoch_style: "kroniky",
+            source_type: "chronicle",
+            turn_from: turn,
+            turn_to: turn,
+          });
+          console.log(`[diplomacy-reply] Inserted chronicle entry for ${action}`);
+        } catch (e) {
+          console.error("Chronicle entry insert failed:", e);
+        }
+      }
+
       return jsonResponse({
         replyText: responseData.reply_text || `${aiFaction.faction_name} mlčí...`,
         suggestedActionEvent: action !== "none" ? action : null,

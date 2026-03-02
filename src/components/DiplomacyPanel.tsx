@@ -69,15 +69,17 @@ const DiplomacyPanel = ({ sessionId, players, cityStates, currentPlayerName, gam
   const [createTarget, setCreateTarget] = useState("");
   const [loadingNpc, setLoadingNpc] = useState(false);
   const [aiFactions, setAiFactions] = useState<AIFaction[]>([]);
+  const [activeWars, setActiveWars] = useState<any[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const isAIMode = gameMode === "tb_single_ai";
   const otherPlayers = players.filter(p => p.player_name !== currentPlayerName).map(p => p.player_name);
 
-  // Fetch rooms + AI factions
+  // Fetch rooms + AI factions + active wars
   useEffect(() => {
     fetchRooms();
     fetchAIFactions();
+    fetchActiveWars();
   }, [sessionId]);
 
   const fetchAIFactions = async () => {
@@ -87,6 +89,16 @@ const DiplomacyPanel = ({ sessionId, players, cityStates, currentPlayerName, gam
       .eq("is_active", true);
     if (data) setAiFactions(data);
   };
+
+  const fetchActiveWars = async () => {
+    const { data } = await supabase.from("war_declarations")
+      .select("*")
+      .eq("session_id", sessionId)
+      .in("status", ["active", "peace_offered"]);
+    setActiveWars(data || []);
+  };
+
+
 
   const fetchRooms = async () => {
     const { data } = await supabase
@@ -236,6 +248,11 @@ const DiplomacyPanel = ({ sessionId, players, cityStates, currentPlayerName, gam
         } else {
           toast.success(`${factionName} odpověděl(a)`);
         }
+
+        // Refresh wars if a war-related action happened
+        if (actions.some((a: string) => ["declare_war", "offer_peace", "accept_peace", "reject_peace"].includes(a))) {
+          fetchActiveWars();
+        }
       } else if (isNpcRoom && selectedRoom.npc_city_state_id) {
         const npc = cityStates.find(cs => cs.id === selectedRoom.npc_city_state_id);
         if (!npc) throw new Error("NPC nenalezeno");
@@ -366,6 +383,18 @@ const DiplomacyPanel = ({ sessionId, players, cityStates, currentPlayerName, gam
   const isAiFactionByName = aiFactions.some(f => f.faction_name === otherParticipant);
   const canRequestReply = isNpcRoom || isAiFactionRoom || isAiFactionByName;
 
+  // Check if at war with this participant
+  const isAtWar = activeWars.some((w: any) =>
+    ((w.declaring_player === currentPlayerName && w.target_player === otherParticipant) ||
+     (w.declaring_player === otherParticipant && w.target_player === currentPlayerName)) &&
+    w.status === "active"
+  );
+  const hasPeaceOffer = activeWars.some((w: any) =>
+    ((w.declaring_player === currentPlayerName && w.target_player === otherParticipant) ||
+     (w.declaring_player === otherParticipant && w.target_player === currentPlayerName)) &&
+    w.status === "peace_offered"
+  );
+
   return (
     <div className="flex flex-col h-[calc(100vh-200px)] p-4">
       {/* Header */}
@@ -378,6 +407,16 @@ const DiplomacyPanel = ({ sessionId, players, cityStates, currentPlayerName, gam
             {isAiFactionRoom ? <Bot className="h-5 w-5 text-primary" /> : isNpcRoom ? <Building2 className="h-5 w-5 text-royal-purple" /> : <Users className="h-5 w-5 text-illuminated" />}
             {otherParticipant}
           </h2>
+          {isAtWar && (
+            <Badge variant="destructive" className="text-xs font-display">
+              ⚔️ VÁLKA
+            </Badge>
+          )}
+          {hasPeaceOffer && (
+            <Badge variant="outline" className="text-xs font-display border-accent/50 text-accent">
+              🕊️ Mírová nabídka
+            </Badge>
+          )}
         </div>
         {canRequestReply && loadingNpc && (
           <Badge variant="outline" className="text-xs animate-pulse">
