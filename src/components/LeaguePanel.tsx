@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import sphaeraMatchImg from "@/assets/sphaera-match.png";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
