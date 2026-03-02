@@ -65,9 +65,10 @@ const DEFAULT_SETTINGS: GenSettings = {
 };
 
 const BIOME_COLORS: Record<string, string> = {
-  sea: "#2563eb", plains: "#a3b860", forest: "#2d6a1e", hills: "#8b7355",
-  mountains: "#6b6b6b", desert: "#d4a843", swamp: "#4a6741", tundra: "#b8ccd4",
+  sea: "#1a3a5c", plains: "#a3b860", forest: "#2d6a1e", hills: "#8b7355",
+  mountains: "#4a4a52", desert: "#d4a843", swamp: "#4a6741", tundra: "#b8ccd4",
 };
+const IMPASSABLE_PREVIEW = new Set(["sea", "mountains"]);
 
 const BIOME_EMOJI: Record<string, string> = {
   sea: "🌊", plains: "🌾", forest: "🌲", hills: "⛰",
@@ -134,8 +135,10 @@ const HexPreview = ({ hexes, bounds }: {
               height: cellSize - 1,
               backgroundColor: BIOME_COLORS[hex.biome_family] || "#999",
               borderRadius: 1,
-              opacity: hex.coastal ? 1 : 0.85,
-              border: hex.coastal ? "1px solid rgba(255,255,255,0.4)" : "none",
+              opacity: IMPASSABLE_PREVIEW.has(hex.biome_family) ? 0.6 : (hex.coastal ? 1 : 0.85),
+              border: hex.coastal ? "1px solid rgba(255,255,255,0.4)" 
+                : IMPASSABLE_PREVIEW.has(hex.biome_family) ? "1px solid rgba(0,0,0,0.3)" : "none",
+              boxShadow: hex.biome_family === "mountains" ? "inset 0 0 2px rgba(255,255,255,0.2)" : "none",
             }}
             title={`[${hex.q},${hex.r}] ${hex.biome_family} h:${hex.mean_height}`}
           />
