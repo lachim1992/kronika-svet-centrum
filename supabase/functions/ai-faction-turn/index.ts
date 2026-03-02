@@ -526,7 +526,7 @@ Rozhodni, co frakce udělá v tomto kole. ${milMetrics.warState === "war" ? "JST
                       targetCity: { type: "string", description: "Cílové město (pro stavby, nasazení, útok)" },
                       buildingName: { type: "string", description: "Název budovy ze seznamu dostupných" },
                       armyName: { type: "string", description: "Název nové armády" },
-                      armyPreset: { type: "string", enum: ["patrol", "warband", "legion", "siege_company"], description: "Typ armády" },
+                      armyPreset: { type: "string", enum: ["militia", "cohort", "cavalry_wing", "legion"], description: "Typ armády: militia (200 pěch, levná), cohort (300 pěch + 100 lučíš), cavalry_wing (200 jízdy), legion (600 pěch + 200 lučíš, drahá)" },
                       stackId: { type: "string", description: "ID existujícího stacku (pro deploy/move/attack)" },
                       stackName: { type: "string", description: "Jméno stacku (alternativa k ID)" },
                       targetStackName: { type: "string", description: "Jméno nepřátelského stacku (pro attack_target na stack)" },
@@ -581,6 +581,14 @@ Rozhodni, co frakce udělá v tomto kole. ${milMetrics.warState === "war" ? "JST
 
     // ── Auto-accept incoming pacts from other AI factions ──
     await autoAcceptPendingPacts(supabase, sessionId, factionName, faction, allFactions || [], turn);
+
+    // ── Auto-raise mobilization if at war but too low ──
+    if (milMetrics.warState === "war" && (realmRes?.mobilization_rate || 0.1) < 0.3) {
+      const warMobRate = Math.min(0.55, milMetrics.suggestedMobilizationRate);
+      await supabase.from("realm_resources").update({ mobilization_rate: warMobRate })
+        .eq("session_id", sessionId).eq("player_name", factionName);
+      console.log(`[${factionName}] Auto-raised mobilization to ${warMobRate} due to war state`);
+    }
 
     // ── Execute each action ──
     for (const action of (result.actions || []).slice(0, 8)) {

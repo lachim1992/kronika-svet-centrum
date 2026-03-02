@@ -460,6 +460,11 @@ DŮLEŽITÉ: affected_players/faction MUSÍ používat přesná jména frakcí. 
           disposition: { [playerName]: faction.dispositionToPlayer || 0 },
           goals: faction.goals || [], is_active: true,
         });
+        // Register AI faction as game_player (no user_id)
+        await supabase.from("game_players").insert({
+          session_id: sessionId, player_name: factionPlayerName,
+          player_number: factionIndex + 1,
+        }).catch(() => {}); // Ignore duplicate
       }
 
       for (const rt of ["food", "wood", "stone", "iron", "wealth"]) {
@@ -677,7 +682,7 @@ DŮLEŽITÉ: affected_players/faction MUSÍ používat přesná jména frakcí. 
 
     const POP_RANGES: Record<string, { min: number; max: number }> = {
       Velkoměsto: { min: 1200, max: 1600 }, Město: { min: 800, max: 1200 },
-      Vesnice: { min: 400, max: 700 }, Osada: { min: 300, max: 600 },
+      Vesnice: { min: 300, max: 480 }, Osada: { min: 250, max: 480 },
     };
     const SETTLEMENT_MAP: Record<string, string> = {
       Velkoměsto: "POLIS", Město: "CITY", Vesnice: "TOWNSHIP", Osada: "HAMLET",
