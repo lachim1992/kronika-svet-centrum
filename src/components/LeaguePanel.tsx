@@ -208,24 +208,39 @@ const LeaguePanel = ({ sessionId, currentPlayerName, currentTurn }: Props) => {
     } catch (e: any) { toast.error(e.message); } finally { setPlayingRound(false); }
   };
 
-  const handlePlay10Rounds = async () => {
+  const handlePlay5Rounds = async () => {
     setPlayingBulk(true);
     setBulkResults([]);
     try {
       const allResults: any[] = [];
-      for (let i = 0; i < 10; i++) {
-        const { data, error } = await supabase.functions.invoke("league-play-round", {
-          body: { session_id: sessionId, player_name: currentPlayerName },
-        });
-        if (error) throw error;
-        if (data?.error && !data?.seasonComplete) { toast.error(data.error); break; }
-        allResults.push(data);
-        if (data?.seasonComplete) { toast.info("🏆 Sezóna ukončena!"); break; }
+      for (let i = 0; i < 5; i++) {
+        try {
+          const { data, error } = await supabase.functions.invoke("league-play-round", {
+            body: { session_id: sessionId, player_name: currentPlayerName },
+          });
+          if (error) {
+            console.error(`Kolo ${i + 1} selhalo:`, error);
+            toast.error(`Chyba v kole ${i + 1}: ${error.message || "Neznámá chyba"}`);
+            break;
+          }
+          if (data?.error && !data?.seasonComplete) { toast.error(data.error); break; }
+          allResults.push(data);
+          if (data?.seasonComplete) { toast.info("🏆 Sezóna ukončena!"); break; }
+        } catch (roundErr: any) {
+          console.error(`Kolo ${i + 1} exception:`, roundErr);
+          toast.error(`Kolo ${i + 1} selhalo. Odehráno ${allResults.length} kol.`);
+          break;
+        }
       }
-      setBulkResults(allResults);
-      toast.success(`⚔️ Odehráno ${allResults.length} kol!`);
+      if (allResults.length > 0) {
+        setBulkResults(allResults);
+        toast.success(`⚔️ Odehráno ${allResults.length} kol!`);
+      }
       await fetchData();
-    } catch (e: any) { toast.error(e.message); } finally { setPlayingBulk(false); }
+    } catch (e: any) {
+      console.error("Bulk play error:", e);
+      toast.error(e.message || "Nepodařilo se odehrát kola.");
+    } finally { setPlayingBulk(false); }
   };
 
   const handleGenerateTeams = async () => {
@@ -513,9 +528,9 @@ const LeaguePanel = ({ sessionId, currentPlayerName, currentTurn }: Props) => {
                 {playingRound ? <Loader2 className="h-3 w-3 animate-spin" /> : <Flame className="h-3 w-3" />}
                 Odehrát kolo
               </Button>
-              <Button size="sm" variant="secondary" className="text-xs gap-1" onClick={handlePlay10Rounds} disabled={playingBulk || playingRound}>
+              <Button size="sm" variant="secondary" className="text-xs gap-1" onClick={handlePlay5Rounds} disabled={playingBulk || playingRound}>
                 {playingBulk ? <Loader2 className="h-3 w-3 animate-spin" /> : <Play className="h-3 w-3" />}
-                Odehrát 10 kol
+                Odehrát 5 kol
               </Button>
             </>
           )}
