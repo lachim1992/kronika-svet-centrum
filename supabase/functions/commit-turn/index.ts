@@ -247,6 +247,79 @@ Deno.serve(async (req) => {
     }
 
     // ═══════════════════════════════════════════
+    // 3b. DIPLOMATIC PACTS — expiration, defense pact auto-war, condemnation effects
+    // ═══════════════════════════════════════════
+    try {
+      // Expire pacts that have passed their expires_turn
+      const { data: expiringPacts } = await supabase.from("diplomatic_pacts")
+        .select("id, pact_type, party_a, party_b")
+        .eq("session_id", sessionId).eq("status", "active")
+        .lte("expires_turn", turnNumber)
+        .not("expires_turn", "is", null);
+
+      let pactsExpired = 0;
+      for (const p of (expiringPacts || [])) {
+        await supabase.from("diplomatic_pacts").update({ status: "expired" }).eq("id", p.id);
+        pactsExpired++;
+        // If open_borders expired, log it
+        if (p.pact_type === "open_borders") {
+          await safeInsert(supabase.from("chronicle_entries").insert({
+            session_id: sessionId, turn_from: turnNumber, turn_to: turnNumber,
+            text: `🌍 Dohoda o otevření hranic mezi ${p.party_a} a ${p.party_b} vypršela.`,
+            source_type: "system",
+          }));
+        }
+      }
+
+      // Defense pact auto-war: check new wars this turn, trigger allies
+      const { data: newWars } = await supabase.from("war_declarations")
+        .select("id, declaring_player, target_player")
+        .eq("session_id", sessionId).eq("declared_turn", turnNumber).eq("status", "active");
+
+      const { data: activePacts } = await supabase.from("diplomatic_pacts")
+        .select("id, party_a, party_b, pact_type, effects")
+        .eq("session_id", sessionId).eq("status", "active").eq("pact_type", "defense_pact");
+
+      let autoWarsTriggered = 0;
+      for (const war of (newWars || [])) {
+        // Find defense pacts of the defender
+        const defenderPacts = (activePacts || []).filter((p: any) =>
+          p.party_a === war.target_player || p.party_b === war.target_player
+        );
+        for (const pact of defenderPacts) {
+          const ally = pact.party_a === war.target_player ? pact.party_b : pact.party_a;
+          if (ally === war.declaring_player) continue; // Can't auto-war against yourself
+
+          // Check if ally already at war with attacker
+          const { data: existingWar } = await supabase.from("war_declarations")
+            .select("id").eq("session_id", sessionId)
+            .or(`and(declaring_player.eq.${ally},target_player.eq.${war.declaring_player}),and(declaring_player.eq.${war.declaring_player},target_player.eq.${ally})`)
+            .eq("status", "active").maybeSingle();
+
+          if (!existingWar) {
+            await supabase.from("war_declarations").insert({
+              session_id: sessionId, declaring_player: ally, target_player: war.declaring_player,
+              declared_turn: turnNumber, status: "active",
+              manifest_text: `${ally} vstupuje do války na obranu spojence ${war.target_player} v souladu s obranným paktem.`,
+              stability_penalty_applied: true,
+            });
+            await safeInsert(supabase.from("chronicle_entries").insert({
+              session_id: sessionId, turn_from: turnNumber, turn_to: turnNumber,
+              text: `🛡️ ${ally} vstupuje do války proti ${war.declaring_player} na obranu spojence ${war.target_player} — obranný pakt v platnosti.`,
+              source_type: "system",
+            }));
+            autoWarsTriggered++;
+          }
+        }
+      }
+
+      results.diplomaticPacts = { expired: pactsExpired, autoWarsTriggered };
+    } catch (e) {
+      console.error("Diplomatic pacts processing error:", e);
+      results.diplomaticPacts = { error: (e as Error).message };
+    }
+
+    // ═══════════════════════════════════════════
     // 4. TURN SUMMARY + AUDIT
     // ═══════════════════════════════════════════
     await safeInsert(supabase.from("turn_summaries").insert({
