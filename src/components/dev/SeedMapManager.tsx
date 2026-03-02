@@ -90,14 +90,12 @@ const PRESET_REQUESTS = [
   "Přidej vnitrozemské moře nebo velký záliv",
 ];
 
-// ── Mini Hex Preview Component ──
+// ── Mini Hex Preview Component (axial coordinates) ──
 const HexPreview = ({ hexes, bounds }: {
   hexes: HexPreviewData[];
   bounds: { minQ: number; maxQ: number; minR: number; maxR: number };
 }) => {
   const cellSize = 6;
-  const width = bounds.maxQ - bounds.minQ + 1;
-  const height = bounds.maxR - bounds.minR + 1;
 
   const hexMap = useMemo(() => {
     const m = new window.Map<string, HexPreviewData>();
@@ -105,36 +103,43 @@ const HexPreview = ({ hexes, bounds }: {
     return m;
   }, [hexes]);
 
+  // Compute pixel bounds using axial→pixel: px = q + r*0.5, py = r*0.866
+  const allPixels = hexes.map(h => ({
+    px: (h.q + h.r * 0.5) * cellSize,
+    py: h.r * 0.866 * cellSize,
+  }));
+  const minPx = Math.min(...allPixels.map(p => p.px));
+  const maxPx = Math.max(...allPixels.map(p => p.px));
+  const minPy = Math.min(...allPixels.map(p => p.py));
+  const maxPy = Math.max(...allPixels.map(p => p.py));
+  const canvasW = maxPx - minPx + cellSize + 10;
+  const canvasH = maxPy - minPy + cellSize + 10;
+
   return (
     <div
       className="border rounded bg-background overflow-hidden mx-auto"
-      style={{ width: width * cellSize + 10, height: height * cellSize + 10, position: "relative" }}
+      style={{ width: canvasW, height: canvasH, position: "relative" }}
     >
-      {Array.from({ length: height }, (_, ri) => {
-        const r = bounds.minR + ri;
-        return Array.from({ length: width }, (_, qi) => {
-          const q = bounds.minQ + qi;
-          const hex = hexMap.get(`${q},${r}`);
-          if (!hex) return null;
-          const offsetX = (r & 1) ? cellSize / 2 : 0;
-          return (
-            <div
-              key={`${q},${r}`}
-              className="absolute"
-              style={{
-                left: qi * cellSize + offsetX + 4,
-                top: ri * cellSize + 4,
-                width: cellSize - 1,
-                height: cellSize - 1,
-                backgroundColor: BIOME_COLORS[hex.biome_family] || "#999",
-                borderRadius: 1,
-                opacity: hex.coastal ? 1 : 0.85,
-                border: hex.coastal ? "1px solid rgba(255,255,255,0.4)" : "none",
-              }}
-              title={`[${q},${r}] ${hex.biome_family} h:${hex.mean_height}`}
-            />
-          );
-        });
+      {hexes.map(hex => {
+        const px = (hex.q + hex.r * 0.5) * cellSize - minPx + 4;
+        const py = hex.r * 0.866 * cellSize - minPy + 4;
+        return (
+          <div
+            key={`${hex.q},${hex.r}`}
+            className="absolute"
+            style={{
+              left: px,
+              top: py,
+              width: cellSize - 1,
+              height: cellSize - 1,
+              backgroundColor: BIOME_COLORS[hex.biome_family] || "#999",
+              borderRadius: 1,
+              opacity: hex.coastal ? 1 : 0.85,
+              border: hex.coastal ? "1px solid rgba(255,255,255,0.4)" : "none",
+            }}
+            title={`[${hex.q},${hex.r}] ${hex.biome_family} h:${hex.mean_height}`}
+          />
+        );
       })}
     </div>
   );
