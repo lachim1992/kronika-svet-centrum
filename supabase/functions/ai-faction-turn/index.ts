@@ -595,7 +595,7 @@ Rozhodni, co frakce udělá v tomto kole. ${milMetrics.warState === "war" ? "JST
       try {
         const executed = await executeAction(
           supabase, supabaseUrl, supabaseKey, sessionId, turn, factionName, action, faction,
-          sentUltimatums.length > 0, stacks || [], cities || [], allCities || [], enemyStacks || [],
+          sentUltimatums.length > 0, stacks || [], cities || [], allCities || [], enemyStacks || [], realmRes,
         );
         executedActions.push({ ...action, executed: true, result: executed });
       } catch (err) {
@@ -657,6 +657,7 @@ async function executeAction(
   myCities: any[],
   allCities: any[],
   enemyStacks: any[],
+  realmRes: any,
 ): Promise<string> {
   const commandId = crypto.randomUUID();
 
@@ -689,8 +690,35 @@ async function executeAction(
 
     // ─── RECRUIT ARMY ───
     case "recruit_army": {
-      const preset = action.armyPreset || "warband";
+      let preset = action.armyPreset || "militia";
       const name = action.armyName || `${factionName} ${preset} ${turn}`;
+
+      // Auto-downgrade preset if manpower is insufficient
+      const presetManpower: Record<string, number> = {
+        legion: 800, cavalry_wing: 200, cohort: 400, militia: 200,
+      };
+      const availableManpower = realmRes?.manpower_pool || 0;
+      const mobRate = realmRes?.mobilization_rate || 0.1;
+      const mobilizedCap = Math.floor(availableManpower * mobRate);
+
+      if (mobilizedCap < (presetManpower[preset] || 200)) {
+        // Try to downgrade
+        const fallbackOrder = ["militia", "cohort", "cavalry_wing", "legion"];
+        let found = false;
+        for (const fb of fallbackOrder) {
+          if (mobilizedCap >= (presetManpower[fb] || 200)) {
+            console.log(`[${factionName}] Downgraded ${preset} → ${fb} (manpower ${mobilizedCap})`);
+            preset = fb;
+            found = true;
+            break;
+          }
+        }
+        if (!found) {
+          console.log(`[${factionName}] Cannot recruit — manpower ${mobilizedCap} too low for any preset`);
+          return "insufficient_manpower";
+        }
+      }
+
       await invokeFunction(supabaseUrl, supabaseKey, "command-dispatch", {
         sessionId, turnNumber: turn,
         actor: { name: factionName, type: "ai_faction" },
