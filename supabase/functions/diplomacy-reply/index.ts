@@ -234,15 +234,20 @@ Odpověz jako vládce frakce ${aiFaction.faction_name} a vyber diplomatickou akc
         }
       }
 
-      // ── Insert immediate chronicle entry for critical actions ──
+      // ── Insert chronicle, city_rumors, world_events for critical actions ──
       const criticalActions = ["declare_war", "offer_peace", "accept_peace", "send_ultimatum"];
       if (criticalActions.includes(action)) {
+        const quote = responseData.reply_text ? `„${responseData.reply_text}"` : "";
+        const detail = responseData.action_detail || "";
+
         const chronicleTexts: Record<string, string> = {
-          declare_war: `⚔️ ${aiFaction.faction_name} vyhlásil válku hráči ${playerName}! ${responseData.action_detail || ""}`,
-          send_ultimatum: `⚠️ ${aiFaction.faction_name} poslal ultimátum hráči ${playerName}: ${responseData.action_detail || "Splňte naše podmínky."}`,
-          offer_peace: `🕊️ ${aiFaction.faction_name} nabízí mír hráči ${playerName}. ${responseData.action_detail || ""}`,
-          accept_peace: `🕊️ Mír uzavřen mezi ${aiFaction.faction_name} a ${playerName}.`,
+          declare_war: `⚔️ Vládce ${aiFaction.faction_name} vyhlásil válku říši ${playerName}. ${detail ? `Ve svém manifestu prohlásil: ${detail}` : ""} ${quote ? `\n\nSlovy diplomata: ${quote}` : ""}`,
+          send_ultimatum: `⚠️ Z paláce ${aiFaction.faction_name} dorazil posel s ultimátem adresovaným ${playerName}: ${detail || "Splňte naše podmínky, či čelte následkům."} ${quote ? `\n\nDoslovná citace: ${quote}` : ""}`,
+          offer_peace: `🕊️ ${aiFaction.faction_name} vyslal mírové poselstvo k ${playerName}. ${detail} ${quote ? `\n\nSlova vyslance: ${quote}` : ""}`,
+          accept_peace: `🕊️ Mír byl uzavřen mezi ${aiFaction.faction_name} a ${playerName}. Válečné útrapy jsou u konce. ${quote ? `\n\nPři podpisu smlouvy ${aiFaction.faction_name} pronesl: ${quote}` : ""}`,
         };
+
+        // Chronicle entry with quote + narrative
         try {
           await supabase.from("chronicle_entries").insert({
             session_id: sessionId,
@@ -255,6 +260,69 @@ Odpověz jako vládce frakce ${aiFaction.faction_name} a vyber diplomatickou akc
           console.log(`[diplomacy-reply] Inserted chronicle entry for ${action}`);
         } catch (e) {
           console.error("Chronicle entry insert failed:", e);
+        }
+
+        // World event — visible in encyclopedia
+        const worldEventTitles: Record<string, string> = {
+          declare_war: `Vyhlášení války: ${aiFaction.faction_name} vs. ${playerName}`,
+          send_ultimatum: `Ultimátum od ${aiFaction.faction_name}`,
+          offer_peace: `Mírová nabídka: ${aiFaction.faction_name} → ${playerName}`,
+          accept_peace: `Mírová smlouva: ${aiFaction.faction_name} & ${playerName}`,
+        };
+        try {
+          await supabase.from("world_events").insert({
+            session_id: sessionId,
+            title: worldEventTitles[action] || action,
+            date: `Rok ${turn}`,
+            summary: (chronicleTexts[action] || "").substring(0, 500),
+            tags: [action === "declare_war" ? "war" : "diplomacy"],
+            event_type: action === "declare_war" ? "war" : "treaty",
+            participants: [aiFaction.faction_name, playerName],
+          });
+        } catch (e) {
+          console.error("World event insert failed:", e);
+        }
+
+        // City rumors — in cities of both sides
+        const rumorTexts: Record<string, string[]> = {
+          declare_war: [
+            `Na tržišti se šeptá, že ${aiFaction.faction_name} vyhlásil válku! Lidé se obávají budoucnosti.`,
+            `Zvěsti kolují o blížícím se konfliktu s ${aiFaction.faction_name}. Muži ostří zbraně.`,
+          ],
+          send_ultimatum: [
+            `Posel z ${aiFaction.faction_name} prý přinesl hrozivé ultimátum. Co bude dál?`,
+          ],
+          offer_peace: [
+            `Proslýchá se, že ${aiFaction.faction_name} nabízí mír. Snad skončí krveprolití.`,
+          ],
+          accept_peace: [
+            `Radostná zvěst! Válka s ${aiFaction.faction_name} skončila mírem. Lidé slaví v ulicích.`,
+          ],
+        };
+        const rumorList = rumorTexts[action] || [];
+        try {
+          // Get cities of both factions
+          const { data: affectedCities } = await supabase.from("cities")
+            .select("id, name, owner_player")
+            .eq("session_id", sessionId)
+            .in("owner_player", [aiFaction.faction_name, playerName])
+            .limit(10);
+
+          for (const city of (affectedCities || []).slice(0, 6)) {
+            const rumorText = rumorList[Math.floor(Math.random() * rumorList.length)] || `Diplomatické napětí mezi ${aiFaction.faction_name} a ${playerName} se projevuje i zde.`;
+            await supabase.from("city_rumors").insert({
+              session_id: sessionId,
+              city_id: city.id,
+              city_name: city.name,
+              text: rumorText,
+              tone_tag: action === "declare_war" ? "alarming" : action.includes("peace") ? "hopeful" : "ominous",
+              turn_number: turn,
+              created_by: "system",
+              is_draft: false,
+            });
+          }
+        } catch (e) {
+          console.error("City rumors insert failed:", e);
         }
       }
 
