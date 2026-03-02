@@ -111,17 +111,21 @@ function generateBlobs(
   worldSeed: string,
   halfW: number,
   halfH: number,
+  numContinentsOverride?: number,
+  landRatioTarget?: number,
 ): Array<{ cx: number; cy: number; rx: number; ry: number; strength: number }> {
-  const numContinents = 2 + Math.floor(hashSeed(worldSeed + ":numCont") * 3); // 2-4
+  const numContinents = numContinentsOverride ?? (2 + Math.floor(hashSeed(worldSeed + ":numCont") * 3));
+  // Scale blob size based on land ratio target (higher = bigger blobs)
+  const sizeScale = landRatioTarget ? 0.6 + landRatioTarget * 0.8 : 1.0;
   const blobs: Array<{ cx: number; cy: number; rx: number; ry: number; strength: number }> = [];
 
   for (let i = 0; i < numContinents; i++) {
     const cx = (hashSeed(worldSeed + `:cont${i}:cx`) - 0.5) * halfW * 1.4;
     const cy = (hashSeed(worldSeed + `:cont${i}:cy`) - 0.5) * halfH * 1.4;
-    const baseR = halfW * (0.3 + hashSeed(worldSeed + `:cont${i}:r`) * 0.4);
+    const baseR = halfW * (0.3 + hashSeed(worldSeed + `:cont${i}:r`) * 0.4) * sizeScale;
     const rx = baseR * (0.7 + hashSeed(worldSeed + `:cont${i}:rx`) * 0.6);
     const ry = baseR * (0.7 + hashSeed(worldSeed + `:cont${i}:ry`) * 0.6);
-    blobs.push({ cx, cy, rx, ry, strength: 0.8 + hashSeed(worldSeed + `:cont${i}:s`) * 0.4 });
+    blobs.push({ cx, cy, rx, ry, strength: (0.8 + hashSeed(worldSeed + `:cont${i}:s`) * 0.4) * sizeScale });
 
     // Sub-blobs for peninsulas / irregular coastlines
     const numSub = 1 + Math.floor(hashSeed(worldSeed + `:cont${i}:nsub`) * 3);
@@ -167,8 +171,10 @@ function generateRidges(
   worldSeed: string,
   halfW: number,
   halfH: number,
+  mountainDensity = 0.5,
 ): Array<{ x1: number; y1: number; x2: number; y2: number; width: number; strength: number }> {
-  const numRidges = 2 + Math.floor(hashSeed(worldSeed + ":numRidges") * 3);
+  const baseRidges = 2 + Math.floor(hashSeed(worldSeed + ":numRidges") * 3);
+  const numRidges = Math.max(1, Math.round(baseRidges * (0.5 + mountainDensity)));
   const ridges: Array<{ x1: number; y1: number; x2: number; y2: number; width: number; strength: number }> = [];
   for (let i = 0; i < numRidges; i++) {
     const x1 = (hashSeed(worldSeed + `:ridge${i}:x1`) - 0.5) * halfW * 1.6;
@@ -180,8 +186,8 @@ function generateRidges(
       y1,
       x2: x1 + Math.cos(angle) * length,
       y2: y1 + Math.sin(angle) * length,
-      width: 2 + hashSeed(worldSeed + `:ridge${i}:w`) * 4,
-      strength: 0.4 + hashSeed(worldSeed + `:ridge${i}:s`) * 0.4,
+      width: (2 + hashSeed(worldSeed + `:ridge${i}:w`) * 4) * (0.6 + mountainDensity * 0.8),
+      strength: (0.4 + hashSeed(worldSeed + `:ridge${i}:s`) * 0.4) * (0.6 + mountainDensity * 0.8),
     });
   }
   return ridges;
@@ -375,13 +381,30 @@ export interface GeneratedMap {
   };
 }
 
+export interface TerrainParams {
+  targetLandRatio?: number;      // 0-1, default ~0.55
+  continentCount?: number;       // 1-6, default 2-4 random
+  mountainDensity?: number;      // 0-1, default 0.5
+  coastalRichness?: number;      // 0-1, default 0.5
+  biomeWeights?: Record<string, number>; // multipliers per biome
+}
+
 export function generateWorldTerrain(
   worldSeed: string,
   mapW: number,
   mapH: number,
+  params: TerrainParams = {},
 ): GeneratedMap {
   const halfW = Math.floor(mapW / 2);
   const halfH = Math.floor(mapH / 2);
+
+  const {
+    targetLandRatio = 0.55,
+    continentCount,
+    mountainDensity = 0.5,
+    coastalRichness = 0.5,
+    biomeWeights = {},
+  } = params;
 
   // Build noise permutation tables
   const permHeight = buildPerm(worldSeed + ":height");
@@ -389,9 +412,9 @@ export function generateWorldTerrain(
   const permTemp = buildPerm(worldSeed + ":temp");
   const permDetail = buildPerm(worldSeed + ":detail");
 
-  // Generate continent blobs and mountain ridges
-  const blobs = generateBlobs(worldSeed, halfW, halfH);
-  const ridges = generateRidges(worldSeed, halfW, halfH);
+  // Generate continent blobs and mountain ridges (now parameterized)
+  const blobs = generateBlobs(worldSeed, halfW, halfH, continentCount, targetLandRatio);
+  const ridges = generateRidges(worldSeed, halfW, halfH, mountainDensity);
 
   const NEIGHBORS_HEX = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, -1], [-1, 1]];
 
@@ -443,9 +466,10 @@ export function generateWorldTerrain(
       const raw = rawGrid.get(key)!;
       const od = oceanDist.get(key) ?? 0;
 
-      // Moisture: combine noise with coastal influence
-      const coastalMoist = Math.max(0, 1 - od / (maxDist * 0.6));
-      let moisture = raw.rawMoist * 0.5 + coastalMoist * 0.5;
+      // Moisture: combine noise with coastal influence (scaled by coastalRichness)
+      const coastalScale = 0.3 + coastalRichness * 0.7; // 0.3-1.0
+      const coastalMoist = Math.max(0, 1 - od / (maxDist * (0.3 + (1 - coastalRichness) * 0.5)));
+      let moisture = raw.rawMoist * (1 - coastalScale * 0.5) + coastalMoist * coastalScale * 0.5;
 
       // Altitude reduces temperature
       let temp = raw.rawTemp;
@@ -455,7 +479,22 @@ export function generateWorldTerrain(
       temp = Math.max(0, Math.min(1, temp));
       moisture = Math.max(0, Math.min(1, moisture));
 
-      const biome = determineBiome(raw.height, moisture, temp);
+      let biome = determineBiome(raw.height, moisture, temp);
+
+      // Apply biome weights: if weight < 0.5, try to convert to neighbor-compatible biome
+      if (biome !== "sea" && biome !== "mountains") {
+        const w = biomeWeights[biome] ?? 1;
+        if (w < 0.3) {
+          // Very low weight — force re-roll to an alternative
+          const alts: BiomeFamily[] = ["plains", "forest", "hills", "desert", "swamp", "tundra"];
+          const candidates = alts.filter(b => b !== biome && (biomeWeights[b] ?? 1) > 0.3);
+          if (candidates.length > 0) {
+            const pick = candidates[Math.floor(hashSeed(`${worldSeed}:bw:${q}:${r}`) * candidates.length)];
+            biome = pick;
+          }
+        }
+      }
+
       hexGrid.set(key, { height: raw.height, moisture, temp, biome });
     }
   }

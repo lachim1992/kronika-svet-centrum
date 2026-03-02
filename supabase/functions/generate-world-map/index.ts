@@ -1,5 +1,5 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
-import { generateWorldTerrain, hashSeed } from "../_shared/terrain.ts";
+import { generateWorldTerrain, hashSeed, type TerrainParams } from "../_shared/terrain.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -27,7 +27,7 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { session_id, width, height } = await req.json();
+    const { session_id, width, height, terrain_params } = await req.json();
 
     if (!session_id || !width || !height) {
       return new Response(
@@ -78,8 +78,9 @@ Deno.serve(async (req) => {
     }
 
     // ── Generate terrain using shared module ──
-    console.log(`Generating ${mapW}x${mapH} map with seed: ${worldSeed}`);
-    const map = generateWorldTerrain(worldSeed, mapW, mapH);
+    const tParams: TerrainParams = terrain_params || {};
+    console.log(`Generating ${mapW}x${mapH} map with seed: ${worldSeed}, params:`, JSON.stringify(tParams));
+    const map = generateWorldTerrain(worldSeed, mapW, mapH, tParams);
     console.log(`Generated ${map.hexes.length} hexes, land ratio: ${(map.stats.landRatio * 100).toFixed(1)}%`);
 
     // ── Create macro regions ──
