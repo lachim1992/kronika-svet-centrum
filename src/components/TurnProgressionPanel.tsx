@@ -6,11 +6,10 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
-  Lock, CheckCircle2, Clock, Play, Loader2, Send, MessageSquare,
+  Lock, CheckCircle2, Clock, Loader2, Send, MessageSquare,
   Users, Scroll, Swords, Megaphone, Globe2, MessageCircle
 } from "lucide-react";
 import { toast } from "sonner";
-import { useNextTurn } from "@/hooks/useNextTurn";
 import FeedComments from "@/components/feed/FeedComments";
 
 interface Props {
@@ -57,10 +56,6 @@ const TurnProgressionPanel = ({
   const allClosed = players.length > 0 && players.every(p => p.turn_closed);
   const isAIMode = gameMode === "tb_single_ai";
   const isMultiplayer = gameMode === "tb_multi";
-
-  const { processing, processNextTurn } = useNextTurn({
-    sessionId, currentTurn, playerName: currentPlayerName, gameMode, onComplete: onRefetch,
-  });
 
   const [turnSummaries, setTurnSummaries] = useState<any[]>([]);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
@@ -196,10 +191,7 @@ const TurnProgressionPanel = ({
     onRefetch();
   };
 
-  const handleAIModeTurn = async () => {
-    await handleCloseTurn();
-    processNextTurn();
-  };
+  // AI mode turn handled by AppHeader's unified button
 
   const typeIcon = (type: string) => {
     switch (type) {
@@ -256,36 +248,10 @@ const TurnProgressionPanel = ({
         ))}
       </div>
 
-      {/* Actions */}
-      {isAIMode && !myTurnClosed && (
-        <Button onClick={handleAIModeTurn} disabled={processing} className="w-full font-display">
-          {processing ? (
-            <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Zpracovávám tah...</>
-          ) : (
-            <><Play className="mr-2 h-4 w-4" />Ukončit kolo</>
-          )}
-        </Button>
-      )}
+      {/* Turn actions removed — unified in AppHeader */}
 
-      {!isAIMode && !myTurnClosed && (
-        <Button onClick={handleCloseTurn} variant="outline" className="w-full font-display">
-          <Lock className="mr-2 h-4 w-4" />
-          Uzavřít mé kolo
-        </Button>
-      )}
+      {/* Close turn + status indicators removed — unified in AppHeader */}
 
-      {!isAIMode && myTurnClosed && !allClosed && (
-        <p className="text-xs text-muted-foreground italic text-center">
-          Čekáme na ostatní hráče...
-        </p>
-      )}
-
-      {!isAIMode && allClosed && (
-        <p className="text-xs text-primary italic text-center flex items-center justify-center gap-1.5">
-          <Loader2 className="h-3.5 w-3.5 animate-spin" />
-          Všichni uzavřeli — zpracovávám další kolo…
-        </p>
-      )}
 
       {/* Sub-tabs: Chat + Events + History */}
       <Tabs defaultValue="events" className="w-full mt-2">

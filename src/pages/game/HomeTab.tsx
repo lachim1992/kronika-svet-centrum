@@ -11,13 +11,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import {
   Crown, Castle, Swords, Users, Wheat, Flame,
   MapPin, Eye, ArrowUpDown, Skull, BarChart3,
-  Trees, Mountain, Anvil, Plus, Loader2, Play
+  Trees, Mountain, Anvil, Plus
 } from "lucide-react";
 import type { EntityIndex } from "@/hooks/useEntityIndex";
 import ProvinceOnboardingWizard from "@/components/ProvinceOnboardingWizard";
 import { toast } from "sonner";
-import { closeTurnForPlayer, advanceTurn } from "@/hooks/useGameSession";
-import { runWorldTick } from "@/lib/ai";
 
 const SETTLEMENT_LABELS: Record<string, string> = {
   HAMLET: "Osada", TOWNSHIP: "Městečko", CITY: "Město", POLIS: "Polis",
@@ -62,11 +60,7 @@ const HomeTab = ({
   const [managingCityId, setManagingCityId] = useState<string | null>(null);
   const [hasProvince, setHasProvince] = useState<boolean | null>(null);
   const [showOnboarding, setShowOnboarding] = useState(false);
-  const [processingTurn, setProcessingTurn] = useState(false);
   const [activeWars, setActiveWars] = useState<any[]>([]);
-
-  const isAIMode = session?.game_mode === "tb_single_ai";
-  const currentPlayer = players?.find((p: any) => p.player_name === currentPlayerName);
 
   const myCities = cities.filter(c => c.owner_player === currentPlayerName);
 
@@ -90,98 +84,7 @@ const HomeTab = ({
     }
   }, [sessionId, currentPlayerName, myRole, myCities.length]);
 
-  const handleNextTurn = useCallback(async () => {
-    if (!currentPlayer || processingTurn) return;
-    setProcessingTurn(true);
-    try {
-      // 1. Close player's turn
-      await closeTurnForPlayer(sessionId, currentPlayer.player_number);
-
-      // 2. Run world tick (physics for current turn)
-      try {
-        const tickResult = await runWorldTick(sessionId, currentTurn);
-        if (tickResult.ok) {
-          const r = tickResult.results || {};
-          const growthCount = r.settlement_growth?.length || 0;
-          const tensionCrises = (r.tensions || []).filter((t: any) => t.crisis_triggered).length;
-          toast.info(`⚙️ World Tick: ${growthCount} měst rostlo, ${tensionCrises} krizí.`);
-        } else if (tickResult.alreadyProcessed) {
-          toast.info("⚙️ World Tick pro toto kolo již proběhl.");
-        }
-      } catch (e) {
-        console.error("World tick error:", e);
-      }
-
-      // 3. Turn summary
-      await supabase.from("turn_summaries").insert({
-        session_id: sessionId,
-        turn_number: currentTurn,
-        status: "closed",
-        closed_at: new Date().toISOString(),
-        closed_by: currentPlayerName,
-      });
-
-      // 5. Advance turn FIRST (so process-turn sees the new turn number)
-      await advanceTurn(sessionId, currentTurn);
-
-      // 5. Process AI factions AFTER advance (same turn number as human)
-      {
-        try {
-          const { data: aiFactions } = await supabase.from("ai_factions")
-            .select("faction_name")
-            .eq("session_id", sessionId)
-            .eq("is_active", true);
-          if (aiFactions && aiFactions.length > 0) {
-            let aiCount = 0;
-            for (const faction of aiFactions) {
-              try {
-                await supabase.functions.invoke("ai-faction-turn", {
-                  body: { sessionId, factionName: faction.faction_name },
-                });
-                aiCount++;
-              } catch (e) { console.error(`AI faction ${faction.faction_name} error:`, e); }
-            }
-            if (aiCount > 0) toast.info(`${aiCount} AI frakcí provedlo svůj tah.`);
-          }
-        } catch (e) { console.error("AI faction error:", e); }
-      }
-
-      // 6. Process turn for ALL players AFTER advance (resource production, stockpiles, population)
-      try {
-        const { data: allPlayers } = await supabase.from("game_players")
-          .select("player_name").eq("session_id", sessionId);
-        for (const p of (allPlayers || [])) {
-          const { error: ptErr } = await supabase.functions.invoke("process-turn", {
-            body: { sessionId, playerName: p.player_name },
-          });
-          if (ptErr) console.warn(`process-turn for ${p.player_name}:`, ptErr.message);
-        }
-        toast.info("📦 Ekonomika všech hráčů zpracována.");
-      } catch (e) {
-        console.error("Process turn error:", e);
-      }
-
-      // 7. Compress history (AI mode, background)
-      if (isAIMode) {
-        try {
-          const { data: sess } = await supabase.from("game_sessions")
-            .select("tier").eq("id", sessionId).single();
-          await supabase.functions.invoke("ai-compress-history", {
-            body: { sessionId, currentTurn: currentTurn + 1, tier: sess?.tier || "free" },
-          });
-        } catch (e) { console.error("History compression error:", e); }
-      }
-
-      toast.success(`Kolo ${currentTurn} uzavřeno. Pokračujeme rokem ${currentTurn + 1}.`);
-      onRefetch?.();
-      fetchRealm();
-    } catch (e) {
-      console.error("Next turn error:", e);
-      toast.error("Chyba při zpracování kola.");
-    } finally {
-      setProcessingTurn(false);
-    }
-  }, [sessionId, currentTurn, currentPlayer, currentPlayerName, isAIMode, processingTurn, fetchRealm, onRefetch]);
+  // Turn button removed — unified in AppHeader via commit-turn
 
   useEffect(() => { fetchRealm(); }, [fetchRealm]);
 
@@ -259,22 +162,6 @@ const HomeTab = ({
         <Crown className="h-6 w-6 text-primary" />
         <h2 className="text-xl font-display font-bold">Moje říše</h2>
         <span className="text-sm text-muted-foreground font-display">Rok {currentTurn}</span>
-        {!isMultiplayer && (
-          <div className="ml-auto">
-            <Button
-              size="sm"
-              onClick={handleNextTurn}
-              disabled={processingTurn}
-              className="font-display"
-            >
-              {processingTurn ? (
-                <><Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />Zpracovávám…</>
-              ) : (
-                <><Play className="mr-1.5 h-3.5 w-3.5" />Další kolo</>
-              )}
-            </Button>
-          </div>
-        )}
       </div>
 
       {/* Active Wars Banner */}
