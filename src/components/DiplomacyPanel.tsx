@@ -173,11 +173,7 @@ const DiplomacyPanel = ({ sessionId, players, cityStates, currentPlayerName, gam
     setNewMessage("");
     setMessageTag("__none__");
 
-    // Auto-trigger AI reply for AI faction and NPC rooms
-    if (selectedRoom.room_type === "player_ai_faction" || selectedRoom.room_type === "player_npc") {
-      // Small delay to let the message propagate, then trigger AI reply
-      setTimeout(() => handleNpcReply(), 500);
-    }
+    // AI reply is now triggered manually via the prominent button below chat
   };
 
   const handleNpcReply = async () => {
@@ -380,17 +376,10 @@ const DiplomacyPanel = ({ sessionId, players, cityStates, currentPlayerName, gam
             {otherParticipant}
           </h2>
         </div>
-        {canRequestReply && (
-          <Button
-            onClick={handleNpcReply}
-            disabled={loadingNpc}
-            size="sm"
-            variant="outline"
-            className="font-display"
-          >
-            <Sparkles className="h-3 w-3 mr-1" />
-            {loadingNpc ? "Diplomat přemýšlí..." : "Odpověď diplomata"}
-          </Button>
+        {canRequestReply && loadingNpc && (
+          <Badge variant="outline" className="text-xs animate-pulse">
+            <Sparkles className="h-3 w-3 mr-1" />Diplomat přemýšlí…
+          </Badge>
         )}
       </div>
 
@@ -439,6 +428,17 @@ const DiplomacyPanel = ({ sessionId, players, cityStates, currentPlayerName, gam
 
       {/* Input */}
       <div className="border-t border-border pt-3 space-y-2">
+        {canRequestReply && (
+          <Button
+            onClick={handleNpcReply}
+            disabled={loadingNpc || messages.length === 0}
+            className="w-full font-display bg-primary/20 hover:bg-primary/30 border border-primary/40 text-primary"
+            variant="outline"
+          >
+            <Sparkles className="h-4 w-4 mr-2" />
+            {loadingNpc ? "Diplomat přemýšlí… (s důsledky)" : "⚡ Generovat odpověď diplomata (s důsledky)"}
+          </Button>
+        )}
         <div className="flex gap-2">
           <Select value={secrecy} onValueChange={setSecrecy}>
             <SelectTrigger className="w-32 h-9 text-xs"><SelectValue /></SelectTrigger>
