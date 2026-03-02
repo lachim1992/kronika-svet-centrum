@@ -62,6 +62,7 @@ const HomeTab = ({
   const [hasProvince, setHasProvince] = useState<boolean | null>(null);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [processingTurn, setProcessingTurn] = useState(false);
+  const [activeWars, setActiveWars] = useState<any[]>([]);
 
   const isAIMode = session?.game_mode === "tb_single_ai";
   const currentPlayer = players?.find((p: any) => p.player_name === currentPlayerName);
@@ -183,6 +184,19 @@ const HomeTab = ({
 
   useEffect(() => { fetchRealm(); }, [fetchRealm]);
 
+  useEffect(() => {
+    const fetchWars = async () => {
+      const { data } = await supabase.from("war_declarations")
+        .select("*")
+        .eq("session_id", sessionId)
+        .in("status", ["active", "peace_offered"]);
+      setActiveWars((data || []).filter((w: any) =>
+        w.declaring_player === currentPlayerName || w.target_player === currentPlayerName
+      ));
+    };
+    fetchWars();
+  }, [sessionId, currentPlayerName, currentTurn]);
+
   // No more foundCityTrigger — founding is handled by the unified dialog in Dashboard
 
   const totalPop = myCities.reduce((s, c) => s + (c.population_total || 0), 0);
@@ -235,6 +249,8 @@ const HomeTab = ({
     );
   }
 
+
+
   return (
     <div className="space-y-6 pb-24 px-1">
       {/* Header */}
@@ -257,6 +273,34 @@ const HomeTab = ({
           </Button>
         </div>
       </div>
+
+      {/* Active Wars Banner */}
+      {activeWars.length > 0 && (
+        <div className="game-card border-destructive/50 bg-destructive/10 p-4">
+          <div className="flex items-center gap-2 mb-2">
+            <Swords className="h-5 w-5 text-destructive" />
+            <span className="font-display font-bold text-destructive">Aktivní konflikty!</span>
+          </div>
+          <div className="space-y-1">
+            {activeWars.map((w: any) => {
+              const opponent = w.declaring_player === currentPlayerName ? w.target_player : w.declaring_player;
+              const turns = currentTurn - (w.declared_turn || 0);
+              return (
+                <div key={w.id} className="flex items-center justify-between text-sm">
+                  <span className="flex items-center gap-1.5">
+                    <Swords className="h-3.5 w-3.5 text-destructive" />
+                    <span className="font-semibold">{opponent}</span>
+                    {w.status === "peace_offered" && (
+                      <Badge variant="outline" className="text-[10px] ml-1">🕊️ Mírová nabídka</Badge>
+                    )}
+                  </span>
+                  <span className="text-xs text-muted-foreground">{turns} kol</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Victory Progress */}
       <VictoryProgressPanel
