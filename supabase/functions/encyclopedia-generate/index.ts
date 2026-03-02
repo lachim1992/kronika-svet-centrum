@@ -31,9 +31,10 @@ serve(async (req) => {
     }
 
     const typeInstructions: Record<string, string> = {
-      city: `Piš encyklopedický článek o městě "${entityName}". Zahrň jeho historii, architekturu, kulturu a význam.`,
-      province: `Piš encyklopedický článek o provincii "${entityName}". Popiš její geografii, města, tradice a historii.`,
-      region: `Piš encyklopedický článek o regionu "${entityName}". Popiš krajinu, klima, národy a historické události.`,
+      city: `Piš encyklopedický článek o městě "${entityName}". Zahrň architekturu, kulturu, ekonomiku, populaci a strategický význam. Piš konkrétně o TOMTO městě.`,
+      province: `Piš encyklopedický článek o provincii "${entityName}". Popiš konkrétní správní celek: města v něm, krajinu, produkci, demografii a kulturu.`,
+      region: `Piš encyklopedický článek o regionu "${entityName}". Popiš krajinu, klima, provincie v regionu, politický charakter a ekonomiku.`,
+      country: `Piš encyklopedický článek o zemi/státu "${entityName}". Popiš jako NEJVĚTŠÍ celek: regiony, krajinu, politiku, ekonomiku, kulturu a tradice.`,
       event: `Piš historický záznam o události "${entityName}". Popiš příčiny, průběh, důsledky a účastníky.`,
       character: `Piš biografii osobnosti "${entityName}". Zahrň původ, činy, odkaz a vztahy.`,
       faction: `Piš článek o frakci/organizaci "${entityName}". Popiš její vznik, cíle, členy a vliv.`,
