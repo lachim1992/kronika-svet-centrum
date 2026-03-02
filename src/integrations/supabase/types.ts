@@ -5042,6 +5042,101 @@ export type Database = {
           },
         ]
       }
+      map_gen_feedback: {
+        Row: {
+          created_at: string
+          disliked_aspects: string[] | null
+          feedback_type: string
+          id: string
+          liked_aspects: string[] | null
+          map_snapshot: Json | null
+          notes: string | null
+          patch_request: string | null
+          patch_result: Json | null
+          rating: number | null
+          session_id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          disliked_aspects?: string[] | null
+          feedback_type?: string
+          id?: string
+          liked_aspects?: string[] | null
+          map_snapshot?: Json | null
+          notes?: string | null
+          patch_request?: string | null
+          patch_result?: Json | null
+          rating?: number | null
+          session_id: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          disliked_aspects?: string[] | null
+          feedback_type?: string
+          id?: string
+          liked_aspects?: string[] | null
+          map_snapshot?: Json | null
+          notes?: string | null
+          patch_request?: string | null
+          patch_result?: Json | null
+          rating?: number | null
+          session_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "map_gen_feedback_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      map_gen_preferences: {
+        Row: {
+          avg_rating: number | null
+          id: string
+          preferred_biome_weights: Json | null
+          preferred_coastal_richness: number | null
+          preferred_continent_count: number | null
+          preferred_land_ratio: number | null
+          preferred_mountain_density: number | null
+          style_notes: string[] | null
+          total_ratings: number | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          avg_rating?: number | null
+          id?: string
+          preferred_biome_weights?: Json | null
+          preferred_coastal_richness?: number | null
+          preferred_continent_count?: number | null
+          preferred_land_ratio?: number | null
+          preferred_mountain_density?: number | null
+          style_notes?: string[] | null
+          total_ratings?: number | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          avg_rating?: number | null
+          id?: string
+          preferred_biome_weights?: Json | null
+          preferred_coastal_richness?: number | null
+          preferred_continent_count?: number | null
+          preferred_land_ratio?: number | null
+          preferred_mountain_density?: number | null
+          style_notes?: string[] | null
+          total_ratings?: number | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       military_capacity: {
         Row: {
           army_name: string
