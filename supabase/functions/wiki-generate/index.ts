@@ -70,7 +70,7 @@ async function buildCityContext(sb: any, sessionId: string, entityId: string, en
     playerSummary ? `Hráčovo shrnutí: ${playerSummary}` : "",
   ].filter(Boolean).join("\n");
 
-  const imageInstructions = `A detailed medieval illuminated manuscript illustration of a ${level === "HAMLET" ? "small village settlement" : level === "TOWN" ? "medieval town" : level === "POLIS" ? "grand city" : "settlement"} called "${entityName}". Show specific architecture${civIdentity?.building_tags ? ` in ${civIdentity.building_tags.join(", ")} style` : ""}. Population ${pop}. ${flavorPrompt ? `Key visual theme: ${flavorPrompt}.` : ""} ${tags ? `Tags: ${tags}.` : ""} Bird's eye view showing buildings, streets, and surrounding landscape. Medieval manuscript art style with gold leaf details.`;
+  const imageInstructions = `A CLOSE-UP street-level or low aerial view of the ${level === "HAMLET" ? "small village" : level === "TOWN" ? "medieval town" : level === "POLIS" ? "grand city" : "settlement"} "${entityName}". Focus on architecture, walls, gates, market squares, rooftops${civIdentity?.building_tags ? ` in ${civIdentity.building_tags.join(", ")} style` : ""}. Individual buildings and people clearly visible. Population ${pop}. ${flavorPrompt ? `Key visual theme: ${flavorPrompt}.` : ""} ${tags ? `Tags: ${tags}.` : ""} DO NOT show wide landscape — zoom INTO the settlement itself. Medieval manuscript art style with gold leaf details.`;
 
   return { systemPrompt, userPrompt, imageInstructions };
 }
@@ -132,9 +132,8 @@ async function buildProvinceContext(sb: any, sessionId: string, entityId: string
     `\nMĚSTA V PROVINCII:\n${cityDescriptions || "žádná města"}`,
   ].filter(Boolean).join("\n");
 
-  // Image: landscape with visible settlement
-  const mainCity = (cities || []).find((c: any) => c.is_capital) || (cities || [])[0];
-  const imageInstructions = `A panoramic medieval illuminated manuscript illustration of the province "${entityName}". Show a sweeping landscape (${province?.biome || "temperate"} terrain) with ${mainCity ? `the settlement of ${mainCity.name} visible in the middle distance` : "scattered small villages"}. Include roads connecting settlements, farmland, and natural features. ${province?.biome === "mountains" ? "Dramatic mountain peaks in background." : province?.biome === "coast" ? "Coastline and harbor visible." : province?.biome === "forest" ? "Dense forests covering hills." : "Rolling countryside."} Medieval manuscript art style.`;
+  // Image: wide landscape, settlements only as tiny dots in far distance
+  const imageInstructions = `A WIDE panoramic medieval illuminated manuscript illustration of the province "${entityName}". View from a hilltop overlooking vast ${province?.biome || "temperate"} terrain. Focus on LANDSCAPE: rivers, fields, forests, hills, roads winding through countryside. ${province?.biome === "mountains" ? "Dramatic mountain peaks dominating the view." : province?.biome === "coast" ? "Distant coastline and sea on the horizon." : province?.biome === "forest" ? "Dense forests blanketing rolling hills." : "Rolling countryside with patchwork farmland."} Settlements appear ONLY as tiny specks of smoke or faint rooftops on the distant horizon — DO NOT show close-up buildings or streets. This is a LANDSCAPE view, not a city view. Medieval manuscript art style.`;
 
   return { systemPrompt, userPrompt, imageInstructions, waitForCities: citiesWithoutImages > 0 };
 }
