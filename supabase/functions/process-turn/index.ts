@@ -408,8 +408,7 @@ Deno.serve(async (req) => {
           special_resource_type: specialType,
           base_grain: prodConsts.grain,
           base_wood: prodConsts.wood,
-          base_stone: prodConsts.stone,
-          base_iron: specialType === "IRON" ? prodConsts.iron_special : 0,
+          base_special: specialType === "IRON" ? prodConsts.iron_special : 0,
         }).select().single();
         profileMap[city.id] = newProfile;
       }
@@ -450,15 +449,16 @@ Deno.serve(async (req) => {
         totalWoodProd += Math.max(0, Math.round(wood));
       }
 
-      // Stone
-      let stone = (prof.base_stone || 0);
+      // Stone — not stored in profile, derived from settlement tier
+      const prodConsts = SETTLEMENT_PRODUCTION[city.settlement_level] || SETTLEMENT_PRODUCTION.HAMLET;
+      let stone = prodConsts.stone;
       stone *= (1 + (stoneMod / 100));
       stone *= effectiveWorkforceRatio;
       totalStoneProd += Math.max(0, Math.round(stone));
 
-      // Iron
+      // Iron (from base_special in profile)
       if (prof.special_resource_type === "IRON") {
-        let iron = (prof.base_iron || 0);
+        let iron = (prof.base_special || 0);
         iron *= (1 + (ironMod / 100));
         iron *= effectiveWorkforceRatio;
         totalIronProd += Math.max(0, Math.round(iron));
