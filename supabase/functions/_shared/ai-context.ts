@@ -358,7 +358,82 @@ export async function createAIContext(
     }
   }
 
+  // ── STRATEGIC MAP CONTEXT ──
+  try {
+    const mapContext = await buildStrategicMapContext(client, sessionId);
+    if (mapContext) {
+      premisePrompt += "\n\n" + mapContext;
+    }
+  } catch (e) {
+    console.warn("Failed to build strategic map context:", e);
+  }
+
   return { sessionId, requestId, turnNumber, premise, premisePrompt, civContext };
+}
+
+/**
+ * Build a compressed strategic map summary for AI.
+ * Includes: biome distribution, chokepoints, rivers, mountain barriers, city positions.
+ */
+async function buildStrategicMapContext(client: SupabaseClient, sessionId: string): Promise<string | null> {
+  // Load hex summary stats
+  const { data: hexes } = await client
+    .from("province_hexes")
+    .select("q, r, biome_family, has_river, has_bridge, coastal, is_passable")
+    .eq("session_id", sessionId)
+    .limit(2000);
+
+  if (!hexes || hexes.length === 0) return null;
+
+  // Biome distribution
+  const biomeCounts: Record<string, number> = {};
+  let riverCount = 0, bridgeCount = 0, coastalCount = 0, impassableCount = 0;
+  const rivers: string[] = [];
+  const mountains: string[] = [];
+
+  for (const h of hexes) {
+    biomeCounts[h.biome_family] = (biomeCounts[h.biome_family] || 0) + 1;
+    if (h.has_river) { riverCount++; rivers.push(`(${h.q},${h.r})`); }
+    if (h.has_bridge) bridgeCount++;
+    if (h.coastal) coastalCount++;
+    if (!h.is_passable) impassableCount++;
+    if (h.biome_family === "mountains") mountains.push(`(${h.q},${h.r})`);
+  }
+
+  // Load cities for strategic context
+  const { data: cities } = await client
+    .from("cities")
+    .select("name, owner_player, province_q, province_r, settlement_level")
+    .eq("session_id", sessionId);
+
+  const parts: string[] = [];
+  parts.push("=== STRATEGICKÁ MAPA SVĚTA ===");
+  parts.push(`Celkem hexů: ${hexes.length}, z toho neprostupných: ${impassableCount}`);
+  parts.push("PRAVIDLA PRŮCHODNOSTI:");
+  parts.push("- Moře (sea): NEPROSTUPNÉ — armády nemohou vstoupit");
+  parts.push("- Hory (mountains): NEPROSTUPNÉ — tvoří přírodní bariéry a chokepoints");
+  parts.push("- Řeky: NEPROSTUPNÉ bez mostu — tvoří bariéry jako moře/hory");
+  parts.push("- Most na řece: umožňuje průchod — strategický bod");
+  parts.push("- Města lze zakládat POUZE na: pláně, kopce, les, bažiny");
+  parts.push(`\nBIOMY: ${Object.entries(biomeCounts).map(([b, c]) => `${b}: ${c}`).join(", ")}`);
+  parts.push(`Pobřežní: ${coastalCount}, Řeky: ${riverCount}, Mosty: ${bridgeCount}`);
+
+  if (rivers.length > 0 && rivers.length <= 30) {
+    parts.push(`Řeky na: ${rivers.slice(0, 20).join(", ")}${rivers.length > 20 ? "..." : ""}`);
+  }
+  if (mountains.length > 0 && mountains.length <= 40) {
+    parts.push(`Hory na: ${mountains.slice(0, 25).join(", ")}${mountains.length > 25 ? "..." : ""}`);
+  }
+
+  if (cities && cities.length > 0) {
+    parts.push("\nMĚSTA:");
+    for (const c of cities) {
+      parts.push(`  ${c.name} (${c.owner_player}) na (${c.province_q},${c.province_r}) [${c.settlement_level}]`);
+    }
+  }
+
+  parts.push("=== KONEC STRATEGICKÉ MAPY ===");
+  return parts.join("\n");
 }
 
 /**

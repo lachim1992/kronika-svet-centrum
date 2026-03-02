@@ -187,6 +187,10 @@ function generateRidges(
   return ridges;
 }
 
+// ── Passability constants ──
+export const IMPASSABLE_BIOMES = new Set(["sea", "mountains"]);
+export const CITY_ALLOWED_BIOMES = new Set(["plains", "hills", "forest", "swamp"]);
+
 // ── Biome determination ──
 export type BiomeFamily = "sea" | "plains" | "forest" | "hills" | "mountains" | "desert" | "swamp" | "tundra";
 
@@ -201,6 +205,104 @@ export function determineBiome(height: number, moisture: number, temp: number): 
   if (moisture > 0.5) return "forest";
   if (moisture > 0.35) return height > 0.5 ? "hills" : "plains";
   return "plains";
+}
+
+// ── River generation (BFS from high points to sea) ──
+export interface RiverHex {
+  q: number;
+  r: number;
+  direction: string; // "N" | "NE" | "SE" | "S" | "SW" | "NW"
+}
+
+const DIR_LABELS = ["E", "W", "SE", "NW", "NE", "SW"];
+const NEIGHBORS_HEX_DIRS = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, -1], [-1, 1]];
+
+function generateRivers(
+  hexGrid: Map<string, { height: number; moisture: number; temp: number; biome: BiomeFamily }>,
+  worldSeed: string,
+  halfW: number,
+  halfH: number,
+): RiverHex[] {
+  const rivers: RiverHex[] = [];
+  const riverSet = new Set<string>();
+
+  // Find river sources: hexes near mountains or high hills
+  const sources: Array<{ q: number; r: number; height: number }> = [];
+  for (let q = -halfW; q <= halfW; q++) {
+    for (let r = -halfH; r <= halfH; r++) {
+      const cell = hexGrid.get(`${q},${r}`);
+      if (!cell) continue;
+      // Source: hills adjacent to mountains, or high hills with moisture
+      if (cell.biome === "hills" && cell.height > 0.65 && cell.moisture > 0.3) {
+        // Must have a mountain neighbor
+        let nearMountain = false;
+        for (const [dq, dr] of NEIGHBORS_HEX_DIRS) {
+          const nb = hexGrid.get(`${q + dq},${r + dr}`);
+          if (nb && nb.biome === "mountains") { nearMountain = true; break; }
+        }
+        if (nearMountain) sources.push({ q, r, height: cell.height });
+      }
+    }
+  }
+
+  // Deterministic selection of river sources
+  const numRivers = Math.min(sources.length, 3 + Math.floor(hashSeed(worldSeed + ":numRivers") * 4));
+  // Sort by height descending, pick top N spread out
+  sources.sort((a, b) => b.height - a.height);
+  const selectedSources: typeof sources = [];
+  const MIN_RIVER_SPACING = Math.max(4, halfW * 0.3);
+  for (const src of sources) {
+    if (selectedSources.length >= numRivers) break;
+    const tooClose = selectedSources.some(s => {
+      const d = Math.sqrt((src.q - s.q) ** 2 + (src.r - s.r) ** 2);
+      return d < MIN_RIVER_SPACING;
+    });
+    if (!tooClose) selectedSources.push(src);
+  }
+
+  // Trace each river downhill to sea
+  for (const source of selectedSources) {
+    let cur = { q: source.q, r: source.r };
+    const visited = new Set<string>();
+    let maxSteps = halfW + halfH; // safety limit
+
+    while (maxSteps-- > 0) {
+      const key = `${cur.q},${cur.r}`;
+      if (visited.has(key)) break;
+      visited.add(key);
+
+      const curCell = hexGrid.get(key);
+      if (!curCell) break;
+      if (curCell.biome === "sea") break; // reached water
+
+      // Find lowest neighbor
+      let bestNb: { q: number; r: number; height: number; dirIdx: number } | null = null;
+      for (let i = 0; i < NEIGHBORS_HEX_DIRS.length; i++) {
+        const [dq, dr] = NEIGHBORS_HEX_DIRS[i];
+        const nq = cur.q + dq, nr = cur.r + dr;
+        const nb = hexGrid.get(`${nq},${nr}`);
+        if (!nb) continue;
+        if (nb.biome === "mountains") continue; // rivers don't go through mountains
+        if (!bestNb || nb.height < bestNb.height) {
+          bestNb = { q: nq, r: nr, height: nb.height, dirIdx: i };
+        }
+      }
+
+      if (!bestNb) break;
+      // Only flow downhill (or flat)
+      if (bestNb.height > curCell.height + 0.05) break;
+
+      // Add current hex as river
+      if (!riverSet.has(key) && curCell.biome !== "mountains") {
+        riverSet.add(key);
+        rivers.push({ q: cur.q, r: cur.r, direction: DIR_LABELS[bestNb.dirIdx] });
+      }
+
+      cur = { q: bestNb.q, r: bestNb.r };
+    }
+  }
+
+  return rivers;
 }
 
 // ── BFS flood fill for ocean distance ──
@@ -255,15 +357,21 @@ export interface HexData {
   tempBand: number;         // 0-4
   biomeFamily: BiomeFamily;
   coastal: boolean;
+  hasRiver: boolean;
+  riverDirection: string | null;
+  isPassable: boolean;
+  movementCost: number;
 }
 
 export interface GeneratedMap {
   hexes: HexData[];
+  rivers: RiverHex[];
   startPositions: Array<{ q: number; r: number }>;
   stats: {
     landRatio: number;
     biomeCounts: Record<string, number>;
     coastalCount: number;
+    riverCount: number;
   };
 }
 
@@ -391,7 +499,12 @@ export function generateWorldTerrain(
     }
   }
 
-  // ── Phase 5: Build output ──
+  // ── Phase 5: Generate rivers ──
+  const riverHexes = generateRivers(hexGrid, worldSeed, halfW, halfH);
+  const riverMap = new Map<string, RiverHex>();
+  for (const rh of riverHexes) riverMap.set(`${rh.q},${rh.r}`, rh);
+
+  // ── Phase 6: Build output ──
   const hexes: HexData[] = [];
   const biomeCounts: Record<string, number> = {};
   let landCount = 0;
@@ -401,6 +514,7 @@ export function generateWorldTerrain(
     for (let r = -halfH; r <= halfH; r++) {
       const cell = hexGrid.get(`${q},${r}`)!;
       const hexSeed = `${worldSeed}:${q}:${r}`;
+      const key = `${q},${r}`;
 
       // Coastal detection
       let coastal = false;
@@ -415,6 +529,10 @@ export function generateWorldTerrain(
 
       biomeCounts[cell.biome] = (biomeCounts[cell.biome] || 0) + 1;
 
+      const river = riverMap.get(key);
+      const hasRiver = !!river;
+      const isImpassable = IMPASSABLE_BIOMES.has(cell.biome) || hasRiver;
+
       hexes.push({
         q, r,
         seed: hexSeed,
@@ -423,22 +541,28 @@ export function generateWorldTerrain(
         tempBand: Math.min(4, Math.max(0, Math.round(cell.temp * 4))),
         biomeFamily: cell.biome,
         coastal,
+        hasRiver,
+        riverDirection: river?.direction || null,
+        isPassable: !isImpassable,
+        movementCost: isImpassable ? 0 : (cell.biome === "hills" ? 2 : cell.biome === "swamp" ? 2 : cell.biome === "forest" ? 1 : 1),
       });
     }
   }
 
   const totalHexes = hexes.length;
 
-  // ── Phase 6: Start positions ──
+  // ── Phase 7: Start positions ──
   const startPositions = findStartPositions(hexes, halfW, halfH);
 
   return {
     hexes,
+    rivers: riverHexes,
     startPositions,
     stats: {
       landRatio: landCount / totalHexes,
       biomeCounts,
       coastalCount,
+      riverCount: riverHexes.length,
     },
   };
 }

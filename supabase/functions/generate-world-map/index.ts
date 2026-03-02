@@ -131,6 +131,11 @@ Deno.serve(async (req) => {
         temp_band: hex.tempBand,
         biome_family: hex.biomeFamily,
         coastal: hex.coastal,
+        has_river: hex.hasRiver,
+        river_direction: hex.riverDirection,
+        is_passable: hex.isPassable,
+        movement_cost: hex.movementCost,
+        has_bridge: false,
         macro_region_id: regionIdMap.get(regionKey) || null,
       };
     });
@@ -158,6 +163,7 @@ Deno.serve(async (req) => {
       mapHeight: mapH,
       startPositions: map.startPositions,
       macroRegions: regionRows.length,
+      riverCount: map.rivers.length,
       stats: map.stats,
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },

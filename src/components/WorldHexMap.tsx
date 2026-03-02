@@ -43,6 +43,8 @@ const BIOME_ICONS: Record<string, string> = {
   sea: "🌊", plains: "🌾", forest: "🌲", hills: "⛰",
   mountains: "🏔", desert: "🏜", swamp: "🌿", tundra: "❄",
 };
+const IMPASSABLE_BIOMES = new Set(["sea", "mountains"]);
+const CITY_ALLOWED_BIOMES = new Set(["plains", "hills", "forest", "swamp"]);
 const FOG_COLOR = "#111318";
 
 /* Province palette — 10 distinct, muted colors for overlay */
@@ -212,9 +214,30 @@ const HexTile = memo(({
               </text>
             </>
           )}
-          {hex.coastal && cities.length === 0 && (
+          {hex.coastal && !hex.has_river && cities.length === 0 && (
             <text x={cx} y={cy + 16} textAnchor="middle" dominantBaseline="middle"
               fill="#60a5fa" fontSize="7" style={{ pointerEvents: "none" }}>🌊</text>
+          )}
+          {/* River indicator */}
+          {hex.has_river && (
+            <>
+              <line
+                x1={cx - HEX_SIZE * 0.5} y1={cy - 2}
+                x2={cx + HEX_SIZE * 0.5} y2={cy + 2}
+                stroke="#4a9eff" strokeWidth={hex.has_bridge ? 1.5 : 2.5}
+                opacity={0.8} strokeLinecap="round"
+                strokeDasharray={hex.has_bridge ? "3,2" : undefined}
+                style={{ pointerEvents: "none" }}
+              />
+              {hex.has_bridge && (
+                <text x={cx} y={cy + (cities.length > 0 ? -14 : 16)} textAnchor="middle" dominantBaseline="middle"
+                  fill="#f5c542" fontSize="8" style={{ pointerEvents: "none" }}>🌉</text>
+              )}
+              {!hex.has_bridge && cities.length === 0 && (
+                <text x={cx} y={cy + 16} textAnchor="middle" dominantBaseline="middle"
+                  fill="#4a9eff" fontSize="7" fontWeight="600" style={{ pointerEvents: "none" }}>〰️</text>
+              )}
+            </>
           )}
           {devMode && (
             <text x={cx} y={cy + 22} textAnchor="middle" dominantBaseline="middle"
@@ -696,7 +719,9 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
       const nk = hKey(selectedStack.q + n.dq, selectedStack.r + n.dr);
       if (discoveredCoords.has(nk) || (isAdmin && devMode)) {
         const hex = getHex(selectedStack.q + n.dq, selectedStack.r + n.dr);
-        if (hex && hex.biome_family !== "sea") targets.add(nk);
+        if (hex && !IMPASSABLE_BIOMES.has(hex.biome_family) && !(hex.has_river && !hex.has_bridge)) {
+          targets.add(nk);
+        }
       }
     }
     return targets;

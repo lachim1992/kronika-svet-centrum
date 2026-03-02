@@ -327,7 +327,6 @@ async function executeFoundCity(
 ): Promise<CommandResult> {
   const {
     cityName, provinceId, provinceName, tags, flavorPrompt, legend,
-    // Optional: client can send pre-computed coords
     provinceQ, provinceR,
   } = payload;
 
@@ -335,6 +334,24 @@ async function executeFoundCity(
 
   const sessionId = base.session_id;
   const turnNumber = base.turn_number;
+
+  // ── Validate target hex passability for city founding ──
+  if (provinceQ !== undefined && provinceR !== undefined) {
+    const { data: targetHex } = await supabase.from("province_hexes")
+      .select("biome_family, has_river, is_passable")
+      .eq("session_id", sessionId).eq("q", provinceQ).eq("r", provinceR).maybeSingle();
+
+    if (targetHex) {
+      const CITY_ALLOWED = ["plains", "hills", "forest", "swamp"];
+      if (!CITY_ALLOWED.includes(targetHex.biome_family)) {
+        return { events: [], error: `Nelze založit město na biomu '${targetHex.biome_family}' — povolené: pláně, kopce, les, bažiny` };
+      }
+      if (targetHex.has_river) {
+        // Rivers are allowed for cities — river cities get trade bonus
+        // But we don't block it
+      }
+    }
+  }
 
   // ── Find free hex coordinates ──
   let freeQ = provinceQ ?? 0;
@@ -542,16 +559,6 @@ async function executeMoveStack(
   if (!stackId) return { events: [], error: "Missing stackId" };
   if (toQ === undefined || toR === undefined) return { events: [], error: "Missing toQ/toR" };
 
-  // Validate move range (max 3 hexes per turn using hex distance)
-  if (fromQ !== undefined && fromR !== undefined) {
-    const dq = toQ - fromQ;
-    const dr = toR - fromR;
-    const dist = Math.max(Math.abs(dq), Math.abs(dr), Math.abs(dq + dr));
-    if (dist > 3) {
-      return { events: [], error: `Move too far: distance ${dist} exceeds max 3 hexes per turn` };
-    }
-  }
-
   // Verify stack belongs to actor
   const { data: stack } = await supabase.from("military_stacks")
     .select("id, player_name, hex_q, hex_r")
@@ -560,7 +567,7 @@ async function executeMoveStack(
   if (!stack) return { events: [], error: "Stack not found" };
   if (stack.player_name !== actor.name) return { events: [], error: "Not your stack" };
 
-  // Server-side distance check if fromQ/fromR not provided
+  // Server-side distance check
   const actualFromQ = fromQ ?? stack.hex_q;
   const actualFromR = fromR ?? stack.hex_r;
   const dq2 = toQ - actualFromQ;
@@ -568,6 +575,25 @@ async function executeMoveStack(
   const actualDist = Math.max(Math.abs(dq2), Math.abs(dr2), Math.abs(dq2 + dr2));
   if (actualDist > 3) {
     return { events: [], error: `Move too far: distance ${actualDist} exceeds max 3 hexes per turn` };
+  }
+
+  // ── PASSABILITY CHECK ──
+  const { data: targetHex } = await supabase.from("province_hexes")
+    .select("biome_family, is_passable, has_river, has_bridge")
+    .eq("session_id", sessionId).eq("q", toQ).eq("r", toR).maybeSingle();
+
+  if (targetHex) {
+    // Sea and mountains are always impassable
+    if (targetHex.biome_family === "sea") {
+      return { events: [], error: "Nelze vstoupit na moře — hex je neprostupný" };
+    }
+    if (targetHex.biome_family === "mountains") {
+      return { events: [], error: "Nelze vstoupit do hor — hex je neprostupný" };
+    }
+    // River without bridge is impassable
+    if (targetHex.has_river && !targetHex.has_bridge) {
+      return { events: [], error: "Nelze překročit řeku bez mostu — hex je neprostupný" };
+    }
   }
 
   // Update stack position
