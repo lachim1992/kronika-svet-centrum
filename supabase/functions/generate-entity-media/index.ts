@@ -222,41 +222,66 @@ serve(async (req) => {
 
     console.log(`[generate-entity-media] kind=${kind} preset=${effectivePreset} prompt=${prompt.substring(0, 150)}...`);
 
-    // ── 5. Generate image ──
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-2.5-flash-image",
-        messages: [{ role: "user", content: prompt }],
-        modalities: ["image", "text"],
-      }),
-    });
+    // ── 5. Generate image (with retry) ──
+    let imageBase64: string | undefined;
+    const MAX_RETRIES = 3;
 
-    if (!response.ok) {
-      if (response.status === 429)
-        return new Response(JSON.stringify({ error: "Rate limit" }), {
-          status: 429,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      if (response.status === 402)
-        return new Response(JSON.stringify({ error: "Nedostatek kreditů" }), {
-          status: 402,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      throw new Error(`AI image gateway error: ${response.status}`);
+    for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+      console.log(`[generate-entity-media] attempt ${attempt}/${MAX_RETRIES}`);
+
+      const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${LOVABLE_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "google/gemini-2.5-flash-image",
+          messages: [{ role: "user", content: `Generate an image: ${prompt}` }],
+          modalities: ["image", "text"],
+        }),
+      });
+
+      if (!response.ok) {
+        if (response.status === 429) {
+          if (attempt < MAX_RETRIES) {
+            console.warn(`[generate-entity-media] Rate limited, waiting before retry...`);
+            await new Promise(r => setTimeout(r, 3000 * attempt));
+            continue;
+          }
+          return new Response(JSON.stringify({ error: "Rate limit" }), {
+            status: 429,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+        if (response.status === 402)
+          return new Response(JSON.stringify({ error: "Nedostatek kreditů" }), {
+            status: 402,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        console.error(`[generate-entity-media] AI gateway error: ${response.status}`);
+        if (attempt < MAX_RETRIES) {
+          await new Promise(r => setTimeout(r, 2000 * attempt));
+          continue;
+        }
+        throw new Error(`AI image gateway error: ${response.status}`);
+      }
+
+      const data = await response.json();
+      imageBase64 = data.choices?.[0]?.message?.images?.[0]?.image_url?.url;
+
+      if (imageBase64) break;
+
+      console.warn(`[generate-entity-media] No image in response (attempt ${attempt}), retrying...`);
+      if (attempt < MAX_RETRIES) {
+        await new Promise(r => setTimeout(r, 2000 * attempt));
+      }
     }
 
-    const data = await response.json();
-    const imageBase64 = data.choices?.[0]?.message?.images?.[0]?.image_url?.url;
-
     if (!imageBase64) {
-      console.warn("[generate-entity-media] No image returned by AI");
+      console.error("[generate-entity-media] No image returned after all retries");
       return new Response(
-        JSON.stringify({ imageUrl: null, imagePrompt: prompt, debug: { provider: "no-image-returned" } }),
+        JSON.stringify({ imageUrl: null, imagePrompt: prompt, debug: { provider: "no-image-after-retries" } }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
