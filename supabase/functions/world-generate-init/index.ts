@@ -70,9 +70,10 @@ serve(async (req) => {
 
 HLAVNÍ PRAVIDLA:
 - Vše generuj v ČEŠTINĚ. Jména mohou být fantasy/historická.
-- Existuje JEDEN společný stát (country), do kterého patří VŠECHNY frakce na začátku.
-- Regiony musí tematicky korespondovat se státem a jeho kulturou.
+- Každá frakce má VLASTNÍ stát (country), region a provincii — jsou to nezávislé entity.
+- Regiony musí tematicky korespondovat s danou frakcí a její kulturou.
 - Města pod regiony musí tematicky odpovídat danému kraji.
+- VŠECHNA města začínají jako OSADY (hamlet) — žádné velké město na startu!
 - Styl vyprávění: ${styleLabel}.
 
 KRITICKÉ POŽADAVKY NA PROVÁZANOST:
@@ -110,7 +111,7 @@ ${cultureName ? `KULTURA: ${cultureName}` : ""}
 ${languageName ? `JAZYK: ${languageName}` : ""}
 
 POŽADAVKY:
-- 1 společný stát (country) se jménem, popisem, historií a image_prompt
+- Každá frakce (${config.factions + 1} celkem) má VLASTNÍ stát (country) se jménem, popisem a image_prompt
 - ${config.factions} AI frakcí (+ 1 hráčova frakce = ${config.factions + 1} celkem)
 - ${config.regions} regionů tematicky propojených se státem, každý s alespoň 1 provincií
 - ${config.cities} měst rozdělených mezi frakce
@@ -136,16 +137,21 @@ DŮLEŽITÉ: affected_players/faction MUSÍ používat přesná jména frakcí. 
         parameters: {
           type: "object",
           properties: {
-            country: {
-              type: "object",
-              properties: {
-                name: { type: "string" },
-                description: { type: "string", description: "4-6 sentence encyclopedia article in Czech" },
-                motto: { type: "string" },
-                image_prompt: { type: "string", description: "English prompt for medieval illuminated illustration" },
+            countries: {
+              type: "array",
+              description: "One country per faction. Each faction has its own sovereign state.",
+              items: {
+                type: "object",
+                properties: {
+                  name: { type: "string" },
+                  description: { type: "string", description: "4-6 sentence encyclopedia article in Czech" },
+                  motto: { type: "string" },
+                  factionName: { type: "string", description: "Which faction this country belongs to" },
+                  image_prompt: { type: "string", description: "English prompt for medieval illuminated illustration" },
+                },
+                required: ["name", "description", "factionName", "image_prompt"],
+                additionalProperties: false,
               },
-              required: ["name", "description", "image_prompt"],
-              additionalProperties: false,
             },
             factions: {
               type: "array",
@@ -203,7 +209,7 @@ DŮLEŽITÉ: affected_players/faction MUSÍ používat přesná jména frakcí. 
                   ownerFaction: { type: "string" },
                   regionName: { type: "string" },
                   provinceName: { type: "string" },
-                  level: { type: "string", enum: ["Osada", "Vesnice", "Město", "Velkoměsto"] },
+                  level: { type: "string", enum: ["Osada"], description: "All starting cities MUST be Osada (hamlet)" },
                   tags: { type: "array", items: { type: "string" } },
                   description: { type: "string" },
                   imagePrompt: { type: "string" },
@@ -340,7 +346,7 @@ DŮLEŽITÉ: affected_players/faction MUSÍ používat přesná jména frakcí. 
               description: "Key world facts and traditions",
             },
           },
-          required: ["country", "factions", "regions", "cities", "persons", "wonders", "preHistoryEvents", "battles", "historyEvents", "preHistoryChronicle", "rumors", "loreBible", "worldMemories"],
+          required: ["countries", "factions", "regions", "cities", "persons", "wonders", "preHistoryEvents", "battles", "historyEvents", "preHistoryChronicle", "rumors", "loreBible", "worldMemories"],
           additionalProperties: false,
         },
       },
@@ -401,30 +407,33 @@ DŮLEŽITÉ: affected_players/faction MUSÍ používat přesná jména frakcí. 
     const cityIdMap: Record<string, string> = {};
     const personIdMap: Record<string, string> = {};
 
-    // ═══ STEP A: Country ═══
-    const countryInfo = world.country || { name: worldName, description: premise, image_prompt: "" };
-    const { data: countryRow } = await supabase.from("countries").insert({
-      session_id: sessionId,
-      name: countryInfo.name,
-      description: countryInfo.description || null,
-      ai_description: countryInfo.description || null,
-      image_prompt: countryInfo.image_prompt || null,
-      ruler_player: null,
-    }).select("id").single();
-
-    const countryId = countryRow?.id || null;
-    if (countryId) {
-      counters.countries++;
-      await supabase.from("wiki_entries").upsert({
-        session_id: sessionId, entity_type: "country", entity_id: countryId,
-        entity_name: countryInfo.name, owner_player: "system",
-        summary: `${countryInfo.name} — společný stát tohoto světa.`,
+    // ═══ STEP A: Countries (one per faction) ═══
+    const countryIdMap: Record<string, string> = {};
+    const countriesList = world.countries || [{ name: worldName, description: premise, image_prompt: "", factionName: "__default__" }];
+    for (const countryInfo of countriesList) {
+      const { data: countryRow } = await supabase.from("countries").insert({
+        session_id: sessionId,
+        name: countryInfo.name,
+        description: countryInfo.description || null,
         ai_description: countryInfo.description || null,
-        image_prompt: countryInfo.image_prompt || `A medieval illuminated manuscript illustration of the kingdom of ${countryInfo.name}`,
-        updated_at: new Date().toISOString(),
-        references: { generated: true, mode: "world_init" },
-      } as any, { onConflict: "session_id,entity_type,entity_id" });
-      counters.wiki++;
+        image_prompt: countryInfo.image_prompt || null,
+        ruler_player: null, // will be set after factions are created
+      }).select("id").single();
+
+      if (countryRow) {
+        countryIdMap[countryInfo.factionName] = countryRow.id;
+        counters.countries++;
+        await supabase.from("wiki_entries").upsert({
+          session_id: sessionId, entity_type: "country", entity_id: countryRow.id,
+          entity_name: countryInfo.name, owner_player: "system",
+          summary: `${countryInfo.name} — suverénní stát.`,
+          ai_description: countryInfo.description || null,
+          image_prompt: countryInfo.image_prompt || `A medieval illuminated manuscript illustration of the kingdom of ${countryInfo.name}`,
+          updated_at: new Date().toISOString(),
+          references: { generated: true, mode: "world_init" },
+        } as any, { onConflict: "session_id,entity_type,entity_id" });
+        counters.wiki++;
+      }
     }
 
     // ═══ STEP B: Civilizations + AI Factions + Resources ═══
@@ -438,6 +447,12 @@ DŮLEŽITÉ: affected_players/faction MUSÍ používat přesná jména frakcí. 
         cultural_quirk: faction.culturalQuirk || null, is_ai: !faction.isPlayer,
         ai_personality: faction.isPlayer ? null : faction.personality,
       });
+
+      // Set ruler_player on this faction's country
+      const factionCountryId = countryIdMap[faction.name] || countryIdMap["__default__"];
+      if (factionCountryId) {
+        await supabase.from("countries").update({ ruler_player: factionPlayerName }).eq("id", factionCountryId);
+      }
 
       if (!faction.isPlayer) {
         await supabase.from("ai_factions").insert({
@@ -472,7 +487,7 @@ DŮLEŽITÉ: affected_players/faction MUSÍ používat přesná jména frakcí. 
       const { data: regRow } = await supabase.from("regions").insert({
         session_id: sessionId, name: region.name, description: region.description,
         biome: region.biome, owner_player: ownerPlayer, is_homeland: region.isPlayerHomeland || false,
-        discovered_turn: 1, discovered_by: ownerPlayer, country_id: countryId,
+        discovered_turn: 1, discovered_by: ownerPlayer, country_id: countryIdMap[region.controlledBy] || countryIdMap["__default__"] || null,
       }).select("id").single();
 
       if (regRow) {
@@ -480,7 +495,7 @@ DŮLEŽITÉ: affected_players/faction MUSÍ používat přesná jména frakcí. 
         await supabase.from("wiki_entries").upsert({
           session_id: sessionId, entity_type: "region", entity_id: regRow.id,
           entity_name: region.name, owner_player: ownerPlayer,
-          summary: `${region.name} — ${region.biome} region ve státě ${countryInfo.name}.`,
+          summary: `${region.name} — ${region.biome} region.`,
           ai_description: region.description || null,
           image_prompt: region.imagePrompt || `A medieval illuminated manuscript illustration of ${region.name}, ${region.biome} landscape`,
           updated_at: new Date().toISOString(),
@@ -691,13 +706,14 @@ DŮLEŽITÉ: affected_players/faction MUSÍ používat přesná jména frakcí. 
       }
 
       const cityName = (isPlayerCity && cityIndex === 0 && settlementName) ? settlementName : city.name;
-      const level = city.level || "Osada";
+      // FORCE all starting cities to Osada/HAMLET regardless of AI choice
+      const level = "Osada";
       const isCapital = !playerFirstCity.has(ownerPlayer);
       if (isCapital) playerFirstCity.add(ownerPlayer);
 
-      const range = POP_RANGES[level] || POP_RANGES.Osada;
-      const popTotal = isCapital ? range.max + Math.floor(Math.random() * 200) : range.min + Math.floor(Math.random() * (range.max - range.min));
-      const settlementLevel = SETTLEMENT_MAP[level] || "HAMLET";
+      const range = POP_RANGES.Osada;
+      const popTotal = range.min + Math.floor(Math.random() * (range.max - range.min));
+      const settlementLevel = "HAMLET";
       const template = POP_TEMPLATES[settlementLevel];
       const popPeasants = Math.round(popTotal * template.peasants);
       const popBurghers = Math.round(popTotal * template.burghers);
