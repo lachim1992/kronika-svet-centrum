@@ -117,7 +117,7 @@ export function useHexMap(sessionId: string) {
       .from("province_hexes")
       .select("*, macro_regions(*)")
       .eq("session_id", sessionId)
-      .limit(500);
+      .limit(4000);
     if (data) {
       const mapped: Record<string, HexData> = {};
       for (const row of data) {

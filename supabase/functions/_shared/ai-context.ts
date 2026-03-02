@@ -377,11 +377,17 @@ export async function createAIContext(
  */
 async function buildStrategicMapContext(client: SupabaseClient, sessionId: string): Promise<string | null> {
   // Load hex summary stats
-  const { data: hexes } = await client
-    .from("province_hexes")
-    .select("q, r, biome_family, has_river, has_bridge, coastal, is_passable")
-    .eq("session_id", sessionId)
-    .limit(2000);
+  const [{ data: hexes }, { data: provinces }, { data: cities }] = await Promise.all([
+    client.from("province_hexes")
+      .select("q, r, biome_family, has_river, has_bridge, coastal, is_passable, owner_player, province_id")
+      .eq("session_id", sessionId).limit(4000),
+    client.from("provinces")
+      .select("id, name, owner_player, center_q, center_r, color_index")
+      .eq("session_id", sessionId),
+    client.from("cities")
+      .select("name, owner_player, province_q, province_r, settlement_level")
+      .eq("session_id", sessionId),
+  ]);
 
   if (!hexes || hexes.length === 0) return null;
 
@@ -391,6 +397,9 @@ async function buildStrategicMapContext(client: SupabaseClient, sessionId: strin
   const rivers: string[] = [];
   const mountains: string[] = [];
 
+  // Territory ownership
+  const ownerHexCounts: Record<string, number> = {};
+
   for (const h of hexes) {
     biomeCounts[h.biome_family] = (biomeCounts[h.biome_family] || 0) + 1;
     if (h.has_river) { riverCount++; rivers.push(`(${h.q},${h.r})`); }
@@ -398,13 +407,10 @@ async function buildStrategicMapContext(client: SupabaseClient, sessionId: strin
     if (h.coastal) coastalCount++;
     if (!h.is_passable) impassableCount++;
     if (h.biome_family === "mountains") mountains.push(`(${h.q},${h.r})`);
+    if (h.owner_player) {
+      ownerHexCounts[h.owner_player] = (ownerHexCounts[h.owner_player] || 0) + 1;
+    }
   }
-
-  // Load cities for strategic context
-  const { data: cities } = await client
-    .from("cities")
-    .select("name, owner_player, province_q, province_r, settlement_level")
-    .eq("session_id", sessionId);
 
   const parts: string[] = [];
   parts.push("=== STRATEGICKÁ MAPA SVĚTA ===");
@@ -418,8 +424,26 @@ async function buildStrategicMapContext(client: SupabaseClient, sessionId: strin
   parts.push(`\nBIOMY: ${Object.entries(biomeCounts).map(([b, c]) => `${b}: ${c}`).join(", ")}`);
   parts.push(`Pobřežní: ${coastalCount}, Řeky: ${riverCount}, Mosty: ${bridgeCount}`);
 
+  // Territory control summary
+  if (Object.keys(ownerHexCounts).length > 0) {
+    parts.push("\nÚZEMNÍ KONTROLA:");
+    const unowned = hexes.filter(h => !h.owner_player).length;
+    for (const [owner, count] of Object.entries(ownerHexCounts).sort((a, b) => b[1] - a[1])) {
+      parts.push(`  ${owner}: ${count} hexů`);
+    }
+    parts.push(`  Neutrální/nezabrané: ${unowned} hexů`);
+  }
+
+  // Province summary
+  if (provinces && provinces.length > 0) {
+    parts.push("\nPROVINCIE:");
+    for (const p of provinces) {
+      parts.push(`  ${p.name} (${p.owner_player}) centrum: (${p.center_q},${p.center_r})`);
+    }
+  }
+
   if (rivers.length > 0 && rivers.length <= 30) {
-    parts.push(`Řeky na: ${rivers.slice(0, 20).join(", ")}${rivers.length > 20 ? "..." : ""}`);
+    parts.push(`\nŘeky na: ${rivers.slice(0, 20).join(", ")}${rivers.length > 20 ? "..." : ""}`);
   }
   if (mountains.length > 0 && mountains.length <= 40) {
     parts.push(`Hory na: ${mountains.slice(0, 25).join(", ")}${mountains.length > 25 ? "..." : ""}`);
