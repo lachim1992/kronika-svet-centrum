@@ -1,6 +1,6 @@
 import {
   Home, Globe, Shield, Swords, BarChart3, Crown,
-  Newspaper, BookOpen, Timer, Wrench, PanelLeftClose, PanelLeft, Map, Zap, Trophy,
+  Newspaper, BookOpen, Timer, Wrench, PanelLeftClose, PanelLeft, Map, Zap, Trophy, Brain,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -47,6 +47,7 @@ const AppSidebar = ({
     ...navItems,
     ...(showPersistentTab ? [{ id: "persistent" as TabId, label: "Persistent", icon: Timer, group: "system" }] : []),
     ...(showDevTab ? [{ id: "dev" as TabId, label: "Dev", icon: Wrench, group: "system" }] : []),
+    ...(showDevTab ? [{ id: "ailab" as TabId, label: "AI Lab", icon: Brain, group: "system" }] : []),
   ];
 
   const groups = {
