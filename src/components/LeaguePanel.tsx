@@ -1117,6 +1117,11 @@ const LeaguePanel = ({ sessionId, currentPlayerName, currentTurn }: Props) => {
           </DialogHeader>
           <ScrollArea className="max-h-[65vh] pr-3">
             <div className="space-y-4 text-xs leading-relaxed">
+              <img
+                src={sphaeraMatchImg}
+                alt="Brutální zápas Sphaery v aréně plné diváků"
+                className="w-full rounded-lg border border-primary/20 mb-2"
+              />
               <section>
                 <h4 className="font-display font-bold text-sm text-primary mb-1">🏟 Základní koncept</h4>
                 <p className="text-muted-foreground">
