@@ -189,7 +189,7 @@ export default function InMemoriamTab({ sessionId, currentPlayerName, onEntityCl
         player.death_cause || "",
       ].filter(Boolean).join(" ");
 
-      const { error } = await supabase.from("wiki_entries").upsert({
+      const wikiData = {
         session_id: sessionId,
         entity_type: "person",
         entity_id: player.id,
@@ -199,7 +199,28 @@ export default function InMemoriamTab({ sessionId, currentPlayerName, onEntityCl
         ai_description: summary,
         image_url: player.portrait_url || null,
         tags: ["Sphaera", POS_FULL[player.position] || player.position, "In Memoriam", player.team_name],
-      } as any, { onConflict: "session_id,entity_type,entity_id" });
+      };
+
+      // Check if entry already exists (partial unique index doesn't work with onConflict)
+      const { data: existing } = await supabase
+        .from("wiki_entries")
+        .select("id")
+        .eq("session_id", sessionId)
+        .eq("entity_type", "person")
+        .eq("entity_id", player.id)
+        .maybeSingle();
+
+      let error;
+      if (existing) {
+        ({ error } = await supabase
+          .from("wiki_entries")
+          .update(wikiData as any)
+          .eq("id", existing.id));
+      } else {
+        ({ error } = await supabase
+          .from("wiki_entries")
+          .insert(wikiData as any));
+      }
 
       if (error) throw error;
       toast.success(`📜 ${player.name} zapsán do ChroWiki!`);
