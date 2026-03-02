@@ -189,20 +189,22 @@ export default function InMemoriamTab({ sessionId, currentPlayerName, onEntityCl
         player.death_cause || "",
       ].filter(Boolean).join(" ");
 
-      const wikiData = {
+      const wikiData: Record<string, unknown> = {
         session_id: sessionId,
-        entity_type: "person",
+        entity_type: "person" as const,
         entity_id: player.id,
         entity_name: player.name,
-        owner_player: player.owner_player,
+        owner_player: player.owner_player || "unknown",
         summary,
         ai_description: summary,
         image_url: player.portrait_url || null,
         tags: ["Sphaera", POS_FULL[player.position] || player.position, "In Memoriam", player.team_name],
       };
 
+      console.log("[InMemoriam] Writing to ChroWiki:", JSON.stringify(wikiData));
+
       // Check if entry already exists (partial unique index doesn't work with onConflict)
-      const { data: existing } = await supabase
+      const { data: existing, error: selectError } = await supabase
         .from("wiki_entries")
         .select("id")
         .eq("session_id", sessionId)
@@ -210,13 +212,20 @@ export default function InMemoriamTab({ sessionId, currentPlayerName, onEntityCl
         .eq("entity_id", player.id)
         .maybeSingle();
 
+      if (selectError) {
+        console.error("[InMemoriam] Select error:", selectError);
+        throw selectError;
+      }
+
       let error;
       if (existing) {
+        console.log("[InMemoriam] Updating existing entry:", existing.id);
         ({ error } = await supabase
           .from("wiki_entries")
           .update(wikiData as any)
           .eq("id", existing.id));
       } else {
+        console.log("[InMemoriam] Inserting new entry");
         ({ error } = await supabase
           .from("wiki_entries")
           .insert(wikiData as any));
