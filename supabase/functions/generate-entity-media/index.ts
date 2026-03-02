@@ -14,23 +14,23 @@ function buildTypeInstructions(entityType: string): string {
     case "wonder":
       return "Monumental scale, cinematic composition, epic atmosphere, clear grandeur. Include small human figures for scale reference.";
     case "polis":
-      return "Large classical city with visible walls, multiple districts. Elevated or panoramic view.";
+      return "CLOSE-UP view of a grand classical city. Focus on monumental architecture, colonnades, plazas, walls. Individual buildings and people clearly visible. NO wide landscape.";
     case "city":
-      return "Medium to large urban layout, dense structures, visible market or central area.";
+      return "CLOSE-UP street-level or low aerial view of the settlement. Focus on architecture, buildings, walls, gates, market squares. Individual structures clearly visible. NO wide landscape — this is a zoom into the settlement itself.";
     case "town":
-      return "Small town with dozens of buildings, modest density.";
+      return "CLOSE-UP view of a small town with dozens of buildings. Focus on rooftops, a modest market square, town walls. People visible in streets. NO wide landscape.";
     case "settlement":
-      return "Small cluster of buildings, simple infrastructure.";
+      return "CLOSE-UP view of a small cluster of buildings, simple infrastructure. Individual huts and people visible. Surrounding terrain only as immediate context.";
     case "village":
-      return "5–10 houses, rural environment, low density.";
+      return "CLOSE-UP view of 5–10 houses in a rural clearing. Individual buildings, gardens, and villagers visible. Immediate surroundings only.";
     case "province":
-      return "Sweeping landscape view of a province, varied terrain, roads and scattered settlements visible.";
+      return "WIDE landscape view from a hilltop. Focus on terrain, nature, rivers, forests, fields. Settlements appear ONLY as tiny specks or smoke plumes on the distant horizon. DO NOT show close-up buildings or streets — this is a landscape, not a city.";
     case "region":
-      return "Grand panoramic landscape, vast wilderness or terrain, distant horizons.";
+      return "GRAND panoramic vista from a great height. Vast wilderness stretching to the horizon. No individual buildings visible — only terrain, rivers, mountain ranges, forests. Scale of an entire geographic region.";
     case "person":
       return "Portrait-style illustration, character study, expressive face, period-appropriate clothing and accessories.";
     case "country":
-      return "Majestic panoramic view of a realm, with castles, banners, and distant landscapes.";
+      return "Majestic panoramic view of an entire realm from extreme height. Multiple terrain types visible. Castles and cities appear as tiny dots. Banners and heraldic elements frame the composition.";
     default:
       return "Detailed fantasy illustration with clear scale indicators.";
   }
