@@ -181,13 +181,14 @@ const DiplomacyPanel = ({ sessionId, players, cityStates, currentPlayerName, gam
     setLoadingNpc(true);
 
     try {
-      const isAiFactionRoom = selectedRoom.room_type === "player_ai_faction";
       const isNpcRoom = selectedRoom.room_type === "player_npc";
+      const factionName = selectedRoom.participant_a === currentPlayerName
+        ? selectedRoom.participant_b : selectedRoom.participant_a;
+      const isAiFactionRoom = selectedRoom.room_type === "player_ai_faction"
+        || aiFactions.some(f => f.faction_name === factionName);
 
       if (isAiFactionRoom) {
         // AI faction diplomacy reply
-        const factionName = selectedRoom.participant_a === currentPlayerName
-          ? selectedRoom.participant_b : selectedRoom.participant_a;
         const faction = aiFactions.find(f => f.faction_name === factionName);
 
         const { data, error } = await supabase.functions.invoke("diplomacy-reply", {
@@ -361,7 +362,9 @@ const DiplomacyPanel = ({ sessionId, players, cityStates, currentPlayerName, gam
     ? selectedRoom.participant_b : selectedRoom.participant_a;
   const isNpcRoom = selectedRoom.room_type === "player_npc";
   const isAiFactionRoom = selectedRoom.room_type === "player_ai_faction";
-  const canRequestReply = isNpcRoom || isAiFactionRoom;
+  // Also detect AI faction rooms created as player_player by checking faction names
+  const isAiFactionByName = aiFactions.some(f => f.faction_name === otherParticipant);
+  const canRequestReply = isNpcRoom || isAiFactionRoom || isAiFactionByName;
 
   return (
     <div className="flex flex-col h-[calc(100vh-200px)] p-4">
