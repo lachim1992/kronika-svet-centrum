@@ -1,28 +1,9 @@
 /**
  * ai-faction-turn: Enhanced AI faction decision-making with FULL military capability.
- *
- * Situational AI that:
- * - Reads full economic state (realm_resources, cities, buildings)
- * - Reads diplomatic context (diplomacy_messages, war_declarations, tensions)
- * - Reads military state (military_stacks, battles)
- * - Computes mobilization metrics (safe rate, war readiness)
- * - Decides actions: build, recruit, deploy, move, attack, diplomacy, war, peace
- * - Executes via existing infrastructure (command-dispatch, direct DB, action_queue)
- * - Must send ultimatum before declaring war
+ * Uses unified AI context (createAIContext + invokeAI) for premise injection.
  */
 
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.4";
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
-};
-
-function json(data: any, status = 200) {
-  return new Response(JSON.stringify(data), {
-    status, headers: { ...corsHeaders, "Content-Type": "application/json" },
-  });
-}
+import { createAIContext, invokeAI, getServiceClient, corsHeaders, jsonResponse as json, errorResponse } from "../_shared/ai-context.ts";
 
 // ═══════════════════════════════════════════
 // HEX MATH
@@ -172,12 +153,9 @@ Deno.serve(async (req) => {
   try {
     const { sessionId, factionName } = await req.json();
 
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) return json({ error: "API key not configured" }, 500);
-
+    const supabase = getServiceClient();
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const supabase = createClient(supabaseUrl, supabaseKey);
 
     // ── Fetch faction ──
     const { data: faction } = await supabase.from("ai_factions")
@@ -323,6 +301,9 @@ Deno.serve(async (req) => {
 
     const personality = faction.personality || "diplomatic";
     const goals = faction.goals || [];
+
+    // ── Load unified AI context (premise, lore, constraints) ──
+    const aiCtx = await createAIContext(sessionId, turn, supabase, factionName);
 
     const systemPrompt = `Jsi AI řídící frakci "${factionName}" v civilizační strategické hře.
 
@@ -476,107 +457,84 @@ Volné hexy existují, pokud v provincii není přelidněno.
 
 Rozhodni, co frakce udělá v tomto kole. ${milMetrics.warState === "war" ? "JSTE VE VÁLCE — PRIORITA: nasadit armády, útočit na města, bránit vlastní území!" : ""} Buď strategický a situační. Zvažuj akce vůči VŠEM hráčům i AI frakcím — obchod, pakty, společné útoky.`;
 
-    // ── Call AI ──
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model: "google/gemini-2.5-pro",
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userPrompt },
-        ],
-        tools: [{
-          type: "function",
-          function: {
-            name: "faction_turn",
-            description: "Submit faction decisions for this turn.",
-            parameters: {
-              type: "object",
-              properties: {
-                actions: {
-                  type: "array",
-                  items: {
-                    type: "object",
-                    properties: {
-                      actionType: {
-                        type: "string",
-                        enum: [
-                          "build_building",
-                          "recruit_army",
-                          "deploy_army",
-                          "move_army",
-                          "attack_target",
-                          "set_mobilization",
-                          "send_diplomacy_message",
-                          "send_ultimatum",
-                          "declare_war",
-                          "offer_peace",
-                          "accept_peace",
-                          "issue_declaration",
-                          "propose_trade_pact",
-                          "propose_alliance_pact",
-                          "found_settlement",
-                          "trade",
-                          "explore",
-                        ],
-                      },
-                      description: { type: "string", description: "Stručný popis akce" },
-                      targetPlayer: { type: "string", description: "Cílový hráč/frakce (pro diplomatické akce)" },
-                      targetCity: { type: "string", description: "Cílové město (pro stavby, nasazení, útok)" },
-                      buildingName: { type: "string", description: "Název budovy ze seznamu dostupných" },
-                      armyName: { type: "string", description: "Název nové armády" },
-                      armyPreset: { type: "string", enum: ["militia", "cohort", "cavalry_wing", "legion"], description: "Typ armády: militia (200 pěch, levná), cohort (300 pěch + 100 lučíš), cavalry_wing (200 jízdy), legion (600 pěch + 200 lučíš, drahá)" },
-                      stackId: { type: "string", description: "ID existujícího stacku (pro deploy/move/attack)" },
-                      stackName: { type: "string", description: "Jméno stacku (alternativa k ID)" },
-                      targetStackName: { type: "string", description: "Jméno nepřátelského stacku (pro attack_target na stack)" },
-                      targetHexQ: { type: "number", description: "Hex Q souřadnice (pro found_settlement)" },
-                      targetHexR: { type: "number", description: "Hex R souřadnice (pro found_settlement)" },
-                      settlementName: { type: "string", description: "Jméno nové osady (pro found_settlement)" },
-                      mobilizationRate: { type: "number", description: "Nová mobilizační sazba 0.0-0.6 (pro set_mobilization)" },
-                      messageText: { type: "string", description: "Text diplomatické zprávy / ultimáta / prohlášení" },
-                      peaceConditions: {
-                        type: "object",
-                        properties: {
-                          type: { type: "string", enum: ["white_peace", "tribute", "territory", "vassalage"] },
-                          tributeAmount: { type: "number" },
-                          territoryName: { type: "string" },
-                        },
-                      },
-                      narrativeNote: { type: "string", description: "Krátký narativní text pro kroniku" },
-                    },
-                    required: ["actionType", "description"],
-                    additionalProperties: false,
-                  },
-                },
-                dispositionChanges: {
+    // ── Call AI via unified pipeline ──
+    const aiResult = await invokeAI(aiCtx, {
+      model: "google/gemini-2.5-pro",
+      systemPrompt,
+      userPrompt,
+      tools: [{
+        type: "function",
+        function: {
+          name: "faction_turn",
+          description: "Submit faction decisions for this turn.",
+          parameters: {
+            type: "object",
+            properties: {
+              actions: {
+                type: "array",
+                items: {
                   type: "object",
-                  description: "Změny postoje k hráčům: { jménoHráče: delta (-20 až +20) }",
+                  properties: {
+                    actionType: {
+                      type: "string",
+                      enum: [
+                        "build_building", "recruit_army", "deploy_army", "move_army",
+                        "attack_target", "set_mobilization", "send_diplomacy_message",
+                        "send_ultimatum", "declare_war", "offer_peace", "accept_peace",
+                        "issue_declaration", "propose_trade_pact", "propose_alliance_pact",
+                        "found_settlement", "trade", "explore",
+                      ],
+                    },
+                    description: { type: "string", description: "Stručný popis akce" },
+                    targetPlayer: { type: "string" },
+                    targetCity: { type: "string" },
+                    buildingName: { type: "string" },
+                    armyName: { type: "string" },
+                    armyPreset: { type: "string", enum: ["militia", "cohort", "cavalry_wing", "legion"] },
+                    stackId: { type: "string" },
+                    stackName: { type: "string" },
+                    targetStackName: { type: "string" },
+                    targetHexQ: { type: "number" },
+                    targetHexR: { type: "number" },
+                    settlementName: { type: "string" },
+                    mobilizationRate: { type: "number" },
+                    messageText: { type: "string" },
+                    peaceConditions: {
+                      type: "object",
+                      properties: {
+                        type: { type: "string", enum: ["white_peace", "tribute", "territory", "vassalage"] },
+                        tributeAmount: { type: "number" },
+                        territoryName: { type: "string" },
+                      },
+                    },
+                    narrativeNote: { type: "string" },
+                  },
+                  required: ["actionType", "description"],
+                  additionalProperties: false,
                 },
-                internalThought: { type: "string", description: "Interní úvaha AI (pro debug/narativ)" },
               },
-              required: ["actions", "internalThought"],
-              additionalProperties: false,
+              dispositionChanges: {
+                type: "object",
+                description: "Změny postoje k hráčům: { jménoHráče: delta (-20 až +20) }",
+              },
+              internalThought: { type: "string", description: "Interní úvaha AI (pro debug/narativ)" },
             },
+            required: ["actions", "internalThought"],
+            additionalProperties: false,
           },
-        }],
-        tool_choice: { type: "function", function: { name: "faction_turn" } },
-      }),
+        },
+      }],
+      toolChoice: { type: "function", function: { name: "faction_turn" } },
     });
 
-    if (!response.ok) {
-      if (response.status === 429) return json({ error: "Rate limit" }, 429);
-      if (response.status === 402) return json({ error: "Credits exhausted" }, 402);
-      const errBody = await response.text();
-      console.error("AI gateway error body:", errBody);
-      throw new Error(`AI gateway error: ${response.status}`);
+    if (!aiResult.ok) {
+      if (aiResult.status === 429) return json({ error: "Rate limit" }, 429);
+      if (aiResult.status === 402) return json({ error: "Credits exhausted" }, 402);
+      throw new Error(aiResult.error || "AI error");
     }
 
-    const data = await response.json();
-    const toolCall = data.choices?.[0]?.message?.tool_calls?.[0];
-    if (!toolCall) throw new Error("No tool call returned");
-
-    const result = JSON.parse(toolCall.function.arguments);
+    const result = aiResult.data;
+    if (!result?.actions) throw new Error("No actions returned from AI");
     const executedActions: any[] = [];
 
     // ── Auto-accept incoming pacts from other AI factions ──

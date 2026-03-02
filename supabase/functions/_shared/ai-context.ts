@@ -211,53 +211,55 @@ export function buildPremisePrompt(premise: WorldPremise): string {
   const parts: string[] = [];
 
   parts.push("=== PREMISA SVĚTA (povinný kontext — MUSÍŠ respektovat) ===");
+  parts.push("PRAVIDLO PRIORITY: Pokud dojde ke konfliktu mezi vrstvami, VŽDY platí vrstva s nižším číslem. P1 vítězí nad P2, P2 nad P3 atd.");
 
-  // Chronicle 0 (Prolog) — the canonical founding narrative
-  if (premise.chronicle0) {
-    const c0Truncated = premise.chronicle0.length > 3000
-      ? premise.chronicle0.substring(0, 3000) + "\n[...zkráceno]"
-      : premise.chronicle0;
-    parts.push(`KRONIKA NULTÉHO ROKU (Prolog světa — kanonický zdroj pravdy o prehistorii, legendárních postavách, válkách a mýtech. MUSÍŠ na něj navazovat!):\n${c0Truncated}`);
+  // ── P1 — CONSTRAINTS (tvrdé zákazy, nepřekročitelné) ──
+  if (premise.constraints) {
+    parts.push(`[P1 — NEPŘEKROČITELNÁ OMEZENÍ]\n${premise.constraints}`);
   }
 
-  if (premise.loreBible) {
-    parts.push(`LORE BIBLE:\n${premise.loreBible.substring(0, 1200)}`);
+  // Forbidden words from narrative rules (also P1)
+  const saga = premise.narrativeRules?.saga;
+  const history = premise.narrativeRules?.history;
+  if (saga?.forbidden?.length) {
+    parts.push(`[P1 — ZAKÁZANÁ SLOVA (nikdy nepoužívej)]: ${saga.forbidden.join(", ")}`);
   }
 
-  if (premise.worldVibe) {
-    parts.push(`ATMOSFÉRA SVĚTA: ${premise.worldVibe}`);
-  }
-
-  const writingInstruction = WRITING_STYLE_MAP[premise.writingStyle] || WRITING_STYLE_MAP["narrative"];
-  parts.push(`STYL PSANÍ: ${writingInstruction}`);
-
+  // ── P2 — STRUCTURAL PREMISE (epoch, cosmology, seed) ──
   const epochInstruction = EPOCH_STYLE_MAP[premise.epochStyle] || EPOCH_STYLE_MAP["kroniky"];
-  parts.push(`EPOCHA: ${epochInstruction}`);
+  parts.push(`[P2 — STRUKTURÁLNÍ PREMISA]\nEPOCHA: ${epochInstruction}`);
 
   if (premise.cosmology) {
     parts.push(`KOSMOLOGIE: ${premise.cosmology}`);
-  }
-
-  if (premise.constraints) {
-    parts.push(`OMEZENÍ: ${premise.constraints}`);
-  }
-
-  if (premise.economicBias !== "balanced") {
-    parts.push(`EKONOMICKÝ DŮRAZ: ${premise.economicBias}`);
-  }
-
-  if (premise.warBias !== "neutral") {
-    parts.push(`VÁLEČNÝ DŮRAZ: ${premise.warBias}`);
   }
 
   if (premise.seed) {
     parts.push(`SVĚT SEED: ${premise.seed}`);
   }
 
-  // Narrative rules from server_config (saga/history config)
-  const saga = premise.narrativeRules?.saga;
-  const history = premise.narrativeRules?.history;
+  // ── P3 — LORE BIBLE (canonical entities, relationships) ──
+  if (premise.loreBible) {
+    parts.push(`[P3 — LORE BIBLE (kanonické entity a vztahy)]\n${premise.loreBible.substring(0, 1200)}`);
+  }
 
+  // ── P4 — CHRONICLE 0 (founding narrative) ──
+  if (premise.chronicle0) {
+    const c0Truncated = premise.chronicle0.length > 3000
+      ? premise.chronicle0.substring(0, 3000) + "\n[...zkráceno]"
+      : premise.chronicle0;
+    parts.push(`[P4 — KRONIKA NULTÉHO ROKU (Prolog — kanonický zdroj pravdy o prehistorii, legendách, válkách a mýtech. MUSÍŠ na něj navazovat!)]\n${c0Truncated}`);
+  }
+
+  // ── P5 — VIBE + STYLE (atmosphere, writing style) ──
+  const writingInstruction = WRITING_STYLE_MAP[premise.writingStyle] || WRITING_STYLE_MAP["narrative"];
+  parts.push(`[P5 — ATMOSFÉRA A STYL]\nSTYL PSANÍ: ${writingInstruction}`);
+
+  if (premise.worldVibe) {
+    parts.push(`ATMOSFÉRA SVĚTA: ${premise.worldVibe}`);
+  }
+
+  // ── P6 — NARRATIVE RULES (saga stance, keywords, style prompts) ──
+  const narrativeParts: string[] = [];
   if (saga) {
     if (saga.stance && saga.stance !== "pro-regime") {
       const stanceMap: Record<string, string> = {
@@ -266,31 +268,28 @@ export function buildPremisePrompt(premise: WorldPremise): string {
         "mythical": "Piš jako mýtický vypravěč, zesiluj nadpřirozené prvky a osudovost.",
         "pro-regime": "Piš jako dvorní kronikář, oslavuj vládce a jeho činy.",
       };
-      parts.push(`POSTOJ KRONIKÁŘE: ${stanceMap[saga.stance] || saga.stance}`);
+      narrativeParts.push(`POSTOJ KRONIKÁŘE: ${stanceMap[saga.stance] || saga.stance}`);
     }
-    if (saga.style_prompt) {
-      parts.push(`STYLOVÝ POKYN PRO SÁGY: ${saga.style_prompt}`);
-    }
-    if (saga.keywords?.length) {
-      parts.push(`PREFEROVANÁ KLÍČOVÁ SLOVA: ${saga.keywords.join(", ")}`);
-    }
-    if (saga.forbidden?.length) {
-      parts.push(`ZAKÁZANÁ SLOVA (nikdy nepoužívej): ${saga.forbidden.join(", ")}`);
-    }
+    if (saga.style_prompt) narrativeParts.push(`STYLOVÝ POKYN PRO SÁGY: ${saga.style_prompt}`);
+    if (saga.keywords?.length) narrativeParts.push(`PREFEROVANÁ KLÍČOVÁ SLOVA: ${saga.keywords.join(", ")}`);
   }
-
   if (history) {
-    if (history.style_prompt) {
-      parts.push(`STYLOVÝ POKYN PRO HISTORII: ${history.style_prompt}`);
-    }
-    if (history.include_metrics) {
-      parts.push("ZAHRNOUT METRIKY: Ano — uváděj populační, ekonomické a vojenské statistiky kde jsou k dispozici.");
-    }
+    if (history.style_prompt) narrativeParts.push(`STYLOVÝ POKYN PRO HISTORII: ${history.style_prompt}`);
+    if (history.include_metrics) narrativeParts.push("ZAHRNOUT METRIKY: Ano — uváděj populační, ekonomické a vojenské statistiky kde jsou k dispozici.");
+  }
+  if (narrativeParts.length > 0) {
+    parts.push(`[P6 — NARATIVNÍ PRAVIDLA]\n${narrativeParts.join("\n")}`);
   }
 
-  // Inject civilization DNA context if available
+  // ── P7 — BIAS (optional emphasis) ──
+  const biasParts: string[] = [];
+  if (premise.economicBias !== "balanced") biasParts.push(`EKONOMICKÝ DŮRAZ: ${premise.economicBias}`);
+  if (premise.warBias !== "neutral") biasParts.push(`VÁLEČNÝ DŮRAZ: ${premise.warBias}`);
+  if (biasParts.length > 0) {
+    parts.push(`[P7 — DŮRAZY]\n${biasParts.join("\n")}`);
+  }
+
   parts.push("=== KONEC PREMISY ===");
-  // Note: civ context is injected dynamically via createAIContext playerName param
 
   return parts.join("\n\n");
 }
