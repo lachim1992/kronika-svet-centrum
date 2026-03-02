@@ -171,8 +171,24 @@ const SeedMapManager = ({ sessionId, onRefetch }: Props) => {
   const [learnedPrefs, setLearnedPrefs] = useState<{ style_notes: string[]; avg_rating: number; total_ratings: number } | null>(null);
   const [savingFeedback, setSavingFeedback] = useState(false);
 
-  // Load user preferences on mount
+  // Load map dimensions from world_foundations + user preferences on mount
   useEffect(() => {
+    // Load actual map dimensions from world_foundations
+    supabase
+      .from("world_foundations")
+      .select("map_width, map_height")
+      .eq("session_id", sessionId)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (data) {
+          const w = (data as any).map_width;
+          const h = (data as any).map_height;
+          if (w && h) {
+            setSettings(prev => ({ ...prev, width: w, height: h }));
+          }
+        }
+      });
+
     if (!user?.id) return;
     supabase
       .from("map_gen_preferences")
@@ -196,7 +212,7 @@ const SeedMapManager = ({ sessionId, onRefetch }: Props) => {
           });
         }
       });
-  }, [user?.id]);
+  }, [user?.id, sessionId]);
 
   const loadStats = useCallback(async () => {
     setLoadingStats(true);
@@ -259,6 +275,12 @@ const SeedMapManager = ({ sessionId, onRefetch }: Props) => {
         .update({ world_seed: crypto.randomUUID() })
         .eq("id", sessionId);
       if (seedErr) throw seedErr;
+
+      // Sync dimensions to world_foundations
+      await supabase
+        .from("world_foundations")
+        .update({ map_width: settings.width, map_height: settings.height } as any)
+        .eq("session_id", sessionId);
 
       const { data, error } = await supabase.functions.invoke("generate-world-map", {
         body: { session_id: sessionId, width: settings.width, height: settings.height },
