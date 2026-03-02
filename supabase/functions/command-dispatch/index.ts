@@ -281,6 +281,18 @@ async function executeCommand(
     case "MOVE_STACK":
       return await executeMoveStack(supabase, base, actor, payload, commandId, sessionId, turnNumber);
 
+    case "PROPOSE_PACT":
+      return await executeProposePact(supabase, base, actor, payload, commandId, sessionId, turnNumber);
+
+    case "ACCEPT_PACT":
+      return await executeAcceptPact(supabase, base, actor, payload, commandId, sessionId, turnNumber);
+
+    case "REJECT_PACT":
+      return await executeRejectPact(supabase, base, actor, payload, commandId, sessionId, turnNumber);
+
+    case "LIFT_EMBARGO":
+      return await executeLiftEmbargo(supabase, base, actor, payload, commandId, sessionId, turnNumber);
+
     case "GENERIC":
       return insertEvents(supabase, commandId, [{
         ...base,
@@ -1022,4 +1034,212 @@ async function insertEventsWithChronicle(
 
 async function safeInsert(query: any) {
   try { await query; } catch (_) { /* non-critical side-effect */ }
+}
+
+// ═══════════════════════════════════════════
+// PROPOSE_PACT — P2P diplomatic pact proposal
+// ═══════════════════════════════════════════
+
+async function executeProposePact(
+  supabase: any, base: any, actor: Actor, payload: any,
+  commandId: string, sessionId: string, turnNumber: number,
+): Promise<CommandResult> {
+  const { targetPlayer, pactType, proclamationText, effects, durationTurns, targetParty } = payload;
+  if (!targetPlayer) return { events: [], error: "Missing targetPlayer" };
+  if (!pactType) return { events: [], error: "Missing pactType" };
+
+  const validTypes = ["alliance", "open_borders", "defense_pact", "condemnation", "joint_decree", "embargo"];
+  if (!validTypes.includes(pactType)) return { events: [], error: `Invalid pactType: ${pactType}` };
+
+  // For embargo, it's unilateral — auto-activate
+  const isUnilateral = pactType === "embargo";
+
+  const { data: pact, error: pactErr } = await supabase.from("diplomatic_pacts").insert({
+    session_id: sessionId,
+    party_a: actor.name,
+    party_b: targetPlayer,
+    pact_type: pactType,
+    target_party: targetParty || null,
+    status: isUnilateral ? "active" : "proposed",
+    proposed_by: actor.name,
+    proposed_turn: turnNumber,
+    accepted_turn: isUnilateral ? turnNumber : null,
+    proclamation_text: proclamationText || `${actor.name} navrhuje ${pactType} s ${targetPlayer}.`,
+    effects: effects || {},
+    expires_turn: durationTurns ? turnNumber + durationTurns : null,
+  }).select("id").single();
+
+  if (pactErr) return { events: [], error: `Pact creation failed: ${pactErr.message}` };
+
+  // Embargo side-effects: block trade routes
+  if (pactType === "embargo") {
+    await supabase.from("trade_routes").update({ status: "embargoed" })
+      .eq("session_id", sessionId)
+      .or(`and(from_player.eq.${actor.name},to_player.eq.${targetPlayer}),and(from_player.eq.${targetPlayer},to_player.eq.${actor.name})`)
+      .eq("status", "active");
+  }
+
+  // Condemnation: apply disposition penalty to target
+  if (pactType === "condemnation" && targetParty && isUnilateral) {
+    const { data: targetFaction } = await supabase.from("ai_factions").select("id, disposition")
+      .eq("session_id", sessionId).eq("faction_name", targetParty).maybeSingle();
+    if (targetFaction) {
+      const disp = { ...(targetFaction.disposition as Record<string, number> || {}) };
+      disp[actor.name] = Math.max(-100, (disp[actor.name] || 0) - 10);
+      disp[targetPlayer] = Math.max(-100, (disp[targetPlayer] || 0) - 10);
+      await supabase.from("ai_factions").update({ disposition: disp }).eq("id", targetFaction.id);
+    }
+  }
+
+  const pactLabels: Record<string, string> = {
+    alliance: "spojenectví", open_borders: "otevření hranic", defense_pact: "obranný pakt",
+    condemnation: "odsouzení", joint_decree: "společný dekret", embargo: "embargo",
+  };
+
+  const chronicleText = `${actor.name} ${isUnilateral ? "uvalil" : "navrhl"} ${pactLabels[pactType] || pactType} ${isUnilateral ? "na" : "s"} ${targetPlayer}.${targetParty ? ` Cíl: ${targetParty}.` : ""}`;
+
+  await safeInsert(supabase.from("chronicle_entries").insert({
+    session_id: sessionId, turn_from: turnNumber, turn_to: turnNumber,
+    text: chronicleText, source_type: "system",
+  }));
+
+  return insertEventsWithChronicle(supabase, commandId, sessionId, turnNumber, [{
+    ...base,
+    event_type: "diplomacy",
+    note: chronicleText,
+    importance: "critical",
+    reference: { pactId: pact.id, pactType, targetPlayer, targetParty },
+  }], undefined, { pactId: pact.id });
+}
+
+// ═══════════════════════════════════════════
+// ACCEPT_PACT — Accept a proposed pact
+// ═══════════════════════════════════════════
+
+async function executeAcceptPact(
+  supabase: any, base: any, actor: Actor, payload: any,
+  commandId: string, sessionId: string, turnNumber: number,
+): Promise<CommandResult> {
+  const { pactId } = payload;
+  if (!pactId) return { events: [], error: "Missing pactId" };
+
+  const { data: pact } = await supabase.from("diplomatic_pacts")
+    .select("*").eq("id", pactId).eq("session_id", sessionId).single();
+
+  if (!pact) return { events: [], error: "Pact not found" };
+  if (pact.status !== "proposed") return { events: [], error: "Pact not in proposed state" };
+  if (pact.party_b !== actor.name && pact.party_a !== actor.name) return { events: [], error: "Not your pact to accept" };
+
+  await supabase.from("diplomatic_pacts").update({
+    status: "active", accepted_turn: turnNumber,
+  }).eq("id", pactId);
+
+  const pactLabels: Record<string, string> = {
+    alliance: "Spojenectví", open_borders: "Otevření hranic", defense_pact: "Obranný pakt",
+    condemnation: "Odsouzení", joint_decree: "Společný dekret",
+  };
+
+  const chronicleText = `🤝 ${pactLabels[pact.pact_type] || pact.pact_type} mezi ${pact.party_a} a ${pact.party_b} bylo přijato a vstupuje v platnost.${pact.target_party ? ` Cíl: ${pact.target_party}.` : ""}`;
+
+  await safeInsert(supabase.from("chronicle_entries").insert({
+    session_id: sessionId, turn_from: turnNumber, turn_to: turnNumber,
+    text: chronicleText, source_type: "system",
+  }));
+
+  // Apply condemnation effects on accept
+  if (pact.pact_type === "condemnation" && pact.target_party) {
+    const { data: targetFaction } = await supabase.from("ai_factions").select("id, disposition")
+      .eq("session_id", sessionId).eq("faction_name", pact.target_party).maybeSingle();
+    if (targetFaction) {
+      const disp = { ...(targetFaction.disposition as Record<string, number> || {}) };
+      disp[pact.party_a] = Math.max(-100, (disp[pact.party_a] || 0) - 10);
+      disp[pact.party_b] = Math.max(-100, (disp[pact.party_b] || 0) - 10);
+      await supabase.from("ai_factions").update({ disposition: disp }).eq("id", targetFaction.id);
+    }
+  }
+
+  return insertEventsWithChronicle(supabase, commandId, sessionId, turnNumber, [{
+    ...base,
+    event_type: "diplomacy",
+    note: chronicleText,
+    importance: "critical",
+    reference: { pactId, pactType: pact.pact_type, partyA: pact.party_a, partyB: pact.party_b },
+  }], undefined, { pactId });
+}
+
+// ═══════════════════════════════════════════
+// REJECT_PACT — Reject a proposed pact
+// ═══════════════════════════════════════════
+
+async function executeRejectPact(
+  supabase: any, base: any, actor: Actor, payload: any,
+  commandId: string, sessionId: string, turnNumber: number,
+): Promise<CommandResult> {
+  const { pactId } = payload;
+  if (!pactId) return { events: [], error: "Missing pactId" };
+
+  const { data: pact } = await supabase.from("diplomatic_pacts")
+    .select("*").eq("id", pactId).eq("session_id", sessionId).single();
+
+  if (!pact) return { events: [], error: "Pact not found" };
+  if (pact.status !== "proposed") return { events: [], error: "Pact not in proposed state" };
+
+  await supabase.from("diplomatic_pacts").update({ status: "rejected" }).eq("id", pactId);
+
+  const note = `${actor.name} odmítl nabídku ${pact.pact_type} od ${pact.proposed_by}.`;
+
+  return insertEventsWithChronicle(supabase, commandId, sessionId, turnNumber, [{
+    ...base,
+    event_type: "diplomacy",
+    note,
+    importance: "normal",
+    reference: { pactId, pactType: pact.pact_type },
+  }]);
+}
+
+// ═══════════════════════════════════════════
+// LIFT_EMBARGO — Remove an active embargo
+// ═══════════════════════════════════════════
+
+async function executeLiftEmbargo(
+  supabase: any, base: any, actor: Actor, payload: any,
+  commandId: string, sessionId: string, turnNumber: number,
+): Promise<CommandResult> {
+  const { pactId, targetPlayer } = payload;
+
+  let embargoId = pactId;
+
+  // Find embargo by target if no pactId
+  if (!embargoId && targetPlayer) {
+    const { data: embargo } = await supabase.from("diplomatic_pacts")
+      .select("id").eq("session_id", sessionId).eq("pact_type", "embargo").eq("status", "active")
+      .or(`and(party_a.eq.${actor.name},party_b.eq.${targetPlayer}),and(party_a.eq.${targetPlayer},party_b.eq.${actor.name})`)
+      .maybeSingle();
+    embargoId = embargo?.id;
+  }
+
+  if (!embargoId) return { events: [], error: "No active embargo found" };
+
+  // Mark as broken (triggers post-embargo penalty via physics.ts)
+  await supabase.from("diplomatic_pacts").update({ status: "broken" }).eq("id", embargoId);
+
+  // Unblock trade routes (but with lingering penalty from pact status)
+  await supabase.from("trade_routes").update({ status: "active" })
+    .eq("session_id", sessionId).eq("status", "embargoed")
+    .or(`and(from_player.eq.${actor.name},to_player.eq.${targetPlayer || ""}),and(from_player.eq.${targetPlayer || ""},to_player.eq.${actor.name})`);
+
+  const note = `${actor.name} zrušil embargo${targetPlayer ? ` vůči ${targetPlayer}` : ""}. Obchodní cesty obnoveny s penalizací -30%.`;
+
+  await safeInsert(supabase.from("chronicle_entries").insert({
+    session_id: sessionId, turn_from: turnNumber, turn_to: turnNumber,
+    text: note, source_type: "system",
+  }));
+
+  return insertEventsWithChronicle(supabase, commandId, sessionId, turnNumber, [{
+    ...base,
+    event_type: "trade",
+    note,
+    importance: "normal",
+    reference: { pactId: embargoId, action: "lift_embargo", targetPlayer },
+  }]);
 }

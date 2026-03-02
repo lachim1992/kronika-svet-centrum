@@ -5,7 +5,7 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-import { SETTLEMENT_TEMPLATES, SETTLEMENT_WEALTH, computePrestigeEffects } from "../_shared/physics.ts";
+import { SETTLEMENT_TEMPLATES, SETTLEMENT_WEALTH, computePrestigeEffects, getOpenBordersBonuses, hasActiveEmbargo, getTradeEfficiencyModifier, type DiplomaticPact } from "../_shared/physics.ts";
 
 const UNIT_WEIGHTS: Record<string, number> = {
   INFANTRY: 1.0, ARCHERS: 1.1, CAVALRY: 1.3, SIEGE: 0.9,
@@ -216,12 +216,15 @@ Deno.serve(async (req) => {
       infra = newInfra;
     }
 
-    // 2) Load cities
-    const { data: cities } = await supabase
-      .from("cities")
-      .select("*")
-      .eq("session_id", sessionId)
-      .eq("owner_player", playerName);
+    // 2) Load cities + diplomatic pacts
+    const [{ data: cities }, { data: rawPacts }] = await Promise.all([
+      supabase.from("cities").select("*").eq("session_id", sessionId).eq("owner_player", playerName),
+      supabase.from("diplomatic_pacts").select("*").eq("session_id", sessionId)
+        .or(`party_a.eq.${playerName},party_b.eq.${playerName}`)
+        .in("status", ["active", "expired", "broken"]),
+    ]);
+    const allPacts: DiplomaticPact[] = (rawPacts || []) as DiplomaticPact[];
+    const openBordersBonuses = getOpenBordersBonuses(allPacts, playerName);
 
     const myCities = cities || [];
     const logEntries: string[] = [];
@@ -548,9 +551,33 @@ Deno.serve(async (req) => {
     const newStoneReserve = (realm.stone_reserve || 0) + totalStoneProd;
     const newIronReserve = (realm.iron_reserve || 0) + totalIronProd;
 
-    // Wealth
-    const wealthIncome = computeWealthIncome(myCities, cityDistrictEffects) * (1 + wealthMod / 100);
+    // Wealth — apply open borders trade efficiency bonus
+    const openBordersTradeBonus = openBordersBonuses.trade_efficiency_bonus || 0;
+    const wealthIncome = Math.round(computeWealthIncome(myCities, cityDistrictEffects) * (1 + wealthMod / 100) * (1 + openBordersTradeBonus));
     let newGoldReserve = (realm.gold_reserve || 0) + wealthIncome - wealthUpkeep;
+
+    // ═══ EMBARGO: Block trade route income ═══
+    // Check if any active embargo affects this player's trade routes
+    const { data: activeTradeRoutes } = await supabase.from("trade_routes")
+      .select("id, from_player, to_player, gold_per_turn")
+      .eq("session_id", sessionId).eq("status", "active")
+      .or(`from_player.eq.${playerName},to_player.eq.${playerName}`);
+    
+    let tradeRouteIncome = 0;
+    for (const route of (activeTradeRoutes || [])) {
+      const otherPlayer = route.from_player === playerName ? route.to_player : route.from_player;
+      if (hasActiveEmbargo(allPacts, playerName, otherPlayer)) {
+        // Embargoed: no income from this route
+        logEntries.push(`🚫 Obchodní cesta s ${otherPlayer} blokována embargem`);
+        continue;
+      }
+      // Apply pact-based trade efficiency modifier
+      const pactMod = getTradeEfficiencyModifier(allPacts, playerName, otherPlayer);
+      const routeIncome = Math.round((route.gold_per_turn || 0) * (1 + pactMod));
+      tradeRouteIncome += routeIncome;
+    }
+    newGoldReserve += tradeRouteIncome;
+    if (tradeRouteIncome > 0) logEntries.push(`Příjem z obchodních cest: +${tradeRouteIncome} zlata`);
     
     // Sport Funding (Percent of reserve)
     const sportFundingExpense = Math.floor(Math.max(0, newGoldReserve) * (sportFundingPct / 100));
