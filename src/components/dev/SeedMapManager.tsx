@@ -291,7 +291,18 @@ const SeedMapManager = ({ sessionId, onRefetch }: Props) => {
         .eq("session_id", sessionId);
 
       const { data, error } = await supabase.functions.invoke("generate-world-map", {
-        body: { session_id: sessionId, width: settings.width, height: settings.height },
+        body: {
+          session_id: sessionId,
+          width: settings.width,
+          height: settings.height,
+          terrain_params: {
+            targetLandRatio: settings.targetLandRatio,
+            continentCount: settings.continentCount,
+            mountainDensity: settings.mountainDensity,
+            coastalRichness: settings.coastalRichness,
+            biomeWeights: settings.biomeWeights,
+          },
+        },
       });
       if (error) throw error;
 
@@ -303,7 +314,7 @@ const SeedMapManager = ({ sessionId, onRefetch }: Props) => {
       toast.error("Regenerace selhala: " + (e.message || "unknown"));
     }
     setRegenerating(false);
-  }, [sessionId, settings.width, settings.height, loadStats, onRefetch]);
+  }, [sessionId, settings, loadStats, onRefetch]);
 
   const runPatch = useCallback(async (userRequest: string) => {
     if (!userRequest.trim()) return;
