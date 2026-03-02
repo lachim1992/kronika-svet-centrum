@@ -320,7 +320,7 @@ Deno.serve(async (req) => {
     }
 
     // ═══════════════════════════════════════════
-    // 4. TURN SUMMARY + AUDIT
+    // 4. ADVANCE TURN FIRST (prevents stuck state on timeout)
     // ═══════════════════════════════════════════
     await safeInsert(supabase.from("turn_summaries").insert({
       session_id: sessionId,
@@ -329,6 +329,15 @@ Deno.serve(async (req) => {
       closed_at: new Date().toISOString(),
       closed_by: playerName,
     }));
+
+    await supabase.from("game_sessions")
+      .update({ current_turn: turnNumber + 1 })
+      .eq("id", sessionId);
+
+    // Reset player turn_closed flags
+    await supabase.from("game_players")
+      .update({ turn_closed: false })
+      .eq("session_id", sessionId);
 
     await safeInsert(supabase.from("world_action_log").insert({
       session_id: sessionId,
@@ -339,30 +348,16 @@ Deno.serve(async (req) => {
     }));
 
     // ═══════════════════════════════════════════
-    // 5. ADVANCE TURN
-    // ═══════════════════════════════════════════
-    await supabase.from("game_sessions")
-      .update({ current_turn: turnNumber + 1 })
-      .eq("id", sessionId);
-
-    // Reset player turn_closed flags
-    await supabase.from("game_players")
-      .update({ turn_closed: false })
-      .eq("session_id", sessionId);
-
-    // ═══════════════════════════════════════════
-    // 6. PROCESS TURN (economy for all players + AI factions)
+    // 5. PROCESS TURN (economy for all players + AI factions)
     // ═══════════════════════════════════════════
     try {
       const { data: allPlayers } = await supabase.from("game_players")
         .select("player_name").eq("session_id", sessionId);
 
-      // Also include AI factions that own cities (they need economy processing too)
       const { data: activeFactions } = await supabase.from("ai_factions")
         .select("faction_name").eq("session_id", sessionId).eq("is_active", true);
       const aiFactionNames = (activeFactions || []).map((f: any) => f.faction_name);
 
-      // Combine human players + AI factions, deduplicate
       const allEconEntities = new Set<string>();
       for (const p of (allPlayers || [])) allEconEntities.add(p.player_name);
       for (const name of aiFactionNames) allEconEntities.add(name);
@@ -382,8 +377,12 @@ Deno.serve(async (req) => {
     }
 
     // ═══════════════════════════════════════════
-    // 7. AUTO-GENERATE CHRONICLES (all 3 types)
+    // 6. NON-CRITICAL BACKGROUND TASKS
+    // Chronicles, wiki, rumors, games, academy — all wrapped individually.
+    // If any times out, the turn is already advanced.
     // ═══════════════════════════════════════════
+
+    // ─── 6a. AUTO-GENERATE CHRONICLES ───
     // Generate chronicles for the just-closed turn (turnNumber) in the background.
     // Failures are non-critical and won't block turn progression.
 
