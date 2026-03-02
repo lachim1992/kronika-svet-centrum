@@ -1,124 +1,82 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createAIContext, invokeAI, corsHeaders, jsonResponse, errorResponse } from "../_shared/ai-context.ts";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
-};
-
-serve(async (req) => {
+Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
     const { action, sessionId, playerName, currentTurn, decreeType, decreeText, context } = await req.json();
 
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY not configured");
+    if (!sessionId) throw new Error("Missing sessionId");
+
+    // ── Load unified AI context ──
+    const aiCtx = await createAIContext(sessionId, currentTurn, undefined, playerName);
 
     if (action === "preview_decree") {
-      const systemPrompt = `You are a medieval royal council advisor evaluating a ruler's proposed decree.
-You must evaluate based on the provided game state and return a structured assessment.
-Always respond in Czech language.
-Be realistic and grounded in the provided data. Do not invent facts not present in the context.`;
+      const systemPrompt = `Jsi středověký královský rádce hodnotící navržený dekret vládce.
+Hodnoť na základě poskytnutého herního stavu. Nevymýšlej fakta.`;
 
-      const userPrompt = `Ruler: ${playerName}
-Current Turn: ${currentTurn}
-Decree Type: ${decreeType}
-Decree Text: "${decreeText}"
+      const userPrompt = `Vládce: ${playerName}
+Kolo: ${currentTurn}
+Typ dekretu: ${decreeType}
+Text dekretu: "${decreeText}"
 
-Game State:
-- Cities: ${JSON.stringify(context?.cities || [])}
-- Army count: ${context?.armies || 0}
-- Resources: ${JSON.stringify(context?.resources || [])}
-- Active crises: ${JSON.stringify(context?.crises || [])}
+Herní stav:
+- Města: ${JSON.stringify(context?.cities || [])}
+- Armád: ${context?.armies || 0}
+- Zdroje: ${JSON.stringify(context?.resources || [])}
+- Aktivní krize: ${JSON.stringify(context?.crises || [])}
 
-Evaluate this decree and return the assessment.`;
+Zhodnoť tento dekret a vrať strukturovaný výstup.`;
 
-      const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${LOVABLE_API_KEY}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: "google/gemini-3-flash-preview",
-          messages: [
-            { role: "system", content: systemPrompt },
-            { role: "user", content: userPrompt },
-          ],
-          tools: [{
-            type: "function",
-            function: {
-              name: "evaluate_decree",
-              description: "Return structured evaluation of the proposed decree",
-              parameters: {
-                type: "object",
-                properties: {
-                  effects: {
-                    type: "array",
-                    items: {
-                      type: "object",
-                      properties: {
-                        label: { type: "string" },
-                        value: { type: "number" },
-                      },
-                      required: ["label", "value"],
+      const result = await invokeAI(aiCtx, {
+        systemPrompt,
+        userPrompt,
+        tools: [{
+          type: "function",
+          function: {
+            name: "evaluate_decree",
+            description: "Return structured evaluation of the proposed decree",
+            parameters: {
+              type: "object",
+              properties: {
+                effects: {
+                  type: "array",
+                  items: {
+                    type: "object",
+                    properties: {
+                      label: { type: "string" },
+                      value: { type: "number" },
                     },
-                    description: "List of stat changes, e.g. [{label:'Stabilita', value:2}, {label:'Příjem', value:-3}]",
+                    required: ["label", "value"],
                   },
-                  riskLevel: { type: "string", description: "Risk level: Nízké, Střední, or Vysoké" },
-                  narrativeText: { type: "string", description: "A short narrative description of what happens when the decree is enacted, written as a chronicle entry in Czech" },
                 },
-                required: ["effects", "riskLevel", "narrativeText"],
+                riskLevel: { type: "string", description: "Nízké, Střední, or Vysoké" },
+                narrativeText: { type: "string", description: "Chronicle entry in Czech" },
               },
+              required: ["effects", "riskLevel", "narrativeText"],
             },
-          }],
-          tool_choice: { type: "function", function: { name: "evaluate_decree" } },
-        }),
+          },
+        }],
+        toolChoice: { type: "function", function: { name: "evaluate_decree" } },
       });
 
-      if (!response.ok) {
-        const errText = await response.text();
-        console.error("AI gateway error:", response.status, errText);
-        if (response.status === 429) {
-          return new Response(JSON.stringify({ error: "Rate limit exceeded" }), {
-            status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" },
-          });
-        }
-        if (response.status === 402) {
-          return new Response(JSON.stringify({ error: "Payment required" }), {
-            status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" },
-          });
-        }
-        throw new Error(`AI error: ${response.status}`);
+      if (!result.ok) {
+        if (result.status === 429) return jsonResponse({ error: "Rate limit exceeded" }, 429);
+        if (result.status === 402) return jsonResponse({ error: "Payment required" }, 402);
+        throw new Error(result.error || "AI error");
       }
 
-      const aiData = await response.json();
-      const toolCall = aiData.choices?.[0]?.message?.tool_calls?.[0];
-      if (toolCall?.function?.arguments) {
-        const parsed = JSON.parse(toolCall.function.arguments);
-        return new Response(JSON.stringify(parsed), {
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-
-      // Fallback if no tool call
-      return new Response(JSON.stringify({
+      return jsonResponse(result.data || {
         effects: [{ label: "Stabilita", value: 1 }],
         riskLevel: "Střední",
-        narrativeText: aiData.choices?.[0]?.message?.content || "Rada zvážila návrh.",
-      }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        narrativeText: "Rada zvážila návrh.",
       });
     }
 
     if (action === "generate_law_draft") {
       const systemPrompt = `Jsi středověký právní poradce královské rady. Na základě dekretu vládce vytvoř formální návrh zákona.
-Zákon musí mít:
-1. Formální název (krátký, autoritativní)
-2. Plný text zákona (3-6 vět, formální středověký styl)
-3. Mechanické efekty (strukturované dopady na ekonomiku, stabilitu, armádu atd.)
-
-Piš česky. Buď konkrétní a realistický na základě herního stavu.`;
+Zákon musí mít formální název, plný text (3-6 vět, formální středověký styl) a mechanické efekty.
+Buď konkrétní a realistický na základě herního stavu.`;
 
       const userPrompt = `Vládce: ${playerName}
 Kolo: ${currentTurn}
@@ -132,81 +90,51 @@ Herní stav:
 
 Vygeneruj formální návrh zákona.`;
 
-      const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${LOVABLE_API_KEY}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: "google/gemini-3-flash-preview",
-          messages: [
-            { role: "system", content: systemPrompt },
-            { role: "user", content: userPrompt },
-          ],
-          tools: [{
-            type: "function",
-            function: {
-              name: "create_law_draft",
-              description: "Create a formal law draft from the decree",
-              parameters: {
-                type: "object",
-                properties: {
-                  lawName: { type: "string", description: "Formální název zákona (česky, krátký)" },
-                  fullText: { type: "string", description: "Plný text zákona ve formálním středověkém stylu (česky)" },
-                  effects: {
-                    type: "array",
-                    items: {
-                      type: "object",
-                      properties: {
-                        type: { type: "string", description: "Effect type: tax_change, trade_restriction, military_funding, civil_reform" },
-                        value: { type: "number", description: "Numeric effect value (positive = bonus, negative = penalty)" },
-                        label: { type: "string", description: "Czech label for this effect" },
-                      },
-                      required: ["type", "value", "label"],
+      const result = await invokeAI(aiCtx, {
+        systemPrompt,
+        userPrompt,
+        tools: [{
+          type: "function",
+          function: {
+            name: "create_law_draft",
+            description: "Create a formal law draft from the decree",
+            parameters: {
+              type: "object",
+              properties: {
+                lawName: { type: "string" },
+                fullText: { type: "string" },
+                effects: {
+                  type: "array",
+                  items: {
+                    type: "object",
+                    properties: {
+                      type: { type: "string" },
+                      value: { type: "number" },
+                      label: { type: "string" },
                     },
-                    description: "List of structured mechanical effects",
+                    required: ["type", "value", "label"],
                   },
                 },
-                required: ["lawName", "fullText", "effects"],
               },
+              required: ["lawName", "fullText", "effects"],
             },
-          }],
-          tool_choice: { type: "function", function: { name: "create_law_draft" } },
-        }),
+          },
+        }],
+        toolChoice: { type: "function", function: { name: "create_law_draft" } },
       });
 
-      if (!response.ok) {
-        const errText = await response.text();
-        console.error("AI gateway error:", response.status, errText);
-        throw new Error(`AI error: ${response.status}`);
-      }
+      if (!result.ok) throw new Error(result.error || "AI error");
 
-      const aiData = await response.json();
-      const toolCall = aiData.choices?.[0]?.message?.tool_calls?.[0];
-      if (toolCall?.function?.arguments) {
-        const parsed = JSON.parse(toolCall.function.arguments);
-        return new Response(JSON.stringify(parsed), {
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-
-      return new Response(JSON.stringify({
+      return jsonResponse(result.data || {
         lawName: "Nový zákon",
         fullText: decreeText,
         effects: [{ type: "civil_reform", value: 1, label: "Reforma" }],
-      }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    return new Response(JSON.stringify({ error: "Unknown action" }), {
-      status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return jsonResponse({ error: "Unknown action" }, 400);
   } catch (e) {
     console.error("royal-council error:", e);
-    return new Response(JSON.stringify({ error: e instanceof Error ? e.message : "Unknown error" }), {
-      status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return errorResponse(e instanceof Error ? e.message : "Unknown error");
   }
 });
