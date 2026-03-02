@@ -8,10 +8,9 @@ import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { BookOpen, Sparkles, ChevronLeft, ChevronRight, Globe, Pencil, Trash2, RefreshCw, Filter } from "lucide-react";
+import { BookOpen, Sparkles, ChevronLeft, ChevronRight, Globe, Pencil, Trash2, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import RichText from "@/components/RichText";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 type GameEvent = Tables<"game_events">;
 type WorldMemory = Tables<"world_memories">;
@@ -19,14 +18,12 @@ type ChronicleEntry = Tables<"chronicle_entries">;
 type GamePlayer = Tables<"game_players">;
 type City = Tables<"cities">;
 
-const SOURCE_FILTERS = [
-  { value: "all", label: "Vše" },
-  { value: "chronicle", label: "📜 Kronika" },
-  { value: "system", label: "⚙️ Systém" },
-  { value: "founding", label: "🏗️ Založení" },
-] as const;
-
-type SourceFilter = typeof SOURCE_FILTERS[number]["value"];
+const SOURCE_BADGE: Record<string, { label: string; variant: "default" | "secondary" | "outline" }> = {
+  system: { label: "⚙️ Systém", variant: "outline" },
+  founding: { label: "🏗️ Založení", variant: "secondary" },
+  chronicle_zero: { label: "⚡ Prolog", variant: "secondary" },
+  chronicle: { label: "📜 Kronika", variant: "default" },
+};
 
 interface ChronicleFeedProps {
   sessionId: string;
@@ -66,7 +63,6 @@ const ChronicleFeed = ({
   const [editingEntry, setEditingEntry] = useState<string | null>(null);
   const [editText, setEditText] = useState("");
   const [rewriting, setRewriting] = useState<string | null>(null);
-  const [sourceFilter, setSourceFilter] = useState<SourceFilter>("all");
 
   const displayRound = viewingRound ?? currentTurn;
   const displayEvents = events.filter(e => e.turn_number === displayRound);
@@ -78,13 +74,8 @@ const ChronicleFeed = ({
       (cf.turn_from != null && cf.turn_from < 1 && cf.turn_to != null && cf.turn_to <= 0);
   });
 
-  // Filter chronicles by source_type
-  const filteredChronicles = sourceFilter === "all"
-    ? chronicles
-    : chronicles.filter(c => (c as any).source_type === sourceFilter);
-
-  // Match chronicles by turn_from/turn_to or text
-  const roundChronicles = filteredChronicles.filter(c => {
+  // Match chronicles by turn_from/turn_to or text (no filtering — unified stream)
+  const roundChronicles = chronicles.filter(c => {
     const cf = c as any;
     // Round 0 = show chronicle_zero / founding entries
     if (displayRound === 0) {
@@ -347,19 +338,6 @@ const ChronicleFeed = ({
         </div>
       )}
 
-      {/* Source Filter */}
-      <div className="flex items-center gap-2 flex-wrap">
-        <Filter className="h-4 w-4 text-muted-foreground" />
-        <Tabs value={sourceFilter} onValueChange={(v) => setSourceFilter(v as SourceFilter)} className="w-auto">
-          <TabsList className="h-8">
-            {SOURCE_FILTERS.map(f => (
-              <TabsTrigger key={f.value} value={f.value} className="text-xs px-3 h-7">
-                {f.label}
-              </TabsTrigger>
-            ))}
-          </TabsList>
-        </Tabs>
-      </div>
 
       {/* Round Navigation */}
       <div className="flex items-center gap-2 p-2 rounded-lg border border-border bg-muted/20">
@@ -404,9 +382,17 @@ const ChronicleFeed = ({
                   <span className="font-display font-semibold">
                     {displayRound === 0 ? "⚡ Prahistorie — Kronika Prvních Věků" : `Kronika roku ${displayRound}`}
                   </span>
-                  <Badge variant="secondary" className="text-xs ml-auto">
-                    {EPOCH_LABELS[entry.epoch_style] || entry.epoch_style}
-                  </Badge>
+                  {(() => {
+                    const st = (entry as any).source_type;
+                    const badgeInfo = SOURCE_BADGE[st];
+                    return badgeInfo ? (
+                      <Badge variant={badgeInfo.variant} className="text-xs ml-auto">{badgeInfo.label}</Badge>
+                    ) : (
+                      <Badge variant="secondary" className="text-xs ml-auto">
+                        {EPOCH_LABELS[entry.epoch_style] || entry.epoch_style}
+                      </Badge>
+                    );
+                  })()}
                 </div>
 
                 {editingEntry === entry.id ? (
@@ -468,7 +454,7 @@ const ChronicleFeed = ({
         </div>
       )}
 
-      {/* Current turn - no chronicle yet */}
+      {/* Current turn - allow draft generation */}
       {displayRound === currentTurn && !hasChronicleForRound && (
         <div className="text-center py-6">
           <p className="text-muted-foreground italic text-sm">
@@ -477,6 +463,14 @@ const ChronicleFeed = ({
           <p className="text-xs text-muted-foreground mt-1">
             {displayEvents.length} událostí zatím
           </p>
+          {isAdmin && displayEvents.length > 0 && (
+            <Button size="sm" variant="outline" className="mt-3 text-xs"
+              onClick={() => { setRangeMode("custom"); setCustomFrom(String(currentTurn)); setCustomTo(String(currentTurn)); handleGenerate(); }}
+              disabled={generating}>
+              <Sparkles className="h-3 w-3 mr-1" />
+              {generating ? "Generuji draft..." : "Generovat draft kroniku"}
+            </Button>
+          )}
         </div>
       )}
 
