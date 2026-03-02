@@ -55,6 +55,7 @@ const HomeTab = ({
   sessionId, session, cities, players, currentPlayerName, currentTurn, myRole,
   onEntityClick, onRefetch, onFoundCity,
 }: Props) => {
+  const isMultiplayer = session?.game_mode === "tb_multi";
   const [realm, setRealm] = useState<any>(null);
   const [stacks, setStacks] = useState<any[]>([]);
   const [sortKey, setSortKey] = useState<SortKey>("population");
@@ -258,20 +259,22 @@ const HomeTab = ({
         <Crown className="h-6 w-6 text-primary" />
         <h2 className="text-xl font-display font-bold">Moje říše</h2>
         <span className="text-sm text-muted-foreground font-display">Rok {currentTurn}</span>
-        <div className="ml-auto">
-          <Button
-            size="sm"
-            onClick={handleNextTurn}
-            disabled={processingTurn}
-            className="font-display"
-          >
-            {processingTurn ? (
-              <><Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />Zpracovávám…</>
-            ) : (
-              <><Play className="mr-1.5 h-3.5 w-3.5" />Další kolo</>
-            )}
-          </Button>
-        </div>
+        {!isMultiplayer && (
+          <div className="ml-auto">
+            <Button
+              size="sm"
+              onClick={handleNextTurn}
+              disabled={processingTurn}
+              className="font-display"
+            >
+              {processingTurn ? (
+                <><Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />Zpracovávám…</>
+              ) : (
+                <><Play className="mr-1.5 h-3.5 w-3.5" />Další kolo</>
+              )}
+            </Button>
+          </div>
+        )}
       </div>
 
       {/* Active Wars Banner */}
