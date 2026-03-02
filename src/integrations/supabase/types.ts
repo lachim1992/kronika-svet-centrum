@@ -2190,6 +2190,74 @@ export type Database = {
           },
         ]
       }
+      diplomatic_pacts: {
+        Row: {
+          accepted_turn: number | null
+          ai_narrative: string | null
+          created_at: string
+          effects: Json
+          ended_turn: number | null
+          expires_turn: number | null
+          id: string
+          pact_type: string
+          party_a: string
+          party_b: string
+          proclamation_text: string | null
+          proposed_by: string
+          proposed_turn: number
+          session_id: string
+          status: string
+          target_party: string | null
+          updated_at: string
+        }
+        Insert: {
+          accepted_turn?: number | null
+          ai_narrative?: string | null
+          created_at?: string
+          effects?: Json
+          ended_turn?: number | null
+          expires_turn?: number | null
+          id?: string
+          pact_type?: string
+          party_a: string
+          party_b: string
+          proclamation_text?: string | null
+          proposed_by: string
+          proposed_turn?: number
+          session_id: string
+          status?: string
+          target_party?: string | null
+          updated_at?: string
+        }
+        Update: {
+          accepted_turn?: number | null
+          ai_narrative?: string | null
+          created_at?: string
+          effects?: Json
+          ended_turn?: number | null
+          expires_turn?: number | null
+          id?: string
+          pact_type?: string
+          party_a?: string
+          party_b?: string
+          proclamation_text?: string | null
+          proposed_by?: string
+          proposed_turn?: number
+          session_id?: string
+          status?: string
+          target_party?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "diplomatic_pacts_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       discoveries: {
         Row: {
           discovered_at: string

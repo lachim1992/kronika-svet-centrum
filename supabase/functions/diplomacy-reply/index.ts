@@ -129,6 +129,12 @@ DŮLEŽITÉ:
 - Pokud probíhá válka a hráč prosí o mír, zvažte offer_peace.
 - Pokud probíhá mírová nabídka, můžeš ji přijmout (accept_peace) nebo odmítnout.
 - Nikdy nevymýšlej číselné výsledky nebo herní události mimo diplomatické akce.
+- Pro offer_trade MUSÍŠ vyplnit trade_offer_details s konkrétními surovinami a množstvím!
+- Pro open_borders, defense_pact, condemnation, joint_decree vyplň pact_details.
+- open_borders = otevření hranic (+15% obchod, +5% porodnost, +10% migrace)
+- defense_pact = obranný pakt (automatický vstup do války při napadení spojence)
+- condemnation = společné odsouzení třetí strany (-10 disposition pro odsouzeného)
+- joint_decree = společný dekret s vlastním textem a důsledky
 - Voláš funkci diplomatic_response s textem I akcí.`;
 
       const userPrompt = `Kontext světa: ${JSON.stringify(worldFacts?.slice(0, 8) || [])}
@@ -163,12 +169,36 @@ Odpověz jako vládce frakce ${aiFaction.faction_name} a vyber diplomatickou akc
                     "offer_trade",
                     "offer_alliance",
                     "trade_embargo",
+                    "open_borders",
+                    "condemnation",
+                    "defense_pact",
+                    "joint_decree",
                     "threaten",
                     "praise",
                   ],
                   description: "Konkrétní diplomatická akce na základě konverzace",
                 },
                 action_detail: { type: "string", description: "Detail akce — text ultimáta, podmínky míru, typ obchodu apod." },
+                trade_offer_details: {
+                  type: "object",
+                  properties: {
+                    offer_resource: { type: "string", enum: ["gold", "grain", "wood", "stone", "iron"] },
+                    offer_amount: { type: "integer", description: "Množství nabízené suroviny za kolo (1-50)" },
+                    request_resource: { type: "string", enum: ["gold", "grain", "wood", "stone", "iron"] },
+                    request_amount: { type: "integer", description: "Množství požadované suroviny za kolo (1-50)" },
+                    duration_turns: { type: "integer", description: "Délka obchodní dohody v kolech (3-20)" },
+                  },
+                  description: "Detaily obchodní nabídky (pokud action = offer_trade)",
+                },
+                pact_details: {
+                  type: "object",
+                  properties: {
+                    target_party: { type: "string", description: "Třetí strana (pro condemnation, joint_decree)" },
+                    proclamation_text: { type: "string", description: "Text proklamace/paktu" },
+                    duration_turns: { type: "integer", description: "Délka paktu v kolech (0 = trvalý)" },
+                  },
+                  description: "Detaily paktu (pro alliance, open_borders, defense_pact, condemnation, joint_decree)",
+                },
                 peace_conditions: {
                   type: "object",
                   properties: {
@@ -235,7 +265,7 @@ Odpověz jako vládce frakce ${aiFaction.faction_name} a vyber diplomatickou akc
       }
 
       // ── Insert chronicle, city_rumors, world_events for critical actions ──
-      const criticalActions = ["declare_war", "offer_peace", "accept_peace", "send_ultimatum"];
+      const criticalActions = ["declare_war", "offer_peace", "accept_peace", "send_ultimatum", "trade_embargo", "open_borders", "defense_pact", "condemnation"];
       if (criticalActions.includes(action)) {
         const quote = responseData.reply_text ? `„${responseData.reply_text}"` : "";
         const detail = responseData.action_detail || "";
@@ -245,6 +275,10 @@ Odpověz jako vládce frakce ${aiFaction.faction_name} a vyber diplomatickou akc
           send_ultimatum: `⚠️ Z paláce ${aiFaction.faction_name} dorazil posel s ultimátem adresovaným ${playerName}: ${detail || "Splňte naše podmínky, či čelte následkům."} ${quote ? `\n\nDoslovná citace: ${quote}` : ""}`,
           offer_peace: `🕊️ ${aiFaction.faction_name} vyslal mírové poselstvo k ${playerName}. ${detail} ${quote ? `\n\nSlova vyslance: ${quote}` : ""}`,
           accept_peace: `🕊️ Mír byl uzavřen mezi ${aiFaction.faction_name} a ${playerName}. Válečné útrapy jsou u konce. ${quote ? `\n\nPři podpisu smlouvy ${aiFaction.faction_name} pronesl: ${quote}` : ""}`,
+          trade_embargo: `🚫 ${aiFaction.faction_name} uvalil obchodní embargo na ${playerName}. Veškeré obchodní cesty byly zablokovány. ${quote ? `\n\n${quote}` : ""}`,
+          open_borders: `🌍 ${aiFaction.faction_name} navrhuje otevření hranic s ${playerName}. ${detail} ${quote ? `\n\n${quote}` : ""}`,
+          defense_pact: `🛡️ ${aiFaction.faction_name} navrhuje obranný pakt s ${playerName}. ${detail} ${quote ? `\n\n${quote}` : ""}`,
+          condemnation: `⚖️ ${aiFaction.faction_name} navrhuje společné odsouzení ${responseData.pact_details?.target_party || "nepřítele"}. ${detail} ${quote ? `\n\n${quote}` : ""}`,
         };
 
         // Chronicle entry with quote + narrative
@@ -268,6 +302,10 @@ Odpověz jako vládce frakce ${aiFaction.faction_name} a vyber diplomatickou akc
           send_ultimatum: `Ultimátum od ${aiFaction.faction_name}`,
           offer_peace: `Mírová nabídka: ${aiFaction.faction_name} → ${playerName}`,
           accept_peace: `Mírová smlouva: ${aiFaction.faction_name} & ${playerName}`,
+          trade_embargo: `Obchodní embargo: ${aiFaction.faction_name} → ${playerName}`,
+          open_borders: `Návrh otevření hranic: ${aiFaction.faction_name} ↔ ${playerName}`,
+          defense_pact: `Návrh obranného paktu: ${aiFaction.faction_name} ↔ ${playerName}`,
+          condemnation: `Odsouzení: ${aiFaction.faction_name} & ${playerName} → ${responseData.pact_details?.target_party || "?"}`,
         };
         try {
           await supabase.from("world_events").insert({
@@ -506,41 +544,192 @@ async function executeDiplomaticAction(
     }
 
     case "offer_trade": {
+      // ── CREATE REAL trade_offers ROW ──
+      const trade = data.trade_offer_details || {};
+      const offerResource = trade.offer_resource || "gold";
+      const offerAmount = Math.max(1, Math.min(50, trade.offer_amount || 5));
+      const requestResource = trade.request_resource || "grain";
+      const requestAmount = Math.max(1, Math.min(50, trade.request_amount || 5));
+      const tradeDuration = Math.max(3, Math.min(20, trade.duration_turns || 5));
+
+      // Find cities for from/to
+      const { data: factionCities } = await supabase.from("cities")
+        .select("id").eq("session_id", sessionId).eq("owner_player", factionName).limit(1);
+      const { data: playerCities } = await supabase.from("cities")
+        .select("id").eq("session_id", sessionId).eq("owner_player", playerName).limit(1);
+
+      const fromCityId = factionCities?.[0]?.id || null;
+      const toCityId = playerCities?.[0]?.id || null;
+
+      if (fromCityId && toCityId) {
+        await supabase.from("trade_offers").insert({
+          session_id: sessionId,
+          from_player: factionName,
+          to_player: playerName,
+          from_city_id: fromCityId,
+          to_city_id: toCityId,
+          offer_resources: { [offerResource]: offerAmount },
+          request_resources: { [requestResource]: requestAmount },
+          duration_turns: tradeDuration,
+          message: data.action_detail || `${factionName} nabízí obchod.`,
+          turn_number: turn,
+          status: "pending",
+        });
+      }
+
       await supabase.from("game_events").insert({
         session_id: sessionId, event_type: "trade", player: factionName,
         turn_number: turn, confirmed: true, importance: "normal",
-        note: data.action_detail || `${factionName} nabízí obchodní dohodu hráči ${playerName}.`,
+        note: `${factionName} nabízí obchod: ${offerAmount} ${offerResource} za ${requestAmount} ${requestResource} (${tradeDuration} kol).`,
         truth_state: "canon", actor_type: "ai_faction",
-        reference: { target: playerName, type: "trade_offer" },
+        reference: { target: playerName, type: "trade_offer", offerResource, offerAmount, requestResource, requestAmount, tradeDuration },
       }).then(() => {}, () => {});
       await postToRoom(supabase, sessionId, factionName, playerName,
-        `💰 [OBCHODNÍ NABÍDKA] ${data.action_detail || "Nabízíme vzájemně výhodný obchod."}`);
+        `💰 [OBCHODNÍ NABÍDKA] ${offerAmount}× ${offerResource} za ${requestAmount}× ${requestResource} po dobu ${tradeDuration} kol. ${data.action_detail || ""}`);
       break;
     }
 
     case "offer_alliance": {
+      // ── CREATE diplomatic_pacts ROW ──
+      const pact = data.pact_details || {};
+      await supabase.from("diplomatic_pacts").insert({
+        session_id: sessionId,
+        party_a: factionName,
+        party_b: playerName,
+        pact_type: "alliance",
+        status: "proposed",
+        proposed_by: factionName,
+        proposed_turn: turn,
+        proclamation_text: pact.proclamation_text || data.action_detail || `${factionName} navrhuje spojenectví.`,
+        effects: { diplomatic_bonus: 10 },
+        expires_turn: pact.duration_turns ? turn + pact.duration_turns : null,
+      });
       await supabase.from("game_events").insert({
         session_id: sessionId, event_type: "diplomacy", player: factionName,
         turn_number: turn, confirmed: true, importance: "critical",
-        note: data.action_detail || `${factionName} navrhuje spojenectví s hráčem ${playerName}.`,
+        note: `${factionName} navrhuje spojenectví s ${playerName}.`,
         truth_state: "canon", actor_type: "ai_faction",
         reference: { target: playerName, type: "alliance_proposal" },
       }).then(() => {}, () => {});
       await postToRoom(supabase, sessionId, factionName, playerName,
-        `🤝 [NABÍDKA SPOJENECTVÍ] ${data.action_detail || "Navrhujeme formální spojenectví."}`);
+        `🤝 [NABÍDKA SPOJENECTVÍ] ${pact.proclamation_text || data.action_detail || "Navrhujeme formální spojenectví."}`);
       break;
     }
 
     case "trade_embargo": {
+      // ── BLOCK existing trade_routes + create pact ──
+      // Deactivate all active trade routes between the two
+      await supabase.from("trade_routes").update({ status: "embargoed" })
+        .eq("session_id", sessionId)
+        .or(`and(from_player.eq.${factionName},to_player.eq.${playerName}),and(from_player.eq.${playerName},to_player.eq.${factionName})`)
+        .eq("status", "active");
+
+      // Create embargo pact
+      await supabase.from("diplomatic_pacts").insert({
+        session_id: sessionId,
+        party_a: factionName,
+        party_b: playerName,
+        pact_type: "embargo",
+        status: "active",
+        proposed_by: factionName,
+        proposed_turn: turn,
+        accepted_turn: turn, // Embargo is unilateral
+        proclamation_text: data.action_detail || `${factionName} uvaluje embargo na ${playerName}.`,
+        effects: { trade_blocked: true, post_embargo_penalty: 0.3 },
+      });
+
       await supabase.from("game_events").insert({
         session_id: sessionId, event_type: "trade", player: factionName,
         turn_number: turn, confirmed: true, importance: "normal",
-        note: `${factionName} uvaluje obchodní embargo na ${playerName}.`,
+        note: `${factionName} uvaluje obchodní embargo na ${playerName}. Všechny obchodní cesty zablokovány.`,
         truth_state: "canon", actor_type: "ai_faction",
         reference: { target: playerName, type: "embargo" },
       }).then(() => {}, () => {});
       await postToRoom(supabase, sessionId, factionName, playerName,
-        `🚫 [EMBARGO] ${data.action_detail || "Veškerý obchod s vaší říší je pozastaven."}`);
+        `🚫 [EMBARGO] Veškerý obchod s vaší říší je pozastaven. ${data.action_detail || ""}`);
+      break;
+    }
+
+    case "open_borders": {
+      await supabase.from("diplomatic_pacts").insert({
+        session_id: sessionId,
+        party_a: factionName,
+        party_b: playerName,
+        pact_type: "open_borders",
+        status: "proposed",
+        proposed_by: factionName,
+        proposed_turn: turn,
+        proclamation_text: data.pact_details?.proclamation_text || `${factionName} navrhuje otevření hranic.`,
+        effects: { trade_efficiency_bonus: 0.15, birth_rate_bonus: 0.05, migration_bonus: 0.1 },
+        expires_turn: data.pact_details?.duration_turns ? turn + data.pact_details.duration_turns : null,
+      });
+      await postToRoom(supabase, sessionId, factionName, playerName,
+        `🌍 [OTEVŘENÍ HRANIC] ${data.pact_details?.proclamation_text || "Navrhujeme otevření hranic pro vzájemný prospěch."}`);
+      break;
+    }
+
+    case "defense_pact": {
+      await supabase.from("diplomatic_pacts").insert({
+        session_id: sessionId,
+        party_a: factionName,
+        party_b: playerName,
+        pact_type: "defense_pact",
+        status: "proposed",
+        proposed_by: factionName,
+        proposed_turn: turn,
+        proclamation_text: data.pact_details?.proclamation_text || `${factionName} navrhuje obranný pakt.`,
+        effects: { auto_war_on_attack: true },
+        expires_turn: data.pact_details?.duration_turns ? turn + data.pact_details.duration_turns : null,
+      });
+      await postToRoom(supabase, sessionId, factionName, playerName,
+        `🛡️ [OBRANNÝ PAKT] ${data.pact_details?.proclamation_text || "Navrhujeme vzájemný obranný pakt."}`);
+      break;
+    }
+
+    case "condemnation": {
+      const target = data.pact_details?.target_party || "";
+      if (!target) break;
+      await supabase.from("diplomatic_pacts").insert({
+        session_id: sessionId,
+        party_a: factionName,
+        party_b: playerName,
+        pact_type: "condemnation",
+        target_party: target,
+        status: "proposed",
+        proposed_by: factionName,
+        proposed_turn: turn,
+        proclamation_text: data.pact_details?.proclamation_text || `Společné odsouzení ${target}.`,
+        effects: { disposition_penalty: -10 },
+      });
+      // Apply disposition penalty to target from this faction
+      const { data: targetFaction } = await supabase.from("ai_factions").select("id, disposition")
+        .eq("session_id", sessionId).eq("faction_name", target).maybeSingle();
+      if (targetFaction) {
+        const disp = { ...(targetFaction.disposition as Record<string, number> || {}) };
+        disp[factionName] = Math.max(-100, (disp[factionName] || 0) - 10);
+        await supabase.from("ai_factions").update({ disposition: disp }).eq("id", targetFaction.id);
+      }
+      await postToRoom(supabase, sessionId, factionName, playerName,
+        `⚖️ [ODSOUZENÍ] ${factionName} navrhuje společné odsouzení ${target}. ${data.pact_details?.proclamation_text || ""}`);
+      break;
+    }
+
+    case "joint_decree": {
+      const decreeTarget = data.pact_details?.target_party || null;
+      await supabase.from("diplomatic_pacts").insert({
+        session_id: sessionId,
+        party_a: factionName,
+        party_b: playerName,
+        pact_type: "joint_decree",
+        target_party: decreeTarget,
+        status: "proposed",
+        proposed_by: factionName,
+        proposed_turn: turn,
+        proclamation_text: data.pact_details?.proclamation_text || data.action_detail || `Společný dekret.`,
+        effects: {},
+      });
+      await postToRoom(supabase, sessionId, factionName, playerName,
+        `📜 [SPOLEČNÝ DEKRET] ${data.pact_details?.proclamation_text || data.action_detail || "Navrhujeme společné prohlášení."}`);
       break;
     }
 
