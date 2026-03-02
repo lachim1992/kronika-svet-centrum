@@ -115,7 +115,7 @@ export interface GrowthResult {
 
 export function computeSettlementGrowth(
   city: CityForGrowth,
-  opts: { hasRebellion?: boolean; hasTrade?: boolean } = {}
+  opts: { hasRebellion?: boolean; hasTrade?: boolean; openBordersBonuses?: { birth_rate_bonus?: number; migration_bonus?: number } } = {}
 ): GrowthResult {
   if (city.status !== "ok") {
     return {
@@ -132,8 +132,10 @@ export function computeSettlementGrowth(
   const famineFactor = city.famine_turn ? -0.02 : 0;
   const warFactor = (city.status === "besieged" || city.status === "devastated") ? -0.02 : 0;
   const tradeFactor = opts.hasTrade ? 0.005 : 0;
+  const openBordersBirthBonus = opts.openBordersBonuses?.birth_rate_bonus || 0;
+  const openBordersMigrationBonus = opts.openBordersBonuses?.migration_bonus || 0;
   
-  let growthRate = POP_GROWTH_BASE + stabilityFactor + famineFactor + warFactor + tradeFactor;
+  let growthRate = POP_GROWTH_BASE + stabilityFactor + famineFactor + warFactor + tradeFactor + openBordersBirthBonus + openBordersMigrationBonus;
   growthRate = Math.max(POP_GROWTH_MIN, Math.min(POP_GROWTH_MAX, growthRate));
 
   const delta = Math.round(city.population_total * growthRate);
@@ -781,4 +783,73 @@ export function applyCivIdentityToInfluence(
  */
 export function getMobilizationSpeed(identity: CivIdentity | null): number {
   return identity?.mobilization_speed ?? 1.0;
+}
+
+// ═══════════════════════════════════════════
+// DIPLOMATIC PACT EFFECTS
+// ═══════════════════════════════════════════
+
+export interface DiplomaticPact {
+  id: string;
+  session_id: string;
+  party_a: string;
+  party_b: string;
+  pact_type: string;
+  target_party: string | null;
+  effects: Record<string, any>;
+  status: string;
+}
+
+/** Check if an embargo is active between two parties */
+export function hasActiveEmbargo(pacts: DiplomaticPact[], playerA: string, playerB: string): boolean {
+  return pacts.some(p =>
+    p.pact_type === "embargo" && p.status === "active" &&
+    ((p.party_a === playerA && p.party_b === playerB) ||
+     (p.party_a === playerB && p.party_b === playerA))
+  );
+}
+
+/** Get active pacts of a specific type involving a player */
+export function getActivePacts(pacts: DiplomaticPact[], playerName: string, pactType?: string): DiplomaticPact[] {
+  return pacts.filter(p =>
+    p.status === "active" &&
+    (p.party_a === playerName || p.party_b === playerName) &&
+    (!pactType || p.pact_type === pactType)
+  );
+}
+
+/** Compute aggregated open borders bonuses for a player */
+export function getOpenBordersBonuses(pacts: DiplomaticPact[], playerName: string): { birth_rate_bonus: number; migration_bonus: number; trade_efficiency_bonus: number } {
+  const openBorders = getActivePacts(pacts, playerName, "open_borders");
+  return {
+    birth_rate_bonus: openBorders.reduce((sum, p) => sum + (p.effects?.birth_rate_bonus || 0), 0),
+    migration_bonus: openBorders.reduce((sum, p) => sum + (p.effects?.migration_bonus || 0), 0),
+    trade_efficiency_bonus: openBorders.reduce((sum, p) => sum + (p.effects?.trade_efficiency_bonus || 0), 0),
+  };
+}
+
+/** Check if a defense pact triggers auto-war */
+export function getDefensePactAllies(pacts: DiplomaticPact[], playerName: string): string[] {
+  return getActivePacts(pacts, playerName, "defense_pact")
+    .map(p => p.party_a === playerName ? p.party_b : p.party_a);
+}
+
+/** Compute trade efficiency modifier from pacts (embargo penalty after lifting) */
+export function getTradeEfficiencyModifier(pacts: DiplomaticPact[], playerA: string, playerB: string): number {
+  let modifier = 0;
+  const openBorder = pacts.find(p =>
+    p.pact_type === "open_borders" && p.status === "active" &&
+    ((p.party_a === playerA && p.party_b === playerB) ||
+     (p.party_a === playerB && p.party_b === playerA))
+  );
+  if (openBorder) modifier += openBorder.effects?.trade_efficiency_bonus || 0.15;
+
+  const pastEmbargo = pacts.find(p =>
+    p.pact_type === "embargo" && (p.status === "expired" || p.status === "broken") &&
+    ((p.party_a === playerA && p.party_b === playerB) ||
+     (p.party_a === playerB && p.party_b === playerA))
+  );
+  if (pastEmbargo) modifier -= pastEmbargo.effects?.post_embargo_penalty || 0.3;
+
+  return modifier;
 }
