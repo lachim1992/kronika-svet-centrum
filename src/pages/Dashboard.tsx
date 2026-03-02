@@ -37,6 +37,7 @@ import PersistentTab from "@/pages/game/PersistentTab";
 import WorldMapTab from "@/pages/game/WorldMapTab";
 import EngineTab from "@/pages/game/EngineTab";
 import GamesTab from "@/pages/game/GamesTab";
+import AILabTab from "@/pages/game/AILabTab";
 
 const Dashboard = () => {
   const { sessionId } = useParams<{ sessionId: string }>();
@@ -480,6 +481,9 @@ const Dashboard = () => {
           memoriesCount={memories.length}
           playersCount={players.length}
         />
+      )}
+      {activeTab === "ailab" && (
+        <AILabTab sessionId={session.id} />
       )}
       {activeTab === "persistent" && (
         <PersistentTab

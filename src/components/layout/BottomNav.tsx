@@ -1,6 +1,6 @@
 import { Home, Globe, Shield, Newspaper, BookOpen, Crown, Swords, BarChart3, Timer, Wrench, Map, Zap, Trophy } from "lucide-react";
 
-export type TabId = "home" | "world" | "worldmap" | "realm" | "army" | "economy" | "chronicles" | "feed" | "codex" | "wiki" | "council" | "engine" | "games" | "persistent" | "dev";
+export type TabId = "home" | "world" | "worldmap" | "realm" | "army" | "economy" | "chronicles" | "feed" | "codex" | "wiki" | "council" | "engine" | "games" | "persistent" | "dev" | "ailab";
 
 interface Props {
   activeTab: TabId;
