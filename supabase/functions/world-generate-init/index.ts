@@ -54,10 +54,10 @@ serve(async (req) => {
     const topProfilesCount = economic.top_profiles_count || 3;
 
     // Determine world params based on size
-    const sizeConfig: Record<string, { factions: number; cities: number; regions: number; persons: number; wonders: number; preHistoryEvents: number; battles: number; rumors: number }> = {
-      small:  { factions: 3, cities: 5,  regions: 2, persons: 7,  wonders: 4, preHistoryEvents: 10, battles: 12, rumors: 30 },
-      medium: { factions: 5, cities: 12, regions: 4, persons: 10, wonders: 5, preHistoryEvents: 12, battles: 15, rumors: 40 },
-      large:  { factions: 7, cities: 20, regions: 6, persons: 15, wonders: 7, preHistoryEvents: 15, battles: 20, rumors: 50 },
+    const sizeConfig: Record<string, { factions: number; cities: number; regions: number; persons: number; wonders: number; preHistoryEvents: number; battles: number; rumors: number; mapW: number; mapH: number }> = {
+      small:  { factions: 3, cities: 5,  regions: 2, persons: 7,  wonders: 4, preHistoryEvents: 10, battles: 12, rumors: 30, mapW: 21, mapH: 21 },
+      medium: { factions: 5, cities: 12, regions: 4, persons: 10, wonders: 5, preHistoryEvents: 12, battles: 15, rumors: 40, mapW: 31, mapH: 31 },
+      large:  { factions: 7, cities: 20, regions: 6, persons: 15, wonders: 7, preHistoryEvents: 15, battles: 20, rumors: 50, mapW: 41, mapH: 41 },
     };
     const config = sizeConfig[worldSize] || sizeConfig.small;
 
@@ -93,6 +93,16 @@ KRITICKÉ POŽADAVKY NA PROVÁZANOST:
 6. Lore Bible musí shrnout celou mytologii světa.
 7. pre_history_chronicle: 500-800 slov v kronikářském stylu, shrnující VŠECHNY prehistorické události, osoby a bitvy.
 
+GEOGRAPHY BLUEPRINT — KLÍČOVÉ:
+8. MUSÍŠ vygenerovat GEOGRAPHY — kompletní fyzický popis světa jako strukturovaná data.
+   - Mapa má rozměr ${config.mapW}x${config.mapH} hexů, střed je (0,0). Souřadnice jsou od -${Math.floor(config.mapW/2)} do +${Math.floor(config.mapW/2)}.
+   - Pohoří: definuj hřbety (ridges) jako linie se souřadnicemi start→konec. Pohoří tvoří přírodní bariéry mezi frakcemi.
+   - Řeky: definuj hlavní řeky od pramene k ústí (sourceQ/R → mouthQ/R). Řeky jsou NEPROSTUPNÉ bariéry.
+   - Biomové zóny: definuj klimatické oblasti kolem sídel frakcí (les, poušť, tundra...). Musí odpovídat popisu regionu.
+   - Každý geografický prvek MUSÍ mít JMÉNO v češtině a musí korespondovat s narativem (lore, bitvami, ságami).
+   - Příklad: pokud píšeš o "Bitvě u Veleříčky", musí existovat řeka "Veleříčka" v geography.
+   - Continent shape: pangaea/archipelago/two_continents/crescent — vyber co odpovídá narativu.
+
 LOGICKÁ POSLOUPNOST:
 - Roky prehistorie jsou záporné (-100 až -1), "před počátkem paměti".
 - Rok 0 = přelom, počátek letopočtu.
@@ -123,8 +133,14 @@ POŽADAVKY:
 - ${config.rumors} zvěstí: minimálně třetina o prehistorii, zbytek o současnosti. Všechny navázané na konkrétní města.
 - lore_bible: 200-400 slov shrnutí celé mytologie světa.
 - 5-10 history events pro rok 1 (současný stav světa).
+- GEOGRAPHY BLUEPRINT: Mapa ${config.mapW}x${config.mapH} hexů (střed 0,0). Definuj:
+  * ridges: 2-5 pohoří jako linie (x1,y1 → x2,y2)
+  * rivers: 2-4 hlavní řeky (pramen → ústí v hex souřadnicích)
+  * biomeZones: 1 zóna za každý region (biom + centrum + poloměr)
+  * continentShape: tvar pevniny
+  * climateGradient: rozložení klimatu
 
-DŮLEŽITÉ: affected_players/faction MUSÍ používat přesná jména frakcí. Bitvy MUSÍ mít commanders z persons.`;
+DŮLEŽITÉ: affected_players/faction MUSÍ používat přesná jména frakcí. Bitvy MUSÍ mít commanders z persons. Geografie MUSÍ odpovídat narativu.`;
 
     // ═══════════════════════════════════════════════
     // TOOL SCHEMA — expanded with persons, wonders, battles, prehistory
@@ -345,8 +361,66 @@ DŮLEŽITÉ: affected_players/faction MUSÍ používat přesná jména frakcí. 
               items: { type: "string" },
               description: "Key world facts and traditions",
             },
+            geography: {
+              type: "object",
+              description: "Physical geography blueprint for procedural map generation. Coordinates are hex axial coords, map center = (0,0).",
+              properties: {
+                ridges: {
+                  type: "array",
+                  description: "Mountain ridges as line segments. 2-5 ridges that form natural barriers.",
+                  items: {
+                    type: "object",
+                    properties: {
+                      name: { type: "string", description: "Czech name of the mountain range" },
+                      x1: { type: "number" }, y1: { type: "number" },
+                      x2: { type: "number" }, y2: { type: "number" },
+                      width: { type: "number", description: "Width in hexes (2-5)" },
+                      strength: { type: "number", description: "0.5-0.9" },
+                    },
+                    required: ["name", "x1", "y1", "x2", "y2"],
+                    additionalProperties: false,
+                  },
+                },
+                rivers: {
+                  type: "array",
+                  description: "Major rivers from source (mountains/hills) to mouth (sea/lake). 2-4 rivers.",
+                  items: {
+                    type: "object",
+                    properties: {
+                      name: { type: "string", description: "Czech name of the river" },
+                      sourceQ: { type: "integer" }, sourceR: { type: "integer" },
+                      mouthQ: { type: "integer" }, mouthR: { type: "integer" },
+                      importance: { type: "integer", description: "1=minor, 2=major, 3=great river" },
+                    },
+                    required: ["name", "sourceQ", "sourceR", "mouthQ", "mouthR"],
+                    additionalProperties: false,
+                  },
+                },
+                biomeZones: {
+                  type: "array",
+                  description: "Biome zones around faction homelands. One per region.",
+                  items: {
+                    type: "object",
+                    properties: {
+                      name: { type: "string", description: "Czech name of the geographic area" },
+                      centerQ: { type: "integer" }, centerR: { type: "integer" },
+                      radius: { type: "integer", description: "Radius in hexes (3-8)" },
+                      biome: { type: "string", enum: ["plains", "forest", "hills", "desert", "swamp", "tundra"] },
+                      strength: { type: "number", description: "0.5-0.9" },
+                    },
+                    required: ["name", "centerQ", "centerR", "radius", "biome"],
+                    additionalProperties: false,
+                  },
+                },
+                continentShape: { type: "string", enum: ["pangaea", "archipelago", "two_continents", "crescent"], description: "Overall continent layout" },
+                climateGradient: { type: "string", enum: ["north_cold", "south_cold", "equatorial", "uniform"], description: "Temperature gradient direction" },
+                oceanPattern: { type: "string", enum: ["central_sea", "border_ocean", "inland_lakes"], description: "Ocean/water layout" },
+              },
+              required: ["ridges", "rivers", "biomeZones", "continentShape"],
+              additionalProperties: false,
+            },
           },
-          required: ["countries", "factions", "regions", "cities", "persons", "wonders", "preHistoryEvents", "battles", "historyEvents", "preHistoryChronicle", "rumors", "loreBible", "worldMemories"],
+          required: ["countries", "factions", "regions", "cities", "persons", "wonders", "preHistoryEvents", "battles", "historyEvents", "preHistoryChronicle", "rumors", "loreBible", "worldMemories", "geography"],
           additionalProperties: false,
         },
       },
@@ -521,11 +595,38 @@ DŮLEŽITÉ: affected_players/faction MUSÍ používat přesná jména frakcí. 
       const mapWidth = (wfData as any)?.map_width || 21;
       const mapHeight = (wfData as any)?.map_height || 21;
 
-      console.log(`Pre-generating batch map: ${mapWidth}x${mapHeight}`);
+      // ── Build terrain_params from AI geography blueprint ──
+      const geoBlueprint = world.geography || {};
+      const terrainParams: any = {};
+
+      // Continent shape → continentCount + landRatio
+      const shapeMap: Record<string, { continents: number; land: number }> = {
+        pangaea: { continents: 1, land: 0.65 },
+        two_continents: { continents: 2, land: 0.55 },
+        archipelago: { continents: 5, land: 0.40 },
+        crescent: { continents: 2, land: 0.50 },
+      };
+      const shape = shapeMap[geoBlueprint.continentShape] || shapeMap.two_continents;
+      terrainParams.continentCount = shape.continents;
+      terrainParams.targetLandRatio = shape.land;
+
+      // Pass full blueprint for ridges, rivers, biome zones
+      if (geoBlueprint.ridges || geoBlueprint.rivers || geoBlueprint.biomeZones) {
+        terrainParams.geoBlueprint = {
+          ridges: geoBlueprint.ridges || [],
+          rivers: geoBlueprint.rivers || [],
+          biomeZones: geoBlueprint.biomeZones || [],
+          continentShape: geoBlueprint.continentShape,
+          climateGradient: geoBlueprint.climateGradient,
+          oceanPattern: geoBlueprint.oceanPattern,
+        };
+      }
+
+      console.log(`Pre-generating batch map: ${mapWidth}x${mapHeight} with geo blueprint: ${(geoBlueprint.ridges || []).length} ridges, ${(geoBlueprint.rivers || []).length} rivers, ${(geoBlueprint.biomeZones || []).length} biome zones`);
       const mapRes = await fetch(`${supabaseUrl}/functions/v1/generate-world-map`, {
         method: "POST",
         headers: { Authorization: `Bearer ${supabaseKey}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ session_id: sessionId, width: mapWidth, height: mapHeight }),
+        body: JSON.stringify({ session_id: sessionId, width: mapWidth, height: mapHeight, terrain_params: terrainParams }),
       });
       if (mapRes.ok) {
         const mapData = await mapRes.json();
@@ -1413,6 +1514,7 @@ Napiš EPICKÝ PROLOG o minimálně 2000 slovech, který zmíní VŠECHNY výše
     const writingStyle = tone === "realistic" ? "political-chronicle" : tone === "mythic" ? "epic-saga" : "narrative";
 
     // Create world_premise (canonical source of truth for AI)
+    const geoBlueprintForStorage = world.geography || {};
     await supabase.from("world_premise").insert({
       session_id: sessionId,
       seed: null, // will be set by session
@@ -1427,6 +1529,7 @@ Napiš EPICKÝ PROLOG o minimálně 2000 slovech, který zmíní VŠECHNY výše
       constraints: tone === "realistic" ? "avoid random magic unless selected" : "",
       version: 1,
       is_active: true,
+      geography_blueprint: geoBlueprintForStorage,
     });
 
     // Style settings

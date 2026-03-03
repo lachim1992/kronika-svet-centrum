@@ -30,6 +30,8 @@ export interface WorldPremise {
   version: number;
   /** Chronicle 0 (Prolog) text — the canonical founding narrative of the world */
   chronicle0: string;
+  /** AI-generated geography blueprint — ridges, rivers, biome zones */
+  geographyBlueprint: Record<string, any> | null;
 }
 
 export interface AIRequestContext {
@@ -139,6 +141,7 @@ export async function loadWorldPremise(sessionId: string, sb?: SupabaseClient): 
       constraints: premise.constraints || "",
       version: premise.version,
       chronicle0: chronicle0Text,
+      geographyBlueprint: (premise as any).geography_blueprint || null,
     };
   }
 
@@ -173,6 +176,7 @@ export async function loadWorldPremise(sessionId: string, sb?: SupabaseClient): 
     constraints: promptRules.constraints || "",
     version: 1,
     chronicle0: chronicle0Text,
+    geographyBlueprint: null,
   };
 
   // 3. Persist as canonical world_premise (auto-migration)
@@ -287,6 +291,25 @@ export function buildPremisePrompt(premise: WorldPremise): string {
   if (premise.warBias !== "neutral") biasParts.push(`VÁLEČNÝ DŮRAZ: ${premise.warBias}`);
   if (biasParts.length > 0) {
     parts.push(`[P7 — DŮRAZY]\n${biasParts.join("\n")}`);
+  }
+
+  // ── P8 — GEOGRAPHY BLUEPRINT (physical world reference) ──
+  if (premise.geographyBlueprint) {
+    const geo = premise.geographyBlueprint;
+    const geoParts: string[] = [];
+    if (geo.ridges?.length) {
+      geoParts.push("POHOŘÍ: " + geo.ridges.map((r: any) => r.name || "bezejmenné").join(", "));
+    }
+    if (geo.rivers?.length) {
+      geoParts.push("ŘEKY: " + geo.rivers.map((r: any) => r.name || "bezejmenná").join(", "));
+    }
+    if (geo.biomeZones?.length) {
+      geoParts.push("KLIMATICKÉ ZÓNY: " + geo.biomeZones.map((z: any) => `${z.name || "?"} (${z.biome})`).join(", "));
+    }
+    if (geo.continentShape) geoParts.push(`TVAR KONTINENTU: ${geo.continentShape}`);
+    if (geoParts.length > 0) {
+      parts.push(`[P8 — FYZICKÁ GEOGRAFIE (kanonická mapa světa — při popisu krajiny MUSÍŠ odkazovat na tyto geografické prvky)]\n${geoParts.join("\n")}`);
+    }
   }
 
   parts.push("=== KONEC PREMISY ===");

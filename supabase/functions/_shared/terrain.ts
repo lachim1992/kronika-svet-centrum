@@ -381,12 +381,49 @@ export interface GeneratedMap {
   };
 }
 
+/** Geographic directive: forced mountain ridge from AI blueprint */
+export interface GeoRidge {
+  name?: string;
+  x1: number; y1: number;   // start (in hex coords, relative to center)
+  x2: number; y2: number;   // end
+  width?: number;            // default 3
+  strength?: number;         // default 0.7
+}
+
+/** Geographic directive: forced river path from AI blueprint */
+export interface GeoRiver {
+  name?: string;
+  sourceQ: number; sourceR: number;
+  mouthQ: number; mouthR: number;
+  importance?: number;       // 1-3, affects width/length priority
+}
+
+/** Geographic directive: biome zone override from AI blueprint */
+export interface GeoBiomeZone {
+  name?: string;
+  centerQ: number; centerR: number;
+  radius: number;            // in hexes
+  biome: BiomeFamily;
+  strength?: number;         // 0-1, how strongly to enforce (default 0.8)
+}
+
+/** Full geography blueprint from AI */
+export interface GeographyBlueprint {
+  ridges?: GeoRidge[];
+  rivers?: GeoRiver[];
+  biomeZones?: GeoBiomeZone[];
+  continentShape?: string;   // "pangaea" | "archipelago" | "two_continents" | "crescent"
+  climateGradient?: string;  // "north_cold" | "south_cold" | "equatorial" | "uniform"
+  oceanPattern?: string;     // "central_sea" | "border_ocean" | "inland_lakes"
+}
+
 export interface TerrainParams {
   targetLandRatio?: number;      // 0-1, default ~0.55
   continentCount?: number;       // 1-6, default 2-4 random
   mountainDensity?: number;      // 0-1, default 0.5
   coastalRichness?: number;      // 0-1, default 0.5
   biomeWeights?: Record<string, number>; // multipliers per biome
+  geoBlueprint?: GeographyBlueprint;    // AI-generated geographic directives
 }
 
 export function generateWorldTerrain(
@@ -404,6 +441,7 @@ export function generateWorldTerrain(
     mountainDensity = 0.5,
     coastalRichness = 0.5,
     biomeWeights = {},
+    geoBlueprint,
   } = params;
 
   // Build noise permutation tables
@@ -415,6 +453,17 @@ export function generateWorldTerrain(
   // Generate continent blobs and mountain ridges (now parameterized)
   const blobs = generateBlobs(worldSeed, halfW, halfH, continentCount, targetLandRatio);
   const ridges = generateRidges(worldSeed, halfW, halfH, mountainDensity);
+
+  // ── Merge AI blueprint ridges into procedural ridges ──
+  if (geoBlueprint?.ridges) {
+    for (const gr of geoBlueprint.ridges) {
+      ridges.push({
+        x1: gr.x1, y1: gr.y1, x2: gr.x2, y2: gr.y2,
+        width: gr.width ?? 3,
+        strength: gr.strength ?? 0.7,
+      });
+    }
+  }
 
   const NEIGHBORS_HEX = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, -1], [-1, 1]];
 
@@ -538,10 +587,65 @@ export function generateWorldTerrain(
     }
   }
 
+  // ── Phase 4b: Apply AI biome zone directives ──
+  if (geoBlueprint?.biomeZones) {
+    for (const zone of geoBlueprint.biomeZones) {
+      const strength = zone.strength ?? 0.8;
+      for (let q = -halfW; q <= halfW; q++) {
+        for (let r = -halfH; r <= halfH; r++) {
+          const dist = Math.sqrt((q - zone.centerQ) ** 2 + (r - zone.centerR) ** 2);
+          if (dist > zone.radius) continue;
+          const cell = hexGrid.get(`${q},${r}`);
+          if (!cell || cell.biome === "sea") continue; // don't override water
+          // Probability of override decreases with distance
+          const prob = strength * (1 - dist / zone.radius);
+          const roll = hashSeed(`${worldSeed}:bz:${q}:${r}:${zone.name || zone.biome}`);
+          if (roll < prob && zone.biome !== "sea") {
+            cell.biome = zone.biome;
+          }
+        }
+      }
+    }
+  }
+
   // ── Phase 5: Generate rivers ──
   const riverHexes = generateRivers(hexGrid, worldSeed, halfW, halfH);
   const riverMap = new Map<string, RiverHex>();
   for (const rh of riverHexes) riverMap.set(`${rh.q},${rh.r}`, rh);
+
+  // ── Phase 5b: Apply AI forced rivers ──
+  if (geoBlueprint?.rivers) {
+    for (const gr of geoBlueprint.rivers) {
+      // Trace a path from source to mouth using simple line interpolation
+      const steps = Math.max(Math.abs(gr.mouthQ - gr.sourceQ), Math.abs(gr.mouthR - gr.sourceR)) + 1;
+      for (let s = 0; s <= steps; s++) {
+        const t = steps > 0 ? s / steps : 0;
+        const q = Math.round(gr.sourceQ + (gr.mouthQ - gr.sourceQ) * t);
+        const r = Math.round(gr.sourceR + (gr.mouthR - gr.sourceR) * t);
+        const key = `${q},${r}`;
+        const cell = hexGrid.get(key);
+        if (!cell) continue;
+        if (cell.biome === "sea") continue; // stop at sea
+        if (cell.biome === "mountains") continue; // skip mountains
+        if (!riverMap.has(key)) {
+          // Determine direction towards mouth
+          const nextQ = Math.round(gr.sourceQ + (gr.mouthQ - gr.sourceQ) * Math.min(1, (s + 1) / steps));
+          const nextR = Math.round(gr.sourceR + (gr.mouthR - gr.sourceR) * Math.min(1, (s + 1) / steps));
+          const dq = nextQ - q, dr = nextR - r;
+          let dir = "SE";
+          if (dq === 1 && dr === 0) dir = "E";
+          else if (dq === -1 && dr === 0) dir = "W";
+          else if (dq === 0 && dr === 1) dir = "SE";
+          else if (dq === 0 && dr === -1) dir = "NW";
+          else if (dq === 1 && dr === -1) dir = "NE";
+          else if (dq === -1 && dr === 1) dir = "SW";
+          const rh: RiverHex = { q, r, direction: dir };
+          riverMap.set(key, rh);
+          riverHexes.push(rh);
+        }
+      }
+    }
+  }
 
   // ── Phase 6: Build output ──
   const hexes: HexData[] = [];
