@@ -1004,6 +1004,7 @@ const LeaguePanel = ({ sessionId, currentPlayerName, currentTurn }: Props) => {
               myAssociation={myAssociation}
               standings={[...standings, ...standings2]}
               cities={cities}
+              stadiums={stadiums}
               onRefresh={fetchData}
               onCreateAssociation={handleCreateAssociation}
               creatingAssoc={creatingAssoc}

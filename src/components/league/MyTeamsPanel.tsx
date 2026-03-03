@@ -7,7 +7,9 @@ import { Progress } from "@/components/ui/progress";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Trophy, Users, Shield, Swords, Target, TrendingUp, Award, Heart, Loader2, ChevronLeft, Building2, Flame, Zap, Eye } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Trophy, Users, Shield, Swords, Target, TrendingUp, Award, Heart, Loader2, ChevronLeft, Building2, Flame, Zap, Eye, Plus, MapPin } from "lucide-react";
 import { toast } from "sonner";
 
 interface Team {
@@ -41,6 +43,10 @@ interface Standing {
   form: string; position: number;
 }
 
+interface Stadium {
+  id: string; name: string; city_id: string;
+}
+
 interface Props {
   sessionId: string;
   currentPlayerName: string;
@@ -50,6 +56,7 @@ interface Props {
   myAssociation: Association | null;
   standings: Standing[];
   cities: Map<string, string>;
+  stadiums: Stadium[];
   onRefresh: () => void;
   onCreateAssociation: () => void;
   creatingAssoc: boolean;
@@ -93,12 +100,21 @@ function ratingColor(r: number) {
   return "text-red-400";
 }
 
+const MAX_TEAMS_PER_CITY = 3;
+
 const MyTeamsPanel = ({
   sessionId, currentPlayerName, currentTurn, myTeams, allPlayers,
-  myAssociation, standings, cities, onRefresh, onCreateAssociation, creatingAssoc,
+  myAssociation, standings, cities, stadiums, onRefresh, onCreateAssociation, creatingAssoc,
 }: Props) => {
   const [selectedTeamId, setSelectedTeamId] = useState<string | null>(null);
   const [savingTeam, setSavingTeam] = useState<string | null>(null);
+  const [showCreateDialog, setShowCreateDialog] = useState(false);
+  const [createCityId, setCreateCityId] = useState<string>("");
+  const [createTeamName, setCreateTeamName] = useState("");
+  const [createMotto, setCreateMotto] = useState("");
+  const [createColorPrimary, setCreateColorPrimary] = useState("#8b0000");
+  const [createColorSecondary, setCreateColorSecondary] = useState("#1a1a2e");
+  const [creating, setCreating] = useState(false);
 
   const handleUpdateTeam = async (teamId: string, field: string, value: string) => {
     setSavingTeam(teamId);
@@ -118,9 +134,7 @@ const MyTeamsPanel = ({
 
   const handleSetCaptain = async (teamId: string, playerId: string) => {
     try {
-      // Remove captain from all team players
       await supabase.from("league_players").update({ is_captain: false } as any).eq("team_id", teamId);
-      // Set new captain
       await supabase.from("league_players").update({ is_captain: true } as any).eq("id", playerId);
       toast.success("Kapitán jmenován!");
       onRefresh();
@@ -144,13 +158,55 @@ const MyTeamsPanel = ({
     } catch (e: any) { toast.error(e.message); }
   };
 
+  const handleCreateTeam = async () => {
+    if (!createCityId || !createTeamName.trim()) {
+      toast.error("Vyplň název týmu a vyber město");
+      return;
+    }
+    setCreating(true);
+    try {
+      // Find stadium in city
+      const stadium = stadiums.find(s => s.city_id === createCityId);
+      const { data, error } = await supabase.functions.invoke("create-league-team", {
+        body: {
+          sessionId, cityId: createCityId,
+          buildingId: stadium?.id || null,
+          teamName: createTeamName.trim(),
+          colorPrimary: createColorPrimary,
+          colorSecondary: createColorSecondary,
+          motto: createMotto.trim() || null,
+          playerName: currentPlayerName,
+          associationId: myAssociation?.id || null,
+        },
+      });
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+      toast.success(`Tým ${createTeamName} založen! 22 bojovníků připraveno.`);
+      setShowCreateDialog(false);
+      setCreateTeamName("");
+      setCreateMotto("");
+      onRefresh();
+    } catch (e: any) {
+      toast.error(e.message);
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  // Count teams per city for cap display
+  const teamsPerCity = new Map<string, number>();
+  myTeams.forEach(t => teamsPerCity.set(t.city_id, (teamsPerCity.get(t.city_id) || 0) + 1));
+
+  // Available cities for team creation (under cap)
+  const availableCities = Array.from(cities.entries()).filter(([id]) => (teamsPerCity.get(id) || 0) < MAX_TEAMS_PER_CITY);
+
   if (myTeams.length === 0 && !myAssociation) {
     return (
       <Card className="border-border bg-card/50">
         <CardContent className="p-8 text-center space-y-3">
           <Shield className="h-12 w-12 text-muted-foreground mx-auto opacity-50" />
           <h3 className="font-display font-bold text-lg">Žádné týmy ve tvé říši</h3>
-          <p className="text-sm text-muted-foreground">Postav Arénu ve městě a založ ligový tým Sphaery.</p>
+          <p className="text-sm text-muted-foreground">Založ Svaz Sphaery a poté sežeň týmy ve svých městech.</p>
           <Button size="sm" variant="outline" onClick={onCreateAssociation} disabled={creatingAssoc}>
             {creatingAssoc ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <Shield className="h-3 w-3 mr-1" />}
             Založit Svaz Sphaery
@@ -360,6 +416,7 @@ const MyTeamsPanel = ({
                     </div>
                   ))}
                 </div>
+                <p className="text-[9px] text-muted-foreground italic">Ratingy se automaticky přepočítávají z průměrných statistik hráčů podle pozic.</p>
               </CardContent>
             </Card>
           </TabsContent>
@@ -424,91 +481,191 @@ const MyTeamsPanel = ({
         </Card>
       )}
 
-      {/* My Teams Grid */}
-      <div className="space-y-2">
+      {/* Create Team Button */}
+      {myAssociation && (
+        <div className="flex items-center justify-between">
+          <h4 className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold px-1">Moje týmy ({myTeams.length})</h4>
+          <Button size="sm" variant="outline" className="text-xs gap-1" onClick={() => setShowCreateDialog(true)}
+            disabled={availableCities.length === 0}>
+            <Plus className="h-3 w-3" /> Sehnat tým
+          </Button>
+        </div>
+      )}
+      {!myAssociation && myTeams.length > 0 && (
         <h4 className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold px-1">Moje týmy ({myTeams.length})</h4>
-        <div className="grid gap-3">
-          {myTeams.map(t => {
-            const teamPlayers = allPlayers.filter(p => p.team_id === t.id);
-            const alive = teamPlayers.filter(p => !p.is_dead);
-            const injured = alive.filter(p => p.injury_turns > 0);
-            const avgOvr = alive.length > 0 ? Math.round(alive.reduce((s, p) => s + p.overall_rating, 0) / alive.length) : 0;
-            const avgForm = alive.length > 0 ? Math.round(alive.reduce((s, p) => s + p.form, 0) / alive.length) : 0;
-            const standing = standings.find(s => s.team_id === t.id);
-            const cityName = cities.get(t.city_id);
-            const totalGames = (t.total_wins || 0) + (t.total_draws || 0) + (t.total_losses || 0);
-            const winRate = totalGames > 0 ? Math.round(((t.total_wins || 0) / totalGames) * 100) : 0;
+      )}
 
-            return (
-              <Card key={t.id} className="border-border bg-card/50 cursor-pointer hover:border-primary/40 transition-all"
-                onClick={() => setSelectedTeamId(t.id)}>
-                <CardContent className="p-3 space-y-2">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm shrink-0 border-2 border-primary/20"
-                      style={{ backgroundColor: t.color_primary, color: t.color_secondary }}>⚔️</div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="font-display font-bold text-sm">{t.team_name}</span>
-                        {(t.titles_won || 0) > 0 && <span className="text-yellow-400 text-[9px]">🏆{t.titles_won}</span>}
-                      </div>
-                      <div className="text-[9px] text-muted-foreground">{cityName} · {t.league_tier}. liga</div>
+      {/* My Teams Grid */}
+      <div className="grid gap-3">
+        {myTeams.map(t => {
+          const teamPlayers = allPlayers.filter(p => p.team_id === t.id);
+          const alive = teamPlayers.filter(p => !p.is_dead);
+          const injured = alive.filter(p => p.injury_turns > 0);
+          const avgOvr = alive.length > 0 ? Math.round(alive.reduce((s, p) => s + p.overall_rating, 0) / alive.length) : 0;
+          const avgForm = alive.length > 0 ? Math.round(alive.reduce((s, p) => s + p.form, 0) / alive.length) : 0;
+          const standing = standings.find(s => s.team_id === t.id);
+          const cityName = cities.get(t.city_id);
+          const totalGames = (t.total_wins || 0) + (t.total_draws || 0) + (t.total_losses || 0);
+          const winRate = totalGames > 0 ? Math.round(((t.total_wins || 0) / totalGames) * 100) : 0;
+
+          return (
+            <Card key={t.id} className="border-border bg-card/50 cursor-pointer hover:border-primary/40 transition-all"
+              onClick={() => setSelectedTeamId(t.id)}>
+              <CardContent className="p-3 space-y-2">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm shrink-0 border-2 border-primary/20"
+                    style={{ backgroundColor: t.color_primary, color: t.color_secondary }}>⚔️</div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="font-display font-bold text-sm">{t.team_name}</span>
+                      {(t.titles_won || 0) > 0 && <span className="text-yellow-400 text-[9px]">🏆{t.titles_won}</span>}
                     </div>
-                    {standing && (
-                      <div className="text-right">
-                        <div className="text-lg font-bold font-mono">#{standing.position}</div>
-                        <div className="text-[8px] text-muted-foreground">{standing.points}b</div>
-                      </div>
-                    )}
+                    <div className="text-[9px] text-muted-foreground">{cityName} · {t.league_tier}. liga</div>
                   </div>
-
-                  <div className="grid grid-cols-5 gap-1.5 text-center">
-                    <div className="bg-muted/20 rounded p-1">
-                      <div className={`text-xs font-bold font-mono ${ratingColor(avgOvr)}`}>{avgOvr}</div>
-                      <div className="text-[7px] text-muted-foreground">OVR</div>
-                    </div>
-                    <div className="bg-muted/20 rounded p-1">
-                      <div className="text-xs font-bold font-mono">{avgForm}</div>
-                      <div className="text-[7px] text-muted-foreground">Forma</div>
-                    </div>
-                    <div className="bg-muted/20 rounded p-1">
-                      <div className="text-xs font-bold font-mono">{winRate}%</div>
-                      <div className="text-[7px] text-muted-foreground">Win</div>
-                    </div>
-                    <div className="bg-muted/20 rounded p-1">
-                      <div className={`text-xs font-bold font-mono ${injured.length > 0 ? "text-red-400" : "text-green-400"}`}>{alive.length - injured.length}/{alive.length}</div>
-                      <div className="text-[7px] text-muted-foreground">Zdraví</div>
-                    </div>
-                    <div className="bg-muted/20 rounded p-1">
-                      <div className="text-xs font-bold font-mono">{teamPlayers.filter(p => p.is_dead).length}</div>
-                      <div className="text-[7px] text-muted-foreground">☠️</div>
-                    </div>
-                  </div>
-
                   {standing && (
-                    <div className="flex items-center gap-1">
-                      <span className="text-[9px] text-muted-foreground">
-                        {standing.wins}V {standing.draws}R {standing.losses}P · {standing.goals_for}:{standing.goals_against}
-                      </span>
-                      <div className="flex gap-0.5 ml-auto">
-                        {(standing.form || "").split("").map((f, fi) => (
-                          <span key={fi} className={`w-3 h-3 rounded-[2px] text-[6px] flex items-center justify-center font-bold ${FORM_COLORS[f] || "bg-muted"}`}>
-                            {f}
-                          </span>
-                        ))}
-                      </div>
+                    <div className="text-right">
+                      <div className="text-lg font-bold font-mono">#{standing.position}</div>
+                      <div className="text-[8px] text-muted-foreground">{standing.points}b</div>
                     </div>
                   )}
+                </div>
 
-                  <div className="flex gap-2 text-[8px] text-muted-foreground pt-1 border-t border-border/30">
-                    <span>🏋️ {TRAINING_OPTIONS.find(o => o.value === (t.training_focus || "balanced"))?.label || "Vyváženě"}</span>
-                    <span>⚙️ {TACTICAL_OPTIONS.find(o => o.value === (t.tactical_preset || "balanced"))?.label || "Vyváženě"}</span>
+                <div className="grid grid-cols-5 gap-1.5 text-center">
+                  <div className="bg-muted/20 rounded p-1">
+                    <div className={`text-xs font-bold font-mono ${ratingColor(avgOvr)}`}>{avgOvr}</div>
+                    <div className="text-[7px] text-muted-foreground">OVR</div>
                   </div>
-                </CardContent>
-              </Card>
-            );
-          })}
-        </div>
+                  <div className="bg-muted/20 rounded p-1">
+                    <div className="text-xs font-bold font-mono">{avgForm}</div>
+                    <div className="text-[7px] text-muted-foreground">Forma</div>
+                  </div>
+                  <div className="bg-muted/20 rounded p-1">
+                    <div className="text-xs font-bold font-mono">{winRate}%</div>
+                    <div className="text-[7px] text-muted-foreground">Win</div>
+                  </div>
+                  <div className="bg-muted/20 rounded p-1">
+                    <div className={`text-xs font-bold font-mono ${injured.length > 0 ? "text-red-400" : "text-green-400"}`}>{alive.length - injured.length}/{alive.length}</div>
+                    <div className="text-[7px] text-muted-foreground">Zdraví</div>
+                  </div>
+                  <div className="bg-muted/20 rounded p-1">
+                    <div className="text-xs font-bold font-mono">{teamPlayers.filter(p => p.is_dead).length}</div>
+                    <div className="text-[7px] text-muted-foreground">☠️</div>
+                  </div>
+                </div>
+
+                {standing && (
+                  <div className="flex items-center gap-1">
+                    <span className="text-[9px] text-muted-foreground">
+                      {standing.wins}V {standing.draws}R {standing.losses}P · {standing.goals_for}:{standing.goals_against}
+                    </span>
+                    <div className="flex gap-0.5 ml-auto">
+                      {(standing.form || "").split("").map((f, fi) => (
+                        <span key={fi} className={`w-3 h-3 rounded-[2px] text-[6px] flex items-center justify-center font-bold ${FORM_COLORS[f] || "bg-muted"}`}>
+                          {f}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <div className="flex gap-2 text-[8px] text-muted-foreground pt-1 border-t border-border/30">
+                  <span>🏋️ {TRAINING_OPTIONS.find(o => o.value === (t.training_focus || "balanced"))?.label || "Vyváženě"}</span>
+                  <span>⚙️ {TACTICAL_OPTIONS.find(o => o.value === (t.tactical_preset || "balanced"))?.label || "Vyváženě"}</span>
+                </div>
+              </CardContent>
+            </Card>
+          );
+        })}
       </div>
+
+      {/* Cities overview: teams per city */}
+      {myAssociation && (
+        <Card className="border-border bg-card/50">
+          <CardHeader className="py-2 px-3 border-b border-border/50">
+            <CardTitle className="text-xs font-display flex items-center gap-1">
+              <MapPin className="h-3.5 w-3.5" /> Týmy v městech
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-3 space-y-1">
+            {Array.from(cities.entries()).map(([cityId, cityName]) => {
+              const count = teamsPerCity.get(cityId) || 0;
+              const cityTeams = myTeams.filter(t => t.city_id === cityId);
+              return (
+                <div key={cityId} className="flex items-center justify-between text-xs bg-muted/10 p-2 rounded">
+                  <span className="font-medium">{cityName}</span>
+                  <div className="flex items-center gap-2">
+                    {cityTeams.map(t => (
+                      <Badge key={t.id} variant="outline" className="text-[8px] cursor-pointer" onClick={() => setSelectedTeamId(t.id)}>
+                        <div className="w-1.5 h-1.5 rounded-full mr-1" style={{ backgroundColor: t.color_primary }} />
+                        {t.team_name}
+                      </Badge>
+                    ))}
+                    <span className={`text-[9px] ${count >= MAX_TEAMS_PER_CITY ? "text-red-400" : "text-muted-foreground"}`}>
+                      {count}/{MAX_TEAMS_PER_CITY}
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Create Team Dialog */}
+      <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
+        <DialogContent className="max-w-md bg-card border-primary/20">
+          <DialogHeader>
+            <DialogTitle className="font-display flex items-center gap-2">
+              <Plus className="h-5 w-5 text-primary" /> Sehnat tým pro Sphaeru
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <label className="text-xs font-medium mb-1 block">Město</label>
+              <Select value={createCityId} onValueChange={setCreateCityId}>
+                <SelectTrigger className="h-9 text-xs">
+                  <SelectValue placeholder="Vyber město..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {availableCities.map(([id, name]) => (
+                    <SelectItem key={id} value={id} className="text-xs">
+                      {name} ({teamsPerCity.get(id) || 0}/{MAX_TEAMS_PER_CITY})
+                      {stadiums.find(s => s.city_id === id) ? " 🏟️" : ""}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-[9px] text-muted-foreground mt-1">Max {MAX_TEAMS_PER_CITY} týmy na město. 🏟️ = stadion k dispozici.</p>
+            </div>
+            <div>
+              <label className="text-xs font-medium mb-1 block">Název týmu</label>
+              <Input value={createTeamName} onChange={e => setCreateTeamName(e.target.value)} placeholder="Gladiátoři Romanova" className="h-9 text-xs" />
+            </div>
+            <div>
+              <label className="text-xs font-medium mb-1 block">Motto (volitelné)</label>
+              <Input value={createMotto} onChange={e => setCreateMotto(e.target.value)} placeholder="Sphaera si žádá krev!" className="h-9 text-xs" />
+            </div>
+            <div className="flex gap-3">
+              <div className="flex-1">
+                <label className="text-xs font-medium mb-1 block">Primární barva</label>
+                <input type="color" value={createColorPrimary} onChange={e => setCreateColorPrimary(e.target.value)} className="w-full h-8 rounded border border-border cursor-pointer" />
+              </div>
+              <div className="flex-1">
+                <label className="text-xs font-medium mb-1 block">Sekundární</label>
+                <input type="color" value={createColorSecondary} onChange={e => setCreateColorSecondary(e.target.value)} className="w-full h-8 rounded border border-border cursor-pointer" />
+              </div>
+            </div>
+            <p className="text-[9px] text-muted-foreground">AI automaticky vygeneruje 22 bojovníků s unikátními statistikami založenými na úrovni a stabilitě města.</p>
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" size="sm" onClick={() => setShowCreateDialog(false)}>Zrušit</Button>
+            <Button size="sm" onClick={handleCreateTeam} disabled={creating || !createCityId || !createTeamName.trim()}>
+              {creating ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <Swords className="h-3 w-3 mr-1" />}
+              Založit tým (22 hráčů)
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
