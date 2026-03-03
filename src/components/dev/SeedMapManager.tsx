@@ -53,6 +53,7 @@ interface GenSettings {
   mountainDensity: number;
   coastalRichness: number;
   biomeWeights: Record<string, number>;
+  geoBlueprint?: Record<string, any> | null;
 }
 
 const DEFAULT_SETTINGS: GenSettings = {
@@ -193,8 +194,9 @@ const SeedMapManager = ({ sessionId, onRefetch }: Props) => {
 
   const currentStyleKey = useMemo(() => computeStyleKey(settings), [settings]);
 
-  // Load map dimensions from world_foundations + user preferences on mount
+  // Load map dimensions from world_foundations + geography blueprint on mount
   useEffect(() => {
+    // Load dimensions
     supabase
       .from("world_foundations")
       .select("map_width, map_height")
@@ -207,6 +209,20 @@ const SeedMapManager = ({ sessionId, onRefetch }: Props) => {
           if (w && h) {
             setSettings(prev => ({ ...prev, width: w, height: h }));
           }
+        }
+      });
+
+    // Load geography blueprint from world_premise
+    supabase
+      .from("world_premise")
+      .select("geography_blueprint")
+      .eq("session_id", sessionId)
+      .eq("is_active", true)
+      .maybeSingle()
+      .then(({ data }) => {
+        const bp = (data as any)?.geography_blueprint;
+        if (bp && Object.keys(bp).length > 0) {
+          setSettings(prev => ({ ...prev, geoBlueprint: bp }));
         }
       });
   }, [sessionId]);
@@ -321,18 +337,25 @@ const SeedMapManager = ({ sessionId, onRefetch }: Props) => {
         .update({ map_width: settings.width, map_height: settings.height } as any)
         .eq("session_id", sessionId);
 
+      const terrainParams: Record<string, any> = {
+        targetLandRatio: settings.targetLandRatio,
+        continentCount: settings.continentCount,
+        mountainDensity: settings.mountainDensity,
+        coastalRichness: settings.coastalRichness,
+        biomeWeights: settings.biomeWeights,
+      };
+
+      // Include geography blueprint if available
+      if (settings.geoBlueprint && Object.keys(settings.geoBlueprint).length > 0) {
+        terrainParams.geoBlueprint = settings.geoBlueprint;
+      }
+
       const { data, error } = await supabase.functions.invoke("generate-world-map", {
         body: {
           session_id: sessionId,
           width: settings.width,
           height: settings.height,
-          terrain_params: {
-            targetLandRatio: settings.targetLandRatio,
-            continentCount: settings.continentCount,
-            mountainDensity: settings.mountainDensity,
-            coastalRichness: settings.coastalRichness,
-            biomeWeights: settings.biomeWeights,
-          },
+          terrain_params: terrainParams,
         },
       });
       if (error) throw error;
@@ -666,6 +689,61 @@ const SeedMapManager = ({ sessionId, onRefetch }: Props) => {
             </Button>
           </CardContent>
         </Card>
+
+        {/* Geography Blueprint from AI */}
+        {settings.geoBlueprint && Object.keys(settings.geoBlueprint).length > 0 && (
+          <Card className="border-accent/20">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm flex items-center gap-2">
+                <Sparkles className="h-4 w-4 text-primary" /> Geografický Blueprint (z AI)
+                <Badge variant="outline" className="text-[9px] ml-auto">AUTO</Badge>
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2 text-xs">
+              {settings.geoBlueprint.continentShape && (
+                <div className="flex items-center gap-2">
+                  <span className="text-muted-foreground">Tvar:</span>
+                  <Badge variant="secondary" className="text-[10px]">{settings.geoBlueprint.continentShape}</Badge>
+                </div>
+              )}
+              {settings.geoBlueprint.ridges?.length > 0 && (
+                <div>
+                  <span className="text-muted-foreground">🏔 Pohoří ({settings.geoBlueprint.ridges.length}):</span>
+                  <div className="flex flex-wrap gap-1 mt-1">
+                    {settings.geoBlueprint.ridges.map((r: any, i: number) => (
+                      <Badge key={i} variant="outline" className="text-[9px]">{r.name || `Hřbet ${i + 1}`}</Badge>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {settings.geoBlueprint.rivers?.length > 0 && (
+                <div>
+                  <span className="text-muted-foreground">🌊 Řeky ({settings.geoBlueprint.rivers.length}):</span>
+                  <div className="flex flex-wrap gap-1 mt-1">
+                    {settings.geoBlueprint.rivers.map((r: any, i: number) => (
+                      <Badge key={i} variant="outline" className="text-[9px]">{r.name || `Řeka ${i + 1}`}</Badge>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {settings.geoBlueprint.biomeZones?.length > 0 && (
+                <div>
+                  <span className="text-muted-foreground">🌍 Klimatické zóny ({settings.geoBlueprint.biomeZones.length}):</span>
+                  <div className="flex flex-wrap gap-1 mt-1">
+                    {settings.geoBlueprint.biomeZones.map((z: any, i: number) => (
+                      <Badge key={i} variant="outline" className="text-[9px]">
+                        {BIOME_EMOJI[z.biome] || "?"} {z.name || z.biome} (r:{z.radius})
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+              )}
+              <p className="text-[10px] text-muted-foreground italic mt-1">
+                Tyto direktivy se automaticky aplikují při regeneraci mapy.
+              </p>
+            </CardContent>
+          </Card>
+        )}
       </TabsContent>
 
       {/* ══ AI PATCH TAB ══ */}
