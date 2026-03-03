@@ -4882,6 +4882,7 @@ export type Database = {
           seasons_played: number | null
           session_id: string
           stadium_building_id: string | null
+          tactical_preset: string
           tactics_rating: number | null
           team_name: string
           titles_won: number | null
@@ -4890,6 +4891,7 @@ export type Database = {
           total_goals_for: number | null
           total_losses: number | null
           total_wins: number | null
+          training_focus: string
           updated_at: string
         }
         Insert: {
@@ -4910,6 +4912,7 @@ export type Database = {
           seasons_played?: number | null
           session_id: string
           stadium_building_id?: string | null
+          tactical_preset?: string
           tactics_rating?: number | null
           team_name: string
           titles_won?: number | null
@@ -4918,6 +4921,7 @@ export type Database = {
           total_goals_for?: number | null
           total_losses?: number | null
           total_wins?: number | null
+          training_focus?: string
           updated_at?: string
         }
         Update: {
@@ -4938,6 +4942,7 @@ export type Database = {
           seasons_played?: number | null
           session_id?: string
           stadium_building_id?: string | null
+          tactical_preset?: string
           tactics_rating?: number | null
           team_name?: string
           titles_won?: number | null
@@ -4946,6 +4951,7 @@ export type Database = {
           total_goals_for?: number | null
           total_losses?: number | null
           total_wins?: number | null
+          training_focus?: string
           updated_at?: string
         }
         Relationships: [

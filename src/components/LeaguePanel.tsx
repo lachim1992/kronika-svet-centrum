@@ -8,8 +8,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Progress } from "@/components/ui/progress";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Trophy, Users, Calendar, Star, Target, Shield, Swords, Play, Loader2, ChevronLeft, Building2, Plus, Award, TrendingUp, Scroll, Skull, Flame } from "lucide-react";
+import { Trophy, Users, Calendar, Star, Target, Shield, Swords, Play, Loader2, ChevronLeft, Building2, Plus, Award, TrendingUp, Scroll, Skull, Flame, Globe, Settings } from "lucide-react";
 import InMemoriamTab from "@/components/league/InMemoriamTab";
+import MyTeamsPanel from "@/components/league/MyTeamsPanel";
 import { toast } from "sonner";
 
 interface Props {
@@ -25,7 +26,7 @@ interface Team {
   fan_base: number; titles_won: number; color_primary: string; color_secondary: string;
   seasons_played: number; total_wins: number; total_draws: number; total_losses: number;
   total_goals_for: number; total_goals_against: number;
-  league_tier: number;
+  league_tier: number; training_focus?: string; tactical_preset?: string;
 }
 
 interface Association {
@@ -76,7 +77,6 @@ const FORM_COLORS: Record<string, string> = {
 
 const POS_LABELS: Record<string, string> = {
   praetor: "PRT", guardian: "GRD", striker: "STR", carrier: "CAR", exactor: "EXA",
-  // Legacy
   goalkeeper: "PRT", defender: "GRD", midfielder: "CAR", attacker: "STR",
 };
 const POS_FULL: Record<string, string> = {
@@ -131,6 +131,7 @@ const LeaguePanel = ({ sessionId, currentPlayerName, currentTurn }: Props) => {
   const [loading, setLoading] = useState(true);
   const [showRules, setShowRules] = useState(false);
   const [selectedMatch, setSelectedMatch] = useState<Match | null>(null);
+  const [mainTab, setMainTab] = useState("world");
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -213,33 +214,23 @@ const LeaguePanel = ({ sessionId, currentPlayerName, currentTurn }: Props) => {
     setPlayingBulk(true);
     setBulkResults([]);
     try {
-      const allResults: any[] = [];
-      for (let i = 0; i < 5; i++) {
-        try {
-          const { data, error } = await supabase.functions.invoke("league-play-round", {
-            body: { session_id: sessionId, player_name: currentPlayerName },
-          });
-          if (error) {
-            console.error(`Kolo ${i + 1} selhalo:`, error);
-            toast.error(`Chyba v kole ${i + 1}: ${error.message || "Neznámá chyba"}`);
-            break;
-          }
-          if (data?.error && !data?.seasonComplete) { toast.error(data.error); break; }
-          allResults.push(data);
-          if (data?.seasonComplete) { toast.info("🏆 Sezóna ukončena!"); break; }
-        } catch (roundErr: any) {
-          console.error(`Kolo ${i + 1} exception:`, roundErr);
-          toast.error(`Kolo ${i + 1} selhalo. Odehráno ${allResults.length} kol.`);
-          break;
-        }
-      }
-      if (allResults.length > 0) {
-        setBulkResults(allResults);
-        toast.success(`⚔️ Odehráno ${allResults.length} kol!`);
+      const { data, error } = await supabase.functions.invoke("league-play-batch", {
+        body: { session_id: sessionId, player_name: currentPlayerName, rounds: 5 },
+      });
+      if (error) throw error;
+      if (data?.error) { toast.error(data.error); return; }
+      
+      const results = data.results || [];
+      if (results.length > 0) {
+        setBulkResults(results);
+        toast.success(`⚔️ Odehráno ${data.roundsPlayed} kol!`);
+        if (data.seasonComplete) toast.info("🏆 Sezóna ukončena!");
+      } else {
+        toast.error("Nepodařilo se odehrát žádné kolo.");
       }
       await fetchData();
     } catch (e: any) {
-      console.error("Bulk play error:", e);
+      console.error("Batch play error:", e);
       toast.error(e.message || "Nepodařilo se odehrát kola.");
     } finally { setPlayingBulk(false); }
   };
@@ -281,13 +272,13 @@ const LeaguePanel = ({ sessionId, currentPlayerName, currentTurn }: Props) => {
   const playedMatches = matches.filter(m => m.status === "played").sort((a, b) => b.round_number - a.round_number);
   const upcomingMatches = matches.filter(m => m.status === "scheduled").sort((a, b) => a.round_number - b.round_number);
   const topScorers = [...players].filter(p => (p.goals_scored || 0) > 0).sort((a, b) => (b.goals_scored || 0) - (a.goals_scored || 0)).slice(0, 10);
-
   const stadiumByCityId = new Map(stadiums.map(s => [s.city_id, s]));
-  const myAssociation = associations.find(a => a.player_name === currentPlayerName);
+  const myAssociation = associations.find(a => a.player_name === currentPlayerName) || null;
   const titleLeaderboard = [...teams].filter(t => (t.titles_won || 0) > 0).sort((a, b) => (b.titles_won || 0) - (a.titles_won || 0));
   const tier1Teams = teams.filter(t => (t.league_tier || 1) === 1);
   const tier2Teams = teams.filter(t => (t.league_tier || 1) === 2);
   const hasTier2 = tier2Teams.length > 0;
+  const myTeams = teams.filter(t => t.player_name === currentPlayerName);
 
   const renderStandingsTable = (sts: Standing[], tMap: Map<string, Team>, myName: string, onSelect: (id: string) => void, key: string) => (
     <div className="overflow-x-auto">
@@ -369,7 +360,7 @@ const LeaguePanel = ({ sessionId, currentPlayerName, currentTurn }: Props) => {
     );
   }
 
-  // Team detail view
+  // Team detail view (from World tab)
   if (selectedTeam) {
     const t = teamMap.get(selectedTeam);
     if (t) {
@@ -513,16 +504,10 @@ const LeaguePanel = ({ sessionId, currentPlayerName, currentTurn }: Props) => {
           <Button size="sm" variant="ghost" className="text-xs gap-1" onClick={() => setShowRules(true)} title="Pravidla Sphaery">
             <Scroll className="h-3.5 w-3.5" />
           </Button>
-          <Button size="sm" variant="outline" className="text-xs gap-1" onClick={handleGenerateTeams} disabled={generatingTeams} title="Doplnit týmy na 8 per město + 22 hráčů">
+          <Button size="sm" variant="outline" className="text-xs gap-1" onClick={handleGenerateTeams} disabled={generatingTeams} title="Doplnit týmy">
             {generatingTeams ? <Loader2 className="h-3 w-3 animate-spin" /> : <Plus className="h-3 w-3" />}
             Doplnit týmy
           </Button>
-          {!myAssociation && (
-            <Button size="sm" variant="outline" className="text-xs gap-1" onClick={handleCreateAssociation} disabled={creatingAssoc}>
-              {creatingAssoc ? <Loader2 className="h-3 w-3 animate-spin" /> : <Shield className="h-3 w-3" />}
-              Založit Svaz
-            </Button>
-          )}
           {teams.length > 1 && (
             <>
               <Button size="sm" className="text-xs gap-1 shadow-lg shadow-primary/10" onClick={handlePlayRound} disabled={playingRound || playingBulk}>
@@ -557,15 +542,12 @@ const LeaguePanel = ({ sessionId, currentPlayerName, currentTurn }: Props) => {
                   </span>
                   <span className="flex-1 truncate font-medium">{m.away}</span>
                   {(m.knockouts || 0) > 0 && <span className="text-red-400 text-[9px]">💀{m.knockouts}</span>}
-                  {m.crowdMood && <span className="text-[9px] text-muted-foreground">{m.crowdMood}</span>}
                 </div>
               ))}
             </div>
             {roundResult.commentary && (
               <div className="bg-background/30 p-2 rounded border border-red-500/10">
-                <p className="text-[10px] text-muted-foreground italic leading-relaxed">
-                  "{roundResult.commentary}"
-                </p>
+                <p className="text-[10px] text-muted-foreground italic leading-relaxed">"{roundResult.commentary}"</p>
               </div>
             )}
             {roundResult.seasonComplete && (
@@ -573,19 +555,39 @@ const LeaguePanel = ({ sessionId, currentPlayerName, currentTurn }: Props) => {
                  <Badge className="bg-yellow-500 text-black hover:bg-yellow-400 border-none">🏆 Sezóna ukončena! 🏆</Badge>
               </div>
             )}
-            {roundResult.playoff && roundResult.playoff.matches?.length > 0 && (
-              <div className="mt-2 space-y-1">
-                <span className="text-xs font-display font-bold text-yellow-400 flex items-center gap-1">🏆 Playoff</span>
-                {roundResult.playoff.matches.map((m: any, i: number) => (
-                  <div key={i} className="flex items-center gap-2 text-xs bg-yellow-500/5 border border-yellow-500/20 p-1.5 rounded">
-                    <Badge variant="outline" className="text-[8px] border-yellow-500/30 text-yellow-400">{m.playoffRound}</Badge>
-                    <span className="flex-1 text-right truncate font-medium">{m.home}</span>
-                    <span className="font-display font-bold min-w-[3rem] text-center bg-background/60 rounded px-1">
-                      {m.homeScore} : {m.awayScore}
-                    </span>
-                    <span className="flex-1 truncate font-medium">{m.away}</span>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Bulk results */}
+      {bulkResults.length > 0 && !roundResult && (
+        <Card className="border-primary/30 bg-primary/5 animate-in fade-in slide-in-from-top-4">
+          <CardContent className="p-3 space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-display font-bold text-primary">⚔️ Výsledky {bulkResults.length} kol</span>
+              <Button variant="ghost" size="sm" className="text-[9px] h-5 w-5 p-0" onClick={() => setBulkResults([])}>✕</Button>
+            </div>
+            <ScrollArea className="max-h-[200px]">
+              <div className="space-y-2 pr-2">
+                {bulkResults.map((r, ri) => (
+                  <div key={ri} className="space-y-0.5">
+                    <div className="text-[9px] text-muted-foreground font-semibold">Kolo {r.round}</div>
+                    {r.matches?.map((m: any, mi: number) => (
+                      <div key={mi} className="flex items-center gap-2 text-[10px] bg-background/30 px-1.5 py-0.5 rounded">
+                        <span className="flex-1 text-right truncate">{m.home}</span>
+                        <span className="font-mono font-bold">{m.homeScore}:{m.awayScore}</span>
+                        <span className="flex-1 truncate">{m.away}</span>
+                      </div>
+                    ))}
                   </div>
                 ))}
+              </div>
+            </ScrollArea>
+            {bulkResults[bulkResults.length - 1]?.commentary && (
+              <div className="bg-background/30 p-2 rounded border border-primary/10">
+                <p className="text-[10px] text-muted-foreground italic leading-relaxed">
+                  "{bulkResults[bulkResults.length - 1].commentary}"
+                </p>
               </div>
             )}
           </CardContent>
@@ -601,455 +603,404 @@ const LeaguePanel = ({ sessionId, currentPlayerName, currentTurn }: Props) => {
           </CardContent>
         </Card>
       ) : (
-        <Tabs defaultValue="table" className="space-y-3">
-          <TabsList className="grid w-full grid-cols-7 bg-muted/20">
-            <TabsTrigger value="table" className="text-xs data-[state=active]:bg-primary/10 data-[state=active]:text-primary"><Trophy className="h-3 w-3 mr-1" />Tabulka</TabsTrigger>
-            <TabsTrigger value="matches" className="text-xs data-[state=active]:bg-primary/10 data-[state=active]:text-primary"><Calendar className="h-3 w-3 mr-1" />Zápasy</TabsTrigger>
-            <TabsTrigger value="playoff" className="text-xs data-[state=active]:bg-yellow-500/20 data-[state=active]:text-yellow-400"><Award className="h-3 w-3 mr-1" />Pohár</TabsTrigger>
-            <TabsTrigger value="scorers" className="text-xs data-[state=active]:bg-primary/10 data-[state=active]:text-primary"><Target className="h-3 w-3 mr-1" />Střelci</TabsTrigger>
-            <TabsTrigger value="team" className="text-xs data-[state=active]:bg-primary/10 data-[state=active]:text-primary"><Users className="h-3 w-3 mr-1" />Týmy</TabsTrigger>
-            <TabsTrigger value="memoriam" className="text-xs data-[state=active]:bg-destructive/10 data-[state=active]:text-destructive"><Skull className="h-3 w-3 mr-1" />Memoriam</TabsTrigger>
-            <TabsTrigger value="assoc" className="text-xs data-[state=active]:bg-primary/10 data-[state=active]:text-primary"><Shield className="h-3 w-3 mr-1" />Svaz</TabsTrigger>
+        /* ═══ TOP-LEVEL TABS: World / Manage ═══ */
+        <Tabs value={mainTab} onValueChange={setMainTab} className="space-y-3">
+          <TabsList className="grid w-full grid-cols-2 bg-muted/30 h-9">
+            <TabsTrigger value="world" className="text-xs gap-1.5 data-[state=active]:bg-primary/15 data-[state=active]:text-primary font-display">
+              <Globe className="h-3.5 w-3.5" /> World of Sphaera
+            </TabsTrigger>
+            <TabsTrigger value="manage" className="text-xs gap-1.5 data-[state=active]:bg-primary/15 data-[state=active]:text-primary font-display">
+              <Settings className="h-3.5 w-3.5" /> Manage My Teams
+              {myTeams.length > 0 && <Badge variant="secondary" className="text-[8px] h-3.5 px-1 ml-1">{myTeams.length}</Badge>}
+            </TabsTrigger>
           </TabsList>
 
-          {/* ═══ STANDINGS ═══ */}
-          <TabsContent value="table" className="space-y-4">
-            {/* 1. Liga */}
-            <Card className="border-border bg-card/50">
-              <CardHeader className="py-2 px-3 border-b border-border/50">
-                <CardTitle className="text-xs font-display flex items-center gap-2">
-                  🏟️ 1. Liga
-                  {activeSeason && <Badge variant="outline" className="text-[9px]">{activeSeason.season_number}. sezóna — kolo {activeSeason.current_round}/{activeSeason.total_rounds}</Badge>}
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="p-0">
-                {renderStandingsTable(standings, teamMap, currentPlayerName, setSelectedTeam, "tier1")}
-              </CardContent>
-            </Card>
+          {/* ═══ WORLD OF SPHAERA ═══ */}
+          <TabsContent value="world" className="space-y-3">
+            <Tabs defaultValue="table" className="space-y-3">
+              <TabsList className="grid w-full grid-cols-6 bg-muted/20">
+                <TabsTrigger value="table" className="text-xs data-[state=active]:bg-primary/10 data-[state=active]:text-primary"><Trophy className="h-3 w-3 mr-1" />Tabulka</TabsTrigger>
+                <TabsTrigger value="matches" className="text-xs data-[state=active]:bg-primary/10 data-[state=active]:text-primary"><Calendar className="h-3 w-3 mr-1" />Zápasy</TabsTrigger>
+                <TabsTrigger value="playoff" className="text-xs data-[state=active]:bg-yellow-500/20 data-[state=active]:text-yellow-400"><Award className="h-3 w-3 mr-1" />Pohár</TabsTrigger>
+                <TabsTrigger value="scorers" className="text-xs data-[state=active]:bg-primary/10 data-[state=active]:text-primary"><Target className="h-3 w-3 mr-1" />Střelci</TabsTrigger>
+                <TabsTrigger value="team" className="text-xs data-[state=active]:bg-primary/10 data-[state=active]:text-primary"><Users className="h-3 w-3 mr-1" />Týmy</TabsTrigger>
+                <TabsTrigger value="memoriam" className="text-xs data-[state=active]:bg-destructive/10 data-[state=active]:text-destructive"><Skull className="h-3 w-3 mr-1" />Memoriam</TabsTrigger>
+              </TabsList>
 
-            {/* 2. Liga */}
-            {hasTier2 && (
-              <Card className="border-border bg-card/50">
-                <CardHeader className="py-2 px-3 border-b border-border/50">
-                  <CardTitle className="text-xs font-display flex items-center gap-2">
-                    ⚔️ 2. Liga
-                    {activeSeason2 && <Badge variant="outline" className="text-[9px]">{activeSeason2.season_number}. sezóna — kolo {activeSeason2.current_round}/{activeSeason2.total_rounds}</Badge>}
-                    {!activeSeason2 && <Badge variant="secondary" className="text-[9px]">Sezóna nezahájena — odehrajte kolo</Badge>}
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="p-0">
-                  {standings2.length > 0
-                    ? renderStandingsTable(standings2, teamMap, currentPlayerName, setSelectedTeam, "tier2")
-                    : <div className="p-4 text-center text-xs text-muted-foreground">Zatím žádná data. Klikněte „Odehrát kolo" pro zahájení 2. ligy.</div>
-                  }
-                </CardContent>
-              </Card>
-            )}
-          </TabsContent>
-
-          {/* ═══ MATCHES ═══ */}
-          <TabsContent value="matches" className="space-y-3">
-             {playedMatches.length > 0 && (
-              <div className="space-y-1">
-                <h4 className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold px-1">Odehrané souboje</h4>
+              {/* ═══ STANDINGS ═══ */}
+              <TabsContent value="table" className="space-y-4">
                 <Card className="border-border bg-card/50">
-                  <CardContent className="p-0 divide-y divide-border/30">
-                    {playedMatches.slice(0, 10).map(m => {
-                      const home = teamMap.get(m.home_team_id);
-                      const away = teamMap.get(m.away_team_id);
-                      if (!home || !away) return null;
-                      return (
-                        <div key={m.id} className="p-2 hover:bg-accent/10 transition-colors flex items-center gap-2 text-xs cursor-pointer" onClick={() => setSelectedMatch(m)}>
-                          <Badge variant="secondary" className="text-[9px] h-4 px-1 rounded-[2px] w-8 justify-center">K{m.round_number}</Badge>
-                          <span className={`flex-1 text-right truncate ${(m.home_score ?? 0) > (m.away_score ?? 0) ? "font-bold text-foreground" : "text-muted-foreground"}`}>{home.team_name}</span>
-                          <span className="font-mono font-bold bg-muted/30 px-1.5 py-0.5 rounded text-center min-w-[32px]">{m.home_score}:{m.away_score}</span>
-                          <span className={`flex-1 truncate ${(m.away_score ?? 0) > (m.home_score ?? 0) ? "font-bold text-foreground" : "text-muted-foreground"}`}>{away.team_name}</span>
-                          {m.attendance > 0 && <span className="text-[9px] text-muted-foreground">👥{m.attendance}</span>}
-                        </div>
-                      );
-                    })}
+                  <CardHeader className="py-2 px-3 border-b border-border/50">
+                    <CardTitle className="text-xs font-display flex items-center gap-2">
+                      🏟️ 1. Liga
+                      {activeSeason && <Badge variant="outline" className="text-[9px]">{activeSeason.season_number}. sezóna — kolo {activeSeason.current_round}/{activeSeason.total_rounds}</Badge>}
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="p-0">
+                    {renderStandingsTable(standings, teamMap, currentPlayerName, setSelectedTeam, "tier1")}
                   </CardContent>
                 </Card>
-              </div>
-             )}
-             {upcomingMatches.length > 0 && (
-              <div className="space-y-1">
-                <h4 className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold px-1">Nadcházející</h4>
-                <Card className="border-border bg-card/50">
-                  <CardContent className="p-0 divide-y divide-border/30">
-                    {upcomingMatches.slice(0, 10).map(m => {
-                      const home = teamMap.get(m.home_team_id);
-                      const away = teamMap.get(m.away_team_id);
-                      if (!home || !away) return null;
-                      return (
-                        <div key={m.id} className="p-2 hover:bg-accent/5 transition-colors flex items-center gap-2 text-xs">
-                          <Badge variant="outline" className="text-[9px] h-4 px-1 rounded-[2px] w-8 justify-center text-muted-foreground">K{m.round_number}</Badge>
-                          <span className="flex-1 text-right truncate text-muted-foreground">{home.team_name}</span>
-                          <span className="text-muted-foreground text-[10px] px-1">-:-</span>
-                          <span className="flex-1 truncate text-muted-foreground">{away.team_name}</span>
-                        </div>
-                      );
-                    })}
-                  </CardContent>
-                </Card>
-              </div>
-             )}
-             {matches.length === 0 && (
-                <div className="p-8 text-center text-muted-foreground bg-card/30 rounded border border-dashed border-border">
-                   Žádné zápasy v rozpisu.
-                </div>
-             )}
-          </TabsContent>
 
-          {/* ═══ PLAYOFF / POHÁR ═══ */}
-          <TabsContent value="playoff" className="space-y-3">
-            {(() => {
-              const playoffSeason = activeSeason;
-              const bracket: any[] = (playoffSeason as any)?.playoff_bracket || [];
-              const playoffStatus = (playoffSeason as any)?.playoff_status || "none";
-              const qfMatches = bracket.filter((m: any) => m.round === "quarterfinals");
-              const sfMatches = bracket.filter((m: any) => m.round === "semifinals");
-              const finalMatch = bracket.find((m: any) => m.round === "final");
-
-              const getTeamName = (id: string) => teamMap.get(id)?.team_name || "?";
-              const getTeamColor = (id: string) => teamMap.get(id)?.color_primary || "hsl(var(--muted))";
-
-              const statusLabels: Record<string, string> = {
-                none: "Základní část",
-                quarterfinals: "⚔️ Čtvrtfinále",
-                semifinals: "⚔️ Semifinále",
-                final: "🏆 Finále",
-                completed: "✅ Ukončeno",
-              };
-
-              const renderMatchBox = (m: any, showSeed?: boolean) => {
-                const isPlayed = m.status === "played";
-                const homeWon = isPlayed && m.home_score > m.away_score;
-                const awayWon = isPlayed && m.away_score > m.home_score;
-                return (
-                  <div key={`${m.round}-${m.match_index}`} className="border border-border rounded bg-card/60 overflow-hidden text-[10px] min-w-[160px]">
-                    <div className={`flex items-center gap-1.5 px-2 py-1.5 border-b border-border/50 ${homeWon ? "bg-green-500/10 font-bold" : isPlayed && !homeWon ? "opacity-50" : ""}`}>
-                      <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: getTeamColor(m.home_team_id) }} />
-                      <span className="flex-1 truncate">{showSeed && m.home_seed ? `[${m.home_seed}] ` : ""}{getTeamName(m.home_team_id)}</span>
-                      <span className="font-mono font-bold min-w-[16px] text-right">{isPlayed ? m.home_score : "-"}</span>
-                    </div>
-                    <div className={`flex items-center gap-1.5 px-2 py-1.5 ${awayWon ? "bg-green-500/10 font-bold" : isPlayed && !awayWon ? "opacity-50" : ""}`}>
-                      <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: getTeamColor(m.away_team_id) }} />
-                      <span className="flex-1 truncate">{showSeed && m.away_seed ? `[${m.away_seed}] ` : ""}{getTeamName(m.away_team_id)}</span>
-                      <span className="font-mono font-bold min-w-[16px] text-right">{isPlayed ? m.away_score : "-"}</span>
-                    </div>
-                  </div>
-                );
-              };
-
-              if (playoffStatus === "none" && bracket.length === 0) {
-                return (
-                  <Card className="border-border bg-card/50">
-                    <CardContent className="p-8 text-center">
-                      <Award className="h-10 w-10 text-muted-foreground mx-auto mb-2 opacity-40" />
-                      <p className="text-sm text-muted-foreground">Playoff začne po skončení základní části.</p>
-                      <p className="text-[10px] text-muted-foreground mt-1">Prvních 8 týmů postoupí do vyřazovacího pavouku.</p>
-                    </CardContent>
-                  </Card>
-                );
-              }
-
-              return (
-                <div className="space-y-3">
-                  <Card className="border-yellow-500/20 bg-yellow-500/5">
-                    <CardContent className="p-3">
-                      <div className="flex items-center justify-between mb-3">
-                        <h4 className="font-display font-bold text-sm flex items-center gap-2">
-                          🏆 Pohár Sphaery
-                          <Badge variant="outline" className="text-[9px] border-yellow-500/30 text-yellow-400">
-                            {statusLabels[playoffStatus] || playoffStatus}
-                          </Badge>
-                        </h4>
-                        {playoffStatus === "completed" && finalMatch?.winner_team_id && (
-                          <Badge className="bg-yellow-500 text-black border-none text-xs gap-1">
-                            🏆 {getTeamName(finalMatch.winner_team_id)}
-                          </Badge>
-                        )}
-                      </div>
-
-                      {/* Bracket visualization */}
-                      <div className="flex items-start gap-4 overflow-x-auto pb-2">
-                        {/* Quarterfinals */}
-                        {qfMatches.length > 0 && (
-                          <div className="space-y-1 shrink-0">
-                            <div className="text-[9px] uppercase tracking-wider text-muted-foreground font-semibold text-center mb-1">Čtvrtfinále</div>
-                            <div className="space-y-2">
-                              {qfMatches.map(m => renderMatchBox(m, true))}
-                            </div>
-                          </div>
-                        )}
-
-                        {/* Connector */}
-                        {qfMatches.length > 0 && sfMatches.length > 0 && (
-                          <div className="flex items-center self-center text-muted-foreground/30 text-lg">→</div>
-                        )}
-
-                        {/* Semifinals */}
-                        {sfMatches.length > 0 && (
-                          <div className="space-y-1 shrink-0">
-                            <div className="text-[9px] uppercase tracking-wider text-muted-foreground font-semibold text-center mb-1">Semifinále</div>
-                            <div className="space-y-2 flex flex-col justify-center" style={{ minHeight: qfMatches.length > 0 ? "200px" : undefined }}>
-                              {sfMatches.map(m => renderMatchBox(m))}
-                            </div>
-                          </div>
-                        )}
-
-                        {/* Connector */}
-                        {sfMatches.length > 0 && finalMatch && (
-                          <div className="flex items-center self-center text-muted-foreground/30 text-lg">→</div>
-                        )}
-
-                        {/* Final */}
-                        {finalMatch && (
-                          <div className="space-y-1 shrink-0">
-                            <div className="text-[9px] uppercase tracking-wider text-yellow-400 font-semibold text-center mb-1">🏆 Finále</div>
-                            <div className="flex flex-col justify-center" style={{ minHeight: sfMatches.length > 0 ? "200px" : undefined }}>
-                              {renderMatchBox(finalMatch)}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    </CardContent>
-                  </Card>
-
-                  {/* Titles History Table */}
+                {hasTier2 && (
                   <Card className="border-border bg-card/50">
                     <CardHeader className="py-2 px-3 border-b border-border/50">
-                      <CardTitle className="text-xs font-display flex items-center gap-1">
-                        <Trophy className="h-3.5 w-3.5 text-yellow-500" /> Tabulka titulů
+                      <CardTitle className="text-xs font-display flex items-center gap-2">
+                        ⚔️ 2. Liga
+                        {activeSeason2 && <Badge variant="outline" className="text-[9px]">{activeSeason2.season_number}. sezóna — kolo {activeSeason2.current_round}/{activeSeason2.total_rounds}</Badge>}
                       </CardTitle>
                     </CardHeader>
                     <CardContent className="p-0">
-                      <table className="w-full text-xs">
-                        <thead>
-                          <tr className="border-b border-border text-muted-foreground bg-muted/10">
-                            <th className="p-2 text-left w-8">#</th>
-                            <th className="p-2 text-left">Tým</th>
-                            <th className="p-2 text-left text-[9px]">Hráč</th>
-                            <th className="p-2 text-center w-12">🏆</th>
-                            <th className="p-2 text-center w-12">Sezón</th>
-                            <th className="p-2 text-center w-16">V/R/P</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {[...teams].sort((a, b) => (b.titles_won || 0) - (a.titles_won || 0)).map((t, i) => (
-                            <tr key={t.id} className={`border-b border-border/50 hover:bg-accent/5 cursor-pointer ${t.player_name === currentPlayerName ? "bg-primary/5" : ""}`}
-                              onClick={() => setSelectedTeam(t.id)}>
-                              <td className="p-2 text-muted-foreground">
-                                {(t.titles_won || 0) > 0 && i === 0 ? "🥇" : (t.titles_won || 0) > 0 && i === 1 ? "🥈" : (t.titles_won || 0) > 0 && i === 2 ? "🥉" : `${i+1}.`}
-                              </td>
-                              <td className="p-2">
-                                <div className="flex items-center gap-1.5">
-                                  <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: t.color_primary }} />
-                                  <span className="font-medium">{t.team_name}</span>
-                                </div>
-                              </td>
-                              <td className="p-2 text-muted-foreground text-[9px] truncate max-w-[60px]">{t.player_name}</td>
-                              <td className="p-2 text-center font-bold text-yellow-400">{t.titles_won || 0}</td>
-                              <td className="p-2 text-center text-muted-foreground">{t.seasons_played || 0}</td>
-                              <td className="p-2 text-center text-[9px] font-mono text-muted-foreground">{t.total_wins||0}/{t.total_draws||0}/{t.total_losses||0}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
+                      {standings2.length > 0
+                        ? renderStandingsTable(standings2, teamMap, currentPlayerName, setSelectedTeam, "tier2")
+                        : <div className="p-4 text-center text-xs text-muted-foreground">Zatím žádná data.</div>
+                      }
                     </CardContent>
                   </Card>
-                </div>
-              );
-            })()}
-          </TabsContent>
+                )}
+              </TabsContent>
 
-          {/* ═══ SCORERS ═══ */}
-          <TabsContent value="scorers">
-            <Card className="border-border bg-card/50">
-              <CardContent className="p-0">
-                <table className="w-full text-xs">
-                  <thead>
-                    <tr className="border-b border-border text-muted-foreground bg-muted/10">
-                      <th className="p-2 text-left w-8">#</th>
-                      <th className="p-2 text-left">Bojovník</th>
-                      <th className="p-2 text-left">Tým</th>
-                      <th className="p-2 text-center w-12">⚔️</th>
-                      <th className="p-2 text-center w-12">🅰️</th>
-                      <th className="p-2 text-center w-12">Záp.</th>
-                      <th className="p-2 text-center w-12">Ø</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {topScorers.length > 0 ? topScorers.map((p, i) => {
-                      const team = teamMap.get(p.team_id);
-                      const avg = p.matches_played > 0 ? ((p.goals_scored || 0) / p.matches_played).toFixed(2) : "0";
-                      return (
-                        <tr key={p.id} className="border-b border-border/50 hover:bg-accent/5 cursor-pointer" onClick={() => setSelectedPlayer(p)}>
-                          <td className="p-2 font-mono text-muted-foreground">
-                            {i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : `${i + 1}.`}
-                          </td>
-                          <td className="p-2 font-medium">{POS_ICONS[p.position] || ""} {p.name}</td>
-                          <td className="p-2 text-muted-foreground flex items-center gap-1">
-                            {team && <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: team.color_primary }} />}
-                            {team?.team_name || "?"}
-                          </td>
-                          <td className="p-2 text-center font-bold text-lg">{p.goals_scored || 0}</td>
-                          <td className="p-2 text-center">{p.assists || 0}</td>
-                          <td className="p-2 text-center text-muted-foreground">{p.matches_played}</td>
-                          <td className="p-2 text-center text-muted-foreground font-mono">{avg}</td>
-                        </tr>
-                      );
-                    }) : (
-                       <tr><td colSpan={7} className="p-8 text-center text-muted-foreground">Žádní střelci.</td></tr>
-                    )}
-                  </tbody>
-                </table>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          {/* ═══ TEAMS LIST ═══ */}
-          <TabsContent value="team" className="space-y-2">
-            {titleLeaderboard.length > 0 && (
-              <Card className="border-yellow-500/20 bg-yellow-500/5 mb-3">
-                <CardHeader className="py-2 px-3">
-                  <CardTitle className="text-xs font-display flex items-center gap-1">
-                    <Trophy className="h-3.5 w-3.5 text-yellow-500" /> Síň slávy
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="px-3 pb-2">
-                  <div className="flex flex-wrap gap-2">
-                    {titleLeaderboard.map(t => (
-                      <Badge key={t.id} className="bg-yellow-500/10 text-yellow-400 border-yellow-500/30 gap-1 cursor-pointer hover:bg-yellow-500/20"
-                        onClick={() => setSelectedTeam(t.id)}>
-                        🏆 {t.titles_won}× {t.team_name}
-                      </Badge>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-
-            {concludedSeasons.length > 0 && (
-              <Card className="border-border bg-card/50 mb-3">
-                <CardHeader className="py-2 px-3">
-                  <CardTitle className="text-xs font-display">📜 Historie sezón</CardTitle>
-                </CardHeader>
-                <CardContent className="px-3 pb-2 space-y-1">
-                  {concludedSeasons.map(s => {
-                    const champ = s.champion_team_id ? teamMap.get(s.champion_team_id) : null;
-                    return (
-                      <div key={s.id} className="flex items-center justify-between text-xs bg-muted/10 p-1.5 rounded">
-                        <span className="font-medium">{s.season_number}. sezóna</span>
-                        <span className="text-muted-foreground">Tah {s.started_turn}–{s.ended_turn}</span>
-                        {champ ? (
-                          <Badge variant="outline" className="text-[9px] gap-1 text-yellow-400 border-yellow-500/30">
-                            🏆 {champ.team_name}
-                          </Badge>
-                        ) : <span className="text-muted-foreground text-[9px]">—</span>}
-                      </div>
-                    );
-                  })}
-                </CardContent>
-              </Card>
-            )}
-
-            <div className="grid grid-cols-2 gap-2">
-              {teams.map(t => {
-                const stadium = stadiumByCityId.get(t.city_id);
-                const city = cities.get(t.city_id);
-                return (
-                  <Card key={t.id} 
-                    className="cursor-pointer transition-all hover:border-primary/50 border-border bg-card/50"
-                    onClick={() => setSelectedTeam(t.id)}>
-                    <CardContent className="p-3 flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs shrink-0 border border-primary/20"
-                        style={{ backgroundColor: t.color_primary, color: t.color_secondary }}>⚔️</div>
-                      <div className="min-w-0 flex-1">
-                        <div className="font-bold text-xs truncate">{t.team_name}</div>
-                        <div className="text-[9px] text-muted-foreground truncate">{city || "?"} · {t.player_name}</div>
-                        <div className="text-[9px] text-muted-foreground truncate">{stadium ? `🏟 ${stadium.name}` : "Bez arény"}</div>
-                      </div>
-                      {(t.titles_won || 0) > 0 && (
-                        <span className="text-yellow-400 text-xs">🏆{t.titles_won}</span>
-                      )}
-                    </CardContent>
-                  </Card>
-                );
-              })}
-            </div>
-          </TabsContent>
-
-          {/* ═══ IN MEMORIAM ═══ */}
-          <TabsContent value="memoriam" className="space-y-3">
-            <InMemoriamTab sessionId={sessionId} currentPlayerName={currentPlayerName} />
-          </TabsContent>
-
-          {/* ═══ ASSOCIATIONS ═══ */}
-          <TabsContent value="assoc" className="space-y-3">
-            {associations.length === 0 ? (
-              <div className="p-8 text-center text-muted-foreground bg-card/30 rounded border border-dashed border-border">
-                Žádné svazy Sphaery. Založte svůj!
-              </div>
-            ) : (
-              <div className="space-y-2">
-                {associations.map(assoc => {
-                  const cityName = cities.get(assoc.city_id);
-                  const assocTeams = teams.filter(t => t.player_name === assoc.player_name);
-                  const totalTitles = assocTeams.reduce((sum, t) => sum + (t.titles_won || 0), 0);
-                  const isMyAssoc = assoc.player_name === currentPlayerName;
-                  return (
-                    <Card key={assoc.id} className={`border-border bg-card/50 ${isMyAssoc ? "border-primary/30" : ""}`}>
-                      <CardContent className="p-4 space-y-3">
-                        <div className="flex items-start justify-between">
-                          <div>
-                            <h4 className="font-display font-bold text-sm flex items-center gap-2">
-                              <Award className="h-4 w-4 text-primary" />
-                              {assoc.name}
-                              {isMyAssoc && <Badge variant="outline" className="text-[9px]">Moje</Badge>}
-                            </h4>
-                            <p className="text-[10px] text-muted-foreground mt-0.5">{cityName} · {assoc.player_name}</p>
-                          </div>
-                          <div className="text-right">
-                            <div className="text-sm font-bold text-primary">{assoc.reputation}</div>
-                            <div className="text-[9px] text-muted-foreground">Prestiž</div>
-                          </div>
-                        </div>
-                        <div className="grid grid-cols-4 gap-2 text-center">
-                          {[["scouting_level", "Skauting"], ["youth_development", "Mládež"], ["training_quality", "Trénink"], ["budget", "Budget"]].map(([k, label]) => (
-                            <div key={k} className="bg-muted/20 rounded p-1.5">
-                              <div className="text-xs font-bold">{(assoc as any)[k]}</div>
-                              <div className="text-[8px] text-muted-foreground">{label}</div>
+              {/* ═══ MATCHES ═══ */}
+              <TabsContent value="matches" className="space-y-3">
+                {playedMatches.length > 0 && (
+                  <div className="space-y-1">
+                    <h4 className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold px-1">Odehrané souboje</h4>
+                    <Card className="border-border bg-card/50">
+                      <CardContent className="p-0 divide-y divide-border/30">
+                        {playedMatches.slice(0, 15).map(m => {
+                          const home = teamMap.get(m.home_team_id);
+                          const away = teamMap.get(m.away_team_id);
+                          if (!home || !away) return null;
+                          return (
+                            <div key={m.id} className="p-2 hover:bg-accent/10 transition-colors flex items-center gap-2 text-xs cursor-pointer" onClick={() => setSelectedMatch(m)}>
+                              <Badge variant="secondary" className="text-[9px] h-4 px-1 rounded-[2px] w-8 justify-center">K{m.round_number}</Badge>
+                              <span className={`flex-1 text-right truncate ${(m.home_score ?? 0) > (m.away_score ?? 0) ? "font-bold text-foreground" : "text-muted-foreground"}`}>{home.team_name}</span>
+                              <span className="font-mono font-bold bg-muted/30 px-1.5 py-0.5 rounded text-center min-w-[32px]">{m.home_score}:{m.away_score}</span>
+                              <span className={`flex-1 truncate ${(m.away_score ?? 0) > (m.home_score ?? 0) ? "font-bold text-foreground" : "text-muted-foreground"}`}>{away.team_name}</span>
+                              {m.attendance > 0 && <span className="text-[9px] text-muted-foreground">👥{m.attendance}</span>}
                             </div>
-                          ))}
-                        </div>
-                        <div className="flex items-center justify-between text-xs">
-                          <div className="flex items-center gap-3">
-                            <span className="text-muted-foreground"><Users className="h-3 w-3 inline mr-0.5" />{assoc.fan_base} fans</span>
-                            <span className="text-muted-foreground">{assocTeams.length} týmů</span>
-                          </div>
-                          {totalTitles > 0 && (
-                            <Badge className="bg-yellow-500/20 text-yellow-500 border-yellow-500/30 text-[9px]">🏆 {totalTitles} titulů</Badge>
-                          )}
-                        </div>
-                        {assocTeams.length > 0 && (
-                          <div className="flex flex-wrap gap-1 pt-1 border-t border-border/30">
-                            {assocTeams.map(t => (
-                              <Badge key={t.id} variant="outline" className="text-[9px] gap-1 cursor-pointer hover:bg-primary/5"
-                                onClick={() => setSelectedTeam(t.id)}>
-                                <div className="w-2 h-2 rounded-full" style={{ backgroundColor: t.color_primary }} />
-                                {t.team_name}
-                              </Badge>
-                            ))}
-                          </div>
-                        )}
+                          );
+                        })}
                       </CardContent>
                     </Card>
+                  </div>
+                )}
+                {upcomingMatches.length > 0 && (
+                  <div className="space-y-1">
+                    <h4 className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold px-1">Nadcházející</h4>
+                    <Card className="border-border bg-card/50">
+                      <CardContent className="p-0 divide-y divide-border/30">
+                        {upcomingMatches.slice(0, 10).map(m => {
+                          const home = teamMap.get(m.home_team_id);
+                          const away = teamMap.get(m.away_team_id);
+                          if (!home || !away) return null;
+                          return (
+                            <div key={m.id} className="p-2 hover:bg-accent/5 transition-colors flex items-center gap-2 text-xs">
+                              <Badge variant="outline" className="text-[9px] h-4 px-1 rounded-[2px] w-8 justify-center text-muted-foreground">K{m.round_number}</Badge>
+                              <span className="flex-1 text-right truncate text-muted-foreground">{home.team_name}</span>
+                              <span className="text-muted-foreground text-[10px] px-1">-:-</span>
+                              <span className="flex-1 truncate text-muted-foreground">{away.team_name}</span>
+                            </div>
+                          );
+                        })}
+                      </CardContent>
+                    </Card>
+                  </div>
+                )}
+                {matches.length === 0 && (
+                  <div className="p-8 text-center text-muted-foreground bg-card/30 rounded border border-dashed border-border">
+                    Žádné zápasy v rozpisu.
+                  </div>
+                )}
+              </TabsContent>
+
+              {/* ═══ PLAYOFF / POHÁR ═══ */}
+              <TabsContent value="playoff" className="space-y-3">
+                {(() => {
+                  const playoffSeason = activeSeason;
+                  const bracket: any[] = (playoffSeason as any)?.playoff_bracket || [];
+                  const playoffStatus = (playoffSeason as any)?.playoff_status || "none";
+                  const qfMatches = bracket.filter((m: any) => m.round === "quarterfinals");
+                  const sfMatches = bracket.filter((m: any) => m.round === "semifinals");
+                  const finalMatch = bracket.find((m: any) => m.round === "final");
+
+                  const getTeamName = (id: string) => teamMap.get(id)?.team_name || "?";
+                  const getTeamColor = (id: string) => teamMap.get(id)?.color_primary || "hsl(var(--muted))";
+
+                  const statusLabels: Record<string, string> = {
+                    none: "Základní část",
+                    quarterfinals: "⚔️ Čtvrtfinále",
+                    semifinals: "⚔️ Semifinále",
+                    final: "🏆 Finále",
+                    completed: "✅ Ukončeno",
+                  };
+
+                  const renderMatchBox = (m: any, showSeed?: boolean) => {
+                    const isPlayed = m.status === "played";
+                    const homeWon = isPlayed && m.home_score > m.away_score;
+                    const awayWon = isPlayed && m.away_score > m.home_score;
+                    return (
+                      <div key={`${m.round}-${m.match_index}`} className="border border-border rounded bg-card/60 overflow-hidden text-[10px] min-w-[160px]">
+                        <div className={`flex items-center gap-1.5 px-2 py-1.5 border-b border-border/50 ${homeWon ? "bg-green-500/10 font-bold" : isPlayed && !homeWon ? "opacity-50" : ""}`}>
+                          <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: getTeamColor(m.home_team_id) }} />
+                          <span className="flex-1 truncate">{showSeed && m.home_seed ? `[${m.home_seed}] ` : ""}{getTeamName(m.home_team_id)}</span>
+                          <span className="font-mono font-bold min-w-[16px] text-right">{isPlayed ? m.home_score : "-"}</span>
+                        </div>
+                        <div className={`flex items-center gap-1.5 px-2 py-1.5 ${awayWon ? "bg-green-500/10 font-bold" : isPlayed && !awayWon ? "opacity-50" : ""}`}>
+                          <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: getTeamColor(m.away_team_id) }} />
+                          <span className="flex-1 truncate">{showSeed && m.away_seed ? `[${m.away_seed}] ` : ""}{getTeamName(m.away_team_id)}</span>
+                          <span className="font-mono font-bold min-w-[16px] text-right">{isPlayed ? m.away_score : "-"}</span>
+                        </div>
+                      </div>
+                    );
+                  };
+
+                  if (playoffStatus === "none" && bracket.length === 0) {
+                    return (
+                      <Card className="border-border bg-card/50">
+                        <CardContent className="p-8 text-center">
+                          <Award className="h-10 w-10 text-muted-foreground mx-auto mb-2 opacity-40" />
+                          <p className="text-sm text-muted-foreground">Playoff začne po skončení základní části.</p>
+                        </CardContent>
+                      </Card>
+                    );
+                  }
+
+                  return (
+                    <div className="space-y-3">
+                      <Card className="border-yellow-500/20 bg-yellow-500/5">
+                        <CardContent className="p-3">
+                          <div className="flex items-center justify-between mb-3">
+                            <h4 className="font-display font-bold text-sm flex items-center gap-2">
+                              🏆 Pohár Sphaery
+                              <Badge variant="outline" className="text-[9px] border-yellow-500/30 text-yellow-400">
+                                {statusLabels[playoffStatus] || playoffStatus}
+                              </Badge>
+                            </h4>
+                            {playoffStatus === "completed" && finalMatch?.winner_team_id && (
+                              <Badge className="bg-yellow-500 text-black border-none text-xs gap-1">
+                                🏆 {getTeamName(finalMatch.winner_team_id)}
+                              </Badge>
+                            )}
+                          </div>
+
+                          <div className="flex items-start gap-4 overflow-x-auto pb-2">
+                            {qfMatches.length > 0 && (
+                              <div className="space-y-1 shrink-0">
+                                <div className="text-[9px] uppercase tracking-wider text-muted-foreground font-semibold text-center mb-1">Čtvrtfinále</div>
+                                <div className="space-y-2">{qfMatches.map(m => renderMatchBox(m, true))}</div>
+                              </div>
+                            )}
+                            {qfMatches.length > 0 && sfMatches.length > 0 && (
+                              <div className="flex items-center self-center text-muted-foreground/30 text-lg">→</div>
+                            )}
+                            {sfMatches.length > 0 && (
+                              <div className="space-y-1 shrink-0">
+                                <div className="text-[9px] uppercase tracking-wider text-muted-foreground font-semibold text-center mb-1">Semifinále</div>
+                                <div className="space-y-2 flex flex-col justify-center" style={{ minHeight: qfMatches.length > 0 ? "200px" : undefined }}>
+                                  {sfMatches.map(m => renderMatchBox(m))}
+                                </div>
+                              </div>
+                            )}
+                            {sfMatches.length > 0 && finalMatch && (
+                              <div className="flex items-center self-center text-muted-foreground/30 text-lg">→</div>
+                            )}
+                            {finalMatch && (
+                              <div className="space-y-1 shrink-0">
+                                <div className="text-[9px] uppercase tracking-wider text-yellow-400 font-semibold text-center mb-1">🏆 Finále</div>
+                                <div className="flex flex-col justify-center" style={{ minHeight: sfMatches.length > 0 ? "200px" : undefined }}>
+                                  {renderMatchBox(finalMatch)}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </CardContent>
+                      </Card>
+
+                      <Card className="border-border bg-card/50">
+                        <CardHeader className="py-2 px-3 border-b border-border/50">
+                          <CardTitle className="text-xs font-display flex items-center gap-1">
+                            <Trophy className="h-3.5 w-3.5 text-yellow-500" /> Tabulka titulů
+                          </CardTitle>
+                        </CardHeader>
+                        <CardContent className="p-0">
+                          <table className="w-full text-xs">
+                            <thead>
+                              <tr className="border-b border-border text-muted-foreground bg-muted/10">
+                                <th className="p-2 text-left w-8">#</th>
+                                <th className="p-2 text-left">Tým</th>
+                                <th className="p-2 text-left text-[9px]">Hráč</th>
+                                <th className="p-2 text-center w-12">🏆</th>
+                                <th className="p-2 text-center w-12">Sezón</th>
+                                <th className="p-2 text-center w-16">V/R/P</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {[...teams].sort((a, b) => (b.titles_won || 0) - (a.titles_won || 0)).map((t, i) => (
+                                <tr key={t.id} className={`border-b border-border/50 hover:bg-accent/5 cursor-pointer ${t.player_name === currentPlayerName ? "bg-primary/5" : ""}`}
+                                  onClick={() => setSelectedTeam(t.id)}>
+                                  <td className="p-2 text-muted-foreground">
+                                    {(t.titles_won || 0) > 0 && i === 0 ? "🥇" : (t.titles_won || 0) > 0 && i === 1 ? "🥈" : (t.titles_won || 0) > 0 && i === 2 ? "🥉" : `${i+1}.`}
+                                  </td>
+                                  <td className="p-2">
+                                    <div className="flex items-center gap-1.5">
+                                      <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: t.color_primary }} />
+                                      <span className="font-medium">{t.team_name}</span>
+                                    </div>
+                                  </td>
+                                  <td className="p-2 text-muted-foreground text-[9px] truncate max-w-[60px]">{t.player_name}</td>
+                                  <td className="p-2 text-center font-bold text-yellow-400">{t.titles_won || 0}</td>
+                                  <td className="p-2 text-center text-muted-foreground">{t.seasons_played || 0}</td>
+                                  <td className="p-2 text-center text-[9px] font-mono text-muted-foreground">{t.total_wins||0}/{t.total_draws||0}/{t.total_losses||0}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </CardContent>
+                      </Card>
+                    </div>
                   );
-                })}
-              </div>
-            )}
+                })()}
+              </TabsContent>
+
+              {/* ═══ SCORERS ═══ */}
+              <TabsContent value="scorers">
+                <Card className="border-border bg-card/50">
+                  <CardContent className="p-0">
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="border-b border-border text-muted-foreground bg-muted/10">
+                          <th className="p-2 text-left w-8">#</th>
+                          <th className="p-2 text-left">Bojovník</th>
+                          <th className="p-2 text-left">Tým</th>
+                          <th className="p-2 text-center w-12">⚔️</th>
+                          <th className="p-2 text-center w-12">🅰️</th>
+                          <th className="p-2 text-center w-12">Záp.</th>
+                          <th className="p-2 text-center w-12">Ø</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {topScorers.length > 0 ? topScorers.map((p, i) => {
+                          const team = teamMap.get(p.team_id);
+                          const avg = p.matches_played > 0 ? ((p.goals_scored || 0) / p.matches_played).toFixed(2) : "0";
+                          return (
+                            <tr key={p.id} className="border-b border-border/50 hover:bg-accent/5 cursor-pointer" onClick={() => setSelectedPlayer(p)}>
+                              <td className="p-2 font-mono text-muted-foreground">
+                                {i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : `${i + 1}.`}
+                              </td>
+                              <td className="p-2 font-medium">{POS_ICONS[p.position] || ""} {p.name}</td>
+                              <td className="p-2 text-muted-foreground flex items-center gap-1">
+                                {team && <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: team.color_primary }} />}
+                                {team?.team_name || "?"}
+                              </td>
+                              <td className="p-2 text-center font-bold text-lg">{p.goals_scored || 0}</td>
+                              <td className="p-2 text-center">{p.assists || 0}</td>
+                              <td className="p-2 text-center text-muted-foreground">{p.matches_played}</td>
+                              <td className="p-2 text-center text-muted-foreground font-mono">{avg}</td>
+                            </tr>
+                          );
+                        }) : (
+                          <tr><td colSpan={7} className="p-8 text-center text-muted-foreground">Žádní střelci.</td></tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </CardContent>
+                </Card>
+              </TabsContent>
+
+              {/* ═══ TEAMS LIST ═══ */}
+              <TabsContent value="team" className="space-y-2">
+                {titleLeaderboard.length > 0 && (
+                  <Card className="border-yellow-500/20 bg-yellow-500/5 mb-3">
+                    <CardHeader className="py-2 px-3">
+                      <CardTitle className="text-xs font-display flex items-center gap-1">
+                        <Trophy className="h-3.5 w-3.5 text-yellow-500" /> Síň slávy
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="px-3 pb-2">
+                      <div className="flex flex-wrap gap-2">
+                        {titleLeaderboard.map(t => (
+                          <Badge key={t.id} className="bg-yellow-500/10 text-yellow-400 border-yellow-500/30 gap-1 cursor-pointer hover:bg-yellow-500/20"
+                            onClick={() => setSelectedTeam(t.id)}>
+                            🏆 {t.titles_won}× {t.team_name}
+                          </Badge>
+                        ))}
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+
+                {concludedSeasons.length > 0 && (
+                  <Card className="border-border bg-card/50 mb-3">
+                    <CardHeader className="py-2 px-3">
+                      <CardTitle className="text-xs font-display">📜 Historie sezón</CardTitle>
+                    </CardHeader>
+                    <CardContent className="px-3 pb-2 space-y-1">
+                      {concludedSeasons.map(s => {
+                        const champ = s.champion_team_id ? teamMap.get(s.champion_team_id) : null;
+                        return (
+                          <div key={s.id} className="flex items-center justify-between text-xs bg-muted/10 p-1.5 rounded">
+                            <span className="font-medium">{s.season_number}. sezóna</span>
+                            <span className="text-muted-foreground">Tah {s.started_turn}–{s.ended_turn}</span>
+                            {champ ? (
+                              <Badge variant="outline" className="text-[9px] gap-1 text-yellow-400 border-yellow-500/30">
+                                🏆 {champ.team_name}
+                              </Badge>
+                            ) : <span className="text-muted-foreground text-[9px]">—</span>}
+                          </div>
+                        );
+                      })}
+                    </CardContent>
+                  </Card>
+                )}
+
+                <div className="grid grid-cols-2 gap-2">
+                  {teams.map(t => {
+                    const stadium = stadiumByCityId.get(t.city_id);
+                    const city = cities.get(t.city_id);
+                    return (
+                      <Card key={t.id} 
+                        className="cursor-pointer transition-all hover:border-primary/50 border-border bg-card/50"
+                        onClick={() => setSelectedTeam(t.id)}>
+                        <CardContent className="p-3 flex items-center gap-3">
+                          <div className="w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs shrink-0 border border-primary/20"
+                            style={{ backgroundColor: t.color_primary, color: t.color_secondary }}>⚔️</div>
+                          <div className="min-w-0 flex-1">
+                            <div className="font-bold text-xs truncate">{t.team_name}</div>
+                            <div className="text-[9px] text-muted-foreground truncate">{city || "?"} · {t.player_name}</div>
+                            <div className="text-[9px] text-muted-foreground truncate">{stadium ? `🏟 ${stadium.name}` : "Bez arény"}</div>
+                          </div>
+                          {(t.titles_won || 0) > 0 && (
+                            <span className="text-yellow-400 text-xs">🏆{t.titles_won}</span>
+                          )}
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
+                </div>
+              </TabsContent>
+
+              {/* ═══ IN MEMORIAM ═══ */}
+              <TabsContent value="memoriam" className="space-y-3">
+                <InMemoriamTab sessionId={sessionId} currentPlayerName={currentPlayerName} />
+              </TabsContent>
+            </Tabs>
+          </TabsContent>
+
+          {/* ═══ MANAGE MY TEAMS ═══ */}
+          <TabsContent value="manage" className="space-y-3">
+            <MyTeamsPanel
+              sessionId={sessionId}
+              currentPlayerName={currentPlayerName}
+              currentTurn={currentTurn}
+              myTeams={myTeams}
+              allPlayers={players}
+              myAssociation={myAssociation}
+              standings={[...standings, ...standings2]}
+              cities={cities}
+              onRefresh={fetchData}
+              onCreateAssociation={handleCreateAssociation}
+              creatingAssoc={creatingAssoc}
+            />
           </TabsContent>
         </Tabs>
       )}
@@ -1134,110 +1085,22 @@ const LeaguePanel = ({ sessionId, currentPlayerName, currentTurn }: Props) => {
           </DialogHeader>
           <ScrollArea className="max-h-[65vh] pr-3">
             <div className="space-y-4 text-xs leading-relaxed">
-              <img
-                src={sphaeraMatchImg}
-                alt="Brutální zápas Sphaery v aréně plné diváků"
-                className="w-full rounded-lg border border-primary/20 mb-2"
-              />
+              <img src={sphaeraMatchImg} alt="Brutální zápas Sphaery" className="w-full rounded-lg border border-primary/20 mb-2" />
               <section>
                 <h4 className="font-display font-bold text-sm text-primary mb-1">🏟 Základní koncept</h4>
-                <p className="text-muted-foreground">
-                  Dva týmy po 11 bojovnících soupeří s těžkou kovovou koulí – <strong>Sphaerou</strong> – na oválném hřišti obehnalém tribunou.
-                  Cíl: dostat Sphaeru do nepřátelské Brány. Hráči se mohou fyzicky napadat a zranění jsou běžná.
-                </p>
+                <p className="text-muted-foreground">Dva týmy po 11 bojovnících soupeří s těžkou kovovou koulí – <strong>Sphaerou</strong> – na oválném hřišti obehnalém tribunou.</p>
               </section>
-
-              <section>
-                <h4 className="font-display font-bold text-sm text-primary mb-1">🧱 Struktura týmu (11 bojovníků)</h4>
-                <div className="space-y-1">
-                  <div className="flex items-center gap-2 bg-muted/20 p-1.5 rounded">
-                    <span>👑</span><strong>1× Praetor</strong> <span className="text-muted-foreground">— Kapitán. Taktické bonusy, zvyšuje morálku.</span>
-                  </div>
-                  <div className="flex items-center gap-2 bg-muted/20 p-1.5 rounded">
-                    <span>🛡️</span><strong>3× Strážce</strong> <span className="text-muted-foreground">— Obranní hráči. Vysoká síla a výdrž.</span>
-                  </div>
-                  <div className="flex items-center gap-2 bg-muted/20 p-1.5 rounded">
-                    <span>⚔️</span><strong>4× Útočník</strong> <span className="text-muted-foreground">— Rychlost a obratnost. Skórují body.</span>
-                  </div>
-                  <div className="flex items-center gap-2 bg-muted/20 p-1.5 rounded">
-                    <span>🏉</span><strong>2× Nositel</strong> <span className="text-muted-foreground">— Specialisté na manipulaci se Sphaerou.</span>
-                  </div>
-                  <div className="flex items-center gap-2 bg-muted/20 p-1.5 rounded">
-                    <span>💀</span><strong>1× Exaktor</strong> <span className="text-muted-foreground">— Brutální hráč. Může fyzicky vyřadit soupeře.</span>
-                  </div>
-                </div>
-              </section>
-
               <section>
                 <h4 className="font-display font-bold text-sm text-primary mb-1">🎯 Bodování</h4>
                 <div className="grid grid-cols-3 gap-2">
-                  <div className="bg-muted/20 p-2 rounded text-center">
-                    <div className="text-lg font-bold">3</div>
-                    <div className="text-[9px] text-muted-foreground">Gól (s přihrávkou)</div>
-                  </div>
-                  <div className="bg-muted/20 p-2 rounded text-center">
-                    <div className="text-lg font-bold text-primary">5</div>
-                    <div className="text-[9px] text-muted-foreground">Přímý průnik (sólo)</div>
-                  </div>
-                  <div className="bg-muted/20 p-2 rounded text-center">
-                    <div className="text-lg font-bold text-red-400">+1</div>
-                    <div className="text-[9px] text-muted-foreground">Vyřazení soupeře</div>
-                  </div>
+                  <div className="bg-muted/20 p-2 rounded text-center"><div className="text-lg font-bold">3</div><div className="text-[9px] text-muted-foreground">Gól</div></div>
+                  <div className="bg-muted/20 p-2 rounded text-center"><div className="text-lg font-bold text-primary">5</div><div className="text-[9px] text-muted-foreground">Průnik</div></div>
+                  <div className="bg-muted/20 p-2 rounded text-center"><div className="text-lg font-bold text-red-400">+1</div><div className="text-[9px] text-muted-foreground">Vyřazení</div></div>
                 </div>
               </section>
-
-              <section>
-                <h4 className="font-display font-bold text-sm text-primary mb-1">⚙️ Průběh zápasu</h4>
-                <p className="text-muted-foreground">
-                  Zápas probíhá ve <strong>3 třetinách</strong>, každá s 5–7 akcemi. V každé akci může dojít k útoku, brutálnímu střetu, 
-                  vyřazení soupeře nebo skórování. Tým s více body na konci vítězí.
-                </p>
-              </section>
-
-              <section>
-                <h4 className="font-display font-bold text-sm text-primary mb-1">💀 Fyzický kontakt</h4>
-                <p className="text-muted-foreground">
-                  Sphaera je brutální sport. Při střetech může dojít ke sražení, lehkým i těžkým zraněním, dočasnému vyřazení
-                  nebo vzácně trvalému poranění. Exaktor se specializuje na eliminaci protihráčů.
-                </p>
-              </section>
-
-              <section>
-                <h4 className="font-display font-bold text-sm text-primary mb-1">🎭 Publikum</h4>
-                <p className="text-muted-foreground">
-                  <strong>Crowd Meter</strong> sleduje náladu tribuny. Domácí dominance = bonus. Outsider vede = drama.
-                  Stagnace = agresivní dav, který může házet předměty nebo vyvolat chaos.
-                </p>
-              </section>
-
-              <section>
-                <h4 className="font-display font-bold text-sm text-primary mb-1">🧠 Staty bojovníků</h4>
-                <div className="grid grid-cols-2 gap-1 text-muted-foreground">
-                  {["Síla — fyzická zdatnost", "Rychlost — pohyb a reakce", "Technika — ovládání Sphaery", "Výdrž — odolnost a regenerace", "Brutalita — agresivita ve střetech", "Vůdcovství — taktický vliv"].map(s => (
-                    <div key={s} className="bg-muted/10 p-1 rounded text-[10px]">{s}</div>
-                  ))}
-                </div>
-              </section>
-
               <section>
                 <h4 className="font-display font-bold text-sm text-primary mb-1">🏆 Liga & Pohár</h4>
-                <p className="text-muted-foreground">
-                  Každé město s arénou = 1 tým. Liga běží sezónně, každý s každým 2×.
-                  Výhra 3 body, remíza 1, prohra 0. Max 20 týmů v 1. lize, přebytek → 2. liga s postupem a sestupem.
-                </p>
-                <p className="text-muted-foreground mt-1">
-                  <strong>Pohár:</strong> Po základní části prvních 8 týmů hraje vyřazovací pavouk.
-                  Čtvrtfinále: 1. vs 8., 2. vs 7., 3. vs 6., 4. vs 5.
-                  Vítěz finále získává titul Mistra Sphaery! 🏆
-                </p>
-              </section>
-
-              <section>
-                <h4 className="font-display font-bold text-sm text-primary mb-1">⭐ Dynamický vývoj</h4>
-                <p className="text-muted-foreground">
-                  Hráči stárnou, mladí rostou podle talentu, forma kolísá po zápasech, zranění omezují sestavu.
-                  Nejlepší bojovníci se mohou stát legendami: „Ocelová zeď", „Kladivo severu", „Řezník arény".
-                </p>
+                <p className="text-muted-foreground">Liga běží sezónně, každý s každým 2×. Po základní části prvních 8 týmů hraje vyřazovací pavouk.</p>
               </section>
             </div>
           </ScrollArea>
@@ -1261,7 +1124,6 @@ const LeaguePanel = ({ sessionId, currentPlayerName, currentTurn }: Props) => {
             const awayWon = (selectedMatch.away_score ?? 0) > (selectedMatch.home_score ?? 0);
             return (
               <div className="space-y-4">
-                {/* Score header */}
                 <div className="flex items-center justify-between gap-4 p-4 rounded-lg bg-muted/20 border border-border">
                   <div className="flex-1 text-right">
                     <div className="flex items-center justify-end gap-2">
@@ -1282,23 +1144,20 @@ const LeaguePanel = ({ sessionId, currentPlayerName, currentTurn }: Props) => {
                   </div>
                 </div>
 
-                {/* Attendance */}
                 {selectedMatch.attendance > 0 && (
                   <div className="flex items-center gap-2 text-xs text-muted-foreground">
                     <Users className="h-3.5 w-3.5" /> Diváci: <span className="font-medium text-foreground">{selectedMatch.attendance.toLocaleString()}</span>
                   </div>
                 )}
 
-                {/* Match events */}
                 {events.length > 0 && (
                   <div className="space-y-1">
-                    <h4 className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Události zápasu</h4>
+                    <h4 className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Události zápasu ({events.length})</h4>
                     <ScrollArea className="h-[300px]">
                       <div className="space-y-1 pr-3">
                         {events.map((ev: any, i: number) => {
                           const icon = EVENT_ICONS[ev.type] || "📌";
                           const isHome = ev.team === "home";
-                          // Check if a knockout was followed by a death injury
                           const isDeathKnockout = ev.type === "knockout" && events.some((e2: any) => e2.type === "injury" && e2.is_death && e2.player_id === ev.victim_id);
                           const isDeathInjury = ev.type === "injury" && ev.is_death;
                           return (
@@ -1330,7 +1189,6 @@ const LeaguePanel = ({ sessionId, currentPlayerName, currentTurn }: Props) => {
                   <p className="text-xs text-muted-foreground text-center py-4">Žádné detailní události k dispozici.</p>
                 )}
 
-                {/* Highlight text */}
                 {selectedMatch.highlight_text && (
                   <div className="space-y-1">
                     <h4 className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Komentář</h4>
