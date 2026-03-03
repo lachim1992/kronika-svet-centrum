@@ -134,16 +134,34 @@ const ChronicleFeed = ({
     try {
       for (const turn of turnsToGenerate) {
         const roundEvents = events.filter(e => e.turn_number === turn);
-        if (roundEvents.length === 0) continue;
 
+        // Fetch additional context for this turn from the database
         const eventIds = roundEvents.map(e => e.id);
-        const [{ data: annotationsData }, { data: responsesData }, { data: feedCommentsData }] = await Promise.all([
-          supabase.from("event_annotations").select("*").in("event_id", eventIds),
-          supabase.from("event_responses").select("*").in("event_id", eventIds),
-          supabase.from("feed_comments").select("*").eq("session_id", sessionId).eq("target_type", "event").in("target_id", eventIds),
+        const [
+          { data: annotationsData },
+          { data: responsesData },
+          { data: feedCommentsData },
+          { data: battlesData },
+          { data: declarationsData },
+          { data: buildingsData },
+          { data: rumorsData },
+        ] = await Promise.all([
+          eventIds.length > 0
+            ? supabase.from("event_annotations").select("*").in("event_id", eventIds)
+            : Promise.resolve({ data: [] }),
+          eventIds.length > 0
+            ? supabase.from("event_responses").select("*").in("event_id", eventIds)
+            : Promise.resolve({ data: [] }),
+          eventIds.length > 0
+            ? supabase.from("feed_comments").select("*").eq("session_id", sessionId).eq("target_type", "event").in("target_id", eventIds)
+            : Promise.resolve({ data: [] }),
+          supabase.from("battles").select("*").eq("session_id", sessionId).eq("turn_number", turn),
+          supabase.from("declarations").select("*").eq("session_id", sessionId).eq("turn_number", turn).eq("status", "published"),
+          supabase.from("city_buildings").select("*").eq("session_id", sessionId).eq("completed_turn", turn),
+          supabase.from("city_rumors").select("*").eq("session_id", sessionId).eq("turn_number", turn).eq("is_draft", false),
         ]);
 
-        const annotationsWithType = (annotationsData || []).map(a => {
+        const annotationsWithType = (annotationsData || []).map((a: any) => {
           const evt = roundEvents.find(e => e.id === a.event_id);
           return { ...a, event_type: evt?.event_type || "unknown" };
         });
@@ -168,18 +186,29 @@ const ChronicleFeed = ({
           .filter(m => m.approved)
           .map(m => ({ text: m.text, category: (m as any).category }));
 
+        // Skip only if absolutely nothing happened this turn
+        const hasAnyContent = roundEvents.length > 0 || (battlesData || []).length > 0 ||
+          (declarationsData || []).length > 0 || (buildingsData || []).length > 0 || (rumorsData || []).length > 0;
+        if (!hasAnyContent && approvedMemories.length === 0) {
+          console.log(`Skipping turn ${turn}: no content at all`);
+          continue;
+        }
+
         const { data, error } = await supabase.functions.invoke("world-chronicle-round", {
           body: {
             sessionId,
             round: turn,
             confirmedEvents: roundEvents,
-            annotations: annotationsWithType.filter(a => a.visibility !== "private"),
+            annotations: annotationsWithType.filter((a: any) => a.visibility !== "private"),
             worldMemories: approvedMemories,
+            battles: battlesData || [],
+            declarations: declarationsData || [],
+            completedBuildings: buildingsData || [],
+            rumors: rumorsData || [],
             playerReactions,
             epochStyle,
           },
         });
-
         if (error) throw error;
 
         if (data.chronicleText) {
