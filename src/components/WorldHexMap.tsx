@@ -672,9 +672,17 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
     setPan({ x: dragRef.current.panX + dx, y: dragRef.current.panY + dy });
   }, []);
   const onPointerUp = useCallback(() => { dragRef.current = null; }, []);
-  const onWheel = useCallback((e: React.WheelEvent) => {
+  const onWheelRef = useRef<(e: WheelEvent) => void>();
+  onWheelRef.current = (e: WheelEvent) => {
     e.preventDefault();
     setZoom(z => Math.max(0.3, Math.min(3, z - e.deltaY * 0.001)));
+  };
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const handler = (e: WheelEvent) => onWheelRef.current?.(e);
+    el.addEventListener("wheel", handler, { passive: false });
+    return () => el.removeEventListener("wheel", handler);
   }, []);
   const zoomIn = () => setZoom(z => Math.min(3, z + 0.2));
   const zoomOut = () => setZoom(z => Math.max(0.3, z - 0.2));
@@ -904,7 +912,7 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
   return (
     <div ref={containerRef} className="relative w-full h-full bg-[#0a0c10] overflow-hidden select-none touch-none"
       onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp}
-      onPointerLeave={onPointerUp} onWheel={onWheel} tabIndex={0}
+      onPointerLeave={onPointerUp} tabIndex={0}
     >
       {/* ── SVG Map ── */}
       <svg width="100%" height="100%" viewBox={`0 0 ${svgW} ${svgH}`} preserveAspectRatio="xMidYMid meet">

@@ -340,8 +340,9 @@ Odpověz jako JSON pole stringů, jeden komentář pro každou zprávu. POUZE JS
         player: ki.player_name_ref || "Sphaera",
         location: ki.city_name || null,
         note: ki.headline,
-        status: "confirmed",
-        mechanical_result: { sphaera: true, category: ki.category, importance: ki.importance },
+        confirmed: true,
+        importance: "high",
+        reference: { sphaera: true, category: ki.category, importance: ki.importance },
       });
     }
 
