@@ -1293,8 +1293,8 @@ const LeaguePanel = ({ sessionId, currentPlayerName, currentTurn }: Props) => {
                 {events.length > 0 && (
                   <div className="space-y-1">
                     <h4 className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Události zápasu</h4>
-                    <ScrollArea className="max-h-[250px]">
-                      <div className="space-y-1">
+                    <ScrollArea className="h-[300px]">
+                      <div className="space-y-1 pr-3">
                         {events.map((ev: any, i: number) => {
                           const icon = EVENT_ICONS[ev.type] || "📌";
                           const isHome = ev.team === "home";
