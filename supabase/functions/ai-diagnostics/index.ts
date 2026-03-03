@@ -19,185 +19,223 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
 
-    // ── 1. AI Faction Actions ──
+    // ── 1. AI Factions ──
     const { data: aiFactions } = await sb
       .from("ai_factions")
       .select("id, faction_name, personality, is_active, disposition, goals, resources_snapshot")
       .eq("session_id", sessionId);
 
-    // Get recent AI game_events (actions taken by AI factions)
     const aiPlayerNames = (aiFactions || []).map((f: any) => f.faction_name);
+
+    // ── 2. Parallel data fetch for AI factions ──
     let aiActions: any[] = [];
+    const aiCitiesMap: Record<string, any[]> = {};
+    const aiBuildingsMap: Record<string, any[]> = {};
+    const aiStacksMap: Record<string, any[]> = {};
+    const aiResourcesMap: Record<string, any> = {};
+
     if (aiPlayerNames.length > 0) {
-      const { data } = await sb
-        .from("game_events")
-        .select("id, event_type, note, created_at, player, turn_number, command_id, actor_type")
-        .eq("session_id", sessionId)
-        .in("player", aiPlayerNames)
-        .order("created_at", { ascending: false })
-        .limit(50);
-      aiActions = (data || []).map((e: any) => ({ ...e, player_name: e.player, event_data: { note: e.note, command_id: e.command_id, actor_type: e.actor_type } }));
+      // Fetch all data in parallel
+      const [actionsRes, citiesRes, buildingsRes, stacksRes, resourcesRes] = await Promise.all([
+        // Recent AI game_events
+        sb.from("game_events")
+          .select("id, event_type, note, created_at, player, turn_number, command_id, actor_type")
+          .eq("session_id", sessionId)
+          .in("player", aiPlayerNames)
+          .order("created_at", { ascending: false })
+          .limit(80),
+        // Cities owned by AI
+        sb.from("cities")
+          .select("id, name, population_total, settlement_level, city_stability, local_grain_reserve, military_garrison, status, owner_player, founded_round, is_capital, development_level")
+          .eq("session_id", sessionId)
+          .in("owner_player", aiPlayerNames),
+        // Buildings in AI cities
+        sb.from("city_buildings")
+          .select("id, name, category, status, current_level, city_id, is_wonder, is_ai_generated, description, completed_turn, build_started_turn")
+          .eq("session_id", sessionId),
+        // Military stacks
+        sb.from("military_stacks")
+          .select("id, name, power, morale, is_active, is_deployed, player_name, hex_q, hex_r, created_at")
+          .eq("session_id", sessionId)
+          .in("player_name", aiPlayerNames),
+        // Realm resources
+        sb.from("realm_resources")
+          .select("grain_reserve, wood_reserve, stone_reserve, iron_reserve, gold_reserve, horses_reserve, manpower_pool, manpower_committed, mobilization_rate, player_name")
+          .eq("session_id", sessionId)
+          .in("player_name", aiPlayerNames),
+      ]);
+
+      aiActions = (actionsRes.data || []).map((e: any) => ({
+        ...e,
+        player_name: e.player,
+        event_data: { note: e.note, command_id: e.command_id, actor_type: e.actor_type },
+      }));
+
+      // Group cities by owner
+      const allCities = citiesRes.data || [];
+      const cityIds = allCities.map((c: any) => c.id);
+      for (const c of allCities) {
+        if (!aiCitiesMap[c.owner_player]) aiCitiesMap[c.owner_player] = [];
+        aiCitiesMap[c.owner_player].push(c);
+      }
+
+      // Filter buildings to AI cities only, group by city_id
+      const allBuildings = (buildingsRes.data || []).filter((b: any) => cityIds.includes(b.city_id));
+      for (const b of allBuildings) {
+        if (!aiBuildingsMap[b.city_id]) aiBuildingsMap[b.city_id] = [];
+        aiBuildingsMap[b.city_id].push(b);
+      }
+
+      // Group stacks by player
+      for (const s of (stacksRes.data || [])) {
+        if (!aiStacksMap[s.player_name]) aiStacksMap[s.player_name] = [];
+        aiStacksMap[s.player_name].push(s);
+      }
+
+      // Index resources by player
+      for (const r of (resourcesRes.data || [])) {
+        aiResourcesMap[r.player_name] = r;
+      }
     }
 
-    // ── 2. AI Economy & Military ──
-    const aiEconomyStats: any[] = [];
-    for (const faction of (aiFactions || [])) {
-      const { data: cities } = await sb
-        .from("cities")
-        .select("id, name, population_total, settlement_level, city_stability, local_grain_reserve, military_garrison, status")
-        .eq("session_id", sessionId)
-        .eq("owner_player", faction.faction_name);
+    // ── 3. Build per-faction profiles ──
+    const factionProfiles = (aiFactions || []).map((f: any) => {
+      const cities = aiCitiesMap[f.faction_name] || [];
+      const stacks = aiStacksMap[f.faction_name] || [];
+      const resources = aiResourcesMap[f.faction_name] || null;
 
-      const { data: stacks } = await sb
-        .from("military_stacks")
-        .select("id, name, power, morale, is_active, is_deployed")
-        .eq("session_id", sessionId)
-        .eq("player_name", faction.faction_name);
+      // Enrich cities with their buildings
+      const citiesWithBuildings = cities.map((c: any) => ({
+        ...c,
+        buildings: (aiBuildingsMap[c.id] || []),
+      }));
 
-      const { data: res } = await sb
-        .from("realm_resources")
-        .select("grain_reserve, wood_reserve, stone_reserve, iron_reserve, gold_reserve, horses_reserve, manpower_pool, manpower_committed, mobilization_rate")
-        .eq("session_id", sessionId)
-        .eq("player_name", faction.faction_name)
-        .maybeSingle();
+      // Action summary by type
+      const factionActions = aiActions.filter((a: any) => a.player_name === f.faction_name);
+      const actionsByType: Record<string, number> = {};
+      for (const a of factionActions) {
+        actionsByType[a.event_type] = (actionsByType[a.event_type] || 0) + 1;
+      }
 
-      aiEconomyStats.push({
-        factionName: faction.faction_name,
-        personality: faction.personality,
-        isActive: faction.is_active,
-        disposition: faction.disposition,
-        goals: faction.goals,
-        cities: cities || [],
-        totalPop: (cities || []).reduce((s: number, c: any) => s + (c.population_total || 0), 0),
-        totalGarrison: (cities || []).reduce((s: number, c: any) => s + (c.military_garrison || 0), 0),
-        stacks: stacks || [],
-        totalStrength: (stacks || []).reduce((s: number, st: any) => s + (st.power || 0), 0),
-        resources: res || null,
-      });
-    }
+      return {
+        id: f.id,
+        factionName: f.faction_name,
+        personality: f.personality,
+        isActive: f.is_active,
+        disposition: f.disposition,
+        goals: f.goals,
+        resourcesSnapshot: f.resources_snapshot,
+        resources,
+        cities: citiesWithBuildings,
+        stacks,
+        totalPop: cities.reduce((s: number, c: any) => s + (c.population_total || 0), 0),
+        totalGarrison: cities.reduce((s: number, c: any) => s + (c.military_garrison || 0), 0),
+        totalStrength: stacks.reduce((s: number, st: any) => s + (st.power || 0), 0),
+        actionsByType,
+        recentActions: factionActions.slice(0, 20),
+      };
+    });
 
-    // ── 3. AI Diplomacy ──
+    // ── 4. Diplomacy ──
     let aiDiplomacy: any[] = [];
-    if (aiPlayerNames.length > 0) {
-      const { data: pacts } = await sb
-        .from("diplomatic_pacts")
-        .select("*")
-        .eq("session_id", sessionId)
-        .or(
-          aiPlayerNames.map((n: string) => `party_a.eq.${n},party_b.eq.${n}`).join(",")
-        )
-        .order("created_at", { ascending: false })
-        .limit(30);
-      aiDiplomacy = pacts || [];
-    }
-
-    // AI tensions
     let aiTensions: any[] = [];
     if (aiPlayerNames.length > 0) {
-      const { data: tensions } = await sb
-        .from("civ_tensions")
-        .select("*")
-        .eq("session_id", sessionId)
-        .order("turn_number", { ascending: false })
-        .limit(30);
-      // Filter to only include tensions involving AI
-      aiTensions = (tensions || []).filter((t: any) =>
+      const [pactsRes, tensionsRes] = await Promise.all([
+        sb.from("diplomatic_pacts")
+          .select("*")
+          .eq("session_id", sessionId)
+          .or(aiPlayerNames.map((n: string) => `party_a.eq.${n},party_b.eq.${n}`).join(","))
+          .order("created_at", { ascending: false })
+          .limit(30),
+        sb.from("civ_tensions")
+          .select("*")
+          .eq("session_id", sessionId)
+          .order("turn_number", { ascending: false })
+          .limit(30),
+      ]);
+      aiDiplomacy = pactsRes.data || [];
+      aiTensions = (tensionsRes.data || []).filter((t: any) =>
         aiPlayerNames.includes(t.player_a) || aiPlayerNames.includes(t.player_b)
       );
     }
 
-    // ── 4. Generation Pipeline Stats ──
-    // Wiki entries stats
-    const { data: wikiEntries } = await sb
-      .from("wiki_entries")
-      .select("entity_type, ai_description, summary, image_url, image_prompt, source_context, updated_at")
-      .eq("session_id", sessionId);
+    // ── 5. Pipeline Stats (parallel) ──
+    const [wikiRes, encImgRes, chronRes, styleCfgRes, premiseRes, summCountRes, rumCountRes] = await Promise.all([
+      sb.from("wiki_entries")
+        .select("entity_type, ai_description, summary, image_url, image_prompt, source_context, updated_at")
+        .eq("session_id", sessionId),
+      sb.from("encyclopedia_images")
+        .select("entity_type, kind, style_preset, model_meta, created_at")
+        .eq("session_id", sessionId),
+      sb.from("chronicle_entries")
+        .select("source_type, epoch_style, turn_from, turn_to")
+        .eq("session_id", sessionId),
+      sb.from("game_style_settings")
+        .select("lore_bible, prompt_rules, default_style_preset, world_vibe, writing_style, constraints")
+        .eq("session_id", sessionId)
+        .maybeSingle(),
+      sb.from("world_premise")
+        .select("seed, epoch_style, cosmology, narrative_rules, economic_bias, war_bias")
+        .eq("session_id", sessionId)
+        .maybeSingle(),
+      sb.from("ai_world_summaries")
+        .select("id", { count: "exact", head: true })
+        .eq("session_id", sessionId),
+      sb.from("city_rumors")
+        .select("id", { count: "exact", head: true })
+        .eq("session_id", sessionId),
+    ]);
 
+    const wikiEntries = wikiRes.data || [];
     const wikiStats = {
-      total: (wikiEntries || []).length,
-      withDescription: (wikiEntries || []).filter((w: any) => w.ai_description).length,
-      withImage: (wikiEntries || []).filter((w: any) => w.image_url).length,
-      withSourceContext: (wikiEntries || []).filter((w: any) => w.source_context).length,
+      total: wikiEntries.length,
+      withDescription: wikiEntries.filter((w: any) => w.ai_description).length,
+      withImage: wikiEntries.filter((w: any) => w.image_url).length,
+      withSourceContext: wikiEntries.filter((w: any) => w.source_context).length,
       byType: {} as Record<string, number>,
     };
-    for (const w of (wikiEntries || [])) {
+    for (const w of wikiEntries) {
       wikiStats.byType[w.entity_type] = (wikiStats.byType[w.entity_type] || 0) + 1;
     }
 
-    // Encyclopedia images stats
-    const { data: encImages } = await sb
-      .from("encyclopedia_images")
-      .select("entity_type, kind, style_preset, model_meta, created_at")
-      .eq("session_id", sessionId);
-
+    const encImages = encImgRes.data || [];
     const imageStats = {
-      total: (encImages || []).length,
+      total: encImages.length,
       byType: {} as Record<string, number>,
       byKind: {} as Record<string, number>,
       byPreset: {} as Record<string, number>,
     };
-    for (const img of (encImages || [])) {
+    for (const img of encImages) {
       imageStats.byType[img.entity_type] = (imageStats.byType[img.entity_type] || 0) + 1;
       imageStats.byKind[img.kind] = (imageStats.byKind[img.kind] || 0) + 1;
       imageStats.byPreset[img.style_preset] = (imageStats.byPreset[img.style_preset] || 0) + 1;
     }
 
-    // Chronicle entries stats
-    const { data: chronicleEntries } = await sb
-      .from("chronicle_entries")
-      .select("source_type, epoch_style, turn_from, turn_to")
-      .eq("session_id", sessionId);
-
+    const chronicleEntries = chronRes.data || [];
     const chronicleStats = {
-      total: (chronicleEntries || []).length,
+      total: chronicleEntries.length,
       bySource: {} as Record<string, number>,
       byEpoch: {} as Record<string, number>,
     };
-    for (const c of (chronicleEntries || [])) {
+    for (const c of chronicleEntries) {
       chronicleStats.bySource[c.source_type] = (chronicleStats.bySource[c.source_type] || 0) + 1;
       chronicleStats.byEpoch[c.epoch_style] = (chronicleStats.byEpoch[c.epoch_style] || 0) + 1;
     }
 
-    // Style settings (lore bible context)
-    const { data: styleCfg } = await sb
-      .from("game_style_settings")
-      .select("lore_bible, prompt_rules, default_style_preset, world_vibe, writing_style, constraints")
-      .eq("session_id", sessionId)
-      .maybeSingle();
-
-    // World premise
-    const { data: premise } = await sb
-      .from("world_premise")
-      .select("seed, epoch_style, cosmology, narrative_rules, economic_bias, war_bias")
-      .eq("session_id", sessionId)
-      .maybeSingle();
-
-    // AI summaries count
-    const { count: summariesCount } = await sb
-      .from("ai_world_summaries")
-      .select("id", { count: "exact", head: true })
-      .eq("session_id", sessionId);
-
-    // City rumors count
-    const { count: rumorsCount } = await sb
-      .from("city_rumors")
-      .select("id", { count: "exact", head: true })
-      .eq("session_id", sessionId);
-
     return new Response(
       JSON.stringify({
         aiFactions: aiFactions || [],
+        factionProfiles,
         aiActions,
-        aiEconomyStats,
         aiDiplomacy,
         aiTensions,
         wikiStats,
         imageStats,
         chronicleStats,
-        styleCfg: styleCfg || null,
-        premise: premise || null,
-        summariesCount: summariesCount || 0,
-        rumorsCount: rumorsCount || 0,
+        styleCfg: styleCfgRes.data || null,
+        premise: premiseRes.data || null,
+        summariesCount: summCountRes.count || 0,
+        rumorsCount: rumCountRes.count || 0,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
