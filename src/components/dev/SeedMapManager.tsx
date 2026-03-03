@@ -174,12 +174,13 @@ const StarRating = ({ value, onChange }: { value: number; onChange: (v: number) 
 // ── Main Component ──
 const SeedMapManager = ({ sessionId, onRefetch }: Props) => {
   const { user } = useAuth();
-  const [stats, setStats] = useState<MapStats | null>(null);
+   const [stats, setStats] = useState<MapStats | null>(null);
   const [hexPreview, setHexPreview] = useState<HexPreviewData[]>([]);
   const [loadingStats, setLoadingStats] = useState(false);
   const [request, setRequest] = useState("");
   const [patching, setPatching] = useState(false);
   const [regenerating, setRegenerating] = useState(false);
+  const [generatingBlueprint, setGeneratingBlueprint] = useState(false);
   const [settings, setSettings] = useState<GenSettings>(DEFAULT_SETTINGS);
   const [history, setHistory] = useState<{ request: string; result: PatchResult; timestamp: string; rated?: number }[]>([]);
 
@@ -416,7 +417,40 @@ const SeedMapManager = ({ sessionId, onRefetch }: Props) => {
     await runPatch(prompt);
   }, [runPatch, learnedPrefs, globalPrefs, currentStyleKey]);
 
-  // ── Feedback / Learning ──
+  // ── Generate geography blueprint from world lore ──
+  const generateBlueprintFromLore = useCallback(async () => {
+    setGeneratingBlueprint(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("generate-geo-blueprint", {
+        body: { session_id: sessionId, map_width: settings.width, map_height: settings.height },
+      });
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+
+      const bp = data.blueprint;
+      const ts = data.terrainSettings || {};
+
+      // Apply AI-suggested terrain settings
+      setSettings(prev => ({
+        ...prev,
+        geoBlueprint: bp,
+        ...(ts.biomeWeights ? { biomeWeights: { ...prev.biomeWeights, ...ts.biomeWeights } } : {}),
+        ...(ts.targetLandRatio ? { targetLandRatio: ts.targetLandRatio } : {}),
+        ...(ts.continentCount ? { continentCount: ts.continentCount } : {}),
+        ...(ts.mountainDensity ? { mountainDensity: ts.mountainDensity } : {}),
+        ...(ts.coastalRichness ? { coastalRichness: ts.coastalRichness } : {}),
+      }));
+
+      const zoneCount = bp.biomeZones?.length || 0;
+      const ridgeCount = bp.ridges?.length || 0;
+      toast.success(`Blueprint vygenerován: ${ridgeCount} pohoří, ${zoneCount} zón`);
+    } catch (e: any) {
+      toast.error("Blueprint selhal: " + (e.message || "neznámá chyba"));
+    }
+    setGeneratingBlueprint(false);
+  }, [sessionId, settings.width, settings.height]);
+
+
   const toggleAspect = (aspect: string, list: string[], setList: (v: string[]) => void) => {
     setList(list.includes(aspect) ? list.filter(a => a !== aspect) : [...list, aspect]);
   };
@@ -683,10 +717,16 @@ const SeedMapManager = ({ sessionId, onRefetch }: Props) => {
               </div>
             </div>
 
-            <Button onClick={regenerateMap} disabled={regenerating} className="w-full gap-2">
-              {regenerating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Map className="h-4 w-4" />}
-              Generovat s těmito parametry
-            </Button>
+            <div className="flex gap-2">
+              <Button onClick={generateBlueprintFromLore} disabled={generatingBlueprint || regenerating} variant="secondary" className="flex-1 gap-2">
+                {generatingBlueprint ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+                {generatingBlueprint ? "AI generuje…" : "🌍 Z popisu světa"}
+              </Button>
+              <Button onClick={regenerateMap} disabled={regenerating || generatingBlueprint} className="flex-1 gap-2">
+                {regenerating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Map className="h-4 w-4" />}
+                Generovat
+              </Button>
+            </div>
           </CardContent>
         </Card>
 
