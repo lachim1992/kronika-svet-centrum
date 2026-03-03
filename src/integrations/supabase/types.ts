@@ -4865,6 +4865,7 @@ export type Database = {
       }
       league_teams: {
         Row: {
+          association_id: string | null
           attack_rating: number | null
           city_id: string
           color_primary: string | null
@@ -4895,6 +4896,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          association_id?: string | null
           attack_rating?: number | null
           city_id: string
           color_primary?: string | null
@@ -4925,6 +4927,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          association_id?: string | null
           attack_rating?: number | null
           city_id?: string
           color_primary?: string | null
@@ -4955,6 +4958,13 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "league_teams_association_id_fkey"
+            columns: ["association_id"]
+            isOneToOne: false
+            referencedRelation: "sports_associations"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "league_teams_city_id_fkey"
             columns: ["city_id"]
@@ -6468,6 +6478,7 @@ export type Database = {
       }
       sports_associations: {
         Row: {
+          association_type: string
           budget: number
           building_id: string | null
           city_id: string
@@ -6493,6 +6504,7 @@ export type Database = {
           youth_development: number
         }
         Insert: {
+          association_type?: string
           budget?: number
           building_id?: string | null
           city_id: string
@@ -6518,6 +6530,7 @@ export type Database = {
           youth_development?: number
         }
         Update: {
+          association_type?: string
           budget?: number
           building_id?: string | null
           city_id?: string

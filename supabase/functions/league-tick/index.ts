@@ -55,10 +55,7 @@ Deno.serve(async (req) => {
 
     const results: any = { teamsCreated: 0, matchesPlayed: 0, seasonAction: null };
 
-    // ═══ STEP 1: Teams are now created manually via create-league-team ═══
-    // (removed auto-creation logic)
-
-    // ═══ STEP 2: Season management ═══
+    // ═══ STEP 1: Recompute team ratings from player stats ═══
     const { data: allTeams } = await sb.from("league_teams")
       .select("id, team_name, player_name, city_id, attack_rating, defense_rating, tactics_rating, discipline_rating")
       .eq("session_id", session_id).eq("is_active", true);
@@ -68,6 +65,40 @@ Deno.serve(async (req) => {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
+
+    // Derive team ratings from player stats (avg by position)
+    for (const team of allTeams) {
+      const { data: tp } = await sb.from("league_players")
+        .select("position, strength, speed, technique, stamina, aggression, leadership, overall_rating")
+        .eq("team_id", team.id).eq("is_dead", false);
+      if (!tp || tp.length === 0) continue;
+
+      const byPos = (positions: string[]) => tp.filter(p => positions.includes(p.position));
+      const avg = (arr: number[]) => arr.length > 0 ? Math.round(arr.reduce((a, b) => a + b, 0) / arr.length) : 40;
+
+      const strikers = byPos(["striker", "attacker"]);
+      const guardians = byPos(["guardian", "defender"]);
+      const praetors = byPos(["praetor", "goalkeeper"]);
+      const carriers = byPos(["carrier", "midfielder"]);
+      const exactors = byPos(["exactor"]);
+
+      const attack = avg([...strikers.map(p => (p.speed + p.technique) / 2), ...exactors.map(p => (p.strength + p.aggression) / 2)]);
+      const defense = avg(guardians.map(p => (p.strength + p.stamina) / 2));
+      const tactics = avg([...praetors.map(p => (p.technique + p.leadership) / 2), ...carriers.map(p => (p.technique + p.speed) / 2)]);
+      const discipline = avg(tp.map(p => p.stamina));
+
+      if (attack !== team.attack_rating || defense !== team.defense_rating || tactics !== team.tactics_rating || discipline !== team.discipline_rating) {
+        await sb.from("league_teams").update({
+          attack_rating: attack, defense_rating: defense, tactics_rating: tactics, discipline_rating: discipline,
+        }).eq("id", team.id);
+        team.attack_rating = attack;
+        team.defense_rating = defense;
+        team.tactics_rating = tactics;
+        team.discipline_rating = discipline;
+      }
+    }
+
+    // ═══ STEP 2: Season management ═══
 
     // Get or create active season
     let { data: season } = await sb.from("league_seasons")
@@ -150,6 +181,24 @@ Deno.serve(async (req) => {
       // Update standings
       await updateStandings(sb, season.id, match.home_team_id, result.homeGoals, result.awayGoals);
       await updateStandings(sb, season.id, match.away_team_id, result.awayGoals, result.homeGoals);
+
+      // ═══ +1 stability for match winner's city ═══
+      const winnerId = result.homeGoals > result.awayGoals ? match.home_team_id
+        : result.awayGoals > result.homeGoals ? match.away_team_id : null;
+      if (winnerId) {
+        const winnerTeam = teamMap.get(winnerId);
+        if (winnerTeam) {
+          const { data: winCity } = await sb.from("cities")
+            .select("city_stability, local_renown")
+            .eq("id", winnerTeam.city_id).maybeSingle();
+          if (winCity) {
+            await sb.from("cities").update({
+              city_stability: Math.min(100, winCity.city_stability + 1),
+              local_renown: (winCity.local_renown || 0) + 1,
+            }).eq("id", winnerTeam.city_id);
+          }
+        }
+      }
 
       // Update goal scorers
       for (const evt of result.events) {
@@ -248,6 +297,29 @@ Deno.serve(async (req) => {
           player: champTeam?.player_name, turn_number, confirmed: true,
           reference: { season_id: season.id, champion: champTeam?.team_name, top_scorer: topScorer?.name },
         });
+
+        // ═══ Auto ChroWiki for 5+ titles ═══
+        const newTitles = (champTeamData?.titles_won || 0) + 1;
+        if (newTitles >= 5) {
+          // Check if wiki entry already exists for this team
+          const { data: existingWiki } = await sb.from("wiki_entries")
+            .select("id").eq("session_id", session_id).eq("entity_type", "team").eq("entity_id", champion.team_id).maybeSingle();
+          if (!existingWiki) {
+            await sb.from("wiki_entries").insert({
+              session_id, entity_type: "team", entity_id: champion.team_id,
+              entity_name: champTeam?.team_name || "Neznámý tým",
+              owner_player: champTeam?.player_name || "",
+              summary: `Legendární tým ${champTeam?.team_name} z města ${cities?.get?.(champTeam?.city_id) || champTeam?.city_id} dosáhl ${newTitles} titulů mistra Sphaera Ligy. Jeden z nejslavnějších klubů v dějinách světa.`,
+            });
+          }
+          // Game event for the milestone
+          await sb.from("game_events").insert({
+            session_id, event_type: "league_dynasty",
+            note: `📜 ${champTeam?.team_name} dosáhl ${newTitles} titulů a byl zapsán do Kroniky světa jako legendární dynastie Sphaery!`,
+            player: champTeam?.player_name, turn_number, confirmed: true,
+            reference: { team_id: champion.team_id, titles: newTitles, team_name: champTeam?.team_name, city_id: champTeam?.city_id },
+          });
+        }
       }
 
       results.seasonAction = { concluded: true, champion: (champion as any)?.league_teams?.team_name };

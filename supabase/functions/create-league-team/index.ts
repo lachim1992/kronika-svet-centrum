@@ -26,7 +26,7 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const { sessionId, cityId, buildingId, teamName, colorPrimary, colorSecondary, motto, playerName } = await req.json();
+    const { sessionId, cityId, buildingId, teamName, colorPrimary, colorSecondary, motto, playerName, associationId } = await req.json();
 
     if (!sessionId || !cityId || !teamName || !playerName) {
       return new Response(JSON.stringify({ error: "Missing required fields" }), {
@@ -73,6 +73,7 @@ Deno.serve(async (req) => {
       stadium_building_id: buildingId || null,
       player_name: playerName,
       team_name: teamName,
+      association_id: associationId || null,
       motto: motto || `Za čest ${city.name}! Sphaera si žádá krev.`,
       color_primary: colorPrimary || "#8b0000",
       color_secondary: colorSecondary || "#1a1a2e",
