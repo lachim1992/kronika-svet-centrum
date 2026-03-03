@@ -1,0 +1,1 @@
+ALTER TABLE public.world_premise ADD COLUMN IF NOT EXISTS geography_blueprint JSONB DEFAULT '{}'::jsonb;

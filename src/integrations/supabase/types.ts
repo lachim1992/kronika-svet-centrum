@@ -7755,6 +7755,7 @@ export type Database = {
           created_at: string
           economic_bias: string | null
           epoch_style: string
+          geography_blueprint: Json | null
           id: string
           is_active: boolean
           lore_bible: string | null
@@ -7773,6 +7774,7 @@ export type Database = {
           created_at?: string
           economic_bias?: string | null
           epoch_style?: string
+          geography_blueprint?: Json | null
           id?: string
           is_active?: boolean
           lore_bible?: string | null
@@ -7791,6 +7793,7 @@ export type Database = {
           created_at?: string
           economic_bias?: string | null
           epoch_style?: string
+          geography_blueprint?: Json | null
           id?: string
           is_active?: boolean
           lore_bible?: string | null
