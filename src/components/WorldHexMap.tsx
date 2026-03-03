@@ -135,12 +135,12 @@ interface Props {
 
 /* ───── HexTile (memoized) ───── */
 const HexTile = memo(({
-  q, r, hex, isFrontier, isCurrent, devMode, loading, onClick, offsetX, offsetY, cities, onCityClick, stacks,
+  q, r, hex, isFrontier, isCurrent, devMode, loading, onClick, onDoubleClick, offsetX, offsetY, cities, onCityClick, stacks,
   selectedStackId, isMoveTarget, isAttackTarget, onStackClick, onMoveClick, onAttackClick, myPlayerName,
 }: {
   q: number; r: number; hex?: HexData; isFrontier: boolean; isCurrent: boolean;
   devMode: boolean; loading: boolean;
-  onClick: () => void; offsetX: number; offsetY: number;
+  onClick: () => void; onDoubleClick?: () => void; offsetX: number; offsetY: number;
   cities: CityOnHex[];
   onCityClick?: (cityId: string) => void;
   stacks: StackOnHex[];
@@ -161,7 +161,7 @@ const HexTile = memo(({
   const showFrontierBiome = isFrontier && hex;
 
   return (
-    <g onClick={isAttackTarget ? () => onAttackClick?.(q, r) : isMoveTarget ? () => onMoveClick?.(q, r) : onClick} className="cursor-pointer">
+    <g onClick={isAttackTarget ? () => onAttackClick?.(q, r) : isMoveTarget ? () => onMoveClick?.(q, r) : onClick} onDoubleClick={onDoubleClick} className="cursor-pointer">
       {isFrontier && <title>Prozkoumat ({q}, {r})</title>}
       <polygon
         points={pts}
@@ -846,10 +846,14 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
     if (dragRef.current?.moved) return;
     if (isFrontier) { handleExploreFrontier(q, r); return; }
     if (selectedStack) { setSelectedStack(null); return; }
-    // Open hex detail in sheet
+    // Single click no longer opens detail — use double-click
+  }, [handleExploreFrontier, selectedStack]);
+
+  const handleTileDoubleClick = useCallback((q: number, r: number) => {
+    if (dragRef.current?.moved) return;
     const hex = getHex(q, r);
     if (hex) { setSelectedHex(hex); setEditBiome(null); }
-  }, [handleExploreFrontier, selectedStack, getHex]);
+  }, [getHex]);
 
   /* ── Check if hex is suitable for founding ── */
   const canFoundOnSelectedHex = useMemo(() => {
@@ -990,6 +994,7 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
                 isFrontier={c.isFrontier} isCurrent={isCurrent} devMode={devMode}
                 loading={isLoading(c.q, c.r) || exploring === hKey(c.q, c.r)}
                 onClick={() => handleTileClick(c.q, c.r, c.isFrontier)}
+                onDoubleClick={() => handleTileDoubleClick(c.q, c.r)}
                 offsetX={offsetX} offsetY={offsetY}
                 cities={citiesByCoord.get(hKey(c.q, c.r)) || []}
                 onCityClick={onCityClick}
