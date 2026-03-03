@@ -1,8 +1,9 @@
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Bug, Droplets, Play, Shield, Sprout, FlaskConical, BarChart3, Compass, Info, Map } from "lucide-react";
+import { Bug, Droplets, Play, Shield, Sprout, FlaskConical, BarChart3, Compass, Info, Map, Zap } from "lucide-react";
 import HydrationSection from "@/components/dev/HydrationSection";
 import SimulationSection from "@/components/dev/SimulationSection";
+import RealSimulationSection from "@/components/dev/RealSimulationSection";
 import WorldIntegritySection from "@/components/dev/WorldIntegritySection";
 import SeedSection from "@/components/dev/SeedSection";
 import QATestSection from "@/components/dev/QATestSection";
@@ -60,14 +61,17 @@ const DevModePanel = ({
 
       {/* Tabs */}
       <Tabs defaultValue={perms.canRunServerDevTools ? "hydration" : "local-sim"} className="w-full">
-        <TabsList className={`grid w-full h-auto ${perms.canRunServerDevTools ? "grid-cols-9" : "grid-cols-2"}`}>
+        <TabsList className={`grid w-full h-auto ${perms.canRunServerDevTools ? "grid-cols-10" : "grid-cols-2"}`}>
           {perms.canRunServerDevTools && (
             <>
               <TabsTrigger value="hydration" className="text-xs gap-1 py-2">
                 <Droplets className="h-3 w-3" /> Hydratace
               </TabsTrigger>
+              <TabsTrigger value="real-sim" className="text-xs gap-1 py-2">
+                <Zap className="h-3 w-3" /> Simulace
+              </TabsTrigger>
               <TabsTrigger value="simulation" className="text-xs gap-1 py-2">
-                <Play className="h-3 w-3" /> Simulace
+                <Play className="h-3 w-3" /> Quick Seed
               </TabsTrigger>
               <TabsTrigger value="integrity" className="text-xs gap-1 py-2">
                 <Shield className="h-3 w-3" /> Integrita
@@ -98,6 +102,9 @@ const DevModePanel = ({
           <>
             <TabsContent value="hydration" className="mt-3">
               <HydrationSection sessionId={sessionId} onRefetch={onRefetch} />
+            </TabsContent>
+            <TabsContent value="real-sim" className="mt-3">
+              <RealSimulationSection sessionId={sessionId} currentPlayerName={currentPlayerName} onRefetch={onRefetch} />
             </TabsContent>
             <TabsContent value="simulation" className="mt-3">
               <SimulationSection sessionId={sessionId} onRefetch={onRefetch} />
