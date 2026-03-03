@@ -323,7 +323,8 @@ const SimulationSection = ({ sessionId, onRefetch }: Props) => {
     <div className="bg-card border-2 border-accent/30 rounded-lg p-4 space-y-4">
       <h3 className="font-display font-semibold text-sm flex items-center gap-2">
         <Play className="h-4 w-4 text-accent" />
-        Simulace vývoje světa (Admin)
+        Quick Seed — náhodné události (debug)
+        <Badge variant="outline" className="text-[10px] ml-auto text-yellow-500">FAKE DATA</Badge>
       </h3>
 
       {/* Year presets */}

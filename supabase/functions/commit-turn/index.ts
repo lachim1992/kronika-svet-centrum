@@ -38,7 +38,7 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const { sessionId, playerName } = await req.json();
+    const { sessionId, playerName, skipNarrative } = await req.json();
     if (!sessionId || !playerName) {
       return new Response(JSON.stringify({ error: "Missing sessionId or playerName" }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -386,7 +386,11 @@ Deno.serve(async (req) => {
     // Generate chronicles for the just-closed turn (turnNumber) in the background.
     // Failures are non-critical and won't block turn progression.
 
-    try {
+    if (skipNarrative) {
+      results.chronicles = { skipped: true, reason: "skipNarrative" };
+      results.worldHistory = { skipped: true, reason: "skipNarrative" };
+      results.playerChronicles = { skipped: true, reason: "skipNarrative" };
+    } else try {
       const closedTurn = turnNumber; // the turn that just ended
 
       // Fetch ALL data sources for chronicle generation
@@ -765,7 +769,9 @@ Deno.serve(async (req) => {
     // ═══════════════════════════════════════════
     // 8b. RUMOR GENERATION (Šeptanda)
     // ═══════════════════════════════════════════
-    try {
+    if (skipNarrative) {
+      results.rumors = { skipped: true, reason: "skipNarrative" };
+    } else try {
       const { data: rumorData, error: rumorErr } = await supabase.functions.invoke("rumor-generate", {
         body: { sessionId, turnNumber, playerName },
       });
