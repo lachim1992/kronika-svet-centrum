@@ -86,10 +86,26 @@ const ChroWikiTab = ({ sessionId, currentPlayerName = "", myRole = "player", cur
       setProvinces(p.data || []);
       setCities(c.data || []);
       setWonders(w.data || []);
-      setPersons(gp.data || []);
+      
+      // Merge great_persons with wiki-only persons (e.g. Sphaera In Memoriam entries)
+      const greatPersons = gp.data || [];
+      const greatPersonIds = new Set(greatPersons.map((g: any) => g.id));
+      const wikiData = wi.data || [];
+      const wikiOnlyPersons = wikiData
+        .filter((we: any) => we.entity_type === "person" && we.entity_id && !greatPersonIds.has(we.entity_id))
+        .map((we: any) => ({
+          id: we.entity_id,
+          name: we.entity_name,
+          player_name: we.owner_player,
+          person_type: "sphaera",
+          session_id: we.session_id,
+          _fromWiki: true,
+        }));
+      setPersons([...greatPersons, ...wikiOnlyPersons]);
+      
       setEvents(ev.data || []);
       setChronicles(ch.data || []);
-      setWikiEntries(wi.data || []);
+      setWikiEntries(wikiData);
       setExpeditions(ex.data || []);
       setDeclarations(decl.data || []);
       setBuildings(bld.data || []);
