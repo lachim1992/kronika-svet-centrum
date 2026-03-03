@@ -6358,6 +6358,114 @@ export type Database = {
           },
         ]
       }
+      sphaera_feed_items: {
+        Row: {
+          ai_comment: string | null
+          ai_comment_author: string | null
+          body: string
+          category: string
+          city_id: string | null
+          city_name: string | null
+          created_at: string
+          entity_refs: Json | null
+          headline: string
+          icon: string
+          id: string
+          importance: number
+          match_id: string | null
+          player_id: string | null
+          player_name_ref: string | null
+          round_number: number
+          season_id: string | null
+          session_id: string
+          team_id: string | null
+          team_name: string | null
+          turn_number: number
+        }
+        Insert: {
+          ai_comment?: string | null
+          ai_comment_author?: string | null
+          body?: string
+          category?: string
+          city_id?: string | null
+          city_name?: string | null
+          created_at?: string
+          entity_refs?: Json | null
+          headline: string
+          icon?: string
+          id?: string
+          importance?: number
+          match_id?: string | null
+          player_id?: string | null
+          player_name_ref?: string | null
+          round_number?: number
+          season_id?: string | null
+          session_id: string
+          team_id?: string | null
+          team_name?: string | null
+          turn_number?: number
+        }
+        Update: {
+          ai_comment?: string | null
+          ai_comment_author?: string | null
+          body?: string
+          category?: string
+          city_id?: string | null
+          city_name?: string | null
+          created_at?: string
+          entity_refs?: Json | null
+          headline?: string
+          icon?: string
+          id?: string
+          importance?: number
+          match_id?: string | null
+          player_id?: string | null
+          player_name_ref?: string | null
+          round_number?: number
+          season_id?: string | null
+          session_id?: string
+          team_id?: string | null
+          team_name?: string | null
+          turn_number?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sphaera_feed_items_city_id_fkey"
+            columns: ["city_id"]
+            isOneToOne: false
+            referencedRelation: "cities"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sphaera_feed_items_match_id_fkey"
+            columns: ["match_id"]
+            isOneToOne: false
+            referencedRelation: "league_matches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sphaera_feed_items_season_id_fkey"
+            columns: ["season_id"]
+            isOneToOne: false
+            referencedRelation: "league_seasons"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sphaera_feed_items_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sphaera_feed_items_team_id_fkey"
+            columns: ["team_id"]
+            isOneToOne: false
+            referencedRelation: "league_teams"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       sports_associations: {
         Row: {
           budget: number

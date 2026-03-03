@@ -13,6 +13,19 @@ Deno.serve(async (req) => {
     const sb = getServiceClient();
     const ctx = await createAIContext(sessionId);
 
+    // ── Load Sphaera feed items for narrative integration ──
+    const { data: sphaeraFeed } = await sb
+      .from("sphaera_feed_items")
+      .select("headline, body, category, city_name, team_name, player_name_ref, importance")
+      .eq("session_id", sessionId)
+      .gte("importance", 2)
+      .order("created_at", { ascending: false })
+      .limit(10);
+
+    const sphaeraContext = (sphaeraFeed || [])
+      .map((f: any) => `[Sphaera/${f.category}${f.city_name ? ` @ ${f.city_name}` : ""}] ${f.headline}`)
+      .join("\n");
+
     // ── Load last 5 chronicle entries for narrative continuity ──
     const { data: prevChronicles } = await sb
       .from("chronicle_entries")
@@ -61,6 +74,9 @@ DÉLKA A HLOUBKA:
 
 PŘEDCHOZÍ KRONIKY (kontext pro navázání a zasazení do dějin):
 ${previousChroniclesContext || "žádné předchozí kroniky"}
+
+SPHAERA (sportovní události — zapracuj přirozeně jako součást života měst, pokud jsou k dispozici):
+${sphaeraContext || "žádné sportovní události"}
 
 Odpověz POUZE voláním funkce write_chronicle.`;
 
