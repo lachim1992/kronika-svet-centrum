@@ -1297,19 +1297,23 @@ const LeaguePanel = ({ sessionId, currentPlayerName, currentTurn }: Props) => {
                       <div className="space-y-1">
                         {events.map((ev: any, i: number) => {
                           const icon = EVENT_ICONS[ev.type] || "📌";
-                          const isHome = ev.team_id === selectedMatch.home_team_id;
+                          const isHome = ev.team === "home";
+                          // Check if a knockout was followed by a death injury
+                          const isDeathKnockout = ev.type === "knockout" && events.some((e2: any) => e2.type === "injury" && e2.is_death && e2.player_id === ev.victim_id);
+                          const isDeathInjury = ev.type === "injury" && ev.is_death;
                           return (
-                            <div key={i} className={`flex items-start gap-2 text-xs p-1.5 rounded ${ev.type === "knockout" || ev.type === "injury" ? "bg-red-500/5" : "bg-muted/10"}`}>
+                            <div key={i} className={`flex items-start gap-2 text-xs p-1.5 rounded ${isDeathKnockout || isDeathInjury ? "bg-red-500/10" : ev.type === "knockout" || ev.type === "injury" ? "bg-red-500/5" : "bg-muted/10"}`}>
                               <span className="text-muted-foreground font-mono w-6 shrink-0 text-right">{ev.minute ? `${ev.minute}'` : ""}</span>
-                              <span>{icon}</span>
+                              <span>{isDeathInjury ? "☠️" : icon}</span>
                               <span className="flex-1">
                                 <span className={isHome ? "text-primary/80" : "text-foreground"}>{ev.player_name || ev.scorer || ""}</span>
-                                {ev.type === "goal" && <span className="text-muted-foreground"> — gól</span>}
+                                {ev.type === "goal" && <span className="text-muted-foreground"> — gól (+3b)</span>}
                                 {ev.type === "assist" && <span className="text-muted-foreground"> — asistence</span>}
-                                {ev.type === "injury" && <span className="text-red-400"> — zranění{ev.severity ? ` (${ev.severity})` : ""}</span>}
-                                {ev.type === "knockout" && <span className="text-red-500 font-bold"> — SMRT</span>}
+                                {ev.type === "injury" && !ev.is_death && <span className="text-red-400"> — zranění{ev.severity ? ` (${ev.severity})` : ""}{ev.injury_turns ? ` — ${ev.injury_turns} kol mimo` : ""}</span>}
+                                {ev.type === "injury" && ev.is_death && <span className="text-red-500 font-bold"> — SMRT{ev.death_cause ? ` (${ev.death_cause})` : ""}</span>}
+                                {ev.type === "knockout" && <span className={isDeathKnockout ? "text-red-500 font-bold" : "text-orange-400"}> — vyřazení{ev.victim_name ? ` → ${ev.victim_name}` : ""} (+1b){isDeathKnockout ? " 💀" : ""}</span>}
                                 {ev.type === "brutal_foul" && <span className="text-orange-400"> — brutální faul</span>}
-                                {ev.type === "breakthrough" && <span className="text-yellow-400"> — průlom</span>}
+                                {ev.type === "breakthrough" && <span className="text-yellow-400"> — průlom (+5b)</span>}
                                 {ev.type === "crowd_riot" && <span className="text-orange-400"> — nepokoje v publiku</span>}
                                 {ev.type === "crowd_chant" && <span className="text-muted-foreground"> — skandování</span>}
                                 {ev.description && <span className="text-muted-foreground block text-[10px] mt-0.5">{ev.description}</span>}
