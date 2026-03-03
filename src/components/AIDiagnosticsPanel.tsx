@@ -384,11 +384,55 @@ const FactionBehaviorCard = ({ fp }: { fp: any }) => {
           )}
         </div>
 
-        {/* ── Action Summary ── */}
+        {/* ── Action Summary with Outcomes ── */}
         <div>
           <h4 className="text-xs font-semibold flex items-center gap-1 mb-1.5">
             <Activity className="h-3.5 w-3.5" /> Souhrn akcí
           </h4>
+          {/* Key outcomes cross-referenced */}
+          {fp.actionOutcomes && (
+            <div className="grid grid-cols-2 gap-1.5 mb-2 ml-1">
+              {fp.actionOutcomes.construction.events > 0 && (
+                <div className="bg-muted/20 rounded p-1.5 text-[11px]">
+                  <span className="font-semibold">🏗️ Stavby:</span>{" "}
+                  <span>{fp.actionOutcomes.construction.events}× příkaz</span>
+                  <span className="text-muted-foreground"> → </span>
+                  <span className="text-green-400">{fp.actionOutcomes.construction.completed} hotovo</span>
+                  {fp.actionOutcomes.construction.inProgress > 0 && (
+                    <span className="text-yellow-400"> / {fp.actionOutcomes.construction.inProgress} staví se</span>
+                  )}
+                </div>
+              )}
+              {fp.actionOutcomes.wonder.events > 0 && (
+                <div className="bg-muted/20 rounded p-1.5 text-[11px]">
+                  <span className="font-semibold">⭐ Divy:</span>{" "}
+                  <span>{fp.actionOutcomes.wonder.events}× příkaz</span>
+                  <span className="text-muted-foreground"> → </span>
+                  <span className="text-green-400">{fp.actionOutcomes.wonder.completed} hotovo</span>
+                  {fp.actionOutcomes.wonder.inProgress > 0 && (
+                    <span className="text-yellow-400"> / {fp.actionOutcomes.wonder.inProgress} staví se</span>
+                  )}
+                </div>
+              )}
+              {fp.actionOutcomes.found_settlement.events > 0 && (
+                <div className="bg-muted/20 rounded p-1.5 text-[11px]">
+                  <span className="font-semibold">🏘️ Založení:</span>{" "}
+                  <span>{fp.actionOutcomes.found_settlement.events}× příkaz</span>
+                  <span className="text-muted-foreground"> → </span>
+                  <span className="text-green-400">{fp.actionOutcomes.found_settlement.actual} měst existuje</span>
+                </div>
+              )}
+              {fp.actionOutcomes.recruit.events > 0 && (
+                <div className="bg-muted/20 rounded p-1.5 text-[11px]">
+                  <span className="font-semibold">⚔️ Nábor:</span>{" "}
+                  <span>{fp.actionOutcomes.recruit.events}× příkaz</span>
+                  <span className="text-muted-foreground"> → </span>
+                  <span className="text-green-400">{fp.actionOutcomes.recruit.actual} armád existuje</span>
+                </div>
+              )}
+            </div>
+          )}
+          {/* All event types */}
           {Object.keys(fp.actionsByType || {}).length === 0 ? (
             <p className="text-[11px] text-muted-foreground ml-4">Žádné zaznamenané akce.</p>
           ) : (
