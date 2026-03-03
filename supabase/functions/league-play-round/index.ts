@@ -12,7 +12,7 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const { session_id, player_name } = await req.json();
+    const { session_id, player_name, skip_commentary } = await req.json();
     if (!session_id) {
       return new Response(JSON.stringify({ error: "session_id required" }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -87,7 +87,7 @@ Deno.serve(async (req) => {
     let commentary = "";
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     const commentaryMatches = playoffResults?.matches || allResults;
-    if (LOVABLE_API_KEY && commentaryMatches.length > 0) {
+    if (!skip_commentary && LOVABLE_API_KEY && commentaryMatches.length > 0) {
       try {
         const isPlayoff = !!playoffResults;
         const prompt = `Jsi kronikář starověké ligy Sphaera – brutálního týmového sportu s kovovou koulí. Napiš krátký komentář (5-8 vět, česky) k výsledkům ${isPlayoff ? "playoff zápasů" : "kola"}:
