@@ -107,16 +107,19 @@ function continentMask(
   halfH: number,
   blobs: Array<{ cx: number; cy: number; rx: number; ry: number; strength: number }>,
 ): number {
-  // Edge falloff: force ocean at map borders
+  // Use visual row for edge falloff so the landmass fits the rectangular grid
+  const visualRow = r + Math.floor(q / 2);
   const edgeX = Math.abs(q) / halfW;
-  const edgeY = Math.abs(r) / halfH;
+  const edgeY = Math.abs(visualRow) / halfH;
   const edgeFalloff = Math.max(0, 1 - Math.pow(Math.max(edgeX, edgeY), 2) * 1.2);
 
-  // Blob influence
+  // Blob influence — also use visual coordinates for distance
+  const visualR = r + Math.floor(q / 2);
   let blobVal = 0;
   for (const b of blobs) {
     const dx = (q - b.cx) / b.rx;
-    const dy = (r - b.cy) / b.ry;
+    const bVisualCy = b.cy + Math.floor(b.cx / 2);  // convert blob center to visual space
+    const dy = (visualR - bVisualCy) / b.ry;
     const dist = Math.sqrt(dx * dx + dy * dy);
     blobVal += b.strength * Math.max(0, 1 - dist);
   }
@@ -139,7 +142,9 @@ function generateBlobs(
 
   for (let i = 0; i < numContinents; i++) {
     const cx = (hashSeed(worldSeed + `:cont${i}:cx`) - 0.5) * halfW * 1.4;
-    const cy = (hashSeed(worldSeed + `:cont${i}:cy`) - 0.5) * halfH * 1.4;
+    // Generate cy in visual space (centered around 0), then convert to axial r
+    const visualCy = (hashSeed(worldSeed + `:cont${i}:cy`) - 0.5) * halfH * 1.4;
+    const cy = visualCy - Math.floor(cx / 2); // convert visual to axial
     const baseR = halfW * (0.3 + hashSeed(worldSeed + `:cont${i}:r`) * 0.4) * sizeScale;
     const rx = baseR * (0.7 + hashSeed(worldSeed + `:cont${i}:rx`) * 0.6);
     const ry = baseR * (0.7 + hashSeed(worldSeed + `:cont${i}:ry`) * 0.6);
@@ -196,14 +201,17 @@ function generateRidges(
   const ridges: Array<{ x1: number; y1: number; x2: number; y2: number; width: number; strength: number }> = [];
   for (let i = 0; i < numRidges; i++) {
     const x1 = (hashSeed(worldSeed + `:ridge${i}:x1`) - 0.5) * halfW * 1.6;
-    const y1 = (hashSeed(worldSeed + `:ridge${i}:y1`) - 0.5) * halfH * 1.6;
+    const visualY1 = (hashSeed(worldSeed + `:ridge${i}:y1`) - 0.5) * halfH * 1.6;
+    const y1 = visualY1 - Math.floor(x1 / 2); // convert to axial
     const angle = hashSeed(worldSeed + `:ridge${i}:a`) * Math.PI * 2;
     const length = halfW * (0.4 + hashSeed(worldSeed + `:ridge${i}:l`) * 0.8);
+    const x2 = x1 + Math.cos(angle) * length;
+    const y2 = y1 + Math.sin(angle) * length;
     ridges.push({
       x1,
       y1,
-      x2: x1 + Math.cos(angle) * length,
-      y2: y1 + Math.sin(angle) * length,
+      x2,
+      y2,
       width: (2 + hashSeed(worldSeed + `:ridge${i}:w`) * 4) * (0.6 + mountainDensity * 0.8),
       strength: (0.4 + hashSeed(worldSeed + `:ridge${i}:s`) * 0.4) * (0.6 + mountainDensity * 0.8),
     });
