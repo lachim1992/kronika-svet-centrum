@@ -102,6 +102,22 @@ Styl: dramatický, kronikářský, krvavý. ${isPlayoff ? "Zdůrazni váhu vyřa
       } catch (e) { console.error("AI commentary:", e); }
     }
 
+    // Auto-generate Sphaera feed
+    try {
+      const feedResp = await fetch(`${Deno.env.get("SUPABASE_URL")!}/functions/v1/sphaera-feed-generate`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!}`,
+        },
+        body: JSON.stringify({
+          session_id, round_number: allResults[0]?.round || 0, turn_number: currentTurn,
+          season_id: (await sb.from("league_seasons").select("id").eq("session_id", session_id).eq("status", "active").order("season_number", { ascending: false }).limit(1).maybeSingle())?.data?.id,
+        }),
+      });
+      if (!feedResp.ok) console.error("Feed gen failed:", await feedResp.text());
+    } catch (e) { console.error("Feed gen error:", e); }
+
     return new Response(JSON.stringify({
       ok: true,
       round: allResults[0]?.round || 0,

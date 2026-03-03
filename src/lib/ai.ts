@@ -5,10 +5,11 @@ export async function generateChronicle(
   memories: any[],
   epochStyle: string,
   entityTraits?: any[],
-  cityMemories?: any[]
+  cityMemories?: any[],
+  sessionId?: string
 ): Promise<{ chronicle: string; suggestedMemories: string[] }> {
   const { data, error } = await supabase.functions.invoke("chronicle", {
-    body: { events, memories, epochStyle, entityTraits: entityTraits || [], cityMemories: cityMemories || [] },
+    body: { events, memories, epochStyle, entityTraits: entityTraits || [], cityMemories: cityMemories || [], sessionId },
   });
 
   if (error) {

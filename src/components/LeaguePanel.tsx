@@ -8,9 +8,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Progress } from "@/components/ui/progress";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Trophy, Users, Calendar, Star, Target, Shield, Swords, Play, Loader2, ChevronLeft, Building2, Plus, Award, TrendingUp, Scroll, Skull, Flame, Globe, Settings } from "lucide-react";
+import { Trophy, Users, Calendar, Star, Target, Shield, Swords, Play, Loader2, ChevronLeft, Building2, Plus, Award, TrendingUp, Scroll, Skull, Flame, Globe, Settings, Newspaper } from "lucide-react";
 import InMemoriamTab from "@/components/league/InMemoriamTab";
 import MyTeamsPanel from "@/components/league/MyTeamsPanel";
+import SphaeraFeedTab from "@/components/league/SphaeraFeedTab";
 import { toast } from "sonner";
 
 interface Props {
@@ -617,8 +618,9 @@ const LeaguePanel = ({ sessionId, currentPlayerName, currentTurn }: Props) => {
 
           {/* ═══ WORLD OF SPHAERA ═══ */}
           <TabsContent value="world" className="space-y-3">
-            <Tabs defaultValue="table" className="space-y-3">
-              <TabsList className="grid w-full grid-cols-6 bg-muted/20">
+            <Tabs defaultValue="feed" className="space-y-3">
+              <TabsList className="grid w-full grid-cols-7 bg-muted/20">
+                <TabsTrigger value="feed" className="text-xs data-[state=active]:bg-primary/10 data-[state=active]:text-primary"><Newspaper className="h-3 w-3 mr-1" />Feed</TabsTrigger>
                 <TabsTrigger value="table" className="text-xs data-[state=active]:bg-primary/10 data-[state=active]:text-primary"><Trophy className="h-3 w-3 mr-1" />Tabulka</TabsTrigger>
                 <TabsTrigger value="matches" className="text-xs data-[state=active]:bg-primary/10 data-[state=active]:text-primary"><Calendar className="h-3 w-3 mr-1" />Zápasy</TabsTrigger>
                 <TabsTrigger value="playoff" className="text-xs data-[state=active]:bg-yellow-500/20 data-[state=active]:text-yellow-400"><Award className="h-3 w-3 mr-1" />Pohár</TabsTrigger>
@@ -626,6 +628,11 @@ const LeaguePanel = ({ sessionId, currentPlayerName, currentTurn }: Props) => {
                 <TabsTrigger value="team" className="text-xs data-[state=active]:bg-primary/10 data-[state=active]:text-primary"><Users className="h-3 w-3 mr-1" />Týmy</TabsTrigger>
                 <TabsTrigger value="memoriam" className="text-xs data-[state=active]:bg-destructive/10 data-[state=active]:text-destructive"><Skull className="h-3 w-3 mr-1" />Memoriam</TabsTrigger>
               </TabsList>
+
+              {/* ═══ FEED ═══ */}
+              <TabsContent value="feed" className="space-y-3">
+                <SphaeraFeedTab sessionId={sessionId} currentPlayerName={currentPlayerName} currentTurn={currentTurn} />
+              </TabsContent>
 
               {/* ═══ STANDINGS ═══ */}
               <TabsContent value="table" className="space-y-4">
