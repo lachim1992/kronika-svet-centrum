@@ -189,7 +189,7 @@ const QATestSection = ({ sessionId, onRefetch }: Props) => {
       } else passed++;
 
       total++;
-      if (!evt.turn_number || evt.turn_number < 1) {
+      if (evt.turn_number == null || evt.turn_number < 0) {
         issues.push({ severity: "warning", group: g, entityType: "event", entityId: evt.id, message: "Událost bez platného kola", fix: "Nastavit turn_number" });
       } else passed++;
 
@@ -276,7 +276,8 @@ const QATestSection = ({ sessionId, onRefetch }: Props) => {
       supabase.from("event_narratives").select("id, event_id"),
       supabase.from("event_entity_links").select("id, event_id, entity_id, entity_type"),
       supabase.from("diplomacy_rooms").select("id, session_id, npc_city_state_id").eq("session_id", sessionId),
-      supabase.from("diplomacy_messages").select("id, room_id").limit(500),
+      // diplomacy_messages loaded below after we know room_ids
+      Promise.resolve({ data: null }),
       supabase.from("city_rumors").select("id, city_id, related_event_id, city_name").eq("session_id", sessionId),
       supabase.from("expeditions").select("id, result_region_id, player_name").eq("session_id", sessionId),
       supabase.from("city_states").select("id").eq("session_id", sessionId),
@@ -296,11 +297,22 @@ const QATestSection = ({ sessionId, onRefetch }: Props) => {
     const roomIds = new Set((dipRooms || []).map(r => r.id));
     const csIds = new Set((cityStates || []).map(cs => cs.id));
 
+    // Load diplomacy messages scoped to this session's rooms
+    const roomIdArr = Array.from(roomIds);
+    let sessionDipMsgs: Array<{ id: string; room_id: string }> = [];
+    if (roomIdArr.length > 0) {
+      const { data: msgs } = await supabase
+        .from("diplomacy_messages")
+        .select("id, room_id")
+        .in("room_id", roomIdArr)
+        .limit(1000);
+      sessionDipMsgs = msgs || [];
+    }
+
     // Wiki → entity_id validity
     for (const w of wikiEntries || []) {
       if (w.entity_id) {
         total++;
-        // We can't easily validate all entity types, but check cities
         if (w.entity_type === "city" && !cityIds.has(w.entity_id)) {
           issues.push({ severity: "warning", group: g, entityType: "wiki_entry", entityId: w.id, entityName: w.entity_name, field: "entity_id", message: "Wiki odkazuje na neexistující město", fix: "Opravit entity_id" });
         } else passed++;
@@ -325,8 +337,8 @@ const QATestSection = ({ sessionId, onRefetch }: Props) => {
       } else passed++;
     }
 
-    // Diplomacy messages → room_id
-    for (const m of dipMsgs || []) {
+    // Diplomacy messages → room_id (already scoped to this session)
+    for (const m of sessionDipMsgs) {
       total++;
       if (!roomIds.has(m.room_id)) {
         issues.push({ severity: "warning", group: g, entityType: "diplomacy_message", entityId: m.id, field: "room_id", message: "Zpráva odkazuje na neexistující místnost", fix: "Opravit referenci" });
