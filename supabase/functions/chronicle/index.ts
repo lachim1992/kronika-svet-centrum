@@ -1,4 +1,4 @@
-import { createAIContext, invokeAI, corsHeaders, jsonResponse, errorResponse } from "../_shared/ai-context.ts";
+import { createAIContext, invokeAI, corsHeaders, jsonResponse, errorResponse, getServiceClient } from "../_shared/ai-context.ts";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
@@ -7,11 +7,25 @@ Deno.serve(async (req) => {
     const { events, memories, epochStyle, entityTraits, cityMemories, sessionId } = await req.json();
 
     if (!sessionId) {
-      // Legacy fallback — generate without premise
       return jsonResponse({ chronicle: "Chybí sessionId pro generování kroniky.", suggestedMemories: [] });
     }
 
+    const sb = getServiceClient();
     const ctx = await createAIContext(sessionId);
+
+    // ── Load last 5 chronicle entries for narrative continuity ──
+    const { data: prevChronicles } = await sb
+      .from("chronicle_entries")
+      .select("text, turn_from, turn_to, epoch_style")
+      .eq("session_id", sessionId)
+      .neq("source_type", "chronicle_zero")
+      .order("turn_to", { ascending: false })
+      .limit(5);
+
+    const previousChroniclesContext = (prevChronicles || [])
+      .reverse()
+      .map((c: any) => `[Kronika kol ${c.turn_from ?? "?"}–${c.turn_to ?? "?"}]:\n${(c.text || "").substring(0, 600)}`)
+      .join("\n---\n");
 
     const traitsContext = (entityTraits || [])
       .filter((t: any) => t.is_active)
@@ -21,6 +35,8 @@ Deno.serve(async (req) => {
     const cityMemoriesContext = (cityMemories || [])
       .map((m: any) => `[${m.cityName || "?"}] (${m.category || "tradition"}): ${m.text}`)
       .join("\n");
+
+    const eventCount = (events || []).length;
 
     const systemPrompt = `Jsi kronikář civilizační deskové hry.
 
@@ -32,6 +48,19 @@ DŮLEŽITÉ: Při psaní kroniky MUSÍŠ zohlednit zaznamenané vlastnosti entit
 Používej přídomky a tituly vládců, zmiňuj pověsti měst, reflektuj zaznamenané vztahy mezi entitami.
 
 GEOGRAFICKÁ PAMĚŤ: Musíš přirozeně zapracovat lokální paměti měst, která jsou zapojena v událostech kola.
+
+DÉLKA A HLOUBKA:
+- Kronika MUSÍ mít minimálně 800 slov, ideálně 1000-1200 slov.
+- Piš rozsáhle, s atmosférickými popisy (nálady lidu, krajiny, obchodního ruchu, počasí, slavností).
+- NESMÍŠ vymýšlet nové události ani fakta — ale MUSÍŠ rozvinout stávající události do bohatého narativu.
+- Pokud je v aktuálním kole málo událostí (${eventCount < 3 ? "MÁLO UDÁLOSTÍ — " + eventCount : eventCount + " událostí"}), MUSÍŠ zasadit události do kontextu předchozích kronik.
+  - Odkazuj na minulé události, porovnávej s předchozími koly, uváděj dlouhodobé trendy.
+  - Piš o tom, jak lid vzpomíná na nedávné události, jak se mění nálada ve městech, jak se vyvíjí politická situace.
+  - Zmiňuj důsledky minulých rozhodnutí a jejich dopad na současnost.
+- Atmosférické pasáže (popisy nálad, prostředí, obchodního ruchu) jsou žádoucí, ale NESMÍ obsahovat nové informace — pouze rozvíjej to, co je doloženo daty.
+
+PŘEDCHOZÍ KRONIKY (kontext pro navázání a zasazení do dějin):
+${previousChroniclesContext || "žádné předchozí kroniky"}
 
 Odpověz POUZE voláním funkce write_chronicle.`;
 
@@ -48,7 +77,7 @@ Odpověz POUZE voláním funkce write_chronicle.`;
           parameters: {
             type: "object",
             properties: {
-              chronicle: { type: "string", description: "Chronicle narrative text in Czech" },
+              chronicle: { type: "string", description: "Chronicle narrative text in Czech, minimum 800 words" },
               suggestedMemories: {
                 type: "array",
                 items: { type: "string" },
@@ -61,6 +90,7 @@ Odpověz POUZE voláním funkce write_chronicle.`;
         }
       }],
       toolChoice: { type: "function", function: { name: "write_chronicle" } },
+      maxTokens: 4096,
     });
 
     if (!result.ok) {
