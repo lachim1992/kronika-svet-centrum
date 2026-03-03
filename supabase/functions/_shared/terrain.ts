@@ -13,6 +13,24 @@ export function hashSeed(str: string): number {
   return ((h >>> 0) % 1000000) / 1000000;
 }
 
+/**
+ * Compute the r-range for a given q column so that the hex grid
+ * renders as a visual rectangle instead of a parallelogram.
+ * In axial coords (flat-top), shifting r by -floor(q/2) converts
+ * from axial to offset coordinates.
+ */
+export function rRange(q: number, halfH: number): [number, number] {
+  const offset = Math.floor(q / 2);
+  return [-halfH - offset, halfH - offset];
+}
+
+/** Check if a hex (q,r) is within the rectangular map bounds */
+export function inBounds(q: number, r: number, halfW: number, halfH: number): boolean {
+  if (q < -halfW || q > halfW) return false;
+  const [rMin, rMax] = rRange(q, halfH);
+  return r >= rMin && r <= rMax;
+}
+
 // ── Permutation table for gradient noise ──
 function buildPerm(seed: string): Uint8Array {
   const p = new Uint8Array(512);
@@ -235,7 +253,8 @@ function generateRivers(
   // Find river sources: hexes near mountains or high hills
   const sources: Array<{ q: number; r: number; height: number }> = [];
   for (let q = -halfW; q <= halfW; q++) {
-    for (let r = -halfH; r <= halfH; r++) {
+    const [rMin, rMax] = rRange(q, halfH);
+    for (let r = rMin; r <= rMax; r++) {
       const cell = hexGrid.get(`${q},${r}`);
       if (!cell) continue;
       // Source: hills adjacent to mountains, or high hills with moisture
@@ -323,7 +342,8 @@ function computeOceanDistance(
 
   // Seed: all ocean hexes + edges
   for (let q = -halfW; q <= halfW; q++) {
-    for (let r = -halfH; r <= halfH; r++) {
+    const [rMin, rMax] = rRange(q, halfH);
+    for (let r = rMin; r <= rMax; r++) {
       const key = `${q},${r}`;
       const cell = grid.get(key);
       if (!cell || cell.height < 0.15) {
@@ -340,7 +360,7 @@ function computeOceanDistance(
       const nq = q + dq;
       const nr = r + dr;
       const nk = `${nq},${nr}`;
-      if (nq < -halfW || nq > halfW || nr < -halfH || nr > halfH) continue;
+      if (!inBounds(nq, nr, halfW, halfH)) continue;
       if (!dist.has(nk)) {
         dist.set(nk, d + 1);
         queue.push([nq, nr, d + 1]);
@@ -471,10 +491,13 @@ export function generateWorldTerrain(
   const rawGrid = new Map<string, { height: number; rawMoist: number; rawTemp: number }>();
 
   for (let q = -halfW; q <= halfW; q++) {
-    for (let r = -halfH; r <= halfH; r++) {
+    const [rMin, rMax] = rRange(q, halfH);
+    for (let r = rMin; r <= rMax; r++) {
       const key = `${q},${r}`;
       const nx = q / halfW;
-      const ny = r / halfH;
+      // Use visual row (offset-corrected) for latitude calculation
+      const visualRow = r + Math.floor(q / 2);
+      const ny = visualRow / halfH;
 
       // Height: continent mask + fractal noise + mountain ridges
       const contMask = continentMask(q, r, halfW, halfH, blobs);
@@ -510,7 +533,8 @@ export function generateWorldTerrain(
   }>();
 
   for (let q = -halfW; q <= halfW; q++) {
-    for (let r = -halfH; r <= halfH; r++) {
+    const [rMin3, rMax3] = rRange(q, halfH);
+    for (let r = rMin3; r <= rMax3; r++) {
       const key = `${q},${r}`;
       const raw = rawGrid.get(key)!;
       const od = oceanDist.get(key) ?? 0;
@@ -562,7 +586,8 @@ export function generateWorldTerrain(
   // ── Phase 4: Smoothing pass for biome coherence ──
   for (let pass = 0; pass < 2; pass++) {
     for (let q = -halfW; q <= halfW; q++) {
-      for (let r = -halfH; r <= halfH; r++) {
+      const [rMin4, rMax4] = rRange(q, halfH);
+      for (let r = rMin4; r <= rMax4; r++) {
         const key = `${q},${r}`;
         const cell = hexGrid.get(key)!;
         if (cell.biome === "sea" || cell.biome === "mountains") continue;
@@ -603,7 +628,8 @@ export function generateWorldTerrain(
     for (const zone of geoBlueprint.biomeZones) {
       const strength = zone.strength ?? 0.8;
       for (let q = -halfW; q <= halfW; q++) {
-        for (let r = -halfH; r <= halfH; r++) {
+        const [rMinZ, rMaxZ] = rRange(q, halfH);
+        for (let r = rMinZ; r <= rMaxZ; r++) {
           const dist = Math.sqrt((q - zone.centerQ) ** 2 + (r - zone.centerR) ** 2);
           if (dist > zone.radius) continue;
           const cell = hexGrid.get(`${q},${r}`);
@@ -665,7 +691,8 @@ export function generateWorldTerrain(
   let coastalCount = 0;
 
   for (let q = -halfW; q <= halfW; q++) {
-    for (let r = -halfH; r <= halfH; r++) {
+    const [rMin6, rMax6] = rRange(q, halfH);
+    for (let r = rMin6; r <= rMax6; r++) {
       const cell = hexGrid.get(`${q},${r}`)!;
       const hexSeed = `${worldSeed}:${q}:${r}`;
       const key = `${q},${r}`;
