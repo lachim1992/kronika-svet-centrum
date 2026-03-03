@@ -130,6 +130,7 @@ const LeaguePanel = ({ sessionId, currentPlayerName, currentTurn }: Props) => {
   const [bulkResults, setBulkResults] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [showRules, setShowRules] = useState(false);
+  const [selectedMatch, setSelectedMatch] = useState<Match | null>(null);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -658,7 +659,7 @@ const LeaguePanel = ({ sessionId, currentPlayerName, currentTurn }: Props) => {
                       const away = teamMap.get(m.away_team_id);
                       if (!home || !away) return null;
                       return (
-                        <div key={m.id} className="p-2 hover:bg-accent/5 transition-colors flex items-center gap-2 text-xs">
+                        <div key={m.id} className="p-2 hover:bg-accent/10 transition-colors flex items-center gap-2 text-xs cursor-pointer" onClick={() => setSelectedMatch(m)}>
                           <Badge variant="secondary" className="text-[9px] h-4 px-1 rounded-[2px] w-8 justify-center">K{m.round_number}</Badge>
                           <span className={`flex-1 text-right truncate ${(m.home_score ?? 0) > (m.away_score ?? 0) ? "font-bold text-foreground" : "text-muted-foreground"}`}>{home.team_name}</span>
                           <span className="font-mono font-bold bg-muted/30 px-1.5 py-0.5 rounded text-center min-w-[32px]">{m.home_score}:{m.away_score}</span>
@@ -1240,6 +1241,101 @@ const LeaguePanel = ({ sessionId, currentPlayerName, currentTurn }: Props) => {
               </section>
             </div>
           </ScrollArea>
+        </DialogContent>
+      </Dialog>
+
+      {/* ═══ MATCH DETAIL DIALOG ═══ */}
+      <Dialog open={!!selectedMatch} onOpenChange={() => setSelectedMatch(null)}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Swords className="h-4 w-4 text-primary" />
+              Detail zápasu — Kolo {selectedMatch?.round_number}
+            </DialogTitle>
+          </DialogHeader>
+          {selectedMatch && (() => {
+            const home = teamMap.get(selectedMatch.home_team_id);
+            const away = teamMap.get(selectedMatch.away_team_id);
+            const events: any[] = Array.isArray(selectedMatch.match_events) ? selectedMatch.match_events : [];
+            const homeWon = (selectedMatch.home_score ?? 0) > (selectedMatch.away_score ?? 0);
+            const awayWon = (selectedMatch.away_score ?? 0) > (selectedMatch.home_score ?? 0);
+            return (
+              <div className="space-y-4">
+                {/* Score header */}
+                <div className="flex items-center justify-between gap-4 p-4 rounded-lg bg-muted/20 border border-border">
+                  <div className="flex-1 text-right">
+                    <div className="flex items-center justify-end gap-2">
+                      <div className="w-3 h-3 rounded-full" style={{ backgroundColor: home?.color_primary }} />
+                      <span className={`font-bold ${homeWon ? "text-primary" : "text-muted-foreground"}`}>{home?.team_name || "?"}</span>
+                    </div>
+                    <p className="text-[10px] text-muted-foreground mt-0.5">{home?.player_name}</p>
+                  </div>
+                  <div className="text-2xl font-mono font-black px-3 py-1 rounded bg-muted/40">
+                    {selectedMatch.home_score} : {selectedMatch.away_score}
+                  </div>
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2">
+                      <div className="w-3 h-3 rounded-full" style={{ backgroundColor: away?.color_primary }} />
+                      <span className={`font-bold ${awayWon ? "text-primary" : "text-muted-foreground"}`}>{away?.team_name || "?"}</span>
+                    </div>
+                    <p className="text-[10px] text-muted-foreground mt-0.5">{away?.player_name}</p>
+                  </div>
+                </div>
+
+                {/* Attendance */}
+                {selectedMatch.attendance > 0 && (
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <Users className="h-3.5 w-3.5" /> Diváci: <span className="font-medium text-foreground">{selectedMatch.attendance.toLocaleString()}</span>
+                  </div>
+                )}
+
+                {/* Match events */}
+                {events.length > 0 && (
+                  <div className="space-y-1">
+                    <h4 className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Události zápasu</h4>
+                    <ScrollArea className="max-h-[250px]">
+                      <div className="space-y-1">
+                        {events.map((ev: any, i: number) => {
+                          const icon = EVENT_ICONS[ev.type] || "📌";
+                          const isHome = ev.team_id === selectedMatch.home_team_id;
+                          return (
+                            <div key={i} className={`flex items-start gap-2 text-xs p-1.5 rounded ${ev.type === "knockout" || ev.type === "injury" ? "bg-red-500/5" : "bg-muted/10"}`}>
+                              <span className="text-muted-foreground font-mono w-6 shrink-0 text-right">{ev.minute ? `${ev.minute}'` : ""}</span>
+                              <span>{icon}</span>
+                              <span className="flex-1">
+                                <span className={isHome ? "text-primary/80" : "text-foreground"}>{ev.player_name || ev.scorer || ""}</span>
+                                {ev.type === "goal" && <span className="text-muted-foreground"> — gól</span>}
+                                {ev.type === "assist" && <span className="text-muted-foreground"> — asistence</span>}
+                                {ev.type === "injury" && <span className="text-red-400"> — zranění{ev.severity ? ` (${ev.severity})` : ""}</span>}
+                                {ev.type === "knockout" && <span className="text-red-500 font-bold"> — SMRT</span>}
+                                {ev.type === "brutal_foul" && <span className="text-orange-400"> — brutální faul</span>}
+                                {ev.type === "breakthrough" && <span className="text-yellow-400"> — průlom</span>}
+                                {ev.type === "crowd_riot" && <span className="text-orange-400"> — nepokoje v publiku</span>}
+                                {ev.type === "crowd_chant" && <span className="text-muted-foreground"> — skandování</span>}
+                                {ev.description && <span className="text-muted-foreground block text-[10px] mt-0.5">{ev.description}</span>}
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </ScrollArea>
+                  </div>
+                )}
+
+                {events.length === 0 && (
+                  <p className="text-xs text-muted-foreground text-center py-4">Žádné detailní události k dispozici.</p>
+                )}
+
+                {/* Highlight text */}
+                {selectedMatch.highlight_text && (
+                  <div className="space-y-1">
+                    <h4 className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Komentář</h4>
+                    <p className="text-xs text-muted-foreground/80 italic leading-relaxed bg-muted/10 p-2 rounded">{selectedMatch.highlight_text}</p>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
         </DialogContent>
       </Dialog>
     </div>
