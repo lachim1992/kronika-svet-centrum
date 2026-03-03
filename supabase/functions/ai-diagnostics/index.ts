@@ -117,6 +117,20 @@ serve(async (req) => {
         actionsByType[a.event_type] = (actionsByType[a.event_type] || 0) + 1;
       }
 
+      // Cross-reference: actual outcomes vs logged events
+      const allBuildings = citiesWithBuildings.flatMap((c: any) => c.buildings || []);
+      const buildingsCompleted = allBuildings.filter((b: any) => b.status === "completed" && !b.is_wonder).length;
+      const buildingsInProgress = allBuildings.filter((b: any) => b.status !== "completed" && !b.is_wonder).length;
+      const wondersCompleted = allBuildings.filter((b: any) => b.is_wonder && b.status === "completed").length;
+      const wondersInProgress = allBuildings.filter((b: any) => b.is_wonder && b.status !== "completed").length;
+
+      const actionOutcomes = {
+        construction: { events: actionsByType["construction"] || 0, completed: buildingsCompleted, inProgress: buildingsInProgress },
+        wonder: { events: actionsByType["wonder"] || 0, completed: wondersCompleted, inProgress: wondersInProgress },
+        found_settlement: { events: actionsByType["found_settlement"] || 0, actual: cities.length },
+        recruit: { events: actionsByType["recruit"] || 0, actual: stacks.length },
+      };
+
       return {
         id: f.id,
         factionName: f.faction_name,
@@ -132,6 +146,7 @@ serve(async (req) => {
         totalGarrison: cities.reduce((s: number, c: any) => s + (c.military_garrison || 0), 0),
         totalStrength: stacks.reduce((s: number, st: any) => s + (st.power || 0), 0),
         actionsByType,
+        actionOutcomes,
         recentActions: factionActions.slice(0, 20),
       };
     });
