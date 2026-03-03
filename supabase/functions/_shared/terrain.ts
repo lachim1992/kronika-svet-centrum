@@ -530,16 +530,27 @@ export function generateWorldTerrain(
 
       let biome = determineBiome(raw.height, moisture, temp);
 
-      // Apply biome weights: if weight < 0.5, try to convert to neighbor-compatible biome
+      // Apply biome weights proportionally
       if (biome !== "sea" && biome !== "mountains") {
         const w = biomeWeights[biome] ?? 1;
-        if (w < 0.3) {
-          // Very low weight — force re-roll to an alternative
+        // Probabilistic re-roll: lower weight = higher chance of switching
+        // w=1 → keep 100%, w=0.5 → keep 50%, w=0 → always re-roll
+        const keepProb = Math.min(1, Math.max(0, w));
+        const roll = hashSeed(`${worldSeed}:bw:${q}:${r}`);
+        if (roll > keepProb) {
+          // Re-roll: pick alternative biome weighted by their weights
           const alts: BiomeFamily[] = ["plains", "forest", "hills", "desert", "swamp", "tundra"];
-          const candidates = alts.filter(b => b !== biome && (biomeWeights[b] ?? 1) > 0.3);
-          if (candidates.length > 0) {
-            const pick = candidates[Math.floor(hashSeed(`${worldSeed}:bw:${q}:${r}`) * candidates.length)];
-            biome = pick;
+          const candidates = alts.filter(b => b !== biome);
+          // Weighted random selection among candidates
+          const totalWeight = candidates.reduce((sum, b) => sum + (biomeWeights[b] ?? 1), 0);
+          if (totalWeight > 0) {
+            let pick = hashSeed(`${worldSeed}:bw2:${q}:${r}`) * totalWeight;
+            let chosen: BiomeFamily = candidates[0];
+            for (const b of candidates) {
+              pick -= (biomeWeights[b] ?? 1);
+              if (pick <= 0) { chosen = b; break; }
+            }
+            biome = chosen;
           }
         }
       }
