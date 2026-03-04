@@ -350,8 +350,10 @@ const HomeTab = ({
                         <div className={`text-lg font-bold font-display ${city.city_stability < 40 ? "text-destructive" : "text-foreground"}`}>{city.city_stability}</div>
                       </div>
                       <div>
-                        <span className="stat-label">Sýpka</span>
-                        <div className="text-lg font-bold font-display">{city.local_grain_reserve || 0}<span className="text-sm text-muted-foreground">/{city.local_granary_capacity || 0}</span></div>
+                        <span className="stat-label">Produkce</span>
+                        <div className={`text-lg font-bold font-display ${(city.last_turn_grain_prod || 0) - (city.last_turn_grain_cons || 0) < 0 ? "text-destructive" : "text-foreground"}`}>
+                          {(city.last_turn_grain_prod || 0) - (city.last_turn_grain_cons || 0) >= 0 ? "+" : ""}{(city.last_turn_grain_prod || 0) - (city.last_turn_grain_cons || 0)} 🌾
+                        </div>
                       </div>
                       <div>
                         <span className="stat-label">Obilí</span>

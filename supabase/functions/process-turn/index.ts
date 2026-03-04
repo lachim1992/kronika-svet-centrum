@@ -286,9 +286,14 @@ Deno.serve(async (req) => {
       logEntries.push(`Bonusy ze staveb: ${effStr}`);
     }
 
-    // Compute granary/stables capacity from infrastructure
-    const granaryCapacity = 500 * (infra?.granary_level || 1) * (infra?.granaries_count || 1);
+    // Compute granary/stables capacity from infrastructure + building effects
+    const infraGranary = 500 * (infra?.granary_level || 1) * (infra?.granaries_count || 1);
+    const buildingGranaryBonus = globalBuildingEffects["granary_capacity"] || 0;
+    const granaryCapacity = infraGranary + buildingGranaryBonus;
     const stablesCapacity = 100 * (infra?.stables_level || 1) * (infra?.stables_count || 1);
+    if (buildingGranaryBonus > 0) {
+      logEntries.push(`Sýpka: základ ${infraGranary} + budovy +${buildingGranaryBonus} = ${granaryCapacity}`);
+    }
 
     // ═══ DISTRICT EFFECTS ═══
     // Load completed districts for all cities and aggregate modifiers
@@ -704,55 +709,9 @@ Deno.serve(async (req) => {
       }
     }
 
-    // ═══ SPORT & ACADEMY AUTO-GENERATION ═══
-    // If funding is high, chance to spawn new institutions
-    if (sportFundingPct >= 5) { // Min 5% funding
-      const roll = Math.random() * 100;
-      // Chance: 1% per 1% funding above 5. Max 15% chance at 20% funding.
-      const chance = (sportFundingPct - 4); 
-      
-      if (roll < chance) {
-        // Spawn something!
-        const spawnCity = myCities.length > 0 ? myCities[Math.floor(Math.random() * myCities.length)] : null;
-        if (spawnCity) {
-           // Decide Academy vs Association
-           const spawnType = Math.random() > 0.5 ? "academy" : "association";
-           
-           if (spawnType === "academy") {
-              const { count } = await supabase.from("academies").select("id", { count: "exact", head: true }).eq("session_id", sessionId).eq("player_name", playerName);
-              if ((count || 0) < 3) {
-                await supabase.from("academies").insert({
-                  session_id: sessionId,
-                  city_id: spawnCity.id,
-                  player_name: playerName,
-                  name: `Akademie ${spawnCity.name}`,
-                  color_primary: "#3b82f6",
-                  color_secondary: "#ffffff",
-                  founded_turn: currentTurn,
-                  status: "active",
-                  infrastructure: 5,
-                  reputation: 5,
-                });
-                logEntries.push(`🏛️ Díky štědrému financování vznikla nová Akademie v ${spawnCity.name}!`);
-              }
-           } else {
-              const { count } = await supabase.from("sports_associations").select("id", { count: "exact", head: true }).eq("session_id", sessionId).eq("player_name", playerName);
-              if ((count || 0) < 3) {
-                await supabase.from("sports_associations").insert({
-                  session_id: sessionId,
-                  city_id: spawnCity.id,
-                  player_name: playerName,
-                  name: `Fotbalová asociace ${spawnCity.name}`,
-                  reputation: 5,
-                  scouting_level: 1,
-                  youth_development: 1,
-                });
-                logEntries.push(`⚽ Díky štědrému financování vznikla nová Sportovní asociace v ${spawnCity.name}!`);
-              }
-           }
-        }
-      }
-    }
+    // ═══ SPORT & ACADEMY ═══
+    // Auto-generation removed — academies and associations are player-created only.
+    // Sport funding expense is still deducted from gold above.
 
     await supabase.from("realm_resources").update({
       grain_reserve: grainReserve,
