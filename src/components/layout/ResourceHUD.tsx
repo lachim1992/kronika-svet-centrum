@@ -246,6 +246,15 @@ const ResourceHUD = ({ sessionId, playerName, cities, currentTurn }: ResourceHUD
                 <span>Zásoby: {grainStock}</span>
                 <span>Kapacita: {grainCapacity}</span>
               </div>
+              {/* Explain: grain cap breakdown */}
+              <details className="mt-1">
+                <summary className="text-[9px] text-muted-foreground cursor-pointer hover:text-foreground">📋 Proč tato kapacita?</summary>
+                <div className="mt-1 space-y-0.5 text-[9px] text-muted-foreground pl-2 border-l border-border">
+                  <div>Základ (infrastruktura): 500</div>
+                  <div>Bonusy z budov: +{(grainCapacity - 500) > 0 ? grainCapacity - 500 : 0}</div>
+                  <div className="font-semibold text-foreground">Celkem: {grainCapacity}</div>
+                </div>
+              </details>
             </div>
 
             <div className="space-y-1 mb-3">
@@ -272,7 +281,17 @@ const ResourceHUD = ({ sessionId, playerName, cities, currentTurn }: ResourceHUD
 
             {myCities.length > 0 && (
               <div className="space-y-1">
-                <h5 className="text-[10px] font-semibold text-muted-foreground">Nejzranitelnější města</h5>
+              {/* Explain: population breakdown */}
+              <details className="mt-1 mb-2">
+                <summary className="text-[9px] text-muted-foreground cursor-pointer hover:text-foreground">📋 Proč tato populace?</summary>
+                <div className="mt-1 space-y-0.5 text-[9px] text-muted-foreground pl-2 border-l border-border">
+                  <div>Celková pop.: {myCities.reduce((s, c) => s + (c.population_total || 0), 0).toLocaleString()}</div>
+                  <div>Aktivní pop. (vážená): {computedPool}</div>
+                  <div>Mobilizováno: {committed}</div>
+                  <div>Zdroj: cities.population_total (engine: world-tick)</div>
+                </div>
+              </details>
+              <h5 className="text-[10px] font-semibold text-muted-foreground">Nejzranitelnější města</h5>
                 {[...myCities]
                   .sort((a, b) => (b.vulnerability_score || 0) - (a.vulnerability_score || 0))
                   .slice(0, 3)

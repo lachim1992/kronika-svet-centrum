@@ -247,13 +247,14 @@ const CityDemographyPanel = ({ sessionId, city, currentPlayerName, currentTurn, 
         </CardContent>
       </Card>
 
-      {/* ─── DEMOGRAPHIC POLICIES ─── */}
+      {/* ─── DEMOGRAPHIC POLICIES (PREVIEW) ─── */}
       {isOwner && (
-        <Card>
+        <Card className="opacity-75">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-display flex items-center gap-2">
-              <Landmark className="h-4 w-4 text-primary" />Demografická politika
-              <InfoTip>Zvolte jednu aktivní politiku ovlivňující migraci, mobilitu a porodnost.</InfoTip>
+              <Landmark className="h-4 w-4 text-muted-foreground" />Demografická politika
+              <Badge variant="outline" className="text-[9px] ml-1">Preview</Badge>
+              <InfoTip>Tato sekce je vizuální náhled. Politiky zatím nemají mechanický dopad v enginu.</InfoTip>
             </CardTitle>
           </CardHeader>
           <CardContent>

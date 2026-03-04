@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import CityDirectory from "@/components/CityDirectory";
 import CityStatesPanel from "@/components/CityStatesPanel";
-import ExplorationPanel from "@/components/ExplorationPanel";
+// ExplorationPanel disabled — legacy mechanic
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { MapPin, Building2, Globe, Castle, Mountain, Eye, EyeOff, Compass, Map } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
@@ -229,6 +229,9 @@ const WorldTab = ({
 
             {isAdmin && (
               <TabsContent value="citystates" className="mt-3">
+                <div className="flex items-center gap-2 mb-2">
+                  <Badge variant="outline" className="text-[9px] text-muted-foreground">Legacy — bez napojení na engine</Badge>
+                </div>
                 <CityStatesPanel sessionId={sessionId} cityStates={cityStates} recentEvents={events} players={players} />
               </TabsContent>
             )}
@@ -249,39 +252,21 @@ const WorldTab = ({
       </div>
 
       {/* ═══════════════════════════════════════════ */}
-      {/* SECTION B — Neznámé území / Exploration     */}
+      {/* SECTION B — Exploration (LEGACY — disabled) */}
       {/* ═══════════════════════════════════════════ */}
       <section>
         <div className="flex items-center gap-2 mb-3">
-          <Compass className="h-4 w-4 text-primary" />
-          <h3 className="font-display font-semibold text-sm">
-            {isAdmin ? "Průzkumné výpravy" : "Neznámé území"}
+          <Compass className="h-4 w-4 text-muted-foreground" />
+          <h3 className="font-display font-semibold text-sm text-muted-foreground">
+            Průzkumné výpravy
           </h3>
-          {!isAdmin && unknownRegions > 0 && (
-            <Badge variant="outline" className="text-[9px] gap-1 ml-auto">
-              <EyeOff className="h-3 w-3" />
-              {unknownRegions} neprozkoumaných oblastí
-            </Badge>
-          )}
+          <Badge variant="outline" className="text-[9px] ml-auto text-muted-foreground">Legacy — deaktivováno</Badge>
         </div>
-
-        {!isAdmin && unknownRegions > 0 && (
-          <div className="p-3 rounded-lg border border-dashed border-muted-foreground/20 bg-muted/10 mb-3">
-            <p className="text-xs text-muted-foreground italic text-center">
-              Za hranicemi leží ještě {unknownRegions} neprozkoumaných oblastí…
-            </p>
-          </div>
-        )}
-
-        <ExplorationPanel
-          sessionId={sessionId}
-          playerName={currentPlayerName}
-          currentTurn={currentTurn}
-          worldFoundation={worldFoundation}
-          regions={regions}
-          expeditions={expeditions}
-          onExploreComplete={handleExploreComplete}
-        />
+        <div className="p-4 rounded-lg border border-dashed border-muted-foreground/20 bg-muted/5">
+          <p className="text-xs text-muted-foreground italic text-center">
+            Průzkumné výpravy jsou pozastaveny. Svět je prozkoumán při inicializaci mapy.
+          </p>
+        </div>
       </section>
 
     </div>
