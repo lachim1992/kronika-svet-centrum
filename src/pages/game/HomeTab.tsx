@@ -11,11 +11,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import {
   Crown, Castle, Swords, Users, Wheat, Flame,
   MapPin, Eye, ArrowUpDown, Skull, BarChart3,
-  Trees, Mountain, Anvil, Plus
+  Trees, Mountain, Anvil, Plus, Cpu
 } from "lucide-react";
 import type { EntityIndex } from "@/hooks/useEntityIndex";
 import ProvinceOnboardingWizard from "@/components/ProvinceOnboardingWizard";
 import { toast } from "sonner";
+import { useDevMode } from "@/hooks/useDevMode";
+import ExplainDrawer from "@/components/dev/ExplainDrawer";
 
 const SETTLEMENT_LABELS: Record<string, string> = {
   HAMLET: "Osada", TOWNSHIP: "Městečko", CITY: "Město", POLIS: "Polis",
@@ -61,6 +63,8 @@ const HomeTab = ({
   const [hasProvince, setHasProvince] = useState<boolean | null>(null);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [activeWars, setActiveWars] = useState<any[]>([]);
+  const [explainTarget, setExplainTarget] = useState<{ metric: "population" | "grain_cap"; cityId: string } | null>(null);
+  const { devMode } = useDevMode();
 
   const myCities = cities.filter(c => c.owner_player === currentPlayerName);
 
@@ -329,7 +333,16 @@ const HomeTab = ({
                     <div className="mb-3">
                       <div className="flex items-center justify-between text-sm mb-1">
                         <span className="text-muted-foreground">Populace</span>
-                        <span className="font-semibold text-base">{pop.toLocaleString()}</span>
+                        <div className="flex items-center gap-1">
+                          {devMode && (
+                            <button onClick={(e) => { e.stopPropagation(); setExplainTarget({ metric: "population", cityId: city.id }); }}
+                              className="text-[9px] px-1 py-0.5 rounded bg-primary/10 text-primary hover:bg-primary/20 transition-colors"
+                              title="Explain population">
+                              <Cpu className="h-2.5 w-2.5 inline mr-0.5" />Proč?
+                            </button>
+                          )}
+                          <span className="font-semibold text-base">{pop.toLocaleString()}</span>
+                        </div>
                       </div>
                       <div className="flex h-2.5 rounded-full overflow-hidden bg-muted">
                         <div className="bg-primary/70 transition-all" style={{ width: `${peasantPct}%` }} title={`Rolníci ${peasantPct}%`} />
@@ -356,7 +369,14 @@ const HomeTab = ({
                         </div>
                       </div>
                       <div>
-                        <span className="stat-label">Obilí</span>
+                        <span className="stat-label flex items-center gap-1">
+                          Obilí
+                          {devMode && (
+                            <button onClick={(e) => { e.stopPropagation(); setExplainTarget({ metric: "grain_cap", cityId: city.id }); }}
+                              className="text-[8px] px-0.5 rounded bg-primary/10 text-primary hover:bg-primary/20"
+                              title="Explain grain cap">?</button>
+                          )}
+                        </span>
                         <div className={`text-lg font-bold font-display ${grainNet < 0 ? "text-destructive" : "text-success"}`}>
                           {grainNet >= 0 ? "+" : ""}{grainNet}
                         </div>
@@ -395,6 +415,15 @@ const HomeTab = ({
             );
           })}
         </div>
+      )}
+      {explainTarget && (
+        <ExplainDrawer
+          open={!!explainTarget}
+          onClose={() => setExplainTarget(null)}
+          metric={explainTarget.metric}
+          cityId={explainTarget.cityId}
+          sessionId={sessionId}
+        />
       )}
     </div>
   );

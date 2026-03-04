@@ -8,8 +8,10 @@ import { Scroll } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { useNextTurn } from "@/hooks/useNextTurn";
+import { DevModeProvider } from "@/hooks/useDevMode";
 import AppHeader from "@/components/layout/AppHeader";
 import ResourceHUD from "@/components/layout/ResourceHUD";
+import DevHUD from "@/components/dev/DevHUD";
 import AppShell from "@/components/layout/AppShell";
 import type { TabId } from "@/components/layout/BottomNav";
 import ActionChooser from "@/components/layout/ActionChooser";
@@ -275,6 +277,7 @@ const Dashboard = () => {
   };
 
   return (
+    <DevModeProvider allowed={myRole === "admin"}>
     <AppShell
       activeTab={activeTab}
       onTabChange={setActiveTab}
@@ -313,7 +316,10 @@ const Dashboard = () => {
         />
       }
       resourceHud={
-        <ResourceHUD sessionId={session.id} playerName={myPlayerName} cities={cities} currentTurn={currentTurn} />
+        <>
+          <ResourceHUD sessionId={session.id} playerName={myPlayerName} cities={cities} currentTurn={currentTurn} />
+          <DevHUD sessionId={session.id} currentTurn={currentTurn} playerName={myPlayerName} />
+        </>
       }
       bottomExtras={
         <>
@@ -499,6 +505,7 @@ const Dashboard = () => {
         />
       )}
     </AppShell>
+    </DevModeProvider>
   );
 };
 

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import DevModePanel from "@/components/DevModePanel";
+import DevConsolePanel from "@/components/dev/DevConsolePanel";
 import { Wrench, SkipForward, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
@@ -113,6 +114,7 @@ const DevTab = ({
         memoriesCount={memoriesCount}
         playersCount={playersCount}
       />
+      <DevConsolePanel sessionId={sessionId} currentTurn={currentTurn} />
     </div>
   );
 };
