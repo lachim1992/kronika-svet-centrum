@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { Copy, User, Home, LogOut, Globe, Sun, Moon, Play, Loader2, Bell, Lock } from "lucide-react";
+import { Copy, User, Home, LogOut, Globe, Sun, Moon, Play, Loader2, Bell, Lock, Bug } from "lucide-react";
+import { useDevMode } from "@/hooks/useDevMode";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -39,6 +40,7 @@ interface Props {
 const AppHeader = ({ roomCode, currentTurn, worldName, playerName, myRole, currentSessionId, onNextTurn, onCloseTurn, turnProcessing, players = [], gameMode, myTurnClosed, onOpenCouncil }: Props) => {
   const navigate = useNavigate();
   const { signOut, user } = useAuth();
+  const { devMode, toggleDevMode } = useDevMode();
   const [isLight, setIsLight] = useState(() => document.documentElement.classList.contains("light"));
 
   const copyCode = () => {
@@ -192,6 +194,18 @@ const AppHeader = ({ roomCode, currentTurn, worldName, playerName, myRole, curre
                   {notifCount > 9 ? "9+" : notifCount}
                 </span>
               )}
+            </Button>
+          )}
+
+          {myRole === "admin" && (
+            <Button
+              variant={devMode ? "default" : "ghost"}
+              size="icon"
+              className={`h-8 w-8 ${devMode ? "bg-primary/20 text-primary" : "text-muted-foreground hover:text-foreground"}`}
+              onClick={toggleDevMode}
+              title="Dev Mode"
+            >
+              <Bug className="h-4 w-4" />
             </Button>
           )}
 
