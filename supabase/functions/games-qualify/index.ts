@@ -116,12 +116,12 @@ Deno.serve(async (req) => {
         });
       }
 
-      // Get all graduated students for this player
+      // Get all graduated or promoted students for this player (promoted = previously nominated, still eligible)
       const { data: graduates } = await sb.from("academy_students")
         .select("*, academies!inner(name, profile_athletics, profile_combat, profile_culture, profile_strategy, infrastructure, trainer_level, nutrition)")
         .eq("session_id", session_id)
         .eq("player_name", player_name)
-        .eq("status", "graduated");
+        .in("status", ["graduated", "promoted"]);
 
       if (!graduates || graduates.length === 0) {
         return new Response(JSON.stringify({ error: "Žádní absolventi k dispozici. Nejprve potřebujete akademie s absolventy." }), {
