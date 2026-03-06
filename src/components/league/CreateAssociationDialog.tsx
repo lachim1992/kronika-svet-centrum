@@ -45,7 +45,7 @@ const CreateAssociationDialog = ({ open, onOpenChange, sessionId, currentPlayerN
     }
     setCreating(true);
     try {
-      const { error } = await supabase.from("sports_associations").insert({
+      const { data: assocData, error } = await supabase.from("sports_associations").insert({
         session_id: sessionId,
         city_id: cityId,
         player_name: currentPlayerName,
@@ -62,9 +62,30 @@ const CreateAssociationDialog = ({ open, onOpenChange, sessionId, currentPlayerN
         fan_base: 50,
         budget: 50,
         founded_turn: currentTurn,
-      });
+      }).select().single();
       if (error) throw error;
-      toast.success(`${name} založen! Nyní můžete zakládat týmy.`);
+
+      // Auto-create first academy under this association
+      const isGladiatorial = assocType === "gladiator";
+      const academyName = isGladiatorial
+        ? `Gladiátorská škola – ${cities.get(cityId) || "?"}`
+        : `Sportovní akademie – ${cities.get(cityId) || "?"}`;
+      await supabase.from("academies").insert({
+        session_id: sessionId,
+        city_id: cityId,
+        player_name: currentPlayerName,
+        name: academyName,
+        color_primary: colorPrimary,
+        color_secondary: colorSecondary,
+        founded_turn: currentTurn,
+        status: "active",
+        infrastructure: 10,
+        reputation: 10,
+        is_gladiatorial: isGladiatorial,
+        association_id: assocData.id,
+      } as any);
+
+      toast.success(`${name} založen s první akademií!`);
       onCreated();
       onOpenChange(false);
       // Reset

@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Shield, Users, Coins, TrendingUp, Trophy, Loader2, Plus, Star, Swords, Eye, MapPin, Crown, Target } from "lucide-react";
+import { Shield, Users, Coins, TrendingUp, Trophy, Loader2, Plus, Star, Swords, Eye, MapPin, Crown, Target, GraduationCap, School } from "lucide-react";
 import { toast } from "sonner";
 import CreateAssociationDialog from "./CreateAssociationDialog";
 
