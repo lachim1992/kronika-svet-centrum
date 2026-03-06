@@ -303,7 +303,8 @@ const AssociationsPanel = ({ sessionId, currentPlayerName, currentTurn }: Props)
             </Card>
           ) : (
             myAssociations.map(assoc => {
-              const assocTeams = myTeams.filter(t => true); // All player teams belong to their assocs
+              const assocTeams = myTeams.filter(t => true);
+              const assocAcademies = getAssocAcademies(assoc.id, assoc.association_type);
               const teamPlayerCounts = assocTeams.map(t => allPlayers.filter(p => p.team_id === t.id && !p.is_dead).length);
               const totalPlayers = teamPlayerCounts.reduce((a, b) => a + b, 0);
               return (
