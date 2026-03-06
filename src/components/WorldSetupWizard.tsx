@@ -415,20 +415,22 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
       setStepStatus(progress, 3, "active");
       if (civDescription.trim()) {
         try {
-          const { data: identityData, error: identityErr } = await supabase.functions.invoke("extract-civ-identity", {
+          // Re-extract with real session ID (preview used temporary "preview" ID)
+          const { data: freshIdentity, error: identityErr } = await supabase.functions.invoke("extract-civ-identity", {
             body: {
               sessionId: session.id,
               playerName: playerName.trim(),
               civDescription: civDescription.trim(),
             },
           });
-          if (!identityErr && identityData && !identityData.ai_error) {
+          const idData = (!identityErr && freshIdentity && !freshIdentity.ai_error) ? freshIdentity : identityData;
+          if (idData) {
             // Update civilization record with AI-generated narrative flavor
             if (civRecord?.id) {
               const civUpdate: Record<string, string> = {};
-              if (identityData.core_myth) civUpdate.core_myth = identityData.core_myth;
-              if (identityData.cultural_quirk) civUpdate.cultural_quirk = identityData.cultural_quirk;
-              if (identityData.architectural_style) civUpdate.architectural_style = identityData.architectural_style;
+              if (idData.core_myth) civUpdate.core_myth = idData.core_myth;
+              if (idData.cultural_quirk) civUpdate.cultural_quirk = idData.cultural_quirk;
+              if (idData.architectural_style) civUpdate.architectural_style = idData.architectural_style;
               if (Object.keys(civUpdate).length > 0) {
                 await supabase.from("civilizations").update(civUpdate).eq("id", civRecord.id);
               }
