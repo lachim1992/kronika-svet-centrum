@@ -362,7 +362,64 @@ const CityBuildingsPanel = ({
     }
   };
 
-  const handleSaveVisual = async (b: any) => {
+  // Check if a civ building tag is already built in this city
+  const civBuildingBuiltTags = new Set(
+    buildings.filter(b => b.building_tags?.some((t: string) => civBuildings.some(cb => cb.tag === t)))
+      .flatMap(b => (b.building_tags || []) as string[])
+  );
+
+  const handleBuildCivBuilding = async (cb: any) => {
+    if (!realm || saving) return;
+    if (!canAfford({ cost_wealth: cb.cost_wealth, cost_wood: cb.cost_wood, cost_stone: cb.cost_stone, cost_iron: cb.cost_iron })) {
+      toast.error("Nedostatek surovin!"); return;
+    }
+    setSaving(true);
+    await supabase.from("realm_resources").update({
+      gold_reserve: (realm.gold_reserve || 0) - (cb.cost_wealth || 0),
+      wood_reserve: (realm.wood_reserve || 0) - (cb.cost_wood || 0),
+      stone_reserve: (realm.stone_reserve || 0) - (cb.cost_stone || 0),
+      iron_reserve: (realm.iron_reserve || 0) - (cb.cost_iron || 0),
+    } as any).eq("id", realm.id);
+
+    const buildDuration = cb.build_duration || 4;
+    await supabase.from("city_buildings").insert({
+      session_id: sessionId, city_id: cityId,
+      name: cb.name,
+      description: cb.description || "",
+      category: cb.category || "cultural",
+      cost_wealth: cb.cost_wealth || 0,
+      cost_wood: cb.cost_wood || 0,
+      cost_stone: cb.cost_stone || 0,
+      cost_iron: cb.cost_iron || 0,
+      build_duration: buildDuration,
+      build_started_turn: currentTurn,
+      effects: cb.effects || {},
+      flavor_text: cb.flavor_text || null,
+      founding_myth: cb.founding_myth || null,
+      image_prompt: cb.image_prompt || null,
+      is_ai_generated: true,
+      building_tags: [cb.tag],
+      status: buildDuration <= 1 ? "completed" : "building",
+      completed_turn: buildDuration <= 1 ? currentTurn : null,
+      current_level: 1,
+      max_level: 5,
+      level_data: cb.level_data || [],
+    } as any);
+
+    const chronicleText = `V městě **${cityName}** začala výstavba civilizační budovy: **${cb.name}**. ${cb.founding_myth || cb.description || ""}`;
+    await dispatchCommand({
+      sessionId, turnNumber: currentTurn,
+      actor: { name: currentPlayerName, type: "player" },
+      commandType: "BUILD_BUILDING",
+      commandPayload: { cityId, cityName, buildingName: cb.name, chronicleText, isAiGenerated: true, isPremium: true },
+    });
+
+    toast.success(`👑 Civilizační stavba "${cb.name}" zahájena!`);
+    setSaving(false);
+    onRefetch?.();
+    fetchData();
+  };
+
     await supabase.from("city_buildings").update({
       flavor_text: editFlavor || b.flavor_text,
       architectural_style: editArchStyle || b.architectural_style,
