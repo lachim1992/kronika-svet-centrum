@@ -16,7 +16,7 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const { sessionId, playerName, worldName, premise, tone, victoryStyle, worldSize, tier, settlementName, cultureName, languageName, realmName, factionConfigs } = await req.json();
+    const { sessionId, playerName, worldName, premise, tone, victoryStyle, worldSize, tier, settlementName, cultureName, languageName, realmName, factionConfigs, terrainParams: userTerrainParams, mapWidth: userMapWidth, mapHeight: userMapHeight } = await req.json();
 
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) {
@@ -666,12 +666,12 @@ DŮLEŽITÉ: affected_players/faction MUSÍ používat přesná jména frakcí. 
         .select("map_width, map_height")
         .eq("session_id", sessionId)
         .maybeSingle();
-      const mapWidth = (wfData as any)?.map_width || 21;
-      const mapHeight = (wfData as any)?.map_height || 21;
+      const mapWidth = userMapWidth || (wfData as any)?.map_width || 21;
+      const mapHeight = userMapHeight || (wfData as any)?.map_height || 21;
 
-      // ── Build terrain_params from AI geography blueprint ──
+      // ── Build terrain_params from AI geography blueprint + user overrides ──
       const geoBlueprint = world.geography || {};
-      const terrainParams: any = {};
+      const terrainParams: any = { ...(userTerrainParams || {}) };
 
       // Continent shape → continentCount + landRatio
       const shapeMap: Record<string, { continents: number; land: number }> = {

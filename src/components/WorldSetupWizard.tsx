@@ -6,7 +6,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Globe, Sparkles, Swords, Users, X, Plus, Mountain, TreePine, Waves, Sun, Snowflake, Flame, Bot, Pen, UserPlus, Loader2, Server, RotateCcw, Clock, Check, AlertCircle, Shield, Handshake, Store, Eye, Expand } from "lucide-react";
+import { Slider } from "@/components/ui/slider";
+import { Globe, Sparkles, Swords, Users, X, Plus, Mountain, TreePine, Waves, Sun, Snowflake, Flame, Bot, Pen, UserPlus, Loader2, Server, RotateCcw, Clock, Check, AlertCircle, Shield, Handshake, Store, Eye, Expand, Map as MapIcon, Settings } from "lucide-react";
 import { toast } from "sonner";
 import WorldCreationOverlay from "./WorldCreationOverlay";
 import CivIdentityPreview from "./CivIdentityPreview";
@@ -219,6 +220,16 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
   const [homelandBiome, setHomelandBiome] = useState("plains");
   const [homelandDesc, setHomelandDesc] = useState("");
 
+  // Map configuration
+  const [mapWidth, setMapWidth] = useState(21);
+  const [mapHeight, setMapHeight] = useState(21);
+  const [landRatio, setLandRatio] = useState(55);
+  const [mountainDensity, setMountainDensity] = useState(50);
+  const [continentShape, setContinentShape] = useState<string>("pangaea");
+  const [biomeWeights, setBiomeWeights] = useState<Record<string, number>>({
+    plains: 100, forest: 100, hills: 80, desert: 50, swamp: 30, tundra: 40,
+  });
+
   // AI Identity preview
   const [identityData, setIdentityData] = useState<any>(null);
   const [identityLoading, setIdentityLoading] = useState(false);
@@ -254,13 +265,13 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
   const isMultiMode = gameMode === "tb_multi";
   const isPersistentMode = gameMode === "time_persistent";
 
-  const totalSteps = 9; // Added identity preview step
+  const totalSteps = 10; // 0-9: mode, player, world, tone, victory, AI/homeland, MAP CONFIG, factions, identity, final
 
   const handleExtractIdentity = async () => {
     if (!civDescription.trim()) {
       // No description → skip with neutral modifiers
       setIdentityData(null);
-      setStep(7);
+      setStep(8);
       return;
     }
     setIdentityLoading(true);
@@ -507,6 +518,14 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
               languageName: languageName.trim(),
               realmName: realmName.trim(),
               factionConfigs: factionConfigs.filter(fc => fc.name.trim() || fc.personality || fc.description.trim()),
+              terrainParams: {
+                targetLandRatio: landRatio / 100,
+                continentCount: continentShape === "pangaea" ? 1 : continentShape === "two_continents" ? 2 : continentShape === "archipelago" ? 5 : 2,
+                mountainDensity: mountainDensity / 100,
+                biomeWeights: Object.fromEntries(Object.entries(biomeWeights).map(([k, v]) => [k, v / 100])),
+              },
+              mapWidth,
+              mapHeight,
             },
           });
           if (genErr) {
@@ -712,10 +731,19 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
 
       // Generate batch hex map (skip for AI mode — already done inside world-generate-init)
       if (!isAIMode) {
-        const mapSizeConfig = WORLD_SIZES.find(s => s.value === worldSize) || WORLD_SIZES[0];
         try {
           await supabase.functions.invoke("generate-world-map", {
-            body: { session_id: session.id, width: mapSizeConfig.mapW, height: mapSizeConfig.mapH },
+            body: {
+              session_id: session.id,
+              width: mapWidth,
+              height: mapHeight,
+              terrain_params: {
+                targetLandRatio: landRatio / 100,
+                continentCount: continentShape === "pangaea" ? 1 : continentShape === "two_continents" ? 2 : continentShape === "archipelago" ? 5 : 2,
+                mountainDensity: mountainDensity / 100,
+                biomeWeights: Object.fromEntries(Object.entries(biomeWeights).map(([k, v]) => [k, v / 100])),
+              },
+            },
           });
         } catch (e) {
           console.warn("Batch map generation warning:", e);
@@ -1051,7 +1079,7 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
             <Label>Velikost světa</Label>
             <div className="space-y-2">
               {WORLD_SIZES.map(s => (
-                <button key={s.value} onClick={() => setWorldSize(s.value)}
+                <button key={s.value} onClick={() => { setWorldSize(s.value); setMapWidth(s.mapW); setMapHeight(s.mapH); }}
                   className={`w-full p-3 rounded-lg border text-left text-sm transition-colors ${worldSize === s.value ? "border-primary bg-primary/10" : "border-border hover:border-primary/30"}`}>
                   <div className="font-display font-semibold">{s.label}</div>
                   <div className="text-xs text-muted-foreground">{s.desc}</div>
@@ -1101,8 +1129,106 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
         </div>
       )}
 
-      {/* Step 6: AI Faction Configuration */}
+      {/* Step 6: Map Configuration */}
       {step === 6 && !creating && (
+        <div className="space-y-3">
+          <div className="bg-primary/5 border border-primary/20 rounded-lg p-3">
+            <h4 className="font-display font-semibold text-sm flex items-center gap-2 mb-1">
+              <MapIcon className="h-4 w-4 text-primary" />
+              Konfigurace mapy
+            </h4>
+            <p className="text-[10px] text-muted-foreground">
+              Nastavte fyzické parametry herní mapy — velikost, terén, rozložení biomů.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1">
+              <Label className="text-xs">Šířka mapy</Label>
+              <div className="flex items-center gap-2">
+                <Slider value={[mapWidth]} min={11} max={61} step={2} onValueChange={v => setMapWidth(v[0])} className="flex-1" />
+                <Badge variant="secondary" className="text-[10px] w-10 justify-center">{mapWidth}</Badge>
+              </div>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Výška mapy</Label>
+              <div className="flex items-center gap-2">
+                <Slider value={[mapHeight]} min={11} max={61} step={2} onValueChange={v => setMapHeight(v[0])} className="flex-1" />
+                <Badge variant="secondary" className="text-[10px] w-10 justify-center">{mapHeight}</Badge>
+              </div>
+            </div>
+          </div>
+
+          <div className="space-y-1">
+            <Label className="text-xs">Poměr souše / moře: <strong>{landRatio}%</strong> pevnina</Label>
+            <Slider value={[landRatio]} min={20} max={95} step={5} onValueChange={v => setLandRatio(v[0])} />
+            <div className="flex justify-between text-[9px] text-muted-foreground">
+              <span>🌊 Ostrovy</span>
+              <span>🌍 Kontinentální</span>
+            </div>
+          </div>
+
+          <div className="space-y-1">
+            <Label className="text-xs">Hustota hor: <strong>{mountainDensity}%</strong></Label>
+            <Slider value={[mountainDensity]} min={0} max={100} step={10} onValueChange={v => setMountainDensity(v[0])} />
+            <div className="flex justify-between text-[9px] text-muted-foreground">
+              <span>🌾 Roviny</span>
+              <span>🏔️ Hornatý</span>
+            </div>
+          </div>
+
+          <div className="space-y-1">
+            <Label className="text-xs">Tvar kontinentu</Label>
+            <div className="grid grid-cols-2 gap-1.5">
+              {[
+                { value: "pangaea", label: "🌍 Pangaea", desc: "Jeden velký kontinent" },
+                { value: "archipelago", label: "🏝️ Souostroví", desc: "Mnoho ostrovů" },
+                { value: "two_continents", label: "🌐 Dva kontinenty", desc: "Rozdělený svět" },
+                { value: "crescent", label: "🌙 Srpek", desc: "Oblouk kolem moře" },
+              ].map(s => (
+                <button key={s.value} onClick={() => setContinentShape(s.value)}
+                  className={`p-2 rounded-lg border text-left text-xs transition-colors ${continentShape === s.value ? "border-primary bg-primary/10" : "border-border hover:border-primary/30"}`}>
+                  <div className="font-display font-semibold text-[11px]">{s.label}</div>
+                  <div className="text-[9px] text-muted-foreground">{s.desc}</div>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <details className="group">
+            <summary className="text-xs cursor-pointer text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1">
+              <Settings className="h-3 w-3" />
+              Biomové váhy (pokročilé)
+            </summary>
+            <div className="mt-2 space-y-2 pl-1">
+              {Object.entries(biomeWeights).map(([biome, weight]) => (
+                <div key={biome} className="flex items-center gap-2">
+                  <span className="text-[10px] w-14 capitalize">{
+                    { plains: "🌾 Pláně", forest: "🌲 Les", hills: "⛰ Kopce", desert: "🏜 Poušť", swamp: "🌿 Bažiny", tundra: "❄ Tundra" }[biome] || biome
+                  }</span>
+                  <Slider value={[weight]} min={0} max={200} step={10}
+                    onValueChange={v => setBiomeWeights(prev => ({ ...prev, [biome]: v[0] }))}
+                    className="flex-1" />
+                  <span className="text-[9px] text-muted-foreground w-8 text-right">{weight}%</span>
+                </div>
+              ))}
+            </div>
+          </details>
+
+          <div className="bg-muted/30 rounded-lg p-2 text-[10px] text-muted-foreground">
+            <p>📐 Mapa: <strong>{mapWidth}×{mapHeight}</strong> = ~{Math.round(mapWidth * mapHeight * 0.75)} hexů</p>
+            <p>🗺️ Tvar: <strong>{{pangaea: "Pangaea", archipelago: "Souostroví", two_continents: "Dva kontinenty", crescent: "Srpek"}[continentShape]}</strong> · Souš: <strong>{landRatio}%</strong> · Hory: <strong>{mountainDensity}%</strong></p>
+          </div>
+
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => setStep(5)}>← Zpět</Button>
+            <Button onClick={() => setStep(7)} className="flex-1">Další →</Button>
+          </div>
+        </div>
+      )}
+
+      {/* Step 7: AI Faction Configuration */}
+      {step === 7 && !creating && (
         <div className="space-y-3">
           <div className="bg-primary/5 border border-primary/20 rounded-lg p-3">
             <h4 className="font-display font-semibold text-sm flex items-center gap-2 mb-1">
@@ -1190,25 +1316,25 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
           </div>
 
           <div className="flex gap-2">
-            <Button variant="outline" onClick={() => setStep(5)}>← Zpět</Button>
+            <Button variant="outline" onClick={() => setStep(6)}>← Zpět</Button>
             <Button onClick={() => {
               // Sync old factions array for backward compat
               setFactions(factionConfigs.map(fc => fc.name).filter(n => n.trim()));
               if (!isMultiMode && civDescription.trim()) {
-                setStep(7);
+                setStep(8);
                 if (!identityData && !identityLoading) {
                   setTimeout(() => handleExtractIdentity(), 100);
                 }
               } else {
-                setStep(7);
+                setStep(8);
               }
             }} className="flex-1">Další →</Button>
           </div>
         </div>
       )}
 
-      {/* Step 7: Identity Preview (AI extraction) */}
-      {step === 7 && !creating && (
+      {/* Step 8: Identity Preview (AI extraction) */}
+      {step === 8 && !creating && (
         <div className="space-y-3">
           {!isMultiMode && civDescription.trim() ? (
             <CivIdentityPreview
@@ -1219,7 +1345,7 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
               error={identityError}
               onExtract={handleExtractIdentity}
               onBack={() => setStep(1)}
-              onConfirm={() => setStep(8)}
+              onConfirm={() => setStep(9)}
             />
           ) : (
             /* For multiplayer or no civ description — show basic summary and proceed */
@@ -1243,16 +1369,16 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
                 )}
               </div>
               <div className="flex gap-2">
-                <Button variant="outline" onClick={() => setStep(6)}>← Zpět</Button>
-                <Button onClick={() => setStep(8)} className="flex-1">Další →</Button>
+                <Button variant="outline" onClick={() => setStep(7)}>← Zpět</Button>
+                <Button onClick={() => setStep(9)} className="flex-1">Další →</Button>
               </div>
             </div>
           )}
         </div>
       )}
 
-      {/* Step 8: Final Summary + Create */}
-      {step === 8 && !creating && (
+      {/* Step 9: Final Summary + Create */}
+      {step === 9 && !creating && (
         <div className="space-y-3">
           <div className="text-xs text-muted-foreground space-y-1 bg-muted/30 rounded-lg p-3">
             <p className="font-display font-semibold text-foreground">Finální shrnutí:</p>
@@ -1264,6 +1390,7 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
             {cultureName && <p>🎭 Kultura: <strong>{cultureName}</strong></p>}
             {languageName && <p>🗣️ Jazyk: <strong>{languageName}</strong></p>}
             {civDescription && <p>🧬 Civilizace: <em>{civDescription.slice(0, 80)}{civDescription.length > 80 ? "…" : ""}</em></p>}
+            <p>🗺️ Mapa: <strong>{mapWidth}×{mapHeight}</strong> · Souš {landRatio}% · Hory {mountainDensity}% · {{pangaea:"Pangaea",archipelago:"Souostroví",two_continents:"2 kontinenty",crescent:"Srpek"}[continentShape]}</p>
             {isAIMode && <p>🤖 Velikost: <strong>{WORLD_SIZES.find(s => s.value === worldSize)?.label}</strong></p>}
             {!isAIMode && !isMultiMode && <p>🏔️ Region: <strong>{homelandName}</strong> ({BIOMES.find(b => b.value === homelandBiome)?.label})</p>}
             {factionConfigs.length > 0 && (
@@ -1281,7 +1408,7 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
           </div>
 
           <div className="flex gap-2">
-            <Button variant="outline" onClick={() => setStep(7)}>← Zpět</Button>
+            <Button variant="outline" onClick={() => setStep(8)}>← Zpět</Button>
             <Button onClick={handleCreate} disabled={creating} className="flex-1 font-display">
               {creating ? (
                 <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Vytvářím...</>
