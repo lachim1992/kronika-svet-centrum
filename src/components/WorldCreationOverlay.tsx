@@ -30,6 +30,7 @@ interface Props {
   worldName: string;
   isAIMode: boolean;
   failedSessionId: string | null;
+  identityData?: any;
   onRetry: () => void;
   onForceOpen: () => void;
 }
