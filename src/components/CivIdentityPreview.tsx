@@ -140,7 +140,7 @@ interface Props {
   readOnly?: boolean;
 }
 
-const CivIdentityPreview = ({ sessionId, playerName, civDescription, identityData, loading, error, onExtract, onBack, onConfirm }: Props) => {
+const CivIdentityPreview = ({ sessionId, playerName, civDescription, identityData, loading, error, onExtract, onBack, onConfirm, readOnly }: Props) => {
   const [expandedSection, setExpandedSection] = useState<number | null>(null);
 
   if (loading) {
