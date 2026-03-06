@@ -5438,6 +5438,8 @@ export type Database = {
           created_at: string
           culture_name: string
           homeland_biome: string
+          homeland_desc: string
+          homeland_name: string
           id: string
           language_name: string
           people_name: string
@@ -5453,6 +5455,8 @@ export type Database = {
           created_at?: string
           culture_name?: string
           homeland_biome?: string
+          homeland_desc?: string
+          homeland_name?: string
           id?: string
           language_name?: string
           people_name?: string
@@ -5468,6 +5472,8 @@ export type Database = {
           created_at?: string
           culture_name?: string
           homeland_biome?: string
+          homeland_desc?: string
+          homeland_name?: string
           id?: string
           language_name?: string
           people_name?: string
