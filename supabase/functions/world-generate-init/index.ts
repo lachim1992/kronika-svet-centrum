@@ -517,6 +517,9 @@ DŮLEŽITÉ: affected_players/faction MUSÍ používat přesná jména frakcí. 
     }
 
     // ═══ STEP B: Civilizations + AI Factions + Resources ═══
+    // Phase 1: Create civilizations, AI factions, and extract civ_identity for AI
+    const factionDataList: { faction: any; factionPlayerName: string; isPlayer: boolean }[] = [];
+
     for (const faction of world.factions || []) {
       const factionPlayerName = faction.isPlayer ? playerName : faction.name;
       factionPlayerMap[faction.name] = factionPlayerName;
@@ -545,24 +548,71 @@ DŮLEŽITÉ: affected_players/faction MUSÍ používat přesná jména frakcí. 
           session_id: sessionId, player_name: factionPlayerName,
           player_number: factionIndex + 1,
         }).catch(() => {}); // Ignore duplicate
+
+        // Extract civ_identity for AI factions (generates unit names + modifiers from personality/description)
+        try {
+          const aiCivDesc = `${faction.description || ""}\nOsobnost: ${faction.personality || "neutrální"}\nCíle: ${(faction.goals || []).join(", ")}`;
+          await supabase.functions.invoke("extract-civ-identity", {
+            body: {
+              sessionId,
+              playerName: factionPlayerName,
+              civDescription: aiCivDesc,
+              coreMythText: faction.coreMith || null,
+              culturalQuirkText: faction.culturalQuirk || null,
+              architecturalStyleText: faction.architecturalStyle || null,
+            },
+          });
+        } catch (e) {
+          console.warn(`AI civ_identity extraction failed for ${factionPlayerName}:`, e);
+        }
       }
 
-      for (const rt of ["food", "wood", "stone", "iron", "wealth"]) {
+      factionDataList.push({ faction, factionPlayerName, isPlayer: faction.isPlayer });
+      counters.factions++;
+    }
+
+    // Phase 2: Create initial resources WITH civ_identity modifiers applied
+    for (const { faction, factionPlayerName } of factionDataList) {
+      // Load civ_identity modifiers (may have been created above for AI, or earlier in lobby for human)
+      const { data: civId } = await supabase.from("civ_identity")
+        .select("grain_modifier, wood_modifier, stone_modifier, iron_modifier, wealth_modifier, stability_modifier")
+        .eq("session_id", sessionId).eq("player_name", factionPlayerName).maybeSingle();
+
+      // Apply modifiers to base income values
+      const gm = civId?.grain_modifier || 0;   // e.g. 0.1 = +10%
+      const wm = civId?.wood_modifier || 0;
+      const sm = civId?.stone_modifier || 0;
+      const im = civId?.iron_modifier || 0;
+      const wlm = civId?.wealth_modifier || 0;
+      const stab = civId?.stability_modifier || 0;
+
+      const baseIncome = { food: 6, wood: 4, stone: 3, iron: 2, wealth: 3 };
+      const baseUpkeep = { food: 3, wood: 1, stone: 0, iron: 0, wealth: 1 };
+      const baseStockpile = { food: 20, wood: 10, stone: 5, iron: 3, wealth: 10 };
+
+      // Modify income by civ_identity multiplier (e.g. grain_modifier=0.1 → food income * 1.1)
+      const modifiedIncome: Record<string, number> = {
+        food: Math.round(baseIncome.food * (1 + gm)),
+        wood: Math.round(baseIncome.wood * (1 + wm)),
+        stone: Math.round(baseIncome.stone * (1 + sm)),
+        iron: Math.round(baseIncome.iron * (1 + im)),
+        wealth: Math.round(baseIncome.wealth * (1 + wlm)),
+      };
+
+      for (const rt of ["food", "wood", "stone", "iron", "wealth"] as const) {
         await supabase.from("player_resources").insert({
           session_id: sessionId, player_name: factionPlayerName, resource_type: rt,
-          income: rt === "food" ? 6 : rt === "wood" ? 4 : rt === "stone" ? 3 : rt === "iron" ? 2 : 3,
-          upkeep: rt === "food" ? 3 : rt === "wood" ? 1 : rt === "wealth" ? 1 : 0,
-          stockpile: rt === "food" ? 20 : rt === "wood" ? 10 : rt === "stone" ? 5 : rt === "iron" ? 3 : 10,
+          income: modifiedIncome[rt],
+          upkeep: baseUpkeep[rt],
+          stockpile: baseStockpile[rt],
         });
       }
 
       await supabase.from("realm_resources").insert({
         session_id: sessionId, player_name: factionPlayerName,
         grain_reserve: 20, wood_reserve: 10, stone_reserve: 5, iron_reserve: 3,
-        gold_reserve: 100, stability: 70, granary_capacity: 500, mobilization_rate: 0.1,
+        gold_reserve: 100, stability: Math.max(40, Math.min(100, 70 + stab)), granary_capacity: 500, mobilization_rate: 0.1,
       });
-
-      counters.factions++;
     }
 
     // ═══ STEP C: Regions with wiki ═══
