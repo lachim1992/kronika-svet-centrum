@@ -146,8 +146,36 @@ const WorldCreationOverlay = ({
           ))}
         </div>
 
+        {/* Post-creation identity report */}
+        {!failed && progressPercent === 100 && identityData && (
+          <div className="space-y-2 p-4 rounded-xl border border-primary/30"
+            style={{ background: "hsl(224 34% 14%)" }}>
+            <p className="text-xs font-semibold text-primary flex items-center gap-1.5">
+              <Sparkles className="h-3.5 w-3.5" />
+              Identita vaší civilizace
+            </p>
+            <p className="text-sm font-bold">{identityData.display_name || "—"}</p>
+            {identityData.flavor_summary && (
+              <p className="text-xs italic text-muted-foreground">„{identityData.flavor_summary}"</p>
+            )}
+            <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 text-[10px] text-muted-foreground">
+              {identityData.grain_modifier !== 0 && <p>🌾 Obilí: {identityData.grain_modifier > 0 ? "+" : ""}{Math.round(identityData.grain_modifier * 100)}%</p>}
+              {identityData.wood_modifier !== 0 && <p>🪵 Dřevo: {identityData.wood_modifier > 0 ? "+" : ""}{Math.round(identityData.wood_modifier * 100)}%</p>}
+              {identityData.stone_modifier !== 0 && <p>⛰️ Kámen: {identityData.stone_modifier > 0 ? "+" : ""}{Math.round(identityData.stone_modifier * 100)}%</p>}
+              {identityData.iron_modifier !== 0 && <p>⚙️ Železo: {identityData.iron_modifier > 0 ? "+" : ""}{Math.round(identityData.iron_modifier * 100)}%</p>}
+              {identityData.wealth_modifier !== 0 && <p>💰 Bohatství: {identityData.wealth_modifier > 0 ? "+" : ""}{Math.round(identityData.wealth_modifier * 100)}%</p>}
+              {identityData.morale_modifier !== 0 && <p>⚔️ Morálka: {identityData.morale_modifier > 0 ? "+" : ""}{identityData.morale_modifier}</p>}
+              {identityData.stability_modifier !== 0 && <p>🛡️ Stabilita: {identityData.stability_modifier > 0 ? "+" : ""}{identityData.stability_modifier}</p>}
+              {identityData.trade_modifier !== 0 && <p>📈 Obchod: {identityData.trade_modifier > 0 ? "+" : ""}{Math.round(identityData.trade_modifier * 100)}%</p>}
+            </div>
+            {identityData.building_tags?.length > 0 && (
+              <p className="text-[10px] text-muted-foreground">🏗️ Speciální budovy: {identityData.building_tags.join(", ")}</p>
+            )}
+          </div>
+        )}
+
         {/* Flavor text */}
-        {!failed && (
+        {!failed && progressPercent < 100 && (
           <div className="text-center h-8">
             <p className={`text-xs italic text-primary/60 transition-opacity duration-400 ${fadeClass}`}
               style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: "14px" }}>
