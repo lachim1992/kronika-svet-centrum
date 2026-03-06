@@ -784,6 +784,7 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
           worldName={worldName}
           isAIMode={isAIMode}
           failedSessionId={failedSessionId}
+          identityData={identityData}
           onRetry={handleRetry}
           onForceOpen={() => failedSessionId && onCreated(failedSessionId)}
         />
