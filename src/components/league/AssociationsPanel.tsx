@@ -184,6 +184,57 @@ const AssociationsPanel = ({ sessionId, currentPlayerName, currentTurn }: Props)
   const myTeams = allTeams.filter(t => t.player_name === currentPlayerName);
   const otherAssociations = associations.filter(a => a.player_name !== currentPlayerName);
 
+  const getAssocAcademies = (assocId: string, assocType: string) => {
+    const isGlad = assocType === "gladiator";
+    return allAcademies.filter(a =>
+      a.player_name === currentPlayerName && (
+        (a as any).association_id === assocId ||
+        (!(a as any).association_id && a.is_gladiatorial === isGlad)
+      )
+    );
+  };
+
+  const handleCreateAcademy = async (assocId: string, assocType: string) => {
+    setCreatingAcademy(assocId);
+    try {
+      const playerCities = Array.from(cities.entries());
+      if (playerCities.length === 0) {
+        toast.error("Potřebuješ alespoň jedno město");
+        return;
+      }
+      const isGlad = assocType === "gladiator";
+      const existingCityIds = new Set(allAcademies.filter(a => a.player_name === currentPlayerName && a.is_gladiatorial === isGlad).map(a => a.city_id));
+      const availableCity = playerCities.find(([id]) => !existingCityIds.has(id));
+      if (!availableCity) {
+        toast.error("Všechna města již mají akademii tohoto typu");
+        return;
+      }
+      const [cityId, cityName] = availableCity;
+      const academyName = isGlad
+        ? `Gladiátorská škola – ${cityName}`
+        : `Sportovní akademie – ${cityName}`;
+      const { error } = await supabase.from("academies").insert({
+        session_id: sessionId,
+        city_id: cityId,
+        player_name: currentPlayerName,
+        name: academyName,
+        founded_turn: currentTurn,
+        status: "active",
+        infrastructure: 10,
+        reputation: 10,
+        is_gladiatorial: isGlad,
+        association_id: assocId,
+      } as any);
+      if (error) throw error;
+      toast.success(`${academyName} založena!`);
+      await fetchData();
+    } catch (e: any) {
+      toast.error(e.message);
+    } finally {
+      setCreatingAcademy(null);
+    }
+  };
+
   const handleUpgrade = async (assocId: string, field: string) => {
     setUpgrading(`${assocId}-${field}`);
     try {
