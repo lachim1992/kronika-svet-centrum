@@ -666,12 +666,12 @@ DŮLEŽITÉ: affected_players/faction MUSÍ používat přesná jména frakcí. 
         .select("map_width, map_height")
         .eq("session_id", sessionId)
         .maybeSingle();
-      const mapWidth = (wfData as any)?.map_width || 21;
-      const mapHeight = (wfData as any)?.map_height || 21;
+      const mapWidth = userMapWidth || (wfData as any)?.map_width || 21;
+      const mapHeight = userMapHeight || (wfData as any)?.map_height || 21;
 
-      // ── Build terrain_params from AI geography blueprint ──
+      // ── Build terrain_params from AI geography blueprint + user overrides ──
       const geoBlueprint = world.geography || {};
-      const terrainParams: any = {};
+      const terrainParams: any = { ...(userTerrainParams || {}) };
 
       // Continent shape → continentCount + landRatio
       const shapeMap: Record<string, { continents: number; land: number }> = {
