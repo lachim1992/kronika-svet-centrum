@@ -1,0 +1,3 @@
+ALTER TABLE public.player_civ_configs
+  ADD COLUMN IF NOT EXISTS homeland_name TEXT NOT NULL DEFAULT '',
+  ADD COLUMN IF NOT EXISTS homeland_desc TEXT NOT NULL DEFAULT '';

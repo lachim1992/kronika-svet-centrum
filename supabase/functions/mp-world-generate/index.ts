@@ -80,7 +80,7 @@ Deno.serve(async (req) => {
 
     if (LOVABLE_API_KEY) {
       const playerDescs = civConfigs.map((c: any) =>
-        `${c.player_name} (${c.realm_name || "neznámá říše"}): ${c.civ_description || "neznámý národ"}, biom: ${c.homeland_biome}, sídlo: ${c.settlement_name}`
+        `${c.player_name} (${c.realm_name || "neznámá říše"}): ${c.civ_description || "neznámý národ"}, biom: ${c.homeland_biome}, sídlo: ${c.settlement_name}, domovská provincie: ${c.homeland_name || "neurčena"}`
       ).join("\n");
 
       const systemPrompt = `Jsi generátor světa pro civilizační strategickou hru s ${playerCount} hráči. Tvým úkolem je vytvořit kompletní, tematicky koherentní svět S HLUBOKOU PREHISTORIÍ.
@@ -106,6 +106,7 @@ KRITICKÉ POŽADAVKY NA PROVÁZANOST:
 5. Divy: některé mohou být zničené (status=destroyed).
 6. KAŽDÝ hráč musí mít alespoň 1 město (jejich startovní sídlo) + další města v jejich regionech.
 7. Každý region musí mít alespoň 1 provincii s názvem a popisem.
+8. KRITICKÉ: Hráčova domovská provincie MUSÍ mít přesně ten název, který hráč zadal (viz 'domovská provincie' v popisu). Biom regionu MUSÍ odpovídat hráčovu zadanému biomu.`;
 
 Odpověz POUZE voláním funkce generate_world.`;
 
@@ -629,7 +630,31 @@ DŮLEŽITÉ: Hráčské frakce MUSÍ mít isPlayer=true a playerName musí přes
       }
     }
 
-    // Helper: find province for city
+    // ═══ STEP D2: Ensure player homeland provinces use player-specified names ═══
+    for (const cfg of civConfigs) {
+      if (!cfg.homeland_name) continue;
+      const playerName = cfg.player_name;
+      // Find the first province owned by this player
+      let playerProvId: string | null = null;
+      let playerProvCurrentName: string | null = null;
+      for (const [provName, regName] of Object.entries(provinceRegionMap)) {
+        const region = (world?.regions || []).find((r: any) => r.name === regName);
+        if (region && factionPlayerMap[region.controlledBy] === playerName) {
+          playerProvId = provinceIdMap[provName];
+          playerProvCurrentName = provName;
+          break;
+        }
+      }
+      // If AI already named it correctly, skip
+      if (playerProvId && playerProvCurrentName !== cfg.homeland_name) {
+        await sb.from("provinces").update({ name: cfg.homeland_name, description: cfg.homeland_desc || null }).eq("id", playerProvId);
+        await sb.from("wiki_entries").update({ entity_name: cfg.homeland_name }).eq("session_id", sessionId).eq("entity_type", "province").eq("entity_id", playerProvId);
+        // Update maps
+        provinceIdMap[cfg.homeland_name] = playerProvId;
+        console.log(`[mp-world-generate] Renamed province '${playerProvCurrentName}' → '${cfg.homeland_name}' for player ${playerName}`);
+      }
+    }
+
     const findProvinceId = (city: any): string | null => {
       if (city.provinceName && provinceIdMap[city.provinceName]) return provinceIdMap[city.provinceName];
       if (city.regionName) {
