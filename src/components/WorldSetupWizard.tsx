@@ -518,6 +518,14 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
               languageName: languageName.trim(),
               realmName: realmName.trim(),
               factionConfigs: factionConfigs.filter(fc => fc.name.trim() || fc.personality || fc.description.trim()),
+              terrainParams: {
+                targetLandRatio: landRatio / 100,
+                continentCount: continentShape === "pangaea" ? 1 : continentShape === "two_continents" ? 2 : continentShape === "archipelago" ? 5 : 2,
+                mountainDensity: mountainDensity / 100,
+                biomeWeights: Object.fromEntries(Object.entries(biomeWeights).map(([k, v]) => [k, v / 100])),
+              },
+              mapWidth,
+              mapHeight,
             },
           });
           if (genErr) {
