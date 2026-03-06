@@ -731,10 +731,19 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
 
       // Generate batch hex map (skip for AI mode — already done inside world-generate-init)
       if (!isAIMode) {
-        const mapSizeConfig = WORLD_SIZES.find(s => s.value === worldSize) || WORLD_SIZES[0];
         try {
           await supabase.functions.invoke("generate-world-map", {
-            body: { session_id: session.id, width: mapSizeConfig.mapW, height: mapSizeConfig.mapH },
+            body: {
+              session_id: session.id,
+              width: mapWidth,
+              height: mapHeight,
+              terrain_params: {
+                targetLandRatio: landRatio / 100,
+                continentCount: continentShape === "pangaea" ? 1 : continentShape === "two_continents" ? 2 : continentShape === "archipelago" ? 5 : 2,
+                mountainDensity: mountainDensity / 100,
+                biomeWeights: Object.fromEntries(Object.entries(biomeWeights).map(([k, v]) => [k, v / 100])),
+              },
+            },
           });
         } catch (e) {
           console.warn("Batch map generation warning:", e);
