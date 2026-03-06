@@ -1111,8 +1111,106 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
         </div>
       )}
 
-      {/* Step 6: AI Faction Configuration */}
+      {/* Step 6: Map Configuration */}
       {step === 6 && !creating && (
+        <div className="space-y-3">
+          <div className="bg-primary/5 border border-primary/20 rounded-lg p-3">
+            <h4 className="font-display font-semibold text-sm flex items-center gap-2 mb-1">
+              <Map className="h-4 w-4 text-primary" />
+              Konfigurace mapy
+            </h4>
+            <p className="text-[10px] text-muted-foreground">
+              Nastavte fyzické parametry herní mapy — velikost, terén, rozložení biomů.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1">
+              <Label className="text-xs">Šířka mapy</Label>
+              <div className="flex items-center gap-2">
+                <Slider value={[mapWidth]} min={11} max={61} step={2} onValueChange={v => setMapWidth(v[0])} className="flex-1" />
+                <Badge variant="secondary" className="text-[10px] w-10 justify-center">{mapWidth}</Badge>
+              </div>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Výška mapy</Label>
+              <div className="flex items-center gap-2">
+                <Slider value={[mapHeight]} min={11} max={61} step={2} onValueChange={v => setMapHeight(v[0])} className="flex-1" />
+                <Badge variant="secondary" className="text-[10px] w-10 justify-center">{mapHeight}</Badge>
+              </div>
+            </div>
+          </div>
+
+          <div className="space-y-1">
+            <Label className="text-xs">Poměr souše / moře: <strong>{landRatio}%</strong> pevnina</Label>
+            <Slider value={[landRatio]} min={20} max={95} step={5} onValueChange={v => setLandRatio(v[0])} />
+            <div className="flex justify-between text-[9px] text-muted-foreground">
+              <span>🌊 Ostrovy</span>
+              <span>🌍 Kontinentální</span>
+            </div>
+          </div>
+
+          <div className="space-y-1">
+            <Label className="text-xs">Hustota hor: <strong>{mountainDensity}%</strong></Label>
+            <Slider value={[mountainDensity]} min={0} max={100} step={10} onValueChange={v => setMountainDensity(v[0])} />
+            <div className="flex justify-between text-[9px] text-muted-foreground">
+              <span>🌾 Roviny</span>
+              <span>🏔️ Hornatý</span>
+            </div>
+          </div>
+
+          <div className="space-y-1">
+            <Label className="text-xs">Tvar kontinentu</Label>
+            <div className="grid grid-cols-2 gap-1.5">
+              {[
+                { value: "pangaea", label: "🌍 Pangaea", desc: "Jeden velký kontinent" },
+                { value: "archipelago", label: "🏝️ Souostroví", desc: "Mnoho ostrovů" },
+                { value: "two_continents", label: "🌐 Dva kontinenty", desc: "Rozdělený svět" },
+                { value: "crescent", label: "🌙 Srpek", desc: "Oblouk kolem moře" },
+              ].map(s => (
+                <button key={s.value} onClick={() => setContinentShape(s.value)}
+                  className={`p-2 rounded-lg border text-left text-xs transition-colors ${continentShape === s.value ? "border-primary bg-primary/10" : "border-border hover:border-primary/30"}`}>
+                  <div className="font-display font-semibold text-[11px]">{s.label}</div>
+                  <div className="text-[9px] text-muted-foreground">{s.desc}</div>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <details className="group">
+            <summary className="text-xs cursor-pointer text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1">
+              <Settings className="h-3 w-3" />
+              Biomové váhy (pokročilé)
+            </summary>
+            <div className="mt-2 space-y-2 pl-1">
+              {Object.entries(biomeWeights).map(([biome, weight]) => (
+                <div key={biome} className="flex items-center gap-2">
+                  <span className="text-[10px] w-14 capitalize">{
+                    { plains: "🌾 Pláně", forest: "🌲 Les", hills: "⛰ Kopce", desert: "🏜 Poušť", swamp: "🌿 Bažiny", tundra: "❄ Tundra" }[biome] || biome
+                  }</span>
+                  <Slider value={[weight]} min={0} max={200} step={10}
+                    onValueChange={v => setBiomeWeights(prev => ({ ...prev, [biome]: v[0] }))}
+                    className="flex-1" />
+                  <span className="text-[9px] text-muted-foreground w-8 text-right">{weight}%</span>
+                </div>
+              ))}
+            </div>
+          </details>
+
+          <div className="bg-muted/30 rounded-lg p-2 text-[10px] text-muted-foreground">
+            <p>📐 Mapa: <strong>{mapWidth}×{mapHeight}</strong> = ~{Math.round(mapWidth * mapHeight * 0.75)} hexů</p>
+            <p>🗺️ Tvar: <strong>{{pangaea: "Pangaea", archipelago: "Souostroví", two_continents: "Dva kontinenty", crescent: "Srpek"}[continentShape]}</strong> · Souš: <strong>{landRatio}%</strong> · Hory: <strong>{mountainDensity}%</strong></p>
+          </div>
+
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => setStep(5)}>← Zpět</Button>
+            <Button onClick={() => setStep(7)} className="flex-1">Další →</Button>
+          </div>
+        </div>
+      )}
+
+      {/* Step 7: AI Faction Configuration */}
+      {step === 7 && !creating && (
         <div className="space-y-3">
           <div className="bg-primary/5 border border-primary/20 rounded-lg p-3">
             <h4 className="font-display font-semibold text-sm flex items-center gap-2 mb-1">
