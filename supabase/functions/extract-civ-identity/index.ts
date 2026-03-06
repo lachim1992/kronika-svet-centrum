@@ -85,7 +85,12 @@ KATEGORIE MODIFIKÁTORŮ:
 - flavor_summary: Jednořádkový popis frakce v epickém stylu (max 100 znaků)
 
 8. SPECIÁLNÍ BUDOVY:
-- building_tags: 0-3 speciální typy budov dostupné pouze této civilizaci (anglicky, snake_case, např. horse_stable, sacred_grove, sea_port, iron_forge, trade_depot)`,
+- building_tags: 0-3 speciální typy budov dostupné pouze této civilizaci (anglicky, snake_case, např. horse_stable, sacred_grove, sea_port, iron_forge, trade_depot)
+
+9. NARATIVNÍ FLAVOR (vše česky):
+- core_myth: Zakládající mýtus civilizace (1-2 věty, epický styl)
+- cultural_quirk: Unikátní kulturní zvláštnost (1 věta)
+- architectural_style: Architektonický styl (1-2 slova)`,
       userPrompt: `Analyzuj tento popis civilizace a extrahuj kompletní sadu modifikátorů:\n\n"${fullText}"`,
       tools: [{
         type: "function",
