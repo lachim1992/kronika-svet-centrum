@@ -12,6 +12,7 @@ import { Trophy, Users, Calendar, Star, Target, Shield, Swords, Play, Loader2, C
 import InMemoriamTab from "@/components/league/InMemoriamTab";
 import MyTeamsPanel from "@/components/league/MyTeamsPanel";
 import SphaeraFeedTab from "@/components/league/SphaeraFeedTab";
+import CreateAssociationDialog from "@/components/league/CreateAssociationDialog";
 import { toast } from "sonner";
 
 interface Props {
