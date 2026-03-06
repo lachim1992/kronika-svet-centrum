@@ -251,6 +251,29 @@ const MultiplayerLobby = ({ sessionId, roomCode, worldName, maxPlayers, isHost, 
       toast.error("Všichni hráči musí být připraveni");
       return;
     }
+
+    // Pre-flight: verify all players have civ configs
+    const { data: configs } = await supabase
+      .from("player_civ_configs")
+      .select("player_name")
+      .eq("session_id", sessionId);
+    const configCount = configs?.length || 0;
+    if (configCount < 2) {
+      const missing = players
+        .filter(p => !configs?.some(c => c.player_name === p.player_name))
+        .map(p => p.player_name);
+      toast.error(`Chybí konfigurace civilizace pro: ${missing.join(", ")}. Hráči musí znovu projít nastavení.`);
+      // Reset those players to pending
+      for (const name of missing) {
+        await supabase.from("game_memberships")
+          .update({ setup_status: "pending" })
+          .eq("session_id", sessionId)
+          .eq("player_name", name);
+      }
+      await fetchPlayers();
+      return;
+    }
+
     setGenerating(true);
     try {
       await supabase.from("game_sessions").update({ init_status: "generating" } as any).eq("id", sessionId);
