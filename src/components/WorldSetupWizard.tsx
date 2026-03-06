@@ -1328,7 +1328,7 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
               error={identityError}
               onExtract={handleExtractIdentity}
               onBack={() => setStep(1)}
-              onConfirm={() => setStep(8)}
+              onConfirm={() => setStep(9)}
             />
           ) : (
             /* For multiplayer or no civ description — show basic summary and proceed */
