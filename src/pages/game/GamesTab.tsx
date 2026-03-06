@@ -17,6 +17,7 @@ import NationalQualificationPanel from "@/components/NationalQualificationPanel"
 import GamesRevealOverlay from "@/components/GamesRevealOverlay";
 import HallOfRecords from "@/components/HallOfRecords";
 import LeaguePanel from "@/components/LeaguePanel";
+import AssociationsPanel from "@/components/league/AssociationsPanel";
 
 interface Props {
   sessionId: string;
