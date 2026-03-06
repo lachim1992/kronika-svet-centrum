@@ -134,6 +134,7 @@ const LeaguePanel = ({ sessionId, currentPlayerName, currentTurn }: Props) => {
   const [showRules, setShowRules] = useState(false);
   const [selectedMatch, setSelectedMatch] = useState<Match | null>(null);
   const [mainTab, setMainTab] = useState("world");
+  const [showAssocDialog, setShowAssocDialog] = useState(false);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
