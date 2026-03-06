@@ -254,7 +254,7 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
   const isMultiMode = gameMode === "tb_multi";
   const isPersistentMode = gameMode === "time_persistent";
 
-  const totalSteps = 9; // Added identity preview step
+  const totalSteps = 10; // 0-9: mode, player, world, tone, victory, AI/homeland, MAP CONFIG, factions, identity, final
 
   const handleExtractIdentity = async () => {
     if (!civDescription.trim()) {
