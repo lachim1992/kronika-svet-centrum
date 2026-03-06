@@ -270,7 +270,7 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
     if (!civDescription.trim()) {
       // No description → skip with neutral modifiers
       setIdentityData(null);
-      setStep(7);
+      setStep(8);
       return;
     }
     setIdentityLoading(true);
