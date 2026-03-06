@@ -6,6 +6,7 @@ import {
   computeTraitTensionModifier, computeTraitInfluenceModifier,
   evaluateMythAlignment, TRAIT_INTENSITY_THRESHOLD,
   TRAIT_DECAY_PER_TURN, TRAIT_DECAY_GRACE_TURNS,
+  computeStructuralBonuses,
   type CityForGrowth,
 } from "../_shared/physics.ts";
 
