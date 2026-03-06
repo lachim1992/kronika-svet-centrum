@@ -702,7 +702,38 @@ const CityBuildingsPanel = ({
           </div>
         )}
 
-        {/* ═══ CIVILIZAČNÍ PRÉMIOVÉ BUDOVY ═══ */}
+        {/* ═══ CIVILIZAČNÍ PRÉMIOVÉ BUDOVY — Generate if missing ═══ */}
+        {isOwner && civBuildings.length === 0 && civBuildingTags.length > 0 && (
+          <div className="space-y-2 pt-2 border-t border-primary/30">
+            <p className="text-xs font-display font-semibold flex items-center gap-1.5 text-primary">
+              <Crown className="h-3.5 w-3.5" />Civilizační budovy (exkluzivní)
+            </p>
+            <p className="text-[10px] text-muted-foreground">
+              Vaše civilizace má unikátní building tagy ({civBuildingTags.join(", ")}), ale budovy ještě nebyly navrženy.
+            </p>
+            <Button size="sm" variant="outline" className="w-full text-xs gap-1 border-primary/40 text-primary"
+              disabled={generatingCivBuildings}
+              onClick={async () => {
+                setGeneratingCivBuildings(true);
+                try {
+                  const { error } = await supabase.functions.invoke("generate-civ-buildings", {
+                    body: { sessionId, playerName: currentPlayerName },
+                  });
+                  if (error) throw error;
+                  toast.success("Civilizační budovy vygenerovány!");
+                  fetchData();
+                } catch (e: any) {
+                  toast.error("Generování selhalo: " + (e.message || "neznámá chyba"));
+                } finally {
+                  setGeneratingCivBuildings(false);
+                }
+              }}>
+              {generatingCivBuildings ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
+              {generatingCivBuildings ? "Generuji…" : "Navrhnout civilizační budovy (AI)"}
+            </Button>
+          </div>
+        )}
+        {/* ═══ CIVILIZAČNÍ PRÉMIOVÉ BUDOVY — Display ═══ */}
         {isOwner && civBuildings.length > 0 && (
           <div className="space-y-2 pt-2 border-t border-primary/30">
             <p className="text-xs font-display font-semibold flex items-center gap-1.5 text-primary">
