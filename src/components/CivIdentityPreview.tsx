@@ -369,6 +369,42 @@ const CivIdentityPreview = ({ sessionId, playerName, civDescription, identityDat
         </div>
       )}
 
+      {/* Military Unit Types */}
+      {((d as any).militia_unit_name || (d as any).professional_unit_name) && (
+        <div className="bg-primary/5 border border-primary/20 rounded-lg p-3 space-y-2">
+          <p className="text-xs font-display font-semibold flex items-center gap-1.5">
+            <Swords className="h-3.5 w-3.5 text-primary" />
+            Vojenské jednotky
+          </p>
+          <div className="grid grid-cols-2 gap-2">
+            <div className="bg-muted/30 rounded p-2.5 space-y-1">
+              <div className="flex items-center gap-1.5">
+                <Shield className="h-3.5 w-3.5 text-muted-foreground" />
+                <span className="text-xs font-semibold">{(d as any).militia_unit_name || "Milice"}</span>
+              </div>
+              <p className="text-[10px] text-muted-foreground">{(d as any).militia_unit_desc || "Základní dobrovolníci"}</p>
+              <div className="flex gap-1">
+                <Badge variant="outline" className="text-[8px]">Váha 0.8</Badge>
+                <Badge variant="outline" className="text-[8px]">400 mužů</Badge>
+              </div>
+              <p className="text-[9px] text-muted-foreground">→ Dostupní ihned</p>
+            </div>
+            <div className="bg-muted/30 rounded p-2.5 space-y-1">
+              <div className="flex items-center gap-1.5">
+                <Swords className="h-3.5 w-3.5 text-primary" />
+                <span className="text-xs font-semibold">{(d as any).professional_unit_name || "Profesionálové"}</span>
+              </div>
+              <p className="text-[10px] text-muted-foreground">{(d as any).professional_unit_desc || "Trénovaní válečníci"}</p>
+              <div className="flex gap-1">
+                <Badge variant="outline" className="text-[8px] border-primary/30 text-primary">Váha 1.3</Badge>
+                <Badge variant="outline" className="text-[8px]">400 mužů</Badge>
+              </div>
+              <p className="text-[9px] text-muted-foreground">→ Vyžaduje kasárny + kovárnu</p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Narrative flavor */}
       <div className="space-y-2">
         <p className="text-xs font-display font-semibold">Narativní pozadí (generováno AI):</p>
