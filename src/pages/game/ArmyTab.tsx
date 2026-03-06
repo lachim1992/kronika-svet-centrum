@@ -1254,12 +1254,12 @@ function MyArmyPanel({
     setGeneratingVisual(null);
   };
 
-  const UNIT_TYPES = ["INFANTRY", "ARCHERS", "CAVALRY", "SIEGE"];
+  const UNIT_TYPES = ["MILITIA", "PROFESSIONAL"];
   const UNIT_LABELS_CZ: Record<string, string> = {
-    INFANTRY: "Pěchota", ARCHERS: "Lučišníci", CAVALRY: "Jízda", SIEGE: "Obléhací",
+    MILITIA: "Milice", PROFESSIONAL: "Profesionálové",
   };
   const UNIT_ICONS_MAP: Record<string, React.ElementType> = {
-    INFANTRY: Shield, ARCHERS: Target, CAVALRY: Crosshair, SIEGE: Swords,
+    MILITIA: Shield, PROFESSIONAL: Swords,
   };
 
   return (
