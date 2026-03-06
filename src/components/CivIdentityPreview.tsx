@@ -76,10 +76,12 @@ const MODIFIER_SECTIONS = [
   {
     title: "Stabilita & Diplomacie",
     icon: Handshake,
-    description: "Ovlivňují vnitřní stabilitu říše a diplomatický vliv.",
+    description: "Ovlivňují vnitřní stabilitu říše, diplomatický vliv a výzkumné schopnosti.",
     items: [
       { key: "stability_modifier", label: "Stabilita", icon: Shield, format: (v: number) => `${v >= 0 ? "+" : ""}${v}`, desc: "Přidáno k základní stabilitě měst. Pod 30% hrozí rebelie! Nad 60% je bezpečno." },
       { key: "trade_modifier", label: "Obchod", icon: TrendingUp, format: (v: number) => `${v >= 0 ? "+" : ""}${Math.round(v * 100)}%`, desc: "Bonus k obchodnímu příjmu a diplomatickému vlivu z obchodu." },
+      { key: "diplomacy_modifier", label: "Diplomacie", icon: Handshake, format: (v: number) => `${v >= 0 ? "+" : ""}${v}`, desc: "Přidáno k diplomatickému skóre vlivu. Vyšší = lepší vyjednávací pozice a reakce AI frakcí." },
+      { key: "research_modifier", label: "Výzkum", icon: Sparkles, format: (v: number) => `${v >= 0 ? "+" : ""}${Math.round(v * 100)}%`, desc: "Bonus k efektivitě výzkumných budov a rychlosti vylepšování staveb." },
     ],
   },
 ];
