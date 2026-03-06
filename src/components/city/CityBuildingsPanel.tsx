@@ -69,6 +69,7 @@ const CityBuildingsPanel = ({
 }: Props) => {
   const [buildings, setBuildings] = useState<any[]>([]);
   const [templates, setTemplates] = useState<any[]>([]);
+  const [civBuildings, setCivBuildings] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [showAI, setShowAI] = useState(false);
@@ -85,14 +86,17 @@ const CityBuildingsPanel = ({
 
   const fetchData = useCallback(async () => {
     setLoading(true);
-    const [bRes, tRes] = await Promise.all([
+    const [bRes, tRes, civRes] = await Promise.all([
       supabase.from("city_buildings").select("*").eq("city_id", cityId).order("created_at"),
       supabase.from("building_templates").select("*").order("category, name"),
+      supabase.from("civ_identity").select("special_buildings, building_tags")
+        .eq("session_id", sessionId).eq("player_name", currentPlayerName).maybeSingle(),
     ]);
     setBuildings(bRes.data || []);
     setTemplates(tRes.data || []);
+    setCivBuildings((civRes.data?.special_buildings as any[]) || []);
     setLoading(false);
-  }, [cityId]);
+  }, [cityId, sessionId, currentPlayerName]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
@@ -356,6 +360,64 @@ const CityBuildingsPanel = ({
     } finally {
       setAiGenerating(false);
     }
+  };
+
+  // Check if a civ building tag is already built in this city
+  const civBuildingBuiltTags = new Set(
+    buildings.filter(b => b.building_tags?.some((t: string) => civBuildings.some(cb => cb.tag === t)))
+      .flatMap(b => (b.building_tags || []) as string[])
+  );
+
+  const handleBuildCivBuilding = async (cb: any) => {
+    if (!realm || saving) return;
+    if (!canAfford({ cost_wealth: cb.cost_wealth, cost_wood: cb.cost_wood, cost_stone: cb.cost_stone, cost_iron: cb.cost_iron })) {
+      toast.error("Nedostatek surovin!"); return;
+    }
+    setSaving(true);
+    await supabase.from("realm_resources").update({
+      gold_reserve: (realm.gold_reserve || 0) - (cb.cost_wealth || 0),
+      wood_reserve: (realm.wood_reserve || 0) - (cb.cost_wood || 0),
+      stone_reserve: (realm.stone_reserve || 0) - (cb.cost_stone || 0),
+      iron_reserve: (realm.iron_reserve || 0) - (cb.cost_iron || 0),
+    } as any).eq("id", realm.id);
+
+    const buildDuration = cb.build_duration || 4;
+    await supabase.from("city_buildings").insert({
+      session_id: sessionId, city_id: cityId,
+      name: cb.name,
+      description: cb.description || "",
+      category: cb.category || "cultural",
+      cost_wealth: cb.cost_wealth || 0,
+      cost_wood: cb.cost_wood || 0,
+      cost_stone: cb.cost_stone || 0,
+      cost_iron: cb.cost_iron || 0,
+      build_duration: buildDuration,
+      build_started_turn: currentTurn,
+      effects: cb.effects || {},
+      flavor_text: cb.flavor_text || null,
+      founding_myth: cb.founding_myth || null,
+      image_prompt: cb.image_prompt || null,
+      is_ai_generated: true,
+      building_tags: [cb.tag],
+      status: buildDuration <= 1 ? "completed" : "building",
+      completed_turn: buildDuration <= 1 ? currentTurn : null,
+      current_level: 1,
+      max_level: 5,
+      level_data: cb.level_data || [],
+    } as any);
+
+    const chronicleText = `V městě **${cityName}** začala výstavba civilizační budovy: **${cb.name}**. ${cb.founding_myth || cb.description || ""}`;
+    await dispatchCommand({
+      sessionId, turnNumber: currentTurn,
+      actor: { name: currentPlayerName, type: "player" },
+      commandType: "BUILD_BUILDING",
+      commandPayload: { cityId, cityName, buildingName: cb.name, chronicleText, isAiGenerated: true, isPremium: true },
+    });
+
+    toast.success(`👑 Civilizační stavba "${cb.name}" zahájena!`);
+    setSaving(false);
+    onRefetch?.();
+    fetchData();
   };
 
   const handleSaveVisual = async (b: any) => {
@@ -634,6 +696,70 @@ const CityBuildingsPanel = ({
               <Clock className="h-3 w-3" />Ve výstavbě
             </p>
             {constructing.map(b => <BuildingCard key={b.id} b={b} isConstructing />)}
+          </div>
+        )}
+
+        {/* ═══ CIVILIZAČNÍ PRÉMIOVÉ BUDOVY ═══ */}
+        {isOwner && civBuildings.length > 0 && (
+          <div className="space-y-2 pt-2 border-t border-primary/30">
+            <p className="text-xs font-display font-semibold flex items-center gap-1.5 text-primary">
+              <Crown className="h-3.5 w-3.5" />Civilizační budovy (exkluzivní)
+            </p>
+            <p className="text-[10px] text-muted-foreground">
+              Prémiové budovy unikátní pro vaši civilizaci. Silnější efekty, vyšší náklady, 5 úrovní → Div světa.
+            </p>
+            {civBuildings.map((cb, i) => {
+              const alreadyBuiltHere = civBuildingBuiltTags.has(cb.tag);
+              const affordable = canAfford({ cost_wealth: cb.cost_wealth, cost_wood: cb.cost_wood, cost_stone: cb.cost_stone, cost_iron: cb.cost_iron });
+              const effects = cb.effects || {};
+              return (
+                <div key={i} className={`p-3 rounded-lg border transition-colors ${
+                  alreadyBuiltHere ? "border-muted bg-muted/10 opacity-50" : "border-primary/30 bg-primary/5 hover:border-primary/50"
+                }`}>
+                  <div className="flex items-center gap-2">
+                    <Crown className="h-4 w-4 text-primary shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-display font-semibold">{cb.name}</p>
+                      <p className="text-[10px] text-muted-foreground">{cb.description}</p>
+                      {cb.level_data?.length > 0 && (
+                        <p className="text-[9px] text-primary/60 mt-0.5">
+                          5 úrovní: {cb.level_data.slice(0, 3).map((l: any) => l.name).join(" → ")}…→ {cb.level_data[cb.level_data.length - 1]?.name}
+                        </p>
+                      )}
+                    </div>
+                    <Badge className="text-[9px] shrink-0 bg-primary/20 text-primary border-primary/30">👑 Prémiová</Badge>
+                    {alreadyBuiltHere ? (
+                      <Badge variant="secondary" className="text-[9px] shrink-0">Postaveno</Badge>
+                    ) : (
+                      <Button size="sm" variant="outline" className="h-6 text-[10px] gap-1 shrink-0 border-primary/40 text-primary hover:bg-primary/10"
+                        disabled={saving || !affordable} onClick={() => handleBuildCivBuilding(cb)}>
+                        <Hammer className="h-3 w-3" />Stavět
+                      </Button>
+                    )}
+                  </div>
+                  {cb.flavor_text && (
+                    <p className="text-[10px] text-muted-foreground/70 italic mt-1">„{cb.flavor_text}"</p>
+                  )}
+                  <div className="flex gap-2 mt-1.5 flex-wrap items-center">
+                    <div className="flex gap-1 text-[9px] text-muted-foreground">
+                      {cb.cost_wealth > 0 && <span>💰{cb.cost_wealth}</span>}
+                      {cb.cost_wood > 0 && <span>🪵{cb.cost_wood}</span>}
+                      {cb.cost_stone > 0 && <span>🪨{cb.cost_stone}</span>}
+                      {cb.cost_iron > 0 && <span>⚙️{cb.cost_iron}</span>}
+                      <span>⏱️{cb.build_duration}k</span>
+                    </div>
+                    <ArrowRight className="h-2.5 w-2.5 text-muted-foreground" />
+                    <div className="flex gap-1 text-[9px] flex-wrap">
+                      {Object.entries(effects).filter(([, v]) => Number(v) > 0).map(([k, v]) => (
+                        <Badge key={k} variant="outline" className="text-[8px] border-primary/30 text-primary">
+                          {EFFECT_LABELS[k] || k.replace(/_/g, " ")} +{String(v)}
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         )}
 
