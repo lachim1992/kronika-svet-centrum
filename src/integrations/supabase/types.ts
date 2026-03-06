@@ -1648,6 +1648,7 @@ export type Database = {
           session_id: string
           society_structure: string
           source_description: string | null
+          special_buildings: Json
           stability_modifier: number
           stone_modifier: number
           trade_modifier: number
@@ -1683,6 +1684,7 @@ export type Database = {
           session_id: string
           society_structure?: string
           source_description?: string | null
+          special_buildings?: Json
           stability_modifier?: number
           stone_modifier?: number
           trade_modifier?: number
@@ -1718,6 +1720,7 @@ export type Database = {
           session_id?: string
           society_structure?: string
           source_description?: string | null
+          special_buildings?: Json
           stability_modifier?: number
           stone_modifier?: number
           trade_modifier?: number
