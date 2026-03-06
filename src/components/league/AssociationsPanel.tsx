@@ -381,6 +381,96 @@ const AssociationsPanel = ({ sessionId, currentPlayerName, currentTurn }: Props)
                         );
                       })}
                     </div>
+
+                    {/* ─── ACADEMIES UNDER THIS ASSOCIATION ─── */}
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1">
+                          <School className="h-3 w-3" /> Akademie svazu ({assocAcademies.length})
+                        </div>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="text-[9px] h-6 gap-1"
+                          disabled={creatingAcademy === assoc.id}
+                          onClick={() => handleCreateAcademy(assoc.id, assoc.association_type)}
+                        >
+                          {creatingAcademy === assoc.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Plus className="h-3 w-3" />}
+                          Nová akademie
+                        </Button>
+                      </div>
+
+                      {assocAcademies.length === 0 ? (
+                        <div className="text-center py-4 bg-muted/10 rounded-lg border border-border/50">
+                          <School className="h-8 w-8 text-muted-foreground mx-auto opacity-40 mb-1" />
+                          <p className="text-[10px] text-muted-foreground">Žádné akademie. Založte první!</p>
+                        </div>
+                      ) : (
+                        assocAcademies.map(acad => {
+                          const acadStudents = allStudents.filter(s => s.academy_id === acad.id);
+                          const graduates = acadStudents.filter(s => s.status === "graduated" || s.status === "promoted");
+                          const training = acadStudents.filter(s => s.status === "training");
+                          return (
+                            <div key={acad.id} className="rounded-lg border border-border bg-card/30 p-3 space-y-2">
+                              <div className="flex items-center gap-2">
+                                <div className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: acad.color_primary || "hsl(var(--primary))" }} />
+                                <span className="text-xs font-display font-bold">{acad.name}</span>
+                                <Badge variant="outline" className="text-[7px] ml-auto">Rep: {acad.reputation}</Badge>
+                                {acad.total_champions > 0 && <Badge variant="outline" className="text-[7px] border-yellow-500/40 text-yellow-400">🏆 {acad.total_champions}</Badge>}
+                              </div>
+
+                              <div className="flex items-center gap-3 text-[9px] text-muted-foreground flex-wrap">
+                                <span>📍 {cities.get(acad.city_id) || "?"}</span>
+                                <span>📊 Infra: {acad.infrastructure}</span>
+                                <span>🎓 Trenér: {acad.trainer_level}</span>
+                                <span>🍖 Výživa: {acad.nutrition}</span>
+                                <span>👥 Trénuje: {training.length}</span>
+                                <span>🎓 Abs: {graduates.length}</span>
+                                {acad.total_fatalities > 0 && <span className="text-destructive">💀 {acad.total_fatalities}</span>}
+                              </div>
+
+                              {/* Profile bars compact */}
+                              <div className="grid grid-cols-5 gap-1">
+                                {[
+                                  { key: "athletics", label: "ATL", val: acad.profile_athletics },
+                                  { key: "combat", label: "BOJ", val: acad.profile_combat },
+                                  { key: "culture", label: "KUL", val: acad.profile_culture },
+                                  { key: "strategy", label: "STR", val: acad.profile_strategy },
+                                  { key: "brutality", label: "BRT", val: acad.profile_brutality },
+                                ].map(p => (
+                                  <div key={p.key} className="text-center">
+                                    <div className="text-[7px] text-muted-foreground">{p.label}</div>
+                                    <Progress value={p.val} className="h-1" />
+                                    <div className="text-[7px] font-mono">{p.val}</div>
+                                  </div>
+                                ))}
+                              </div>
+
+                              {/* Graduates pool for recruitment */}
+                              {graduates.length > 0 && (
+                                <div className="space-y-1">
+                                  <div className="text-[8px] font-semibold text-muted-foreground uppercase">Absolventi – rekrutační pool</div>
+                                  <ScrollArea className="max-h-24">
+                                    <div className="space-y-0.5">
+                                      {graduates.map(s => (
+                                        <div key={s.id} className="flex items-center gap-1.5 text-[9px] p-1 rounded bg-muted/20">
+                                          {s.portrait_url && <img src={s.portrait_url} alt="" className="w-5 h-5 rounded-full object-cover" />}
+                                          <span className="font-semibold truncate">{s.name}</span>
+                                          <Badge variant="outline" className="text-[6px] h-3">{s.specialty}</Badge>
+                                          <span className="ml-auto font-mono text-[8px] text-muted-foreground">
+                                            S{s.strength} V{s.endurance} O{s.agility} T{s.tactics} C{s.charisma}
+                                          </span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </ScrollArea>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })
+                      )}
+                    </div>
                   </CardContent>
                 </Card>
               );
