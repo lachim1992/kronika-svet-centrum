@@ -42,6 +42,7 @@ interface Academy {
   id: string;
   name: string;
   city_id: string;
+  player_name: string;
   association_id: string | null;
   reputation: number;
   infrastructure: number;
