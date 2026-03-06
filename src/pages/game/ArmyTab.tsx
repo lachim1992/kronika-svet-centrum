@@ -706,7 +706,7 @@ function StackCard({ stack, general, onManage }: { stack: Stack; general?: Gener
             <p className="text-2xl font-display font-bold text-primary">{stack.power}</p>
             <p className="text-[9px] text-muted-foreground flex items-center gap-0.5 justify-center">
               Síla
-              <InfoTip>Síla = Σ(muži × váha_typu × kvalita) × bonus_generála × morálka × formace. Váhy: Pěchota 1.0, Lučištníci 1.1, Jízda 1.3, Obléhací 0.9. Formace: Jednotka ×1.0, Legie ×1.1, Armáda ×1.2.</InfoTip>
+              <InfoTip>Síla = Σ(muži × váha_typu × kvalita) × bonus_generála × morálka × formace. Váhy: Milice 0.8, Profesionálové 1.3. Formace: Jednotka ×1.0, Legie ×1.1, Armáda ×1.2.</InfoTip>
             </p>
           </div>
           <div className="flex-1 space-y-1">
