@@ -190,6 +190,11 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
   const [homelandBiome, setHomelandBiome] = useState("plains");
   const [homelandDesc, setHomelandDesc] = useState("");
 
+  // AI Identity preview
+  const [identityData, setIdentityData] = useState<any>(null);
+  const [identityLoading, setIdentityLoading] = useState(false);
+  const [identityError, setIdentityError] = useState<string | null>(null);
+
   // Progress tracking
   const [progressSteps, setProgressSteps] = useState<ProgressStep[]>([]);
   const [creationFailed, setCreationFailed] = useState(false);
