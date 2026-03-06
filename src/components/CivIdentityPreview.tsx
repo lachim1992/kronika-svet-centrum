@@ -136,9 +136,11 @@ interface Props {
   onExtract: () => void;
   onBack: () => void;
   onConfirm: () => void;
+  /** If true, hides action buttons and shows as read-only summary */
+  readOnly?: boolean;
 }
 
-const CivIdentityPreview = ({ sessionId, playerName, civDescription, identityData, loading, error, onExtract, onBack, onConfirm }: Props) => {
+const CivIdentityPreview = ({ sessionId, playerName, civDescription, identityData, loading, error, onExtract, onBack, onConfirm, readOnly }: Props) => {
   const [expandedSection, setExpandedSection] = useState<number | null>(null);
 
   if (loading) {
@@ -369,15 +371,17 @@ const CivIdentityPreview = ({ sessionId, playerName, civDescription, identityDat
         </div>
       </div>
 
-      {/* Actions */}
-      <div className="flex gap-2 pt-2 sticky bottom-0 bg-card pb-1">
-        <Button variant="outline" onClick={onBack}>
-          <ArrowLeft className="h-4 w-4 mr-1" /> Upravit popis
-        </Button>
-        <Button onClick={onConfirm} className="flex-1 font-display">
-          <ArrowRight className="h-4 w-4 mr-2" /> Potvrdit a založit svět
-        </Button>
-      </div>
+      {/* Actions — hidden in read-only mode */}
+      {!readOnly && (
+        <div className="flex gap-2 pt-2 sticky bottom-0 bg-card pb-1">
+          <Button variant="outline" onClick={onBack}>
+            <ArrowLeft className="h-4 w-4 mr-1" /> Upravit popis
+          </Button>
+          <Button onClick={onConfirm} className="flex-1 font-display">
+            <ArrowRight className="h-4 w-4 mr-2" /> Potvrdit a založit svět
+          </Button>
+        </div>
+      )}
     </div>
   );
 };
