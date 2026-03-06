@@ -520,6 +520,7 @@ DŮLEŽITÉ: affected_players/faction MUSÍ používat přesná jména frakcí. 
     // Phase 1: Create civilizations, AI factions, and extract civ_identity for AI
     const factionDataList: { faction: any; factionPlayerName: string; isPlayer: boolean }[] = [];
 
+    let factionIndex = 0;
     for (const faction of world.factions || []) {
       const factionPlayerName = faction.isPlayer ? playerName : faction.name;
       factionPlayerMap[faction.name] = factionPlayerName;
