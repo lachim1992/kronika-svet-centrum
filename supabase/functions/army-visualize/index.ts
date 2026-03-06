@@ -73,6 +73,9 @@ serve(async (req) => {
     let updateData: Record<string, any> = {};
 
     const UNIT_LABELS: Record<string, string> = {
+      MILITIA: "militia soldiers, basic weapons, volunteer fighters, light armor",
+      PROFESSIONAL: "elite professional soldiers, heavy armor, disciplined formation, veteran warriors",
+      // Legacy compat
       INFANTRY: "heavy infantry soldiers, shields and spears, disciplined formation",
       ARCHERS: "archer regiment, longbows, leather armor, ranged formation",
       CAVALRY: "mounted cavalry, warhorses, lances and banners",
