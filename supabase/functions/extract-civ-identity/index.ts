@@ -70,6 +70,8 @@ KATEGORIE MODIFIKÁTORŮ:
 4. STABILITA & DIPLOMACIE:
 - stability_modifier: -10 až +10 (tradice, řád → kladné; anarchistické → záporné)
 - trade_modifier: -0.1 až +0.2 (obchod → kladné; izolace → záporné)
+- diplomacy_modifier: -10 až +15 (diplomaté, vyjednávači → kladné; barbaři, izolovaní → záporné). Přidáno k diplomatickému skóre vlivu a ovlivňuje úspěšnost vyjednávání.
+- research_modifier: -0.1 až +0.2 (učenci, knihovníci → kladné; primitivní, válečníci → záporné). Bonus k efektivitě budov generujících výzkum a rychlosti vylepšování staveb.
 
 5. KULTURNÍ TAGY:
 - culture_tags: 3-6 anglických klíčových slov (discipline, agriculture, seafaring, cavalry, mysticism, iron_working, diplomacy, artisan, nomadic, scholarly, warrior_culture, engineering, maritime_trade, horse_lords, mountain_folk, forest_dwellers, desert_nomads, river_culture)
