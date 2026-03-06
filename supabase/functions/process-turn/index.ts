@@ -217,9 +217,8 @@ Deno.serve(async (req) => {
     const ironMod = civIdentity?.iron_modifier ?? 0;
     const wealthMod = civIdentity?.wealth_modifier ?? civBonuses.trade_modifier ?? 0;
 
-    // Compute structural bonuses from urban_style, society_structure, etc.
-    // Import-free: inline the logic for structural multipliers
-    const structMults = computeStructuralMults(civIdentity);
+    // Unified multipliers: numeric% + structural% combined additively, then applied once
+    const uMult = computeUnifiedMults(civIdentity, grainMod, woodMod, stoneMod, ironMod, wealthMod);
 
     // Idempotency check
     if (realm.last_processed_turn >= currentTurn) {
