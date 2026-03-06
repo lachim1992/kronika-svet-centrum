@@ -271,12 +271,15 @@ const GamesTab = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, o
       </div>
 
       <Tabs defaultValue="active" className="space-y-4">
-        <TabsList className="grid w-full grid-cols-4 sm:grid-cols-9">
+        <TabsList className="grid w-full grid-cols-5 sm:grid-cols-10">
           <TabsTrigger value="active" className="font-display text-xs">
             <Flame className="h-3.5 w-3.5 mr-1" />Aktivní
           </TabsTrigger>
           <TabsTrigger value="league" className="font-display text-xs">
             <Sword className="h-3.5 w-3.5 mr-1" />Liga
+          </TabsTrigger>
+          <TabsTrigger value="associations" className="font-display text-xs">
+            <Shield className="h-3.5 w-3.5 mr-1" />Svazy
           </TabsTrigger>
           <TabsTrigger value="medals" className="font-display text-xs">
             <Medal className="h-3.5 w-3.5 mr-1" />Medaile
