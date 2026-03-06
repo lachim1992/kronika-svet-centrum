@@ -1360,8 +1360,8 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
         </div>
       )}
 
-      {/* Step 8: Final Summary + Create */}
-      {step === 8 && !creating && (
+      {/* Step 9: Final Summary + Create */}
+      {step === 9 && !creating && (
         <div className="space-y-3">
           <div className="text-xs text-muted-foreground space-y-1 bg-muted/30 rounded-lg p-3">
             <p className="font-display font-semibold text-foreground">Finální shrnutí:</p>
