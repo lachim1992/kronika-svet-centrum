@@ -6,6 +6,7 @@ import {
   computeTraitTensionModifier, computeTraitInfluenceModifier,
   evaluateMythAlignment, TRAIT_INTENSITY_THRESHOLD,
   TRAIT_DECAY_PER_TURN, TRAIT_DECAY_GRACE_TURNS,
+  computeStructuralBonuses,
   type CityForGrowth,
 } from "../_shared/physics.ts";
 
@@ -1091,20 +1092,35 @@ async function runWorldTickEvents(supabase: any, sessionId: string, turnNumber: 
     civIdentityMap[ci.player_name] = ci;
   }
   const civBonusMap: Record<string, Record<string, number>> = {};
+  const structuralBonusMap: Record<string, any> = {};
   for (const civ of (civilizations || [])) {
     const legacy = (civ.civ_bonuses as Record<string, number>) || {};
     const ci = civIdentityMap[civ.player_name];
-    // Merge: civ_identity values take precedence
+    // Compute structural bonuses from urban_style, society_structure, etc.
+    const structural = computeStructuralBonuses(ci as any);
+    structuralBonusMap[civ.player_name] = structural;
+    // Merge: civ_identity values take precedence, structural bonuses stack
     civBonusMap[civ.player_name] = {
-      growth_modifier: ci?.pop_growth_modifier ?? ci?.grain_modifier ?? legacy.growth_modifier ?? 0,
-      stability_modifier: ci?.stability_modifier ?? legacy.stability_modifier ?? 0,
-      legitimacy_base: legacy.legitimacy_base ?? 0,
+      growth_modifier: (ci?.pop_growth_modifier ?? ci?.grain_modifier ?? legacy.growth_modifier ?? 0) + structural.pop_growth_bonus,
+      stability_modifier: (ci?.stability_modifier ?? legacy.stability_modifier ?? 0) + structural.stability_bonus,
+      legitimacy_base: (legacy.legitimacy_base ?? 0) + structural.legitimacy_bonus,
       diplomacy_modifier: ci?.diplomacy_modifier ?? (ci?.trade_modifier ? ci.trade_modifier * 50 : legacy.diplomacy_modifier ?? 0),
       trade_modifier: ci?.wealth_modifier ?? ci?.trade_modifier ?? legacy.trade_modifier ?? 0,
-      morale_modifier: ci?.morale_modifier ?? legacy.morale_modifier ?? 0,
-      fortification_bonus: ci?.fortification_bonus ?? legacy.fortification_bonus ?? 0,
+      morale_modifier: (ci?.morale_modifier ?? legacy.morale_modifier ?? 0) + structural.morale_bonus,
+      fortification_bonus: (ci?.fortification_bonus ?? legacy.fortification_bonus ?? 0) + structural.defense_bonus,
       cavalry_bonus: ci?.cavalry_bonus ?? 0,
       research_modifier: ci?.research_modifier ?? 0,
+      // Structural production multipliers (used in process-turn via identity)
+      grain_mult: structural.grain_production_mult,
+      wealth_mult: structural.wealth_production_mult,
+      stone_mult: structural.stone_production_mult,
+      iron_mult: structural.iron_production_mult,
+      wood_mult: structural.wood_production_mult,
+      building_cost_mult: structural.building_cost_mult,
+      building_speed_mult: structural.building_speed_mult,
+      housing_capacity_mult: structural.housing_capacity_mult,
+      recruitment_speed_mult: structural.recruitment_speed_mult,
+      siege_bonus: structural.siege_bonus,
     };
   }
 

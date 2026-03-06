@@ -5,7 +5,23 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-import { SETTLEMENT_TEMPLATES, SETTLEMENT_WEALTH, computePrestigeEffects, getOpenBordersBonuses, hasActiveEmbargo, getTradeEfficiencyModifier, type DiplomaticPact } from "../_shared/physics.ts";
+import { SETTLEMENT_TEMPLATES, SETTLEMENT_WEALTH, computePrestigeEffects, getOpenBordersBonuses, hasActiveEmbargo, getTradeEfficiencyModifier, computeStructuralBonuses, type DiplomaticPact } from "../_shared/physics.ts";
+
+/**
+ * Compute structural production multipliers from civ_identity categories.
+ * Lightweight wrapper around computeStructuralBonuses for process-turn usage.
+ */
+function computeStructuralMults(civIdentity: any): { grain: number; wood: number; stone: number; iron: number; wealth: number } {
+  if (!civIdentity) return { grain: 1, wood: 1, stone: 1, iron: 1, wealth: 1 };
+  const sb = computeStructuralBonuses(civIdentity);
+  return {
+    grain: sb.grain_production_mult,
+    wood: sb.wood_production_mult,
+    stone: sb.stone_production_mult,
+    iron: sb.iron_production_mult,
+    wealth: sb.wealth_production_mult,
+  };
+}
 
 const UNIT_WEIGHTS: Record<string, number> = {
   INFANTRY: 1.0, ARCHERS: 1.1, CAVALRY: 1.3, SIEGE: 0.9,
@@ -174,7 +190,7 @@ Deno.serve(async (req) => {
     // Load unified civ_identity modifiers (single source of truth for faction bonuses)
     const { data: civIdentity } = await supabase
       .from("civ_identity")
-      .select("grain_modifier, wood_modifier, stone_modifier, iron_modifier, wealth_modifier, production_modifier, trade_modifier, stability_modifier, morale_modifier, mobilization_speed, pop_growth_modifier, cavalry_bonus, fortification_bonus")
+      .select("grain_modifier, wood_modifier, stone_modifier, iron_modifier, wealth_modifier, production_modifier, trade_modifier, stability_modifier, morale_modifier, mobilization_speed, pop_growth_modifier, cavalry_bonus, fortification_bonus, urban_style, society_structure, military_doctrine, economic_focus")
       .eq("session_id", sessionId)
       .eq("player_name", playerName)
       .maybeSingle();
@@ -192,6 +208,10 @@ Deno.serve(async (req) => {
     const stoneMod = civIdentity?.stone_modifier ?? 0;
     const ironMod = civIdentity?.iron_modifier ?? 0;
     const wealthMod = civIdentity?.wealth_modifier ?? civBonuses.trade_modifier ?? 0;
+
+    // Compute structural bonuses from urban_style, society_structure, etc.
+    // Import-free: inline the logic for structural multipliers
+    const structMults = computeStructuralMults(civIdentity);
 
     // Idempotency check
     if (realm.last_processed_turn >= currentTurn) {
@@ -443,6 +463,7 @@ Deno.serve(async (req) => {
       let grain = (prof.base_grain || 0) + (distEff.grain_modifier || 0); // Flat
       // Apply percentage modifiers
       grain *= (1 + (grainMod / 100)); // Civ modifier
+      grain *= structMults.grain; // Structural category multiplier
       grain *= effectiveWorkforceRatio; // Workforce penalty
       totalGrainProd += Math.max(0, Math.round(grain));
 
@@ -450,6 +471,7 @@ Deno.serve(async (req) => {
       if (prof.produces_wood) {
         let wood = (prof.base_wood || 0);
         wood *= (1 + (woodMod / 100));
+        wood *= structMults.wood;
         wood *= effectiveWorkforceRatio;
         totalWoodProd += Math.max(0, Math.round(wood));
       }
@@ -458,6 +480,7 @@ Deno.serve(async (req) => {
       const prodConsts = SETTLEMENT_PRODUCTION[city.settlement_level] || SETTLEMENT_PRODUCTION.HAMLET;
       let stone = prodConsts.stone;
       stone *= (1 + (stoneMod / 100));
+      stone *= structMults.stone;
       stone *= effectiveWorkforceRatio;
       totalStoneProd += Math.max(0, Math.round(stone));
 
@@ -465,6 +488,7 @@ Deno.serve(async (req) => {
       if (prof.special_resource_type === "IRON") {
         let iron = (prof.base_special || 0);
         iron *= (1 + (ironMod / 100));
+        iron *= structMults.iron;
         iron *= effectiveWorkforceRatio;
         totalIronProd += Math.max(0, Math.round(iron));
       }
@@ -556,9 +580,9 @@ Deno.serve(async (req) => {
     const newStoneReserve = (realm.stone_reserve || 0) + totalStoneProd;
     const newIronReserve = (realm.iron_reserve || 0) + totalIronProd;
 
-    // Wealth — apply open borders trade efficiency bonus
+    // Wealth — apply open borders trade efficiency bonus + structural multiplier
     const openBordersTradeBonus = openBordersBonuses.trade_efficiency_bonus || 0;
-    const wealthIncome = Math.round(computeWealthIncome(myCities, cityDistrictEffects) * (1 + wealthMod / 100) * (1 + openBordersTradeBonus));
+    const wealthIncome = Math.round(computeWealthIncome(myCities, cityDistrictEffects) * (1 + wealthMod / 100) * structMults.wealth * (1 + openBordersTradeBonus));
     let newGoldReserve = (realm.gold_reserve || 0) + wealthIncome - wealthUpkeep;
 
     // ═══ EMBARGO: Block trade route income ═══
