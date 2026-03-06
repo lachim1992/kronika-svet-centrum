@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Globe, Sparkles, Swords, Users, X, Plus, Mountain, TreePine, Waves, Sun, Snowflake, Flame, Bot, Pen, UserPlus, Loader2, Server, RotateCcw, Clock, Check, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
 import WorldCreationOverlay from "./WorldCreationOverlay";
+import CivIdentityPreview from "./CivIdentityPreview";
 
 const GAME_MODE_CATEGORIES = [
   {
