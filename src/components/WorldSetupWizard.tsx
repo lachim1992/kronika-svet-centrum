@@ -507,8 +507,7 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
           if (provData) provinceId = provData.id;
         }
 
-        // Use AI-generated settlement params if available
-        const stParams = civStartData?.settlement;
+        // Neutral starting settlement params (modifiers applied at runtime)
         const { data: cityData, error: cityErr } = await supabase.from("cities").insert({
           session_id: session.id,
           owner_player: playerName.trim(),
@@ -522,14 +521,14 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
           province_r: 0,
           culture_id: cultureId,
           language_id: languageId,
-          city_stability: stParams?.city_stability || 65,
+          city_stability: 65,
           influence_score: 0,
-          population_total: stParams?.population_total || 1000,
-          population_peasants: stParams?.population_peasants || 800,
-          population_burghers: stParams?.population_burghers || 150,
-          population_clerics: stParams?.population_clerics || 50,
-          special_resource_type: stParams?.special_resource_type || "NONE",
-          flavor_prompt: stParams?.settlement_flavor || civDescription.trim() || null,
+          population_total: 1000,
+          population_peasants: 800,
+          population_burghers: 150,
+          population_clerics: 50,
+          special_resource_type: "NONE",
+          flavor_prompt: civDescription.trim() || null,
         }).select("id").single();
 
         if (cityErr) throw cityErr;
