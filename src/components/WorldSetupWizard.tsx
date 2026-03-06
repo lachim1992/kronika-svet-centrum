@@ -576,35 +576,32 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
 
       setStepStatus(progress, 5, "done");
 
-      // ── STEP 6: Init resources (AI-generated or defaults) ──
+      // ── STEP 6: Init resources (neutral defaults — modifiers at runtime) ──
       setStepStatus(progress, 6, "active");
-      const aiRes = civStartData?.player_resources;
       for (const rt of ["food", "wood", "stone", "iron", "wealth"] as const) {
-        const aiVals = aiRes?.[rt];
         await supabase.from("player_resources").insert({
           session_id: session.id,
           player_name: playerName.trim(),
           resource_type: rt,
-          income: aiVals?.income ?? (rt === "food" ? 4 : rt === "wood" ? 3 : rt === "stone" ? 2 : rt === "iron" ? 1 : 2),
-          upkeep: aiVals?.upkeep ?? (rt === "food" ? 2 : rt === "wood" ? 1 : rt === "wealth" ? 1 : 0),
-          stockpile: aiVals?.stockpile ?? (rt === "food" ? 10 : rt === "wood" ? 5 : rt === "stone" ? 3 : rt === "iron" ? 2 : 5),
+          income: rt === "food" ? 4 : rt === "wood" ? 3 : rt === "stone" ? 2 : rt === "iron" ? 1 : 2,
+          upkeep: rt === "food" ? 2 : rt === "wood" ? 1 : rt === "wealth" ? 1 : 0,
+          stockpile: rt === "food" ? 10 : rt === "wood" ? 5 : rt === "stone" ? 3 : rt === "iron" ? 2 : 5,
         });
       }
 
-      // Create realm_resources with AI-generated reserves
-      const aiRealm = civStartData?.realm_resources;
+      // Create realm_resources with neutral reserves
       await supabase.from("realm_resources").insert({
         session_id: session.id,
         player_name: playerName.trim(),
-        grain_reserve: aiRealm?.grain_reserve ?? 20,
-        wood_reserve: aiRealm?.wood_reserve ?? 10,
-        stone_reserve: aiRealm?.stone_reserve ?? 5,
-        iron_reserve: aiRealm?.iron_reserve ?? 3,
-        horses_reserve: aiRealm?.horses_reserve ?? 5,
-        gold_reserve: aiRealm?.gold_reserve ?? 100,
-        stability: aiRealm?.stability ?? 70,
-        granary_capacity: aiRealm?.granary_capacity ?? 500,
-        stables_capacity: aiRealm?.stables_capacity ?? 100,
+        grain_reserve: 20,
+        wood_reserve: 10,
+        stone_reserve: 5,
+        iron_reserve: 3,
+        horses_reserve: 5,
+        gold_reserve: 100,
+        stability: 70,
+        granary_capacity: 500,
+        stables_capacity: 100,
       });
 
       setStepStatus(progress, 6, "done");
