@@ -1,5 +1,11 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.4";
+import { computeStructuralBonuses } from "../_shared/physics.ts";
+
+/** Lightweight alias for world-generate-init usage */
+function computeStructuralBonusesInline(identity: any) {
+  return computeStructuralBonuses(identity);
+}
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -1698,7 +1704,7 @@ Napiš EPICKÝ PROLOG o minimálně 2000 slovech, který zmíní VŠECHNY výše
       }
     } catch (hexErr) { console.warn("Hex discovery warning:", hexErr); }
 
-    // ═══ Extract structured civ identity (fire & forget) ═══
+    // ═══ Extract structured civ identity (AWAIT so we can apply structural bonuses to cities) ═══
     const { data: civForIdentity } = await supabase.from("civilizations")
       .select("core_myth, cultural_quirk, architectural_style")
       .eq("session_id", sessionId).eq("player_name", playerName).maybeSingle();
@@ -1708,20 +1714,66 @@ Napiš EPICKÝ PROLOG o minimálně 2000 slovech, který zmíní VŠECHNY výše
       .eq("session_id", sessionId).eq("player_name", playerName).maybeSingle();
 
     if (civCfgForIdentity?.civ_description) {
-      const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
-      const SUPABASE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-      fetch(`${SUPABASE_URL}/functions/v1/extract-civ-identity`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${SUPABASE_KEY}` },
-        body: JSON.stringify({
-          sessionId,
-          playerName,
-          civDescription: civCfgForIdentity.civ_description,
-          coreMythText: civForIdentity?.core_myth || null,
-          culturalQuirkText: civForIdentity?.cultural_quirk || null,
-          architecturalStyleText: civForIdentity?.architectural_style || null,
-        }),
-      }).catch(e => console.warn("civ identity extraction failed:", e));
+      try {
+        const { data: extractResult } = await supabase.functions.invoke("extract-civ-identity", {
+          body: {
+            sessionId,
+            playerName,
+            civDescription: civCfgForIdentity.civ_description,
+            coreMythText: civForIdentity?.core_myth || null,
+            culturalQuirkText: civForIdentity?.cultural_quirk || null,
+            architecturalStyleText: civForIdentity?.architectural_style || null,
+          },
+        });
+
+        // Apply structural bonuses to all player cities at game start
+        if (extractResult?.ok) {
+          const { data: identity } = await supabase.from("civ_identity")
+            .select("urban_style, society_structure, military_doctrine, economic_focus, initial_burgher_ratio, initial_cleric_ratio, stability_modifier")
+            .eq("session_id", sessionId).eq("player_name", playerName).maybeSingle();
+
+          if (identity) {
+            // Compute structural bonuses
+            const sb = computeStructuralBonusesInline(identity);
+            const { data: playerCities } = await supabase.from("cities")
+              .select("id, population_total, population_peasants, population_burghers, population_clerics, city_stability, housing_capacity")
+              .eq("session_id", sessionId).eq("owner_player", playerName);
+
+            for (const c of (playerCities || [])) {
+              const pop = c.population_total;
+              // Adjust population ratios with structural + numeric bonuses
+              const burgherShift = sb.burgher_ratio_bonus + (identity.initial_burgher_ratio || 0);
+              const clericShift = sb.cleric_ratio_bonus + (identity.initial_cleric_ratio || 0);
+              const basePeasantRatio = 0.80;
+              const baseBurgherRatio = 0.15;
+              const baseClericRatio = 0.05;
+              const adjBurgher = Math.max(0.05, Math.min(0.6, baseBurgherRatio + burgherShift));
+              const adjCleric = Math.max(0.02, Math.min(0.4, baseClericRatio + clericShift));
+              const adjPeasant = Math.max(0.1, 1 - adjBurgher - adjCleric);
+              const newBurghers = Math.round(pop * adjBurgher);
+              const newClerics = Math.round(pop * adjCleric);
+              const newPeasants = pop - newBurghers - newClerics;
+
+              // Housing capacity with structural multiplier
+              const baseHousing = c.housing_capacity || 500;
+              const adjHousing = Math.round(baseHousing * sb.housing_capacity_mult);
+
+              // Stability with structural bonus
+              const adjStability = Math.max(0, Math.min(100, (c.city_stability || 60) + sb.stability_bonus + (identity.stability_modifier || 0)));
+
+              await supabase.from("cities").update({
+                population_peasants: newPeasants,
+                population_burghers: newBurghers,
+                population_clerics: newClerics,
+                housing_capacity: adjHousing,
+                city_stability: adjStability,
+              }).eq("id", c.id);
+            }
+          }
+        }
+      } catch (e) {
+        console.warn("civ identity extraction failed:", e);
+      }
     }
 
     // Set session ready
