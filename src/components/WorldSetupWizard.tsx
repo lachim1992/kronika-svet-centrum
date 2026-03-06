@@ -219,6 +219,16 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
   const [homelandBiome, setHomelandBiome] = useState("plains");
   const [homelandDesc, setHomelandDesc] = useState("");
 
+  // Map configuration
+  const [mapWidth, setMapWidth] = useState(21);
+  const [mapHeight, setMapHeight] = useState(21);
+  const [landRatio, setLandRatio] = useState(55);
+  const [mountainDensity, setMountainDensity] = useState(50);
+  const [continentShape, setContinentShape] = useState<string>("pangaea");
+  const [biomeWeights, setBiomeWeights] = useState<Record<string, number>>({
+    plains: 100, forest: 100, hills: 80, desert: 50, swamp: 30, tundra: 40,
+  });
+
   // AI Identity preview
   const [identityData, setIdentityData] = useState<any>(null);
   const [identityLoading, setIdentityLoading] = useState(false);
