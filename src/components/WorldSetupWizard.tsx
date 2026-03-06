@@ -1352,8 +1352,8 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
                 )}
               </div>
               <div className="flex gap-2">
-                <Button variant="outline" onClick={() => setStep(6)}>← Zpět</Button>
-                <Button onClick={() => setStep(8)} className="flex-1">Další →</Button>
+                <Button variant="outline" onClick={() => setStep(7)}>← Zpět</Button>
+                <Button onClick={() => setStep(9)} className="flex-1">Další →</Button>
               </div>
             </div>
           )}
