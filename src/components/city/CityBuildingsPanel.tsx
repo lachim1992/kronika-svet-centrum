@@ -712,12 +712,27 @@ const CityBuildingsPanel = ({
               const alreadyBuiltHere = civBuildingBuiltTags.has(cb.tag);
               const affordable = canAfford({ cost_wealth: cb.cost_wealth, cost_wood: cb.cost_wood, cost_stone: cb.cost_stone, cost_iron: cb.cost_iron });
               const effects = cb.effects || {};
+
+              // Unlock conditions
+              const reqLevel = cb.required_settlement_level || "HAMLET";
+              const reqBuildingsCount = cb.required_buildings_count || 0;
+              const reqLevelIdx = SETTLEMENT_ORDER.indexOf(reqLevel);
+              const meetsLevelReq = settlementIdx >= reqLevelIdx;
+              const meetsBuiltReq = activeBuildings.length >= reqBuildingsCount;
+              const isLocked = !meetsLevelReq || !meetsBuiltReq;
+
+              const lockReasons: string[] = [];
+              if (!meetsLevelReq) lockReasons.push(`Vyžaduje úroveň ${reqLevel}`);
+              if (!meetsBuiltReq) lockReasons.push(`Vyžaduje ${reqBuildingsCount} postavených budov (máš ${activeBuildings.length})`);
+
               return (
                 <div key={i} className={`p-3 rounded-lg border transition-colors ${
-                  alreadyBuiltHere ? "border-muted bg-muted/10 opacity-50" : "border-primary/30 bg-primary/5 hover:border-primary/50"
+                  alreadyBuiltHere ? "border-muted bg-muted/10 opacity-50" :
+                  isLocked ? "border-muted/50 bg-muted/5 opacity-60" :
+                  "border-primary/30 bg-primary/5 hover:border-primary/50"
                 }`}>
                   <div className="flex items-center gap-2">
-                    <Crown className="h-4 w-4 text-primary shrink-0" />
+                    <Crown className={`h-4 w-4 shrink-0 ${isLocked ? "text-muted-foreground" : "text-primary"}`} />
                     <div className="flex-1 min-w-0">
                       <p className="text-xs font-display font-semibold">{cb.name}</p>
                       <p className="text-[10px] text-muted-foreground">{cb.description}</p>
@@ -730,6 +745,8 @@ const CityBuildingsPanel = ({
                     <Badge className="text-[9px] shrink-0 bg-primary/20 text-primary border-primary/30">👑 Prémiová</Badge>
                     {alreadyBuiltHere ? (
                       <Badge variant="secondary" className="text-[9px] shrink-0">Postaveno</Badge>
+                    ) : isLocked ? (
+                      <Badge variant="outline" className="text-[9px] shrink-0 text-muted-foreground">🔒 Zamčeno</Badge>
                     ) : (
                       <Button size="sm" variant="outline" className="h-6 text-[10px] gap-1 shrink-0 border-primary/40 text-primary hover:bg-primary/10"
                         disabled={saving || !affordable} onClick={() => handleBuildCivBuilding(cb)}>
@@ -737,6 +754,15 @@ const CityBuildingsPanel = ({
                       </Button>
                     )}
                   </div>
+                  {isLocked && lockReasons.length > 0 && (
+                    <div className="mt-1.5 flex gap-1 flex-wrap">
+                      {lockReasons.map((r, ri) => (
+                        <Badge key={ri} variant="outline" className="text-[8px] text-muted-foreground border-muted">
+                          🔒 {r}
+                        </Badge>
+                      ))}
+                    </div>
+                  )}
                   {cb.flavor_text && (
                     <p className="text-[10px] text-muted-foreground/70 italic mt-1">„{cb.flavor_text}"</p>
                   )}
