@@ -1079,7 +1079,7 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
             <Label>Velikost světa</Label>
             <div className="space-y-2">
               {WORLD_SIZES.map(s => (
-                <button key={s.value} onClick={() => setWorldSize(s.value)}
+                <button key={s.value} onClick={() => { setWorldSize(s.value); setMapWidth(s.mapW); setMapHeight(s.mapH); }}
                   className={`w-full p-3 rounded-lg border text-left text-sm transition-colors ${worldSize === s.value ? "border-primary bg-primary/10" : "border-border hover:border-primary/30"}`}>
                   <div className="font-display font-semibold">{s.label}</div>
                   <div className="text-xs text-muted-foreground">{s.desc}</div>
