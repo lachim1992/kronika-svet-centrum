@@ -30,6 +30,8 @@ interface CivIdentityData {
   fortification_bonus: number;
   stability_modifier: number;
   trade_modifier: number;
+  diplomacy_modifier: number;
+  research_modifier: number;
   building_tags: string[];
   core_myth: string;
   cultural_quirk: string;
@@ -74,10 +76,12 @@ const MODIFIER_SECTIONS = [
   {
     title: "Stabilita & Diplomacie",
     icon: Handshake,
-    description: "Ovlivňují vnitřní stabilitu říše a diplomatický vliv.",
+    description: "Ovlivňují vnitřní stabilitu říše, diplomatický vliv a výzkumné schopnosti.",
     items: [
       { key: "stability_modifier", label: "Stabilita", icon: Shield, format: (v: number) => `${v >= 0 ? "+" : ""}${v}`, desc: "Přidáno k základní stabilitě měst. Pod 30% hrozí rebelie! Nad 60% je bezpečno." },
       { key: "trade_modifier", label: "Obchod", icon: TrendingUp, format: (v: number) => `${v >= 0 ? "+" : ""}${Math.round(v * 100)}%`, desc: "Bonus k obchodnímu příjmu a diplomatickému vlivu z obchodu." },
+      { key: "diplomacy_modifier", label: "Diplomacie", icon: Handshake, format: (v: number) => `${v >= 0 ? "+" : ""}${v}`, desc: "Přidáno k diplomatickému skóre vlivu. Vyšší = lepší vyjednávací pozice a reakce AI frakcí." },
+      { key: "research_modifier", label: "Výzkum", icon: Sparkles, format: (v: number) => `${v >= 0 ? "+" : ""}${Math.round(v * 100)}%`, desc: "Bonus k efektivitě výzkumných budov a rychlosti vylepšování staveb." },
     ],
   },
 ];
@@ -358,6 +362,8 @@ const CivIdentityPreview = ({ sessionId, playerName, civDescription, identityDat
       <div className="bg-accent/10 border border-accent/20 rounded-lg p-3 space-y-1">
         <p className="text-xs font-display font-semibold">📊 Dopad na Vliv (Influence):</p>
         <div className="text-[10px] text-muted-foreground space-y-0.5">
+          {d.diplomacy_modifier !== 0 && <p>• Diplomacie (základ): {d.diplomacy_modifier > 0 ? "+" : ""}{d.diplomacy_modifier} bodů vlivu</p>}
+          {d.research_modifier !== 0 && <p>• Výzkum: {d.research_modifier > 0 ? "+" : ""}{Math.round(d.research_modifier * 100)}% efektivita výzkumných budov</p>}
           {d.trade_modifier !== 0 && <p>• Obchod: {d.trade_modifier > 0 ? "+" : ""}{Math.round(d.trade_modifier * 100)} bodů vlivu</p>}
           {d.military_doctrine === "offensive" && <p>• Vojenství: +15 bodů (útočná doktrína)</p>}
           {d.military_doctrine === "conscript" && <p>• Vojenství: +10 bodů (branná povinnost)</p>}

@@ -1626,6 +1626,7 @@ export type Database = {
           cavalry_bonus: number
           created_at: string
           culture_tags: string[]
+          diplomacy_modifier: number
           display_name: string | null
           economic_focus: string
           extracted_at: string
@@ -1643,6 +1644,7 @@ export type Database = {
           player_name: string
           pop_growth_modifier: number
           production_modifier: number
+          research_modifier: number
           session_id: string
           society_structure: string
           source_description: string | null
@@ -1659,6 +1661,7 @@ export type Database = {
           cavalry_bonus?: number
           created_at?: string
           culture_tags?: string[]
+          diplomacy_modifier?: number
           display_name?: string | null
           economic_focus?: string
           extracted_at?: string
@@ -1676,6 +1679,7 @@ export type Database = {
           player_name: string
           pop_growth_modifier?: number
           production_modifier?: number
+          research_modifier?: number
           session_id: string
           society_structure?: string
           source_description?: string | null
@@ -1692,6 +1696,7 @@ export type Database = {
           cavalry_bonus?: number
           created_at?: string
           culture_tags?: string[]
+          diplomacy_modifier?: number
           display_name?: string | null
           economic_focus?: string
           extracted_at?: string
@@ -1709,6 +1714,7 @@ export type Database = {
           player_name?: string
           pop_growth_modifier?: number
           production_modifier?: number
+          research_modifier?: number
           session_id?: string
           society_structure?: string
           source_description?: string | null

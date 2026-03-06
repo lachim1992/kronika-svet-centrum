@@ -70,6 +70,8 @@ KATEGORIE MODIFIKÁTORŮ:
 4. STABILITA & DIPLOMACIE:
 - stability_modifier: -10 až +10 (tradice, řád → kladné; anarchistické → záporné)
 - trade_modifier: -0.1 až +0.2 (obchod → kladné; izolace → záporné)
+- diplomacy_modifier: -10 až +15 (diplomaté, vyjednávači → kladné; barbaři, izolovaní → záporné). Přidáno k diplomatickému skóre vlivu a ovlivňuje úspěšnost vyjednávání.
+- research_modifier: -0.1 až +0.2 (učenci, knihovníci → kladné; primitivní, válečníci → záporné). Bonus k efektivitě budov generujících výzkum a rychlosti vylepšování staveb.
 
 5. KULTURNÍ TAGY:
 - culture_tags: 3-6 anglických klíčových slov (discipline, agriculture, seafaring, cavalry, mysticism, iron_working, diplomacy, artisan, nomadic, scholarly, warrior_culture, engineering, maritime_trade, horse_lords, mountain_folk, forest_dwellers, desert_nomads, river_culture)
@@ -138,9 +140,11 @@ KATEGORIE MODIFIKÁTORŮ:
               mobilization_speed: { type: "number" },
               cavalry_bonus: { type: "number" },
               fortification_bonus: { type: "number" },
-              // Stability
+              // Stability & Diplomacy
               stability_modifier: { type: "number" },
               trade_modifier: { type: "number" },
+              diplomacy_modifier: { type: "number" },
+              research_modifier: { type: "number" },
               // Buildings
               building_tags: {
                 type: "array",
@@ -158,7 +162,8 @@ KATEGORIE MODIFIKÁTORŮ:
               "grain_modifier", "wood_modifier", "stone_modifier", "iron_modifier", "wealth_modifier",
               "pop_growth_modifier", "initial_burgher_ratio", "initial_cleric_ratio",
               "morale_modifier", "mobilization_speed", "cavalry_bonus", "fortification_bonus",
-              "stability_modifier", "trade_modifier", "building_tags",
+              "stability_modifier", "trade_modifier", "diplomacy_modifier", "research_modifier",
+              "building_tags",
               "core_myth", "cultural_quirk", "architectural_style",
             ],
             additionalProperties: false,
@@ -215,6 +220,8 @@ KATEGORIE MODIFIKÁTORŮ:
       // Stability
       stability_modifier: clamp(ex.stability_modifier, -10, 10),
       trade_modifier: clamp(ex.trade_modifier, -0.1, 0.2),
+      diplomacy_modifier: clamp(ex.diplomacy_modifier, -10, 15),
+      research_modifier: clamp(ex.research_modifier, -0.1, 0.2),
       // Buildings
       building_tags: (ex.building_tags || []).slice(0, 3),
       // Meta
