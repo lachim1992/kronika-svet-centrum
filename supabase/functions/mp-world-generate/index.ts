@@ -106,7 +106,7 @@ KRITICKÉ POŽADAVKY NA PROVÁZANOST:
 5. Divy: některé mohou být zničené (status=destroyed).
 6. KAŽDÝ hráč musí mít alespoň 1 město (jejich startovní sídlo) + další města v jejich regionech.
 7. Každý region musí mít alespoň 1 provincii s názvem a popisem.
-8. KRITICKÉ: Hráčova domovská provincie MUSÍ mít přesně ten název, který hráč zadal (viz 'domovská provincie' v popisu). Biom regionu MUSÍ odpovídat hráčovu zadanému biomu.`;
+8. KRITICKÉ: Hráčova domovská provincie MUSÍ mít přesně ten název, který hráč zadal (viz 'domovská provincie' v popisu). Biom regionu MUSÍ odpovídat hráčovu zadanému biomu.
 
 Odpověz POUZE voláním funkce generate_world.`;
 
