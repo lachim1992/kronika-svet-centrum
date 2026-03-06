@@ -80,7 +80,7 @@ Deno.serve(async (req) => {
 
     if (LOVABLE_API_KEY) {
       const playerDescs = civConfigs.map((c: any) =>
-        `${c.player_name} (${c.realm_name || "neznámá říše"}): ${c.civ_description || "neznámý národ"}, biom: ${c.homeland_biome}, sídlo: ${c.settlement_name}`
+        `${c.player_name} (${c.realm_name || "neznámá říše"}): ${c.civ_description || "neznámý národ"}, biom: ${c.homeland_biome}, sídlo: ${c.settlement_name}, domovská provincie: ${c.homeland_name || "neurčena"}`
       ).join("\n");
 
       const systemPrompt = `Jsi generátor světa pro civilizační strategickou hru s ${playerCount} hráči. Tvým úkolem je vytvořit kompletní, tematicky koherentní svět S HLUBOKOU PREHISTORIÍ.
