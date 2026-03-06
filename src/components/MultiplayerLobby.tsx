@@ -217,6 +217,20 @@ const MultiplayerLobby = ({ sessionId, roomCode, worldName, maxPlayers, isHost, 
       .maybeSingle();
     if (identity) setMyIdentity(identity);
 
+    // Verify civ config exists before marking ready
+    const { data: existingConfig } = await supabase
+      .from("player_civ_configs")
+      .select("id")
+      .eq("session_id", sessionId)
+      .eq("user_id", user.id)
+      .maybeSingle();
+
+    if (!existingConfig) {
+      toast.error("Chyba: konfigurace civilizace nebyla uložena. Zkuste znovu projít nastavení.");
+      setWizardStep(0);
+      return;
+    }
+
     // Now mark player as ready
     await supabase.from("game_memberships")
       .update({ setup_status: "ready" })
@@ -237,6 +251,29 @@ const MultiplayerLobby = ({ sessionId, roomCode, worldName, maxPlayers, isHost, 
       toast.error("Všichni hráči musí být připraveni");
       return;
     }
+
+    // Pre-flight: verify all players have civ configs
+    const { data: configs } = await supabase
+      .from("player_civ_configs")
+      .select("player_name")
+      .eq("session_id", sessionId);
+    const configCount = configs?.length || 0;
+    if (configCount < 2) {
+      const missing = players
+        .filter(p => !configs?.some(c => c.player_name === p.player_name))
+        .map(p => p.player_name);
+      toast.error(`Chybí konfigurace civilizace pro: ${missing.join(", ")}. Hráči musí znovu projít nastavení.`);
+      // Reset those players to pending
+      for (const name of missing) {
+        await supabase.from("game_memberships")
+          .update({ setup_status: "pending" })
+          .eq("session_id", sessionId)
+          .eq("player_name", name);
+      }
+      await fetchPlayers();
+      return;
+    }
+
     setGenerating(true);
     try {
       await supabase.from("game_sessions").update({ init_status: "generating" } as any).eq("id", sessionId);
