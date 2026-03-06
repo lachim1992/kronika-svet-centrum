@@ -947,7 +947,7 @@ function StackDetailDialog({
             <CardContent className="p-3 space-y-3">
               <p className="text-xs font-display font-semibold text-muted-foreground">Posílit jednotku</p>
               <p className="text-xs text-muted-foreground">Dostupní: {availableManpower} · Zlato: {realm?.gold_reserve || 0}</p>
-              {(["INFANTRY", "ARCHERS", "CAVALRY", "SIEGE"] as const).map(ut => {
+              {(["MILITIA", "PROFESSIONAL"] as const).map(ut => {
                 const UIcon = UNIT_ICONS[ut] || Shield;
                 const val = reinforcements[ut] || 0;
                 return (
