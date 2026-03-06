@@ -16,7 +16,7 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const { sessionId, playerName, worldName, premise, tone, victoryStyle, worldSize, tier, settlementName, cultureName, languageName, realmName } = await req.json();
+    const { sessionId, playerName, worldName, premise, tone, victoryStyle, worldSize, tier, settlementName, cultureName, languageName, realmName, factionConfigs } = await req.json();
 
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) {
@@ -117,6 +117,22 @@ LOGICKÁ POSLOUPNOST:
 
 Odpověz POUZE voláním funkce generate_world.`;
 
+    // Build faction config instructions for the prompt
+    const factionCount = factionConfigs?.length || config.factions;
+    let factionInstructions = "";
+    if (factionConfigs && factionConfigs.length > 0) {
+      factionInstructions = "\nKONFIGURACE AI FRAKCÍ (hráčem zadaná — MUSÍŠ respektovat):\n";
+      factionConfigs.forEach((fc: any, idx: number) => {
+        const parts = [`Frakce ${idx + 1}:`];
+        if (fc.name) parts.push(`Název: "${fc.name}"`);
+        if (fc.personality) parts.push(`Osobnost: ${fc.personality}`);
+        if (fc.focus) parts.push(`Zaměření: ${fc.focus}`);
+        if (fc.description) parts.push(`Popis: ${fc.description}`);
+        factionInstructions += parts.join(" | ") + "\n";
+      });
+      factionInstructions += "Pokud hráč nezadal název, vymysli vhodný. Osobnost a zaměření MUSÍ odpovídat zadání.\n";
+    }
+
     const userPrompt = `SVĚT: ${worldName}
 PREMISA: ${premise}
 TÓN: ${tone}
@@ -125,10 +141,10 @@ HRÁČ: ${playerName}
 ${realmName ? `ŘÍŠE HRÁČE: ${realmName}` : ""}
 ${cultureName ? `KULTURA: ${cultureName}` : ""}
 ${languageName ? `JAZYK: ${languageName}` : ""}
-
+${factionInstructions}
 POŽADAVKY:
-- Každá frakce (${config.factions + 1} celkem) má VLASTNÍ stát (country) se jménem, popisem a image_prompt
-- ${config.factions} AI frakcí (+ 1 hráčova frakce = ${config.factions + 1} celkem)
+- Každá frakce (${factionCount + 1} celkem) má VLASTNÍ stát (country) se jménem, popisem a image_prompt
+- ${factionCount} AI frakcí (+ 1 hráčova frakce = ${factionCount + 1} celkem)
 - ${config.regions} regionů tematicky propojených se státem, každý s alespoň 1 provincií
 - ${config.cities} měst rozdělených mezi frakce
 - ${config.persons} osobností: minimálně polovina LEGENDÁRNÍCH z prehistorie (born_year záporný), zbytek současných. Každý s detailním bio, image_prompt, a vazbou na místo/událost.
