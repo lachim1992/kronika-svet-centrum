@@ -420,6 +420,7 @@ const CityBuildingsPanel = ({
     fetchData();
   };
 
+  const handleSaveVisual = async (b: any) => {
     await supabase.from("city_buildings").update({
       flavor_text: editFlavor || b.flavor_text,
       architectural_style: editArchStyle || b.architectural_style,
