@@ -193,6 +193,15 @@ const MultiplayerLobby = ({ sessionId, roomCode, worldName, maxPlayers, isHost, 
     if (!user) return;
     setFactionSaved(true);
 
+    // Load the saved identity data for display
+    const { data: identity } = await supabase
+      .from("civ_identity")
+      .select("*")
+      .eq("session_id", sessionId)
+      .eq("player_name", myPlayerName)
+      .maybeSingle();
+    if (identity) setMyIdentity(identity);
+
     // Now mark player as ready
     await supabase.from("game_memberships")
       .update({ setup_status: "ready" })
