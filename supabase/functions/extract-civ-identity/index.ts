@@ -220,6 +220,8 @@ KATEGORIE MODIFIKÁTORŮ:
       // Stability
       stability_modifier: clamp(ex.stability_modifier, -10, 10),
       trade_modifier: clamp(ex.trade_modifier, -0.1, 0.2),
+      diplomacy_modifier: clamp(ex.diplomacy_modifier, -10, 15),
+      research_modifier: clamp(ex.research_modifier, -0.1, 0.2),
       // Buildings
       building_tags: (ex.building_tags || []).slice(0, 3),
       // Meta
