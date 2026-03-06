@@ -59,9 +59,8 @@ Deno.serve(async (req) => {
 
 KRITICKÉ PRAVIDLO KOHERENCE:
 - Budovy MUSÍ logicky vycházet z podstaty civilizace — jejího mýtu, kultury, společnosti a ekonomiky.
-- Pokud je civilizace říční rybářský kmen s mystickými tradicemi, budovy musí odrážet řeku, ryby, mystiku — NE generické „kovárny" nebo „akademie".
 - Název, popis, founding_myth i efekty musí být narativně propojené s civilizační identitou.
-- Founding_myth MUSÍ navazovat na core_myth civilizace — příběh budovy je pokračováním příběhu kmene.
+- Founding_myth MUSÍ navazovat na core_myth civilizace.
 
 PRAVIDLA PRÉMIOVÝCH BUDOV:
 - Budovy jsou EXKLUZIVNÍ pro tuto civilizaci — nikdo jiný je nemůže stavět
@@ -72,9 +71,16 @@ PRAVIDLA PRÉMIOVÝCH BUDOV:
 - Level 5 = quasi-Div světa s globálními bonusy
 - Názvy a popisy v ČEŠTINĚ
 
-EFEKTY (klíče): grain_production, iron_production, wood_production, stone_production, wealth, stability, influence, defense, recruitment, military_quality, military_garrison, morale_bonus, trade_bonus, granary_capacity, population_capacity, legitimacy, cleric_attraction, burgher_attraction, disease_resistance, siege_power, siege_resistance, cavalry_bonus, ranged_bonus, mobility, vision, espionage_defense, special_production, naval_power, research
+ODEMYKÁNÍ: Budovy mají progresivní odemykání:
+- Budova 1: available od HAMLET, ale vyžaduje alespoň 1 postavenou standardní budovu
+- Budova 2: available od TOWNSHIP, vyžaduje alespoň 2 postavené budovy
 
-PŘÍKLADY silných efektů pro Level 1:
+EFEKTY JSOU POVINNÉ! Každá úroveň MUSÍ mít KONKRÉTNÍ číselné efekty. NIKDY je nenechávej prázdné!
+Efekty na Level 1 jsou základní, Level 5 jsou extrémně silné (2-3x Level 1).
+
+POVOLENÉ KLÍČE EFEKTŮ: grain_production, iron_production, wood_production, stone_production, wealth, stability, influence, defense, recruitment, military_quality, military_garrison, morale_bonus, trade_bonus, granary_capacity, population_capacity, legitimacy, cleric_attraction, burgher_attraction, disease_resistance, siege_power, siege_resistance, cavalry_bonus, ranged_bonus, mobility, vision, espionage_defense, special_production, naval_power, research
+
+PŘÍKLADY efektů Level 1 (SILNÉ, ne slabé!):
 - fishing_wharf: { grain_production: 8, trade_bonus: 5, naval_power: 3, wealth: 3 }
 - sacred_grove: { stability: 12, legitimacy: 8, cleric_attraction: 5, morale_bonus: 3 }
 - iron_forge: { iron_production: 6, military_quality: 8, siege_power: 5 }`,
@@ -83,7 +89,10 @@ PŘÍKLADY silných efektů pro Level 1:
 Kontext civilizace:
 ${civContext}
 
-DŮLEŽITÉ: Budovy musí přímo odrážet identitu tohoto konkrétního kmene/národa — ne generické budovy. Každá budova by měla vyprávět příběh, který navazuje na mýtus a kulturu civilizace.
+DŮLEŽITÉ: 
+1. Budovy musí přímo odrážet identitu tohoto konkrétního kmene/národa.
+2. KAŽDÁ úroveň MUSÍ mít NEPRÁZDNÉ efekty s KONKRÉTNÍMI čísly (3-6 klíčů na úroveň)!
+3. Level 5 efekty musí být 2-3x silnější než Level 1.
 
 Vygeneruj ${tags.length >= 2 ? 2 : 1} prémiových budov.`,
       tools: [{
