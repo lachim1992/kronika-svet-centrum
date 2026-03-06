@@ -136,6 +136,8 @@ interface Props {
   onExtract: () => void;
   onBack: () => void;
   onConfirm: () => void;
+  /** If true, hides action buttons and shows as read-only summary */
+  readOnly?: boolean;
 }
 
 const CivIdentityPreview = ({ sessionId, playerName, civDescription, identityData, loading, error, onExtract, onBack, onConfirm }: Props) => {
