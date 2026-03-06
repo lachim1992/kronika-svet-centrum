@@ -582,9 +582,9 @@ Deno.serve(async (req) => {
     const newStoneReserve = (realm.stone_reserve || 0) + totalStoneProd;
     const newIronReserve = (realm.iron_reserve || 0) + totalIronProd;
 
-    // Wealth — apply open borders trade efficiency bonus + structural multiplier
+    // Wealth — unified multiplier + open borders trade efficiency bonus
     const openBordersTradeBonus = openBordersBonuses.trade_efficiency_bonus || 0;
-    const wealthIncome = Math.round(computeWealthIncome(myCities, cityDistrictEffects) * (1 + wealthMod / 100) * structMults.wealth * (1 + openBordersTradeBonus));
+    const wealthIncome = Math.round(computeWealthIncome(myCities, cityDistrictEffects) * uMult.wealth * (1 + openBordersTradeBonus));
     let newGoldReserve = (realm.gold_reserve || 0) + wealthIncome - wealthUpkeep;
 
     // ═══ EMBARGO: Block trade route income ═══
