@@ -1,5 +1,8 @@
+import { useState, useEffect } from "react";
+import { supabase } from "@/integrations/supabase/client";
 import FactionDesigner from "@/components/FactionDesigner";
 import CivilizationDNA from "@/components/CivilizationDNA";
+import CivIdentityPreview from "@/components/CivIdentityPreview";
 import EntityTraitsPanel from "@/components/EntityTraitsPanel";
 import DiplomacyPanel from "@/components/DiplomacyPanel";
 import WarRoomPanel from "@/components/WarRoomPanel";
@@ -7,7 +10,7 @@ import LeaderboardsPanel from "@/components/LeaderboardsPanel";
 import DeclarationsPanel from "@/components/DeclarationsPanel";
 import SecretObjectivesPanel from "@/components/SecretObjectivesPanel";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
-import { Sparkles, ScrollText, Feather, Swords, Trophy, Megaphone, Target } from "lucide-react";
+import { Sparkles, ScrollText, Feather, Swords, Trophy, Megaphone, Target, BarChart3 } from "lucide-react";
 
 interface Props {
   sessionId: string;
