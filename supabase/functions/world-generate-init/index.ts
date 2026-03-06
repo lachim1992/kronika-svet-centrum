@@ -570,6 +570,7 @@ DŮLEŽITÉ: affected_players/faction MUSÍ používat přesná jména frakcí. 
 
       factionDataList.push({ faction, factionPlayerName, isPlayer: faction.isPlayer });
       counters.factions++;
+      factionIndex++;
     }
 
     // Phase 2: Create initial resources WITH civ_identity modifiers applied
