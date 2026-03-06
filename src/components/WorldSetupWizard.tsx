@@ -1266,6 +1266,9 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
             {civDescription && <p>🧬 Civilizace: <em>{civDescription.slice(0, 80)}{civDescription.length > 80 ? "…" : ""}</em></p>}
             {isAIMode && <p>🤖 Velikost: <strong>{WORLD_SIZES.find(s => s.value === worldSize)?.label}</strong></p>}
             {!isAIMode && !isMultiMode && <p>🏔️ Region: <strong>{homelandName}</strong> ({BIOMES.find(b => b.value === homelandBiome)?.label})</p>}
+            {factionConfigs.length > 0 && (
+              <p>🤖 AI frakce ({factionConfigs.length}): {factionConfigs.map(fc => fc.name || AI_PERSONALITIES.find(p => p.value === fc.personality)?.label || fc.personality).join(", ")}</p>
+            )}
             {identityData && (
               <>
                 <hr className="border-border/30 my-1" />
