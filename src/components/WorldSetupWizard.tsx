@@ -211,7 +211,34 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
   const isMultiMode = gameMode === "tb_multi";
   const isPersistentMode = gameMode === "time_persistent";
 
-  const totalSteps = 8; // Added identity + AI civ step
+  const totalSteps = 9; // Added identity preview step
+
+  const handleExtractIdentity = async () => {
+    if (!civDescription.trim()) {
+      // No description → skip with neutral modifiers
+      setIdentityData(null);
+      setStep(7);
+      return;
+    }
+    setIdentityLoading(true);
+    setIdentityError(null);
+    try {
+      const { data, error } = await supabase.functions.invoke("extract-civ-identity", {
+        body: {
+          sessionId: "preview", // temporary — will be re-extracted during creation
+          playerName: playerName.trim(),
+          civDescription: civDescription.trim(),
+        },
+      });
+      if (error) throw new Error(typeof error === "string" ? error : error.message || "AI extrakce selhala");
+      if (data?.ai_error) throw new Error(data.ai_error);
+      setIdentityData(data);
+    } catch (e: any) {
+      setIdentityError(e.message || "Neznámá chyba");
+    } finally {
+      setIdentityLoading(false);
+    }
+  };
 
   const updateProgress = (steps: ProgressStep[]) => setProgressSteps([...steps]);
 
