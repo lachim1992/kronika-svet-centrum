@@ -153,17 +153,52 @@ Vygeneruj ${tags.length >= 2 ? 2 : 1} prémiových budov.`,
       return jsonResponse({ ok: false, error: result.error });
     }
 
-    const buildings = (result.data?.buildings || []).map((b: any) => ({
-      ...b,
-      is_premium: true,
-      is_civ_exclusive: true,
-      cost_wood: Math.max(12, b.cost_wood || 15),
-      cost_stone: Math.max(10, b.cost_stone || 12),
-      cost_iron: Math.max(8, b.cost_iron || 10),
-      cost_wealth: Math.max(20, b.cost_wealth || 25),
-      build_duration: Math.max(3, Math.min(5, b.build_duration || 4)),
-      max_level: 5,
-    }));
+    // Default fallback effects if AI left them empty
+    const FALLBACK_EFFECTS: Record<string, Record<string, number>> = {
+      economic: { grain_production: 6, wealth: 4, trade_bonus: 3 },
+      military: { military_quality: 8, morale_bonus: 5, defense: 4 },
+      cultural: { stability: 8, influence: 5, legitimacy: 4 },
+      religious: { stability: 10, legitimacy: 6, cleric_attraction: 4, morale_bonus: 3 },
+      infrastructure: { population_capacity: 100, granary_capacity: 50, defense: 3 },
+    };
+
+    const buildings = (result.data?.buildings || []).map((b: any, idx: number) => {
+      // Ensure effects are never empty
+      let effects = b.effects || {};
+      if (Object.keys(effects).length === 0) {
+        effects = FALLBACK_EFFECTS[b.category] || FALLBACK_EFFECTS.cultural;
+      }
+
+      // Ensure each level_data entry has non-empty effects
+      const levelData = (b.level_data || []).map((ld: any) => {
+        let ldEffects = ld.effects || {};
+        if (Object.keys(ldEffects).length === 0) {
+          // Scale base effects by level
+          ldEffects = {};
+          for (const [k, v] of Object.entries(effects)) {
+            ldEffects[k] = Math.round(Number(v) * (ld.level || 1) * 0.8);
+          }
+        }
+        return { ...ld, effects: ldEffects };
+      });
+
+      return {
+        ...b,
+        effects,
+        level_data: levelData,
+        is_premium: true,
+        is_civ_exclusive: true,
+        // Unlock conditions: first building available from HAMLET, second from TOWNSHIP
+        required_settlement_level: idx === 0 ? "HAMLET" : "TOWNSHIP",
+        required_buildings_count: idx === 0 ? 1 : 2,
+        cost_wood: Math.max(12, b.cost_wood || 15),
+        cost_stone: Math.max(10, b.cost_stone || 12),
+        cost_iron: Math.max(8, b.cost_iron || 10),
+        cost_wealth: Math.max(20, b.cost_wealth || 25),
+        build_duration: Math.max(3, Math.min(5, b.build_duration || 4)),
+        max_level: 5,
+      };
+    });
 
     // Save to civ_identity
     await sb.from("civ_identity").update({
