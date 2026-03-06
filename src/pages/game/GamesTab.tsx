@@ -375,7 +375,12 @@ const GamesTab = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, o
           <LeaguePanel sessionId={sessionId} currentPlayerName={currentPlayerName} currentTurn={currentTurn} />
         </TabsContent>
 
-        {/* ─── GLOBAL MEDAL TALLY ─── */}
+        {/* ─── ASSOCIATIONS ─── */}
+        <TabsContent value="associations">
+          <AssociationsPanel sessionId={sessionId} currentPlayerName={currentPlayerName} currentTurn={currentTurn} />
+        </TabsContent>
+
+
         <TabsContent value="medals">
           <GlobalMedalTally
             sessionId={sessionId}
