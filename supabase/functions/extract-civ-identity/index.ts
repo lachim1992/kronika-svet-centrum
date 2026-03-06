@@ -89,7 +89,13 @@ KATEGORIE MODIFIKÁTORŮ:
 8. SPECIÁLNÍ BUDOVY:
 - building_tags: 0-3 speciální typy budov dostupné pouze této civilizaci (anglicky, snake_case, např. horse_stable, sacred_grove, sea_port, iron_forge, trade_depot)
 
-9. NARATIVNÍ FLAVOR (vše česky):
+9. VOJENSKÉ JEDNOTKY (dva typy — MILICE a PROFESIONÁLOVÉ):
+- militia_unit_name: Krátký český název pro základní jednotku milice (3-4 slova, vychází z kultury civilizace, např. "Rybí kopíníci", "Lesní zálesáci", "Pouštní šíponoši")
+- militia_unit_desc: Jednořádkový popis milice (max 80 znaků, český jazyk)
+- professional_unit_name: Krátký český název pro elitní profesionální jednotku (3-4 slova, vychází z kultury civilizace, např. "Stínové legie", "Železní gardisté", "Chrámová stráž")
+- professional_unit_desc: Jednořádkový popis profesionálů (max 80 znaků, český jazyk)
+
+10. NARATIVNÍ FLAVOR (vše česky):
 - core_myth: Zakládající mýtus civilizace (1-2 věty, epický styl)
 - cultural_quirk: Unikátní kulturní zvláštnost (1 věta)
 - architectural_style: Architektonický styl (1-2 slova)`,
