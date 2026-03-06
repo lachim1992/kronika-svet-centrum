@@ -506,6 +506,7 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
               cultureName: cultureName.trim(),
               languageName: languageName.trim(),
               realmName: realmName.trim(),
+              factionConfigs: factionConfigs.filter(fc => fc.name.trim() || fc.personality || fc.description.trim()),
             },
           });
           if (genErr) {
