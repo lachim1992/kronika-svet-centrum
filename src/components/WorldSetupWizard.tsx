@@ -1299,17 +1299,17 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
           </div>
 
           <div className="flex gap-2">
-            <Button variant="outline" onClick={() => setStep(5)}>← Zpět</Button>
+            <Button variant="outline" onClick={() => setStep(6)}>← Zpět</Button>
             <Button onClick={() => {
               // Sync old factions array for backward compat
               setFactions(factionConfigs.map(fc => fc.name).filter(n => n.trim()));
               if (!isMultiMode && civDescription.trim()) {
-                setStep(7);
+                setStep(8);
                 if (!identityData && !identityLoading) {
                   setTimeout(() => handleExtractIdentity(), 100);
                 }
               } else {
-                setStep(7);
+                setStep(8);
               }
             }} className="flex-1">Další →</Button>
           </div>
