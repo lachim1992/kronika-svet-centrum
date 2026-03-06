@@ -5,7 +5,23 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-import { SETTLEMENT_TEMPLATES, SETTLEMENT_WEALTH, computePrestigeEffects, getOpenBordersBonuses, hasActiveEmbargo, getTradeEfficiencyModifier, type DiplomaticPact } from "../_shared/physics.ts";
+import { SETTLEMENT_TEMPLATES, SETTLEMENT_WEALTH, computePrestigeEffects, getOpenBordersBonuses, hasActiveEmbargo, getTradeEfficiencyModifier, computeStructuralBonuses, type DiplomaticPact } from "../_shared/physics.ts";
+
+/**
+ * Compute structural production multipliers from civ_identity categories.
+ * Lightweight wrapper around computeStructuralBonuses for process-turn usage.
+ */
+function computeStructuralMults(civIdentity: any): { grain: number; wood: number; stone: number; iron: number; wealth: number } {
+  if (!civIdentity) return { grain: 1, wood: 1, stone: 1, iron: 1, wealth: 1 };
+  const sb = computeStructuralBonuses(civIdentity);
+  return {
+    grain: sb.grain_production_mult,
+    wood: sb.wood_production_mult,
+    stone: sb.stone_production_mult,
+    iron: sb.iron_production_mult,
+    wealth: sb.wealth_production_mult,
+  };
+}
 
 const UNIT_WEIGHTS: Record<string, number> = {
   INFANTRY: 1.0, ARCHERS: 1.1, CAVALRY: 1.3, SIEGE: 0.9,
