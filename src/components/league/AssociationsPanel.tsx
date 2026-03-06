@@ -150,9 +150,12 @@ const AssociationsPanel = ({ sessionId, currentPlayerName, currentTurn }: Props)
   const [allTeams, setAllTeams] = useState<Team[]>([]);
   const [allPlayers, setAllPlayers] = useState<Player[]>([]);
   const [cities, setCities] = useState<Map<string, string>>(new Map());
+  const [allAcademies, setAllAcademies] = useState<Academy[]>([]);
+  const [allStudents, setAllStudents] = useState<Student[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [upgrading, setUpgrading] = useState<string | null>(null);
+  const [creatingAcademy, setCreatingAcademy] = useState<string | null>(null);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
