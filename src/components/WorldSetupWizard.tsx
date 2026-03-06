@@ -1390,7 +1390,7 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
           </div>
 
           <div className="flex gap-2">
-            <Button variant="outline" onClick={() => setStep(7)}>← Zpět</Button>
+            <Button variant="outline" onClick={() => setStep(8)}>← Zpět</Button>
             <Button onClick={handleCreate} disabled={creating} className="flex-1 font-display">
               {creating ? (
                 <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Vytvářím...</>
