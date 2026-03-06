@@ -69,6 +69,7 @@ const CityBuildingsPanel = ({
 }: Props) => {
   const [buildings, setBuildings] = useState<any[]>([]);
   const [templates, setTemplates] = useState<any[]>([]);
+  const [civBuildings, setCivBuildings] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [showAI, setShowAI] = useState(false);
@@ -85,14 +86,17 @@ const CityBuildingsPanel = ({
 
   const fetchData = useCallback(async () => {
     setLoading(true);
-    const [bRes, tRes] = await Promise.all([
+    const [bRes, tRes, civRes] = await Promise.all([
       supabase.from("city_buildings").select("*").eq("city_id", cityId).order("created_at"),
       supabase.from("building_templates").select("*").order("category, name"),
+      supabase.from("civ_identity").select("special_buildings, building_tags")
+        .eq("session_id", sessionId).eq("player_name", currentPlayerName).maybeSingle(),
     ]);
     setBuildings(bRes.data || []);
     setTemplates(tRes.data || []);
+    setCivBuildings((civRes.data?.special_buildings as any[]) || []);
     setLoading(false);
-  }, [cityId]);
+  }, [cityId, sessionId, currentPlayerName]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
