@@ -1099,11 +1099,12 @@ async function runWorldTickEvents(supabase: any, sessionId: string, turnNumber: 
       growth_modifier: ci?.pop_growth_modifier ?? ci?.grain_modifier ?? legacy.growth_modifier ?? 0,
       stability_modifier: ci?.stability_modifier ?? legacy.stability_modifier ?? 0,
       legitimacy_base: legacy.legitimacy_base ?? 0,
-      diplomacy_modifier: ci?.trade_modifier ? ci.trade_modifier * 50 : legacy.diplomacy_modifier ?? 0,
+      diplomacy_modifier: ci?.diplomacy_modifier ?? (ci?.trade_modifier ? ci.trade_modifier * 50 : legacy.diplomacy_modifier ?? 0),
       trade_modifier: ci?.wealth_modifier ?? ci?.trade_modifier ?? legacy.trade_modifier ?? 0,
       morale_modifier: ci?.morale_modifier ?? legacy.morale_modifier ?? 0,
       fortification_bonus: ci?.fortification_bonus ?? legacy.fortification_bonus ?? 0,
       cavalry_bonus: ci?.cavalry_bonus ?? 0,
+      research_modifier: ci?.research_modifier ?? 0,
     };
   }
 

@@ -751,7 +751,7 @@ export function applyCivIdentityToInfluence(
 
   let trade = identity.trade_modifier * 100; // scale to influence points
   let military = 0;
-  let diplomatic = 0;
+  let diplomatic = (identity as any).diplomacy_modifier || 0;
 
   // Military doctrine affects military influence
   if (identity.military_doctrine === "offensive") military += 15;
