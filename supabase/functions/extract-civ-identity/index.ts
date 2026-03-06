@@ -234,9 +234,14 @@ KATEGORIE MODIFIKÁTORŮ:
       return errorResponse("Failed to save identity: " + error.message);
     }
 
-    // Also sync display_name to civilizations table if it exists
-    if (row.display_name) {
-      await sb.from("civilizations").update({ civ_name: row.display_name })
+    // Sync display_name + narrative flavor to civilizations table
+    const civUpdate: Record<string, any> = {};
+    if (row.display_name) civUpdate.civ_name = row.display_name;
+    if (ex.core_myth) civUpdate.core_myth = (ex.core_myth || "").slice(0, 500);
+    if (ex.cultural_quirk) civUpdate.cultural_quirk = (ex.cultural_quirk || "").slice(0, 300);
+    if (ex.architectural_style) civUpdate.architectural_style = (ex.architectural_style || "").slice(0, 100);
+    if (Object.keys(civUpdate).length > 0) {
+      await sb.from("civilizations").update(civUpdate)
         .eq("session_id", sessionId).eq("player_name", playerName);
     }
 
