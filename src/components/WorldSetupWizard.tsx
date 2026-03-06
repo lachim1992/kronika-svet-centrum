@@ -952,11 +952,25 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
                     setVictoryStyle(t.victoryStyle);
                     setHomelandBiome(t.biome);
                     if (t.homelandName) setHomelandName(t.homelandName);
-                    if (t.factions.length > 0 && t.factions[0]) setFactions(t.factions);
+                    if (t.factions.length > 0 && t.factions[0]) {
+                      setFactions(t.factions);
+                      // Also populate factionConfigs from template
+                      setFactionConfigs(t.factions.filter(f => f).map((f, idx) => ({
+                        name: f,
+                        personality: idx === 0 ? "aggressive" : idx === 1 ? "diplomatic" : "mercantile",
+                        focus: idx === 0 ? "military" : idx === 1 ? "economy" : "culture",
+                        description: "",
+                      })));
+                    }
                     toast.success(`Šablona "${t.label}" aplikována!`);
                   } else {
                     setWorldName(""); setPremise(""); setTone("mythic"); setVictoryStyle("story");
                     setHomelandBiome("plains"); setHomelandName(""); setFactions([""]);
+                    setFactionConfigs([
+                      { name: "", personality: "aggressive", focus: "military", description: "" },
+                      { name: "", personality: "diplomatic", focus: "economy", description: "" },
+                      { name: "", personality: "mercantile", focus: "culture", description: "" },
+                    ]);
                   }
                 }}
                 className={`p-2.5 rounded-lg border text-left text-xs transition-colors hover:border-primary/30 ${
