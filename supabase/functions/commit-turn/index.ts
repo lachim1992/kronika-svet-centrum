@@ -1092,14 +1092,13 @@ async function runWorldTickEvents(supabase: any, sessionId: string, turnNumber: 
     civIdentityMap[ci.player_name] = ci;
   }
   const civBonusMap: Record<string, Record<string, number>> = {};
-  const structuralBonusMap: Record<string, any> = {};
   for (const civ of (civilizations || [])) {
     const legacy = (civ.civ_bonuses as Record<string, number>) || {};
     const ci = civIdentityMap[civ.player_name];
     // Compute structural bonuses from urban_style, society_structure, etc.
     const structural = computeStructuralBonuses(ci as any);
-    structuralBonusMap[civ.player_name] = structural;
-    // Merge: civ_identity values take precedence, structural bonuses stack
+    // Merge: numeric + structural bonuses combined ADDITIVELY
+    // Production multipliers are handled by process-turn with unified logic
     civBonusMap[civ.player_name] = {
       growth_modifier: (ci?.pop_growth_modifier ?? ci?.grain_modifier ?? legacy.growth_modifier ?? 0) + structural.pop_growth_bonus,
       stability_modifier: (ci?.stability_modifier ?? legacy.stability_modifier ?? 0) + structural.stability_bonus,
@@ -1110,16 +1109,6 @@ async function runWorldTickEvents(supabase: any, sessionId: string, turnNumber: 
       fortification_bonus: (ci?.fortification_bonus ?? legacy.fortification_bonus ?? 0) + structural.defense_bonus,
       cavalry_bonus: ci?.cavalry_bonus ?? 0,
       research_modifier: ci?.research_modifier ?? 0,
-      // Structural production multipliers (used in process-turn via identity)
-      grain_mult: structural.grain_production_mult,
-      wealth_mult: structural.wealth_production_mult,
-      stone_mult: structural.stone_production_mult,
-      iron_mult: structural.iron_production_mult,
-      wood_mult: structural.wood_production_mult,
-      building_cost_mult: structural.building_cost_mult,
-      building_speed_mult: structural.building_speed_mult,
-      housing_capacity_mult: structural.housing_capacity_mult,
-      recruitment_speed_mult: structural.recruitment_speed_mult,
       siege_bonus: structural.siege_bonus,
     };
   }
