@@ -85,7 +85,12 @@ KATEGORIE MODIFIKÁTORŮ:
 - flavor_summary: Jednořádkový popis frakce v epickém stylu (max 100 znaků)
 
 8. SPECIÁLNÍ BUDOVY:
-- building_tags: 0-3 speciální typy budov dostupné pouze této civilizaci (anglicky, snake_case, např. horse_stable, sacred_grove, sea_port, iron_forge, trade_depot)`,
+- building_tags: 0-3 speciální typy budov dostupné pouze této civilizaci (anglicky, snake_case, např. horse_stable, sacred_grove, sea_port, iron_forge, trade_depot)
+
+9. NARATIVNÍ FLAVOR (vše česky):
+- core_myth: Zakládající mýtus civilizace (1-2 věty, epický styl)
+- cultural_quirk: Unikátní kulturní zvláštnost (1 věta)
+- architectural_style: Architektonický styl (1-2 slova)`,
       userPrompt: `Analyzuj tento popis civilizace a extrahuj kompletní sadu modifikátorů:\n\n"${fullText}"`,
       tools: [{
         type: "function",
@@ -142,6 +147,10 @@ KATEGORIE MODIFIKÁTORŮ:
                 items: { type: "string" },
                 description: "0-3 special building type tags",
               },
+              // Narrative flavor
+              core_myth: { type: "string", description: "Founding myth in Czech (1-2 sentences)" },
+              cultural_quirk: { type: "string", description: "Unique cultural quirk in Czech (1 sentence)" },
+              architectural_style: { type: "string", description: "Architectural style in Czech (1-2 words)" },
             },
             required: [
               "display_name", "flavor_summary", "culture_tags",
@@ -150,6 +159,7 @@ KATEGORIE MODIFIKÁTORŮ:
               "pop_growth_modifier", "initial_burgher_ratio", "initial_cleric_ratio",
               "morale_modifier", "mobilization_speed", "cavalry_bonus", "fortification_bonus",
               "stability_modifier", "trade_modifier", "building_tags",
+              "core_myth", "cultural_quirk", "architectural_style",
             ],
             additionalProperties: false,
           },
@@ -224,9 +234,14 @@ KATEGORIE MODIFIKÁTORŮ:
       return errorResponse("Failed to save identity: " + error.message);
     }
 
-    // Also sync display_name to civilizations table if it exists
-    if (row.display_name) {
-      await sb.from("civilizations").update({ civ_name: row.display_name })
+    // Sync display_name + narrative flavor to civilizations table
+    const civUpdate: Record<string, any> = {};
+    if (row.display_name) civUpdate.civ_name = row.display_name;
+    if (ex.core_myth) civUpdate.core_myth = (ex.core_myth || "").slice(0, 500);
+    if (ex.cultural_quirk) civUpdate.cultural_quirk = (ex.cultural_quirk || "").slice(0, 300);
+    if (ex.architectural_style) civUpdate.architectural_style = (ex.architectural_style || "").slice(0, 100);
+    if (Object.keys(civUpdate).length > 0) {
+      await sb.from("civilizations").update(civUpdate)
         .eq("session_id", sessionId).eq("player_name", playerName);
     }
 

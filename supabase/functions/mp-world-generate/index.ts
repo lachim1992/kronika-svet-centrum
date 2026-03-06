@@ -1523,9 +1523,11 @@ DŮLEŽITÉ: Hráčské frakce MUSÍ mít isPlayer=true a playerName musí přes
       description: `MP svět s hlubokou prehistorií: ${counters.countries} stát, ${counters.factions} frakcí, ${counters.cities} měst, ${counters.regions} regionů, ${counters.provinces} provincií, ${counters.persons} osobností, ${counters.wonders} divů, ${counters.legendary} prehistorických událostí, ${counters.battles} bitev, ${counters.events} událostí, ${counters.links} propojení, ${counters.wiki} wiki, ${wikiGenerated} AI profilů, ${counters.rumors} pověstí.`,
     });
 
-    // ═══ Extract structured civ identity for all players (fire & forget) ═══
+    // ═══ Extract structured civ identity for ALL factions (players + AI) ═══
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
     const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY") || Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+
+    // Human players
     for (const cfg of civConfigs) {
       const { data: civ } = await sb.from("civilizations")
         .select("core_myth, cultural_quirk, architectural_style")
@@ -1546,6 +1548,40 @@ DŮLEŽITÉ: Hráčské frakce MUSÍ mít isPlayer=true a playerName musí přes
           architecturalStyleText: civ?.architectural_style || null,
         }),
       }).catch(e => console.warn("civ identity extraction failed for", cfg.player_name, e));
+    }
+
+    // AI factions — generate civ_identity from their personality/description
+    const { data: aiFactions } = await sb.from("ai_factions")
+      .select("faction_name, personality, goals")
+      .eq("session_id", sessionId).eq("is_active", true);
+
+    for (const aiFaction of aiFactions || []) {
+      const { data: aiCiv } = await sb.from("civilizations")
+        .select("core_myth, cultural_quirk, architectural_style, civ_name")
+        .eq("session_id", sessionId).eq("player_name", aiFaction.faction_name).maybeSingle();
+
+      const aiDescription = [
+        `Frakce "${aiFaction.faction_name}" s osobností: ${aiFaction.personality}.`,
+        aiCiv?.core_myth ? `Mýtus: ${aiCiv.core_myth}` : "",
+        aiCiv?.cultural_quirk ? `Zvláštnost: ${aiCiv.cultural_quirk}` : "",
+        Array.isArray(aiFaction.goals) && aiFaction.goals.length > 0 ? `Cíle: ${(aiFaction.goals as string[]).join(", ")}` : "",
+      ].filter(Boolean).join("\n");
+
+      fetch(`${SUPABASE_URL}/functions/v1/extract-civ-identity`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+        },
+        body: JSON.stringify({
+          sessionId,
+          playerName: aiFaction.faction_name,
+          civDescription: aiDescription,
+          coreMythText: aiCiv?.core_myth || null,
+          culturalQuirkText: aiCiv?.cultural_quirk || null,
+          architecturalStyleText: aiCiv?.architectural_style || null,
+        }),
+      }).catch(e => console.warn("AI faction identity extraction failed for", aiFaction.faction_name, e));
     }
 
     // Log final counters for debugging

@@ -294,8 +294,8 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
     ];
     updateProgress(progress);
 
-    // AI-generated civ start data (will be populated in step 3.5)
-    let civStartData: any = null;
+    // civStartData removed — all starting resources use neutral defaults
+    // civ_identity modifiers are applied at runtime (process-turn/commit-turn)
 
     let sessionId: string | null = null;
 
@@ -378,34 +378,31 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
       }).select("id").single();
       setStepStatus(progress, 2, "done");
 
-      // ── STEP 3.5: AI Civilization Generation ──
+      // ── STEP 3.5: Extract Civ Identity (unified modifiers) ──
       setStepStatus(progress, 3, "active");
       if (civDescription.trim()) {
         try {
-          const { data: civData, error: civErr } = await supabase.functions.invoke("generate-civ-start", {
+          const { data: identityData, error: identityErr } = await supabase.functions.invoke("extract-civ-identity", {
             body: {
               sessionId: session.id,
               playerName: playerName.trim(),
               civDescription: civDescription.trim(),
-              worldPremise: premise.trim(),
-              tone,
-              biomeName: homelandBiome,
-              settlementName: settlementName.trim(),
             },
           });
-          if (!civErr && civData && !civData.error) {
-            civStartData = civData;
-            // Update civilization record with AI-generated traits
-            if (civRecord?.id && civData.civilization) {
-              await supabase.from("civilizations").update({
-                core_myth: civData.civilization.core_myth || null,
-                cultural_quirk: civData.civilization.cultural_quirk || null,
-                architectural_style: civData.civilization.architectural_style || null,
-              }).eq("id", civRecord.id);
+          if (!identityErr && identityData && !identityData.ai_error) {
+            // Update civilization record with AI-generated narrative flavor
+            if (civRecord?.id) {
+              const civUpdate: Record<string, string> = {};
+              if (identityData.core_myth) civUpdate.core_myth = identityData.core_myth;
+              if (identityData.cultural_quirk) civUpdate.cultural_quirk = identityData.cultural_quirk;
+              if (identityData.architectural_style) civUpdate.architectural_style = identityData.architectural_style;
+              if (Object.keys(civUpdate).length > 0) {
+                await supabase.from("civilizations").update(civUpdate).eq("id", civRecord.id);
+              }
             }
           }
         } catch (e) {
-          console.warn("AI civ generation failed (non-blocking):", e);
+          console.warn("AI civ identity extraction failed (non-blocking):", e);
         }
       }
       setStepStatus(progress, 3, "done");
@@ -510,8 +507,7 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
           if (provData) provinceId = provData.id;
         }
 
-        // Use AI-generated settlement params if available
-        const stParams = civStartData?.settlement;
+        // Neutral starting settlement params (modifiers applied at runtime)
         const { data: cityData, error: cityErr } = await supabase.from("cities").insert({
           session_id: session.id,
           owner_player: playerName.trim(),
@@ -525,14 +521,14 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
           province_r: 0,
           culture_id: cultureId,
           language_id: languageId,
-          city_stability: stParams?.city_stability || 65,
+          city_stability: 65,
           influence_score: 0,
-          population_total: stParams?.population_total || 1000,
-          population_peasants: stParams?.population_peasants || 800,
-          population_burghers: stParams?.population_burghers || 150,
-          population_clerics: stParams?.population_clerics || 50,
-          special_resource_type: stParams?.special_resource_type || "NONE",
-          flavor_prompt: stParams?.settlement_flavor || civDescription.trim() || null,
+          population_total: 1000,
+          population_peasants: 800,
+          population_burghers: 150,
+          population_clerics: 50,
+          special_resource_type: "NONE",
+          flavor_prompt: civDescription.trim() || null,
         }).select("id").single();
 
         if (cityErr) throw cityErr;
@@ -580,35 +576,32 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
 
       setStepStatus(progress, 5, "done");
 
-      // ── STEP 6: Init resources (AI-generated or defaults) ──
+      // ── STEP 6: Init resources (neutral defaults — modifiers at runtime) ──
       setStepStatus(progress, 6, "active");
-      const aiRes = civStartData?.player_resources;
       for (const rt of ["food", "wood", "stone", "iron", "wealth"] as const) {
-        const aiVals = aiRes?.[rt];
         await supabase.from("player_resources").insert({
           session_id: session.id,
           player_name: playerName.trim(),
           resource_type: rt,
-          income: aiVals?.income ?? (rt === "food" ? 4 : rt === "wood" ? 3 : rt === "stone" ? 2 : rt === "iron" ? 1 : 2),
-          upkeep: aiVals?.upkeep ?? (rt === "food" ? 2 : rt === "wood" ? 1 : rt === "wealth" ? 1 : 0),
-          stockpile: aiVals?.stockpile ?? (rt === "food" ? 10 : rt === "wood" ? 5 : rt === "stone" ? 3 : rt === "iron" ? 2 : 5),
+          income: rt === "food" ? 4 : rt === "wood" ? 3 : rt === "stone" ? 2 : rt === "iron" ? 1 : 2,
+          upkeep: rt === "food" ? 2 : rt === "wood" ? 1 : rt === "wealth" ? 1 : 0,
+          stockpile: rt === "food" ? 10 : rt === "wood" ? 5 : rt === "stone" ? 3 : rt === "iron" ? 2 : 5,
         });
       }
 
-      // Create realm_resources with AI-generated reserves
-      const aiRealm = civStartData?.realm_resources;
+      // Create realm_resources with neutral reserves
       await supabase.from("realm_resources").insert({
         session_id: session.id,
         player_name: playerName.trim(),
-        grain_reserve: aiRealm?.grain_reserve ?? 20,
-        wood_reserve: aiRealm?.wood_reserve ?? 10,
-        stone_reserve: aiRealm?.stone_reserve ?? 5,
-        iron_reserve: aiRealm?.iron_reserve ?? 3,
-        horses_reserve: aiRealm?.horses_reserve ?? 5,
-        gold_reserve: aiRealm?.gold_reserve ?? 100,
-        stability: aiRealm?.stability ?? 70,
-        granary_capacity: aiRealm?.granary_capacity ?? 500,
-        stables_capacity: aiRealm?.stables_capacity ?? 100,
+        grain_reserve: 20,
+        wood_reserve: 10,
+        stone_reserve: 5,
+        iron_reserve: 3,
+        horses_reserve: 5,
+        gold_reserve: 100,
+        stability: 70,
+        granary_capacity: 500,
+        stables_capacity: 100,
       });
 
       setStepStatus(progress, 6, "done");
