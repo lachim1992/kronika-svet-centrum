@@ -161,6 +161,11 @@ KATEGORIE MODIFIKÁTORŮ:
               core_myth: { type: "string", description: "Founding myth in Czech (1-2 sentences)" },
               cultural_quirk: { type: "string", description: "Unique cultural quirk in Czech (1 sentence)" },
               architectural_style: { type: "string", description: "Architectural style in Czech (1-2 words)" },
+              // Military unit names
+              militia_unit_name: { type: "string", description: "Czech name for militia unit (3-4 words)" },
+              militia_unit_desc: { type: "string", description: "One-line militia description in Czech (max 80 chars)" },
+              professional_unit_name: { type: "string", description: "Czech name for professional unit (3-4 words)" },
+              professional_unit_desc: { type: "string", description: "One-line professional description in Czech (max 80 chars)" },
             },
             required: [
               "display_name", "flavor_summary", "culture_tags",
