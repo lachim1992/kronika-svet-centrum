@@ -197,6 +197,11 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
   const [tone, setTone] = useState("mythic");
   const [victoryStyle, setVictoryStyle] = useState("story");
   const [factions, setFactions] = useState<string[]>([""]);
+  const [factionConfigs, setFactionConfigs] = useState<FactionConfig[]>([
+    { name: "", personality: "aggressive", focus: "military", description: "" },
+    { name: "", personality: "diplomatic", focus: "economy", description: "" },
+    { name: "", personality: "mercantile", focus: "culture", description: "" },
+  ]);
   const [playerName, setPlayerName] = useState(defaultPlayerName);
   const [creating, setCreating] = useState(false);
   const [generatingWorld, setGeneratingWorld] = useState(false);
