@@ -806,45 +806,55 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
             <Label>Vaše jméno v této hře</Label>
             <Input value={playerName} onChange={e => setPlayerName(e.target.value)} placeholder="Jméno civilizace / hráče" />
           </div>
-          <div className="space-y-2">
-            <Label>Název říše / státu</Label>
-            <Input value={realmName} onChange={e => setRealmName(e.target.value)} placeholder="např. Království Sardos" />
-          </div>
-          <div className="space-y-2">
-            <Label>Název startovního sídla</Label>
-            <Input value={settlementName} onChange={e => setSettlementName(e.target.value)} placeholder="např. Město Sardos, Osada Dubí Háj..." />
-          </div>
-          <div className="grid grid-cols-2 gap-2">
-            <div className="space-y-1">
-              <Label className="text-xs">Národ / Lid</Label>
-              <Input value={peopleName} onChange={e => setPeopleName(e.target.value)} placeholder="např. Sardové" />
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs">Kultura</Label>
-              <Input value={cultureName} onChange={e => setCultureName(e.target.value)} placeholder="např. Sardská" />
-            </div>
-          </div>
-          <div className="space-y-2">
-            <Label className="text-xs">Jazyk <span className="text-muted-foreground">(volitelné)</span></Label>
-            <Input value={languageName} onChange={e => setLanguageName(e.target.value)} placeholder="např. Sardština" />
-          </div>
-          <div className="space-y-2">
-            <Label className="flex items-center gap-1.5">
-              <Sparkles className="h-3.5 w-3.5 text-primary" />
-              Popis vaší civilizace
-            </Label>
-            <Textarea
-              value={civDescription}
-              onChange={e => setCivDescription(e.target.value)}
-              placeholder="Popište, čím je váš národ výjimečný — jsou to bojovníci, obchodníci, námořníci? Co umí? Jaká je jejich filosofie? AI z toho vygeneruje startovní zdroje, populaci a charakter vašeho sídla…"
-              rows={4}
-              maxLength={1000}
-            />
-            <p className="text-[10px] text-muted-foreground">{civDescription.length}/1000 · AI vygeneruje počáteční podmínky na základě tohoto popisu</p>
-          </div>
+          {/* For multiplayer, civ details are configured in lobby — skip here */}
+          {!isMultiMode && (
+            <>
+              <div className="space-y-2">
+                <Label>Název říše / státu</Label>
+                <Input value={realmName} onChange={e => setRealmName(e.target.value)} placeholder="např. Království Sardos" />
+              </div>
+              <div className="space-y-2">
+                <Label>Název startovního sídla</Label>
+                <Input value={settlementName} onChange={e => setSettlementName(e.target.value)} placeholder="např. Město Sardos, Osada Dubí Háj..." />
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-1">
+                  <Label className="text-xs">Národ / Lid</Label>
+                  <Input value={peopleName} onChange={e => setPeopleName(e.target.value)} placeholder="např. Sardové" />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Kultura</Label>
+                  <Input value={cultureName} onChange={e => setCultureName(e.target.value)} placeholder="např. Sardská" />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label className="text-xs">Jazyk <span className="text-muted-foreground">(volitelné)</span></Label>
+                <Input value={languageName} onChange={e => setLanguageName(e.target.value)} placeholder="např. Sardština" />
+              </div>
+              <div className="space-y-2">
+                <Label className="flex items-center gap-1.5">
+                  <Sparkles className="h-3.5 w-3.5 text-primary" />
+                  Popis vaší civilizace
+                </Label>
+                <Textarea
+                  value={civDescription}
+                  onChange={e => setCivDescription(e.target.value)}
+                  placeholder="Popište, čím je váš národ výjimečný — jsou to bojovníci, obchodníci, námořníci? Co umí? Jaká je jejich filosofie? AI z toho vygeneruje startovní zdroje, populaci a charakter vašeho sídla…"
+                  rows={4}
+                  maxLength={1000}
+                />
+                <p className="text-[10px] text-muted-foreground">{civDescription.length}/1000 · AI vygeneruje počáteční podmínky na základě tohoto popisu</p>
+              </div>
+            </>
+          )}
+          {isMultiMode && (
+            <p className="text-xs text-muted-foreground bg-muted/30 rounded-lg p-3">
+              ℹ️ Civilizaci, frakci a provincii nastavíte v lobby společně s ostatními hráči.
+            </p>
+          )}
           <div className="flex gap-2">
             <Button variant="outline" onClick={() => setStep(0)}>← Zpět</Button>
-            <Button onClick={() => setStep(2)} disabled={!playerName.trim() || !settlementName.trim()} className="flex-1">Další →</Button>
+            <Button onClick={() => setStep(2)} disabled={!playerName.trim() || (!isMultiMode && !settlementName.trim())} className="flex-1">Další →</Button>
           </div>
         </div>
       )}
