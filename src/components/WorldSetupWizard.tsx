@@ -1086,31 +1086,101 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
         </div>
       )}
 
-      {/* Step 6: Factions (non-AI only) */}
+      {/* Step 6: AI Faction Configuration */}
       {step === 6 && !creating && (
         <div className="space-y-3">
-          {!isAIMode && (
-            <>
-              <Label>Počáteční frakce / civilizace</Label>
-              {factions.map((f, i) => (
-                <div key={i} className="flex gap-2">
-                  <Input value={f} onChange={e => updateFaction(i, e.target.value)} placeholder={`Frakce ${i + 1}`} />
-                  {factions.length > 1 && (
-                    <Button variant="ghost" size="icon" onClick={() => removeFaction(i)}><X className="h-4 w-4" /></Button>
-                  )}
+          <div className="bg-primary/5 border border-primary/20 rounded-lg p-3">
+            <h4 className="font-display font-semibold text-sm flex items-center gap-2 mb-1">
+              <Bot className="h-4 w-4 text-primary" />
+              {isMultiMode ? "NPC frakce" : "AI protihráči"}
+            </h4>
+            <p className="text-[10px] text-muted-foreground">
+              {isMultiMode
+                ? "Nastavte NPC frakce, které doplní svět vedle lidských hráčů."
+                : "Nastavte AI civilizace — jejich osobnost, zaměření a východisko pro generování."}
+            </p>
+          </div>
+
+          <div className="flex items-center justify-between">
+            <Label className="text-xs">Počet frakcí: <strong>{factionConfigs.length}</strong></Label>
+            {factionConfigs.length < 7 && (
+              <Button variant="outline" size="sm" onClick={addFactionConfig}>
+                <Plus className="h-3 w-3 mr-1" />Přidat
+              </Button>
+            )}
+          </div>
+
+          <div className="space-y-3 max-h-[400px] overflow-y-auto pr-1">
+            {factionConfigs.map((fc, i) => {
+              const persIcon = AI_PERSONALITIES.find(p => p.value === fc.personality);
+              return (
+                <div key={i} className="border border-border rounded-lg p-3 space-y-2 bg-card/50">
+                  <div className="flex items-center justify-between">
+                    <Badge variant="secondary" className="text-[10px]">Frakce {i + 1}</Badge>
+                    {factionConfigs.length > 1 && (
+                      <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => removeFactionConfig(i)}>
+                        <X className="h-3 w-3" />
+                      </Button>
+                    )}
+                  </div>
+                  <Input
+                    value={fc.name}
+                    onChange={e => updateFactionConfig(i, "name", e.target.value)}
+                    placeholder={`Název frakce (volitelné — AI doplní)`}
+                    className="text-sm"
+                  />
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="space-y-1">
+                      <Label className="text-[10px] text-muted-foreground">Osobnost</Label>
+                      <Select value={fc.personality} onValueChange={v => updateFactionConfig(i, "personality", v)}>
+                        <SelectTrigger className="h-8 text-xs">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {AI_PERSONALITIES.map(p => (
+                            <SelectItem key={p.value} value={p.value} className="text-xs">
+                              {p.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-[10px] text-muted-foreground">Zaměření</Label>
+                      <Select value={fc.focus} onValueChange={v => updateFactionConfig(i, "focus", v)}>
+                        <SelectTrigger className="h-8 text-xs">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {AI_FOCUSES.map(f => (
+                            <SelectItem key={f.value} value={f.value} className="text-xs">
+                              {f.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                  <Textarea
+                    value={fc.description}
+                    onChange={e => updateFactionConfig(i, "description", e.target.value)}
+                    placeholder="Krátký popis / východisko (volitelné — AI doplní)"
+                    rows={2}
+                    className="text-xs"
+                    maxLength={300}
+                  />
                 </div>
-              ))}
-              {factions.length < 6 && (
-                <Button variant="outline" size="sm" onClick={addFaction}><Plus className="h-3 w-3 mr-1" />Přidat frakci</Button>
-              )}
-            </>
-          )}
+              );
+            })}
+          </div>
+
           <div className="flex gap-2">
             <Button variant="outline" onClick={() => setStep(5)}>← Zpět</Button>
             <Button onClick={() => {
+              // Sync old factions array for backward compat
+              setFactions(factionConfigs.map(fc => fc.name).filter(n => n.trim()));
               if (!isMultiMode && civDescription.trim()) {
                 setStep(7);
-                // Auto-trigger extraction when entering preview step
                 if (!identityData && !identityLoading) {
                   setTimeout(() => handleExtractIdentity(), 100);
                 }
