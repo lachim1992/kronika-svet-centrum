@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Globe, Sparkles, Swords, Users, X, Plus, Mountain, TreePine, Waves, Sun, Snowflake, Flame, Bot, Pen, UserPlus, Loader2, Server, RotateCcw, Clock, Check, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
 import WorldCreationOverlay from "./WorldCreationOverlay";
+import CivIdentityPreview from "./CivIdentityPreview";
 
 const GAME_MODE_CATEGORIES = [
   {
@@ -189,6 +190,11 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
   const [homelandBiome, setHomelandBiome] = useState("plains");
   const [homelandDesc, setHomelandDesc] = useState("");
 
+  // AI Identity preview
+  const [identityData, setIdentityData] = useState<any>(null);
+  const [identityLoading, setIdentityLoading] = useState(false);
+  const [identityError, setIdentityError] = useState<string | null>(null);
+
   // Progress tracking
   const [progressSteps, setProgressSteps] = useState<ProgressStep[]>([]);
   const [creationFailed, setCreationFailed] = useState(false);
@@ -205,7 +211,34 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
   const isMultiMode = gameMode === "tb_multi";
   const isPersistentMode = gameMode === "time_persistent";
 
-  const totalSteps = 8; // Added identity + AI civ step
+  const totalSteps = 9; // Added identity preview step
+
+  const handleExtractIdentity = async () => {
+    if (!civDescription.trim()) {
+      // No description → skip with neutral modifiers
+      setIdentityData(null);
+      setStep(7);
+      return;
+    }
+    setIdentityLoading(true);
+    setIdentityError(null);
+    try {
+      const { data, error } = await supabase.functions.invoke("extract-civ-identity", {
+        body: {
+          sessionId: "preview", // temporary — will be re-extracted during creation
+          playerName: playerName.trim(),
+          civDescription: civDescription.trim(),
+        },
+      });
+      if (error) throw new Error(typeof error === "string" ? error : error.message || "AI extrakce selhala");
+      if (data?.ai_error) throw new Error(data.ai_error);
+      setIdentityData(data);
+    } catch (e: any) {
+      setIdentityError(e.message || "Neznámá chyba");
+    } finally {
+      setIdentityLoading(false);
+    }
+  };
 
   const updateProgress = (steps: ProgressStep[]) => setProgressSteps([...steps]);
 
@@ -382,20 +415,22 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
       setStepStatus(progress, 3, "active");
       if (civDescription.trim()) {
         try {
-          const { data: identityData, error: identityErr } = await supabase.functions.invoke("extract-civ-identity", {
+          // Re-extract with real session ID (preview used temporary "preview" ID)
+          const { data: freshIdentity, error: identityErr } = await supabase.functions.invoke("extract-civ-identity", {
             body: {
               sessionId: session.id,
               playerName: playerName.trim(),
               civDescription: civDescription.trim(),
             },
           });
-          if (!identityErr && identityData && !identityData.ai_error) {
+          const idData = (!identityErr && freshIdentity && !freshIdentity.ai_error) ? freshIdentity : identityData;
+          if (idData) {
             // Update civilization record with AI-generated narrative flavor
             if (civRecord?.id) {
               const civUpdate: Record<string, string> = {};
-              if (identityData.core_myth) civUpdate.core_myth = identityData.core_myth;
-              if (identityData.cultural_quirk) civUpdate.cultural_quirk = identityData.cultural_quirk;
-              if (identityData.architectural_style) civUpdate.architectural_style = identityData.architectural_style;
+              if (idData.core_myth) civUpdate.core_myth = idData.core_myth;
+              if (idData.cultural_quirk) civUpdate.cultural_quirk = idData.cultural_quirk;
+              if (idData.architectural_style) civUpdate.architectural_style = idData.architectural_style;
               if (Object.keys(civUpdate).length > 0) {
                 await supabase.from("civilizations").update(civUpdate).eq("id", civRecord.id);
               }
@@ -749,6 +784,7 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
           worldName={worldName}
           isAIMode={isAIMode}
           failedSessionId={failedSessionId}
+          identityData={identityData}
           onRetry={handleRetry}
           onForceOpen={() => failedSessionId && onCreated(failedSessionId)}
         />
@@ -1007,7 +1043,7 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
         </div>
       )}
 
-      {/* Step 6: Summary + Create */}
+      {/* Step 6: Factions (non-AI only) */}
       {step === 6 && !creating && (
         <div className="space-y-3">
           {!isAIMode && (
@@ -1026,34 +1062,101 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
               )}
             </>
           )}
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => setStep(5)}>← Zpět</Button>
+            <Button onClick={() => {
+              if (!isMultiMode && civDescription.trim()) {
+                setStep(7);
+                // Auto-trigger extraction when entering preview step
+                if (!identityData && !identityLoading) {
+                  setTimeout(() => handleExtractIdentity(), 100);
+                }
+              } else {
+                setStep(7);
+              }
+            }} className="flex-1">Další →</Button>
+          </div>
+        </div>
+      )}
 
-          <div className="pt-2 space-y-2">
-            <div className="text-xs text-muted-foreground space-y-1 bg-muted/30 rounded-lg p-3">
-              <p className="font-display font-semibold text-foreground">Shrnutí:</p>
-              <p>🎮 <strong>{ALL_MODES.find(m => m.value === gameMode)?.label}</strong></p>
-              <p>🌍 <strong>{worldName}</strong> · {TONES.find(t => t.value === tone)?.label} · {VICTORY_STYLES.find(v => v.value === victoryStyle)?.label}</p>
-              <p>👤 <strong>{playerName}</strong> — {realmName || "—"}</p>
-              <p>🏘️ Sídlo: <strong>{settlementName}</strong></p>
-              {peopleName && <p>👥 Národ: <strong>{peopleName}</strong></p>}
-              {cultureName && <p>🎭 Kultura: <strong>{cultureName}</strong></p>}
-              {languageName && <p>🗣️ Jazyk: <strong>{languageName}</strong></p>}
-              {civDescription && <p>🧬 Civilizace: <em>{civDescription.slice(0, 80)}{civDescription.length > 80 ? "…" : ""}</em></p>}
-              {isAIMode && <p>🤖 Velikost: <strong>{WORLD_SIZES.find(s => s.value === worldSize)?.label}</strong></p>}
-              {!isAIMode && <p>🏔️ Region: <strong>{homelandName}</strong> ({BIOMES.find(b => b.value === homelandBiome)?.label})</p>}
-            </div>
-
-            <div className="flex gap-2">
-              <Button variant="outline" onClick={() => setStep(5)}>← Zpět</Button>
-              <Button onClick={handleCreate} disabled={creating} className="flex-1 font-display">
-                {creating ? (
-                  <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Vytvářím...</>
-                ) : isAIMode ? (
-                  <><Sparkles className="mr-2 h-4 w-4" />🤖 Vygenerovat a založit svět</>
-                ) : (
-                  <><Sparkles className="mr-2 h-4 w-4" />⚔️ Založit svět</>
+      {/* Step 7: Identity Preview (AI extraction) */}
+      {step === 7 && !creating && (
+        <div className="space-y-3">
+          {!isMultiMode && civDescription.trim() ? (
+            <CivIdentityPreview
+              playerName={playerName}
+              civDescription={civDescription}
+              identityData={identityData}
+              loading={identityLoading}
+              error={identityError}
+              onExtract={handleExtractIdentity}
+              onBack={() => setStep(1)}
+              onConfirm={() => setStep(8)}
+            />
+          ) : (
+            /* For multiplayer or no civ description — show basic summary and proceed */
+            <div className="space-y-3">
+              <div className="text-xs text-muted-foreground space-y-1 bg-muted/30 rounded-lg p-3">
+                <p className="font-display font-semibold text-foreground">Shrnutí:</p>
+                <p>🎮 <strong>{ALL_MODES.find(m => m.value === gameMode)?.label}</strong></p>
+                <p>🌍 <strong>{worldName}</strong> · {TONES.find(t => t.value === tone)?.label} · {VICTORY_STYLES.find(v => v.value === victoryStyle)?.label}</p>
+                <p>👤 <strong>{playerName}</strong> — {realmName || "—"}</p>
+                {!isMultiMode && <p>🏘️ Sídlo: <strong>{settlementName}</strong></p>}
+                {peopleName && <p>👥 Národ: <strong>{peopleName}</strong></p>}
+                {cultureName && <p>🎭 Kultura: <strong>{cultureName}</strong></p>}
+                {languageName && <p>🗣️ Jazyk: <strong>{languageName}</strong></p>}
+                {isAIMode && <p>🤖 Velikost: <strong>{WORLD_SIZES.find(s => s.value === worldSize)?.label}</strong></p>}
+                {!isAIMode && !isMultiMode && <p>🏔️ Region: <strong>{homelandName}</strong> ({BIOMES.find(b => b.value === homelandBiome)?.label})</p>}
+                {!civDescription.trim() && (
+                  <p className="text-amber-600 text-[10px] mt-1">ℹ️ Nezadali jste popis civilizace — modifikátory budou neutrální.</p>
                 )}
-              </Button>
+              </div>
+              <div className="flex gap-2">
+                <Button variant="outline" onClick={() => setStep(6)}>← Zpět</Button>
+                <Button onClick={() => setStep(8)} className="flex-1">Další →</Button>
+              </div>
             </div>
+          )}
+        </div>
+      )}
+
+      {/* Step 8: Final Summary + Create */}
+      {step === 8 && !creating && (
+        <div className="space-y-3">
+          <div className="text-xs text-muted-foreground space-y-1 bg-muted/30 rounded-lg p-3">
+            <p className="font-display font-semibold text-foreground">Finální shrnutí:</p>
+            <p>🎮 <strong>{ALL_MODES.find(m => m.value === gameMode)?.label}</strong></p>
+            <p>🌍 <strong>{worldName}</strong> · {TONES.find(t => t.value === tone)?.label} · {VICTORY_STYLES.find(v => v.value === victoryStyle)?.label}</p>
+            <p>👤 <strong>{playerName}</strong> — {realmName || "—"}</p>
+            {!isMultiMode && <p>🏘️ Sídlo: <strong>{settlementName}</strong></p>}
+            {peopleName && <p>👥 Národ: <strong>{peopleName}</strong></p>}
+            {cultureName && <p>🎭 Kultura: <strong>{cultureName}</strong></p>}
+            {languageName && <p>🗣️ Jazyk: <strong>{languageName}</strong></p>}
+            {civDescription && <p>🧬 Civilizace: <em>{civDescription.slice(0, 80)}{civDescription.length > 80 ? "…" : ""}</em></p>}
+            {isAIMode && <p>🤖 Velikost: <strong>{WORLD_SIZES.find(s => s.value === worldSize)?.label}</strong></p>}
+            {!isAIMode && !isMultiMode && <p>🏔️ Region: <strong>{homelandName}</strong> ({BIOMES.find(b => b.value === homelandBiome)?.label})</p>}
+            {identityData && (
+              <>
+                <hr className="border-border/30 my-1" />
+                <p className="font-display font-semibold text-foreground">🧬 AI Identita: <strong>{identityData.display_name || "—"}</strong></p>
+                {identityData.flavor_summary && <p className="italic">„{identityData.flavor_summary}"</p>}
+                <p>📋 {identityData.society_structure} · {identityData.military_doctrine} · {identityData.economic_focus}</p>
+                {identityData.building_tags?.length > 0 && <p>🏗️ Speciální budovy: {identityData.building_tags.join(", ")}</p>}
+              </>
+            )}
+          </div>
+
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => setStep(7)}>← Zpět</Button>
+            <Button onClick={handleCreate} disabled={creating} className="flex-1 font-display">
+              {creating ? (
+                <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Vytvářím...</>
+              ) : isAIMode ? (
+                <><Sparkles className="mr-2 h-4 w-4" />🤖 Vygenerovat a založit svět</>
+              ) : (
+                <><Sparkles className="mr-2 h-4 w-4" />⚔️ Založit svět</>
+              )}
+            </Button>
           </div>
         </div>
       )}
