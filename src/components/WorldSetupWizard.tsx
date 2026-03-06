@@ -321,7 +321,7 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
           premise: premise.trim(),
           tone,
           victory_style: victoryStyle,
-          initial_factions: factions.filter(f => f.trim()),
+          initial_factions: factionConfigs.map(fc => fc.name || `AI-${fc.personality}`).filter(f => f.trim()),
           created_by: userId,
           map_width: sizeConfig.mapW,
           map_height: sizeConfig.mapH,
