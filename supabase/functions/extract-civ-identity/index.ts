@@ -236,6 +236,11 @@ KATEGORIE MODIFIKÁTORŮ:
       research_modifier: clamp(ex.research_modifier, -0.1, 0.2),
       // Buildings
       building_tags: (ex.building_tags || []).slice(0, 3),
+      // Military unit names
+      militia_unit_name: (ex.militia_unit_name || "Milice").slice(0, 60),
+      militia_unit_desc: (ex.militia_unit_desc || "").slice(0, 120),
+      professional_unit_name: (ex.professional_unit_name || "Profesionálové").slice(0, 60),
+      professional_unit_desc: (ex.professional_unit_desc || "").slice(0, 120),
       // Meta
       source_description: fullText,
       extraction_model: "gemini-3-flash-preview",
