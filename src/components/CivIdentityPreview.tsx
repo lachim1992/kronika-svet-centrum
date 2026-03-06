@@ -317,19 +317,55 @@ const CivIdentityPreview = ({ sessionId, playerName, civDescription, identityDat
         );
       })}
 
-      {/* Special buildings */}
+      {/* Special buildings — show detailed effects if available */}
       {d.building_tags.length > 0 && (
-        <div className="bg-primary/5 border border-primary/20 rounded-lg p-3 space-y-1">
+        <div className="bg-primary/5 border border-primary/20 rounded-lg p-3 space-y-2">
           <p className="text-xs font-display font-semibold flex items-center gap-1.5">
             <Building2 className="h-3.5 w-3.5 text-primary" />
-            Speciální budovy (unikátní pro vaši civilizaci)
+            Civilizační budovy (exkluzivní, prémiové)
           </p>
-          <div className="flex flex-wrap gap-1">
-            {d.building_tags.map(tag => (
-              <Badge key={tag} className="text-xs">{tag.replace(/_/g, " ")}</Badge>
-            ))}
-          </div>
-          <p className="text-[10px] text-muted-foreground">Tyto budovy jsou dostupné pouze vaší civilizaci a poskytují unikátní výhody.</p>
+          {d.special_buildings && d.special_buildings.length > 0 ? (
+            <div className="space-y-2">
+              {d.special_buildings.map((sb: any, i: number) => {
+                const effects = sb.effects || {};
+                return (
+                  <div key={i} className="bg-muted/30 rounded p-2.5 space-y-1">
+                    <div className="flex items-center gap-2">
+                      <Crown className="h-3.5 w-3.5 text-primary" />
+                      <span className="text-xs font-semibold">{sb.name}</span>
+                      <Badge variant="outline" className="text-[8px]">{sb.category}</Badge>
+                    </div>
+                    <p className="text-[10px] text-muted-foreground">{sb.description}</p>
+                    <div className="flex gap-1 flex-wrap">
+                      {Object.entries(effects).filter(([, v]) => Number(v) > 0).map(([k, v]) => (
+                        <Badge key={k} variant="outline" className="text-[8px] border-primary/30 text-primary">
+                          {k.replace(/_/g, " ")} +{String(v)}
+                        </Badge>
+                      ))}
+                    </div>
+                    <div className="flex gap-1 text-[9px] text-muted-foreground">
+                      {sb.cost_wealth > 0 && <span>💰{sb.cost_wealth}</span>}
+                      {sb.cost_wood > 0 && <span>🪵{sb.cost_wood}</span>}
+                      {sb.cost_stone > 0 && <span>🪨{sb.cost_stone}</span>}
+                      {sb.cost_iron > 0 && <span>⚙️{sb.cost_iron}</span>}
+                      <span>⏱️{sb.build_duration}kol</span>
+                      <span className="text-primary">• 5 úrovní → Div světa</span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div>
+              <div className="flex flex-wrap gap-1">
+                {d.building_tags.map(tag => (
+                  <Badge key={tag} className="text-xs">{tag.replace(/_/g, " ")}</Badge>
+                ))}
+              </div>
+              <p className="text-[10px] text-muted-foreground mt-1">Detailní bonusy budou vygenerovány při startu hry.</p>
+            </div>
+          )}
+          <p className="text-[9px] text-muted-foreground">→ Stavitelné pouze vaší civilizací. Silnější efekty než běžné budovy, vyšší náklady.</p>
         </div>
       )}
 
