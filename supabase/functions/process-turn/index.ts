@@ -174,7 +174,7 @@ Deno.serve(async (req) => {
     // Load unified civ_identity modifiers (single source of truth for faction bonuses)
     const { data: civIdentity } = await supabase
       .from("civ_identity")
-      .select("grain_modifier, wood_modifier, stone_modifier, iron_modifier, wealth_modifier, production_modifier, trade_modifier, stability_modifier, morale_modifier, mobilization_speed, pop_growth_modifier, cavalry_bonus, fortification_bonus")
+      .select("grain_modifier, wood_modifier, stone_modifier, iron_modifier, wealth_modifier, production_modifier, trade_modifier, stability_modifier, morale_modifier, mobilization_speed, pop_growth_modifier, cavalry_bonus, fortification_bonus, urban_style, society_structure, military_doctrine, economic_focus")
       .eq("session_id", sessionId)
       .eq("player_name", playerName)
       .maybeSingle();
@@ -192,6 +192,10 @@ Deno.serve(async (req) => {
     const stoneMod = civIdentity?.stone_modifier ?? 0;
     const ironMod = civIdentity?.iron_modifier ?? 0;
     const wealthMod = civIdentity?.wealth_modifier ?? civBonuses.trade_modifier ?? 0;
+
+    // Compute structural bonuses from urban_style, society_structure, etc.
+    // Import-free: inline the logic for structural multipliers
+    const structMults = computeStructuralMults(civIdentity);
 
     // Idempotency check
     if (realm.last_processed_turn >= currentTurn) {
