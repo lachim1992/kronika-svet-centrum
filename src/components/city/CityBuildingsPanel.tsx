@@ -97,6 +97,7 @@ const CityBuildingsPanel = ({
     setBuildings(bRes.data || []);
     setTemplates(tRes.data || []);
     setCivBuildings((civRes.data?.special_buildings as any[]) || []);
+    setCivBuildingTags((civRes.data?.building_tags as string[]) || []);
     setLoading(false);
   }, [cityId, sessionId, currentPlayerName]);
 
