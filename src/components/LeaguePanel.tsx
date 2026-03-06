@@ -12,6 +12,7 @@ import { Trophy, Users, Calendar, Star, Target, Shield, Swords, Play, Loader2, C
 import InMemoriamTab from "@/components/league/InMemoriamTab";
 import MyTeamsPanel from "@/components/league/MyTeamsPanel";
 import SphaeraFeedTab from "@/components/league/SphaeraFeedTab";
+import CreateAssociationDialog from "@/components/league/CreateAssociationDialog";
 import { toast } from "sonner";
 
 interface Props {
@@ -133,6 +134,7 @@ const LeaguePanel = ({ sessionId, currentPlayerName, currentTurn }: Props) => {
   const [showRules, setShowRules] = useState(false);
   const [selectedMatch, setSelectedMatch] = useState<Match | null>(null);
   const [mainTab, setMainTab] = useState("world");
+  const [showAssocDialog, setShowAssocDialog] = useState(false);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -249,22 +251,8 @@ const LeaguePanel = ({ sessionId, currentPlayerName, currentTurn }: Props) => {
     } catch (e: any) { toast.error(e.message); } finally { setGeneratingTeams(false); }
   };
 
-  const handleCreateAssociation = async () => {
-    if (cities.size === 0) { toast.error("Potřebuješ město."); return; }
-    setCreatingAssoc(true);
-    try {
-      const myTeams = teams.filter(t => t.player_name === currentPlayerName);
-      const cityId = myTeams.length > 0 ? myTeams[0].city_id : Array.from(cities.keys())[0];
-      const cityName = cities.get(cityId) || "?";
-      const { error } = await supabase.from("sports_associations").insert({
-        session_id: sessionId, city_id: cityId, player_name: currentPlayerName,
-        name: `Svaz Sphaery ${cityName}`, reputation: 10, scouting_level: 1,
-        youth_development: 1, training_quality: 1, fan_base: 50, budget: 50, founded_turn: currentTurn,
-      });
-      if (error) throw error;
-      toast.success("Svaz Sphaery založen!");
-      await fetchData();
-    } catch (e: any) { toast.error(e.message); } finally { setCreatingAssoc(false); }
+  const handleCreateAssociation = () => {
+    setShowAssocDialog(true);
   };
 
   const teamMap = new Map(teams.map(t => [t.id, t]));
@@ -1208,6 +1196,17 @@ const LeaguePanel = ({ sessionId, currentPlayerName, currentTurn }: Props) => {
           })()}
         </DialogContent>
       </Dialog>
+
+      {/* Create Association Dialog */}
+      <CreateAssociationDialog
+        open={showAssocDialog}
+        onOpenChange={setShowAssocDialog}
+        sessionId={sessionId}
+        currentPlayerName={currentPlayerName}
+        currentTurn={currentTurn}
+        cities={cities}
+        onCreated={fetchData}
+      />
     </div>
   );
 };

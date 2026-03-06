@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { CheckCircle2, Circle, Compass, Swords, Building2, Map, Users, X, Scroll } from "lucide-react";
+import { CheckCircle2, Circle, Compass, Swords, Building2, Map, Users, X, Scroll, Trophy, School, Shield } from "lucide-react";
 
 interface Props {
   sessionId: string;
@@ -27,25 +27,43 @@ const OnboardingChecklist = ({ sessionId, currentPlayerName, currentTurn, cities
   const [dismissed, setDismissed] = useState(false);
   const [hasExplored, setHasExplored] = useState(false);
   const [hasDiplomacy, setHasDiplomacy] = useState(false);
+  const [hasStadium, setHasStadium] = useState(false);
+  const [hasAssociation, setHasAssociation] = useState(false);
+  const [hasAcademy, setHasAcademy] = useState(false);
+  const [hasTeam, setHasTeam] = useState(false);
 
   useEffect(() => {
     const key = `onboarding_dismissed_${sessionId}`;
     if (localStorage.getItem(key)) setDismissed(true);
 
-    // Check if player has explored the map
     (async () => {
-      const { count } = await supabase
-        .from("discoveries")
-        .select("id", { count: "exact", head: true })
-        .eq("session_id", sessionId)
-        .eq("player_name", currentPlayerName);
-      setHasExplored((count || 0) > 3);
-
-      const { count: diploCount } = await supabase
-        .from("diplomacy_messages")
-        .select("id", { count: "exact", head: true })
-        .eq("sender", currentPlayerName);
+      const [
+        { count: discCount },
+        { count: diploCount },
+        { count: stadiumCount },
+        { count: assocCount },
+        { count: academyCount },
+        { count: teamCount },
+      ] = await Promise.all([
+        supabase.from("discoveries").select("id", { count: "exact", head: true })
+          .eq("session_id", sessionId).eq("player_name", currentPlayerName),
+        supabase.from("diplomacy_messages").select("id", { count: "exact", head: true })
+          .eq("sender", currentPlayerName),
+        supabase.from("city_buildings").select("id", { count: "exact", head: true })
+          .eq("session_id", sessionId).eq("status", "completed").contains("building_tags", ["stadium"]),
+        supabase.from("sports_associations").select("id", { count: "exact", head: true })
+          .eq("session_id", sessionId).eq("player_name", currentPlayerName),
+        supabase.from("academies").select("id", { count: "exact", head: true })
+          .eq("session_id", sessionId).eq("player_name", currentPlayerName),
+        supabase.from("league_teams").select("id", { count: "exact", head: true })
+          .eq("session_id", sessionId).eq("player_name", currentPlayerName).eq("is_active", true),
+      ]);
+      setHasExplored((discCount || 0) > 3);
       setHasDiplomacy((diploCount || 0) > 0);
+      setHasStadium((stadiumCount || 0) > 0);
+      setHasAssociation((assocCount || 0) > 0);
+      setHasAcademy((academyCount || 0) > 0);
+      setHasTeam((teamCount || 0) > 0);
     })();
   }, [sessionId, currentPlayerName, currentTurn]);
 
@@ -54,43 +72,58 @@ const OnboardingChecklist = ({ sessionId, currentPlayerName, currentTurn, cities
 
   const steps: Step[] = [
     {
-      id: "city",
-      icon: Building2,
+      id: "city", icon: Building2,
       label: "Založte město",
       desc: "Vaše první osada je centrem vaší říše.",
-      check: () => myCities.length > 0,
-      action: "home",
+      check: () => myCities.length > 0, action: "home",
     },
     {
-      id: "explore",
-      icon: Map,
+      id: "explore", icon: Map,
       label: "Prozkoumejte mapu",
       desc: "Odhalte okolní území a sousední říše.",
-      check: () => hasExplored,
-      action: "worldmap",
+      check: () => hasExplored, action: "worldmap",
     },
     {
-      id: "army",
-      icon: Swords,
+      id: "army", icon: Swords,
       label: "Vytvořte armádu",
       desc: "Naverbujte vojáky na obranu své říše.",
-      check: () => myArmies.length > 0,
-      action: "army",
+      check: () => myArmies.length > 0, action: "army",
     },
     {
-      id: "diplomacy",
-      icon: Users,
+      id: "diplomacy", icon: Users,
       label: "Navažte kontakt",
       desc: "Pošlete diplomatickou zprávu sousedovi.",
-      check: () => hasDiplomacy,
-      action: "world",
+      check: () => hasDiplomacy, action: "world",
     },
     {
-      id: "turn",
-      icon: Compass,
+      id: "turn", icon: Compass,
       label: "Dokončete 3 tahy",
       desc: "Odehrajte alespoň 3 kola a sledujte, jak svět reaguje.",
       check: () => currentTurn >= 3,
+    },
+    {
+      id: "stadium", icon: Building2,
+      label: "Postavte Arénu nebo Stadion",
+      desc: "Stavba umožní založit sportovní tým a pořádat hry.",
+      check: () => hasStadium, action: "home",
+    },
+    {
+      id: "association", icon: Shield,
+      label: "Založte sportovní svaz",
+      desc: "Svaz řídí vaše týmy a rozvoj sportu v říši.",
+      check: () => hasAssociation, action: "games",
+    },
+    {
+      id: "academy", icon: School,
+      label: "Založte akademii",
+      desc: "Akademie trénuje bojovníky pro ligu i olympiádu.",
+      check: () => hasAcademy, action: "games",
+    },
+    {
+      id: "team", icon: Trophy,
+      label: "Založte první tým",
+      desc: "Přihlaste svůj tým do ligy Sphaery.",
+      check: () => hasTeam, action: "games",
     },
   ];
 
