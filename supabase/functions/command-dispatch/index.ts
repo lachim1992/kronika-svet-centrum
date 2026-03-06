@@ -911,6 +911,22 @@ async function executeRecruitStack(
   const preset = FORMATION_PRESETS[presetKey];
   if (!preset) return { events: [], error: `Unknown preset: ${presetKey}` };
 
+  // Check building requirements (professional/legion need barracks+smithy)
+  if (preset.requires_buildings && preset.requires_buildings.length > 0) {
+    const { data: buildings } = await supabase
+      .from("city_buildings")
+      .select("category, status")
+      .eq("session_id", sessionId)
+      .in("city_id", (await supabase.from("cities").select("id").eq("session_id", sessionId).eq("owner_player", playerName)).data?.map((c: any) => c.id) || [])
+      .eq("status", "completed");
+
+    const builtCategories = new Set((buildings || []).map((b: any) => b.category?.toLowerCase()));
+    const missing = preset.requires_buildings.filter(req => !builtCategories.has(req));
+    if (missing.length > 0) {
+      return { events: [], error: `Chybí budovy: ${missing.join(", ")}. Profesionální vojsko vyžaduje kasárny a kovárnu.` };
+    }
+  }
+
   const sessionId = base.session_id;
   const turnNumber = base.turn_number;
   const playerName = actor.name;
