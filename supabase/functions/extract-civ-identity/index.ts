@@ -147,6 +147,10 @@ KATEGORIE MODIFIKÁTORŮ:
                 items: { type: "string" },
                 description: "0-3 special building type tags",
               },
+              // Narrative flavor
+              core_myth: { type: "string", description: "Founding myth in Czech (1-2 sentences)" },
+              cultural_quirk: { type: "string", description: "Unique cultural quirk in Czech (1 sentence)" },
+              architectural_style: { type: "string", description: "Architectural style in Czech (1-2 words)" },
             },
             required: [
               "display_name", "flavor_summary", "culture_tags",
@@ -155,6 +159,7 @@ KATEGORIE MODIFIKÁTORŮ:
               "pop_growth_modifier", "initial_burgher_ratio", "initial_cleric_ratio",
               "morale_modifier", "mobilization_speed", "cavalry_bonus", "fortification_bonus",
               "stability_modifier", "trade_modifier", "building_tags",
+              "core_myth", "cultural_quirk", "architectural_style",
             ],
             additionalProperties: false,
           },
