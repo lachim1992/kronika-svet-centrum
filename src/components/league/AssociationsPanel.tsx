@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Shield, Users, Coins, TrendingUp, Trophy, Loader2, Plus, Star, Swords, Eye, MapPin, Crown, Target } from "lucide-react";
+import { Shield, Users, Coins, TrendingUp, Trophy, Loader2, Plus, Star, Swords, Eye, MapPin, Crown, Target, GraduationCap, School } from "lucide-react";
 import { toast } from "sonner";
 import CreateAssociationDialog from "./CreateAssociationDialog";
 
@@ -36,6 +36,50 @@ interface Association {
   color_secondary: string | null;
   intake_cycle_turns: number;
   last_intake_turn: number;
+}
+
+interface Academy {
+  id: string;
+  name: string;
+  city_id: string;
+  player_name: string;
+  association_id: string | null;
+  reputation: number;
+  infrastructure: number;
+  trainer_level: number;
+  nutrition: number;
+  total_graduates: number;
+  total_champions: number;
+  total_fatalities: number;
+  fan_base: number;
+  profile_athletics: number;
+  profile_combat: number;
+  profile_culture: number;
+  profile_strategy: number;
+  profile_brutality: number;
+  is_gladiatorial: boolean;
+  color_primary: string | null;
+  color_secondary: string | null;
+  founded_turn: number;
+  status: string;
+  motto: string | null;
+  training_philosophy: string | null;
+}
+
+interface Student {
+  id: string;
+  academy_id: string;
+  name: string;
+  strength: number;
+  endurance: number;
+  agility: number;
+  tactics: number;
+  charisma: number;
+  specialty: string;
+  traits: string[] | null;
+  status: string;
+  graduation_turn: number | null;
+  portrait_url: string | null;
 }
 
 interface Team {
@@ -107,21 +151,28 @@ const AssociationsPanel = ({ sessionId, currentPlayerName, currentTurn }: Props)
   const [allTeams, setAllTeams] = useState<Team[]>([]);
   const [allPlayers, setAllPlayers] = useState<Player[]>([]);
   const [cities, setCities] = useState<Map<string, string>>(new Map());
+  const [allAcademies, setAllAcademies] = useState<Academy[]>([]);
+  const [allStudents, setAllStudents] = useState<Student[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [upgrading, setUpgrading] = useState<string | null>(null);
+  const [creatingAcademy, setCreatingAcademy] = useState<string | null>(null);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
-    const [{ data: assocs }, { data: teams }, { data: players }, { data: cityData }] = await Promise.all([
+    const [{ data: assocs }, { data: teams }, { data: players }, { data: cityData }, { data: acads }, { data: studs }] = await Promise.all([
       supabase.from("sports_associations").select("*").eq("session_id", sessionId),
       supabase.from("league_teams").select("*").eq("session_id", sessionId).eq("is_active", true),
       supabase.from("league_players").select("*").eq("session_id", sessionId),
       supabase.from("cities").select("id,name").eq("session_id", sessionId),
+      supabase.from("academies").select("*").eq("session_id", sessionId),
+      supabase.from("academy_students").select("*").eq("session_id", sessionId),
     ]);
     setAssociations((assocs || []) as any);
     setAllTeams((teams || []) as any);
     setAllPlayers((players || []) as any);
+    setAllAcademies((acads || []) as any);
+    setAllStudents((studs || []) as any);
     const m = new Map<string, string>();
     (cityData || []).forEach((c: any) => m.set(c.id, c.name));
     setCities(m);
@@ -133,6 +184,57 @@ const AssociationsPanel = ({ sessionId, currentPlayerName, currentTurn }: Props)
   const myAssociations = associations.filter(a => a.player_name === currentPlayerName);
   const myTeams = allTeams.filter(t => t.player_name === currentPlayerName);
   const otherAssociations = associations.filter(a => a.player_name !== currentPlayerName);
+
+  const getAssocAcademies = (assocId: string, assocType: string) => {
+    const isGlad = assocType === "gladiator";
+    return allAcademies.filter(a =>
+      a.player_name === currentPlayerName && (
+        (a as any).association_id === assocId ||
+        (!(a as any).association_id && a.is_gladiatorial === isGlad)
+      )
+    );
+  };
+
+  const handleCreateAcademy = async (assocId: string, assocType: string) => {
+    setCreatingAcademy(assocId);
+    try {
+      const playerCities = Array.from(cities.entries());
+      if (playerCities.length === 0) {
+        toast.error("Potřebuješ alespoň jedno město");
+        return;
+      }
+      const isGlad = assocType === "gladiator";
+      const existingCityIds = new Set(allAcademies.filter(a => a.player_name === currentPlayerName && a.is_gladiatorial === isGlad).map(a => a.city_id));
+      const availableCity = playerCities.find(([id]) => !existingCityIds.has(id));
+      if (!availableCity) {
+        toast.error("Všechna města již mají akademii tohoto typu");
+        return;
+      }
+      const [cityId, cityName] = availableCity;
+      const academyName = isGlad
+        ? `Gladiátorská škola – ${cityName}`
+        : `Sportovní akademie – ${cityName}`;
+      const { error } = await supabase.from("academies").insert({
+        session_id: sessionId,
+        city_id: cityId,
+        player_name: currentPlayerName,
+        name: academyName,
+        founded_turn: currentTurn,
+        status: "active",
+        infrastructure: 10,
+        reputation: 10,
+        is_gladiatorial: isGlad,
+        association_id: assocId,
+      } as any);
+      if (error) throw error;
+      toast.success(`${academyName} založena!`);
+      await fetchData();
+    } catch (e: any) {
+      toast.error(e.message);
+    } finally {
+      setCreatingAcademy(null);
+    }
+  };
 
   const handleUpgrade = async (assocId: string, field: string) => {
     setUpgrading(`${assocId}-${field}`);
@@ -201,7 +303,8 @@ const AssociationsPanel = ({ sessionId, currentPlayerName, currentTurn }: Props)
             </Card>
           ) : (
             myAssociations.map(assoc => {
-              const assocTeams = myTeams.filter(t => true); // All player teams belong to their assocs
+              const assocTeams = myTeams.filter(t => true);
+              const assocAcademies = getAssocAcademies(assoc.id, assoc.association_type);
               const teamPlayerCounts = assocTeams.map(t => allPlayers.filter(p => p.team_id === t.id && !p.is_dead).length);
               const totalPlayers = teamPlayerCounts.reduce((a, b) => a + b, 0);
               return (
@@ -278,6 +381,96 @@ const AssociationsPanel = ({ sessionId, currentPlayerName, currentTurn }: Props)
                           </div>
                         );
                       })}
+                    </div>
+
+                    {/* ─── ACADEMIES UNDER THIS ASSOCIATION ─── */}
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1">
+                          <School className="h-3 w-3" /> Akademie svazu ({assocAcademies.length})
+                        </div>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="text-[9px] h-6 gap-1"
+                          disabled={creatingAcademy === assoc.id}
+                          onClick={() => handleCreateAcademy(assoc.id, assoc.association_type)}
+                        >
+                          {creatingAcademy === assoc.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Plus className="h-3 w-3" />}
+                          Nová akademie
+                        </Button>
+                      </div>
+
+                      {assocAcademies.length === 0 ? (
+                        <div className="text-center py-4 bg-muted/10 rounded-lg border border-border/50">
+                          <School className="h-8 w-8 text-muted-foreground mx-auto opacity-40 mb-1" />
+                          <p className="text-[10px] text-muted-foreground">Žádné akademie. Založte první!</p>
+                        </div>
+                      ) : (
+                        assocAcademies.map(acad => {
+                          const acadStudents = allStudents.filter(s => s.academy_id === acad.id);
+                          const graduates = acadStudents.filter(s => s.status === "graduated" || s.status === "promoted");
+                          const training = acadStudents.filter(s => s.status === "training");
+                          return (
+                            <div key={acad.id} className="rounded-lg border border-border bg-card/30 p-3 space-y-2">
+                              <div className="flex items-center gap-2">
+                                <div className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: acad.color_primary || "hsl(var(--primary))" }} />
+                                <span className="text-xs font-display font-bold">{acad.name}</span>
+                                <Badge variant="outline" className="text-[7px] ml-auto">Rep: {acad.reputation}</Badge>
+                                {acad.total_champions > 0 && <Badge variant="outline" className="text-[7px] border-yellow-500/40 text-yellow-400">🏆 {acad.total_champions}</Badge>}
+                              </div>
+
+                              <div className="flex items-center gap-3 text-[9px] text-muted-foreground flex-wrap">
+                                <span>📍 {cities.get(acad.city_id) || "?"}</span>
+                                <span>📊 Infra: {acad.infrastructure}</span>
+                                <span>🎓 Trenér: {acad.trainer_level}</span>
+                                <span>🍖 Výživa: {acad.nutrition}</span>
+                                <span>👥 Trénuje: {training.length}</span>
+                                <span>🎓 Abs: {graduates.length}</span>
+                                {acad.total_fatalities > 0 && <span className="text-destructive">💀 {acad.total_fatalities}</span>}
+                              </div>
+
+                              {/* Profile bars compact */}
+                              <div className="grid grid-cols-5 gap-1">
+                                {[
+                                  { key: "athletics", label: "ATL", val: acad.profile_athletics },
+                                  { key: "combat", label: "BOJ", val: acad.profile_combat },
+                                  { key: "culture", label: "KUL", val: acad.profile_culture },
+                                  { key: "strategy", label: "STR", val: acad.profile_strategy },
+                                  { key: "brutality", label: "BRT", val: acad.profile_brutality },
+                                ].map(p => (
+                                  <div key={p.key} className="text-center">
+                                    <div className="text-[7px] text-muted-foreground">{p.label}</div>
+                                    <Progress value={p.val} className="h-1" />
+                                    <div className="text-[7px] font-mono">{p.val}</div>
+                                  </div>
+                                ))}
+                              </div>
+
+                              {/* Graduates pool for recruitment */}
+                              {graduates.length > 0 && (
+                                <div className="space-y-1">
+                                  <div className="text-[8px] font-semibold text-muted-foreground uppercase">Absolventi – rekrutační pool</div>
+                                  <ScrollArea className="max-h-24">
+                                    <div className="space-y-0.5">
+                                      {graduates.map(s => (
+                                        <div key={s.id} className="flex items-center gap-1.5 text-[9px] p-1 rounded bg-muted/20">
+                                          {s.portrait_url && <img src={s.portrait_url} alt="" className="w-5 h-5 rounded-full object-cover" />}
+                                          <span className="font-semibold truncate">{s.name}</span>
+                                          <Badge variant="outline" className="text-[6px] h-3">{s.specialty}</Badge>
+                                          <span className="ml-auto font-mono text-[8px] text-muted-foreground">
+                                            S{s.strength} V{s.endurance} O{s.agility} T{s.tactics} C{s.charisma}
+                                          </span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </ScrollArea>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })
+                      )}
                     </div>
                   </CardContent>
                 </Card>
