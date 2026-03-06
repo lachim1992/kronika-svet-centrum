@@ -36,8 +36,10 @@ const MODIFIER_DEFS: ModifierDef[] = [
   { key: "mobilization_speed", label: "Rychlost mobilizace", icon: Swords, min: 0.5, max: 1.5, step: 0.1, format: v => `×${v.toFixed(1)}`, category: "Vojenství" },
   { key: "cavalry_bonus", label: "Jezdectvo", icon: Swords, min: 0, max: 0.3, step: 0.01, format: v => `+${Math.round(v * 100)}%`, category: "Vojenství" },
   { key: "fortification_bonus", label: "Fortifikace", icon: Shield, min: 0, max: 0.25, step: 0.01, format: v => `+${Math.round(v * 100)}%`, category: "Vojenství" },
-  // Stability
+  // Stability & Diplomacy
   { key: "stability_modifier", label: "Stabilita", icon: Shield, min: -10, max: 10, step: 1, format: v => `${v >= 0 ? "+" : ""}${v}`, category: "Stabilita" },
+  { key: "diplomacy_modifier", label: "Diplomacie", icon: Shield, min: -10, max: 15, step: 1, format: v => `${v >= 0 ? "+" : ""}${v}`, category: "Stabilita" },
+  { key: "research_modifier", label: "Výzkum", icon: Shield, min: -0.1, max: 0.2, step: 0.01, format: v => `${v >= 0 ? "+" : ""}${Math.round(v * 100)}%`, category: "Stabilita" },
 ];
 
 const CATEGORY_LABELS: Record<string, string> = {
