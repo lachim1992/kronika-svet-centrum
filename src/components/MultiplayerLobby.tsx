@@ -125,14 +125,17 @@ const MultiplayerLobby = ({ sessionId, roomCode, worldName, maxPlayers, isHost, 
       });
     }
 
-    // Check if faction already saved
+    // Check if faction already saved and load identity data
     const { data: identity } = await supabase
       .from("civ_identity")
-      .select("id")
+      .select("*")
       .eq("session_id", sessionId)
       .eq("player_name", myPlayerName)
       .maybeSingle();
-    if (identity) setFactionSaved(true);
+    if (identity) {
+      setFactionSaved(true);
+      setMyIdentity(identity);
+    }
   }, [sessionId, user?.id, myPlayerName]);
 
   useEffect(() => {
