@@ -152,6 +152,29 @@ const BIOMES = [
   { value: "volcanic", label: "🌋 Vulkanický", desc: "Nebezpečná území", icon: Flame },
 ];
 
+const AI_PERSONALITIES = [
+  { value: "aggressive", label: "⚔️ Agresivní", desc: "Vojenská expanze, dobývání", icon: Swords },
+  { value: "diplomatic", label: "🤝 Diplomatická", desc: "Aliance, smlouvy, mír", icon: Handshake },
+  { value: "mercantile", label: "💰 Obchodní", desc: "Obchod, bohatství, gildy", icon: Store },
+  { value: "isolationist", label: "🛡️ Izolacionistická", desc: "Obrana, soběstačnost", icon: Shield },
+  { value: "expansionist", label: "🌍 Expanzivní", desc: "Kolonizace, osídlování", icon: Expand },
+];
+
+const AI_FOCUSES = [
+  { value: "military", label: "Vojenství" },
+  { value: "economy", label: "Ekonomika" },
+  { value: "culture", label: "Kultura" },
+  { value: "religion", label: "Náboženství" },
+  { value: "science", label: "Technologie" },
+];
+
+interface FactionConfig {
+  name: string;
+  personality: string;
+  focus: string;
+  description: string;
+}
+
 interface Props {
   userId: string;
   defaultPlayerName: string;
