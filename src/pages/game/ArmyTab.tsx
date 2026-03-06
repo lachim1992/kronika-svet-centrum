@@ -21,6 +21,9 @@ import DeployBattlePanel from "@/components/military/DeployBattlePanel";
 import DemobilizeDialog from "@/components/DemobilizeDialog";
 
 const UNIT_ICONS: Record<string, React.ElementType> = {
+  MILITIA: Shield,
+  PROFESSIONAL: Swords,
+  // Legacy compat
   INFANTRY: Shield,
   ARCHERS: Target,
   CAVALRY: Crosshair,
@@ -43,13 +46,6 @@ const LEGION_MIN_MANPOWER = 900;
 const ARMY_MIN_MANPOWER = 2000;
 const LEGION_GOLD_COST = 200;
 const ARMY_GOLD_COST = 500;
-
-const RECRUIT_PRESETS = [
-  { key: "inf_draft", label: "Pěší odvod", deltas: { INFANTRY: 200 } },
-  { key: "balanced", label: "Smíšená kohorta", deltas: { INFANTRY: 150, ARCHERS: 50 } },
-  { key: "cav_det", label: "Jezdecký oddíl", deltas: { CAVALRY: 100 } },
-  { key: "siege_train", label: "Obléhací vůz", deltas: { SIEGE: 60 } },
-];
 
 interface Stack {
   id: string;
