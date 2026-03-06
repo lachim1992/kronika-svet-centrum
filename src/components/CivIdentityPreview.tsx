@@ -371,15 +371,17 @@ const CivIdentityPreview = ({ sessionId, playerName, civDescription, identityDat
         </div>
       </div>
 
-      {/* Actions */}
-      <div className="flex gap-2 pt-2 sticky bottom-0 bg-card pb-1">
-        <Button variant="outline" onClick={onBack}>
-          <ArrowLeft className="h-4 w-4 mr-1" /> Upravit popis
-        </Button>
-        <Button onClick={onConfirm} className="flex-1 font-display">
-          <ArrowRight className="h-4 w-4 mr-2" /> Potvrdit a založit svět
-        </Button>
-      </div>
+      {/* Actions — hidden in read-only mode */}
+      {!readOnly && (
+        <div className="flex gap-2 pt-2 sticky bottom-0 bg-card pb-1">
+          <Button variant="outline" onClick={onBack}>
+            <ArrowLeft className="h-4 w-4 mr-1" /> Upravit popis
+          </Button>
+          <Button onClick={onConfirm} className="flex-1 font-display">
+            <ArrowRight className="h-4 w-4 mr-2" /> Potvrdit a založit svět
+          </Button>
+        </div>
+      )}
     </div>
   );
 };

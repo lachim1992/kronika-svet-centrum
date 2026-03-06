@@ -40,15 +40,62 @@ const CivTab = ({
   civilizations, declarations, worldCrises, secretObjectives, cityStates, resources, chronicles,
   currentPlayerName, currentTurn, myRole, onRefetch,
 }: Props) => {
+  const [identityData, setIdentityData] = useState<any>(null);
+  const [identityLoading, setIdentityLoading] = useState(true);
+
+  useEffect(() => {
+    const load = async () => {
+      setIdentityLoading(true);
+      const { data } = await supabase
+        .from("civ_identity")
+        .select("*")
+        .eq("session_id", sessionId)
+        .eq("player_name", currentPlayerName)
+        .maybeSingle();
+      setIdentityData(data);
+      setIdentityLoading(false);
+    };
+    load();
+  }, [sessionId, currentPlayerName]);
+
   return (
     <div className="space-y-4 pb-20">
-      <Accordion type="multiple" defaultValue={["civdna"]} className="space-y-2">
+      <Accordion type="multiple" defaultValue={["identity", "civdna"]} className="space-y-2">
+        {/* Identity Stats — read-only overview of all modifiers */}
+        <AccordionItem value="identity" className="manuscript-card">
+          <AccordionTrigger className="px-4 py-3 font-display text-sm">
+            <span className="flex items-center gap-2"><BarChart3 className="h-4 w-4 text-primary" />Staty civilizace</span>
+          </AccordionTrigger>
+          <AccordionContent className="px-4 pb-4">
+            {identityLoading ? (
+              <p className="text-sm text-muted-foreground text-center py-4">Načítám…</p>
+            ) : identityData ? (
+              <CivIdentityPreview
+                sessionId={sessionId}
+                playerName={currentPlayerName}
+                civDescription={identityData.source_description || ""}
+                identityData={identityData}
+                loading={false}
+                error={null}
+                onExtract={() => {}}
+                onBack={() => {}}
+                onConfirm={() => {}}
+                readOnly
+              />
+            ) : (
+              <p className="text-sm text-muted-foreground text-center py-4">
+                Identita civilizace zatím nebyla vygenerována. Použijte sekci "Moje civilizace" níže.
+              </p>
+            )}
+          </AccordionContent>
+        </AccordionItem>
+
         <AccordionItem value="civdna" className="manuscript-card">
           <AccordionTrigger className="px-4 py-3 font-display text-sm">
             <span className="flex items-center gap-2"><Sparkles className="h-4 w-4 text-primary" />Moje civilizace</span>
           </AccordionTrigger>
           <AccordionContent className="px-4 pb-4">
-            <FactionDesigner sessionId={sessionId} playerName={currentPlayerName} onComplete={onRefetch} />
+            <FactionDesigner sessionId={sessionId} playerName={currentPlayerName} onComplete={() => { onRefetch(); /* reload identity */ supabase.from("civ_identity").select("*").eq("session_id", sessionId).eq("player_name", currentPlayerName).maybeSingle().then(({ data }) => setIdentityData(data)); }} />
           </AccordionContent>
         </AccordionItem>
 
