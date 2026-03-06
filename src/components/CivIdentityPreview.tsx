@@ -362,6 +362,8 @@ const CivIdentityPreview = ({ sessionId, playerName, civDescription, identityDat
       <div className="bg-accent/10 border border-accent/20 rounded-lg p-3 space-y-1">
         <p className="text-xs font-display font-semibold">📊 Dopad na Vliv (Influence):</p>
         <div className="text-[10px] text-muted-foreground space-y-0.5">
+          {d.diplomacy_modifier !== 0 && <p>• Diplomacie (základ): {d.diplomacy_modifier > 0 ? "+" : ""}{d.diplomacy_modifier} bodů vlivu</p>}
+          {d.research_modifier !== 0 && <p>• Výzkum: {d.research_modifier > 0 ? "+" : ""}{Math.round(d.research_modifier * 100)}% efektivita výzkumných budov</p>}
           {d.trade_modifier !== 0 && <p>• Obchod: {d.trade_modifier > 0 ? "+" : ""}{Math.round(d.trade_modifier * 100)} bodů vlivu</p>}
           {d.military_doctrine === "offensive" && <p>• Vojenství: +15 bodů (útočná doktrína)</p>}
           {d.military_doctrine === "conscript" && <p>• Vojenství: +10 bodů (branná povinnost)</p>}
