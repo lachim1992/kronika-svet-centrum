@@ -30,6 +30,8 @@ interface CivIdentityData {
   fortification_bonus: number;
   stability_modifier: number;
   trade_modifier: number;
+  diplomacy_modifier: number;
+  research_modifier: number;
   building_tags: string[];
   core_myth: string;
   cultural_quirk: string;
