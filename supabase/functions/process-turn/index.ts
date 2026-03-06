@@ -453,6 +453,9 @@ Deno.serve(async (req) => {
     let totalStoneProd = 0;
     let totalIronProd = 0;
 
+    // Per-city production snapshot for DB update
+    const cityProdSnapshot: Record<string, { grain: number; wood: number; stone: number; iron: number; special: number }> = {};
+
     // Buffer for small empires (prevent death spiral)
     if (myCities.length <= 3) {
       totalGrainProd += 10;
@@ -460,46 +463,59 @@ Deno.serve(async (req) => {
     }
 
     for (const city of myCities) {
-      if (city.status && city.status !== "ok") continue; // Devastated cities produce nothing
+      if (city.status && city.status !== "ok") {
+        cityProdSnapshot[city.id] = { grain: 0, wood: 0, stone: 0, iron: 0, special: 0 };
+        continue;
+      }
       const prof = profileMap[city.id];
-      if (!prof) continue;
+      if (!prof) {
+        cityProdSnapshot[city.id] = { grain: 0, wood: 0, stone: 0, iron: 0, special: 0 };
+        continue;
+      }
 
       const distEff = cityDistrictEffects[city.id] || {};
       const buildEff = cityBuildingEffects[city.id] || {};
 
-      // 1. Base + Modifiers — unified multiplier (numeric% + structural% combined)
+      let cityGrain = 0, cityWood = 0, cityStone = 0, cityIron = 0;
+
       // Grain
-      let grain = (prof.base_grain || 0) + (distEff.grain_modifier || 0); // Flat
-      grain *= uMult.grain; // Unified civ multiplier (numeric + structural)
-      grain *= effectiveWorkforceRatio; // Workforce penalty
-      totalGrainProd += Math.max(0, Math.round(grain));
+      let grain = (prof.base_grain || 0) + (distEff.grain_modifier || 0);
+      grain *= uMult.grain;
+      grain *= effectiveWorkforceRatio;
+      cityGrain = Math.max(0, Math.round(grain));
+      totalGrainProd += cityGrain;
 
       // Wood
       if (prof.produces_wood) {
         let wood = (prof.base_wood || 0);
         wood *= uMult.wood;
         wood *= effectiveWorkforceRatio;
-        totalWoodProd += Math.max(0, Math.round(wood));
+        cityWood = Math.max(0, Math.round(wood));
+        totalWoodProd += cityWood;
       }
 
-      // Stone — not stored in profile, derived from settlement tier
+      // Stone
       const prodConsts = SETTLEMENT_PRODUCTION[city.settlement_level] || SETTLEMENT_PRODUCTION.HAMLET;
       let stone = prodConsts.stone;
       stone *= uMult.stone;
       stone *= effectiveWorkforceRatio;
-      totalStoneProd += Math.max(0, Math.round(stone));
+      cityStone = Math.max(0, Math.round(stone));
+      totalStoneProd += cityStone;
 
-      // Iron (from base_special in profile)
+      // Iron
       if (prof.special_resource_type === "IRON") {
         let iron = (prof.base_special || 0);
         iron *= uMult.iron;
         iron *= effectiveWorkforceRatio;
-        totalIronProd += Math.max(0, Math.round(iron));
+        cityIron = Math.max(0, Math.round(iron));
+        totalIronProd += cityIron;
       }
+
+      cityProdSnapshot[city.id] = { grain: cityGrain, wood: cityWood, stone: cityStone, iron: cityIron, special: cityIron };
 
       // Production modifier (general industry)
       if ((prof.production_bonus || 0) > 0 || (distEff.production_modifier || 0) > 0) {
-        // Just logged for now, abstract production is handled via wood/stone boosts in other logic if needed
+        // Just logged for now
       }
     }
 
@@ -508,11 +524,14 @@ Deno.serve(async (req) => {
     for (const city of myCities) {
       const consumption = computeGrainConsumption(city);
       totalConsumption += consumption;
-      // Update DB with per-city consumption/production snapshot
+      const snap = cityProdSnapshot[city.id] || { grain: 0, wood: 0, stone: 0, iron: 0, special: 0 };
       await supabase.from("cities").update({
         last_turn_grain_cons: consumption,
-        // We don't have per-city production broken down easily here without re-calc, 
-        // but we can approx based on profile. For now, skipping per-city prod update to save OPS
+        last_turn_grain_prod: snap.grain,
+        last_turn_wood_prod: snap.wood,
+        last_turn_stone_prod: snap.stone,
+        last_turn_iron_prod: snap.iron,
+        last_turn_special_prod: snap.special,
       }).eq("id", city.id);
     }
 
