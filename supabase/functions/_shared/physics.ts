@@ -777,6 +777,211 @@ export function applyCivIdentityToInfluence(
   };
 }
 
+// ═══════════════════════════════════════════
+// STRUCTURAL CATEGORY → MECHANICAL BONUSES
+// ═══════════════════════════════════════════
+
+export interface StructuralBonuses {
+  // City-level bonuses
+  building_cost_mult: number;       // multiplier on building costs (< 1 = cheaper)
+  building_speed_mult: number;      // multiplier on build duration (< 1 = faster)
+  housing_capacity_mult: number;    // multiplier on housing capacity
+  defense_bonus: number;            // additive to city defense
+  grain_production_mult: number;    // multiplier on grain production
+  wealth_production_mult: number;   // multiplier on wealth/trade income
+  stone_production_mult: number;    // multiplier on stone production
+  iron_production_mult: number;     // multiplier on iron production
+  wood_production_mult: number;     // multiplier on wood production
+  // Pop / stability
+  pop_growth_bonus: number;         // additive to growth rate
+  stability_bonus: number;          // additive to stability
+  legitimacy_bonus: number;         // additive per-turn legitimacy drift
+  burgher_ratio_bonus: number;      // additive shift to burgher ratio
+  cleric_ratio_bonus: number;       // additive shift to cleric ratio
+  // Military
+  recruitment_speed_mult: number;   // multiplier on recruitment time
+  morale_bonus: number;             // additive to army morale
+  siege_bonus: number;              // additive to siege power
+}
+
+const DEFAULT_STRUCTURAL: StructuralBonuses = {
+  building_cost_mult: 1, building_speed_mult: 1, housing_capacity_mult: 1,
+  defense_bonus: 0, grain_production_mult: 1, wealth_production_mult: 1,
+  stone_production_mult: 1, iron_production_mult: 1, wood_production_mult: 1,
+  pop_growth_bonus: 0, stability_bonus: 0, legitimacy_bonus: 0,
+  burgher_ratio_bonus: 0, cleric_ratio_bonus: 0,
+  recruitment_speed_mult: 1, morale_bonus: 0, siege_bonus: 0,
+};
+
+/**
+ * Compute mechanical bonuses from the 4 structural categories.
+ * These stack additively with numeric civ_identity modifiers.
+ */
+export function computeStructuralBonuses(identity: CivIdentity | null): StructuralBonuses {
+  if (!identity) return { ...DEFAULT_STRUCTURAL };
+  const b = { ...DEFAULT_STRUCTURAL };
+
+  // ── URBAN STYLE ──
+  switch (identity.urban_style) {
+    case "organic":
+      b.building_cost_mult *= 0.85;      // 15% cheaper buildings
+      b.building_speed_mult *= 0.9;      // 10% faster
+      b.housing_capacity_mult *= 0.9;    // slightly less organized housing
+      break;
+    case "planned":
+      b.building_cost_mult *= 1.1;       // 10% more expensive (planning overhead)
+      b.grain_production_mult *= 1.1;    // 10% more efficient farms
+      b.wealth_production_mult *= 1.1;   // organized markets
+      b.housing_capacity_mult *= 1.15;   // better housing layouts
+      b.stability_bonus += 3;            // order from planning
+      break;
+    case "fortified":
+      b.building_cost_mult *= 1.2;       // 20% more expensive (thick walls)
+      b.defense_bonus += 15;             // strong city defense
+      b.stone_production_mult *= 1.15;   // stonework expertise
+      b.siege_bonus += 5;                // siege engineering knowledge
+      break;
+    case "scattered":
+      b.building_cost_mult *= 0.7;       // 30% cheaper (simple structures)
+      b.building_speed_mult *= 0.75;     // 25% faster to build
+      b.defense_bonus -= 10;             // hard to defend scattered settlements
+      b.pop_growth_bonus += 0.005;       // flexible growth
+      break;
+    case "coastal":
+      b.wealth_production_mult *= 1.2;   // sea trade bonus
+      b.grain_production_mult *= 1.05;   // fishing
+      b.wood_production_mult *= 0.9;     // less forests near coast
+      b.housing_capacity_mult *= 1.1;    // port infrastructure
+      break;
+    case "underground":
+      b.defense_bonus += 20;             // very defensible
+      b.stone_production_mult *= 1.25;   // mining expertise
+      b.iron_production_mult *= 1.15;    // deep ore access
+      b.grain_production_mult *= 0.85;   // limited farming
+      b.housing_capacity_mult *= 0.85;   // cramped underground
+      b.pop_growth_bonus -= 0.005;       // slower growth underground
+      break;
+  }
+
+  // ── SOCIETY STRUCTURE ──
+  switch (identity.society_structure) {
+    case "tribal":
+      b.recruitment_speed_mult *= 0.7;   // 30% faster mobilization
+      b.morale_bonus += 3;               // tribal loyalty
+      b.stability_bonus -= 3;            // less centralized
+      b.building_speed_mult *= 1.1;      // less organized construction
+      break;
+    case "hierarchical":
+      b.stability_bonus += 5;            // strong order
+      b.legitimacy_bonus += 2;           // clear authority
+      b.building_speed_mult *= 0.9;      // efficient coordination
+      b.pop_growth_bonus -= 0.003;       // rigid society slows growth
+      break;
+    case "egalitarian":
+      b.stability_bonus += 3;            // content populace
+      b.pop_growth_bonus += 0.005;       // open society attracts settlers
+      b.burgher_ratio_bonus += 0.05;     // more middle class
+      b.recruitment_speed_mult *= 1.15;  // consensus-based mobilization is slow
+      break;
+    case "theocratic":
+      b.cleric_ratio_bonus += 0.08;      // more clerics
+      b.legitimacy_bonus += 3;           // divine mandate
+      b.stability_bonus += 4;            // religious order
+      b.wealth_production_mult *= 0.9;   // tithing reduces commerce
+      break;
+    case "feudal":
+      b.defense_bonus += 8;              // castle network
+      b.recruitment_speed_mult *= 0.85;  // feudal levies are quick
+      b.stability_bonus += 2;            // feudal order
+      b.burgher_ratio_bonus -= 0.03;     // suppressed merchant class
+      break;
+    case "mercantile":
+      b.wealth_production_mult *= 1.25;  // merchant republic
+      b.burgher_ratio_bonus += 0.1;      // dominant merchant class
+      b.defense_bonus -= 5;              // profit over walls
+      b.recruitment_speed_mult *= 1.2;   // mercenaries take time to hire
+      break;
+  }
+
+  // ── MILITARY DOCTRINE ──
+  switch (identity.military_doctrine) {
+    case "defensive":
+      b.defense_bonus += 12;
+      b.siege_bonus -= 5;               // poor at attacking
+      b.building_speed_mult *= 0.9;     // efficient fortification builders
+      break;
+    case "offensive":
+      b.morale_bonus += 5;
+      b.siege_bonus += 8;               // siege specialists
+      b.defense_bonus -= 5;             // offense-first mentality
+      b.recruitment_speed_mult *= 0.9;  // militarized society recruits fast
+      break;
+    case "guerrilla":
+      b.morale_bonus += 3;
+      b.defense_bonus += 5;             // hard to root out
+      b.recruitment_speed_mult *= 0.8;  // fast irregular recruitment
+      b.building_cost_mult *= 0.9;      // resourceful builders
+      break;
+    case "naval":
+      b.wealth_production_mult *= 1.1;  // naval trade
+      b.defense_bonus += 3;             // coastal defense
+      b.wood_production_mult *= 1.1;    // shipbuilding expertise → woodwork
+      break;
+    case "mercenary":
+      b.recruitment_speed_mult *= 0.75; // instant hire (gold-based)
+      b.morale_bonus -= 2;              // less loyal troops
+      b.wealth_production_mult *= 1.05; // mercenary economy
+      break;
+    case "conscript":
+      b.recruitment_speed_mult *= 0.6;  // fastest mobilization
+      b.morale_bonus -= 3;              // unwilling soldiers
+      b.pop_growth_bonus -= 0.003;      // conscription drains population
+      b.grain_production_mult *= 0.95;  // workers pulled from fields
+      break;
+  }
+
+  // ── ECONOMIC FOCUS ──
+  switch (identity.economic_focus) {
+    case "agrarian":
+      b.grain_production_mult *= 1.2;   // farming expertise
+      b.pop_growth_bonus += 0.005;      // well-fed populace
+      b.stability_bonus += 2;           // self-sufficient
+      b.wealth_production_mult *= 0.9;  // less commercial
+      break;
+    case "trade":
+      b.wealth_production_mult *= 1.3;  // trade mastery
+      b.burgher_ratio_bonus += 0.05;    // merchant class
+      b.grain_production_mult *= 0.9;   // import-dependent
+      b.stability_bonus -= 2;           // volatile markets
+      break;
+    case "mining":
+      b.stone_production_mult *= 1.2;
+      b.iron_production_mult *= 1.2;
+      b.building_cost_mult *= 0.9;      // abundant materials
+      b.grain_production_mult *= 0.9;   // miners don't farm
+      break;
+    case "crafting":
+      b.building_cost_mult *= 0.8;      // master craftsmen
+      b.building_speed_mult *= 0.85;    // skilled builders
+      b.wealth_production_mult *= 1.1;  // artisan goods
+      break;
+    case "raiding":
+      b.morale_bonus += 4;              // warrior spirit
+      b.recruitment_speed_mult *= 0.8;  // raid-ready
+      b.stability_bonus -= 5;           // chaotic society
+      b.wealth_production_mult *= 0.85; // unreliable income
+      break;
+    case "mixed":
+      // No extreme bonuses, slight overall buff
+      b.stability_bonus += 2;
+      b.grain_production_mult *= 1.05;
+      b.wealth_production_mult *= 1.05;
+      break;
+  }
+
+  return b;
+}
+
 /**
  * Get mobilization speed modifier from civ identity.
  * Used by action_queue for military build times.
