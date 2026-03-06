@@ -33,6 +33,7 @@ interface CivIdentityData {
   diplomacy_modifier: number;
   research_modifier: number;
   building_tags: string[];
+  special_buildings?: any[];
   core_myth: string;
   cultural_quirk: string;
   architectural_style: string;
