@@ -1117,7 +1117,7 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
         <div className="space-y-3">
           <div className="bg-primary/5 border border-primary/20 rounded-lg p-3">
             <h4 className="font-display font-semibold text-sm flex items-center gap-2 mb-1">
-              <Map className="h-4 w-4 text-primary" />
+              <MapIcon className="h-4 w-4 text-primary" />
               Konfigurace mapy
             </h4>
             <p className="text-[10px] text-muted-foreground">
