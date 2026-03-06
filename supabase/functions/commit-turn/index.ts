@@ -332,7 +332,7 @@ Deno.serve(async (req) => {
     }));
 
     await supabase.from("game_sessions")
-      .update({ current_turn: turnNumber + 1 })
+      .update({ current_turn: turnNumber + 1, turn_closed_p1: false, turn_closed_p2: false })
       .eq("id", sessionId);
 
     // Reset player turn_closed flags
