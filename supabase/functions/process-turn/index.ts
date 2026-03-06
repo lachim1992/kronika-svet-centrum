@@ -524,11 +524,14 @@ Deno.serve(async (req) => {
     for (const city of myCities) {
       const consumption = computeGrainConsumption(city);
       totalConsumption += consumption;
-      // Update DB with per-city consumption/production snapshot
+      const snap = cityProdSnapshot[city.id] || { grain: 0, wood: 0, stone: 0, iron: 0, special: 0 };
       await supabase.from("cities").update({
         last_turn_grain_cons: consumption,
-        // We don't have per-city production broken down easily here without re-calc, 
-        // but we can approx based on profile. For now, skipping per-city prod update to save OPS
+        last_turn_grain_prod: snap.grain,
+        last_turn_wood_prod: snap.wood,
+        last_turn_stone_prod: snap.stone,
+        last_turn_iron_prod: snap.iron,
+        last_turn_special_prod: snap.special,
       }).eq("id", city.id);
     }
 
