@@ -8,18 +8,26 @@ const corsHeaders = {
 import { SETTLEMENT_TEMPLATES, SETTLEMENT_WEALTH, computePrestigeEffects, getOpenBordersBonuses, hasActiveEmbargo, getTradeEfficiencyModifier, computeStructuralBonuses, type DiplomaticPact } from "../_shared/physics.ts";
 
 /**
- * Compute structural production multipliers from civ_identity categories.
- * Lightweight wrapper around computeStructuralBonuses for process-turn usage.
+ * Compute UNIFIED production multipliers: numeric civ_identity modifiers (%) + structural category bonuses
+ * merged into a single multiplier per resource. Logic: base × (1 + numeric% + (structural - 1))
+ * This ensures additive stacking between both bonus sources, then one multiplication.
  */
-function computeStructuralMults(civIdentity: any): { grain: number; wood: number; stone: number; iron: number; wealth: number } {
-  if (!civIdentity) return { grain: 1, wood: 1, stone: 1, iron: 1, wealth: 1 };
-  const sb = computeStructuralBonuses(civIdentity);
+function computeUnifiedMults(civIdentity: any, grainMod: number, woodMod: number, stoneMod: number, ironMod: number, wealthMod: number): { grain: number; wood: number; stone: number; iron: number; wealth: number } {
+  const sb = civIdentity ? computeStructuralBonuses(civIdentity) : null;
+  // Structural bonuses are multipliers centered on 1.0 (e.g., 1.2 = +20%)
+  // Convert to additive percentages and combine with numeric modifiers
+  const structGrain = sb ? (sb.grain_production_mult - 1) * 100 : 0;
+  const structWood = sb ? (sb.wood_production_mult - 1) * 100 : 0;
+  const structStone = sb ? (sb.stone_production_mult - 1) * 100 : 0;
+  const structIron = sb ? (sb.iron_production_mult - 1) * 100 : 0;
+  const structWealth = sb ? (sb.wealth_production_mult - 1) * 100 : 0;
+
   return {
-    grain: sb.grain_production_mult,
-    wood: sb.wood_production_mult,
-    stone: sb.stone_production_mult,
-    iron: sb.iron_production_mult,
-    wealth: sb.wealth_production_mult,
+    grain: 1 + (grainMod + structGrain) / 100,
+    wood: 1 + (woodMod + structWood) / 100,
+    stone: 1 + (stoneMod + structStone) / 100,
+    iron: 1 + (ironMod + structIron) / 100,
+    wealth: 1 + (wealthMod + structWealth) / 100,
   };
 }
 
