@@ -216,13 +216,13 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
 
   const handleCreate = async () => {
     if (!worldName.trim() || !premise.trim()) { toast.error("Vyplňte název a premisu světa"); return; }
-    if (!playerName.trim()) { toast.error("Zadejte jméno hráče"); return; }
-    if (!settlementName.trim()) { toast.error("Zadejte název startovního sídla"); return; }
+    if (!isMultiMode && !playerName.trim()) { toast.error("Zadejte jméno hráče"); return; }
+    if (!isMultiMode && !settlementName.trim()) { toast.error("Zadejte název startovního sídla"); return; }
 
     // ── MULTIPLAYER LOBBY MODE ──
-    // For tb_multi, create a minimal session + world_foundation + membership + civ_config,
-    // then navigate to lobby instead of full world generation
+    // For tb_multi, create only world settings + session, host configures civ in lobby like everyone else
     if (isMultiMode) {
+      if (!playerName.trim()) { toast.error("Zadejte jméno hráče"); return; }
       setCreating(true);
       try {
         const roomCode = Math.random().toString(36).substring(2, 8).toUpperCase();
@@ -259,28 +259,14 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
           user_id: userId,
         } as any);
 
-        // Membership (admin + ready since host already configured)
+        // Membership (admin + PENDING — host configures civ in lobby like everyone else)
         await supabase.from("game_memberships").insert({
           user_id: userId,
           session_id: session.id,
           player_name: playerName.trim(),
           role: "admin",
-          setup_status: "ready",
+          setup_status: "pending",
         });
-
-        // Save host's civ config
-        await supabase.from("player_civ_configs").upsert({
-          session_id: session.id,
-          user_id: userId,
-          player_name: playerName.trim(),
-          realm_name: realmName.trim(),
-          settlement_name: settlementName.trim(),
-          people_name: peopleName.trim(),
-          culture_name: cultureName.trim(),
-          language_name: languageName.trim(),
-          civ_description: civDescription.trim(),
-          homeland_biome: homelandBiome,
-        }, { onConflict: "session_id,user_id" });
 
         toast.success(`Lobby vytvořena! Kód: ${roomCode}`);
         onCreated(session.id);
