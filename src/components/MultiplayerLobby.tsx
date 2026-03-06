@@ -9,10 +9,11 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   Crown, Users, Check, Clock, Copy, Loader2, Sparkles, Globe,
   Swords, Shield, BookOpen, Mountain, TreePine, Waves, Sun, Snowflake, Flame,
-  ChevronDown, ChevronUp, Play,
+  ChevronDown, ChevronUp, Play, ArrowLeft, ArrowRight,
 } from "lucide-react";
 import { toast } from "sonner";
 import ChronicleHubLogo from "./ChronicleHubLogo";
+import FactionDesigner from "./FactionDesigner";
 
 const BIOMES = [
   { value: "plains", label: "🌾 Pláně", icon: Sun },
@@ -41,6 +42,8 @@ interface CivConfig {
   language_name: string;
   civ_description: string;
   homeland_biome: string;
+  homeland_name: string;
+  homeland_desc: string;
 }
 
 interface Props {
@@ -57,6 +60,7 @@ const MultiplayerLobby = ({ sessionId, roomCode, worldName, maxPlayers, isHost, 
   const { user } = useAuth();
   const [players, setPlayers] = useState<LobbyPlayer[]>([]);
   const [showCivWizard, setShowCivWizard] = useState(false);
+  const [wizardStep, setWizardStep] = useState(0); // 0=identity, 1=homeland, 2=faction
   const [mySetupStatus, setMySetupStatus] = useState("pending");
   const [generating, setGenerating] = useState(false);
   const [civConfig, setCivConfig] = useState<CivConfig>({
@@ -67,10 +71,13 @@ const MultiplayerLobby = ({ sessionId, roomCode, worldName, maxPlayers, isHost, 
     language_name: "",
     civ_description: "",
     homeland_biome: "plains",
+    homeland_name: "",
+    homeland_desc: "",
   });
   const [savingConfig, setSavingConfig] = useState(false);
   const [showWorldSettings, setShowWorldSettings] = useState(false);
   const [worldFoundation, setWorldFoundation] = useState<any>(null);
+  const [factionSaved, setFactionSaved] = useState(false);
 
   const fetchPlayers = useCallback(async () => {
     const { data } = await supabase
@@ -112,9 +119,20 @@ const MultiplayerLobby = ({ sessionId, roomCode, worldName, maxPlayers, isHost, 
         language_name: data.language_name || "",
         civ_description: data.civ_description || "",
         homeland_biome: data.homeland_biome || "plains",
+        homeland_name: (data as any).homeland_name || "",
+        homeland_desc: (data as any).homeland_desc || "",
       });
     }
-  }, [sessionId, user?.id]);
+
+    // Check if faction already saved
+    const { data: identity } = await supabase
+      .from("civ_identity")
+      .select("id")
+      .eq("session_id", sessionId)
+      .eq("player_name", myPlayerName)
+      .maybeSingle();
+    if (identity) setFactionSaved(true);
+  }, [sessionId, user?.id, myPlayerName]);
 
   useEffect(() => {
     fetchPlayers();
@@ -128,7 +146,6 @@ const MultiplayerLobby = ({ sessionId, roomCode, worldName, maxPlayers, isHost, 
       .channel(`lobby-${sessionId}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "game_memberships", filter: `session_id=eq.${sessionId}` }, () => fetchPlayers())
       .on("postgres_changes", { event: "*", schema: "public", table: "game_sessions", filter: `id=eq.${sessionId}` }, async () => {
-        // Check if game started
         const { data } = await supabase.from("game_sessions").select("init_status").eq("id", sessionId).single();
         if (data && (data as any).init_status === "ready") {
           onGameStart();
@@ -143,20 +160,15 @@ const MultiplayerLobby = ({ sessionId, roomCode, worldName, maxPlayers, isHost, 
     toast.success("Kód zkopírován!");
   };
 
+  // Save civ config (step 0+1) and proceed to faction designer
   const handleSaveCivConfig = async () => {
     if (!user) return;
-    if (!civConfig.settlement_name.trim()) {
-      toast.error("Zadejte název startovního sídla");
-      return;
-    }
-    if (!civConfig.realm_name.trim()) {
-      toast.error("Zadejte název říše");
-      return;
-    }
+    if (!civConfig.settlement_name.trim()) { toast.error("Zadejte název startovního sídla"); return; }
+    if (!civConfig.realm_name.trim()) { toast.error("Zadejte název říše"); return; }
+    if (!civConfig.homeland_name.trim()) { toast.error("Zadejte název domovské provincie"); return; }
 
     setSavingConfig(true);
     try {
-      // Upsert civ config
       await supabase.from("player_civ_configs").upsert({
         session_id: sessionId,
         user_id: user.id,
@@ -164,21 +176,30 @@ const MultiplayerLobby = ({ sessionId, roomCode, worldName, maxPlayers, isHost, 
         ...civConfig,
       }, { onConflict: "session_id,user_id" });
 
-      // Update membership status to ready
-      await supabase.from("game_memberships")
-        .update({ setup_status: "ready" })
-        .eq("session_id", sessionId)
-        .eq("user_id", user.id);
-
-      setMySetupStatus("ready");
-      setShowCivWizard(false);
-      toast.success("Civilizace připravena!");
-      // Immediately refresh player list so host sees updated status
-      await fetchPlayers();
+      toast.success("Civilizace uložena! Nyní nastavte frakci.");
+      setWizardStep(2); // proceed to faction designer
     } catch (e: any) {
       toast.error("Chyba při ukládání: " + e.message);
     }
     setSavingConfig(false);
+  };
+
+  // Called when FactionDesigner completes
+  const handleFactionComplete = async () => {
+    if (!user) return;
+    setFactionSaved(true);
+
+    // Now mark player as ready
+    await supabase.from("game_memberships")
+      .update({ setup_status: "ready" })
+      .eq("session_id", sessionId)
+      .eq("user_id", user.id);
+
+    setMySetupStatus("ready");
+    setShowCivWizard(false);
+    setWizardStep(0);
+    toast.success("Civilizace a frakce připraveny!");
+    await fetchPlayers();
   };
 
   const allReady = players.length >= 2 && players.every(p => p.setup_status === "ready");
@@ -190,18 +211,14 @@ const MultiplayerLobby = ({ sessionId, roomCode, worldName, maxPlayers, isHost, 
     }
     setGenerating(true);
     try {
-      // Update session status to generating
       await supabase.from("game_sessions").update({ init_status: "generating" } as any).eq("id", sessionId);
 
-      // Call the multiplayer world generation edge function
       const { data, error } = await supabase.functions.invoke("mp-world-generate", {
         body: { sessionId },
       });
 
       if (error) throw error;
-
       toast.success("Svět vygenerován! Hra začíná...");
-      // The realtime subscription will detect init_status = 'ready' and call onGameStart
     } catch (e: any) {
       toast.error("Generování světa selhalo: " + e.message);
       await supabase.from("game_sessions").update({ init_status: "lobby" } as any).eq("id", sessionId);
@@ -220,6 +237,8 @@ const MultiplayerLobby = ({ sessionId, roomCode, worldName, maxPlayers, isHost, 
     if (status === "configuring") return "Nastavuje...";
     return "Čeká";
   };
+
+  const canProceedToFaction = civConfig.realm_name.trim() && civConfig.settlement_name.trim() && civConfig.homeland_name.trim();
 
   return (
     <div
@@ -253,7 +272,7 @@ const MultiplayerLobby = ({ sessionId, roomCode, worldName, maxPlayers, isHost, 
           </p>
         </div>
 
-        {/* World settings (collapsible for host) */}
+        {/* World settings (collapsible) */}
         {worldFoundation && (
           <button
             onClick={() => setShowWorldSettings(!showWorldSettings)}
@@ -318,7 +337,7 @@ const MultiplayerLobby = ({ sessionId, roomCode, worldName, maxPlayers, isHost, 
         {/* My civilization setup */}
         {mySetupStatus !== "ready" && !showCivWizard && (
           <Button
-            onClick={() => setShowCivWizard(true)}
+            onClick={() => { setShowCivWizard(true); setWizardStep(0); }}
             className="w-full h-14 text-lg font-display gap-2"
             size="lg"
           >
@@ -331,88 +350,170 @@ const MultiplayerLobby = ({ sessionId, roomCode, worldName, maxPlayers, isHost, 
           <div className="bg-green-500/10 border border-green-500/30 rounded-lg p-4 text-center">
             <Check className="h-6 w-6 text-green-500 mx-auto mb-1" />
             <p className="font-display font-semibold text-green-600 text-sm">Vaše civilizace je připravena</p>
-            <Button variant="ghost" size="sm" className="mt-2 text-xs" onClick={() => { setShowCivWizard(true); setMySetupStatus("configuring"); }}>
+            <Button variant="ghost" size="sm" className="mt-2 text-xs" onClick={() => { setShowCivWizard(true); setWizardStep(0); setMySetupStatus("configuring"); }}>
               Upravit
             </Button>
           </div>
         )}
 
-        {/* Civ wizard inline */}
+        {/* ═══ MULTI-STEP CIV WIZARD ═══ */}
         {showCivWizard && (
           <div className="bg-card border border-border rounded-lg p-5 space-y-4">
-            <h3 className="font-display font-semibold text-lg flex items-center gap-2">
-              <Swords className="h-5 w-5 text-primary" />
-              Vaše civilizace
-            </h3>
-
-            <div className="space-y-3">
-              <div className="space-y-1.5">
-                <Label>Název říše / státu *</Label>
-                <Input value={civConfig.realm_name} onChange={e => setCivConfig({ ...civConfig, realm_name: e.target.value })} placeholder="např. Království Sardos" />
-              </div>
-
-              <div className="space-y-1.5">
-                <Label>Název startovního sídla *</Label>
-                <Input value={civConfig.settlement_name} onChange={e => setCivConfig({ ...civConfig, settlement_name: e.target.value })} placeholder="např. Město Sardos" />
-              </div>
-
-              <div className="grid grid-cols-2 gap-2">
-                <div className="space-y-1">
-                  <Label className="text-xs">Národ / Lid</Label>
-                  <Input value={civConfig.people_name} onChange={e => setCivConfig({ ...civConfig, people_name: e.target.value })} placeholder="např. Sardové" />
+            {/* Progress indicator */}
+            <div className="flex items-center gap-2 mb-2">
+              {["Identita", "Provincie", "Frakce"].map((label, i) => (
+                <div key={label} className="flex items-center gap-1 flex-1">
+                  <div className={`h-6 w-6 rounded-full flex items-center justify-center text-[10px] font-bold transition-colors ${
+                    wizardStep === i ? "bg-primary text-primary-foreground" :
+                    wizardStep > i ? "bg-green-500 text-white" :
+                    "bg-muted text-muted-foreground"
+                  }`}>
+                    {wizardStep > i ? <Check className="h-3 w-3" /> : i + 1}
+                  </div>
+                  <span className={`text-[10px] font-display ${wizardStep === i ? "text-foreground font-semibold" : "text-muted-foreground"}`}>{label}</span>
+                  {i < 2 && <div className="flex-1 h-px bg-border" />}
                 </div>
-                <div className="space-y-1">
-                  <Label className="text-xs">Kultura</Label>
-                  <Input value={civConfig.culture_name} onChange={e => setCivConfig({ ...civConfig, culture_name: e.target.value })} placeholder="např. Sardská" />
+              ))}
+            </div>
+
+            {/* Step 0: Identity */}
+            {wizardStep === 0 && (
+              <div className="space-y-3">
+                <h3 className="font-display font-semibold text-lg flex items-center gap-2">
+                  <Swords className="h-5 w-5 text-primary" />
+                  Vaše civilizace
+                </h3>
+
+                <div className="space-y-1.5">
+                  <Label>Název říše / státu *</Label>
+                  <Input value={civConfig.realm_name} onChange={e => setCivConfig({ ...civConfig, realm_name: e.target.value })} placeholder="např. Království Sardos" />
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label>Název startovního sídla *</Label>
+                  <Input value={civConfig.settlement_name} onChange={e => setCivConfig({ ...civConfig, settlement_name: e.target.value })} placeholder="např. Město Sardos" />
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="space-y-1">
+                    <Label className="text-xs">Národ / Lid</Label>
+                    <Input value={civConfig.people_name} onChange={e => setCivConfig({ ...civConfig, people_name: e.target.value })} placeholder="např. Sardové" />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Kultura</Label>
+                    <Input value={civConfig.culture_name} onChange={e => setCivConfig({ ...civConfig, culture_name: e.target.value })} placeholder="např. Sardská" />
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Jazyk <span className="text-muted-foreground">(volitelné)</span></Label>
+                  <Input value={civConfig.language_name} onChange={e => setCivConfig({ ...civConfig, language_name: e.target.value })} placeholder="např. Sardština" />
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label className="flex items-center gap-1.5">
+                    <Sparkles className="h-3.5 w-3.5 text-primary" />
+                    Popis civilizace
+                  </Label>
+                  <Textarea
+                    value={civConfig.civ_description}
+                    onChange={e => setCivConfig({ ...civConfig, civ_description: e.target.value })}
+                    placeholder="Popište, čím je váš národ výjimečný — bojovníci, obchodníci, námořníci? AI z toho vygeneruje frakční modifikátory..."
+                    rows={4}
+                    maxLength={1000}
+                  />
+                  <p className="text-[10px] text-muted-foreground">{civConfig.civ_description.length}/1000</p>
+                </div>
+
+                <div className="flex gap-2">
+                  <Button variant="outline" onClick={() => setShowCivWizard(false)}>Zrušit</Button>
+                  <Button
+                    onClick={() => setWizardStep(1)}
+                    disabled={!civConfig.realm_name.trim() || !civConfig.settlement_name.trim()}
+                    className="flex-1 font-display gap-1"
+                  >
+                    Další <ArrowRight className="h-4 w-4" />
+                  </Button>
                 </div>
               </div>
+            )}
 
-              <div className="space-y-1.5">
-                <Label className="text-xs">Jazyk <span className="text-muted-foreground">(volitelné)</span></Label>
-                <Input value={civConfig.language_name} onChange={e => setCivConfig({ ...civConfig, language_name: e.target.value })} placeholder="např. Sardština" />
-              </div>
+            {/* Step 1: Homeland / Province */}
+            {wizardStep === 1 && (
+              <div className="space-y-3">
+                <h3 className="font-display font-semibold text-lg flex items-center gap-2">
+                  <Mountain className="h-5 w-5 text-primary" />
+                  Domovská provincie
+                </h3>
 
-              <div className="space-y-1.5">
-                <Label>Biom domoviny</Label>
-                <div className="grid grid-cols-3 gap-1.5">
-                  {BIOMES.map(b => (
-                    <button
-                      key={b.value}
-                      onClick={() => setCivConfig({ ...civConfig, homeland_biome: b.value })}
-                      className={`p-2 rounded border text-xs text-center transition-colors ${civConfig.homeland_biome === b.value ? "border-primary bg-primary/10 text-foreground" : "border-border hover:border-primary/30 text-muted-foreground"}`}
-                    >
-                      {b.label}
-                    </button>
-                  ))}
+                <div className="space-y-1.5">
+                  <Label>Název provincie / domoviny *</Label>
+                  <Input value={civConfig.homeland_name} onChange={e => setCivConfig({ ...civConfig, homeland_name: e.target.value })} placeholder="např. Údolí Sardos, Severní marky..." />
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label>Biom domoviny</Label>
+                  <div className="grid grid-cols-3 gap-1.5">
+                    {BIOMES.map(b => (
+                      <button
+                        key={b.value}
+                        onClick={() => setCivConfig({ ...civConfig, homeland_biome: b.value })}
+                        className={`p-2 rounded border text-xs text-center transition-colors ${civConfig.homeland_biome === b.value ? "border-primary bg-primary/10 text-foreground" : "border-border hover:border-primary/30 text-muted-foreground"}`}
+                      >
+                        {b.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Popis krajiny <span className="text-muted-foreground">(volitelné)</span></Label>
+                  <Textarea
+                    value={civConfig.homeland_desc}
+                    onChange={e => setCivConfig({ ...civConfig, homeland_desc: e.target.value })}
+                    placeholder="Krátký popis krajiny vaší domoviny..."
+                    rows={2}
+                  />
+                </div>
+
+                <div className="flex gap-2">
+                  <Button variant="outline" onClick={() => setWizardStep(0)} className="gap-1">
+                    <ArrowLeft className="h-4 w-4" /> Zpět
+                  </Button>
+                  <Button
+                    onClick={handleSaveCivConfig}
+                    disabled={savingConfig || !canProceedToFaction}
+                    className="flex-1 font-display gap-1"
+                  >
+                    {savingConfig ? <><Loader2 className="h-4 w-4 animate-spin" /> Ukládám...</> : <>Další <ArrowRight className="h-4 w-4" /></>}
+                  </Button>
                 </div>
               </div>
+            )}
 
-              <div className="space-y-1.5">
-                <Label className="flex items-center gap-1.5">
-                  <Sparkles className="h-3.5 w-3.5 text-primary" />
-                  Popis civilizace
-                </Label>
-                <Textarea
-                  value={civConfig.civ_description}
-                  onChange={e => setCivConfig({ ...civConfig, civ_description: e.target.value })}
-                  placeholder="Popište, čím je váš národ výjimečný — bojovníci, obchodníci, námořníci? AI z toho vygeneruje startovní podmínky..."
-                  rows={4}
-                  maxLength={1000}
+            {/* Step 2: Faction Designer */}
+            {wizardStep === 2 && (
+              <div className="space-y-3">
+                <h3 className="font-display font-semibold text-lg flex items-center gap-2">
+                  <Crown className="h-5 w-5 text-primary" />
+                  Frakce & modifikátory
+                </h3>
+                <p className="text-xs text-muted-foreground">
+                  AI vygeneruje herní modifikátory z popisu vaší civilizace. Můžete je upravit ručně.
+                </p>
+
+                <FactionDesigner
+                  sessionId={sessionId}
+                  playerName={myPlayerName}
+                  onComplete={handleFactionComplete}
+                  wizardMode
                 />
-                <p className="text-[10px] text-muted-foreground">{civConfig.civ_description.length}/1000</p>
-              </div>
-            </div>
 
-            <div className="flex gap-2">
-              <Button variant="outline" onClick={() => setShowCivWizard(false)}>Zrušit</Button>
-              <Button
-                onClick={handleSaveCivConfig}
-                disabled={savingConfig || !civConfig.settlement_name.trim() || !civConfig.realm_name.trim()}
-                className="flex-1 font-display"
-              >
-                {savingConfig ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Ukládám...</> : <><Check className="h-4 w-4 mr-2" />Potvrdit připravenost</>}
-              </Button>
-            </div>
+                <Button variant="outline" onClick={() => setWizardStep(1)} className="gap-1">
+                  <ArrowLeft className="h-4 w-4" /> Zpět na provincii
+                </Button>
+              </div>
+            )}
           </div>
         )}
 
@@ -435,7 +536,7 @@ const MultiplayerLobby = ({ sessionId, roomCode, worldName, maxPlayers, isHost, 
 
         {!isHost && !allReady && (
           <p className="text-center text-sm text-muted-foreground">
-            Čekáme, až všichni hráči nastaví svou civilizaci...
+            Čekáme, až všichni hráči nastaví svou civilizaci a frakci...
           </p>
         )}
 
@@ -443,7 +544,7 @@ const MultiplayerLobby = ({ sessionId, roomCode, worldName, maxPlayers, isHost, 
           <div className="bg-primary/5 border border-primary/20 rounded-lg p-4 text-center space-y-2">
             <Loader2 className="h-8 w-8 text-primary mx-auto animate-spin" />
             <p className="font-display font-semibold text-sm">Generování světa...</p>
-            <p className="text-xs text-muted-foreground">Vytváření mapy 35×35, rozmísťování civilizací, generování prahistorie...</p>
+            <p className="text-xs text-muted-foreground">Vytváření mapy, rozmísťování civilizací, generování prahistorie...</p>
           </div>
         )}
       </div>
