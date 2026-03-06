@@ -447,6 +447,7 @@ Deno.serve(async (req) => {
       let grain = (prof.base_grain || 0) + (distEff.grain_modifier || 0); // Flat
       // Apply percentage modifiers
       grain *= (1 + (grainMod / 100)); // Civ modifier
+      grain *= structMults.grain; // Structural category multiplier
       grain *= effectiveWorkforceRatio; // Workforce penalty
       totalGrainProd += Math.max(0, Math.round(grain));
 
@@ -454,6 +455,7 @@ Deno.serve(async (req) => {
       if (prof.produces_wood) {
         let wood = (prof.base_wood || 0);
         wood *= (1 + (woodMod / 100));
+        wood *= structMults.wood;
         wood *= effectiveWorkforceRatio;
         totalWoodProd += Math.max(0, Math.round(wood));
       }
@@ -462,6 +464,7 @@ Deno.serve(async (req) => {
       const prodConsts = SETTLEMENT_PRODUCTION[city.settlement_level] || SETTLEMENT_PRODUCTION.HAMLET;
       let stone = prodConsts.stone;
       stone *= (1 + (stoneMod / 100));
+      stone *= structMults.stone;
       stone *= effectiveWorkforceRatio;
       totalStoneProd += Math.max(0, Math.round(stone));
 
@@ -469,6 +472,7 @@ Deno.serve(async (req) => {
       if (prof.special_resource_type === "IRON") {
         let iron = (prof.base_special || 0);
         iron *= (1 + (ironMod / 100));
+        iron *= structMults.iron;
         iron *= effectiveWorkforceRatio;
         totalIronProd += Math.max(0, Math.round(iron));
       }
