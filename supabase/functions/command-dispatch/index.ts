@@ -872,15 +872,14 @@ async function executeDeclareWar(
 // RECRUIT_STACK — full server-side execution
 // ═══════════════════════════════════════════
 
-const FORMATION_PRESETS: Record<string, { label: string; composition: { unit_type: string; manpower: number }[]; formation_type: string; morale: number; gold_override?: number }> = {
-  militia: { label: "Milice", composition: [{ unit_type: "INFANTRY", manpower: 200 }], formation_type: "UNIT", morale: 60 },
-  cohort: { label: "Pohraniční kohorta", composition: [{ unit_type: "INFANTRY", manpower: 300 }, { unit_type: "ARCHERS", manpower: 100 }], formation_type: "UNIT", morale: 65 },
-  cavalry_wing: { label: "Jezdecký pluk", composition: [{ unit_type: "CAVALRY", manpower: 200 }], formation_type: "UNIT", morale: 70 },
-  legion: { label: "Zárodek legie", composition: [{ unit_type: "INFANTRY", manpower: 600 }, { unit_type: "ARCHERS", manpower: 200 }], formation_type: "LEGION", morale: 70, gold_override: 50 },
+const FORMATION_PRESETS: Record<string, { label: string; composition: { unit_type: string; manpower: number }[]; formation_type: string; morale: number; gold_override?: number; requires_buildings?: string[] }> = {
+  militia: { label: "Milice", composition: [{ unit_type: "MILITIA", manpower: 400 }], formation_type: "UNIT", morale: 55 },
+  professional: { label: "Profesionální vojsko", composition: [{ unit_type: "PROFESSIONAL", manpower: 400 }], formation_type: "UNIT", morale: 70, requires_buildings: ["barracks", "smithy"] },
+  legion: { label: "Zárodek legie", composition: [{ unit_type: "MILITIA", manpower: 400 }, { unit_type: "PROFESSIONAL", manpower: 400 }], formation_type: "LEGION", morale: 70, gold_override: 80, requires_buildings: ["barracks", "smithy"] },
 };
 
-const UNIT_GOLD_FACTOR: Record<string, number> = { INFANTRY: 1, ARCHERS: 1.5, CAVALRY: 2, SIEGE: 3 };
-const UNIT_TYPE_LABELS: Record<string, string> = { INFANTRY: "Pěchota", ARCHERS: "Lučištníci", CAVALRY: "Jízda", SIEGE: "Obléhací" };
+const UNIT_GOLD_FACTOR: Record<string, number> = { MILITIA: 0.8, PROFESSIONAL: 2 };
+const UNIT_TYPE_LABELS: Record<string, string> = { MILITIA: "Milice", PROFESSIONAL: "Profesionálové" };
 const ACTIVE_POP_WEIGHTS = { peasants: 1.0, burghers: 0.7, clerics: 0.2 };
 const DEFAULT_ACTIVE_POP_RATIO = 0.5;
 const DEFAULT_MAX_MOBILIZATION = 0.3;
@@ -911,6 +910,22 @@ async function executeRecruitStack(
 
   const preset = FORMATION_PRESETS[presetKey];
   if (!preset) return { events: [], error: `Unknown preset: ${presetKey}` };
+
+  // Check building requirements (professional/legion need barracks+smithy)
+  if (preset.requires_buildings && preset.requires_buildings.length > 0) {
+    const { data: buildings } = await supabase
+      .from("city_buildings")
+      .select("category, status")
+      .eq("session_id", sessionId)
+      .in("city_id", (await supabase.from("cities").select("id").eq("session_id", sessionId).eq("owner_player", playerName)).data?.map((c: any) => c.id) || [])
+      .eq("status", "completed");
+
+    const builtCategories = new Set((buildings || []).map((b: any) => b.category?.toLowerCase()));
+    const missing = preset.requires_buildings.filter(req => !builtCategories.has(req));
+    if (missing.length > 0) {
+      return { events: [], error: `Chybí budovy: ${missing.join(", ")}. Profesionální vojsko vyžaduje kasárny a kovárnu.` };
+    }
+  }
 
   const sessionId = base.session_id;
   const turnNumber = base.turn_number;

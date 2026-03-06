@@ -6,6 +6,8 @@ const corsHeaders = {
 };
 
 const UNIT_WEIGHTS: Record<string, number> = {
+  MILITIA: 0.8, PROFESSIONAL: 1.3,
+  // Legacy compat
   INFANTRY: 1.0, ARCHERS: 1.1, CAVALRY: 1.3, SIEGE: 0.9,
 };
 

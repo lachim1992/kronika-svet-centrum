@@ -18,39 +18,45 @@ export const LEVEL_TO_SETTLEMENT: Record<string, string> = {
   Osada: "HAMLET", Městečko: "TOWNSHIP", Město: "CITY", Polis: "POLIS",
 };
 
+// ═══ 2-UNIT-TYPE SYSTEM ═══
+// MILITIA: cheaper, weaker, available immediately (weight 0.8)
+// PROFESSIONAL: stronger, requires barracks+smithy (weight 1.3)
 export const UNIT_TYPE_LABELS: Record<string, string> = {
-  INFANTRY: "Pěchota", ARCHERS: "Lučištníci", CAVALRY: "Jízda", SIEGE: "Obléhací",
+  MILITIA: "Milice",
+  PROFESSIONAL: "Profesionálové",
+};
+
+export const UNIT_WEIGHTS: Record<string, number> = {
+  MILITIA: 0.8,
+  PROFESSIONAL: 1.3,
 };
 
 export const UNIT_GOLD_FACTOR: Record<string, number> = {
-  INFANTRY: 1, ARCHERS: 1.5, CAVALRY: 2, SIEGE: 3,
+  MILITIA: 0.8,
+  PROFESSIONAL: 2,
 };
 
-export const FORMATION_PRESETS: Record<string, { label: string; composition: { unit_type: string; manpower: number }[]; formation_type: string; morale: number; gold_override?: number }> = {
+export const FORMATION_PRESETS: Record<string, { label: string; composition: { unit_type: string; manpower: number }[]; formation_type: string; morale: number; gold_override?: number; requires_buildings?: string[] }> = {
   militia: {
     label: "Milice",
-    composition: [{ unit_type: "INFANTRY", manpower: 200 }],
+    composition: [{ unit_type: "MILITIA", manpower: 400 }],
     formation_type: "UNIT",
-    morale: 60,
+    morale: 55,
   },
-  cohort: {
-    label: "Pohraniční kohorta",
-    composition: [{ unit_type: "INFANTRY", manpower: 300 }, { unit_type: "ARCHERS", manpower: 100 }],
-    formation_type: "UNIT",
-    morale: 65,
-  },
-  cavalry_wing: {
-    label: "Jezdecký pluk",
-    composition: [{ unit_type: "CAVALRY", manpower: 200 }],
+  professional: {
+    label: "Profesionální vojsko",
+    composition: [{ unit_type: "PROFESSIONAL", manpower: 400 }],
     formation_type: "UNIT",
     morale: 70,
+    requires_buildings: ["barracks", "smithy"],
   },
   legion: {
     label: "Zárodek legie",
-    composition: [{ unit_type: "INFANTRY", manpower: 600 }, { unit_type: "ARCHERS", manpower: 200 }],
+    composition: [{ unit_type: "MILITIA", manpower: 400 }, { unit_type: "PROFESSIONAL", manpower: 400 }],
     formation_type: "LEGION",
     morale: 70,
-    gold_override: 50, // TEMP: sníženo pro testování
+    gold_override: 80,
+    requires_buildings: ["barracks", "smithy"],
   },
 };
 

@@ -89,7 +89,13 @@ KATEGORIE MODIFIKÁTORŮ:
 8. SPECIÁLNÍ BUDOVY:
 - building_tags: 0-3 speciální typy budov dostupné pouze této civilizaci (anglicky, snake_case, např. horse_stable, sacred_grove, sea_port, iron_forge, trade_depot)
 
-9. NARATIVNÍ FLAVOR (vše česky):
+9. VOJENSKÉ JEDNOTKY (dva typy — MILICE a PROFESIONÁLOVÉ):
+- militia_unit_name: Krátký český název pro základní jednotku milice (3-4 slova, vychází z kultury civilizace, např. "Rybí kopíníci", "Lesní zálesáci", "Pouštní šíponoši")
+- militia_unit_desc: Jednořádkový popis milice (max 80 znaků, český jazyk)
+- professional_unit_name: Krátký český název pro elitní profesionální jednotku (3-4 slova, vychází z kultury civilizace, např. "Stínové legie", "Železní gardisté", "Chrámová stráž")
+- professional_unit_desc: Jednořádkový popis profesionálů (max 80 znaků, český jazyk)
+
+10. NARATIVNÍ FLAVOR (vše česky):
 - core_myth: Zakládající mýtus civilizace (1-2 věty, epický styl)
 - cultural_quirk: Unikátní kulturní zvláštnost (1 věta)
 - architectural_style: Architektonický styl (1-2 slova)`,
@@ -155,6 +161,11 @@ KATEGORIE MODIFIKÁTORŮ:
               core_myth: { type: "string", description: "Founding myth in Czech (1-2 sentences)" },
               cultural_quirk: { type: "string", description: "Unique cultural quirk in Czech (1 sentence)" },
               architectural_style: { type: "string", description: "Architectural style in Czech (1-2 words)" },
+              // Military unit names
+              militia_unit_name: { type: "string", description: "Czech name for militia unit (3-4 words)" },
+              militia_unit_desc: { type: "string", description: "One-line militia description in Czech (max 80 chars)" },
+              professional_unit_name: { type: "string", description: "Czech name for professional unit (3-4 words)" },
+              professional_unit_desc: { type: "string", description: "One-line professional description in Czech (max 80 chars)" },
             },
             required: [
               "display_name", "flavor_summary", "culture_tags",
@@ -165,6 +176,7 @@ KATEGORIE MODIFIKÁTORŮ:
               "stability_modifier", "trade_modifier", "diplomacy_modifier", "research_modifier",
               "building_tags",
               "core_myth", "cultural_quirk", "architectural_style",
+              "militia_unit_name", "militia_unit_desc", "professional_unit_name", "professional_unit_desc",
             ],
             additionalProperties: false,
           },
@@ -224,6 +236,11 @@ KATEGORIE MODIFIKÁTORŮ:
       research_modifier: clamp(ex.research_modifier, -0.1, 0.2),
       // Buildings
       building_tags: (ex.building_tags || []).slice(0, 3),
+      // Military unit names
+      militia_unit_name: (ex.militia_unit_name || "Milice").slice(0, 60),
+      militia_unit_desc: (ex.militia_unit_desc || "").slice(0, 120),
+      professional_unit_name: (ex.professional_unit_name || "Profesionálové").slice(0, 60),
+      professional_unit_desc: (ex.professional_unit_desc || "").slice(0, 120),
       // Meta
       source_description: fullText,
       extraction_model: "gemini-3-flash-preview",

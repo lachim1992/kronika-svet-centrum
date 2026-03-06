@@ -278,17 +278,23 @@ const MultiplayerLobby = ({ sessionId, roomCode, worldName, maxPlayers, isHost, 
     try {
       await supabase.from("game_sessions").update({ init_status: "generating" } as any).eq("id", sessionId);
 
-      const { data, error } = await supabase.functions.invoke("mp-world-generate", {
+      // Fire-and-forget — don't await the response (it can timeout on long generations)
+      // The realtime listener on game_sessions will detect init_status="ready" and call onGameStart()
+      supabase.functions.invoke("mp-world-generate", {
         body: { sessionId },
+      }).then(({ error }) => {
+        if (error) console.warn("mp-world-generate returned error (may still complete):", error.message);
+      }).catch((e) => {
+        console.warn("mp-world-generate fetch error (generation may still be running):", e.message);
       });
 
-      if (error) throw error;
-      toast.success("Svět vygenerován! Hra začíná...");
+      toast.info("Generování světa spuštěno — čekáme na dokončení...");
     } catch (e: any) {
       toast.error("Generování světa selhalo: " + e.message);
       await supabase.from("game_sessions").update({ init_status: "lobby" } as any).eq("id", sessionId);
+      setGenerating(false);
     }
-    setGenerating(false);
+    // Don't setGenerating(false) — wait for realtime listener to detect completion
   };
 
   const statusIcon = (status: string) => {

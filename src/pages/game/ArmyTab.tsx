@@ -21,6 +21,9 @@ import DeployBattlePanel from "@/components/military/DeployBattlePanel";
 import DemobilizeDialog from "@/components/DemobilizeDialog";
 
 const UNIT_ICONS: Record<string, React.ElementType> = {
+  MILITIA: Shield,
+  PROFESSIONAL: Swords,
+  // Legacy compat
   INFANTRY: Shield,
   ARCHERS: Target,
   CAVALRY: Crosshair,
@@ -43,13 +46,6 @@ const LEGION_MIN_MANPOWER = 900;
 const ARMY_MIN_MANPOWER = 2000;
 const LEGION_GOLD_COST = 200;
 const ARMY_GOLD_COST = 500;
-
-const RECRUIT_PRESETS = [
-  { key: "inf_draft", label: "Pěší odvod", deltas: { INFANTRY: 200 } },
-  { key: "balanced", label: "Smíšená kohorta", deltas: { INFANTRY: 150, ARCHERS: 50 } },
-  { key: "cav_det", label: "Jezdecký oddíl", deltas: { CAVALRY: 100 } },
-  { key: "siege_train", label: "Obléhací vůz", deltas: { SIEGE: 60 } },
-];
 
 interface Stack {
   id: string;
@@ -710,7 +706,7 @@ function StackCard({ stack, general, onManage }: { stack: Stack; general?: Gener
             <p className="text-2xl font-display font-bold text-primary">{stack.power}</p>
             <p className="text-[9px] text-muted-foreground flex items-center gap-0.5 justify-center">
               Síla
-              <InfoTip>Síla = Σ(muži × váha_typu × kvalita) × bonus_generála × morálka × formace. Váhy: Pěchota 1.0, Lučištníci 1.1, Jízda 1.3, Obléhací 0.9. Formace: Jednotka ×1.0, Legie ×1.1, Armáda ×1.2.</InfoTip>
+              <InfoTip>Síla = Σ(muži × váha_typu × kvalita) × bonus_generála × morálka × formace. Váhy: Milice 0.8, Profesionálové 1.3. Formace: Jednotka ×1.0, Legie ×1.1, Armáda ×1.2.</InfoTip>
             </p>
           </div>
           <div className="flex-1 space-y-1">
@@ -951,7 +947,7 @@ function StackDetailDialog({
             <CardContent className="p-3 space-y-3">
               <p className="text-xs font-display font-semibold text-muted-foreground">Posílit jednotku</p>
               <p className="text-xs text-muted-foreground">Dostupní: {availableManpower} · Zlato: {realm?.gold_reserve || 0}</p>
-              {(["INFANTRY", "ARCHERS", "CAVALRY", "SIEGE"] as const).map(ut => {
+              {(["MILITIA", "PROFESSIONAL"] as const).map(ut => {
                 const UIcon = UNIT_ICONS[ut] || Shield;
                 const val = reinforcements[ut] || 0;
                 return (
@@ -1258,12 +1254,12 @@ function MyArmyPanel({
     setGeneratingVisual(null);
   };
 
-  const UNIT_TYPES = ["INFANTRY", "ARCHERS", "CAVALRY", "SIEGE"];
+  const UNIT_TYPES = ["MILITIA", "PROFESSIONAL"];
   const UNIT_LABELS_CZ: Record<string, string> = {
-    INFANTRY: "Pěchota", ARCHERS: "Lučišníci", CAVALRY: "Jízda", SIEGE: "Obléhací",
+    MILITIA: "Milice", PROFESSIONAL: "Profesionálové",
   };
   const UNIT_ICONS_MAP: Record<string, React.ElementType> = {
-    INFANTRY: Shield, ARCHERS: Target, CAVALRY: Crosshair, SIEGE: Swords,
+    MILITIA: Shield, PROFESSIONAL: Swords,
   };
 
   return (

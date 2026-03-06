@@ -1639,11 +1639,15 @@ export type Database = {
           initial_cleric_ratio: number
           iron_modifier: number
           military_doctrine: string
+          militia_unit_desc: string | null
+          militia_unit_name: string | null
           mobilization_speed: number
           morale_modifier: number
           player_name: string
           pop_growth_modifier: number
           production_modifier: number
+          professional_unit_desc: string | null
+          professional_unit_name: string | null
           research_modifier: number
           session_id: string
           society_structure: string
@@ -1675,11 +1679,15 @@ export type Database = {
           initial_cleric_ratio?: number
           iron_modifier?: number
           military_doctrine?: string
+          militia_unit_desc?: string | null
+          militia_unit_name?: string | null
           mobilization_speed?: number
           morale_modifier?: number
           player_name: string
           pop_growth_modifier?: number
           production_modifier?: number
+          professional_unit_desc?: string | null
+          professional_unit_name?: string | null
           research_modifier?: number
           session_id: string
           society_structure?: string
@@ -1711,11 +1719,15 @@ export type Database = {
           initial_cleric_ratio?: number
           iron_modifier?: number
           military_doctrine?: string
+          militia_unit_desc?: string | null
+          militia_unit_name?: string | null
           mobilization_speed?: number
           morale_modifier?: number
           player_name?: string
           pop_growth_modifier?: number
           production_modifier?: number
+          professional_unit_desc?: string | null
+          professional_unit_name?: string | null
           research_modifier?: number
           session_id?: string
           society_structure?: string
