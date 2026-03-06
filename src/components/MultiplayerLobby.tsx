@@ -145,11 +145,24 @@ const MultiplayerLobby = ({ sessionId, roomCode, worldName, maxPlayers, isHost, 
     fetchMyCivConfig();
   }, [fetchPlayers, fetchWorldFoundation, fetchMyCivConfig]);
 
-  // Realtime subscription for lobby updates
+  // Realtime subscription for lobby updates — stable deps to prevent re-subscribe loops
   useEffect(() => {
     const channel = supabase
       .channel(`lobby-${sessionId}`)
-      .on("postgres_changes", { event: "*", schema: "public", table: "game_memberships", filter: `session_id=eq.${sessionId}` }, () => fetchPlayers())
+      .on("postgres_changes", { event: "*", schema: "public", table: "game_memberships", filter: `session_id=eq.${sessionId}` }, () => {
+        // Inline fetch to avoid dependency on fetchPlayers callback
+        supabase.from("game_memberships")
+          .select("id, user_id, player_name, role, setup_status, joined_at")
+          .eq("session_id", sessionId)
+          .order("joined_at", { ascending: true })
+          .then(({ data }) => {
+            if (data) {
+              setPlayers(data as LobbyPlayer[]);
+              const me = data.find((p: any) => p.user_id === user?.id);
+              if (me) setMySetupStatus((me as any).setup_status || "pending");
+            }
+          });
+      })
       .on("postgres_changes", { event: "*", schema: "public", table: "game_sessions", filter: `id=eq.${sessionId}` }, async () => {
         const { data } = await supabase.from("game_sessions").select("init_status").eq("id", sessionId).single();
         if (data && (data as any).init_status === "ready") {
@@ -158,7 +171,8 @@ const MultiplayerLobby = ({ sessionId, roomCode, worldName, maxPlayers, isHost, 
       })
       .subscribe();
     return () => { supabase.removeChannel(channel); };
-  }, [sessionId, fetchPlayers, onGameStart]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionId]);
 
   const copyRoomCode = () => {
     navigator.clipboard.writeText(roomCode);
