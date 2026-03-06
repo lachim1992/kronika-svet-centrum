@@ -38,6 +38,49 @@ interface Association {
   last_intake_turn: number;
 }
 
+interface Academy {
+  id: string;
+  name: string;
+  city_id: string;
+  association_id: string | null;
+  reputation: number;
+  infrastructure: number;
+  trainer_level: number;
+  nutrition: number;
+  total_graduates: number;
+  total_champions: number;
+  total_fatalities: number;
+  fan_base: number;
+  profile_athletics: number;
+  profile_combat: number;
+  profile_culture: number;
+  profile_strategy: number;
+  profile_brutality: number;
+  is_gladiatorial: boolean;
+  color_primary: string | null;
+  color_secondary: string | null;
+  founded_turn: number;
+  status: string;
+  motto: string | null;
+  training_philosophy: string | null;
+}
+
+interface Student {
+  id: string;
+  academy_id: string;
+  name: string;
+  strength: number;
+  endurance: number;
+  agility: number;
+  tactics: number;
+  charisma: number;
+  specialty: string;
+  traits: string[] | null;
+  status: string;
+  graduation_turn: number | null;
+  portrait_url: string | null;
+}
+
 interface Team {
   id: string;
   city_id: string;
