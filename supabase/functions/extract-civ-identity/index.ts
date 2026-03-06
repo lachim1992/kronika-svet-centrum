@@ -140,9 +140,11 @@ KATEGORIE MODIFIKÁTORŮ:
               mobilization_speed: { type: "number" },
               cavalry_bonus: { type: "number" },
               fortification_bonus: { type: "number" },
-              // Stability
+              // Stability & Diplomacy
               stability_modifier: { type: "number" },
               trade_modifier: { type: "number" },
+              diplomacy_modifier: { type: "number" },
+              research_modifier: { type: "number" },
               // Buildings
               building_tags: {
                 type: "array",
