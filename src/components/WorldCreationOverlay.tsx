@@ -41,6 +41,7 @@ const WorldCreationOverlay = ({
   worldName,
   isAIMode,
   failedSessionId,
+  identityData,
   onRetry,
   onForceOpen,
 }: Props) => {
