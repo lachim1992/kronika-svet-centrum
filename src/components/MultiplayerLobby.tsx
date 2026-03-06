@@ -367,58 +367,20 @@ const MultiplayerLobby = ({ sessionId, roomCode, worldName, maxPlayers, isHost, 
               <p className="font-display font-semibold text-green-600 text-sm">Vaše civilizace je připravena</p>
             </div>
 
-            {/* Identity modifiers summary */}
+            {/* Identity modifiers summary — full preview */}
             {myIdentity && (
-              <div className="space-y-2 text-xs">
-                <div className="flex items-center gap-2 justify-center">
-                  <span className="font-display font-bold">{myIdentity.display_name || civConfig.realm_name || myPlayerName}</span>
-                  {myIdentity.flavor_summary && (
-                    <span className="text-muted-foreground italic text-[10px]">— {myIdentity.flavor_summary}</span>
-                  )}
-                </div>
-
-                {/* Structural categories */}
-                {(myIdentity.society_structure || myIdentity.military_doctrine || myIdentity.economic_focus) && (
-                  <div className="flex flex-wrap gap-1 justify-center">
-                    {myIdentity.society_structure && <Badge variant="secondary" className="text-[9px]">{myIdentity.society_structure}</Badge>}
-                    {myIdentity.military_doctrine && <Badge variant="secondary" className="text-[9px]">{myIdentity.military_doctrine}</Badge>}
-                    {myIdentity.economic_focus && <Badge variant="secondary" className="text-[9px]">{myIdentity.economic_focus}</Badge>}
-                    {myIdentity.urban_style && <Badge variant="secondary" className="text-[9px]">{myIdentity.urban_style}</Badge>}
-                  </div>
-                )}
-
-                {/* Culture tags */}
-                {myIdentity.culture_tags?.length > 0 && (
-                  <div className="flex flex-wrap gap-1 justify-center">
-                    {myIdentity.culture_tags.map((tag: string) => (
-                      <Badge key={tag} variant="outline" className="text-[9px]">{tag}</Badge>
-                    ))}
-                  </div>
-                )}
-
-                {/* Key modifiers grid */}
-                <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-[10px] text-muted-foreground bg-muted/20 rounded p-2">
-                  {myIdentity.grain_modifier !== 0 && <p>🌾 Obilí: <span className={myIdentity.grain_modifier > 0 ? "text-green-600" : "text-red-500"}>{myIdentity.grain_modifier > 0 ? "+" : ""}{Math.round(myIdentity.grain_modifier * 100)}%</span></p>}
-                  {myIdentity.wood_modifier !== 0 && <p>🪵 Dřevo: <span className={myIdentity.wood_modifier > 0 ? "text-green-600" : "text-red-500"}>{myIdentity.wood_modifier > 0 ? "+" : ""}{Math.round(myIdentity.wood_modifier * 100)}%</span></p>}
-                  {myIdentity.stone_modifier !== 0 && <p>⛰️ Kámen: <span className={myIdentity.stone_modifier > 0 ? "text-green-600" : "text-red-500"}>{myIdentity.stone_modifier > 0 ? "+" : ""}{Math.round(myIdentity.stone_modifier * 100)}%</span></p>}
-                  {myIdentity.iron_modifier !== 0 && <p>⚙️ Železo: <span className={myIdentity.iron_modifier > 0 ? "text-green-600" : "text-red-500"}>{myIdentity.iron_modifier > 0 ? "+" : ""}{Math.round(myIdentity.iron_modifier * 100)}%</span></p>}
-                  {myIdentity.wealth_modifier !== 0 && <p>💰 Bohatství: <span className={myIdentity.wealth_modifier > 0 ? "text-green-600" : "text-red-500"}>{myIdentity.wealth_modifier > 0 ? "+" : ""}{Math.round(myIdentity.wealth_modifier * 100)}%</span></p>}
-                  {myIdentity.morale_modifier !== 0 && <p>⚔️ Morálka: <span className={myIdentity.morale_modifier > 0 ? "text-green-600" : "text-red-500"}>{myIdentity.morale_modifier > 0 ? "+" : ""}{myIdentity.morale_modifier}</span></p>}
-                  {myIdentity.stability_modifier !== 0 && <p>🛡️ Stabilita: <span className={myIdentity.stability_modifier > 0 ? "text-green-600" : "text-red-500"}>{myIdentity.stability_modifier > 0 ? "+" : ""}{myIdentity.stability_modifier}</span></p>}
-                  {myIdentity.trade_modifier !== 0 && <p>📈 Obchod: <span className={myIdentity.trade_modifier > 0 ? "text-green-600" : "text-red-500"}>{myIdentity.trade_modifier > 0 ? "+" : ""}{Math.round(myIdentity.trade_modifier * 100)}%</span></p>}
-                  {myIdentity.pop_growth_modifier !== 0 && <p>👶 Růst: <span className={myIdentity.pop_growth_modifier > 0 ? "text-green-600" : "text-red-500"}>{myIdentity.pop_growth_modifier > 0 ? "+" : ""}{(myIdentity.pop_growth_modifier * 100).toFixed(1)}%</span></p>}
-                  {myIdentity.cavalry_bonus > 0 && <p>🐎 Kavalérie: <span className="text-green-600">+{Math.round(myIdentity.cavalry_bonus * 100)}%</span></p>}
-                  {myIdentity.fortification_bonus > 0 && <p>🏰 Fortifikace: <span className="text-green-600">+{Math.round(myIdentity.fortification_bonus * 100)}%</span></p>}
-                  {myIdentity.mobilization_speed && myIdentity.mobilization_speed !== 1 && <p>⚡ Mobilizace: <span className={myIdentity.mobilization_speed < 1 ? "text-green-600" : "text-red-500"}>×{myIdentity.mobilization_speed.toFixed(1)}</span></p>}
-                </div>
-
-                {/* Special buildings */}
-                {myIdentity.building_tags?.length > 0 && (
-                  <p className="text-[10px] text-muted-foreground text-center">
-                    🏗️ Speciální budovy: {myIdentity.building_tags.join(", ")}
-                  </p>
-                )}
-              </div>
+              <CivIdentityPreview
+                sessionId={sessionId}
+                playerName={myPlayerName}
+                civDescription={myIdentity.source_description || civConfig.civ_description || ""}
+                identityData={myIdentity}
+                loading={false}
+                error={null}
+                onExtract={() => {}}
+                onBack={() => {}}
+                onConfirm={() => {}}
+                readOnly
+              />
             )}
 
             <div className="text-center">
