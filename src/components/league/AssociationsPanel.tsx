@@ -1,0 +1,649 @@
+import { useState, useEffect, useCallback } from "react";
+import { supabase } from "@/integrations/supabase/client";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Progress } from "@/components/ui/progress";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Shield, Users, Coins, TrendingUp, Trophy, Loader2, Plus, Star, Swords, Eye, MapPin, Crown, Target } from "lucide-react";
+import { toast } from "sonner";
+import CreateAssociationDialog from "./CreateAssociationDialog";
+
+interface Props {
+  sessionId: string;
+  currentPlayerName: string;
+  currentTurn: number;
+}
+
+interface Association {
+  id: string;
+  name: string;
+  association_type: string;
+  player_name: string;
+  city_id: string;
+  budget: number;
+  reputation: number;
+  scouting_level: number;
+  training_quality: number;
+  youth_development: number;
+  fan_base: number;
+  founded_turn: number;
+  status: string;
+  motto: string | null;
+  description: string | null;
+  color_primary: string | null;
+  color_secondary: string | null;
+  intake_cycle_turns: number;
+  last_intake_turn: number;
+}
+
+interface Team {
+  id: string;
+  city_id: string;
+  player_name: string;
+  team_name: string;
+  motto: string | null;
+  attack_rating: number;
+  defense_rating: number;
+  tactics_rating: number;
+  discipline_rating: number;
+  popularity: number;
+  fan_base: number;
+  titles_won: number;
+  color_primary: string;
+  color_secondary: string;
+  seasons_played: number;
+  total_wins: number;
+  total_draws: number;
+  total_losses: number;
+  total_goals_for: number;
+  total_goals_against: number;
+  league_tier: number;
+}
+
+interface Player {
+  id: string;
+  team_id: string;
+  name: string;
+  position: string;
+  overall_rating: number;
+  goals_scored: number;
+  assists: number;
+  matches_played: number;
+  form: number;
+  condition: number;
+  injury_turns: number;
+  is_dead?: boolean;
+  is_captain: boolean;
+}
+
+const TYPE_ICONS: Record<string, string> = {
+  sphaera: "⚔️",
+  olympic: "🏟️",
+  gladiator: "💀",
+};
+
+const TYPE_LABELS: Record<string, string> = {
+  sphaera: "Svaz Sphaery",
+  olympic: "Olympijský výbor",
+  gladiator: "Gladiátorská gilda",
+};
+
+const POS_LABELS: Record<string, string> = {
+  praetor: "Praetor", guardian: "Strážce", striker: "Útočník", carrier: "Nositel", exactor: "Exaktor",
+  goalkeeper: "Praetor", defender: "Strážce", midfielder: "Nositel", attacker: "Útočník",
+};
+
+function ratingColor(r: number) {
+  if (r >= 75) return "text-green-400";
+  if (r >= 55) return "text-yellow-400";
+  if (r >= 40) return "text-orange-400";
+  return "text-red-400";
+}
+
+const AssociationsPanel = ({ sessionId, currentPlayerName, currentTurn }: Props) => {
+  const [associations, setAssociations] = useState<Association[]>([]);
+  const [allTeams, setAllTeams] = useState<Team[]>([]);
+  const [allPlayers, setAllPlayers] = useState<Player[]>([]);
+  const [cities, setCities] = useState<Map<string, string>>(new Map());
+  const [loading, setLoading] = useState(true);
+  const [showCreateDialog, setShowCreateDialog] = useState(false);
+  const [upgrading, setUpgrading] = useState<string | null>(null);
+
+  const fetchData = useCallback(async () => {
+    setLoading(true);
+    const [{ data: assocs }, { data: teams }, { data: players }, { data: cityData }] = await Promise.all([
+      supabase.from("sports_associations").select("*").eq("session_id", sessionId),
+      supabase.from("league_teams").select("*").eq("session_id", sessionId).eq("is_active", true),
+      supabase.from("league_players").select("*").eq("session_id", sessionId),
+      supabase.from("cities").select("id,name").eq("session_id", sessionId),
+    ]);
+    setAssociations((assocs || []) as any);
+    setAllTeams((teams || []) as any);
+    setAllPlayers((players || []) as any);
+    const m = new Map<string, string>();
+    (cityData || []).forEach((c: any) => m.set(c.id, c.name));
+    setCities(m);
+    setLoading(false);
+  }, [sessionId]);
+
+  useEffect(() => { fetchData(); }, [fetchData]);
+
+  const myAssociations = associations.filter(a => a.player_name === currentPlayerName);
+  const myTeams = allTeams.filter(t => t.player_name === currentPlayerName);
+  const otherAssociations = associations.filter(a => a.player_name !== currentPlayerName);
+
+  const handleUpgrade = async (assocId: string, field: string) => {
+    setUpgrading(`${assocId}-${field}`);
+    try {
+      const assoc = associations.find(a => a.id === assocId);
+      if (!assoc) return;
+      const currentLevel = (assoc as any)[field] || 1;
+      const cost = currentLevel * 15;
+      if (assoc.budget < cost) {
+        toast.error(`Nedostatek rozpočtu! Potřeba: ${cost} zlatých`);
+        return;
+      }
+      const { error } = await supabase.from("sports_associations").update({
+        [field]: currentLevel + 1,
+        budget: assoc.budget - cost,
+      }).eq("id", assocId);
+      if (error) throw error;
+      toast.success(`${field === "scouting_level" ? "Skauting" : field === "training_quality" ? "Trénink" : "Mládež"} zvýšen na úroveň ${currentLevel + 1}!`);
+      await fetchData();
+    } catch (e: any) {
+      toast.error(e.message);
+    } finally {
+      setUpgrading(null);
+    }
+  };
+
+  if (loading) {
+    return <div className="flex items-center justify-center p-12"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Shield className="h-5 w-5 text-primary" />
+          <h2 className="font-display font-bold text-lg">Sportovní svazy</h2>
+          <Badge variant="outline" className="text-[9px]">{associations.length} svazů</Badge>
+        </div>
+        <Button size="sm" onClick={() => setShowCreateDialog(true)} className="gap-1.5">
+          <Plus className="h-3.5 w-3.5" /> Založit svaz
+        </Button>
+      </div>
+
+      <Tabs defaultValue="overview" className="space-y-3">
+        <TabsList className="grid w-full grid-cols-5 bg-muted/20">
+          <TabsTrigger value="overview" className="text-xs font-display"><Shield className="h-3 w-3 mr-1" />Přehled</TabsTrigger>
+          <TabsTrigger value="teams" className="text-xs font-display"><Users className="h-3 w-3 mr-1" />Týmy</TabsTrigger>
+          <TabsTrigger value="scouting" className="text-xs font-display"><Eye className="h-3 w-3 mr-1" />Skauting</TabsTrigger>
+          <TabsTrigger value="finance" className="text-xs font-display"><Coins className="h-3 w-3 mr-1" />Finance</TabsTrigger>
+          <TabsTrigger value="leaderboard" className="text-xs font-display"><Trophy className="h-3 w-3 mr-1" />Žebříčky</TabsTrigger>
+        </TabsList>
+
+        {/* ═══ OVERVIEW ═══ */}
+        <TabsContent value="overview" className="space-y-3">
+          {myAssociations.length === 0 ? (
+            <Card className="border-border bg-card/50">
+              <CardContent className="p-8 text-center space-y-3">
+                <Shield className="h-12 w-12 text-muted-foreground mx-auto opacity-50" />
+                <p className="text-sm text-muted-foreground">Nemáš žádný sportovní svaz.</p>
+                <p className="text-xs text-muted-foreground">Založ svaz a začni budovat sportovní impérium!</p>
+                <Button size="sm" variant="outline" onClick={() => setShowCreateDialog(true)} className="gap-1.5">
+                  <Plus className="h-3.5 w-3.5" /> Založit svaz
+                </Button>
+              </CardContent>
+            </Card>
+          ) : (
+            myAssociations.map(assoc => {
+              const assocTeams = myTeams.filter(t => true); // All player teams belong to their assocs
+              const teamPlayerCounts = assocTeams.map(t => allPlayers.filter(p => p.team_id === t.id && !p.is_dead).length);
+              const totalPlayers = teamPlayerCounts.reduce((a, b) => a + b, 0);
+              return (
+                <Card key={assoc.id} className="border-primary/20 bg-card/50">
+                  <CardContent className="p-4 space-y-4">
+                    {/* Header */}
+                    <div className="flex items-center gap-4">
+                      <div className="w-14 h-14 rounded-full flex items-center justify-center text-2xl border-4 shrink-0"
+                        style={{ backgroundColor: assoc.color_primary || "hsl(var(--primary))", borderColor: assoc.color_secondary || "hsl(var(--border))" }}>
+                        {TYPE_ICONS[assoc.association_type] || "🏅"}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <h3 className="font-display font-bold text-base">{assoc.name}</h3>
+                        {assoc.motto && <p className="text-[10px] text-muted-foreground italic">„{assoc.motto}"</p>}
+                        <div className="flex gap-1.5 mt-1 flex-wrap">
+                          <Badge variant="outline" className="text-[9px]">{TYPE_LABELS[assoc.association_type]}</Badge>
+                          <Badge variant="outline" className="text-[9px]">📍 {cities.get(assoc.city_id) || "?"}</Badge>
+                          <Badge variant="outline" className="text-[9px]">Založeno: kolo {assoc.founded_turn}</Badge>
+                        </div>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <div className="text-xl font-bold font-mono text-primary">{assoc.budget}</div>
+                        <div className="text-[9px] text-muted-foreground">zlatých</div>
+                      </div>
+                    </div>
+
+                    {/* Stats Grid */}
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                      {[
+                        { label: "Reputace", value: assoc.reputation, max: 100, icon: "⭐" },
+                        { label: "Fanoušci", value: assoc.fan_base, max: 500, icon: "👥" },
+                        { label: "Týmů", value: assocTeams.length, max: 10, icon: "⚔️" },
+                        { label: "Hráčů", value: totalPlayers, max: 100, icon: "🏃" },
+                      ].map(s => (
+                        <div key={s.label} className="bg-muted/20 rounded-lg p-2 text-center">
+                          <div className="text-[10px] text-muted-foreground">{s.icon} {s.label}</div>
+                          <div className="text-lg font-bold font-mono">{s.value}</div>
+                          <Progress value={Math.min(100, (s.value / s.max) * 100)} className="h-1 mt-1" />
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Upgradeable Skills */}
+                    <div className="space-y-2">
+                      <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Dovednosti svazu</div>
+                      {[
+                        { key: "scouting_level", label: "Skauting", value: assoc.scouting_level, icon: "🔍", desc: "Lepší vyhledávání talentů" },
+                        { key: "training_quality", label: "Kvalita tréninku", value: assoc.training_quality, icon: "💪", desc: "Rychlejší rozvoj hráčů" },
+                        { key: "youth_development", label: "Mládež", value: assoc.youth_development, icon: "🌱", desc: "Více odchovanců akademie" },
+                      ].map(skill => {
+                        const cost = skill.value * 15;
+                        const canAfford = assoc.budget >= cost;
+                        return (
+                          <div key={skill.key} className="flex items-center gap-3 bg-muted/10 rounded-lg p-2">
+                            <span className="text-lg">{skill.icon}</span>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs font-semibold">{skill.label}</span>
+                                <Badge variant="secondary" className="text-[8px] h-4">Lv.{skill.value}</Badge>
+                              </div>
+                              <div className="text-[9px] text-muted-foreground">{skill.desc}</div>
+                              <Progress value={(skill.value / 10) * 100} className="h-1 mt-1" />
+                            </div>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="text-[9px] h-7 gap-1"
+                              disabled={!canAfford || upgrading === `${assoc.id}-${skill.key}`}
+                              onClick={() => handleUpgrade(assoc.id, skill.key)}
+                            >
+                              {upgrading === `${assoc.id}-${skill.key}` ? <Loader2 className="h-3 w-3 animate-spin" /> : <TrendingUp className="h-3 w-3" />}
+                              {cost}💰
+                            </Button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            })
+          )}
+
+          {/* Other players' associations */}
+          {otherAssociations.length > 0 && (
+            <div className="space-y-2">
+              <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Svazy ostatních hráčů</div>
+              {otherAssociations.map(assoc => (
+                <Card key={assoc.id} className="border-border bg-card/30">
+                  <CardContent className="p-3 flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-full flex items-center justify-center text-sm shrink-0"
+                      style={{ backgroundColor: assoc.color_primary || "hsl(var(--muted))" }}>
+                      {TYPE_ICONS[assoc.association_type] || "🏅"}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-xs font-semibold">{assoc.name}</div>
+                      <div className="text-[9px] text-muted-foreground">{assoc.player_name} · {cities.get(assoc.city_id) || "?"}</div>
+                    </div>
+                    <Badge variant="outline" className="text-[9px]">Rep: {assoc.reputation}</Badge>
+                    <Badge variant="outline" className="text-[9px]">{assoc.budget}💰</Badge>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
+        </TabsContent>
+
+        {/* ═══ TEAMS ═══ */}
+        <TabsContent value="teams" className="space-y-3">
+          {myTeams.length === 0 ? (
+            <Card className="border-border bg-card/50">
+              <CardContent className="p-8 text-center space-y-2">
+                <Users className="h-10 w-10 text-muted-foreground mx-auto opacity-50" />
+                <p className="text-sm text-muted-foreground">Žádné týmy.</p>
+                <p className="text-xs text-muted-foreground">Vytvoř týmy v záložce Liga → Manage My Teams.</p>
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="grid gap-2">
+              {myTeams.map(team => {
+                const teamPlayers = allPlayers.filter(p => p.team_id === team.id && !p.is_dead);
+                const avgOvr = teamPlayers.length > 0 ? Math.round(teamPlayers.reduce((s, p) => s + p.overall_rating, 0) / teamPlayers.length) : 0;
+                const injured = teamPlayers.filter(p => p.injury_turns > 0).length;
+                return (
+                  <Card key={team.id} className="border-border bg-card/50 hover:border-primary/30 transition-colors">
+                    <CardContent className="p-3 flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold border-2 shrink-0"
+                        style={{ backgroundColor: team.color_primary, borderColor: team.color_secondary, color: team.color_secondary }}>
+                        ⚔️
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-display font-bold">{team.team_name}</span>
+                          {(team.titles_won || 0) > 0 && <span className="text-yellow-400 text-[9px]">🏆{team.titles_won}</span>}
+                        </div>
+                        <div className="flex gap-1.5 mt-0.5 flex-wrap">
+                          <Badge variant="outline" className="text-[8px]">📍 {cities.get(team.city_id) || "?"}</Badge>
+                          <Badge variant="outline" className="text-[8px]">{team.league_tier}. liga</Badge>
+                          <Badge variant="outline" className="text-[8px]">{teamPlayers.length} hráčů</Badge>
+                          {injured > 0 && <Badge variant="destructive" className="text-[8px]">{injured} zraněných</Badge>}
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-4 gap-1 text-center shrink-0">
+                        {[
+                          { l: "ÚT", v: team.attack_rating },
+                          { l: "OB", v: team.defense_rating },
+                          { l: "TK", v: team.tactics_rating },
+                          { l: "Ø", v: avgOvr },
+                        ].map(s => (
+                          <div key={s.l}>
+                            <div className={`text-xs font-bold font-mono ${ratingColor(s.v)}`}>{s.v}</div>
+                            <div className="text-[7px] text-muted-foreground">{s.l}</div>
+                          </div>
+                        ))}
+                      </div>
+                      <div className="text-right shrink-0">
+                        <div className="text-[9px] font-mono text-muted-foreground">{team.total_wins}V {team.total_draws}R {team.total_losses}P</div>
+                        <div className="text-[9px] text-muted-foreground">Skóre: {team.total_goals_for}:{team.total_goals_against}</div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                );
+              })}
+            </div>
+          )}
+        </TabsContent>
+
+        {/* ═══ SCOUTING ═══ */}
+        <TabsContent value="scouting" className="space-y-3">
+          <Card className="border-border bg-card/50">
+            <CardHeader className="py-2 px-3 border-b border-border/50">
+              <CardTitle className="text-xs font-display flex items-center gap-1">
+                <Eye className="h-3.5 w-3.5 text-primary" /> Rekrutace & Skauting
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-4 space-y-3">
+              {myAssociations.length === 0 ? (
+                <p className="text-xs text-muted-foreground text-center py-4">Nejdřív založ svaz pro přístup ke skautingu.</p>
+              ) : (
+                <>
+                  <div className="text-xs text-muted-foreground">
+                    Úroveň skautingu tvého svazu určuje kvalitu talentů, které můžeš objevit.
+                    Investuj do skautingu na záložce Přehled.
+                  </div>
+                  {/* Top available players from all teams */}
+                  <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mt-3">Nejlepší volní hráči (absolventi akademií)</div>
+                  <ScrollArea className="h-[300px]">
+                    <table className="w-full text-[10px]">
+                      <thead>
+                        <tr className="border-b border-border bg-muted/30 text-muted-foreground sticky top-0">
+                          <th className="px-2 py-1.5 text-left">Jméno</th>
+                          <th className="px-1 py-1.5 text-center">Pozice</th>
+                          <th className="px-1 py-1.5 text-center">OVR</th>
+                          <th className="px-1 py-1.5 text-center">Forma</th>
+                          <th className="px-1 py-1.5 text-center">Body</th>
+                          <th className="px-1 py-1.5 text-center">Tým</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {allPlayers
+                          .filter(p => !p.is_dead)
+                          .sort((a, b) => b.overall_rating - a.overall_rating)
+                          .slice(0, 30)
+                          .map(p => {
+                            const team = allTeams.find(t => t.id === p.team_id);
+                            return (
+                              <tr key={p.id} className="border-b border-border/30 hover:bg-accent/5">
+                                <td className="px-2 py-1.5 font-medium">{p.is_captain ? "👑 " : ""}{p.name}</td>
+                                <td className="px-1 py-1.5 text-center">{POS_LABELS[p.position] || p.position}</td>
+                                <td className={`px-1 py-1.5 text-center font-bold ${ratingColor(p.overall_rating)}`}>{p.overall_rating}</td>
+                                <td className="px-1 py-1.5 text-center">{p.form}</td>
+                                <td className="px-1 py-1.5 text-center font-mono">{p.goals_scored}⚔ {p.assists}🅰</td>
+                                <td className="px-1 py-1.5 text-center text-muted-foreground">{team?.team_name || "?"}</td>
+                              </tr>
+                            );
+                          })}
+                      </tbody>
+                    </table>
+                  </ScrollArea>
+                </>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* ═══ FINANCE ═══ */}
+        <TabsContent value="finance" className="space-y-3">
+          {myAssociations.length === 0 ? (
+            <Card className="border-border bg-card/50">
+              <CardContent className="p-8 text-center">
+                <Coins className="h-10 w-10 text-muted-foreground mx-auto opacity-50" />
+                <p className="text-sm text-muted-foreground mt-2">Založ svaz pro přehled financí.</p>
+              </CardContent>
+            </Card>
+          ) : (
+            myAssociations.map(assoc => {
+              const assocTeams = myTeams;
+              const playerCount = assocTeams.reduce((s, t) => s + allPlayers.filter(p => p.team_id === t.id && !p.is_dead).length, 0);
+              const estSalaries = playerCount * 2;
+              const estUpkeep = assocTeams.length * 5;
+              const estIncome = Math.round(assoc.fan_base * 0.1 + assoc.reputation * 0.5);
+              return (
+                <Card key={assoc.id} className="border-border bg-card/50">
+                  <CardHeader className="py-2 px-3 border-b border-border/50">
+                    <CardTitle className="text-xs font-display flex items-center gap-2">
+                      <Coins className="h-3.5 w-3.5 text-primary" /> Finance — {assoc.name}
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="p-4 space-y-4">
+                    {/* Budget */}
+                    <div className="flex items-center justify-between p-3 rounded-lg bg-primary/5 border border-primary/20">
+                      <span className="text-xs font-semibold">Aktuální rozpočet</span>
+                      <span className="text-2xl font-bold font-mono text-primary">{assoc.budget} 💰</span>
+                    </div>
+
+                    {/* Breakdown */}
+                    <div className="space-y-2">
+                      <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Odhad za kolo</div>
+                      <div className="grid gap-1.5">
+                        {[
+                          { label: "Příjmy z fanoušků & reputace", value: `+${estIncome}`, positive: true },
+                          { label: `Platy hráčů (${playerCount}×2)`, value: `-${estSalaries}`, positive: false },
+                          { label: `Údržba týmů (${assocTeams.length}×5)`, value: `-${estUpkeep}`, positive: false },
+                        ].map(row => (
+                          <div key={row.label} className="flex items-center justify-between text-xs bg-muted/10 rounded p-2">
+                            <span className="text-muted-foreground">{row.label}</span>
+                            <span className={`font-mono font-bold ${row.positive ? "text-green-400" : "text-red-400"}`}>{row.value}</span>
+                          </div>
+                        ))}
+                        <div className="flex items-center justify-between text-xs font-bold bg-muted/20 rounded p-2 border-t border-border">
+                          <span>Bilance</span>
+                          <span className={`font-mono ${estIncome - estSalaries - estUpkeep >= 0 ? "text-green-400" : "text-red-400"}`}>
+                            {estIncome - estSalaries - estUpkeep >= 0 ? "+" : ""}{estIncome - estSalaries - estUpkeep}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Investment tips */}
+                    <div className="text-[10px] text-muted-foreground bg-muted/10 rounded p-2 space-y-1">
+                      <p>💡 <strong>Tip:</strong> Zvyš fanouškovskou základnu pro vyšší příjmy.</p>
+                      <p>💡 Vyšší reputace = víc sponzorů a prestiže.</p>
+                      <p>💡 Financování sportu v říšské pokladně (Economy tab) dodává rozpočet svazu.</p>
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            })
+          )}
+        </TabsContent>
+
+        {/* ═══ LEADERBOARD ═══ */}
+        <TabsContent value="leaderboard" className="space-y-3">
+          {/* Top Teams */}
+          <Card className="border-border bg-card/50">
+            <CardHeader className="py-2 px-3 border-b border-border/50">
+              <CardTitle className="text-xs font-display flex items-center gap-1">
+                <Trophy className="h-3.5 w-3.5 text-yellow-500" /> Nejlepší týmy (tituly)
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-0">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="border-b border-border text-muted-foreground bg-muted/10">
+                    <th className="p-2 text-left w-8">#</th>
+                    <th className="p-2 text-left">Tým</th>
+                    <th className="p-2 text-left text-[9px]">Hráč</th>
+                    <th className="p-2 text-center w-12">🏆</th>
+                    <th className="p-2 text-center w-16">V/R/P</th>
+                    <th className="p-2 text-center w-16">Skóre</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {[...allTeams].sort((a, b) => (b.titles_won || 0) - (a.titles_won || 0) || (b.total_wins || 0) - (a.total_wins || 0)).slice(0, 15).map((t, i) => (
+                    <tr key={t.id} className={`border-b border-border/50 hover:bg-accent/5 ${t.player_name === currentPlayerName ? "bg-primary/5" : ""}`}>
+                      <td className="p-2 text-muted-foreground">
+                        {i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : `${i + 1}.`}
+                      </td>
+                      <td className="p-2">
+                        <div className="flex items-center gap-1.5">
+                          <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: t.color_primary }} />
+                          <span className="font-medium">{t.team_name}</span>
+                        </div>
+                      </td>
+                      <td className="p-2 text-[9px] text-muted-foreground truncate max-w-[60px]">{t.player_name}</td>
+                      <td className="p-2 text-center font-bold text-yellow-400">{t.titles_won || 0}</td>
+                      <td className="p-2 text-center text-[9px] font-mono text-muted-foreground">{t.total_wins||0}/{t.total_draws||0}/{t.total_losses||0}</td>
+                      <td className="p-2 text-center text-[9px] font-mono text-muted-foreground">{t.total_goals_for||0}:{t.total_goals_against||0}</td>
+                    </tr>
+                  ))}
+                  {allTeams.length === 0 && (
+                    <tr><td colSpan={6} className="p-4 text-center text-muted-foreground">Žádné týmy.</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </CardContent>
+          </Card>
+
+          {/* Top Players */}
+          <Card className="border-border bg-card/50">
+            <CardHeader className="py-2 px-3 border-b border-border/50">
+              <CardTitle className="text-xs font-display flex items-center gap-1">
+                <Star className="h-3.5 w-3.5 text-primary" /> Nejlepší hráči (body)
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-0">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="border-b border-border text-muted-foreground bg-muted/10">
+                    <th className="p-2 text-left w-8">#</th>
+                    <th className="p-2 text-left">Hráč</th>
+                    <th className="p-2 text-center">OVR</th>
+                    <th className="p-2 text-center">⚔️</th>
+                    <th className="p-2 text-center">🅰</th>
+                    <th className="p-2 text-center">Zápasy</th>
+                    <th className="p-2 text-left text-[9px]">Tým</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {[...allPlayers]
+                    .filter(p => !p.is_dead)
+                    .sort((a, b) => (b.goals_scored || 0) - (a.goals_scored || 0))
+                    .slice(0, 15)
+                    .map((p, i) => {
+                      const team = allTeams.find(t => t.id === p.team_id);
+                      return (
+                        <tr key={p.id} className="border-b border-border/50 hover:bg-accent/5">
+                          <td className="p-2 text-muted-foreground">{i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : `${i + 1}.`}</td>
+                          <td className="p-2 font-medium">{p.is_captain ? "👑 " : ""}{p.name}</td>
+                          <td className={`p-2 text-center font-bold ${ratingColor(p.overall_rating)}`}>{p.overall_rating}</td>
+                          <td className="p-2 text-center font-bold">{p.goals_scored || 0}</td>
+                          <td className="p-2 text-center">{p.assists || 0}</td>
+                          <td className="p-2 text-center text-muted-foreground">{p.matches_played || 0}</td>
+                          <td className="p-2 text-[9px] text-muted-foreground truncate max-w-[60px]">{team?.team_name || "?"}</td>
+                        </tr>
+                      );
+                    })}
+                  {allPlayers.length === 0 && (
+                    <tr><td colSpan={7} className="p-4 text-center text-muted-foreground">Žádní hráči.</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </CardContent>
+          </Card>
+
+          {/* Associations Ranking */}
+          <Card className="border-border bg-card/50">
+            <CardHeader className="py-2 px-3 border-b border-border/50">
+              <CardTitle className="text-xs font-display flex items-center gap-1">
+                <Shield className="h-3.5 w-3.5 text-primary" /> Žebříček svazů
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-0">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="border-b border-border text-muted-foreground bg-muted/10">
+                    <th className="p-2 text-left w-8">#</th>
+                    <th className="p-2 text-left">Svaz</th>
+                    <th className="p-2 text-left text-[9px]">Hráč</th>
+                    <th className="p-2 text-center">Rep</th>
+                    <th className="p-2 text-center">Fans</th>
+                    <th className="p-2 text-center">Budget</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {[...associations].sort((a, b) => b.reputation - a.reputation).map((a, i) => (
+                    <tr key={a.id} className={`border-b border-border/50 hover:bg-accent/5 ${a.player_name === currentPlayerName ? "bg-primary/5" : ""}`}>
+                      <td className="p-2 text-muted-foreground">{i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : `${i + 1}.`}</td>
+                      <td className="p-2">
+                        <div className="flex items-center gap-1.5">
+                          <span>{TYPE_ICONS[a.association_type]}</span>
+                          <span className="font-medium">{a.name}</span>
+                        </div>
+                      </td>
+                      <td className="p-2 text-[9px] text-muted-foreground">{a.player_name}</td>
+                      <td className="p-2 text-center font-bold">{a.reputation}</td>
+                      <td className="p-2 text-center text-muted-foreground">{a.fan_base}</td>
+                      <td className="p-2 text-center font-mono">{a.budget}💰</td>
+                    </tr>
+                  ))}
+                  {associations.length === 0 && (
+                    <tr><td colSpan={6} className="p-4 text-center text-muted-foreground">Žádné svazy.</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
+
+      {/* Create Dialog */}
+      <CreateAssociationDialog
+        open={showCreateDialog}
+        onOpenChange={setShowCreateDialog}
+        sessionId={sessionId}
+        currentPlayerName={currentPlayerName}
+        currentTurn={currentTurn}
+        cities={cities}
+        onCreated={fetchData}
+      />
+    </div>
+  );
+};
+
+export default AssociationsPanel;
