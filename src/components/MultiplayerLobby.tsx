@@ -217,6 +217,20 @@ const MultiplayerLobby = ({ sessionId, roomCode, worldName, maxPlayers, isHost, 
       .maybeSingle();
     if (identity) setMyIdentity(identity);
 
+    // Verify civ config exists before marking ready
+    const { data: existingConfig } = await supabase
+      .from("player_civ_configs")
+      .select("id")
+      .eq("session_id", sessionId)
+      .eq("user_id", user.id)
+      .maybeSingle();
+
+    if (!existingConfig) {
+      toast.error("Chyba: konfigurace civilizace nebyla uložena. Zkuste znovu projít nastavení.");
+      setWizardStep(0);
+      return;
+    }
+
     // Now mark player as ready
     await supabase.from("game_memberships")
       .update({ setup_status: "ready" })
