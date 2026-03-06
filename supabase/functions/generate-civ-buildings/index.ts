@@ -55,17 +55,22 @@ Deno.serve(async (req) => {
 
     const result = await invokeAI(ctx, {
       model: "google/gemini-3-flash-preview",
-      systemPrompt: `Jsi herní designér prémiových civilizačních budov pro strategickou hru. Na základě building_tags a kontextu civilizace vygeneruj ${tags.length >= 2 ? 2 : 1} unikátní prémiové budovy.
+      systemPrompt: `Jsi herní designér prémiových civilizačních budov pro strategickou hru. Na základě building_tags a KOMPLETNÍHO kontextu civilizace vygeneruj ${tags.length >= 2 ? 2 : 1} unikátní prémiové budovy.
+
+KRITICKÉ PRAVIDLO KOHERENCE:
+- Budovy MUSÍ logicky vycházet z podstaty civilizace — jejího mýtu, kultury, společnosti a ekonomiky.
+- Pokud je civilizace říční rybářský kmen s mystickými tradicemi, budovy musí odrážet řeku, ryby, mystiku — NE generické „kovárny" nebo „akademie".
+- Název, popis, founding_myth i efekty musí být narativně propojené s civilizační identitou.
+- Founding_myth MUSÍ navazovat na core_myth civilizace — příběh budovy je pokračováním příběhu kmene.
 
 PRAVIDLA PRÉMIOVÝCH BUDOV:
 - Budovy jsou EXKLUZIVNÍ pro tuto civilizaci — nikdo jiný je nemůže stavět
 - Efekty jsou VÝRAZNĚ silnější než normální budovy (1.5-2x)
 - Náklady jsou VYŠŠÍ (prémiové): wood 12-20, stone 10-18, iron 8-15, wealth 20-40
 - Doba stavby: 3-5 kol (delší než normální)
-- Každá budova má 5 úrovní vylepšení (jako ostatní AI budovy)
+- Každá budova má 5 úrovní vylepšení
 - Level 5 = quasi-Div světa s globálními bonusy
-- Efekty musí být tematicky propojené s kulturou civilizace
-- Nazvy a popisy v ČEŠTINĚ
+- Názvy a popisy v ČEŠTINĚ
 
 EFEKTY (klíče): grain_production, iron_production, wood_production, stone_production, wealth, stability, influence, defense, recruitment, military_quality, military_garrison, morale_bonus, trade_bonus, granary_capacity, population_capacity, legitimacy, cleric_attraction, burgher_attraction, disease_resistance, siege_power, siege_resistance, cavalry_bonus, ranged_bonus, mobility, vision, espionage_defense, special_production, naval_power, research
 
@@ -77,6 +82,8 @@ PŘÍKLADY silných efektů pro Level 1:
 
 Kontext civilizace:
 ${civContext}
+
+DŮLEŽITÉ: Budovy musí přímo odrážet identitu tohoto konkrétního kmene/národa — ne generické budovy. Každá budova by měla vyprávět příběh, který navazuje na mýtus a kulturu civilizace.
 
 Vygeneruj ${tags.length >= 2 ? 2 : 1} prémiových budov.`,
       tools: [{
