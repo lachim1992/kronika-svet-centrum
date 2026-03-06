@@ -378,34 +378,31 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
       }).select("id").single();
       setStepStatus(progress, 2, "done");
 
-      // ── STEP 3.5: AI Civilization Generation ──
+      // ── STEP 3.5: Extract Civ Identity (unified modifiers) ──
       setStepStatus(progress, 3, "active");
       if (civDescription.trim()) {
         try {
-          const { data: civData, error: civErr } = await supabase.functions.invoke("generate-civ-start", {
+          const { data: identityData, error: identityErr } = await supabase.functions.invoke("extract-civ-identity", {
             body: {
               sessionId: session.id,
               playerName: playerName.trim(),
               civDescription: civDescription.trim(),
-              worldPremise: premise.trim(),
-              tone,
-              biomeName: homelandBiome,
-              settlementName: settlementName.trim(),
             },
           });
-          if (!civErr && civData && !civData.error) {
-            civStartData = civData;
-            // Update civilization record with AI-generated traits
-            if (civRecord?.id && civData.civilization) {
-              await supabase.from("civilizations").update({
-                core_myth: civData.civilization.core_myth || null,
-                cultural_quirk: civData.civilization.cultural_quirk || null,
-                architectural_style: civData.civilization.architectural_style || null,
-              }).eq("id", civRecord.id);
+          if (!identityErr && identityData && !identityData.ai_error) {
+            // Update civilization record with AI-generated narrative flavor
+            if (civRecord?.id) {
+              const civUpdate: Record<string, string> = {};
+              if (identityData.core_myth) civUpdate.core_myth = identityData.core_myth;
+              if (identityData.cultural_quirk) civUpdate.cultural_quirk = identityData.cultural_quirk;
+              if (identityData.architectural_style) civUpdate.architectural_style = identityData.architectural_style;
+              if (Object.keys(civUpdate).length > 0) {
+                await supabase.from("civilizations").update(civUpdate).eq("id", civRecord.id);
+              }
             }
           }
         } catch (e) {
-          console.warn("AI civ generation failed (non-blocking):", e);
+          console.warn("AI civ identity extraction failed (non-blocking):", e);
         }
       }
       setStepStatus(progress, 3, "done");
