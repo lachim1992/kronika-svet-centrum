@@ -585,10 +585,15 @@ const LeaguePanel = ({ sessionId, currentPlayerName, currentTurn }: Props) => {
 
       {teams.length === 0 ? (
         <Card className="border-border bg-card/50">
-          <CardContent className="p-8 text-center">
+          <CardContent className="p-8 text-center space-y-3">
             <Skull className="h-12 w-12 text-muted-foreground mx-auto mb-3 opacity-50" />
             <p className="text-sm text-muted-foreground">Žádné týmy v lize Sphaery.</p>
-            <p className="text-xs text-muted-foreground mt-1">Postav Arénu ve městě a založ tým.</p>
+            <p className="text-xs text-muted-foreground">Postav Arénu ve městě a založ tým.</p>
+            {!myAssociation && (
+              <Button size="sm" variant="outline" onClick={handleCreateAssociation} className="gap-1.5 mt-2">
+                <Shield className="h-3.5 w-3.5" /> Založit sportovní svaz
+              </Button>
+            )}
           </CardContent>
         </Card>
       ) : (
