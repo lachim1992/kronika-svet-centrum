@@ -235,6 +235,20 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
     const n = [...factions]; n[i] = v; setFactions(n);
   };
 
+  const addFactionConfig = () => {
+    if (factionConfigs.length < 7) {
+      setFactionConfigs([...factionConfigs, { name: "", personality: "diplomatic", focus: "economy", description: "" }]);
+    }
+  };
+  const removeFactionConfig = (i: number) => {
+    if (factionConfigs.length > 1) setFactionConfigs(factionConfigs.filter((_, idx) => idx !== i));
+  };
+  const updateFactionConfig = (i: number, field: keyof FactionConfig, value: string) => {
+    const updated = [...factionConfigs];
+    updated[i] = { ...updated[i], [field]: value };
+    setFactionConfigs(updated);
+  };
+
   const isAIMode = gameMode === "tb_single_ai";
   const isManualMode = gameMode === "tb_single_manual";
   const isMultiMode = gameMode === "tb_multi";
