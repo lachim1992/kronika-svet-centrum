@@ -176,6 +176,7 @@ KATEGORIE MODIFIKÁTORŮ:
               "stability_modifier", "trade_modifier", "diplomacy_modifier", "research_modifier",
               "building_tags",
               "core_myth", "cultural_quirk", "architectural_style",
+              "militia_unit_name", "militia_unit_desc", "professional_unit_name", "professional_unit_desc",
             ],
             additionalProperties: false,
           },
