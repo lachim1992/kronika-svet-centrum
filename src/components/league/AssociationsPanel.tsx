@@ -159,15 +159,19 @@ const AssociationsPanel = ({ sessionId, currentPlayerName, currentTurn }: Props)
 
   const fetchData = useCallback(async () => {
     setLoading(true);
-    const [{ data: assocs }, { data: teams }, { data: players }, { data: cityData }] = await Promise.all([
+    const [{ data: assocs }, { data: teams }, { data: players }, { data: cityData }, { data: acads }, { data: studs }] = await Promise.all([
       supabase.from("sports_associations").select("*").eq("session_id", sessionId),
       supabase.from("league_teams").select("*").eq("session_id", sessionId).eq("is_active", true),
       supabase.from("league_players").select("*").eq("session_id", sessionId),
       supabase.from("cities").select("id,name").eq("session_id", sessionId),
+      supabase.from("academies").select("*").eq("session_id", sessionId),
+      supabase.from("academy_students").select("*").eq("session_id", sessionId),
     ]);
     setAssociations((assocs || []) as any);
     setAllTeams((teams || []) as any);
     setAllPlayers((players || []) as any);
+    setAllAcademies((acads || []) as any);
+    setAllStudents((studs || []) as any);
     const m = new Map<string, string>();
     (cityData || []).forEach((c: any) => m.set(c.id, c.name));
     setCities(m);
