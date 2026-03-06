@@ -699,6 +699,70 @@ const CityBuildingsPanel = ({
           </div>
         )}
 
+        {/* ═══ CIVILIZAČNÍ PRÉMIOVÉ BUDOVY ═══ */}
+        {isOwner && civBuildings.length > 0 && (
+          <div className="space-y-2 pt-2 border-t border-primary/30">
+            <p className="text-xs font-display font-semibold flex items-center gap-1.5 text-primary">
+              <Crown className="h-3.5 w-3.5" />Civilizační budovy (exkluzivní)
+            </p>
+            <p className="text-[10px] text-muted-foreground">
+              Prémiové budovy unikátní pro vaši civilizaci. Silnější efekty, vyšší náklady, 5 úrovní → Div světa.
+            </p>
+            {civBuildings.map((cb, i) => {
+              const alreadyBuiltHere = civBuildingBuiltTags.has(cb.tag);
+              const affordable = canAfford({ cost_wealth: cb.cost_wealth, cost_wood: cb.cost_wood, cost_stone: cb.cost_stone, cost_iron: cb.cost_iron });
+              const effects = cb.effects || {};
+              return (
+                <div key={i} className={`p-3 rounded-lg border transition-colors ${
+                  alreadyBuiltHere ? "border-muted bg-muted/10 opacity-50" : "border-primary/30 bg-primary/5 hover:border-primary/50"
+                }`}>
+                  <div className="flex items-center gap-2">
+                    <Crown className="h-4 w-4 text-primary shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-display font-semibold">{cb.name}</p>
+                      <p className="text-[10px] text-muted-foreground">{cb.description}</p>
+                      {cb.level_data?.length > 0 && (
+                        <p className="text-[9px] text-primary/60 mt-0.5">
+                          5 úrovní: {cb.level_data.slice(0, 3).map((l: any) => l.name).join(" → ")}…→ {cb.level_data[cb.level_data.length - 1]?.name}
+                        </p>
+                      )}
+                    </div>
+                    <Badge className="text-[9px] shrink-0 bg-primary/20 text-primary border-primary/30">👑 Prémiová</Badge>
+                    {alreadyBuiltHere ? (
+                      <Badge variant="secondary" className="text-[9px] shrink-0">Postaveno</Badge>
+                    ) : (
+                      <Button size="sm" variant="outline" className="h-6 text-[10px] gap-1 shrink-0 border-primary/40 text-primary hover:bg-primary/10"
+                        disabled={saving || !affordable} onClick={() => handleBuildCivBuilding(cb)}>
+                        <Hammer className="h-3 w-3" />Stavět
+                      </Button>
+                    )}
+                  </div>
+                  {cb.flavor_text && (
+                    <p className="text-[10px] text-muted-foreground/70 italic mt-1">„{cb.flavor_text}"</p>
+                  )}
+                  <div className="flex gap-2 mt-1.5 flex-wrap items-center">
+                    <div className="flex gap-1 text-[9px] text-muted-foreground">
+                      {cb.cost_wealth > 0 && <span>💰{cb.cost_wealth}</span>}
+                      {cb.cost_wood > 0 && <span>🪵{cb.cost_wood}</span>}
+                      {cb.cost_stone > 0 && <span>🪨{cb.cost_stone}</span>}
+                      {cb.cost_iron > 0 && <span>⚙️{cb.cost_iron}</span>}
+                      <span>⏱️{cb.build_duration}k</span>
+                    </div>
+                    <ArrowRight className="h-2.5 w-2.5 text-muted-foreground" />
+                    <div className="flex gap-1 text-[9px] flex-wrap">
+                      {Object.entries(effects).filter(([, v]) => Number(v) > 0).map(([k, v]) => (
+                        <Badge key={k} variant="outline" className="text-[8px] border-primary/30 text-primary">
+                          {EFFECT_LABELS[k] || k.replace(/_/g, " ")} +{String(v)}
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
         {isOwner && (
           <div className="space-y-3 pt-2 border-t border-border">
             <div className="flex items-center justify-between">
