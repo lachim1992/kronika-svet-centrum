@@ -465,20 +465,17 @@ Deno.serve(async (req) => {
       const distEff = cityDistrictEffects[city.id] || {};
       const buildEff = cityBuildingEffects[city.id] || {};
 
-      // 1. Base + Modifiers
+      // 1. Base + Modifiers — unified multiplier (numeric% + structural% combined)
       // Grain
       let grain = (prof.base_grain || 0) + (distEff.grain_modifier || 0); // Flat
-      // Apply percentage modifiers
-      grain *= (1 + (grainMod / 100)); // Civ modifier
-      grain *= structMults.grain; // Structural category multiplier
+      grain *= uMult.grain; // Unified civ multiplier (numeric + structural)
       grain *= effectiveWorkforceRatio; // Workforce penalty
       totalGrainProd += Math.max(0, Math.round(grain));
 
       // Wood
       if (prof.produces_wood) {
         let wood = (prof.base_wood || 0);
-        wood *= (1 + (woodMod / 100));
-        wood *= structMults.wood;
+        wood *= uMult.wood;
         wood *= effectiveWorkforceRatio;
         totalWoodProd += Math.max(0, Math.round(wood));
       }
@@ -486,16 +483,14 @@ Deno.serve(async (req) => {
       // Stone — not stored in profile, derived from settlement tier
       const prodConsts = SETTLEMENT_PRODUCTION[city.settlement_level] || SETTLEMENT_PRODUCTION.HAMLET;
       let stone = prodConsts.stone;
-      stone *= (1 + (stoneMod / 100));
-      stone *= structMults.stone;
+      stone *= uMult.stone;
       stone *= effectiveWorkforceRatio;
       totalStoneProd += Math.max(0, Math.round(stone));
 
       // Iron (from base_special in profile)
       if (prof.special_resource_type === "IRON") {
         let iron = (prof.base_special || 0);
-        iron *= (1 + (ironMod / 100));
-        iron *= structMults.iron;
+        iron *= uMult.iron;
         iron *= effectiveWorkforceRatio;
         totalIronProd += Math.max(0, Math.round(iron));
       }
