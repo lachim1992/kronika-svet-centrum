@@ -252,6 +252,24 @@ KATEGORIE MODIFIKÁTORŮ:
         .eq("session_id", sessionId).eq("player_name", playerName);
     }
 
+    // Auto-generate premium civ buildings if building_tags exist
+    if (row.building_tags.length > 0) {
+      try {
+        const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+        const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+        await fetch(`${supabaseUrl}/functions/v1/generate-civ-buildings`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${supabaseKey}`,
+          },
+          body: JSON.stringify({ sessionId, playerName }),
+        });
+      } catch (e) {
+        console.error("Auto-generate civ buildings failed (non-blocking):", e);
+      }
+    }
+
     return jsonResponse(data);
   } catch (e) {
     console.error("extract-civ-identity error:", e);
