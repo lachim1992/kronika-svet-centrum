@@ -78,6 +78,7 @@ const MultiplayerLobby = ({ sessionId, roomCode, worldName, maxPlayers, isHost, 
   const [showWorldSettings, setShowWorldSettings] = useState(false);
   const [worldFoundation, setWorldFoundation] = useState<any>(null);
   const [factionSaved, setFactionSaved] = useState(false);
+  const [myIdentity, setMyIdentity] = useState<any>(null);
 
   const fetchPlayers = useCallback(async () => {
     const { data } = await supabase
@@ -124,14 +125,17 @@ const MultiplayerLobby = ({ sessionId, roomCode, worldName, maxPlayers, isHost, 
       });
     }
 
-    // Check if faction already saved
+    // Check if faction already saved and load identity data
     const { data: identity } = await supabase
       .from("civ_identity")
-      .select("id")
+      .select("*")
       .eq("session_id", sessionId)
       .eq("player_name", myPlayerName)
       .maybeSingle();
-    if (identity) setFactionSaved(true);
+    if (identity) {
+      setFactionSaved(true);
+      setMyIdentity(identity);
+    }
   }, [sessionId, user?.id, myPlayerName]);
 
   useEffect(() => {
@@ -188,6 +192,15 @@ const MultiplayerLobby = ({ sessionId, roomCode, worldName, maxPlayers, isHost, 
   const handleFactionComplete = async () => {
     if (!user) return;
     setFactionSaved(true);
+
+    // Load the saved identity data for display
+    const { data: identity } = await supabase
+      .from("civ_identity")
+      .select("*")
+      .eq("session_id", sessionId)
+      .eq("player_name", myPlayerName)
+      .maybeSingle();
+    if (identity) setMyIdentity(identity);
 
     // Now mark player as ready
     await supabase.from("game_memberships")
@@ -347,12 +360,71 @@ const MultiplayerLobby = ({ sessionId, roomCode, worldName, maxPlayers, isHost, 
         )}
 
         {mySetupStatus === "ready" && !showCivWizard && (
-          <div className="bg-green-500/10 border border-green-500/30 rounded-lg p-4 text-center">
-            <Check className="h-6 w-6 text-green-500 mx-auto mb-1" />
-            <p className="font-display font-semibold text-green-600 text-sm">Vaše civilizace je připravena</p>
-            <Button variant="ghost" size="sm" className="mt-2 text-xs" onClick={() => { setShowCivWizard(true); setWizardStep(0); setMySetupStatus("configuring"); }}>
-              Upravit
-            </Button>
+          <div className="bg-green-500/10 border border-green-500/30 rounded-lg p-4 space-y-3">
+            <div className="text-center">
+              <Check className="h-6 w-6 text-green-500 mx-auto mb-1" />
+              <p className="font-display font-semibold text-green-600 text-sm">Vaše civilizace je připravena</p>
+            </div>
+
+            {/* Identity modifiers summary */}
+            {myIdentity && (
+              <div className="space-y-2 text-xs">
+                <div className="flex items-center gap-2 justify-center">
+                  <span className="font-display font-bold">{myIdentity.display_name || civConfig.realm_name || myPlayerName}</span>
+                  {myIdentity.flavor_summary && (
+                    <span className="text-muted-foreground italic text-[10px]">— {myIdentity.flavor_summary}</span>
+                  )}
+                </div>
+
+                {/* Structural categories */}
+                {(myIdentity.society_structure || myIdentity.military_doctrine || myIdentity.economic_focus) && (
+                  <div className="flex flex-wrap gap-1 justify-center">
+                    {myIdentity.society_structure && <Badge variant="secondary" className="text-[9px]">{myIdentity.society_structure}</Badge>}
+                    {myIdentity.military_doctrine && <Badge variant="secondary" className="text-[9px]">{myIdentity.military_doctrine}</Badge>}
+                    {myIdentity.economic_focus && <Badge variant="secondary" className="text-[9px]">{myIdentity.economic_focus}</Badge>}
+                    {myIdentity.urban_style && <Badge variant="secondary" className="text-[9px]">{myIdentity.urban_style}</Badge>}
+                  </div>
+                )}
+
+                {/* Culture tags */}
+                {myIdentity.culture_tags?.length > 0 && (
+                  <div className="flex flex-wrap gap-1 justify-center">
+                    {myIdentity.culture_tags.map((tag: string) => (
+                      <Badge key={tag} variant="outline" className="text-[9px]">{tag}</Badge>
+                    ))}
+                  </div>
+                )}
+
+                {/* Key modifiers grid */}
+                <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-[10px] text-muted-foreground bg-muted/20 rounded p-2">
+                  {myIdentity.grain_modifier !== 0 && <p>🌾 Obilí: <span className={myIdentity.grain_modifier > 0 ? "text-green-600" : "text-red-500"}>{myIdentity.grain_modifier > 0 ? "+" : ""}{Math.round(myIdentity.grain_modifier * 100)}%</span></p>}
+                  {myIdentity.wood_modifier !== 0 && <p>🪵 Dřevo: <span className={myIdentity.wood_modifier > 0 ? "text-green-600" : "text-red-500"}>{myIdentity.wood_modifier > 0 ? "+" : ""}{Math.round(myIdentity.wood_modifier * 100)}%</span></p>}
+                  {myIdentity.stone_modifier !== 0 && <p>⛰️ Kámen: <span className={myIdentity.stone_modifier > 0 ? "text-green-600" : "text-red-500"}>{myIdentity.stone_modifier > 0 ? "+" : ""}{Math.round(myIdentity.stone_modifier * 100)}%</span></p>}
+                  {myIdentity.iron_modifier !== 0 && <p>⚙️ Železo: <span className={myIdentity.iron_modifier > 0 ? "text-green-600" : "text-red-500"}>{myIdentity.iron_modifier > 0 ? "+" : ""}{Math.round(myIdentity.iron_modifier * 100)}%</span></p>}
+                  {myIdentity.wealth_modifier !== 0 && <p>💰 Bohatství: <span className={myIdentity.wealth_modifier > 0 ? "text-green-600" : "text-red-500"}>{myIdentity.wealth_modifier > 0 ? "+" : ""}{Math.round(myIdentity.wealth_modifier * 100)}%</span></p>}
+                  {myIdentity.morale_modifier !== 0 && <p>⚔️ Morálka: <span className={myIdentity.morale_modifier > 0 ? "text-green-600" : "text-red-500"}>{myIdentity.morale_modifier > 0 ? "+" : ""}{myIdentity.morale_modifier}</span></p>}
+                  {myIdentity.stability_modifier !== 0 && <p>🛡️ Stabilita: <span className={myIdentity.stability_modifier > 0 ? "text-green-600" : "text-red-500"}>{myIdentity.stability_modifier > 0 ? "+" : ""}{myIdentity.stability_modifier}</span></p>}
+                  {myIdentity.trade_modifier !== 0 && <p>📈 Obchod: <span className={myIdentity.trade_modifier > 0 ? "text-green-600" : "text-red-500"}>{myIdentity.trade_modifier > 0 ? "+" : ""}{Math.round(myIdentity.trade_modifier * 100)}%</span></p>}
+                  {myIdentity.pop_growth_modifier !== 0 && <p>👶 Růst: <span className={myIdentity.pop_growth_modifier > 0 ? "text-green-600" : "text-red-500"}>{myIdentity.pop_growth_modifier > 0 ? "+" : ""}{(myIdentity.pop_growth_modifier * 100).toFixed(1)}%</span></p>}
+                  {myIdentity.cavalry_bonus > 0 && <p>🐎 Kavalérie: <span className="text-green-600">+{Math.round(myIdentity.cavalry_bonus * 100)}%</span></p>}
+                  {myIdentity.fortification_bonus > 0 && <p>🏰 Fortifikace: <span className="text-green-600">+{Math.round(myIdentity.fortification_bonus * 100)}%</span></p>}
+                  {myIdentity.mobilization_speed && myIdentity.mobilization_speed !== 1 && <p>⚡ Mobilizace: <span className={myIdentity.mobilization_speed < 1 ? "text-green-600" : "text-red-500"}>×{myIdentity.mobilization_speed.toFixed(1)}</span></p>}
+                </div>
+
+                {/* Special buildings */}
+                {myIdentity.building_tags?.length > 0 && (
+                  <p className="text-[10px] text-muted-foreground text-center">
+                    🏗️ Speciální budovy: {myIdentity.building_tags.join(", ")}
+                  </p>
+                )}
+              </div>
+            )}
+
+            <div className="text-center">
+              <Button variant="ghost" size="sm" className="text-xs" onClick={() => { setShowCivWizard(true); setWizardStep(0); setMySetupStatus("configuring"); }}>
+                Upravit
+              </Button>
+            </div>
           </div>
         )}
 
