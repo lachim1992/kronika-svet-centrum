@@ -1235,8 +1235,11 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
                 {languageName && <p>🗣️ Jazyk: <strong>{languageName}</strong></p>}
                 {isAIMode && <p>🤖 Velikost: <strong>{WORLD_SIZES.find(s => s.value === worldSize)?.label}</strong></p>}
                 {!isAIMode && !isMultiMode && <p>🏔️ Region: <strong>{homelandName}</strong> ({BIOMES.find(b => b.value === homelandBiome)?.label})</p>}
+                {factionConfigs.length > 0 && (
+                  <p>🤖 AI frakce ({factionConfigs.length}): {factionConfigs.map(fc => fc.name || AI_PERSONALITIES.find(p => p.value === fc.personality)?.label || fc.personality).join(", ")}</p>
+                )}
                 {!civDescription.trim() && (
-                  <p className="text-amber-600 text-[10px] mt-1">ℹ️ Nezadali jste popis civilizace — modifikátory budou neutrální.</p>
+                  <p className="text-destructive text-[10px] mt-1">ℹ️ Nezadali jste popis civilizace — modifikátory budou neutrální.</p>
                 )}
               </div>
               <div className="flex gap-2">
