@@ -294,8 +294,8 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
     ];
     updateProgress(progress);
 
-    // AI-generated civ start data (will be populated in step 3.5)
-    let civStartData: any = null;
+    // civStartData removed — all starting resources use neutral defaults
+    // civ_identity modifiers are applied at runtime (process-turn/commit-turn)
 
     let sessionId: string | null = null;
 
