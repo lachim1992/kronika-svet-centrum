@@ -1316,8 +1316,8 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
         </div>
       )}
 
-      {/* Step 7: Identity Preview (AI extraction) */}
-      {step === 7 && !creating && (
+      {/* Step 8: Identity Preview (AI extraction) */}
+      {step === 8 && !creating && (
         <div className="space-y-3">
           {!isMultiMode && civDescription.trim() ? (
             <CivIdentityPreview
