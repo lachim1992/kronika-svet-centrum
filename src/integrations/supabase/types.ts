@@ -16,6 +16,7 @@ export type Database = {
     Tables: {
       academies: {
         Row: {
+          association_id: string | null
           building_id: string | null
           city_id: string
           color_primary: string | null
@@ -55,6 +56,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          association_id?: string | null
           building_id?: string | null
           city_id: string
           color_primary?: string | null
@@ -94,6 +96,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          association_id?: string | null
           building_id?: string | null
           city_id?: string
           color_primary?: string | null
@@ -133,6 +136,13 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "academies_association_id_fkey"
+            columns: ["association_id"]
+            isOneToOne: false
+            referencedRelation: "sports_associations"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "academies_building_id_fkey"
             columns: ["building_id"]
