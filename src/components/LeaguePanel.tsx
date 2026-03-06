@@ -1196,6 +1196,17 @@ const LeaguePanel = ({ sessionId, currentPlayerName, currentTurn }: Props) => {
           })()}
         </DialogContent>
       </Dialog>
+
+      {/* Create Association Dialog */}
+      <CreateAssociationDialog
+        open={showAssocDialog}
+        onOpenChange={setShowAssocDialog}
+        sessionId={sessionId}
+        currentPlayerName={currentPlayerName}
+        currentTurn={currentTurn}
+        cities={cities}
+        onCreated={fetchData}
+      />
     </div>
   );
 };
