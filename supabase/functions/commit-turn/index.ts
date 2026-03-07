@@ -379,666 +379,458 @@ Deno.serve(async (req) => {
 
     // ═══════════════════════════════════════════
     // 6. NON-CRITICAL BACKGROUND TASKS
-    // Chronicles, wiki, rumors, games, academy — all wrapped individually.
-    // If any times out, the turn is already advanced.
+    // Use EdgeRuntime.waitUntil to avoid CPU timeout.
+    // Turn is already advanced, economy processed — these are best-effort.
     // ═══════════════════════════════════════════
 
-    // ─── 6a. AUTO-GENERATE CHRONICLES ───
-    // Generate chronicles for the just-closed turn (turnNumber) in the background.
-    // Failures are non-critical and won't block turn progression.
+    const backgroundResults: Record<string, any> = {};
 
-    if (skipNarrative) {
-      results.chronicles = { skipped: true, reason: "skipNarrative" };
-      results.worldHistory = { skipped: true, reason: "skipNarrative" };
-      results.playerChronicles = { skipped: true, reason: "skipNarrative" };
-    } else try {
-      const closedTurn = turnNumber; // the turn that just ended
+    const backgroundWork = async () => {
+      // ─── 6a. AUTO-GENERATE CHRONICLES ───
+      if (skipNarrative) {
+        backgroundResults.chronicles = { skipped: true, reason: "skipNarrative" };
+        backgroundResults.worldHistory = { skipped: true, reason: "skipNarrative" };
+        backgroundResults.playerChronicles = { skipped: true, reason: "skipNarrative" };
+      } else try {
+        const closedTurn = turnNumber;
 
-      // Fetch ALL data sources for chronicle generation
-      const [
-        { data: turnEvents },
-        { data: turnMemories },
-        { data: turnAnnotations },
-        { data: turnBattles },
-        { data: turnDeclarations },
-        { data: turnBuildings },
-        { data: turnRumors },
-      ] = await Promise.all([
-        supabase.from("game_events").select("*").eq("session_id", sessionId)
-          .eq("turn_number", closedTurn).eq("confirmed", true),
-        supabase.from("world_memories").select("*").eq("session_id", sessionId).eq("approved", true),
-        supabase.from("event_annotations").select("*").eq("session_id", sessionId),
-        supabase.from("battles").select("*").eq("session_id", sessionId).eq("turn_number", closedTurn),
-        supabase.from("declarations").select("*").eq("session_id", sessionId)
-          .eq("turn_number", closedTurn).eq("status", "published"),
-        supabase.from("city_buildings").select("*").eq("session_id", sessionId)
-          .eq("completed_turn", closedTurn).eq("is_ai_generated", true),
-        supabase.from("city_rumors").select("*").eq("session_id", sessionId)
-          .eq("turn_number", closedTurn).eq("is_draft", false),
-      ]);
+        const [
+          { data: turnEvents },
+          { data: turnMemories },
+          { data: turnAnnotations },
+          { data: turnBattles },
+          { data: turnDeclarations },
+          { data: turnBuildings },
+          { data: turnRumors },
+        ] = await Promise.all([
+          supabase.from("game_events").select("*").eq("session_id", sessionId)
+            .eq("turn_number", closedTurn).eq("confirmed", true),
+          supabase.from("world_memories").select("*").eq("session_id", sessionId).eq("approved", true),
+          supabase.from("event_annotations").select("*").eq("session_id", sessionId),
+          supabase.from("battles").select("*").eq("session_id", sessionId).eq("turn_number", closedTurn),
+          supabase.from("declarations").select("*").eq("session_id", sessionId)
+            .eq("turn_number", closedTurn).eq("status", "published"),
+          supabase.from("city_buildings").select("*").eq("session_id", sessionId)
+            .eq("completed_turn", closedTurn).eq("is_ai_generated", true),
+          supabase.from("city_rumors").select("*").eq("session_id", sessionId)
+            .eq("turn_number", closedTurn).eq("is_draft", false),
+        ]);
 
-      const confirmedEvents = turnEvents || [];
-      const approvedMemories = (turnMemories || []).map((m: any) => ({ text: m.text, category: m.category }));
-      const battles = turnBattles || [];
-      const declarations = turnDeclarations || [];
-      const completedBuildings = turnBuildings || [];
-      const rumors = turnRumors || [];
+        const confirmedEvents = turnEvents || [];
+        const approvedMemories = (turnMemories || []).map((m: any) => ({ text: m.text, category: m.category }));
+        const battles = turnBattles || [];
+        const declarations = turnDeclarations || [];
+        const completedBuildings = turnBuildings || [];
+        const rumors = turnRumors || [];
+        const enrichment = { battles, declarations, completedBuildings, rumors };
 
-      // Shared enrichment payload for all generators
-      const enrichment = { battles, declarations, completedBuildings, rumors };
+        if (confirmedEvents.length > 0 || battles.length > 0 || declarations.length > 0) {
+          const { data: existingChronicle } = await supabase.from("chronicle_entries")
+            .select("id").eq("session_id", sessionId)
+            .eq("turn_from", closedTurn).eq("turn_to", closedTurn)
+            .eq("source_type", "chronicle").maybeSingle();
 
-      if (confirmedEvents.length > 0 || battles.length > 0 || declarations.length > 0) {
-        // Check if chronicle already exists for this turn
-        const { data: existingChronicle } = await supabase.from("chronicle_entries")
-          .select("id").eq("session_id", sessionId)
-          .eq("turn_from", closedTurn).eq("turn_to", closedTurn)
-          .eq("source_type", "chronicle").maybeSingle();
-
-        // ─── 7a. WORLD CHRONICLE ───
-        if (!existingChronicle) {
-          try {
-            const annotationsForTurn = (turnAnnotations || []).filter((a: any) =>
-              confirmedEvents.some((e: any) => e.id === a.event_id)
-            ).map((a: any) => {
-              const evt = confirmedEvents.find((e: any) => e.id === a.event_id);
-              return { ...a, event_type: evt?.event_type || "unknown" };
-            });
-
-            const { data: wcData } = await supabase.functions.invoke("world-chronicle-round", {
-              body: {
-                sessionId,
-                round: closedTurn,
-                confirmedEvents,
-                annotations: annotationsForTurn.filter((a: any) => a.visibility !== "private"),
-                worldMemories: approvedMemories,
-                ...enrichment,
-              },
-            });
-
-            if (wcData?.chronicleText) {
-              await supabase.from("chronicle_entries").insert({
-                session_id: sessionId,
-                turn_from: closedTurn,
-                turn_to: closedTurn,
-                text: `📜 Rok ${closedTurn}\n\n${wcData.chronicleText}`,
-                source_type: "chronicle",
-                epoch_style: session.epoch_style || "kroniky",
+          // World Chronicle
+          if (!existingChronicle) {
+            try {
+              const annotationsForTurn = (turnAnnotations || []).filter((a: any) =>
+                confirmedEvents.some((e: any) => e.id === a.event_id)
+              ).map((a: any) => {
+                const evt = confirmedEvents.find((e: any) => e.id === a.event_id);
+                return { ...a, event_type: evt?.event_type || "unknown" };
               });
 
-              // Save suggested memories
-              if (wcData.newSuggestedMemories?.length) {
-                for (const mem of wcData.newSuggestedMemories) {
-                  await safeInsert(supabase.from("world_memories").insert({
-                    session_id: sessionId,
-                    text: typeof mem === "string" ? mem : mem.text || "",
-                    approved: false,
-                    category: typeof mem === "object" ? mem.category : "general",
-                  }));
-                }
-              }
-            }
-            results.worldChronicle = { ok: true, turn: closedTurn };
-          } catch (wcErr) {
-            console.error("Auto world-chronicle error:", wcErr);
-            results.worldChronicle = { error: (wcErr as Error).message };
-          }
-        } else {
-          results.worldChronicle = { skipped: true, reason: "already_exists" };
-        }
-
-        // ─── 7b. PLAYER CHRONICLE (for each player) ───
-        try {
-          const { data: allPlayersForChron } = await supabase.from("game_players")
-            .select("player_name").eq("session_id", sessionId);
-          const { data: allCivs } = await supabase.from("civilizations")
-            .select("player_name, civ_name").eq("session_id", sessionId);
-          const { data: allCities } = await supabase.from("cities")
-            .select("name, level, province, owner_player").eq("session_id", sessionId);
-          const { data: existingWorldEvents } = await supabase.from("world_events")
-            .select("id, title, date, summary").eq("session_id", sessionId);
-
-          let playerChronCount = 0;
-          for (const p of (allPlayersForChron || [])) {
-            const { data: existingChapter } = await supabase.from("player_chronicle_chapters")
-              .select("id").eq("session_id", sessionId).eq("player_name", p.player_name)
-              .gte("to_turn", closedTurn).lte("from_turn", closedTurn).maybeSingle();
-
-            if (existingChapter) continue;
-
-            const playerEvents = confirmedEvents.filter((e: any) =>
-              e.player === p.player_name || e.player === "Systém"
-            );
-            // Even if no events, player may have battles/declarations
-            const playerBattles = battles.filter((b: any) => {
-              // Match battles where player's stacks are involved (simplified: check all)
-              return true; // All battles are relevant context
-            });
-            const playerDeclarations = declarations.filter((d: any) => d.player_name === p.player_name);
-
-            if (playerEvents.length === 0 && playerBattles.length === 0 && playerDeclarations.length === 0) continue;
-
-            const civ = (allCivs || []).find((c: any) => c.player_name === p.player_name);
-            const playerCities = (allCities || []).filter((c: any) => c.owner_player === p.player_name)
-              .map((c: any) => ({ name: c.name, level: c.level, province: c.province }));
-
-            const rivalEvents = confirmedEvents.filter((e: any) =>
-              e.player !== p.player_name && e.player !== "Systém"
-            ).map((e: any) => `${e.player}: ${e.event_type}${e.note ? ` — ${e.note}` : ""}`);
-
-            try {
-              const { data: pcData } = await supabase.functions.invoke("player-chronicle", {
+              const { data: wcData } = await supabase.functions.invoke("world-chronicle-round", {
                 body: {
-                  sessionId,
-                  playerName: p.player_name,
-                  civName: civ?.civ_name,
-                  events: playerEvents,
-                  playerCities,
-                  playerMemories: approvedMemories.map((m: any) => m.text),
-                  rivalInfo: rivalEvents,
-                  fromTurn: closedTurn,
-                  toTurn: closedTurn,
-                  existingWorldEvents: existingWorldEvents || [],
-                  battles: playerBattles,
-                  declarations: playerDeclarations,
-                  completedBuildings: completedBuildings.filter((b: any) => {
-                    // Filter buildings for this player's cities
-                    return playerCities.some((c: any) => c.name);
-                  }),
-                  rumors,
+                  sessionId, round: closedTurn, confirmedEvents,
+                  annotations: annotationsForTurn.filter((a: any) => a.visibility !== "private"),
+                  worldMemories: approvedMemories, ...enrichment,
                 },
               });
 
-              if (pcData?.chapterText) {
-                await supabase.from("player_chronicle_chapters").insert({
-                  session_id: sessionId,
-                  player_name: p.player_name,
-                  chapter_title: pcData.chapterTitle || `Rok ${closedTurn}`,
-                  chapter_text: pcData.chapterText,
-                  from_turn: closedTurn,
-                  to_turn: closedTurn,
-                  epoch_style: session.epoch_style || "kroniky",
-                  references: [],
+              if (wcData?.chronicleText) {
+                await supabase.from("chronicle_entries").insert({
+                  session_id: sessionId, turn_from: closedTurn, turn_to: closedTurn,
+                  text: `📜 Rok ${closedTurn}\n\n${wcData.chronicleText}`,
+                  source_type: "chronicle", epoch_style: session.epoch_style || "kroniky",
                 });
-                playerChronCount++;
+                if (wcData.newSuggestedMemories?.length) {
+                  for (const mem of wcData.newSuggestedMemories) {
+                    await safeInsert(supabase.from("world_memories").insert({
+                      session_id: sessionId, text: typeof mem === "string" ? mem : mem.text || "",
+                      approved: false, category: typeof mem === "object" ? mem.category : "general",
+                    }));
+                  }
+                }
               }
-            } catch (pcErr) {
-              console.error(`Player chronicle for ${p.player_name} error:`, pcErr);
-            }
+            } catch (wcErr) { console.error("Auto world-chronicle error:", wcErr); }
           }
-          results.playerChronicles = { generated: playerChronCount };
-        } catch (pcAllErr) {
-          console.error("Auto player-chronicles error:", pcAllErr);
-          results.playerChronicles = { error: (pcAllErr as Error).message };
-        }
 
-        // ─── 7c. WORLD HISTORY ───
-        try {
-          const { data: existingHistory } = await supabase.from("world_history_chapters")
-            .select("id").eq("session_id", sessionId)
-            .gte("to_turn", closedTurn).lte("from_turn", closedTurn).maybeSingle();
-
-          if (!existingHistory) {
+          // Player Chronicles
+          try {
+            const { data: allPlayersForChron } = await supabase.from("game_players")
+              .select("player_name").eq("session_id", sessionId);
+            const { data: allCivs } = await supabase.from("civilizations")
+              .select("player_name, civ_name").eq("session_id", sessionId);
+            const { data: allCities } = await supabase.from("cities")
+              .select("name, level, province, owner_player").eq("session_id", sessionId);
             const { data: existingWorldEvents } = await supabase.from("world_events")
               .select("id, title, date, summary").eq("session_id", sessionId);
 
-            const canonEvents = confirmedEvents.filter((e: any) => e.truth_state === "canon");
-            if (canonEvents.length > 0 || battles.length > 0) {
-              const { data: whData } = await supabase.functions.invoke("world-history", {
-                body: {
-                  sessionId,
-                  events: canonEvents,
-                  worldMemories: approvedMemories.map((m: any) => m.text),
-                  fromTurn: closedTurn,
-                  toTurn: closedTurn,
-                  existingWorldEvents: existingWorldEvents || [],
-                  ...enrichment,
-                },
-              });
+            for (const p of (allPlayersForChron || [])) {
+              const { data: existingChapter } = await supabase.from("player_chronicle_chapters")
+                .select("id").eq("session_id", sessionId).eq("player_name", p.player_name)
+                .gte("to_turn", closedTurn).lte("from_turn", closedTurn).maybeSingle();
+              if (existingChapter) continue;
 
-              if (whData?.chapterText) {
-                await supabase.from("world_history_chapters").insert({
-                  session_id: sessionId,
-                  chapter_title: whData.chapterTitle || `Rok ${closedTurn}`,
-                  chapter_text: whData.chapterText,
-                  from_turn: closedTurn,
-                  to_turn: closedTurn,
-                  epoch_style: session.epoch_style || "kroniky",
-                  references: [],
+              const playerEvents = confirmedEvents.filter((e: any) => e.player === p.player_name || e.player === "Systém");
+              const playerDeclarations = declarations.filter((d: any) => d.player_name === p.player_name);
+              if (playerEvents.length === 0 && battles.length === 0 && playerDeclarations.length === 0) continue;
+
+              const civ = (allCivs || []).find((c: any) => c.player_name === p.player_name);
+              const playerCities = (allCities || []).filter((c: any) => c.owner_player === p.player_name)
+                .map((c: any) => ({ name: c.name, level: c.level, province: c.province }));
+              const rivalEvents = confirmedEvents.filter((e: any) => e.player !== p.player_name && e.player !== "Systém")
+                .map((e: any) => `${e.player}: ${e.event_type}${e.note ? ` — ${e.note}` : ""}`);
+
+              try {
+                const { data: pcData } = await supabase.functions.invoke("player-chronicle", {
+                  body: {
+                    sessionId, playerName: p.player_name, civName: civ?.civ_name,
+                    events: playerEvents, playerCities,
+                    playerMemories: approvedMemories.map((m: any) => m.text),
+                    rivalInfo: rivalEvents, fromTurn: closedTurn, toTurn: closedTurn,
+                    existingWorldEvents: existingWorldEvents || [],
+                    battles, declarations: playerDeclarations,
+                    completedBuildings: completedBuildings.filter((b: any) => playerCities.some((c: any) => c.name)),
+                    rumors,
+                  },
+                });
+                if (pcData?.chapterText) {
+                  await supabase.from("player_chronicle_chapters").insert({
+                    session_id: sessionId, player_name: p.player_name,
+                    chapter_title: pcData.chapterTitle || `Rok ${closedTurn}`,
+                    chapter_text: pcData.chapterText, from_turn: closedTurn, to_turn: closedTurn,
+                    epoch_style: session.epoch_style || "kroniky", references: [],
+                  });
+                }
+              } catch (pcErr) { console.error(`Player chronicle for ${p.player_name} error:`, pcErr); }
+            }
+          } catch (pcAllErr) { console.error("Auto player-chronicles error:", pcAllErr); }
+
+          // World History
+          try {
+            const { data: existingHistory } = await supabase.from("world_history_chapters")
+              .select("id").eq("session_id", sessionId)
+              .gte("to_turn", closedTurn).lte("from_turn", closedTurn).maybeSingle();
+
+            if (!existingHistory) {
+              const { data: existingWorldEvents } = await supabase.from("world_events")
+                .select("id, title, date, summary").eq("session_id", sessionId);
+              const canonEvents = confirmedEvents.filter((e: any) => e.truth_state === "canon");
+              if (canonEvents.length > 0 || battles.length > 0) {
+                const { data: whData } = await supabase.functions.invoke("world-history", {
+                  body: {
+                    sessionId, events: canonEvents,
+                    worldMemories: approvedMemories.map((m: any) => m.text),
+                    fromTurn: closedTurn, toTurn: closedTurn,
+                    existingWorldEvents: existingWorldEvents || [], ...enrichment,
+                  },
+                });
+                if (whData?.chapterText) {
+                  await supabase.from("world_history_chapters").insert({
+                    session_id: sessionId, chapter_title: whData.chapterTitle || `Rok ${closedTurn}`,
+                    chapter_text: whData.chapterText, from_turn: closedTurn, to_turn: closedTurn,
+                    epoch_style: session.epoch_style || "kroniky", references: [],
+                  });
+                }
+              }
+            }
+          } catch (whErr) { console.error("Auto world-history error:", whErr); }
+        }
+      } catch (chronErr) { console.error("Chronicle auto-generation error:", chronErr); }
+
+      // ═══ 8. WIKI EVENT REFS ═══
+      try {
+        const closedTurnForRefs = turnNumber;
+        const [
+          { data: turnEventsForRefs },
+          { data: turnBattlesForRefs },
+          { data: turnUprisings },
+        ] = await Promise.all([
+          supabase.from("game_events").select("id, event_type, city_id, location, note, importance, player")
+            .eq("session_id", sessionId).eq("turn_number", closedTurnForRefs).eq("confirmed", true),
+          supabase.from("battles").select("id, result, defender_city_id, casualties_attacker, casualties_defender")
+            .eq("session_id", sessionId).eq("turn_number", closedTurnForRefs),
+          supabase.from("city_uprisings").select("id, city_id, status, escalation_level")
+            .eq("session_id", sessionId).eq("turn_triggered", closedTurnForRefs),
+        ]);
+
+        const refsToInsert: any[] = [];
+        const impactScores: Record<string, number> = {};
+        const IMPACT_MAP: Record<string, number> = {
+          battle: 5, uprising: 4, founding: 3, conquest: 5,
+          wonder_built: 4, famine: 3, disaster: 4, trade: 1,
+          build: 1, explore: 1, expand: 2, diplomacy: 2,
+        };
+
+        for (const evt of (turnEventsForRefs || [])) {
+          if (evt.city_id) {
+            refsToInsert.push({
+              session_id: sessionId, entity_id: evt.city_id, entity_type: "city",
+              ref_type: "event", ref_id: evt.id,
+              ref_label: `${evt.event_type}: ${(evt.note || "").substring(0, 80)}`,
+              turn_number: closedTurnForRefs, impact_score: IMPACT_MAP[evt.event_type] || 1,
+              meta: { event_type: evt.event_type, importance: evt.importance },
+            });
+            impactScores[evt.city_id] = (impactScores[evt.city_id] || 0) + (IMPACT_MAP[evt.event_type] || 1);
+          }
+        }
+        for (const battle of (turnBattlesForRefs || [])) {
+          if (battle.defender_city_id) {
+            refsToInsert.push({
+              session_id: sessionId, entity_id: battle.defender_city_id, entity_type: "city",
+              ref_type: "battle", ref_id: battle.id, ref_label: `Bitva: ${battle.result}`,
+              turn_number: closedTurnForRefs, impact_score: 5,
+              meta: { result: battle.result, casualties_a: battle.casualties_attacker, casualties_d: battle.casualties_defender },
+            });
+            impactScores[battle.defender_city_id] = (impactScores[battle.defender_city_id] || 0) + 5;
+          }
+        }
+        for (const uprising of (turnUprisings || [])) {
+          refsToInsert.push({
+            session_id: sessionId, entity_id: uprising.city_id, entity_type: "city",
+            ref_type: "uprising", ref_id: uprising.id,
+            ref_label: `Vzpoura (eskalace ${uprising.escalation_level})`,
+            turn_number: closedTurnForRefs, impact_score: 4,
+            meta: { status: uprising.status, escalation: uprising.escalation_level },
+          });
+          impactScores[uprising.city_id] = (impactScores[uprising.city_id] || 0) + 4;
+        }
+
+        if (refsToInsert.length > 0) {
+          await supabase.from("wiki_event_refs").upsert(refsToInsert, {
+            onConflict: "session_id,entity_id,ref_type,ref_id", ignoreDuplicates: true,
+          });
+        }
+
+        // Wiki enrichment
+        const { data: enrichCfgData } = await supabase.from("server_config")
+          .select("economic_params").eq("session_id", sessionId).maybeSingle();
+        const enrichCfg = (enrichCfgData as any)?.economic_params?.narrative?.enrichment || {};
+        const autoEnrich = enrichCfg.auto_enrich !== false;
+        const impactThreshold = enrichCfg.impact_threshold || 3;
+        const minEvents = enrichCfg.min_events_for_trigger || 3;
+        const triggerTypes = enrichCfg.trigger_types || ["battle", "uprising", "founding", "conquest", "wonder_built", "famine", "disaster"];
+
+        if (autoEnrich) {
+          const enrichTargets: string[] = [];
+          for (const [entityId, score] of Object.entries(impactScores)) {
+            if (score >= impactThreshold) {
+              const { data: wiki } = await supabase.from("wiki_entries")
+                .select("last_enriched_turn").eq("session_id", sessionId).eq("entity_id", entityId).maybeSingle();
+              const lastEnriched = (wiki as any)?.last_enriched_turn || 0;
+              const { count: newRefsCount } = await supabase.from("wiki_event_refs")
+                .select("id", { count: "exact", head: true })
+                .eq("session_id", sessionId).eq("entity_id", entityId).gt("turn_number", lastEnriched);
+              const hasTriggerEvent = (turnEventsForRefs || []).some((e: any) =>
+                e.city_id === entityId && triggerTypes.includes(e.event_type)
+              ) || (turnBattlesForRefs || []).some((b: any) => b.defender_city_id === entityId)
+                || (turnUprisings || []).some((u: any) => u.city_id === entityId);
+              if ((newRefsCount || 0) >= minEvents || hasTriggerEvent) enrichTargets.push(entityId);
+            }
+          }
+          for (const entityId of enrichTargets.slice(0, 5)) {
+            try {
+              await supabase.functions.invoke("wiki-enrich", {
+                body: { sessionId, entityId, entityType: "city", turnNumber: closedTurnForRefs },
+              });
+            } catch (e) { console.error(`Wiki enrich for ${entityId} failed:`, e); }
+          }
+        }
+      } catch (e) { console.error("Wiki event refs error:", e); }
+
+      // ═══ 8b. RUMOR GENERATION ═══
+      if (!skipNarrative) {
+        try {
+          await supabase.functions.invoke("rumor-generate", {
+            body: { sessionId, turnNumber, playerName },
+          });
+        } catch (e) { console.error("Rumor generation error:", e); }
+      }
+
+      // ═══ 8c. GAMES & FESTIVALS ═══
+      try {
+        const nextTurn = turnNumber + 1;
+        const OLYMPIC_PERIOD = 20;
+
+        if (nextTurn > 0 && nextTurn % OLYMPIC_PERIOD === 0) {
+          const { data: activeGlobal } = await supabase.from("games_festivals")
+            .select("id").eq("session_id", sessionId).eq("is_global", true)
+            .in("status", ["candidacy", "announced", "nomination", "qualifying", "finals"])
+            .maybeSingle();
+          if (!activeGlobal) {
+            try {
+              await supabase.functions.invoke("games-announce", {
+                body: { session_id: sessionId, player_name: playerName, type: "olympic", turn_number: nextTurn },
+              });
+            } catch (gaErr) { console.error("Auto games-announce error:", gaErr); }
+          }
+        }
+
+        // Auto-bid AI factions
+        const { data: candidacyFestivals } = await supabase.from("games_festivals")
+          .select("id, candidacy_deadline_turn")
+          .eq("session_id", sessionId).eq("status", "candidacy");
+
+        for (const cf of (candidacyFestivals || [])) {
+          const { data: aiFacs } = await supabase.from("ai_factions")
+            .select("faction_name").eq("session_id", sessionId).eq("is_active", true);
+
+          for (const fac of (aiFacs || [])) {
+            const { count: existingBid } = await supabase.from("games_bids")
+              .select("id", { count: "exact", head: true })
+              .eq("festival_id", cf.id).eq("player_name", fac.faction_name);
+            if (existingBid && existingBid > 0) continue;
+
+            const { data: facCities } = await supabase.from("cities")
+              .select("id, name, influence_score, development_level, city_stability, population_total, hosting_count, owner_player")
+              .eq("session_id", sessionId).eq("owner_player", fac.faction_name)
+              .in("status", ["ok", "active"]).order("influence_score", { ascending: false });
+
+            const bestCity = (facCities || [])[0];
+            if (!bestCity) continue;
+
+            const { data: arena } = await supabase.from("city_buildings")
+              .select("id").eq("city_id", bestCity.id).eq("session_id", sessionId)
+              .eq("status", "completed").eq("is_arena", true).maybeSingle();
+
+            const arenaBonus = arena ? 30 : -20;
+            const culturalScore = bestCity.influence_score * 2;
+            const logisticsScore = bestCity.development_level * 10 + bestCity.city_stability;
+            const legacyBonus = (bestCity.hosting_count || 0) * 8;
+            const popBonus = Math.log((bestCity.population_total || 1) + 1) * 3;
+            const totalBidScore = Math.max(1, culturalScore + logisticsScore + arenaBonus + legacyBonus + popBonus);
+
+            await supabase.from("games_bids").insert({
+              session_id: sessionId, festival_id: cf.id, player_name: fac.faction_name,
+              city_id: bestCity.id, gold_invested: 0,
+              pitch_text: `${bestCity.name} se uchází o pořadatelství Velkých her jménem ${fac.faction_name}.${arena ? "" : " (bez arény)"}`,
+              cultural_score: culturalScore, logistics_score: logisticsScore,
+              stability_score: bestCity.city_stability, hosting_legacy_bonus: legacyBonus,
+              total_bid_score: totalBidScore, is_winner: false,
+            });
+          }
+        }
+
+        // Auto-select host
+        for (const cf of (candidacyFestivals || [])) {
+          if (cf.candidacy_deadline_turn && turnNumber >= cf.candidacy_deadline_turn) {
+            try {
+              await supabase.functions.invoke("games-select-host", {
+                body: { session_id: sessionId, festival_id: cf.id, turn_number: turnNumber },
+              });
+            } catch (shErr) { console.error(`Auto select-host ${cf.id}:`, shErr); }
+          }
+        }
+
+        // Auto-qualify AI factions
+        const { data: nominationFestivals } = await supabase.from("games_festivals")
+          .select("id, announced_turn, finals_turn")
+          .eq("session_id", sessionId).eq("status", "nomination");
+
+        for (const nf of (nominationFestivals || [])) {
+          const { data: allSessionPlayers } = await supabase.from("realm_resources")
+            .select("player_name").eq("session_id", sessionId);
+
+          for (const sp of (allSessionPlayers || [])) {
+            if (sp.player_name === playerName) continue;
+            const { count: existingCount } = await supabase.from("games_participants")
+              .select("id", { count: "exact", head: true })
+              .eq("festival_id", nf.id).eq("player_name", sp.player_name);
+            if (existingCount && existingCount > 0) continue;
+
+            try {
+              const { data: simData } = await supabase.functions.invoke("games-qualify", {
+                body: { session_id: sessionId, player_name: sp.player_name, festival_id: nf.id, action: "simulate" },
+              });
+              if (simData?.results && simData.results.length > 0) {
+                const top3 = simData.results.slice(0, 3).map((r: any) => r.student_id);
+                await supabase.functions.invoke("games-qualify", {
+                  body: { session_id: sessionId, player_name: sp.player_name, festival_id: nf.id, action: "select", selected_student_ids: top3 },
                 });
               }
-              results.worldHistory = { ok: true, turn: closedTurn };
-            } else {
-              results.worldHistory = { skipped: true, reason: "no_canon_events" };
-            }
-          } else {
-            results.worldHistory = { skipped: true, reason: "already_exists" };
-          }
-        } catch (whErr) {
-          console.error("Auto world-history error:", whErr);
-          results.worldHistory = { error: (whErr as Error).message };
-        }
-      } else {
-        results.chronicles = { skipped: true, reason: "no_events_for_turn" };
-      }
-    } catch (chronErr) {
-      console.error("Chronicle auto-generation error:", chronErr);
-      results.chronicles = { error: (chronErr as Error).message };
-    }
-
-    // ═══════════════════════════════════════════
-    // 8. WIKI EVENT REFS ACCUMULATION (no AI, just structured data)
-    // ═══════════════════════════════════════════
-    try {
-      const closedTurnForRefs = turnNumber;
-      // Gather all events from this turn
-      const { data: turnEventsForRefs } = await supabase.from("game_events")
-        .select("id, event_type, city_id, location, note, importance, player")
-        .eq("session_id", sessionId).eq("turn_number", closedTurnForRefs).eq("confirmed", true);
-
-      const { data: turnBattlesForRefs } = await supabase.from("battles")
-        .select("id, result, defender_city_id, casualties_attacker, casualties_defender")
-        .eq("session_id", sessionId).eq("turn_number", closedTurnForRefs);
-
-      const { data: turnUprisings } = await supabase.from("city_uprisings")
-        .select("id, city_id, status, escalation_level")
-        .eq("session_id", sessionId).eq("turn_triggered", closedTurnForRefs);
-
-      const refsToInsert: any[] = [];
-      const impactScores: Record<string, number> = {};
-
-      const IMPACT_MAP: Record<string, number> = {
-        battle: 5, uprising: 4, founding: 3, conquest: 5,
-        wonder_built: 4, famine: 3, disaster: 4, trade: 1,
-        build: 1, explore: 1, expand: 2, diplomacy: 2,
-      };
-
-      // Process events → link to cities
-      for (const evt of (turnEventsForRefs || [])) {
-        const cityId = evt.city_id;
-        if (cityId) {
-          refsToInsert.push({
-            session_id: sessionId, entity_id: cityId, entity_type: "city",
-            ref_type: "event", ref_id: evt.id,
-            ref_label: `${evt.event_type}: ${(evt.note || "").substring(0, 80)}`,
-            turn_number: closedTurnForRefs,
-            impact_score: IMPACT_MAP[evt.event_type] || 1,
-            meta: { event_type: evt.event_type, importance: evt.importance },
-          });
-          impactScores[cityId] = (impactScores[cityId] || 0) + (IMPACT_MAP[evt.event_type] || 1);
-        }
-      }
-
-      // Process battles → link to defender city
-      for (const battle of (turnBattlesForRefs || [])) {
-        if (battle.defender_city_id) {
-          refsToInsert.push({
-            session_id: sessionId, entity_id: battle.defender_city_id, entity_type: "city",
-            ref_type: "battle", ref_id: battle.id,
-            ref_label: `Bitva: ${battle.result}`,
-            turn_number: closedTurnForRefs,
-            impact_score: 5,
-            meta: { result: battle.result, casualties_a: battle.casualties_attacker, casualties_d: battle.casualties_defender },
-          });
-          impactScores[battle.defender_city_id] = (impactScores[battle.defender_city_id] || 0) + 5;
-        }
-      }
-
-      // Process uprisings → link to city
-      for (const uprising of (turnUprisings || [])) {
-        refsToInsert.push({
-          session_id: sessionId, entity_id: uprising.city_id, entity_type: "city",
-          ref_type: "uprising", ref_id: uprising.id,
-          ref_label: `Vzpoura (eskalace ${uprising.escalation_level})`,
-          turn_number: closedTurnForRefs,
-          impact_score: 4,
-          meta: { status: uprising.status, escalation: uprising.escalation_level },
-        });
-        impactScores[uprising.city_id] = (impactScores[uprising.city_id] || 0) + 4;
-      }
-
-      // Bulk insert refs (ignore duplicates via ON CONFLICT)
-      if (refsToInsert.length > 0) {
-        await supabase.from("wiki_event_refs").upsert(refsToInsert, {
-          onConflict: "session_id,entity_id,ref_type,ref_id",
-          ignoreDuplicates: true,
-        });
-      }
-
-      results.wikiEventRefs = { inserted: refsToInsert.length };
-
-      // ── Check enrichment thresholds ──
-      const { data: enrichCfgData } = await supabase.from("server_config")
-        .select("economic_params").eq("session_id", sessionId).maybeSingle();
-      const enrichCfg = (enrichCfgData as any)?.economic_params?.narrative?.enrichment || {};
-      const autoEnrich = enrichCfg.auto_enrich !== false;
-      const impactThreshold = enrichCfg.impact_threshold || 3;
-      const minEvents = enrichCfg.min_events_for_trigger || 3;
-      const triggerTypes = enrichCfg.trigger_types || ["battle", "uprising", "founding", "conquest", "wonder_built", "famine", "disaster"];
-
-      if (autoEnrich) {
-        const enrichTargets: string[] = [];
-        for (const [entityId, score] of Object.entries(impactScores)) {
-          if (score >= impactThreshold) {
-            // Check if entity has enough total unreported refs
-            const { count } = await supabase.from("wiki_event_refs")
-              .select("id", { count: "exact", head: true })
-              .eq("session_id", sessionId).eq("entity_id", entityId)
-              .gt("turn_number", 0); // all refs
-            
-            const { data: wiki } = await supabase.from("wiki_entries")
-              .select("last_enriched_turn").eq("session_id", sessionId).eq("entity_id", entityId).maybeSingle();
-            
-            const lastEnriched = (wiki as any)?.last_enriched_turn || 0;
-            
-            // Count refs since last enrichment
-            const { count: newRefsCount } = await supabase.from("wiki_event_refs")
-              .select("id", { count: "exact", head: true })
-              .eq("session_id", sessionId).eq("entity_id", entityId)
-              .gt("turn_number", lastEnriched);
-
-            // Check if any trigger-type events exist
-            const hasTriggerEvent = (turnEventsForRefs || []).some((e: any) =>
-              e.city_id === entityId && triggerTypes.includes(e.event_type)
-            ) || (turnBattlesForRefs || []).some((b: any) => b.defender_city_id === entityId)
-              || (turnUprisings || []).some((u: any) => u.city_id === entityId);
-
-            if ((newRefsCount || 0) >= minEvents || hasTriggerEvent) {
-              enrichTargets.push(entityId);
-            }
+            } catch (qErr) { console.error(`Auto-qualify ${sp.player_name}:`, qErr); }
           }
         }
 
-        // Trigger enrichment for qualifying entities (max 5 per turn to avoid overload)
-        let enriched = 0;
-        for (const entityId of enrichTargets.slice(0, 5)) {
-          try {
-            await supabase.functions.invoke("wiki-enrich", {
-              body: { sessionId, entityId, entityType: "city", turnNumber: closedTurnForRefs },
-            });
-            enriched++;
-          } catch (e) {
-            console.error(`Wiki enrich for ${entityId} failed:`, e);
+        // Advance festivals to finals
+        const { data: festivalsToAdvance } = await supabase.from("games_festivals")
+          .select("id, is_global, announced_turn, finals_turn")
+          .eq("session_id", sessionId).in("status", ["nomination", "qualifying"]);
+        for (const fest of (festivalsToAdvance || [])) {
+          const resolveAt = fest.finals_turn || (fest.announced_turn + 2);
+          if (turnNumber >= resolveAt) {
+            try { await supabase.from("games_festivals").update({ status: "finals" }).eq("id", fest.id); }
+            catch (grErr) { console.error(`Games advance ${fest.id}:`, grErr); }
           }
         }
-        results.wikiEnrichment = { targets: enrichTargets.length, enriched };
-      }
-    } catch (e) {
-      console.error("Wiki event refs accumulation error:", e);
-      results.wikiEventRefs = { error: (e as Error).message };
-    }
+      } catch (e) { console.error("Games processing error:", e); }
 
-    // ═══════════════════════════════════════════
-    // 8b. RUMOR GENERATION (Šeptanda)
-    // ═══════════════════════════════════════════
-    if (skipNarrative) {
-      results.rumors = { skipped: true, reason: "skipNarrative" };
-    } else try {
-      const { data: rumorData, error: rumorErr } = await supabase.functions.invoke("rumor-generate", {
-        body: { sessionId, turnNumber, playerName },
-      });
-      if (rumorErr) {
-        console.error("Rumor generation error:", rumorErr);
-        results.rumors = { error: rumorErr.message };
-      } else {
-        results.rumors = rumorData;
-      }
-    } catch (e) {
-      console.error("Rumor generation error:", e);
-      results.rumors = { error: (e as Error).message };
-    }
-
-    // ═══════════════════════════════════════════
-    // 8c. GAMES & FESTIVALS — AUTO-ANNOUNCE, AUTO-SELECT HOST, AUTO-RESOLVE
-    // ═══════════════════════════════════════════
-    try {
-      const nextTurn = turnNumber + 1;
-      const OLYMPIC_PERIOD = 20;
-
-      // Auto-announce Olympics every OLYMPIC_PERIOD turns (turn 20, 40, 60…)
-      if (nextTurn > 0 && nextTurn % OLYMPIC_PERIOD === 0) {
-        const { data: activeGlobal } = await supabase.from("games_festivals")
-          .select("id").eq("session_id", sessionId).eq("is_global", true)
-          .in("status", ["candidacy", "announced", "nomination", "qualifying", "finals"])
-          .maybeSingle();
-
-        if (!activeGlobal) {
-          try {
-            await supabase.functions.invoke("games-announce", {
-              body: { session_id: sessionId, player_name: playerName, type: "olympic", turn_number: nextTurn },
-            });
-            results.gamesAnnounce = { ok: true, turn: nextTurn };
-          } catch (gaErr) {
-            console.error("Auto games-announce error:", gaErr);
-            results.gamesAnnounce = { error: (gaErr as Error).message };
-          }
-        } else {
-          results.gamesAnnounce = { skipped: true, reason: "active_global_exists" };
-        }
-      }
-
-      // ─── Auto-bid AI factions for festivals in candidacy phase ───
-      const { data: candidacyFestivals } = await supabase.from("games_festivals")
-        .select("id, candidacy_deadline_turn")
-        .eq("session_id", sessionId).eq("status", "candidacy");
-
-      let aiBidsPlaced = 0;
-      for (const cf of (candidacyFestivals || [])) {
-        // Get AI factions
-        const { data: aiFacs } = await supabase.from("ai_factions")
-          .select("faction_name").eq("session_id", sessionId).eq("is_active", true);
-
-        for (const fac of (aiFacs || [])) {
-          // Check if already bid
-          const { count: existingBid } = await supabase.from("games_bids")
-            .select("id", { count: "exact", head: true })
-            .eq("festival_id", cf.id).eq("player_name", fac.faction_name);
-          if (existingBid && existingBid > 0) continue;
-
-          // Find best AI city with an arena
-          const { data: facCities } = await supabase.from("cities")
-            .select("id, name, influence_score, development_level, city_stability, population_total, hosting_count, owner_player")
-            .eq("session_id", sessionId).eq("owner_player", fac.faction_name)
-            .in("status", ["ok", "active"])
-            .order("influence_score", { ascending: false });
-
-          // AI factions bid with their best city — arena gives bonus, not requirement
-          const bestCity = (facCities || [])[0];
-          if (!bestCity) continue;
-
-          // Check for arena — bonus if present, penalty if not
-          const { data: arena } = await supabase.from("city_buildings")
-            .select("id").eq("city_id", bestCity.id).eq("session_id", sessionId)
-            .eq("status", "completed").eq("is_arena", true)
-            .maybeSingle();
-
-          const arenaBonus = arena ? 30 : -20; // penalty without arena
-
-          const culturalScore = bestCity.influence_score * 2;
-          const logisticsScore = bestCity.development_level * 10 + bestCity.city_stability;
-          const lobbyBonus = arenaBonus;
-          const legacyBonus = (bestCity.hosting_count || 0) * 8;
-          const popBonus = Math.log((bestCity.population_total || 1) + 1) * 3;
-          const totalBidScore = Math.max(1, culturalScore + logisticsScore + lobbyBonus + legacyBonus + popBonus);
-
-          await supabase.from("games_bids").insert({
-            session_id: sessionId, festival_id: cf.id, player_name: fac.faction_name,
-            city_id: bestCity.id, gold_invested: 0,
-            pitch_text: `${bestCity.name} se uchází o pořadatelství Velkých her jménem ${fac.faction_name}.${arena ? "" : " (bez arény)"}`,
-            cultural_score: culturalScore, logistics_score: logisticsScore,
-            stability_score: bestCity.city_stability, hosting_legacy_bonus: legacyBonus,
-            total_bid_score: totalBidScore, is_winner: false,
-          });
-          aiBidsPlaced++;
-        }
-      }
-      results.gamesAiBids = { placed: aiBidsPlaced };
-
-      // ─── Auto-select host for festivals past candidacy deadline ───
-
-      let hostsSelected = 0;
-      for (const cf of (candidacyFestivals || [])) {
-        if (cf.candidacy_deadline_turn && turnNumber >= cf.candidacy_deadline_turn) {
-          try {
-            await supabase.functions.invoke("games-select-host", {
-              body: { session_id: sessionId, festival_id: cf.id, turn_number: turnNumber },
-            });
-            hostsSelected++;
-          } catch (shErr) {
-            console.error(`Auto select-host ${cf.id}:`, shErr);
-          }
-        }
-      }
-      results.gamesHostSelection = { selected: hostsSelected };
-
-      // ─── Auto-qualify AI factions for festivals in nomination phase ───
-      const { data: nominationFestivals } = await supabase.from("games_festivals")
-        .select("id, announced_turn, finals_turn")
-        .eq("session_id", sessionId)
-        .eq("status", "nomination");
-
-      let aiQualified = 0;
-      for (const nf of (nominationFestivals || [])) {
-        // Get all players in session
-        const { data: allSessionPlayers } = await supabase.from("realm_resources")
-          .select("player_name").eq("session_id", sessionId);
-
-        for (const sp of (allSessionPlayers || [])) {
-          // Skip the human player — they nominate manually
-          if (sp.player_name === playerName) continue;
-
-          // Check if this player already has participants
-          const { count: existingCount } = await supabase.from("games_participants")
-            .select("id", { count: "exact", head: true })
-            .eq("festival_id", nf.id).eq("player_name", sp.player_name);
-
-          if (existingCount && existingCount > 0) continue;
-
-          // Auto-simulate qualification
-          try {
-            const { data: simData } = await supabase.functions.invoke("games-qualify", {
-              body: { session_id: sessionId, player_name: sp.player_name, festival_id: nf.id, action: "simulate" },
-            });
-
-            // Auto-select top 3
-            if (simData?.results && simData.results.length > 0) {
-              const top3 = simData.results.slice(0, 3).map((r: any) => r.student_id);
-              await supabase.functions.invoke("games-qualify", {
-                body: { session_id: sessionId, player_name: sp.player_name, festival_id: nf.id, action: "select", selected_student_ids: top3 },
-              });
-              aiQualified++;
-            }
-          } catch (qErr) {
-            console.error(`Auto-qualify ${sp.player_name} for ${nf.id}:`, qErr);
-          }
-        }
-      }
-      results.aiQualification = { qualified: aiQualified };
-
-      // ─── Move festivals to "finals" when ready (host resolves disciplines manually) ───
-      const { data: festivalsToAdvance } = await supabase.from("games_festivals")
-        .select("id, is_global, announced_turn, finals_turn")
-        .eq("session_id", sessionId)
-        .in("status", ["nomination", "qualifying"]);
-
-      let gamesAdvanced = 0;
-      for (const fest of (festivalsToAdvance || [])) {
-        const resolveAt = fest.finals_turn || (fest.announced_turn + 2);
-        if (turnNumber >= resolveAt) {
-          try {
-            await supabase.from("games_festivals").update({ status: "finals" }).eq("id", fest.id);
-            gamesAdvanced++;
-          } catch (grErr) {
-            console.error(`Games advance to finals ${fest.id}:`, grErr);
-          }
-        }
-      }
-      results.gamesResolve = { advanced: gamesAdvanced };
-    } catch (e) {
-      console.error("Games processing error:", e);
-      results.games = { error: (e as Error).message };
-    }
-
-    // ═══════════════════════════════════════════
-    // 8d-pre. SPHAERA LEAGUE — play up to 5 rounds per turn (fallback for admin manual play)
-    // ═══════════════════════════════════════════
-    try {
-      const { count: activeTeamCount } = await supabase.from("league_teams")
-        .select("id", { count: "exact", head: true })
-        .eq("session_id", sessionId).eq("is_active", true);
-
-      if (activeTeamCount && activeTeamCount >= 2) {
-        // Use league-play-batch to play 5 rounds (it internally loops league-play-round)
-        const { data: leagueData, error: leagueErr } = await supabase.functions.invoke("league-play-batch", {
-          body: { session_id: sessionId, player_name: playerName, rounds: 5 },
-        });
-        if (leagueErr) console.error("League play-batch error:", leagueErr);
-        results.league = leagueData || { error: leagueErr?.message };
-      } else {
-        results.league = { skipped: true, reason: "not_enough_teams" };
-      }
-    } catch (e) {
-      console.error("League play-batch error:", e);
-      results.league = { error: (e as Error).message };
-    }
-
-    // ═══════════════════════════════════════════
-    // 8d. ACADEMY TICK — auto-create schools, training cycles, funding
-    //     Runs for BOTH human players AND AI factions
-    // ═══════════════════════════════════════════
-    try {
-      // Gather all faction names (human + AI)
-      const { data: academyPlayers } = await supabase.from("game_players")
-        .select("player_name").eq("session_id", sessionId);
-      const { data: academyAIFactions } = await supabase.from("ai_factions")
-        .select("faction_name").eq("session_id", sessionId).eq("is_active", true);
-
-      const academyEntities = new Set<string>();
-      for (const p of (academyPlayers || [])) academyEntities.add(p.player_name);
-      for (const f of (academyAIFactions || [])) academyEntities.add(f.faction_name);
-
-      let academyResults: any[] = [];
-      for (const pName of academyEntities) {
-        try {
-          const { data: atData } = await supabase.functions.invoke("academy-tick", {
-            body: { session_id: sessionId, player_name: pName, turn_number: turnNumber + 1 },
-          });
-          academyResults.push({ player: pName, ...atData });
-        } catch (atErr) {
-          console.error(`Academy tick for ${pName}:`, atErr);
-        }
-      }
-      results.academyTick = { players: academyResults };
-    } catch (e) {
-      console.error("Academy tick error:", e);
-      results.academyTick = { error: (e as Error).message };
-    }
-
-    // ═══════════════════════════════════════════
-    // 9. AI HISTORY COMPRESSION (AI mode only)
-    // ═══════════════════════════════════════════
-    if (isAIMode) {
+      // ═══ 8d-pre. SPHAERA LEAGUE ═══
       try {
-        await supabase.functions.invoke("ai-compress-history", {
-          body: { sessionId, currentTurn: turnNumber + 1, tier: session.tier || "free" },
-        });
-        results.compression = { ok: true };
-      } catch (e) {
-        console.error("History compression error:", e);
-        results.compression = { error: (e as Error).message };
-      }
-    }
+        const { count: activeTeamCount } = await supabase.from("league_teams")
+          .select("id", { count: "exact", head: true })
+          .eq("session_id", sessionId).eq("is_active", true);
+        if (activeTeamCount && activeTeamCount >= 2) {
+          await supabase.functions.invoke("league-play-batch", {
+            body: { session_id: sessionId, player_name: playerName, rounds: 5 },
+          });
+        }
+      } catch (e) { console.error("League play-batch error:", e); }
 
-    // ═══════════════════════════════════════════
-    // 10. VICTORY CHECK
-    // ═══════════════════════════════════════════
-    try {
-      const victoryRes = await supabase.functions.invoke("check-victory", {
-        body: { sessionId, playerName },
-      });
-      results.victory = victoryRes.data || {};
-    } catch (e) {
-      console.error("Victory check error:", e);
-      results.victory = { error: (e as Error).message };
+      // ═══ 8d. ACADEMY TICK ═══
+      try {
+        const { data: academyPlayers } = await supabase.from("game_players")
+          .select("player_name").eq("session_id", sessionId);
+        const { data: academyAIFactions } = await supabase.from("ai_factions")
+          .select("faction_name").eq("session_id", sessionId).eq("is_active", true);
+        const academyEntities = new Set<string>();
+        for (const p of (academyPlayers || [])) academyEntities.add(p.player_name);
+        for (const f of (academyAIFactions || [])) academyEntities.add(f.faction_name);
+        for (const pName of academyEntities) {
+          try {
+            await supabase.functions.invoke("academy-tick", {
+              body: { session_id: sessionId, player_name: pName, turn_number: turnNumber + 1 },
+            });
+          } catch (atErr) { console.error(`Academy tick for ${pName}:`, atErr); }
+        }
+      } catch (e) { console.error("Academy tick error:", e); }
+
+      // ═══ 9. AI HISTORY COMPRESSION ═══
+      if (isAIMode) {
+        try {
+          await supabase.functions.invoke("ai-compress-history", {
+            body: { sessionId, currentTurn: turnNumber + 1, tier: session.tier || "free" },
+          });
+        } catch (e) { console.error("History compression error:", e); }
+      }
+
+      // ═══ 10. VICTORY CHECK ═══
+      try {
+        await supabase.functions.invoke("check-victory", {
+          body: { sessionId, playerName },
+        });
+      } catch (e) { console.error("Victory check error:", e); }
+    };
+
+    // Schedule background work — function returns immediately
+    // @ts-ignore: EdgeRuntime is available in Supabase Edge Functions
+    if (typeof EdgeRuntime !== "undefined" && EdgeRuntime.waitUntil) {
+      EdgeRuntime.waitUntil(backgroundWork());
+    } else {
+      // Fallback: run inline (for testing/older runtime)
+      try { await backgroundWork(); } catch (e) { console.error("Background work error:", e); }
     }
 
     return new Response(JSON.stringify({
@@ -1046,6 +838,7 @@ Deno.serve(async (req) => {
       turnClosed: turnNumber,
       newTurn: turnNumber + 1,
       results,
+      backgroundScheduled: true,
     }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
   } catch (err) {
