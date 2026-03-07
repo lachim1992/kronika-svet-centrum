@@ -218,7 +218,7 @@ const AcademyPanel = ({ sessionId, currentPlayerName, currentTurn }: Props) => {
             <School className="h-3.5 w-3.5 mr-1" />Školy ({academies.length})
           </TabsTrigger>
           <TabsTrigger value="graduates" className="font-display text-xs">
-            <Users className="h-3.5 w-3.5 mr-1" />Absolventi ({students.filter(s => s.status === "graduated" || s.status === "promoted").length})
+            <Users className="h-3.5 w-3.5 mr-1" />Absolventi ({students.filter(s => (s.status === "graduated" || s.status === "promoted") && (s as any).graduate_type !== "sphaera_player").length})
           </TabsTrigger>
         </TabsList>
 
