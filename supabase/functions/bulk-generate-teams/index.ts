@@ -65,7 +65,8 @@ Deno.serve(async (req) => {
     
     const liveCities = (cities || []).filter(c => !["ruins","razed","abandoned"].includes(c.status));
 
-    if (!cities || cities.length === 0) {
+    if (citiesErr) { console.error("Cities query error:", citiesErr); }
+    if (liveCities.length === 0) {
       return new Response(JSON.stringify({ error: "Žádná města v této hře" }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
