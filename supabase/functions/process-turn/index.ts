@@ -615,10 +615,13 @@ Deno.serve(async (req) => {
     const newStoneReserve = (realm.stone_reserve || 0) + totalStoneProd;
     const newIronReserve = (realm.iron_reserve || 0) + totalIronProd;
 
-    // Wealth — unified multiplier + open borders trade efficiency bonus
+    // Wealth — unified multiplier + open borders trade efficiency bonus + tax law modifier
     const openBordersTradeBonus = openBordersBonuses.trade_efficiency_bonus || 0;
-    const wealthIncome = Math.round(computeWealthIncome(myCities, cityDistrictEffects) * uMult.wealth * (1 + openBordersTradeBonus));
+    const taxMult = 1 + (taxRateModifier / 100); // e.g. +10 → 1.1x gold income
+    const baseWealthIncome = Math.round(computeWealthIncome(myCities, cityDistrictEffects) * uMult.wealth * (1 + openBordersTradeBonus));
+    const wealthIncome = Math.max(0, Math.round(baseWealthIncome * taxMult));
     let newGoldReserve = (realm.gold_reserve || 0) + wealthIncome - wealthUpkeep;
+    if (taxRateModifier !== 0) logEntries.push(`Daňový zákon: příjem zlata ${taxRateModifier > 0 ? "+" : ""}${taxRateModifier}% (${baseWealthIncome}→${wealthIncome})`);
 
     // ═══ EMBARGO: Block trade route income ═══
     // Check if any active embargo affects this player's trade routes
