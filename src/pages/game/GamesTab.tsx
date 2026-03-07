@@ -15,9 +15,48 @@ import LiveGamesFeed from "@/components/LiveGamesFeed";
 import StadiumArenaPanel from "@/components/StadiumArenaPanel";
 import NationalQualificationPanel from "@/components/NationalQualificationPanel";
 import GamesRevealOverlay from "@/components/GamesRevealOverlay";
+import GamesRevealPlayer from "@/components/GamesRevealPlayer";
 import HallOfRecords from "@/components/HallOfRecords";
 import LeaguePanel from "@/components/LeaguePanel";
 import AssociationsPanel from "@/components/league/AssociationsPanel";
+
+/* ═══ INLINE ATHLETES ROSTER ═══ */
+const OlympicsAthleteRoster = ({ participants, currentPlayerName }: { participants: any[]; currentPlayerName: string }) => {
+  if (participants.length === 0) return null;
+
+  const grouped = participants.reduce((acc: Record<string, any[]>, p) => {
+    (acc[p.player_name] = acc[p.player_name] || []).push(p);
+    return acc;
+  }, {});
+
+  return (
+    <Card className="border-border bg-card/50">
+      <CardHeader className="pb-2">
+        <CardTitle className="font-display text-xs flex items-center gap-1.5">
+          <Star className="h-3.5 w-3.5 text-primary" />
+          Sportovci ({participants.length})
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {Object.entries(grouped).map(([player, athletes]: [string, any[]]) => (
+            <div key={player} className={`space-y-1 p-2 rounded border ${player === currentPlayerName ? "border-primary/30 bg-primary/5" : "border-border bg-muted/20"}`}>
+              <p className="font-display text-[10px] font-bold">{player} ({athletes.length})</p>
+              {athletes.map((a: any) => (
+                <div key={a.id} className="flex items-center justify-between text-[9px]">
+                  <span className="font-medium">{a.athlete_name}</span>
+                  <span className="font-mono text-muted-foreground">
+                    S{a.strength} V{a.endurance} O{a.agility} T{a.tactics} C{a.charisma}
+                  </span>
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  );
+};
 
 interface Props {
   sessionId: string;
@@ -257,12 +296,7 @@ const GamesTab = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, o
   const activeFestival = festivals.find(f => !["concluded", "cancelled"].includes(f.status));
   const concludedFestivals = festivals.filter(f => f.status === "concluded");
 
-  // Auto-show overlay for ALL players when festival is in "finals" status
-  useEffect(() => {
-    if (activeFestival && activeFestival.status === "finals" && revealDismissed !== activeFestival.id && !revealFestivalId) {
-      setRevealFestivalId(activeFestival.id);
-    }
-  }, [activeFestival?.id, activeFestival?.status]);
+  // No longer auto-open overlay — finals view is now inline in the tab
 
   // Subscribe to festival status changes so non-host players see overlay in real-time
   useEffect(() => {
@@ -333,7 +367,7 @@ const GamesTab = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, o
 
         {/* ─── ACTIVE GAMES ─── */}
         <TabsContent value="active" className="space-y-4">
-          {/* Fullscreen Reveal Overlay */}
+          {/* Fullscreen Reveal Overlay (archive replay only) */}
           {revealFestivalId && (
             <GamesRevealOverlay
               festivalId={revealFestivalId}
@@ -359,6 +393,46 @@ const GamesTab = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, o
                 onRefetch={fetchData}
                 onRefetchParent={onRefetch}
               />
+            ) : activeFestival.status === "finals" ? (
+              /* ═══ INLINE LIVE OLYMPICS VIEW ═══ */
+              <>
+                {/* Festival header */}
+                <Card className="border-primary/30 bg-primary/5">
+                  <CardContent className="p-3">
+                    <div className="flex items-center gap-2">
+                      <Trophy className="h-5 w-5 text-primary" />
+                      <div>
+                        <h3 className="font-display font-bold text-sm">{activeFestival.name}</h3>
+                        <p className="text-[10px] text-muted-foreground">
+                          Hostitel: {activeFestival.host_player} | Finále probíhá
+                        </p>
+                      </div>
+                      <Badge className="ml-auto bg-red-500/15 text-red-400 border-red-500/30 animate-pulse text-[9px]">
+                        🔴 LIVE
+                      </Badge>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Athletes roster */}
+                <OlympicsAthleteRoster
+                  participants={participants.filter(p => p.festival_id === activeFestival.id)}
+                  currentPlayerName={currentPlayerName}
+                />
+
+                {/* Inline GamesRevealPlayer (disciplines, live feed, medals, crowd) */}
+                <GamesRevealPlayer
+                  festivalId={activeFestival.id}
+                  sessionId={sessionId}
+                  disciplines={disciplines}
+                  isHost={currentPlayerName === activeFestival.host_player}
+                  onComplete={() => { fetchData(); onRefetch(); }}
+                  currentTurn={currentTurn}
+                />
+
+                {/* Chat tribuna */}
+                <LiveGamesFeed sessionId={sessionId} festivalId={activeFestival.id} currentPlayerName={currentPlayerName} />
+              </>
             ) : (
               <>
                 {activeFestival.status === "nomination" && (
@@ -392,7 +466,7 @@ const GamesTab = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, o
               </CardContent>
             </Card>
           ) : null}
-          {activeFestival && activeFestival.status !== "candidacy" && !revealFestivalId && (
+          {activeFestival && !["candidacy", "finals"].includes(activeFestival.status) && !revealFestivalId && (
             <LiveGamesFeed sessionId={sessionId} festivalId={activeFestival.id} currentPlayerName={currentPlayerName} />
           )}
         </TabsContent>
