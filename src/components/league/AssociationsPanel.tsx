@@ -214,16 +214,18 @@ const AssociationsPanel = ({ sessionId, currentPlayerName, currentTurn }: Props)
         return;
       }
       const isGlad = assocType === "gladiator";
-      const existingCityIds = new Set(allAcademies.filter(a => a.player_name === currentPlayerName && a.is_gladiatorial === isGlad).map(a => a.city_id));
+      const existingCityIds = new Set(allAcademies.filter(a => a.player_name === currentPlayerName && (a as any).academy_type === assocType).map(a => a.city_id));
       const availableCity = playerCities.find(([id]) => !existingCityIds.has(id));
       if (!availableCity) {
         toast.error("Všechna města již mají akademii tohoto typu");
         return;
       }
       const [cityId, cityName] = availableCity;
-      const academyName = isGlad
+      const academyName = assocType === "gladiator"
         ? `Gladiátorská škola – ${cityName}`
-        : `Sportovní akademie – ${cityName}`;
+        : assocType === "olympic"
+          ? `Olympijská akademie – ${cityName}`
+          : `Akademie Sphaery – ${cityName}`;
       const { error } = await supabase.from("academies").insert({
         session_id: sessionId,
         city_id: cityId,
@@ -235,6 +237,7 @@ const AssociationsPanel = ({ sessionId, currentPlayerName, currentTurn }: Props)
         reputation: 10,
         is_gladiatorial: isGlad,
         association_id: assocId,
+        academy_type: assocType,
       } as any);
       if (error) throw error;
       toast.success(`${academyName} založena!`);
