@@ -58,6 +58,9 @@ const Dashboard = () => {
   const [worldEntityTarget, setWorldEntityTarget] = useState<{ type: string; id: string } | null>(null);
   const [showActionChooser, setShowActionChooser] = useState(false);
   const [eventDetailId, setEventDetailId] = useState<string | null>(null);
+  const [showNewTurnDialog, setShowNewTurnDialog] = useState(false);
+  const [newTurnNumber, setNewTurnNumber] = useState(0);
+  const prevTurnRef = useRef<number | null>(null);
   const [myRole, setMyRole] = useState<string>("player");
   const [myPlayerName, setMyPlayerName] = useState("Hráč");
   const [worldFoundation, setWorldFoundation] = useState<any>(null);
