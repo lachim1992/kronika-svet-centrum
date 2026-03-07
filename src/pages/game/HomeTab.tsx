@@ -19,6 +19,7 @@ import { toast } from "sonner";
 import { useDevMode } from "@/hooks/useDevMode";
 import ExplainDrawer from "@/components/dev/ExplainDrawer";
 import RealmIndicators from "@/components/realm/RealmIndicators";
+import RealmLawsDecrees from "@/components/realm/RealmLawsDecrees";
 
 const SETTLEMENT_LABELS: Record<string, string> = {
   HAMLET: "Osada", TOWNSHIP: "Městečko", CITY: "Město", POLIS: "Polis",
