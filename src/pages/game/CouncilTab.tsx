@@ -442,6 +442,7 @@ const CouncilTab = ({
     if (!decreePreview) return;
     setEnacting(true);
     try {
+      const decreeTitle = `Dekret: ${DECREE_TYPES.find(d => d.value === decreeType)?.label || decreeType}`;
       // Write to declarations table
       await supabase.from("declarations").insert({
         session_id: sessionId,
@@ -450,10 +451,32 @@ const CouncilTab = ({
         declaration_type: decreeType,
         turn_number: currentTurn,
         status: "published",
-        title: `Dekret: ${DECREE_TYPES.find(d => d.value === decreeType)?.label || decreeType}`,
+        title: decreeTitle,
         epic_text: decreePreview?.narrativeText || null,
         effects: decreePreview?.effects || [],
       });
+
+      // Auto-save as law with structured effects
+      const decreeEffects = (decreePreview?.effects || []).filter((e: any) => e.type && e.value !== undefined);
+      if (decreeEffects.length > 0) {
+        await supabase.from("laws").insert({
+          session_id: sessionId,
+          player_name: currentPlayerName,
+          law_name: decreeTitle,
+          full_text: decreeText,
+          structured_effects: decreeEffects.map((e: any) => ({ type: e.type, value: e.value })),
+          enacted_turn: currentTurn,
+        });
+        // Non-blocking AI rewrite
+        supabase.functions.invoke("law-process", {
+          body: { lawName: decreeTitle, fullText: decreeText, effects: decreeEffects, playerName: currentPlayerName, sessionId },
+        }).then(({ data: aiData }) => {
+          if (aiData?.epicText) {
+            supabase.from("laws").update({ ai_epic_text: aiData.epicText })
+              .eq("session_id", sessionId).eq("law_name", decreeTitle).eq("enacted_turn", currentTurn);
+          }
+        }).catch(() => {});
+      }
 
       // Apply faction impacts (mechanical effects on satisfaction & loyalty)
       if (factionVotes.length > 0) {
