@@ -17,6 +17,7 @@ interface Props {
   currentTurn: number;
   cities: Map<string, string>;
   onCreated: () => void;
+  existingTypes?: string[]; // types already created by this player
 }
 
 const ASSOC_TYPES = [
