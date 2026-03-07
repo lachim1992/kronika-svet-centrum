@@ -604,7 +604,7 @@ const LeaguePanel = ({ sessionId, currentPlayerName, currentTurn }: Props) => {
               <Globe className="h-3.5 w-3.5" /> World of Sphaera
             </TabsTrigger>
             <TabsTrigger value="manage" className="text-xs gap-1.5 data-[state=active]:bg-primary/15 data-[state=active]:text-primary font-display">
-              <Settings className="h-3.5 w-3.5" /> Manage My Teams
+              <Settings className="h-3.5 w-3.5" /> Moje týmy
               {myTeams.length > 0 && <Badge variant="secondary" className="text-[8px] h-3.5 px-1 ml-1">{myTeams.length}</Badge>}
             </TabsTrigger>
           </TabsList>
