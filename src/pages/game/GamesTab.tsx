@@ -296,12 +296,7 @@ const GamesTab = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, o
   const activeFestival = festivals.find(f => !["concluded", "cancelled"].includes(f.status));
   const concludedFestivals = festivals.filter(f => f.status === "concluded");
 
-  // Auto-show overlay for ALL players when festival is in "finals" status
-  useEffect(() => {
-    if (activeFestival && activeFestival.status === "finals" && revealDismissed !== activeFestival.id && !revealFestivalId) {
-      setRevealFestivalId(activeFestival.id);
-    }
-  }, [activeFestival?.id, activeFestival?.status]);
+  // No longer auto-open overlay — finals view is now inline in the tab
 
   // Subscribe to festival status changes so non-host players see overlay in real-time
   useEffect(() => {
