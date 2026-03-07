@@ -459,16 +459,20 @@ async function startPlayoffs(sb: any, session_id: string, season: any, matchResu
   const sorted = (fs || []).sort((a: any, b: any) => { if (b.points !== a.points) return b.points - a.points; const dA = a.goals_for-a.goals_against, dB = b.goals_for-b.goals_against; if (dB !== dA) return dB-dA; return b.goals_for-a.goals_for; });
 
   const qualifiedCount = Math.min(8, sorted.length);
+  // Guard: don't award titles from mini-seasons with very few matches played
+  const minRoundsForTitle = Math.max(4, Math.floor(season.total_rounds * 0.5));
+  const actualRoundsPlayed = season.current_round || 0;
+
   if (qualifiedCount < 4) {
-    // Not enough teams for playoffs, just crown #1
+    // Not enough teams for playoffs, just crown #1 (if enough rounds played)
     const champ = sorted[0];
-    if (champ) {
+    if (champ && actualRoundsPlayed >= minRoundsForTitle) {
       const { data: ct } = await sb.from("league_teams").select("titles_won").eq("id", champ.team_id).single();
       if (ct) await sb.from("league_teams").update({ titles_won: (ct.titles_won || 0) + 1 }).eq("id", champ.team_id);
     }
     await sb.from("league_seasons").update({
       status: "concluded", ended_turn: season.started_turn + season.total_rounds,
-      champion_team_id: champ?.team_id || null, playoff_status: "completed", playoff_bracket: [],
+      champion_team_id: (actualRoundsPlayed >= minRoundsForTitle ? champ?.team_id : null) || null, playoff_status: "completed", playoff_bracket: [],
     }).eq("id", season.id);
     for (const st of sorted) { const { data: t } = await sb.from("league_teams").select("seasons_played, total_wins, total_draws, total_losses, total_goals_for, total_goals_against").eq("id", st.team_id).single(); if (t) await sb.from("league_teams").update({ seasons_played: (t.seasons_played||0)+1, total_wins: (t.total_wins||0)+st.wins, total_draws: (t.total_draws||0)+st.draws, total_losses: (t.total_losses||0)+st.losses, total_goals_for: (t.total_goals_for||0)+st.goals_for, total_goals_against: (t.total_goals_against||0)+st.goals_against }).eq("id", st.team_id); }
     return { matches: matchResults || [], seasonComplete: true };
