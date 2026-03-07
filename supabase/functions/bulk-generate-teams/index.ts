@@ -62,7 +62,7 @@ Deno.serve(async (req) => {
     const { data: cities } = await sb.from("cities")
       .select("id, name, owner_player, development_level, city_stability, population_total")
       .eq("session_id", session_id)
-      .in("status", ["active", "occupied"]);
+      .not("status", "in", '("ruins","razed","abandoned")');
 
     if (!cities || cities.length === 0) {
       return new Response(JSON.stringify({ error: "Žádná města v této hře" }), {
