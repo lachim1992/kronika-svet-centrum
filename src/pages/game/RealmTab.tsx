@@ -5,8 +5,9 @@ import WarRoomPanel from "@/components/WarRoomPanel";
 import DeclarationsPanel from "@/components/DeclarationsPanel";
 import SecretObjectivesPanel from "@/components/SecretObjectivesPanel";
 import TurnProgressionPanel from "@/components/TurnProgressionPanel";
+import RealmDashboard from "@/components/RealmDashboard";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Shield, Swords, Feather, Megaphone, Target, Sparkles, Clock } from "lucide-react";
+import { Shield, Swords, Feather, Megaphone, Target, Sparkles, Clock, Crown } from "lucide-react";
 
 interface Props {
   sessionId: string;
