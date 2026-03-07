@@ -437,9 +437,16 @@ Deno.serve(async (req) => {
     // Create legends
     const legends = [];
     if (championId) {
-      // Logic for creating legend entry in great_persons would go here
-      // For now just return it
       legends.push(championId);
+    }
+
+    // ═══ WIKI PROPAGATION — delegate to shared function ═══
+    try {
+      await sb.functions.invoke("games-wiki-propagate", {
+        body: { session_id, festival_id },
+      });
+    } catch (wikiErr) {
+      console.error("Wiki propagation for games error:", wikiErr);
     }
 
     return new Response(JSON.stringify({

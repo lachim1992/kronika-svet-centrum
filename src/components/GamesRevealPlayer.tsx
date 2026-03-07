@@ -292,6 +292,11 @@ const GamesRevealPlayer = ({ festivalId, sessionId, disciplines, isHost, isAdmin
         reveal_phase: "concluded",
       }).eq("id", festivalId);
 
+      // Propagate results to wiki (non-blocking)
+      supabase.functions.invoke("games-wiki-propagate", {
+        body: { session_id: sessionId, festival_id: festivalId },
+      }).catch(e => console.error("Wiki propagation error:", e));
+
       toast.success("🏟️ Hry slavnostně uzavřeny!");
       onComplete?.();
     } catch (e: any) {
