@@ -529,7 +529,7 @@ const Dashboard = () => {
         />
       )}
       {activeTab === "ailab" && (
-        <AILabTab sessionId={session.id} />
+        <AILabTab sessionId={session.id} onRefetch={refetch} />
       )}
       {activeTab === "persistent" && (
         <PersistentTab
