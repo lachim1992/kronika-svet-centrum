@@ -310,6 +310,28 @@ const CouncilTab = ({
         effects: decree.effects || [],
       });
 
+      // Auto-save as law with structured effects
+      const decreeEffects = (decree.effects || []).filter((e: any) => e.type && e.value !== undefined);
+      if (decreeEffects.length > 0) {
+        await supabase.from("laws").insert({
+          session_id: sessionId,
+          player_name: currentPlayerName,
+          law_name: `Dekret: ${agendaItem.title}`,
+          full_text: decree.decreeText || agendaItem.title,
+          structured_effects: decreeEffects.map((e: any) => ({ type: e.type, value: e.value })),
+          enacted_turn: currentTurn,
+        });
+        // Non-blocking AI rewrite
+        supabase.functions.invoke("law-process", {
+          body: { lawName: `Dekret: ${agendaItem.title}`, fullText: decree.decreeText, effects: decreeEffects, playerName: currentPlayerName, sessionId },
+        }).then(({ data: aiData }) => {
+          if (aiData?.epicText) {
+            supabase.from("laws").update({ ai_epic_text: aiData.epicText })
+              .eq("session_id", sessionId).eq("law_name", `Dekret: ${agendaItem.title}`).eq("enacted_turn", currentTurn);
+          }
+        }).catch(() => {});
+      }
+
       // Apply faction impacts
       const votes = computeFactionReactions(allFactions, decree.decreeType, decree.effects);
       if (votes.length > 0) {
@@ -334,7 +356,7 @@ const CouncilTab = ({
         metadata: { source: "council_session", decree_type: decree.decreeType, effects: decree.effects },
       });
 
-      toast.success(`📜 Dekret "${agendaItem.title}" vyhlášen!`);
+      toast.success(`📜 Dekret "${agendaItem.title}" vyhlášen a zapsán jako zákon!`);
       onRefetch();
     } catch (e) {
       console.error(e);
