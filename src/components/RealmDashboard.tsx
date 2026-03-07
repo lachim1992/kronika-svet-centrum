@@ -1,14 +1,11 @@
 import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { ensureRealmResources, migrateLegacyMilitary } from "@/lib/turnEngine";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Slider } from "@/components/ui/slider";
-import { Badge } from "@/components/ui/badge";
-import {
-  Loader2, Play, Crown, Gauge, Skull, Code, ScrollText
-} from "lucide-react";
+import { Loader2, Play, Crown, Code } from "lucide-react";
 import { toast } from "sonner";
+import RealmIndicators from "@/components/realm/RealmIndicators";
+import RealmLawsDecrees from "@/components/realm/RealmLawsDecrees";
 
 interface Props {
   sessionId: string;
@@ -21,7 +18,6 @@ interface Props {
 
 const RealmDashboard = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, onRefetch }: Props) => {
   const [realm, setRealm] = useState<any>(null);
-  const [activeLaws, setActiveLaws] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState(false);
   const [showDebug, setShowDebug] = useState(false);
@@ -30,18 +26,13 @@ const RealmDashboard = ({ sessionId, currentPlayerName, currentTurn, myRole, cit
 
   const fetchData = useCallback(async () => {
     setLoading(true);
-    const [realmRes, lawsRes] = await Promise.all([
-      supabase.from("realm_resources").select("*")
-        .eq("session_id", sessionId).eq("player_name", currentPlayerName).maybeSingle(),
-      supabase.from("laws").select("law_name, structured_effects, is_active")
-        .eq("session_id", sessionId).eq("player_name", currentPlayerName).eq("is_active", true),
-    ]);
-    if (realmRes.data) setRealm(realmRes.data);
+    const { data } = await supabase.from("realm_resources").select("*")
+      .eq("session_id", sessionId).eq("player_name", currentPlayerName).maybeSingle();
+    if (data) setRealm(data);
     else {
       const r = await ensureRealmResources(sessionId, currentPlayerName);
       setRealm(r);
     }
-    setActiveLaws(lawsRes.data || []);
     setLoading(false);
   }, [sessionId, currentPlayerName]);
 
@@ -73,13 +64,6 @@ const RealmDashboard = ({ sessionId, currentPlayerName, currentTurn, myRole, cit
     }
   };
 
-  const handleMobilizationChange = async (val: number[]) => {
-    if (!realm) return;
-    const rate = val[0] / 100;
-    await supabase.from("realm_resources").update({ mobilization_rate: rate }).eq("id", realm.id);
-    setRealm({ ...realm, mobilization_rate: rate });
-  };
-
   const handleMigrateLegacy = async () => {
     const res = await migrateLegacyMilitary(sessionId);
     toast.success(`Migrace dokončena: ${res.migrated} jednotek`);
@@ -90,17 +74,13 @@ const RealmDashboard = ({ sessionId, currentPlayerName, currentTurn, myRole, cit
     return <div className="flex items-center justify-center py-12"><Loader2 className="h-6 w-6 animate-spin" /></div>;
   }
 
-  const famineCities = myCities.filter(c => c.famine_turn);
-  const availableManpower = (realm?.manpower_pool || 0) - (realm?.manpower_committed || 0);
-  const netGrain = realm?.last_turn_grain_net ?? 0;
-
   return (
     <div className="space-y-4">
-      {/* Process Turn */}
+      {/* Header + Process Turn */}
       <div className="flex items-center justify-between">
         <h3 className="text-sm font-display font-semibold flex items-center gap-2">
           <Crown className="h-4 w-4 text-illuminated" />
-          Ekonomický přehled
+          Přehled říše
         </h3>
         <Button onClick={handleProcessTurn} disabled={processing} size="sm" className="font-display">
           {processing ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <Play className="h-3 w-3 mr-1" />}
@@ -108,115 +88,11 @@ const RealmDashboard = ({ sessionId, currentPlayerName, currentTurn, myRole, cit
         </Button>
       </div>
 
-      {/* Famine alerts */}
-      {famineCities.length > 0 && (
-        <Card className="border-destructive/50 bg-destructive/5">
-          <CardContent className="p-3">
-            <div className="flex items-center gap-2 mb-1">
-              <Skull className="h-4 w-4 text-destructive" />
-              <span className="text-sm font-display font-semibold text-destructive">Hladomor!</span>
-            </div>
-            {famineCities.map(c => (
-              <div key={c.id} className="text-xs text-destructive">
-                {c.name} — deficit {c.famine_severity}, stabilita {c.city_stability}
-              </div>
-            ))}
-          </CardContent>
-        </Card>
-      )}
+      {/* Key Indicators */}
+      <RealmIndicators realm={realm} cities={myCities} currentTurn={currentTurn} />
 
-      {/* Grain summary */}
-      <Card>
-        <CardContent className="p-3 space-y-2">
-          <div className="grid grid-cols-2 gap-3 text-xs">
-            <div className="flex justify-between"><span className="text-muted-foreground">Produkce obilí</span><span className="font-semibold">{realm?.last_turn_grain_prod || 0}</span></div>
-            <div className="flex justify-between"><span className="text-muted-foreground">Spotřeba obilí</span><span className="font-semibold">{realm?.last_turn_grain_cons || 0}</span></div>
-            <div className="flex justify-between"><span className="text-muted-foreground">Bilance</span><span className={`font-semibold ${netGrain < 0 ? "text-destructive" : "text-accent"}`}>{netGrain >= 0 ? "+" : ""}{netGrain}</span></div>
-            <div className="flex justify-between"><span className="text-muted-foreground">Zásoby</span><span className="font-semibold">{realm?.grain_reserve || 0} / {realm?.granary_capacity || 500}</span></div>
-          </div>
-          <div className="w-full bg-muted rounded-full h-1.5">
-            <div className="bg-primary rounded-full h-1.5 transition-all" style={{ width: `${Math.min(100, ((realm?.grain_reserve || 0) / Math.max(1, realm?.granary_capacity || 500)) * 100)}%` }} />
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Mobilization */}
-      <Card>
-        <CardHeader className="p-3 pb-1"><CardTitle className="text-xs flex items-center gap-1"><Gauge className="h-3 w-3" />Mobilizace ({Math.round((realm?.mobilization_rate || 0.1) * 100)}%)</CardTitle></CardHeader>
-        <CardContent className="p-3 pt-2">
-          <Slider
-            value={[Math.round((realm?.mobilization_rate || 0.1) * 100)]}
-            onValueCommit={handleMobilizationChange}
-            max={50} min={0} step={1}
-            className="w-full"
-          />
-          <div className="flex justify-between text-[10px] text-muted-foreground mt-1">
-            <span>0% — Mír</span>
-            <span>30% — Soft cap</span>
-            <span>50% — Hard cap</span>
-          </div>
-          <div className="grid grid-cols-3 gap-2 mt-2 text-xs">
-            <div><span className="text-muted-foreground">K dispozici:</span> <strong>{availableManpower}</strong></div>
-            <div><span className="text-muted-foreground">Odvedení:</span> <strong>{realm?.manpower_committed || 0}</strong></div>
-            <div><span className="text-muted-foreground">Logistika:</span> <strong>{realm?.logistic_capacity || 0}</strong></div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Active Laws Effects */}
-      {activeLaws.length > 0 && (
-        <Card>
-          <CardHeader className="p-3 pb-1">
-            <CardTitle className="text-xs flex items-center gap-1">
-              <ScrollText className="h-3 w-3" />Aktivní zákony ({activeLaws.length})
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="p-3 pt-1">
-            <div className="space-y-1">
-              {activeLaws.map((law, i) => {
-                const effects = Array.isArray(law.structured_effects) ? law.structured_effects : [];
-                const effectLabels: Record<string, string> = {
-                  tax_change: "💰 Stabilita", tax_rate_percent: "🪙 Daň%", grain_ration_modifier: "🌾 Příděl",
-                  trade_restriction: "🚫 Obchod", active_pop_modifier: "👷 Práce", military_funding: "⚔️ Vojsko",
-                  civil_reform: "🏛️ Reforma", max_mobilization_modifier: "🛡️ Odvody",
-                };
-                return (
-                  <div key={i} className="flex items-center gap-2 flex-wrap text-[10px]">
-                    <span className="font-semibold truncate max-w-[120px]">{law.law_name}</span>
-                    {effects.map((e: any, j: number) => (
-                      <Badge key={j} variant="outline" className="text-[9px] py-0">
-                        {effectLabels[e.type] || e.type}: {e.value > 0 ? "+" : ""}{e.value}
-                      </Badge>
-                    ))}
-                  </div>
-                );
-              })}
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Resources */}
-      <Card>
-        <CardHeader className="p-3 pb-1"><CardTitle className="text-xs">Suroviny</CardTitle></CardHeader>
-        <CardContent className="p-3 pt-1">
-          <div className="grid grid-cols-3 gap-2 text-xs">
-            {[
-              { label: "Dřevo", val: realm?.wood_reserve },
-              { label: "Kámen", val: realm?.stone_reserve },
-              { label: "Železo", val: realm?.iron_reserve },
-              { label: "Koně", val: `${realm?.horses_reserve || 0}/${realm?.stables_capacity || 100}` },
-              { label: "Zlato", val: realm?.gold_reserve },
-              { label: "Stabilita", val: realm?.stability },
-            ].map(r => (
-              <div key={r.label} className="flex justify-between">
-                <span className="text-muted-foreground">{r.label}</span>
-                <span className="font-bold">{r.val ?? 0}</span>
-              </div>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
+      {/* Laws & Decrees */}
+      <RealmLawsDecrees sessionId={sessionId} currentPlayerName={currentPlayerName} currentTurn={currentTurn} />
 
       {/* Legacy migration (admin only) */}
       {(myRole === "admin" || myRole === "moderator") && (
@@ -225,7 +101,7 @@ const RealmDashboard = ({ sessionId, currentPlayerName, currentTurn, myRole, cit
         </Button>
       )}
 
-      {/* Debug toggle (dev only) */}
+      {/* Debug toggle */}
       {(myRole === "admin" || myRole === "moderator") && (
         <div>
           <Button variant="ghost" size="sm" onClick={() => setShowDebug(!showDebug)} className="text-xs gap-1">
