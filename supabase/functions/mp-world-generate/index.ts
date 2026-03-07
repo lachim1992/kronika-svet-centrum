@@ -1442,6 +1442,7 @@ DŮLEŽITÉ: Hráčské frakce MUSÍ mít isPlayer=true a playerName musí přes
       console.warn("Hex generation warning:", hexErr);
     }
 
+    await setStep("generating_media");
     // ═══ STEP O: Wiki profiles + entity images (best effort) ═══
     let wikiGenerated = 0;
     try {
