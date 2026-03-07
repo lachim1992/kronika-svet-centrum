@@ -19,6 +19,7 @@ import GamesRevealPlayer from "@/components/GamesRevealPlayer";
 import HallOfRecords from "@/components/HallOfRecords";
 import LeaguePanel from "@/components/LeaguePanel";
 import AssociationsPanel from "@/components/league/AssociationsPanel";
+import OlympiadReport from "@/components/OlympiadReport";
 
 /* ═══ INLINE ATHLETES ROSTER ═══ */
 const OlympicsAthleteRoster = ({ participants, currentPlayerName }: { participants: any[]; currentPlayerName: string }) => {
