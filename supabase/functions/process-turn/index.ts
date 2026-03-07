@@ -383,14 +383,23 @@ Deno.serve(async (req) => {
 
     let activePopModifier = 0;
     let maxMobModifier = 0;
+    let taxRateModifier = 0;       // % gold income modifier
+    let grainRationModifier = 0;   // % grain consumption modifier
+    let tradeRestriction = 0;      // % trade income penalty
+    const lawEffectsLog: string[] = [];
+
     for (const law of (activeLaws || [])) {
       const effects = law.structured_effects as any[];
       if (!Array.isArray(effects)) continue;
       for (const eff of effects) {
-        if (eff.type === "active_pop_modifier") activePopModifier += (eff.value || 0);
-        if (eff.type === "max_mobilization_modifier") maxMobModifier += (eff.value || 0);
+        if (eff.type === "active_pop_modifier") { activePopModifier += (eff.value || 0); lawEffectsLog.push(`${eff.type}: ${eff.value}`); }
+        if (eff.type === "max_mobilization_modifier") { maxMobModifier += (eff.value || 0); lawEffectsLog.push(`${eff.type}: ${eff.value}`); }
+        if (eff.type === "tax_rate_percent") { taxRateModifier += (eff.value || 0); lawEffectsLog.push(`tax_rate_percent: ${eff.value}%`); }
+        if (eff.type === "grain_ration_modifier") { grainRationModifier += (eff.value || 0); lawEffectsLog.push(`grain_ration: ${eff.value}%`); }
+        if (eff.type === "trade_restriction") { tradeRestriction += (eff.value || 0); lawEffectsLog.push(`trade_restriction: ${eff.value}%`); }
       }
     }
+    if (lawEffectsLog.length > 0) logEntries.push(`Zákony: ${lawEffectsLog.join(", ")}`);
 
     let activePopRaw = 0;
     for (const city of myCities) {
@@ -519,10 +528,12 @@ Deno.serve(async (req) => {
       }
     }
 
-    // 4) Consumption
+    // 4) Consumption (modified by grain_ration_modifier law)
+    const grainRationMult = 1 + (grainRationModifier / 100); // e.g. -10 → 0.9x consumption
     let totalConsumption = 0;
     for (const city of myCities) {
-      const consumption = computeGrainConsumption(city);
+      let consumption = computeGrainConsumption(city);
+      consumption = Math.max(1, Math.round(consumption * grainRationMult));
       totalConsumption += consumption;
       const snap = cityProdSnapshot[city.id] || { grain: 0, wood: 0, stone: 0, iron: 0, special: 0 };
       await supabase.from("cities").update({
@@ -534,6 +545,7 @@ Deno.serve(async (req) => {
         last_turn_special_prod: snap.special,
       }).eq("id", city.id);
     }
+    if (grainRationModifier !== 0) logEntries.push(`Příděl: spotřeba obilí ${grainRationModifier > 0 ? "+" : ""}${grainRationModifier}% → ×${grainRationMult.toFixed(2)}`);
 
     // Army Upkeep
     const { data: stacks } = await supabase.from("military_stacks")
@@ -603,10 +615,13 @@ Deno.serve(async (req) => {
     const newStoneReserve = (realm.stone_reserve || 0) + totalStoneProd;
     const newIronReserve = (realm.iron_reserve || 0) + totalIronProd;
 
-    // Wealth — unified multiplier + open borders trade efficiency bonus
+    // Wealth — unified multiplier + open borders trade efficiency bonus + tax law modifier
     const openBordersTradeBonus = openBordersBonuses.trade_efficiency_bonus || 0;
-    const wealthIncome = Math.round(computeWealthIncome(myCities, cityDistrictEffects) * uMult.wealth * (1 + openBordersTradeBonus));
+    const taxMult = 1 + (taxRateModifier / 100); // e.g. +10 → 1.1x gold income
+    const baseWealthIncome = Math.round(computeWealthIncome(myCities, cityDistrictEffects) * uMult.wealth * (1 + openBordersTradeBonus));
+    const wealthIncome = Math.max(0, Math.round(baseWealthIncome * taxMult));
     let newGoldReserve = (realm.gold_reserve || 0) + wealthIncome - wealthUpkeep;
+    if (taxRateModifier !== 0) logEntries.push(`Daňový zákon: příjem zlata ${taxRateModifier > 0 ? "+" : ""}${taxRateModifier}% (${baseWealthIncome}→${wealthIncome})`);
 
     // ═══ EMBARGO: Block trade route income ═══
     // Check if any active embargo affects this player's trade routes
@@ -623,9 +638,11 @@ Deno.serve(async (req) => {
         logEntries.push(`🚫 Obchodní cesta s ${otherPlayer} blokována embargem`);
         continue;
       }
-      // Apply pact-based trade efficiency modifier
+      // Apply pact-based trade efficiency modifier + law trade restriction
       const pactMod = getTradeEfficiencyModifier(allPacts, playerName, otherPlayer);
-      const routeIncome = Math.round((route.gold_per_turn || 0) * (1 + pactMod));
+      const lawTradeReduction = Math.min(1, tradeRestriction / 100); // e.g. 20 → 0.2 penalty
+      const routeIncome = Math.max(0, Math.round((route.gold_per_turn || 0) * (1 + pactMod) * (1 - lawTradeReduction)));
+      if (lawTradeReduction > 0) logEntries.push(`🚫 Obchodní omezení: ${otherPlayer} −${Math.round(lawTradeReduction * 100)}%`);
       tradeRouteIncome += routeIncome;
     }
     newGoldReserve += tradeRouteIncome;
@@ -945,6 +962,7 @@ Deno.serve(async (req) => {
         famineActive,
         famineCityCount,
         logEntries: logEntries.length,
+        lawEffects: { taxRateModifier, grainRationModifier, tradeRestriction, activePopModifier, maxMobModifier },
         armyFoodUpkeep,
         armyGoldUpkeep: wealthUpkeep,
       },

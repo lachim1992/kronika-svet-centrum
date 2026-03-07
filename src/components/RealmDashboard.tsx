@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
 import { Badge } from "@/components/ui/badge";
 import {
-  Loader2, Play, Crown, Gauge, Skull, Code
+  Loader2, Play, Crown, Gauge, Skull, Code, ScrollText
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -21,6 +21,7 @@ interface Props {
 
 const RealmDashboard = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, onRefetch }: Props) => {
   const [realm, setRealm] = useState<any>(null);
+  const [activeLaws, setActiveLaws] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState(false);
   const [showDebug, setShowDebug] = useState(false);
@@ -29,14 +30,18 @@ const RealmDashboard = ({ sessionId, currentPlayerName, currentTurn, myRole, cit
 
   const fetchData = useCallback(async () => {
     setLoading(true);
-    const { data } = await supabase
-      .from("realm_resources").select("*")
-      .eq("session_id", sessionId).eq("player_name", currentPlayerName).maybeSingle();
-    if (data) setRealm(data);
+    const [realmRes, lawsRes] = await Promise.all([
+      supabase.from("realm_resources").select("*")
+        .eq("session_id", sessionId).eq("player_name", currentPlayerName).maybeSingle(),
+      supabase.from("laws").select("law_name, structured_effects, is_active")
+        .eq("session_id", sessionId).eq("player_name", currentPlayerName).eq("is_active", true),
+    ]);
+    if (realmRes.data) setRealm(realmRes.data);
     else {
       const r = await ensureRealmResources(sessionId, currentPlayerName);
       setRealm(r);
     }
+    setActiveLaws(lawsRes.data || []);
     setLoading(false);
   }, [sessionId, currentPlayerName]);
 
@@ -52,8 +57,11 @@ const RealmDashboard = ({ sessionId, currentPlayerName, currentTurn, myRole, cit
       if (data?.skipped) {
         toast.info(`Kolo ${currentTurn} již bylo zpracováno`);
       } else {
+        const le = data?.summary?.lawEffects;
+        const lawInfo = le && (le.taxRateModifier || le.grainRationModifier || le.tradeRestriction)
+          ? ` | Zákony: ${le.taxRateModifier ? `daně ${le.taxRateModifier > 0 ? "+" : ""}${le.taxRateModifier}%` : ""}${le.grainRationModifier ? ` příděl ${le.grainRationModifier > 0 ? "+" : ""}${le.grainRationModifier}%` : ""}${le.tradeRestriction ? ` obchod −${le.tradeRestriction}%` : ""}` : "";
         toast.success(`Kolo ${currentTurn} zpracováno`, {
-          description: `Obilí: ${data?.summary?.netGrain >= 0 ? "+" : ""}${data?.summary?.netGrain}, Zásoby: ${data?.summary?.grainReserve}/${data?.summary?.granaryCapacity}`,
+          description: `Obilí: ${data?.summary?.netGrain >= 0 ? "+" : ""}${data?.summary?.netGrain}, Zásoby: ${data?.summary?.grainReserve}/${data?.summary?.granaryCapacity}${lawInfo}`,
         });
       }
       await fetchData();
@@ -154,6 +162,39 @@ const RealmDashboard = ({ sessionId, currentPlayerName, currentTurn, myRole, cit
           </div>
         </CardContent>
       </Card>
+
+      {/* Active Laws Effects */}
+      {activeLaws.length > 0 && (
+        <Card>
+          <CardHeader className="p-3 pb-1">
+            <CardTitle className="text-xs flex items-center gap-1">
+              <ScrollText className="h-3 w-3" />Aktivní zákony ({activeLaws.length})
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-3 pt-1">
+            <div className="space-y-1">
+              {activeLaws.map((law, i) => {
+                const effects = Array.isArray(law.structured_effects) ? law.structured_effects : [];
+                const effectLabels: Record<string, string> = {
+                  tax_change: "💰 Stabilita", tax_rate_percent: "🪙 Daň%", grain_ration_modifier: "🌾 Příděl",
+                  trade_restriction: "🚫 Obchod", active_pop_modifier: "👷 Práce", military_funding: "⚔️ Vojsko",
+                  civil_reform: "🏛️ Reforma", max_mobilization_modifier: "🛡️ Odvody",
+                };
+                return (
+                  <div key={i} className="flex items-center gap-2 flex-wrap text-[10px]">
+                    <span className="font-semibold truncate max-w-[120px]">{law.law_name}</span>
+                    {effects.map((e: any, j: number) => (
+                      <Badge key={j} variant="outline" className="text-[9px] py-0">
+                        {effectLabels[e.type] || e.type}: {e.value > 0 ? "+" : ""}{e.value}
+                      </Badge>
+                    ))}
+                  </div>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Resources */}
       <Card>

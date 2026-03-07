@@ -14,8 +14,10 @@ Deno.serve(async (req) => {
 
     const effectDescriptions = (effects || []).map((e: any) => {
       const labels: Record<string, string> = {
-        tax_change: "změna daní", trade_restriction: "obchodní omezení",
+        tax_change: "změna daní (stabilita)", tax_rate_percent: "daňová sazba (% zlata)",
+        grain_ration_modifier: "potravinový příděl", trade_restriction: "obchodní omezení",
         military_funding: "vojenské financování", civil_reform: "občanská reforma",
+        active_pop_modifier: "pracovní povinnost", max_mobilization_modifier: "odvodová povinnost",
       };
       return `${labels[e.type] || e.type} (síla: ${e.value})`;
     }).join(", ");

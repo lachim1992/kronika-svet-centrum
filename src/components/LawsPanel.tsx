@@ -16,10 +16,14 @@ interface Props {
 }
 
 const EFFECT_TYPES = [
-  { value: "tax_change", label: "Změna daní", icon: "💰" },
-  { value: "trade_restriction", label: "Obchodní omezení", icon: "🚫" },
-  { value: "military_funding", label: "Vojenské financování", icon: "⚔️" },
-  { value: "civil_reform", label: "Občanská reforma", icon: "🏛️" },
+  { value: "tax_change", label: "Změna daní (stabilita)", icon: "💰", hint: "Kladná = vyšší daně (−stabilita), záporná = nižší (+stabilita)" },
+  { value: "tax_rate_percent", label: "Daňová sazba (% zlata)", icon: "🪙", hint: "Modifikátor příjmu zlata v %. +10 = +10% zlata" },
+  { value: "grain_ration_modifier", label: "Potravinový příděl", icon: "🌾", hint: "Modifikátor spotřeby obilí v %. −10 = úsporný, +15 = štědrý" },
+  { value: "trade_restriction", label: "Obchodní omezení", icon: "🚫", hint: "Penalizace efektivity obchodu v %. +20 = −20% příjmu z obchodu" },
+  { value: "active_pop_modifier", label: "Pracovní povinnost", icon: "👷", hint: "Modifikátor podílu aktivní populace. +0.05 = +5% pracujících" },
+  { value: "military_funding", label: "Vojenské financování", icon: "⚔️", hint: "Zvyšuje morálku armád" },
+  { value: "civil_reform", label: "Občanská reforma", icon: "🏛️", hint: "Zvyšuje stabilitu měst" },
+  { value: "max_mobilization_modifier", label: "Odvodová povinnost", icon: "🛡️", hint: "Modifikátor max mobilizace. +0.05 = +5% mobilizace" },
 ];
 
 const LawsPanel = ({ sessionId, currentPlayerName, currentTurn, myRole }: Props) => {
@@ -76,6 +80,7 @@ const LawsPanel = ({ sessionId, currentPlayerName, currentTurn, myRole }: Props)
             fullText: fullText.trim(),
             effects,
             playerName: currentPlayerName,
+            sessionId,
           },
         });
 
@@ -189,7 +194,7 @@ const LawsPanel = ({ sessionId, currentPlayerName, currentTurn, myRole }: Props)
                     </SelectTrigger>
                     <SelectContent>
                       {EFFECT_TYPES.map(et => (
-                        <SelectItem key={et.value} value={et.value}>
+                        <SelectItem key={et.value} value={et.value} title={et.hint}>
                           {et.icon} {et.label}
                         </SelectItem>
                       ))}
@@ -259,7 +264,9 @@ const LawsPanel = ({ sessionId, currentPlayerName, currentTurn, myRole }: Props)
 function LawCard({ law, canRepeal, onRepeal }: { law: any; canRepeal: boolean; onRepeal?: () => void }) {
   const effects = Array.isArray(law.structured_effects) ? law.structured_effects : [];
   const effectLabels: Record<string, string> = {
-    tax_change: "💰 Daně", trade_restriction: "🚫 Obchod", military_funding: "⚔️ Vojsko", civil_reform: "🏛️ Reforma",
+    tax_change: "💰 Daně", tax_rate_percent: "🪙 Daň%", grain_ration_modifier: "🌾 Příděl",
+    trade_restriction: "🚫 Obchod", active_pop_modifier: "👷 Práce", military_funding: "⚔️ Vojsko",
+    civil_reform: "🏛️ Reforma", max_mobilization_modifier: "🛡️ Odvody",
   };
 
   return (
