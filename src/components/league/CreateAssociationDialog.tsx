@@ -27,12 +27,13 @@ const ASSOC_TYPES = [
 ];
 
 const CreateAssociationDialog = ({ open, onOpenChange, sessionId, currentPlayerName, currentTurn, cities, onCreated, existingTypes = [] }: Props) => {
+  const firstAvailable = ASSOC_TYPES.find(t => !existingTypes.includes(t.value))?.value || "sphaera";
   const [step, setStep] = useState(0);
   const [name, setName] = useState("");
   const [motto, setMotto] = useState("");
   const [description, setDescription] = useState("");
   const [cityId, setCityId] = useState("");
-  const [assocType, setAssocType] = useState("sphaera");
+  const [assocType, setAssocType] = useState(firstAvailable);
   const [colorPrimary, setColorPrimary] = useState("#8b0000");
   const [colorSecondary, setColorSecondary] = useState("#1a1a2e");
   const [creating, setCreating] = useState(false);
