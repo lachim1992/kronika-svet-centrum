@@ -391,7 +391,8 @@ Deno.serve(async (req) => {
           traits,
           training_started_turn: turn - acad.training_cycle_turns,
           graduation_turn: turn,
-          status: "graduated",
+          status: graduateStatus,
+          graduate_type: graduateType,
           bio,
           portrait_url: portraitUrl,
         }).select("id").single();

@@ -68,9 +68,11 @@ const CreateAssociationDialog = ({ open, onOpenChange, sessionId, currentPlayerN
 
       // Auto-create first academy under this association
       const isGladiatorial = assocType === "gladiator";
-      const academyName = isGladiatorial
+      const academyName = assocType === "gladiator"
         ? `Gladiátorská škola – ${cities.get(cityId) || "?"}`
-        : `Sportovní akademie – ${cities.get(cityId) || "?"}`;
+        : assocType === "olympic"
+          ? `Olympijská akademie – ${cities.get(cityId) || "?"}`
+          : `Akademie Sphaery – ${cities.get(cityId) || "?"}`;
       await supabase.from("academies").insert({
         session_id: sessionId,
         city_id: cityId,
@@ -84,6 +86,7 @@ const CreateAssociationDialog = ({ open, onOpenChange, sessionId, currentPlayerN
         reputation: 10,
         is_gladiatorial: isGladiatorial,
         association_id: assocData.id,
+        academy_type: assocType,
       } as any);
 
       toast.success(`${name} založen s první akademií!`);

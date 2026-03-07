@@ -905,6 +905,7 @@ const AssociationsPanel = ({ sessionId, currentPlayerName, currentTurn }: Props)
         currentTurn={currentTurn}
         cities={cities}
         onCreated={fetchData}
+        existingTypes={myAssociations.map(a => a.association_type)}
       />
 
       {/* Create Team Dialog */}
