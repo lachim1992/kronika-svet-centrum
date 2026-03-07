@@ -24,6 +24,7 @@ import WorldMemoryPanel from "@/components/WorldMemoryPanel";
 import EntityContributionsPanel from "@/components/EntityContributionsPanel";
 import SettlementUpgradePanel from "@/components/SettlementUpgradePanel";
 import CityWatchButton from "@/components/CityWatchButton";
+import AdminWikiTools from "./AdminWikiTools";
 
 const ENTITY_ICONS: Record<string, React.ReactNode> = {
   country: <Flag className="h-5 w-5" />,
