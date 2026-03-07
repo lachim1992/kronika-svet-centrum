@@ -737,6 +737,9 @@ const GamesTab = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, o
                           <Button size="sm" variant="outline" className="text-xs gap-1" onClick={() => { setRevealFestivalId(f.id); setRevealStartWithReport(true); }}>
                             <BookOpen className="h-3 w-3" /> Zobrazit report
                           </Button>
+                          <Button size="sm" variant="outline" className="text-xs gap-1" onClick={() => setReportFestivalId(f.id)}>
+                            <Newspaper className="h-3 w-3" /> Podrobný report
+                          </Button>
                         </div>
                         )}
                         {/* AI Narrative */}
