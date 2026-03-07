@@ -631,9 +631,57 @@ Deno.serve(async (req) => {
     newGoldReserve += tradeRouteIncome;
     if (tradeRouteIncome > 0) logEntries.push(`Příjem z obchodních cest: +${tradeRouteIncome} zlata`);
     
-    // Sport Funding (Percent of reserve)
+    // Sport Funding (Percent of reserve) → goes to association budgets
     const sportFundingExpense = Math.floor(Math.max(0, newGoldReserve) * (sportFundingPct / 100));
     newGoldReserve -= sportFundingExpense;
+
+    // ═══ ASSOCIATION ECONOMICS (per-turn) ═══
+    // Revenue: fan_base income, reputation sponsorship, sport funding
+    // Costs: player salaries, team upkeep
+    const { data: playerAssocs } = await supabase.from("sports_associations")
+      .select("id, budget, fan_base, reputation, association_type, player_name")
+      .eq("session_id", sessionId).eq("player_name", playerName);
+
+    if (playerAssocs && playerAssocs.length > 0) {
+      // Distribute sport funding proportionally across associations
+      const fundingPerAssoc = playerAssocs.length > 0 ? Math.floor(sportFundingExpense / playerAssocs.length) : 0;
+
+      for (const assoc of playerAssocs) {
+        // Revenue streams
+        const fanIncome = Math.round((assoc.fan_base || 0) * 0.08);     // 0.08 per fan
+        const repIncome = Math.round((assoc.reputation || 0) * 0.4);    // 0.4 per reputation
+        const fundingIncome = fundingPerAssoc;
+        const totalIncome = fanIncome + repIncome + fundingIncome;
+
+        // Costs
+        const { data: assocTeams } = await supabase.from("league_teams")
+          .select("id").eq("session_id", sessionId).eq("association_id", assoc.id).eq("is_active", true);
+        const teamCount = assocTeams?.length || 0;
+        const { count: playerCount } = await supabase.from("league_players")
+          .select("id", { count: "exact", head: true })
+          .in("team_id", (assocTeams || []).map((t: any) => t.id))
+          .eq("is_dead", false);
+        const salaries = (playerCount || 0) * 2;    // 2 gold per player
+        const teamUpkeep = teamCount * 5;            // 5 gold per team
+        const totalCosts = salaries + teamUpkeep;
+
+        const netBudget = totalIncome - totalCosts;
+        const newBudget = Math.max(0, (assoc.budget || 0) + netBudget);
+
+        // Fan base passive growth from reputation (baseline growth)
+        const repFanGrowth = assoc.reputation >= 30 ? Math.floor(assoc.reputation / 30) : 0;
+        const newFanBase = (assoc.fan_base || 0) + repFanGrowth;
+
+        await supabase.from("sports_associations").update({
+          budget: newBudget,
+          fan_base: newFanBase,
+        }).eq("id", assoc.id);
+
+        if (netBudget !== 0) {
+          logEntries.push(`${assoc.association_type === 'sphaera' ? '⚔️' : assoc.association_type === 'olympic' ? '🏟️' : '💀'} ${assoc.association_type}: příjem ${totalIncome} (fanoušci ${fanIncome}, reputace ${repIncome}, dotace ${fundingIncome}), náklady ${totalCosts} → bilance ${netBudget >= 0 ? '+' : ''}${netBudget}`);
+        }
+      }
+    }
 
     if (newGoldReserve < 0) newGoldReserve = 0; // Debt? For now floor at 0
 

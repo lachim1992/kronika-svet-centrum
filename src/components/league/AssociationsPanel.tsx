@@ -843,11 +843,16 @@ const AssociationsPanel = ({ sessionId, currentPlayerName, currentTurn }: Props)
             </Card>
           ) : (
             myAssociations.map(assoc => {
-              const assocTeams = myTeams;
+              const assocTeams = allTeams.filter(t => t.player_name === currentPlayerName && (t as any).association_id === assoc.id);
+              const teamFanBase = assocTeams.reduce((s, t) => s + ((t as any).fan_base || 0), 0);
               const playerCount = assocTeams.reduce((s, t) => s + allPlayers.filter(p => p.team_id === t.id && !p.is_dead).length, 0);
               const estSalaries = playerCount * 2;
               const estUpkeep = assocTeams.length * 5;
-              const estIncome = Math.round(assoc.fan_base * 0.1 + assoc.reputation * 0.5);
+              const estFanIncome = Math.round(assoc.fan_base * 0.08);
+              const estRepIncome = Math.round(assoc.reputation * 0.4);
+              const estMatchIncome = Math.round(teamFanBase * 0.05 * 5); // ~5 matches per turn
+              const estTotalIncome = estFanIncome + estRepIncome + estMatchIncome;
+              const estBalance = estTotalIncome - estSalaries - estUpkeep;
               return (
                 <Card key={assoc.id} className="border-border bg-card/50">
                   <CardHeader className="py-2 px-3 border-b border-border/50">
@@ -856,40 +861,67 @@ const AssociationsPanel = ({ sessionId, currentPlayerName, currentTurn }: Props)
                     </CardTitle>
                   </CardHeader>
                   <CardContent className="p-4 space-y-4">
-                    {/* Budget */}
-                    <div className="flex items-center justify-between p-3 rounded-lg bg-primary/5 border border-primary/20">
-                      <span className="text-xs font-semibold">Aktuální rozpočet</span>
-                      <span className="text-2xl font-bold font-mono text-primary">{assoc.budget} 💰</span>
-                    </div>
-
-                    {/* Breakdown */}
-                    <div className="space-y-2">
-                      <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Odhad za kolo</div>
-                      <div className="grid gap-1.5">
-                        {[
-                          { label: "Příjmy z fanoušků & reputace", value: `+${estIncome}`, positive: true },
-                          { label: `Platy hráčů (${playerCount}×2)`, value: `-${estSalaries}`, positive: false },
-                          { label: `Údržba týmů (${assocTeams.length}×5)`, value: `-${estUpkeep}`, positive: false },
-                        ].map(row => (
-                          <div key={row.label} className="flex items-center justify-between text-xs bg-muted/10 rounded p-2">
-                            <span className="text-muted-foreground">{row.label}</span>
-                            <span className={`font-mono font-bold ${row.positive ? "text-green-400" : "text-red-400"}`}>{row.value}</span>
-                          </div>
-                        ))}
-                        <div className="flex items-center justify-between text-xs font-bold bg-muted/20 rounded p-2 border-t border-border">
-                          <span>Bilance</span>
-                          <span className={`font-mono ${estIncome - estSalaries - estUpkeep >= 0 ? "text-green-400" : "text-red-400"}`}>
-                            {estIncome - estSalaries - estUpkeep >= 0 ? "+" : ""}{estIncome - estSalaries - estUpkeep}
-                          </span>
-                        </div>
+                    {/* Budget + Fan base */}
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="flex flex-col items-center p-3 rounded-lg bg-primary/5 border border-primary/20">
+                        <span className="text-[10px] text-muted-foreground">Rozpočet</span>
+                        <span className="text-2xl font-bold font-mono text-primary">{assoc.budget} 💰</span>
+                      </div>
+                      <div className="flex flex-col items-center p-3 rounded-lg bg-muted/20 border border-border">
+                        <span className="text-[10px] text-muted-foreground">Fanoušci svazu</span>
+                        <span className="text-2xl font-bold font-mono">{assoc.fan_base}</span>
+                        <span className="text-[9px] text-muted-foreground">+ {teamFanBase} z týmů</span>
                       </div>
                     </div>
 
-                    {/* Investment tips */}
+                    {/* Revenue Breakdown */}
+                    <div className="space-y-2">
+                      <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Příjmy za kolo</div>
+                      <div className="grid gap-1.5">
+                        {[
+                          { label: `Fanoušci svazu (${assoc.fan_base}×0.08)`, value: `+${estFanIncome}`, positive: true },
+                          { label: `Sponzoři & reputace (${assoc.reputation}×0.4)`, value: `+${estRepIncome}`, positive: true },
+                          { label: `Vstupné ze zápasů (~${assocTeams.length} týmů)`, value: `+${estMatchIncome}`, positive: true },
+                          { label: "Dotace z říšské pokladny", value: "+?", positive: true, muted: true },
+                        ].map(row => (
+                          <div key={row.label} className="flex items-center justify-between text-xs bg-muted/10 rounded p-2">
+                            <span className={`text-muted-foreground ${(row as any).muted ? 'italic' : ''}`}>{row.label}</span>
+                            <span className={`font-mono font-bold ${row.positive ? "text-green-400" : "text-red-400"}`}>{row.value}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Costs Breakdown */}
+                    <div className="space-y-2">
+                      <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Náklady za kolo</div>
+                      <div className="grid gap-1.5">
+                        {[
+                          { label: `Platy hráčů (${playerCount}×2)`, value: `-${estSalaries}` },
+                          { label: `Údržba týmů (${assocTeams.length}×5)`, value: `-${estUpkeep}` },
+                        ].map(row => (
+                          <div key={row.label} className="flex items-center justify-between text-xs bg-muted/10 rounded p-2">
+                            <span className="text-muted-foreground">{row.label}</span>
+                            <span className="font-mono font-bold text-red-400">{row.value}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Balance */}
+                    <div className="flex items-center justify-between text-sm font-bold bg-muted/20 rounded p-3 border-t border-border">
+                      <span>Bilance (odhad)</span>
+                      <span className={`font-mono ${estBalance >= 0 ? "text-green-400" : "text-red-400"}`}>
+                        {estBalance >= 0 ? "+" : ""}{estBalance}
+                      </span>
+                    </div>
+
+                    {/* Tips */}
                     <div className="text-[10px] text-muted-foreground bg-muted/10 rounded p-2 space-y-1">
-                      <p>💡 <strong>Tip:</strong> Zvyš fanouškovskou základnu pro vyšší příjmy.</p>
-                      <p>💡 Vyšší reputace = víc sponzorů a prestiže.</p>
-                      <p>💡 Financování sportu v říšské pokladně (Economy tab) dodává rozpočet svazu.</p>
+                      <p>💡 <strong>Výhry</strong> zvyšují fanouškovskou základnu týmů (+3–5 za výhru).</p>
+                      <p>💡 Vyšší <strong>reputace</strong> přináší sponzory a pasivní růst fanoušků.</p>
+                      <p>💡 <strong>Dotace</strong> ze sport_funding_pct v říšské pokladně se rozpočítají mezi svazy.</p>
+                      <p>💡 <strong>Stadion</strong> přiřazený k týmu zvyšuje fanoušky +1 za zápas.</p>
                     </div>
                   </CardContent>
                 </Card>
