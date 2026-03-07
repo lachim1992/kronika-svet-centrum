@@ -188,6 +188,7 @@ const GamesTab = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, o
   const [festivalType, setFestivalType] = useState("local_gladiator");
   const [selectedCityId, setSelectedCityId] = useState("");
   const [selectedFestival, setSelectedFestival] = useState<string | null>(null);
+  const [reportFestivalId, setReportFestivalId] = useState<string | null>(null);
 
   const isAdmin = myRole === "admin";
   const myCities = cities.filter(c => c.owner_player === currentPlayerName);
