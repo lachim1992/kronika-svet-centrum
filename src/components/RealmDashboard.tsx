@@ -21,6 +21,7 @@ interface Props {
 
 const RealmDashboard = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, onRefetch }: Props) => {
   const [realm, setRealm] = useState<any>(null);
+  const [activeLaws, setActiveLaws] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState(false);
   const [showDebug, setShowDebug] = useState(false);
