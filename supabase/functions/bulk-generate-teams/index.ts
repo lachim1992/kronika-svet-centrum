@@ -223,7 +223,7 @@ Deno.serve(async (req) => {
 
     return new Response(JSON.stringify({
       ok: true, teamsCreated, playersCreated, assocsCreated,
-      cities: cities.length,
+      cities: liveCities.length,
       message: `Vytvořeno ${assocsCreated} svazů, ${teamsCreated} týmů a ${playersCreated} hráčů.`,
     }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
   } catch (e: any) {
