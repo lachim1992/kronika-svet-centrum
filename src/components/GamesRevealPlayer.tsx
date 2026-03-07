@@ -136,7 +136,7 @@ interface Props {
   currentTurn?: number;
 }
 
-const GamesRevealPlayer = ({ festivalId, sessionId, disciplines, isHost, onComplete, currentTurn }: Props) => {
+const GamesRevealPlayer = ({ festivalId, sessionId, disciplines, isHost, isAdmin, onComplete, currentTurn }: Props) => {
   const [disciplineReveals, setDisciplineReveals] = useState<DisciplineReveal[]>([]);
   const [activeDisciplineId, setActiveDisciplineId] = useState<string | null>(null);
   const [currentStep, setCurrentStep] = useState(0);
