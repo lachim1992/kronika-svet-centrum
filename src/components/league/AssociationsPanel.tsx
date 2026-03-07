@@ -1103,6 +1103,16 @@ const AssociationsPanel = ({ sessionId, currentPlayerName, currentTurn }: Props)
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      {/* Draft dialog */}
+      <DraftRecruitDialog
+        open={showDraftDialog}
+        onOpenChange={setShowDraftDialog}
+        student={draftStudent}
+        teams={allTeams.filter(t => t.player_name === currentPlayerName) as any}
+        sessionId={sessionId}
+        cityNames={cities}
+        onDrafted={fetchData}
+      />
     </div>
   );
 };
