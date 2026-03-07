@@ -60,18 +60,20 @@ export function useNextTurn({ sessionId, currentTurn, playerName, gameMode, onCo
         toast.info("📦 Ekonomika všech hráčů zpracována.");
       }
 
-      // Chronicle auto-generation results
+      // Background tasks are now scheduled asynchronously via EdgeRuntime.waitUntil
+      // They will complete in the background — no need to wait for them
+      if (result?.backgroundScheduled) {
+        toast.info("📜 Kroniky a narativy se generují na pozadí…", { duration: 3000 });
+      }
+
+      // Legacy support for inline results (older runtime)
       if (result?.results?.worldChronicle?.ok) {
         toast.info("📜 Kronika světa automaticky vygenerována.");
       }
       if (result?.results?.playerChronicles?.generated > 0) {
         toast.info(`📖 ${result.results.playerChronicles.generated} hráčských kronik vygenerováno.`);
       }
-      if (result?.results?.worldHistory?.ok) {
-        toast.info("🌍 Dějiny světa automaticky doplněny.");
-      }
 
-      // League results (batch)
       if (result?.results?.league?.roundsPlayed > 0) {
         const rp = result.results.league.roundsPlayed;
         const sc = result.results.league.seasonComplete;
