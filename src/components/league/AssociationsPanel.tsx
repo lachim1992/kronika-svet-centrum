@@ -12,6 +12,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Shield, Users, Coins, TrendingUp, Trophy, Loader2, Plus, Star, Swords, Eye, MapPin, Crown, Target, GraduationCap, School } from "lucide-react";
 import { toast } from "sonner";
 import CreateAssociationDialog from "./CreateAssociationDialog";
+import DraftRecruitDialog, { convertToSphaera, suggestPosition, SPHAERA_POS_LABELS } from "./DraftRecruitDialog";
 
 interface Props {
   sessionId: string;
