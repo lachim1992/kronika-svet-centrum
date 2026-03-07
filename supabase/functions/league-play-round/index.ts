@@ -336,6 +336,49 @@ async function playPlayoffRound(sb: any, session_id: string, currentTurn: number
         playoff_status: "completed",
         playoff_bracket: bracket,
       }).eq("id", season.id);
+
+      // ═══ WIKI PROPAGATION for league champion ═══
+      try {
+        const { data: champTeam } = await sb.from("league_teams")
+          .select("id, team_name, player_name, city_id, titles_won")
+          .eq("id", championId).single();
+
+        if (champTeam) {
+          const seasonLabel = `Sezóna ${season.season_number || "?"}`;
+          // Wiki ref for champion's city
+          if (champTeam.city_id) {
+            await sb.from("wiki_event_refs").upsert([{
+              session_id, entity_id: champTeam.city_id, entity_type: "city",
+              ref_type: "event", ref_id: season.id,
+              ref_label: `🏆 Sphaera Liga ${seasonLabel}: šampion ${champTeam.team_name}`,
+              turn_number: currentTurn, impact_score: 4,
+              meta: { season_id: season.id, champion: champTeam.team_name, titles: champTeam.titles_won },
+            }], { onConflict: "session_id,entity_id,ref_type,ref_id", ignoreDuplicates: true });
+
+            // Trigger wiki-enrich for the champion's city
+            try {
+              await sb.functions.invoke("wiki-enrich", {
+                body: { sessionId: session_id, entityId: champTeam.city_id, entityType: "city", turnNumber: currentTurn },
+              });
+            } catch (e) { console.error(`Wiki enrich for league champion city:`, e); }
+          }
+
+          // Create/update wiki entry for the league team if 5+ titles (dynasty)
+          if ((champTeam.titles_won || 0) >= 5) {
+            await sb.from("wiki_entries").upsert({
+              session_id,
+              entity_type: "team",
+              entity_id: champTeam.id,
+              entity_name: champTeam.team_name,
+              owner_player: champTeam.player_name,
+              summary: `Legendární dynastie Sphaera Ligy s ${champTeam.titles_won} tituly.`,
+            }, { onConflict: "session_id,entity_id" });
+          }
+        }
+      } catch (wikiErr) {
+        console.error("League wiki propagation error:", wikiErr);
+      }
+
       return { matches: matchResults, seasonComplete: true };
     }
   }
