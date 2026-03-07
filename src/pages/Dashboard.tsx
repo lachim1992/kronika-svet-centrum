@@ -411,6 +411,28 @@ const Dashboard = () => {
             open={showVictory}
             onClose={() => setShowVictory(false)}
           />
+
+          {/* New Turn Notification Dialog */}
+          {showNewTurnDialog && (
+            <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fade-in">
+              <div className="bg-card border border-primary/30 rounded-xl shadow-2xl p-8 max-w-md w-full mx-4 text-center space-y-4 animate-scale-in">
+                <div className="text-5xl">⏳</div>
+                <h2 className="font-display text-2xl font-bold text-foreground">
+                  Rok {newTurnNumber}
+                </h2>
+                <p className="text-muted-foreground text-sm">
+                  Čas se posunul vpřed. Nový rok začíná — prozkoumej změny ve svém království a naplánuj další kroky.
+                </p>
+                <Button
+                  size="lg"
+                  className="w-full font-display"
+                  onClick={() => setShowNewTurnDialog(false)}
+                >
+                  Vstoupit do nového roku
+                </Button>
+              </div>
+            </div>
+          )}
         </>
       }
     >
