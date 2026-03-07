@@ -163,6 +163,39 @@ const RealmDashboard = ({ sessionId, currentPlayerName, currentTurn, myRole, cit
         </CardContent>
       </Card>
 
+      {/* Active Laws Effects */}
+      {activeLaws.length > 0 && (
+        <Card>
+          <CardHeader className="p-3 pb-1">
+            <CardTitle className="text-xs flex items-center gap-1">
+              <ScrollText className="h-3 w-3" />Aktivní zákony ({activeLaws.length})
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-3 pt-1">
+            <div className="space-y-1">
+              {activeLaws.map((law, i) => {
+                const effects = Array.isArray(law.structured_effects) ? law.structured_effects : [];
+                const effectLabels: Record<string, string> = {
+                  tax_change: "💰 Stabilita", tax_rate_percent: "🪙 Daň%", grain_ration_modifier: "🌾 Příděl",
+                  trade_restriction: "🚫 Obchod", active_pop_modifier: "👷 Práce", military_funding: "⚔️ Vojsko",
+                  civil_reform: "🏛️ Reforma", max_mobilization_modifier: "🛡️ Odvody",
+                };
+                return (
+                  <div key={i} className="flex items-center gap-2 flex-wrap text-[10px]">
+                    <span className="font-semibold truncate max-w-[120px]">{law.law_name}</span>
+                    {effects.map((e: any, j: number) => (
+                      <Badge key={j} variant="outline" className="text-[9px] py-0">
+                        {effectLabels[e.type] || e.type}: {e.value > 0 ? "+" : ""}{e.value}
+                      </Badge>
+                    ))}
+                  </div>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Resources */}
       <Card>
         <CardHeader className="p-3 pb-1"><CardTitle className="text-xs">Suroviny</CardTitle></CardHeader>
