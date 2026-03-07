@@ -334,9 +334,10 @@ const AssociationsPanel = ({ sessionId, currentPlayerName, currentTurn }: Props)
       </div>
 
       <Tabs defaultValue="overview" className="space-y-3">
-        <TabsList className="grid w-full grid-cols-5 bg-muted/20">
+        <TabsList className="grid w-full grid-cols-6 bg-muted/20">
           <TabsTrigger value="overview" className="text-xs font-display"><Shield className="h-3 w-3 mr-1" />Přehled</TabsTrigger>
           <TabsTrigger value="teams" className="text-xs font-display"><Users className="h-3 w-3 mr-1" />Týmy</TabsTrigger>
+          <TabsTrigger value="odchovanci" className="text-xs font-display"><GraduationCap className="h-3 w-3 mr-1" />Odchovanci</TabsTrigger>
           <TabsTrigger value="scouting" className="text-xs font-display"><Eye className="h-3 w-3 mr-1" />Skauting</TabsTrigger>
           <TabsTrigger value="finance" className="text-xs font-display"><Coins className="h-3 w-3 mr-1" />Finance</TabsTrigger>
           <TabsTrigger value="leaderboard" className="text-xs font-display"><Trophy className="h-3 w-3 mr-1" />Žebříčky</TabsTrigger>
