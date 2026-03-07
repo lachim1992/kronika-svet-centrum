@@ -233,12 +233,14 @@ const GamesTab = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, o
 
   const [revealFestivalId, setRevealFestivalId] = useState<string | null>(null);
   const [revealStartWithReport, setRevealStartWithReport] = useState(false);
+  const [revealDismissed, setRevealDismissed] = useState<string | null>(null);
 
   const handleResolve = async (festivalId: string) => {
     setRevealFestivalId(festivalId);
   };
 
   const handleRevealClose = async () => {
+    if (revealFestivalId) setRevealDismissed(revealFestivalId);
     setRevealFestivalId(null);
     setRevealStartWithReport(false);
     await fetchData();
@@ -247,12 +249,37 @@ const GamesTab = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, o
 
   // Archive replay: open overlay with report
   const handleArchiveReplay = async (festivalId: string) => {
+    setRevealDismissed(null);
     setRevealFestivalId(festivalId);
     setRevealStartWithReport(true);
   };
 
   const activeFestival = festivals.find(f => !["concluded", "cancelled"].includes(f.status));
   const concludedFestivals = festivals.filter(f => f.status === "concluded");
+
+  // Auto-show overlay for ALL players when festival is in "finals" status
+  useEffect(() => {
+    if (activeFestival && activeFestival.status === "finals" && revealDismissed !== activeFestival.id && !revealFestivalId) {
+      setRevealFestivalId(activeFestival.id);
+    }
+  }, [activeFestival?.id, activeFestival?.status]);
+
+  // Subscribe to festival status changes so non-host players see overlay in real-time
+  useEffect(() => {
+    const channel = supabase
+      .channel(`festival-status-${sessionId}`)
+      .on("postgres_changes", {
+        event: "UPDATE", schema: "public", table: "games_festivals",
+        filter: `session_id=eq.${sessionId}`,
+      }, (payload) => {
+        const updated = payload.new as any;
+        // Update local festivals state
+        setFestivals(prev => prev.map(f => f.id === updated.id ? { ...f, ...updated } : f));
+      })
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
+  }, [sessionId]);
 
   if (loading) {
     return (
