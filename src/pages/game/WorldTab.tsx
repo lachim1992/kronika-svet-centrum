@@ -1,9 +1,10 @@
 import { useState, useEffect } from "react";
 import CityDirectory from "@/components/CityDirectory";
 import CityStatesPanel from "@/components/CityStatesPanel";
+import EmpireOverview from "@/components/EmpireOverview";
 // ExplorationPanel disabled — legacy mechanic
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { MapPin, Building2, Globe, Castle, Mountain, Eye, EyeOff, Compass, Map } from "lucide-react";
+import { MapPin, Building2, Globe, Castle, Mountain, Eye, EyeOff, Compass, Map, Crown } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { Badge } from "@/components/ui/badge";
 import { useDiscoveries } from "@/hooks/useDiscoveries";
