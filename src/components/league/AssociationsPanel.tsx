@@ -905,6 +905,61 @@ const AssociationsPanel = ({ sessionId, currentPlayerName, currentTurn }: Props)
         cities={cities}
         onCreated={fetchData}
       />
+
+      {/* Create Team Dialog */}
+      <Dialog open={showCreateTeamDialog} onOpenChange={setShowCreateTeamDialog}>
+        <DialogContent className="max-w-md bg-card border-primary/20">
+          <DialogHeader>
+            <DialogTitle className="font-display flex items-center gap-2">
+              <Plus className="h-5 w-5 text-primary" /> Založit tým
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <label className="text-xs font-medium mb-1 block">Město</label>
+              <Select value={createTeamCityId} onValueChange={setCreateTeamCityId}>
+                <SelectTrigger className="h-9 text-xs">
+                  <SelectValue placeholder="Vyber město..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {availableCitiesForTeam.map(([id, name]) => (
+                    <SelectItem key={id} value={id} className="text-xs">
+                      {name} ({teamsPerCity.get(id) || 0}/{MAX_TEAMS_PER_CITY})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-[9px] text-muted-foreground mt-1">Max {MAX_TEAMS_PER_CITY} týmy na město.</p>
+            </div>
+            <div>
+              <label className="text-xs font-medium mb-1 block">Název týmu</label>
+              <Input value={createTeamName} onChange={e => setCreateTeamName(e.target.value)} placeholder="Gladiátoři Romanova" className="h-9 text-xs" />
+            </div>
+            <div>
+              <label className="text-xs font-medium mb-1 block">Motto (volitelné)</label>
+              <Input value={createTeamMotto} onChange={e => setCreateTeamMotto(e.target.value)} placeholder="Sphaera si žádá krev!" className="h-9 text-xs" />
+            </div>
+            <div className="flex gap-3">
+              <div className="flex-1">
+                <label className="text-xs font-medium mb-1 block">Primární barva</label>
+                <input type="color" value={createTeamColorPrimary} onChange={e => setCreateTeamColorPrimary(e.target.value)} className="w-full h-8 rounded border border-border cursor-pointer" />
+              </div>
+              <div className="flex-1">
+                <label className="text-xs font-medium mb-1 block">Sekundární</label>
+                <input type="color" value={createTeamColorSecondary} onChange={e => setCreateTeamColorSecondary(e.target.value)} className="w-full h-8 rounded border border-border cursor-pointer" />
+              </div>
+            </div>
+            <p className="text-[9px] text-muted-foreground">AI automaticky vygeneruje 22 bojovníků s unikátními statistikami.</p>
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" size="sm" onClick={() => setShowCreateTeamDialog(false)}>Zrušit</Button>
+            <Button size="sm" onClick={handleCreateTeam} disabled={creatingTeam || !createTeamCityId || !createTeamName.trim()}>
+              {creatingTeam ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <Swords className="h-3 w-3 mr-1" />}
+              Založit tým
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
