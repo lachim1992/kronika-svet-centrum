@@ -158,7 +158,7 @@ Deno.serve(async (req) => {
     let playersCreated = 0;
     const usedTeamNames = new Set((existingTeams || []).map(t => t.team_name));
 
-    for (const city of cities) {
+    for (const city of liveCities) {
       const assoc = assocByPlayer.get(city.owner_player);
       if (!assoc) continue; // no association for this player (human without assoc — skip)
 
