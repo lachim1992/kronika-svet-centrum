@@ -307,6 +307,22 @@ const GamesRevealPlayer = ({ festivalId, sessionId, disciplines, isHost, onCompl
     disciplineReveals.some(r => r.discipline_id === d.id && r.status === "resolved")
   );
 
+  // Batch resolve by category
+  const [batchResolving, setBatchResolving] = useState<string | null>(null);
+  const handleBatchCategory = async (category: string) => {
+    const unresolved = disciplines.filter(d => d.category === category && !disciplineReveals.some(r => r.discipline_id === d.id && r.status === "resolved"));
+    if (unresolved.length === 0) return;
+    setBatchResolving(category);
+    for (const d of unresolved) {
+      await handleStartDiscipline(d.id);
+      await new Promise(resolve => setTimeout(resolve, 500));
+    }
+    setBatchResolving(null);
+  };
+
+  const categories = [...new Set(disciplines.map(d => d.category))];
+  const CAT_LABELS: Record<string, string> = { physical: "Fyzické", cultural: "Kulturní", strategic: "Strategické", intellectual: "Intelektuální" };
+
   return (
     <div className="space-y-3">
       {/* ═══ DISCIPLINE SELECTOR (Host) ═══ */}
@@ -319,12 +335,33 @@ const GamesRevealPlayer = ({ festivalId, sessionId, disciplines, isHost, onCompl
             </CardTitle>
           </CardHeader>
           <CardContent>
+            {/* Batch category buttons */}
+            <div className="flex flex-wrap gap-1.5 mb-2">
+              {categories.map(cat => {
+                const catDiscs = disciplines.filter(d => d.category === cat);
+                const resolvedCount = catDiscs.filter(d => disciplineReveals.some(r => r.discipline_id === d.id && r.status === "resolved")).length;
+                const allCatResolved = resolvedCount === catDiscs.length;
+                return (
+                  <Button
+                    key={cat}
+                    size="sm"
+                    variant="outline"
+                    disabled={allCatResolved || batchResolving === cat}
+                    onClick={() => handleBatchCategory(cat)}
+                    className={`text-[9px] gap-1 h-6 ${allCatResolved ? "opacity-40" : ""}`}
+                  >
+                    {batchResolving === cat ? <span className="animate-spin">⏳</span> : null}
+                    {CAT_LABELS[cat] || cat} ({resolvedCount}/{catDiscs.length})
+                  </Button>
+                );
+              })}
+            </div>
+            {/* Individual discipline buttons */}
             <div className="flex flex-wrap gap-1.5">
               {disciplines.map(d => {
                 const reveal = disciplineReveals.find(r => r.discipline_id === d.id);
                 const isResolved = reveal?.status === "resolved";
                 const isResolving = reveal?.status === "resolving" || resolvingDisc === d.id;
-                const catColors = CAT_COLORS[d.category] || CAT_COLORS.physical;
 
                 return (
                   <Button
@@ -340,8 +377,8 @@ const GamesRevealPlayer = ({ festivalId, sessionId, disciplines, isHost, onCompl
                     {isResolved && <span className="text-green-400">✓</span>}
                     {isResolving && <span className="animate-spin">⏳</span>}
                   </Button>
-                  );
-                })}
+                );
+              })}
               </div>
               {allResolved && (
                 <Button
