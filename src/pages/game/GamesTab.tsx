@@ -847,6 +847,15 @@ const GamesTab = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, o
           )}
         </TabsContent>
       </Tabs>
+
+      {/* OlympiadReport modal */}
+      {reportFestivalId && (
+        <div className="fixed inset-0 z-50 bg-background/80 flex items-center justify-center p-4" onClick={() => setReportFestivalId(null)}>
+          <div className="max-w-2xl w-full max-h-[80vh] overflow-auto bg-card border border-border rounded-lg shadow-xl" onClick={e => e.stopPropagation()}>
+            <OlympiadReport festivalId={reportFestivalId} sessionId={sessionId} onClose={() => setReportFestivalId(null)} />
+          </div>
+        </div>
+      )}
     </div>
   );
 };
