@@ -98,7 +98,21 @@ const Dashboard = () => {
     }
   }, [allPlayersClosed, isMultiplayer, turnProcessing, processNextTurn]);
 
+  // ── Detect turn change and show notification to all players ──
   useEffect(() => {
+    if (currentTurn === 0) return;
+    if (prevTurnRef.current === null) {
+      // Initial load — don't show dialog
+      prevTurnRef.current = currentTurn;
+      return;
+    }
+    if (currentTurn > prevTurnRef.current) {
+      setNewTurnNumber(currentTurn);
+      setShowNewTurnDialog(true);
+      prevTurnRef.current = currentTurn;
+    }
+  }, [currentTurn]);
+
     if (!user || !sessionId) return;
 
     const fetchMembership = async () => {
