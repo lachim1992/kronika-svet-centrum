@@ -27,7 +27,15 @@ export default function MemoriamCard({ player: p, sessionId, currentPlayerName, 
   const handleGenerateStatue = async (extraPrompt?: string) => {
     setGeneratingId(true);
     try {
-      const basePrompt = `A grand bronze memorial statue of "${p.name}", a fallen Sphaera ${POS_FULL[p.position] || p.position} warrior athlete, in a classical ancient arena setting. The statue depicts a heroic pose, muscular build, wearing arena combat gear. At the base is a bronze plaque. Memorial garden with eternal torches. Dramatic lighting, solemn atmosphere. Ancient Roman/Greek memorial monument. Ultra high resolution.`;
+      const posePhrases: Record<string, string> = {
+        striker: "in a dynamic shooting stance, one arm pulled back ready to hurl the Sphaera ball forward, legs wide in athletic stride",
+        guardian: "in a defensive crouch, arms spread wide protecting goal area, muscular legs planted firmly, holding the heavy Sphaera ball against chest",
+        carrier: "mid-sprint carrying the Sphaera ball tucked under one arm, other arm outstretched for balance, lean athletic build",
+        praetor: "standing tall as team captain, one foot on the Sphaera ball, pointing forward commandingly, wearing a captain's armband",
+        exactor: "in an aggressive tackling pose, low center of gravity, arms reaching forward to intercept, powerful build",
+      };
+      const pose = posePhrases[p.position] || "holding a heavy metal Sphaera ball in one hand, standing in a heroic athletic pose";
+      const basePrompt = `A grand bronze memorial statue of "${p.name}", a fallen Sphaera ${POS_FULL[p.position] || p.position} athlete. The statue depicts the athlete ${pose}. The figure wears a light ancient athletic tunic and leather sandals (NOT heavy armor, NOT a warrior). The heavy metal Sphaera ball is prominently featured. Set in a memorial garden beside an ancient oval arena, with eternal torches and laurel wreaths. Bronze plaque at the base reads "${p.name}". Classical Greco-Roman athletic monument style, solemn and dignified. Ultra high resolution.`;
       const prompt = extraPrompt ? `${basePrompt} Additional details: ${extraPrompt}` : basePrompt;
 
       const { data, error } = await supabase.functions.invoke("encyclopedia-image", {
