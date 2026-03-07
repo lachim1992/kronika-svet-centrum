@@ -328,6 +328,18 @@ Deno.serve(async (req) => {
 
         const bio = bioFragments.join(" ");
 
+        // Determine graduate_type from academy type
+        const academyType = acad.academy_type || 'olympic';
+        let graduateType = 'athlete';
+        let graduateStatus = 'graduated';
+        if (academyType === 'sphaera') {
+          graduateType = 'sphaera_player';
+          graduateStatus = 'candidate'; // hybrid: player picks who joins team
+        } else if (academyType === 'gladiator') {
+          graduateType = 'gladiator';
+          graduateStatus = 'graduated';
+        }
+
         // Generate portrait via AI
         let portraitUrl: string | null = null;
         try {
