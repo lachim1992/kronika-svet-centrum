@@ -437,6 +437,13 @@ async function playTierRound(sb: any, session_id: string, currentTurn: number, t
     for (const pid of [...result.homePlayed, ...result.awayPlayed]) { const { data: pl } = await sb.from("league_players").select("matches_played, condition, form").eq("id", pid).maybeSingle(); if (pl) await sb.from("league_players").update({ matches_played: (pl.matches_played||0)+1, condition: Math.max(20, (pl.condition||100)-12-Math.floor(Math.random()*12)), form: Math.max(10, Math.min(95, (pl.form||50)+(Math.random()>0.5?2:-2))) }).eq("id", pid); }
 
     matchResults.push({ home: home.team_name, away: away.team_name, homeScore: result.homeScore, awayScore: result.awayScore, knockouts: result.knockouts, highlight: result.highlight, events: result.events, round: roundNumber, tier, crowdMood: result.crowdMood });
+
+    // ═══ FAN BASE GROWTH (hybrid model) ═══
+    await updateTeamFanBase(sb, session_id, home, result.homeScore, result.awayScore, result.attendance || 0);
+    await updateTeamFanBase(sb, session_id, away, result.awayScore, result.homeScore, result.attendance || 0);
+
+    // ═══ MATCH REVENUE → association budget ═══
+    await creditMatchRevenue(sb, session_id, home, away, result.attendance || 0);
   }
 
   await sb.from("league_seasons").update({ current_round: roundNumber }).eq("id", season.id);
