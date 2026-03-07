@@ -263,7 +263,9 @@ const LawsPanel = ({ sessionId, currentPlayerName, currentTurn, myRole }: Props)
 function LawCard({ law, canRepeal, onRepeal }: { law: any; canRepeal: boolean; onRepeal?: () => void }) {
   const effects = Array.isArray(law.structured_effects) ? law.structured_effects : [];
   const effectLabels: Record<string, string> = {
-    tax_change: "💰 Daně", trade_restriction: "🚫 Obchod", military_funding: "⚔️ Vojsko", civil_reform: "🏛️ Reforma",
+    tax_change: "💰 Daně", tax_rate_percent: "🪙 Daň%", grain_ration_modifier: "🌾 Příděl",
+    trade_restriction: "🚫 Obchod", active_pop_modifier: "👷 Práce", military_funding: "⚔️ Vojsko",
+    civil_reform: "🏛️ Reforma", max_mobilization_modifier: "🛡️ Odvody",
   };
 
   return (
