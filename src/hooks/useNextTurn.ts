@@ -71,11 +71,11 @@ export function useNextTurn({ sessionId, currentTurn, playerName, gameMode, onCo
         toast.info("🌍 Dějiny světa automaticky doplněny.");
       }
 
-      // League results
-      if (result?.results?.league?.matches?.length > 0) {
-        const matchCount = result.results.league.matches.length;
-        const seasonComplete = result.results.league.seasonComplete;
-        toast.info(`⚔️ Sphaera Liga: ${matchCount} zápasů odehráno.${seasonComplete ? " 🏆 Sezóna dokončena!" : ""}`);
+      // League results (batch)
+      if (result?.results?.league?.roundsPlayed > 0) {
+        const rp = result.results.league.roundsPlayed;
+        const sc = result.results.league.seasonComplete;
+        toast.info(`⚔️ Sphaera Liga: ${rp} kol odehráno.${sc ? " 🏆 Sezóna dokončena!" : ""}`);
       }
 
       toast.success(`Kolo ${currentTurn} uzavřeno. Pokračujeme rokem ${currentTurn + 1}.`);

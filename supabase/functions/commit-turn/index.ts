@@ -959,25 +959,25 @@ Deno.serve(async (req) => {
     }
 
     // ═══════════════════════════════════════════
-    // 8d-pre. SPHAERA LEAGUE — play round via unified engine
+    // 8d-pre. SPHAERA LEAGUE — play up to 5 rounds per turn (fallback for admin manual play)
     // ═══════════════════════════════════════════
     try {
-      // Check if there are any active teams before invoking
       const { count: activeTeamCount } = await supabase.from("league_teams")
         .select("id", { count: "exact", head: true })
         .eq("session_id", sessionId).eq("is_active", true);
 
       if (activeTeamCount && activeTeamCount >= 2) {
-        const { data: leagueData, error: leagueErr } = await supabase.functions.invoke("league-play-round", {
-          body: { session_id: sessionId, player_name: playerName, skip_commentary: !!skipNarrative },
+        // Use league-play-batch to play 5 rounds (it internally loops league-play-round)
+        const { data: leagueData, error: leagueErr } = await supabase.functions.invoke("league-play-batch", {
+          body: { session_id: sessionId, player_name: playerName, rounds: 5 },
         });
-        if (leagueErr) console.error("League play-round error:", leagueErr);
+        if (leagueErr) console.error("League play-batch error:", leagueErr);
         results.league = leagueData || { error: leagueErr?.message };
       } else {
         results.league = { skipped: true, reason: "not_enough_teams" };
       }
     } catch (e) {
-      console.error("League play-round error:", e);
+      console.error("League play-batch error:", e);
       results.league = { error: (e as Error).message };
     }
 
