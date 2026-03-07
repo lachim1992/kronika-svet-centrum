@@ -372,7 +372,7 @@ const GamesTab = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, o
 
         {/* ─── SPHAERA LEAGUE ─── */}
         <TabsContent value="league">
-          <LeaguePanel sessionId={sessionId} currentPlayerName={currentPlayerName} currentTurn={currentTurn} />
+          <LeaguePanel sessionId={sessionId} currentPlayerName={currentPlayerName} currentTurn={currentTurn} myRole={myRole} />
         </TabsContent>
 
         {/* ─── ASSOCIATIONS ─── */}

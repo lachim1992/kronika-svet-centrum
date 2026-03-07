@@ -495,11 +495,13 @@ const LeaguePanel = ({ sessionId, currentPlayerName, currentTurn, myRole }: Prop
           <Button size="sm" variant="ghost" className="text-xs gap-1" onClick={() => setShowRules(true)} title="Pravidla Sphaery">
             <Scroll className="h-3.5 w-3.5" />
           </Button>
-          <Button size="sm" variant="outline" className="text-xs gap-1" onClick={handleGenerateTeams} disabled={generatingTeams} title="Doplnit týmy">
-            {generatingTeams ? <Loader2 className="h-3 w-3 animate-spin" /> : <Plus className="h-3 w-3" />}
-            Doplnit týmy
-          </Button>
-          {teams.length > 1 && (
+          {isAdmin && (
+            <Button size="sm" variant="outline" className="text-xs gap-1" onClick={handleGenerateTeams} disabled={generatingTeams} title="Doplnit týmy">
+              {generatingTeams ? <Loader2 className="h-3 w-3 animate-spin" /> : <Plus className="h-3 w-3" />}
+              Doplnit týmy
+            </Button>
+          )}
+          {isAdmin && teams.length > 1 && (
             <>
               <Button size="sm" className="text-xs gap-1 shadow-lg shadow-primary/10" onClick={handlePlayRound} disabled={playingRound || playingBulk}>
                 {playingRound ? <Loader2 className="h-3 w-3 animate-spin" /> : <Flame className="h-3 w-3" />}
