@@ -243,6 +243,20 @@ const WorldTab = ({
                 <CityStatesPanel sessionId={sessionId} cityStates={cityStates} recentEvents={events} players={players} />
               </TabsContent>
             )}
+
+            <TabsContent value="empires" className="mt-3">
+              <EmpireOverview
+                players={players}
+                cities={cities}
+                resources={resources}
+                armies={armies}
+                wonders={wonders}
+                events={events}
+                currentPlayerName={currentPlayerName}
+                currentTurn={currentTurn}
+                chronicles={chronicles}
+              />
+            </TabsContent>
           </Tabs>
         )}
       </section>
