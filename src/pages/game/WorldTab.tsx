@@ -155,6 +155,9 @@ const WorldTab = ({
                   <Building2 className="h-3 w-3" />Městské státy
                 </TabsTrigger>
               )}
+              <TabsTrigger value="empires" className="font-display text-xs gap-1">
+                <Crown className="h-3 w-3" />Říše
+              </TabsTrigger>
             </TabsList>
 
             <TabsContent value="cities" className="mt-3">
