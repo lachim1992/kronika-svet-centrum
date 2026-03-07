@@ -57,8 +57,11 @@ const RealmDashboard = ({ sessionId, currentPlayerName, currentTurn, myRole, cit
       if (data?.skipped) {
         toast.info(`Kolo ${currentTurn} již bylo zpracováno`);
       } else {
+        const le = data?.summary?.lawEffects;
+        const lawInfo = le && (le.taxRateModifier || le.grainRationModifier || le.tradeRestriction)
+          ? ` | Zákony: ${le.taxRateModifier ? `daně ${le.taxRateModifier > 0 ? "+" : ""}${le.taxRateModifier}%` : ""}${le.grainRationModifier ? ` příděl ${le.grainRationModifier > 0 ? "+" : ""}${le.grainRationModifier}%` : ""}${le.tradeRestriction ? ` obchod −${le.tradeRestriction}%` : ""}` : "";
         toast.success(`Kolo ${currentTurn} zpracováno`, {
-          description: `Obilí: ${data?.summary?.netGrain >= 0 ? "+" : ""}${data?.summary?.netGrain}, Zásoby: ${data?.summary?.grainReserve}/${data?.summary?.granaryCapacity}`,
+          description: `Obilí: ${data?.summary?.netGrain >= 0 ? "+" : ""}${data?.summary?.netGrain}, Zásoby: ${data?.summary?.grainReserve}/${data?.summary?.granaryCapacity}${lawInfo}`,
         });
       }
       await fetchData();
