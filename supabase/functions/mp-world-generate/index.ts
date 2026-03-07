@@ -1375,6 +1375,7 @@ DŮLEŽITÉ: Hráčské frakce MUSÍ mít isPlayer=true a playerName musí přes
       triggered_by: "mp-world-generate",
     });
 
+    await setStep("generating_map");
     // ═══ STEP N: Generate hexes for ALL province territories + discoveries ═══
     try {
       const allHexPositions = new Set<string>();
