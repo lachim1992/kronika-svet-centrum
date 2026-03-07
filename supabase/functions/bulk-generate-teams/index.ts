@@ -59,10 +59,11 @@ Deno.serve(async (req) => {
     const sb = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 
     // Get ALL cities in the session
-    const { data: cities } = await sb.from("cities")
-      .select("id, name, owner_player, development_level, city_stability, population_total")
-      .eq("session_id", session_id)
-      .not("status", "in", '("ruins","razed","abandoned")');
+    const { data: cities, error: citiesErr } = await sb.from("cities")
+      .select("id, name, owner_player, development_level, city_stability, population_total, status")
+      .eq("session_id", session_id);
+    
+    const liveCities = (cities || []).filter(c => !["ruins","razed","abandoned"].includes(c.status));
 
     if (!cities || cities.length === 0) {
       return new Response(JSON.stringify({ error: "Žádná města v této hře" }), {
