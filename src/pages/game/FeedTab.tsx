@@ -5,8 +5,9 @@ import TimelinePanel from "@/components/TimelinePanel";
 import SourceImportPanel from "@/components/SourceImportPanel";
 import WorldActionLog from "@/components/WorldActionLog";
 import ManualCreatorPanel from "@/components/ManualCreatorPanel";
+import RumorsFeedPanel from "@/components/RumorsFeedPanel";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Swords, CalendarDays, Network, ScrollText, FileText, Plus } from "lucide-react";
+import { Swords, CalendarDays, Network, ScrollText, FileText, Plus, MessageCircle } from "lucide-react";
 import type { EntityIndex } from "@/hooks/useEntityIndex";
 
 interface Props {
