@@ -275,6 +275,50 @@ const AssociationsPanel = ({ sessionId, currentPlayerName, currentTurn }: Props)
     return <div className="flex items-center justify-center p-12"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
   }
 
+  const MAX_TEAMS_PER_CITY = 3;
+  const teamsPerCity = new Map<string, number>();
+  myTeams.forEach(t => teamsPerCity.set(t.city_id, (teamsPerCity.get(t.city_id) || 0) + 1));
+  const availableCitiesForTeam = Array.from(cities.entries()).filter(([id]) => (teamsPerCity.get(id) || 0) < MAX_TEAMS_PER_CITY);
+
+  const handleCreateTeam = async () => {
+    if (!createTeamCityId || !createTeamName.trim()) {
+      toast.error("Vyplň název týmu a vyber město");
+      return;
+    }
+    const assoc = myAssociations[0];
+    if (!assoc) {
+      toast.error("Pro založení týmu je potřeba svaz");
+      return;
+    }
+    setCreatingTeam(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("create-league-team", {
+        body: {
+          sessionId,
+          cityId: createTeamCityId,
+          buildingId: null,
+          teamName: createTeamName.trim(),
+          colorPrimary: createTeamColorPrimary,
+          colorSecondary: createTeamColorSecondary,
+          motto: createTeamMotto.trim() || null,
+          playerName: currentPlayerName,
+          associationId: assoc.id,
+        },
+      });
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+      toast.success(`Tým ${createTeamName} založen!`);
+      setShowCreateTeamDialog(false);
+      setCreateTeamName("");
+      setCreateTeamMotto("");
+      await fetchData();
+    } catch (e: any) {
+      toast.error(e.message);
+    } finally {
+      setCreatingTeam(false);
+    }
+  };
+
   return (
     <div className="space-y-4">
       {/* Header */}
