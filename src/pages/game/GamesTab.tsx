@@ -39,7 +39,7 @@ const OlympicsAthleteRoster = ({ participants, currentPlayerName }: { participan
       </CardHeader>
       <CardContent>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          {Object.entries(grouped).map(([player, athletes]) => (
+          {Object.entries(grouped).map(([player, athletes]: [string, any[]]) => (
             <div key={player} className={`space-y-1 p-2 rounded border ${player === currentPlayerName ? "border-primary/30 bg-primary/5" : "border-border bg-muted/20"}`}>
               <p className="font-display text-[10px] font-bold">{player} ({athletes.length})</p>
               {athletes.map((a: any) => (
