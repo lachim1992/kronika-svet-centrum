@@ -80,6 +80,7 @@ const LawsPanel = ({ sessionId, currentPlayerName, currentTurn, myRole }: Props)
             fullText: fullText.trim(),
             effects,
             playerName: currentPlayerName,
+            sessionId,
           },
         });
 
