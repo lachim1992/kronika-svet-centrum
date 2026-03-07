@@ -215,28 +215,8 @@ const HomeTab = ({
         onDismiss={() => {}}
       />
 
-      {/* Realm Overview Strip */}
-      <div className="grid grid-cols-5 gap-3">
-        {[
-          { icon: Castle, value: myCities.length, label: "Města", color: "text-primary" },
-          { icon: Users, value: totalPop.toLocaleString(), label: "Populace", color: "text-primary" },
-          { icon: Swords, value: totalPower, label: "Síla", color: "text-primary" },
-          { icon: BarChart3, value: `${Math.round((realm?.mobilization_rate || 0.1) * 100)}%`, label: "Mobilizace", color: "text-primary" },
-          { icon: Skull, value: famineCities.length, label: "Hlad", color: famineCities.length > 0 ? "text-destructive" : "text-primary", danger: famineCities.length > 0 },
-        ].map((stat, i) => {
-          const Icon = stat.icon;
-          return (
-            <div
-              key={i}
-              className={`game-card p-4 text-center ${stat.danger ? "border-destructive/40 bg-destructive/5" : ""}`}
-            >
-              <Icon className={`h-5 w-5 mx-auto mb-2 ${stat.color}`} />
-              <div className="stat-number">{stat.value}</div>
-              <div className="stat-label mt-1">{stat.label}</div>
-            </div>
-          );
-        })}
-      </div>
+      {/* Realm Indicators — demographics, economy, projections, stability */}
+      <RealmIndicators realm={realm} cities={myCities} currentTurn={currentTurn} />
 
       {/* Famine Alerts */}
       {famineCities.length > 0 && (
