@@ -967,6 +967,7 @@ DŮLEŽITÉ: Hráčské frakce MUSÍ mít isPlayer=true a playerName musí přes
       }
     }
 
+    await setStep("creating_prehistory");
     // ═══ STEP H: Pre-history events ═══
     for (const evt of world?.preHistoryEvents || []) {
       const involvedPlayers = (evt.involvedFactions || []).map((f: string) => factionPlayerMap[f] || f);
