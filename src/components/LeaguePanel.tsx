@@ -588,7 +588,7 @@ const LeaguePanel = ({ sessionId, currentPlayerName, currentTurn }: Props) => {
           <CardContent className="p-8 text-center space-y-3">
             <Skull className="h-12 w-12 text-muted-foreground mx-auto mb-3 opacity-50" />
             <p className="text-sm text-muted-foreground">Žádné týmy v lize Sphaery.</p>
-            <p className="text-xs text-muted-foreground">Postav Arénu ve městě a založ tým.</p>
+            <p className="text-xs text-muted-foreground">Založ svaz v záložce Svazy a pak sežeň tým.</p>
             {!myAssociation && (
               <Button size="sm" variant="outline" onClick={handleCreateAssociation} className="gap-1.5 mt-2">
                 <Shield className="h-3.5 w-3.5" /> Založit sportovní svaz
@@ -604,7 +604,7 @@ const LeaguePanel = ({ sessionId, currentPlayerName, currentTurn }: Props) => {
               <Globe className="h-3.5 w-3.5" /> World of Sphaera
             </TabsTrigger>
             <TabsTrigger value="manage" className="text-xs gap-1.5 data-[state=active]:bg-primary/15 data-[state=active]:text-primary font-display">
-              <Settings className="h-3.5 w-3.5" /> Manage My Teams
+              <Settings className="h-3.5 w-3.5" /> Moje týmy
               {myTeams.length > 0 && <Badge variant="secondary" className="text-[8px] h-3.5 px-1 ml-1">{myTeams.length}</Badge>}
             </TabsTrigger>
           </TabsList>
