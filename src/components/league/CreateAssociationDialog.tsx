@@ -26,7 +26,7 @@ const ASSOC_TYPES = [
   { value: "gladiator", label: "Gladiátorská gilda", icon: "💀", desc: "Spravuje gladiátorské arény a školy" },
 ];
 
-const CreateAssociationDialog = ({ open, onOpenChange, sessionId, currentPlayerName, currentTurn, cities, onCreated }: Props) => {
+const CreateAssociationDialog = ({ open, onOpenChange, sessionId, currentPlayerName, currentTurn, cities, onCreated, existingTypes = [] }: Props) => {
   const [step, setStep] = useState(0);
   const [name, setName] = useState("");
   const [motto, setMotto] = useState("");
