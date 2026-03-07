@@ -111,7 +111,8 @@ function formLabel(f: number) {
   return { text: "💀 Špatná", cls: "text-red-400" };
 }
 
-const LeaguePanel = ({ sessionId, currentPlayerName, currentTurn }: Props) => {
+const LeaguePanel = ({ sessionId, currentPlayerName, currentTurn, myRole }: Props) => {
+  const isAdmin = myRole === "admin" || myRole === "moderator";
   const [teams, setTeams] = useState<Team[]>([]);
   const [standings, setStandings] = useState<Standing[]>([]);
   const [standings2, setStandings2] = useState<Standing[]>([]);
