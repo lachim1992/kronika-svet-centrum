@@ -81,6 +81,7 @@ const MultiplayerLobby = ({ sessionId, roomCode, worldName, maxPlayers, isHost, 
   const [worldFoundation, setWorldFoundation] = useState<any>(null);
   const [factionSaved, setFactionSaved] = useState(false);
   const [myIdentity, setMyIdentity] = useState<any>(null);
+  const [initStep, setInitStep] = useState<string | null>(null);
 
   const fetchPlayers = useCallback(async () => {
     const { data } = await supabase
