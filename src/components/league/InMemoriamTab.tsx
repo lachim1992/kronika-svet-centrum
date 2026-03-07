@@ -64,10 +64,11 @@ export default function InMemoriamTab({ sessionId, currentPlayerName, myRole, on
     if (!dead || dead.length === 0) { setDeadPlayers([]); setLoading(false); return; }
 
     const teamIds = [...new Set(dead.map(d => d.team_id))];
+    // Fetch ALL teams to resolve opponents too
     const { data: teams } = await supabase
       .from("league_teams")
       .select("id, team_name, city_id, player_name, color_primary")
-      .in("id", teamIds);
+      .eq("session_id", sessionId);
     const teamMap = new Map((teams || []).map(t => [t.id, t]));
 
     const cityIds = [...new Set((teams || []).map(t => t.city_id).filter(Boolean))];
