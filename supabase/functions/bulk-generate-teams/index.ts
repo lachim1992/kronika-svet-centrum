@@ -60,7 +60,7 @@ Deno.serve(async (req) => {
 
     // Get all associations for the session (teams are created via associations now)
     const { data: associations } = await sb.from("sports_associations")
-      .select("id, player_name, city_id, type")
+      .select("id, player_name, city_id, association_type")
       .eq("session_id", session_id);
 
     if (!associations || associations.length === 0) {
