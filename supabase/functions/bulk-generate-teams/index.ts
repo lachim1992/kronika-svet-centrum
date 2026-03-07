@@ -49,7 +49,7 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const { session_id, teams_per_city = 8, players_per_team = 22 } = await req.json();
+    const { session_id, players_per_team = 22 } = await req.json();
     if (!session_id) {
       return new Response(JSON.stringify({ error: "session_id required" }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -58,31 +58,65 @@ Deno.serve(async (req) => {
 
     const sb = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 
-    // Get all associations for the session (teams are created via associations now)
-    const { data: associations } = await sb.from("sports_associations")
-      .select("id, player_name, city_id, association_type")
-      .eq("session_id", session_id);
-
-    if (!associations || associations.length === 0) {
-      return new Response(JSON.stringify({ error: "Žádné svazy v této hře. Týmy se zakládají přes svazy." }), {
-        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    // Get all cities owned by players who have associations
-    const playerNames = [...new Set(associations.map(a => a.player_name))];
+    // Get ALL cities in the session
     const { data: cities } = await sb.from("cities")
       .select("id, name, owner_player, development_level, city_stability, population_total")
       .eq("session_id", session_id)
-      .in("owner_player", playerNames);
+      .in("status", ["active", "occupied"]);
 
     if (!cities || cities.length === 0) {
-      return new Response(JSON.stringify({ error: "Žádná města hráčů se svazy" }), {
+      return new Response(JSON.stringify({ error: "Žádná města v této hře" }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    // Optionally find stadiums for auto-assignment
+    // Get existing associations
+    const { data: existingAssocs } = await sb.from("sports_associations")
+      .select("id, player_name, city_id, association_type")
+      .eq("session_id", session_id);
+
+    const assocByPlayer = new Map<string, any>();
+    for (const a of (existingAssocs || [])) {
+      assocByPlayer.set(a.player_name, a);
+    }
+
+    // Get AI factions to identify AI players
+    const { data: aiFactions } = await sb.from("ai_factions")
+      .select("faction_name")
+      .eq("session_id", session_id)
+      .eq("is_active", true);
+    const aiFactionNames = new Set((aiFactions || []).map(f => f.faction_name));
+
+    // Identify all unique city owners
+    const allOwners = [...new Set(cities.map(c => c.owner_player))];
+
+    // Auto-create associations for AI players who don't have one
+    let assocsCreated = 0;
+    for (const owner of allOwners) {
+      if (assocByPlayer.has(owner)) continue;
+      if (!aiFactionNames.has(owner)) continue; // only auto-create for AI
+
+      // Find capital or first city of this AI player
+      const aiCity = cities.find(c => c.owner_player === owner);
+      if (!aiCity) continue;
+
+      const { data: newAssoc, error: assocErr } = await sb.from("sports_associations").insert({
+        session_id,
+        player_name: owner,
+        city_id: aiCity.id,
+        name: `Svaz Sphaery – ${owner}`,
+        association_type: "sphaera",
+        motto: `Za slávu ${owner}!`,
+        color_primary: COLORS[Math.floor(Math.random() * COLORS.length)],
+        color_secondary: COLORS[Math.floor(Math.random() * COLORS.length)],
+      }).select("id, player_name, city_id, association_type").single();
+
+      if (assocErr) { console.error("Auto-create assoc error:", assocErr); continue; }
+      assocByPlayer.set(owner, newAssoc);
+      assocsCreated++;
+    }
+
+    // Stadiums for auto-assignment
     const { data: stadiums } = await sb.from("city_buildings")
       .select("id, city_id")
       .eq("session_id", session_id)
@@ -123,12 +157,13 @@ Deno.serve(async (req) => {
     const usedTeamNames = new Set((existingTeams || []).map(t => t.team_name));
 
     for (const city of cities) {
-      // Find association for this city's player
-      const assoc = associations.find(a => a.player_name === city.owner_player);
-      if (!assoc) continue;
+      const assoc = assocByPlayer.get(city.owner_player);
+      if (!assoc) continue; // no association for this player (human without assoc — skip)
 
       const cityTeams = teamsByCity.get(city.id) || [];
-      const needed = Math.min(teams_per_city, 3) - cityTeams.length; // respect 3-per-city cap
+      const needed = 3 - cityTeams.length;
+      if (needed <= 0) continue;
+
       const stadiumId = stadiumByCity.get(city.id) || null;
       const baseRating = 30 + Math.floor((city.development_level || 1) * 3) + Math.floor((city.city_stability || 50) * 0.2);
 
@@ -185,9 +220,9 @@ Deno.serve(async (req) => {
     }
 
     return new Response(JSON.stringify({
-      ok: true, teamsCreated, playersCreated,
+      ok: true, teamsCreated, playersCreated, assocsCreated,
       cities: cities.length,
-      message: `Vytvořeno ${teamsCreated} nových týmů a ${playersCreated} hráčů (přes ${associations.length} svazů).`,
+      message: `Vytvořeno ${assocsCreated} svazů, ${teamsCreated} týmů a ${playersCreated} hráčů.`,
     }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
   } catch (e: any) {
     console.error("bulk-generate-teams error:", e);
