@@ -333,7 +333,7 @@ const GamesTab = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, o
 
         {/* ─── ACTIVE GAMES ─── */}
         <TabsContent value="active" className="space-y-4">
-          {/* Fullscreen Reveal Overlay */}
+          {/* Fullscreen Reveal Overlay (archive replay only) */}
           {revealFestivalId && (
             <GamesRevealOverlay
               festivalId={revealFestivalId}
@@ -359,6 +359,46 @@ const GamesTab = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, o
                 onRefetch={fetchData}
                 onRefetchParent={onRefetch}
               />
+            ) : activeFestival.status === "finals" ? (
+              /* ═══ INLINE LIVE OLYMPICS VIEW ═══ */
+              <>
+                {/* Festival header */}
+                <Card className="border-primary/30 bg-primary/5">
+                  <CardContent className="p-3">
+                    <div className="flex items-center gap-2">
+                      <Trophy className="h-5 w-5 text-primary" />
+                      <div>
+                        <h3 className="font-display font-bold text-sm">{activeFestival.name}</h3>
+                        <p className="text-[10px] text-muted-foreground">
+                          Hostitel: {activeFestival.host_player} | Finále probíhá
+                        </p>
+                      </div>
+                      <Badge className="ml-auto bg-red-500/15 text-red-400 border-red-500/30 animate-pulse text-[9px]">
+                        🔴 LIVE
+                      </Badge>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Athletes roster */}
+                <OlympicsAthleteRoster
+                  participants={participants.filter(p => p.festival_id === activeFestival.id)}
+                  currentPlayerName={currentPlayerName}
+                />
+
+                {/* Inline GamesRevealPlayer (disciplines, live feed, medals, crowd) */}
+                <GamesRevealPlayer
+                  festivalId={activeFestival.id}
+                  sessionId={sessionId}
+                  disciplines={disciplines}
+                  isHost={currentPlayerName === activeFestival.host_player}
+                  onComplete={() => { fetchData(); onRefetch(); }}
+                  currentTurn={currentTurn}
+                />
+
+                {/* Chat tribuna */}
+                <LiveGamesFeed sessionId={sessionId} festivalId={activeFestival.id} currentPlayerName={currentPlayerName} />
+              </>
             ) : (
               <>
                 {activeFestival.status === "nomination" && (
@@ -392,7 +432,7 @@ const GamesTab = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, o
               </CardContent>
             </Card>
           ) : null}
-          {activeFestival && activeFestival.status !== "candidacy" && !revealFestivalId && (
+          {activeFestival && !["candidacy", "finals"].includes(activeFestival.status) && !revealFestivalId && (
             <LiveGamesFeed sessionId={sessionId} festivalId={activeFestival.id} currentPlayerName={currentPlayerName} />
           )}
         </TabsContent>
