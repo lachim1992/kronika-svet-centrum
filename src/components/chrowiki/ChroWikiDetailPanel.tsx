@@ -503,6 +503,7 @@ const ChroWikiDetailPanel = ({
         else if (entityType === "wonder") Object.assign(context, { era: entity.era, status: entity.status, city: entity.city_name, description: entity.description });
         else if (entityType === "person") Object.assign(context, { personType: entity.person_type, flavor: entity.flavor_trait, alive: entity.is_alive, bio: entity.bio });
         else if (entityType === "region") Object.assign(context, { biome: entity.biome, description: entity.description, is_homeland: entity.is_homeland });
+        else if (entityType === "country") Object.assign(context, { description: entity.description, motto: entity.motto, ruler_player: entity.ruler_player });
         else if (entityType === "event") Object.assign(context, { date: entity.date, summary: entity.summary, description: entity.description, category: entity.event_category });
       }
       const { data, error } = await supabase.functions.invoke("wiki-generate", {
