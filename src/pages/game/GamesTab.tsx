@@ -15,9 +15,48 @@ import LiveGamesFeed from "@/components/LiveGamesFeed";
 import StadiumArenaPanel from "@/components/StadiumArenaPanel";
 import NationalQualificationPanel from "@/components/NationalQualificationPanel";
 import GamesRevealOverlay from "@/components/GamesRevealOverlay";
+import GamesRevealPlayer from "@/components/GamesRevealPlayer";
 import HallOfRecords from "@/components/HallOfRecords";
 import LeaguePanel from "@/components/LeaguePanel";
 import AssociationsPanel from "@/components/league/AssociationsPanel";
+
+/* ═══ INLINE ATHLETES ROSTER ═══ */
+const OlympicsAthleteRoster = ({ participants, currentPlayerName }: { participants: any[]; currentPlayerName: string }) => {
+  if (participants.length === 0) return null;
+
+  const grouped = participants.reduce((acc: Record<string, any[]>, p) => {
+    (acc[p.player_name] = acc[p.player_name] || []).push(p);
+    return acc;
+  }, {});
+
+  return (
+    <Card className="border-border bg-card/50">
+      <CardHeader className="pb-2">
+        <CardTitle className="font-display text-xs flex items-center gap-1.5">
+          <Star className="h-3.5 w-3.5 text-primary" />
+          Sportovci ({participants.length})
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {Object.entries(grouped).map(([player, athletes]) => (
+            <div key={player} className={`space-y-1 p-2 rounded border ${player === currentPlayerName ? "border-primary/30 bg-primary/5" : "border-border bg-muted/20"}`}>
+              <p className="font-display text-[10px] font-bold">{player} ({athletes.length})</p>
+              {athletes.map((a: any) => (
+                <div key={a.id} className="flex items-center justify-between text-[9px]">
+                  <span className="font-medium">{a.athlete_name}</span>
+                  <span className="font-mono text-muted-foreground">
+                    S{a.strength} V{a.endurance} O{a.agility} T{a.tactics} C{a.charisma}
+                  </span>
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  );
+};
 
 interface Props {
   sessionId: string;
