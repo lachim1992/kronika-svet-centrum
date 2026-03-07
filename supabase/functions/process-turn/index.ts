@@ -962,6 +962,7 @@ Deno.serve(async (req) => {
         famineActive,
         famineCityCount,
         logEntries: logEntries.length,
+        lawEffects: { taxRateModifier, grainRationModifier, tradeRestriction, activePopModifier, maxMobModifier },
         armyFoodUpkeep,
         armyGoldUpkeep: wealthUpkeep,
       },
