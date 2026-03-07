@@ -1255,50 +1255,66 @@ async function ensureSportsOnboarding(
       .eq("session_id", sessionId).eq("player_name", factionName);
 
     const existingTypes = new Set((existing || []).map((a: any) => a.association_type));
+    const existingAssocMap = new Map((existing || []).map((a: any) => [a.association_type, a.id]));
+
+    // Check existing academies
+    const { data: existingAcademies } = await supabase.from("academies")
+      .select("id, association_id, academy_type")
+      .eq("session_id", sessionId).eq("player_name", factionName);
+    const academyAssocIds = new Set((existingAcademies || []).map((a: any) => a.association_id).filter(Boolean));
 
     for (const aType of ASSOCIATION_TYPES) {
-      if (existingTypes.has(aType)) continue;
-
       const label = ASSOCIATION_LABELS[aType];
       const city = myCities[0]; // Use capital / first city
+      let assocId: string;
 
-      // 1. Create association
-      const { data: assoc, error: assocErr } = await supabase.from("sports_associations").insert({
-        session_id: sessionId,
-        city_id: city.id,
-        player_name: factionName,
-        name: `${label.name} ${factionName}`,
-        association_type: aType,
-        founded_turn: turn,
-        status: "active",
-        reputation: 10,
-        scouting_level: 1,
-        youth_development: 1,
-        training_quality: 1,
-      }).select("id").single();
+      if (existingTypes.has(aType)) {
+        // Association exists — use it
+        assocId = existingAssocMap.get(aType)!;
+      } else {
+        // 1. Create association
+        const { data: assoc, error: assocErr } = await supabase.from("sports_associations").insert({
+          session_id: sessionId,
+          city_id: city.id,
+          player_name: factionName,
+          name: `${label.name} ${factionName}`,
+          association_type: aType,
+          founded_turn: turn,
+          status: "active",
+          reputation: 10,
+          scouting_level: 1,
+          youth_development: 1,
+          training_quality: 1,
+        }).select("id").single();
 
-      if (assocErr || !assoc) {
-        console.warn(`[${factionName}] Failed to create ${aType} association:`, assocErr?.message);
-        continue;
+        if (assocErr || !assoc) {
+          console.warn(`[${factionName}] Failed to create ${aType} association:`, assocErr?.message);
+          continue;
+        }
+        assocId = assoc.id;
+        console.log(`[${factionName}] Created ${aType} association in ${city.name}`);
       }
 
-      // 2. Create academy linked to association
-      await supabase.from("academies").insert({
-        session_id: sessionId,
-        city_id: city.id,
-        player_name: factionName,
-        name: `${label.academyName} – ${city.name}`,
-        academy_type: label.academyType,
-        association_id: assoc.id,
-        founded_turn: turn,
-        last_training_turn: turn,
-        training_cycle_turns: label.cycleTurns,
-        status: "active",
-        infrastructure: 10,
-        reputation: 10,
-        nutrition: 10,
-        trainer_level: 10,
-      });
+      // 2. Create academy if missing for this association
+      if (!academyAssocIds.has(assocId)) {
+        await supabase.from("academies").insert({
+          session_id: sessionId,
+          city_id: city.id,
+          player_name: factionName,
+          name: `${label.academyName} – ${city.name}`,
+          academy_type: label.academyType,
+          association_id: assocId,
+          founded_turn: turn,
+          last_training_turn: turn,
+          training_cycle_turns: label.cycleTurns,
+          status: "active",
+          infrastructure: 10,
+          reputation: 10,
+          nutrition: 10,
+          trainer_level: 10,
+        });
+        console.log(`[${factionName}] Created ${label.academyType} academy in ${city.name}`);
+      }
 
       // 3. For Sphaera — create teams (up to 3 per city)
       if (aType === "sphaera") {
