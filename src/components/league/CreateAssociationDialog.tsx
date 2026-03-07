@@ -98,6 +98,7 @@ const CreateAssociationDialog = ({ open, onOpenChange, sessionId, currentPlayerN
       setName("");
       setMotto("");
       setDescription("");
+      setAssocType(firstAvailable);
     } catch (e: any) {
       toast.error(e.message);
     } finally {
