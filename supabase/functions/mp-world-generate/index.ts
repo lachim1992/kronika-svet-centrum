@@ -59,9 +59,12 @@ Deno.serve(async (req) => {
     const isCheapStart = economic.world_gen_mode === "cheap_start";
     const topProfilesCount = economic.top_profiles_count || 3;
 
+    // Helper: update init_step for realtime progress tracking
+    const setStep = (step: string) => sb.from("game_sessions").update({ init_step: step } as any).eq("id", sessionId);
+
     // 3. Generate world seed
     const worldSeed = crypto.randomUUID();
-    await sb.from("game_sessions").update({ world_seed: worldSeed }).eq("id", sessionId);
+    await sb.from("game_sessions").update({ world_seed: worldSeed, init_step: "ai_generation" } as any).eq("id", sessionId);
 
     // Size config for multiplayer
     const config = {
