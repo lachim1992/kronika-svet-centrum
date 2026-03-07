@@ -528,10 +528,12 @@ Deno.serve(async (req) => {
       }
     }
 
-    // 4) Consumption
+    // 4) Consumption (modified by grain_ration_modifier law)
+    const grainRationMult = 1 + (grainRationModifier / 100); // e.g. -10 → 0.9x consumption
     let totalConsumption = 0;
     for (const city of myCities) {
-      const consumption = computeGrainConsumption(city);
+      let consumption = computeGrainConsumption(city);
+      consumption = Math.max(1, Math.round(consumption * grainRationMult));
       totalConsumption += consumption;
       const snap = cityProdSnapshot[city.id] || { grain: 0, wood: 0, stone: 0, iron: 0, special: 0 };
       await supabase.from("cities").update({
@@ -543,6 +545,7 @@ Deno.serve(async (req) => {
         last_turn_special_prod: snap.special,
       }).eq("id", city.id);
     }
+    if (grainRationModifier !== 0) logEntries.push(`Příděl: spotřeba obilí ${grainRationModifier > 0 ? "+" : ""}${grainRationModifier}% → ×${grainRationMult.toFixed(2)}`);
 
     // Army Upkeep
     const { data: stacks } = await supabase.from("military_stacks")
