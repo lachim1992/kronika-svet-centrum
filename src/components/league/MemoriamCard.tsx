@@ -90,7 +90,7 @@ export default function MemoriamCard({ player: p, sessionId, currentPlayerName, 
       if (error) throw error;
       if (data?.error) { toast.error(data.error); return; }
 
-      // Build rich wiki entry
+      // Build rich wiki entry with sport-specific image prompt
       const wikiData: Record<string, unknown> = {
         session_id: sessionId,
         entity_type: "person",
@@ -100,6 +100,7 @@ export default function MemoriamCard({ player: p, sessionId, currentPlayerName, 
         summary: data.summary,
         ai_description: data.nekrolog,
         image_url: p.portrait_url || null,
+        image_prompt: data.imagePrompt || null,
         tags: ["Sphaera", POS_FULL[p.position] || p.position, "In Memoriam", p.team_name],
       };
 
