@@ -371,3 +371,26 @@ function romanNumeral(n: number): string {
   let r = ""; for (let i = 0; i < vals.length; i++) while (n >= vals[i]) { r += syms[i]; n -= vals[i]; }
   return r;
 }
+
+function generateRoundRobin(teamIds: string[], matchesPerPairing: number): [string, string][][] {
+  const teams = [...teamIds];
+  if (teams.length % 2 !== 0) teams.push("BYE");
+  const n = teams.length;
+  const rounds: [string, string][][] = [];
+  for (let pass = 0; pass < matchesPerPairing; pass++) {
+    for (let round = 0; round < n - 1; round++) {
+      const matches: [string, string][] = [];
+      for (let i = 0; i < n / 2; i++) {
+        const home = teams[i];
+        const away = teams[n - 1 - i];
+        if (home === "BYE" || away === "BYE") continue;
+        if (pass % 2 === 0) matches.push([home, away]);
+        else matches.push([away, home]);
+      }
+      if (matches.length > 0) rounds.push(matches);
+      const last = teams.pop()!;
+      teams.splice(1, 0, last);
+    }
+  }
+  return rounds;
+}
