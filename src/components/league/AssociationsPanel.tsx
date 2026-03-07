@@ -558,12 +558,28 @@ const AssociationsPanel = ({ sessionId, currentPlayerName, currentTurn }: Props)
 
         {/* ═══ TEAMS ═══ */}
         <TabsContent value="teams" className="space-y-3">
+          {myAssociations.length > 0 && (
+            <div className="flex items-center justify-between">
+              <h4 className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Moje týmy ({myTeams.length})</h4>
+              <Button size="sm" variant="outline" className="text-xs gap-1"
+                onClick={() => setShowCreateTeamDialog(true)}
+                disabled={availableCitiesForTeam.length === 0}>
+                <Plus className="h-3 w-3" /> Sehnat tým
+              </Button>
+            </div>
+          )}
           {myTeams.length === 0 ? (
             <Card className="border-border bg-card/50">
-              <CardContent className="p-8 text-center space-y-2">
+              <CardContent className="p-8 text-center space-y-3">
                 <Users className="h-10 w-10 text-muted-foreground mx-auto opacity-50" />
                 <p className="text-sm text-muted-foreground">Žádné týmy.</p>
-                <p className="text-xs text-muted-foreground">Vytvoř týmy v záložce Liga → Manage My Teams.</p>
+                {myAssociations.length > 0 ? (
+                  <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setShowCreateTeamDialog(true)}>
+                    <Plus className="h-3.5 w-3.5" /> Založit první tým
+                  </Button>
+                ) : (
+                  <p className="text-xs text-muted-foreground">Nejdřív založ svaz, pak můžeš založit tým.</p>
+                )}
               </CardContent>
             </Card>
           ) : (
