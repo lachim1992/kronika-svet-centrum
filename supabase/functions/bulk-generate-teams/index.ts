@@ -99,7 +99,7 @@ Deno.serve(async (req) => {
       if (!aiFactionNames.has(owner)) continue; // only auto-create for AI
 
       // Find capital or first city of this AI player
-      const aiCity = cities.find(c => c.owner_player === owner);
+      const aiCity = liveCities.find(c => c.owner_player === owner);
       if (!aiCity) continue;
 
       const { data: newAssoc, error: assocErr } = await sb.from("sports_associations").insert({
