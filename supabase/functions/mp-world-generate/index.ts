@@ -1610,7 +1610,7 @@ DŮLEŽITÉ: Hráčské frakce MUSÍ mít isPlayer=true a playerName musí přes
     }
 
     // Mark session as ready
-    await sb.from("game_sessions").update({ init_status: "ready", current_turn: 1 }).eq("id", sessionId);
+    await sb.from("game_sessions").update({ init_status: "ready", current_turn: 1, init_step: "done" } as any).eq("id", sessionId);
 
     return new Response(JSON.stringify({
       ok: true,
