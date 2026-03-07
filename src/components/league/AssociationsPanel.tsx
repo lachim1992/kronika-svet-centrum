@@ -633,7 +633,126 @@ const AssociationsPanel = ({ sessionId, currentPlayerName, currentTurn }: Props)
           )}
         </TabsContent>
 
-        {/* ═══ SCOUTING ═══ */}
+        {/* ═══ ODCHOVANCI (Sphaera recruits) ═══ */}
+        <TabsContent value="odchovanci" className="space-y-3">
+          {(() => {
+            const sphaeraCandidates = allStudents.filter(s => (s as any).graduate_type === 'sphaera_player');
+            const olympicGrads = allStudents.filter(s => (s as any).graduate_type === 'athlete' && (s.status === 'graduated' || s.status === 'promoted'));
+            const gladiatorGrads = allStudents.filter(s => (s as any).graduate_type === 'gladiator' && (s.status === 'graduated' || s.status === 'promoted'));
+            
+            return (
+              <Tabs defaultValue="sphaera" className="space-y-2">
+                <TabsList className="grid w-full grid-cols-3 bg-muted/20">
+                  <TabsTrigger value="sphaera" className="text-xs">⚔️ Sphaera ({sphaeraCandidates.length})</TabsTrigger>
+                  <TabsTrigger value="olympic" className="text-xs">🏟️ Olympijští ({olympicGrads.length})</TabsTrigger>
+                  <TabsTrigger value="gladiator" className="text-xs">💀 Gladiátoři ({gladiatorGrads.length})</TabsTrigger>
+                </TabsList>
+
+                <TabsContent value="sphaera" className="space-y-2">
+                  {sphaeraCandidates.length === 0 ? (
+                    <p className="text-sm text-muted-foreground text-center py-8">Žádní kandidáti Sphaery. Založte Svaz Sphaery a akademii.</p>
+                  ) : (
+                    <ScrollArea className="max-h-[400px]">
+                      <div className="space-y-1">
+                        {sphaeraCandidates.map(s => {
+                          const acad = allAcademies.find(a => a.id === s.academy_id);
+                          return (
+                            <div key={s.id} className="flex items-center gap-2 p-2 rounded border border-border bg-card/50 hover:bg-card/70 transition-colors">
+                              {s.portrait_url && <img src={s.portrait_url} alt={s.name} className="w-7 h-7 rounded-full object-cover border border-border" />}
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-1">
+                                  <span className="text-xs font-display font-semibold truncate">{s.name}</span>
+                                  <Badge variant="outline" className="text-[7px]">{s.specialty}</Badge>
+                                  <Badge variant={s.status === 'candidate' ? 'secondary' : 'outline'} className="text-[7px]">
+                                    {s.status === 'candidate' ? '🆕 Kandidát' : s.status}
+                                  </Badge>
+                                </div>
+                                <p className="text-[9px] text-muted-foreground">{acad?.name || "?"} | Rok {s.graduation_turn || "?"}</p>
+                              </div>
+                              <div className="flex gap-0.5 shrink-0">
+                                <span className="text-[8px] font-mono bg-muted/50 px-1 rounded">S{s.strength}</span>
+                                <span className="text-[8px] font-mono bg-muted/50 px-1 rounded">V{s.endurance}</span>
+                                <span className="text-[8px] font-mono bg-muted/50 px-1 rounded">O{s.agility}</span>
+                                <span className="text-[8px] font-mono bg-muted/50 px-1 rounded">T{s.tactics}</span>
+                                <span className="text-[8px] font-mono bg-muted/50 px-1 rounded">C{s.charisma}</span>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </ScrollArea>
+                  )}
+                </TabsContent>
+
+                <TabsContent value="olympic" className="space-y-2">
+                  {olympicGrads.length === 0 ? (
+                    <p className="text-sm text-muted-foreground text-center py-8">Žádní olympijští sportovci. Založte Olympijský výbor.</p>
+                  ) : (
+                    <ScrollArea className="max-h-[400px]">
+                      <div className="space-y-1">
+                        {olympicGrads.map(s => {
+                          const acad = allAcademies.find(a => a.id === s.academy_id);
+                          return (
+                            <div key={s.id} className="flex items-center gap-2 p-2 rounded border border-border bg-card/50">
+                              {s.portrait_url && <img src={s.portrait_url} alt={s.name} className="w-7 h-7 rounded-full object-cover border border-border" />}
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-1">
+                                  <span className="text-xs font-display font-semibold truncate">{s.name}</span>
+                                  <Badge variant="outline" className="text-[7px]">{s.specialty}</Badge>
+                                  {s.status === 'promoted' && <Badge variant="outline" className="text-[7px] border-primary/50 text-primary">🏅 Nominován</Badge>}
+                                </div>
+                                <p className="text-[9px] text-muted-foreground">{acad?.name || "?"} | Rok {s.graduation_turn || "?"}</p>
+                              </div>
+                              <div className="flex gap-0.5 shrink-0">
+                                <span className="text-[8px] font-mono bg-muted/50 px-1 rounded">S{s.strength}</span>
+                                <span className="text-[8px] font-mono bg-muted/50 px-1 rounded">V{s.endurance}</span>
+                                <span className="text-[8px] font-mono bg-muted/50 px-1 rounded">O{s.agility}</span>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </ScrollArea>
+                  )}
+                </TabsContent>
+
+                <TabsContent value="gladiator" className="space-y-2">
+                  {gladiatorGrads.length === 0 ? (
+                    <p className="text-sm text-muted-foreground text-center py-8">Žádní gladiátoři. Založte Gladiátorskou gildu.</p>
+                  ) : (
+                    <ScrollArea className="max-h-[400px]">
+                      <div className="space-y-1">
+                        {gladiatorGrads.map(s => {
+                          const acad = allAcademies.find(a => a.id === s.academy_id);
+                          return (
+                            <div key={s.id} className="flex items-center gap-2 p-2 rounded border border-red-500/20 bg-red-500/5">
+                              {s.portrait_url && <img src={s.portrait_url} alt={s.name} className="w-7 h-7 rounded-full object-cover border border-red-500/30" />}
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-1">
+                                  <span className="text-xs font-display font-semibold truncate">{s.name}</span>
+                                  <Badge variant="outline" className="text-[7px] border-red-500/40 text-red-400">💀 Gladiátor</Badge>
+                                  <Badge variant="outline" className="text-[7px]">{s.specialty}</Badge>
+                                </div>
+                                <p className="text-[9px] text-muted-foreground">{acad?.name || "?"} | Rok {s.graduation_turn || "?"}</p>
+                              </div>
+                              <div className="flex gap-0.5 shrink-0">
+                                <span className="text-[8px] font-mono bg-muted/50 px-1 rounded">S{s.strength}</span>
+                                <span className="text-[8px] font-mono bg-muted/50 px-1 rounded">V{s.endurance}</span>
+                                <span className="text-[8px] font-mono bg-muted/50 px-1 rounded">O{s.agility}</span>
+                                <span className="text-[8px] font-mono bg-muted/50 px-1 rounded">T{s.tactics}</span>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </ScrollArea>
+                  )}
+                </TabsContent>
+              </Tabs>
+            );
+          })()}
+        </TabsContent>
+
         <TabsContent value="scouting" className="space-y-3">
           <Card className="border-border bg-card/50">
             <CardHeader className="py-2 px-3 border-b border-border/50">
