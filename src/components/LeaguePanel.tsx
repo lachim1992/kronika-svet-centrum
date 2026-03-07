@@ -19,6 +19,7 @@ interface Props {
   sessionId: string;
   currentPlayerName: string;
   currentTurn: number;
+  myRole?: string;
 }
 
 interface Team {
