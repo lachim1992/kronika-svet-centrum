@@ -194,6 +194,7 @@ Deno.serve(async (req) => {
             training_started_turn: Math.max(0, turn - 5),
             graduation_turn: turn,
             status: "graduated",
+            graduate_type: "athlete", // default for building-based academies
             bio: `Absolvent ${academyName}, specialista na ${gSpecialty}.`,
             portrait_url: null,
           });

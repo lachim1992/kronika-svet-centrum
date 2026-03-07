@@ -300,7 +300,7 @@ const AcademyPanel = ({ sessionId, currentPlayerName, currentTurn }: Props) => {
           {students.filter(s => (s.status === "graduated" || s.status === "promoted") && (s as any).graduate_type !== "sphaera_player").length === 0 ? (
             <p className="text-sm text-muted-foreground text-center p-8">Žádní absolventi. Počkejte na dokončení výcvikového cyklu.</p>
           ) : (
-            students.filter(s => s.status === "graduated" || s.status === "promoted").map(s => {
+            students.filter(s => (s.status === "graduated" || s.status === "promoted") && (s as any).graduate_type !== "sphaera_player").map(s => {
               const acad = academies.find(a => a.id === s.academy_id);
               const isChampion = championStudentIds.has(s.id);
               return (
