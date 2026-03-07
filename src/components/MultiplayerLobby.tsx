@@ -147,6 +147,32 @@ const MultiplayerLobby = ({ sessionId, roomCode, worldName, maxPlayers, isHost, 
     fetchMyCivConfig();
   }, [fetchPlayers, fetchWorldFoundation, fetchMyCivConfig]);
 
+  // Check if generation is already in progress on mount
+  useEffect(() => {
+    supabase.from("game_sessions").select("init_status, init_step").eq("id", sessionId).single().then(({ data }) => {
+      const d = data as any;
+      if (d?.init_status === "generating") {
+        setGenerating(true);
+        if (d.init_step) setInitStep(d.init_step);
+      }
+    });
+  }, [sessionId]);
+
+  // Polling fallback when generating (in case realtime misses updates)
+  useEffect(() => {
+    if (!generating) return;
+    const interval = setInterval(async () => {
+      const { data } = await supabase.from("game_sessions").select("init_status, init_step").eq("id", sessionId).single();
+      const d = data as any;
+      if (d?.init_step) setInitStep(d.init_step);
+      if (d?.init_status === "ready") {
+        onGameStart();
+      }
+    }, 5000);
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [generating, sessionId]);
+
   // Realtime subscription for lobby updates — stable deps to prevent re-subscribe loops
   useEffect(() => {
     const channel = supabase
