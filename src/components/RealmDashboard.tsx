@@ -30,14 +30,18 @@ const RealmDashboard = ({ sessionId, currentPlayerName, currentTurn, myRole, cit
 
   const fetchData = useCallback(async () => {
     setLoading(true);
-    const { data } = await supabase
-      .from("realm_resources").select("*")
-      .eq("session_id", sessionId).eq("player_name", currentPlayerName).maybeSingle();
-    if (data) setRealm(data);
+    const [realmRes, lawsRes] = await Promise.all([
+      supabase.from("realm_resources").select("*")
+        .eq("session_id", sessionId).eq("player_name", currentPlayerName).maybeSingle(),
+      supabase.from("laws").select("law_name, structured_effects, is_active")
+        .eq("session_id", sessionId).eq("player_name", currentPlayerName).eq("is_active", true),
+    ]);
+    if (realmRes.data) setRealm(realmRes.data);
     else {
       const r = await ensureRealmResources(sessionId, currentPlayerName);
       setRealm(r);
     }
+    setActiveLaws(lawsRes.data || []);
     setLoading(false);
   }, [sessionId, currentPlayerName]);
 
