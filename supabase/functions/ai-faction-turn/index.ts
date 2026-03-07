@@ -548,6 +548,9 @@ Rozhodni, co frakce udělá v tomto kole. ${milMetrics.warState === "war" ? "JST
       console.log(`[${factionName}] Auto-raised mobilization to ${warMobRate} due to war state`);
     }
 
+    // ── SPORTS ONBOARDING: ensure AI has all 3 association types, academies, teams, funding ──
+    await ensureSportsOnboarding(supabase, sessionId, factionName, turn, cities || []);
+
     // ── Execute each action ──
     for (const action of (result.actions || []).slice(0, 8)) {
       try {
@@ -1225,6 +1228,179 @@ async function sendDiplomacyMessage(
     message_text: text, secrecy: "PRIVATE",
   });
   return "ok";
+}
+
+// ═══════════════════════════════════════════
+// SPORTS ONBOARDING — ensure AI factions have all 3 association types
+// ═══════════════════════════════════════════
+
+const ASSOCIATION_TYPES = ["sphaera", "olympic", "gladiatorial"] as const;
+const ASSOCIATION_LABELS: Record<string, { name: string; academyName: string; cycleTurns: number; academyType: string }> = {
+  sphaera: { name: "Liga Sphaera", academyName: "Sportovní akademie", cycleTurns: 5, academyType: "sphaera" },
+  olympic: { name: "Olympijský svaz", academyName: "Olympijská akademie", cycleTurns: 4, academyType: "athletic" },
+  gladiatorial: { name: "Gladiátorský svaz", academyName: "Gladiátorská škola", cycleTurns: 6, academyType: "gladiatorial" },
+};
+
+const TEAM_PREFIXES = ["Lvi", "Orli", "Vlci", "Jestřábi", "Draci", "Hadi", "Býci", "Sokolové", "Medvědi", "Panter"];
+
+async function ensureSportsOnboarding(
+  supabase: any, sessionId: string, factionName: string, turn: number, myCities: any[],
+) {
+  if (myCities.length === 0) return;
+
+  try {
+    // Check existing associations
+    const { data: existing } = await supabase.from("sports_associations")
+      .select("id, association_type, city_id")
+      .eq("session_id", sessionId).eq("player_name", factionName);
+
+    const existingTypes = new Set((existing || []).map((a: any) => a.association_type));
+    const existingAssocMap = new Map((existing || []).map((a: any) => [a.association_type, a.id]));
+
+    // Check existing academies
+    const { data: existingAcademies } = await supabase.from("academies")
+      .select("id, association_id, academy_type")
+      .eq("session_id", sessionId).eq("player_name", factionName);
+    const academyAssocIds = new Set((existingAcademies || []).map((a: any) => a.association_id).filter(Boolean));
+
+    for (const aType of ASSOCIATION_TYPES) {
+      const label = ASSOCIATION_LABELS[aType];
+      const city = myCities[0]; // Use capital / first city
+      let assocId: string;
+
+      if (existingTypes.has(aType)) {
+        // Association exists — use it
+        assocId = existingAssocMap.get(aType)!;
+      } else {
+        // 1. Create association
+        const { data: assoc, error: assocErr } = await supabase.from("sports_associations").insert({
+          session_id: sessionId,
+          city_id: city.id,
+          player_name: factionName,
+          name: `${label.name} ${factionName}`,
+          association_type: aType,
+          founded_turn: turn,
+          status: "active",
+          reputation: 10,
+          scouting_level: 1,
+          youth_development: 1,
+          training_quality: 1,
+        }).select("id").single();
+
+        if (assocErr || !assoc) {
+          console.warn(`[${factionName}] Failed to create ${aType} association:`, assocErr?.message);
+          continue;
+        }
+        assocId = assoc.id;
+        console.log(`[${factionName}] Created ${aType} association in ${city.name}`);
+      }
+
+      // 2. Create academy if missing for this association
+      if (!academyAssocIds.has(assocId)) {
+        await supabase.from("academies").insert({
+          session_id: sessionId,
+          city_id: city.id,
+          player_name: factionName,
+          name: `${label.academyName} – ${city.name}`,
+          academy_type: label.academyType,
+          association_id: assocId,
+          founded_turn: turn,
+          last_training_turn: turn,
+          training_cycle_turns: label.cycleTurns,
+          status: "active",
+          infrastructure: 10,
+          reputation: 10,
+          nutrition: 10,
+          trainer_level: 10,
+        });
+        console.log(`[${factionName}] Created ${label.academyType} academy in ${city.name}`);
+      }
+
+      // 3. For Sphaera — create teams (up to 3 per city)
+      if (aType === "sphaera") {
+        for (let i = 0; i < Math.min(3, myCities.length); i++) {
+          const teamCity = myCities[i];
+          // Check existing team count for this city
+          const { count } = await supabase.from("league_teams")
+            .select("id", { count: "exact", head: true })
+            .eq("session_id", sessionId).eq("city_id", teamCity.id).eq("is_active", true);
+
+          if ((count || 0) >= 3) continue;
+
+          const prefix = TEAM_PREFIXES[Math.floor(Math.random() * TEAM_PREFIXES.length)];
+          const hue = Math.floor(Math.random() * 360);
+          const color = `hsl(${hue}, 70%, 50%)`;
+
+          const { data: team } = await supabase.from("league_teams").insert({
+            session_id: sessionId,
+            city_id: teamCity.id,
+            player_name: factionName,
+            team_name: `${prefix} ${teamCity.name}`,
+            association_id: assoc.id,
+            color_primary: color,
+            color_secondary: "#ffffff",
+            attack_rating: 40 + Math.floor(Math.random() * 20),
+            defense_rating: 40 + Math.floor(Math.random() * 20),
+            tactics_rating: 40 + Math.floor(Math.random() * 20),
+            discipline_rating: 40 + Math.floor(Math.random() * 20),
+            popularity: 10,
+            fan_base: 50 + Math.floor(Math.random() * 200),
+            is_active: true,
+          }).select("id").single();
+
+          // Generate roster for the team
+          if (team) {
+            await generateTeamRoster(supabase, sessionId, team.id, factionName);
+          }
+        }
+      }
+
+      console.log(`[${factionName}] Created ${aType} association + academy in ${city.name}`);
+    }
+
+    // 4. Set sport_funding_pct if not set
+    const { data: realm } = await supabase.from("realm_resources")
+      .select("sport_funding_pct").eq("session_id", sessionId).eq("player_name", factionName).maybeSingle();
+
+    if (realm && (realm.sport_funding_pct || 0) < 5) {
+      const funding = 5 + Math.floor(Math.random() * 10); // 5-14%
+      await supabase.from("realm_resources")
+        .update({ sport_funding_pct: funding })
+        .eq("session_id", sessionId).eq("player_name", factionName);
+    }
+  } catch (e) {
+    console.warn(`[${factionName}] Sports onboarding error (non-blocking):`, e);
+  }
+}
+
+const SPHAERA_POSITIONS = ["striker", "striker", "guardian", "guardian", "carrier", "praetor", "exactor"];
+
+async function generateTeamRoster(supabase: any, sessionId: string, teamId: string, playerName: string) {
+  const firstNames = ["Aelius", "Brutus", "Cassius", "Decimus", "Flavius", "Gaius", "Lucius", "Marcus", "Publius", "Titus", "Varro", "Servius"];
+  const lastNames = ["Ferro", "Stratos", "Nerva", "Corvus", "Plinius", "Regulus", "Rufus", "Vindex", "Calvus", "Crispus"];
+
+  for (const pos of SPHAERA_POSITIONS) {
+    const name = `${firstNames[Math.floor(Math.random() * firstNames.length)]} ${lastNames[Math.floor(Math.random() * lastNames.length)]}`;
+    const overall = 40 + Math.floor(Math.random() * 30); // 40-69
+    await supabase.from("league_players").insert({
+      session_id: sessionId,
+      team_id: teamId,
+      name,
+      position: pos,
+      strength: 30 + Math.floor(Math.random() * 40),
+      speed: 30 + Math.floor(Math.random() * 40),
+      technique: 30 + Math.floor(Math.random() * 40),
+      stamina: 50 + Math.floor(Math.random() * 30),
+      aggression: 20 + Math.floor(Math.random() * 40),
+      leadership: 10 + Math.floor(Math.random() * 30),
+      overall_rating: overall,
+      form: 50 + Math.floor(Math.random() * 30),
+      condition: 80 + Math.floor(Math.random() * 20),
+      age: 18 + Math.floor(Math.random() * 12),
+      talent_potential: overall + Math.floor(Math.random() * 20),
+      peak_age: 25 + Math.floor(Math.random() * 5),
+    }).then(() => {}, () => {});
+  }
 }
 
 async function invokeFunction(
