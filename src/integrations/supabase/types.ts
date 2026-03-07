@@ -3232,6 +3232,7 @@ export type Database = {
           game_mode: string
           id: string
           init_status: string
+          init_step: string | null
           max_players: number
           player1_name: string
           player2_name: string
@@ -3253,6 +3254,7 @@ export type Database = {
           game_mode?: string
           id?: string
           init_status?: string
+          init_step?: string | null
           max_players?: number
           player1_name?: string
           player2_name?: string
@@ -3274,6 +3276,7 @@ export type Database = {
           game_mode?: string
           id?: string
           init_status?: string
+          init_step?: string | null
           max_players?: number
           player1_name?: string
           player2_name?: string
