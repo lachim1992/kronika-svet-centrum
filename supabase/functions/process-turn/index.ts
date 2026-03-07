@@ -638,9 +638,11 @@ Deno.serve(async (req) => {
         logEntries.push(`🚫 Obchodní cesta s ${otherPlayer} blokována embargem`);
         continue;
       }
-      // Apply pact-based trade efficiency modifier
+      // Apply pact-based trade efficiency modifier + law trade restriction
       const pactMod = getTradeEfficiencyModifier(allPacts, playerName, otherPlayer);
-      const routeIncome = Math.round((route.gold_per_turn || 0) * (1 + pactMod));
+      const lawTradeReduction = Math.min(1, tradeRestriction / 100); // e.g. 20 → 0.2 penalty
+      const routeIncome = Math.max(0, Math.round((route.gold_per_turn || 0) * (1 + pactMod) * (1 - lawTradeReduction)));
+      if (lawTradeReduction > 0) logEntries.push(`🚫 Obchodní omezení: ${otherPlayer} −${Math.round(lawTradeReduction * 100)}%`);
       tradeRouteIncome += routeIncome;
     }
     newGoldReserve += tradeRouteIncome;
