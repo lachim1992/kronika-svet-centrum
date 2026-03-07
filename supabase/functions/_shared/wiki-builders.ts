@@ -132,7 +132,13 @@ export async function buildProvinceContext(
     `\nMĚSTA V PROVINCII:\n${cityDescriptions || "žádná města"}`,
   ].filter(Boolean).join("\n");
 
-  const imageInstructions = `A WIDE panoramic medieval illuminated manuscript illustration of the province "${entityName}". View from a hilltop overlooking vast ${province?.biome || "temperate"} terrain. Focus on LANDSCAPE: rivers, fields, forests, hills, roads winding through countryside. ${province?.biome === "mountains" ? "Dramatic mountain peaks dominating the view." : province?.biome === "coast" ? "Distant coastline and sea on the horizon." : province?.biome === "forest" ? "Dense forests blanketing rolling hills." : "Rolling countryside with patchwork farmland."} Settlements appear ONLY as tiny specks of smoke or faint rooftops on the distant horizon — DO NOT show close-up buildings or streets. This is a LANDSCAPE view, not a city view. Medieval manuscript art style.`;
+  const cityScaleHints = cities.map((c: any) => {
+    const sl = c.settlement_level || "HAMLET";
+    const sizeWord = sl === "POLIS" ? "a large walled city" : sl === "TOWN" ? "a medium town with walls" : sl === "CITY" ? "a sizeable city" : "a tiny village or hamlet";
+    return `"${c.name}" visible as ${sizeWord} (${c.population_total || 0} people)`;
+  }).join("; ");
+
+  const imageInstructions = `A WIDE panoramic medieval illuminated manuscript illustration of the province "${entityName}". View from a hilltop overlooking vast ${province?.biome || "temperate"} terrain. Focus on LANDSCAPE: rivers, fields, forests, hills, roads winding through countryside. ${province?.biome === "mountains" ? "Dramatic mountain peaks dominating the view." : province?.biome === "coast" ? "Distant coastline and sea on the horizon." : province?.biome === "forest" ? "Dense forests blanketing rolling hills." : "Rolling countryside with patchwork farmland."} ${cities.length > 0 ? `SETTLEMENTS IN LANDSCAPE: ${cityScaleHints}. Show each settlement at CORRECT relative scale — hamlets as tiny clusters, towns as modest groups, cities as larger formations. If reference images of these cities are provided, match their architectural style in the distance.` : "No visible settlements — pure wilderness."} Medieval manuscript art style with gold leaf details.`;
 
   return { systemPrompt, userPrompt, imageInstructions, waitForCities: citiesWithoutImages > 0 };
 }
