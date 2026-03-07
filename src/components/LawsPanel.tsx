@@ -16,10 +16,14 @@ interface Props {
 }
 
 const EFFECT_TYPES = [
-  { value: "tax_change", label: "Změna daní", icon: "💰" },
-  { value: "trade_restriction", label: "Obchodní omezení", icon: "🚫" },
-  { value: "military_funding", label: "Vojenské financování", icon: "⚔️" },
-  { value: "civil_reform", label: "Občanská reforma", icon: "🏛️" },
+  { value: "tax_change", label: "Změna daní (stabilita)", icon: "💰", hint: "Kladná = vyšší daně (−stabilita), záporná = nižší (+stabilita)" },
+  { value: "tax_rate_percent", label: "Daňová sazba (% zlata)", icon: "🪙", hint: "Modifikátor příjmu zlata v %. +10 = +10% zlata" },
+  { value: "grain_ration_modifier", label: "Potravinový příděl", icon: "🌾", hint: "Modifikátor spotřeby obilí v %. −10 = úsporný, +15 = štědrý" },
+  { value: "trade_restriction", label: "Obchodní omezení", icon: "🚫", hint: "Penalizace efektivity obchodu v %. +20 = −20% příjmu z obchodu" },
+  { value: "active_pop_modifier", label: "Pracovní povinnost", icon: "👷", hint: "Modifikátor podílu aktivní populace. +0.05 = +5% pracujících" },
+  { value: "military_funding", label: "Vojenské financování", icon: "⚔️", hint: "Zvyšuje morálku armád" },
+  { value: "civil_reform", label: "Občanská reforma", icon: "🏛️", hint: "Zvyšuje stabilitu měst" },
+  { value: "max_mobilization_modifier", label: "Odvodová povinnost", icon: "🛡️", hint: "Modifikátor max mobilizace. +0.05 = +5% mobilizace" },
 ];
 
 const LawsPanel = ({ sessionId, currentPlayerName, currentTurn, myRole }: Props) => {
