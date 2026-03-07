@@ -304,10 +304,95 @@ async function playTierRound(sb: any, session_id: string, currentTurn: number, t
     const schedule = generateDoubleRoundRobin(tierTeams.map(t => t.id));
     let rn = 0;
     for (const round of schedule) { rn++; for (const [h, a] of round) await sb.from("league_matches").insert({ session_id, season_id: season.id, round_number: rn, turn_number: currentTurn + rn, home_team_id: h, away_team_id: a }); }
+    // Check if new teams need to be added to standings
+    const { data: existingStandings } = await sb.from("league_standings")
+      .select("team_id").eq("season_id", season.id);
+    const standingTeamIds = new Set((existingStandings || []).map((s: any) => s.team_id));
+    const missingTeams = tierTeams.filter(t => !standingTeamIds.has(t.id));
+    if (missingTeams.length > 0) {
+      for (const t of missingTeams) {
+        await sb.from("league_standings").insert({ session_id, season_id: season.id, team_id: t.id });
+      }
+    }
   }
 
   const { data: nextMatches } = await sb.from("league_matches").select("*").eq("season_id", season.id).eq("status", "scheduled").order("round_number", { ascending: true });
   if (!nextMatches || nextMatches.length === 0) {
+    // No scheduled matches — regenerate schedule if there are enough teams
+    const { data: allStandings } = await sb.from("league_standings")
+      .select("team_id").eq("season_id", season.id);
+    const allTeamIds = (allStandings || []).map((s: any) => s.team_id);
+
+    if (allTeamIds.length >= 2 && season.playoff_status === "none") {
+      // Check if season had any played matches
+      const { count: playedCount } = await sb.from("league_matches")
+        .select("id", { count: "exact", head: true })
+        .eq("season_id", season.id).eq("status", "played");
+
+      if ((playedCount || 0) === 0) {
+        // Fresh season — generate full double round-robin
+        const schedule = generateDoubleRoundRobin(allTeamIds);
+        let rn = 0;
+        for (const round of schedule) {
+          rn++;
+          for (const [h, a] of round) {
+            await sb.from("league_matches").insert({
+              session_id, season_id: season.id, round_number: rn,
+              turn_number: (season.started_turn || currentTurn) + rn,
+              home_team_id: h, away_team_id: a,
+            });
+          }
+        }
+        await sb.from("league_seasons").update({
+          total_rounds: schedule.length,
+          matches_per_round: Math.floor(allTeamIds.length / 2),
+        }).eq("id", season.id);
+        // Recurse to play the first round
+        return await playTierRound(sb, session_id, currentTurn, tier, tierTeams);
+      } else {
+        // Mid-season — generate remaining matches for new teams against existing ones
+        // Get all played pairings
+        const { data: playedMatches } = await sb.from("league_matches")
+          .select("home_team_id, away_team_id")
+          .eq("season_id", season.id).eq("status", "played");
+        const playedPairs = new Set((playedMatches || []).map((m: any) => `${m.home_team_id}-${m.away_team_id}`));
+
+        // Generate missing pairings (each pair plays home+away)
+        const newMatches: [string, string][] = [];
+        for (let i = 0; i < allTeamIds.length; i++) {
+          for (let j = i + 1; j < allTeamIds.length; j++) {
+            const a = allTeamIds[i], b = allTeamIds[j];
+            if (!playedPairs.has(`${a}-${b}`) && !playedPairs.has(`${b}-${a}`)) {
+              newMatches.push([a, b]);
+              newMatches.push([b, a]);
+            } else if (!playedPairs.has(`${b}-${a}`)) {
+              newMatches.push([b, a]); // reverse leg
+            }
+          }
+        }
+
+        // Distribute into rounds
+        const maxRound = season.current_round || 1;
+        const matchesPerRound = Math.floor(allTeamIds.length / 2);
+        let rn = maxRound + 1;
+        for (let idx = 0; idx < newMatches.length; idx++) {
+          if (idx > 0 && idx % matchesPerRound === 0) rn++;
+          const [h, a] = newMatches[idx];
+          await sb.from("league_matches").insert({
+            session_id, season_id: season.id, round_number: rn,
+            turn_number: currentTurn + (rn - maxRound),
+            home_team_id: h, away_team_id: a,
+          });
+        }
+        await sb.from("league_seasons").update({
+          total_rounds: rn,
+          matches_per_round: matchesPerRound,
+        }).eq("id", season.id);
+        // Recurse to play
+        return await playTierRound(sb, session_id, currentTurn, tier, tierTeams);
+      }
+    }
+
     // Regular season done — start playoffs if enough teams
     if (season.playoff_status === "none") {
       return await startPlayoffs(sb, session_id, season);

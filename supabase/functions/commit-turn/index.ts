@@ -959,16 +959,25 @@ Deno.serve(async (req) => {
     }
 
     // ═══════════════════════════════════════════
-    // 8d-pre. SPHAERA LEAGUE TICK — auto-create teams, simulate matches
+    // 8d-pre. SPHAERA LEAGUE — play round via unified engine
     // ═══════════════════════════════════════════
     try {
-      const { data: leagueData, error: leagueErr } = await supabase.functions.invoke("league-tick", {
-        body: { session_id: sessionId, turn_number: turnNumber + 1 },
-      });
-      if (leagueErr) console.error("League tick error:", leagueErr);
-      results.league = leagueData || { error: leagueErr?.message };
+      // Check if there are any active teams before invoking
+      const { count: activeTeamCount } = await supabase.from("league_teams")
+        .select("id", { count: "exact", head: true })
+        .eq("session_id", sessionId).eq("is_active", true);
+
+      if (activeTeamCount && activeTeamCount >= 2) {
+        const { data: leagueData, error: leagueErr } = await supabase.functions.invoke("league-play-round", {
+          body: { session_id: sessionId, player_name: playerName, skip_commentary: !!skipNarrative },
+        });
+        if (leagueErr) console.error("League play-round error:", leagueErr);
+        results.league = leagueData || { error: leagueErr?.message };
+      } else {
+        results.league = { skipped: true, reason: "not_enough_teams" };
+      }
     } catch (e) {
-      console.error("League tick error:", e);
+      console.error("League play-round error:", e);
       results.league = { error: (e as Error).message };
     }
 
