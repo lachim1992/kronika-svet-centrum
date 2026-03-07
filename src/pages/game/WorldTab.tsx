@@ -42,6 +42,7 @@ const BIOME_LABELS: Record<string, string> = {
 
 const WorldTab = ({
   sessionId, session, events, memories, players, cities, wonders, greatPersons,
+  resources, armies, chronicles,
   cityStates, currentPlayerName, currentTurn, myRole, worldFoundation, entityIndex,
   onRefetch, onEventClick, onEntityClick,
   worldEntityTarget, onClearWorldEntityTarget,
