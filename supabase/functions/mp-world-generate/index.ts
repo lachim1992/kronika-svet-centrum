@@ -695,6 +695,7 @@ DŮLEŽITÉ: Hráčské frakce MUSÍ mít isPlayer=true a playerName musí přes
       return center;
     };
 
+    await setStep("creating_cities");
     // ═══ STEP E: Cities ═══
     const POP_RANGES: Record<string, { min: number; max: number }> = {
       Velkoměsto: { min: 1200, max: 1600 }, Město: { min: 800, max: 1200 },
