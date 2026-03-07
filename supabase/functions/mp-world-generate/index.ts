@@ -418,6 +418,7 @@ DŮLEŽITÉ: Hráčské frakce MUSÍ mít isPlayer=true a playerName musí přes
       playerConfigMap[cfg.player_name] = cfg;
     }
 
+    await setStep("creating_entities");
     // ═══ STEP A: Country ═══
     const countryInfo = world?.country || { name: worldName, description: premise, image_prompt: "" };
     const { data: countryRow } = await sb.from("countries").insert({
