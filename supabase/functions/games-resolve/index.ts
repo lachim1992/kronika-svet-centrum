@@ -440,105 +440,11 @@ Deno.serve(async (req) => {
       legends.push(championId);
     }
 
-    // ═══════════════════════════════════════════
-    // WIKI PROPAGATION — auto-create refs + enrich
-    // ═══════════════════════════════════════════
+    // ═══ WIKI PROPAGATION — delegate to shared function ═══
     try {
-      const wikiRefs: any[] = [];
-      const entitiesToEnrich: Array<{ id: string; type: string }> = [];
-
-      // 1. Host city wiki ref
-      if (festival.host_city_id) {
-        wikiRefs.push({
-          session_id, entity_id: festival.host_city_id, entity_type: "city",
-          ref_type: "event", ref_id: festival_id,
-          ref_label: `Hostitel Velkých her (rok ${turn_number || "?"})`,
-          turn_number: turn_number || 0, impact_score: 5,
-          meta: { festival_id, festival_name: festival.name || "Velké hry", role: "host" },
-        });
-        entitiesToEnrich.push({ id: festival.host_city_id, type: "city" });
-
-        // Update hosting_count
-        await sb.from("cities").update({
-          hosting_count: (festival.hosting_count || 0) + 1,
-        }).eq("id", festival.host_city_id);
-      }
-
-      // 2. Medalists — wiki refs for persons (via great_persons if linked)
-      const medalParticipants = Object.values(medalTally).filter((m: any) => m.gold > 0 || m.silver > 0 || m.bronze > 0);
-      for (const mp of medalParticipants) {
-        const participant = participants.find((p: any) => p.id === (mp as any).participantId);
-        if (!participant) continue;
-
-        // If participant has a student_id, check for great_person_id
-        if (participant.student_id) {
-          const { data: student } = await sb.from("academy_students")
-            .select("great_person_id").eq("id", participant.student_id).maybeSingle();
-          if (student?.great_person_id) {
-            const medalSummary = `${(mp as any).gold}🥇 ${(mp as any).silver}🥈 ${(mp as any).bronze}🥉`;
-            wikiRefs.push({
-              session_id, entity_id: student.great_person_id, entity_type: "person",
-              ref_type: "event", ref_id: festival_id,
-              ref_label: `Velké hry: ${medalSummary}`,
-              turn_number: turn_number || 0, impact_score: (mp as any).gold > 0 ? 5 : 3,
-              meta: { festival_id, medals: { gold: (mp as any).gold, silver: (mp as any).silver, bronze: (mp as any).bronze } },
-            });
-            entitiesToEnrich.push({ id: student.great_person_id, type: "person" });
-          }
-        }
-
-        // Also ref the participant's home city
-        if (participant.city_id) {
-          const medalSummary = `${(mp as any).gold}🥇 ${(mp as any).silver}🥈 ${(mp as any).bronze}🥉`;
-          wikiRefs.push({
-            session_id, entity_id: participant.city_id, entity_type: "city",
-            ref_type: "event", ref_id: festival_id,
-            ref_label: `Medailista z her: ${participant.athlete_name} (${medalSummary})`,
-            turn_number: turn_number || 0, impact_score: (mp as any).gold > 0 ? 4 : 2,
-            meta: { festival_id, athlete: participant.athlete_name, player: participant.player_name },
-          });
-          // Don't double-enrich host city
-          if (!entitiesToEnrich.some(e => e.id === participant.city_id)) {
-            entitiesToEnrich.push({ id: participant.city_id, type: "city" });
-          }
-        }
-      }
-
-      // 3. Create standalone wiki entry for the festival event
-      const festivalName = festival.name || `Velké hry — rok ${turn_number}`;
-      const hostCityName = festival.host_city_name || "";
-      const championParticipant = championId ? participants.find((p: any) => p.id === championId) : null;
-      const medalSummaryText = Object.values(medalTally)
-        .sort((a: any, b: any) => (b.gold * 5 + b.silver * 3 + b.bronze) - (a.gold * 5 + a.silver * 3 + a.bronze))
-        .slice(0, 5)
-        .map((m: any) => `${m.player}: ${m.gold}🥇 ${m.silver}🥈 ${m.bronze}🥉`)
-        .join(", ");
-
-      await sb.from("wiki_entries").upsert({
-        session_id,
-        entity_type: "event",
-        entity_id: festival_id,
-        entity_name: festivalName,
-        owner_player: festival.host_player || "",
-        summary: `${festivalName} v ${hostCityName}. ${championParticipant ? `Šampion: ${championParticipant.athlete_name} (${championParticipant.player_name})` : ""}`,
-        ai_description: `${festivalName} se konaly v ${hostCityName || "neznámém městě"}.\n\nMedailová tabulka: ${medalSummaryText || "žádné medaile"}\n\n${championParticipant ? `Celkový šampion her: ${championParticipant.athlete_name} z ${championParticipant.player_name}.` : ""}`,
-      }, { onConflict: "session_id,entity_id" });
-
-      // Insert wiki refs
-      if (wikiRefs.length > 0) {
-        await sb.from("wiki_event_refs").upsert(wikiRefs, {
-          onConflict: "session_id,entity_id,ref_type,ref_id", ignoreDuplicates: true,
-        });
-      }
-
-      // Trigger wiki-enrich for impacted entities (best-effort, non-blocking)
-      for (const target of entitiesToEnrich.slice(0, 5)) {
-        try {
-          await sb.functions.invoke("wiki-enrich", {
-            body: { sessionId: session_id, entityId: target.id, entityType: target.type, turnNumber: turn_number || 0 },
-          });
-        } catch (enrichErr) { console.error(`Wiki enrich for ${target.id}:`, enrichErr); }
-      }
+      await sb.functions.invoke("games-wiki-propagate", {
+        body: { session_id, festival_id },
+      });
     } catch (wikiErr) {
       console.error("Wiki propagation for games error:", wikiErr);
     }
