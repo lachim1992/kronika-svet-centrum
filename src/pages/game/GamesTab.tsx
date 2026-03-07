@@ -275,7 +275,26 @@ const GamesTab = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, o
   const [revealDismissed, setRevealDismissed] = useState<string | null>(null);
 
   const handleResolve = async (festivalId: string) => {
-    setRevealFestivalId(festivalId);
+    setResolving(true);
+    try {
+      // Transition festival to "finals" status — this triggers inline live view for all players
+      const { error } = await supabase
+        .from("games_festivals")
+        .update({ status: "finals", finals_turn: currentTurn })
+        .eq("id", festivalId);
+      if (error) throw error;
+
+      // Update local state immediately
+      setFestivals(prev => prev.map(f => f.id === festivalId ? { ...f, status: "finals", finals_turn: currentTurn } : f));
+      toast.success("🏟️ Hry zahájeny! Finále probíhá.");
+      await fetchData();
+    } catch (e: any) {
+      toast.error(e.message || "Chyba při zahájení her");
+      // Fallback: open overlay
+      setRevealFestivalId(festivalId);
+    } finally {
+      setResolving(false);
+    }
   };
 
   const handleRevealClose = async () => {
