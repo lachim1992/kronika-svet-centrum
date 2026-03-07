@@ -548,6 +548,9 @@ Rozhodni, co frakce udělá v tomto kole. ${milMetrics.warState === "war" ? "JST
       console.log(`[${factionName}] Auto-raised mobilization to ${warMobRate} due to war state`);
     }
 
+    // ── SPORTS ONBOARDING: ensure AI has all 3 association types, academies, teams, funding ──
+    await ensureSportsOnboarding(supabase, sessionId, factionName, turn, cities || []);
+
     // ── Execute each action ──
     for (const action of (result.actions || []).slice(0, 8)) {
       try {
