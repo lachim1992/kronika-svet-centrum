@@ -170,7 +170,7 @@ export default function InMemoriamTab({ sessionId, currentPlayerName, myRole, on
           </CardTitle>
         </CardHeader>
         <CardContent className="p-0">
-          <ScrollArea className="max-h-[600px]">
+          <div className="max-h-[80vh] overflow-y-auto">
             <div className="divide-y divide-border/30">
               {deadPlayers.map(p => (
                 <MemoriamCard
