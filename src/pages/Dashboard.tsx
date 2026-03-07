@@ -113,6 +113,7 @@ const Dashboard = () => {
     }
   }, [currentTurn]);
 
+  useEffect(() => {
     if (!user || !sessionId) return;
 
     const fetchMembership = async () => {
