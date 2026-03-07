@@ -445,6 +445,7 @@ const GamesTab = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, o
                   sessionId={sessionId}
                   disciplines={disciplines}
                   isHost={currentPlayerName === activeFestival.host_player}
+                  isAdmin={isAdmin}
                   onComplete={() => { fetchData(); onRefetch(); }}
                   currentTurn={currentTurn}
                 />

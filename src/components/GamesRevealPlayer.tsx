@@ -131,11 +131,12 @@ interface Props {
   sessionId: string;
   disciplines: any[];
   isHost: boolean;
+  isAdmin?: boolean;
   onComplete?: () => void;
   currentTurn?: number;
 }
 
-const GamesRevealPlayer = ({ festivalId, sessionId, disciplines, isHost, onComplete, currentTurn }: Props) => {
+const GamesRevealPlayer = ({ festivalId, sessionId, disciplines, isHost, isAdmin, onComplete, currentTurn }: Props) => {
   const [disciplineReveals, setDisciplineReveals] = useState<DisciplineReveal[]>([]);
   const [activeDisciplineId, setActiveDisciplineId] = useState<string | null>(null);
   const [currentStep, setCurrentStep] = useState(0);
@@ -326,7 +327,7 @@ const GamesRevealPlayer = ({ festivalId, sessionId, disciplines, isHost, onCompl
   return (
     <div className="space-y-3">
       {/* ═══ DISCIPLINE SELECTOR (Host) ═══ */}
-      {isHost && (
+      {(isHost || isAdmin) && (
         <Card className="border-primary/30 bg-card/60 backdrop-blur-sm">
           <CardHeader className="pb-2">
             <CardTitle className="font-display text-xs flex items-center gap-1.5">
