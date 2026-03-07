@@ -514,7 +514,7 @@ const CouncilTab = ({
         metadata: { decree_type: decreeType, effects: decreePreview?.effects, faction_votes: factionVotes.map(v => ({ faction: v.factionType, stance: v.stance })) },
       });
 
-      toast.success("📜 Dekret byl vyhlášen a zapsán do kroniky!");
+      toast.success("📜 Dekret vyhlášen a zapsán jako zákon!");
       setDecreeText("");
       setDecreePreview(null);
       setFactionVotes([]);
