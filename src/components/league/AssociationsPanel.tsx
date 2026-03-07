@@ -160,6 +160,13 @@ const AssociationsPanel = ({ sessionId, currentPlayerName, currentTurn }: Props)
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [upgrading, setUpgrading] = useState<string | null>(null);
   const [creatingAcademy, setCreatingAcademy] = useState<string | null>(null);
+  const [showCreateTeamDialog, setShowCreateTeamDialog] = useState(false);
+  const [createTeamCityId, setCreateTeamCityId] = useState("");
+  const [createTeamName, setCreateTeamName] = useState("");
+  const [createTeamMotto, setCreateTeamMotto] = useState("");
+  const [createTeamColorPrimary, setCreateTeamColorPrimary] = useState("#8b0000");
+  const [createTeamColorSecondary, setCreateTeamColorSecondary] = useState("#1a1a2e");
+  const [creatingTeam, setCreatingTeam] = useState(false);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
