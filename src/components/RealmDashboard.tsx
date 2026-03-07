@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
 import { Badge } from "@/components/ui/badge";
 import {
-  Loader2, Play, Crown, Gauge, Skull, Code
+  Loader2, Play, Crown, Gauge, Skull, Code, ScrollText
 } from "lucide-react";
 import { toast } from "sonner";
 
