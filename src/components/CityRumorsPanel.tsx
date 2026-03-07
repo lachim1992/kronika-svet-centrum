@@ -73,66 +73,110 @@ const CityRumorsPanel = ({
   const generateRumors = async () => {
     setGenerating(true);
     try {
-      // Find major events related to this city that don't have rumors yet
-      const cityEvents = events.filter(e =>
-        e.confirmed && (
-          e.city_id === cityId ||
-          e.attacker_city_id === cityId ||
-          e.defender_city_id === cityId ||
-          e.secondary_city_id === cityId ||
-          e.location === cityName
-        )
-      );
+      // Find which turns already have rumors for this city
+      const { data: existingRumors } = await supabase
+        .from("city_rumors")
+        .select("turn_number")
+        .eq("session_id", sessionId)
+        .eq("city_id", cityId);
+      const coveredTurns = new Set((existingRumors || []).map(r => r.turn_number));
 
-      // Get events that already have rumors for this city
-      const existingEventIds = new Set(rumors.filter(r => r.related_event_id).map(r => r.related_event_id));
-      const eventsWithoutRumors = cityEvents.filter(e => !existingEventIds.has(e.id));
+      // Find all events for this city across all turns
+      const { data: allCityEvents } = await supabase
+        .from("game_events")
+        .select("id, event_type, player, note, location, result, importance, turn_number, city_id, confirmed")
+        .eq("session_id", sessionId)
+        .eq("confirmed", true)
+        .or(`city_id.eq.${cityId},location.eq.${cityName}`)
+        .order("turn_number", { ascending: true })
+        .limit(200);
 
-      if (eventsWithoutRumors.length === 0) {
-        // Fallback: call the old city-rumors function for general gossip
-        const { data, error } = await supabase.functions.invoke("city-rumors", {
-          body: {
-            cityName, ownerPlayer, currentTurn,
-            confirmedEvents: cityEvents.slice(0, 15),
-            leakableNotes: [],
-            memories: memories.filter(m => m.approved && m.city_id === cityId).map(m => m.text),
-            epochStyle: epochStyle || "kroniky",
-          },
-        });
-        if (error) throw error;
-        const generatedRumors = data?.rumors || [];
-        for (const rumor of generatedRumors) {
-          await supabase.from("city_rumors").insert({
-            session_id: sessionId,
-            city_id: cityId,
-            city_name: cityName,
-            text: rumor.text,
-            tone_tag: "neutral",
-            created_by: "system",
-            is_draft: false,
-            turn_number: currentTurn,
-          });
+      // Group events by turn
+      const eventsByTurn: Record<number, any[]> = {};
+      for (const e of allCityEvents || []) {
+        const t = e.turn_number || 1;
+        if (!eventsByTurn[t]) eventsByTurn[t] = [];
+        eventsByTurn[t].push(e);
+      }
+
+      // Determine turns that need rumors (have events but no rumors, or no events at all for backfill)
+      const turnsToGenerate: number[] = [];
+      for (let t = 1; t <= currentTurn; t++) {
+        if (!coveredTurns.has(t)) {
+          turnsToGenerate.push(t);
         }
-        toast.success(`Vygenerováno ${generatedRumors.length} zvěstí`);
-      } else {
-        // Use rumor engine for each major event without rumors (batch max 3)
-        const batch = eventsWithoutRumors.slice(0, 3);
-        let totalGenerated = 0;
-        for (const evt of batch) {
-          const { data } = await supabase.functions.invoke("rumor-engine", {
+      }
+
+      if (turnsToGenerate.length === 0) {
+        toast.info("Všechny roky už mají zvěsti");
+        setGenerating(false);
+        return;
+      }
+
+      let totalGenerated = 0;
+
+      // Batch turns into chunks to avoid overwhelming the API
+      const chunks: number[][] = [];
+      for (let i = 0; i < turnsToGenerate.length; i += 3) {
+        chunks.push(turnsToGenerate.slice(i, i + 3));
+      }
+
+      for (const chunk of chunks) {
+        // Gather events for these turns
+        const chunkEvents = chunk.flatMap(t => eventsByTurn[t] || []);
+        const representativeTurn = chunk[chunk.length - 1]; // latest turn in chunk
+
+        if (chunkEvents.length > 0) {
+          // Use rumor engine for event-based rumors
+          const batch = chunkEvents.slice(0, 3);
+          for (const evt of batch) {
+            const { data } = await supabase.functions.invoke("rumor-engine", {
+              body: {
+                sessionId,
+                eventId: evt.id,
+                eventType: evt.event_type,
+                currentTurn: evt.turn_number,
+                epochStyle: epochStyle || "kroniky",
+                isPlayerEvent: false,
+              },
+            });
+            totalGenerated += data?.generated || 0;
+          }
+        } else {
+          // No events for these turns — generate atmospheric gossip
+          const cityMemories = memories.filter(m => m.approved && m.city_id === cityId).map(m => m.text);
+          const { data, error } = await supabase.functions.invoke("city-rumors", {
             body: {
-              sessionId,
-              eventId: evt.id,
-              eventType: evt.event_type,
-              currentTurn,
+              cityName, ownerPlayer, currentTurn: representativeTurn,
+              confirmedEvents: [],
+              leakableNotes: [],
+              memories: cityMemories,
               epochStyle: epochStyle || "kroniky",
-              isPlayerEvent: false,
+              turnRange: chunk,
             },
           });
-          totalGenerated += data?.generated || 0;
+          if (error) throw error;
+          const generatedRumors = data?.rumors || [];
+          for (let ri = 0; ri < generatedRumors.length; ri++) {
+            const rumor = generatedRumors[ri];
+            // Distribute rumors across the chunk turns
+            const assignedTurn = chunk[ri % chunk.length];
+            await supabase.from("city_rumors").insert({
+              session_id: sessionId,
+              city_id: cityId,
+              city_name: cityName,
+              text: rumor.text,
+              tone_tag: rumor.tone || "neutral",
+              created_by: "system",
+              is_draft: false,
+              turn_number: assignedTurn,
+            });
+          }
+          totalGenerated += generatedRumors.length;
         }
-        toast.success(`Rumor Engine: ${totalGenerated} zvěstí z ${batch.length} událostí`);
       }
+
+      toast.success(`Vygenerováno ${totalGenerated} zvěstí za ${turnsToGenerate.length} roků`);
       fetchRumors();
     } catch (e: any) {
       console.error("City rumors error:", e);
