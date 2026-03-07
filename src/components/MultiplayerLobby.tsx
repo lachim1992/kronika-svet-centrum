@@ -15,6 +15,7 @@ import { toast } from "sonner";
 import ChronicleHubLogo from "./ChronicleHubLogo";
 import FactionDesigner from "./FactionDesigner";
 import CivIdentityPreview from "./CivIdentityPreview";
+import WorldCreationOverlay from "./WorldCreationOverlay";
 
 const BIOMES = [
   { value: "plains", label: "🌾 Pláně", icon: Sun },
