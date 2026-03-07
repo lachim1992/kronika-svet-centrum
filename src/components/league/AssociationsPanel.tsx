@@ -171,6 +171,7 @@ const AssociationsPanel = ({ sessionId, currentPlayerName, currentTurn }: Props)
   const [draftStudent, setDraftStudent] = useState<any>(null);
   const [showDraftDialog, setShowDraftDialog] = useState(false);
 
+  const fetchData = useCallback(async () => {
     setLoading(true);
     const [{ data: assocs }, { data: teams }, { data: players }, { data: cityData }, { data: acads }, { data: studs }] = await Promise.all([
       supabase.from("sports_associations").select("*").eq("session_id", sessionId),
