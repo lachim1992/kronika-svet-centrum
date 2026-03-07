@@ -59,12 +59,14 @@ Deno.serve(async (req) => {
     const sb = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 
     // Get ALL cities in the session
-    const { data: cities } = await sb.from("cities")
-      .select("id, name, owner_player, development_level, city_stability, population_total")
-      .eq("session_id", session_id)
-      .not("status", "in", '("ruins","razed","abandoned")');
+    const { data: cities, error: citiesErr } = await sb.from("cities")
+      .select("id, name, owner_player, development_level, city_stability, population_total, status")
+      .eq("session_id", session_id);
+    
+    const liveCities = (cities || []).filter(c => !["ruins","razed","abandoned"].includes(c.status));
 
-    if (!cities || cities.length === 0) {
+    if (citiesErr) { console.error("Cities query error:", citiesErr); }
+    if (liveCities.length === 0) {
       return new Response(JSON.stringify({ error: "Žádná města v této hře" }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -88,7 +90,7 @@ Deno.serve(async (req) => {
     const aiFactionNames = new Set((aiFactions || []).map(f => f.faction_name));
 
     // Identify all unique city owners
-    const allOwners = [...new Set(cities.map(c => c.owner_player))];
+    const allOwners = [...new Set(liveCities.map(c => c.owner_player))];
 
     // Auto-create associations for AI players who don't have one
     let assocsCreated = 0;
@@ -97,7 +99,7 @@ Deno.serve(async (req) => {
       if (!aiFactionNames.has(owner)) continue; // only auto-create for AI
 
       // Find capital or first city of this AI player
-      const aiCity = cities.find(c => c.owner_player === owner);
+      const aiCity = liveCities.find(c => c.owner_player === owner);
       if (!aiCity) continue;
 
       const { data: newAssoc, error: assocErr } = await sb.from("sports_associations").insert({
@@ -156,7 +158,7 @@ Deno.serve(async (req) => {
     let playersCreated = 0;
     const usedTeamNames = new Set((existingTeams || []).map(t => t.team_name));
 
-    for (const city of cities) {
+    for (const city of liveCities) {
       const assoc = assocByPlayer.get(city.owner_player);
       if (!assoc) continue; // no association for this player (human without assoc — skip)
 
@@ -221,7 +223,7 @@ Deno.serve(async (req) => {
 
     return new Response(JSON.stringify({
       ok: true, teamsCreated, playersCreated, assocsCreated,
-      cities: cities.length,
+      cities: liveCities.length,
       message: `Vytvořeno ${assocsCreated} svazů, ${teamsCreated} týmů a ${playersCreated} hráčů.`,
     }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
   } catch (e: any) {
