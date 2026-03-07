@@ -12,6 +12,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Shield, Users, Coins, TrendingUp, Trophy, Loader2, Plus, Star, Swords, Eye, MapPin, Crown, Target, GraduationCap, School } from "lucide-react";
 import { toast } from "sonner";
 import CreateAssociationDialog from "./CreateAssociationDialog";
+import DraftRecruitDialog, { convertToSphaera, suggestPosition, SPHAERA_POS_LABELS } from "./DraftRecruitDialog";
 
 interface Props {
   sessionId: string;
@@ -167,6 +168,8 @@ const AssociationsPanel = ({ sessionId, currentPlayerName, currentTurn }: Props)
   const [createTeamColorPrimary, setCreateTeamColorPrimary] = useState("#8b0000");
   const [createTeamColorSecondary, setCreateTeamColorSecondary] = useState("#1a1a2e");
   const [creatingTeam, setCreatingTeam] = useState(false);
+  const [draftStudent, setDraftStudent] = useState<any>(null);
+  const [showDraftDialog, setShowDraftDialog] = useState(false);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -658,26 +661,43 @@ const AssociationsPanel = ({ sessionId, currentPlayerName, currentTurn }: Props)
                       <div className="space-y-1">
                         {sphaeraCandidates.map(s => {
                           const acad = allAcademies.find(a => a.id === s.academy_id);
+                          const sp = convertToSphaera(s);
+                          const sugPos = suggestPosition(s);
+                          const statColor = (v: number) => v >= 75 ? "text-green-400" : v >= 55 ? "text-yellow-400" : v >= 40 ? "text-orange-400" : "text-red-400";
+                          const isDraftable = s.status === 'graduated' || s.status === 'candidate';
+                          
                           return (
                             <div key={s.id} className="flex items-center gap-2 p-2 rounded border border-border bg-card/50 hover:bg-card/70 transition-colors">
-                              {s.portrait_url && <img src={s.portrait_url} alt={s.name} className="w-7 h-7 rounded-full object-cover border border-border" />}
+                              {s.portrait_url && <img src={s.portrait_url} alt={s.name} className="w-8 h-8 rounded-full object-cover border border-border" />}
                               <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-1">
+                                <div className="flex items-center gap-1 flex-wrap">
                                   <span className="text-xs font-display font-semibold truncate">{s.name}</span>
-                                  <Badge variant="outline" className="text-[7px]">{s.specialty}</Badge>
-                                  <Badge variant={s.status === 'candidate' ? 'secondary' : 'outline'} className="text-[7px]">
-                                    {s.status === 'candidate' ? '🆕 Kandidát' : s.status}
+                                  <Badge variant="outline" className="text-[7px]">{SPHAERA_POS_LABELS[sugPos] || sugPos}</Badge>
+                                  <Badge variant="outline" className={`text-[7px] font-bold ${statColor(sp.overall)}`}>
+                                    OVR {sp.overall}
                                   </Badge>
+                                  {s.status === 'drafted' && <Badge variant="secondary" className="text-[7px]">✓ Draftován</Badge>}
                                 </div>
                                 <p className="text-[9px] text-muted-foreground">{acad?.name || "?"} | Rok {s.graduation_turn || "?"}</p>
                               </div>
                               <div className="flex gap-0.5 shrink-0">
-                                <span className="text-[8px] font-mono bg-muted/50 px-1 rounded">S{s.strength}</span>
-                                <span className="text-[8px] font-mono bg-muted/50 px-1 rounded">V{s.endurance}</span>
-                                <span className="text-[8px] font-mono bg-muted/50 px-1 rounded">O{s.agility}</span>
-                                <span className="text-[8px] font-mono bg-muted/50 px-1 rounded">T{s.tactics}</span>
-                                <span className="text-[8px] font-mono bg-muted/50 px-1 rounded">C{s.charisma}</span>
+                                <span className={`text-[8px] font-mono bg-muted/50 px-1 rounded ${statColor(sp.speed)}`} title="Rychlost">⚡{sp.speed}</span>
+                                <span className={`text-[8px] font-mono bg-muted/50 px-1 rounded ${statColor(sp.technique)}`} title="Technika">🎯{sp.technique}</span>
+                                <span className={`text-[8px] font-mono bg-muted/50 px-1 rounded ${statColor(sp.stamina)}`} title="Výdrž">💪{sp.stamina}</span>
+                                <span className={`text-[8px] font-mono bg-muted/50 px-1 rounded ${statColor(sp.strength)}`} title="Síla">🛡️{sp.strength}</span>
+                                <span className={`text-[8px] font-mono bg-muted/50 px-1 rounded ${statColor(sp.aggression)}`} title="Agrese">🔥{sp.aggression}</span>
+                                <span className={`text-[8px] font-mono bg-muted/50 px-1 rounded ${statColor(sp.leadership)}`} title="Vedení">👑{sp.leadership}</span>
                               </div>
+                              {isDraftable && (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="text-[10px] h-6 px-2 shrink-0"
+                                  onClick={() => { setDraftStudent(s); setShowDraftDialog(true); }}
+                                >
+                                  Draft
+                                </Button>
+                              )}
                             </div>
                           );
                         })}
@@ -1083,6 +1103,16 @@ const AssociationsPanel = ({ sessionId, currentPlayerName, currentTurn }: Props)
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      {/* Draft dialog */}
+      <DraftRecruitDialog
+        open={showDraftDialog}
+        onOpenChange={setShowDraftDialog}
+        student={draftStudent}
+        teams={allTeams.filter(t => t.player_name === currentPlayerName) as any}
+        sessionId={sessionId}
+        cityNames={cities}
+        onDrafted={fetchData}
+      />
     </div>
   );
 };
