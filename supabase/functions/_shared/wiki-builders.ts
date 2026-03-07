@@ -71,7 +71,7 @@ export async function buildCityContext(
     playerSummary ? `Hráčovo shrnutí: ${playerSummary}` : "",
   ].filter(Boolean).join("\n");
 
-  const imageInstructions = `A CLOSE-UP street-level or low aerial view of the ${level === "HAMLET" ? "small village" : level === "TOWN" ? "medieval town" : level === "POLIS" ? "grand city" : "settlement"} "${entityName}". Focus on architecture, walls, gates, market squares, rooftops${civIdentity?.building_tags ? ` in ${civIdentity.building_tags.join(", ")} style` : ""}. Individual buildings and people clearly visible. Population ${pop}. ${flavorPrompt ? `Key visual theme: ${flavorPrompt}.` : ""} ${tags ? `Tags: ${tags}.` : ""} DO NOT show wide landscape — zoom INTO the settlement itself. Medieval manuscript art style with gold leaf details.`;
+  const imageInstructions = `A CLOSE-UP street-level or low aerial view of the ${level === "HAMLET" ? "small village" : level === "TOWN" ? "medieval town" : level === "POLIS" ? "grand city" : "settlement"} "${entityName}". Focus on architecture, walls, gates, market squares, rooftops${civIdentity?.building_tags ? ` in ${civIdentity.building_tags.join(", ")} style` : ""}. Individual buildings and people clearly visible. Population ${pop}. ${flavorPrompt ? `Key visual theme: ${flavorPrompt}.` : ""} ${tags ? `Tags: ${tags}.` : ""} The BACKGROUND should show the surrounding ${provinceName ? `province of ${provinceName}` : "countryside"} landscape — if a reference image of the province is provided, match its terrain, colors, and atmosphere in the background behind the city. Medieval manuscript art style with gold leaf details.`;
 
   return { systemPrompt, userPrompt, imageInstructions };
 }
