@@ -68,6 +68,9 @@ const FeedTab = ({
           <TabsTrigger value="creator" className="font-display text-xs gap-1">
             <Plus className="h-3 w-3" />Tvorba
           </TabsTrigger>
+          <TabsTrigger value="rumors" className="font-display text-xs gap-1">
+            <MessageCircle className="h-3 w-3" />Zvěsti
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="events" className="mt-3">
