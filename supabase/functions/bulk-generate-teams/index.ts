@@ -90,7 +90,7 @@ Deno.serve(async (req) => {
     const aiFactionNames = new Set((aiFactions || []).map(f => f.faction_name));
 
     // Identify all unique city owners
-    const allOwners = [...new Set(cities.map(c => c.owner_player))];
+    const allOwners = [...new Set(liveCities.map(c => c.owner_player))];
 
     // Auto-create associations for AI players who don't have one
     let assocsCreated = 0;
