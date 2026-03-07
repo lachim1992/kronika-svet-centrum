@@ -17,6 +17,7 @@ interface Props {
   currentTurn: number;
   cities: Map<string, string>;
   onCreated: () => void;
+  existingTypes?: string[]; // types already created by this player
 }
 
 const ASSOC_TYPES = [
@@ -25,7 +26,7 @@ const ASSOC_TYPES = [
   { value: "gladiator", label: "Gladiátorská gilda", icon: "💀", desc: "Spravuje gladiátorské arény a školy" },
 ];
 
-const CreateAssociationDialog = ({ open, onOpenChange, sessionId, currentPlayerName, currentTurn, cities, onCreated }: Props) => {
+const CreateAssociationDialog = ({ open, onOpenChange, sessionId, currentPlayerName, currentTurn, cities, onCreated, existingTypes = [] }: Props) => {
   const [step, setStep] = useState(0);
   const [name, setName] = useState("");
   const [motto, setMotto] = useState("");
@@ -67,9 +68,11 @@ const CreateAssociationDialog = ({ open, onOpenChange, sessionId, currentPlayerN
 
       // Auto-create first academy under this association
       const isGladiatorial = assocType === "gladiator";
-      const academyName = isGladiatorial
+      const academyName = assocType === "gladiator"
         ? `Gladiátorská škola – ${cities.get(cityId) || "?"}`
-        : `Sportovní akademie – ${cities.get(cityId) || "?"}`;
+        : assocType === "olympic"
+          ? `Olympijská akademie – ${cities.get(cityId) || "?"}`
+          : `Akademie Sphaery – ${cities.get(cityId) || "?"}`;
       await supabase.from("academies").insert({
         session_id: sessionId,
         city_id: cityId,
@@ -83,6 +86,7 @@ const CreateAssociationDialog = ({ open, onOpenChange, sessionId, currentPlayerN
         reputation: 10,
         is_gladiatorial: isGladiatorial,
         association_id: assocData.id,
+        academy_type: assocType,
       } as any);
 
       toast.success(`${name} založen s první akademií!`);
@@ -119,26 +123,34 @@ const CreateAssociationDialog = ({ open, onOpenChange, sessionId, currentPlayerN
             <div>
               <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2 block">Typ svazu</label>
               <div className="grid gap-2">
-                {ASSOC_TYPES.map(t => (
-                  <div
-                    key={t.value}
-                    onClick={() => {
-                      setAssocType(t.value);
-                      if (!name) setName(t.label);
-                    }}
-                    className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-all ${
-                      assocType === t.value
-                        ? "border-primary bg-primary/10"
-                        : "border-border hover:border-primary/30"
-                    }`}
-                  >
-                    <span className="text-xl">{t.icon}</span>
-                    <div className="flex-1">
-                      <div className="text-sm font-bold">{t.label}</div>
-                      <div className="text-[10px] text-muted-foreground">{t.desc}</div>
+                {ASSOC_TYPES.map(t => {
+                  const alreadyExists = existingTypes.includes(t.value);
+                  return (
+                    <div
+                      key={t.value}
+                      onClick={() => {
+                        if (alreadyExists) return;
+                        setAssocType(t.value);
+                        if (!name) setName(t.label);
+                      }}
+                      className={`flex items-center gap-3 p-3 rounded-lg border transition-all ${
+                        alreadyExists
+                          ? "border-border/50 opacity-40 cursor-not-allowed"
+                          : assocType === t.value
+                            ? "border-primary bg-primary/10 cursor-pointer"
+                            : "border-border hover:border-primary/30 cursor-pointer"
+                      }`}
+                    >
+                      <span className="text-xl">{t.icon}</span>
+                      <div className="flex-1">
+                        <div className="text-sm font-bold">{t.label}</div>
+                        <div className="text-[10px] text-muted-foreground">
+                          {alreadyExists ? "✓ Již založen" : t.desc}
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
             <div>

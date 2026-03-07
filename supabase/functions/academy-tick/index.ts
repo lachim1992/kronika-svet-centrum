@@ -18,7 +18,10 @@ const corsHeaders = {
  */
 
 const ACADEMY_BUILDING_KEYWORDS = ["aréna", "arena", "stadion", "akademi", "gymnasium", "škola", "school", "colosseum", "koloseum"];
-const TRAINING_CYCLE = 5; // turns between graduations
+const TRAINING_CYCLE = 5; // turns between graduations (default)
+const OLYMPIC_TRAINING_CYCLE = 4; // faster cycle to ensure 3+ athletes by turn 15
+const SPHAERA_TRAINING_CYCLE = 5;
+const GLADIATOR_TRAINING_CYCLE = 6; // slower but produces tougher fighters
 
 const ATHLETE_NAMES = [
   "Aethon", "Kallistos", "Lykaon", "Theron", "Nikias", "Demetrios", "Kassandros",
@@ -191,6 +194,7 @@ Deno.serve(async (req) => {
             training_started_turn: Math.max(0, turn - 5),
             graduation_turn: turn,
             status: "graduated",
+            graduate_type: "athlete", // default for building-based academies
             bio: `Absolvent ${academyName}, specialista na ${gSpecialty}.`,
             portrait_url: null,
           });
@@ -325,6 +329,18 @@ Deno.serve(async (req) => {
 
         const bio = bioFragments.join(" ");
 
+        // Determine graduate_type from academy type
+        const academyType = acad.academy_type || 'olympic';
+        let graduateType = 'athlete';
+        let graduateStatus = 'graduated';
+        if (academyType === 'sphaera') {
+          graduateType = 'sphaera_player';
+          graduateStatus = 'candidate'; // hybrid: player picks who joins team
+        } else if (academyType === 'gladiator') {
+          graduateType = 'gladiator';
+          graduateStatus = 'graduated';
+        }
+
         // Generate portrait via AI
         let portraitUrl: string | null = null;
         try {
@@ -376,7 +392,8 @@ Deno.serve(async (req) => {
           traits,
           training_started_turn: turn - acad.training_cycle_turns,
           graduation_turn: turn,
-          status: "graduated",
+          status: graduateStatus,
+          graduate_type: graduateType,
           bio,
           portrait_url: portraitUrl,
         }).select("id").single();
