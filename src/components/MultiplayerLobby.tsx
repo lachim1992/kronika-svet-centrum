@@ -639,11 +639,34 @@ const MultiplayerLobby = ({ sessionId, roomCode, worldName, maxPlayers, isHost, 
         )}
 
         {generating && (
-          <div className="bg-primary/5 border border-primary/20 rounded-lg p-4 text-center space-y-2">
-            <Loader2 className="h-8 w-8 text-primary mx-auto animate-spin" />
-            <p className="font-display font-semibold text-sm">Generování světa...</p>
-            <p className="text-xs text-muted-foreground">Vytváření mapy, rozmísťování civilizací, generování prahistorie...</p>
-          </div>
+          <WorldCreationOverlay
+            steps={(() => {
+              const STEPS = [
+                { key: "ai_generation", label: "Generování světa pomocí AI" },
+                { key: "creating_entities", label: "Zakládání říší a frakcí" },
+                { key: "creating_cities", label: "Zakládání měst" },
+                { key: "creating_persons", label: "Vytváření osobností" },
+                { key: "creating_prehistory", label: "Psaní prehistorie" },
+                { key: "writing_chronicles", label: "Psaní kroniky" },
+                { key: "generating_map", label: "Generování mapy" },
+                { key: "generating_media", label: "Generování obrázků" },
+                { key: "done", label: "Dokončeno" },
+              ];
+              const currentIdx = STEPS.findIndex(s => s.key === initStep);
+              return STEPS.map((s, i) => ({
+                label: s.label,
+                status: i < currentIdx ? "done" as const
+                  : i === currentIdx ? (s.key === "done" ? "done" as const : "active" as const)
+                  : "pending" as const,
+              }));
+            })()}
+            failed={false}
+            worldName={worldName}
+            isAIMode={true}
+            failedSessionId={null}
+            onRetry={() => {}}
+            onForceOpen={() => {}}
+          />
         )}
       </div>
     </div>
