@@ -18,6 +18,9 @@ interface Props {
   cities: any[];
   wonders: any[];
   greatPersons: any[];
+  resources: any[];
+  armies: any[];
+  chronicles: any[];
   cityStates: any[];
   currentPlayerName: string;
   currentTurn: number;
