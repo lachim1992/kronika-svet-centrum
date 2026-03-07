@@ -95,7 +95,7 @@ ${p.bio ? `EXISTUJÍCÍ BIO: ${p.bio}` : ""}`;
                 summary: { type: "string", description: "One-sentence memorial summary in Czech (zlatý text pod jménem)" },
                 nekrolog: { type: "string", description: "Full memorial text in Czech, 150-300 words, rich narrative" },
                 epitaf: { type: "string", description: "Short epitaf (1-2 sentences) for the memorial plaque in Czech" },
-                imagePrompt: { type: "string", description: "English prompt for generating a memorial statue/portrait illustration" },
+                imagePrompt: { type: "string", description: "English prompt for generating a memorial statue of a Sphaera ATHLETE (not warrior). Must mention: light athletic tunic, heavy metal Sphaera ball, pose matching player position, ancient arena memorial garden setting, bronze statue style." },
               },
               required: ["summary", "nekrolog", "epitaf", "imagePrompt"],
               additionalProperties: false,
