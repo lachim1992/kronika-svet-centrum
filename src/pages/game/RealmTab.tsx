@@ -46,8 +46,11 @@ const RealmTab = ({
         <h2 className="text-lg font-display font-bold">Správa říše</h2>
       </div>
 
-      <Tabs defaultValue="turn" className="w-full">
+      <Tabs defaultValue="overview" className="w-full">
         <TabsList className="w-full justify-start bg-card border border-border h-auto p-1 gap-1 flex-wrap">
+          <TabsTrigger value="overview" className="font-display text-xs gap-1">
+            <Crown className="h-3 w-3" />Přehled
+          </TabsTrigger>
           <TabsTrigger value="turn" className="font-display text-xs gap-1">
             <Clock className="h-3 w-3" />Kolo
           </TabsTrigger>
@@ -67,6 +70,13 @@ const RealmTab = ({
             <Target className="h-3 w-3" />Cíle
           </TabsTrigger>
         </TabsList>
+
+        <TabsContent value="overview" className="mt-3">
+          <RealmDashboard
+            sessionId={sessionId} currentPlayerName={currentPlayerName}
+            currentTurn={currentTurn} myRole={myRole} cities={cities} onRefetch={onRefetch}
+          />
+        </TabsContent>
 
         <TabsContent value="turn" className="mt-3">
           <TurnProgressionPanel
