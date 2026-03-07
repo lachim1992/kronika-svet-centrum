@@ -166,9 +166,13 @@ const MultiplayerLobby = ({ sessionId, roomCode, worldName, maxPlayers, isHost, 
           });
       })
       .on("postgres_changes", { event: "*", schema: "public", table: "game_sessions", filter: `id=eq.${sessionId}` }, async () => {
-        const { data } = await supabase.from("game_sessions").select("init_status").eq("id", sessionId).single();
-        if (data && (data as any).init_status === "ready") {
-          onGameStart();
+        const { data } = await supabase.from("game_sessions").select("init_status, init_step").eq("id", sessionId).single();
+        if (data) {
+          const d = data as any;
+          if (d.init_step) setInitStep(d.init_step);
+          if (d.init_status === "ready") {
+            onGameStart();
+          }
         }
       })
       .subscribe();
