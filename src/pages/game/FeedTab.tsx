@@ -110,6 +110,17 @@ const FeedTab = ({
             onRefetch={onRefetch}
           />
         </TabsContent>
+
+        <TabsContent value="rumors" className="mt-3">
+          <RumorsFeedPanel
+            sessionId={sessionId}
+            cities={cities}
+            currentTurn={currentTurn}
+            entityIndex={entityIndex}
+            onEventClick={onEventClick}
+            onEntityClick={onEntityClick}
+          />
+        </TabsContent>
       </Tabs>
     </div>
   );
