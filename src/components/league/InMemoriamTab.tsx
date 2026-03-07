@@ -184,7 +184,7 @@ export default function InMemoriamTab({ sessionId, currentPlayerName, myRole, on
                 />
               ))}
             </div>
-          </ScrollArea>
+          </div>
         </CardContent>
       </Card>
     </div>
