@@ -221,10 +221,72 @@ Deno.serve(async (req) => {
       }
     }
 
+    // ═══ AUTO-INTEGRATE into unplayed season ═══
+    let seasonReset = false;
+    if (teamsCreated > 0) {
+      // Find active season with 0 played matches
+      const { data: activeSeason } = await sb.from("league_seasons")
+        .select("id, season_number, started_turn, league_tier")
+        .eq("session_id", session_id).eq("status", "active").maybeSingle();
+
+      if (activeSeason) {
+        const { count: playedCount } = await sb.from("league_matches")
+          .select("id", { count: "exact", head: true })
+          .eq("season_id", activeSeason.id).eq("status", "played");
+
+        if ((playedCount || 0) === 0) {
+          // No matches played yet — safe to reset the season with all teams
+          // Delete old matches and standings
+          await sb.from("league_matches").delete().eq("season_id", activeSeason.id);
+          await sb.from("league_standings").delete().eq("season_id", activeSeason.id);
+
+          // Get all active teams for this tier
+          const tier = activeSeason.league_tier || 1;
+          const { data: allActiveTeams } = await sb.from("league_teams")
+            .select("id").eq("session_id", session_id).eq("is_active", true)
+            .eq("league_tier", tier);
+
+          const teamIds = (allActiveTeams || []).map(t => t.id);
+          
+          if (teamIds.length >= 2) {
+            // Recreate standings
+            for (const tid of teamIds) {
+              await sb.from("league_standings").insert({
+                session_id, season_id: activeSeason.id, team_id: tid,
+              });
+            }
+
+            // Recreate schedule
+            const matchesPerPairing = teamIds.length <= 4 ? 2 : 1;
+            const schedule = generateRoundRobin(teamIds, matchesPerPairing);
+            let roundNum = 0;
+            for (const round of schedule) {
+              roundNum++;
+              const matchTurn = (activeSeason.started_turn || 1) + roundNum;
+              for (const [home, away] of round) {
+                await sb.from("league_matches").insert({
+                  session_id, season_id: activeSeason.id, round_number: roundNum,
+                  turn_number: matchTurn, home_team_id: home, away_team_id: away,
+                });
+              }
+            }
+
+            // Update season total rounds
+            await sb.from("league_seasons").update({
+              total_rounds: schedule.length,
+              matches_per_round: Math.floor(teamIds.length / 2),
+            }).eq("id", activeSeason.id);
+
+            seasonReset = true;
+          }
+        }
+      }
+    }
+
     return new Response(JSON.stringify({
-      ok: true, teamsCreated, playersCreated, assocsCreated,
+      ok: true, teamsCreated, playersCreated, assocsCreated, seasonReset,
       cities: liveCities.length,
-      message: `Vytvořeno ${assocsCreated} svazů, ${teamsCreated} týmů a ${playersCreated} hráčů.`,
+      message: `Vytvořeno ${assocsCreated} svazů, ${teamsCreated} týmů a ${playersCreated} hráčů.${seasonReset ? " Sezóna přegenerována se všemi týmy." : ""}`,
     }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
   } catch (e: any) {
     console.error("bulk-generate-teams error:", e);
