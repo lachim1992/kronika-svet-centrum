@@ -58,6 +58,9 @@ const Dashboard = () => {
   const [worldEntityTarget, setWorldEntityTarget] = useState<{ type: string; id: string } | null>(null);
   const [showActionChooser, setShowActionChooser] = useState(false);
   const [eventDetailId, setEventDetailId] = useState<string | null>(null);
+  const [showNewTurnDialog, setShowNewTurnDialog] = useState(false);
+  const [newTurnNumber, setNewTurnNumber] = useState(0);
+  const prevTurnRef = useRef<number | null>(null);
   const [myRole, setMyRole] = useState<string>("player");
   const [myPlayerName, setMyPlayerName] = useState("Hráč");
   const [worldFoundation, setWorldFoundation] = useState<any>(null);
@@ -94,6 +97,21 @@ const Dashboard = () => {
       prevAllClosed.current = false;
     }
   }, [allPlayersClosed, isMultiplayer, turnProcessing, processNextTurn]);
+
+  // ── Detect turn change and show notification to all players ──
+  useEffect(() => {
+    if (currentTurn === 0) return;
+    if (prevTurnRef.current === null) {
+      // Initial load — don't show dialog
+      prevTurnRef.current = currentTurn;
+      return;
+    }
+    if (currentTurn > prevTurnRef.current) {
+      setNewTurnNumber(currentTurn);
+      setShowNewTurnDialog(true);
+      prevTurnRef.current = currentTurn;
+    }
+  }, [currentTurn]);
 
   useEffect(() => {
     if (!user || !sessionId) return;
@@ -393,6 +411,28 @@ const Dashboard = () => {
             open={showVictory}
             onClose={() => setShowVictory(false)}
           />
+
+          {/* New Turn Notification Dialog */}
+          {showNewTurnDialog && (
+            <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fade-in">
+              <div className="bg-card border border-primary/30 rounded-xl shadow-2xl p-8 max-w-md w-full mx-4 text-center space-y-4 animate-scale-in">
+                <div className="text-5xl">⏳</div>
+                <h2 className="font-display text-2xl font-bold text-foreground">
+                  Rok {newTurnNumber}
+                </h2>
+                <p className="text-muted-foreground text-sm">
+                  Čas se posunul vpřed. Nový rok začíná — prozkoumej změny ve svém království a naplánuj další kroky.
+                </p>
+                <Button
+                  size="lg"
+                  className="w-full font-display"
+                  onClick={() => setShowNewTurnDialog(false)}
+                >
+                  Vstoupit do nového roku
+                </Button>
+              </div>
+            </div>
+          )}
         </>
       }
     >
