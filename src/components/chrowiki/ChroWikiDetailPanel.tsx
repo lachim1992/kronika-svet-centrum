@@ -926,6 +926,22 @@ const ChroWikiDetailPanel = ({
               )}
             </section>
 
+            {/* Admin Wiki Tools - regenerate, re-prompt, version history */}
+            {isAdmin && wiki?.id && (
+              <AdminWikiTools
+                sessionId={sessionId}
+                entityType={entityType}
+                entityId={entityId}
+                entityName={entityName}
+                wikiEntryId={wiki.id}
+                currentDescription={descriptionText}
+                currentImageUrl={imageUrl}
+                currentImagePrompt={wiki?.image_prompt}
+                currentPlayerName={currentPlayerName || "admin"}
+                onRefresh={onRefreshWiki}
+              />
+            )}
+
             <OrnamentalDivider />
 
             {/* E) HISTORIE & SÁGA — TABBED SECTION */}
