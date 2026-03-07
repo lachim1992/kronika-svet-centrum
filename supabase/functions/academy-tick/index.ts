@@ -18,7 +18,10 @@ const corsHeaders = {
  */
 
 const ACADEMY_BUILDING_KEYWORDS = ["aréna", "arena", "stadion", "akademi", "gymnasium", "škola", "school", "colosseum", "koloseum"];
-const TRAINING_CYCLE = 5; // turns between graduations
+const TRAINING_CYCLE = 5; // turns between graduations (default)
+const OLYMPIC_TRAINING_CYCLE = 4; // faster cycle to ensure 3+ athletes by turn 15
+const SPHAERA_TRAINING_CYCLE = 5;
+const GLADIATOR_TRAINING_CYCLE = 6; // slower but produces tougher fighters
 
 const ATHLETE_NAMES = [
   "Aethon", "Kallistos", "Lykaon", "Theron", "Nikias", "Demetrios", "Kassandros",
