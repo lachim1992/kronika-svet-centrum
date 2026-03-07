@@ -1116,6 +1116,7 @@ DŮLEŽITÉ: Hráčské frakce MUSÍ mít isPlayer=true a playerName musí přes
       counters.events++;
     }
 
+    await setStep("writing_chronicles");
     // ═══ STEP K: Pre-history chronicle + founding chronicle + CHRONICLE ZERO ═══
     if (world?.preHistoryChronicle) {
       await sb.from("chronicle_entries").insert({
