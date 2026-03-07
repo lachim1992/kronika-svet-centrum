@@ -1365,22 +1365,24 @@ async function generateTeamRoster(supabase: any, sessionId: string, teamId: stri
 
   for (const pos of SPHAERA_POSITIONS) {
     const name = `${firstNames[Math.floor(Math.random() * firstNames.length)]} ${lastNames[Math.floor(Math.random() * lastNames.length)]}`;
+    const overall = 40 + Math.floor(Math.random() * 30); // 40-69
     await supabase.from("league_players").insert({
       session_id: sessionId,
       team_id: teamId,
-      player_name: playerName,
       name,
       position: pos,
-      attack: 30 + Math.floor(Math.random() * 40),
-      defense: 30 + Math.floor(Math.random() * 40),
+      strength: 30 + Math.floor(Math.random() * 40),
       speed: 30 + Math.floor(Math.random() * 40),
-      stamina: 50 + Math.floor(Math.random() * 30),
       technique: 30 + Math.floor(Math.random() * 40),
-      morale: 60 + Math.floor(Math.random() * 30),
-      status: "active",
-      goals_scored: 0,
-      assists: 0,
-      injuries: 0,
+      stamina: 50 + Math.floor(Math.random() * 30),
+      aggression: 20 + Math.floor(Math.random() * 40),
+      leadership: 10 + Math.floor(Math.random() * 30),
+      overall_rating: overall,
+      form: 50 + Math.floor(Math.random() * 30),
+      condition: 80 + Math.floor(Math.random() * 20),
+      age: 18 + Math.floor(Math.random() * 12),
+      talent_potential: overall + Math.floor(Math.random() * 20),
+      peak_age: 25 + Math.floor(Math.random() * 5),
     }).then(() => {}, () => {});
   }
 }
