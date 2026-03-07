@@ -877,6 +877,7 @@ DŮLEŽITÉ: Hráčské frakce MUSÍ mít isPlayer=true a playerName musí přes
       cityIndex++;
     }
 
+    await setStep("creating_persons");
     // ═══ STEP F: Great Persons with wiki + entity_links ═══
     for (const person of world?.persons || []) {
       const ownerPlayer = factionPlayerMap[person.ownerFaction] || civConfigs[0].player_name;
