@@ -16,6 +16,7 @@ export type Database = {
     Tables: {
       academies: {
         Row: {
+          academy_type: string
           association_id: string | null
           building_id: string | null
           city_id: string
@@ -56,6 +57,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          academy_type?: string
           association_id?: string | null
           building_id?: string | null
           city_id: string
@@ -96,6 +98,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          academy_type?: string
           association_id?: string | null
           building_id?: string | null
           city_id?: string
@@ -234,6 +237,7 @@ export type Database = {
           charisma: number
           created_at: string
           endurance: number
+          graduate_type: string
           graduation_turn: number | null
           great_person_id: string | null
           id: string
@@ -256,6 +260,7 @@ export type Database = {
           charisma?: number
           created_at?: string
           endurance?: number
+          graduate_type?: string
           graduation_turn?: number | null
           great_person_id?: string | null
           id?: string
@@ -278,6 +283,7 @@ export type Database = {
           charisma?: number
           created_at?: string
           endurance?: number
+          graduate_type?: string
           graduation_turn?: number | null
           great_person_id?: string | null
           id?: string
