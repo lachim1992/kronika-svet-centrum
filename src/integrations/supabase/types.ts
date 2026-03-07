@@ -7264,6 +7264,62 @@ export type Database = {
           },
         ]
       }
+      wiki_entry_versions: {
+        Row: {
+          change_reason: string | null
+          changed_by: string
+          created_at: string
+          field_changed: string
+          id: string
+          image_custom_prompt: string | null
+          new_image_url: string | null
+          new_value: string | null
+          old_image_url: string | null
+          old_value: string | null
+          session_id: string
+          version_number: number
+          wiki_entry_id: string
+        }
+        Insert: {
+          change_reason?: string | null
+          changed_by?: string
+          created_at?: string
+          field_changed?: string
+          id?: string
+          image_custom_prompt?: string | null
+          new_image_url?: string | null
+          new_value?: string | null
+          old_image_url?: string | null
+          old_value?: string | null
+          session_id: string
+          version_number?: number
+          wiki_entry_id: string
+        }
+        Update: {
+          change_reason?: string | null
+          changed_by?: string
+          created_at?: string
+          field_changed?: string
+          id?: string
+          image_custom_prompt?: string | null
+          new_image_url?: string | null
+          new_value?: string | null
+          old_image_url?: string | null
+          old_value?: string | null
+          session_id?: string
+          version_number?: number
+          wiki_entry_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "wiki_entry_versions_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       wiki_event_refs: {
         Row: {
           created_at: string

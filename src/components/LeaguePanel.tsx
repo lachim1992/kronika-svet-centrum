@@ -985,7 +985,7 @@ const LeaguePanel = ({ sessionId, currentPlayerName, currentTurn, myRole }: Prop
 
               {/* ═══ IN MEMORIAM ═══ */}
               <TabsContent value="memoriam" className="space-y-3">
-                <InMemoriamTab sessionId={sessionId} currentPlayerName={currentPlayerName} />
+                <InMemoriamTab sessionId={sessionId} currentPlayerName={currentPlayerName} myRole={myRole} />
               </TabsContent>
             </Tabs>
           </TabsContent>

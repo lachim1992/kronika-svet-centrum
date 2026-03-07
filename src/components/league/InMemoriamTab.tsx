@@ -4,10 +4,13 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Skull, Loader2, BookOpen, Sparkles, ImageIcon } from "lucide-react";
+import { Textarea } from "@/components/ui/textarea";
+import { Skull, Loader2, BookOpen, Sparkles, ImageIcon, RefreshCw, Pencil, Save, X, History } from "lucide-react";
 import { toast } from "sonner";
+import { isElevatedRole } from "@/lib/permissions";
+import MemoriamCard from "./MemoriamCard";
 
-interface DeadPlayer {
+export interface DeadPlayer {
   id: string;
   name: string;
   position: string;
@@ -23,7 +26,6 @@ interface DeadPlayer {
   city_name: string;
   owner_player: string;
   color_primary: string;
-  // match detail
   match_id?: string;
   match_round?: number;
   match_opponent?: string;
@@ -35,19 +37,20 @@ interface DeadPlayer {
 interface Props {
   sessionId: string;
   currentPlayerName: string;
+  myRole?: string;
   onEntityClick?: (type: string, id: string, name: string) => void;
 }
 
-const POS_FULL: Record<string, string> = {
+export const POS_FULL: Record<string, string> = {
   praetor: "Praetor", guardian: "Strážce", striker: "Útočník", carrier: "Nositel", exactor: "Exaktor",
   goalkeeper: "Praetor", defender: "Strážce", midfielder: "Nositel", attacker: "Útočník",
 };
 
-export default function InMemoriamTab({ sessionId, currentPlayerName, onEntityClick }: Props) {
+export default function InMemoriamTab({ sessionId, currentPlayerName, myRole, onEntityClick }: Props) {
   const [deadPlayers, setDeadPlayers] = useState<DeadPlayer[]>([]);
   const [loading, setLoading] = useState(true);
-  const [generatingId, setGeneratingId] = useState<string | null>(null);
-  const [writingId, setWritingId] = useState<string | null>(null);
+
+  const isAdmin = isElevatedRole(myRole || "player");
 
   const fetchDead = useCallback(async () => {
     setLoading(true);
@@ -74,7 +77,6 @@ export default function InMemoriamTab({ sessionId, currentPlayerName, onEntityCl
       .in("id", cityIds);
     const cityMap = new Map((cities || []).map(c => [c.id, c.name]));
 
-    // Find matches where players died by checking match_events for death injuries
     const deathTurns = [...new Set(dead.map(d => d.death_turn).filter(Boolean))];
     const { data: matchesData } = await supabase
       .from("league_matches")
@@ -95,11 +97,9 @@ export default function InMemoriamTab({ sessionId, currentPlayerName, onEntityCl
         color_primary: team?.color_primary || "#666",
       };
 
-      // Find the match where this player died
       if (matchesData && d.death_turn) {
         for (const match of matchesData) {
           if (match.played_turn !== d.death_turn) continue;
-          // Check if this player's team was in this match
           if (match.home_team_id !== d.team_id && match.away_team_id !== d.team_id) continue;
           
           const events = Array.isArray(match.match_events) ? match.match_events : [];
@@ -120,7 +120,6 @@ export default function InMemoriamTab({ sessionId, currentPlayerName, onEntityCl
             
             if (deathEvent) {
               result.death_minute = (deathEvent as any).minute;
-              // Find who knocked them out
               const eventsArr = Array.isArray(match.match_events) ? match.match_events : [];
               const knockoutEvent = eventsArr.find((e: any) =>
                 e.type === "knockout" && e.victim_id === d.id
@@ -139,107 +138,6 @@ export default function InMemoriamTab({ sessionId, currentPlayerName, onEntityCl
   }, [sessionId]);
 
   useEffect(() => { fetchDead(); }, [fetchDead]);
-
-  const handleGenerateStatue = async (player: DeadPlayer) => {
-    setGeneratingId(player.id);
-    try {
-      const prompt = `A grand bronze memorial statue of "${player.name}", a fallen Sphaera ${POS_FULL[player.position] || player.position} warrior athlete, in a classical ancient arena setting. The statue depicts a heroic pose, muscular build, wearing arena combat gear. At the base of the statue is a bronze plaque. The statue stands in a memorial garden with torches burning eternally. Dramatic lighting, solemn atmosphere. Style: ancient Roman/Greek memorial monument. Ultra high resolution.`;
-
-      const { data, error } = await supabase.functions.invoke("encyclopedia-image", {
-        body: {
-          entityType: "person",
-          entityName: player.name,
-          entityId: player.id,
-          sessionId,
-          imagePrompt: prompt,
-          createdBy: currentPlayerName,
-          description: `${player.name}, ${POS_FULL[player.position] || player.position} týmu ${player.team_name}. Padl v ${player.death_turn}. kole${player.match_opponent ? ` v zápase proti ${player.match_opponent}` : ""}. ${player.death_cause || ""}`,
-        },
-      });
-      if (error) throw error;
-      if (data?.error) { toast.error(data.error); return; }
-
-      // Update player portrait
-      if (data?.imageUrl) {
-        await supabase.from("league_players")
-          .update({ portrait_url: data.imageUrl } as any)
-          .eq("id", player.id);
-      }
-
-      toast.success(`🗿 Pamětní socha ${player.name} odhalena!`);
-      await fetchDead();
-    } catch (e) {
-      console.error(e);
-      toast.error("Generování sochy selhalo");
-    }
-    setGeneratingId(null);
-  };
-
-  const handleWriteToChroWiki = async (player: DeadPlayer) => {
-    setWritingId(player.id);
-    try {
-      const summary = [
-        `${player.name} — ${POS_FULL[player.position] || player.position} týmu ${player.team_name} z města ${player.city_name}.`,
-        `Odehrál ${player.matches_played} zápasů, vstřelil ${player.goals_scored} gólů.`,
-        player.match_opponent
-          ? `Padl v ${player.death_turn}. kole v zápase proti ${player.match_opponent} (${player.match_score}).`
-          : `Padl v ${player.death_turn}. kole.`,
-        player.killer_name ? `Smrtelný úder zasadil ${player.killer_name}.` : "",
-        player.death_minute ? `K tragédii došlo v ${player.death_minute}. minutě.` : "",
-        player.death_cause || "",
-      ].filter(Boolean).join(" ");
-
-      const wikiData: Record<string, unknown> = {
-        session_id: sessionId,
-        entity_type: "person" as const,
-        entity_id: player.id,
-        entity_name: player.name,
-        owner_player: player.owner_player || "unknown",
-        summary,
-        ai_description: summary,
-        image_url: player.portrait_url || null,
-        tags: ["Sphaera", POS_FULL[player.position] || player.position, "In Memoriam", player.team_name],
-      };
-
-      console.log("[InMemoriam] Writing to ChroWiki:", JSON.stringify(wikiData));
-
-      // Check if entry already exists (partial unique index doesn't work with onConflict)
-      const { data: existing, error: selectError } = await supabase
-        .from("wiki_entries")
-        .select("id")
-        .eq("session_id", sessionId)
-        .eq("entity_type", "person")
-        .eq("entity_id", player.id)
-        .maybeSingle();
-
-      if (selectError) {
-        console.error("[InMemoriam] Select error:", selectError);
-        throw selectError;
-      }
-
-      let error;
-      if (existing) {
-        console.log("[InMemoriam] Updating existing entry:", existing.id);
-        ({ error } = await supabase
-          .from("wiki_entries")
-          .update(wikiData as any)
-          .eq("id", existing.id));
-      } else {
-        console.log("[InMemoriam] Inserting new entry");
-        ({ error } = await supabase
-          .from("wiki_entries")
-          .insert(wikiData as any));
-      }
-
-      if (error) throw error;
-      toast.success(`📜 ${player.name} zapsán do ChroWiki!`);
-      if (onEntityClick) onEntityClick("person", player.id, player.name);
-    } catch (e) {
-      console.error(e);
-      toast.error("Zápis do ChroWiki selhal");
-    }
-    setWritingId(null);
-  };
 
   if (loading) {
     return (
@@ -274,84 +172,17 @@ export default function InMemoriamTab({ sessionId, currentPlayerName, onEntityCl
         <CardContent className="p-0">
           <ScrollArea className="max-h-[600px]">
             <div className="divide-y divide-border/30">
-              {deadPlayers.map(p => {
-                const isGenerating = generatingId === p.id;
-                const isWriting = writingId === p.id;
-                return (
-                  <div key={p.id} className="p-3 hover:bg-accent/5 transition-colors">
-                    <div className="flex gap-3">
-                      {/* Portrait / Statue */}
-                      <div className="shrink-0 w-16 h-20 rounded-md overflow-hidden border border-border bg-muted/20">
-                        {p.portrait_url ? (
-                          <img src={p.portrait_url} alt={p.name} className="w-full h-full object-cover" />
-                        ) : (
-                          <div className="w-full h-full flex items-center justify-center">
-                            <Skull className="h-6 w-6 text-red-400/30" />
-                          </div>
-                        )}
-                      </div>
-
-                      <div className="flex-1 min-w-0 space-y-1">
-                        <div className="flex items-center gap-2">
-                          <span className="font-display font-bold text-sm">{p.name}</span>
-                          <Skull className="h-3.5 w-3.5 text-red-400" />
-                          <Badge variant="outline" className="text-[9px]">{POS_FULL[p.position] || p.position}</Badge>
-                        </div>
-
-                        <div className="flex items-center gap-2 flex-wrap text-[10px] text-muted-foreground">
-                          <span className="flex items-center gap-1">
-                            <div className="w-2 h-2 rounded-full" style={{ backgroundColor: p.color_primary }} />
-                            {p.team_name}
-                          </span>
-                          <span>📍 {p.city_name}</span>
-                          <span>({p.owner_player})</span>
-                        </div>
-
-                        <div className="text-[10px] text-muted-foreground space-y-0.5">
-                          <div>⚔️ {p.matches_played} zápasů · ⚽ {p.goals_scored} gólů</div>
-                          <div className="text-red-300/80">
-                            † Kolo {p.death_turn}
-                            {p.match_opponent && <> · vs {p.match_opponent} ({p.match_score})</>}
-                            {p.death_minute && <> · {p.death_minute}. minuta</>}
-                            {p.killer_name && <> · smrtelný úder: <span className="font-medium text-red-400">{p.killer_name}</span></>}
-                          </div>
-                          {p.death_cause && <div className="italic text-muted-foreground/60">{p.death_cause}</div>}
-                        </div>
-
-                        {/* Actions */}
-                        <div className="flex gap-2 mt-2">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="text-[10px] h-7 gap-1"
-                            disabled={isGenerating}
-                            onClick={() => handleGenerateStatue(p)}
-                          >
-                            {isGenerating ? (
-                              <><Loader2 className="h-3 w-3 animate-spin" />Teším sochu...</>
-                            ) : (
-                              <><Sparkles className="h-3 w-3" />{p.portrait_url ? "Nová socha" : "Odhalit sochu"}</>
-                            )}
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="default"
-                            className="text-[10px] h-7 gap-1"
-                            disabled={isWriting}
-                            onClick={() => handleWriteToChroWiki(p)}
-                          >
-                            {isWriting ? (
-                              <><Loader2 className="h-3 w-3 animate-spin" />Zapisuji...</>
-                            ) : (
-                              <><BookOpen className="h-3 w-3" />Do ChroWiki</>
-                            )}
-                          </Button>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
+              {deadPlayers.map(p => (
+                <MemoriamCard
+                  key={p.id}
+                  player={p}
+                  sessionId={sessionId}
+                  currentPlayerName={currentPlayerName}
+                  isAdmin={isAdmin}
+                  onEntityClick={onEntityClick}
+                  onRefresh={fetchDead}
+                />
+              ))}
             </div>
           </ScrollArea>
         </CardContent>

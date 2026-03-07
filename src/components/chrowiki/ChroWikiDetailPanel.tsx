@@ -24,6 +24,7 @@ import WorldMemoryPanel from "@/components/WorldMemoryPanel";
 import EntityContributionsPanel from "@/components/EntityContributionsPanel";
 import SettlementUpgradePanel from "@/components/SettlementUpgradePanel";
 import CityWatchButton from "@/components/CityWatchButton";
+import AdminWikiTools from "./AdminWikiTools";
 
 const ENTITY_ICONS: Record<string, React.ReactNode> = {
   country: <Flag className="h-5 w-5" />,
@@ -924,6 +925,22 @@ const ChroWikiDetailPanel = ({
                 </div>
               )}
             </section>
+
+            {/* Admin Wiki Tools - regenerate, re-prompt, version history */}
+            {isAdmin && wiki?.id && (
+              <AdminWikiTools
+                sessionId={sessionId}
+                entityType={entityType}
+                entityId={entityId}
+                entityName={entityName}
+                wikiEntryId={wiki.id}
+                currentDescription={descriptionText}
+                currentImageUrl={imageUrl}
+                currentImagePrompt={wiki?.image_prompt}
+                currentPlayerName={currentPlayerName || "admin"}
+                onRefresh={onRefreshWiki}
+              />
+            )}
 
             <OrnamentalDivider />
 
