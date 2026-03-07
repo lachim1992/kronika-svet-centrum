@@ -196,11 +196,10 @@ const AssociationsPanel = ({ sessionId, currentPlayerName, currentTurn }: Props)
   const otherAssociations = associations.filter(a => a.player_name !== currentPlayerName);
 
   const getAssocAcademies = (assocId: string, assocType: string) => {
-    const isGlad = assocType === "gladiator";
     return allAcademies.filter(a =>
       a.player_name === currentPlayerName && (
         (a as any).association_id === assocId ||
-        (!(a as any).association_id && a.is_gladiatorial === isGlad)
+        (!(a as any).association_id && (a as any).academy_type === assocType)
       )
     );
   };
