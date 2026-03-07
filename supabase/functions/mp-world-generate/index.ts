@@ -59,9 +59,12 @@ Deno.serve(async (req) => {
     const isCheapStart = economic.world_gen_mode === "cheap_start";
     const topProfilesCount = economic.top_profiles_count || 3;
 
+    // Helper: update init_step for realtime progress tracking
+    const setStep = (step: string) => sb.from("game_sessions").update({ init_step: step } as any).eq("id", sessionId);
+
     // 3. Generate world seed
     const worldSeed = crypto.randomUUID();
-    await sb.from("game_sessions").update({ world_seed: worldSeed }).eq("id", sessionId);
+    await sb.from("game_sessions").update({ world_seed: worldSeed, init_step: "ai_generation" } as any).eq("id", sessionId);
 
     // Size config for multiplayer
     const config = {
@@ -415,6 +418,7 @@ DŮLEŽITÉ: Hráčské frakce MUSÍ mít isPlayer=true a playerName musí přes
       playerConfigMap[cfg.player_name] = cfg;
     }
 
+    await setStep("creating_entities");
     // ═══ STEP A: Country ═══
     const countryInfo = world?.country || { name: worldName, description: premise, image_prompt: "" };
     const { data: countryRow } = await sb.from("countries").insert({
@@ -691,6 +695,7 @@ DŮLEŽITÉ: Hráčské frakce MUSÍ mít isPlayer=true a playerName musí přes
       return center;
     };
 
+    await setStep("creating_cities");
     // ═══ STEP E: Cities ═══
     const POP_RANGES: Record<string, { min: number; max: number }> = {
       Velkoměsto: { min: 1200, max: 1600 }, Město: { min: 800, max: 1200 },
@@ -872,6 +877,7 @@ DŮLEŽITÉ: Hráčské frakce MUSÍ mít isPlayer=true a playerName musí přes
       cityIndex++;
     }
 
+    await setStep("creating_persons");
     // ═══ STEP F: Great Persons with wiki + entity_links ═══
     for (const person of world?.persons || []) {
       const ownerPlayer = factionPlayerMap[person.ownerFaction] || civConfigs[0].player_name;
@@ -961,6 +967,7 @@ DŮLEŽITÉ: Hráčské frakce MUSÍ mít isPlayer=true a playerName musí přes
       }
     }
 
+    await setStep("creating_prehistory");
     // ═══ STEP H: Pre-history events ═══
     for (const evt of world?.preHistoryEvents || []) {
       const involvedPlayers = (evt.involvedFactions || []).map((f: string) => factionPlayerMap[f] || f);
@@ -1109,6 +1116,7 @@ DŮLEŽITÉ: Hráčské frakce MUSÍ mít isPlayer=true a playerName musí přes
       counters.events++;
     }
 
+    await setStep("writing_chronicles");
     // ═══ STEP K: Pre-history chronicle + founding chronicle + CHRONICLE ZERO ═══
     if (world?.preHistoryChronicle) {
       await sb.from("chronicle_entries").insert({
@@ -1367,6 +1375,7 @@ DŮLEŽITÉ: Hráčské frakce MUSÍ mít isPlayer=true a playerName musí přes
       triggered_by: "mp-world-generate",
     });
 
+    await setStep("generating_map");
     // ═══ STEP N: Generate hexes for ALL province territories + discoveries ═══
     try {
       const allHexPositions = new Set<string>();
@@ -1433,6 +1442,7 @@ DŮLEŽITÉ: Hráčské frakce MUSÍ mít isPlayer=true a playerName musí přes
       console.warn("Hex generation warning:", hexErr);
     }
 
+    await setStep("generating_media");
     // ═══ STEP O: Wiki profiles + entity images (best effort) ═══
     let wikiGenerated = 0;
     try {
@@ -1600,7 +1610,7 @@ DŮLEŽITÉ: Hráčské frakce MUSÍ mít isPlayer=true a playerName musí přes
     }
 
     // Mark session as ready
-    await sb.from("game_sessions").update({ init_status: "ready", current_turn: 1 }).eq("id", sessionId);
+    await sb.from("game_sessions").update({ init_status: "ready", current_turn: 1, init_step: "done" } as any).eq("id", sessionId);
 
     return new Response(JSON.stringify({
       ok: true,

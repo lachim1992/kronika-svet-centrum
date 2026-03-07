@@ -15,6 +15,7 @@ import { toast } from "sonner";
 import ChronicleHubLogo from "./ChronicleHubLogo";
 import FactionDesigner from "./FactionDesigner";
 import CivIdentityPreview from "./CivIdentityPreview";
+import WorldCreationOverlay from "./WorldCreationOverlay";
 
 const BIOMES = [
   { value: "plains", label: "🌾 Pláně", icon: Sun },
@@ -80,6 +81,7 @@ const MultiplayerLobby = ({ sessionId, roomCode, worldName, maxPlayers, isHost, 
   const [worldFoundation, setWorldFoundation] = useState<any>(null);
   const [factionSaved, setFactionSaved] = useState(false);
   const [myIdentity, setMyIdentity] = useState<any>(null);
+  const [initStep, setInitStep] = useState<string | null>(null);
 
   const fetchPlayers = useCallback(async () => {
     const { data } = await supabase
@@ -145,6 +147,32 @@ const MultiplayerLobby = ({ sessionId, roomCode, worldName, maxPlayers, isHost, 
     fetchMyCivConfig();
   }, [fetchPlayers, fetchWorldFoundation, fetchMyCivConfig]);
 
+  // Check if generation is already in progress on mount
+  useEffect(() => {
+    supabase.from("game_sessions").select("init_status, init_step").eq("id", sessionId).single().then(({ data }) => {
+      const d = data as any;
+      if (d?.init_status === "generating") {
+        setGenerating(true);
+        if (d.init_step) setInitStep(d.init_step);
+      }
+    });
+  }, [sessionId]);
+
+  // Polling fallback when generating (in case realtime misses updates)
+  useEffect(() => {
+    if (!generating) return;
+    const interval = setInterval(async () => {
+      const { data } = await supabase.from("game_sessions").select("init_status, init_step").eq("id", sessionId).single();
+      const d = data as any;
+      if (d?.init_step) setInitStep(d.init_step);
+      if (d?.init_status === "ready") {
+        onGameStart();
+      }
+    }, 5000);
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [generating, sessionId]);
+
   // Realtime subscription for lobby updates — stable deps to prevent re-subscribe loops
   useEffect(() => {
     const channel = supabase
@@ -164,9 +192,13 @@ const MultiplayerLobby = ({ sessionId, roomCode, worldName, maxPlayers, isHost, 
           });
       })
       .on("postgres_changes", { event: "*", schema: "public", table: "game_sessions", filter: `id=eq.${sessionId}` }, async () => {
-        const { data } = await supabase.from("game_sessions").select("init_status").eq("id", sessionId).single();
-        if (data && (data as any).init_status === "ready") {
-          onGameStart();
+        const { data } = await supabase.from("game_sessions").select("init_status, init_step").eq("id", sessionId).single();
+        if (data) {
+          const d = data as any;
+          if (d.init_step) setInitStep(d.init_step);
+          if (d.init_status === "ready") {
+            onGameStart();
+          }
         }
       })
       .subscribe();
@@ -633,11 +665,34 @@ const MultiplayerLobby = ({ sessionId, roomCode, worldName, maxPlayers, isHost, 
         )}
 
         {generating && (
-          <div className="bg-primary/5 border border-primary/20 rounded-lg p-4 text-center space-y-2">
-            <Loader2 className="h-8 w-8 text-primary mx-auto animate-spin" />
-            <p className="font-display font-semibold text-sm">Generování světa...</p>
-            <p className="text-xs text-muted-foreground">Vytváření mapy, rozmísťování civilizací, generování prahistorie...</p>
-          </div>
+          <WorldCreationOverlay
+            steps={(() => {
+              const STEPS = [
+                { key: "ai_generation", label: "Generování světa pomocí AI" },
+                { key: "creating_entities", label: "Zakládání říší a frakcí" },
+                { key: "creating_cities", label: "Zakládání měst" },
+                { key: "creating_persons", label: "Vytváření osobností" },
+                { key: "creating_prehistory", label: "Psaní prehistorie" },
+                { key: "writing_chronicles", label: "Psaní kroniky" },
+                { key: "generating_map", label: "Generování mapy" },
+                { key: "generating_media", label: "Generování obrázků" },
+                { key: "done", label: "Dokončeno" },
+              ];
+              const currentIdx = STEPS.findIndex(s => s.key === initStep);
+              return STEPS.map((s, i) => ({
+                label: s.label,
+                status: i < currentIdx ? "done" as const
+                  : i === currentIdx ? (s.key === "done" ? "done" as const : "active" as const)
+                  : "pending" as const,
+              }));
+            })()}
+            failed={false}
+            worldName={worldName}
+            isAIMode={true}
+            failedSessionId={null}
+            onRetry={() => {}}
+            onForceOpen={() => {}}
+          />
         )}
       </div>
     </div>
