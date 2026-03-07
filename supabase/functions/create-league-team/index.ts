@@ -13,7 +13,6 @@ const FIRST_NAMES = [
   "Ajax", "Balthus", "Corvus", "Drago", "Erebus", "Falco", "Gryphon", "Hadrian",
 ];
 
-// Sphaera positions: 1 Praetor (captain), 3 Guardians (defense), 4 Strikers (attack), 2 Carriers (ball specialists), 1 Exactor (brutal enforcer)
 const POSITIONS = [
   { pos: "praetor", count: 1 },
   { pos: "guardian", count: 3 },
@@ -28,13 +27,26 @@ Deno.serve(async (req) => {
   try {
     const { sessionId, cityId, buildingId, teamName, colorPrimary, colorSecondary, motto, playerName, associationId } = await req.json();
 
-    if (!sessionId || !cityId || !teamName || !playerName) {
-      return new Response(JSON.stringify({ error: "Missing required fields" }), {
+    // Association is now REQUIRED for team creation
+    if (!sessionId || !cityId || !teamName || !playerName || !associationId) {
+      return new Response(JSON.stringify({ error: "Missing required fields (associationId is required)" }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
     const sb = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+
+    // Verify association exists and belongs to the player
+    const { data: assoc } = await sb.from("sports_associations")
+      .select("id, player_name")
+      .eq("id", associationId)
+      .eq("session_id", sessionId)
+      .single();
+    if (!assoc || assoc.player_name !== playerName) {
+      return new Response(JSON.stringify({ error: "Svaz neexistuje nebo nepatří tomuto hráči" }), {
+        status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
     const { data: city } = await sb.from("cities").select("name, owner_player, development_level, city_stability, population_total")
       .eq("id", cityId).eq("session_id", sessionId).single();
@@ -45,13 +57,14 @@ Deno.serve(async (req) => {
     }
 
     const { data: existing } = await sb.from("league_teams")
-      .select("id").eq("session_id", sessionId).eq("city_id", cityId).eq("is_active", true).maybeSingle();
-    if (existing) {
-      return new Response(JSON.stringify({ error: "Město už má aktivní tým" }), {
+      .select("id").eq("session_id", sessionId).eq("city_id", cityId).eq("is_active", true);
+    if ((existing || []).length >= 3) {
+      return new Response(JSON.stringify({ error: "Město už má maximální počet aktivních týmů (3)" }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
+    // Stadium is OPTIONAL — just validate if provided
     if (buildingId) {
       const { data: building } = await sb.from("city_buildings")
         .select("id, building_tags, name").eq("id", buildingId).eq("status", "completed").maybeSingle();
@@ -73,7 +86,7 @@ Deno.serve(async (req) => {
       stadium_building_id: buildingId || null,
       player_name: playerName,
       team_name: teamName,
-      association_id: associationId || null,
+      association_id: associationId,
       motto: motto || `Za čest ${city.name}! Sphaera si žádá krev.`,
       color_primary: colorPrimary || "#8b0000",
       color_secondary: colorSecondary || "#1a1a2e",
@@ -103,7 +116,6 @@ Deno.serve(async (req) => {
         const talentPotential = 25 + Math.floor(Math.random() * 70);
         const peakAge = 26 + Math.floor(Math.random() * 6);
 
-        // Position-specific stat ranges: [base, range]
         const posStats: Record<string, { str: number[], spd: number[], tch: number[], sta: number[], agg: number[] }> = {
           praetor:   { str: [35, 40], spd: [30, 35], tch: [45, 45], sta: [45, 35], agg: [15, 30] },
           guardian:  { str: [45, 45], spd: [25, 35], tch: [20, 35], sta: [50, 35], agg: [30, 40] },

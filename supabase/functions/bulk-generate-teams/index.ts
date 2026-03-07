@@ -38,7 +38,6 @@ const POSITIONS = [
   { pos: "carrier", count: 4 },
   { pos: "exactor", count: 4 },
 ];
-// Total: 22 players per team
 
 const COLORS = [
   "#8b0000","#1a1a2e","#2d5a27","#1e3a5f","#5c2d91","#8b4513","#191970",
@@ -59,25 +58,41 @@ Deno.serve(async (req) => {
 
     const sb = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 
-    // Get all cities with stadiums
-    const { data: stadiums } = await sb.from("city_buildings")
-      .select("id, city_id, name")
-      .eq("session_id", session_id)
-      .eq("status", "completed")
-      .contains("building_tags", ["stadium"]);
+    // Get all associations for the session (teams are created via associations now)
+    const { data: associations } = await sb.from("sports_associations")
+      .select("id, player_name, city_id, type")
+      .eq("session_id", session_id);
 
-    if (!stadiums || stadiums.length === 0) {
-      return new Response(JSON.stringify({ error: "Žádná města se stadionem" }), {
+    if (!associations || associations.length === 0) {
+      return new Response(JSON.stringify({ error: "Žádné svazy v této hře. Týmy se zakládají přes svazy." }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    const stadiumCityIds = [...new Set(stadiums.map(s => s.city_id))];
-
-    // Get cities info
+    // Get all cities owned by players who have associations
+    const playerNames = [...new Set(associations.map(a => a.player_name))];
     const { data: cities } = await sb.from("cities")
       .select("id, name, owner_player, development_level, city_stability, population_total")
-      .in("id", stadiumCityIds);
+      .eq("session_id", session_id)
+      .in("owner_player", playerNames);
+
+    if (!cities || cities.length === 0) {
+      return new Response(JSON.stringify({ error: "Žádná města hráčů se svazy" }), {
+        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // Optionally find stadiums for auto-assignment
+    const { data: stadiums } = await sb.from("city_buildings")
+      .select("id, city_id")
+      .eq("session_id", session_id)
+      .eq("status", "completed")
+      .contains("building_tags", ["stadium"]);
+
+    const stadiumByCity = new Map<string, string>();
+    for (const s of (stadiums || [])) {
+      if (!stadiumByCity.has(s.city_id)) stadiumByCity.set(s.city_id, s.id);
+    }
 
     // Get existing teams
     const { data: existingTeams } = await sb.from("league_teams")
@@ -107,13 +122,16 @@ Deno.serve(async (req) => {
     let playersCreated = 0;
     const usedTeamNames = new Set((existingTeams || []).map(t => t.team_name));
 
-    for (const city of (cities || [])) {
+    for (const city of cities) {
+      // Find association for this city's player
+      const assoc = associations.find(a => a.player_name === city.owner_player);
+      if (!assoc) continue;
+
       const cityTeams = teamsByCity.get(city.id) || [];
-      const needed = teams_per_city - cityTeams.length;
-      const stadiumId = stadiums.find(s => s.city_id === city.id)?.id;
+      const needed = Math.min(teams_per_city, 3) - cityTeams.length; // respect 3-per-city cap
+      const stadiumId = stadiumByCity.get(city.id) || null;
       const baseRating = 30 + Math.floor((city.development_level || 1) * 3) + Math.floor((city.city_stability || 50) * 0.2);
 
-      // Create missing teams
       for (let i = 0; i < needed; i++) {
         let teamName: string;
         let attempts = 0;
@@ -129,13 +147,14 @@ Deno.serve(async (req) => {
         let c2 = COLORS[Math.floor(Math.random() * COLORS.length)];
         while (c2 === c1) c2 = COLORS[Math.floor(Math.random() * COLORS.length)];
 
-        const tier = cityTeams.length + i < 4 ? 1 : 2; // First 4 teams tier 1, rest tier 2
+        const tier = cityTeams.length + i < 2 ? 1 : 2;
 
         const { data: team, error: teamErr } = await sb.from("league_teams").insert({
           session_id, city_id: city.id,
-          stadium_building_id: stadiumId || null,
+          stadium_building_id: stadiumId,
           player_name: city.owner_player,
           team_name: teamName,
+          association_id: assoc.id,
           motto: MOTTOS[Math.floor(Math.random() * MOTTOS.length)],
           color_primary: c1, color_secondary: c2,
           attack_rating: baseRating + Math.floor(Math.random() * 20) - 10,
@@ -149,13 +168,12 @@ Deno.serve(async (req) => {
 
         if (teamErr) { console.error("Team create error:", teamErr); continue; }
 
-        // Generate 22 players
         await generatePlayersForTeam(sb, session_id, team!.id, players_per_team);
         teamsCreated++;
         playersCreated += players_per_team;
       }
 
-      // Fill existing teams to 22 players
+      // Fill existing teams to target player count
       for (const existingTeam of cityTeams) {
         const currentCount = playerCountByTeam.get(existingTeam.id) || 0;
         const playersNeeded = players_per_team - currentCount;
@@ -168,8 +186,8 @@ Deno.serve(async (req) => {
 
     return new Response(JSON.stringify({
       ok: true, teamsCreated, playersCreated,
-      cities: stadiumCityIds.length,
-      message: `Vytvořeno ${teamsCreated} nových týmů a ${playersCreated} hráčů.`,
+      cities: cities.length,
+      message: `Vytvořeno ${teamsCreated} nových týmů a ${playersCreated} hráčů (přes ${associations.length} svazů).`,
     }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
   } catch (e: any) {
     console.error("bulk-generate-teams error:", e);
@@ -180,12 +198,10 @@ Deno.serve(async (req) => {
 });
 
 async function generatePlayersForTeam(sb: any, sessionId: string, teamId: string, count: number) {
-  // Get existing player names for this team to avoid duplicates
   const { data: existing } = await sb.from("league_players").select("name").eq("team_id", teamId);
   const usedNames = new Set((existing || []).map((p: any) => p.name));
   const existingCount = existing?.length || 0;
 
-  // Determine positions needed based on total roster
   const fullRoster = [
     { pos: "praetor", count: 2 },
     { pos: "guardian", count: 5 },
@@ -195,13 +211,10 @@ async function generatePlayersForTeam(sb: any, sessionId: string, teamId: string
   ];
 
   const rows: any[] = [];
-  let posIndex = 0;
-  let posCount = 0;
 
   for (let i = 0; i < count; i++) {
-    // Cycle through positions
     const slotIndex = existingCount + i;
-    let position = "striker"; // fallback
+    let position = "striker";
     let accumulated = 0;
     for (const pg of fullRoster) {
       accumulated += pg.count;

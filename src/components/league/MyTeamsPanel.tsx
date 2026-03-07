@@ -163,9 +163,13 @@ const MyTeamsPanel = ({
       toast.error("Vyplň název týmu a vyber město");
       return;
     }
+    if (!myAssociation) {
+      toast.error("Pro založení týmu je potřeba svaz");
+      return;
+    }
     setCreating(true);
     try {
-      // Find stadium in city
+      // Stadium is optional — auto-assign if available
       const stadium = stadiums.find(s => s.city_id === createCityId);
       const { data, error } = await supabase.functions.invoke("create-league-team", {
         body: {
@@ -176,7 +180,7 @@ const MyTeamsPanel = ({
           colorSecondary: createColorSecondary,
           motto: createMotto.trim() || null,
           playerName: currentPlayerName,
-          associationId: myAssociation?.id || null,
+          associationId: myAssociation.id,
         },
       });
       if (error) throw error;
