@@ -7,7 +7,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Loader2, Trophy, Sword, BookOpen, Theater, Target, Flame, Star, Crown, AlertTriangle, Coins, School, Skull, TrendingUp, MapPin, Gavel, Medal, Shield } from "lucide-react";
+import { Loader2, Trophy, Sword, BookOpen, Theater, Target, Flame, Star, Crown, AlertTriangle, Coins, School, Skull, TrendingUp, MapPin, Gavel, Medal, Shield, Newspaper } from "lucide-react";
 import { toast } from "sonner";
 import AcademyPanel from "@/components/AcademyPanel";
 import SchoolRankings from "@/components/SchoolRankings";
@@ -19,6 +19,7 @@ import GamesRevealPlayer from "@/components/GamesRevealPlayer";
 import HallOfRecords from "@/components/HallOfRecords";
 import LeaguePanel from "@/components/LeaguePanel";
 import AssociationsPanel from "@/components/league/AssociationsPanel";
+import OlympiadReport from "@/components/OlympiadReport";
 
 /* ═══ INLINE ATHLETES ROSTER ═══ */
 const OlympicsAthleteRoster = ({ participants, currentPlayerName }: { participants: any[]; currentPlayerName: string }) => {
@@ -187,6 +188,7 @@ const GamesTab = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, o
   const [festivalType, setFestivalType] = useState("local_gladiator");
   const [selectedCityId, setSelectedCityId] = useState("");
   const [selectedFestival, setSelectedFestival] = useState<string | null>(null);
+  const [reportFestivalId, setReportFestivalId] = useState<string | null>(null);
 
   const isAdmin = myRole === "admin";
   const myCities = cities.filter(c => c.owner_player === currentPlayerName);
@@ -735,6 +737,9 @@ const GamesTab = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, o
                           <Button size="sm" variant="outline" className="text-xs gap-1" onClick={() => { setRevealFestivalId(f.id); setRevealStartWithReport(true); }}>
                             <BookOpen className="h-3 w-3" /> Zobrazit report
                           </Button>
+                          <Button size="sm" variant="outline" className="text-xs gap-1" onClick={() => setReportFestivalId(f.id)}>
+                            <Newspaper className="h-3 w-3" /> Podrobný report
+                          </Button>
                         </div>
                         )}
                         {/* AI Narrative */}
@@ -842,6 +847,15 @@ const GamesTab = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, o
           )}
         </TabsContent>
       </Tabs>
+
+      {/* OlympiadReport modal */}
+      {reportFestivalId && (
+        <div className="fixed inset-0 z-50 bg-background/80 flex items-center justify-center p-4" onClick={() => setReportFestivalId(null)}>
+          <div className="max-w-2xl w-full max-h-[80vh] overflow-auto bg-card border border-border rounded-lg shadow-xl" onClick={e => e.stopPropagation()}>
+            <OlympiadReport festivalId={reportFestivalId} sessionId={sessionId} onClose={() => setReportFestivalId(null)} />
+          </div>
+        </div>
+      )}
     </div>
   );
 };

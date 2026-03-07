@@ -1,9 +1,10 @@
 import { useState, useEffect } from "react";
 import CityDirectory from "@/components/CityDirectory";
 import CityStatesPanel from "@/components/CityStatesPanel";
+import EmpireOverview from "@/components/EmpireOverview";
 // ExplorationPanel disabled — legacy mechanic
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { MapPin, Building2, Globe, Castle, Mountain, Eye, EyeOff, Compass, Map } from "lucide-react";
+import { MapPin, Building2, Globe, Castle, Mountain, Eye, EyeOff, Compass, Map, Crown } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { Badge } from "@/components/ui/badge";
 import { useDiscoveries } from "@/hooks/useDiscoveries";
@@ -17,6 +18,9 @@ interface Props {
   cities: any[];
   wonders: any[];
   greatPersons: any[];
+  resources: any[];
+  armies: any[];
+  chronicles: any[];
   cityStates: any[];
   currentPlayerName: string;
   currentTurn: number;
@@ -38,6 +42,7 @@ const BIOME_LABELS: Record<string, string> = {
 
 const WorldTab = ({
   sessionId, session, events, memories, players, cities, wonders, greatPersons,
+  resources, armies, chronicles,
   cityStates, currentPlayerName, currentTurn, myRole, worldFoundation, entityIndex,
   onRefetch, onEventClick, onEntityClick,
   worldEntityTarget, onClearWorldEntityTarget,
@@ -150,6 +155,9 @@ const WorldTab = ({
                   <Building2 className="h-3 w-3" />Městské státy
                 </TabsTrigger>
               )}
+              <TabsTrigger value="empires" className="font-display text-xs gap-1">
+                <Crown className="h-3 w-3" />Říše
+              </TabsTrigger>
             </TabsList>
 
             <TabsContent value="cities" className="mt-3">
@@ -235,6 +243,20 @@ const WorldTab = ({
                 <CityStatesPanel sessionId={sessionId} cityStates={cityStates} recentEvents={events} players={players} />
               </TabsContent>
             )}
+
+            <TabsContent value="empires" className="mt-3">
+              <EmpireOverview
+                players={players}
+                cities={cities}
+                resources={resources}
+                armies={armies}
+                wonders={wonders}
+                events={events}
+                currentPlayerName={currentPlayerName}
+                currentTurn={currentTurn}
+                chronicles={chronicles}
+              />
+            </TabsContent>
           </Tabs>
         )}
       </section>

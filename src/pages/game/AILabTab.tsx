@@ -1,11 +1,13 @@
-import { Brain } from "lucide-react";
+import { Brain, Sparkles } from "lucide-react";
 import AIDiagnosticsPanel from "@/components/AIDiagnosticsPanel";
+import SmartAIGenerationPanel from "@/components/SmartAIGenerationPanel";
 
 interface Props {
   sessionId: string;
+  onRefetch?: () => void;
 }
 
-const AILabTab = ({ sessionId }: Props) => {
+const AILabTab = ({ sessionId, onRefetch }: Props) => {
   return (
     <div className="space-y-4 pb-20">
       <div className="flex items-center gap-2 mb-2">
@@ -13,6 +15,7 @@ const AILabTab = ({ sessionId }: Props) => {
         <h1 className="font-display text-lg font-bold">AI Lab</h1>
       </div>
       <AIDiagnosticsPanel sessionId={sessionId} />
+      <SmartAIGenerationPanel sessionId={sessionId} onRefetch={onRefetch} />
     </div>
   );
 };

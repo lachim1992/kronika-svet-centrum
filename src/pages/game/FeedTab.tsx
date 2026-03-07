@@ -5,8 +5,9 @@ import TimelinePanel from "@/components/TimelinePanel";
 import SourceImportPanel from "@/components/SourceImportPanel";
 import WorldActionLog from "@/components/WorldActionLog";
 import ManualCreatorPanel from "@/components/ManualCreatorPanel";
+import RumorsFeedPanel from "@/components/RumorsFeedPanel";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Swords, CalendarDays, Network, ScrollText, FileText, Plus } from "lucide-react";
+import { Swords, CalendarDays, Network, ScrollText, FileText, Plus, MessageCircle } from "lucide-react";
 import type { EntityIndex } from "@/hooks/useEntityIndex";
 
 interface Props {
@@ -67,6 +68,9 @@ const FeedTab = ({
           <TabsTrigger value="creator" className="font-display text-xs gap-1">
             <Plus className="h-3 w-3" />Tvorba
           </TabsTrigger>
+          <TabsTrigger value="rumors" className="font-display text-xs gap-1">
+            <MessageCircle className="h-3 w-3" />Zvěsti
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="events" className="mt-3">
@@ -104,6 +108,17 @@ const FeedTab = ({
             currentPlayerName={currentPlayerName}
             currentTurn={currentTurn}
             onRefetch={onRefetch}
+          />
+        </TabsContent>
+
+        <TabsContent value="rumors" className="mt-3">
+          <RumorsFeedPanel
+            sessionId={sessionId}
+            cities={cities}
+            currentTurn={currentTurn}
+            entityIndex={entityIndex}
+            onEventClick={onEventClick}
+            onEntityClick={onEntityClick}
           />
         </TabsContent>
       </Tabs>
