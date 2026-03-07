@@ -131,6 +131,7 @@ interface Props {
   sessionId: string;
   disciplines: any[];
   isHost: boolean;
+  isAdmin?: boolean;
   onComplete?: () => void;
   currentTurn?: number;
 }
