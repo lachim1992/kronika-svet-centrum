@@ -221,10 +221,72 @@ Deno.serve(async (req) => {
       }
     }
 
+    // ═══ AUTO-INTEGRATE into unplayed season ═══
+    let seasonReset = false;
+    if (teamsCreated > 0) {
+      // Find active season with 0 played matches
+      const { data: activeSeason } = await sb.from("league_seasons")
+        .select("id, season_number, started_turn, league_tier")
+        .eq("session_id", session_id).eq("status", "active").maybeSingle();
+
+      if (activeSeason) {
+        const { count: playedCount } = await sb.from("league_matches")
+          .select("id", { count: "exact", head: true })
+          .eq("season_id", activeSeason.id).eq("status", "played");
+
+        if ((playedCount || 0) === 0) {
+          // No matches played yet — safe to reset the season with all teams
+          // Delete old matches and standings
+          await sb.from("league_matches").delete().eq("season_id", activeSeason.id);
+          await sb.from("league_standings").delete().eq("season_id", activeSeason.id);
+
+          // Get all active teams for this tier
+          const tier = activeSeason.league_tier || 1;
+          const { data: allActiveTeams } = await sb.from("league_teams")
+            .select("id").eq("session_id", session_id).eq("is_active", true)
+            .eq("league_tier", tier);
+
+          const teamIds = (allActiveTeams || []).map(t => t.id);
+          
+          if (teamIds.length >= 2) {
+            // Recreate standings
+            for (const tid of teamIds) {
+              await sb.from("league_standings").insert({
+                session_id, season_id: activeSeason.id, team_id: tid,
+              });
+            }
+
+            // Recreate schedule
+            const matchesPerPairing = teamIds.length <= 4 ? 2 : 1;
+            const schedule = generateRoundRobin(teamIds, matchesPerPairing);
+            let roundNum = 0;
+            for (const round of schedule) {
+              roundNum++;
+              const matchTurn = (activeSeason.started_turn || 1) + roundNum;
+              for (const [home, away] of round) {
+                await sb.from("league_matches").insert({
+                  session_id, season_id: activeSeason.id, round_number: roundNum,
+                  turn_number: matchTurn, home_team_id: home, away_team_id: away,
+                });
+              }
+            }
+
+            // Update season total rounds
+            await sb.from("league_seasons").update({
+              total_rounds: schedule.length,
+              matches_per_round: Math.floor(teamIds.length / 2),
+            }).eq("id", activeSeason.id);
+
+            seasonReset = true;
+          }
+        }
+      }
+    }
+
     return new Response(JSON.stringify({
-      ok: true, teamsCreated, playersCreated, assocsCreated,
+      ok: true, teamsCreated, playersCreated, assocsCreated, seasonReset,
       cities: liveCities.length,
-      message: `Vytvořeno ${assocsCreated} svazů, ${teamsCreated} týmů a ${playersCreated} hráčů.`,
+      message: `Vytvořeno ${assocsCreated} svazů, ${teamsCreated} týmů a ${playersCreated} hráčů.${seasonReset ? " Sezóna přegenerována se všemi týmy." : ""}`,
     }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
   } catch (e: any) {
     console.error("bulk-generate-teams error:", e);
@@ -308,4 +370,27 @@ function romanNumeral(n: number): string {
   const vals = [10,9,5,4,1], syms = ["X","IX","V","IV","I"];
   let r = ""; for (let i = 0; i < vals.length; i++) while (n >= vals[i]) { r += syms[i]; n -= vals[i]; }
   return r;
+}
+
+function generateRoundRobin(teamIds: string[], matchesPerPairing: number): [string, string][][] {
+  const teams = [...teamIds];
+  if (teams.length % 2 !== 0) teams.push("BYE");
+  const n = teams.length;
+  const rounds: [string, string][][] = [];
+  for (let pass = 0; pass < matchesPerPairing; pass++) {
+    for (let round = 0; round < n - 1; round++) {
+      const matches: [string, string][] = [];
+      for (let i = 0; i < n / 2; i++) {
+        const home = teams[i];
+        const away = teams[n - 1 - i];
+        if (home === "BYE" || away === "BYE") continue;
+        if (pass % 2 === 0) matches.push([home, away]);
+        else matches.push([away, home]);
+      }
+      if (matches.length > 0) rounds.push(matches);
+      const last = teams.pop()!;
+      teams.splice(1, 0, last);
+    }
+  }
+  return rounds;
 }
