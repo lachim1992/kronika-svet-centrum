@@ -401,17 +401,28 @@ async function playTierRound(sb: any, session_id: string, currentTurn: number, t
       .order("season_number", { ascending: false }).limit(1).maybeSingle();
     const nextSeasonNumber = (lastSeason?.season_number || 0) + 1;
     const n = tierTeams.length, adj = n % 2 === 0 ? n : n + 1;
-    const { data: ns, error: seasonErr } = await sb.from("league_seasons").insert({
+
+    // Use upsert to handle race conditions where two calls try to create the same season
+    const { data: ns, error: seasonErr } = await sb.from("league_seasons").upsert({
       session_id, season_number: nextSeasonNumber, status: "active", started_turn: currentTurn,
       total_rounds: (adj - 1) * 2, current_round: 0, matches_per_round: Math.floor(n / 2),
       league_tier: tier, promotion_count: tier > 1 ? 2 : 0, relegation_count: tier === 1 ? 2 : 0,
       playoff_status: "none", playoff_bracket: [],
-    }).select("*").single();
+    }, { onConflict: "session_id,league_tier,season_number", ignoreDuplicates: true }).select("*").single();
+
     if (seasonErr || !ns) {
-      console.error(`Failed to create season tier ${tier}:`, seasonErr);
-      throw new Error(`Failed season tier ${tier}: ${seasonErr?.message || "unknown"}`);
+      // If upsert was ignored due to duplicate, fetch the existing season
+      const { data: existingSeason } = await sb.from("league_seasons").select("*")
+        .eq("session_id", session_id).eq("league_tier", tier).eq("season_number", nextSeasonNumber).maybeSingle();
+      if (existingSeason) {
+        season = existingSeason;
+      } else {
+        console.error(`Failed to create season tier ${tier}:`, seasonErr);
+        throw new Error(`Failed season tier ${tier}: ${seasonErr?.message || "unknown"}`);
+      }
+    } else {
+      season = ns;
     }
-    season = ns;
     for (const t of tierTeams) await sb.from("league_standings").insert({ session_id, season_id: season.id, team_id: t.id });
     const schedule = generateDoubleRoundRobin(tierTeams.map(t => t.id));
     let rn = 0;
