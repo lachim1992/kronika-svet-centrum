@@ -219,6 +219,9 @@ const HomeTab = ({
       {/* Realm Indicators — demographics, economy, projections, stability */}
       <RealmIndicators realm={realm} cities={myCities} currentTurn={currentTurn} />
 
+      {/* Laws & Decrees */}
+      <RealmLawsDecrees sessionId={sessionId} currentPlayerName={currentPlayerName} currentTurn={currentTurn} />
+
       {/* Famine Alerts */}
       {famineCities.length > 0 && (
         <div className="game-card border-destructive/40 bg-destructive/5 p-5">
