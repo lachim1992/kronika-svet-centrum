@@ -383,14 +383,23 @@ Deno.serve(async (req) => {
 
     let activePopModifier = 0;
     let maxMobModifier = 0;
+    let taxRateModifier = 0;       // % gold income modifier
+    let grainRationModifier = 0;   // % grain consumption modifier
+    let tradeRestriction = 0;      // % trade income penalty
+    const lawEffectsLog: string[] = [];
+
     for (const law of (activeLaws || [])) {
       const effects = law.structured_effects as any[];
       if (!Array.isArray(effects)) continue;
       for (const eff of effects) {
-        if (eff.type === "active_pop_modifier") activePopModifier += (eff.value || 0);
-        if (eff.type === "max_mobilization_modifier") maxMobModifier += (eff.value || 0);
+        if (eff.type === "active_pop_modifier") { activePopModifier += (eff.value || 0); lawEffectsLog.push(`${eff.type}: ${eff.value}`); }
+        if (eff.type === "max_mobilization_modifier") { maxMobModifier += (eff.value || 0); lawEffectsLog.push(`${eff.type}: ${eff.value}`); }
+        if (eff.type === "tax_rate_percent") { taxRateModifier += (eff.value || 0); lawEffectsLog.push(`tax_rate_percent: ${eff.value}%`); }
+        if (eff.type === "grain_ration_modifier") { grainRationModifier += (eff.value || 0); lawEffectsLog.push(`grain_ration: ${eff.value}%`); }
+        if (eff.type === "trade_restriction") { tradeRestriction += (eff.value || 0); lawEffectsLog.push(`trade_restriction: ${eff.value}%`); }
       }
     }
+    if (lawEffectsLog.length > 0) logEntries.push(`Zákony: ${lawEffectsLog.join(", ")}`);
 
     let activePopRaw = 0;
     for (const city of myCities) {

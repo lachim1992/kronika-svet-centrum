@@ -193,7 +193,7 @@ const LawsPanel = ({ sessionId, currentPlayerName, currentTurn, myRole }: Props)
                     </SelectTrigger>
                     <SelectContent>
                       {EFFECT_TYPES.map(et => (
-                        <SelectItem key={et.value} value={et.value}>
+                        <SelectItem key={et.value} value={et.value} title={et.hint}>
                           {et.icon} {et.label}
                         </SelectItem>
                       ))}
