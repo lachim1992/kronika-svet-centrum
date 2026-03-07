@@ -6,6 +6,9 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Shield, Users, Coins, TrendingUp, Trophy, Loader2, Plus, Star, Swords, Eye, MapPin, Crown, Target, GraduationCap, School } from "lucide-react";
 import { toast } from "sonner";
 import CreateAssociationDialog from "./CreateAssociationDialog";
@@ -157,6 +160,13 @@ const AssociationsPanel = ({ sessionId, currentPlayerName, currentTurn }: Props)
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [upgrading, setUpgrading] = useState<string | null>(null);
   const [creatingAcademy, setCreatingAcademy] = useState<string | null>(null);
+  const [showCreateTeamDialog, setShowCreateTeamDialog] = useState(false);
+  const [createTeamCityId, setCreateTeamCityId] = useState("");
+  const [createTeamName, setCreateTeamName] = useState("");
+  const [createTeamMotto, setCreateTeamMotto] = useState("");
+  const [createTeamColorPrimary, setCreateTeamColorPrimary] = useState("#8b0000");
+  const [createTeamColorSecondary, setCreateTeamColorSecondary] = useState("#1a1a2e");
+  const [creatingTeam, setCreatingTeam] = useState(false);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -264,6 +274,50 @@ const AssociationsPanel = ({ sessionId, currentPlayerName, currentTurn }: Props)
   if (loading) {
     return <div className="flex items-center justify-center p-12"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
   }
+
+  const MAX_TEAMS_PER_CITY = 3;
+  const teamsPerCity = new Map<string, number>();
+  myTeams.forEach(t => teamsPerCity.set(t.city_id, (teamsPerCity.get(t.city_id) || 0) + 1));
+  const availableCitiesForTeam = Array.from(cities.entries()).filter(([id]) => (teamsPerCity.get(id) || 0) < MAX_TEAMS_PER_CITY);
+
+  const handleCreateTeam = async () => {
+    if (!createTeamCityId || !createTeamName.trim()) {
+      toast.error("Vyplň název týmu a vyber město");
+      return;
+    }
+    const assoc = myAssociations[0];
+    if (!assoc) {
+      toast.error("Pro založení týmu je potřeba svaz");
+      return;
+    }
+    setCreatingTeam(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("create-league-team", {
+        body: {
+          sessionId,
+          cityId: createTeamCityId,
+          buildingId: null,
+          teamName: createTeamName.trim(),
+          colorPrimary: createTeamColorPrimary,
+          colorSecondary: createTeamColorSecondary,
+          motto: createTeamMotto.trim() || null,
+          playerName: currentPlayerName,
+          associationId: assoc.id,
+        },
+      });
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+      toast.success(`Tým ${createTeamName} založen!`);
+      setShowCreateTeamDialog(false);
+      setCreateTeamName("");
+      setCreateTeamMotto("");
+      await fetchData();
+    } catch (e: any) {
+      toast.error(e.message);
+    } finally {
+      setCreatingTeam(false);
+    }
+  };
 
   return (
     <div className="space-y-4">
@@ -504,12 +558,28 @@ const AssociationsPanel = ({ sessionId, currentPlayerName, currentTurn }: Props)
 
         {/* ═══ TEAMS ═══ */}
         <TabsContent value="teams" className="space-y-3">
+          {myAssociations.length > 0 && (
+            <div className="flex items-center justify-between">
+              <h4 className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Moje týmy ({myTeams.length})</h4>
+              <Button size="sm" variant="outline" className="text-xs gap-1"
+                onClick={() => setShowCreateTeamDialog(true)}
+                disabled={availableCitiesForTeam.length === 0}>
+                <Plus className="h-3 w-3" /> Sehnat tým
+              </Button>
+            </div>
+          )}
           {myTeams.length === 0 ? (
             <Card className="border-border bg-card/50">
-              <CardContent className="p-8 text-center space-y-2">
+              <CardContent className="p-8 text-center space-y-3">
                 <Users className="h-10 w-10 text-muted-foreground mx-auto opacity-50" />
                 <p className="text-sm text-muted-foreground">Žádné týmy.</p>
-                <p className="text-xs text-muted-foreground">Vytvoř týmy v záložce Liga → Manage My Teams.</p>
+                {myAssociations.length > 0 ? (
+                  <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setShowCreateTeamDialog(true)}>
+                    <Plus className="h-3.5 w-3.5" /> Založit první tým
+                  </Button>
+                ) : (
+                  <p className="text-xs text-muted-foreground">Nejdřív založ svaz, pak můžeš založit tým.</p>
+                )}
               </CardContent>
             </Card>
           ) : (
@@ -835,6 +905,61 @@ const AssociationsPanel = ({ sessionId, currentPlayerName, currentTurn }: Props)
         cities={cities}
         onCreated={fetchData}
       />
+
+      {/* Create Team Dialog */}
+      <Dialog open={showCreateTeamDialog} onOpenChange={setShowCreateTeamDialog}>
+        <DialogContent className="max-w-md bg-card border-primary/20">
+          <DialogHeader>
+            <DialogTitle className="font-display flex items-center gap-2">
+              <Plus className="h-5 w-5 text-primary" /> Založit tým
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <label className="text-xs font-medium mb-1 block">Město</label>
+              <Select value={createTeamCityId} onValueChange={setCreateTeamCityId}>
+                <SelectTrigger className="h-9 text-xs">
+                  <SelectValue placeholder="Vyber město..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {availableCitiesForTeam.map(([id, name]) => (
+                    <SelectItem key={id} value={id} className="text-xs">
+                      {name} ({teamsPerCity.get(id) || 0}/{MAX_TEAMS_PER_CITY})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-[9px] text-muted-foreground mt-1">Max {MAX_TEAMS_PER_CITY} týmy na město.</p>
+            </div>
+            <div>
+              <label className="text-xs font-medium mb-1 block">Název týmu</label>
+              <Input value={createTeamName} onChange={e => setCreateTeamName(e.target.value)} placeholder="Gladiátoři Romanova" className="h-9 text-xs" />
+            </div>
+            <div>
+              <label className="text-xs font-medium mb-1 block">Motto (volitelné)</label>
+              <Input value={createTeamMotto} onChange={e => setCreateTeamMotto(e.target.value)} placeholder="Sphaera si žádá krev!" className="h-9 text-xs" />
+            </div>
+            <div className="flex gap-3">
+              <div className="flex-1">
+                <label className="text-xs font-medium mb-1 block">Primární barva</label>
+                <input type="color" value={createTeamColorPrimary} onChange={e => setCreateTeamColorPrimary(e.target.value)} className="w-full h-8 rounded border border-border cursor-pointer" />
+              </div>
+              <div className="flex-1">
+                <label className="text-xs font-medium mb-1 block">Sekundární</label>
+                <input type="color" value={createTeamColorSecondary} onChange={e => setCreateTeamColorSecondary(e.target.value)} className="w-full h-8 rounded border border-border cursor-pointer" />
+              </div>
+            </div>
+            <p className="text-[9px] text-muted-foreground">AI automaticky vygeneruje 22 bojovníků s unikátními statistikami.</p>
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" size="sm" onClick={() => setShowCreateTeamDialog(false)}>Zrušit</Button>
+            <Button size="sm" onClick={handleCreateTeam} disabled={creatingTeam || !createTeamCityId || !createTeamName.trim()}>
+              {creatingTeam ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <Swords className="h-3 w-3 mr-1" />}
+              Založit tým
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
