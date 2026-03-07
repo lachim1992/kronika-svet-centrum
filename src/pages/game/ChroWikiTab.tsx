@@ -139,6 +139,8 @@ const ChroWikiTab = ({ sessionId, currentPlayerName = "", myRole = "player", cur
 
   const isEntityVisible = (type: string, id: string, ownerPlayer?: string) => {
     if (isAdmin) return true;
+    // Geographic hierarchy is always visible to all players in the session
+    if (["country", "region", "province", "city"].includes(type)) return true;
     if (ownerPlayer === currentPlayerName) return true;
     return isDiscovered(type, id);
   };
