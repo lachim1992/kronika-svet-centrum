@@ -132,6 +132,71 @@ Styl: dramatický, kronikářský, krvavý. ${isPlayoff ? "Zdůrazni váhu vyřa
   }
 });
 
+// ========== FAN BASE GROWTH ==========
+// Hybrid model: results give immediate boost, team rating provides baseline growth
+async function updateTeamFanBase(sb: any, session_id: string, team: any, goalsFor: number, goalsAgainst: number, attendance: number) {
+  const { data: t } = await sb.from("league_teams").select("fan_base, popularity, attack_rating, defense_rating, tactics_rating, stadium_building_id").eq("id", team.id).single();
+  if (!t) return;
+
+  let fanDelta = 0;
+  const currentFans = t.fan_base || 10;
+
+  // Result-based: win +3-5, draw +1, loss -1
+  if (goalsFor > goalsAgainst) {
+    fanDelta += 3 + Math.floor(Math.random() * 3); // +3 to +5
+    // Dominant win bonus
+    if (goalsFor - goalsAgainst >= 3) fanDelta += 2;
+  } else if (goalsFor === goalsAgainst) {
+    fanDelta += 1;
+  } else {
+    fanDelta -= 1;
+  }
+
+  // Rating-based baseline: strong teams attract fans passively
+  const avgRating = ((t.attack_rating || 40) + (t.defense_rating || 40) + (t.tactics_rating || 40)) / 3;
+  if (avgRating >= 60) fanDelta += 1;
+  if (avgRating >= 75) fanDelta += 1;
+
+  // Stadium bonus
+  if (t.stadium_building_id) fanDelta += 1;
+
+  // Attendance excitement: high attendance = more engagement
+  if (attendance > 500) fanDelta += 1;
+
+  // Goals scored = excitement
+  fanDelta += Math.min(2, Math.floor(goalsFor / 2));
+
+  const newFanBase = Math.max(5, currentFans + fanDelta);
+  const newPopularity = Math.max(0, Math.min(100, (t.popularity || 30) + (fanDelta > 0 ? 1 : fanDelta < 0 ? -1 : 0)));
+
+  await sb.from("league_teams").update({ fan_base: newFanBase, popularity: newPopularity }).eq("id", team.id);
+}
+
+// ========== MATCH REVENUE ==========
+// Each match generates ticket revenue based on combined fan bases
+async function creditMatchRevenue(sb: any, session_id: string, home: any, away: any, attendance: number) {
+  // Collect unique association_ids for both teams
+  const teamIds = [home.id, away.id];
+  const { data: teams } = await sb.from("league_teams").select("id, association_id, fan_base, player_name").in("id", teamIds);
+  if (!teams) return;
+
+  const assocRevenue = new Map<string, number>();
+  for (const t of teams) {
+    if (!t.association_id) continue;
+    const fans = t.fan_base || 10;
+    // Revenue: base 2 + fans * 0.05 per match
+    const revenue = Math.round(2 + fans * 0.05);
+    assocRevenue.set(t.association_id, (assocRevenue.get(t.association_id) || 0) + revenue);
+  }
+
+  for (const [assocId, revenue] of assocRevenue.entries()) {
+    const { data: assoc } = await sb.from("sports_associations").select("budget").eq("id", assocId).single();
+    if (assoc) {
+      await sb.from("sports_associations").update({ budget: (assoc.budget || 0) + revenue }).eq("id", assocId);
+    }
+  }
+}
+
 // ========== DYNAMIC STAT CHANGES ==========
 async function applyDynamicStatChanges(sb: any, session_id: string, currentTurn: number) {
   const { data: players } = await sb.from("league_players").select("*").eq("session_id", session_id).eq("is_dead", false);
