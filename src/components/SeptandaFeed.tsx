@@ -425,7 +425,7 @@ const SeptandaFeed = ({ sessionId, currentTurn, currentPlayerName, players = [],
           <SelectTrigger className="w-36 h-8 text-xs"><SelectValue placeholder="Hráč" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Všichni hráči</SelectItem>
-            {allPlayers.map(p => (
+            {allPlayers.filter(p => p && p.trim() !== "").map(p => (
               <SelectItem key={p} value={p}>{p}</SelectItem>
             ))}
           </SelectContent>

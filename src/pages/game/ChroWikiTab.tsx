@@ -216,7 +216,7 @@ const ChroWikiTab = ({ sessionId, currentPlayerName = "", myRole = "player", cur
                 <SelectTrigger className="h-7 text-[10px] flex-1"><SelectValue placeholder="Frakce" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Všechny</SelectItem>
-                  {allPlayers.map(p => <SelectItem key={p} value={p}>{p}</SelectItem>)}
+                  {allPlayers.filter(p => p && p.trim() !== "").map(p => <SelectItem key={p} value={p}>{p}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>

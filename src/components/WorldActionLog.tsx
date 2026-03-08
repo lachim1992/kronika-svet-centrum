@@ -87,7 +87,7 @@ const WorldActionLog = ({ sessionId, currentTurn, myRole, entityIndex, onEntityC
           <SelectTrigger className="w-28 h-7 text-xs"><SelectValue /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Všichni</SelectItem>
-            {players.map(p => <SelectItem key={p} value={p}>{p}</SelectItem>)}
+            {players.filter(p => p && p.trim() !== "").map(p => <SelectItem key={p} value={p}>{p}</SelectItem>)}
           </SelectContent>
         </Select>
         <Select value={filterTurn} onValueChange={setFilterTurn}>
