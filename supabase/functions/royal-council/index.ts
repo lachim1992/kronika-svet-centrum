@@ -49,10 +49,11 @@ Zhodnoť tento dekret a vrať strukturovaný výstup.`;
                   items: {
                     type: "object",
                     properties: {
+                      type: { type: "string", description: "One of: gold, grain, wood, stone, iron, manpower, stability, tax_rate_percent, grain_ration_modifier, trade_restriction, active_pop_modifier, max_mobilization_modifier" },
                       label: { type: "string" },
                       value: { type: "number" },
                     },
-                    required: ["label", "value"],
+                    required: ["type", "label", "value"],
                   },
                 },
                 riskLevel: { type: "string", description: "Nízké, Střední, or Vysoké" },
