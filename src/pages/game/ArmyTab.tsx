@@ -1241,11 +1241,12 @@ function CreateGeneralDialog({
 
 // ---- My Army Panel ----
 function MyArmyPanel({
-  sessionId, currentPlayerName, stacks, realm, unitVisuals, generatingVisual, setGeneratingVisual, onRefresh,
+  sessionId, currentPlayerName, stacks, realm, unitVisuals, generatingVisual, setGeneratingVisual, onRefresh, civIdentity,
 }: {
   sessionId: string; currentPlayerName: string; stacks: Stack[]; realm: any;
   unitVisuals: UnitTypeVisual[]; generatingVisual: string | null;
   setGeneratingVisual: (v: string | null) => void; onRefresh: () => void;
+  civIdentity?: CivIdentityNames;
 }) {
   const [customPrompts, setCustomPrompts] = useState<Record<string, string>>({});
 
