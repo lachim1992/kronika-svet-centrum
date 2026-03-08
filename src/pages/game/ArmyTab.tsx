@@ -112,6 +112,13 @@ interface Props {
   onRefetch: () => void;
 }
 
+interface CivIdentityNames {
+  militia_unit_name?: string;
+  militia_unit_desc?: string;
+  professional_unit_name?: string;
+  professional_unit_desc?: string;
+}
+
 const ArmyTab = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, onRefetch }: Props) => {
   const [stacks, setStacks] = useState<Stack[]>([]);
   const [generals, setGenerals] = useState<General[]>([]);
@@ -126,6 +133,7 @@ const ArmyTab = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, on
   const [remobilizing, setRemobilizing] = useState<string | null>(null);
   const [showDemobilize, setShowDemobilize] = useState(false);
   const [pendingMobRate, setPendingMobRate] = useState<number | null>(null);
+  const [civIdentity, setCivIdentity] = useState<CivIdentityNames>({});
 
   const fetchMilitary = useCallback(async () => {
     setLoading(true);
