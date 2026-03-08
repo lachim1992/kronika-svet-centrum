@@ -611,9 +611,9 @@ Deno.serve(async (req) => {
     // 6) Other Resources
     // Wood/Stone/Iron accumulate, no hard cap usually (or high cap)
     // Assume standard storage limits? For now, unlimited or high limit
-    const newWoodReserve = (realm.wood_reserve || 0) + totalWoodProd;
-    const newStoneReserve = (realm.stone_reserve || 0) + totalStoneProd;
-    const newIronReserve = (realm.iron_reserve || 0) + totalIronProd;
+    let newWoodReserve = (realm.wood_reserve || 0) + totalWoodProd;
+    let newStoneReserve = (realm.stone_reserve || 0) + totalStoneProd;
+    let newIronReserve = (realm.iron_reserve || 0) + totalIronProd;
 
     // Wealth — unified multiplier + open borders trade efficiency bonus + tax law modifier
     const openBordersTradeBonus = openBordersBonuses.trade_efficiency_bonus || 0;
@@ -623,30 +623,110 @@ Deno.serve(async (req) => {
     let newGoldReserve = (realm.gold_reserve || 0) + wealthIncome - wealthUpkeep;
     if (taxRateModifier !== 0) logEntries.push(`Daňový zákon: příjem zlata ${taxRateModifier > 0 ? "+" : ""}${taxRateModifier}% (${baseWealthIncome}→${wealthIncome})`);
 
-    // ═══ EMBARGO: Block trade route income ═══
-    // Check if any active embargo affects this player's trade routes
+    // ═══ TRADE ROUTES: Resource transfers + embargo check ═══
     const { data: activeTradeRoutes } = await supabase.from("trade_routes")
-      .select("id, from_player, to_player, gold_per_turn")
+      .select("id, from_player, to_player, resource_type, amount_per_turn, return_resource_type, return_amount, gold_per_turn, route_safety")
       .eq("session_id", sessionId).eq("status", "active")
       .or(`from_player.eq.${playerName},to_player.eq.${playerName}`);
-    
+
     let tradeRouteIncome = 0;
+    let tradeGrainDelta = 0;
+    let tradeWoodDelta = 0;
+    let tradeStoneDelta = 0;
+    let tradeIronDelta = 0;
+
+    const resFieldMap: Record<string, string> = {
+      gold: "gold", grain: "grain", wood: "wood", stone: "stone", iron: "iron",
+    };
+
     for (const route of (activeTradeRoutes || [])) {
       const otherPlayer = route.from_player === playerName ? route.to_player : route.from_player;
       if (hasActiveEmbargo(allPacts, playerName, otherPlayer)) {
-        // Embargoed: no income from this route
         logEntries.push(`🚫 Obchodní cesta s ${otherPlayer} blokována embargem`);
         continue;
       }
-      // Apply pact-based trade efficiency modifier + law trade restriction
+
       const pactMod = getTradeEfficiencyModifier(allPacts, playerName, otherPlayer);
-      const lawTradeReduction = Math.min(1, tradeRestriction / 100); // e.g. 20 → 0.2 penalty
-      const routeIncome = Math.max(0, Math.round((route.gold_per_turn || 0) * (1 + pactMod) * (1 - lawTradeReduction)));
+      const lawTradeReduction = Math.min(1, tradeRestriction / 100);
+      const efficiency = (1 + pactMod) * (1 - lawTradeReduction);
+      const safety = (route.route_safety ?? 80) / 100;
+
+      // Legacy gold_per_turn support
+      if (route.gold_per_turn && !route.resource_type) {
+        const routeIncome = Math.max(0, Math.round((route.gold_per_turn || 0) * efficiency));
+        tradeRouteIncome += routeIncome;
+        continue;
+      }
+
+      const isSender = route.from_player === playerName;
+      const isReceiver = route.to_player === playerName;
+
+      // Sender sends resource_type, receives return_resource_type
+      // Receiver receives resource_type, sends return_resource_type
+      if (isSender) {
+        // Pay: resource_type × amount_per_turn
+        const sendType = route.resource_type;
+        const sendAmt = route.amount_per_turn || 0;
+        // Receive: return_resource_type × return_amount (with efficiency & safety)
+        const recvType = route.return_resource_type;
+        const recvAmt = Math.round((route.return_amount || 0) * efficiency * safety);
+
+        if (sendType && sendAmt > 0) {
+          if (sendType === "gold") tradeRouteIncome -= sendAmt;
+          else if (sendType === "grain") tradeGrainDelta -= sendAmt;
+          else if (sendType === "wood") tradeWoodDelta -= sendAmt;
+          else if (sendType === "stone") tradeStoneDelta -= sendAmt;
+          else if (sendType === "iron") tradeIronDelta -= sendAmt;
+          logEntries.push(`📤 Obchod s ${otherPlayer}: odesláno ${sendAmt}× ${sendType}`);
+        }
+        if (recvType && recvAmt > 0) {
+          if (recvType === "gold") tradeRouteIncome += recvAmt;
+          else if (recvType === "grain") tradeGrainDelta += recvAmt;
+          else if (recvType === "wood") tradeWoodDelta += recvAmt;
+          else if (recvType === "stone") tradeStoneDelta += recvAmt;
+          else if (recvType === "iron") tradeIronDelta += recvAmt;
+          logEntries.push(`📥 Obchod s ${otherPlayer}: přijato ${recvAmt}× ${recvType}`);
+        }
+      } else if (isReceiver) {
+        // Receive: resource_type (with efficiency & safety)
+        const recvType = route.resource_type;
+        const recvAmt = Math.round((route.amount_per_turn || 0) * efficiency * safety);
+        // Pay: return_resource_type
+        const sendType = route.return_resource_type;
+        const sendAmt = route.return_amount || 0;
+
+        if (recvType && recvAmt > 0) {
+          if (recvType === "gold") tradeRouteIncome += recvAmt;
+          else if (recvType === "grain") tradeGrainDelta += recvAmt;
+          else if (recvType === "wood") tradeWoodDelta += recvAmt;
+          else if (recvType === "stone") tradeStoneDelta += recvAmt;
+          else if (recvType === "iron") tradeIronDelta += recvAmt;
+          logEntries.push(`📥 Obchod s ${otherPlayer}: přijato ${recvAmt}× ${recvType}`);
+        }
+        if (sendType && sendAmt > 0) {
+          if (sendType === "gold") tradeRouteIncome -= sendAmt;
+          else if (sendType === "grain") tradeGrainDelta -= sendAmt;
+          else if (sendType === "wood") tradeWoodDelta -= sendAmt;
+          else if (sendType === "stone") tradeStoneDelta -= sendAmt;
+          else if (sendType === "iron") tradeIronDelta -= sendAmt;
+          logEntries.push(`📤 Obchod s ${otherPlayer}: odesláno ${sendAmt}× ${sendType}`);
+        }
+      }
+
       if (lawTradeReduction > 0) logEntries.push(`🚫 Obchodní omezení: ${otherPlayer} −${Math.round(lawTradeReduction * 100)}%`);
-      tradeRouteIncome += routeIncome;
     }
+
+    // Apply trade deltas to reserves
     newGoldReserve += tradeRouteIncome;
-    if (tradeRouteIncome > 0) logEntries.push(`Příjem z obchodních cest: +${tradeRouteIncome} zlata`);
+    grainReserve += tradeGrainDelta;
+    newWoodReserve += tradeWoodDelta;
+    newStoneReserve += tradeStoneDelta;
+    newIronReserve += tradeIronDelta;
+    if (tradeGrainDelta !== 0) logEntries.push(`Obchod obilí: ${tradeGrainDelta > 0 ? "+" : ""}${tradeGrainDelta}`);
+    if (tradeWoodDelta !== 0) logEntries.push(`Obchod dřevo: ${tradeWoodDelta > 0 ? "+" : ""}${tradeWoodDelta}`);
+    if (tradeStoneDelta !== 0) logEntries.push(`Obchod kámen: ${tradeStoneDelta > 0 ? "+" : ""}${tradeStoneDelta}`);
+    if (tradeIronDelta !== 0) logEntries.push(`Obchod železo: ${tradeIronDelta > 0 ? "+" : ""}${tradeIronDelta}`);
+    if (tradeRouteIncome !== 0) logEntries.push(`Obchod zlato: ${tradeRouteIncome > 0 ? "+" : ""}${tradeRouteIncome}`);
     
     // Sport Funding (Percent of reserve) → goes to association budgets
     const sportFundingExpense = Math.floor(Math.max(0, newGoldReserve) * (sportFundingPct / 100));
