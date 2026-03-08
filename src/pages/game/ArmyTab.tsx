@@ -112,6 +112,13 @@ interface Props {
   onRefetch: () => void;
 }
 
+interface CivIdentityNames {
+  militia_unit_name?: string;
+  militia_unit_desc?: string;
+  professional_unit_name?: string;
+  professional_unit_desc?: string;
+}
+
 const ArmyTab = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, onRefetch }: Props) => {
   const [stacks, setStacks] = useState<Stack[]>([]);
   const [generals, setGenerals] = useState<General[]>([]);
@@ -126,14 +133,18 @@ const ArmyTab = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, on
   const [remobilizing, setRemobilizing] = useState<string | null>(null);
   const [showDemobilize, setShowDemobilize] = useState(false);
   const [pendingMobRate, setPendingMobRate] = useState<number | null>(null);
+  const [civIdentity, setCivIdentity] = useState<CivIdentityNames>({});
 
   const fetchMilitary = useCallback(async () => {
     setLoading(true);
-    const [stacksRes, generalsRes, visualsRes] = await Promise.all([
+    const [stacksRes, generalsRes, visualsRes, identityRes] = await Promise.all([
       supabase.from("military_stacks").select("*").eq("session_id", sessionId).eq("player_name", currentPlayerName).order("created_at"),
       supabase.from("generals").select("*").eq("session_id", sessionId).eq("player_name", currentPlayerName),
       supabase.from("unit_type_visuals").select("*").eq("session_id", sessionId).eq("player_name", currentPlayerName),
+      supabase.from("civ_identity").select("militia_unit_name, militia_unit_desc, professional_unit_name, professional_unit_desc")
+        .eq("session_id", sessionId).eq("player_name", currentPlayerName).maybeSingle(),
     ]);
+    if (identityRes.data) setCivIdentity(identityRes.data as CivIdentityNames);
 
     const rawStacks = stacksRes.data || [];
     const stackIds = rawStacks.map(s => s.id);
@@ -175,6 +186,13 @@ const ArmyTab = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, on
   const availableManpower = Math.max(0, mobilizationCap - totalCommitted);
   const isOverMobCap = mobRate > wf.maxMobilization;
   const overMobPenalty = isOverMobCap ? Math.round((mobRate - wf.maxMobilization) * 100) : 0;
+
+  // Civ-specific unit label resolver
+  const unitLabel = (type: string) => {
+    if (type === "MILITIA") return civIdentity?.militia_unit_name || UNIT_TYPE_LABELS[type];
+    if (type === "PROFESSIONAL") return civIdentity?.professional_unit_name || UNIT_TYPE_LABELS[type];
+    return UNIT_TYPE_LABELS[type] || type;
+  };
 
   const grainNet = realm ? realm.last_turn_grain_prod - realm.last_turn_grain_cons : 0;
   const readiness = realm
@@ -429,6 +447,7 @@ const ArmyTab = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, on
                 stack={stack}
                 general={generals.find(g => g.id === stack.general_id)}
                 onManage={() => setSelectedStack(stack)}
+                civIdentity={civIdentity}
               />
             ))}
           </div>
@@ -571,6 +590,7 @@ const ArmyTab = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, on
             generatingVisual={generatingVisual}
             setGeneratingVisual={setGeneratingVisual}
             onRefresh={fetchMilitary}
+            civIdentity={civIdentity}
           />
         </TabsContent>
 
@@ -597,6 +617,7 @@ const ArmyTab = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, on
           currentPlayerName={currentPlayerName}
           onClose={() => setSelectedStack(null)}
           onRefresh={fetchMilitary}
+          civIdentity={civIdentity}
         />
       )}
 
@@ -609,6 +630,7 @@ const ArmyTab = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, on
         sessionId={sessionId}
         currentPlayerName={currentPlayerName}
         onRefresh={fetchMilitary}
+        civIdentity={civIdentity}
       />
 
       {/* Create general dialog */}
@@ -672,7 +694,12 @@ function SummaryChip({ label, value, icon: Icon, highlight, tip }: { label: stri
 }
 
 // ---- Stack Card ----
-function StackCard({ stack, general, onManage }: { stack: Stack; general?: General; onManage: () => void }) {
+function StackCard({ stack, general, onManage, civIdentity }: { stack: Stack; general?: General; onManage: () => void; civIdentity?: CivIdentityNames }) {
+  const unitLabel = (type: string) => {
+    if (type === "MILITIA") return civIdentity?.militia_unit_name || UNIT_TYPE_LABELS[type];
+    if (type === "PROFESSIONAL") return civIdentity?.professional_unit_name || UNIT_TYPE_LABELS[type];
+    return UNIT_TYPE_LABELS[type] || type;
+  };
   const totalManpower = stack.compositions.reduce((s, c) => s + c.manpower, 0);
   const hasConfirmedVisual = (stack as any).image_confirmed && (stack as any).image_url;
   const hasConfirmedSigil = (stack as any).sigil_confirmed && (stack as any).sigil_url;
@@ -730,7 +757,7 @@ function StackCard({ stack, general, onManage }: { stack: Stack; general?: Gener
               <div key={c.id} className="flex items-center gap-1 text-xs text-muted-foreground">
                 <UIcon className="h-3 w-3" />
                 <span>{c.manpower}</span>
-                <span className="text-[9px]">{UNIT_TYPE_LABELS[c.unit_type] || c.unit_type}</span>
+                <span className="text-[9px]">{unitLabel(c.unit_type)}</span>
               </div>
             );
           })}
@@ -753,11 +780,17 @@ function StackCard({ stack, general, onManage }: { stack: Stack; general?: Gener
 
 // ---- Stack Detail Dialog ----
 function StackDetailDialog({
-  stack, generals, realm, availableManpower, sessionId, currentPlayerName, onClose, onRefresh,
+  stack, generals, realm, availableManpower, sessionId, currentPlayerName, onClose, onRefresh, civIdentity,
 }: {
   stack: Stack; generals: General[]; realm: RealmRes | null; availableManpower: number;
   sessionId: string; currentPlayerName: string; onClose: () => void; onRefresh: () => void;
+  civIdentity?: CivIdentityNames;
 }) {
+  const unitLabel = (type: string) => {
+    if (type === "MILITIA") return civIdentity?.militia_unit_name || UNIT_TYPE_LABELS[type];
+    if (type === "PROFESSIONAL") return civIdentity?.professional_unit_name || UNIT_TYPE_LABELS[type];
+    return UNIT_TYPE_LABELS[type] || type;
+  };
   const [reinforcements, setReinforcements] = useState<Record<string, number>>({});
   const [saving, setSaving] = useState(false);
   const totalManpower = stack.compositions.reduce((s, c) => s + c.manpower, 0);
@@ -933,7 +966,7 @@ function StackDetailDialog({
                 return (
                   <div key={c.id} className="flex items-center gap-2 text-sm">
                     <UIcon className="h-4 w-4 text-muted-foreground" />
-                    <span className="font-semibold w-20">{UNIT_TYPE_LABELS[c.unit_type]}</span>
+                    <span className="font-semibold w-20">{unitLabel(c.unit_type)}</span>
                     <span className="flex-1">{c.manpower} mužů</span>
                     <span className="text-xs text-muted-foreground">Q: {c.quality}</span>
                   </div>
@@ -953,7 +986,7 @@ function StackDetailDialog({
                 return (
                   <div key={ut} className="flex items-center gap-2 text-sm">
                     <UIcon className="h-3 w-3 text-muted-foreground" />
-                    <span className="w-20 text-xs">{UNIT_TYPE_LABELS[ut]}</span>
+                    <span className="w-20 text-xs">{unitLabel(ut)}</span>
                     <Button size="icon" variant="outline" className="h-6 w-6" onClick={() => setReinforcements(r => ({ ...r, [ut]: Math.max(0, (r[ut] || 0) - 50) }))}>
                       <Minus className="h-3 w-3" />
                     </Button>
@@ -1037,14 +1070,26 @@ function StackDetailDialog({
 
 // ---- Recruit Dialog (new stack from preset) ----
 function RecruitDialog({
-  open, onClose, realm, availableManpower, sessionId, currentPlayerName, onRefresh,
+  open, onClose, realm, availableManpower, sessionId, currentPlayerName, onRefresh, civIdentity,
 }: {
   open: boolean; onClose: () => void; realm: RealmRes | null; availableManpower: number;
-  sessionId: string; currentPlayerName: string; onRefresh: () => void;
+  sessionId: string; currentPlayerName: string; onRefresh: () => void; civIdentity?: CivIdentityNames;
 }) {
   const [name, setName] = useState("");
   const [selectedPreset, setSelectedPreset] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+
+  // Resolve civ-specific unit labels
+  const unitLabel = (type: string) => {
+    if (type === "MILITIA") return civIdentity?.militia_unit_name || UNIT_TYPE_LABELS[type];
+    if (type === "PROFESSIONAL") return civIdentity?.professional_unit_name || UNIT_TYPE_LABELS[type];
+    return UNIT_TYPE_LABELS[type] || type;
+  };
+  const presetLabel = (key: string) => {
+    if (key === "militia") return civIdentity?.militia_unit_name || FORMATION_PRESETS[key].label;
+    if (key === "professional") return civIdentity?.professional_unit_name || FORMATION_PRESETS[key].label;
+    return FORMATION_PRESETS[key].label;
+  };
 
   const handleCreate = async () => {
     if (!name.trim()) { toast.error("Zadejte název"); return; }
@@ -1105,7 +1150,7 @@ function RecruitDialog({
                   onClick={() => setSelectedPreset(key)}
                 >
                   <div className="flex items-center justify-between">
-                    <span className="font-display font-semibold text-sm">{preset.label}</span>
+                    <span className="font-display font-semibold text-sm">{presetLabel(key)}</span>
                     <Badge variant="outline" className="text-xs">{FORMATION_LABELS[preset.formation_type]}</Badge>
                   </div>
                   <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
@@ -1113,7 +1158,7 @@ function RecruitDialog({
                       const UIcon = UNIT_ICONS[c.unit_type] || Shield;
                       return (
                         <span key={i} className="flex items-center gap-0.5">
-                          <UIcon className="h-3 w-3" />{c.manpower} {UNIT_TYPE_LABELS[c.unit_type]}
+                          <UIcon className="h-3 w-3" />{c.manpower} {unitLabel(c.unit_type)}
                         </span>
                       );
                     })}
@@ -1216,11 +1261,12 @@ function CreateGeneralDialog({
 
 // ---- My Army Panel ----
 function MyArmyPanel({
-  sessionId, currentPlayerName, stacks, realm, unitVisuals, generatingVisual, setGeneratingVisual, onRefresh,
+  sessionId, currentPlayerName, stacks, realm, unitVisuals, generatingVisual, setGeneratingVisual, onRefresh, civIdentity,
 }: {
   sessionId: string; currentPlayerName: string; stacks: Stack[]; realm: any;
   unitVisuals: UnitTypeVisual[]; generatingVisual: string | null;
   setGeneratingVisual: (v: string | null) => void; onRefresh: () => void;
+  civIdentity?: CivIdentityNames;
 }) {
   const [customPrompts, setCustomPrompts] = useState<Record<string, string>>({});
 
@@ -1256,7 +1302,8 @@ function MyArmyPanel({
 
   const UNIT_TYPES = ["MILITIA", "PROFESSIONAL"];
   const UNIT_LABELS_CZ: Record<string, string> = {
-    MILITIA: "Milice", PROFESSIONAL: "Profesionálové",
+    MILITIA: civIdentity?.militia_unit_name || "Milice",
+    PROFESSIONAL: civIdentity?.professional_unit_name || "Profesionálové",
   };
   const UNIT_ICONS_MAP: Record<string, React.ElementType> = {
     MILITIA: Shield, PROFESSIONAL: Swords,
