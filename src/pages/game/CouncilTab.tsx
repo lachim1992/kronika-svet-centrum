@@ -356,8 +356,10 @@ const CouncilTab = ({
         effects: decree.effects || [],
       });
 
-      // Auto-save as law with structured effects
-      const decreeEffects = (decree.effects || []).filter((e: any) => e.type && e.value !== undefined);
+      const allEffects = (decree.effects || []).filter((e: any) => e.type && e.value !== undefined);
+      // Only save ongoing (per-turn) effects as laws — one-time effects are applied immediately
+      const ongoingEffects = allEffects.filter((e: any) => !IMMEDIATE_EFFECT_TYPES.has(e.type));
+      const decreeEffects = allEffects;
       if (decreeEffects.length > 0) {
         await supabase.from("laws").insert({
           session_id: sessionId,
