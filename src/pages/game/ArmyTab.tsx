@@ -137,11 +137,14 @@ const ArmyTab = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, on
 
   const fetchMilitary = useCallback(async () => {
     setLoading(true);
-    const [stacksRes, generalsRes, visualsRes] = await Promise.all([
+    const [stacksRes, generalsRes, visualsRes, identityRes] = await Promise.all([
       supabase.from("military_stacks").select("*").eq("session_id", sessionId).eq("player_name", currentPlayerName).order("created_at"),
       supabase.from("generals").select("*").eq("session_id", sessionId).eq("player_name", currentPlayerName),
       supabase.from("unit_type_visuals").select("*").eq("session_id", sessionId).eq("player_name", currentPlayerName),
+      supabase.from("civ_identity").select("militia_unit_name, militia_unit_desc, professional_unit_name, professional_unit_desc")
+        .eq("session_id", sessionId).eq("player_name", currentPlayerName).maybeSingle(),
     ]);
+    if (identityRes.data) setCivIdentity(identityRes.data as CivIdentityNames);
 
     const rawStacks = stacksRes.data || [];
     const stackIds = rawStacks.map(s => s.id);
