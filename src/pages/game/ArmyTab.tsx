@@ -973,7 +973,7 @@ function StackDetailDialog({
                 return (
                   <div key={ut} className="flex items-center gap-2 text-sm">
                     <UIcon className="h-3 w-3 text-muted-foreground" />
-                    <span className="w-20 text-xs">{UNIT_TYPE_LABELS[ut]}</span>
+                    <span className="w-20 text-xs">{unitLabel(ut)}</span>
                     <Button size="icon" variant="outline" className="h-6 w-6" onClick={() => setReinforcements(r => ({ ...r, [ut]: Math.max(0, (r[ut] || 0) - 50) }))}>
                       <Minus className="h-3 w-3" />
                     </Button>
