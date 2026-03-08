@@ -15,6 +15,8 @@ const EFFECT_LABELS: Record<string, string> = {
   tax_change: "💰 Daně", tax_rate_percent: "🪙 Daň%", grain_ration_modifier: "🌾 Příděl",
   trade_restriction: "🚫 Obchod", active_pop_modifier: "👷 Práce", military_funding: "⚔️ Vojsko",
   civil_reform: "🏛️ Reforma", max_mobilization_modifier: "🛡️ Odvody",
+  gold: "💰 Zlato", grain: "🌾 Obilí", wood: "🪵 Dřevo", stone: "🪨 Kámen",
+  iron: "⚒️ Železo", manpower: "👥 Manpower", stability: "🏛️ Stabilita",
 };
 
 const RealmLawsDecrees = ({ sessionId, currentPlayerName, currentTurn }: Props) => {
