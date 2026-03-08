@@ -1058,6 +1058,18 @@ function RecruitDialog({
   const [selectedPreset, setSelectedPreset] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
+  // Resolve civ-specific unit labels
+  const unitLabel = (type: string) => {
+    if (type === "MILITIA") return civIdentity?.militia_unit_name || UNIT_TYPE_LABELS[type];
+    if (type === "PROFESSIONAL") return civIdentity?.professional_unit_name || UNIT_TYPE_LABELS[type];
+    return UNIT_TYPE_LABELS[type] || type;
+  };
+  const presetLabel = (key: string) => {
+    if (key === "militia") return civIdentity?.militia_unit_name || FORMATION_PRESETS[key].label;
+    if (key === "professional") return civIdentity?.professional_unit_name || FORMATION_PRESETS[key].label;
+    return FORMATION_PRESETS[key].label;
+  };
+
   const handleCreate = async () => {
     if (!name.trim()) { toast.error("Zadejte název"); return; }
     if (!selectedPreset) { toast.error("Vyberte typ"); return; }
