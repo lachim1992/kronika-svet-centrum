@@ -1049,10 +1049,10 @@ function StackDetailDialog({
 
 // ---- Recruit Dialog (new stack from preset) ----
 function RecruitDialog({
-  open, onClose, realm, availableManpower, sessionId, currentPlayerName, onRefresh,
+  open, onClose, realm, availableManpower, sessionId, currentPlayerName, onRefresh, civIdentity,
 }: {
   open: boolean; onClose: () => void; realm: RealmRes | null; availableManpower: number;
-  sessionId: string; currentPlayerName: string; onRefresh: () => void;
+  sessionId: string; currentPlayerName: string; onRefresh: () => void; civIdentity?: CivIdentityNames;
 }) {
   const [name, setName] = useState("");
   const [selectedPreset, setSelectedPreset] = useState<string | null>(null);
