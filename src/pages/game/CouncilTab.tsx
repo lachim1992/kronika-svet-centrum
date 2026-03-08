@@ -378,6 +378,9 @@ const CouncilTab = ({
         }).catch(() => {});
       }
 
+      // Apply immediate one-time effects (gold, grain, stability, etc.)
+      await applyImmediateEffects(decree.effects || []);
+
       // Apply faction impacts
       const votes = computeFactionReactions(allFactions, decree.decreeType, decree.effects);
       if (votes.length > 0) {
