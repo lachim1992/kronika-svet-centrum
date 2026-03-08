@@ -620,6 +620,7 @@ const ArmyTab = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, on
         sessionId={sessionId}
         currentPlayerName={currentPlayerName}
         onRefresh={fetchMilitary}
+        civIdentity={civIdentity}
       />
 
       {/* Create general dialog */}
