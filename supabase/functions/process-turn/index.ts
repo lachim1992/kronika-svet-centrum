@@ -719,7 +719,13 @@ Deno.serve(async (req) => {
     // Apply trade deltas to reserves
     newGoldReserve += tradeRouteIncome;
     grainReserve += tradeGrainDelta;
+    newWoodReserve += tradeWoodDelta;
+    newStoneReserve += tradeStoneDelta;
+    newIronReserve += tradeIronDelta;
     if (tradeGrainDelta !== 0) logEntries.push(`Obchod obilí: ${tradeGrainDelta > 0 ? "+" : ""}${tradeGrainDelta}`);
+    if (tradeWoodDelta !== 0) logEntries.push(`Obchod dřevo: ${tradeWoodDelta > 0 ? "+" : ""}${tradeWoodDelta}`);
+    if (tradeStoneDelta !== 0) logEntries.push(`Obchod kámen: ${tradeStoneDelta > 0 ? "+" : ""}${tradeStoneDelta}`);
+    if (tradeIronDelta !== 0) logEntries.push(`Obchod železo: ${tradeIronDelta > 0 ? "+" : ""}${tradeIronDelta}`);
     if (tradeRouteIncome !== 0) logEntries.push(`Obchod zlato: ${tradeRouteIncome > 0 ? "+" : ""}${tradeRouteIncome}`);
     
     // Sport Funding (Percent of reserve) → goes to association budgets
