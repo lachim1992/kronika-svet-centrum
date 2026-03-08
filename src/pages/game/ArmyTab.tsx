@@ -187,6 +187,13 @@ const ArmyTab = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, on
   const isOverMobCap = mobRate > wf.maxMobilization;
   const overMobPenalty = isOverMobCap ? Math.round((mobRate - wf.maxMobilization) * 100) : 0;
 
+  // Civ-specific unit label resolver
+  const unitLabel = (type: string) => {
+    if (type === "MILITIA") return civIdentity?.militia_unit_name || UNIT_TYPE_LABELS[type];
+    if (type === "PROFESSIONAL") return civIdentity?.professional_unit_name || UNIT_TYPE_LABELS[type];
+    return UNIT_TYPE_LABELS[type] || type;
+  };
+
   const grainNet = realm ? realm.last_turn_grain_prod - realm.last_turn_grain_cons : 0;
   const readiness = realm
     ? realm.famine_city_count > 0 || realm.gold_reserve <= 0
