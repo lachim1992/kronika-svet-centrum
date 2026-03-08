@@ -773,6 +773,11 @@ function StackDetailDialog({
   sessionId: string; currentPlayerName: string; onClose: () => void; onRefresh: () => void;
   civIdentity?: CivIdentityNames;
 }) {
+  const unitLabel = (type: string) => {
+    if (type === "MILITIA") return civIdentity?.militia_unit_name || UNIT_TYPE_LABELS[type];
+    if (type === "PROFESSIONAL") return civIdentity?.professional_unit_name || UNIT_TYPE_LABELS[type];
+    return UNIT_TYPE_LABELS[type] || type;
+  };
   const [reinforcements, setReinforcements] = useState<Record<string, number>>({});
   const [saving, setSaving] = useState(false);
   const totalManpower = stack.compositions.reduce((s, c) => s + c.manpower, 0);
