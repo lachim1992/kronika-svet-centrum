@@ -366,7 +366,7 @@ const CouncilTab = ({
           player_name: currentPlayerName,
           law_name: `Dekret: ${agendaItem.title}`,
           full_text: decree.decreeText || agendaItem.title,
-          structured_effects: decreeEffects.map((e: any) => ({ type: e.type, value: e.value })),
+          structured_effects: ongoingEffects.map((e: any) => ({ type: e.type, value: e.value })),
           enacted_turn: currentTurn,
         });
         // Non-blocking AI rewrite
