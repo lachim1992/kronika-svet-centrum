@@ -321,6 +321,145 @@ Deno.serve(async (req) => {
     }
 
     // ═══════════════════════════════════════════
+    // 3c. TRADE OFFERS — AI evaluation + expiration
+    // ═══════════════════════════════════════════
+    try {
+      const TRADE_OFFER_EXPIRY_TURNS = 3;
+      let offersExpired = 0;
+      let offersAccepted = 0;
+      let offersRejected = 0;
+
+      // 1) Expire old pending offers
+      const { data: staleOffers } = await supabase.from("trade_offers")
+        .select("id, from_player, to_player, turn_number")
+        .eq("session_id", sessionId).eq("status", "pending")
+        .lte("turn_number", turnNumber - TRADE_OFFER_EXPIRY_TURNS);
+
+      for (const offer of (staleOffers || [])) {
+        await supabase.from("trade_offers").update({
+          status: "expired", responded_at: new Date().toISOString(),
+        }).eq("id", offer.id);
+        offersExpired++;
+      }
+
+      // 2) AI factions evaluate pending offers addressed to them
+      const { data: aiFactionsList } = await supabase.from("ai_factions")
+        .select("faction_name, disposition, personality")
+        .eq("session_id", sessionId).eq("is_active", true);
+
+      const aiFactionNames2 = new Set((aiFactionsList || []).map((f: any) => f.faction_name));
+
+      const { data: pendingForAI } = await supabase.from("trade_offers")
+        .select("*")
+        .eq("session_id", sessionId).eq("status", "pending")
+        .gt("turn_number", turnNumber - TRADE_OFFER_EXPIRY_TURNS);
+
+      for (const offer of (pendingForAI || [])) {
+        if (!aiFactionNames2.has(offer.to_player)) continue; // Only AI evaluates here
+
+        const aiFaction = (aiFactionsList || []).find((f: any) => f.faction_name === offer.to_player);
+        if (!aiFaction) continue;
+
+        // Get AI faction resources
+        const { data: aiRealm } = await supabase.from("realm_resources")
+          .select("gold_reserve, grain_reserve, wood_reserve, stone_reserve, iron_reserve")
+          .eq("session_id", sessionId).eq("player_name", offer.to_player).maybeSingle();
+
+        // Simple evaluation: does the AI need what's offered and can afford what's requested?
+        const offerR = offer.offer_resources || {};
+        const reqR = offer.request_resources || {};
+        const offerType = Object.keys(offerR)[0] || "gold";
+        const offerAmt = offerR[offerType] || 0;
+        const reqType = Object.keys(reqR)[0] || "gold";
+        const reqAmt = reqR[reqType] || 0;
+
+        const resMap: Record<string, string> = {
+          gold: "gold_reserve", grain: "grain_reserve",
+          wood: "wood_reserve", stone: "stone_reserve", iron: "iron_reserve",
+        };
+
+        const aiHasRequested = (aiRealm?.[resMap[reqType] as keyof typeof aiRealm] as number || 0);
+        const canAfford = aiHasRequested >= reqAmt * (offer.duration_turns || 1);
+
+        // Disposition check
+        const disp = (aiFaction.disposition as any) || {};
+        const towardsOfferer = disp[offer.from_player] ?? 0;
+        const isHostile = towardsOfferer < -30;
+
+        // Value ratio check (is this a fair trade?)
+        const valueRatio = offerAmt > 0 && reqAmt > 0 ? reqAmt / offerAmt : 999;
+        const isFair = valueRatio <= 3; // Accept up to 3:1 ratio
+
+        const shouldAccept = canAfford && isFair && !isHostile;
+
+        if (shouldAccept) {
+          // Accept: create trade route + update offer
+          await supabase.from("trade_routes").insert({
+            session_id: sessionId,
+            from_city_id: offer.from_city_id,
+            to_city_id: offer.to_city_id,
+            from_player: offer.from_player,
+            to_player: offer.to_player,
+            resource_type: offerType,
+            amount_per_turn: offerAmt,
+            return_resource_type: reqType,
+            return_amount: reqAmt,
+            duration_turns: offer.duration_turns,
+            started_turn: turnNumber,
+            expires_turn: offer.duration_turns ? turnNumber + offer.duration_turns : null,
+            status: "active",
+          });
+          await supabase.from("trade_offers").update({
+            status: "accepted", responded_at: new Date().toISOString(),
+          }).eq("id", offer.id);
+
+          await safeInsert(supabase.from("chronicle_entries").insert({
+            session_id: sessionId, turn_from: turnNumber, turn_to: turnNumber,
+            text: `📜 ${offer.to_player} přijal obchodní nabídku od ${offer.from_player}: ${offerAmt}× ${offerType} za ${reqAmt}× ${reqType}.`,
+            source_type: "system",
+          }));
+          offersAccepted++;
+        } else {
+          // Reject
+          await supabase.from("trade_offers").update({
+            status: "rejected", responded_at: new Date().toISOString(),
+          }).eq("id", offer.id);
+
+          const reason = isHostile ? "nepřátelské vztahy" : !canAfford ? "nedostatek zdrojů" : "nevýhodné podmínky";
+          await safeInsert(supabase.from("chronicle_entries").insert({
+            session_id: sessionId, turn_from: turnNumber, turn_to: turnNumber,
+            text: `❌ ${offer.to_player} odmítl obchodní nabídku od ${offer.from_player} (${reason}).`,
+            source_type: "system",
+          }));
+          offersRejected++;
+        }
+      }
+
+      // 3) Expire finished trade routes
+      const { data: expiredRoutes } = await supabase.from("trade_routes")
+        .select("id, from_player, to_player")
+        .eq("session_id", sessionId).eq("status", "active")
+        .lte("expires_turn", turnNumber)
+        .not("expires_turn", "is", null);
+
+      let routesExpired = 0;
+      for (const route of (expiredRoutes || [])) {
+        await supabase.from("trade_routes").update({ status: "expired" }).eq("id", route.id);
+        await safeInsert(supabase.from("chronicle_entries").insert({
+          session_id: sessionId, turn_from: turnNumber, turn_to: turnNumber,
+          text: `📦 Obchodní trasa mezi ${route.from_player} a ${route.to_player} vypršela.`,
+          source_type: "system",
+        }));
+        routesExpired++;
+      }
+
+      results.tradeProcessing = { offersExpired, offersAccepted, offersRejected, routesExpired };
+    } catch (e) {
+      console.error("Trade processing error:", e);
+      results.tradeProcessing = { error: (e as Error).message };
+    }
+
+    // ═══════════════════════════════════════════
     // 4. ADVANCE TURN FIRST (prevents stuck state on timeout)
     // ═══════════════════════════════════════════
     await safeInsert(supabase.from("turn_summaries").insert({
