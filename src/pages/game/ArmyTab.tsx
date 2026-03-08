@@ -609,6 +609,7 @@ const ArmyTab = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, on
           currentPlayerName={currentPlayerName}
           onClose={() => setSelectedStack(null)}
           onRefresh={fetchMilitary}
+          civIdentity={civIdentity}
         />
       )}
 
