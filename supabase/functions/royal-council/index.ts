@@ -13,7 +13,12 @@ Deno.serve(async (req) => {
 
     if (action === "preview_decree") {
       const systemPrompt = `Jsi středověký královský rádce hodnotící navržený dekret vládce.
-Hodnoť na základě poskytnutého herního stavu. Nevymýšlej fakta.`;
+Hodnoť na základě poskytnutého herního stavu. Nevymýšlej fakta.
+
+POVOLENÉ TYPY EFEKTŮ (effects.type):
+Jednorázové: "gold", "grain", "wood", "stone", "iron", "manpower", "stability"
+Trvalé: "tax_rate_percent", "grain_ration_modifier", "trade_restriction", "active_pop_modifier", "max_mobilization_modifier"
+NIKDY nepoužívej jiné typy!`;
 
       const userPrompt = `Vládce: ${playerName}
 Kolo: ${currentTurn}
@@ -44,10 +49,11 @@ Zhodnoť tento dekret a vrať strukturovaný výstup.`;
                   items: {
                     type: "object",
                     properties: {
+                      type: { type: "string", description: "One of: gold, grain, wood, stone, iron, manpower, stability, tax_rate_percent, grain_ration_modifier, trade_restriction, active_pop_modifier, max_mobilization_modifier" },
                       label: { type: "string" },
                       value: { type: "number" },
                     },
-                    required: ["label", "value"],
+                    required: ["type", "label", "value"],
                   },
                 },
                 riskLevel: { type: "string", description: "Nízké, Střední, or Vysoké" },
@@ -76,7 +82,12 @@ Zhodnoť tento dekret a vrať strukturovaný výstup.`;
     if (action === "generate_law_draft") {
       const systemPrompt = `Jsi středověký právní poradce královské rady. Na základě dekretu vládce vytvoř formální návrh zákona.
 Zákon musí mít formální název, plný text (3-6 vět, formální středověký styl) a mechanické efekty.
-Buď konkrétní a realistický na základě herního stavu.`;
+Buď konkrétní a realistický na základě herního stavu.
+
+POVOLENÉ TYPY EFEKTŮ (effects.type):
+Jednorázové: "gold", "grain", "wood", "stone", "iron", "manpower", "stability"
+Trvalé: "tax_rate_percent", "grain_ration_modifier", "trade_restriction", "active_pop_modifier", "max_mobilization_modifier"
+NIKDY nepoužívej jiné typy!`;
 
       const userPrompt = `Vládce: ${playerName}
 Kolo: ${currentTurn}

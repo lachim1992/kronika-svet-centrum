@@ -93,6 +93,52 @@ const CouncilTab = ({
   const activeCrises = useMemo(() => worldCrises.filter(c => !c.resolved), [worldCrises]);
   const recentTrades = useMemo(() => trades.filter(t => t.turn_number >= currentTurn - 3), [trades, currentTurn]);
 
+  // ── Apply immediate (one-time) decree effects to realm/cities ──
+  const IMMEDIATE_EFFECT_TYPES = new Set(["gold", "grain", "wood", "stone", "iron", "manpower", "stability"]);
+  const RESOURCE_FIELD_MAP: Record<string, string> = {
+    gold: "gold_reserve", grain: "grain_reserve", wood: "wood_reserve",
+    stone: "stone_reserve", iron: "iron_reserve", manpower: "manpower_pool",
+  };
+
+  const applyImmediateEffects = async (effects: { type: string; value: number }[]) => {
+    const immediate = effects.filter(e => IMMEDIATE_EFFECT_TYPES.has(e.type));
+    if (immediate.length === 0) return;
+
+    // Load current realm resources
+    const { data: realm } = await supabase.from("realm_resources").select("*")
+      .eq("session_id", sessionId).eq("player_name", currentPlayerName).maybeSingle();
+    if (!realm) return;
+
+    const realmUpdates: Record<string, number> = {};
+    let stabilityDelta = 0;
+
+    for (const eff of immediate) {
+      if (eff.type === "stability") {
+        stabilityDelta += eff.value;
+      } else {
+        const field = RESOURCE_FIELD_MAP[eff.type];
+        if (field) {
+          const current = (realm as any)[field] || 0;
+          realmUpdates[field] = Math.max(0, current + eff.value);
+        }
+      }
+    }
+
+    // Update realm resources
+    if (Object.keys(realmUpdates).length > 0) {
+      await supabase.from("realm_resources").update(realmUpdates)
+        .eq("session_id", sessionId).eq("player_name", currentPlayerName);
+    }
+
+    // Apply stability to all player cities
+    if (stabilityDelta !== 0) {
+      for (const city of myCities) {
+        const newStab = Math.max(0, Math.min(100, (city.city_stability || 50) + stabilityDelta));
+        await supabase.from("cities").update({ city_stability: newStab }).eq("id", city.id);
+      }
+    }
+  };
+
   // Fetch all city factions for player's cities
   useEffect(() => {
     const cityIds = myCities.map(c => c.id);
@@ -310,15 +356,17 @@ const CouncilTab = ({
         effects: decree.effects || [],
       });
 
-      // Auto-save as law with structured effects
-      const decreeEffects = (decree.effects || []).filter((e: any) => e.type && e.value !== undefined);
-      if (decreeEffects.length > 0) {
+      const allEffects = (decree.effects || []).filter((e: any) => e.type && e.value !== undefined);
+      // Only save ongoing (per-turn) effects as laws — one-time effects are applied immediately
+      const ongoingEffects = allEffects.filter((e: any) => !IMMEDIATE_EFFECT_TYPES.has(e.type));
+      const decreeEffects = allEffects;
+      if (ongoingEffects.length > 0) {
         await supabase.from("laws").insert({
           session_id: sessionId,
           player_name: currentPlayerName,
           law_name: `Dekret: ${agendaItem.title}`,
           full_text: decree.decreeText || agendaItem.title,
-          structured_effects: decreeEffects.map((e: any) => ({ type: e.type, value: e.value })),
+          structured_effects: ongoingEffects.map((e: any) => ({ type: e.type, value: e.value })),
           enacted_turn: currentTurn,
         });
         // Non-blocking AI rewrite
@@ -331,6 +379,9 @@ const CouncilTab = ({
           }
         }).catch(() => {});
       }
+
+      // Apply immediate one-time effects (gold, grain, stability, etc.)
+      await applyImmediateEffects(decree.effects || []);
 
       // Apply faction impacts
       const votes = computeFactionReactions(allFactions, decree.decreeType, decree.effects);
@@ -456,15 +507,16 @@ const CouncilTab = ({
         effects: decreePreview?.effects || [],
       });
 
-      // Auto-save as law with structured effects
+      // Auto-save as law with structured effects (only ongoing, not one-time)
       const decreeEffects = (decreePreview?.effects || []).filter((e: any) => e.type && e.value !== undefined);
-      if (decreeEffects.length > 0) {
+      const ongoingEffects = decreeEffects.filter((e: any) => !IMMEDIATE_EFFECT_TYPES.has(e.type));
+      if (ongoingEffects.length > 0) {
         await supabase.from("laws").insert({
           session_id: sessionId,
           player_name: currentPlayerName,
           law_name: decreeTitle,
           full_text: decreeText,
-          structured_effects: decreeEffects.map((e: any) => ({ type: e.type, value: e.value })),
+          structured_effects: ongoingEffects.map((e: any) => ({ type: e.type, value: e.value })),
           enacted_turn: currentTurn,
         });
         // Non-blocking AI rewrite
@@ -477,6 +529,9 @@ const CouncilTab = ({
           }
         }).catch(() => {});
       }
+
+      // Apply immediate one-time effects (gold, grain, stability, etc.)
+      await applyImmediateEffects(decreeEffects);
 
       // Apply faction impacts (mechanical effects on satisfaction & loyalty)
       if (factionVotes.length > 0) {
@@ -562,16 +617,25 @@ const CouncilTab = ({
     if (!lawDraft) return;
     setSavingLaw(true);
     try {
-      // 1. Insert the law
-      const { error: insertError } = await supabase.from("laws").insert({
-        session_id: sessionId,
-        player_name: currentPlayerName,
-        law_name: lawDraft.lawName,
-        full_text: lawDraft.fullText,
-        structured_effects: lawDraft.effects.map(e => ({ type: e.type, value: e.value })),
-        enacted_turn: currentTurn,
-      });
-      if (insertError) throw insertError;
+      // Separate immediate vs ongoing effects
+      const allEffects = lawDraft.effects;
+      const ongoingEffects = allEffects.filter(e => !IMMEDIATE_EFFECT_TYPES.has(e.type));
+
+      // Apply immediate effects right away
+      await applyImmediateEffects(allEffects);
+
+      // Only save ongoing effects as law
+      if (ongoingEffects.length > 0) {
+        const { error: insertError } = await supabase.from("laws").insert({
+          session_id: sessionId,
+          player_name: currentPlayerName,
+          law_name: lawDraft.lawName,
+          full_text: lawDraft.fullText,
+          structured_effects: ongoingEffects.map(e => ({ type: e.type, value: e.value })),
+          enacted_turn: currentTurn,
+        });
+        if (insertError) throw insertError;
+      }
 
       // 2. Try AI epic rewrite (non-blocking)
       try {
