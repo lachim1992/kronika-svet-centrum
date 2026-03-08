@@ -762,10 +762,10 @@ function simulateSphaera(home: any, away: any, homePlayers: any[], awayPlayers: 
       const aChance = (aAtk - hDef * 0.5) / 80;
       if (Math.random() < aChance) {
         if (Math.random() < 0.15) {
-          const scorer = pickWeighted([...aStrikers, ...aCarriers], p => (p.technique||50) + (p.speed||50)*0.7 + (p.form||50)*0.3);
+          const scorer = pickWeighted(aScoringPool, p => (p.technique||50) + (p.speed||50)*0.7 + (p.form||50)*0.3);
           if (scorer) { awayScore += 5; events.push({ minute, type: "breakthrough", team: "away", player_name: scorer.name, player_id: scorer.id, points: 5, period }); crowdMeter = Math.max(0, crowdMeter - 8); }
         } else {
-          const scorer = pickWeighted([...aStrikers, ...aCarriers], p => (p.technique||50) + (p.speed||50)*0.5 + (p.form||50)*0.3);
+          const scorer = pickWeighted(aScoringPool, p => (p.technique||50) + (p.speed||50)*0.5 + (p.form||50)*0.3);
           const assister = pickWeighted(awayLineup.filter(p => p.id !== scorer?.id), p => (p.technique||50) + (p.leadership||20)*0.3);
           if (scorer) { awayScore += 3; events.push({ minute, type: "goal", team: "away", player_name: scorer.name, player_id: scorer.id, points: 3, period }); if (assister && Math.random() > 0.3) events.push({ minute, type: "assist", team: "away", player_name: assister.name, player_id: assister.id, period }); crowdMeter = Math.max(0, crowdMeter - 5); }
         }
