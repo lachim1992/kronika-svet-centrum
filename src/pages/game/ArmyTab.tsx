@@ -447,6 +447,7 @@ const ArmyTab = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, on
                 stack={stack}
                 general={generals.find(g => g.id === stack.general_id)}
                 onManage={() => setSelectedStack(stack)}
+                civIdentity={civIdentity}
               />
             ))}
           </div>
