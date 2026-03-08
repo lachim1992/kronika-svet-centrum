@@ -93,6 +93,52 @@ const CouncilTab = ({
   const activeCrises = useMemo(() => worldCrises.filter(c => !c.resolved), [worldCrises]);
   const recentTrades = useMemo(() => trades.filter(t => t.turn_number >= currentTurn - 3), [trades, currentTurn]);
 
+  // ── Apply immediate (one-time) decree effects to realm/cities ──
+  const IMMEDIATE_EFFECT_TYPES = new Set(["gold", "grain", "wood", "stone", "iron", "manpower", "stability"]);
+  const RESOURCE_FIELD_MAP: Record<string, string> = {
+    gold: "gold_reserve", grain: "grain_reserve", wood: "wood_reserve",
+    stone: "stone_reserve", iron: "iron_reserve", manpower: "manpower_pool",
+  };
+
+  const applyImmediateEffects = async (effects: { type: string; value: number }[]) => {
+    const immediate = effects.filter(e => IMMEDIATE_EFFECT_TYPES.has(e.type));
+    if (immediate.length === 0) return;
+
+    // Load current realm resources
+    const { data: realm } = await supabase.from("realm_resources").select("*")
+      .eq("session_id", sessionId).eq("player_name", currentPlayerName).maybeSingle();
+    if (!realm) return;
+
+    const realmUpdates: Record<string, number> = {};
+    let stabilityDelta = 0;
+
+    for (const eff of immediate) {
+      if (eff.type === "stability") {
+        stabilityDelta += eff.value;
+      } else {
+        const field = RESOURCE_FIELD_MAP[eff.type];
+        if (field) {
+          const current = (realm as any)[field] || 0;
+          realmUpdates[field] = Math.max(0, current + eff.value);
+        }
+      }
+    }
+
+    // Update realm resources
+    if (Object.keys(realmUpdates).length > 0) {
+      await supabase.from("realm_resources").update(realmUpdates)
+        .eq("session_id", sessionId).eq("player_name", currentPlayerName);
+    }
+
+    // Apply stability to all player cities
+    if (stabilityDelta !== 0) {
+      for (const city of myCities) {
+        const newStab = Math.max(0, Math.min(100, (city.city_stability || 50) + stabilityDelta));
+        await supabase.from("cities").update({ city_stability: newStab }).eq("id", city.id);
+      }
+    }
+  };
+
   // Fetch all city factions for player's cities
   useEffect(() => {
     const cityIds = myCities.map(c => c.id);
