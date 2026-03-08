@@ -507,15 +507,16 @@ const CouncilTab = ({
         effects: decreePreview?.effects || [],
       });
 
-      // Auto-save as law with structured effects
+      // Auto-save as law with structured effects (only ongoing, not one-time)
       const decreeEffects = (decreePreview?.effects || []).filter((e: any) => e.type && e.value !== undefined);
-      if (decreeEffects.length > 0) {
+      const ongoingEffects = decreeEffects.filter((e: any) => !IMMEDIATE_EFFECT_TYPES.has(e.type));
+      if (ongoingEffects.length > 0) {
         await supabase.from("laws").insert({
           session_id: sessionId,
           player_name: currentPlayerName,
           law_name: decreeTitle,
           full_text: decreeText,
-          structured_effects: decreeEffects.map((e: any) => ({ type: e.type, value: e.value })),
+          structured_effects: ongoingEffects.map((e: any) => ({ type: e.type, value: e.value })),
           enacted_turn: currentTurn,
         });
         // Non-blocking AI rewrite
