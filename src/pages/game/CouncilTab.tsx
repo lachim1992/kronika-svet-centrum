@@ -617,16 +617,25 @@ const CouncilTab = ({
     if (!lawDraft) return;
     setSavingLaw(true);
     try {
-      // 1. Insert the law
-      const { error: insertError } = await supabase.from("laws").insert({
-        session_id: sessionId,
-        player_name: currentPlayerName,
-        law_name: lawDraft.lawName,
-        full_text: lawDraft.fullText,
-        structured_effects: lawDraft.effects.map(e => ({ type: e.type, value: e.value })),
-        enacted_turn: currentTurn,
-      });
-      if (insertError) throw insertError;
+      // Separate immediate vs ongoing effects
+      const allEffects = lawDraft.effects;
+      const ongoingEffects = allEffects.filter(e => !IMMEDIATE_EFFECT_TYPES.has(e.type));
+
+      // Apply immediate effects right away
+      await applyImmediateEffects(allEffects);
+
+      // Only save ongoing effects as law
+      if (ongoingEffects.length > 0) {
+        const { error: insertError } = await supabase.from("laws").insert({
+          session_id: sessionId,
+          player_name: currentPlayerName,
+          law_name: lawDraft.lawName,
+          full_text: lawDraft.fullText,
+          structured_effects: ongoingEffects.map(e => ({ type: e.type, value: e.value })),
+          enacted_turn: currentTurn,
+        });
+        if (insertError) throw insertError;
+      }
 
       // 2. Try AI epic rewrite (non-blocking)
       try {
