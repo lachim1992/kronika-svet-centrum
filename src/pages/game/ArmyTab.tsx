@@ -693,7 +693,12 @@ function SummaryChip({ label, value, icon: Icon, highlight, tip }: { label: stri
 }
 
 // ---- Stack Card ----
-function StackCard({ stack, general, onManage }: { stack: Stack; general?: General; onManage: () => void }) {
+function StackCard({ stack, general, onManage, civIdentity }: { stack: Stack; general?: General; onManage: () => void; civIdentity?: CivIdentityNames }) {
+  const unitLabel = (type: string) => {
+    if (type === "MILITIA") return civIdentity?.militia_unit_name || UNIT_TYPE_LABELS[type];
+    if (type === "PROFESSIONAL") return civIdentity?.professional_unit_name || UNIT_TYPE_LABELS[type];
+    return UNIT_TYPE_LABELS[type] || type;
+  };
   const totalManpower = stack.compositions.reduce((s, c) => s + c.manpower, 0);
   const hasConfirmedVisual = (stack as any).image_confirmed && (stack as any).image_url;
   const hasConfirmedSigil = (stack as any).sigil_confirmed && (stack as any).sigil_url;
