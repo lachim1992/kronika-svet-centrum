@@ -360,7 +360,7 @@ const CouncilTab = ({
       // Only save ongoing (per-turn) effects as laws — one-time effects are applied immediately
       const ongoingEffects = allEffects.filter((e: any) => !IMMEDIATE_EFFECT_TYPES.has(e.type));
       const decreeEffects = allEffects;
-      if (decreeEffects.length > 0) {
+      if (ongoingEffects.length > 0) {
         await supabase.from("laws").insert({
           session_id: sessionId,
           player_name: currentPlayerName,
