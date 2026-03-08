@@ -767,10 +767,11 @@ function StackCard({ stack, general, onManage }: { stack: Stack; general?: Gener
 
 // ---- Stack Detail Dialog ----
 function StackDetailDialog({
-  stack, generals, realm, availableManpower, sessionId, currentPlayerName, onClose, onRefresh,
+  stack, generals, realm, availableManpower, sessionId, currentPlayerName, onClose, onRefresh, civIdentity,
 }: {
   stack: Stack; generals: General[]; realm: RealmRes | null; availableManpower: number;
   sessionId: string; currentPlayerName: string; onClose: () => void; onRefresh: () => void;
+  civIdentity?: CivIdentityNames;
 }) {
   const [reinforcements, setReinforcements] = useState<Record<string, number>>({});
   const [saving, setSaving] = useState(false);
