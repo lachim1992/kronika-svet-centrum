@@ -953,7 +953,7 @@ function StackDetailDialog({
                 return (
                   <div key={c.id} className="flex items-center gap-2 text-sm">
                     <UIcon className="h-4 w-4 text-muted-foreground" />
-                    <span className="font-semibold w-20">{UNIT_TYPE_LABELS[c.unit_type]}</span>
+                    <span className="font-semibold w-20">{unitLabel(c.unit_type)}</span>
                     <span className="flex-1">{c.manpower} mužů</span>
                     <span className="text-xs text-muted-foreground">Q: {c.quality}</span>
                   </div>
