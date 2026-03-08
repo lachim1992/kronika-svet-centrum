@@ -1282,7 +1282,8 @@ function MyArmyPanel({
 
   const UNIT_TYPES = ["MILITIA", "PROFESSIONAL"];
   const UNIT_LABELS_CZ: Record<string, string> = {
-    MILITIA: "Milice", PROFESSIONAL: "Profesionálové",
+    MILITIA: civIdentity?.militia_unit_name || "Milice",
+    PROFESSIONAL: civIdentity?.professional_unit_name || "Profesionálové",
   };
   const UNIT_ICONS_MAP: Record<string, React.ElementType> = {
     MILITIA: Shield, PROFESSIONAL: Swords,
