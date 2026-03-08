@@ -1137,7 +1137,7 @@ function RecruitDialog({
                       const UIcon = UNIT_ICONS[c.unit_type] || Shield;
                       return (
                         <span key={i} className="flex items-center gap-0.5">
-                          <UIcon className="h-3 w-3" />{c.manpower} {UNIT_TYPE_LABELS[c.unit_type]}
+                          <UIcon className="h-3 w-3" />{c.manpower} {unitLabel(c.unit_type)}
                         </span>
                       );
                     })}
