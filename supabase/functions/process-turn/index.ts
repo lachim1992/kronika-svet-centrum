@@ -611,9 +611,9 @@ Deno.serve(async (req) => {
     // 6) Other Resources
     // Wood/Stone/Iron accumulate, no hard cap usually (or high cap)
     // Assume standard storage limits? For now, unlimited or high limit
-    const newWoodReserve = (realm.wood_reserve || 0) + totalWoodProd;
-    const newStoneReserve = (realm.stone_reserve || 0) + totalStoneProd;
-    const newIronReserve = (realm.iron_reserve || 0) + totalIronProd;
+    let newWoodReserve = (realm.wood_reserve || 0) + totalWoodProd;
+    let newStoneReserve = (realm.stone_reserve || 0) + totalStoneProd;
+    let newIronReserve = (realm.iron_reserve || 0) + totalIronProd;
 
     // Wealth — unified multiplier + open borders trade efficiency bonus + tax law modifier
     const openBordersTradeBonus = openBordersBonuses.trade_efficiency_bonus || 0;
