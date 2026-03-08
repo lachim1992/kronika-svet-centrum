@@ -219,7 +219,7 @@ const CityDirectory = ({
           <SelectTrigger className="w-36 h-9 text-xs"><SelectValue placeholder="Vlastník..." /></SelectTrigger>
           <SelectContent>
             <SelectItem value="__all__">Všichni hráči</SelectItem>
-            {playerNames.map(p => <SelectItem key={p} value={p}>{p}</SelectItem>)}
+            {playerNames.filter(p => p && p.trim() !== "").map(p => <SelectItem key={p} value={p}>{p}</SelectItem>)}
           </SelectContent>
         </Select>
         <Select value={filterLevel} onValueChange={setFilterLevel}>
