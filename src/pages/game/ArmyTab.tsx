@@ -751,7 +751,7 @@ function StackCard({ stack, general, onManage }: { stack: Stack; general?: Gener
               <div key={c.id} className="flex items-center gap-1 text-xs text-muted-foreground">
                 <UIcon className="h-3 w-3" />
                 <span>{c.manpower}</span>
-                <span className="text-[9px]">{UNIT_TYPE_LABELS[c.unit_type] || c.unit_type}</span>
+                <span className="text-[9px]">{unitLabel(c.unit_type)}</span>
               </div>
             );
           })}
