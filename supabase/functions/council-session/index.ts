@@ -102,7 +102,26 @@ PRAVIDLA:
 1. Vycházej STRIKTNĚ z poskytnutých dat — nevymýšlej čísla ani události.
 2. Identifikuj TOP problémy a navrhni KONKRÉTNÍ dekrety k řešení.
 3. Zohledni: hladomory, epidemie, nízkou spokojenost frakcí, diplomatické tenze, ekonomický deficit.
-4. Nesmíš vymýšlet nové události — pouze interpretuj dodaná data.`;
+4. Nesmíš vymýšlet nové události — pouze interpretuj dodaná data.
+
+POVOLENÉ TYPY EFEKTŮ (effects.type):
+Jednorázové (aplikují se okamžitě):
+- "gold" — změna zlata (kladné = přírůstek, záporné = náklad)
+- "grain" — změna obilí
+- "wood" — změna dřeva
+- "stone" — změna kamene
+- "iron" — změna železa
+- "manpower" — změna manpower (kladné = nábor, záporné = ztráta)
+- "stability" — změna stability všech měst (obvykle ±5 až ±15)
+
+Trvalé (platí dokud zákon není zrušen):
+- "tax_rate_percent" — změna daňové sazby v % (např. +5 = +5% daní)
+- "grain_ration_modifier" — změna spotřeby obilí v % (kladné = vyšší spotřeba)
+- "trade_restriction" — omezení obchodu v %
+- "active_pop_modifier" — změna podílu aktivní populace
+- "max_mobilization_modifier" — změna maximální mobilizace
+
+NIKDY nepoužívej jiné typy efektů než výše uvedené!`;
 
     const userPrompt = `=== ZASEDÁNÍ KRÁLOVSKÉ RADY ===
 Vládce: ${playerName}
