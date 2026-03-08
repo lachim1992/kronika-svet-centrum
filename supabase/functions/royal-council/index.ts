@@ -13,7 +13,12 @@ Deno.serve(async (req) => {
 
     if (action === "preview_decree") {
       const systemPrompt = `Jsi středověký královský rádce hodnotící navržený dekret vládce.
-Hodnoť na základě poskytnutého herního stavu. Nevymýšlej fakta.`;
+Hodnoť na základě poskytnutého herního stavu. Nevymýšlej fakta.
+
+POVOLENÉ TYPY EFEKTŮ (effects.type):
+Jednorázové: "gold", "grain", "wood", "stone", "iron", "manpower", "stability"
+Trvalé: "tax_rate_percent", "grain_ration_modifier", "trade_restriction", "active_pop_modifier", "max_mobilization_modifier"
+NIKDY nepoužívej jiné typy!`;
 
       const userPrompt = `Vládce: ${playerName}
 Kolo: ${currentTurn}
