@@ -582,6 +582,7 @@ const ArmyTab = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, on
             generatingVisual={generatingVisual}
             setGeneratingVisual={setGeneratingVisual}
             onRefresh={fetchMilitary}
+            civIdentity={civIdentity}
           />
         </TabsContent>
 
