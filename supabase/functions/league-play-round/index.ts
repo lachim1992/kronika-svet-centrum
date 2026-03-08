@@ -735,6 +735,10 @@ function simulateSphaera(home: any, away: any, homePlayers: any[], awayPlayers: 
   const hExactors = homeLineup.filter(p => p.position === "exactor");
   const aExactors = awayLineup.filter(p => p.position === "exactor");
 
+  // Fallback: if no strikers/carriers, any player can score (with lower effectiveness)
+  const hScoringPool = hStrikers.length + hCarriers.length > 0 ? [...hStrikers, ...hCarriers] : homeLineup;
+  const aScoringPool = aStrikers.length + aCarriers.length > 0 ? [...aStrikers, ...aCarriers] : awayLineup;
+
   for (let period = 1; period <= 3; period++) {
     const actions = 5 + Math.floor(Math.random() * 3);
     for (let action = 0; action < actions; action++) {
