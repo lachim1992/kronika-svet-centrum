@@ -1129,7 +1129,7 @@ function RecruitDialog({
                   onClick={() => setSelectedPreset(key)}
                 >
                   <div className="flex items-center justify-between">
-                    <span className="font-display font-semibold text-sm">{preset.label}</span>
+                    <span className="font-display font-semibold text-sm">{presetLabel(key)}</span>
                     <Badge variant="outline" className="text-xs">{FORMATION_LABELS[preset.formation_type]}</Badge>
                   </div>
                   <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
