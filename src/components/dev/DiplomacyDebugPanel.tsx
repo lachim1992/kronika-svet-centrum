@@ -141,7 +141,7 @@ const DiplomacyDebugPanel = ({ sessionId }: Props) => {
     setLoading(true);
     try {
       const [
-        { data: f }, { data: r }, { data: m }, { data: i }, { data: p }, { data: a },
+        { data: f }, { data: r }, { data: m }, { data: i }, { data: p }, { data: a }, { data: dr },
       ] = await Promise.all([
         supabase.from("ai_factions").select("faction_name, personality, disposition, goals, is_active").eq("session_id", sessionId),
         supabase.from("diplomatic_relations").select("*").eq("session_id", sessionId),
@@ -151,6 +151,7 @@ const DiplomacyDebugPanel = ({ sessionId }: Props) => {
         supabase.from("world_action_log").select("*").eq("session_id", sessionId)
           .in("action_type", ["ai_faction_turn", "diplomacy", "war_declared", "peace_offered", "treaty", "pact_created", "pact_broken"])
           .order("turn_number", { ascending: false }).limit(100),
+        supabase.from("diplomacy_rooms").select("id, participant_a, participant_b, room_type").eq("session_id", sessionId),
       ]);
       setFactions((f || []) as Faction[]);
       setRelations((r || []) as Relation[]);
@@ -158,6 +159,20 @@ const DiplomacyDebugPanel = ({ sessionId }: Props) => {
       setIntents((i || []) as Intent[]);
       setPacts((p || []) as Pact[]);
       setActionLogs((a || []) as ActionLog[]);
+      setDiplomacyRooms((dr || []) as DiplomacyRoom[]);
+
+      // Fetch messages for all rooms
+      const roomIds = (dr || []).map((room: any) => room.id);
+      if (roomIds.length > 0) {
+        const { data: msgs } = await supabase.from("diplomacy_messages")
+          .select("id, room_id, sender, sender_type, message_text, secrecy, created_at")
+          .in("room_id", roomIds)
+          .order("created_at", { ascending: false }).limit(500);
+        setDiplomacyMessages((msgs || []) as DiplomacyMessage[]);
+      } else {
+        setDiplomacyMessages([]);
+      }
+
       if (!selectedFaction && f?.length) setSelectedFaction(f[0].faction_name);
       if (!selectedPairA && f?.length) { setSelectedPairA(f[0]?.faction_name || ""); setSelectedPairB(f[1]?.faction_name || ""); }
     } catch (e: any) {
