@@ -75,7 +75,7 @@ export function useProvinceGraph(sessionId: string) {
   const loadGraph = useCallback(async () => {
     setLoading(true);
     try {
-      const [provRes, adjRes, snodesRes] = await Promise.all([
+      const [provRes, adjRes, snodesRes, routesRes] = await Promise.all([
         supabase
           .from("provinces")
           .select("id, name, owner_player, center_q, center_r, color_index, hex_count, strategic_value, terrain_profile, economic_profile")
@@ -87,6 +87,10 @@ export function useProvinceGraph(sessionId: string) {
         supabase
           .from("province_nodes")
           .select("id, province_id, node_type, name, hex_q, hex_r, city_id, strategic_value, economic_value, defense_value, mobility_relevance, supply_relevance, metadata")
+          .eq("session_id", sessionId),
+        supabase
+          .from("province_routes")
+          .select("id, node_a, node_b, route_type, capacity_value, military_relevance, economic_relevance, vulnerability_score, control_state, build_cost, upgrade_level, metadata")
           .eq("session_id", sessionId),
       ]);
 
