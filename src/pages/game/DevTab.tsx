@@ -116,6 +116,7 @@ const DevTab = ({
         playersCount={playersCount}
       />
       <DevConsolePanel sessionId={sessionId} currentTurn={currentTurn} />
+      <ProvinceGraphPanel sessionId={sessionId} />
     </div>
   );
 };
