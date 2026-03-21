@@ -464,6 +464,21 @@ ${JSON.stringify((recentEvents || []).slice(0, 10), null, 2)}
 
 STAV SVĚTA: ${worldSummary?.summary_text || "Žádný souhrn"}
 
+═══ DIPLOMATICKÉ VZTAHY (vícerozměrné) ═══
+${(diplomRelations || []).map((r: any) => {
+  const other = r.faction_a === factionName ? r.faction_b : r.faction_a;
+  return `  ${other}: důvěra=${r.trust}, strach=${r.fear}, křivda=${r.grievance}, závislost=${r.dependency}, spolupráce=${r.cooperation_score}, zrada=${r.betrayal_score}, celkově=${r.overall_disposition}`;
+}).join("\n") || "žádné vztahy"}
+
+═══ DIPLOMATICKÁ PAMĚŤ (co si pamatuješ) ═══
+${(diplomMemories || []).slice(0, 15).map((m: any) => {
+  const other = m.faction_a === factionName ? m.faction_b : m.faction_a;
+  return `  [Rok ${m.turn_number}] ${m.memory_type} s ${other}: ${m.detail?.substring(0, 100)}`;
+}).join("\n") || "žádné vzpomínky"}
+
+═══ TVOJE AKTIVNÍ STRATEGICKÉ ZÁMĚRY ═══
+${(activeIntents || []).map((i: any) => `  ${i.intent_type}${i.target_faction ? ` → ${i.target_faction}` : ""} (priorita ${i.priority}): ${i.reasoning || ""}`).join("\n") || "žádné záměry (navrhni nové!)"}
+
 ═══ TVOJE MINULÉ AKCE (paměť) ═══
 ${(myPastActions || []).map((a: any) => `  [Rok ${a.turn_number}] ${a.action_type}: ${a.description}`).join("\n") || "žádné záznamy"}
 
@@ -472,7 +487,7 @@ Můžeš založit novou osadu na volném hexu ve vlastní provincii. Stojí: 200
 Tvé provincie: ${(myProvinces || []).map((p: any) => `${p.name} [${p.hex_q},${p.hex_r}]`).join(", ") || "žádné"}
 Volné hexy existují, pokud v provincii není přelidněno.
 
-Rozhodni, co frakce udělá v tomto kole. ${milMetrics.warState === "war" ? "JSTE VE VÁLCE — PRIORITA: nasadit armády, útočit na města, bránit vlastní území!" : ""} Buď strategický a situační. Zvažuj akce vůči VŠEM hráčům i AI frakcím — obchod, pakty, společné útoky.`;
+Rozhodni, co frakce udělá v tomto kole. ${milMetrics.warState === "war" ? "JSTE VE VÁLCE — PRIORITA: nasadit armády, útočit na města, bránit vlastní území!" : ""} Buď strategický a situační. Zvažuj akce vůči VŠEM hráčům i AI frakcím — obchod, pakty, společné útoky. Na základě svých vztahů, pamětí a cílů navrhni nebo uprav své strategické záměry (intenty).`;
 
     // ── Call AI via unified pipeline ──
     const aiResult = await invokeAI(aiCtx, {
