@@ -549,6 +549,29 @@ Rozhodni, co frakce udělá v tomto kole. ${milMetrics.warState === "war" ? "JST
                 type: "object",
                 description: "Změny postoje k hráčům: { jménoHráče: delta (-20 až +20) }",
               },
+              diplomaticIntents: {
+                type: "array",
+                description: "Strategické diplomatické záměry frakce. Navrhni 1-3 záměry.",
+                items: {
+                  type: "object",
+                  properties: {
+                    intentType: {
+                      type: "string",
+                      enum: [
+                        "seek_ally", "isolate_rival", "buy_time", "threaten_neighbor",
+                        "seek_trade", "revenge_betrayal", "exploit_instability",
+                        "anti_hegemon_coalition", "consolidate", "defend_territory",
+                        "expand", "dominate",
+                      ],
+                    },
+                    targetFaction: { type: "string", description: "Cílová frakce/hráč" },
+                    priority: { type: "number", description: "1 (nízká) - 3 (vysoká)" },
+                    reasoning: { type: "string", description: "Důvod záměru (krátce česky)" },
+                  },
+                  required: ["intentType", "priority", "reasoning"],
+                  additionalProperties: false,
+                },
+              },
               internalThought: { type: "string", description: "Interní úvaha AI (pro debug/narativ)" },
             },
             required: ["actions", "internalThought"],
