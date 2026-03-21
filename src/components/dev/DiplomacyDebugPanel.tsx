@@ -172,7 +172,7 @@ const DiplomacyDebugPanel = ({ sessionId }: Props) => {
     const Icon = PERSONALITY_ICONS[f.personality] || Brain;
     const fRelations = relations.filter(r => r.faction_a === selectedFaction || r.faction_b === selectedFaction);
     const fIntents = intents.filter(i => i.faction_name === selectedFaction && i.status === "active");
-    const fPacts = pacts.filter(p => (p.player_a === selectedFaction || p.player_b === selectedFaction) && p.status === "active");
+    const fPacts = pacts.filter(p => (p.party_a === selectedFaction || p.party_b === selectedFaction) && p.status === "active");
     const fMemories = memories.filter(m =>
       (m.faction_a === selectedFaction || m.faction_b === selectedFaction) && m.is_active && m.memory_type === "betrayal"
     );
@@ -204,7 +204,7 @@ const DiplomacyDebugPanel = ({ sessionId }: Props) => {
           {fPacts.map(p => (
             <div key={p.id} className="flex gap-2 text-xs items-center">
               <Badge variant="outline">{p.pact_type}</Badge>
-              <span>{p.player_a === selectedFaction ? p.player_b : p.player_a}</span>
+              <span>{p.party_a === selectedFaction ? p.party_b : p.party_a}</span>
               {p.expires_turn && <span className="text-muted-foreground text-[10px]">exp. {p.expires_turn}</span>}
             </div>
           ))}
@@ -315,7 +315,7 @@ const DiplomacyDebugPanel = ({ sessionId }: Props) => {
               <MiniBar value={pair.betrayal_score} label="Zrada" />
               <MiniBar value={pair.overall_disposition} label="Celkově" />
             </div>
-            <p className="text-[10px] text-muted-foreground mt-2">Aktualizováno v kole {pair.turn_number}</p>
+            <p className="text-[10px] text-muted-foreground mt-2">Aktualizováno v kole {pair.last_updated_turn}</p>
           </Card>
         ) : (
           <p className="text-xs text-muted-foreground">Žádný záznam pro tento pár.</p>
@@ -340,7 +340,7 @@ const DiplomacyDebugPanel = ({ sessionId }: Props) => {
                 <span>{MEMORY_ICONS[m.memory_type] || "•"}</span>
                 <Badge variant={m.is_active ? "default" : "outline"} className="text-[10px]">{m.memory_type}</Badge>
                 <span className="text-muted-foreground">rok {m.turn_number}</span>
-                <Badge variant="outline" className="text-[10px] ml-auto">intenzita {m.intensity}</Badge>
+                <Badge variant="outline" className="text-[10px] ml-auto">intenzita {m.importance}</Badge>
                 <Badge variant="outline" className="text-[10px]">decay {m.decay_rate}</Badge>
               </div>
               <p className="text-xs mt-1">{m.detail}</p>
@@ -458,10 +458,10 @@ const DiplomacyDebugPanel = ({ sessionId }: Props) => {
           </div>
           <div className="text-xs space-y-1">
             <p><strong>Paktové:</strong></p>
-            {pacts.filter(p => (p.player_a === selectedFaction || p.player_b === selectedFaction) && p.status === "active").map(p => (
+            {pacts.filter(p => (p.party_a === selectedFaction || p.party_b === selectedFaction) && p.status === "active").map(p => (
               <div key={p.id} className="ml-2">
                 <Badge variant="outline" className="text-[10px] mr-1">{p.pact_type}</Badge>
-                {p.player_a === selectedFaction ? p.player_b : p.player_a}
+                {p.party_a === selectedFaction ? p.party_b : p.party_a}
               </div>
             ))}
             <p className="text-muted-foreground italic mt-2">
@@ -481,7 +481,7 @@ const DiplomacyDebugPanel = ({ sessionId }: Props) => {
     const items: TimelineItem[] = [];
 
     pacts.forEach(p => items.push({
-      turn: 0, type: "pact", text: `${p.pact_type}: ${p.player_a} ⟷ ${p.player_b} [${p.status}]`,
+      turn: 0, type: "pact", text: `${p.pact_type}: ${p.party_a} ⟷ ${p.party_b} [${p.status}]`,
       created_at: p.created_at,
     }));
     memories.filter(m => m.is_active).forEach(m => items.push({
