@@ -250,6 +250,23 @@ Deno.serve(async (req) => {
         .eq("session_id", sessionId),
     ]);
 
+    // ── Load diplomatic relations, memory, and active intents ──
+    const [
+      { data: diplomRelations },
+      { data: diplomMemories },
+      { data: activeIntents },
+    ] = await Promise.all([
+      supabase.from("diplomatic_relations").select("*")
+        .eq("session_id", sessionId)
+        .or(`faction_a.eq.${factionName},faction_b.eq.${factionName}`),
+      supabase.from("diplomatic_memory").select("*")
+        .eq("session_id", sessionId).eq("is_active", true)
+        .or(`faction_a.eq.${factionName},faction_b.eq.${factionName}`)
+        .order("turn_number", { ascending: false }).limit(30),
+      supabase.from("faction_intents").select("*")
+        .eq("session_id", sessionId).eq("faction_name", factionName).eq("status", "active"),
+    ]);
+
     // Fetch recent diplomacy messages for all rooms involving this faction
     const roomIds = (diplomacyRooms || []).map((r: any) => r.id);
     let recentMessages: any[] = [];
@@ -447,6 +464,21 @@ ${JSON.stringify((recentEvents || []).slice(0, 10), null, 2)}
 
 STAV SVĚTA: ${worldSummary?.summary_text || "Žádný souhrn"}
 
+═══ DIPLOMATICKÉ VZTAHY (vícerozměrné) ═══
+${(diplomRelations || []).map((r: any) => {
+  const other = r.faction_a === factionName ? r.faction_b : r.faction_a;
+  return `  ${other}: důvěra=${r.trust}, strach=${r.fear}, křivda=${r.grievance}, závislost=${r.dependency}, spolupráce=${r.cooperation_score}, zrada=${r.betrayal_score}, celkově=${r.overall_disposition}`;
+}).join("\n") || "žádné vztahy"}
+
+═══ DIPLOMATICKÁ PAMĚŤ (co si pamatuješ) ═══
+${(diplomMemories || []).slice(0, 15).map((m: any) => {
+  const other = m.faction_a === factionName ? m.faction_b : m.faction_a;
+  return `  [Rok ${m.turn_number}] ${m.memory_type} s ${other}: ${m.detail?.substring(0, 100)}`;
+}).join("\n") || "žádné vzpomínky"}
+
+═══ TVOJE AKTIVNÍ STRATEGICKÉ ZÁMĚRY ═══
+${(activeIntents || []).map((i: any) => `  ${i.intent_type}${i.target_faction ? ` → ${i.target_faction}` : ""} (priorita ${i.priority}): ${i.reasoning || ""}`).join("\n") || "žádné záměry (navrhni nové!)"}
+
 ═══ TVOJE MINULÉ AKCE (paměť) ═══
 ${(myPastActions || []).map((a: any) => `  [Rok ${a.turn_number}] ${a.action_type}: ${a.description}`).join("\n") || "žádné záznamy"}
 
@@ -455,7 +487,7 @@ Můžeš založit novou osadu na volném hexu ve vlastní provincii. Stojí: 200
 Tvé provincie: ${(myProvinces || []).map((p: any) => `${p.name} [${p.hex_q},${p.hex_r}]`).join(", ") || "žádné"}
 Volné hexy existují, pokud v provincii není přelidněno.
 
-Rozhodni, co frakce udělá v tomto kole. ${milMetrics.warState === "war" ? "JSTE VE VÁLCE — PRIORITA: nasadit armády, útočit na města, bránit vlastní území!" : ""} Buď strategický a situační. Zvažuj akce vůči VŠEM hráčům i AI frakcím — obchod, pakty, společné útoky.`;
+Rozhodni, co frakce udělá v tomto kole. ${milMetrics.warState === "war" ? "JSTE VE VÁLCE — PRIORITA: nasadit armády, útočit na města, bránit vlastní území!" : ""} Buď strategický a situační. Zvažuj akce vůči VŠEM hráčům i AI frakcím — obchod, pakty, společné útoky. Na základě svých vztahů, pamětí a cílů navrhni nebo uprav své strategické záměry (intenty).`;
 
     // ── Call AI via unified pipeline ──
     const aiResult = await invokeAI(aiCtx, {
@@ -517,6 +549,29 @@ Rozhodni, co frakce udělá v tomto kole. ${milMetrics.warState === "war" ? "JST
                 type: "object",
                 description: "Změny postoje k hráčům: { jménoHráče: delta (-20 až +20) }",
               },
+              diplomaticIntents: {
+                type: "array",
+                description: "Strategické diplomatické záměry frakce. Navrhni 1-3 záměry.",
+                items: {
+                  type: "object",
+                  properties: {
+                    intentType: {
+                      type: "string",
+                      enum: [
+                        "seek_ally", "isolate_rival", "buy_time", "threaten_neighbor",
+                        "seek_trade", "revenge_betrayal", "exploit_instability",
+                        "anti_hegemon_coalition", "consolidate", "defend_territory",
+                        "expand", "dominate",
+                      ],
+                    },
+                    targetFaction: { type: "string", description: "Cílová frakce/hráč" },
+                    priority: { type: "number", description: "1 (nízká) - 3 (vysoká)" },
+                    reasoning: { type: "string", description: "Důvod záměru (krátce česky)" },
+                  },
+                  required: ["intentType", "priority", "reasoning"],
+                  additionalProperties: false,
+                },
+              },
               internalThought: { type: "string", description: "Interní úvaha AI (pro debug/narativ)" },
             },
             required: ["actions", "internalThought"],
@@ -574,6 +629,27 @@ Rozhodni, co frakce udělá v tomto kole. ${milMetrics.warState === "war" ? "JST
         newDisposition[target] = Math.max(-100, Math.min(100, ((newDisposition[target] as number) || 0) + clamped));
       }
       await supabase.from("ai_factions").update({ disposition: newDisposition }).eq("id", faction.id);
+    }
+
+    // ── Persist diplomatic intents ──
+    if (Array.isArray(result.diplomaticIntents) && result.diplomaticIntents.length > 0) {
+      // Mark old intents as superseded
+      await supabase.from("faction_intents")
+        .update({ status: "superseded" })
+        .eq("session_id", sessionId).eq("faction_name", factionName).eq("status", "active");
+
+      // Insert new intents
+      const intentRows = result.diplomaticIntents.slice(0, 5).map((i: any) => ({
+        session_id: sessionId,
+        faction_name: factionName,
+        intent_type: i.intentType || "consolidate",
+        target_faction: i.targetFaction || null,
+        priority: Math.max(1, Math.min(3, i.priority || 1)),
+        reasoning: (i.reasoning || "").substring(0, 500),
+        created_turn: turn,
+        status: "active",
+      }));
+      await supabase.from("faction_intents").insert(intentRows);
     }
 
     // ── Audit log ──
