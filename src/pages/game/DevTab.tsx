@@ -1,6 +1,7 @@
 import { useState } from "react";
 import DevModePanel from "@/components/DevModePanel";
 import DevConsolePanel from "@/components/dev/DevConsolePanel";
+import ProvinceGraphPanel from "@/components/dev/ProvinceGraphPanel";
 import { Wrench, SkipForward, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
