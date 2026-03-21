@@ -631,6 +631,27 @@ Rozhodni, co frakce udělá v tomto kole. ${milMetrics.warState === "war" ? "JST
       await supabase.from("ai_factions").update({ disposition: newDisposition }).eq("id", faction.id);
     }
 
+    // ── Persist diplomatic intents ──
+    if (Array.isArray(result.diplomaticIntents) && result.diplomaticIntents.length > 0) {
+      // Mark old intents as superseded
+      await supabase.from("faction_intents")
+        .update({ status: "superseded" })
+        .eq("session_id", sessionId).eq("faction_name", factionName).eq("status", "active");
+
+      // Insert new intents
+      const intentRows = result.diplomaticIntents.slice(0, 5).map((i: any) => ({
+        session_id: sessionId,
+        faction_name: factionName,
+        intent_type: i.intentType || "consolidate",
+        target_faction: i.targetFaction || null,
+        priority: Math.max(1, Math.min(3, i.priority || 1)),
+        reasoning: (i.reasoning || "").substring(0, 500),
+        created_turn: turn,
+        status: "active",
+      }));
+      await supabase.from("faction_intents").insert(intentRows);
+    }
+
     // ── Audit log ──
     await supabase.from("world_action_log").insert({
       session_id: sessionId,
