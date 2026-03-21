@@ -2,9 +2,10 @@ import { useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Loader2, Network, RefreshCw, MapPin, ArrowRightLeft } from "lucide-react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Loader2, Network, RefreshCw, MapPin, ArrowRightLeft, Landmark, Shield, Anchor, Store, Mountain, Wheat } from "lucide-react";
 import { toast } from "sonner";
-import { useProvinceGraph, type ProvinceNode, type ProvinceEdge } from "@/hooks/useProvinceGraph";
+import { useProvinceGraph, type ProvinceNode, type ProvinceEdge, type StrategicNode } from "@/hooks/useProvinceGraph";
 
 interface Props {
   sessionId: string;
@@ -16,71 +17,110 @@ const GRAPH_COLORS = [
   "hsl(150,50%,40%)", "hsl(45,60%,50%)",
 ];
 
-/* ─── SVG graph vis ─── */
-function ProvinceGraphSVG({ nodes, edges }: { nodes: ProvinceNode[]; edges: ProvinceEdge[] }) {
+const NODE_TYPE_ICONS: Record<string, { icon: typeof Landmark; label: string; color: string }> = {
+  primary_city: { icon: Landmark, label: "Hlavní město", color: "text-yellow-400" },
+  secondary_city: { icon: Landmark, label: "Město", color: "text-yellow-300" },
+  fortress: { icon: Shield, label: "Pevnost", color: "text-red-400" },
+  port: { icon: Anchor, label: "Přístav", color: "text-blue-400" },
+  trade_hub: { icon: Store, label: "Tržiště", color: "text-emerald-400" },
+  pass: { icon: Mountain, label: "Průsmyk", color: "text-stone-400" },
+  resource_node: { icon: Wheat, label: "Zdroj", color: "text-amber-400" },
+};
+
+const NODE_TYPE_SHAPES: Record<string, string> = {
+  primary_city: "★",
+  fortress: "◆",
+  port: "⚓",
+  trade_hub: "●",
+  pass: "▲",
+  resource_node: "■",
+};
+
+/* ─── SVG graph vis with strategic nodes ─── */
+function ProvinceGraphSVG({ nodes, edges, strategicNodes, showNodes }: {
+  nodes: ProvinceNode[]; edges: ProvinceEdge[]; strategicNodes: StrategicNode[]; showNodes: boolean;
+}) {
   if (nodes.length === 0) return <p className="text-xs text-muted-foreground text-center py-6">Žádné provincie</p>;
 
   const nodeMap = new Map(nodes.map(n => [n.id, n]));
-  // Layout: use center_q/r as coordinates
   const qs = nodes.map(n => n.center_q);
   const rs = nodes.map(n => n.center_r);
-  const minQ = Math.min(...qs), maxQ = Math.max(...qs);
-  const minR = Math.min(...rs), maxR = Math.max(...rs);
+  const allQs = showNodes ? [...qs, ...strategicNodes.map(s => s.hex_q)] : qs;
+  const allRs = showNodes ? [...rs, ...strategicNodes.map(s => s.hex_r)] : rs;
+  const minQ = Math.min(...allQs), maxQ = Math.max(...allQs);
+  const minR = Math.min(...allRs), maxR = Math.max(...allRs);
   const rangeQ = maxQ - minQ || 1;
   const rangeR = maxR - minR || 1;
-  const W = 500, H = 360, PAD = 50;
+  const W = 560, H = 400, PAD = 55;
 
-  const pos = (n: ProvinceNode) => ({
-    x: PAD + ((n.center_q - minQ) / rangeQ) * (W - PAD * 2),
-    y: PAD + ((n.center_r - minR) / rangeR) * (H - PAD * 2),
+  const toXY = (q: number, r: number) => ({
+    x: PAD + ((q - minQ) / rangeQ) * (W - PAD * 2),
+    y: PAD + ((r - minR) / rangeR) * (H - PAD * 2),
   });
 
   return (
     <svg viewBox={`0 0 ${W} ${H}`} className="w-full border border-border rounded-lg bg-card">
-      {/* Edges */}
+      {/* Province edges */}
       {edges.map(e => {
         const a = nodeMap.get(e.province_a);
         const b = nodeMap.get(e.province_b);
         if (!a || !b) return null;
-        const pa = pos(a), pb = pos(b);
+        const pa = toXY(a.center_q, a.center_r), pb = toXY(b.center_q, b.center_r);
         return (
           <line key={e.id} x1={pa.x} y1={pa.y} x2={pb.x} y2={pb.y}
             stroke="hsl(var(--muted-foreground))" strokeWidth={Math.max(1, e.border_length / 3)}
-            opacity={0.4} strokeDasharray={e.is_contested ? "4 2" : undefined} />
+            opacity={0.3} strokeDasharray={e.is_contested ? "4 2" : undefined} />
         );
       })}
-      {/* Edge labels */}
-      {edges.map(e => {
-        const a = nodeMap.get(e.province_a);
-        const b = nodeMap.get(e.province_b);
-        if (!a || !b) return null;
-        const pa = pos(a), pb = pos(b);
-        const mx = (pa.x + pb.x) / 2, my = (pa.y + pb.y) / 2;
+
+      {/* Strategic nodes — connections to province center */}
+      {showNodes && strategicNodes.map(sn => {
+        const prov = nodeMap.get(sn.province_id);
+        if (!prov) return null;
+        const pc = toXY(prov.center_q, prov.center_r);
+        const ns = toXY(sn.hex_q, sn.hex_r);
         return (
-          <text key={`lbl-${e.id}`} x={mx} y={my - 4} textAnchor="middle" fontSize="8"
-            fill="hsl(var(--muted-foreground))" opacity={0.7}>
-            {e.border_length}
-          </text>
+          <line key={`link-${sn.id}`} x1={pc.x} y1={pc.y} x2={ns.x} y2={ns.y}
+            stroke={GRAPH_COLORS[prov.color_index % GRAPH_COLORS.length]}
+            strokeWidth={0.5} opacity={0.3} strokeDasharray="2 2" />
         );
       })}
-      {/* Nodes */}
+
+      {/* Province circles */}
       {nodes.map(n => {
-        const p = pos(n);
-        const r = 8 + Math.min(n.hex_count, 20);
+        const p = toXY(n.center_q, n.center_r);
+        const r = 10 + Math.min(n.hex_count / 4, 15);
         const color = GRAPH_COLORS[n.color_index % GRAPH_COLORS.length];
         return (
           <g key={n.id}>
-            <circle cx={p.x} cy={p.y} r={r} fill={color} opacity={0.7} stroke="white" strokeWidth={1.5} />
-            <text x={p.x} y={p.y + r + 10} textAnchor="middle" fontSize="8"
+            <circle cx={p.x} cy={p.y} r={r} fill={color} opacity={0.5} stroke="white" strokeWidth={1.5} />
+            <text x={p.x} y={p.y + r + 11} textAnchor="middle" fontSize="7.5"
               fill="hsl(var(--foreground))" fontWeight="600">
-              {n.name.length > 14 ? n.name.slice(0, 12) + "…" : n.name}
-            </text>
-            <text x={p.x} y={p.y + r + 19} textAnchor="middle" fontSize="7"
-              fill="hsl(var(--muted-foreground))">
-              {n.owner_player.length > 12 ? n.owner_player.slice(0, 10) + "…" : n.owner_player}
+              {n.name.length > 16 ? n.name.slice(0, 14) + "…" : n.name}
             </text>
             <text x={p.x} y={p.y + 3} textAnchor="middle" fontSize="8" fill="white" fontWeight="700">
               {n.hex_count}
+            </text>
+          </g>
+        );
+      })}
+
+      {/* Strategic node markers */}
+      {showNodes && strategicNodes.map(sn => {
+        const p = toXY(sn.hex_q, sn.hex_r);
+        const cfg = NODE_TYPE_ICONS[sn.node_type];
+        const shape = NODE_TYPE_SHAPES[sn.node_type] || "●";
+        const prov = nodeMap.get(sn.province_id);
+        const provColor = prov ? GRAPH_COLORS[prov.color_index % GRAPH_COLORS.length] : "gray";
+        return (
+          <g key={sn.id}>
+            <circle cx={p.x} cy={p.y} r={6} fill="hsl(var(--card))" stroke={provColor} strokeWidth={1.5} />
+            <text x={p.x} y={p.y + 3.5} textAnchor="middle" fontSize="8" fill={provColor} fontWeight="700">
+              {shape}
+            </text>
+            <text x={p.x} y={p.y - 9} textAnchor="middle" fontSize="6"
+              fill="hsl(var(--muted-foreground))">
+              {sn.name.length > 18 ? sn.name.slice(0, 16) + "…" : sn.name}
             </text>
           </g>
         );
@@ -89,10 +129,50 @@ function ProvinceGraphSVG({ nodes, edges }: { nodes: ProvinceNode[]; edges: Prov
   );
 }
 
+/* ─── Strategic node card ─── */
+function StrategicNodeCard({ node }: { node: StrategicNode }) {
+  const cfg = NODE_TYPE_ICONS[node.node_type] || NODE_TYPE_ICONS.resource_node;
+  const Icon = cfg.icon;
+  return (
+    <Card className="border-border">
+      <CardHeader className="pb-1 pt-2 px-3">
+        <CardTitle className="text-[11px] font-display flex items-center gap-1.5">
+          <Icon className={`h-3.5 w-3.5 ${cfg.color}`} />
+          {node.name}
+          <Badge variant="outline" className="text-[7px] ml-auto">{cfg.label}</Badge>
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="px-3 pb-2 space-y-1">
+        <div className="grid grid-cols-5 gap-1 text-[9px]">
+          {[
+            { l: "Strat", v: node.strategic_value },
+            { l: "Ekon", v: node.economic_value },
+            { l: "Obrana", v: node.defense_value },
+            { l: "Mobil", v: node.mobility_relevance },
+            { l: "Zásoby", v: node.supply_relevance },
+          ].map(s => (
+            <div key={s.l} className="bg-muted/40 rounded p-0.5 text-center">
+              <span className="text-muted-foreground block text-[7px]">{s.l}</span>
+              <span className="font-bold">{s.v}</span>
+            </div>
+          ))}
+        </div>
+        <p className="text-[8px] text-muted-foreground">
+          Hex: ({node.hex_q}, {node.hex_r})
+          {node.metadata?.resource_type && ` · ${node.metadata.resource_type}`}
+          {node.metadata?.elevation && ` · elev:${node.metadata.elevation}`}
+          {node.metadata?.adjacent_provinces && ` · ${node.metadata.adjacent_provinces} soused`}
+        </p>
+      </CardContent>
+    </Card>
+  );
+}
+
 /* ─── Province detail card ─── */
-function ProvinceCard({ node }: { node: ProvinceNode }) {
+function ProvinceCard({ node, strategicNodes }: { node: ProvinceNode; strategicNodes: StrategicNode[] }) {
   const tp = node.terrain_profile;
   const ep = node.economic_profile;
+  const myNodes = strategicNodes.filter(s => s.province_id === node.id);
   return (
     <Card className="border-border">
       <CardHeader className="pb-2 pt-3 px-3">
@@ -113,8 +193,8 @@ function ProvinceCard({ node }: { node: ProvinceNode }) {
             <span className="font-bold">{node.strategic_value}</span>
           </div>
           <div className="bg-muted/40 rounded p-1 text-center">
-            <span className="text-muted-foreground block">Elev.</span>
-            <span className="font-bold">{tp.avg_elevation ?? "?"}</span>
+            <span className="text-muted-foreground block">Nodů</span>
+            <span className="font-bold">{myNodes.length}</span>
           </div>
         </div>
         {tp.dominant_biome && (
@@ -131,6 +211,18 @@ function ProvinceCard({ node }: { node: ProvinceNode }) {
             <span>🚢{ep.trade_potential}</span>
           </div>
         )}
+        {myNodes.length > 0 && (
+          <div className="flex flex-wrap gap-1 mt-1">
+            {myNodes.map(n => {
+              const cfg = NODE_TYPE_ICONS[n.node_type];
+              return (
+                <Badge key={n.id} variant="secondary" className="text-[7px] gap-0.5">
+                  {NODE_TYPE_SHAPES[n.node_type] || "●"} {cfg?.label || n.node_type}
+                </Badge>
+              );
+            })}
+          </div>
+        )}
       </CardContent>
     </Card>
   );
@@ -138,18 +230,23 @@ function ProvinceCard({ node }: { node: ProvinceNode }) {
 
 /* ─── Main panel ─── */
 export default function ProvinceGraphPanel({ sessionId }: Props) {
-  const { nodes, edges, loading, computing, loadGraph, computeGraph } = useProvinceGraph(sessionId);
-  const [view, setView] = useState<"graph" | "list">("graph");
+  const { nodes, edges, strategicNodes, loading, computing, loadGraph, computeGraph, computeNodes } = useProvinceGraph(sessionId);
+  const [showNodes, setShowNodes] = useState(true);
 
   useEffect(() => { loadGraph(); }, [loadGraph]);
 
-  const handleCompute = async () => {
+  const handleComputeGraph = async () => {
     try {
       const result = await computeGraph();
-      toast.success(`Graf vypočten: ${result?.adjacency_edges || 0} hran, ${result?.hexes_assigned || 0} hexů přiřazeno`);
-    } catch (e: any) {
-      toast.error("Chyba: " + e.message);
-    }
+      toast.success(`Graf: ${result?.adjacency_edges || 0} hran, ${result?.hexes_assigned || 0} hexů`);
+    } catch (e: any) { toast.error("Chyba: " + e.message); }
+  };
+
+  const handleComputeNodes = async () => {
+    try {
+      const result = await computeNodes();
+      toast.success(`Nody: ${result?.nodes_created || 0} vytvořeno`);
+    } catch (e: any) { toast.error("Chyba: " + e.message); }
   };
 
   return (
@@ -157,79 +254,95 @@ export default function ProvinceGraphPanel({ sessionId }: Props) {
       <div className="flex items-center gap-2 flex-wrap">
         <Network className="h-4 w-4 text-primary" />
         <h3 className="font-display font-semibold text-sm">Province Graph</h3>
-        <Badge variant="outline" className="text-[9px]">Phase 1</Badge>
-        <div className="ml-auto flex gap-1">
-          <Button size="sm" variant={view === "graph" ? "default" : "outline"} className="h-6 text-[10px] px-2"
-            onClick={() => setView("graph")}>Graf</Button>
-          <Button size="sm" variant={view === "list" ? "default" : "outline"} className="h-6 text-[10px] px-2"
-            onClick={() => setView("list")}>Seznam</Button>
-        </div>
+        <Badge variant="outline" className="text-[9px]">Phase 2</Badge>
+        <Badge variant="secondary" className="text-[9px] ml-auto">
+          {nodes.length} prov · {edges.length} hran · {strategicNodes.length} nodů
+        </Badge>
       </div>
 
-      <div className="flex gap-2">
+      <div className="flex gap-1.5 flex-wrap">
         <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={() => loadGraph()} disabled={loading}>
           {loading ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
           Načíst
         </Button>
-        <Button size="sm" variant="default" className="h-7 text-xs gap-1" onClick={handleCompute} disabled={computing}>
-          {computing ? <Loader2 className="h-3 w-3 animate-spin" /> : <Network className="h-3 w-3" />}
-          Vypočítat graf
+        <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={handleComputeGraph} disabled={computing}>
+          <Network className="h-3 w-3" /> Graf
         </Button>
-        <Badge variant="secondary" className="text-[9px] ml-auto">
-          {nodes.length} provincií · {edges.length} hran
-        </Badge>
+        <Button size="sm" variant="default" className="h-7 text-xs gap-1" onClick={handleComputeNodes} disabled={computing}>
+          {computing ? <Loader2 className="h-3 w-3 animate-spin" /> : <Landmark className="h-3 w-3" />}
+          Nody
+        </Button>
+        <Button size="sm" variant={showNodes ? "secondary" : "ghost"} className="h-7 text-xs gap-1 ml-auto"
+          onClick={() => setShowNodes(!showNodes)}>
+          {showNodes ? "Skrýt nody" : "Zobrazit nody"}
+        </Button>
       </div>
 
-      {view === "graph" ? (
-        <ProvinceGraphSVG nodes={nodes} edges={edges} />
-      ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-          {nodes.map(n => <ProvinceCard key={n.id} node={n} />)}
-        </div>
-      )}
+      <Tabs defaultValue="graph">
+        <TabsList className="h-7">
+          <TabsTrigger value="graph" className="text-[10px] h-6">Graf</TabsTrigger>
+          <TabsTrigger value="provinces" className="text-[10px] h-6">Provincie</TabsTrigger>
+          <TabsTrigger value="nodes" className="text-[10px] h-6">Strat. nody</TabsTrigger>
+          <TabsTrigger value="adjacency" className="text-[10px] h-6">Sousednosti</TabsTrigger>
+        </TabsList>
 
-      {/* Adjacency table */}
-      {edges.length > 0 && (
-        <div className="space-y-1">
-          <h4 className="text-xs font-display font-semibold flex items-center gap-1">
-            <ArrowRightLeft className="h-3 w-3" /> Sousednosti
-          </h4>
-          <div className="overflow-x-auto">
-            <table className="w-full text-[10px]">
-              <thead>
-                <tr className="border-b border-border text-muted-foreground">
-                  <th className="text-left py-1 px-1">Provincie A</th>
-                  <th className="text-left py-1 px-1">Provincie B</th>
-                  <th className="text-center py-1 px-1">Hranice</th>
-                  <th className="text-left py-1 px-1">Terén</th>
-                </tr>
-              </thead>
-              <tbody>
-                {edges.map(e => {
-                  const a = nodes.find(n => n.id === e.province_a);
-                  const b = nodes.find(n => n.id === e.province_b);
-                  return (
-                    <tr key={e.id} className="border-b border-border/50">
-                      <td className="py-1 px-1 font-semibold">{a?.name || "?"}</td>
-                      <td className="py-1 px-1 font-semibold">{b?.name || "?"}</td>
-                      <td className="py-1 px-1 text-center">{e.border_length}</td>
-                      <td className="py-1 px-1 text-muted-foreground">
-                        {Object.entries(e.border_terrain).map(([b, c]) => `${b}:${c}`).join(", ")}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+        <TabsContent value="graph" className="mt-2">
+          <ProvinceGraphSVG nodes={nodes} edges={edges} strategicNodes={strategicNodes} showNodes={showNodes} />
+        </TabsContent>
+
+        <TabsContent value="provinces" className="mt-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            {nodes.map(n => <ProvinceCard key={n.id} node={n} strategicNodes={strategicNodes} />)}
           </div>
-        </div>
-      )}
+        </TabsContent>
 
-      {nodes.length === 0 && !loading && (
-        <p className="text-xs text-muted-foreground text-center py-4">
-          Zatím žádný graf. Klikněte "Vypočítat graf" pro analýzu hexů.
-        </p>
-      )}
+        <TabsContent value="nodes" className="mt-2">
+          {strategicNodes.length === 0 ? (
+            <p className="text-xs text-muted-foreground text-center py-4">
+              Žádné strategické nody. Klikněte "Nody" pro generování.
+            </p>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+              {strategicNodes.map(n => <StrategicNodeCard key={n.id} node={n} />)}
+            </div>
+          )}
+        </TabsContent>
+
+        <TabsContent value="adjacency" className="mt-2">
+          {edges.length > 0 ? (
+            <div className="overflow-x-auto">
+              <table className="w-full text-[10px]">
+                <thead>
+                  <tr className="border-b border-border text-muted-foreground">
+                    <th className="text-left py-1 px-1">Provincie A</th>
+                    <th className="text-left py-1 px-1">Provincie B</th>
+                    <th className="text-center py-1 px-1">Hranice</th>
+                    <th className="text-left py-1 px-1">Terén</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {edges.map(e => {
+                    const a = nodes.find(n => n.id === e.province_a);
+                    const b = nodes.find(n => n.id === e.province_b);
+                    return (
+                      <tr key={e.id} className="border-b border-border/50">
+                        <td className="py-1 px-1 font-semibold">{a?.name || "?"}</td>
+                        <td className="py-1 px-1 font-semibold">{b?.name || "?"}</td>
+                        <td className="py-1 px-1 text-center">{e.border_length}</td>
+                        <td className="py-1 px-1 text-muted-foreground">
+                          {Object.entries(e.border_terrain).map(([b, c]) => `${b}:${c}`).join(", ")}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <p className="text-xs text-muted-foreground text-center py-4">Žádné sousednosti</p>
+          )}
+        </TabsContent>
+      </Tabs>
     </section>
   );
 }

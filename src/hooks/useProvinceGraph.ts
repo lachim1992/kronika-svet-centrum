@@ -33,16 +33,33 @@ export interface ProvinceEdge {
   is_contested: boolean;
 }
 
+export interface StrategicNode {
+  id: string;
+  province_id: string;
+  node_type: string;
+  name: string;
+  hex_q: number;
+  hex_r: number;
+  city_id: string | null;
+  strategic_value: number;
+  economic_value: number;
+  defense_value: number;
+  mobility_relevance: number;
+  supply_relevance: number;
+  metadata: Record<string, any>;
+}
+
 export function useProvinceGraph(sessionId: string) {
   const [nodes, setNodes] = useState<ProvinceNode[]>([]);
   const [edges, setEdges] = useState<ProvinceEdge[]>([]);
+  const [strategicNodes, setStrategicNodes] = useState<StrategicNode[]>([]);
   const [loading, setLoading] = useState(false);
   const [computing, setComputing] = useState(false);
 
   const loadGraph = useCallback(async () => {
     setLoading(true);
     try {
-      const [provRes, adjRes] = await Promise.all([
+      const [provRes, adjRes, snodesRes] = await Promise.all([
         supabase
           .from("provinces")
           .select("id, name, owner_player, center_q, center_r, color_index, hex_count, strategic_value, terrain_profile, economic_profile")
@@ -50,6 +67,10 @@ export function useProvinceGraph(sessionId: string) {
         supabase
           .from("province_adjacency")
           .select("id, province_a, province_b, border_length, border_terrain, is_contested")
+          .eq("session_id", sessionId),
+        supabase
+          .from("province_nodes")
+          .select("id, province_id, node_type, name, hex_q, hex_r, city_id, strategic_value, economic_value, defense_value, mobility_relevance, supply_relevance, metadata")
           .eq("session_id", sessionId),
       ]);
 
@@ -78,6 +99,24 @@ export function useProvinceGraph(sessionId: string) {
           is_contested: e.is_contested,
         })));
       }
+
+      if (snodesRes.data) {
+        setStrategicNodes(snodesRes.data.map((n: any) => ({
+          id: n.id,
+          province_id: n.province_id,
+          node_type: n.node_type,
+          name: n.name,
+          hex_q: n.hex_q,
+          hex_r: n.hex_r,
+          city_id: n.city_id,
+          strategic_value: n.strategic_value,
+          economic_value: n.economic_value,
+          defense_value: n.defense_value,
+          mobility_relevance: n.mobility_relevance,
+          supply_relevance: n.supply_relevance,
+          metadata: (n.metadata as any) || {},
+        })));
+      }
     } finally {
       setLoading(false);
     }
@@ -97,5 +136,19 @@ export function useProvinceGraph(sessionId: string) {
     }
   }, [sessionId, loadGraph]);
 
-  return { nodes, edges, loading, computing, loadGraph, computeGraph };
+  const computeNodes = useCallback(async () => {
+    setComputing(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("compute-province-nodes", {
+        body: { session_id: sessionId },
+      });
+      if (error) throw error;
+      await loadGraph();
+      return data;
+    } finally {
+      setComputing(false);
+    }
+  }, [sessionId, loadGraph]);
+
+  return { nodes, edges, strategicNodes, loading, computing, loadGraph, computeGraph, computeNodes };
 }
