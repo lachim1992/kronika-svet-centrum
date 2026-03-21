@@ -1678,17 +1678,20 @@ async function projectDiplomaticRelations(
 }
 
 /**
- * Populate diplomatic_memory from recent game_events.
- * Maps event types to memory types for bilateral tracking.
+ * Populate diplomatic_memory from multiple sources:
+ * 1. game_events with bilateral references
+ * 2. diplomatic_pacts created/broken this turn
+ * 3. war_declarations created this turn
+ * 4. diplomacy_messages with diplomatic actions (ultimata, proposals)
  */
 async function populateDiplomaticMemory(supabase: any, sessionId: string, turnNumber: number) {
-  // Get events from this turn that have diplomatic significance
+  const memoryEntries: any[] = [];
+
+  // ── 1. Game events with bilateral references ──
   const { data: events } = await supabase.from("game_events")
     .select("id, event_type, player, note, reference, turn_number, importance")
     .eq("session_id", sessionId).eq("turn_number", turnNumber).eq("confirmed", true)
     .in("event_type", ["war", "betrayal", "alliance", "treaty", "crisis", "trade", "diplomacy", "conquest", "peace"]);
-
-  const memoryEntries: any[] = [];
 
   for (const evt of (events || [])) {
     const ref = evt.reference as any || {};
@@ -1697,32 +1700,126 @@ async function populateDiplomaticMemory(supabase: any, sessionId: string, turnNu
       treaty: "cooperation", crisis: "threat", trade: "trade_success",
       conquest: "war", peace: "peace", diplomacy: "cooperation",
     };
-
     const memType = memoryTypeMap[evt.event_type] || "neutral";
     const importanceMap: Record<string, number> = { critical: 3, major: 2, normal: 1 };
     const imp = importanceMap[evt.importance] || 1;
-
-    // Extract bilateral parties from reference
     const partyA = ref.playerA || ref.partyA || ref.declaring_player || evt.player;
     const partyB = ref.playerB || ref.partyB || ref.target_player;
-
     if (!partyA || !partyB || partyA === "Systém") continue;
-
     memoryEntries.push({
-      session_id: sessionId,
-      faction_a: partyA,
-      faction_b: partyB,
-      memory_type: memType,
-      detail: (evt.note || "").substring(0, 500),
-      turn_number: turnNumber,
-      importance: imp,
+      session_id: sessionId, faction_a: partyA, faction_b: partyB,
+      memory_type: memType, detail: (evt.note || "").substring(0, 500),
+      turn_number: turnNumber, importance: imp,
       decay_rate: memType === "betrayal" ? 0.02 : memType === "war" ? 0.03 : 0.05,
       source_event_id: evt.id,
     });
   }
 
-  if (memoryEntries.length > 0) {
-    await supabase.from("diplomatic_memory").insert(memoryEntries);
+  // ── 2. Diplomatic pacts created this turn ──
+  const { data: recentPacts } = await supabase.from("diplomatic_pacts")
+    .select("id, party_a, party_b, pact_type, status, created_at")
+    .eq("session_id", sessionId);
+
+  for (const p of (recentPacts || [])) {
+    // Check if created within last few minutes (same turn cycle)
+    const createdAt = new Date(p.created_at).getTime();
+    const now = Date.now();
+    if (now - createdAt > 5 * 60 * 1000) continue; // skip old pacts
+
+    const pactMemType: Record<string, string> = {
+      alliance: "cooperation", defense_pact: "cooperation",
+      open_borders: "cooperation", embargo: "threat",
+      condemnation: "threat", trade: "trade_success",
+    };
+    const memType = pactMemType[p.pact_type] || "cooperation";
+    const importance = p.pact_type === "alliance" ? 2 : 1;
+
+    // Check if memory already exists for this pact
+    const existingKey = `pact_${p.id}`;
+    const alreadyExists = memoryEntries.some(m =>
+      m.faction_a === p.party_a && m.faction_b === p.party_b && m.detail?.includes(p.pact_type)
+    );
+    if (alreadyExists) continue;
+
+    memoryEntries.push({
+      session_id: sessionId, faction_a: p.party_a, faction_b: p.party_b,
+      memory_type: memType, detail: `Uzavřen pakt: ${p.pact_type} mezi ${p.party_a} a ${p.party_b}`,
+      turn_number: turnNumber, importance,
+      decay_rate: p.pact_type === "alliance" ? 0.02 : 0.04,
+    });
+  }
+
+  // ── 3. War declarations this turn ──
+  const { data: wars } = await supabase.from("war_declarations")
+    .select("id, declaring_player, target_player, declared_turn, status")
+    .eq("session_id", sessionId).eq("declared_turn", turnNumber);
+
+  for (const w of (wars || [])) {
+    memoryEntries.push({
+      session_id: sessionId, faction_a: w.declaring_player, faction_b: w.target_player,
+      memory_type: "war", detail: `${w.declaring_player} vyhlásil válku ${w.target_player}`,
+      turn_number: turnNumber, importance: 3,
+      decay_rate: 0.02,
+    });
+  }
+
+  // ── 4. Diplomacy messages with action tags (ultimata, proposals) ──
+  const { data: rooms } = await supabase.from("diplomacy_rooms")
+    .select("id, participant_a, participant_b")
+    .eq("session_id", sessionId);
+
+  if (rooms?.length) {
+    const roomIds = rooms.map((r: any) => r.id);
+    const { data: msgs } = await supabase.from("diplomacy_messages")
+      .select("id, room_id, sender, message_text, created_at")
+      .in("room_id", roomIds)
+      .order("created_at", { ascending: false }).limit(50);
+
+    for (const msg of (msgs || [])) {
+      const createdAt = new Date(msg.created_at).getTime();
+      const now = Date.now();
+      if (now - createdAt > 5 * 60 * 1000) continue;
+
+      const room = rooms.find((r: any) => r.id === msg.room_id);
+      if (!room) continue;
+      const otherParty = room.participant_a === msg.sender ? room.participant_b : room.participant_a;
+      const text = msg.message_text || "";
+
+      if (text.includes("[ULTIMÁTUM]")) {
+        memoryEntries.push({
+          session_id: sessionId, faction_a: msg.sender, faction_b: otherParty,
+          memory_type: "threat", detail: `Ultimátum: ${text.substring(0, 200)}`,
+          turn_number: turnNumber, importance: 2, decay_rate: 0.03,
+        });
+      } else if (text.includes("[OBCHODNÍ DOHODA]") || text.includes("[OBRANNÝ PAKT]")) {
+        memoryEntries.push({
+          session_id: sessionId, faction_a: msg.sender, faction_b: otherParty,
+          memory_type: "cooperation", detail: `Návrh dohody: ${text.substring(0, 200)}`,
+          turn_number: turnNumber, importance: 1, decay_rate: 0.05,
+        });
+      } else if (text.includes("[PŘIJATO]")) {
+        memoryEntries.push({
+          session_id: sessionId, faction_a: msg.sender, faction_b: otherParty,
+          memory_type: "cooperation", detail: `Přijetí dohody: ${text.substring(0, 200)}`,
+          turn_number: turnNumber, importance: 2, decay_rate: 0.03,
+        });
+      }
+    }
+  }
+
+  // Deduplicate by faction_a + faction_b + memory_type (keep highest importance)
+  const dedupMap = new Map<string, any>();
+  for (const m of memoryEntries) {
+    const key = `${m.faction_a}|${m.faction_b}|${m.memory_type}|${m.turn_number}`;
+    const existing = dedupMap.get(key);
+    if (!existing || m.importance > existing.importance) {
+      dedupMap.set(key, m);
+    }
+  }
+
+  const finalEntries = Array.from(dedupMap.values());
+  if (finalEntries.length > 0) {
+    await supabase.from("diplomatic_memory").insert(finalEntries);
   }
 }
 
