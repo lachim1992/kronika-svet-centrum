@@ -100,6 +100,16 @@ Deno.serve(async (req) => {
         await projectTensionUpdates(supabase, sessionId, turnNumber, tickResults.tensionRecords || []);
         await projectCityStateUpdates(supabase, tickResults.cityStateUpdates || []);
 
+        // ═══ DIPLOMATIC RELATIONS PROJECTION ═══
+        await projectDiplomaticRelations(
+          supabase, sessionId, turnNumber,
+          tickResults.tensionRecords || [],
+          tickResults.influenceRecords || [],
+          tickResults.emittedEventsCount > 0 ? true : false,
+        );
+        await populateDiplomaticMemory(supabase, sessionId, turnNumber);
+        await syncDispositionFromRelations(supabase, sessionId);
+
         // Finalize tick
         await supabase.from("world_tick_log").update({
           status: "completed",
