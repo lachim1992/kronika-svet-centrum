@@ -299,7 +299,6 @@ function ProvinceCard({ node, strategicNodes }: { node: ProvinceNode; strategicN
     </Card>
   );
 }
-  const { nodes, edges, strategicNodes, routes, loading, computing, loadGraph, computeGraph, computeNodes, computeRoutes } = useProvinceGraph(sessionId);
   const [showNodes, setShowNodes] = useState(true);
   const [showRoutes, setShowRoutes] = useState(true);
 
