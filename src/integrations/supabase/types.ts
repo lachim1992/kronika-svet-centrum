@@ -5821,6 +5821,67 @@ export type Database = {
         }
         Relationships: []
       }
+      province_adjacency: {
+        Row: {
+          border_length: number
+          border_terrain: Json | null
+          created_at: string
+          id: string
+          is_contested: boolean
+          province_a: string
+          province_b: string
+          session_id: string
+          strategic_notes: string | null
+          updated_at: string
+        }
+        Insert: {
+          border_length?: number
+          border_terrain?: Json | null
+          created_at?: string
+          id?: string
+          is_contested?: boolean
+          province_a: string
+          province_b: string
+          session_id: string
+          strategic_notes?: string | null
+          updated_at?: string
+        }
+        Update: {
+          border_length?: number
+          border_terrain?: Json | null
+          created_at?: string
+          id?: string
+          is_contested?: boolean
+          province_a?: string
+          province_b?: string
+          session_id?: string
+          strategic_notes?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "province_adjacency_province_a_fkey"
+            columns: ["province_a"]
+            isOneToOne: false
+            referencedRelation: "provinces"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "province_adjacency_province_b_fkey"
+            columns: ["province_b"]
+            isOneToOne: false
+            referencedRelation: "provinces"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "province_adjacency_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       province_hexes: {
         Row: {
           biome_family: string
@@ -5911,6 +5972,7 @@ export type Database = {
       }
       provinces: {
         Row: {
+          adjacency_computed_at: string | null
           ai_description: string | null
           capital_city_id: string | null
           center_q: number | null
@@ -5918,6 +5980,8 @@ export type Database = {
           color_index: number | null
           created_at: string
           description: string | null
+          economic_profile: Json | null
+          hex_count: number | null
           id: string
           image_prompt: string | null
           image_url: string | null
@@ -5927,10 +5991,13 @@ export type Database = {
           owner_player: string
           region_id: string | null
           session_id: string
+          strategic_value: number | null
           tags: string[] | null
+          terrain_profile: Json | null
           updated_at: string | null
         }
         Insert: {
+          adjacency_computed_at?: string | null
           ai_description?: string | null
           capital_city_id?: string | null
           center_q?: number | null
@@ -5938,6 +6005,8 @@ export type Database = {
           color_index?: number | null
           created_at?: string
           description?: string | null
+          economic_profile?: Json | null
+          hex_count?: number | null
           id?: string
           image_prompt?: string | null
           image_url?: string | null
@@ -5947,10 +6016,13 @@ export type Database = {
           owner_player: string
           region_id?: string | null
           session_id: string
+          strategic_value?: number | null
           tags?: string[] | null
+          terrain_profile?: Json | null
           updated_at?: string | null
         }
         Update: {
+          adjacency_computed_at?: string | null
           ai_description?: string | null
           capital_city_id?: string | null
           center_q?: number | null
@@ -5958,6 +6030,8 @@ export type Database = {
           color_index?: number | null
           created_at?: string
           description?: string | null
+          economic_profile?: Json | null
+          hex_count?: number | null
           id?: string
           image_prompt?: string | null
           image_url?: string | null
@@ -5967,7 +6041,9 @@ export type Database = {
           owner_player?: string
           region_id?: string | null
           session_id?: string
+          strategic_value?: number | null
           tags?: string[] | null
+          terrain_profile?: Json | null
           updated_at?: string | null
         }
         Relationships: [
