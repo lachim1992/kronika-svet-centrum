@@ -130,9 +130,12 @@ const DiplomacyDebugPanel = ({ sessionId }: Props) => {
   const [intents, setIntents] = useState<Intent[]>([]);
   const [pacts, setPacts] = useState<Pact[]>([]);
   const [actionLogs, setActionLogs] = useState<ActionLog[]>([]);
+  const [diplomacyRooms, setDiplomacyRooms] = useState<DiplomacyRoom[]>([]);
+  const [diplomacyMessages, setDiplomacyMessages] = useState<DiplomacyMessage[]>([]);
   const [selectedFaction, setSelectedFaction] = useState<string>("");
   const [selectedPairA, setSelectedPairA] = useState<string>("");
   const [selectedPairB, setSelectedPairB] = useState<string>("");
+  const [msgViewMode, setMsgViewMode] = useState<"chat" | "audit">("chat");
 
   const fetchAll = async () => {
     setLoading(true);
