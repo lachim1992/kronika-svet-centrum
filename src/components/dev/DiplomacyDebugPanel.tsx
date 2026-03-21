@@ -500,7 +500,108 @@ const DiplomacyDebugPanel = ({ sessionId }: Props) => {
     );
   };
 
-  // ─── 7. Diplomatic Timeline ───
+  // ─── 7b. Diplomatic Messages (Chat Replay + Audit Trail) ───
+  const DiplomaticMessagesView = () => {
+    // Filter messages by selected faction
+    const relevantRooms = diplomacyRooms.filter(r =>
+      !selectedFaction || r.participant_a === selectedFaction || r.participant_b === selectedFaction
+    );
+    const relevantRoomIds = new Set(relevantRooms.map(r => r.id));
+    const filteredMsgs = diplomacyMessages.filter(m => relevantRoomIds.has(m.room_id));
+
+    const getRoom = (roomId: string) => diplomacyRooms.find(r => r.id === roomId);
+    const getOtherParty = (roomId: string, sender: string) => {
+      const room = getRoom(roomId);
+      if (!room) return "?";
+      return room.participant_a === sender ? room.participant_b : room.participant_a;
+    };
+
+    // Detect action tags for audit trail
+    const getActionTag = (text: string): string | null => {
+      if (text.includes("[ULTIMÁTUM]")) return "ULTIMÁTUM";
+      if (text.includes("[OBCHODNÍ DOHODA]")) return "OBCH. NÁVRH";
+      if (text.includes("[OBRANNÝ PAKT]")) return "OBRANNÝ PAKT";
+      if (text.includes("[PŘIJATO]")) return "PŘIJATO";
+      if (text.includes("[ODMÍTNUTO]")) return "ODMÍTNUTO";
+      if (text.includes("[VÁLKA]")) return "VÁLKA";
+      if (text.includes("[MÍR]")) return "MÍR";
+      return null;
+    };
+
+    return (
+      <div className="space-y-2">
+        <div className="flex items-center gap-2">
+          <Button size="sm" variant={msgViewMode === "chat" ? "default" : "outline"} className="h-7 text-[11px]" onClick={() => setMsgViewMode("chat")}>
+            💬 Chat Replay
+          </Button>
+          <Button size="sm" variant={msgViewMode === "audit" ? "default" : "outline"} className="h-7 text-[11px]" onClick={() => setMsgViewMode("audit")}>
+            📋 Audit Trail
+          </Button>
+          <Badge variant="outline" className="text-[10px] ml-auto">{filteredMsgs.length} zpráv</Badge>
+        </div>
+
+        <ScrollArea className="h-[400px]">
+          {msgViewMode === "chat" ? (
+            // ── Chat Replay ──
+            <div className="space-y-1 p-1">
+              {filteredMsgs.map(msg => {
+                const recipient = getOtherParty(msg.room_id, msg.sender);
+                const isSelected = msg.sender === selectedFaction;
+                return (
+                  <div key={msg.id} className={`flex flex-col gap-0.5 p-2 rounded-lg text-xs ${isSelected ? "bg-primary/10 ml-4" : "bg-muted/40 mr-4"}`}>
+                    <div className="flex items-center gap-1.5">
+                      <span className="font-semibold">{msg.sender}</span>
+                      <span className="text-muted-foreground">→</span>
+                      <span className="text-muted-foreground">{recipient}</span>
+                      {msg.secrecy === "PRIVATE" && <Badge variant="outline" className="text-[9px] h-3.5">🔒</Badge>}
+                      <span className="text-[10px] text-muted-foreground ml-auto">
+                        {new Date(msg.created_at).toLocaleString("cs", { hour: "2-digit", minute: "2-digit", day: "numeric", month: "numeric" })}
+                      </span>
+                    </div>
+                    <p className="whitespace-pre-wrap text-foreground/85">{msg.message_text}</p>
+                  </div>
+                );
+              })}
+              {!filteredMsgs.length && <p className="text-muted-foreground text-sm py-4 text-center">Žádné diplomatické zprávy.</p>}
+            </div>
+          ) : (
+            // ── Audit Trail ──
+            <table className="w-full text-[11px]">
+              <thead>
+                <tr className="border-b border-border text-muted-foreground">
+                  <th className="text-left p-1">Čas</th>
+                  <th className="text-left p-1">Od</th>
+                  <th className="text-left p-1">Komu</th>
+                  <th className="text-left p-1">Akce</th>
+                  <th className="text-left p-1">Zpráva</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredMsgs.map(msg => {
+                  const recipient = getOtherParty(msg.room_id, msg.sender);
+                  const tag = getActionTag(msg.message_text || "");
+                  return (
+                    <tr key={msg.id} className="border-b border-border/30 hover:bg-muted/20">
+                      <td className="p-1 text-muted-foreground whitespace-nowrap">
+                        {new Date(msg.created_at).toLocaleString("cs", { hour: "2-digit", minute: "2-digit", day: "numeric", month: "numeric" })}
+                      </td>
+                      <td className="p-1 font-semibold">{msg.sender}</td>
+                      <td className="p-1">{recipient}</td>
+                      <td className="p-1">
+                        {tag ? <Badge variant="secondary" className="text-[9px]">{tag}</Badge> : <span className="text-muted-foreground">zpráva</span>}
+                      </td>
+                      <td className="p-1 max-w-[300px] truncate">{msg.message_text}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
+        </ScrollArea>
+      </div>
+    );
+  };
+
   const DiplomaticTimeline = () => {
     // Combine pacts, memories, intents, action logs into a timeline
     type TimelineItem = { turn: number; type: string; text: string; faction?: string; created_at?: string };
