@@ -3,9 +3,9 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Loader2, Network, RefreshCw, MapPin, ArrowRightLeft, Landmark, Shield, Anchor, Store, Mountain, Wheat } from "lucide-react";
+import { Loader2, Network, RefreshCw, MapPin, Landmark, Shield, Anchor, Store, Mountain, Wheat, Route } from "lucide-react";
 import { toast } from "sonner";
-import { useProvinceGraph, type ProvinceNode, type ProvinceEdge, type StrategicNode } from "@/hooks/useProvinceGraph";
+import { useProvinceGraph, type ProvinceNode, type ProvinceEdge, type StrategicNode, type ProvinceRoute } from "@/hooks/useProvinceGraph";
 
 interface Props {
   sessionId: string;
@@ -36,13 +36,30 @@ const NODE_TYPE_SHAPES: Record<string, string> = {
   resource_node: "■",
 };
 
-/* ─── SVG graph vis with strategic nodes ─── */
-function ProvinceGraphSVG({ nodes, edges, strategicNodes, showNodes }: {
-  nodes: ProvinceNode[]; edges: ProvinceEdge[]; strategicNodes: StrategicNode[]; showNodes: boolean;
+const ROUTE_COLORS: Record<string, string> = {
+  land_road: "hsl(40,60%,55%)",
+  river_route: "hsl(200,70%,55%)",
+  sea_lane: "hsl(210,80%,60%)",
+  mountain_pass: "hsl(0,50%,50%)",
+  caravan_route: "hsl(30,70%,50%)",
+};
+
+const ROUTE_LABELS: Record<string, string> = {
+  land_road: "Silnice",
+  river_route: "Říční",
+  sea_lane: "Námořní",
+  mountain_pass: "Průsmyk",
+  caravan_route: "Karavana",
+};
+
+/* ─── SVG graph vis ─── */
+function ProvinceGraphSVG({ nodes, edges, strategicNodes, routes, showNodes, showRoutes }: {
+  nodes: ProvinceNode[]; edges: ProvinceEdge[]; strategicNodes: StrategicNode[]; routes: ProvinceRoute[]; showNodes: boolean; showRoutes: boolean;
 }) {
   if (nodes.length === 0) return <p className="text-xs text-muted-foreground text-center py-6">Žádné provincie</p>;
 
   const nodeMap = new Map(nodes.map(n => [n.id, n]));
+  const snodeMap = new Map(strategicNodes.map(n => [n.id, n]));
   const qs = nodes.map(n => n.center_q);
   const rs = nodes.map(n => n.center_r);
   const allQs = showNodes ? [...qs, ...strategicNodes.map(s => s.hex_q)] : qs;
@@ -69,12 +86,28 @@ function ProvinceGraphSVG({ nodes, edges, strategicNodes, showNodes }: {
         return (
           <line key={e.id} x1={pa.x} y1={pa.y} x2={pb.x} y2={pb.y}
             stroke="hsl(var(--muted-foreground))" strokeWidth={Math.max(1, e.border_length / 3)}
-            opacity={0.3} strokeDasharray={e.is_contested ? "4 2" : undefined} />
+            opacity={0.15} strokeDasharray={e.is_contested ? "4 2" : undefined} />
         );
       })}
 
-      {/* Strategic nodes — connections to province center */}
-      {showNodes && strategicNodes.map(sn => {
+      {/* Route lines */}
+      {showRoutes && routes.map(r => {
+        const na = snodeMap.get(r.node_a);
+        const nb = snodeMap.get(r.node_b);
+        if (!na || !nb) return null;
+        const pa = toXY(na.hex_q, na.hex_r), pb = toXY(nb.hex_q, nb.hex_r);
+        const color = ROUTE_COLORS[r.route_type] || "hsl(var(--muted-foreground))";
+        const width = r.control_state === "blocked" ? 0.5 : Math.max(1, r.capacity_value / 3);
+        const dash = r.route_type === "sea_lane" ? "6 3" : r.route_type === "caravan_route" ? "3 2" : undefined;
+        return (
+          <line key={`route-${r.id}`} x1={pa.x} y1={pa.y} x2={pb.x} y2={pb.y}
+            stroke={color} strokeWidth={width} opacity={r.control_state === "blocked" ? 0.2 : 0.6}
+            strokeDasharray={dash} />
+        );
+      })}
+
+      {/* Strategic node links to province center */}
+      {showNodes && !showRoutes && strategicNodes.map(sn => {
         const prov = nodeMap.get(sn.province_id);
         if (!prov) return null;
         const pc = toXY(prov.center_q, prov.center_r);
@@ -108,7 +141,6 @@ function ProvinceGraphSVG({ nodes, edges, strategicNodes, showNodes }: {
       {/* Strategic node markers */}
       {showNodes && strategicNodes.map(sn => {
         const p = toXY(sn.hex_q, sn.hex_r);
-        const cfg = NODE_TYPE_ICONS[sn.node_type];
         const shape = NODE_TYPE_SHAPES[sn.node_type] || "●";
         const prov = nodeMap.get(sn.province_id);
         const provColor = prov ? GRAPH_COLORS[prov.color_index % GRAPH_COLORS.length] : "gray";
@@ -163,6 +195,46 @@ function StrategicNodeCard({ node }: { node: StrategicNode }) {
           {node.metadata?.elevation && ` · elev:${node.metadata.elevation}`}
           {node.metadata?.adjacent_provinces && ` · ${node.metadata.adjacent_provinces} soused`}
         </p>
+      </CardContent>
+    </Card>
+  );
+}
+
+/* ─── Route card ─── */
+function RouteCard({ route, strategicNodes }: { route: ProvinceRoute; strategicNodes: StrategicNode[] }) {
+  const na = strategicNodes.find(n => n.id === route.node_a);
+  const nb = strategicNodes.find(n => n.id === route.node_b);
+  const stateColors: Record<string, string> = { open: "text-emerald-400", contested: "text-yellow-400", blocked: "text-red-400" };
+  return (
+    <Card className="border-border">
+      <CardHeader className="pb-1 pt-2 px-3">
+        <CardTitle className="text-[11px] font-display flex items-center gap-1.5">
+          <Route className="h-3.5 w-3.5 text-primary" />
+          <span className="truncate">{na?.name || "?"} → {nb?.name || "?"}</span>
+          <Badge variant="outline" className="text-[7px] ml-auto">{ROUTE_LABELS[route.route_type] || route.route_type}</Badge>
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="px-3 pb-2 space-y-1">
+        <div className="grid grid-cols-5 gap-1 text-[9px]">
+          {[
+            { l: "Kapacita", v: route.capacity_value },
+            { l: "Vojenský", v: route.military_relevance },
+            { l: "Ekon", v: route.economic_relevance },
+            { l: "Zranit.", v: route.vulnerability_score },
+            { l: "Úroveň", v: route.upgrade_level },
+          ].map(s => (
+            <div key={s.l} className="bg-muted/40 rounded p-0.5 text-center">
+              <span className="text-muted-foreground block text-[7px]">{s.l}</span>
+              <span className="font-bold">{s.v}</span>
+            </div>
+          ))}
+        </div>
+        <div className="flex items-center gap-2 text-[8px] text-muted-foreground">
+          <span className={stateColors[route.control_state] || ""}>{route.control_state}</span>
+          <span>· Cena: {route.build_cost}</span>
+          {route.metadata?.distance && <span>· Vzdálenost: {Math.round(route.metadata.distance)}</span>}
+          {route.metadata?.cross_province && <span>· Přeshraniční</span>}
+        </div>
       </CardContent>
     </Card>
   );
@@ -230,6 +302,166 @@ function ProvinceCard({ node, strategicNodes }: { node: ProvinceNode; strategicN
 
 /* ─── Main panel ─── */
 export default function ProvinceGraphPanel({ sessionId }: Props) {
+  const { nodes, edges, strategicNodes, routes, loading, computing, loadGraph, computeGraph, computeNodes, computeRoutes } = useProvinceGraph(sessionId);
+  const [showNodes, setShowNodes] = useState(true);
+  const [showRoutes, setShowRoutes] = useState(true);
+
+  useEffect(() => { loadGraph(); }, [loadGraph]);
+
+  const handleComputeGraph = async () => {
+    try {
+      const result = await computeGraph();
+      toast.success(`Graf: ${result?.adjacency_edges || 0} hran, ${result?.hexes_assigned || 0} hexů`);
+    } catch (e: any) { toast.error("Chyba: " + e.message); }
+  };
+
+  const handleComputeNodes = async () => {
+    try {
+      const result = await computeNodes();
+      toast.success(`Nody: ${result?.nodes_created || 0} vytvořeno`);
+    } catch (e: any) { toast.error("Chyba: " + e.message); }
+  };
+
+  const handleComputeRoutes = async () => {
+    try {
+      const result = await computeRoutes();
+      toast.success(`Trasy: ${result?.routes_created || 0} vytvořeno`);
+    } catch (e: any) { toast.error("Chyba: " + e.message); }
+  };
+
+  return (
+    <section className="space-y-3">
+      <div className="flex items-center gap-2 flex-wrap">
+        <Network className="h-4 w-4 text-primary" />
+        <h3 className="font-display font-semibold text-sm">Province Graph</h3>
+        <Badge variant="outline" className="text-[9px]">Phase 3</Badge>
+        <Badge variant="secondary" className="text-[9px] ml-auto">
+          {nodes.length} prov · {edges.length} hran · {strategicNodes.length} nodů · {routes.length} tras
+        </Badge>
+      </div>
+
+      <div className="flex gap-1.5 flex-wrap">
+        <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={() => loadGraph()} disabled={loading}>
+          {loading ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
+          Načíst
+        </Button>
+        <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={handleComputeGraph} disabled={computing}>
+          <Network className="h-3 w-3" /> Graf
+        </Button>
+        <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={handleComputeNodes} disabled={computing}>
+          <Landmark className="h-3 w-3" /> Nody
+        </Button>
+        <Button size="sm" variant="default" className="h-7 text-xs gap-1" onClick={handleComputeRoutes} disabled={computing}>
+          {computing ? <Loader2 className="h-3 w-3 animate-spin" /> : <Route className="h-3 w-3" />}
+          Trasy
+        </Button>
+        <div className="flex gap-1 ml-auto">
+          <Button size="sm" variant={showNodes ? "secondary" : "ghost"} className="h-7 text-xs gap-1"
+            onClick={() => setShowNodes(!showNodes)}>
+            {showNodes ? "Skrýt nody" : "Nody"}
+          </Button>
+          <Button size="sm" variant={showRoutes ? "secondary" : "ghost"} className="h-7 text-xs gap-1"
+            onClick={() => setShowRoutes(!showRoutes)}>
+            {showRoutes ? "Skrýt trasy" : "Trasy"}
+          </Button>
+        </div>
+      </div>
+
+      <Tabs defaultValue="graph">
+        <TabsList className="h-7">
+          <TabsTrigger value="graph" className="text-[10px] h-6">Graf</TabsTrigger>
+          <TabsTrigger value="provinces" className="text-[10px] h-6">Provincie</TabsTrigger>
+          <TabsTrigger value="nodes" className="text-[10px] h-6">Strat. nody</TabsTrigger>
+          <TabsTrigger value="routes" className="text-[10px] h-6">Trasy ({routes.length})</TabsTrigger>
+          <TabsTrigger value="adjacency" className="text-[10px] h-6">Sousednosti</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="graph" className="mt-2">
+          <ProvinceGraphSVG nodes={nodes} edges={edges} strategicNodes={strategicNodes} routes={routes} showNodes={showNodes} showRoutes={showRoutes} />
+          {showRoutes && routes.length > 0 && (
+            <div className="flex flex-wrap gap-2 mt-2">
+              {Object.entries(ROUTE_LABELS).map(([key, label]) => {
+                const count = routes.filter(r => r.route_type === key).length;
+                if (count === 0) return null;
+                return (
+                  <div key={key} className="flex items-center gap-1 text-[8px]">
+                    <div className="w-4 h-0.5 rounded" style={{ background: ROUTE_COLORS[key] }} />
+                    <span className="text-muted-foreground">{label} ({count})</span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </TabsContent>
+
+        <TabsContent value="provinces" className="mt-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            {nodes.map(n => <ProvinceCard key={n.id} node={n} strategicNodes={strategicNodes} />)}
+          </div>
+        </TabsContent>
+
+        <TabsContent value="nodes" className="mt-2">
+          {strategicNodes.length === 0 ? (
+            <p className="text-xs text-muted-foreground text-center py-4">
+              Žádné strategické nody. Klikněte "Nody" pro generování.
+            </p>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+              {strategicNodes.map(n => <StrategicNodeCard key={n.id} node={n} />)}
+            </div>
+          )}
+        </TabsContent>
+
+        <TabsContent value="routes" className="mt-2">
+          {routes.length === 0 ? (
+            <p className="text-xs text-muted-foreground text-center py-4">
+              Žádné trasy. Klikněte "Trasy" pro generování.
+            </p>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+              {routes.map(r => <RouteCard key={r.id} route={r} strategicNodes={strategicNodes} />)}
+            </div>
+          )}
+        </TabsContent>
+
+        <TabsContent value="adjacency" className="mt-2">
+          {edges.length > 0 ? (
+            <div className="overflow-x-auto">
+              <table className="w-full text-[10px]">
+                <thead>
+                  <tr className="border-b border-border text-muted-foreground">
+                    <th className="text-left py-1 px-1">Provincie A</th>
+                    <th className="text-left py-1 px-1">Provincie B</th>
+                    <th className="text-center py-1 px-1">Hranice</th>
+                    <th className="text-left py-1 px-1">Terén</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {edges.map(e => {
+                    const a = nodes.find(n => n.id === e.province_a);
+                    const b = nodes.find(n => n.id === e.province_b);
+                    return (
+                      <tr key={e.id} className="border-b border-border/50">
+                        <td className="py-1 px-1 font-semibold">{a?.name || "?"}</td>
+                        <td className="py-1 px-1 font-semibold">{b?.name || "?"}</td>
+                        <td className="py-1 px-1 text-center">{e.border_length}</td>
+                        <td className="py-1 px-1 text-muted-foreground">
+                          {Object.entries(e.border_terrain).map(([b, c]) => `${b}:${c}`).join(", ")}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <p className="text-xs text-muted-foreground text-center py-4">Žádné sousednosti</p>
+          )}
+        </TabsContent>
+      </Tabs>
+    </section>
+  );
+}
   const { nodes, edges, strategicNodes, loading, computing, loadGraph, computeGraph, computeNodes } = useProvinceGraph(sessionId);
   const [showNodes, setShowNodes] = useState(true);
 
