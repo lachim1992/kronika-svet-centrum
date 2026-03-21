@@ -136,6 +136,21 @@ export function useProvinceGraph(sessionId: string) {
           supply_relevance: n.supply_relevance,
           metadata: (n.metadata as any) || {},
         })));
+      if (routesRes.data) {
+        setRoutes(routesRes.data.map((r: any) => ({
+          id: r.id,
+          node_a: r.node_a,
+          node_b: r.node_b,
+          route_type: r.route_type,
+          capacity_value: r.capacity_value,
+          military_relevance: r.military_relevance,
+          economic_relevance: r.economic_relevance,
+          vulnerability_score: r.vulnerability_score,
+          control_state: r.control_state,
+          build_cost: r.build_cost,
+          upgrade_level: r.upgrade_level,
+          metadata: (r.metadata as any) || {},
+        })));
       }
     } finally {
       setLoading(false);
@@ -170,5 +185,19 @@ export function useProvinceGraph(sessionId: string) {
     }
   }, [sessionId, loadGraph]);
 
-  return { nodes, edges, strategicNodes, loading, computing, loadGraph, computeGraph, computeNodes };
+  const computeRoutes = useCallback(async () => {
+    setComputing(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("compute-province-routes", {
+        body: { session_id: sessionId },
+      });
+      if (error) throw error;
+      await loadGraph();
+      return data;
+    } finally {
+      setComputing(false);
+    }
+  }, [sessionId, loadGraph]);
+
+  return { nodes, edges, strategicNodes, routes, loading, computing, loadGraph, computeGraph, computeNodes, computeRoutes };
 }
