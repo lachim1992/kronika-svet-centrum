@@ -49,10 +49,26 @@ export interface StrategicNode {
   metadata: Record<string, any>;
 }
 
+export interface ProvinceRoute {
+  id: string;
+  node_a: string;
+  node_b: string;
+  route_type: string;
+  capacity_value: number;
+  military_relevance: number;
+  economic_relevance: number;
+  vulnerability_score: number;
+  control_state: string;
+  build_cost: number;
+  upgrade_level: number;
+  metadata: Record<string, any>;
+}
+
 export function useProvinceGraph(sessionId: string) {
   const [nodes, setNodes] = useState<ProvinceNode[]>([]);
   const [edges, setEdges] = useState<ProvinceEdge[]>([]);
   const [strategicNodes, setStrategicNodes] = useState<StrategicNode[]>([]);
+  const [routes, setRoutes] = useState<ProvinceRoute[]>([]);
   const [loading, setLoading] = useState(false);
   const [computing, setComputing] = useState(false);
 
