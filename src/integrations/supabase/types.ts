@@ -2227,6 +2227,66 @@ export type Database = {
           },
         ]
       }
+      diplomatic_memory: {
+        Row: {
+          created_at: string
+          decay_rate: number
+          detail: string
+          faction_a: string
+          faction_b: string
+          id: string
+          importance: number
+          is_active: boolean
+          memory_type: string
+          session_id: string
+          source_event_id: string | null
+          turn_number: number
+        }
+        Insert: {
+          created_at?: string
+          decay_rate?: number
+          detail?: string
+          faction_a: string
+          faction_b: string
+          id?: string
+          importance?: number
+          is_active?: boolean
+          memory_type?: string
+          session_id: string
+          source_event_id?: string | null
+          turn_number?: number
+        }
+        Update: {
+          created_at?: string
+          decay_rate?: number
+          detail?: string
+          faction_a?: string
+          faction_b?: string
+          id?: string
+          importance?: number
+          is_active?: boolean
+          memory_type?: string
+          session_id?: string
+          source_event_id?: string | null
+          turn_number?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "diplomatic_memory_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "diplomatic_memory_source_event_id_fkey"
+            columns: ["source_event_id"]
+            isOneToOne: false
+            referencedRelation: "game_events"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       diplomatic_pacts: {
         Row: {
           accepted_turn: number | null
@@ -2288,6 +2348,68 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "diplomatic_pacts_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      diplomatic_relations: {
+        Row: {
+          betrayal_score: number
+          cooperation_score: number
+          created_at: string
+          dependency: number
+          faction_a: string
+          faction_b: string
+          fear: number
+          grievance: number
+          id: string
+          ideological_alignment: number
+          last_updated_turn: number
+          overall_disposition: number
+          session_id: string
+          trust: number
+          updated_at: string
+        }
+        Insert: {
+          betrayal_score?: number
+          cooperation_score?: number
+          created_at?: string
+          dependency?: number
+          faction_a: string
+          faction_b: string
+          fear?: number
+          grievance?: number
+          id?: string
+          ideological_alignment?: number
+          last_updated_turn?: number
+          overall_disposition?: number
+          session_id: string
+          trust?: number
+          updated_at?: string
+        }
+        Update: {
+          betrayal_score?: number
+          cooperation_score?: number
+          created_at?: string
+          dependency?: number
+          faction_a?: string
+          faction_b?: string
+          fear?: number
+          grievance?: number
+          id?: string
+          ideological_alignment?: number
+          last_updated_turn?: number
+          overall_disposition?: number
+          session_id?: string
+          trust?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "diplomatic_relations_session_id_fkey"
             columns: ["session_id"]
             isOneToOne: false
             referencedRelation: "game_sessions"
@@ -2810,6 +2932,56 @@ export type Database = {
           },
           {
             foreignKeyName: "expeditions_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      faction_intents: {
+        Row: {
+          created_at: string
+          created_turn: number
+          faction_name: string
+          id: string
+          intent_type: string
+          priority: number
+          reasoning: string | null
+          resolved_turn: number | null
+          session_id: string
+          status: string
+          target_faction: string | null
+        }
+        Insert: {
+          created_at?: string
+          created_turn?: number
+          faction_name: string
+          id?: string
+          intent_type: string
+          priority?: number
+          reasoning?: string | null
+          resolved_turn?: number | null
+          session_id: string
+          status?: string
+          target_faction?: string | null
+        }
+        Update: {
+          created_at?: string
+          created_turn?: number
+          faction_name?: string
+          id?: string
+          intent_type?: string
+          priority?: number
+          reasoning?: string | null
+          resolved_turn?: number | null
+          session_id?: string
+          status?: string
+          target_faction?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "faction_intents_session_id_fkey"
             columns: ["session_id"]
             isOneToOne: false
             referencedRelation: "game_sessions"
