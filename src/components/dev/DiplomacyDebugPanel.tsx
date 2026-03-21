@@ -10,7 +10,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import {
   RefreshCw, Loader2, Handshake, Brain, Eye, EyeOff, Shield, Swords,
   AlertTriangle, Heart, Target, Clock, TrendingUp, TrendingDown,
-  Users, ScrollText, Flame, Snowflake, Scale, Activity,
+  Users, ScrollText, Flame, Snowflake, Scale, Activity, MessageSquare,
 } from "lucide-react";
 import { toast } from "sonner";
 
