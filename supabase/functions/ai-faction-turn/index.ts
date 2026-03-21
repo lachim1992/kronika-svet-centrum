@@ -250,6 +250,23 @@ Deno.serve(async (req) => {
         .eq("session_id", sessionId),
     ]);
 
+    // ── Load diplomatic relations, memory, and active intents ──
+    const [
+      { data: diplomRelations },
+      { data: diplomMemories },
+      { data: activeIntents },
+    ] = await Promise.all([
+      supabase.from("diplomatic_relations").select("*")
+        .eq("session_id", sessionId)
+        .or(`faction_a.eq.${factionName},faction_b.eq.${factionName}`),
+      supabase.from("diplomatic_memory").select("*")
+        .eq("session_id", sessionId).eq("is_active", true)
+        .or(`faction_a.eq.${factionName},faction_b.eq.${factionName}`)
+        .order("turn_number", { ascending: false }).limit(30),
+      supabase.from("faction_intents").select("*")
+        .eq("session_id", sessionId).eq("faction_name", factionName).eq("status", "active"),
+    ]);
+
     // Fetch recent diplomacy messages for all rooms involving this faction
     const roomIds = (diplomacyRooms || []).map((r: any) => r.id);
     let recentMessages: any[] = [];
