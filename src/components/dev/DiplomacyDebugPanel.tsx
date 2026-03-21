@@ -45,6 +45,14 @@ interface Pact {
 interface ActionLog {
   id: string; player_name: string; turn_number: number; action_type: string; description: string; created_at: string;
 }
+interface DiplomacyRoom {
+  id: string; participant_a: string; participant_b: string; room_type: string;
+}
+interface DiplomacyMessage {
+  id: string; room_id: string; sender: string; sender_type: string;
+  message_text: string; secrecy: string; created_at: string;
+  room?: DiplomacyRoom;
+}
 
 /* ════════════════════════════════════════ */
 /* HELPERS                                  */
