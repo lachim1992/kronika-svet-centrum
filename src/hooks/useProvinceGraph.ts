@@ -49,17 +49,33 @@ export interface StrategicNode {
   metadata: Record<string, any>;
 }
 
+export interface ProvinceRoute {
+  id: string;
+  node_a: string;
+  node_b: string;
+  route_type: string;
+  capacity_value: number;
+  military_relevance: number;
+  economic_relevance: number;
+  vulnerability_score: number;
+  control_state: string;
+  build_cost: number;
+  upgrade_level: number;
+  metadata: Record<string, any>;
+}
+
 export function useProvinceGraph(sessionId: string) {
   const [nodes, setNodes] = useState<ProvinceNode[]>([]);
   const [edges, setEdges] = useState<ProvinceEdge[]>([]);
   const [strategicNodes, setStrategicNodes] = useState<StrategicNode[]>([]);
+  const [routes, setRoutes] = useState<ProvinceRoute[]>([]);
   const [loading, setLoading] = useState(false);
   const [computing, setComputing] = useState(false);
 
   const loadGraph = useCallback(async () => {
     setLoading(true);
     try {
-      const [provRes, adjRes, snodesRes] = await Promise.all([
+      const [provRes, adjRes, snodesRes, routesRes] = await Promise.all([
         supabase
           .from("provinces")
           .select("id, name, owner_player, center_q, center_r, color_index, hex_count, strategic_value, terrain_profile, economic_profile")
@@ -71,6 +87,10 @@ export function useProvinceGraph(sessionId: string) {
         supabase
           .from("province_nodes")
           .select("id, province_id, node_type, name, hex_q, hex_r, city_id, strategic_value, economic_value, defense_value, mobility_relevance, supply_relevance, metadata")
+          .eq("session_id", sessionId),
+        supabase
+          .from("province_routes")
+          .select("id, node_a, node_b, route_type, capacity_value, military_relevance, economic_relevance, vulnerability_score, control_state, build_cost, upgrade_level, metadata")
           .eq("session_id", sessionId),
       ]);
 
@@ -117,6 +137,22 @@ export function useProvinceGraph(sessionId: string) {
           metadata: (n.metadata as any) || {},
         })));
       }
+      if (routesRes.data) {
+        setRoutes(routesRes.data.map((r: any) => ({
+          id: r.id,
+          node_a: r.node_a,
+          node_b: r.node_b,
+          route_type: r.route_type,
+          capacity_value: r.capacity_value,
+          military_relevance: r.military_relevance,
+          economic_relevance: r.economic_relevance,
+          vulnerability_score: r.vulnerability_score,
+          control_state: r.control_state,
+          build_cost: r.build_cost,
+          upgrade_level: r.upgrade_level,
+          metadata: (r.metadata as any) || {},
+        })));
+      }
     } finally {
       setLoading(false);
     }
@@ -150,5 +186,19 @@ export function useProvinceGraph(sessionId: string) {
     }
   }, [sessionId, loadGraph]);
 
-  return { nodes, edges, strategicNodes, loading, computing, loadGraph, computeGraph, computeNodes };
+  const computeRoutes = useCallback(async () => {
+    setComputing(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("compute-province-routes", {
+        body: { session_id: sessionId },
+      });
+      if (error) throw error;
+      await loadGraph();
+      return data;
+    } finally {
+      setComputing(false);
+    }
+  }, [sessionId, loadGraph]);
+
+  return { nodes, edges, strategicNodes, routes, loading, computing, loadGraph, computeGraph, computeNodes, computeRoutes };
 }
