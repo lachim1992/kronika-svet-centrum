@@ -1516,3 +1516,241 @@ async function projectCityStateUpdates(supabase: any, updates: any[]) {
     await supabase.from("city_states").update(u.updates).eq("id", u.id);
   }
 }
+
+// ═══════════════════════════════════════════════════════════════
+// DIPLOMATIC RELATIONS PROJECTION
+// ═══════════════════════════════════════════════════════════════
+
+/**
+ * Projects multi-dimensional diplomatic relations from:
+ * - existing tensions
+ * - diplomatic pacts
+ * - diplomatic memory
+ * - trade routes
+ * - war declarations
+ */
+async function projectDiplomaticRelations(
+  supabase: any, sessionId: string, turnNumber: number,
+  tensionRecords: any[], influenceRecords: any[], hasNewEvents: boolean,
+) {
+  // Load all current data sources
+  const [
+    { data: pacts },
+    { data: wars },
+    { data: memories },
+    { data: tradeRoutes },
+    { data: existingRelations },
+    { data: allFactions },
+  ] = await Promise.all([
+    supabase.from("diplomatic_pacts").select("*").eq("session_id", sessionId).eq("status", "active"),
+    supabase.from("war_declarations").select("*").eq("session_id", sessionId).eq("status", "active"),
+    supabase.from("diplomatic_memory").select("*").eq("session_id", sessionId).eq("is_active", true),
+    supabase.from("trade_routes").select("*").eq("session_id", sessionId).eq("is_active", true),
+    supabase.from("diplomatic_relations").select("*").eq("session_id", sessionId),
+    supabase.from("ai_factions").select("faction_name").eq("session_id", sessionId).eq("is_active", true),
+  ]);
+
+  // Collect all actor names from influence records
+  const allActors = [...new Set(influenceRecords.map((r: any) => r.player_name))];
+  const factionNames = new Set((allFactions || []).map((f: any) => f.faction_name));
+
+  // Build relations for every pair
+  for (let i = 0; i < allActors.length; i++) {
+    for (let j = i + 1; j < allActors.length; j++) {
+      const fA = allActors[i];
+      const fB = allActors[j];
+
+      // Get existing relation or create base
+      const existing = (existingRelations || []).find((r: any) =>
+        (r.faction_a === fA && r.faction_b === fB) || (r.faction_a === fB && r.faction_b === fA)
+      );
+
+      let trust = existing?.trust ?? 0;
+      let fear = existing?.fear ?? 0;
+      let grievance = existing?.grievance ?? 0;
+      let dependency = existing?.dependency ?? 0;
+      let ideological_alignment = existing?.ideological_alignment ?? 0;
+      let cooperation_score = existing?.cooperation_score ?? 0;
+      let betrayal_score = existing?.betrayal_score ?? 0;
+
+      // ── Pact effects on trust/cooperation ──
+      const pairPacts = (pacts || []).filter((p: any) =>
+        (p.party_a === fA && p.party_b === fB) || (p.party_a === fB && p.party_b === fA)
+      );
+      for (const p of pairPacts) {
+        switch (p.pact_type) {
+          case "alliance": trust += 15; cooperation_score += 10; fear -= 5; break;
+          case "defense_pact": trust += 10; cooperation_score += 8; fear -= 3; break;
+          case "open_borders": trust += 5; cooperation_score += 5; break;
+          case "embargo": trust -= 15; grievance += 10; cooperation_score -= 10; break;
+          case "condemnation": trust -= 10; grievance += 5; break;
+        }
+      }
+
+      // ── War effects ──
+      const atWar = (wars || []).some((w: any) =>
+        (w.declaring_player === fA && w.target_player === fB) ||
+        (w.declaring_player === fB && w.target_player === fA)
+      );
+      if (atWar) {
+        trust -= 30;
+        fear += 15;
+        grievance += 20;
+        cooperation_score -= 20;
+      }
+
+      // ── Trade routes = dependency + cooperation ──
+      const pairTrades = (tradeRoutes || []).filter((t: any) =>
+        (t.player_a === fA && t.player_b === fB) || (t.player_a === fB && t.player_b === fA)
+      );
+      dependency += pairTrades.length * 5;
+      cooperation_score += pairTrades.length * 3;
+      trust += pairTrades.length * 2;
+
+      // ── Memory effects ──
+      const pairMemories = (memories || []).filter((m: any) =>
+        (m.faction_a === fA && m.faction_b === fB) || (m.faction_a === fB && m.faction_b === fA)
+      );
+      for (const m of pairMemories) {
+        const weight = m.importance || 1;
+        // Decay: reduce effective weight based on age
+        const age = turnNumber - (m.turn_number || 0);
+        const decayedWeight = Math.max(0.1, weight - (age * (m.decay_rate || 0.05)));
+
+        switch (m.memory_type) {
+          case "betrayal": betrayal_score += Math.round(decayedWeight * 10); trust -= Math.round(decayedWeight * 8); grievance += Math.round(decayedWeight * 5); break;
+          case "broken_promise": betrayal_score += Math.round(decayedWeight * 5); trust -= Math.round(decayedWeight * 5); grievance += Math.round(decayedWeight * 3); break;
+          case "aid": trust += Math.round(decayedWeight * 8); cooperation_score += Math.round(decayedWeight * 5); grievance -= Math.round(decayedWeight * 2); break;
+          case "cooperation": cooperation_score += Math.round(decayedWeight * 5); trust += Math.round(decayedWeight * 3); break;
+          case "refused_help": trust -= Math.round(decayedWeight * 3); grievance += Math.round(decayedWeight * 3); break;
+          case "threat": fear += Math.round(decayedWeight * 8); trust -= Math.round(decayedWeight * 3); break;
+          case "war": grievance += Math.round(decayedWeight * 10); fear += Math.round(decayedWeight * 5); trust -= Math.round(decayedWeight * 10); break;
+          case "peace": trust += Math.round(decayedWeight * 5); grievance -= Math.round(decayedWeight * 3); break;
+          case "trade_success": cooperation_score += Math.round(decayedWeight * 3); trust += Math.round(decayedWeight * 2); dependency += Math.round(decayedWeight * 2); break;
+          case "trade_refusal": trust -= Math.round(decayedWeight * 2); break;
+        }
+      }
+
+      // ── Tension effects on fear ──
+      const tensionRec = tensionRecords.find((t: any) =>
+        (t.player_a === fA && t.player_b === fB) || (t.player_a === fB && t.player_b === fA)
+      );
+      if (tensionRec) {
+        fear += Math.round((tensionRec.total_tension || 0) * 0.3);
+      }
+
+      // ── Military imbalance = fear for weaker party ──
+      const infA = influenceRecords.find((r: any) => r.player_name === fA);
+      const infB = influenceRecords.find((r: any) => r.player_name === fB);
+      const milDiff = Math.abs((infA?.military_score || 0) - (infB?.military_score || 0));
+      fear += Math.round(milDiff * 0.1);
+
+      // Clamp all values to [-100, 100]
+      const clamp = (v: number) => Math.max(-100, Math.min(100, v));
+      trust = clamp(trust);
+      fear = clamp(fear);
+      grievance = clamp(grievance);
+      dependency = clamp(dependency);
+      ideological_alignment = clamp(ideological_alignment);
+      cooperation_score = clamp(cooperation_score);
+      betrayal_score = clamp(betrayal_score);
+
+      // Compute overall disposition as weighted sum
+      const overall_disposition = clamp(Math.round(
+        trust * 0.3 + cooperation_score * 0.2 - grievance * 0.2 - fear * 0.1 - betrayal_score * 0.15 + dependency * 0.05
+      ));
+
+      // Upsert relation
+      const canonicalA = fA < fB ? fA : fB;
+      const canonicalB = fA < fB ? fB : fA;
+
+      await supabase.from("diplomatic_relations").upsert({
+        session_id: sessionId,
+        faction_a: canonicalA,
+        faction_b: canonicalB,
+        trust, fear, grievance, dependency,
+        ideological_alignment, cooperation_score, betrayal_score,
+        overall_disposition,
+        last_updated_turn: turnNumber,
+      }, { onConflict: "session_id,faction_a,faction_b" });
+    }
+  }
+}
+
+/**
+ * Populate diplomatic_memory from recent game_events.
+ * Maps event types to memory types for bilateral tracking.
+ */
+async function populateDiplomaticMemory(supabase: any, sessionId: string, turnNumber: number) {
+  // Get events from this turn that have diplomatic significance
+  const { data: events } = await supabase.from("game_events")
+    .select("id, event_type, player, note, reference, turn_number, importance")
+    .eq("session_id", sessionId).eq("turn_number", turnNumber).eq("confirmed", true)
+    .in("event_type", ["war", "betrayal", "alliance", "treaty", "crisis", "trade", "diplomacy", "conquest", "peace"]);
+
+  const memoryEntries: any[] = [];
+
+  for (const evt of (events || [])) {
+    const ref = evt.reference as any || {};
+    const memoryTypeMap: Record<string, string> = {
+      war: "war", betrayal: "betrayal", alliance: "cooperation",
+      treaty: "cooperation", crisis: "threat", trade: "trade_success",
+      conquest: "war", peace: "peace", diplomacy: "cooperation",
+    };
+
+    const memType = memoryTypeMap[evt.event_type] || "neutral";
+    const importanceMap: Record<string, number> = { critical: 3, major: 2, normal: 1 };
+    const imp = importanceMap[evt.importance] || 1;
+
+    // Extract bilateral parties from reference
+    const partyA = ref.playerA || ref.partyA || ref.declaring_player || evt.player;
+    const partyB = ref.playerB || ref.partyB || ref.target_player;
+
+    if (!partyA || !partyB || partyA === "Systém") continue;
+
+    memoryEntries.push({
+      session_id: sessionId,
+      faction_a: partyA,
+      faction_b: partyB,
+      memory_type: memType,
+      detail: (evt.note || "").substring(0, 500),
+      turn_number: turnNumber,
+      importance: imp,
+      decay_rate: memType === "betrayal" ? 0.02 : memType === "war" ? 0.03 : 0.05,
+      source_event_id: evt.id,
+    });
+  }
+
+  if (memoryEntries.length > 0) {
+    await supabase.from("diplomatic_memory").insert(memoryEntries);
+  }
+}
+
+/**
+ * Sync ai_factions.disposition from diplomatic_relations for backwards compatibility.
+ */
+async function syncDispositionFromRelations(supabase: any, sessionId: string) {
+  const { data: aiFactions } = await supabase.from("ai_factions")
+    .select("id, faction_name, disposition")
+    .eq("session_id", sessionId).eq("is_active", true);
+
+  if (!aiFactions?.length) return;
+
+  const { data: relations } = await supabase.from("diplomatic_relations")
+    .select("faction_a, faction_b, overall_disposition")
+    .eq("session_id", sessionId);
+
+  for (const ai of aiFactions) {
+    const newDisp: Record<string, number> = { ...(ai.disposition as Record<string, number> || {}) };
+
+    for (const rel of (relations || [])) {
+      if (rel.faction_a === ai.faction_name) {
+        newDisp[rel.faction_b] = rel.overall_disposition;
+      } else if (rel.faction_b === ai.faction_name) {
+        newDisp[rel.faction_a] = rel.overall_disposition;
+      }
+    }
+
+    await supabase.from("ai_factions").update({ disposition: newDisp }).eq("id", ai.id);
+  }
+}
