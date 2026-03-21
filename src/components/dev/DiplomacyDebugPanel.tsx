@@ -10,7 +10,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import {
   RefreshCw, Loader2, Handshake, Brain, Eye, EyeOff, Shield, Swords,
   AlertTriangle, Heart, Target, Clock, TrendingUp, TrendingDown,
-  Users, ScrollText, Flame, Snowflake, Scale, Activity,
+  Users, ScrollText, Flame, Snowflake, Scale, Activity, MessageSquare,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -44,6 +44,14 @@ interface Pact {
 }
 interface ActionLog {
   id: string; player_name: string; turn_number: number; action_type: string; description: string; created_at: string;
+}
+interface DiplomacyRoom {
+  id: string; participant_a: string; participant_b: string; room_type: string;
+}
+interface DiplomacyMessage {
+  id: string; room_id: string; sender: string; sender_type: string;
+  message_text: string; secrecy: string; created_at: string;
+  room?: DiplomacyRoom;
 }
 
 /* ════════════════════════════════════════ */
@@ -122,15 +130,18 @@ const DiplomacyDebugPanel = ({ sessionId }: Props) => {
   const [intents, setIntents] = useState<Intent[]>([]);
   const [pacts, setPacts] = useState<Pact[]>([]);
   const [actionLogs, setActionLogs] = useState<ActionLog[]>([]);
+  const [diplomacyRooms, setDiplomacyRooms] = useState<DiplomacyRoom[]>([]);
+  const [diplomacyMessages, setDiplomacyMessages] = useState<DiplomacyMessage[]>([]);
   const [selectedFaction, setSelectedFaction] = useState<string>("");
   const [selectedPairA, setSelectedPairA] = useState<string>("");
   const [selectedPairB, setSelectedPairB] = useState<string>("");
+  const [msgViewMode, setMsgViewMode] = useState<"chat" | "audit">("chat");
 
   const fetchAll = async () => {
     setLoading(true);
     try {
       const [
-        { data: f }, { data: r }, { data: m }, { data: i }, { data: p }, { data: a },
+        { data: f }, { data: r }, { data: m }, { data: i }, { data: p }, { data: a }, { data: dr },
       ] = await Promise.all([
         supabase.from("ai_factions").select("faction_name, personality, disposition, goals, is_active").eq("session_id", sessionId),
         supabase.from("diplomatic_relations").select("*").eq("session_id", sessionId),
@@ -140,6 +151,7 @@ const DiplomacyDebugPanel = ({ sessionId }: Props) => {
         supabase.from("world_action_log").select("*").eq("session_id", sessionId)
           .in("action_type", ["ai_faction_turn", "diplomacy", "war_declared", "peace_offered", "treaty", "pact_created", "pact_broken"])
           .order("turn_number", { ascending: false }).limit(100),
+        supabase.from("diplomacy_rooms").select("id, participant_a, participant_b, room_type").eq("session_id", sessionId),
       ]);
       setFactions((f || []) as Faction[]);
       setRelations((r || []) as Relation[]);
@@ -147,6 +159,20 @@ const DiplomacyDebugPanel = ({ sessionId }: Props) => {
       setIntents((i || []) as Intent[]);
       setPacts((p || []) as Pact[]);
       setActionLogs((a || []) as ActionLog[]);
+      setDiplomacyRooms((dr || []) as DiplomacyRoom[]);
+
+      // Fetch messages for all rooms
+      const roomIds = (dr || []).map((room: any) => room.id);
+      if (roomIds.length > 0) {
+        const { data: msgs } = await supabase.from("diplomacy_messages")
+          .select("id, room_id, sender, sender_type, message_text, secrecy, created_at")
+          .in("room_id", roomIds)
+          .order("created_at", { ascending: false }).limit(500);
+        setDiplomacyMessages((msgs || []) as DiplomacyMessage[]);
+      } else {
+        setDiplomacyMessages([]);
+      }
+
       if (!selectedFaction && f?.length) setSelectedFaction(f[0].faction_name);
       if (!selectedPairA && f?.length) { setSelectedPairA(f[0]?.faction_name || ""); setSelectedPairB(f[1]?.faction_name || ""); }
     } catch (e: any) {
@@ -474,7 +500,108 @@ const DiplomacyDebugPanel = ({ sessionId }: Props) => {
     );
   };
 
-  // ─── 7. Diplomatic Timeline ───
+  // ─── 7b. Diplomatic Messages (Chat Replay + Audit Trail) ───
+  const DiplomaticMessagesView = () => {
+    // Filter messages by selected faction
+    const relevantRooms = diplomacyRooms.filter(r =>
+      !selectedFaction || r.participant_a === selectedFaction || r.participant_b === selectedFaction
+    );
+    const relevantRoomIds = new Set(relevantRooms.map(r => r.id));
+    const filteredMsgs = diplomacyMessages.filter(m => relevantRoomIds.has(m.room_id));
+
+    const getRoom = (roomId: string) => diplomacyRooms.find(r => r.id === roomId);
+    const getOtherParty = (roomId: string, sender: string) => {
+      const room = getRoom(roomId);
+      if (!room) return "?";
+      return room.participant_a === sender ? room.participant_b : room.participant_a;
+    };
+
+    // Detect action tags for audit trail
+    const getActionTag = (text: string): string | null => {
+      if (text.includes("[ULTIMÁTUM]")) return "ULTIMÁTUM";
+      if (text.includes("[OBCHODNÍ DOHODA]")) return "OBCH. NÁVRH";
+      if (text.includes("[OBRANNÝ PAKT]")) return "OBRANNÝ PAKT";
+      if (text.includes("[PŘIJATO]")) return "PŘIJATO";
+      if (text.includes("[ODMÍTNUTO]")) return "ODMÍTNUTO";
+      if (text.includes("[VÁLKA]")) return "VÁLKA";
+      if (text.includes("[MÍR]")) return "MÍR";
+      return null;
+    };
+
+    return (
+      <div className="space-y-2">
+        <div className="flex items-center gap-2">
+          <Button size="sm" variant={msgViewMode === "chat" ? "default" : "outline"} className="h-7 text-[11px]" onClick={() => setMsgViewMode("chat")}>
+            💬 Chat Replay
+          </Button>
+          <Button size="sm" variant={msgViewMode === "audit" ? "default" : "outline"} className="h-7 text-[11px]" onClick={() => setMsgViewMode("audit")}>
+            📋 Audit Trail
+          </Button>
+          <Badge variant="outline" className="text-[10px] ml-auto">{filteredMsgs.length} zpráv</Badge>
+        </div>
+
+        <ScrollArea className="h-[400px]">
+          {msgViewMode === "chat" ? (
+            // ── Chat Replay ──
+            <div className="space-y-1 p-1">
+              {filteredMsgs.map(msg => {
+                const recipient = getOtherParty(msg.room_id, msg.sender);
+                const isSelected = msg.sender === selectedFaction;
+                return (
+                  <div key={msg.id} className={`flex flex-col gap-0.5 p-2 rounded-lg text-xs ${isSelected ? "bg-primary/10 ml-4" : "bg-muted/40 mr-4"}`}>
+                    <div className="flex items-center gap-1.5">
+                      <span className="font-semibold">{msg.sender}</span>
+                      <span className="text-muted-foreground">→</span>
+                      <span className="text-muted-foreground">{recipient}</span>
+                      {msg.secrecy === "PRIVATE" && <Badge variant="outline" className="text-[9px] h-3.5">🔒</Badge>}
+                      <span className="text-[10px] text-muted-foreground ml-auto">
+                        {new Date(msg.created_at).toLocaleString("cs", { hour: "2-digit", minute: "2-digit", day: "numeric", month: "numeric" })}
+                      </span>
+                    </div>
+                    <p className="whitespace-pre-wrap text-foreground/85">{msg.message_text}</p>
+                  </div>
+                );
+              })}
+              {!filteredMsgs.length && <p className="text-muted-foreground text-sm py-4 text-center">Žádné diplomatické zprávy.</p>}
+            </div>
+          ) : (
+            // ── Audit Trail ──
+            <table className="w-full text-[11px]">
+              <thead>
+                <tr className="border-b border-border text-muted-foreground">
+                  <th className="text-left p-1">Čas</th>
+                  <th className="text-left p-1">Od</th>
+                  <th className="text-left p-1">Komu</th>
+                  <th className="text-left p-1">Akce</th>
+                  <th className="text-left p-1">Zpráva</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredMsgs.map(msg => {
+                  const recipient = getOtherParty(msg.room_id, msg.sender);
+                  const tag = getActionTag(msg.message_text || "");
+                  return (
+                    <tr key={msg.id} className="border-b border-border/30 hover:bg-muted/20">
+                      <td className="p-1 text-muted-foreground whitespace-nowrap">
+                        {new Date(msg.created_at).toLocaleString("cs", { hour: "2-digit", minute: "2-digit", day: "numeric", month: "numeric" })}
+                      </td>
+                      <td className="p-1 font-semibold">{msg.sender}</td>
+                      <td className="p-1">{recipient}</td>
+                      <td className="p-1">
+                        {tag ? <Badge variant="secondary" className="text-[9px]">{tag}</Badge> : <span className="text-muted-foreground">zpráva</span>}
+                      </td>
+                      <td className="p-1 max-w-[300px] truncate">{msg.message_text}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
+        </ScrollArea>
+      </div>
+    );
+  };
+
   const DiplomaticTimeline = () => {
     // Combine pacts, memories, intents, action logs into a timeline
     type TimelineItem = { turn: number; type: string; text: string; faction?: string; created_at?: string };
@@ -538,6 +665,7 @@ const DiplomacyDebugPanel = ({ sessionId }: Props) => {
           <TabsTrigger value="trace" className="text-[11px] gap-1"><Brain className="h-3 w-3" /> Trace</TabsTrigger>
           <TabsTrigger value="public-private" className="text-[11px] gap-1"><Eye className="h-3 w-3" /> Pub/Priv</TabsTrigger>
           <TabsTrigger value="timeline" className="text-[11px] gap-1"><Clock className="h-3 w-3" /> Timeline</TabsTrigger>
+          <TabsTrigger value="messages" className="text-[11px] gap-1"><MessageSquare className="h-3 w-3" /> Zprávy</TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview" className="mt-3"><FactionOverview /></TabsContent>
@@ -547,6 +675,7 @@ const DiplomacyDebugPanel = ({ sessionId }: Props) => {
         <TabsContent value="trace" className="mt-3"><DecisionTrace /></TabsContent>
         <TabsContent value="public-private" className="mt-3"><PublicPrivateView /></TabsContent>
         <TabsContent value="timeline" className="mt-3"><DiplomaticTimeline /></TabsContent>
+        <TabsContent value="messages" className="mt-3"><DiplomaticMessagesView /></TabsContent>
       </Tabs>
     </div>
   );
