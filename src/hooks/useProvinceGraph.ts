@@ -136,6 +136,7 @@ export function useProvinceGraph(sessionId: string) {
           supply_relevance: n.supply_relevance,
           metadata: (n.metadata as any) || {},
         })));
+      }
       if (routesRes.data) {
         setRoutes(routesRes.data.map((r: any) => ({
           id: r.id,
