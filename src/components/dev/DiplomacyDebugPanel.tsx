@@ -675,6 +675,7 @@ const DiplomacyDebugPanel = ({ sessionId }: Props) => {
         <TabsContent value="trace" className="mt-3"><DecisionTrace /></TabsContent>
         <TabsContent value="public-private" className="mt-3"><PublicPrivateView /></TabsContent>
         <TabsContent value="timeline" className="mt-3"><DiplomaticTimeline /></TabsContent>
+        <TabsContent value="messages" className="mt-3"><DiplomaticMessagesView /></TabsContent>
       </Tabs>
     </div>
   );
