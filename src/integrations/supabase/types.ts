@@ -6049,6 +6049,79 @@ export type Database = {
           },
         ]
       }
+      province_routes: {
+        Row: {
+          build_cost: number
+          capacity_value: number
+          control_state: string
+          created_at: string
+          economic_relevance: number
+          id: string
+          metadata: Json
+          military_relevance: number
+          node_a: string
+          node_b: string
+          route_type: string
+          session_id: string
+          upgrade_level: number
+          vulnerability_score: number
+        }
+        Insert: {
+          build_cost?: number
+          capacity_value?: number
+          control_state?: string
+          created_at?: string
+          economic_relevance?: number
+          id?: string
+          metadata?: Json
+          military_relevance?: number
+          node_a: string
+          node_b: string
+          route_type?: string
+          session_id: string
+          upgrade_level?: number
+          vulnerability_score?: number
+        }
+        Update: {
+          build_cost?: number
+          capacity_value?: number
+          control_state?: string
+          created_at?: string
+          economic_relevance?: number
+          id?: string
+          metadata?: Json
+          military_relevance?: number
+          node_a?: string
+          node_b?: string
+          route_type?: string
+          session_id?: string
+          upgrade_level?: number
+          vulnerability_score?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "province_routes_node_a_fkey"
+            columns: ["node_a"]
+            isOneToOne: false
+            referencedRelation: "province_nodes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "province_routes_node_b_fkey"
+            columns: ["node_b"]
+            isOneToOne: false
+            referencedRelation: "province_nodes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "province_routes_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       provinces: {
         Row: {
           adjacency_computed_at: string | null
