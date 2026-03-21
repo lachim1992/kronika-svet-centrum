@@ -264,6 +264,27 @@ Odpověz jako vládce frakce ${aiFaction.faction_name} a vyber diplomatickou akc
         }
       }
 
+      // ── Write diplomatic memory for this interaction ──
+      const memoryTypeMap: Record<string, string> = {
+        declare_war: "war", send_ultimatum: "threat", offer_peace: "peace",
+        accept_peace: "peace", trade_embargo: "threat", open_borders: "cooperation",
+        defense_pact: "cooperation", condemnation: "threat", propose_trade: "trade_success",
+        none: "neutral",
+      };
+      const memType = memoryTypeMap[action] || "neutral";
+      if (memType !== "neutral") {
+        await supabase.from("diplomatic_memory").insert({
+          session_id: sessionId,
+          faction_a: aiFaction.faction_name,
+          faction_b: playerName,
+          memory_type: memType,
+          detail: `${action}: ${(responseData.reply_text || "").substring(0, 300)}`,
+          turn_number: turn,
+          importance: ["declare_war", "accept_peace"].includes(action) ? 3 : ["send_ultimatum", "defense_pact"].includes(action) ? 2 : 1,
+          decay_rate: memType === "war" ? 0.02 : 0.05,
+        }).then(() => {}, (e: any) => console.warn("Diplomatic memory insert failed:", e));
+      }
+
       // ── Insert chronicle, city_rumors, world_events for critical actions ──
       const criticalActions = ["declare_war", "offer_peace", "accept_peace", "send_ultimatum", "trade_embargo", "open_borders", "defense_pact", "condemnation"];
       if (criticalActions.includes(action)) {
