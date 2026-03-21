@@ -27,19 +27,19 @@ interface Relation {
   id: string; faction_a: string; faction_b: string;
   trust: number; fear: number; grievance: number; dependency: number;
   ideological_alignment: number; cooperation_score: number; betrayal_score: number;
-  overall_disposition: number; turn_number: number;
+  overall_disposition: number; last_updated_turn: number;
 }
 interface Memory {
   id: string; faction_a: string; faction_b: string; memory_type: string;
-  detail: string; intensity: number; decay_rate: number; turn_number: number;
+  detail: string; importance: number; decay_rate: number; turn_number: number;
   is_active: boolean; source_event_id: string | null;
 }
 interface Intent {
   id: string; faction_name: string; intent_type: string; target_faction: string | null;
-  priority: number; reasoning: string; created_turn: number; status: string;
+  priority: number; reasoning: string | null; created_turn: number; status: string;
 }
 interface Pact {
-  id: string; player_a: string; player_b: string; pact_type: string;
+  id: string; party_a: string; party_b: string; pact_type: string;
   status: string; created_at: string; expires_turn: number | null;
 }
 interface ActionLog {
