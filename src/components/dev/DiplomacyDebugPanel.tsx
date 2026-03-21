@@ -665,6 +665,7 @@ const DiplomacyDebugPanel = ({ sessionId }: Props) => {
           <TabsTrigger value="trace" className="text-[11px] gap-1"><Brain className="h-3 w-3" /> Trace</TabsTrigger>
           <TabsTrigger value="public-private" className="text-[11px] gap-1"><Eye className="h-3 w-3" /> Pub/Priv</TabsTrigger>
           <TabsTrigger value="timeline" className="text-[11px] gap-1"><Clock className="h-3 w-3" /> Timeline</TabsTrigger>
+          <TabsTrigger value="messages" className="text-[11px] gap-1"><MessageSquare className="h-3 w-3" /> Zprávy</TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview" className="mt-3"><FactionOverview /></TabsContent>
