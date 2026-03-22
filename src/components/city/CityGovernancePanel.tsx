@@ -439,8 +439,7 @@ const CityGovernancePanel = ({ sessionId, city, realm, currentPlayerName, curren
             };
             const canAfford = realm &&
               (realm.gold_reserve || 0) >= cost.wealth &&
-              (realm.wood_reserve || 0) >= cost.wood &&
-              (realm.stone_reserve || 0) >= cost.stone;
+              (realm.production_reserve || 0) >= (cost.wood + cost.stone);
 
             return (
               <div key={key} className="p-3 rounded-lg border border-border">
