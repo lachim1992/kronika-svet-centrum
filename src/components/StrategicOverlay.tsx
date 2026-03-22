@@ -114,7 +114,6 @@ const StrategicOverlay = memo(function StrategicOverlay({ sessionId, currentPlay
     setStacks(sRes.data || []);
     setProjects(pRes.data || []);
   }, [sessionId, currentPlayerName]);
-  }, [sessionId, currentPlayerName]);
 
   useEffect(() => { loadData(); }, [loadData]);
 
