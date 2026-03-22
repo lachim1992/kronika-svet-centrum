@@ -181,7 +181,7 @@ const EconomyQASection = ({ sessionId, onRefetch }: Props) => {
         const okCities = (cities || []).filter(c => c.status === "ok" || !c.status);
         const cityIds = okCities.map(c => c.id);
 
-        let foodIncome = 0, woodIncome = 0, stoneIncome = 0, ironIncome = 0;
+        let productionIncome = 0;
 
         if (cityIds.length > 0) {
           const { data: profiles } = await supabase
@@ -190,16 +190,14 @@ const EconomyQASection = ({ sessionId, onRefetch }: Props) => {
             .in("city_id", cityIds);
 
           for (const pr of (profiles || [])) {
-            foodIncome += pr.base_grain || 0;
-            woodIncome += pr.base_wood || 0;
-            if (pr.special_resource_type === "STONE") stoneIncome += pr.base_special || 0;
-            if (pr.special_resource_type === "IRON") ironIncome += pr.base_special || 0;
+            productionIncome += (pr.base_wood || 0) + (pr.base_special || 0);
           }
         }
 
         const incomes: Record<string, number> = {
-          food: foodIncome, wood: woodIncome, stone: stoneIncome,
-          iron: ironIncome, wealth: okCities.length,
+          food: productionIncome, // Legacy compat: food key maps to grain via profiles
+          production: productionIncome,
+          wealth: okCities.length,
         };
 
         for (const [resType, income] of Object.entries(incomes)) {
@@ -221,7 +219,7 @@ const EconomyQASection = ({ sessionId, onRefetch }: Props) => {
           }
         }
 
-        toast.success(`${p.player_name}: food+${foodIncome} wood+${woodIncome} stone+${stoneIncome} iron+${ironIncome} wealth+${okCities.length}`);
+        toast.success(`${p.player_name}: prod+${productionIncome} wealth+${okCities.length}`);
       }
       onRefetch?.();
     } catch (e: any) {

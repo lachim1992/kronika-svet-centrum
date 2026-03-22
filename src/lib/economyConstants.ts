@@ -1,19 +1,20 @@
-import { Wheat, Factory, Coins, Building2, Anvil, Zap } from "lucide-react";
+import { Wheat, Factory, Coins, Building2, Anvil, Zap, Church } from "lucide-react";
 import React from "react";
 
 /** New civilizational economy resource icons
  * Production = physical output (merged wood/stone/iron)
  * Wealth = financial reserves
  * Grain = food supply
+ * Faith = religious influence
  */
 export const RESOURCE_ICONS: Record<string, React.ReactNode> = {
   production: React.createElement(Factory, { className: "h-4 w-4" }),
   wealth: React.createElement(Coins, { className: "h-4 w-4" }),
   grain: React.createElement(Wheat, { className: "h-4 w-4" }),
   capacity: React.createElement(Building2, { className: "h-4 w-4" }),
-  // Legacy aliases for backward compatibility
+  faith: React.createElement(Church, { className: "h-4 w-4" }),
+  // Legacy aliases
   food: React.createElement(Wheat, { className: "h-4 w-4" }),
-  iron: React.createElement(Anvil, { className: "h-4 w-4" }),
 };
 
 export const RESOURCE_ICONS_SM: Record<string, React.ReactNode> = {
@@ -21,8 +22,8 @@ export const RESOURCE_ICONS_SM: Record<string, React.ReactNode> = {
   wealth: React.createElement(Coins, { className: "h-3 w-3" }),
   grain: React.createElement(Wheat, { className: "h-3 w-3" }),
   capacity: React.createElement(Building2, { className: "h-3 w-3" }),
+  faith: React.createElement(Church, { className: "h-3 w-3" }),
   food: React.createElement(Wheat, { className: "h-3 w-3" }),
-  iron: React.createElement(Anvil, { className: "h-3 w-3" }),
   horses: React.createElement(Zap, { className: "h-3 w-3" }),
 };
 
@@ -31,8 +32,8 @@ export const RESOURCE_LABELS: Record<string, string> = {
   wealth: "Bohatství",
   grain: "Zásoby",
   capacity: "Kapacita",
+  faith: "Víra",
   food: "Obilí",
-  iron: "Železo",
 };
 
 export const SETTLEMENT_LABELS: Record<string, string> = {

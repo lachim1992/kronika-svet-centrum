@@ -46,21 +46,13 @@ Generate starting conditions as JSON:
 {
   "realm_resources": {
     "grain_reserve": <int 10-40>,
-    "wood_reserve": <int 5-25>,
-    "stone_reserve": <int 3-20>,
-    "iron_reserve": <int 2-15>,
+    "production_reserve": <int 20-80>,
     "horses_reserve": <int 0-15>,
     "gold_reserve": <int 50-200>,
+    "faith_reserve": <int 0-20>,
     "stability": <int 55-80>,
     "granary_capacity": <int 300-800>,
     "stables_capacity": <int 50-200>
-  },
-  "player_resources": {
-    "food": { "income": <int 2-8>, "upkeep": <int 1-4>, "stockpile": <int 5-20> },
-    "wood": { "income": <int 1-6>, "upkeep": <int 0-3>, "stockpile": <int 3-15> },
-    "stone": { "income": <int 1-4>, "upkeep": <int 0-2>, "stockpile": <int 1-10> },
-    "iron": { "income": <int 0-3>, "upkeep": <int 0-1>, "stockpile": <int 0-8> },
-    "wealth": { "income": <int 1-5>, "upkeep": <int 0-2>, "stockpile": <int 3-15> }
   },
   "settlement": {
     "population_total": <int 800-1500>,
@@ -126,15 +118,9 @@ Generate starting conditions as JSON:
 function getDefaults() {
   return {
     realm_resources: {
-      grain_reserve: 20, wood_reserve: 10, stone_reserve: 5, iron_reserve: 3,
-      horses_reserve: 5, gold_reserve: 100, stability: 70, granary_capacity: 500, stables_capacity: 100,
-    },
-    player_resources: {
-      food: { income: 4, upkeep: 2, stockpile: 10 },
-      wood: { income: 3, upkeep: 1, stockpile: 5 },
-      stone: { income: 2, upkeep: 0, stockpile: 3 },
-      iron: { income: 1, upkeep: 0, stockpile: 2 },
-      wealth: { income: 2, upkeep: 1, stockpile: 5 },
+      grain_reserve: 20, production_reserve: 50,
+      horses_reserve: 5, gold_reserve: 100, faith_reserve: 5,
+      stability: 70, granary_capacity: 500, stables_capacity: 100,
     },
     settlement: {
       population_total: 1000, population_peasants: 800, population_burghers: 150, population_clerics: 50,
@@ -153,7 +139,6 @@ function clamp(val: number, min: number, max: number): number {
 function validateAndClamp(parsed: any) {
   const defaults = getDefaults();
   const rr = parsed.realm_resources || {};
-  const pr = parsed.player_resources || {};
   const st = parsed.settlement || {};
   const cv = parsed.civilization || {};
 
@@ -165,21 +150,13 @@ function validateAndClamp(parsed: any) {
   return {
     realm_resources: {
       grain_reserve: clamp(rr.grain_reserve, 10, 40),
-      wood_reserve: clamp(rr.wood_reserve, 5, 25),
-      stone_reserve: clamp(rr.stone_reserve, 3, 20),
-      iron_reserve: clamp(rr.iron_reserve, 2, 15),
+      production_reserve: clamp(rr.production_reserve, 20, 80),
       horses_reserve: clamp(rr.horses_reserve, 0, 15),
       gold_reserve: clamp(rr.gold_reserve, 50, 200),
+      faith_reserve: clamp(rr.faith_reserve, 0, 20),
       stability: clamp(rr.stability, 55, 80),
       granary_capacity: clamp(rr.granary_capacity, 300, 800),
       stables_capacity: clamp(rr.stables_capacity, 50, 200),
-    },
-    player_resources: {
-      food: { income: clamp(pr.food?.income, 2, 8), upkeep: clamp(pr.food?.upkeep, 1, 4), stockpile: clamp(pr.food?.stockpile, 5, 20) },
-      wood: { income: clamp(pr.wood?.income, 1, 6), upkeep: clamp(pr.wood?.upkeep, 0, 3), stockpile: clamp(pr.wood?.stockpile, 3, 15) },
-      stone: { income: clamp(pr.stone?.income, 1, 4), upkeep: clamp(pr.stone?.upkeep, 0, 2), stockpile: clamp(pr.stone?.stockpile, 1, 10) },
-      iron: { income: clamp(pr.iron?.income, 0, 3), upkeep: clamp(pr.iron?.upkeep, 0, 1), stockpile: clamp(pr.iron?.stockpile, 0, 8) },
-      wealth: { income: clamp(pr.wealth?.income, 1, 5), upkeep: clamp(pr.wealth?.upkeep, 0, 2), stockpile: clamp(pr.wealth?.stockpile, 3, 15) },
     },
     settlement: {
       population_total: popTotal,

@@ -42,12 +42,16 @@ const CATEGORY_META: Record<string, { label: string; icon: React.ReactNode }> = 
 const SETTLEMENT_ORDER = ["HAMLET", "TOWNSHIP", "CITY", "POLIS"];
 
 const EFFECT_LABELS: Record<string, string> = {
-  food_income: "🌾 Obilí", wood_income: "🪵 Dřevo", stone_income: "🪨 Kámen",
-  iron_income: "⚙️ Železo", wealth_income: "💰 Bohatství", stability_bonus: "🛡️ Stabilita",
-  influence_bonus: "👑 Vliv", population_growth: "👥 Růst populace",
-  manpower_bonus: "⚔️ Branná síla", defense_bonus: "🏰 Obrana",
-  grain_production: "🌾 Obilí", iron_production: "⚙️ Železo",
-  wood_production: "🪵 Dřevo", stone_production: "🪨 Kámen",
+  food_income: "🌾 Obilí", production_income: "⚒️ Produkce",
+  // Legacy aliases → Produkce
+  wood_income: "⚒️ Produkce", stone_income: "⚒️ Produkce",
+  iron_income: "⚒️ Produkce", grain_production: "🌾 Obilí",
+  wood_production: "⚒️ Produkce", stone_production: "⚒️ Produkce",
+  iron_production: "⚒️ Produkce",
+  wealth_income: "💰 Bohatství", faith_income: "⛪ Víra",
+  stability_bonus: "🛡️ Stabilita", influence_bonus: "👑 Vliv",
+  population_growth: "👥 Růst populace", manpower_bonus: "⚔️ Branná síla",
+  defense_bonus: "🏰 Obrana",
   wealth: "💰 Zlato", stability: "🛡️ Stabilita", influence: "👑 Vliv",
   defense: "🏰 Obrana", recruitment: "⚔️ Rekrutace", military_quality: "🗡️ Kvalita vojsk",
   military_garrison: "🛡️ Posádka", morale_bonus: "💪 Morálka",

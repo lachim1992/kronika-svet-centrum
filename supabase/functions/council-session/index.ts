@@ -137,7 +137,7 @@ ${factions.map(f => {
 }).join("\n")}
 
 === ZDROJE ===
-Zlato: ${realmRes?.gold_reserve || 0}, Obilí: ${realmRes?.grain_reserve || 0}, Dřevo: ${realmRes?.wood_reserve || 0}, Kámen: ${realmRes?.stone_reserve || 0}, Železo: ${realmRes?.iron_reserve || 0}
+Produkce: ${realmRes?.production_reserve || 0}, Bohatství: ${realmRes?.gold_reserve || 0}, Obilí: ${realmRes?.grain_reserve || 0}, Víra: ${realmRes?.faith_reserve || 0}
 Manpower: ${realmRes?.manpower_pool || 0}, Mobilizace: ${((realmRes?.mobilization_rate || 0.1) * 100).toFixed(0)}%
 
 === ARMÁDA (${(armies || []).length}) ===
