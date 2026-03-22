@@ -461,8 +461,7 @@ const CityGovernancePanel = ({ sessionId, city, realm, currentPlayerName, curren
                   <div className="flex items-center justify-between">
                     <div className="flex gap-1 text-[9px] text-muted-foreground">
                       <span>💰{cost.wealth}</span>
-                      <span>🪵{cost.wood}</span>
-                      <span>🪨{cost.stone}</span>
+                      <span>⚒️{cost.wood + cost.stone}</span>
                     </div>
                     <Button
                       size="sm"
