@@ -8,36 +8,26 @@ const corsHeaders = {
 import { computeStructuralBonuses, getOpenBordersBonuses, hasActiveEmbargo, getTradeEfficiencyModifier, type DiplomaticPact } from "../_shared/physics.ts";
 
 /**
- * process-turn v2: MACRO FLOW ECONOMY
+ * process-turn v3: HYBRID NETWORK ECONOMY
  *
- * Production / Wealth / Capacity are computed by compute-economy-flow (world-tick step 12f).
- * This function reads those totals and handles:
- * - Building & district completion
- * - Population demand vs production flow → famine
- * - Wealth accumulation (from flow) minus upkeep
- * - Capacity → logistics & army limits
- * - Trade routes (simplified flow adjustments)
- * - Faction satisfaction
- * - Associations economics
- * - Manpower growth
+ * Macro totals from compute-economy-flow (world-tick step 12f) provide
+ * realm-level aggregates, but per-city outcomes are now driven by the
+ * node/route network layer:
+ *
+ * 1. Each city resolves production/demand against its linked province_node
+ * 2. Node isolation, flow_role, and connectivity create per-city modifiers
+ * 3. Trade routes are validated through the province graph; regulators take tolls
+ * 4. Anomalies (isolation, trade boom, blockade) generate game_events
  */
 
-// --- Population demand: how much "production flow" a population needs ---
-const DEMAND_PER_CAPITA = {
-  peasants: 0.005,
-  burghers: 0.010,
-  clerics: 0.008,
-};
+// --- Per-capita demand constants ---
+const DEMAND_PER_CAPITA = { peasants: 0.005, burghers: 0.010, clerics: 0.008 };
 const DEMAND_PER_CAPITA_FLAT = 0.006;
-
 const RATION_DEMAND_MULT: Record<string, number> = {
-  equal: 1.0,
-  elite: 0.95,
-  austerity: 0.80,
-  sacrifice: 1.15,
+  equal: 1.0, elite: 0.95, austerity: 0.80, sacrifice: 1.15,
 };
 
-function computeProductionDemand(city: any): number {
+function computeCityDemand(city: any): number {
   const peas = city.population_peasants || 0;
   const burg = city.population_burghers || 0;
   const cler = city.population_clerics || 0;
@@ -52,12 +42,43 @@ function computeProductionDemand(city: any): number {
   return Math.round((city.population_total || 0) * DEMAND_PER_CAPITA_FLAT * rationMult);
 }
 
+// Flow role production multipliers: how well a node converts its base production
+const FLOW_ROLE_PRODUCTION_MULT: Record<string, number> = {
+  hub: 0.8, gateway: 0.9, regulator: 0.7, producer: 1.2, neutral: 1.0,
+};
+
 function hashCode(s: string): number {
   let h = 0;
-  for (let i = 0; i < s.length; i++) {
-    h = ((h << 5) - h + s.charCodeAt(i)) | 0;
-  }
+  for (let i = 0; i < s.length; i++) h = ((h << 5) - h + s.charCodeAt(i)) | 0;
   return Math.abs(h);
+}
+
+// ── BFS pathfinding on route graph ──
+function findRoutePath(
+  fromNodeId: string,
+  toNodeId: string,
+  adjacency: Map<string, Array<{ neighbor: string; routeId: string; controlState: string }>>,
+): { path: string[]; blocked: boolean } | null {
+  if (fromNodeId === toNodeId) return { path: [fromNodeId], blocked: false };
+  const visited = new Set<string>();
+  const queue: Array<{ node: string; path: string[]; blocked: boolean }> = [
+    { node: fromNodeId, path: [fromNodeId], blocked: false },
+  ];
+  visited.add(fromNodeId);
+
+  while (queue.length > 0) {
+    const { node, path, blocked } = queue.shift()!;
+    const neighbors = adjacency.get(node) || [];
+    for (const { neighbor, controlState } of neighbors) {
+      if (visited.has(neighbor)) continue;
+      visited.add(neighbor);
+      const isBlocked = controlState === "blocked" || controlState === "embargoed";
+      const newPath = [...path, neighbor];
+      if (neighbor === toNodeId) return { path: newPath, blocked: blocked || isBlocked };
+      queue.push({ node: neighbor, path: newPath, blocked: blocked || isBlocked });
+    }
+  }
+  return null; // No path
 }
 
 Deno.serve(async (req) => {
@@ -72,13 +93,10 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
-    // ── Load realm resources (contains macro totals from flow engine) ──
+    // ── Load realm resources ──
     let { data: realm } = await supabase
-      .from("realm_resources")
-      .select("*")
-      .eq("session_id", sessionId)
-      .eq("player_name", playerName)
-      .maybeSingle();
+      .from("realm_resources").select("*")
+      .eq("session_id", sessionId).eq("player_name", playerName).maybeSingle();
 
     if (!realm) {
       const { data: newRealm } = await supabase.from("realm_resources").insert({
@@ -99,6 +117,7 @@ Deno.serve(async (req) => {
     }
 
     const logEntries: string[] = [];
+    const newEvents: Array<{ event_type: string; note: string; importance: string; city_id?: string; reference?: any }> = [];
 
     // ── MACRO FLOW TOTALS (from compute-economy-flow) ──
     const totalProduction = realm.total_production || 0;
@@ -113,6 +132,42 @@ Deno.serve(async (req) => {
     const myCities = cities || [];
     const cityIds = myCities.map(c => c.id);
 
+    // ── Load network layer: nodes linked to cities + routes + supply state ──
+    const [nodesRes, routesRes, supplyRes] = await Promise.all([
+      supabase.from("province_nodes")
+        .select("id, city_id, node_type, flow_role, production_output, wealth_output, capacity_score, importance_score, incoming_production, connectivity_score, route_access_factor, isolation_penalty, controlled_by, toll_rate, throughput_military, province_id")
+        .eq("session_id", sessionId),
+      supabase.from("province_routes")
+        .select("id, node_a_id, node_b_id, control_state, capacity_value, damage_level")
+        .eq("session_id", sessionId),
+      supabase.from("supply_chain_state")
+        .select("node_id, connected_to_capital, isolation_turns, supply_level, hop_distance")
+        .eq("session_id", sessionId).eq("turn_number", currentTurn),
+    ]);
+
+    const allNodes = nodesRes.data || [];
+    const allRoutes = routesRes.data || [];
+    const supplyStates = supplyRes.data || [];
+
+    // Build city→node map and supply map
+    const cityNodeMap = new Map<string, any>();
+    const nodeMap = new Map<string, any>();
+    for (const n of allNodes) {
+      nodeMap.set(n.id, n);
+      if (n.city_id) cityNodeMap.set(n.city_id, n);
+    }
+    const supplyMap = new Map<string, any>();
+    for (const s of supplyStates) supplyMap.set(s.node_id, s);
+
+    // Build route adjacency for pathfinding
+    const adjacency = new Map<string, Array<{ neighbor: string; routeId: string; controlState: string }>>();
+    for (const r of allRoutes) {
+      if (!adjacency.has(r.node_a_id)) adjacency.set(r.node_a_id, []);
+      if (!adjacency.has(r.node_b_id)) adjacency.set(r.node_b_id, []);
+      adjacency.get(r.node_a_id)!.push({ neighbor: r.node_b_id, routeId: r.id, controlState: r.control_state || "open" });
+      adjacency.get(r.node_b_id)!.push({ neighbor: r.node_a_id, routeId: r.id, controlState: r.control_state || "open" });
+    }
+
     // ── Load infrastructure ──
     let { data: infra } = await supabase.from("realm_infrastructure").select("*")
       .eq("session_id", sessionId).eq("player_name", playerName).maybeSingle();
@@ -123,7 +178,7 @@ Deno.serve(async (req) => {
       infra = newInfra;
     }
 
-    // ── Load civ identity for structural bonuses ──
+    // ── Load civ identity ──
     const { data: civIdentity } = await supabase.from("civ_identity")
       .select("mobilization_speed, cavalry_bonus, fortification_bonus")
       .eq("session_id", sessionId).eq("player_name", playerName).maybeSingle();
@@ -163,7 +218,6 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Granary capacity (still relevant as production buffer)
     const infraGranary = 500 * (infra?.granary_level || 1) * (infra?.granaries_count || 1);
     const buildingGranaryBonus = globalBuildingEffects["granary_capacity"] || 0;
     const granaryCapacity = infraGranary + buildingGranaryBonus;
@@ -188,8 +242,7 @@ Deno.serve(async (req) => {
     // DISTRICT EFFECTS
     // ══════════════════════════════════════════
     const { data: completedDistricts } = await supabase.from("city_districts")
-      .select("city_id, stability_modifier")
-      .eq("session_id", sessionId).eq("status", "completed")
+      .select("city_id, stability_modifier").eq("session_id", sessionId).eq("status", "completed")
       .in("city_id", cityIds.length > 0 ? cityIds : ["00000000-0000-0000-0000-000000000000"]);
 
     const cityDistrictEffects: Record<string, Record<string, number>> = {};
@@ -205,11 +258,8 @@ Deno.serve(async (req) => {
     const { data: activeLaws } = await supabase.from("laws").select("structured_effects")
       .eq("session_id", sessionId).eq("player_name", playerName).eq("is_active", true);
 
-    let activePopModifier = 0;
-    let maxMobModifier = 0;
-    let taxRateModifier = 0;
-    let grainRationModifier = 0;
-    let tradeRestriction = 0;
+    let activePopModifier = 0, maxMobModifier = 0, taxRateModifier = 0;
+    let grainRationModifier = 0, tradeRestriction = 0;
 
     for (const law of (activeLaws || [])) {
       const effects = law.structured_effects as any[];
@@ -224,11 +274,10 @@ Deno.serve(async (req) => {
     }
 
     // ══════════════════════════════════════════
-    // WORKFORCE (still needed for mobilization/manpower)
+    // WORKFORCE & MANPOWER
     // ══════════════════════════════════════════
     const ACTIVE_POP_WEIGHTS = { peasants: 1.0, burghers: 0.7, clerics: 0.2 };
-    let activePopRaw = 0;
-    let totalPopulation = 0;
+    let activePopRaw = 0, totalPopulation = 0;
     for (const city of myCities) {
       if (city.status && city.status !== "ok") continue;
       totalPopulation += city.population_total || 0;
@@ -239,50 +288,102 @@ Deno.serve(async (req) => {
     activePopRaw = Math.floor(activePopRaw);
     const effectiveRatio = Math.max(0.1, Math.min(0.9, 0.5 + activePopModifier));
     const effectiveActivePop = Math.floor(activePopRaw * effectiveRatio);
-    const maxMob = Math.max(0.05, Math.min(0.5, 0.3 + maxMobModifier));
     const mobRate = realm.mobilization_rate || 0.1;
     const mobilized = Math.floor(effectiveActivePop * mobRate);
     const workforce = effectiveActivePop - mobilized;
     const workforceRatio = effectiveActivePop > 0 ? workforce / effectiveActivePop : 1;
 
     // ══════════════════════════════════════════
-    // PRODUCTION vs DEMAND → FAMINE CHECK
-    // Production comes from flow engine (total_production on realm_resources)
-    // Demand comes from population needs
+    // ARMY UPKEEP
     // ══════════════════════════════════════════
-    let totalDemand = 0;
-    const grainRationMult = 1 + (grainRationModifier / 100);
-    for (const city of myCities) {
-      totalDemand += Math.max(1, Math.round(computeProductionDemand(city) * grainRationMult));
-    }
-
-    // Army upkeep in production terms
     const { data: stacks } = await supabase.from("military_stacks")
       .select("id, unit_count, maintenance_cost")
       .eq("session_id", sessionId).eq("owner_player", playerName);
 
-    let armyProductionUpkeep = 0;
-    let armyWealthUpkeep = 0;
+    let armyProductionUpkeep = 0, armyWealthUpkeep = 0;
     for (const s of (stacks || [])) {
       const men = s.unit_count || 0;
-      armyProductionUpkeep += Math.ceil(men / 500); // food equivalent
-      armyWealthUpkeep += Math.ceil(men / 100); // gold equivalent
+      armyProductionUpkeep += Math.ceil(men / 500);
+      armyWealthUpkeep += Math.ceil(men / 100);
     }
 
-    const netProduction = totalProduction - totalDemand - armyProductionUpkeep;
-    // Small empire buffer
-    const buffer = myCities.length <= 3 ? 10 : 0;
-
-    // Grain reserve acts as "production buffer" — surplus accumulates, deficit drains
-    let grainReserve = (realm.grain_reserve || 0) + netProduction + buffer;
-    let famineActive = false;
+    // ══════════════════════════════════════════════════════════════
+    // ▶ PER-CITY NETWORK ECONOMY: PRODUCTION vs DEMAND
+    // Each city resolves its own food balance based on its linked
+    // province_node's production, isolation, and connectivity.
+    // ══════════════════════════════════════════════════════════════
+    const grainRationMult = 1 + (grainRationModifier / 100);
+    let globalGrainReserve = realm.grain_reserve || 0;
     let famineCityCount = 0;
+    let totalDemand = 0;
+    let totalCityProduction = 0;
 
-    if (grainReserve < 0) {
-      grainReserve = 0;
-      famineActive = true;
-      logEntries.push("⚠️ Hladomor! Produkční tok nestačí na pokrytí spotřeby.");
-      for (const city of myCities) {
+    // Per-city breakdown for reporting
+    const cityEconResults: Array<{
+      cityId: string; cityName: string;
+      nodeProduction: number; demand: number; balance: number;
+      isolationPenalty: number; famine: boolean;
+    }> = [];
+
+    for (const city of myCities) {
+      const cityDemand = Math.max(1, Math.round(computeCityDemand(city) * grainRationMult));
+      totalDemand += cityDemand;
+
+      // Find linked node
+      const node = cityNodeMap.get(city.id);
+      let cityProduction = 0;
+      let isolationPenalty = 0;
+
+      if (node) {
+        // Node-driven production: production_output includes isolation from compute-economy-flow
+        cityProduction = node.production_output || 0;
+        // Add incoming production from minor nodes feeding this major node
+        cityProduction += (node.incoming_production || 0) * 0.5;
+        // Flow role bonus
+        const roleMult = FLOW_ROLE_PRODUCTION_MULT[node.flow_role] || 1.0;
+        cityProduction *= roleMult;
+        isolationPenalty = node.isolation_penalty || 0;
+
+        // Supply chain state: further reduce if disconnected
+        const supply = supplyMap.get(node.id);
+        if (supply && !supply.connected_to_capital) {
+          const isoTurns = supply.isolation_turns || 0;
+          const supplyMult = Math.max(0.3, 1 - isoTurns * 0.1);
+          cityProduction *= supplyMult;
+
+          // Generate isolation event after 3+ turns
+          if (isoTurns >= 3) {
+            newEvents.push({
+              event_type: "city_isolated",
+              note: `${city.name} je ${isoTurns} kol odříznuto od hlavního města. Zásobování selhává, produkce klesá na ${Math.round(supplyMult * 100)}%.`,
+              importance: isoTurns >= 5 ? "critical" : "important",
+              city_id: city.id,
+              reference: { isolation_turns: isoTurns, supply_mult: supplyMult, node_id: node.id },
+            });
+          }
+        }
+      } else {
+        // No linked node: fallback to share of macro production
+        const cityShare = totalPopulation > 0 ? (city.population_total || 0) / totalPopulation : 1 / Math.max(1, myCities.length);
+        cityProduction = totalProduction * cityShare;
+      }
+
+      totalCityProduction += cityProduction;
+
+      // Per-city balance
+      const cityBalance = cityProduction - cityDemand;
+      const cityFamine = cityBalance < 0 && globalGrainReserve <= 0;
+
+      if (cityBalance >= 0) {
+        // Surplus goes to global reserve
+        globalGrainReserve += cityBalance * 0.5; // Half goes to reserve, half consumed
+      } else {
+        // Deficit drains from global reserve
+        globalGrainReserve += cityBalance; // negative
+      }
+
+      if (cityFamine) {
+        famineCityCount++;
         const newStability = Math.max(0, (city.city_stability || 50) - 5);
         const deathToll = Math.floor((city.population_total || 0) * 0.05);
         await supabase.from("cities").update({
@@ -292,45 +393,77 @@ Deno.serve(async (req) => {
           famine_turn: true,
           famine_consecutive_turns: (city.famine_consecutive_turns || 0) + 1,
         }).eq("id", city.id);
-        famineCityCount++;
-      }
-    } else {
-      for (const city of myCities) {
+
+        logEntries.push(`⚠️ Hladomor v ${city.name}! Ztráta ${deathToll} obyvatel.`);
+        newEvents.push({
+          event_type: "famine",
+          note: `Hladomor zachvátil ${city.name}. Produkce uzlu (${cityProduction.toFixed(1)}) nestačí na pokrytí poptávky (${cityDemand}). Zemřelo ${deathToll} obyvatel.`,
+          importance: "critical",
+          city_id: city.id,
+          reference: { production: cityProduction, demand: cityDemand, death_toll: deathToll, isolation: isolationPenalty },
+        });
+      } else {
         if (city.famine_turn) {
           await supabase.from("cities").update({ famine_turn: false, famine_consecutive_turns: 0 }).eq("id", city.id);
         }
       }
+
+      // Generate trade boom event for highly productive nodes
+      if (node && node.wealth_output > 5 && node.flow_role === "hub") {
+        newEvents.push({
+          event_type: "trade_boom",
+          note: `Obchodní centrum ${city.name} zažívá rozkvět. Bohatství uzlu: ${node.wealth_output.toFixed(1)}, konektivita: ${(node.connectivity_score || 0).toFixed(2)}.`,
+          importance: "normal",
+          city_id: city.id,
+          reference: { wealth_output: node.wealth_output, connectivity: node.connectivity_score, flow_role: node.flow_role },
+        });
+      }
+
+      cityEconResults.push({
+        cityId: city.id, cityName: city.name,
+        nodeProduction: Math.round(cityProduction * 10) / 10,
+        demand: cityDemand, balance: Math.round(cityBalance * 10) / 10,
+        isolationPenalty: Math.round(isolationPenalty * 100),
+        famine: cityFamine,
+      });
     }
 
-    // Cap production buffer
-    if (grainReserve > granaryCapacity) {
-      grainReserve = granaryCapacity;
-    }
+    // Small empire buffer
+    if (myCities.length <= 3) globalGrainReserve += 10;
+    // Army upkeep from global reserve
+    globalGrainReserve -= armyProductionUpkeep;
+    // Cap
+    globalGrainReserve = Math.max(0, Math.min(granaryCapacity, globalGrainReserve));
 
-    // ══════════════════════════════════════════
-    // WEALTH ACCUMULATION
-    // Wealth income from flow engine + law modifiers
-    // ══════════════════════════════════════════
+    const netProduction = totalCityProduction - totalDemand - armyProductionUpkeep;
+
+    // ══════════════════════════════════════════════════════════════
+    // ▶ WEALTH: TRADE ROUTES WITH GRAPH VALIDATION & INTERCEPCION
+    // Trade routes are validated through the province graph.
+    // Regulator nodes along the path take tolls.
+    // Blocked nodes interrupt trade.
+    // ══════════════════════════════════════════════════════════════
     const taxMult = 1 + (taxRateModifier / 100);
     const wealthIncome = Math.max(0, Math.round(totalWealth * taxMult));
     const sportFundingPct = realm.sport_funding_pct || 0;
     let newGoldReserve = (realm.gold_reserve || 0) + wealthIncome - armyWealthUpkeep;
 
-    // ══════════════════════════════════════════
-    // TRADE ROUTES (simplified — wealth adjustments only)
-    // ══════════════════════════════════════════
+    // Load diplomatic pacts
     const { data: rawPacts } = await supabase.from("diplomatic_pacts").select("*")
       .eq("session_id", sessionId)
       .or(`party_a.eq.${playerName},party_b.eq.${playerName}`)
       .in("status", ["active", "expired", "broken"]);
     const allPacts: DiplomaticPact[] = (rawPacts || []) as DiplomaticPact[];
 
+    // Load active trade routes
     const { data: activeTradeRoutes } = await supabase.from("trade_routes")
-      .select("id, from_player, to_player, resource_type, amount_per_turn, return_resource_type, return_amount, gold_per_turn, route_safety")
+      .select("id, from_player, to_player, resource_type, amount_per_turn, return_resource_type, return_amount, gold_per_turn, route_safety, start_node_id, end_node_id")
       .eq("session_id", sessionId).eq("status", "active")
       .or(`from_player.eq.${playerName},to_player.eq.${playerName}`);
 
     let tradeGoldDelta = 0;
+    let totalTollsPaid = 0;
+
     for (const route of (activeTradeRoutes || [])) {
       const otherPlayer = route.from_player === playerName ? route.to_player : route.from_player;
       if (hasActiveEmbargo(allPacts, playerName, otherPlayer)) {
@@ -339,33 +472,87 @@ Deno.serve(async (req) => {
       }
       const pactMod = getTradeEfficiencyModifier(allPacts, playerName, otherPlayer);
       const lawTradeReduction = Math.min(1, tradeRestriction / 100);
-      const efficiency = (1 + pactMod) * (1 - lawTradeReduction);
+      let efficiency = (1 + pactMod) * (1 - lawTradeReduction);
       const safety = (route.route_safety ?? 80) / 100;
 
-      // All trade routes now exchange wealth (gold)
-      if (route.gold_per_turn) {
-        tradeGoldDelta += Math.round((route.gold_per_turn || 0) * efficiency);
+      // ── Graph validation: check if route path exists and is not blocked ──
+      let routeBlocked = false;
+      let tollTotal = 0;
+
+      if (route.start_node_id && route.end_node_id) {
+        const pathResult = findRoutePath(route.start_node_id, route.end_node_id, adjacency);
+
+        if (!pathResult) {
+          // No path exists — trade route is severed
+          logEntries.push(`🚫 Obchodní trasa s ${otherPlayer} přerušena — žádná cesta v grafu`);
+          routeBlocked = true;
+
+          newEvents.push({
+            event_type: "trade_route_severed",
+            note: `Obchodní trasa mezi ${playerName} a ${otherPlayer} byla přerušena — neexistuje průchozí cesta v síti.`,
+            importance: "important",
+            reference: { from: route.start_node_id, to: route.end_node_id, other_player: otherPlayer },
+          });
+        } else if (pathResult.blocked) {
+          // Path exists but goes through blocked/embargoed segment
+          logEntries.push(`⚠️ Obchodní trasa s ${otherPlayer} prochází blokovaným úsekem`);
+          efficiency *= 0.3; // Severely reduced but not zero (smuggling)
+
+          newEvents.push({
+            event_type: "trade_route_impeded",
+            note: `Obchodní trasa s ${otherPlayer} prochází blokovaným koridorem — efektivita snížena na 30%.`,
+            importance: "normal",
+            reference: { path: pathResult.path, other_player: otherPlayer },
+          });
+        } else {
+          // Path is open — calculate tolls from regulator nodes along the way
+          for (const nodeId of pathResult.path) {
+            const pathNode = nodeMap.get(nodeId);
+            if (!pathNode) continue;
+            // Regulators and fortresses collect tolls
+            if (pathNode.flow_role === "regulator" || pathNode.node_type === "fortress") {
+              const tollRate = pathNode.toll_rate || 0;
+              if (tollRate > 0) {
+                // Toll is a percentage of trade value
+                const goldPerTurn = route.gold_per_turn || route.amount_per_turn || 0;
+                const toll = Math.round(goldPerTurn * tollRate * 0.01);
+                tollTotal += toll;
+              }
+            }
+            // If a node on the path belongs to a hostile player, reduce efficiency
+            if (pathNode.controlled_by && pathNode.controlled_by !== playerName && pathNode.controlled_by !== otherPlayer) {
+              efficiency *= 0.8; // Foreign territory penalty
+            }
+          }
+        }
       }
-      // Resource-based routes convert to wealth equivalent
+
+      if (routeBlocked) continue;
+
+      // Apply tolls
+      totalTollsPaid += tollTotal;
+
+      // ── Trade value calculation ──
+      if (route.gold_per_turn) {
+        tradeGoldDelta += Math.round((route.gold_per_turn || 0) * efficiency) - tollTotal;
+      }
       const isSender = route.from_player === playerName;
       if (route.resource_type && route.amount_per_turn) {
         const amt = route.amount_per_turn || 0;
         if (isSender) {
-          // Sending costs wealth (production diverted)
           tradeGoldDelta -= Math.round(amt * 0.5);
-          // Receiving return
           const recvAmt = Math.round((route.return_amount || 0) * efficiency * safety);
-          tradeGoldDelta += Math.round(recvAmt * 0.5);
+          tradeGoldDelta += Math.round(recvAmt * 0.5) - tollTotal;
         } else {
-          // Receiving goods adds wealth
-          tradeGoldDelta += Math.round(amt * efficiency * safety * 0.5);
-          // Sending return costs wealth
+          tradeGoldDelta += Math.round(amt * efficiency * safety * 0.5) - tollTotal;
           tradeGoldDelta -= Math.round((route.return_amount || 0) * 0.5);
         }
       }
     }
+
     newGoldReserve += tradeGoldDelta;
     if (tradeGoldDelta !== 0) logEntries.push(`Obchod: ${tradeGoldDelta >= 0 ? "+" : ""}${tradeGoldDelta} zlata`);
+    if (totalTollsPaid > 0) logEntries.push(`🏛️ Mýtné: -${totalTollsPaid} zlata`);
 
     // Sport Funding
     const sportFundingExpense = Math.floor(Math.max(0, newGoldReserve) * (sportFundingPct / 100));
@@ -398,8 +585,7 @@ Deno.serve(async (req) => {
         const repFanGrowth = assoc.reputation >= 30 ? Math.floor(assoc.reputation / 30) : 0;
 
         await supabase.from("sports_associations").update({
-          budget: newBudget,
-          fan_base: (assoc.fan_base || 0) + repFanGrowth,
+          budget: newBudget, fan_base: (assoc.fan_base || 0) + repFanGrowth,
         }).eq("id", assoc.id);
       }
     }
@@ -420,21 +606,19 @@ Deno.serve(async (req) => {
     // ══════════════════════════════════════════
     // CAPACITY → LOGISTICS
     // ══════════════════════════════════════════
-    // Capacity from flow engine determines logistic capacity
     const logisticCapacity = Math.max(5, Math.round(totalCapacity * 2) + (infra?.roads_level || 0) * 2);
 
     // ══════════════════════════════════════════
     // FACTION SATISFACTION
     // ══════════════════════════════════════════
-    const { data: factions } = await supabase.from("city_factions").select("*").in("city_id", cityIds.length > 0 ? cityIds : ["00000000-0000-0000-0000-000000000000"]);
+    const { data: factions } = await supabase.from("city_factions").select("*")
+      .in("city_id", cityIds.length > 0 ? cityIds : ["00000000-0000-0000-0000-000000000000"]);
     if (factions) {
       for (const f of factions) {
         const city = myCities.find(c => c.id === f.city_id);
         if (!city) continue;
 
-        let satDrift = 0;
-        let loyDrift = 0;
-
+        let satDrift = 0, loyDrift = 0;
         if (city.ration_policy === "austerity") satDrift -= 2;
         if (city.ration_policy === "elite" && f.faction_type !== "burghers") satDrift -= 1;
 
@@ -450,13 +634,16 @@ Deno.serve(async (req) => {
           satDrift += (labor.scribes || 0) > 10 ? 2 : -1;
           satDrift += (city.temple_level || 0) >= 3 ? 2 : 0;
         } else if (f.faction_type === "military") {
-          const garrison = city.military_garrison || 0;
-          satDrift += garrison > 100 ? 2 : garrison < 20 ? -3 : 0;
+          satDrift += (city.military_garrison || 0) > 100 ? 2 : (city.military_garrison || 0) < 20 ? -3 : 0;
         }
 
-        // Production flow bonus: high production → factions happier
-        if (totalProduction > totalDemand * 1.5) satDrift += 2;
-        else if (famineActive) satDrift -= 5;
+        // ▶ Per-city production bonus from node network
+        const cityEcon = cityEconResults.find(r => r.cityId === city.id);
+        if (cityEcon) {
+          if (cityEcon.balance > cityEcon.demand * 0.5) satDrift += 2; // City has surplus
+          else if (cityEcon.famine) satDrift -= 5; // City-specific famine
+          else if (cityEcon.balance < 0) satDrift -= 2; // Deficit but covered by reserve
+        }
 
         loyDrift += city.city_stability > 60 ? 1 : city.city_stability < 30 ? -3 : 0;
 
@@ -495,16 +682,35 @@ Deno.serve(async (req) => {
     }
 
     // ══════════════════════════════════════════
+    // PERSIST NODE ANOMALY EVENTS
+    // ══════════════════════════════════════════
+    // Deduplicate: only create events that haven't been created this turn
+    for (const evt of newEvents) {
+      await supabase.from("game_events").insert({
+        session_id: sessionId,
+        event_type: evt.event_type,
+        player: playerName,
+        actor_type: "system",
+        note: evt.note,
+        importance: evt.importance,
+        confirmed: true,
+        truth_state: "canon",
+        turn_number: currentTurn,
+        city_id: evt.city_id || null,
+        reference: evt.reference || {},
+      });
+    }
+
+    // ══════════════════════════════════════════
     // UPDATE REALM RESOURCES
     // ══════════════════════════════════════════
     await supabase.from("realm_resources").update({
-      grain_reserve: grainReserve,
+      grain_reserve: globalGrainReserve,
       granary_capacity: granaryCapacity,
       manpower_pool: manpowerPool,
       logistic_capacity: logisticCapacity,
       last_processed_turn: currentTurn,
-      // Legacy fields — derived from macro layers for backward compat
-      last_turn_grain_prod: Math.round(totalProduction),
+      last_turn_grain_prod: Math.round(totalCityProduction),
       last_turn_grain_cons: totalDemand,
       last_turn_grain_net: Math.round(netProduction),
       last_turn_wood_prod: 0,
@@ -519,8 +725,8 @@ Deno.serve(async (req) => {
     // UPDATE PLAYER_RESOURCES (backward compat)
     // ══════════════════════════════════════════
     const resourceUpdates = [
-      { type: "food", income: Math.round(totalProduction), upkeep: totalDemand + armyProductionUpkeep },
-      { type: "wealth", income: wealthIncome, upkeep: armyWealthUpkeep + sportFundingExpense },
+      { type: "food", income: Math.round(totalCityProduction), upkeep: totalDemand + armyProductionUpkeep },
+      { type: "wealth", income: wealthIncome, upkeep: armyWealthUpkeep + sportFundingExpense + totalTollsPaid },
     ];
     for (const ru of resourceUpdates) {
       const { data: existing } = await supabase.from("player_resources")
@@ -535,7 +741,6 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Apply stockpile (idempotent via last_applied_turn)
     const { data: allResources } = await supabase.from("player_resources").select("*")
       .eq("session_id", sessionId).eq("player_name", playerName);
     for (const res of (allResources || [])) {
@@ -554,31 +759,38 @@ Deno.serve(async (req) => {
     await supabase.from("world_action_log").insert({
       session_id: sessionId, turn_number: currentTurn, player_name: playerName,
       action_type: "turn_processing",
-      description: `Kolo ${currentTurn}: ⚒️${totalProduction.toFixed(0)} 💰${totalWealth.toFixed(0)} 🏛️${totalCapacity.toFixed(0)} | pop ${totalPopulation} | manpower ${manpowerPool}`,
+      description: `Kolo ${currentTurn}: ⚒️${totalCityProduction.toFixed(0)} 💰${totalWealth.toFixed(0)} 🏛️${totalCapacity.toFixed(0)} | pop ${totalPopulation} | manpower ${manpowerPool}`,
       metadata: {
-        total_production: totalProduction,
+        total_production: totalCityProduction,
         total_wealth: totalWealth,
         total_capacity: totalCapacity,
         total_importance: totalImportance,
         demand: totalDemand,
         net_production: netProduction,
-        grain_reserve: grainReserve,
+        grain_reserve: globalGrainReserve,
         gold_reserve: newGoldReserve,
         manpower_pool: manpowerPool,
-        famine_active: famineActive,
+        famine_cities: famineCityCount,
         workforce_ratio: workforceRatio,
+        trade_gold: tradeGoldDelta,
+        tolls_paid: totalTollsPaid,
+        events_generated: newEvents.length,
+        city_economy: cityEconResults,
       },
     });
 
     return new Response(JSON.stringify({
       ok: true, turn: currentTurn,
       summary: {
-        totalProduction, totalWealth, totalCapacity, totalImportance,
+        totalProduction: totalCityProduction, totalWealth, totalCapacity, totalImportance,
         demand: totalDemand, netProduction,
-        grainReserve, granaryCapacity,
+        grainReserve: globalGrainReserve, granaryCapacity,
         goldReserve: newGoldReserve,
         manpowerPool, logisticCapacity, totalPopulation,
-        famineActive, famineCityCount,
+        famineCities: famineCityCount,
+        tradeGoldDelta, tollsPaid: totalTollsPaid,
+        eventsGenerated: newEvents.length,
+        cityEconomy: cityEconResults,
         lawEffects: { taxRateModifier, grainRationModifier, tradeRestriction },
       },
     }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
