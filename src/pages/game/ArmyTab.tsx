@@ -412,6 +412,9 @@ const ArmyTab = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, on
           <TabsTrigger value="deploy" className="font-display text-xs gap-1">
             <Navigation className="h-3 w-3" />Nasazení
           </TabsTrigger>
+          <TabsTrigger value="strategic" className="font-display text-xs gap-1">
+            <Route className="h-3 w-3" />Strategie
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="forces" className="mt-3 space-y-3">
