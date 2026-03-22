@@ -7825,9 +7825,11 @@ export type Database = {
           amount_per_turn: number
           created_at: string
           duration_turns: number | null
+          end_node_id: string | null
           expires_turn: number | null
           from_city_id: string
           from_player: string
+          gold_per_turn: number | null
           id: string
           narrative: string | null
           resource_type: string
@@ -7835,6 +7837,7 @@ export type Database = {
           return_resource_type: string | null
           route_safety: number
           session_id: string
+          start_node_id: string | null
           started_turn: number
           status: string
           to_city_id: string
@@ -7844,9 +7847,11 @@ export type Database = {
           amount_per_turn?: number
           created_at?: string
           duration_turns?: number | null
+          end_node_id?: string | null
           expires_turn?: number | null
           from_city_id: string
           from_player: string
+          gold_per_turn?: number | null
           id?: string
           narrative?: string | null
           resource_type?: string
@@ -7854,6 +7859,7 @@ export type Database = {
           return_resource_type?: string | null
           route_safety?: number
           session_id: string
+          start_node_id?: string | null
           started_turn?: number
           status?: string
           to_city_id: string
@@ -7863,9 +7869,11 @@ export type Database = {
           amount_per_turn?: number
           created_at?: string
           duration_turns?: number | null
+          end_node_id?: string | null
           expires_turn?: number | null
           from_city_id?: string
           from_player?: string
+          gold_per_turn?: number | null
           id?: string
           narrative?: string | null
           resource_type?: string
@@ -7873,12 +7881,20 @@ export type Database = {
           return_resource_type?: string | null
           route_safety?: number
           session_id?: string
+          start_node_id?: string | null
           started_turn?: number
           status?: string
           to_city_id?: string
           to_player?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "trade_routes_end_node_id_fkey"
+            columns: ["end_node_id"]
+            isOneToOne: false
+            referencedRelation: "province_nodes"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "trade_routes_from_city_id_fkey"
             columns: ["from_city_id"]
@@ -7891,6 +7907,13 @@ export type Database = {
             columns: ["session_id"]
             isOneToOne: false
             referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "trade_routes_start_node_id_fkey"
+            columns: ["start_node_id"]
+            isOneToOne: false
+            referencedRelation: "province_nodes"
             referencedColumns: ["id"]
           },
           {
