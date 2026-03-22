@@ -132,6 +132,11 @@ const ResourceHUD = ({ sessionId, playerName, cities, currentTurn }: ResourceHUD
       value: totalCap.toFixed(1),
     },
     {
+      icon: <Church className="h-3 w-3" />,
+      label: "Víra",
+      value: (realm.faith ?? 0).toFixed(0),
+    },
+    {
       icon: <Network className="h-3 w-3" />,
       label: "Importance",
       value: totalImp.toFixed(0),
