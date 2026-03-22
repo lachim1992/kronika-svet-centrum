@@ -377,11 +377,10 @@ const CityBuildingsPanel = ({
       toast.error("Nedostatek surovin!"); return;
     }
     setSaving(true);
+    const civProdCost = (cb.cost_wood || 0) + (cb.cost_stone || 0) + (cb.cost_iron || 0);
     await supabase.from("realm_resources").update({
       gold_reserve: (realm.gold_reserve || 0) - (cb.cost_wealth || 0),
-      wood_reserve: (realm.wood_reserve || 0) - (cb.cost_wood || 0),
-      stone_reserve: (realm.stone_reserve || 0) - (cb.cost_stone || 0),
-      iron_reserve: (realm.iron_reserve || 0) - (cb.cost_iron || 0),
+      production_reserve: Math.max(0, (realm.production_reserve || 0) - civProdCost),
     } as any).eq("id", realm.id);
 
     const buildDuration = cb.build_duration || 4;
