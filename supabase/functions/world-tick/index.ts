@@ -5,8 +5,10 @@ import {
   clampReputation, REPUTATION_DELTAS, REPUTATION_DECAY,
   CRISIS_THRESHOLD, WAR_THRESHOLD, SETTLEMENT_LEVEL_THRESHOLDS,
   computeProvinceControl, computeIsolationPenalty,
+  computeNodeFlows,
   type CityForGrowth, type InfluenceInput,
   type NodeControlEntry, type IsolationInput,
+  type FlowNode, type FlowRoute, type FlowCity,
 } from "../_shared/physics.ts";
 
 const corsHeaders = {
@@ -751,6 +753,86 @@ Deno.serve(async (req) => {
 
         results.province_control = provinceControlResults;
         results.isolation = isolationResults;
+
+        // 12c. Compute node flow state (network economy)
+        try {
+          const flowNodes: FlowNode[] = graphNodes.map((n: any) => ({
+            id: n.id,
+            node_type: n.node_type,
+            controlled_by: n.controlled_by,
+            population: n.population || 0,
+            economic_value: n.economic_value || 0,
+            infrastructure_level: n.infrastructure_level || 0,
+            is_major: n.is_major ?? false,
+            parent_node_id: n.parent_node_id,
+            city_id: n.city_id,
+          }));
+
+          const flowRoutes: FlowRoute[] = (graphRoutes || []).map((r: any) => ({
+            node_a: r.node_a_id || r.node_a,
+            node_b: r.node_b_id || r.node_b,
+            capacity_value: r.capacity_value || 5,
+            control_state: r.control_state || "open",
+            damage_level: r.damage_level || 0,
+            speed_value: r.speed_value || 5,
+            safety_value: r.safety_value || 5,
+          }));
+
+          // Fetch cities linked to nodes
+          const cityNodeIds = graphNodes.filter((n: any) => n.city_id).map((n: any) => n.city_id);
+          let flowCities: FlowCity[] = [];
+          if (cityNodeIds.length > 0) {
+            const { data: citiesData } = await supabase.from("cities")
+              .select("id, last_turn_grain_prod, last_turn_wood_prod, last_turn_stone_prod, last_turn_iron_prod, development_level, market_level")
+              .in("id", cityNodeIds);
+            flowCities = (citiesData || []).map((c: any) => ({
+              id: c.id,
+              last_turn_grain_prod: c.last_turn_grain_prod || 0,
+              last_turn_wood_prod: c.last_turn_wood_prod || 0,
+              last_turn_stone_prod: c.last_turn_stone_prod || 0,
+              last_turn_iron_prod: c.last_turn_iron_prod || 0,
+              development_level: c.development_level || 0,
+              market_level: c.market_level || 0,
+            }));
+          }
+
+          const flowResults = computeNodeFlows(flowNodes, flowRoutes, flowCities);
+
+          // Batch upsert flow state
+          if (flowResults.length > 0) {
+            const rows = flowResults.map(f => ({
+              session_id: sessionId,
+              node_id: f.node_id,
+              turn_number: turnNumber,
+              grain_production: f.grain_production,
+              wood_production: f.wood_production,
+              stone_production: f.stone_production,
+              iron_production: f.iron_production,
+              wealth_production: f.wealth_production,
+              incoming_trade: f.incoming_trade,
+              outgoing_trade: f.outgoing_trade,
+              incoming_supply: f.incoming_supply,
+              outgoing_supply: f.outgoing_supply,
+              prosperity_score: f.prosperity_score,
+              congestion_score: f.congestion_score,
+              throughput_score: f.throughput_score,
+              isolation_penalty: f.isolation_penalty,
+            }));
+
+            const BATCH = 50;
+            for (let i = 0; i < rows.length; i += BATCH) {
+              await supabase.from("node_flow_state").upsert(
+                rows.slice(i, i + BATCH),
+                { onConflict: "session_id,node_id,turn_number" },
+              );
+            }
+          }
+
+          results.node_flows = { computed: flowResults.length };
+        } catch (flowErr) {
+          console.warn("Node flow computation non-fatal:", flowErr);
+          results.node_flow_error = (flowErr as Error).message;
+        }
       }
     } catch (graphErr) {
       console.warn("Province graph computation non-fatal:", graphErr);

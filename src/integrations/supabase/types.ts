@@ -5608,6 +5608,90 @@ export type Database = {
           },
         ]
       }
+      node_flow_state: {
+        Row: {
+          civilian_flow: number | null
+          congestion_score: number | null
+          created_at: string | null
+          grain_production: number | null
+          id: string
+          incoming_supply: number | null
+          incoming_trade: number | null
+          iron_production: number | null
+          isolation_penalty: number | null
+          military_flow: number | null
+          node_id: string
+          outgoing_supply: number | null
+          outgoing_trade: number | null
+          prosperity_score: number | null
+          session_id: string
+          stone_production: number | null
+          throughput_score: number | null
+          turn_number: number
+          wealth_production: number | null
+          wood_production: number | null
+        }
+        Insert: {
+          civilian_flow?: number | null
+          congestion_score?: number | null
+          created_at?: string | null
+          grain_production?: number | null
+          id?: string
+          incoming_supply?: number | null
+          incoming_trade?: number | null
+          iron_production?: number | null
+          isolation_penalty?: number | null
+          military_flow?: number | null
+          node_id: string
+          outgoing_supply?: number | null
+          outgoing_trade?: number | null
+          prosperity_score?: number | null
+          session_id: string
+          stone_production?: number | null
+          throughput_score?: number | null
+          turn_number?: number
+          wealth_production?: number | null
+          wood_production?: number | null
+        }
+        Update: {
+          civilian_flow?: number | null
+          congestion_score?: number | null
+          created_at?: string | null
+          grain_production?: number | null
+          id?: string
+          incoming_supply?: number | null
+          incoming_trade?: number | null
+          iron_production?: number | null
+          isolation_penalty?: number | null
+          military_flow?: number | null
+          node_id?: string
+          outgoing_supply?: number | null
+          outgoing_trade?: number | null
+          prosperity_score?: number | null
+          session_id?: string
+          stone_production?: number | null
+          throughput_score?: number | null
+          turn_number?: number
+          wealth_production?: number | null
+          wood_production?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "node_flow_state_node_id_fkey"
+            columns: ["node_id"]
+            isOneToOne: false
+            referencedRelation: "province_nodes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "node_flow_state_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       player_activity: {
         Row: {
           created_at: string | null
