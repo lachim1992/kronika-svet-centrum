@@ -19,6 +19,7 @@ import { InfoTip } from "@/components/ui/info-tip";
 import { toast } from "sonner";
 import DeployBattlePanel from "@/components/military/DeployBattlePanel";
 import DemobilizeDialog from "@/components/DemobilizeDialog";
+const StrategicOverlay = lazy(() => import("@/components/StrategicOverlay"));
 
 const UNIT_ICONS: Record<string, React.ElementType> = {
   MILITIA: Shield,
