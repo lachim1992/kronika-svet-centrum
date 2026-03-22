@@ -5456,6 +5456,7 @@ export type Database = {
       military_stacks: {
         Row: {
           created_at: string
+          current_node_id: string | null
           demobilized_turn: number | null
           formation_type: string
           general_id: string | null
@@ -5479,9 +5480,14 @@ export type Database = {
           sigil_confirmed: boolean
           sigil_prompt: string | null
           sigil_url: string | null
+          travel_departed_turn: number | null
+          travel_progress: number | null
+          travel_route_id: string | null
+          travel_target_node_id: string | null
         }
         Insert: {
           created_at?: string
+          current_node_id?: string | null
           demobilized_turn?: number | null
           formation_type?: string
           general_id?: string | null
@@ -5505,9 +5511,14 @@ export type Database = {
           sigil_confirmed?: boolean
           sigil_prompt?: string | null
           sigil_url?: string | null
+          travel_departed_turn?: number | null
+          travel_progress?: number | null
+          travel_route_id?: string | null
+          travel_target_node_id?: string | null
         }
         Update: {
           created_at?: string
+          current_node_id?: string | null
           demobilized_turn?: number | null
           formation_type?: string
           general_id?: string | null
@@ -5531,8 +5542,19 @@ export type Database = {
           sigil_confirmed?: boolean
           sigil_prompt?: string | null
           sigil_url?: string | null
+          travel_departed_turn?: number | null
+          travel_progress?: number | null
+          travel_route_id?: string | null
+          travel_target_node_id?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "military_stacks_current_node_id_fkey"
+            columns: ["current_node_id"]
+            isOneToOne: false
+            referencedRelation: "province_nodes"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "military_stacks_general_id_fkey"
             columns: ["general_id"]
@@ -5552,6 +5574,20 @@ export type Database = {
             columns: ["session_id"]
             isOneToOne: false
             referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "military_stacks_travel_route_id_fkey"
+            columns: ["travel_route_id"]
+            isOneToOne: false
+            referencedRelation: "province_routes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "military_stacks_travel_target_node_id_fkey"
+            columns: ["travel_target_node_id"]
+            isOneToOne: false
+            referencedRelation: "province_nodes"
             referencedColumns: ["id"]
           },
         ]
@@ -5973,9 +6009,11 @@ export type Database = {
       province_nodes: {
         Row: {
           city_id: string | null
+          controlled_by: string | null
           created_at: string
           defense_value: number
           economic_value: number
+          garrison_strength: number | null
           hex_q: number
           hex_r: number
           id: string
@@ -5991,9 +6029,11 @@ export type Database = {
         }
         Insert: {
           city_id?: string | null
+          controlled_by?: string | null
           created_at?: string
           defense_value?: number
           economic_value?: number
+          garrison_strength?: number | null
           hex_q?: number
           hex_r?: number
           id?: string
@@ -6009,9 +6049,11 @@ export type Database = {
         }
         Update: {
           city_id?: string | null
+          controlled_by?: string | null
           created_at?: string
           defense_value?: number
           economic_value?: number
+          garrison_strength?: number | null
           hex_q?: number
           hex_r?: number
           id?: string
@@ -6130,6 +6172,8 @@ export type Database = {
           center_q: number | null
           center_r: number | null
           color_index: number | null
+          control_player: string | null
+          control_scores: Json | null
           created_at: string
           description: string | null
           economic_profile: Json | null
@@ -6155,6 +6199,8 @@ export type Database = {
           center_q?: number | null
           center_r?: number | null
           color_index?: number | null
+          control_player?: string | null
+          control_scores?: Json | null
           created_at?: string
           description?: string | null
           economic_profile?: Json | null
@@ -6180,6 +6226,8 @@ export type Database = {
           center_q?: number | null
           center_r?: number | null
           color_index?: number | null
+          control_player?: string | null
+          control_scores?: Json | null
           created_at?: string
           description?: string | null
           economic_profile?: Json | null
@@ -6281,6 +6329,7 @@ export type Database = {
           army_sigil_confirmed: boolean
           army_sigil_prompt: string | null
           army_sigil_url: string | null
+          connected_nodes: number | null
           created_at: string
           cultural_prestige: number
           economic_prestige: number
@@ -6291,6 +6340,7 @@ export type Database = {
           horses_reserve: number
           id: string
           iron_reserve: number
+          isolation_penalty: number | null
           knowledge: number
           labor_reserve: number
           last_processed_turn: number
@@ -6314,6 +6364,7 @@ export type Database = {
           stability: number
           stables_capacity: number
           stone_reserve: number
+          total_nodes: number | null
           updated_at: string
           wood_reserve: number
         }
@@ -6321,6 +6372,7 @@ export type Database = {
           army_sigil_confirmed?: boolean
           army_sigil_prompt?: string | null
           army_sigil_url?: string | null
+          connected_nodes?: number | null
           created_at?: string
           cultural_prestige?: number
           economic_prestige?: number
@@ -6331,6 +6383,7 @@ export type Database = {
           horses_reserve?: number
           id?: string
           iron_reserve?: number
+          isolation_penalty?: number | null
           knowledge?: number
           labor_reserve?: number
           last_processed_turn?: number
@@ -6354,6 +6407,7 @@ export type Database = {
           stability?: number
           stables_capacity?: number
           stone_reserve?: number
+          total_nodes?: number | null
           updated_at?: string
           wood_reserve?: number
         }
@@ -6361,6 +6415,7 @@ export type Database = {
           army_sigil_confirmed?: boolean
           army_sigil_prompt?: string | null
           army_sigil_url?: string | null
+          connected_nodes?: number | null
           created_at?: string
           cultural_prestige?: number
           economic_prestige?: number
@@ -6371,6 +6426,7 @@ export type Database = {
           horses_reserve?: number
           id?: string
           iron_reserve?: number
+          isolation_penalty?: number | null
           knowledge?: number
           labor_reserve?: number
           last_processed_turn?: number
@@ -6394,6 +6450,7 @@ export type Database = {
           stability?: number
           stables_capacity?: number
           stone_reserve?: number
+          total_nodes?: number | null
           updated_at?: string
           wood_reserve?: number
         }
