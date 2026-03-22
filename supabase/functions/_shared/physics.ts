@@ -1218,3 +1218,201 @@ export function computeIsolationPenalty(input: IsolationInput): { penalty: numbe
 
   return { penalty: Math.round(penalty * 100) / 100, connectedNodes, totalNodes };
 }
+
+// ═══════════════════════════════════════════
+// NODE FLOW COMPUTATION — network economy
+// ═══════════════════════════════════════════
+
+export interface FlowNode {
+  id: string;
+  node_type: string;
+  controlled_by: string | null;
+  population: number;
+  economic_value: number;
+  infrastructure_level: number;
+  is_major: boolean;
+  parent_node_id: string | null;
+  city_id: string | null;
+}
+
+export interface FlowRoute {
+  node_a: string;
+  node_b: string;
+  capacity_value: number;
+  control_state: string;
+  damage_level: number;
+  speed_value: number;
+  safety_value: number;
+}
+
+export interface FlowCity {
+  id: string;
+  last_turn_grain_prod: number;
+  last_turn_wood_prod: number;
+  last_turn_stone_prod: number;
+  last_turn_iron_prod: number;
+  development_level: number;
+  market_level: number;
+}
+
+export interface NodeFlowResult {
+  node_id: string;
+  grain_production: number;
+  wood_production: number;
+  stone_production: number;
+  iron_production: number;
+  wealth_production: number;
+  incoming_trade: number;
+  outgoing_trade: number;
+  incoming_supply: number;
+  outgoing_supply: number;
+  prosperity_score: number;
+  congestion_score: number;
+  throughput_score: number;
+  isolation_penalty: number;
+}
+
+/**
+ * Compute flow state for all nodes in a session.
+ * Minor nodes produce → major nodes aggregate → routes distribute.
+ */
+export function computeNodeFlows(
+  nodes: FlowNode[],
+  routes: FlowRoute[],
+  cities: FlowCity[],
+): NodeFlowResult[] {
+  const cityById = new Map(cities.map(c => [c.id, c]));
+
+  // Build adjacency with effective capacity
+  const adj: Record<string, Array<{ target: string; capacity: number }>> = {};
+  for (const r of routes) {
+    if (r.control_state === "blocked") continue;
+    const effectiveCap = Math.max(1, r.capacity_value - (r.damage_level || 0));
+    const safetyMult = r.control_state === "contested" ? 0.5 : r.control_state === "damaged" ? 0.7 : 1.0;
+    const cap = Math.round(effectiveCap * safetyMult);
+    if (!adj[r.node_a]) adj[r.node_a] = [];
+    if (!adj[r.node_b]) adj[r.node_b] = [];
+    adj[r.node_a].push({ target: r.node_b, capacity: cap });
+    adj[r.node_b].push({ target: r.node_a, capacity: cap });
+  }
+
+  const results: NodeFlowResult[] = [];
+  const nodeById = new Map(nodes.map(n => [n.id, n]));
+
+  // Phase 1: Base production per node
+  const production: Record<string, { grain: number; wood: number; stone: number; iron: number; wealth: number }> = {};
+  for (const n of nodes) {
+    const base = { grain: 0, wood: 0, stone: 0, iron: 0, wealth: 0 };
+
+    if (n.city_id) {
+      const city = cityById.get(n.city_id);
+      if (city) {
+        base.grain = city.last_turn_grain_prod || 0;
+        base.wood = city.last_turn_wood_prod || 0;
+        base.stone = city.last_turn_stone_prod || 0;
+        base.iron = city.last_turn_iron_prod || 0;
+        base.wealth = (city.market_level || 0) * 2 + (city.development_level || 0);
+      }
+    } else if (n.node_type === "resource_node") {
+      // Minor resource nodes produce based on population
+      const pop = n.population || 0;
+      base.grain = Math.floor(pop * 0.01);
+      base.wood = Math.floor(pop * 0.005);
+      base.stone = Math.floor(pop * 0.003);
+    } else if (n.node_type === "village_cluster") {
+      base.grain = Math.floor((n.population || 0) * 0.008);
+    } else if (n.node_type === "trade_hub") {
+      base.wealth = (n.economic_value || 0) * 2;
+    } else if (n.node_type === "port") {
+      base.wealth = (n.economic_value || 0);
+    }
+
+    production[n.id] = base;
+  }
+
+  // Phase 2: Minor → Major aggregation
+  for (const n of nodes) {
+    if (n.parent_node_id && !n.is_major) {
+      const parent = production[n.parent_node_id];
+      const child = production[n.id];
+      if (parent && child) {
+        parent.grain += child.grain;
+        parent.wood += child.wood;
+        parent.stone += child.stone;
+        parent.iron += child.iron;
+        parent.wealth += child.wealth;
+      }
+    }
+  }
+
+  // Phase 3: Route-based trade flow
+  const incomingTrade: Record<string, number> = {};
+  const outgoingTrade: Record<string, number> = {};
+  const incomingSupply: Record<string, number> = {};
+  const outgoingSupply: Record<string, number> = {};
+
+  for (const n of nodes) {
+    if (!n.is_major) continue;
+    const prod = production[n.id];
+    if (!prod) continue;
+
+    const totalProd = prod.grain + prod.wood + prod.stone + prod.iron + prod.wealth;
+    const neighbors = adj[n.id] || [];
+
+    // Distribute excess to connected major nodes
+    for (const link of neighbors) {
+      const target = nodeById.get(link.target);
+      if (!target || !target.is_major) continue;
+
+      const tradeFlow = Math.min(totalProd, link.capacity);
+      outgoingTrade[n.id] = (outgoingTrade[n.id] || 0) + tradeFlow;
+      incomingTrade[link.target] = (incomingTrade[link.target] || 0) + tradeFlow;
+
+      // Military supply flow based on controlled_by match
+      if (n.controlled_by && n.controlled_by === target.controlled_by) {
+        const supplyFlow = Math.min(Math.floor(link.capacity * 0.5), 10);
+        outgoingSupply[n.id] = (outgoingSupply[n.id] || 0) + supplyFlow;
+        incomingSupply[link.target] = (incomingSupply[link.target] || 0) + supplyFlow;
+      }
+    }
+  }
+
+  // Phase 4: Compute derived scores
+  for (const n of nodes) {
+    const prod = production[n.id] || { grain: 0, wood: 0, stone: 0, iron: 0, wealth: 0 };
+    const inTrade = incomingTrade[n.id] || 0;
+    const outTrade = outgoingTrade[n.id] || 0;
+    const inSupply = incomingSupply[n.id] || 0;
+    const outSupply = outgoingSupply[n.id] || 0;
+
+    const totalFlow = inTrade + outTrade + inSupply + outSupply;
+    const neighbors = adj[n.id] || [];
+    const totalCapacity = neighbors.reduce((s, l) => s + l.capacity, 0);
+
+    const congestion = totalCapacity > 0 ? Math.min(100, Math.round((totalFlow / totalCapacity) * 100)) : 0;
+    const prosperity = Math.min(100, prod.grain + prod.wealth * 2 + inTrade);
+    const throughput = totalFlow;
+
+    // Isolation: node with no connections
+    const isolationPenalty = neighbors.length === 0 && n.is_major ? 50 : 0;
+
+    results.push({
+      node_id: n.id,
+      grain_production: prod.grain,
+      wood_production: prod.wood,
+      stone_production: prod.stone,
+      iron_production: prod.iron,
+      wealth_production: prod.wealth,
+      incoming_trade: inTrade,
+      outgoing_trade: outTrade,
+      incoming_supply: inSupply,
+      outgoing_supply: outSupply,
+      prosperity_score: prosperity,
+      congestion_score: congestion,
+      throughput_score: throughput,
+      isolation_penalty: isolationPenalty,
+    });
+  }
+
+  return results;
+}

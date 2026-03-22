@@ -8,9 +8,14 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import {
   Landmark, Shield, Anchor, Store, Mountain, Wheat, Route,
   Swords, ArrowRight, Hammer, ChevronUp, Loader2, Lock, Unlock, AlertTriangle,
+  Crosshair, Ban, Bomb, Eye,
 } from "lucide-react";
 import { toast } from "sonner";
-import { moveStackRoute, buildRoute, upgradeRoute, fortifyNode, ROUTE_TYPE_LABELS, CONTROL_STATE_LABELS, NODE_TYPE_LABELS } from "@/lib/strategicGraph";
+import {
+  moveStackRoute, buildRoute, upgradeRoute, fortifyNode,
+  blockadeRoute, ambushRoute, siegeNode, disruptRoute,
+  ROUTE_TYPE_LABELS, CONTROL_STATE_LABELS, NODE_TYPE_LABELS, STANCE_LABELS,
+} from "@/lib/strategicGraph";
 
 interface Props {
   sessionId: string;
@@ -35,6 +40,8 @@ interface StrategicNode {
   fortification_level: number;
   infrastructure_level: number;
   parent_node_id: string | null;
+  besieged_by: string | null;
+  siege_turn_start: number | null;
 }
 
 interface ProvinceRoute {
@@ -50,6 +57,8 @@ interface ProvinceRoute {
   safety_value: number;
   controlled_by: string | null;
   is_cross_province: boolean;
+  damage_level: number;
+  blocked_by: string[];
 }
 
 const NODE_ICONS: Record<string, typeof Landmark> = {
@@ -65,6 +74,7 @@ const NODE_COLORS: Record<string, string> = {
 
 const CONTROL_COLORS: Record<string, string> = {
   open: "text-emerald-400", contested: "text-yellow-400", blocked: "text-red-400",
+  damaged: "text-orange-400", embargoed: "text-purple-400",
 };
 
 const StrategicOverlay = memo(function StrategicOverlay({ sessionId, currentPlayerName, turnNumber }: Props) {
@@ -76,15 +86,16 @@ const StrategicOverlay = memo(function StrategicOverlay({ sessionId, currentPlay
   const [moveTarget, setMoveTarget] = useState("");
   const [moveStack, setMoveStack] = useState("");
   const [fortifyStack, setFortifyStack] = useState("");
+  const [warfareStack, setWarfareStack] = useState("");
   const [busy, setBusy] = useState(false);
 
   const loadData = useCallback(async () => {
     const [nRes, rRes, sRes] = await Promise.all([
       supabase.from("province_nodes")
-        .select("id, province_id, node_type, name, hex_q, hex_r, strategic_value, economic_value, defense_value, controlled_by, garrison_strength, is_major, population, fortification_level, infrastructure_level, parent_node_id")
+        .select("id, province_id, node_type, name, hex_q, hex_r, strategic_value, economic_value, defense_value, controlled_by, garrison_strength, is_major, population, fortification_level, infrastructure_level, parent_node_id, besieged_by, siege_turn_start")
         .eq("session_id", sessionId),
       supabase.from("province_routes")
-        .select("id, node_a, node_b, route_type, capacity_value, control_state, upgrade_level, build_cost, speed_value, safety_value, controlled_by, is_cross_province")
+        .select("id, node_a, node_b, route_type, capacity_value, control_state, upgrade_level, build_cost, speed_value, safety_value, controlled_by, is_cross_province, damage_level, blocked_by")
         .eq("session_id", sessionId),
       supabase.from("military_stacks")
         .select("id, name, current_node_id, travel_route_id, travel_progress, travel_target_node_id, player_name, power, stance")
@@ -113,6 +124,9 @@ const StrategicOverlay = memo(function StrategicOverlay({ sessionId, currentPlay
     return connected.map(id => nodes.find(n => n.id === id)).filter(Boolean) as StrategicNode[];
   };
 
+  const getRoutesForNode = (nodeId: string) =>
+    routes.filter(r => r.node_a === nodeId || r.node_b === nodeId);
+
   const handleMoveRoute = async () => {
     if (!moveStack || !moveTarget || !selectedNode) return;
     setBusy(true);
@@ -140,6 +154,44 @@ const StrategicOverlay = memo(function StrategicOverlay({ sessionId, currentPlay
     setFortifyStack("");
   };
 
+  const handleBlockade = async (routeId: string) => {
+    if (!warfareStack) return;
+    setBusy(true);
+    const res = await blockadeRoute({ sessionId, turnNumber, playerName: currentPlayerName, stackId: warfareStack, routeId });
+    if (res.ok) { toast.success("Cesta zablokována"); await loadData(); setSelectedRoute(null); }
+    else toast.error(res.error || "Chyba");
+    setBusy(false);
+    setWarfareStack("");
+  };
+
+  const handleAmbush = async (routeId: string) => {
+    if (!warfareStack) return;
+    setBusy(true);
+    const res = await ambushRoute({ sessionId, turnNumber, playerName: currentPlayerName, stackId: warfareStack, routeId });
+    if (res.ok) { toast.success("Léčka nastražena"); await loadData(); setSelectedRoute(null); }
+    else toast.error(res.error || "Chyba");
+    setBusy(false);
+    setWarfareStack("");
+  };
+
+  const handleSiege = async (nodeId: string) => {
+    if (!warfareStack) return;
+    setBusy(true);
+    const res = await siegeNode({ sessionId, turnNumber, playerName: currentPlayerName, stackId: warfareStack, nodeId });
+    if (res.ok) { toast.success("Obléhání zahájeno"); await loadData(); setSelectedNode(null); }
+    else toast.error(res.error || "Chyba");
+    setBusy(false);
+    setWarfareStack("");
+  };
+
+  const handleDisrupt = async (routeId: string) => {
+    setBusy(true);
+    const res = await disruptRoute({ sessionId, turnNumber, playerName: currentPlayerName, routeId, stackId: warfareStack || undefined });
+    if (res.ok) { toast.success("Cesta poškozena"); await loadData(); setSelectedRoute(null); }
+    else toast.error(res.error || "Chyba");
+    setBusy(false);
+  };
+
   const handleUpgradeRoute = async (routeId: string) => {
     setBusy(true);
     const res = await upgradeRoute({ sessionId, turnNumber, playerName: currentPlayerName, routeId });
@@ -159,7 +211,7 @@ const StrategicOverlay = memo(function StrategicOverlay({ sessionId, currentPlay
       <div className="flex items-center gap-2 flex-wrap">
         <Route className="h-5 w-5 text-primary" />
         <h3 className="font-display font-bold text-sm">Strategická mapa</h3>
-        <Badge variant="outline" className="text-[9px]">Phase 4</Badge>
+        <Badge variant="outline" className="text-[9px]">Spatial v1</Badge>
         <div className="flex gap-1.5 ml-auto">
           <Badge variant="secondary" className="text-[9px]">{myNodes.length} ovládaných</Badge>
           <Badge variant="outline" className="text-[9px]">{routes.length} tras</Badge>
@@ -193,6 +245,29 @@ const StrategicOverlay = memo(function StrategicOverlay({ sessionId, currentPlay
         </Card>
       )}
 
+      {/* Besieged nodes */}
+      {nodes.filter(n => n.besieged_by).length > 0 && (
+        <Card>
+          <CardHeader className="pb-1 pt-2 px-3">
+            <CardTitle className="text-[11px] flex items-center gap-1.5 text-destructive">
+              <Crosshair className="h-3.5 w-3.5" /> Obléhání
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="px-3 pb-2 space-y-1">
+            {nodes.filter(n => n.besieged_by).map(n => (
+              <div key={n.id} className="flex items-center gap-2 text-[10px] bg-destructive/10 rounded p-1.5">
+                <Shield className="h-3 w-3 text-destructive" />
+                <span className="font-medium">{n.name}</span>
+                <span className="text-muted-foreground">obléhá: {n.besieged_by}</span>
+                <Badge variant="destructive" className="text-[7px] ml-auto">
+                  Posádka: {n.garrison_strength}
+                </Badge>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
+
       {/* My controlled nodes */}
       <div className="space-y-1.5">
         <p className="text-[10px] font-display font-semibold text-muted-foreground">
@@ -210,6 +285,7 @@ const StrategicOverlay = memo(function StrategicOverlay({ sessionId, currentPlay
                   <p className="text-muted-foreground text-[8px]">
                     {NODE_TYPE_LABELS[n.node_type] || n.node_type}
                     {garrison && ` · ⚔${garrison.power || 0}`}
+                    {garrison?.stance && garrison.stance !== "idle" && ` · ${STANCE_LABELS[garrison.stance] || garrison.stance}`}
                   </p>
                 </div>
               </button>
@@ -217,6 +293,30 @@ const StrategicOverlay = memo(function StrategicOverlay({ sessionId, currentPlay
           })}
         </div>
       </div>
+
+      {/* Enemy nodes (clickable for siege) */}
+      {contestedNodes.length > 0 && (
+        <div className="space-y-1.5">
+          <p className="text-[10px] font-display font-semibold text-muted-foreground">
+            Nepřátelské uzly ({contestedNodes.length})
+          </p>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
+            {contestedNodes.slice(0, 6).map(n => (
+              <button key={n.id} onClick={() => setSelectedNode(n)}
+                className="flex items-center gap-1.5 p-1.5 rounded bg-destructive/10 hover:bg-destructive/20 transition text-left text-[10px]">
+                <NodeIcon type={n.node_type} />
+                <div className="flex-1 min-w-0">
+                  <p className="font-medium truncate">{n.name}</p>
+                  <p className="text-muted-foreground text-[8px]">
+                    {n.controlled_by} · {NODE_TYPE_LABELS[n.node_type] || n.node_type}
+                    {n.besieged_by && " · 🔥 obléháno"}
+                  </p>
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Routes summary */}
       <div className="space-y-1.5">
@@ -234,8 +334,11 @@ const StrategicOverlay = memo(function StrategicOverlay({ sessionId, currentPlay
                 <Route className="h-3 w-3 text-muted-foreground flex-shrink-0" />
                 <span className="truncate">{na?.name || "?"} → {nb?.name || "?"}</span>
                 <span className={`text-[7px] ml-auto ${CONTROL_COLORS[r.control_state] || ""}`}>
-                  {r.control_state === "blocked" ? "🔒" : r.control_state === "contested" ? "⚠" : "✓"}
+                  {r.control_state === "blocked" ? "🔒" : r.control_state === "damaged" ? "⚠" : r.control_state === "contested" ? "⚡" : "✓"}
                 </span>
+                {(r.damage_level || 0) > 0 && (
+                  <Badge variant="destructive" className="text-[7px]">Dmg {r.damage_level}</Badge>
+                )}
                 <Badge variant="outline" className="text-[7px]">L{r.upgrade_level}</Badge>
               </button>
             );
@@ -255,6 +358,9 @@ const StrategicOverlay = memo(function StrategicOverlay({ sessionId, currentPlay
                 <SheetTitle className="flex items-center gap-2 text-sm">
                   <NodeIcon type={selectedNode.node_type} />
                   {selectedNode.name}
+                  {selectedNode.besieged_by && (
+                    <Badge variant="destructive" className="text-[8px]">Obléháno</Badge>
+                  )}
                 </SheetTitle>
               </SheetHeader>
               <div className="space-y-3 mt-4">
@@ -271,6 +377,17 @@ const StrategicOverlay = memo(function StrategicOverlay({ sessionId, currentPlay
                   ))}
                 </div>
 
+                <div className="grid grid-cols-2 gap-1.5 text-[10px]">
+                  <div className="bg-muted/40 rounded p-1.5 text-center">
+                    <span className="text-muted-foreground block text-[8px]">Populace</span>
+                    <span className="font-bold">{selectedNode.population}</span>
+                  </div>
+                  <div className="bg-muted/40 rounded p-1.5 text-center">
+                    <span className="text-muted-foreground block text-[8px]">Opevnění</span>
+                    <span className="font-bold">{selectedNode.fortification_level}</span>
+                  </div>
+                </div>
+
                 <div className="text-xs">
                   <span className="text-muted-foreground">Kontrola: </span>
                   <span className="font-medium">{selectedNode.controlled_by || "Nikdo"}</span>
@@ -279,7 +396,15 @@ const StrategicOverlay = memo(function StrategicOverlay({ sessionId, currentPlay
                   )}
                 </div>
 
-                {/* Connected nodes for movement */}
+                {selectedNode.besieged_by && (
+                  <div className="text-xs text-destructive flex items-center gap-1">
+                    <Crosshair className="h-3 w-3" />
+                    Obléháno od: {selectedNode.besieged_by}
+                    {selectedNode.siege_turn_start && ` (od kola ${selectedNode.siege_turn_start})`}
+                  </div>
+                )}
+
+                {/* MY NODE — movement & fortification */}
                 {selectedNode.controlled_by === currentPlayerName && (
                   <>
                     <div className="border-t border-border pt-2 space-y-2">
@@ -288,7 +413,7 @@ const StrategicOverlay = memo(function StrategicOverlay({ sessionId, currentPlay
                         <SelectTrigger className="h-7 text-xs"><SelectValue placeholder="Vyberte armádu" /></SelectTrigger>
                         <SelectContent>
                           {stacksAtNodes.filter(s => s.current_node_id === selectedNode.id).map(s => (
-                            <SelectItem key={s.id} value={s.id}>{s.name} (⚔{s.power})</SelectItem>
+                            <SelectItem key={s.id} value={s.id}>{s.name} (⚔{s.power}) {s.stance !== "idle" ? `[${STANCE_LABELS[s.stance] || s.stance}]` : ""}</SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
@@ -298,6 +423,7 @@ const StrategicOverlay = memo(function StrategicOverlay({ sessionId, currentPlay
                           {getConnectedNodes(selectedNode.id).map(n => (
                             <SelectItem key={n.id} value={n.id}>
                               {n.name} ({NODE_TYPE_LABELS[n.node_type] || n.node_type})
+                              {n.controlled_by && n.controlled_by !== currentPlayerName ? " ⚔" : ""}
                             </SelectItem>
                           ))}
                         </SelectContent>
@@ -327,6 +453,28 @@ const StrategicOverlay = memo(function StrategicOverlay({ sessionId, currentPlay
                   </>
                 )}
 
+                {/* ENEMY NODE — siege */}
+                {selectedNode.controlled_by && selectedNode.controlled_by !== currentPlayerName && !selectedNode.besieged_by && (
+                  <div className="border-t border-border pt-2 space-y-2">
+                    <p className="text-[10px] font-semibold text-destructive flex items-center gap-1">
+                      <Crosshair className="h-3 w-3" /> Obléhat uzel
+                    </p>
+                    <Select value={warfareStack} onValueChange={setWarfareStack}>
+                      <SelectTrigger className="h-7 text-xs"><SelectValue placeholder="Armáda pro obléhání" /></SelectTrigger>
+                      <SelectContent>
+                        {stacksAtNodes.map(s => (
+                          <SelectItem key={s.id} value={s.id}>{s.name} (⚔{s.power})</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Button size="sm" variant="destructive" className="w-full h-7 text-xs gap-1"
+                      onClick={() => handleSiege(selectedNode.id)} disabled={busy || !warfareStack}>
+                      <Crosshair className="h-3 w-3" /> Zahájit obléhání
+                    </Button>
+                  </div>
+                )}
+
+                {/* UNCONTROLLED — claim */}
                 {!selectedNode.controlled_by && (
                   <Button size="sm" className="w-full h-7 text-xs gap-1"
                     onClick={async () => {
@@ -351,12 +499,22 @@ const StrategicOverlay = memo(function StrategicOverlay({ sessionId, currentPlay
           {selectedRoute && (() => {
             const na = nodes.find(n => n.id === selectedRoute.node_a);
             const nb = nodes.find(n => n.id === selectedRoute.node_b);
+            const isMyEndpoint = (na?.controlled_by === currentPlayerName) || (nb?.controlled_by === currentPlayerName);
+            const myStacksAtEndpoints = stacksAtNodes.filter(s =>
+              s.current_node_id === selectedRoute.node_a || s.current_node_id === selectedRoute.node_b
+            );
             return (
               <>
                 <SheetHeader>
                   <SheetTitle className="text-sm flex items-center gap-2">
                     <Route className="h-4 w-4 text-primary" />
                     {na?.name || "?"} → {nb?.name || "?"}
+                    {selectedRoute.control_state === "blocked" && (
+                      <Badge variant="destructive" className="text-[8px]">Zablokováno</Badge>
+                    )}
+                    {selectedRoute.control_state === "damaged" && (
+                      <Badge variant="outline" className="text-[8px] text-orange-400">Poškozeno</Badge>
+                    )}
                   </SheetTitle>
                 </SheetHeader>
                 <div className="space-y-3 mt-4">
@@ -374,17 +532,80 @@ const StrategicOverlay = memo(function StrategicOverlay({ sessionId, currentPlay
                       <span className="font-bold">{selectedRoute.upgrade_level}</span>
                     </div>
                   </div>
+
+                  <div className="grid grid-cols-3 gap-1.5 text-[10px]">
+                    <div className="bg-muted/40 rounded p-1.5 text-center">
+                      <span className="text-muted-foreground block text-[8px]">Rychlost</span>
+                      <span className="font-bold">{selectedRoute.speed_value}</span>
+                    </div>
+                    <div className="bg-muted/40 rounded p-1.5 text-center">
+                      <span className="text-muted-foreground block text-[8px]">Bezpečnost</span>
+                      <span className="font-bold">{selectedRoute.safety_value}</span>
+                    </div>
+                    <div className="bg-muted/40 rounded p-1.5 text-center">
+                      <span className="text-muted-foreground block text-[8px]">Poškození</span>
+                      <span className={`font-bold ${(selectedRoute.damage_level || 0) > 0 ? "text-destructive" : ""}`}>
+                        {selectedRoute.damage_level || 0}/10
+                      </span>
+                    </div>
+                  </div>
+
                   <div className="flex items-center gap-2 text-xs">
                     <span className="text-muted-foreground">Stav:</span>
                     <span className={CONTROL_COLORS[selectedRoute.control_state] || ""}>
                       {CONTROL_STATE_LABELS[selectedRoute.control_state] || selectedRoute.control_state}
                     </span>
+                    {selectedRoute.controlled_by && (
+                      <span className="text-muted-foreground">· Kontroluje: {selectedRoute.controlled_by}</span>
+                    )}
                   </div>
-                  <Button size="sm" variant="outline" className="w-full h-7 text-xs gap-1"
-                    onClick={() => handleUpgradeRoute(selectedRoute.id)} disabled={busy}>
-                    {busy ? <Loader2 className="h-3 w-3 animate-spin" /> : <ChevronUp className="h-3 w-3" />}
-                    Vylepšit trasu
-                  </Button>
+
+                  {(selectedRoute.blocked_by || []).length > 0 && (
+                    <div className="text-xs text-destructive flex items-center gap-1">
+                      <Ban className="h-3 w-3" />
+                      Blokováno: {selectedRoute.blocked_by.join(", ")}
+                    </div>
+                  )}
+
+                  {/* Upgrade */}
+                  {isMyEndpoint && (
+                    <Button size="sm" variant="outline" className="w-full h-7 text-xs gap-1"
+                      onClick={() => handleUpgradeRoute(selectedRoute.id)} disabled={busy}>
+                      {busy ? <Loader2 className="h-3 w-3 animate-spin" /> : <ChevronUp className="h-3 w-3" />}
+                      Vylepšit trasu
+                    </Button>
+                  )}
+
+                  {/* Warfare actions */}
+                  {isMyEndpoint && myStacksAtEndpoints.length > 0 && (
+                    <div className="border-t border-border pt-2 space-y-2">
+                      <p className="text-[10px] font-semibold text-destructive flex items-center gap-1">
+                        <Swords className="h-3 w-3" /> Válečné akce
+                      </p>
+                      <Select value={warfareStack} onValueChange={setWarfareStack}>
+                        <SelectTrigger className="h-7 text-xs"><SelectValue placeholder="Armáda" /></SelectTrigger>
+                        <SelectContent>
+                          {myStacksAtEndpoints.map(s => (
+                            <SelectItem key={s.id} value={s.id}>{s.name} (⚔{s.power})</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <div className="grid grid-cols-2 gap-1.5">
+                        <Button size="sm" variant="outline" className="h-7 text-[9px] gap-1"
+                          onClick={() => handleBlockade(selectedRoute.id)} disabled={busy || !warfareStack}>
+                          <Ban className="h-3 w-3" /> Blokáda
+                        </Button>
+                        <Button size="sm" variant="outline" className="h-7 text-[9px] gap-1"
+                          onClick={() => handleAmbush(selectedRoute.id)} disabled={busy || !warfareStack}>
+                          <Eye className="h-3 w-3" /> Léčka
+                        </Button>
+                      </div>
+                      <Button size="sm" variant="destructive" className="w-full h-7 text-[9px] gap-1"
+                        onClick={() => handleDisrupt(selectedRoute.id)} disabled={busy}>
+                        <Bomb className="h-3 w-3" /> Sabotáž cesty
+                      </Button>
+                    </div>
+                  )}
                 </div>
               </>
             );
