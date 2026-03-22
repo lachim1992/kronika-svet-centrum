@@ -320,11 +320,152 @@ function ProvinceCard({ node, strategicNodes }: { node: ProvinceNode; strategicN
   );
 }
 
+/* ─── Economy Flow Card ─── */
+function EconomyFlowCard({ node, allNodes }: { node: StrategicNode; allNodes: StrategicNode[] }) {
+  const cfg = NODE_TYPE_ICONS[node.node_type] || NODE_TYPE_ICONS.resource_node;
+  const Icon = cfg.icon;
+  const n = node as any; // extended fields
+  const prod = n.production_output ?? 0;
+  const wealth = n.wealth_output ?? 0;
+  const cap = n.capacity_score ?? 0;
+  const importance = n.importance_score ?? 0;
+  const isolation = n.isolation_penalty ?? 0;
+  const impLabel = getImportanceLabel(importance);
+  const impColor = getImportanceColor(importance);
+  const isoSev = getIsolationSeverity(isolation);
+  const isoLabel = ISOLATION_PENALTY_LABELS[isoSev];
+  const maxVal = Math.max(prod, wealth, cap, 1);
+
+  return (
+    <Card className="border-border">
+      <CardHeader className="pb-1 pt-2 px-3">
+        <CardTitle className="text-[11px] font-display flex items-center gap-1.5">
+          <Icon className={`h-3.5 w-3.5 ${cfg.color}`} />
+          <span className="truncate">{node.name}</span>
+          <Badge className={`text-[7px] ml-auto ${impColor}`}>{impLabel}</Badge>
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="px-3 pb-2 space-y-1.5">
+        {/* Macro layers */}
+        <div className="space-y-1">
+          <div className="flex items-center gap-1.5 text-[9px]">
+            <span className="w-3">{MACRO_LAYER_ICONS.production}</span>
+            <span className="w-14 text-muted-foreground">Produkce</span>
+            <Progress value={Math.min(100, (prod / maxVal) * 100)} className="h-1.5 flex-1" />
+            <span className="font-bold w-8 text-right">{prod.toFixed(1)}</span>
+          </div>
+          <div className="flex items-center gap-1.5 text-[9px]">
+            <span className="w-3">{MACRO_LAYER_ICONS.wealth}</span>
+            <span className="w-14 text-muted-foreground">Bohatství</span>
+            <Progress value={Math.min(100, (wealth / maxVal) * 100)} className="h-1.5 flex-1" />
+            <span className="font-bold w-8 text-right">{wealth.toFixed(1)}</span>
+          </div>
+          <div className="flex items-center gap-1.5 text-[9px]">
+            <span className="w-3">{MACRO_LAYER_ICONS.capacity}</span>
+            <span className="w-14 text-muted-foreground">Kapacita</span>
+            <Progress value={Math.min(100, (cap / maxVal) * 100)} className="h-1.5 flex-1" />
+            <span className="font-bold w-8 text-right">{cap.toFixed(1)}</span>
+          </div>
+        </div>
+
+        {/* Importance + connectivity */}
+        <div className="grid grid-cols-3 gap-1 text-[9px]">
+          <div className="bg-muted/40 rounded p-0.5 text-center">
+            <span className="text-muted-foreground block text-[7px]">Importance</span>
+            <span className={`font-bold ${impColor}`}>{importance.toFixed(1)}</span>
+          </div>
+          <div className="bg-muted/40 rounded p-0.5 text-center">
+            <span className="text-muted-foreground block text-[7px]">Konektivita</span>
+            <span className="font-bold">{(n.connectivity_score ?? 0).toFixed(2)}</span>
+          </div>
+          <div className="bg-muted/40 rounded p-0.5 text-center">
+            <span className="text-muted-foreground block text-[7px]">Přístup</span>
+            <span className="font-bold">{(n.route_access_factor ?? 0).toFixed(2)}</span>
+          </div>
+        </div>
+
+        {/* Isolation */}
+        {isolation > 0 && (
+          <div className="flex items-center gap-1.5 text-[8px]">
+            <span className="text-red-400">⚠️ {isoLabel}</span>
+            <span className="text-muted-foreground">(-{Math.round(isolation * 100)}%)</span>
+          </div>
+        )}
+
+        {/* Incoming production for major */}
+        {node.is_major && (n.incoming_production ?? 0) > 0 && (
+          <p className="text-[8px] text-muted-foreground">
+            Příchozí produkce: <span className="text-foreground font-bold">{(n.incoming_production ?? 0).toFixed(1)}</span>
+          </p>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+/* ─── Realm Economy Summary ─── */
+function RealmEconomySummary({ sessionId }: { sessionId: string }) {
+  const [data, setData] = useState<any>(null);
+  useEffect(() => {
+    supabase.from("realm_resources")
+      .select("player_name, total_production, total_wealth, total_capacity, total_importance, strategic_iron_tier, strategic_horses_tier, strategic_salt_tier, strategic_copper_tier, strategic_gold_tier")
+      .eq("session_id", sessionId)
+      .then(({ data }) => setData(data));
+  }, [sessionId]);
+
+  if (!data || data.length === 0) return <p className="text-xs text-muted-foreground text-center py-4">Žádná data. Spusťte výpočet ekonomiky.</p>;
+
+  return (
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+      {data.map((r: any) => (
+        <Card key={r.player_name} className="border-border">
+          <CardHeader className="pb-1 pt-2 px-3">
+            <CardTitle className="text-[11px] font-display flex items-center gap-1.5">
+              <Building2 className="h-3.5 w-3.5 text-primary" />
+              {r.player_name}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="px-3 pb-2 space-y-1.5">
+            <div className="grid grid-cols-4 gap-1 text-[9px]">
+              {[
+                { l: "Produkce", v: r.total_production?.toFixed(1), icon: MACRO_LAYER_ICONS.production },
+                { l: "Bohatství", v: r.total_wealth?.toFixed(1), icon: MACRO_LAYER_ICONS.wealth },
+                { l: "Kapacita", v: r.total_capacity?.toFixed(1), icon: MACRO_LAYER_ICONS.capacity },
+                { l: "Importance", v: r.total_importance?.toFixed(1), icon: "⭐" },
+              ].map(s => (
+                <div key={s.l} className="bg-muted/40 rounded p-0.5 text-center">
+                  <span className="text-muted-foreground block text-[7px]">{s.icon} {s.l}</span>
+                  <span className="font-bold">{s.v ?? 0}</span>
+                </div>
+              ))}
+            </div>
+            {/* Strategic tiers */}
+            <div className="flex flex-wrap gap-1.5 text-[8px]">
+              {[
+                { k: "iron", v: r.strategic_iron_tier },
+                { k: "horses", v: r.strategic_horses_tier },
+                { k: "salt", v: r.strategic_salt_tier },
+                { k: "copper", v: r.strategic_copper_tier },
+                { k: "gold_deposit", v: r.strategic_gold_tier },
+              ].filter(t => t.v > 0).map(t => (
+                <Badge key={t.k} variant="outline" className="text-[7px]">
+                  {STRATEGIC_RESOURCE_ICONS[t.k as keyof typeof STRATEGIC_RESOURCE_ICONS]} {STRATEGIC_TIER_LABELS[t.v]}
+                </Badge>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      ))}
+    </div>
+  );
+}
+
 /* ─── Main panel ─── */
 export default function ProvinceGraphPanel({ sessionId }: Props) {
   const { nodes, edges, strategicNodes, routes, loading, computing, loadGraph, computeGraph, computeNodes, computeRoutes } = useProvinceGraph(sessionId);
   const [showNodes, setShowNodes] = useState(true);
   const [showRoutes, setShowRoutes] = useState(true);
+  const [computingEcon, setComputingEcon] = useState(false);
 
   useEffect(() => { loadGraph(); }, [loadGraph]);
 
@@ -339,6 +480,22 @@ export default function ProvinceGraphPanel({ sessionId }: Props) {
   const handleComputeRoutes = async () => {
     try { const r = await computeRoutes(); toast.success(`Trasy: ${r?.routes_created || 0} vytvořeno`); }
     catch (e: any) { toast.error("Chyba: " + e.message); }
+  };
+  const handleComputeEconomy = async () => {
+    setComputingEcon(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("compute-economy-flow", {
+        body: { session_id: sessionId },
+      });
+      if (error) throw error;
+      toast.success(`Ekonomika: ${data?.nodes_computed || 0} uzlů spočítáno`);
+      // Reload to see updated values
+      await loadGraph();
+    } catch (e: any) {
+      toast.error("Chyba ekonomiky: " + e.message);
+    } finally {
+      setComputingEcon(false);
+    }
   };
 
   return (
@@ -362,8 +519,11 @@ export default function ProvinceGraphPanel({ sessionId }: Props) {
         <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={handleComputeNodes} disabled={computing}>
           <Landmark className="h-3 w-3" /> Nody
         </Button>
-        <Button size="sm" variant="default" className="h-7 text-xs gap-1" onClick={handleComputeRoutes} disabled={computing}>
+        <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={handleComputeRoutes} disabled={computing}>
           {computing ? <Loader2 className="h-3 w-3 animate-spin" /> : <Route className="h-3 w-3" />} Trasy
+        </Button>
+        <Button size="sm" variant="default" className="h-7 text-xs gap-1" onClick={handleComputeEconomy} disabled={computingEcon}>
+          {computingEcon ? <Loader2 className="h-3 w-3 animate-spin" /> : <TrendingUp className="h-3 w-3" />} Ekonomika
         </Button>
         <div className="flex gap-1 ml-auto">
           <Button size="sm" variant={showNodes ? "secondary" : "ghost"} className="h-7 text-xs" onClick={() => setShowNodes(!showNodes)}>
@@ -381,6 +541,7 @@ export default function ProvinceGraphPanel({ sessionId }: Props) {
           <TabsTrigger value="provinces" className="text-[10px] h-6">Provincie</TabsTrigger>
           <TabsTrigger value="nodes" className="text-[10px] h-6">Strat. nody</TabsTrigger>
           <TabsTrigger value="routes" className="text-[10px] h-6">Trasy ({routes.length})</TabsTrigger>
+          <TabsTrigger value="economy" className="text-[10px] h-6">⚒️ Ekonomika</TabsTrigger>
           <TabsTrigger value="adjacency" className="text-[10px] h-6">Sousednosti</TabsTrigger>
         </TabsList>
 
@@ -424,6 +585,26 @@ export default function ProvinceGraphPanel({ sessionId }: Props) {
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
               {routes.map(r => <RouteCard key={r.id} route={r} strategicNodes={strategicNodes} />)}
+            </div>
+          )}
+        </TabsContent>
+
+        <TabsContent value="economy" className="mt-2 space-y-3">
+          <h4 className="text-xs font-semibold flex items-center gap-1.5">
+            <Coins className="h-3.5 w-3.5 text-primary" /> Realm Totals
+          </h4>
+          <RealmEconomySummary sessionId={sessionId} />
+
+          <h4 className="text-xs font-semibold flex items-center gap-1.5 mt-4">
+            <TrendingUp className="h-3.5 w-3.5 text-primary" /> Flow per Node
+          </h4>
+          {strategicNodes.length === 0 ? (
+            <p className="text-xs text-muted-foreground text-center py-4">Žádné nody. Spusťte "Nody" a "Ekonomika".</p>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+              {[...strategicNodes]
+                .sort((a, b) => ((b as any).importance_score ?? 0) - ((a as any).importance_score ?? 0))
+                .map(n => <EconomyFlowCard key={n.id} node={n} allNodes={strategicNodes} />)}
             </div>
           )}
         </TabsContent>
