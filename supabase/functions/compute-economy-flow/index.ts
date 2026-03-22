@@ -73,8 +73,8 @@ interface NodeData {
 
 interface RouteData {
   id: string;
-  node_a_id: string;
-  node_b_id: string;
+  node_a: string;
+  node_b: string;
   capacity_value: number;
   control_state: string;
   damage_level: number;
