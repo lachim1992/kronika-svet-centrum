@@ -1638,3 +1638,219 @@ export function computeSupplyChain(input: SupplyChainInput): SupplyChainResult[]
 
   return results;
 }
+
+// ═══════════════════════════════════════════
+// NODE CLASSIFICATION — Hybrid System
+// Geographic types (fixed from terrain): transit, resource, fortress
+// Functional types (emergent from flow data): trade_hub, food_basin, sacred, generic
+// ═══════════════════════════════════════════
+
+export type NodeClass = "transit" | "trade_hub" | "food_basin" | "sacred" | "resource" | "fortress" | "generic";
+
+export interface NodeClassificationInput {
+  id: string;
+  node_type: string;        // existing DB field (e.g. "settlement", "fortress", "village")
+  flow_role: string;        // existing (hub, regulator, gateway, producer)
+  is_major: boolean;
+  strategic_resource_type: string | null;
+  fortification_level: number;
+  defense_value: number;
+  wealth_output: number;
+  production_output: number;
+  cumulative_trade_flow: number;
+  food_value: number;       // grain-related production
+  sacred_influence: number; // from temples/clerics
+  connectivity_score: number;
+  hex_q: number;
+  hex_r: number;
+  // Route context
+  routeCount: number;       // number of routes through this node
+  isChoke: boolean;         // single path through this area
+}
+
+/**
+ * Classify a node using hybrid rules:
+ * 1. Geographic types take priority if terrain dictates
+ * 2. Functional types emerge from flow data thresholds
+ */
+export function classifyNode(n: NodeClassificationInput): NodeClass {
+  // ── Geographic (fixed) ──
+  // Fortress: high fortification or explicit fortress node type
+  if (n.fortification_level >= 3 || n.node_type === "fortress" || n.flow_role === "regulator") {
+    return "fortress";
+  }
+  // Resource: has strategic resource
+  if (n.strategic_resource_type && n.strategic_resource_type !== "NONE") {
+    return "resource";
+  }
+  // Transit: choke point or gateway with high route count
+  if (n.isChoke || (n.flow_role === "gateway" && n.routeCount >= 3)) {
+    return "transit";
+  }
+
+  // ── Functional (emergent) ──
+  // Trade hub: high cumulative trade flow or wealth output
+  if (n.cumulative_trade_flow > 150 || n.wealth_output > 20) {
+    return "trade_hub";
+  }
+  // Food basin: high food value (grain production)
+  if (n.food_value > 15) {
+    return "food_basin";
+  }
+  // Sacred: significant religious influence
+  if (n.sacred_influence > 10) {
+    return "sacred";
+  }
+
+  return "generic";
+}
+
+// ═══════════════════════════════════════════
+// NODE SCORING — Settlement Opportunity
+// ═══════════════════════════════════════════
+
+export interface NodeScoreWeights {
+  trade_potential: number;
+  food_value: number;
+  strategic_control: number;
+  resource_unlock: number;
+  sacred_influence: number;
+  defensive_position: number;
+}
+
+export const DEFAULT_NODE_SCORE_WEIGHTS: NodeScoreWeights = {
+  trade_potential: 0.25,
+  food_value: 0.20,
+  strategic_control: 0.20,
+  resource_unlock: 0.15,
+  sacred_influence: 0.10,
+  defensive_position: 0.10,
+};
+
+export interface NodeScoreInput {
+  // Trade
+  cumulative_trade_flow: number;
+  wealth_output: number;
+  connectivity_score: number;
+  routeCount: number;
+  // Food
+  food_value: number;
+  // Strategic
+  isChoke: boolean;
+  fortification_level: number;
+  defense_value: number;
+  throughput_military: number;
+  // Resource
+  strategic_resource_type: string | null;
+  strategic_resource_tier: number;
+  // Sacred
+  sacred_influence: number;
+  faith_output: number;
+  // Defensive
+  hex_terrain_defense: number; // terrain bonus (0-20)
+}
+
+/**
+ * Compute composite node opportunity score (0-100).
+ * Used by AI for settlement placement decisions.
+ */
+export function computeNodeScore(
+  input: NodeScoreInput,
+  weights: NodeScoreWeights = DEFAULT_NODE_SCORE_WEIGHTS,
+): number {
+  // Normalize each dimension to 0-100
+  const trade = Math.min(100, (input.cumulative_trade_flow * 0.3) + (input.wealth_output * 2) + (input.connectivity_score * 0.5) + (input.routeCount * 8));
+  const food = Math.min(100, input.food_value * 5);
+  const strategic = Math.min(100,
+    (input.isChoke ? 40 : 0) +
+    (input.fortification_level * 10) +
+    (input.defense_value * 0.5) +
+    (input.throughput_military * 0.3)
+  );
+  const resource = Math.min(100,
+    input.strategic_resource_type && input.strategic_resource_type !== "NONE"
+      ? 30 + input.strategic_resource_tier * 25
+      : 0
+  );
+  const sacred = Math.min(100, (input.sacred_influence * 5) + (input.faith_output * 3));
+  const defensive = Math.min(100, (input.hex_terrain_defense * 3) + (input.defense_value * 0.8) + (input.fortification_level * 15));
+
+  const score =
+    trade * weights.trade_potential +
+    food * weights.food_value +
+    strategic * weights.strategic_control +
+    resource * weights.resource_unlock +
+    sacred * weights.sacred_influence +
+    defensive * weights.defensive_position;
+
+  return Math.round(Math.min(100, score));
+}
+
+// ═══════════════════════════════════════════
+// COLLAPSE CHAINS — Tiered impact on node loss
+// ═══════════════════════════════════════════
+
+export interface CollapseEffect {
+  node_id: string;
+  node_class: NodeClass;
+  severity: "minor" | "moderate" | "critical";  // tiered by importance
+  effects: {
+    wealth_modifier: number;    // % change to regional wealth (-50 for trade_hub loss)
+    stability_modifier: number; // flat stability change
+    food_modifier: number;      // % change to food supply
+    faith_modifier: number;     // flat faith pressure change
+    morale_modifier: number;    // flat morale change for armies in region
+    isolation_risk: boolean;    // can cause supply chain break
+  };
+  narrative_tag: string;        // for chronicle generation (e.g. "fall_of_trade_hub")
+}
+
+/**
+ * Compute the tiered collapse effects if a node changes control or is destroyed.
+ * Severity depends on the node's importance_score:
+ *   < 30: minor, 30-60: moderate, > 60: critical
+ */
+export function computeCollapseEffects(
+  nodeClass: NodeClass,
+  importanceScore: number,
+): CollapseEffect["effects"] & { severity: CollapseEffect["severity"]; narrative_tag: string } {
+  const severity: CollapseEffect["severity"] =
+    importanceScore > 60 ? "critical" : importanceScore > 30 ? "moderate" : "minor";
+
+  const severityMult = severity === "critical" ? 1.0 : severity === "moderate" ? 0.6 : 0.3;
+
+  // Base effects per node class
+  const baseEffects: Record<NodeClass, { w: number; s: number; f: number; fa: number; m: number; iso: boolean; tag: string }> = {
+    trade_hub:  { w: -50, s: -15, f: 0,   fa: 0,   m: -10, iso: false, tag: "fall_of_trade_hub" },
+    food_basin: { w: -10, s: -20, f: -40, fa: 0,   m: -15, iso: false, tag: "famine_crisis" },
+    sacred:     { w: 0,   s: -25, f: 0,   fa: -30, m: -20, iso: false, tag: "sacred_node_lost" },
+    transit:    { w: -20, s: -10, f: -10, fa: 0,   m: -5,  iso: true,  tag: "strategic_isolation" },
+    fortress:   { w: -5,  s: -10, f: 0,   fa: 0,   m: -25, iso: true,  tag: "fortress_fallen" },
+    resource:   { w: -15, s: -5,  f: 0,   fa: 0,   m: -10, iso: false, tag: "resource_lost" },
+    generic:    { w: -5,  s: -5,  f: -5,  fa: 0,   m: -5,  iso: false, tag: "territory_lost" },
+  };
+
+  const base = baseEffects[nodeClass];
+  return {
+    severity,
+    wealth_modifier: Math.round(base.w * severityMult),
+    stability_modifier: Math.round(base.s * severityMult),
+    food_modifier: Math.round(base.f * severityMult),
+    faith_modifier: Math.round(base.fa * severityMult),
+    morale_modifier: Math.round(base.m * severityMult),
+    isolation_risk: base.iso && severity !== "minor",
+    narrative_tag: base.tag,
+  };
+}
+
+/**
+ * Compute collapse_severity for a node (0-100).
+ * This is stored in DB and used by AI to evaluate strategic importance.
+ */
+export function computeCollapseSeverity(nodeClass: NodeClass, importanceScore: number): number {
+  const classWeight: Record<NodeClass, number> = {
+    trade_hub: 1.3, food_basin: 1.4, sacred: 1.1, transit: 1.2,
+    fortress: 1.0, resource: 0.9, generic: 0.5,
+  };
+  return Math.round(Math.min(100, importanceScore * (classWeight[nodeClass] || 0.5)));
+}

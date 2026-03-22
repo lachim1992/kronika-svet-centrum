@@ -412,7 +412,7 @@ async function buildStrategicMapContext(client: SupabaseClient, sessionId: strin
       .select("name, owner_player, province_q, province_r, settlement_level")
       .eq("session_id", sessionId),
     client.from("province_nodes")
-      .select("id, name, node_type, is_major, parent_node_id, controlled_by, production_output, wealth_output, capacity_score, importance_score, isolation_penalty, hex_q, hex_r, flow_role, garrison_strength, fortification_level, city_id")
+      .select("id, name, node_type, node_class, node_score, collapse_severity, is_major, parent_node_id, controlled_by, production_output, wealth_output, faith_output, food_value, sacred_influence, capacity_score, importance_score, isolation_penalty, hex_q, hex_r, flow_role, garrison_strength, fortification_level, city_id, strategic_resource_type, cumulative_trade_flow")
       .eq("session_id", sessionId).eq("is_active", true),
     client.from("province_routes")
       .select("node_a, node_b, route_type, capacity_value, control_state, damage_level")
@@ -508,11 +508,20 @@ async function buildStrategicMapContext(client: SupabaseClient, sessionId: strin
     for (const n of nodeData) nodeNameMap.set(n.id, n.name);
 
     parts.push("\n=== GRAF STRATEGICKÝCH UZLŮ ===");
-    parts.push("PRAVIDLA GRAFU:");
-    parts.push("- Minor uzly (vesnice, dílny) VŽDY odevzdávají produkci svému parent major uzlu");
-    parts.push("- Flow odchází pouze z měst a major uzlů směrem k hlavnímu městu");
-    parts.push("- Izolované uzly (bez spojení s hlavním městem) mají postih na produkci a stabilitu");
-    parts.push("- Chokepoints = uzly/cesty, jejichž blokáda izoluje více uzlů");
+    parts.push("TYPY UZLŮ (node_class):");
+    parts.push("- transit: průsmyk/most/úžina — kdo kontroluje, kontroluje tok");
+    parts.push("- trade_hub: přístav/tržiště — generuje bohatství");
+    parts.push("- food_basin: úrodná oblast — stabilita regionu");
+    parts.push("- sacred: svatyně/poutní místo — faith pressure");
+    parts.push("- resource: železo/koně/sůl — odemyká vojenské doktríny");
+    parts.push("- fortress: choke defense / staging area");
+    parts.push("- generic: běžný uzel");
+    parts.push("\nPRAVIDLA:");
+    parts.push("- node_score = priorita pro zakládání sídel (0-100)");
+    parts.push("- collapse_severity = dopad ztráty uzlu (0-100)");
+    parts.push("- Ztráta trade_hub → wealth crash, food_basin → hlad, sacred → revolt, transit → izolace");
+    parts.push("- Minor uzly odevzdávají produkci parent major uzlu");
+    parts.push("- Izolované uzly mají postih na produkci a stabilitu");
 
     // Group by owner
     const byOwner = new Map<string, typeof nodeData>();
@@ -537,7 +546,7 @@ async function buildStrategicMapContext(client: SupabaseClient, sessionId: strin
         const children = minors.filter(n => n.parent_node_id === m.id);
         const sup = supMap.get(m.id);
         const connections = (adjMap.get(m.id) || []).map(id => nodeNameMap.get(id) || "?").slice(0, 5);
-        parts.push(`  🔵 ${m.name} [${m.node_type}/${m.flow_role}] (${m.hex_q},${m.hex_r}) ⚒${(m.production_output||0).toFixed(1)} 💰${(m.wealth_output||0).toFixed(1)} 🏛${(m.capacity_score||0).toFixed(1)}${m.garrison_strength ? ` ⚔${m.garrison_strength}` : ""}${m.fortification_level ? ` 🏰${m.fortification_level}` : ""} hop:${sup?.hop_distance ?? "?"} supply:${sup?.supply_level ?? "?"}/10`);
+        parts.push(`  🔵 ${m.name} [${(m as any).node_class || m.node_type}/${m.flow_role}] (${m.hex_q},${m.hex_r}) ⚒${(m.production_output||0).toFixed(1)} 💰${(m.wealth_output||0).toFixed(1)} ⛪${((m as any).faith_output||0).toFixed(1)} 🏛${(m.capacity_score||0).toFixed(1)}${m.garrison_strength ? ` ⚔${m.garrison_strength}` : ""}${m.fortification_level ? ` 🏰${m.fortification_level}` : ""}${(m as any).strategic_resource_type && (m as any).strategic_resource_type !== "NONE" ? ` ✦${(m as any).strategic_resource_type}` : ""} score:${(m as any).node_score || 0} collapse:${(m as any).collapse_severity || 0} hop:${sup?.hop_distance ?? "?"} supply:${sup?.supply_level ?? "?"}/10`);
         if (children.length > 0) {
           parts.push(`    └ Minor: ${children.map(c => `${c.name}(⚒${(c.production_output||0).toFixed(1)})`).join(", ")}`);
         }

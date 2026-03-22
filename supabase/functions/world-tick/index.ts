@@ -7,6 +7,8 @@ import {
   computeProvinceControl, computeIsolationPenalty,
   computeNodeFlows, computeSupplyChain,
   URBANIZATION_THRESHOLDS,
+  classifyNode, computeNodeScore, computeCollapseSeverity,
+  type NodeClass,
   type CityForGrowth, type InfluenceInput,
   type NodeControlEntry, type IsolationInput,
   type FlowNode, type FlowRoute, type FlowCity,
@@ -949,6 +951,94 @@ Deno.serve(async (req) => {
             urbanization_updates: urbanUpdates.length,
             spawned_nodes: spawnNodes.length,
           };
+
+          // 12c-iii. Node classification + scoring
+          try {
+            // Build adjacency for choke detection
+            const adjCount: Record<string, number> = {};
+            for (const r of graphRoutes) {
+              adjCount[r.node_a] = (adjCount[r.node_a] || 0) + 1;
+              adjCount[r.node_b] = (adjCount[r.node_b] || 0) + 1;
+            }
+            // Detect chokes: nodes where removal would disconnect parts of graph
+            const chokeIds = new Set<string>();
+            for (const n of graphNodes) {
+              if ((n as any).is_major && (adjCount[n.id] || 0) <= 2 && (adjCount[n.id] || 0) >= 1) {
+                chokeIds.add(n.id);
+              }
+            }
+
+            const classUpdates: Array<{ id: string; node_class: string; node_score: number; collapse_severity: number; food_value: number; faith_output: number; sacred_influence: number }> = [];
+
+            for (const gn of graphNodes) {
+              const fr = flowResults.find(f => f.node_id === gn.id);
+              const grainProd = fr?.grain_production || 0;
+
+              // Classify
+              const nodeClass = classifyNode({
+                id: gn.id,
+                node_type: gn.node_type || "settlement",
+                flow_role: gn.flow_role || "producer",
+                is_major: gn.is_major,
+                strategic_resource_type: gn.strategic_resource_type,
+                fortification_level: gn.fortification_level || 0,
+                defense_value: gn.defense_value || 0,
+                wealth_output: gn.wealth_output || 0,
+                production_output: gn.production_output || 0,
+                cumulative_trade_flow: gn.cumulative_trade_flow || 0,
+                food_value: grainProd,
+                sacred_influence: gn.sacred_influence || 0,
+                connectivity_score: gn.connectivity_score || 0,
+                hex_q: gn.hex_q || 0,
+                hex_r: gn.hex_r || 0,
+                routeCount: adjCount[gn.id] || 0,
+                isChoke: chokeIds.has(gn.id),
+              });
+
+              // Score
+              const score = computeNodeScore({
+                cumulative_trade_flow: gn.cumulative_trade_flow || 0,
+                wealth_output: gn.wealth_output || 0,
+                connectivity_score: gn.connectivity_score || 0,
+                routeCount: adjCount[gn.id] || 0,
+                food_value: grainProd,
+                isChoke: chokeIds.has(gn.id),
+                fortification_level: gn.fortification_level || 0,
+                defense_value: gn.defense_value || 0,
+                throughput_military: gn.throughput_military || 0,
+                strategic_resource_type: gn.strategic_resource_type,
+                strategic_resource_tier: gn.strategic_resource_tier || 0,
+                sacred_influence: gn.sacred_influence || 0,
+                faith_output: gn.faith_output || 0,
+                hex_terrain_defense: (gn.defense_value || 0) * 0.5,
+              });
+
+              const severity = computeCollapseSeverity(nodeClass, gn.importance_score || 0);
+
+              classUpdates.push({
+                id: gn.id,
+                node_class: nodeClass,
+                node_score: score,
+                collapse_severity: severity,
+                food_value: grainProd,
+                faith_output: gn.faith_output || 0,
+                sacred_influence: gn.sacred_influence || 0,
+              });
+            }
+
+            // Batch update
+            const CLASS_BATCH = 50;
+            for (let i = 0; i < classUpdates.length; i += CLASS_BATCH) {
+              for (const upd of classUpdates.slice(i, i + CLASS_BATCH)) {
+                const { id, ...fields } = upd;
+                await supabase.from("province_nodes").update(fields).eq("id", id);
+              }
+            }
+
+            results.node_classification = { classified: classUpdates.length };
+          } catch (classErr) {
+            console.warn("Node classification non-fatal:", classErr);
+          }
         } catch (flowErr) {
           console.warn("Node flow computation non-fatal:", flowErr);
           results.node_flow_error = (flowErr as Error).message;
