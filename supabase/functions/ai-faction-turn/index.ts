@@ -411,7 +411,9 @@ VOJENSKÁ PRAVIDLA:
     const userPrompt = `ROK: ${turn}
 
 EKONOMIKA FRAKCE:
-Zlato: ${resources.gold}, Obilí: ${resources.grain}, Dřevo: ${resources.wood}, Kámen: ${resources.stone}, Železo: ${resources.iron}
+Produkce: ${realmRes?.total_production?.toFixed(1) || "?"}, Bohatství: ${realmRes?.total_wealth?.toFixed(1) || "?"}, Kapacita: ${realmRes?.total_capacity?.toFixed(1) || "?"}
+Zlato (rezerva): ${resources.gold}, Obilí: ${resources.grain}, Produkční rezerva: ${realmRes?.production_reserve || 0}
+Víra: ${realmRes?.faith || 0}
 Lidská síla (pool): ${resources.manpower}, Nasazeno: ${resources.manpowerCommitted}
 
 MĚSTA (${(cities || []).length}):
