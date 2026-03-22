@@ -601,14 +601,23 @@ const StrategicMapOverlay = memo(({ sessionId, offsetX, offsetY, visible, onNode
         );
       })}
 
-      {/* Flow legend (bottom-left of overlay) */}
-      <g transform="translate(20, -80)">
+      {/* Flow legend + hex flow toggle */}
+      <g transform="translate(20, -110)">
+        {/* Toggle hex flows */}
+        <g className="cursor-pointer" onClick={() => setShowHexFlows(p => !p)} style={{ pointerEvents: "auto" }}>
+          <rect x={0} y={-14} width={90} height={16} rx={4}
+            fill={showHexFlows ? "hsl(48, 90%, 60%)" : "hsl(var(--muted))"} opacity={0.8} />
+          <text x={45} y={-3} textAnchor="middle" fontSize={7}
+            fill={showHexFlows ? "hsl(var(--card))" : "hsl(var(--muted-foreground))"} fontWeight="bold">
+            {showHexFlows ? "🗺 Hex flows ON" : "🗺 Hex flows OFF"}
+          </text>
+        </g>
         {(["production", "wealth", "supply", "faith"] as FlowType[]).map((ft, i) => {
           const labels: Record<FlowType, string> = {
             production: "⚒ Produkce", wealth: "💰 Bohatství", supply: "📦 Zásobování", faith: "⛪ Víra",
           };
           return (
-            <g key={ft} transform={`translate(0, ${i * 14})`}>
+            <g key={ft} transform={`translate(0, ${i * 14 + 8})`}>
               <circle cx={6} cy={0} r={4} fill={FLOW_COLORS[ft]} opacity={0.8} />
               <text x={14} y={3} fontSize={8} fill="hsl(var(--foreground))" opacity={0.7}>
                 {labels[ft]}
@@ -616,6 +625,15 @@ const StrategicMapOverlay = memo(({ sessionId, offsetX, offsetY, visible, onNode
             </g>
           );
         })}
+        {/* Bottleneck legend */}
+        {showHexFlows && (
+          <g transform={`translate(0, ${4 * 14 + 14})`}>
+            <circle cx={6} cy={0} r={4} fill="none" stroke="hsl(0, 70%, 55%)" strokeWidth={1.2} strokeDasharray="2,1" />
+            <text x={14} y={3} fontSize={8} fill="hsl(0, 70%, 55%)" opacity={0.7}>
+              ⚠ Bottleneck
+            </text>
+          </g>
+        )}
       </g>
     </g>
   );
