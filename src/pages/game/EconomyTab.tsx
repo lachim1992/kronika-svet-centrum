@@ -48,7 +48,7 @@ interface Props {
   onTabChange?: (tab: string) => void;
 }
 
-type CitySortKey = "name" | "population" | "settlement" | "vulnerability";
+type CitySortKey = "name" | "population" | "settlement" | "vulnerability" | "balance";
 
 const EconomyTab = ({ sessionId, currentPlayerName, currentTurn, cities, resources, armies, myRole, onEntityClick, onRefetch, onTabChange }: Props) => {
   const [realm, setRealm] = useState<any>(null);
@@ -57,16 +57,20 @@ const EconomyTab = ({ sessionId, currentPlayerName, currentTurn, cities, resourc
   const [citySortAsc, setCitySortAsc] = useState(false);
   const [recomputing, setRecomputing] = useState(false);
   const [showDebug, setShowDebug] = useState(false);
+  const [cityNodeMap, setCityNodeMap] = useState<Map<string, any>>(new Map());
 
   const myCities = useMemo(() => cities.filter(c => c.owner_player === currentPlayerName), [cities, currentPlayerName]);
 
   const fetchData = useCallback(async () => {
-    const [realmRes, nodesRes] = await Promise.all([
+    const [realmRes, nodesRes, cityNodesRes] = await Promise.all([
       supabase.from("realm_resources").select("*")
         .eq("session_id", sessionId).eq("player_name", currentPlayerName).maybeSingle(),
       supabase.from("province_nodes")
-        .select("id, name, node_type, flow_role, is_major, controlled_by, production_output, wealth_output, capacity_score, importance_score, connectivity_score, isolation_penalty, strategic_resource_type, strategic_resource_tier")
+        .select("id, name, node_type, flow_role, is_major, controlled_by, production_output, wealth_output, capacity_score, importance_score, connectivity_score, isolation_penalty, strategic_resource_type, strategic_resource_tier, incoming_production, city_id")
         .eq("session_id", sessionId).eq("controlled_by", currentPlayerName),
+      supabase.from("province_nodes")
+        .select("id, city_id, production_output, incoming_production, flow_role, isolation_penalty, wealth_output")
+        .eq("session_id", sessionId).not("city_id", "is", null),
     ]);
     if (realmRes.data) {
       setRealm(realmRes.data);
@@ -75,6 +79,12 @@ const EconomyTab = ({ sessionId, currentPlayerName, currentTurn, cities, resourc
       setRealm(r);
     }
     setNodeStats(nodesRes.data || []);
+    // Build city→node map
+    const map = new Map<string, any>();
+    for (const n of (cityNodesRes.data || [])) {
+      if (n.city_id) map.set(n.city_id, n);
+    }
+    setCityNodeMap(map);
   }, [sessionId, currentPlayerName]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
@@ -119,6 +129,28 @@ const EconomyTab = ({ sessionId, currentPlayerName, currentTurn, cities, resourc
     nodeStats.filter(n => (n.isolation_penalty ?? 0) > 0),
   [nodeStats]);
 
+  // Per-city economy from node data
+  const FLOW_ROLE_MULT: Record<string, number> = { hub: 0.8, gateway: 0.9, regulator: 0.7, producer: 1.2, neutral: 1.0 };
+  const cityEconMap = useMemo(() => {
+    const map = new Map<string, { production: number; demand: number; balance: number; isolation: number; wealthOutput: number }>();
+    for (const city of myCities) {
+      const node = cityNodeMap.get(city.id);
+      const pop = city.population_total || 0;
+      const demand = Math.max(1, Math.round(pop * 0.006));
+      let production = 0;
+      let isolation = 0;
+      let wealthOutput = 0;
+      if (node) {
+        production = (node.production_output || 0) + (node.incoming_production || 0) * 0.5;
+        production *= FLOW_ROLE_MULT[node.flow_role] || 1.0;
+        isolation = node.isolation_penalty || 0;
+        wealthOutput = node.wealth_output || 0;
+      }
+      map.set(city.id, { production: Math.round(production * 10) / 10, demand, balance: Math.round((production - demand) * 10) / 10, isolation: Math.round(isolation * 100), wealthOutput: Math.round(wealthOutput * 10) / 10 });
+    }
+    return map;
+  }, [myCities, cityNodeMap]);
+
   // Workforce
   const mobRate = realm?.mobilization_rate || 0.1;
   const wf = computeWorkforceBreakdown(myCities, mobRate);
@@ -140,11 +172,12 @@ const EconomyTab = ({ sessionId, currentPlayerName, currentTurn, cities, resourc
         case "population": va = a.population_total || 0; vb = b.population_total || 0; break;
         case "settlement": va = a.settlement_level || ""; vb = b.settlement_level || ""; return citySortAsc ? String(va).localeCompare(String(vb)) : String(vb).localeCompare(String(va));
         case "vulnerability": va = a.vulnerability_score || 0; vb = b.vulnerability_score || 0; break;
+        case "balance": va = cityEconMap.get(a.id)?.balance || 0; vb = cityEconMap.get(b.id)?.balance || 0; break;
       }
       return citySortAsc ? (va as number) - (vb as number) : (vb as number) - (va as number);
     });
     return arr;
-  }, [myCities, citySortKey, citySortAsc]);
+  }, [myCities, citySortKey, citySortAsc, cityEconMap]);
 
   const handleCitySort = (key: CitySortKey) => {
     if (citySortKey === key) setCitySortAsc(!citySortAsc);
@@ -372,12 +405,50 @@ const EconomyTab = ({ sessionId, currentPlayerName, currentTurn, cities, resourc
         </div>
       </TooltipProvider>
 
+      {/* ═══ GRAIN RESERVE ═══ */}
+      {realm && (
+        <div className="game-card p-5 space-y-3">
+          <div className="flex items-center gap-2">
+            <span className="text-xl">🌾</span>
+            <h3 className="font-display font-semibold text-base">Zásoby obilí</h3>
+            <span className="ml-auto text-sm font-mono font-bold">
+              {Math.round(realm.grain_reserve || 0)} / {Math.round(realm.granary_capacity || 0)}
+            </span>
+          </div>
+          <Progress value={Math.min(100, ((realm.grain_reserve || 0) / Math.max(1, realm.granary_capacity || 1)) * 100)} className="h-3" />
+          <div className="flex justify-between text-xs text-muted-foreground">
+            <span>⚒️ Produkce: {realm.last_turn_grain_prod || 0}</span>
+            <span>🍽️ Spotřeba: {realm.last_turn_grain_cons || 0}</span>
+            <span className={`font-semibold ${(realm.last_turn_grain_net || 0) >= 0 ? "text-emerald-500" : "text-destructive"}`}>
+              Bilance: {(realm.last_turn_grain_net || 0) >= 0 ? "+" : ""}{realm.last_turn_grain_net || 0}
+            </span>
+          </div>
+          {(realm.famine_city_count || 0) > 0 && (
+            <div className="text-xs text-destructive flex items-center gap-1.5">
+              <Skull className="h-3 w-3" />
+              {realm.famine_city_count} měst trpí hladomorem — zásoby nestačí pokrýt deficit
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ═══ GOLD RESERVE ═══ */}
+      {realm && (
+        <div className="game-card p-5">
+          <div className="flex items-center gap-2">
+            <span className="text-xl">💰</span>
+            <h3 className="font-display font-semibold text-base">Zlatá pokladna</h3>
+            <span className="ml-auto text-2xl font-mono font-bold text-primary">{Math.round(realm.gold_reserve || 0)}</span>
+          </div>
+        </div>
+      )}
+
       {/* ═══ CITY TABLE ═══ */}
       <div className="game-card p-0 overflow-hidden">
         <div className="px-5 pt-4 pb-2">
           <h3 className="text-base font-display font-semibold flex items-center gap-2">
-            Přehled sídel
-            <InfoTip side="right">Přehled všech sídel. Produkce nyní plyne z uzlového systému, ne z měst přímo.</InfoTip>
+            Přehled sídel — síťová ekonomika
+            <InfoTip side="right">Produkce a bohatství měst plyne z uzlového systému. Bilance = produkce − poptávka. Izolace od hlavního města snižuje produkci.</InfoTip>
           </h3>
         </div>
         <Table>
@@ -385,37 +456,51 @@ const EconomyTab = ({ sessionId, currentPlayerName, currentTurn, cities, resourc
             <TableRow>
               <TableHead className="text-xs px-3">Město <SortIcon field="name" /></TableHead>
               <TableHead className="text-xs px-3">Úroveň <SortIcon field="settlement" /></TableHead>
-              <TableHead className="text-xs px-3 text-right">Populace <SortIcon field="population" /></TableHead>
+              <TableHead className="text-xs px-3 text-right">Pop. <SortIcon field="population" /></TableHead>
+              <TableHead className="text-xs px-3 text-right">⚒️ Prod.</TableHead>
+              <TableHead className="text-xs px-3 text-right">💰 Wealth</TableHead>
+              <TableHead className="text-xs px-3 text-right">Bilance <SortIcon field="balance" /></TableHead>
               <TableHead className="text-xs px-3 text-right">Stabilita</TableHead>
-              <TableHead className="text-xs px-3 text-right">Zranit. <SortIcon field="vulnerability" /></TableHead>
               <TableHead className="text-xs px-3 text-center">Stav</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {sortedCities.map(c => (
-              <TableRow key={c.id} className="cursor-pointer hover:bg-muted/50" onClick={() => onEntityClick?.("city", c.id)}>
-                <TableCell className="text-sm px-3 font-semibold">
-                  {c.name}
-                  {c.famine_turn && <Skull className="h-3.5 w-3.5 inline ml-1.5 text-destructive" />}
-                  {c.is_capital && <span className="text-[9px] ml-1 text-primary">★</span>}
-                </TableCell>
-                <TableCell className="text-xs px-3">
-                  <Badge variant="secondary" className="text-[10px]">{SETTLEMENT_LABELS[c.settlement_level] || c.settlement_level}</Badge>
-                </TableCell>
-                <TableCell className="text-sm px-3 text-right">{(c.population_total || 0).toLocaleString()}</TableCell>
-                <TableCell className="text-sm px-3 text-right">
-                  <span className={(c.city_stability || 50) < 30 ? "text-destructive" : (c.city_stability || 50) < 50 ? "text-amber-500" : ""}>
-                    {c.city_stability || 50}%
-                  </span>
-                </TableCell>
-                <TableCell className="text-sm px-3 text-right">{(c.vulnerability_score || 0).toFixed(0)}</TableCell>
-                <TableCell className="text-xs px-3 text-center">
-                  {c.famine_turn ? <Badge variant="destructive" className="text-[9px]">Hladomor</Badge>
-                    : c.epidemic_active ? <Badge variant="destructive" className="text-[9px]">Epidemie</Badge>
-                    : <Badge variant="secondary" className="text-[9px]">OK</Badge>}
-                </TableCell>
-              </TableRow>
-            ))}
+            {sortedCities.map(c => {
+              const econ = cityEconMap.get(c.id);
+              const balance = econ?.balance ?? 0;
+              const balanceColor = balance > 0 ? "text-emerald-500" : balance < 0 ? "text-destructive" : "";
+              return (
+                <TableRow key={c.id} className="cursor-pointer hover:bg-muted/50" onClick={() => onEntityClick?.("city", c.id)}>
+                  <TableCell className="text-sm px-3 font-semibold">
+                    {c.name}
+                    {c.famine_turn && <Skull className="h-3.5 w-3.5 inline ml-1.5 text-destructive" />}
+                    {c.is_capital && <span className="text-[9px] ml-1 text-primary">★</span>}
+                    {(econ?.isolation ?? 0) > 0 && (
+                      <span className="text-[9px] ml-1 text-destructive">⛓️-{econ!.isolation}%</span>
+                    )}
+                  </TableCell>
+                  <TableCell className="text-xs px-3">
+                    <Badge variant="secondary" className="text-[10px]">{SETTLEMENT_LABELS[c.settlement_level] || c.settlement_level}</Badge>
+                  </TableCell>
+                  <TableCell className="text-sm px-3 text-right">{(c.population_total || 0).toLocaleString()}</TableCell>
+                  <TableCell className="text-sm px-3 text-right font-mono">{econ?.production?.toFixed(1) ?? "—"}</TableCell>
+                  <TableCell className="text-sm px-3 text-right font-mono">{econ?.wealthOutput?.toFixed(1) ?? "—"}</TableCell>
+                  <TableCell className={`text-sm px-3 text-right font-mono font-semibold ${balanceColor}`}>
+                    {balance > 0 ? "+" : ""}{balance.toFixed(1)}
+                  </TableCell>
+                  <TableCell className="text-sm px-3 text-right">
+                    <span className={(c.city_stability || 50) < 30 ? "text-destructive" : (c.city_stability || 50) < 50 ? "text-amber-500" : ""}>
+                      {c.city_stability || 50}%
+                    </span>
+                  </TableCell>
+                  <TableCell className="text-xs px-3 text-center">
+                    {c.famine_turn ? <Badge variant="destructive" className="text-[9px]">Hladomor</Badge>
+                      : c.epidemic_active ? <Badge variant="destructive" className="text-[9px]">Epidemie</Badge>
+                      : <Badge variant="secondary" className="text-[9px]">OK</Badge>}
+                  </TableCell>
+                </TableRow>
+              );
+            })}
           </TableBody>
         </Table>
       </div>
