@@ -774,7 +774,7 @@ Deno.serve(async (req) => {
         results.province_control = provinceControlResults;
         results.isolation = isolationResults;
 
-        // 12c. Compute node flow state (network economy)
+        // 12c. Compute node flow state (network economy) with regulation & urbanization
         try {
           const flowNodes: FlowNode[] = graphNodes.map((n: any) => ({
             id: n.id,
@@ -786,6 +786,13 @@ Deno.serve(async (req) => {
             is_major: n.is_major ?? false,
             parent_node_id: n.parent_node_id,
             city_id: n.city_id,
+            throughput_military: n.throughput_military ?? 1.0,
+            toll_rate: n.toll_rate ?? 0.0,
+            cumulative_trade_flow: n.cumulative_trade_flow ?? 0,
+            urbanization_score: n.urbanization_score ?? 0,
+            hinterland_level: n.hinterland_level ?? 0,
+            resource_output: (n.resource_output as Record<string, number>) || {},
+            flow_role: n.flow_role || "neutral",
           }));
 
           const flowRoutes: FlowRoute[] = (graphRoutes || []).map((r: any) => ({
@@ -848,7 +855,79 @@ Deno.serve(async (req) => {
             }
           }
 
-          results.node_flows = { computed: flowResults.length };
+          // 12c-ii. Apply urbanization: accumulate trade flow + grow hinterland
+          const { URBANIZATION_THRESHOLDS } = await import("../_shared/physics.ts");
+          const urbanUpdates: any[] = [];
+          const spawnNodes: any[] = [];
+
+          for (const f of flowResults) {
+            if (f.urbanization_delta <= 0) continue;
+            const gn = graphNodes.find((n: any) => n.id === f.node_id);
+            if (!gn) continue;
+
+            const newCumFlow = (gn.cumulative_trade_flow || 0) + f.trade_flow_delta;
+            const newUrbanScore = (gn.urbanization_score || 0) + f.urbanization_delta;
+            const currentHL = gn.hinterland_level || 0;
+
+            // Check if urbanization crossed a threshold → spawn new minor node
+            const nextThreshold = URBANIZATION_THRESHOLDS.find((t: any) => t.level === currentHL + 1);
+            let newHL = currentHL;
+            if (nextThreshold && newUrbanScore >= nextThreshold.threshold) {
+              newHL = nextThreshold.level;
+              // Prepare spawn of new minor node
+              spawnNodes.push({
+                session_id: sessionId,
+                province_id: gn.province_id,
+                parent_node_id: gn.id,
+                node_type: nextThreshold.spawns,
+                name: `${nextThreshold.label} u ${gn.name || "uzlu"}`,
+                hex_q: (gn.hex_q || 0) + (newHL % 2 === 0 ? 1 : -1),
+                hex_r: (gn.hex_r || 0) + (newHL % 2 === 0 ? 0 : 1),
+                controlled_by: gn.controlled_by,
+                is_major: false,
+                is_active: true,
+                strategic_value: 1,
+                economic_value: newHL * 2,
+                population: newHL * 50,
+                flow_role: "producer",
+                resource_output: nextThreshold.spawns === "village_cluster"
+                  ? { grain: 3, wood: 1 }
+                  : nextThreshold.spawns === "resource_node"
+                    ? { wood: 2, stone: 2, iron: 1 }
+                    : { wealth: 3 },
+              });
+            }
+
+            // Also update resource_output for toll-earning regulators
+            const tollBonus = f.toll_income > 0 ? { wealth: Math.min(5, Math.floor(f.toll_income * 0.3)) } : {};
+
+            urbanUpdates.push({
+              id: gn.id,
+              cumulative_trade_flow: newCumFlow,
+              urbanization_score: newUrbanScore,
+              hinterland_level: newHL,
+              ...(Object.keys(tollBonus).length > 0 ? {
+                resource_output: { ...(gn.resource_output || {}), ...tollBonus },
+              } : {}),
+            });
+          }
+
+          // Batch apply urbanization updates
+          for (const upd of urbanUpdates) {
+            const { id, ...fields } = upd;
+            await supabase.from("province_nodes").update(fields).eq("id", id);
+          }
+
+          // Spawn new minor nodes from urbanization
+          if (spawnNodes.length > 0) {
+            await supabase.from("province_nodes").insert(spawnNodes);
+          }
+
+          results.node_flows = {
+            computed: flowResults.length,
+            urbanization_updates: urbanUpdates.length,
+            spawned_nodes: spawnNodes.length,
+          };
         } catch (flowErr) {
           console.warn("Node flow computation non-fatal:", flowErr);
           results.node_flow_error = (flowErr as Error).message;
