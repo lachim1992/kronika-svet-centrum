@@ -3,8 +3,9 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Loader2, Network, RefreshCw, MapPin, Landmark, Shield, Anchor, Store, Mountain, Wheat, Route } from "lucide-react";
+import { Loader2, Network, RefreshCw, MapPin, Landmark, Shield, Anchor, Store, Mountain, Wheat, Route, Church, Package, Home } from "lucide-react";
 import { toast } from "sonner";
+import { FLOW_ROLE_LABELS, HINTERLAND_LABELS } from "@/lib/strategicGraph";
 import { useProvinceGraph, type ProvinceNode, type ProvinceEdge, type StrategicNode, type ProvinceRoute } from "@/hooks/useProvinceGraph";
 
 interface Props { sessionId: string; }
