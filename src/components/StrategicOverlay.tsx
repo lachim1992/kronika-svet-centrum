@@ -584,7 +584,36 @@ const StrategicOverlay = memo(function StrategicOverlay({ sessionId, currentPlay
                   </div>
                 )}
 
-                {/* MY NODE — movement & fortification */}
+                {/* Supply chain status */}
+                {supplyState[selectedNode.id] && (
+                  <div className={`rounded p-2 text-[10px] space-y-1 ${
+                    !supplyState[selectedNode.id].connected_to_capital ? "bg-destructive/10 border border-destructive/30" : "bg-muted/40"
+                  }`}>
+                    <div className="flex items-center gap-2">
+                      <span className="font-semibold">📦 Zásobování</span>
+                      <Badge variant={supplyState[selectedNode.id].connected_to_capital ? "outline" : "destructive"} className="text-[7px] ml-auto">
+                        {supplyState[selectedNode.id].connected_to_capital ? `Zásoby ${supplyState[selectedNode.id].supply_level}/10` : `IZOLOVÁN ${supplyState[selectedNode.id].isolation_turns} kol`}
+                      </Badge>
+                    </div>
+                    <div className="grid grid-cols-3 gap-1 text-[8px]">
+                      <div className="text-center">
+                        <span className="text-muted-foreground block">Produkce</span>
+                        <span className="font-bold">{Math.round(supplyState[selectedNode.id].production_modifier * 100)}%</span>
+                      </div>
+                      <div className="text-center">
+                        <span className="text-muted-foreground block">Kvalita tras</span>
+                        <span className="font-bold">{Math.round(supplyState[selectedNode.id].route_quality * 100)}%</span>
+                      </div>
+                      <div className="text-center">
+                        <span className="text-muted-foreground block">Vzdálenost</span>
+                        <span className="font-bold">{supplyState[selectedNode.id].hop_distance} skoků</span>
+                      </div>
+                    </div>
+                    {supplyState[selectedNode.id].stability_modifier < 0 && (
+                      <p className="text-destructive text-[8px]">⚠ Stabilita: {supplyState[selectedNode.id].stability_modifier} · Morálka: {supplyState[selectedNode.id].morale_modifier}</p>
+                    )}
+                  </div>
+                )}
                 {selectedNode.controlled_by === currentPlayerName && (
                   <>
                     <div className="border-t border-border pt-2 space-y-2">
