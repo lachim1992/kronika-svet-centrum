@@ -87,6 +87,7 @@ Deno.serve(async (req) => {
           city_id: mainCity.id,
           strategic_value: 10, economic_value: 8, defense_value: 5,
           mobility_relevance: 7, supply_relevance: 9,
+          is_major: true, population: mainCity.population_total || 0,
           metadata: { settlement_level: mainCity.settlement_level, population: mainCity.population_total },
         });
       }
