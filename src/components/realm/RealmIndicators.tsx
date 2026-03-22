@@ -106,7 +106,7 @@ const RealmIndicators = ({ realm, cities, currentTurn }: Props) => {
         </Card>
       )}
 
-      {/* Macro Economy — 3 Layers */}
+      {/* Macro Economy — 3 Layers + Faith */}
       <Card>
         <CardHeader className="p-3 pb-1">
           <CardTitle className="text-xs flex items-center gap-1"><Network className="h-3 w-3" />Ekonomika toku</CardTitle>
@@ -128,6 +128,21 @@ const RealmIndicators = ({ realm, cities, currentTurn }: Props) => {
             <span className="text-muted-foreground">⭐ Celková důležitost</span>
             <span className="font-bold">{stats.totalImportance.toFixed(1)}</span>
           </div>
+          <div className="flex justify-between text-xs">
+            <span className="text-muted-foreground">⛪ Víra</span>
+            <span className="font-bold flex items-center gap-1">
+              {stats.faith.toFixed(0)}
+              <Trend val={Math.round(stats.faithGrowth * 10) / 10} />
+            </span>
+          </div>
+          {stats.supplyStrain > 0.6 && (
+            <div className="flex justify-between text-xs">
+              <span className="text-muted-foreground">📦 Zásobovací zátěž</span>
+              <span className={`font-bold ${stats.supplyStrain > 1.0 ? "text-destructive" : "text-amber-500"}`}>
+                {Math.round(stats.supplyStrain * 100)}%
+              </span>
+            </div>
+          )}
         </CardContent>
       </Card>
 
