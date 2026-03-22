@@ -85,6 +85,7 @@ const StrategicOverlay = memo(function StrategicOverlay({ sessionId, currentPlay
   const [routes, setRoutes] = useState<ProvinceRoute[]>([]);
   const [stacks, setStacks] = useState<any[]>([]);
   const [projects, setProjects] = useState<any[]>([]);
+  const [supplyState, setSupplyState] = useState<Record<string, any>>({});
   const [selectedNode, setSelectedNode] = useState<StrategicNode | null>(null);
   const [selectedRoute, setSelectedRoute] = useState<ProvinceRoute | null>(null);
   const [moveTarget, setMoveTarget] = useState("");
@@ -95,7 +96,7 @@ const StrategicOverlay = memo(function StrategicOverlay({ sessionId, currentPlay
   const [busy, setBusy] = useState(false);
 
   const loadData = useCallback(async () => {
-    const [nRes, rRes, sRes, pRes] = await Promise.all([
+    const [nRes, rRes, sRes, pRes, scRes] = await Promise.all([
       supabase.from("province_nodes")
         .select("id, province_id, node_type, name, hex_q, hex_r, strategic_value, economic_value, defense_value, controlled_by, garrison_strength, is_major, population, fortification_level, infrastructure_level, parent_node_id, besieged_by, siege_turn_start")
         .eq("session_id", sessionId),
@@ -108,12 +109,19 @@ const StrategicOverlay = memo(function StrategicOverlay({ sessionId, currentPlay
       supabase.from("node_projects")
         .select("*")
         .eq("session_id", sessionId).eq("initiated_by", currentPlayerName).eq("status", "active"),
+      supabase.from("supply_chain_state")
+        .select("node_id, connected_to_capital, isolation_turns, supply_level, route_quality, production_modifier, stability_modifier, morale_modifier, hop_distance")
+        .eq("session_id", sessionId).eq("turn_number", turnNumber),
     ]);
     setNodes((nRes.data || []) as StrategicNode[]);
     setRoutes((rRes.data || []) as ProvinceRoute[]);
     setStacks(sRes.data || []);
     setProjects(pRes.data || []);
-  }, [sessionId, currentPlayerName]);
+    // Build supply lookup by node_id
+    const scMap: Record<string, any> = {};
+    for (const s of (scRes.data || [])) scMap[s.node_id] = s;
+    setSupplyState(scMap);
+  }, [sessionId, currentPlayerName, turnNumber]);
 
   useEffect(() => { loadData(); }, [loadData]);
 
