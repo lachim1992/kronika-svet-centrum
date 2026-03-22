@@ -162,10 +162,12 @@ Deno.serve(async (req) => {
     // Build route adjacency for pathfinding
     const adjacency = new Map<string, Array<{ neighbor: string; routeId: string; controlState: string }>>();
     for (const r of allRoutes) {
-      if (!adjacency.has(r.node_a_id)) adjacency.set(r.node_a_id, []);
-      if (!adjacency.has(r.node_b_id)) adjacency.set(r.node_b_id, []);
-      adjacency.get(r.node_a_id)!.push({ neighbor: r.node_b_id, routeId: r.id, controlState: r.control_state || "open" });
-      adjacency.get(r.node_b_id)!.push({ neighbor: r.node_a_id, routeId: r.id, controlState: r.control_state || "open" });
+      const a = r.node_a;
+      const b = r.node_b;
+      if (!adjacency.has(a)) adjacency.set(a, []);
+      if (!adjacency.has(b)) adjacency.set(b, []);
+      adjacency.get(a)!.push({ neighbor: b, routeId: r.id, controlState: r.control_state || "open" });
+      adjacency.get(b)!.push({ neighbor: a, routeId: r.id, controlState: r.control_state || "open" });
     }
 
     // ── Load infrastructure ──
