@@ -117,12 +117,15 @@ const CityBuildingsPanel = ({
 
   const alreadyBuilt = new Set(buildings.filter(b => b.template_id).map(b => b.template_id));
 
+  /** New civilizational economy cost check:
+   * cost_wealth → deducted from gold_reserve (Wealth)
+   * cost_wood + cost_stone + cost_iron → merged into production_reserve (Production)
+   */
+  const getProductionCost = (costs: any) => (costs.cost_wood || 0) + (costs.cost_stone || 0) + (costs.cost_iron || 0);
   const canAfford = (costs: { cost_wealth?: number; cost_wood?: number; cost_stone?: number; cost_iron?: number }) =>
     realm &&
     (realm.gold_reserve || 0) >= (costs.cost_wealth || 0) &&
-    (realm.wood_reserve || 0) >= (costs.cost_wood || 0) &&
-    (realm.stone_reserve || 0) >= (costs.cost_stone || 0) &&
-    (realm.iron_reserve || 0) >= (costs.cost_iron || 0);
+    (realm.production_reserve || 0) >= getProductionCost(costs);
 
   // Get upgrade info for a building
   const getUpgradeInfo = (b: any) => {
