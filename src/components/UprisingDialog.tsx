@@ -146,7 +146,7 @@ Odpověz POUZE ve formátu JSON: {"crowd_text": "...", "advisor_analysis": "..."
 
       const userPrompt = `Město: ${city?.name}, populace: ${city?.population_total}, stabilita: ${city?.city_stability}%, hladomor: ${city?.famine_consecutive_turns} kol, úroveň: ${city?.settlement_level}.
 Eskalace vzpoury: ${escalationLevel}/3.
-Zásoby říše: obilí ${realm?.grain_reserve || 0}, zlato ${realm?.gold_reserve || 0}, dřevo ${realm?.wood_reserve || 0}, kámen ${realm?.stone_reserve || 0}, železo ${realm?.iron_reserve || 0}.
+Zásoby říše: zásoby ${realm?.grain_reserve || 0}, bohatství ${realm?.gold_reserve || 0}, produkce ${realm?.production_reserve || 0}, kapacita ${realm?.total_capacity || 0}, víra ${realm?.faith || 0}.
 Armády: ${(stacks || []).map(s => `${s.name} (síla ${s.power})`).join(", ") || "žádné"}.
 Vygeneruj hlas lidu a analýzu poradců.`;
 
