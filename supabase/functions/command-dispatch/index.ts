@@ -281,6 +281,18 @@ async function executeCommand(
     case "MOVE_STACK":
       return await executeMoveStack(supabase, base, actor, payload, commandId, sessionId, turnNumber);
 
+    case "MOVE_STACK_ROUTE":
+      return await executeMoveStackRoute(supabase, base, actor, payload, commandId, sessionId, turnNumber);
+
+    case "BUILD_ROUTE":
+      return await executeBuildRoute(supabase, base, actor, payload, commandId, sessionId, turnNumber);
+
+    case "UPGRADE_ROUTE":
+      return await executeUpgradeRoute(supabase, base, actor, payload, commandId, sessionId, turnNumber);
+
+    case "FORTIFY_NODE":
+      return await executeFortifyNode(supabase, base, actor, payload, commandId, sessionId, turnNumber);
+
     case "PROPOSE_PACT":
       return await executeProposePact(supabase, base, actor, payload, commandId, sessionId, turnNumber);
 
