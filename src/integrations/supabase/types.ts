@@ -5455,6 +5455,8 @@ export type Database = {
       }
       military_stacks: {
         Row: {
+          battle_context: string | null
+          blockading_route_id: string | null
           created_at: string
           current_node_id: string | null
           demobilized_turn: number | null
@@ -5487,6 +5489,8 @@ export type Database = {
           travel_target_node_id: string | null
         }
         Insert: {
+          battle_context?: string | null
+          blockading_route_id?: string | null
           created_at?: string
           current_node_id?: string | null
           demobilized_turn?: number | null
@@ -5519,6 +5523,8 @@ export type Database = {
           travel_target_node_id?: string | null
         }
         Update: {
+          battle_context?: string | null
+          blockading_route_id?: string | null
           created_at?: string
           current_node_id?: string | null
           demobilized_turn?: number | null
@@ -5551,6 +5557,13 @@ export type Database = {
           travel_target_node_id?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "military_stacks_blockading_route_id_fkey"
+            columns: ["blockading_route_id"]
+            isOneToOne: false
+            referencedRelation: "province_routes"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "military_stacks_current_node_id_fkey"
             columns: ["current_node_id"]
@@ -6011,6 +6024,8 @@ export type Database = {
       }
       province_nodes: {
         Row: {
+          besieged_by: string | null
+          besieging_stack_id: string | null
           city_id: string | null
           controlled_by: string | null
           created_at: string
@@ -6033,11 +6048,14 @@ export type Database = {
           population: number
           province_id: string
           session_id: string
+          siege_turn_start: number | null
           strategic_value: number
           supply_relevance: number
           updated_at: string
         }
         Insert: {
+          besieged_by?: string | null
+          besieging_stack_id?: string | null
           city_id?: string | null
           controlled_by?: string | null
           created_at?: string
@@ -6060,11 +6078,14 @@ export type Database = {
           population?: number
           province_id: string
           session_id: string
+          siege_turn_start?: number | null
           strategic_value?: number
           supply_relevance?: number
           updated_at?: string
         }
         Update: {
+          besieged_by?: string | null
+          besieging_stack_id?: string | null
           city_id?: string | null
           controlled_by?: string | null
           created_at?: string
@@ -6087,11 +6108,19 @@ export type Database = {
           population?: number
           province_id?: string
           session_id?: string
+          siege_turn_start?: number | null
           strategic_value?: number
           supply_relevance?: number
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "province_nodes_besieging_stack_id_fkey"
+            columns: ["besieging_stack_id"]
+            isOneToOne: false
+            referencedRelation: "military_stacks"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "province_nodes_city_id_fkey"
             columns: ["city_id"]
@@ -6124,11 +6153,14 @@ export type Database = {
       }
       province_routes: {
         Row: {
+          ambush_stack_id: string | null
+          blocked_by: string[] | null
           build_cost: number
           capacity_value: number
           control_state: string
           controlled_by: string | null
           created_at: string
+          damage_level: number | null
           economic_relevance: number
           id: string
           is_cross_province: boolean
@@ -6144,11 +6176,14 @@ export type Database = {
           vulnerability_score: number
         }
         Insert: {
+          ambush_stack_id?: string | null
+          blocked_by?: string[] | null
           build_cost?: number
           capacity_value?: number
           control_state?: string
           controlled_by?: string | null
           created_at?: string
+          damage_level?: number | null
           economic_relevance?: number
           id?: string
           is_cross_province?: boolean
@@ -6164,11 +6199,14 @@ export type Database = {
           vulnerability_score?: number
         }
         Update: {
+          ambush_stack_id?: string | null
+          blocked_by?: string[] | null
           build_cost?: number
           capacity_value?: number
           control_state?: string
           controlled_by?: string | null
           created_at?: string
+          damage_level?: number | null
           economic_relevance?: number
           id?: string
           is_cross_province?: boolean
@@ -6184,6 +6222,13 @@ export type Database = {
           vulnerability_score?: number
         }
         Relationships: [
+          {
+            foreignKeyName: "province_routes_ambush_stack_id_fkey"
+            columns: ["ambush_stack_id"]
+            isOneToOne: false
+            referencedRelation: "military_stacks"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "province_routes_node_a_fkey"
             columns: ["node_a"]
@@ -8446,6 +8491,88 @@ export type Database = {
             columns: ["session_id"]
             isOneToOne: false
             referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      world_routes: {
+        Row: {
+          capacity_value: number | null
+          control_state: string | null
+          controlled_by: string | null
+          created_at: string | null
+          economic_value: number | null
+          end_node_id: string | null
+          id: string
+          metadata: Json | null
+          military_value: number | null
+          name: string
+          route_kind: string
+          route_path: Json | null
+          session_id: string
+          start_node_id: string | null
+          strategic_value: number | null
+          updated_at: string | null
+          waypoint_node_ids: string[] | null
+        }
+        Insert: {
+          capacity_value?: number | null
+          control_state?: string | null
+          controlled_by?: string | null
+          created_at?: string | null
+          economic_value?: number | null
+          end_node_id?: string | null
+          id?: string
+          metadata?: Json | null
+          military_value?: number | null
+          name: string
+          route_kind?: string
+          route_path?: Json | null
+          session_id: string
+          start_node_id?: string | null
+          strategic_value?: number | null
+          updated_at?: string | null
+          waypoint_node_ids?: string[] | null
+        }
+        Update: {
+          capacity_value?: number | null
+          control_state?: string | null
+          controlled_by?: string | null
+          created_at?: string | null
+          economic_value?: number | null
+          end_node_id?: string | null
+          id?: string
+          metadata?: Json | null
+          military_value?: number | null
+          name?: string
+          route_kind?: string
+          route_path?: Json | null
+          session_id?: string
+          start_node_id?: string | null
+          strategic_value?: number | null
+          updated_at?: string | null
+          waypoint_node_ids?: string[] | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "world_routes_end_node_id_fkey"
+            columns: ["end_node_id"]
+            isOneToOne: false
+            referencedRelation: "province_nodes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "world_routes_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "world_routes_start_node_id_fkey"
+            columns: ["start_node_id"]
+            isOneToOne: false
+            referencedRelation: "province_nodes"
             referencedColumns: ["id"]
           },
         ]
