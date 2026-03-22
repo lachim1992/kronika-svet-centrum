@@ -5,16 +5,19 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { Progress } from "@/components/ui/progress";
 import {
   Landmark, Shield, Anchor, Store, Mountain, Wheat, Route,
   Swords, ArrowRight, Hammer, ChevronUp, Loader2, Lock, Unlock, AlertTriangle,
-  Crosshair, Ban, Bomb, Eye,
+  Crosshair, Ban, Bomb, Eye, HardHat, X, Wrench,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
   moveStackRoute, buildRoute, upgradeRoute, fortifyNode,
   blockadeRoute, ambushRoute, siegeNode, disruptRoute,
+  startProject, cancelProject,
   ROUTE_TYPE_LABELS, CONTROL_STATE_LABELS, NODE_TYPE_LABELS, STANCE_LABELS,
+  PROJECT_TYPE_LABELS, PROJECT_COSTS,
 } from "@/lib/strategicGraph";
 
 interface Props {
