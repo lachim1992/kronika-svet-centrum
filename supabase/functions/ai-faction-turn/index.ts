@@ -250,11 +250,14 @@ Deno.serve(async (req) => {
         .eq("session_id", sessionId),
     ]);
 
-    // ── Load diplomatic relations, memory, and active intents ──
+    // ── Load diplomatic relations, memory, intents + STRATEGIC GRAPH ──
     const [
       { data: diplomRelations },
       { data: diplomMemories },
       { data: activeIntents },
+      { data: strategicNodes },
+      { data: strategicRoutes },
+      { data: supplyStates },
     ] = await Promise.all([
       supabase.from("diplomatic_relations").select("*")
         .eq("session_id", sessionId)
@@ -265,6 +268,19 @@ Deno.serve(async (req) => {
         .order("turn_number", { ascending: false }).limit(30),
       supabase.from("faction_intents").select("*")
         .eq("session_id", sessionId).eq("faction_name", factionName).eq("status", "active"),
+      // Strategic nodes with scores
+      supabase.from("province_nodes")
+        .select("id, name, node_type, hex_q, hex_r, strategic_value, economic_value, defense_value, is_major, city_id, controlled_by, fortification_level, infrastructure_level, production_output, wealth_output, capacity_score, cumulative_trade_flow")
+        .eq("session_id", sessionId).eq("is_active", true),
+      // Routes with flow data
+      supabase.from("province_routes")
+        .select("id, node_a, node_b, route_type, capacity_value, control_state, upgrade_level, hex_path_cost, hex_bottleneck_q, hex_bottleneck_r")
+        .eq("session_id", sessionId),
+      // Supply chain state
+      supabase.from("supply_chain_state")
+        .select("node_id, connected_to_capital, supply_level, isolation_turns, hop_distance")
+        .eq("session_id", sessionId)
+        .order("turn_number", { ascending: false }),
     ]);
 
     // Fetch recent diplomacy messages for all rooms involving this faction
