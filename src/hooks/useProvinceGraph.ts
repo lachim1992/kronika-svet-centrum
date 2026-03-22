@@ -176,6 +176,15 @@ export function useProvinceGraph(sessionId: string) {
           hinterland_level: n.hinterland_level ?? 0,
           resource_output: (n.resource_output as any) || {},
           flow_role: n.flow_role || "neutral",
+          production_output: n.production_output ?? 0,
+          wealth_output: n.wealth_output ?? 0,
+          capacity_score: n.capacity_score ?? 0,
+          importance_score: n.importance_score ?? 0,
+          incoming_production: n.incoming_production ?? 0,
+          connectivity_score: n.connectivity_score ?? 0,
+          route_access_factor: n.route_access_factor ?? 1.0,
+          trade_efficiency: n.trade_efficiency ?? 1.0,
+          isolation_penalty: n.isolation_penalty ?? 0,
         })));
       }
       if (routesRes.data) {
