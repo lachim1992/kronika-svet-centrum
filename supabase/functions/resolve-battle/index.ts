@@ -199,8 +199,26 @@ Deno.serve(async (req) => {
     const defFormBonus = FORMATION_BASE_BONUSES[defenderFormation] || { attack: 0, defense: 0, fortIgnore: 0 };
     const matchupBonus = (FORMATION_MATCHUPS[attackerFormation] || {})[defenderFormation] || 0;
 
+    // ═══ NODE FORTIFICATION BONUS ═══
+    let nodeFortBonus = 0;
+    const battleContext = inputBattleContext || "field_battle";
+    if (inputNodeId && (battleContext === "node_siege" || defender_city_id)) {
+      const { data: bNode } = await supabase.from("province_nodes")
+        .select("fortification_level, defense_value")
+        .eq("id", inputNodeId).maybeSingle();
+      if (bNode) {
+        nodeFortBonus = (bNode.fortification_level || 0) * 0.10 + (bNode.defense_value || 0) * 0.02;
+      }
+    }
+
+    // ═══ AMBUSH BONUS ═══
+    let ambushBonus = 0;
+    if (battleContext === "route_ambush") {
+      ambushBonus = 0.20; // 20% surprise attack bonus
+    }
+
     // Fort ignore from FLANK
-    const effectiveFortification = fortificationBonus * (1 - atkFormBonus.fortIgnore);
+    const effectiveFortification = (fortificationBonus + nodeFortBonus) * (1 - atkFormBonus.fortIgnore);
 
     // SIEGE city bonus
     const siegeCityBonus = (attackerFormation === "SIEGE" && defender_city_id) ? SIEGE_CITY_BONUS : 0;
@@ -213,7 +231,7 @@ Deno.serve(async (req) => {
 
     // Attack multipliers
     const attackerCivFort = defender_city_id ? 0 : (civBonuses.fortification_bonus || 0) * 0.5;
-    const effectiveAttackerBase = Math.round(attackerStrength * (1 + attackerCivFort + atkFormBonus.attack + matchupBonus + siegeCityBonus));
+    const effectiveAttackerBase = Math.round(attackerStrength * (1 + attackerCivFort + atkFormBonus.attack + matchupBonus + siegeCityBonus + ambushBonus));
 
     // RNG
     const rng = seededRandom(battleSeed);
