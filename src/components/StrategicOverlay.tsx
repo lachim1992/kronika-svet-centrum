@@ -30,6 +30,11 @@ interface StrategicNode {
   defense_value: number;
   controlled_by: string | null;
   garrison_strength: number;
+  is_major: boolean;
+  population: number;
+  fortification_level: number;
+  infrastructure_level: number;
+  parent_node_id: string | null;
 }
 
 interface ProvinceRoute {
