@@ -740,8 +740,8 @@ Deno.serve(async (req) => {
         // 12b. Compute isolation penalty per player
         const isolationResults: any[] = [];
         const routesForIsolation = (graphRoutes || []).map((r: any) => ({
-          node_a: r.node_a_id,
-          node_b: r.node_b_id,
+          node_a: r.node_a,
+          node_b: r.node_b,
           control_state: r.control_state || "open",
         }));
         const nodesForIsolation = graphNodes.map((n: any) => ({
