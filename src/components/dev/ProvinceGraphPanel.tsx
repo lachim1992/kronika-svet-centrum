@@ -24,6 +24,9 @@ const NODE_TYPE_ICONS: Record<string, { icon: typeof Landmark; label: string; co
   trade_hub: { icon: Store, label: "Tržiště", color: "text-emerald-400" },
   pass: { icon: Mountain, label: "Průsmyk", color: "text-stone-400" },
   resource_node: { icon: Wheat, label: "Zdroj", color: "text-amber-400" },
+  village_cluster: { icon: Home, label: "Vesnice", color: "text-orange-300" },
+  religious_center: { icon: Church, label: "Chrám", color: "text-purple-400" },
+  logistic_hub: { icon: Package, label: "Logistika", color: "text-cyan-400" },
 };
 
 const NODE_TYPE_SHAPES: Record<string, string> = {
