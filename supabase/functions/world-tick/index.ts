@@ -4,7 +4,9 @@ import {
   computeInfluence, computeTension, evaluateRebellion,
   clampReputation, REPUTATION_DELTAS, REPUTATION_DECAY,
   CRISIS_THRESHOLD, WAR_THRESHOLD, SETTLEMENT_LEVEL_THRESHOLDS,
+  computeProvinceControl, computeIsolationPenalty,
   type CityForGrowth, type InfluenceInput,
+  type NodeControlEntry, type IsolationInput,
 } from "../_shared/physics.ts";
 
 const corsHeaders = {
