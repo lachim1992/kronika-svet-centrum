@@ -125,7 +125,7 @@ const UprisingDialog = ({ sessionId, playerName, currentTurn, onResolved }: Prop
 
       const { data: realm } = await supabase
         .from("realm_resources")
-        .select("grain_reserve, gold_reserve, wood_reserve, stone_reserve, iron_reserve")
+        .select("grain_reserve, gold_reserve, production_reserve, total_capacity, faith")
         .eq("session_id", sessionId)
         .eq("player_name", playerName)
         .maybeSingle();
