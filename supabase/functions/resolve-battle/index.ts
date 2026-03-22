@@ -88,6 +88,9 @@ Deno.serve(async (req) => {
       defender_formation: inputDefenderFormation,
       seed, biome: inputBiome, player_name, current_turn,
       lobby_id,
+      battle_context: inputBattleContext,
+      node_id: inputNodeId,
+      route_id: inputRouteId,
     } = await req.json();
 
     if (!session_id || !attacker_stack_id) {
