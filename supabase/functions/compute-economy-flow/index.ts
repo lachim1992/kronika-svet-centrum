@@ -208,7 +208,7 @@ Deno.serve(async (req) => {
     const sb = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 
     // ── FETCH DATA ────────────────────────────────────────────
-    const [nodesRes, routesRes, supplyRes] = await Promise.all([
+    const [nodesRes, routesRes, supplyRes, citiesRes] = await Promise.all([
       sb.from("province_nodes")
         .select("id, session_id, province_id, node_type, flow_role, is_major, parent_node_id, controlled_by, city_id, population, infrastructure_level, urbanization_score, hinterland_level, cumulative_trade_flow, throughput_military, toll_rate, strategic_value, economic_value, defense_value, resource_output, metadata, development_level, stability_factor")
         .eq("session_id", session_id),
@@ -217,6 +217,9 @@ Deno.serve(async (req) => {
         .eq("session_id", session_id),
       sb.from("supply_chain_state")
         .select("node_id, connected_to_capital, hop_distance, isolation_turns, supply_level, route_quality")
+        .eq("session_id", session_id),
+      sb.from("cities")
+        .select("id, population_total, population_peasants, population_burghers, population_clerics, population_warriors, market_level, temple_level")
         .eq("session_id", session_id),
     ]);
 
@@ -230,6 +233,10 @@ Deno.serve(async (req) => {
     const routes: RouteData[] = routesRes.data || [];
     const supplyMap = new Map<string, SupplyState>();
     for (const s of (supplyRes.data || [])) supplyMap.set(s.node_id, s as SupplyState);
+
+    // Build city demographics map for city-linked nodes
+    const cityMap = new Map<string, any>();
+    for (const c of (citiesRes.data || [])) cityMap.set(c.id, c);
 
     // ── NODE INDEX ─────────────────────────────────────────────
     const nodeMap = new Map<string, NodeData>();
