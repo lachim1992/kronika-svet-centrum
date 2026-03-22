@@ -405,12 +405,50 @@ const EconomyTab = ({ sessionId, currentPlayerName, currentTurn, cities, resourc
         </div>
       </TooltipProvider>
 
+      {/* ═══ GRAIN RESERVE ═══ */}
+      {realm && (
+        <div className="game-card p-5 space-y-3">
+          <div className="flex items-center gap-2">
+            <span className="text-xl">🌾</span>
+            <h3 className="font-display font-semibold text-base">Zásoby obilí</h3>
+            <span className="ml-auto text-sm font-mono font-bold">
+              {Math.round(realm.grain_reserve || 0)} / {Math.round(realm.granary_capacity || 0)}
+            </span>
+          </div>
+          <Progress value={Math.min(100, ((realm.grain_reserve || 0) / Math.max(1, realm.granary_capacity || 1)) * 100)} className="h-3" />
+          <div className="flex justify-between text-xs text-muted-foreground">
+            <span>⚒️ Produkce: {realm.last_turn_grain_prod || 0}</span>
+            <span>🍽️ Spotřeba: {realm.last_turn_grain_cons || 0}</span>
+            <span className={`font-semibold ${(realm.last_turn_grain_net || 0) >= 0 ? "text-emerald-500" : "text-destructive"}`}>
+              Bilance: {(realm.last_turn_grain_net || 0) >= 0 ? "+" : ""}{realm.last_turn_grain_net || 0}
+            </span>
+          </div>
+          {(realm.famine_city_count || 0) > 0 && (
+            <div className="text-xs text-destructive flex items-center gap-1.5">
+              <Skull className="h-3 w-3" />
+              {realm.famine_city_count} měst trpí hladomorem — zásoby nestačí pokrýt deficit
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ═══ GOLD RESERVE ═══ */}
+      {realm && (
+        <div className="game-card p-5">
+          <div className="flex items-center gap-2">
+            <span className="text-xl">💰</span>
+            <h3 className="font-display font-semibold text-base">Zlatá pokladna</h3>
+            <span className="ml-auto text-2xl font-mono font-bold text-primary">{Math.round(realm.gold_reserve || 0)}</span>
+          </div>
+        </div>
+      )}
+
       {/* ═══ CITY TABLE ═══ */}
       <div className="game-card p-0 overflow-hidden">
         <div className="px-5 pt-4 pb-2">
           <h3 className="text-base font-display font-semibold flex items-center gap-2">
-            Přehled sídel
-            <InfoTip side="right">Přehled všech sídel. Produkce nyní plyne z uzlového systému, ne z měst přímo.</InfoTip>
+            Přehled sídel — síťová ekonomika
+            <InfoTip side="right">Produkce a bohatství měst plyne z uzlového systému. Bilance = produkce − poptávka. Izolace od hlavního města snižuje produkci.</InfoTip>
           </h3>
         </div>
         <Table>
