@@ -608,6 +608,12 @@ const ArmyTab = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, on
             onRefresh={fetchMilitary}
           />
         </TabsContent>
+
+        <TabsContent value="strategic" className="mt-3">
+          <Suspense fallback={<div className="flex justify-center py-8"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>}>
+            <StrategicOverlay sessionId={sessionId} currentPlayerName={currentPlayerName} turnNumber={currentTurn} />
+          </Suspense>
+        </TabsContent>
       </Tabs>
 
       {/* Stack Detail Dialog */}
