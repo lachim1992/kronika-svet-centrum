@@ -696,13 +696,13 @@ const CityManagement = ({ sessionId, cityId, currentPlayerName, currentTurn, onB
                         {aiPreview.founding_myth}
                       </div>
                     )}
-                    {/* Costs */}
+                    {/* Costs — unified economy */}
                     <div className="flex flex-wrap gap-3 text-xs">
                       <span className="font-semibold">Cena:</span>
-                      {aiPreview.cost_wood > 0 && <span className="flex items-center gap-0.5"><Trees className="h-3 w-3" />{aiPreview.cost_wood}</span>}
-                      {aiPreview.cost_stone > 0 && <span className="flex items-center gap-0.5"><Mountain className="h-3 w-3" />{aiPreview.cost_stone}</span>}
-                      {aiPreview.cost_iron > 0 && <span className="flex items-center gap-0.5"><Anvil className="h-3 w-3" />{aiPreview.cost_iron}</span>}
-                      {aiPreview.cost_wealth > 0 && <span className="flex items-center gap-0.5"><Coins className="h-3 w-3" />{aiPreview.cost_wealth}</span>}
+                      {((aiPreview.cost_wood || 0) + (aiPreview.cost_stone || 0) + (aiPreview.cost_iron || 0)) > 0 && (
+                        <span className="flex items-center gap-0.5 text-orange-400">⚒ {(aiPreview.cost_wood || 0) + (aiPreview.cost_stone || 0) + (aiPreview.cost_iron || 0)} Produkce</span>
+                      )}
+                      {aiPreview.cost_wealth > 0 && <span className="flex items-center gap-0.5 text-yellow-400">💰 {aiPreview.cost_wealth} Bohatství</span>}
                       <span>⏱️ {aiPreview.build_duration} kol</span>
                     </div>
                     {/* Effects */}
