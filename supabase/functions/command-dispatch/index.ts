@@ -433,6 +433,7 @@ async function executeFoundCity(
     population_peasants: 800,
     population_burghers: 150,
     population_clerics: 50,
+    population_warriors: 0,
     city_stability: 70,
     local_grain_reserve: 0,
     local_granary_capacity: 0,
