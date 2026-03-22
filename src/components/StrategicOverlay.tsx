@@ -86,6 +86,7 @@ const StrategicOverlay = memo(function StrategicOverlay({ sessionId, currentPlay
   const [stacks, setStacks] = useState<any[]>([]);
   const [projects, setProjects] = useState<any[]>([]);
   const [supplyState, setSupplyState] = useState<Record<string, any>>({});
+  const [controlSnapshots, setControlSnapshots] = useState<any[]>([]);
   const [selectedNode, setSelectedNode] = useState<StrategicNode | null>(null);
   const [selectedRoute, setSelectedRoute] = useState<ProvinceRoute | null>(null);
   const [moveTarget, setMoveTarget] = useState("");
