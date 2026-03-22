@@ -142,6 +142,14 @@ export function useProvinceGraph(sessionId: string) {
           defense_value: n.defense_value,
           mobility_relevance: n.mobility_relevance,
           supply_relevance: n.supply_relevance,
+          controlled_by: n.controlled_by,
+          garrison_strength: n.garrison_strength,
+          is_major: n.is_major ?? false,
+          population: n.population ?? 0,
+          fortification_level: n.fortification_level ?? 0,
+          infrastructure_level: n.infrastructure_level ?? 0,
+          parent_node_id: n.parent_node_id,
+          is_active: n.is_active ?? true,
           metadata: (n.metadata as any) || {},
         })));
       }
