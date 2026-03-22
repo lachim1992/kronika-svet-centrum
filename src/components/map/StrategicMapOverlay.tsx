@@ -21,6 +21,20 @@ const FLOW_COLORS = {
   faith:      "hsl(280, 65%, 60%)",  // purple
 } as const;
 
+/** Density-based color ramp: low → high traffic */
+function densityColor(density: number, maxDensity: number): string {
+  const t = maxDensity > 1 ? Math.min(1, (density - 1) / (maxDensity - 1)) : 0;
+  // green → yellow → orange → red
+  const hue = 120 - t * 120; // 120=green, 60=yellow, 0=red
+  const sat = 50 + t * 30;
+  const light = 50 - t * 5;
+  return `hsl(${hue}, ${sat}%, ${light}%)`;
+}
+function densityWidth(density: number, maxDensity: number, baseWidth: number): number {
+  const t = maxDensity > 1 ? Math.min(1, (density - 1) / (maxDensity - 1)) : 0;
+  return baseWidth + t * 3; // up to +3px for busiest
+}
+
 const FLOW_PARTICLE_SIZES = {
   production: { r: 2.0, rMax: 2.8 },
   wealth:     { r: 1.5, rMax: 2.2 },
@@ -390,20 +404,25 @@ const StrategicMapOverlay = memo(({ sessionId, offsetX, offsetY, visible, onNode
         ))}
       </defs>
 
-      {/* ── Hex corridor heatmap — always visible when overlay is on ── */}
-      {Array.from(hexHeatmap.entries()).map(([k, count]) => {
-        if (count < 2) return null;
-        const [q, r] = k.split(",").map(Number);
-        const pos = hexToPixel(q, r);
-        const intensity = Math.min(1, count * 0.12);
-        return (
-          <circle key={`heat-${k}`}
-            cx={pos.x + offsetX} cy={pos.y + offsetY}
-            r={HEX_SIZE * 0.45}
-            fill="hsl(48, 90%, 60%)" opacity={intensity * 0.2}
-            style={{ pointerEvents: "none" }} />
-        );
-      })}
+      {/* ── Hex corridor heatmap — color+size by density ── */}
+      {(() => {
+        const maxD = Math.max(1, ...Array.from(hexHeatmap.values()));
+        return Array.from(hexHeatmap.entries()).map(([k, count]) => {
+          if (count < 2) return null;
+          const [q, r] = k.split(",").map(Number);
+          const pos = hexToPixel(q, r);
+          const t = Math.min(1, (count - 1) / (maxD - 1 || 1));
+          const col = densityColor(count, maxD);
+          const rad = HEX_SIZE * (0.3 + t * 0.25);
+          return (
+            <circle key={`heat-${k}`}
+              cx={pos.x + offsetX} cy={pos.y + offsetY}
+              r={rad}
+              fill={col} opacity={0.12 + t * 0.15}
+              style={{ pointerEvents: "none" }} />
+          );
+        });
+      })()}
 
       {/* ── Bottleneck markers ── */}
       {showHexFlows && bottleneckHexes.map((b, i) => {
@@ -443,80 +462,77 @@ const StrategicMapOverlay = memo(({ sessionId, offsetX, offsetY, visible, onNode
         const isDamaged = r.control_state === "damaged" || r.control_state === "blocked";
         const width = 1.5 + r.upgrade_level * 0.5 + (r.capacity_value > 5 ? 1 : 0);
 
-        // Check if we have a hex-based path for this route
-        const hexFp = flowPaths.find(fp => fp.route_id === r.id && fp.hex_path && fp.hex_path.length >= 2);
+      {/* Routes — per-segment density coloring */}
+      {(() => {
+        const maxD = Math.max(1, ...Array.from(hexHeatmap.values()));
+        return routes.map(r => {
+          const a = nodePositions.get(r.node_a);
+          const b = nodePositions.get(r.node_b);
+          if (!a || !b) return null;
+          const baseColor = ROUTE_COLORS[r.route_type] || "hsl(var(--muted-foreground))";
+          const isDamaged = r.control_state === "damaged" || r.control_state === "blocked";
+          const baseWidth = 1.5 + r.upgrade_level * 0.5 + (r.capacity_value > 5 ? 1 : 0);
+          const dash = isDamaged ? "4,4" : r.route_type === "river_route" || r.route_type === "river" ? "6,3" : undefined;
 
-        if (hexFp) {
-          // Render polyline along hex path
-          const points = hexFp.hex_path.map(h => {
-            const px = hexToPixel(h.q, h.r);
-            return `${px.x + offsetX},${px.y + offsetY}`;
-          });
-          const d = `M${points.join(" L")}`;
-          return (
-            <g key={r.id}>
-              <path d={d} fill="none"
-                stroke={stateColor} strokeWidth={width + 3} opacity={0.10}
-                strokeLinecap="round" strokeLinejoin="round" />
-              <path d={d} fill="none"
-                stroke={color} strokeWidth={width} opacity={0.6}
-                strokeLinecap="round" strokeLinejoin="round"
-                strokeDasharray={isDamaged ? "4,4" : r.route_type === "river_route" || r.route_type === "river" ? "6,3" : undefined} />
-              {r.capacity_value >= 5 && (() => {
-                const mid = hexFp.hex_path[Math.floor(hexFp.hex_path.length / 2)];
-                const mp = hexToPixel(mid.q, mid.r);
-                return <circle cx={mp.x + offsetX} cy={mp.y + offsetY} r={3} fill={stateColor} opacity={0.5} />;
-              })()}
-            </g>
-          );
-        }
-
-        // Fallback: interpolated corridor snapped to hex centers
-        const nA = nodes.find(n => n.id === r.node_a);
-        const nB = nodes.find(n => n.id === r.node_b);
-        if (nA && nB) {
-          const steps = Math.max(2, Math.round(Math.hypot(nB.hex_q - nA.hex_q, nB.hex_r - nA.hex_r)));
-          const visited = new Set<string>();
-          const snappedPoints: Array<{ x: number; y: number }> = [];
-          for (let i = 0; i <= steps; i++) {
-            const t = i / steps;
-            const q = Math.round(nA.hex_q + (nB.hex_q - nA.hex_q) * t);
-            const rr = Math.round(nA.hex_r + (nB.hex_r - nA.hex_r) * t);
-            const k = `${q},${rr}`;
-            if (visited.has(k)) continue;
-            visited.add(k);
-            const px = hexToPixel(q, rr);
-            snappedPoints.push({ x: px.x + offsetX, y: px.y + offsetY });
+          // Get hex waypoints (from flow_paths or interpolated)
+          let hexWaypoints: Array<{ q: number; r: number }> = [];
+          const hexFp = flowPaths.find(fp => fp.route_id === r.id && fp.hex_path && fp.hex_path.length >= 2);
+          if (hexFp) {
+            hexWaypoints = hexFp.hex_path.map(h => ({ q: h.q, r: h.r }));
+          } else {
+            const nA = nodes.find(n => n.id === r.node_a);
+            const nB = nodes.find(n => n.id === r.node_b);
+            if (nA && nB) {
+              const steps = Math.max(2, Math.round(Math.hypot(nB.hex_q - nA.hex_q, nB.hex_r - nA.hex_r)));
+              const visited = new Set<string>();
+              for (let i = 0; i <= steps; i++) {
+                const t = i / steps;
+                const q = Math.round(nA.hex_q + (nB.hex_q - nA.hex_q) * t);
+                const rr = Math.round(nA.hex_r + (nB.hex_r - nA.hex_r) * t);
+                const k = `${q},${rr}`;
+                if (visited.has(k)) continue;
+                visited.add(k);
+                hexWaypoints.push({ q, r: rr });
+              }
+            }
           }
-          if (snappedPoints.length >= 2) {
-            const d = `M${snappedPoints.map(p => `${p.x},${p.y}`).join(" L")}`;
+
+          if (hexWaypoints.length < 2) {
+            // Ultimate fallback: straight line
             return (
               <g key={r.id}>
-                <path d={d} fill="none"
-                  stroke={stateColor} strokeWidth={width + 3} opacity={0.10}
-                  strokeLinecap="round" strokeLinejoin="round" />
-                <path d={d} fill="none"
-                  stroke={color} strokeWidth={width} opacity={0.55}
-                  strokeLinecap="round" strokeLinejoin="round"
-                  strokeDasharray={isDamaged ? "4,4" : r.route_type === "river_route" || r.route_type === "river" ? "6,3" : undefined} />
+                <line x1={a.x} y1={a.y} x2={b.x} y2={b.y}
+                  stroke={baseColor} strokeWidth={baseWidth} opacity={0.6} strokeLinecap="round"
+                  strokeDasharray={dash} />
               </g>
             );
           }
-        }
 
-        // Ultimate fallback: straight line
-        return (
-          <g key={r.id}>
-            <line x1={a.x} y1={a.y} x2={b.x} y2={b.y}
-              stroke={stateColor} strokeWidth={width + 3} opacity={0.12}
-              strokeLinecap="round" />
-            <line x1={a.x} y1={a.y} x2={b.x} y2={b.y}
-              stroke={color} strokeWidth={width} opacity={0.6}
-              strokeLinecap="round"
-              strokeDasharray={isDamaged ? "4,4" : undefined} />
-          </g>
-        );
-      })}
+          // Render per-segment with density-based color+width
+          const segments: React.ReactNode[] = [];
+          for (let i = 0; i < hexWaypoints.length - 1; i++) {
+            const h1 = hexWaypoints[i];
+            const h2 = hexWaypoints[i + 1];
+            const p1 = hexToPixel(h1.q, h1.r);
+            const p2 = hexToPixel(h2.q, h2.r);
+            // Average density of segment endpoints
+            const d1 = hexHeatmap.get(`${h1.q},${h1.r}`) || 1;
+            const d2 = hexHeatmap.get(`${h2.q},${h2.r}`) || 1;
+            const avgD = (d1 + d2) / 2;
+            const segColor = avgD >= 2 ? densityColor(avgD, maxD) : baseColor;
+            const segWidth = avgD >= 2 ? densityWidth(avgD, maxD, baseWidth) : baseWidth;
+            const segOpacity = avgD >= 2 ? 0.5 + Math.min(0.35, (avgD / maxD) * 0.35) : 0.55;
+            segments.push(
+              <line key={`seg-${r.id}-${i}`}
+                x1={p1.x + offsetX} y1={p1.y + offsetY}
+                x2={p2.x + offsetX} y2={p2.y + offsetY}
+                stroke={segColor} strokeWidth={segWidth} opacity={segOpacity}
+                strokeLinecap="round" strokeDasharray={dash} />
+            );
+          }
+          return <g key={r.id}>{segments}</g>;
+        });
+      })()}
 
       {/* Flow particles — use hex paths when available, fallback to straight lines */}
       {flowParticles.map((fp, idx) => {
