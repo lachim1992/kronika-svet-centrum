@@ -92,13 +92,17 @@ const StrategicMapOverlay = memo(({ sessionId, offsetX, offsetY, visible, onNode
         .eq("session_id", sessionId),
       supabase.from("supply_chain_state")
         .select("node_id, connected_to_capital, supply_level, isolation_turns, hop_distance, production_modifier, stability_modifier, morale_modifier")
-        .eq("session_id", sessionId),
+        .eq("session_id", sessionId)
+        .order("turn_number", { ascending: false }),
     ]);
     if (nodesRes.data) setNodes(nodesRes.data as StrategicNode[]);
     if (routesRes.data) setRoutes(routesRes.data as ProvinceRoute[]);
     if (supplyRes.data) {
       const m = new Map<string, SupplyState>();
-      for (const s of supplyRes.data as SupplyState[]) m.set(s.node_id, s);
+      // Ordered by turn_number desc, so first occurrence per node_id is latest
+      for (const s of supplyRes.data as SupplyState[]) {
+        if (!m.has(s.node_id)) m.set(s.node_id, s);
+      }
       setSupply(m);
     }
   }, [sessionId]);
