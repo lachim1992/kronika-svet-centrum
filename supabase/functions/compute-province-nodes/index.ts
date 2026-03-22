@@ -115,6 +115,7 @@ Deno.serve(async (req) => {
           name: `Pevnost ${prov.name}`, hex_q: fortHex.q, hex_r: fortHex.r,
           strategic_value: 8, economic_value: 1, defense_value: 10,
           mobility_relevance: 3, supply_relevance: 4,
+          is_major: true, fortification_level: 1,
           metadata: { elevation: fortHex.mean_height, biome: fortHex.biome_family },
         });
       }
