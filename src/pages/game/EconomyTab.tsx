@@ -528,6 +528,9 @@ const EconomyTab = ({ sessionId, currentPlayerName, currentTurn, cities, resourc
         Poradit se s rádci o ekonomice
       </Button>
 
+      {/* ═══ SUPPLY CHAIN ═══ */}
+      <SupplyChainPanel sessionId={sessionId} playerName={currentPlayerName} currentTurn={currentTurn} />
+
       {/* ═══ ADMIN DEBUG ═══ */}
       {myRole === "admin" && (
         <div>
