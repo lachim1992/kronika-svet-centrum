@@ -320,17 +320,46 @@ const StrategicMapOverlay = memo(({ sessionId, offsetX, offsetY, visible, onNode
     return result;
   }, [flowPaths]);
 
-  // Group particles by route for path defs (fallback when no hex paths)
+  // Build fallback hex-snapped SVG path defs for particle animation
   const particlePathDefs = useMemo(() => {
-    const pathMap = new Map<string, { fromX: number; fromY: number; toX: number; toY: number }>();
+    const pathMap = new Map<string, string>(); // key → SVG path d string
     for (const p of flowParticles) {
       const key = `${p.routeId}-${p.flowType}`;
-      if (!pathMap.has(key)) {
-        pathMap.set(key, { fromX: p.fromX, fromY: p.fromY, toX: p.toX, toY: p.toY });
+      if (pathMap.has(key)) continue;
+      // Find route to get node endpoints for hex snapping
+      const route = routes.find(r => r.id === p.routeId);
+      if (!route) {
+        pathMap.set(key, `M${p.fromX},${p.fromY} L${p.toX},${p.toY}`);
+        continue;
       }
+      const nA = nodes.find(n => n.id === route.node_a);
+      const nB = nodes.find(n => n.id === route.node_b);
+      if (!nA || !nB) {
+        pathMap.set(key, `M${p.fromX},${p.fromY} L${p.toX},${p.toY}`);
+        continue;
+      }
+      // Snap interpolation to hex centers, direction matches particle flow
+      const steps = Math.max(2, Math.round(Math.hypot(nB.hex_q - nA.hex_q, nB.hex_r - nA.hex_r)));
+      const posA = hexToPixel(nA.hex_q, nA.hex_r);
+      const fromIsA = Math.abs(p.fromX - (posA.x + offsetX)) < 1 && Math.abs(p.fromY - (posA.y + offsetY)) < 1;
+      const fromNode = fromIsA ? nA : nB;
+      const toNode = fromIsA ? nB : nA;
+      const visited = new Set<string>();
+      const pts: string[] = [];
+      for (let i = 0; i <= steps; i++) {
+        const t = i / steps;
+        const q = Math.round(fromNode.hex_q + (toNode.hex_q - fromNode.hex_q) * t);
+        const rr = Math.round(fromNode.hex_r + (toNode.hex_r - fromNode.hex_r) * t);
+        const k = `${q},${rr}`;
+        if (visited.has(k)) continue;
+        visited.add(k);
+        const px = hexToPixel(q, rr);
+        pts.push(`${px.x + offsetX},${px.y + offsetY}`);
+      }
+      pathMap.set(key, pts.length >= 2 ? `M${pts.join(" L")}` : `M${p.fromX},${p.fromY} L${p.toX},${p.toY}`);
     }
     return pathMap;
-  }, [flowParticles]);
+  }, [flowParticles, routes, nodes, offsetX, offsetY]);
 
   // Map route_id → hex flow SVG path for particle animation
   const routeHexPathMap = useMemo(() => {
@@ -354,11 +383,10 @@ const StrategicMapOverlay = memo(({ sessionId, offsetX, offsetY, visible, onNode
           <path key={`hfp-${hp.key}`} id={`hexflow-${hp.key}`}
             d={hp.d} fill="none" />
         ))}
-        {/* Fallback straight-line paths */}
-        {Array.from(particlePathDefs.entries()).map(([key, fp]) => (
+        {/* Fallback hex-snapped paths */}
+        {Array.from(particlePathDefs.entries()).map(([key, d]) => (
           <path key={`path-${key}`} id={`flow-${key}`}
-            d={`M${fp.fromX},${fp.fromY} L${fp.toX},${fp.toY}`}
-            fill="none" />
+            d={d} fill="none" />
         ))}
       </defs>
 
@@ -443,31 +471,37 @@ const StrategicMapOverlay = memo(({ sessionId, offsetX, offsetY, visible, onNode
           );
         }
 
-        // Fallback: interpolated corridor (not straight line, follows hex grid)
+        // Fallback: interpolated corridor snapped to hex centers
         const nA = nodes.find(n => n.id === r.node_a);
         const nB = nodes.find(n => n.id === r.node_b);
         if (nA && nB) {
           const steps = Math.max(2, Math.round(Math.hypot(nB.hex_q - nA.hex_q, nB.hex_r - nA.hex_r)));
-          const points: string[] = [];
+          const visited = new Set<string>();
+          const snappedPoints: Array<{ x: number; y: number }> = [];
           for (let i = 0; i <= steps; i++) {
             const t = i / steps;
-            const q = nA.hex_q + (nB.hex_q - nA.hex_q) * t;
-            const rr = nA.hex_r + (nB.hex_r - nA.hex_r) * t;
+            const q = Math.round(nA.hex_q + (nB.hex_q - nA.hex_q) * t);
+            const rr = Math.round(nA.hex_r + (nB.hex_r - nA.hex_r) * t);
+            const k = `${q},${rr}`;
+            if (visited.has(k)) continue;
+            visited.add(k);
             const px = hexToPixel(q, rr);
-            points.push(`${px.x + offsetX},${px.y + offsetY}`);
+            snappedPoints.push({ x: px.x + offsetX, y: px.y + offsetY });
           }
-          const d = `M${points.join(" L")}`;
-          return (
-            <g key={r.id}>
-              <path d={d} fill="none"
-                stroke={stateColor} strokeWidth={width + 3} opacity={0.10}
-                strokeLinecap="round" strokeLinejoin="round" />
-              <path d={d} fill="none"
-                stroke={color} strokeWidth={width} opacity={0.55}
-                strokeLinecap="round" strokeLinejoin="round"
-                strokeDasharray={isDamaged ? "4,4" : r.route_type === "river_route" || r.route_type === "river" ? "6,3" : undefined} />
-            </g>
-          );
+          if (snappedPoints.length >= 2) {
+            const d = `M${snappedPoints.map(p => `${p.x},${p.y}`).join(" L")}`;
+            return (
+              <g key={r.id}>
+                <path d={d} fill="none"
+                  stroke={stateColor} strokeWidth={width + 3} opacity={0.10}
+                  strokeLinecap="round" strokeLinejoin="round" />
+                <path d={d} fill="none"
+                  stroke={color} strokeWidth={width} opacity={0.55}
+                  strokeLinecap="round" strokeLinejoin="round"
+                  strokeDasharray={isDamaged ? "4,4" : r.route_type === "river_route" || r.route_type === "river" ? "6,3" : undefined} />
+              </g>
+            );
+          }
         }
 
         // Ultimate fallback: straight line
