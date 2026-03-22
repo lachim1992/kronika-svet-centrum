@@ -7384,6 +7384,65 @@ export type Database = {
           },
         ]
       }
+      supply_chain_state: {
+        Row: {
+          connected_to_capital: boolean
+          created_at: string
+          hop_distance: number
+          id: string
+          isolation_turns: number
+          morale_modifier: number
+          node_id: string
+          production_modifier: number
+          route_quality: number
+          session_id: string
+          stability_modifier: number
+          supply_level: number
+          supply_source_node_id: string | null
+          turn_number: number
+        }
+        Insert: {
+          connected_to_capital?: boolean
+          created_at?: string
+          hop_distance?: number
+          id?: string
+          isolation_turns?: number
+          morale_modifier?: number
+          node_id: string
+          production_modifier?: number
+          route_quality?: number
+          session_id: string
+          stability_modifier?: number
+          supply_level?: number
+          supply_source_node_id?: string | null
+          turn_number?: number
+        }
+        Update: {
+          connected_to_capital?: boolean
+          created_at?: string
+          hop_distance?: number
+          id?: string
+          isolation_turns?: number
+          morale_modifier?: number
+          node_id?: string
+          production_modifier?: number
+          route_quality?: number
+          session_id?: string
+          stability_modifier?: number
+          supply_level?: number
+          supply_source_node_id?: string | null
+          turn_number?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "supply_chain_state_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       time_pools: {
         Row: {
           created_at: string | null

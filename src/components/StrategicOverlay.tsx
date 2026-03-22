@@ -85,6 +85,7 @@ const StrategicOverlay = memo(function StrategicOverlay({ sessionId, currentPlay
   const [routes, setRoutes] = useState<ProvinceRoute[]>([]);
   const [stacks, setStacks] = useState<any[]>([]);
   const [projects, setProjects] = useState<any[]>([]);
+  const [supplyState, setSupplyState] = useState<Record<string, any>>({});
   const [selectedNode, setSelectedNode] = useState<StrategicNode | null>(null);
   const [selectedRoute, setSelectedRoute] = useState<ProvinceRoute | null>(null);
   const [moveTarget, setMoveTarget] = useState("");
@@ -95,7 +96,7 @@ const StrategicOverlay = memo(function StrategicOverlay({ sessionId, currentPlay
   const [busy, setBusy] = useState(false);
 
   const loadData = useCallback(async () => {
-    const [nRes, rRes, sRes, pRes] = await Promise.all([
+    const [nRes, rRes, sRes, pRes, scRes] = await Promise.all([
       supabase.from("province_nodes")
         .select("id, province_id, node_type, name, hex_q, hex_r, strategic_value, economic_value, defense_value, controlled_by, garrison_strength, is_major, population, fortification_level, infrastructure_level, parent_node_id, besieged_by, siege_turn_start")
         .eq("session_id", sessionId),
@@ -108,12 +109,19 @@ const StrategicOverlay = memo(function StrategicOverlay({ sessionId, currentPlay
       supabase.from("node_projects")
         .select("*")
         .eq("session_id", sessionId).eq("initiated_by", currentPlayerName).eq("status", "active"),
+      supabase.from("supply_chain_state")
+        .select("node_id, connected_to_capital, isolation_turns, supply_level, route_quality, production_modifier, stability_modifier, morale_modifier, hop_distance")
+        .eq("session_id", sessionId).eq("turn_number", turnNumber),
     ]);
     setNodes((nRes.data || []) as StrategicNode[]);
     setRoutes((rRes.data || []) as ProvinceRoute[]);
     setStacks(sRes.data || []);
     setProjects(pRes.data || []);
-  }, [sessionId, currentPlayerName]);
+    // Build supply lookup by node_id
+    const scMap: Record<string, any> = {};
+    for (const s of (scRes.data || [])) scMap[s.node_id] = s;
+    setSupplyState(scMap);
+  }, [sessionId, currentPlayerName, turnNumber]);
 
   useEffect(() => { loadData(); }, [loadData]);
 
@@ -295,6 +303,50 @@ const StrategicOverlay = memo(function StrategicOverlay({ sessionId, currentPlay
         </Card>
       )}
 
+      {/* Supply Chain Alerts */}
+      {(() => {
+        const isolatedNodes = myNodes.filter(n => supplyState[n.id] && !supplyState[n.id].connected_to_capital);
+        const lowSupplyNodes = myNodes.filter(n => supplyState[n.id] && supplyState[n.id].supply_level <= 4 && supplyState[n.id].connected_to_capital);
+        if (isolatedNodes.length === 0 && lowSupplyNodes.length === 0) return null;
+        return (
+          <Card className="border-destructive/30">
+            <CardHeader className="pb-1 pt-2 px-3">
+              <CardTitle className="text-[11px] flex items-center gap-1.5 text-destructive">
+                <AlertTriangle className="h-3.5 w-3.5" /> Zásobovací řetězec
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="px-3 pb-2 space-y-1">
+              {isolatedNodes.map(n => {
+                const sc = supplyState[n.id];
+                return (
+                  <div key={n.id} className="flex items-center gap-2 text-[10px] bg-destructive/10 rounded p-1.5">
+                    <Ban className="h-3 w-3 text-destructive" />
+                    <span className="font-medium">{n.name}</span>
+                    <span className="text-destructive text-[8px]">IZOLOVÁN {sc.isolation_turns} kol</span>
+                    <Badge variant="destructive" className="text-[7px] ml-auto">
+                      Produkce: {Math.round(sc.production_modifier * 100)}%
+                    </Badge>
+                  </div>
+                );
+              })}
+              {lowSupplyNodes.map(n => {
+                const sc = supplyState[n.id];
+                return (
+                  <div key={n.id} className="flex items-center gap-2 text-[10px] bg-accent/40 rounded p-1.5">
+                    <AlertTriangle className="h-3 w-3 text-accent-foreground" />
+                    <span className="font-medium">{n.name}</span>
+                    <span className="text-muted-foreground text-[8px]">Zásoby: {sc.supply_level}/10</span>
+                    <Badge variant="outline" className="text-[7px] ml-auto">
+                      {sc.hop_distance} skoků
+                    </Badge>
+                  </div>
+                );
+              })}
+            </CardContent>
+          </Card>
+        );
+      })()}
+
       {/* Active Projects */}
       {projects.length > 0 && (
         <Card>
@@ -336,9 +388,14 @@ const StrategicOverlay = memo(function StrategicOverlay({ sessionId, currentPlay
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
           {myNodes.map(n => {
             const garrison = stacks.find(s => s.current_node_id === n.id && !s.travel_route_id);
+            const sc = supplyState[n.id];
+            const isIsolated = sc && !sc.connected_to_capital;
+            const isLowSupply = sc && sc.supply_level <= 4 && sc.connected_to_capital;
             return (
               <button key={n.id} onClick={() => setSelectedNode(n)}
-                className="flex items-center gap-1.5 p-1.5 rounded bg-muted/40 hover:bg-muted/60 transition text-left text-[10px]">
+                className={`flex items-center gap-1.5 p-1.5 rounded transition text-left text-[10px] ${
+                  isIsolated ? "bg-destructive/15 border border-destructive/30" : isLowSupply ? "bg-accent/30" : "bg-muted/40 hover:bg-muted/60"
+                }`}>
                 <NodeIcon type={n.node_type} />
                 <div className="flex-1 min-w-0">
                   <p className="font-medium truncate">{n.name}</p>
@@ -346,6 +403,8 @@ const StrategicOverlay = memo(function StrategicOverlay({ sessionId, currentPlay
                     {NODE_TYPE_LABELS[n.node_type] || n.node_type}
                     {garrison && ` · ⚔${garrison.power || 0}`}
                     {garrison?.stance && garrison.stance !== "idle" && ` · ${STANCE_LABELS[garrison.stance] || garrison.stance}`}
+                    {sc && ` · 📦${sc.supply_level}`}
+                    {isIsolated && " · ⚠️"}
                   </p>
                 </div>
               </button>
@@ -525,7 +584,36 @@ const StrategicOverlay = memo(function StrategicOverlay({ sessionId, currentPlay
                   </div>
                 )}
 
-                {/* MY NODE — movement & fortification */}
+                {/* Supply chain status */}
+                {supplyState[selectedNode.id] && (
+                  <div className={`rounded p-2 text-[10px] space-y-1 ${
+                    !supplyState[selectedNode.id].connected_to_capital ? "bg-destructive/10 border border-destructive/30" : "bg-muted/40"
+                  }`}>
+                    <div className="flex items-center gap-2">
+                      <span className="font-semibold">📦 Zásobování</span>
+                      <Badge variant={supplyState[selectedNode.id].connected_to_capital ? "outline" : "destructive"} className="text-[7px] ml-auto">
+                        {supplyState[selectedNode.id].connected_to_capital ? `Zásoby ${supplyState[selectedNode.id].supply_level}/10` : `IZOLOVÁN ${supplyState[selectedNode.id].isolation_turns} kol`}
+                      </Badge>
+                    </div>
+                    <div className="grid grid-cols-3 gap-1 text-[8px]">
+                      <div className="text-center">
+                        <span className="text-muted-foreground block">Produkce</span>
+                        <span className="font-bold">{Math.round(supplyState[selectedNode.id].production_modifier * 100)}%</span>
+                      </div>
+                      <div className="text-center">
+                        <span className="text-muted-foreground block">Kvalita tras</span>
+                        <span className="font-bold">{Math.round(supplyState[selectedNode.id].route_quality * 100)}%</span>
+                      </div>
+                      <div className="text-center">
+                        <span className="text-muted-foreground block">Vzdálenost</span>
+                        <span className="font-bold">{supplyState[selectedNode.id].hop_distance} skoků</span>
+                      </div>
+                    </div>
+                    {supplyState[selectedNode.id].stability_modifier < 0 && (
+                      <p className="text-destructive text-[8px]">⚠ Stabilita: {supplyState[selectedNode.id].stability_modifier} · Morálka: {supplyState[selectedNode.id].morale_modifier}</p>
+                    )}
+                  </div>
+                )}
                 {selectedNode.controlled_by === currentPlayerName && (
                   <>
                     <div className="border-t border-border pt-2 space-y-2">
