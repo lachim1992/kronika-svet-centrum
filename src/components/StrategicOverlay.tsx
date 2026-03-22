@@ -97,7 +97,7 @@ const StrategicOverlay = memo(function StrategicOverlay({ sessionId, currentPlay
   const [busy, setBusy] = useState(false);
 
   const loadData = useCallback(async () => {
-    const [nRes, rRes, sRes, pRes, scRes] = await Promise.all([
+    const [nRes, rRes, sRes, pRes, scRes, csRes] = await Promise.all([
       supabase.from("province_nodes")
         .select("id, province_id, node_type, name, hex_q, hex_r, strategic_value, economic_value, defense_value, controlled_by, garrison_strength, is_major, population, fortification_level, infrastructure_level, parent_node_id, besieged_by, siege_turn_start")
         .eq("session_id", sessionId),
@@ -113,11 +113,15 @@ const StrategicOverlay = memo(function StrategicOverlay({ sessionId, currentPlay
       supabase.from("supply_chain_state")
         .select("node_id, connected_to_capital, isolation_turns, supply_level, route_quality, production_modifier, stability_modifier, morale_modifier, hop_distance")
         .eq("session_id", sessionId).eq("turn_number", turnNumber),
+      supabase.from("province_control_snapshots")
+        .select("province_id, control_player, dominance, contested, supply_health, route_access_score, node_count, controlled_node_count, total_strategic_value")
+        .eq("session_id", sessionId).eq("turn_number", turnNumber),
     ]);
     setNodes((nRes.data || []) as StrategicNode[]);
     setRoutes((rRes.data || []) as ProvinceRoute[]);
     setStacks(sRes.data || []);
     setProjects(pRes.data || []);
+    setControlSnapshots(csRes.data || []);
     // Build supply lookup by node_id
     const scMap: Record<string, any> = {};
     for (const s of (scRes.data || [])) scMap[s.node_id] = s;
