@@ -215,59 +215,54 @@ function ResourcesPanel({ resources, playerNames, currentPlayerName }: { resourc
   );
 }
 
-// ---- Military Sub-Panel ----
+// ---- Military Sub-Panel (new military_stacks system) ----
 function MilitaryPanel({ sessionId, armies, resources, playerNames, currentPlayerName }: { sessionId: string; armies: MilitaryCapacity[]; resources: PlayerResource[]; playerNames: string[]; currentPlayerName: string }) {
-  const [armyName, setArmyName] = useState("");
-  const [armyType, setArmyType] = useState("Lehká");
+  const [stacks, setStacks] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const ironCostMap: Record<string, number> = { "Lehká": 1, "Těžká": 2, "Obléhací": 3, "Námořní": 2 };
+  useEffect(() => {
+    const load = async () => {
+      const { data } = await import("@/integrations/supabase/client").then(m => 
+        m.supabase.from("military_stacks")
+          .select("id, name, player_name, power, morale, is_active, is_deployed, unit_type, manpower")
+          .eq("session_id", sessionId)
+      );
+      setStacks(data || []);
+      setLoading(false);
+    };
+    load();
+  }, [sessionId]);
 
-  const handleAdd = async () => {
-    if (!armyName.trim()) { toast.error("Zadejte název armády"); return; }
-    await addArmy(sessionId, currentPlayerName, armyName.trim(), armyType, ironCostMap[armyType] || 1);
-    setArmyName("");
-    toast.success("Armáda zřízena");
-  };
+  if (loading) return <div className="text-sm text-muted-foreground p-4">Načítám...</div>;
 
   return (
     <div className="space-y-4 mt-4">
-      <div className="bg-card p-4 rounded-lg border border-border space-y-3">
-        <h3 className="font-display font-semibold text-sm">Nová armáda</h3>
-        <div className="flex gap-2">
-          <Input placeholder="Název armády" value={armyName} onChange={e => setArmyName(e.target.value)} className="h-9 flex-1" />
-          <Select value={armyType} onValueChange={setArmyType}>
-            <SelectTrigger className="w-28 h-9 text-xs"><SelectValue /></SelectTrigger>
-            <SelectContent>{ARMY_TYPES.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent>
-          </Select>
-          <Button onClick={handleAdd} size="sm"><Plus className="h-3 w-3 mr-1" />Zřídit</Button>
-        </div>
-      </div>
-
       {playerNames.map(pn => {
-        const playerArmies = armies.filter(a => a.player_name === pn);
-        const ironRes = resources.find(r => r.player_name === pn && r.resource_type === "iron");
-        const totalIronUsed = playerArmies.filter(a => a.status === "Aktivní").reduce((s, a) => s + a.iron_cost, 0);
-        const ironCapacity = (ironRes?.stockpile || 0) * 5;
+        const playerStacks = stacks.filter(s => s.player_name === pn);
+        const activeStacks = playerStacks.filter(s => s.is_active);
+        const totalPower = activeStacks.reduce((s, a) => s + (a.power || 0), 0);
+        const totalManpower = activeStacks.reduce((s, a) => s + (a.manpower || 0), 0);
 
         return (
           <div key={pn} className="bg-card p-4 rounded-lg border border-border shadow-parchment">
             <div className="flex items-center justify-between mb-2">
               <h3 className="font-display font-semibold text-primary">{pn}</h3>
-              <Badge variant="outline" className="text-xs">⚒️ Železo: {totalIronUsed}/{ironCapacity}</Badge>
+              <div className="flex gap-2">
+                <Badge variant="outline" className="text-xs">⚔️ Síla: {totalPower}</Badge>
+                <Badge variant="outline" className="text-xs">👥 Muži: {totalManpower}</Badge>
+              </div>
             </div>
-            {playerArmies.length === 0 && <p className="text-xs text-muted-foreground italic">Žádné armády</p>}
+            {playerStacks.length === 0 && <p className="text-xs text-muted-foreground italic">Žádné jednotky</p>}
             <div className="space-y-1">
-              {playerArmies.map(a => (
-                <div key={a.id} className="flex items-center gap-2 text-sm p-2 rounded bg-muted/30">
+              {playerStacks.map(s => (
+                <div key={s.id} className="flex items-center gap-2 text-sm p-2 rounded bg-muted/30">
                   <Swords className="h-3 w-3" />
-                  <span className="font-semibold flex-1">{a.army_name}</span>
-                  <Badge variant="secondary" className="text-xs">{a.army_type}</Badge>
-                  <Badge variant={a.status === "Aktivní" ? "default" : "outline"} className="text-xs">{a.status}</Badge>
-                  {pn === currentPlayerName && a.status === "Aktivní" && (
-                    <Button size="sm" variant="ghost" className="h-6 text-xs" onClick={() => updateArmy(a.id, { status: "Rozpuštěná" })}>
-                      Rozpustit
-                    </Button>
-                  )}
+                  <span className="font-semibold flex-1">{s.name}</span>
+                  <Badge variant="secondary" className="text-xs">{s.unit_type || "MILITIA"}</Badge>
+                  <span className="text-xs text-muted-foreground">⚔{s.power} 💪{s.morale}</span>
+                  <Badge variant={s.is_active ? "default" : "outline"} className="text-xs">
+                    {s.is_active ? (s.is_deployed ? "Nasazena" : "Aktivní") : "Neaktivní"}
+                  </Badge>
                 </div>
               ))}
             </div>
