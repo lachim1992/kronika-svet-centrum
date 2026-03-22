@@ -5480,6 +5480,7 @@ export type Database = {
           sigil_confirmed: boolean
           sigil_prompt: string | null
           sigil_url: string | null
+          stance: string
           travel_departed_turn: number | null
           travel_progress: number | null
           travel_route_id: string | null
@@ -5511,6 +5512,7 @@ export type Database = {
           sigil_confirmed?: boolean
           sigil_prompt?: string | null
           sigil_url?: string | null
+          stance?: string
           travel_departed_turn?: number | null
           travel_progress?: number | null
           travel_route_id?: string | null
@@ -5542,6 +5544,7 @@ export type Database = {
           sigil_confirmed?: boolean
           sigil_prompt?: string | null
           sigil_url?: string | null
+          stance?: string
           travel_departed_turn?: number | null
           travel_progress?: number | null
           travel_route_id?: string | null
@@ -6013,14 +6016,21 @@ export type Database = {
           created_at: string
           defense_value: number
           economic_value: number
+          fortification_level: number
           garrison_strength: number | null
+          growth_rate: number
           hex_q: number
           hex_r: number
           id: string
+          infrastructure_level: number
+          is_active: boolean
+          is_major: boolean
           metadata: Json | null
           mobility_relevance: number
           name: string
           node_type: string
+          parent_node_id: string | null
+          population: number
           province_id: string
           session_id: string
           strategic_value: number
@@ -6033,14 +6043,21 @@ export type Database = {
           created_at?: string
           defense_value?: number
           economic_value?: number
+          fortification_level?: number
           garrison_strength?: number | null
+          growth_rate?: number
           hex_q?: number
           hex_r?: number
           id?: string
+          infrastructure_level?: number
+          is_active?: boolean
+          is_major?: boolean
           metadata?: Json | null
           mobility_relevance?: number
           name?: string
           node_type?: string
+          parent_node_id?: string | null
+          population?: number
           province_id: string
           session_id: string
           strategic_value?: number
@@ -6053,14 +6070,21 @@ export type Database = {
           created_at?: string
           defense_value?: number
           economic_value?: number
+          fortification_level?: number
           garrison_strength?: number | null
+          growth_rate?: number
           hex_q?: number
           hex_r?: number
           id?: string
+          infrastructure_level?: number
+          is_active?: boolean
+          is_major?: boolean
           metadata?: Json | null
           mobility_relevance?: number
           name?: string
           node_type?: string
+          parent_node_id?: string | null
+          population?: number
           province_id?: string
           session_id?: string
           strategic_value?: number
@@ -6073,6 +6097,13 @@ export type Database = {
             columns: ["city_id"]
             isOneToOne: false
             referencedRelation: "cities"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "province_nodes_parent_node_id_fkey"
+            columns: ["parent_node_id"]
+            isOneToOne: false
+            referencedRelation: "province_nodes"
             referencedColumns: ["id"]
           },
           {
@@ -6096,15 +6127,19 @@ export type Database = {
           build_cost: number
           capacity_value: number
           control_state: string
+          controlled_by: string | null
           created_at: string
           economic_relevance: number
           id: string
+          is_cross_province: boolean
           metadata: Json
           military_relevance: number
           node_a: string
           node_b: string
           route_type: string
+          safety_value: number
           session_id: string
+          speed_value: number
           upgrade_level: number
           vulnerability_score: number
         }
@@ -6112,15 +6147,19 @@ export type Database = {
           build_cost?: number
           capacity_value?: number
           control_state?: string
+          controlled_by?: string | null
           created_at?: string
           economic_relevance?: number
           id?: string
+          is_cross_province?: boolean
           metadata?: Json
           military_relevance?: number
           node_a: string
           node_b: string
           route_type?: string
+          safety_value?: number
           session_id: string
+          speed_value?: number
           upgrade_level?: number
           vulnerability_score?: number
         }
@@ -6128,15 +6167,19 @@ export type Database = {
           build_cost?: number
           capacity_value?: number
           control_state?: string
+          controlled_by?: string | null
           created_at?: string
           economic_relevance?: number
           id?: string
+          is_cross_province?: boolean
           metadata?: Json
           military_relevance?: number
           node_a?: string
           node_b?: string
           route_type?: string
+          safety_value?: number
           session_id?: string
+          speed_value?: number
           upgrade_level?: number
           vulnerability_score?: number
         }
@@ -6174,9 +6217,12 @@ export type Database = {
           color_index: number | null
           control_player: string | null
           control_scores: Json | null
+          control_state: string
           created_at: string
+          defense_value: number
           description: string | null
           economic_profile: Json | null
+          economic_value: number
           hex_count: number | null
           id: string
           image_prompt: string | null
@@ -6185,6 +6231,7 @@ export type Database = {
           name: string
           npc_city_state_id: string | null
           owner_player: string
+          primary_node_id: string | null
           region_id: string | null
           session_id: string
           strategic_value: number | null
@@ -6201,9 +6248,12 @@ export type Database = {
           color_index?: number | null
           control_player?: string | null
           control_scores?: Json | null
+          control_state?: string
           created_at?: string
+          defense_value?: number
           description?: string | null
           economic_profile?: Json | null
+          economic_value?: number
           hex_count?: number | null
           id?: string
           image_prompt?: string | null
@@ -6212,6 +6262,7 @@ export type Database = {
           name: string
           npc_city_state_id?: string | null
           owner_player: string
+          primary_node_id?: string | null
           region_id?: string | null
           session_id: string
           strategic_value?: number | null
@@ -6228,9 +6279,12 @@ export type Database = {
           color_index?: number | null
           control_player?: string | null
           control_scores?: Json | null
+          control_state?: string
           created_at?: string
+          defense_value?: number
           description?: string | null
           economic_profile?: Json | null
+          economic_value?: number
           hex_count?: number | null
           id?: string
           image_prompt?: string | null
@@ -6239,6 +6293,7 @@ export type Database = {
           name?: string
           npc_city_state_id?: string | null
           owner_player?: string
+          primary_node_id?: string | null
           region_id?: string | null
           session_id?: string
           strategic_value?: number | null
@@ -6259,6 +6314,13 @@ export type Database = {
             columns: ["npc_city_state_id"]
             isOneToOne: false
             referencedRelation: "city_states"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "provinces_primary_node_id_fkey"
+            columns: ["primary_node_id"]
+            isOneToOne: false
+            referencedRelation: "province_nodes"
             referencedColumns: ["id"]
           },
           {
