@@ -34,6 +34,7 @@ import {
   type StrategicResource,
 } from "@/lib/economyFlow";
 import TradePanel from "@/components/TradePanel";
+import SupplyChainPanel from "@/components/SupplyChainPanel";
 
 interface Props {
   sessionId: string;
@@ -526,6 +527,9 @@ const EconomyTab = ({ sessionId, currentPlayerName, currentTurn, cities, resourc
         <MessageSquare className="h-3.5 w-3.5" />
         Poradit se s rádci o ekonomice
       </Button>
+
+      {/* ═══ SUPPLY CHAIN ═══ */}
+      <SupplyChainPanel sessionId={sessionId} playerName={currentPlayerName} currentTurn={currentTurn} />
 
       {/* ═══ ADMIN DEBUG ═══ */}
       {myRole === "admin" && (
