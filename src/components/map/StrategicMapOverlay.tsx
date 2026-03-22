@@ -99,7 +99,10 @@ const StrategicMapOverlay = memo(({ sessionId, offsetX, offsetY, visible, onNode
     if (routesRes.data) setRoutes(routesRes.data as ProvinceRoute[]);
     if (supplyRes.data) {
       const m = new Map<string, SupplyState>();
-      for (const s of supplyRes.data as SupplyState[]) m.set(s.node_id, s);
+      // Ordered by turn_number desc, so first occurrence per node_id is latest
+      for (const s of supplyRes.data as SupplyState[]) {
+        if (!m.has(s.node_id)) m.set(s.node_id, s);
+      }
       setSupply(m);
     }
   }, [sessionId]);
