@@ -155,6 +155,70 @@ export async function disruptRoute(params: {
   });
 }
 
+/** Start a construction project */
+export async function startProject(params: {
+  sessionId: string;
+  turnNumber?: number;
+  playerName: string;
+  projectType: string;
+  nodeId?: string;
+  routeId?: string;
+  targetNodeId?: string;
+  provinceId?: string;
+  customName?: string;
+}) {
+  return dispatchCommand({
+    sessionId: params.sessionId,
+    turnNumber: params.turnNumber,
+    actor: { name: params.playerName, type: "player" },
+    commandType: "START_PROJECT",
+    commandPayload: {
+      projectType: params.projectType,
+      nodeId: params.nodeId,
+      routeId: params.routeId,
+      targetNodeId: params.targetNodeId,
+      provinceId: params.provinceId,
+      customName: params.customName,
+    },
+  });
+}
+
+/** Cancel an active project */
+export async function cancelProject(params: {
+  sessionId: string;
+  turnNumber?: number;
+  playerName: string;
+  projectId: string;
+}) {
+  return dispatchCommand({
+    sessionId: params.sessionId,
+    turnNumber: params.turnNumber,
+    actor: { name: params.playerName, type: "player" },
+    commandType: "CANCEL_PROJECT",
+    commandPayload: { projectId: params.projectId },
+  });
+}
+
+/** Project type labels */
+export const PROJECT_TYPE_LABELS: Record<string, string> = {
+  build_route: "Stavba cesty",
+  upgrade_route: "Vylepšení cesty",
+  create_fort: "Stavba pevnosti",
+  create_port: "Stavba přístavu",
+  expand_hub: "Rozšíření centra",
+  repair_route: "Oprava cesty",
+};
+
+/** Project costs for UI display */
+export const PROJECT_COSTS: Record<string, { gold: number; wood: number; stone: number; iron: number; turns: number }> = {
+  build_route: { gold: 50, wood: 30, stone: 20, iron: 0, turns: 3 },
+  upgrade_route: { gold: 30, wood: 10, stone: 15, iron: 5, turns: 2 },
+  create_fort: { gold: 100, wood: 40, stone: 60, iron: 30, turns: 5 },
+  create_port: { gold: 80, wood: 50, stone: 40, iron: 10, turns: 4 },
+  expand_hub: { gold: 60, wood: 20, stone: 30, iron: 10, turns: 3 },
+  repair_route: { gold: 20, wood: 15, stone: 10, iron: 0, turns: 2 },
+};
+
 /** Route type labels in Czech */
 export const ROUTE_TYPE_LABELS: Record<string, string> = {
   land_road: "Silnice",

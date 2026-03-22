@@ -270,6 +270,115 @@ Deno.serve(async (req) => {
       }
       tickResult.siegeCaptures = siegeCaptures;
 
+      // 3d. Node project progression — advance active projects each tick
+      const currentTurnForProjects = (await supabase.from("game_sessions").select("current_turn").eq("id", sessionId).single()).data?.current_turn || 0;
+      const { data: activeProjects } = await supabase
+        .from("node_projects")
+        .select("id, project_type, progress, total_turns, node_id, route_id, target_node_id, province_id, initiated_by, name, result_payload")
+        .eq("session_id", sessionId)
+        .eq("status", "active");
+
+      let projectsCompleted = 0;
+      for (const proj of (activeProjects || [])) {
+        const newProgress = (proj.progress || 0) + 1;
+        if (newProgress >= proj.total_turns) {
+          // Project complete — apply topology mutation
+          await supabase.from("node_projects").update({
+            progress: newProgress,
+            status: "completed",
+            completed_turn: currentTurnForProjects,
+          }).eq("id", proj.id);
+
+          // Apply effects based on project type
+          switch (proj.project_type) {
+            case "create_fort": {
+              if (proj.node_id) {
+                await supabase.from("province_nodes").update({
+                  fortification_level: 3,
+                  node_type: "fortress",
+                  garrison_strength: 20,
+                }).eq("id", proj.node_id);
+              }
+              break;
+            }
+            case "create_port": {
+              if (proj.node_id) {
+                await supabase.from("province_nodes").update({
+                  node_type: "port",
+                  infrastructure_level: 2,
+                }).eq("id", proj.node_id);
+              }
+              break;
+            }
+            case "expand_hub": {
+              if (proj.node_id) {
+                const { data: node } = await supabase.from("province_nodes")
+                  .select("economic_value, infrastructure_level")
+                  .eq("id", proj.node_id).single();
+                if (node) {
+                  await supabase.from("province_nodes").update({
+                    economic_value: (node.economic_value || 0) + 5,
+                    infrastructure_level: (node.infrastructure_level || 0) + 1,
+                    is_major: true,
+                  }).eq("id", proj.node_id);
+                }
+              }
+              break;
+            }
+            case "upgrade_route": {
+              if (proj.route_id) {
+                const { data: route } = await supabase.from("province_routes")
+                  .select("upgrade_level, capacity_value, speed_value")
+                  .eq("id", proj.route_id).single();
+                if (route) {
+                  await supabase.from("province_routes").update({
+                    upgrade_level: (route.upgrade_level || 0) + 1,
+                    capacity_value: (route.capacity_value || 1) + 2,
+                    speed_value: (route.speed_value || 1) + 1,
+                  }).eq("id", proj.route_id);
+                }
+              }
+              break;
+            }
+            case "repair_route": {
+              if (proj.route_id) {
+                await supabase.from("province_routes").update({
+                  damage_level: 0,
+                  control_state: "open",
+                }).eq("id", proj.route_id);
+              }
+              break;
+            }
+            case "build_route": {
+              // Route should already exist from command; just mark it operational
+              if (proj.route_id) {
+                await supabase.from("province_routes").update({
+                  control_state: "open",
+                }).eq("id", proj.route_id);
+              }
+              break;
+            }
+          }
+
+          // Game event for completion
+          await supabase.from("game_events").insert({
+            session_id: sessionId,
+            player: proj.initiated_by,
+            event_type: "construction",
+            turn_number: currentTurnForProjects,
+            note: `Projekt „${proj.name}" dokončen!`,
+            importance: "normal",
+            confirmed: true,
+            truth_state: "canon",
+          });
+
+          projectsCompleted++;
+        } else {
+          await supabase.from("node_projects").update({ progress: newProgress }).eq("id", proj.id);
+        }
+      }
+      tickResult.projectsCompleted = projectsCompleted;
+
       // 4. Reset expired time pools
       await supabase
         .from("time_pools")
