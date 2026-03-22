@@ -1160,6 +1160,26 @@ Deno.serve(async (req) => {
           results.supply_chain_error = (scErr as Error).message;
         }
 
+        // 12e½. Compute hex-based flow paths (dirty flag + every 5 turns)
+        try {
+          const forceAll = turnNumber % 5 === 0;
+          const { data: hexFlowData, error: hexFlowErr } = await supabase.functions.invoke("compute-hex-flows", {
+            body: { session_id: sessionId, force_all: forceAll },
+          });
+          if (hexFlowErr) {
+            console.warn("compute-hex-flows error:", hexFlowErr);
+            results.hex_flows = { error: hexFlowErr.message };
+          } else {
+            results.hex_flows = {
+              paths_computed: hexFlowData?.paths_computed || 0,
+              failed_paths: hexFlowData?.failed_paths || 0,
+            };
+          }
+        } catch (hfErr) {
+          console.warn("Hex flow computation non-fatal:", hfErr);
+          results.hex_flows_error = (hfErr as Error).message;
+        }
+
         // 12f. Compute macro economy flow (Production / Wealth / Capacity)
         try {
           const { data: econFlowData, error: econFlowErr } = await supabase.functions.invoke("compute-economy-flow", {
