@@ -6352,6 +6352,7 @@ export type Database = {
           besieging_stack_id: string | null
           capacity_score: number
           city_id: string | null
+          collapse_severity: number
           connectivity_score: number
           controlled_by: string | null
           created_at: string
@@ -6359,7 +6360,10 @@ export type Database = {
           defense_value: number
           development_level: number
           economic_value: number
+          faith_output: number
+          faith_pressure: number
           flow_role: string
+          food_value: number
           fortification_level: number
           garrison_strength: number | null
           growth_rate: number
@@ -6376,6 +6380,8 @@ export type Database = {
           metadata: Json | null
           mobility_relevance: number
           name: string
+          node_class: string
+          node_score: number
           node_type: string
           parent_node_id: string | null
           population: number
@@ -6383,6 +6389,7 @@ export type Database = {
           province_id: string
           resource_output: Json
           route_access_factor: number
+          sacred_influence: number
           session_id: string
           siege_turn_start: number | null
           stability_factor: number
@@ -6402,6 +6409,7 @@ export type Database = {
           besieging_stack_id?: string | null
           capacity_score?: number
           city_id?: string | null
+          collapse_severity?: number
           connectivity_score?: number
           controlled_by?: string | null
           created_at?: string
@@ -6409,7 +6417,10 @@ export type Database = {
           defense_value?: number
           development_level?: number
           economic_value?: number
+          faith_output?: number
+          faith_pressure?: number
           flow_role?: string
+          food_value?: number
           fortification_level?: number
           garrison_strength?: number | null
           growth_rate?: number
@@ -6426,6 +6437,8 @@ export type Database = {
           metadata?: Json | null
           mobility_relevance?: number
           name?: string
+          node_class?: string
+          node_score?: number
           node_type?: string
           parent_node_id?: string | null
           population?: number
@@ -6433,6 +6446,7 @@ export type Database = {
           province_id: string
           resource_output?: Json
           route_access_factor?: number
+          sacred_influence?: number
           session_id: string
           siege_turn_start?: number | null
           stability_factor?: number
@@ -6452,6 +6466,7 @@ export type Database = {
           besieging_stack_id?: string | null
           capacity_score?: number
           city_id?: string | null
+          collapse_severity?: number
           connectivity_score?: number
           controlled_by?: string | null
           created_at?: string
@@ -6459,7 +6474,10 @@ export type Database = {
           defense_value?: number
           development_level?: number
           economic_value?: number
+          faith_output?: number
+          faith_pressure?: number
           flow_role?: string
+          food_value?: number
           fortification_level?: number
           garrison_strength?: number | null
           growth_rate?: number
@@ -6476,6 +6494,8 @@ export type Database = {
           metadata?: Json | null
           mobility_relevance?: number
           name?: string
+          node_class?: string
+          node_score?: number
           node_type?: string
           parent_node_id?: string | null
           population?: number
@@ -6483,6 +6503,7 @@ export type Database = {
           province_id?: string
           resource_output?: Json
           route_access_factor?: number
+          sacred_influence?: number
           session_id?: string
           siege_turn_start?: number | null
           stability_factor?: number
