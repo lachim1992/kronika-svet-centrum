@@ -84,16 +84,18 @@ const StrategicOverlay = memo(function StrategicOverlay({ sessionId, currentPlay
   const [nodes, setNodes] = useState<StrategicNode[]>([]);
   const [routes, setRoutes] = useState<ProvinceRoute[]>([]);
   const [stacks, setStacks] = useState<any[]>([]);
+  const [projects, setProjects] = useState<any[]>([]);
   const [selectedNode, setSelectedNode] = useState<StrategicNode | null>(null);
   const [selectedRoute, setSelectedRoute] = useState<ProvinceRoute | null>(null);
   const [moveTarget, setMoveTarget] = useState("");
   const [moveStack, setMoveStack] = useState("");
   const [fortifyStack, setFortifyStack] = useState("");
   const [warfareStack, setWarfareStack] = useState("");
+  const [newProjectType, setNewProjectType] = useState("");
   const [busy, setBusy] = useState(false);
 
   const loadData = useCallback(async () => {
-    const [nRes, rRes, sRes] = await Promise.all([
+    const [nRes, rRes, sRes, pRes] = await Promise.all([
       supabase.from("province_nodes")
         .select("id, province_id, node_type, name, hex_q, hex_r, strategic_value, economic_value, defense_value, controlled_by, garrison_strength, is_major, population, fortification_level, infrastructure_level, parent_node_id, besieged_by, siege_turn_start")
         .eq("session_id", sessionId),
@@ -103,10 +105,15 @@ const StrategicOverlay = memo(function StrategicOverlay({ sessionId, currentPlay
       supabase.from("military_stacks")
         .select("id, name, current_node_id, travel_route_id, travel_progress, travel_target_node_id, player_name, power, stance")
         .eq("session_id", sessionId).eq("player_name", currentPlayerName).eq("is_active", true),
+      supabase.from("node_projects")
+        .select("*")
+        .eq("session_id", sessionId).eq("initiated_by", currentPlayerName).eq("status", "active"),
     ]);
     setNodes((nRes.data || []) as StrategicNode[]);
     setRoutes((rRes.data || []) as ProvinceRoute[]);
     setStacks(sRes.data || []);
+    setProjects(pRes.data || []);
+  }, [sessionId, currentPlayerName]);
   }, [sessionId, currentPlayerName]);
 
   useEffect(() => { loadData(); }, [loadData]);
