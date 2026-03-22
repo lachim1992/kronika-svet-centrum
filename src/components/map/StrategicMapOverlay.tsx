@@ -362,17 +362,17 @@ const StrategicMapOverlay = memo(({ sessionId, offsetX, offsetY, visible, onNode
         ))}
       </defs>
 
-      {/* ── Hex corridor heatmap ── */}
-      {showHexFlows && Array.from(hexHeatmap.entries()).map(([k, count]) => {
-        if (count < 2) return null; // Only show for busy corridors
+      {/* ── Hex corridor heatmap — always visible when overlay is on ── */}
+      {Array.from(hexHeatmap.entries()).map(([k, count]) => {
+        if (count < 2) return null;
         const [q, r] = k.split(",").map(Number);
         const pos = hexToPixel(q, r);
-        const intensity = Math.min(1, count * 0.15);
+        const intensity = Math.min(1, count * 0.12);
         return (
           <circle key={`heat-${k}`}
             cx={pos.x + offsetX} cy={pos.y + offsetY}
             r={HEX_SIZE * 0.45}
-            fill="hsl(48, 90%, 60%)" opacity={intensity * 0.25}
+            fill="hsl(48, 90%, 60%)" opacity={intensity * 0.2}
             style={{ pointerEvents: "none" }} />
         );
       })}
