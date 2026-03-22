@@ -5692,6 +5692,117 @@ export type Database = {
           },
         ]
       }
+      node_projects: {
+        Row: {
+          completed_turn: number | null
+          cost_gold: number
+          cost_iron: number
+          cost_stone: number
+          cost_wood: number
+          created_at: string
+          created_turn: number
+          description: string | null
+          id: string
+          initiated_by: string
+          name: string
+          node_id: string | null
+          progress: number
+          project_type: string
+          province_id: string | null
+          result_payload: Json | null
+          route_id: string | null
+          session_id: string
+          status: string
+          target_node_id: string | null
+          total_turns: number
+          updated_at: string
+        }
+        Insert: {
+          completed_turn?: number | null
+          cost_gold?: number
+          cost_iron?: number
+          cost_stone?: number
+          cost_wood?: number
+          created_at?: string
+          created_turn?: number
+          description?: string | null
+          id?: string
+          initiated_by: string
+          name?: string
+          node_id?: string | null
+          progress?: number
+          project_type?: string
+          province_id?: string | null
+          result_payload?: Json | null
+          route_id?: string | null
+          session_id: string
+          status?: string
+          target_node_id?: string | null
+          total_turns?: number
+          updated_at?: string
+        }
+        Update: {
+          completed_turn?: number | null
+          cost_gold?: number
+          cost_iron?: number
+          cost_stone?: number
+          cost_wood?: number
+          created_at?: string
+          created_turn?: number
+          description?: string | null
+          id?: string
+          initiated_by?: string
+          name?: string
+          node_id?: string | null
+          progress?: number
+          project_type?: string
+          province_id?: string | null
+          result_payload?: Json | null
+          route_id?: string | null
+          session_id?: string
+          status?: string
+          target_node_id?: string | null
+          total_turns?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "node_projects_node_id_fkey"
+            columns: ["node_id"]
+            isOneToOne: false
+            referencedRelation: "province_nodes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "node_projects_province_id_fkey"
+            columns: ["province_id"]
+            isOneToOne: false
+            referencedRelation: "provinces"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "node_projects_route_id_fkey"
+            columns: ["route_id"]
+            isOneToOne: false
+            referencedRelation: "province_routes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "node_projects_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "node_projects_target_node_id_fkey"
+            columns: ["target_node_id"]
+            isOneToOne: false
+            referencedRelation: "province_nodes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       player_activity: {
         Row: {
           created_at: string | null
