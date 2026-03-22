@@ -118,15 +118,9 @@ Generate starting conditions as JSON:
 function getDefaults() {
   return {
     realm_resources: {
-      grain_reserve: 20, wood_reserve: 10, stone_reserve: 5, iron_reserve: 3,
-      horses_reserve: 5, gold_reserve: 100, stability: 70, granary_capacity: 500, stables_capacity: 100,
-    },
-    player_resources: {
-      food: { income: 4, upkeep: 2, stockpile: 10 },
-      wood: { income: 3, upkeep: 1, stockpile: 5 },
-      stone: { income: 2, upkeep: 0, stockpile: 3 },
-      iron: { income: 1, upkeep: 0, stockpile: 2 },
-      wealth: { income: 2, upkeep: 1, stockpile: 5 },
+      grain_reserve: 20, production_reserve: 50,
+      horses_reserve: 5, gold_reserve: 100, faith_reserve: 5,
+      stability: 70, granary_capacity: 500, stables_capacity: 100,
     },
     settlement: {
       population_total: 1000, population_peasants: 800, population_burghers: 150, population_clerics: 50,
