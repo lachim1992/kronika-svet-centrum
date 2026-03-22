@@ -170,12 +170,11 @@ const CityManagement = ({ sessionId, cityId, currentPlayerName, currentTurn, onB
   const usedSlots = buildings.length;
   const canBuild = usedSlots < maxSlots;
 
+  const getProductionCost = (costs: any) => (costs.cost_wood || 0) + (costs.cost_stone || 0) + (costs.cost_iron || 0);
   const canAfford = (costs: { cost_wood: number; cost_stone: number; cost_iron: number; cost_wealth: number }) => {
     if (!realm) return false;
-    return (realm.wood_reserve >= costs.cost_wood) &&
-           (realm.stone_reserve >= costs.cost_stone) &&
-           (realm.iron_reserve >= costs.cost_iron) &&
-           (realm.gold_reserve >= costs.cost_wealth);
+    return (realm.production_reserve || 0) >= getProductionCost(costs) &&
+           (realm.gold_reserve || 0) >= costs.cost_wealth;
   };
 
   const buildFromTemplate = async (t: BuildingTemplate) => {
