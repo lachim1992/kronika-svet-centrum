@@ -278,9 +278,10 @@ const StrategicMapOverlay = memo(({ sessionId, offsetX, offsetY, visible, onNode
     return result;
   }, [flowPaths, offsetX, offsetY]);
 
-  // Build corridor heatmap: count how many flows pass through each hex
+  // Build corridor heatmap from BOTH flow_paths AND route connections
   const hexHeatmap = useMemo(() => {
     const counts = new Map<string, number>();
+    // From computed hex paths
     for (const fp of flowPaths) {
       if (!fp.hex_path) continue;
       for (const h of fp.hex_path) {
@@ -288,8 +289,25 @@ const StrategicMapOverlay = memo(({ sessionId, offsetX, offsetY, visible, onNode
         counts.set(k, (counts.get(k) || 0) + 1);
       }
     }
+    // Fallback: if no hex paths, sample hexes along straight route lines
+    if (flowPaths.length === 0) {
+      for (const r of routes) {
+        const nA = nodes.find(n => n.id === r.node_a);
+        const nB = nodes.find(n => n.id === r.node_b);
+        if (!nA || !nB) continue;
+        // Interpolate hex coordinates between endpoints
+        const steps = Math.max(1, Math.round(Math.hypot(nB.hex_q - nA.hex_q, nB.hex_r - nA.hex_r)));
+        for (let i = 0; i <= steps; i++) {
+          const t = i / steps;
+          const q = Math.round(nA.hex_q + (nB.hex_q - nA.hex_q) * t);
+          const rr = Math.round(nA.hex_r + (nB.hex_r - nA.hex_r) * t);
+          const k = `${q},${rr}`;
+          counts.set(k, (counts.get(k) || 0) + 1);
+        }
+      }
+    }
     return counts;
-  }, [flowPaths]);
+  }, [flowPaths, routes, nodes]);
 
   // Bottleneck hexes from flow_paths
   const bottleneckHexes = useMemo(() => {
