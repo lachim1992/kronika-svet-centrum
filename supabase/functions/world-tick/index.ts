@@ -164,13 +164,15 @@ Deno.serve(async (req) => {
       if (result.delta !== 0 || result.settlementUpgrade) {
         const layers = distributePopLayers(
           result.newPop, city.population_total,
-          city.population_peasants, city.population_burghers, city.population_clerics
+          city.population_peasants, city.population_burghers, city.population_clerics,
+          city.population_warriors
         );
         const updatePayload: any = {
           population_total: result.newPop,
           population_peasants: layers.peasants,
           population_burghers: layers.burghers,
           population_clerics: layers.clerics,
+          population_warriors: layers.warriors,
           city_stability: result.newStability,
           development_level: result.newDev,
         };

@@ -903,15 +903,17 @@ async function executeDeclareWar(
 // RECRUIT_STACK — full server-side execution
 // ═══════════════════════════════════════════
 
-const FORMATION_PRESETS: Record<string, { label: string; composition: { unit_type: string; manpower: number }[]; formation_type: string; morale: number; gold_override?: number; requires_buildings?: string[] }> = {
+const FORMATION_PRESETS: Record<string, { label: string; composition: { unit_type: string; manpower: number }[]; formation_type: string; morale: number; gold_override?: number; prod_override?: number; requires_buildings?: string[] }> = {
   militia: { label: "Milice", composition: [{ unit_type: "MILITIA", manpower: 400 }], formation_type: "UNIT", morale: 55 },
   professional: { label: "Profesionální vojsko", composition: [{ unit_type: "PROFESSIONAL", manpower: 400 }], formation_type: "UNIT", morale: 70, requires_buildings: ["barracks", "smithy"] },
   legion: { label: "Zárodek legie", composition: [{ unit_type: "MILITIA", manpower: 400 }, { unit_type: "PROFESSIONAL", manpower: 400 }], formation_type: "LEGION", morale: 70, gold_override: 80, requires_buildings: ["barracks", "smithy"] },
 };
 
+// Mixed recruitment cost: 40% production, 30% wealth
 const UNIT_GOLD_FACTOR: Record<string, number> = { MILITIA: 0.8, PROFESSIONAL: 2 };
+const UNIT_PROD_FACTOR: Record<string, number> = { MILITIA: 0.5, PROFESSIONAL: 1.5 };
 const UNIT_TYPE_LABELS: Record<string, string> = { MILITIA: "Milice", PROFESSIONAL: "Profesionálové" };
-const ACTIVE_POP_WEIGHTS = { peasants: 1.0, burghers: 0.7, clerics: 0.2 };
+const ACTIVE_POP_WEIGHTS = { peasants: 1.0, burghers: 0.7, clerics: 0.2, warriors: 0.9 };
 const DEFAULT_ACTIVE_POP_RATIO = 0.5;
 const DEFAULT_MAX_MOBILIZATION = 0.3;
 
@@ -921,7 +923,8 @@ function computeActivePopRaw(cities: any[]): number {
     if (c.status && c.status !== "ok") continue;
     total += (c.population_peasants || 0) * ACTIVE_POP_WEIGHTS.peasants
            + (c.population_burghers || 0) * ACTIVE_POP_WEIGHTS.burghers
-           + (c.population_clerics || 0) * ACTIVE_POP_WEIGHTS.clerics;
+           + (c.population_clerics || 0) * ACTIVE_POP_WEIGHTS.clerics
+           + (c.population_warriors || 0) * ACTIVE_POP_WEIGHTS.warriors;
   }
   return Math.floor(total);
 }
@@ -942,13 +945,18 @@ async function executeRecruitStack(
   const preset = FORMATION_PRESETS[presetKey];
   if (!preset) return { events: [], error: `Unknown preset: ${presetKey}` };
 
+  const sessionId = base.session_id;
+  const turnNumber = base.turn_number;
+  const playerName = actor.name;
+
   // Check building requirements (professional/legion need barracks+smithy)
   if (preset.requires_buildings && preset.requires_buildings.length > 0) {
+    const { data: playerCities } = await supabase.from("cities").select("id").eq("session_id", sessionId).eq("owner_player", playerName);
     const { data: buildings } = await supabase
       .from("city_buildings")
       .select("category, status")
       .eq("session_id", sessionId)
-      .in("city_id", (await supabase.from("cities").select("id").eq("session_id", sessionId).eq("owner_player", playerName)).data?.map((c: any) => c.id) || [])
+      .in("city_id", (playerCities || []).map((c: any) => c.id))
       .eq("status", "completed");
 
     const builtCategories = new Set((buildings || []).map((b: any) => b.category?.toLowerCase()));
@@ -958,12 +966,10 @@ async function executeRecruitStack(
     }
   }
 
-  const sessionId = base.session_id;
-  const turnNumber = base.turn_number;
-  const playerName = actor.name;
-
   const totalManpower = preset.composition.reduce((s: number, c: any) => s + c.manpower, 0);
+  // Mixed cost: wealth (gold) + production
   const totalGold = preset.gold_override ?? preset.composition.reduce((s: number, c: any) => s + c.manpower * (UNIT_GOLD_FACTOR[c.unit_type] || 1), 0);
+  const totalProdCost = preset.prod_override ?? preset.composition.reduce((s: number, c: any) => s + c.manpower * (UNIT_PROD_FACTOR[c.unit_type] || 0.5), 0);
 
   // ── Load realm resources ──
   const { data: realm } = await supabase
@@ -974,7 +980,7 @@ async function executeRecruitStack(
   // ── Compute mobilization cap ──
   const { data: cities } = await supabase
     .from("cities")
-    .select("population_total, population_peasants, population_burghers, population_clerics, status")
+    .select("population_total, population_peasants, population_burghers, population_clerics, population_warriors, status")
     .eq("session_id", sessionId).eq("owner_player", playerName);
 
   const mobilized = computeMobilized(cities || [], realm.mobilization_rate || 0.1);
@@ -998,11 +1004,27 @@ async function executeRecruitStack(
   if (totalGold > realm.gold_reserve) {
     return { events: [], error: `Nedostatek zlata: potřeba ${totalGold}, dostupno ${realm.gold_reserve}` };
   }
+  // Production cost check against grain reserve (production stored as grain)
+  const grainReserve = realm.grain_reserve || 0;
+  if (totalProdCost > grainReserve) {
+    return { events: [], error: `Nedostatek produkce: potřeba ${Math.round(totalProdCost)}, dostupno ${Math.round(grainReserve)} (zásoby obilí)` };
+  }
+
+  // ── Faith morale bonus ──
+  const faithMoraleBonus = Math.round((realm.faith || 0) * 0.003 * 10); // Up to +3 morale at faith 100
+  const adjustedMorale = Math.min(100, preset.morale + faithMoraleBonus);
+
+  // ── Warrior ratio doctrine bonus ──
+  const totalPop = (cities || []).reduce((s: any, c: any) => s + (c.population_total || 0), 0);
+  const totalWarriors = (cities || []).reduce((s: any, c: any) => s + (c.population_warriors || 0), 0);
+  const warriorRatio = totalPop > 0 ? totalWarriors / totalPop : 0;
+  const disciplineBonus = Math.round(warriorRatio * 20); // Warriors 10% → +2 morale
+  const finalMorale = Math.min(100, adjustedMorale + disciplineBonus);
 
   // ── 1. Create stack ──
   const { data: stack, error: stackErr } = await supabase.from("military_stacks").insert({
     session_id: sessionId, player_name: playerName, name: stackName.trim(),
-    formation_type: preset.formation_type, morale: preset.morale,
+    formation_type: preset.formation_type, morale: finalMorale,
   }).select("id").single();
 
   if (stackErr || !stack) return { events: [], error: `Stack creation failed: ${stackErr?.message}` };
@@ -1015,18 +1037,20 @@ async function executeRecruitStack(
     }));
   }
 
-  // ── 3. Update realm resources ──
+  // ── 3. Update realm resources (mixed cost: gold + production) ──
   const newGold = realm.gold_reserve - totalGold;
+  const newGrain = Math.max(0, grainReserve - totalProdCost);
   await supabase.from("realm_resources").update({
     manpower_committed: (realm.manpower_committed || 0) + totalManpower,
     gold_reserve: newGold,
+    grain_reserve: newGrain,
   }).eq("id", realm.id);
 
   await safeInsert(supabase.from("player_resources").update({ stockpile: newGold })
     .eq("session_id", sessionId).eq("player_name", playerName).eq("resource_type", "wealth"));
 
   // ── 4. Chronicle ──
-  const chronicleText = `${playerName} zřídil armádu **${stackName.trim()}** (${preset.label}). Síla vojska: ${totalManpower} mužů, náklady: ${totalGold} zlata.`;
+  const chronicleText = `${playerName} zřídil armádu **${stackName.trim()}** (${preset.label}). Síla: ${totalManpower} mužů, náklady: ${totalGold} zlata + ${Math.round(totalProdCost)} produkce. Morálka: ${finalMorale}.`;
   await safeInsert(supabase.from("chronicle_entries").insert({
     session_id: sessionId, turn_from: turnNumber, turn_to: turnNumber, text: chronicleText,
   }));
@@ -1043,9 +1067,9 @@ async function executeRecruitStack(
   const events = [{
     ...base,
     event_type: "military",
-    note: `${playerName} zřídil armádu ${stackName.trim()} (${preset.label}).`,
+    note: `${playerName} zřídil armádu ${stackName.trim()} (${preset.label}). Náklady: ${totalGold} 💰 + ${Math.round(totalProdCost)} ⚒️. Morálka: ${finalMorale}.`,
     importance: "normal",
-    reference: { stackId, stackName: stackName.trim(), presetKey, totalManpower, totalGold },
+    reference: { stackId, stackName: stackName.trim(), presetKey, totalManpower, totalGold, totalProdCost: Math.round(totalProdCost), morale: finalMorale },
   }];
 
   return insertEvents(supabase, base.command_id, events, { stackId });

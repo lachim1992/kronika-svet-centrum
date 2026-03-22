@@ -192,13 +192,16 @@ export function distributePopLayers(
   oldTotal: number,
   oldPeasants: number,
   oldBurghers: number,
-  oldClerics: number
-): { peasants: number; burghers: number; clerics: number } {
+  oldClerics: number,
+  oldWarriors?: number,
+): { peasants: number; burghers: number; clerics: number; warriors: number } {
   const total = Math.max(1, oldTotal);
+  const warr = oldWarriors || 0;
   const peasants = Math.round(newPop * (oldPeasants / total));
   const burghers = Math.round(newPop * (oldBurghers / total));
-  const clerics = newPop - peasants - burghers;
-  return { peasants, burghers, clerics: Math.max(0, clerics) };
+  const warriors = Math.round(newPop * (warr / total));
+  const clerics = Math.max(0, newPop - peasants - burghers - warriors);
+  return { peasants, burghers, clerics, warriors };
 }
 
 // ═══════════════════════════════════════════

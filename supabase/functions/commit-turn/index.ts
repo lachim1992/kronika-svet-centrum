@@ -1112,7 +1112,8 @@ async function runWorldTickEvents(supabase: any, sessionId: string, turnNumber: 
     if (adjustedDelta !== 0 || civStabBonus !== 0 || civLegitBonus !== 0) {
       const layers = distributePopLayers(
         adjustedNewPop, city.population_total,
-        city.population_peasants, city.population_burghers, city.population_clerics
+        city.population_peasants, city.population_burghers, city.population_clerics,
+        city.population_warriors
       );
       cityEvents.push({
         cityId: city.id,
@@ -1121,6 +1122,7 @@ async function runWorldTickEvents(supabase: any, sessionId: string, turnNumber: 
           population_peasants: layers.peasants,
           population_burghers: layers.burghers,
           population_clerics: layers.clerics,
+          population_warriors: layers.warriors,
           city_stability: adjustedStability,
           legitimacy: adjustedLegitimacy,
           development_level: growth.newDev,
