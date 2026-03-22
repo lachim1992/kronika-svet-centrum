@@ -623,12 +623,12 @@ const CityManagement = ({ sessionId, cityId, currentPlayerName, currentTurn, onB
                                 {!levelOk && <Badge variant="outline" className="text-[9px] shrink-0">Min. {SETTLEMENT_LABELS[t.required_settlement_level]}</Badge>}
                               </div>
                               {t.flavor_text && <p className="text-[10px] italic text-muted-foreground">„{t.flavor_text}"</p>}
-                              {/* Costs */}
+                              {/* Costs — unified economy */}
                               <div className="flex flex-wrap gap-2 text-[10px]">
-                                {t.cost_wood > 0 && <span className="flex items-center gap-0.5"><Trees className="h-2.5 w-2.5" />{t.cost_wood}</span>}
-                                {t.cost_stone > 0 && <span className="flex items-center gap-0.5"><Mountain className="h-2.5 w-2.5" />{t.cost_stone}</span>}
-                                {t.cost_iron > 0 && <span className="flex items-center gap-0.5"><Anvil className="h-2.5 w-2.5" />{t.cost_iron}</span>}
-                                {t.cost_wealth > 0 && <span className="flex items-center gap-0.5"><Coins className="h-2.5 w-2.5" />{t.cost_wealth}</span>}
+                                {((t.cost_wood || 0) + (t.cost_stone || 0) + (t.cost_iron || 0)) > 0 && (
+                                  <span className="flex items-center gap-0.5 text-orange-400">⚒{(t.cost_wood || 0) + (t.cost_stone || 0) + (t.cost_iron || 0)}</span>
+                                )}
+                                {t.cost_wealth > 0 && <span className="flex items-center gap-0.5 text-yellow-400">💰{t.cost_wealth}</span>}
                                 {t.build_turns > 1 && <span>⏱️ {t.build_turns} kol</span>}
                               </div>
                               {/* Effects */}
