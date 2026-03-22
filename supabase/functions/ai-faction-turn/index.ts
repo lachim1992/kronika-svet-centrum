@@ -287,11 +287,10 @@ Deno.serve(async (req) => {
     const resources = {
       gold: realmRes?.gold_reserve || 0,
       grain: realmRes?.grain_reserve || 0,
-      wood: realmRes?.wood_reserve || 0,
-      stone: realmRes?.stone_reserve || 0,
-      iron: realmRes?.iron_reserve || 0,
+      production: realmRes?.production_reserve || 0,
       manpower: realmRes?.manpower_pool || 0,
       manpowerCommitted: realmRes?.manpower_committed || 0,
+      faith: realmRes?.faith || 0,
     };
 
     const activeWars = (warDeclarations || []).filter((w: any) => w.status === "active");
@@ -299,7 +298,7 @@ Deno.serve(async (req) => {
 
     // ── MILITARY METRICS ──
     const milMetrics = computeMilitaryMetrics(
-      resources,
+      { ...resources, wood: 0, stone: 0, iron: 0 },
       realmRes?.mobilization_rate || 0.1,
       activeWars,
       tensionData || [],
@@ -310,11 +309,11 @@ Deno.serve(async (req) => {
       enemyStacks || [],
     );
 
-    // Affordable buildings
-    const affordableBuildings = (buildingTemplates || []).filter((t: any) =>
-      t.cost_wood <= resources.wood && t.cost_stone <= resources.stone &&
-      t.cost_iron <= resources.iron && t.cost_wealth <= resources.gold
-    ).map((t: any) => t.name).slice(0, 8);
+    // Affordable buildings: merged production cost = cost_wood + cost_stone + cost_iron; wealth = cost_wealth
+    const affordableBuildings = (buildingTemplates || []).filter((t: any) => {
+      const prodCost = (t.cost_wood || 0) + (t.cost_stone || 0) + (t.cost_iron || 0);
+      return prodCost <= resources.production && (t.cost_wealth || 0) <= resources.gold;
+    }).map((t: any) => t.name).slice(0, 8);
 
     const personality = faction.personality || "diplomatic";
     const goals = faction.goals || [];
@@ -495,7 +494,7 @@ ${(activeIntents || []).map((i: any) => `  ${i.intent_type}${i.target_faction ? 
 ${(myPastActions || []).map((a: any) => `  [Rok ${a.turn_number}] ${a.action_type}: ${a.description}`).join("\n") || "žádné záznamy"}
 
 ═══ ZAKLÁDÁNÍ OSAD ═══
-Můžeš založit novou osadu na volném hexu ve vlastní provincii. Stojí: 200 zlata, 50 dřeva, 30 kamene.
+Můžeš založit novou osadu na volném hexu ve vlastní provincii. Stojí: 150 produkce + 100 bohatství.
 Tvé provincie: ${(myProvinces || []).map((p: any) => `${p.name} [${p.hex_q},${p.hex_r}]`).join(", ") || "žádné"}
 Volné hexy existují, pokud v provincii není přelidněno.
 
@@ -1162,8 +1161,8 @@ async function executeAction(
       const hexQ = action.targetHexQ;
       const hexR = action.targetHexR;
 
-      // Cost check
-      if (resources.gold < 200 || resources.wood < 50 || resources.stone < 30) return "insufficient_resources";
+      // Cost check (new economy: 150 production + 100 wealth)
+      if (resources.production < 150 || resources.gold < 100) return "insufficient_resources";
       if (hexQ === undefined || hexR === undefined) return "missing_hex_coords";
 
       // Check hex is not occupied by another city
@@ -1172,9 +1171,8 @@ async function executeAction(
 
       // Deduct resources
       await supabase.from("realm_resources").update({
-        gold_reserve: resources.gold - 200,
-        wood_reserve: resources.wood - 50,
-        stone_reserve: resources.stone - 30,
+        gold_reserve: resources.gold - 100,
+        production_reserve: resources.production - 150,
       }).eq("session_id", sessionId).eq("player_name", factionName);
 
       // Find province for this hex

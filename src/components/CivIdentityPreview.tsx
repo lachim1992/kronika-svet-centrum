@@ -344,10 +344,10 @@ const CivIdentityPreview = ({ sessionId, playerName, civDescription, identityDat
                       ))}
                     </div>
                     <div className="flex gap-1 text-[9px] text-muted-foreground">
-                      {sb.cost_wealth > 0 && <span>💰{sb.cost_wealth}</span>}
-                      {sb.cost_wood > 0 && <span>🪵{sb.cost_wood}</span>}
-                      {sb.cost_stone > 0 && <span>🪨{sb.cost_stone}</span>}
-                      {sb.cost_iron > 0 && <span>⚙️{sb.cost_iron}</span>}
+                      {sb.cost_wealth > 0 && <span className="text-yellow-400">💰{sb.cost_wealth}</span>}
+                      {((sb.cost_wood || 0) + (sb.cost_stone || 0) + (sb.cost_iron || 0)) > 0 && (
+                        <span className="text-orange-400">⚒{(sb.cost_wood || 0) + (sb.cost_stone || 0) + (sb.cost_iron || 0)}</span>
+                      )}
                       <span>⏱️{sb.build_duration}kol</span>
                       <span className="text-primary">• 5 úrovní → Div světa</span>
                     </div>

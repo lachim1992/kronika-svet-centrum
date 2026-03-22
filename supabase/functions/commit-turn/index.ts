@@ -372,7 +372,7 @@ Deno.serve(async (req) => {
 
         // Get AI faction resources
         const { data: aiRealm } = await supabase.from("realm_resources")
-          .select("gold_reserve, grain_reserve, wood_reserve, stone_reserve, iron_reserve")
+          .select("gold_reserve, grain_reserve, production_reserve")
           .eq("session_id", sessionId).eq("player_name", offer.to_player).maybeSingle();
 
         // Simple evaluation: does the AI need what's offered and can afford what's requested?
@@ -385,7 +385,7 @@ Deno.serve(async (req) => {
 
         const resMap: Record<string, string> = {
           gold: "gold_reserve", grain: "grain_reserve",
-          wood: "wood_reserve", stone: "stone_reserve", iron: "iron_reserve",
+          production: "production_reserve", wealth: "gold_reserve",
         };
 
         const aiHasRequested = (aiRealm?.[resMap[reqType] as keyof typeof aiRealm] as number || 0);
