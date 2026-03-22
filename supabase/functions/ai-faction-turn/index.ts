@@ -494,7 +494,7 @@ ${(activeIntents || []).map((i: any) => `  ${i.intent_type}${i.target_faction ? 
 ${(myPastActions || []).map((a: any) => `  [Rok ${a.turn_number}] ${a.action_type}: ${a.description}`).join("\n") || "žádné záznamy"}
 
 ═══ ZAKLÁDÁNÍ OSAD ═══
-Můžeš založit novou osadu na volném hexu ve vlastní provincii. Stojí: 200 zlata, 50 dřeva, 30 kamene.
+Můžeš založit novou osadu na volném hexu ve vlastní provincii. Stojí: 150 produkce + 100 bohatství.
 Tvé provincie: ${(myProvinces || []).map((p: any) => `${p.name} [${p.hex_q},${p.hex_r}]`).join(", ") || "žádné"}
 Volné hexy existují, pokud v provincii není přelidněno.
 
