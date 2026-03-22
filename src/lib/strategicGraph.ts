@@ -86,6 +86,74 @@ export async function fortifyNode(params: {
   });
 }
 
+/** Blockade a route with a stack */
+export async function blockadeRoute(params: {
+  sessionId: string;
+  turnNumber?: number;
+  playerName: string;
+  stackId: string;
+  routeId: string;
+}) {
+  return dispatchCommand({
+    sessionId: params.sessionId,
+    turnNumber: params.turnNumber,
+    actor: { name: params.playerName, type: "player" },
+    commandType: "BLOCKADE_ROUTE",
+    commandPayload: { stackId: params.stackId, routeId: params.routeId },
+  });
+}
+
+/** Set ambush on a route */
+export async function ambushRoute(params: {
+  sessionId: string;
+  turnNumber?: number;
+  playerName: string;
+  stackId: string;
+  routeId: string;
+}) {
+  return dispatchCommand({
+    sessionId: params.sessionId,
+    turnNumber: params.turnNumber,
+    actor: { name: params.playerName, type: "player" },
+    commandType: "AMBUSH_ROUTE",
+    commandPayload: { stackId: params.stackId, routeId: params.routeId },
+  });
+}
+
+/** Begin siege of a strategic node */
+export async function siegeNode(params: {
+  sessionId: string;
+  turnNumber?: number;
+  playerName: string;
+  stackId: string;
+  nodeId: string;
+}) {
+  return dispatchCommand({
+    sessionId: params.sessionId,
+    turnNumber: params.turnNumber,
+    actor: { name: params.playerName, type: "player" },
+    commandType: "SIEGE_NODE",
+    commandPayload: { stackId: params.stackId, nodeId: params.nodeId },
+  });
+}
+
+/** Disrupt / sabotage a route */
+export async function disruptRoute(params: {
+  sessionId: string;
+  turnNumber?: number;
+  playerName: string;
+  routeId: string;
+  stackId?: string;
+}) {
+  return dispatchCommand({
+    sessionId: params.sessionId,
+    turnNumber: params.turnNumber,
+    actor: { name: params.playerName, type: "player" },
+    commandType: "DISRUPT_ROUTE",
+    commandPayload: { routeId: params.routeId, stackId: params.stackId },
+  });
+}
+
 /** Route type labels in Czech */
 export const ROUTE_TYPE_LABELS: Record<string, string> = {
   land_road: "Silnice",
@@ -132,4 +200,21 @@ export const STANCE_LABELS: Record<string, string> = {
   defending: "Brání",
   intercepting: "Zachycuje",
   raiding: "Plení",
+};
+
+/** Battle context labels */
+export const BATTLE_CONTEXT_LABELS: Record<string, string> = {
+  node_siege: "Obléhání uzlu",
+  route_ambush: "Přepad na cestě",
+  route_blockade: "Průlom blokády",
+  field_battle: "Polní bitva",
+};
+
+/** World route kind labels */
+export const WORLD_ROUTE_KIND_LABELS: Record<string, string> = {
+  sea_lane: "Námořní osa",
+  imperial_road: "Imperiální silnice",
+  trade_corridor: "Obchodní koridor",
+  pilgrimage: "Poutní cesta",
+  military_axis: "Vojenská osa",
 };
