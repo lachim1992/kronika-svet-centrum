@@ -6,6 +6,7 @@ import {
   CRISIS_THRESHOLD, WAR_THRESHOLD, SETTLEMENT_LEVEL_THRESHOLDS,
   computeProvinceControl, computeIsolationPenalty,
   computeNodeFlows, computeSupplyChain,
+  URBANIZATION_THRESHOLDS,
   type CityForGrowth, type InfluenceInput,
   type NodeControlEntry, type IsolationInput,
   type FlowNode, type FlowRoute, type FlowCity,
