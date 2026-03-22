@@ -352,6 +352,39 @@ const StrategicOverlay = memo(function StrategicOverlay({ sessionId, currentPlay
         );
       })()}
 
+      {/* Province Control Overview */}
+      {controlSnapshots.length > 0 && (
+        <Card>
+          <CardHeader className="pb-1 pt-2 px-3">
+            <CardTitle className="text-[11px] flex items-center gap-1.5">
+              <Landmark className="h-3.5 w-3.5 text-primary" /> Kontrola provincií
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="px-3 pb-2 space-y-1">
+            {controlSnapshots.map((cs: any) => {
+              const dominancePct = Math.round((cs.dominance || 0) * 100);
+              const isMine = cs.control_player === currentPlayerName;
+              return (
+                <div key={cs.province_id} className={`flex items-center gap-2 text-[10px] rounded p-1.5 ${
+                  cs.contested ? "bg-accent/20" : isMine ? "bg-primary/10" : "bg-muted/40"
+                }`}>
+                  <span className={`text-[10px] font-bold ${isMine ? "text-primary" : cs.control_player ? "text-destructive" : "text-muted-foreground"}`}>
+                    {cs.control_player || "Nikdo"}
+                  </span>
+                  <Progress value={dominancePct} className="h-1 flex-1 max-w-[60px]" />
+                  <span className="text-[8px] text-muted-foreground">{dominancePct}%</span>
+                  {cs.contested && <Badge variant="outline" className="text-[7px] text-accent-foreground">Sporná</Badge>}
+                  <span className="text-[8px] text-muted-foreground ml-auto">
+                    📦{Math.round((cs.supply_health || 0) * 100)}%
+                    🛤️{Math.round((cs.route_access_score || 0) * 100)}%
+                  </span>
+                </div>
+              );
+            })}
+          </CardContent>
+        </Card>
+      )}
+
       {/* Active Projects */}
       {projects.length > 0 && (
         <Card>
