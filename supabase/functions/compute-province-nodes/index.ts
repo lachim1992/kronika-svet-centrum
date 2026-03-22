@@ -311,9 +311,21 @@ Deno.serve(async (req) => {
     for (let i = 0; i < allNodes.length; i += BATCH) {
       const batch = allNodes.slice(i, i + BATCH).map(n => {
         const { _parentTempIdx, ...rest } = n;
-        return rest;
+        // Ensure NOT NULL columns have defaults
+        return {
+          fortification_level: 0,
+          infrastructure_level: 0,
+          population: 0,
+          growth_rate: 0,
+          garrison_strength: 0,
+          ...rest,
+        };
       });
-      const { data: inserted } = await sb.from("province_nodes").insert(batch).select("id");
+      const { data: inserted, error: insertErr } = await sb.from("province_nodes").insert(batch).select("id");
+      if (insertErr) {
+        console.error("Insert error:", insertErr.message, insertErr.details, insertErr.hint, JSON.stringify(batch[0]));
+        throw new Error(`Insert failed: ${insertErr.message}`);
+      }
       if (inserted) {
         for (const row of inserted) insertedIds.push(row.id);
       }
