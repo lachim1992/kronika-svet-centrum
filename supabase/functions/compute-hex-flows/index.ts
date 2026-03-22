@@ -42,14 +42,16 @@ Deno.serve(async (req) => {
       .eq("session_id", session_id)
       .eq("is_active", true);
 
-    // Build fortress/control lookup by hex
-    const hexControl = new Map<string, { controlled_by: string | null; has_fortress: boolean; trade_density: number }>();
+    // Build fortress/control/pass lookup by hex
+    const hexControl = new Map<string, { controlled_by: string | null; has_fortress: boolean; trade_density: number; has_pass: boolean }>();
     for (const n of (nodes || [])) {
       const k = `${n.hex_q},${n.hex_r}`;
+      const existing = hexControl.get(k);
       hexControl.set(k, {
         controlled_by: n.controlled_by,
-        has_fortress: (n.fortification_level || 0) >= 2 || n.node_type === "fortress",
+        has_fortress: (existing?.has_fortress ?? false) || (n.fortification_level || 0) >= 2 || n.node_type === "fortress",
         trade_density: Math.min(100, (n.cumulative_trade_flow || 0) * 0.5),
+        has_pass: (existing?.has_pass ?? false) || n.node_type === "pass",
       });
     }
 
