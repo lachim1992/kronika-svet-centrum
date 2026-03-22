@@ -562,7 +562,16 @@ Deno.serve(async (req) => {
     }
     results.treaty_stability = treatyResults;
 
-    // ========== 8. REBELLION EVALUATION ==========
+    // ========== 8. REBELLION EVALUATION (with Faith suppression) ==========
+    // Fetch realm faith data for rebellion suppression
+    const { data: allRealmRes } = await supabase.from("realm_resources")
+      .select("player_name, faith, warrior_ratio")
+      .eq("session_id", sessionId);
+    const realmFaithMap: Record<string, { faith: number; warriorRatio: number }> = {};
+    for (const r of (allRealmRes || [])) {
+      realmFaithMap[r.player_name] = { faith: r.faith || 0, warriorRatio: r.warrior_ratio || 0 };
+    }
+
     const rebellionResults: any[] = [];
     for (const city of (cities || [])) {
       if (city.status !== "ok") continue;
@@ -572,7 +581,15 @@ Deno.serve(async (req) => {
       if (stability < 30) {
         const rebelSeed = turnNumber * 23 + city.name.length * 7;
         const rebelRoll = (rebelSeed % 100) / 100;
-        const rebelThreshold = stability < 15 ? 0.4 : 0.7; // Very low stability = high rebel chance
+        let rebelThreshold = stability < 15 ? 0.4 : 0.7;
+
+        // Faith suppresses rebellion: high faith = higher threshold (harder to rebel)
+        const ownerFaith = realmFaithMap[city.owner_player]?.faith || 0;
+        const ownerWarriors = realmFaithMap[city.owner_player]?.warriorRatio || 0;
+        rebelThreshold += ownerFaith * 0.003; // Faith 100 → +0.3 (strong suppression)
+        rebelThreshold += ownerWarriors * 0.5; // Warriors 10% → +0.05 (military presence)
+        // Temple level in city also helps
+        rebelThreshold += (city.temple_level || 0) * 0.03;
 
         if (rebelRoll < rebelThreshold) {
           // Rebellion!
@@ -584,11 +601,12 @@ Deno.serve(async (req) => {
             population_total: Math.max(50, city.population_total - popLoss),
           }).eq("id", city.id);
 
+          const faithNote = ownerFaith > 50 ? " Víra lidu pomáhá tlumit nepokoje." : ownerFaith < 20 ? " Slabá víra přiživuje vzpouru." : "";
           const { data: rebelEvt } = await supabase.from("game_events").insert({
             session_id: sessionId,
             event_type: "rebellion",
             player: "Systém",
-            note: `Vzpoura v ${city.name}! Lid se bouří proti ${city.owner_player}. Ztráta ${popLoss} obyvatel.`,
+            note: `Vzpoura v ${city.name}! Lid se bouří proti ${city.owner_player}. Ztráta ${popLoss} obyvatel.${faithNote}`,
             importance: "critical",
             confirmed: true,
             turn_number: turnNumber,
@@ -598,7 +616,7 @@ Deno.serve(async (req) => {
 
           await safeInsert(supabase.from("world_memories").insert({
             session_id: sessionId,
-            text: `V roce ${turnNumber} vypukla vzpoura v ${city.name} (stabilita: ${stability}%).`,
+            text: `V roce ${turnNumber} vypukla vzpoura v ${city.name} (stabilita: ${stability}%, víra: ${ownerFaith.toFixed(0)}).`,
             category: "historická jizva",
             city_id: city.id,
             approved: true,
@@ -606,7 +624,7 @@ Deno.serve(async (req) => {
 
           await safeInsert(supabase.from("chronicle_entries").insert({
             session_id: sessionId,
-            text: `**Vzpoura (rok ${turnNumber}):** Lid města ${city.name} povstal proti vládě ${city.owner_player}. Stabilita klesla na ${newStability}%, ${popLoss} obyvatel uprchlo.`,
+            text: `**Vzpoura (rok ${turnNumber}):** Lid města ${city.name} povstal proti vládě ${city.owner_player}. Stabilita klesla na ${newStability}%, ${popLoss} obyvatel uprchlo.${faithNote}`,
             epoch_style: "kroniky",
             turn_from: turnNumber,
             turn_to: turnNumber,
@@ -615,9 +633,9 @@ Deno.serve(async (req) => {
           }));
 
           reputationDeltas[city.owner_player] = (reputationDeltas[city.owner_player] || 0) - 8;
-          rebellionResults.push({ city: city.name, owner: city.owner_player, stability, popLoss, rebelled: true });
+          rebellionResults.push({ city: city.name, owner: city.owner_player, stability, popLoss, rebelled: true, faith: ownerFaith });
         } else {
-          rebellionResults.push({ city: city.name, owner: city.owner_player, stability, rebelled: false, unrest: true });
+          rebellionResults.push({ city: city.name, owner: city.owner_player, stability, rebelled: false, unrest: true, faith: ownerFaith });
         }
       }
     }

@@ -279,11 +279,12 @@ Deno.serve(async (req) => {
       isolation_penalty: number;
     }> = [];
 
-    // Phase 1: compute raw production for all nodes
+    // Phase 1: compute raw production for all nodes (with city demographics)
     const rawProduction = new Map<string, number>();
     for (const node of nodes) {
       const routeAccess = computeRouteAccess(node.id, routes);
-      const prod = computeNodeProduction(node, routeAccess);
+      const cityData = node.city_id ? cityMap.get(node.city_id) : undefined;
+      const prod = computeNodeProduction(node, routeAccess, cityData);
       rawProduction.set(node.id, prod);
     }
 
@@ -299,26 +300,26 @@ Deno.serve(async (req) => {
       if (!node.is_major && node.parent_node_id) {
         const parentProd = majorIncoming.get(node.parent_node_id) || 0;
         const nodeProd = rawProduction.get(node.id) || 0;
-        // Throughput from parent's regulation
         const parent = nodeMap.get(node.parent_node_id);
         const throughput = parent ? (parent.throughput_military || 1.0) : 1.0;
         majorIncoming.set(node.parent_node_id, parentProd + nodeProd * throughput);
       }
     }
 
-    // Phase 3: compute wealth, capacity, importance per node
+    // Phase 3: compute wealth, capacity, importance per node (with city demographics)
     for (const node of nodes) {
       const routeAccess = computeRouteAccess(node.id, routes);
       const connectivity = computeConnectivity(node.id, routes, nodes.length);
       const production = rawProduction.get(node.id) || 0;
       const incoming = node.is_major ? (majorIncoming.get(node.id) || 0) : production;
       const tradeEff = ROLE_TRADE_EFFICIENCY[node.flow_role] || 0.2;
+      const cityData = node.city_id ? cityMap.get(node.city_id) : undefined;
 
       let wealth = node.is_major
-        ? computeNodeWealth(incoming, tradeEff, connectivity)
+        ? computeNodeWealth(incoming, tradeEff, connectivity, cityData)
         : computeNodeWealth(production * 0.1, tradeEff * 0.5, connectivity);
 
-      let capacity = computeNodeCapacity(node.population, node.infrastructure_level, connectivity);
+      let capacity = computeNodeCapacity(node.population, node.infrastructure_level, connectivity, cityData);
 
       // Apply isolation
       const supply = supplyMap.get(node.id);
