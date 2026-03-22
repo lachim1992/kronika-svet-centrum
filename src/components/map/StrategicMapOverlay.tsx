@@ -452,15 +452,6 @@ const StrategicMapOverlay = memo(({ sessionId, offsetX, offsetY, visible, onNode
         );
       })}
 
-      {/* Routes — use hex paths when available, otherwise interpolated corridor */}
-      {routes.map(r => {
-        const a = nodePositions.get(r.node_a);
-        const b = nodePositions.get(r.node_b);
-        if (!a || !b) return null;
-        const color = ROUTE_COLORS[r.route_type] || "hsl(var(--muted-foreground))";
-        const stateColor = CONTROL_STROKE[r.control_state] || color;
-        const isDamaged = r.control_state === "damaged" || r.control_state === "blocked";
-        const width = 1.5 + r.upgrade_level * 0.5 + (r.capacity_value > 5 ? 1 : 0);
 
       {/* Routes — per-segment density coloring */}
       {(() => {
@@ -762,3 +753,4 @@ const StrategicMapOverlay = memo(({ sessionId, offsetX, offsetY, visible, onNode
 
 StrategicMapOverlay.displayName = "StrategicMapOverlay";
 export default StrategicMapOverlay;
+
