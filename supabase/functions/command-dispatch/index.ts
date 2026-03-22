@@ -305,6 +305,12 @@ async function executeCommand(
     case "DISRUPT_ROUTE":
       return await executeDisruptRoute(supabase, base, actor, payload, commandId, sessionId, turnNumber);
 
+    case "START_PROJECT":
+      return await executeStartProject(supabase, base, actor, payload, commandId, sessionId, turnNumber);
+
+    case "CANCEL_PROJECT":
+      return await executeCancelProject(supabase, base, actor, payload, commandId, sessionId, turnNumber);
+
     case "PROPOSE_PACT":
       return await executeProposePact(supabase, base, actor, payload, commandId, sessionId, turnNumber);
 
