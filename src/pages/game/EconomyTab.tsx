@@ -129,6 +129,28 @@ const EconomyTab = ({ sessionId, currentPlayerName, currentTurn, cities, resourc
     nodeStats.filter(n => (n.isolation_penalty ?? 0) > 0),
   [nodeStats]);
 
+  // Per-city economy from node data
+  const FLOW_ROLE_MULT: Record<string, number> = { hub: 0.8, gateway: 0.9, regulator: 0.7, producer: 1.2, neutral: 1.0 };
+  const cityEconMap = useMemo(() => {
+    const map = new Map<string, { production: number; demand: number; balance: number; isolation: number; wealthOutput: number }>();
+    for (const city of myCities) {
+      const node = cityNodeMap.get(city.id);
+      const pop = city.population_total || 0;
+      const demand = Math.max(1, Math.round(pop * 0.006));
+      let production = 0;
+      let isolation = 0;
+      let wealthOutput = 0;
+      if (node) {
+        production = (node.production_output || 0) + (node.incoming_production || 0) * 0.5;
+        production *= FLOW_ROLE_MULT[node.flow_role] || 1.0;
+        isolation = node.isolation_penalty || 0;
+        wealthOutput = node.wealth_output || 0;
+      }
+      map.set(city.id, { production: Math.round(production * 10) / 10, demand, balance: Math.round((production - demand) * 10) / 10, isolation: Math.round(isolation * 100), wealthOutput: Math.round(wealthOutput * 10) / 10 });
+    }
+    return map;
+  }, [myCities, cityNodeMap]);
+
   // Workforce
   const mobRate = realm?.mobilization_rate || 0.1;
   const wf = computeWorkforceBreakdown(myCities, mobRate);
@@ -150,11 +172,12 @@ const EconomyTab = ({ sessionId, currentPlayerName, currentTurn, cities, resourc
         case "population": va = a.population_total || 0; vb = b.population_total || 0; break;
         case "settlement": va = a.settlement_level || ""; vb = b.settlement_level || ""; return citySortAsc ? String(va).localeCompare(String(vb)) : String(vb).localeCompare(String(va));
         case "vulnerability": va = a.vulnerability_score || 0; vb = b.vulnerability_score || 0; break;
+        case "balance": va = cityEconMap.get(a.id)?.balance || 0; vb = cityEconMap.get(b.id)?.balance || 0; break;
       }
       return citySortAsc ? (va as number) - (vb as number) : (vb as number) - (va as number);
     });
     return arr;
-  }, [myCities, citySortKey, citySortAsc]);
+  }, [myCities, citySortKey, citySortAsc, cityEconMap]);
 
   const handleCitySort = (key: CitySortKey) => {
     if (citySortKey === key) setCitySortAsc(!citySortAsc);
