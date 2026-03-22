@@ -207,6 +207,7 @@ export const PROJECT_TYPE_LABELS: Record<string, string> = {
   create_port: "Stavba přístavu",
   expand_hub: "Rozšíření centra",
   repair_route: "Oprava cesty",
+  build_pass: "Stavba průsmyku",
 };
 
 /** Project costs for UI display — new civilizational economy
