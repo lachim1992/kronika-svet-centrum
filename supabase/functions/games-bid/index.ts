@@ -80,14 +80,14 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Check gold
+    // Check wealth (gold_reserve = Wealth in new economy)
     const investment = Math.max(0, Math.min(gold_invested || 0, 100));
     if (investment > 0) {
       const { data: res } = await sb.from("realm_resources")
         .select("gold_reserve").eq("session_id", session_id).eq("player_name", player_name).single();
 
       if (!res || res.gold_reserve < investment) {
-        return new Response(JSON.stringify({ error: `Nedostatek zlata. Máte: ${res?.gold_reserve || 0}` }), {
+        return new Response(JSON.stringify({ error: `Nedostatek bohatství. Máte: ${res?.gold_reserve || 0}` }), {
           status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }

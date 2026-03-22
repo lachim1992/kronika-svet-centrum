@@ -125,7 +125,7 @@ const UprisingDialog = ({ sessionId, playerName, currentTurn, onResolved }: Prop
 
       const { data: realm } = await supabase
         .from("realm_resources")
-        .select("grain_reserve, gold_reserve, wood_reserve, stone_reserve, iron_reserve")
+        .select("grain_reserve, gold_reserve, production_reserve, total_capacity, faith")
         .eq("session_id", sessionId)
         .eq("player_name", playerName)
         .maybeSingle();
@@ -146,7 +146,7 @@ Odpověz POUZE ve formátu JSON: {"crowd_text": "...", "advisor_analysis": "..."
 
       const userPrompt = `Město: ${city?.name}, populace: ${city?.population_total}, stabilita: ${city?.city_stability}%, hladomor: ${city?.famine_consecutive_turns} kol, úroveň: ${city?.settlement_level}.
 Eskalace vzpoury: ${escalationLevel}/3.
-Zásoby říše: obilí ${realm?.grain_reserve || 0}, zlato ${realm?.gold_reserve || 0}, dřevo ${realm?.wood_reserve || 0}, kámen ${realm?.stone_reserve || 0}, železo ${realm?.iron_reserve || 0}.
+Zásoby říše: zásoby ${realm?.grain_reserve || 0}, bohatství ${realm?.gold_reserve || 0}, produkce ${realm?.production_reserve || 0}, kapacita ${realm?.total_capacity || 0}, víra ${realm?.faith || 0}.
 Armády: ${(stacks || []).map(s => `${s.name} (síla ${s.power})`).join(", ") || "žádné"}.
 Vygeneruj hlas lidu a analýzu poradců.`;
 
@@ -216,17 +216,10 @@ Vygeneruj hlas lidu a analýzu poradců.`;
       }
 
       if (selectedConcession === "open_stores") {
-        // All material reserves → 0 (not gold), famine immediately ends
+        // All reserves → 0 (production + grain), famine immediately ends
         await supabase.from("realm_resources").update({
-          grain_reserve: 0, wood_reserve: 0, stone_reserve: 0, iron_reserve: 0,
+          grain_reserve: 0, production_reserve: 0,
         }).eq("session_id", sessionId).eq("player_name", playerName);
-
-        // Sync player_resources stockpiles to 0 for food/wood/stone/iron
-        for (const resType of ["food", "wood", "stone", "iron"]) {
-          await supabase.from("player_resources").update({
-            stockpile: 0,
-          }).eq("session_id", sessionId).eq("player_name", playerName).eq("resource_type", resType);
-        }
 
         const cooldownUntil = currentTurn + 5;
         await supabase.from("cities").update({

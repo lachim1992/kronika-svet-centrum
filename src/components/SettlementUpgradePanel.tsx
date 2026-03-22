@@ -17,6 +17,12 @@ interface Props {
   onRefetch?: () => void;
 }
 
+/**
+ * Settlement upgrade requirements use the new civilizational economy:
+ * - ⚒️ Produkce (production_reserve) = physical materials from peasant output
+ * - 💰 Bohatství (gold_reserve) = financing from burgher/trade output
+ * - 🏛️ Kapacita (total_capacity) = logistic/admin capacity (checked, not consumed)
+ */
 const UPGRADE_PATH: Record<string, { next: string; nextSettlement: string; requirements: (city: any, realm: any) => UpgradeRequirement[] }> = {
   HAMLET: {
     next: "Městečko",
@@ -25,7 +31,8 @@ const UPGRADE_PATH: Record<string, { next: string; nextSettlement: string; requi
       { label: "Populace", met: (city.population_total || 0) >= 2000, current: `${city.population_total || 0}`, required: "2 000" },
       { label: "Stabilita", met: (city.city_stability || 70) >= 50, current: `${city.city_stability || 70}`, required: "50" },
       { label: "Sýpka", met: (city.local_grain_reserve || 0) >= 20, current: `${city.local_grain_reserve || 0}`, required: "20" },
-      { label: "Zlato", met: (realm?.gold_reserve || 0) >= 50, current: `${realm?.gold_reserve || 0}`, required: "50" },
+      { label: "⚒️ Produkce", met: (realm?.production_reserve || 0) >= 30, current: `${realm?.production_reserve || 0}`, required: "30" },
+      { label: "💰 Bohatství", met: (realm?.gold_reserve || 0) >= 30, current: `${realm?.gold_reserve || 0}`, required: "30" },
     ],
   },
   TOWNSHIP: {
@@ -35,9 +42,9 @@ const UPGRADE_PATH: Record<string, { next: string; nextSettlement: string; requi
       { label: "Populace", met: (city.population_total || 0) >= 5000, current: `${city.population_total || 0}`, required: "5 000" },
       { label: "Stabilita", met: (city.city_stability || 70) >= 60, current: `${city.city_stability || 70}`, required: "60" },
       { label: "Sýpka", met: (city.local_grain_reserve || 0) >= 50, current: `${city.local_grain_reserve || 0}`, required: "50" },
-      { label: "Zlato", met: (realm?.gold_reserve || 0) >= 150, current: `${realm?.gold_reserve || 0}`, required: "150" },
-      { label: "Dřevo", met: (realm?.wood_reserve || 0) >= 50, current: `${realm?.wood_reserve || 0}`, required: "50" },
-      { label: "Kámen", met: (realm?.stone_reserve || 0) >= 30, current: `${realm?.stone_reserve || 0}`, required: "30" },
+      { label: "⚒️ Produkce", met: (realm?.production_reserve || 0) >= 80, current: `${realm?.production_reserve || 0}`, required: "80" },
+      { label: "💰 Bohatství", met: (realm?.gold_reserve || 0) >= 100, current: `${realm?.gold_reserve || 0}`, required: "100" },
+      { label: "🏛️ Kapacita", met: (realm?.total_capacity || 0) >= 10, current: `${(realm?.total_capacity || 0).toFixed(0)}`, required: "10" },
     ],
   },
   CITY: {
@@ -46,18 +53,25 @@ const UPGRADE_PATH: Record<string, { next: string; nextSettlement: string; requi
     requirements: (city, realm) => [
       { label: "Populace", met: (city.population_total || 0) >= 15000, current: `${city.population_total || 0}`, required: "15 000" },
       { label: "Stabilita", met: (city.city_stability || 70) >= 70, current: `${city.city_stability || 70}`, required: "70" },
-      { label: "Zlato", met: (realm?.gold_reserve || 0) >= 500, current: `${realm?.gold_reserve || 0}`, required: "500" },
-      { label: "Kámen", met: (realm?.stone_reserve || 0) >= 100, current: `${realm?.stone_reserve || 0}`, required: "100" },
+      { label: "⚒️ Produkce", met: (realm?.production_reserve || 0) >= 250, current: `${realm?.production_reserve || 0}`, required: "250" },
+      { label: "💰 Bohatství", met: (realm?.gold_reserve || 0) >= 300, current: `${realm?.gold_reserve || 0}`, required: "300" },
+      { label: "🏛️ Kapacita", met: (realm?.total_capacity || 0) >= 25, current: `${(realm?.total_capacity || 0).toFixed(0)}`, required: "25" },
       { label: "Prestiž", met: (realm?.prestige || 0) >= 50, current: `${realm?.prestige || 0}`, required: "50" },
     ],
   },
+};
+
+/** Cost deduction map: label → { field, amount } */
+const COST_MAP: Record<string, string> = {
+  "⚒️ Produkce": "production_reserve",
+  "💰 Bohatství": "gold_reserve",
 };
 
 const SETTLEMENT_LABELS: Record<string, string> = { HAMLET: "Osada", TOWNSHIP: "Městečko", CITY: "Město", POLIS: "Polis" };
 
 const SettlementUpgradePanel = ({ city, realm, onRefetch }: Props) => {
   const upgrade = UPGRADE_PATH[city.settlement_level];
-  if (!upgrade) return null; // Already max level (POLIS)
+  if (!upgrade) return null;
 
   const requirements = upgrade.requirements(city, realm);
   const allMet = requirements.every(r => r.met);
@@ -74,13 +88,14 @@ const SettlementUpgradePanel = ({ city, realm, onRefetch }: Props) => {
       return;
     }
 
-    // Deduct resources
+    // Deduct consumable resources (production + wealth, not capacity)
     if (realm) {
       const costs: Record<string, number> = {};
       for (const req of requirements) {
-        if (req.label === "Zlato") costs.gold_reserve = (realm.gold_reserve || 0) - parseInt(req.required.replace(/\s/g, ""));
-        if (req.label === "Dřevo") costs.wood_reserve = (realm.wood_reserve || 0) - parseInt(req.required.replace(/\s/g, ""));
-        if (req.label === "Kámen") costs.stone_reserve = (realm.stone_reserve || 0) - parseInt(req.required.replace(/\s/g, ""));
+        const field = COST_MAP[req.label];
+        if (field) {
+          costs[field] = Math.max(0, (realm[field] || 0) - parseInt(req.required.replace(/\s/g, "")));
+        }
       }
       if (Object.keys(costs).length > 0) {
         await supabase.from("realm_resources").update(costs).eq("id", realm.id);
@@ -118,12 +133,12 @@ const SettlementUpgradePanel = ({ city, realm, onRefetch }: Props) => {
       </div>
 
       <Button
-        onClick={handleUpgrade}
+        size="sm" className="w-full"
         disabled={!allMet}
-        size="sm"
-        className="w-full font-display"
+        onClick={handleUpgrade}
       >
-        {allMet ? `Povýšit na ${upgrade.next}` : "Podmínky nesplněny"}
+        <ArrowUp className="h-3.5 w-3.5 mr-1" />
+        Povýšit na {upgrade.next}
       </Button>
     </div>
   );

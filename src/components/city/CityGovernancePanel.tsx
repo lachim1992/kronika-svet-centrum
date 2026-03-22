@@ -132,18 +132,17 @@ const CityGovernancePanel = ({ sessionId, city, realm, currentPlayerName, curren
     }
     const tmpl = DISTRICT_TYPES[typeKey];
     if (!realm) { toast.error("Nedostupné zdroje"); return; }
+    const districtProdCost = tmpl.build_cost_wood + tmpl.build_cost_stone;
     if ((realm.gold_reserve || 0) < tmpl.build_cost_wealth ||
-        (realm.wood_reserve || 0) < tmpl.build_cost_wood ||
-        (realm.stone_reserve || 0) < tmpl.build_cost_stone) {
+        (realm.production_reserve || 0) < districtProdCost) {
       toast.error("Nedostatek surovin!");
       return;
     }
     setSaving(true);
-    // Deduct
+    // Deduct (new economy: production_reserve + gold_reserve)
     await supabase.from("realm_resources").update({
       gold_reserve: (realm.gold_reserve || 0) - tmpl.build_cost_wealth,
-      wood_reserve: (realm.wood_reserve || 0) - tmpl.build_cost_wood,
-      stone_reserve: (realm.stone_reserve || 0) - tmpl.build_cost_stone,
+      production_reserve: Math.max(0, (realm.production_reserve || 0) - districtProdCost),
     } as any).eq("id", realm.id);
     // Insert district
     await supabase.from("city_districts").insert({
@@ -343,8 +342,7 @@ const CityGovernancePanel = ({ sessionId, city, realm, currentPlayerName, curren
                     <p className="text-[9px] text-muted-foreground line-clamp-2">{d.description}</p>
                     <div className="flex gap-1 mt-1 text-[9px] text-muted-foreground">
                       <span>💰{d.build_cost_wealth}</span>
-                      <span>🪵{d.build_cost_wood}</span>
-                      <span>🪨{d.build_cost_stone}</span>
+                      <span>⚒️{d.build_cost_wood + d.build_cost_stone}</span>
                       <span>⏱️{d.build_turns}k</span>
                     </div>
                   </button>
@@ -441,8 +439,7 @@ const CityGovernancePanel = ({ sessionId, city, realm, currentPlayerName, curren
             };
             const canAfford = realm &&
               (realm.gold_reserve || 0) >= cost.wealth &&
-              (realm.wood_reserve || 0) >= cost.wood &&
-              (realm.stone_reserve || 0) >= cost.stone;
+              (realm.production_reserve || 0) >= (cost.wood + cost.stone);
 
             return (
               <div key={key} className="p-3 rounded-lg border border-border">
@@ -464,8 +461,7 @@ const CityGovernancePanel = ({ sessionId, city, realm, currentPlayerName, curren
                   <div className="flex items-center justify-between">
                     <div className="flex gap-1 text-[9px] text-muted-foreground">
                       <span>💰{cost.wealth}</span>
-                      <span>🪵{cost.wood}</span>
-                      <span>🪨{cost.stone}</span>
+                      <span>⚒️{cost.wood + cost.stone}</span>
                     </div>
                     <Button
                       size="sm"
@@ -476,8 +472,7 @@ const CityGovernancePanel = ({ sessionId, city, realm, currentPlayerName, curren
                         setSaving(true);
                         await supabase.from("realm_resources").update({
                           gold_reserve: (realm.gold_reserve || 0) - cost.wealth,
-                          wood_reserve: (realm.wood_reserve || 0) - cost.wood,
-                          stone_reserve: (realm.stone_reserve || 0) - cost.stone,
+                          production_reserve: Math.max(0, (realm.production_reserve || 0) - (cost.wood + cost.stone)),
                         } as any).eq("id", realm.id);
                         await supabase.from("cities").update({
                           [infra.field]: currentLevel + 1,

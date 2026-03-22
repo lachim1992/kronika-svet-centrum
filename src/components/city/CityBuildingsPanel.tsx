@@ -117,12 +117,15 @@ const CityBuildingsPanel = ({
 
   const alreadyBuilt = new Set(buildings.filter(b => b.template_id).map(b => b.template_id));
 
+  /** New civilizational economy cost check:
+   * cost_wealth → deducted from gold_reserve (Wealth)
+   * cost_wood + cost_stone + cost_iron → merged into production_reserve (Production)
+   */
+  const getProductionCost = (costs: any) => (costs.cost_wood || 0) + (costs.cost_stone || 0) + (costs.cost_iron || 0);
   const canAfford = (costs: { cost_wealth?: number; cost_wood?: number; cost_stone?: number; cost_iron?: number }) =>
     realm &&
     (realm.gold_reserve || 0) >= (costs.cost_wealth || 0) &&
-    (realm.wood_reserve || 0) >= (costs.cost_wood || 0) &&
-    (realm.stone_reserve || 0) >= (costs.cost_stone || 0) &&
-    (realm.iron_reserve || 0) >= (costs.cost_iron || 0);
+    (realm.production_reserve || 0) >= getProductionCost(costs);
 
   // Get upgrade info for a building
   const getUpgradeInfo = (b: any) => {
@@ -166,12 +169,11 @@ const CityBuildingsPanel = ({
     const maxLevel = b.max_level || (b.is_ai_generated ? 5 : 3);
     const isWonderConversion = b.is_ai_generated && newLevel === 5;
 
-    // Deduct resources
+    // Deduct resources (new economy: production_reserve + gold_reserve)
+    const prodCost = getProductionCost(costs);
     await supabase.from("realm_resources").update({
-      gold_reserve: Math.max(0, (realm.gold_reserve || 0) - costs.cost_wealth),
-      wood_reserve: Math.max(0, (realm.wood_reserve || 0) - costs.cost_wood),
-      stone_reserve: Math.max(0, (realm.stone_reserve || 0) - costs.cost_stone),
-      iron_reserve: Math.max(0, (realm.iron_reserve || 0) - costs.cost_iron),
+      gold_reserve: Math.max(0, (realm.gold_reserve || 0) - (costs.cost_wealth || 0)),
+      production_reserve: Math.max(0, (realm.production_reserve || 0) - prodCost),
     } as any).eq("id", realm.id);
 
     // Update building
@@ -251,11 +253,10 @@ const CityBuildingsPanel = ({
     if (template.is_unique && alreadyBuilt.has(template.id)) { toast.error("Tato stavba je unikátní a již stojí."); return; }
     setSaving(true);
 
+    const prodCostBuild = (template.cost_wood || 0) + (template.cost_stone || 0) + (template.cost_iron || 0);
     await supabase.from("realm_resources").update({
       gold_reserve: (realm.gold_reserve || 0) - template.cost_wealth,
-      wood_reserve: (realm.wood_reserve || 0) - template.cost_wood,
-      stone_reserve: (realm.stone_reserve || 0) - template.cost_stone,
-      iron_reserve: (realm.iron_reserve || 0) - template.cost_iron,
+      production_reserve: Math.max(0, (realm.production_reserve || 0) - prodCostBuild),
     } as any).eq("id", realm.id);
 
     await supabase.from("city_buildings").insert({
@@ -310,11 +311,10 @@ const CityBuildingsPanel = ({
       if (data?.error) { toast.error(data.error); return; }
 
       if (realm) {
+        const aiProdCost = (data.cost_wood || 0) + (data.cost_stone || 0) + (data.cost_iron || 0);
         await supabase.from("realm_resources").update({
           gold_reserve: Math.max(0, (realm.gold_reserve || 0) - (data.cost_wealth || 0)),
-          wood_reserve: Math.max(0, (realm.wood_reserve || 0) - (data.cost_wood || 0)),
-          stone_reserve: Math.max(0, (realm.stone_reserve || 0) - (data.cost_stone || 0)),
-          iron_reserve: Math.max(0, (realm.iron_reserve || 0) - (data.cost_iron || 0)),
+          production_reserve: Math.max(0, (realm.production_reserve || 0) - aiProdCost),
         } as any).eq("id", realm.id);
       }
 
@@ -377,11 +377,10 @@ const CityBuildingsPanel = ({
       toast.error("Nedostatek surovin!"); return;
     }
     setSaving(true);
+    const civProdCost = (cb.cost_wood || 0) + (cb.cost_stone || 0) + (cb.cost_iron || 0);
     await supabase.from("realm_resources").update({
       gold_reserve: (realm.gold_reserve || 0) - (cb.cost_wealth || 0),
-      wood_reserve: (realm.wood_reserve || 0) - (cb.cost_wood || 0),
-      stone_reserve: (realm.stone_reserve || 0) - (cb.cost_stone || 0),
-      iron_reserve: (realm.iron_reserve || 0) - (cb.cost_iron || 0),
+      production_reserve: Math.max(0, (realm.production_reserve || 0) - civProdCost),
     } as any).eq("id", realm.id);
 
     const buildDuration = cb.build_duration || 4;
@@ -589,9 +588,7 @@ const CityBuildingsPanel = ({
                   {upgradeCosts && (
                     <div className="flex gap-1 text-[9px] text-muted-foreground mt-0.5">
                       {upgradeCosts.cost_wealth > 0 && <span>💰{upgradeCosts.cost_wealth}</span>}
-                      {upgradeCosts.cost_wood > 0 && <span>🪵{upgradeCosts.cost_wood}</span>}
-                      {upgradeCosts.cost_stone > 0 && <span>🪨{upgradeCosts.cost_stone}</span>}
-                      {upgradeCosts.cost_iron > 0 && <span>⚙️{upgradeCosts.cost_iron}</span>}
+                      {(upgradeCosts.cost_wood + upgradeCosts.cost_stone + upgradeCosts.cost_iron) > 0 && <span>⚒️{upgradeCosts.cost_wood + upgradeCosts.cost_stone + upgradeCosts.cost_iron}</span>}
                     </div>
                   )}
                 </div>
@@ -803,9 +800,7 @@ const CityBuildingsPanel = ({
                   <div className="flex gap-2 mt-1.5 flex-wrap items-center">
                     <div className="flex gap-1 text-[9px] text-muted-foreground">
                       {cb.cost_wealth > 0 && <span>💰{cb.cost_wealth}</span>}
-                      {cb.cost_wood > 0 && <span>🪵{cb.cost_wood}</span>}
-                      {cb.cost_stone > 0 && <span>🪨{cb.cost_stone}</span>}
-                      {cb.cost_iron > 0 && <span>⚙️{cb.cost_iron}</span>}
+                      {((cb.cost_wood || 0) + (cb.cost_stone || 0) + (cb.cost_iron || 0)) > 0 && <span>⚒️{(cb.cost_wood || 0) + (cb.cost_stone || 0) + (cb.cost_iron || 0)}</span>}
                       <span>⏱️{cb.build_duration}k</span>
                     </div>
                     <ArrowRight className="h-2.5 w-2.5 text-muted-foreground" />
@@ -919,9 +914,7 @@ const CityBuildingsPanel = ({
                           <div className="flex gap-2 mt-1.5 flex-wrap items-center">
                             <div className="flex gap-1 text-[9px] text-muted-foreground">
                               {t.cost_wealth > 0 && <span>💰{t.cost_wealth}</span>}
-                              {t.cost_wood > 0 && <span>🪵{t.cost_wood}</span>}
-                              {t.cost_stone > 0 && <span>🪨{t.cost_stone}</span>}
-                              {t.cost_iron > 0 && <span>⚙️{t.cost_iron}</span>}
+                              {((t.cost_wood || 0) + (t.cost_stone || 0) + (t.cost_iron || 0)) > 0 && <span>⚒️{(t.cost_wood || 0) + (t.cost_stone || 0) + (t.cost_iron || 0)}</span>}
                               <span>⏱️{t.build_turns}k</span>
                             </div>
                             <ArrowRight className="h-2.5 w-2.5 text-muted-foreground" />

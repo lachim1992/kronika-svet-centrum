@@ -170,12 +170,11 @@ const CityManagement = ({ sessionId, cityId, currentPlayerName, currentTurn, onB
   const usedSlots = buildings.length;
   const canBuild = usedSlots < maxSlots;
 
+  const getProductionCost = (costs: any) => (costs.cost_wood || 0) + (costs.cost_stone || 0) + (costs.cost_iron || 0);
   const canAfford = (costs: { cost_wood: number; cost_stone: number; cost_iron: number; cost_wealth: number }) => {
     if (!realm) return false;
-    return (realm.wood_reserve >= costs.cost_wood) &&
-           (realm.stone_reserve >= costs.cost_stone) &&
-           (realm.iron_reserve >= costs.cost_iron) &&
-           (realm.gold_reserve >= costs.cost_wealth);
+    return (realm.production_reserve || 0) >= getProductionCost(costs) &&
+           (realm.gold_reserve || 0) >= costs.cost_wealth;
   };
 
   const buildFromTemplate = async (t: BuildingTemplate) => {
@@ -184,11 +183,10 @@ const CityManagement = ({ sessionId, cityId, currentPlayerName, currentTurn, onB
 
     setBuilding(true);
     try {
-      // Deduct resources
+      // Deduct resources (new economy)
+      const prodCost = (t.cost_wood || 0) + (t.cost_stone || 0) + (t.cost_iron || 0);
       await supabase.from("realm_resources").update({
-        wood_reserve: (realm.wood_reserve || 0) - t.cost_wood,
-        stone_reserve: (realm.stone_reserve || 0) - t.cost_stone,
-        iron_reserve: (realm.iron_reserve || 0) - t.cost_iron,
+        production_reserve: Math.max(0, (realm.production_reserve || 0) - prodCost),
         gold_reserve: (realm.gold_reserve || 0) - t.cost_wealth,
       } as any).eq("id", realm.id);
 
@@ -249,10 +247,9 @@ const CityManagement = ({ sessionId, cityId, currentPlayerName, currentTurn, onB
     if (!canAfford(aiPreview)) { toast.error("Nedostatek surovin!"); return; }
     setBuilding(true);
     try {
+      const aiProdCost = (aiPreview.cost_wood || 0) + (aiPreview.cost_stone || 0) + (aiPreview.cost_iron || 0);
       await supabase.from("realm_resources").update({
-        wood_reserve: (realm.wood_reserve || 0) - aiPreview.cost_wood,
-        stone_reserve: (realm.stone_reserve || 0) - aiPreview.cost_stone,
-        iron_reserve: (realm.iron_reserve || 0) - aiPreview.cost_iron,
+        production_reserve: Math.max(0, (realm.production_reserve || 0) - aiProdCost),
         gold_reserve: (realm.gold_reserve || 0) - aiPreview.cost_wealth,
       } as any).eq("id", realm.id);
 
@@ -591,10 +588,9 @@ const CityManagement = ({ sessionId, cityId, currentPlayerName, currentTurn, onB
             {/* Resources bar */}
             {realm && (
               <div className="flex flex-wrap gap-3 text-xs">
-                <span className="flex items-center gap-1"><Trees className="h-3 w-3" />Dřevo: <strong>{realm.wood_reserve}</strong></span>
-                <span className="flex items-center gap-1"><Mountain className="h-3 w-3" />Kámen: <strong>{realm.stone_reserve}</strong></span>
-                <span className="flex items-center gap-1"><Anvil className="h-3 w-3" />Železo: <strong>{realm.iron_reserve}</strong></span>
-                <span className="flex items-center gap-1"><Coins className="h-3 w-3" />Zlato: <strong>{realm.gold_reserve}</strong></span>
+                <span className="flex items-center gap-1">⚒️ Produkce: <strong>{Math.round(realm.production_reserve || 0)}</strong></span>
+                <span className="flex items-center gap-1">💰 Bohatství: <strong>{Math.round(realm.gold_reserve || 0)}</strong></span>
+                <span className="flex items-center gap-1">🌾 Zásoby: <strong>{Math.round(realm.grain_reserve || 0)}</strong></span>
               </div>
             )}
 

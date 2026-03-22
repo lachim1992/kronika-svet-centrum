@@ -101,11 +101,11 @@ const AIDiagnosticsPanel = ({ sessionId }: Props) => {
                 </div>
                 {fp.resources && (
                   <div className="grid grid-cols-3 gap-2 text-xs">
-                    <StatBox label="Obilí" value={fp.resources.grain_reserve} warn={fp.resources.grain_reserve < 10} />
-                    <StatBox label="Dřevo" value={fp.resources.wood_reserve} />
-                    <StatBox label="Kámen" value={fp.resources.stone_reserve} />
-                    <StatBox label="Železo" value={fp.resources.iron_reserve} />
-                    <StatBox label="Zlato" value={fp.resources.gold_reserve} />
+                    <StatBox label="Zásoby" value={fp.resources.grain_reserve} warn={fp.resources.grain_reserve < 10} />
+                    <StatBox label="Produkce" value={fp.resources.production_reserve || 0} />
+                    <StatBox label="Bohatství" value={fp.resources.gold_reserve} />
+                    <StatBox label="Kapacita" value={fp.resources.total_capacity || 0} />
+                    <StatBox label="Víra" value={fp.resources.faith || 0} />
                     <StatBox label="Koně" value={fp.resources.horses_reserve} />
                     <StatBox label="Manpower" value={fp.resources.manpower_pool} />
                     <StatBox label="Mobilizace" value={`${Math.round((fp.resources.mobilization_rate || 0) * 100)}%`} />

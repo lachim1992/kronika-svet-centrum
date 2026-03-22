@@ -6853,6 +6853,7 @@ export type Database = {
           mobilization_wealth_penalty: number | null
           player_name: string
           prestige: number
+          production_reserve: number
           realm_report_cached: string | null
           realm_report_last_turn: number
           session_id: string
@@ -6912,6 +6913,7 @@ export type Database = {
           mobilization_wealth_penalty?: number | null
           player_name: string
           prestige?: number
+          production_reserve?: number
           realm_report_cached?: string | null
           realm_report_last_turn?: number
           session_id: string
@@ -6971,6 +6973,7 @@ export type Database = {
           mobilization_wealth_penalty?: number | null
           player_name?: string
           prestige?: number
+          production_reserve?: number
           realm_report_cached?: string | null
           realm_report_last_turn?: number
           session_id?: string

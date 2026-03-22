@@ -874,6 +874,10 @@ Deno.serve(async (req) => {
     // ══════════════════════════════════════════
     // UPDATE REALM RESOURCES (with faith + supply strain + mobilization penalties)
     // ══════════════════════════════════════════
+    // Production reserve accumulation: totalCityProduction (net of army upkeep) added each turn
+    const productionIncome = Math.max(0, Math.round(totalCityProduction - armyProductionUpkeep));
+    const newProductionReserve = Math.max(0, (realm.production_reserve || 0) + productionIncome);
+
     await supabase.from("realm_resources").update({
       grain_reserve: globalGrainReserve,
       granary_capacity: granaryCapacity,
@@ -887,6 +891,7 @@ Deno.serve(async (req) => {
       last_turn_stone_prod: 0,
       last_turn_iron_prod: 0,
       gold_reserve: newGoldReserve,
+      production_reserve: newProductionReserve,
       famine_city_count: famineCityCount,
       faith: Math.round(newFaith * 100) / 100,
       faith_growth: Math.round(faithGrowth * 100) / 100,
