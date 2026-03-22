@@ -101,6 +101,7 @@ Deno.serve(async (req) => {
           name: `Přístav ${prov.name}`, hex_q: portHex.q, hex_r: portHex.r,
           strategic_value: 6, economic_value: 7, defense_value: 3,
           mobility_relevance: 9, supply_relevance: 8,
+          is_major: true,
           metadata: { biome: portHex.biome_family },
         });
       }
