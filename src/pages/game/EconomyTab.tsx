@@ -34,6 +34,7 @@ import {
   type StrategicResource,
 } from "@/lib/economyFlow";
 import TradePanel from "@/components/TradePanel";
+import SupplyChainPanel from "@/components/SupplyChainPanel";
 
 interface Props {
   sessionId: string;
