@@ -92,7 +92,8 @@ const StrategicMapOverlay = memo(({ sessionId, offsetX, offsetY, visible, onNode
         .eq("session_id", sessionId),
       supabase.from("supply_chain_state")
         .select("node_id, connected_to_capital, supply_level, isolation_turns, hop_distance, production_modifier, stability_modifier, morale_modifier")
-        .eq("session_id", sessionId),
+        .eq("session_id", sessionId)
+        .order("turn_number", { ascending: false }),
     ]);
     if (nodesRes.data) setNodes(nodesRes.data as StrategicNode[]);
     if (routesRes.data) setRoutes(routesRes.data as ProvinceRoute[]);
