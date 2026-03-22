@@ -26,6 +26,7 @@ const RealmIndicators = ({ realm, cities, currentTurn }: Props) => {
     const totalPeasants = cities.reduce((s, c) => s + (c.population_peasants || 0), 0);
     const totalBurghers = cities.reduce((s, c) => s + (c.population_burghers || 0), 0);
     const totalClerics = cities.reduce((s, c) => s + (c.population_clerics || 0), 0);
+    const totalWarriors = cities.reduce((s, c) => s + (c.population_warriors || 0), 0);
 
     const avgStability = cities.length > 0
       ? Math.round(cities.reduce((s, c) => s + (c.city_stability || 50), 0) / cities.length)
@@ -51,6 +52,10 @@ const RealmIndicators = ({ realm, cities, currentTurn }: Props) => {
     const totalWealth = realm?.total_wealth ?? 0;
     const totalCapacity = realm?.total_capacity ?? 0;
     const totalImportance = realm?.total_importance ?? 0;
+    const faith = realm?.faith ?? 0;
+    const faithGrowth = realm?.faith_growth ?? 0;
+    const warriorRatio = realm?.warrior_ratio ?? 0;
+    const supplyStrain = realm?.supply_strain ?? 0;
 
     // Strategic tiers
     const strategicTiers = [
@@ -62,11 +67,12 @@ const RealmIndicators = ({ realm, cities, currentTurn }: Props) => {
     ].filter(s => s.tier > 0);
 
     return {
-      totalPop, totalPeasants, totalBurghers, totalClerics,
+      totalPop, totalPeasants, totalBurghers, totalClerics, totalWarriors,
       avgStability, avgLegitimacy, growthRate, growthPerTurn,
       famineCities, epidemicCities, lowStabilityCities,
       availableManpower, mobRate,
       totalProduction, totalWealth, totalCapacity, totalImportance,
+      faith, faithGrowth, warriorRatio, supplyStrain,
       strategicTiers,
     };
   }, [realm, cities, currentTurn]);
