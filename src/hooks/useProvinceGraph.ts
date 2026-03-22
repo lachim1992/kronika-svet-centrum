@@ -63,6 +63,16 @@ export interface StrategicNode {
   hinterland_level: number;
   resource_output: Record<string, number>;
   flow_role: string;
+  // Economy flow fields
+  production_output: number;
+  wealth_output: number;
+  capacity_score: number;
+  importance_score: number;
+  incoming_production: number;
+  connectivity_score: number;
+  route_access_factor: number;
+  trade_efficiency: number;
+  isolation_penalty: number;
 }
 
 export interface ProvinceRoute {
