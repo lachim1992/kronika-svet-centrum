@@ -535,6 +535,38 @@ Deno.serve(async (req) => {
     }
 
     // ═══════════════════════════════════════════
+    // 5b. STRATEGIC GRAPH RECOMPUTE (hex flows + collapse chain)
+    // Recompute flow paths for dirty routes, then check for collapse.
+    // ═══════════════════════════════════════════
+    try {
+      // Check if any dirty routes exist
+      const { count: dirtyCount } = await supabase.from("province_routes")
+        .select("id", { count: "exact", head: true })
+        .eq("session_id", sessionId)
+        .eq("path_dirty", true);
+
+      if (dirtyCount && dirtyCount > 0) {
+        const { data: flowResult, error: flowErr } = await supabase.functions.invoke("compute-hex-flows", {
+          body: { session_id: sessionId },
+        });
+        if (flowErr) console.warn("compute-hex-flows error:", flowErr.message);
+        results.hexFlows = flowResult || { error: flowErr?.message };
+      } else {
+        results.hexFlows = { skipped: true, reason: "no dirty routes" };
+      }
+
+      // Run collapse chain detection
+      const { data: collapseResult, error: collapseErr } = await supabase.functions.invoke("collapse-chain", {
+        body: { session_id: sessionId },
+      });
+      if (collapseErr) console.warn("collapse-chain error:", collapseErr.message);
+      results.collapseChain = collapseResult || { error: collapseErr?.message };
+    } catch (e) {
+      console.error("Strategic graph recompute error:", e);
+      results.strategicGraph = { error: (e as Error).message };
+    }
+
+    // ═══════════════════════════════════════════
     // 6. NON-CRITICAL BACKGROUND TASKS
     // Use EdgeRuntime.waitUntil to avoid CPU timeout.
     // Turn is already advanced, economy processed — these are best-effort.
