@@ -29,6 +29,7 @@ export const MACRO_LAYER_ICONS = {
   production: "⚒️",
   wealth: "💰",
   capacity: "🏛️",
+  faith: "⛪",
 } as const;
 
 // ═══════════════════════════════════════════
