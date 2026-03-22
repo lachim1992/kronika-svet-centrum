@@ -628,7 +628,8 @@ DŮLEŽITÉ: affected_players/faction MUSÍ používat přesná jména frakcí. 
 
       await supabase.from("realm_resources").insert({
         session_id: sessionId, player_name: factionPlayerName,
-        grain_reserve: 20, wood_reserve: 10, stone_reserve: 5, iron_reserve: 3,
+        grain_reserve: 20, wood_reserve: 0, stone_reserve: 0, iron_reserve: 0,
+        production_reserve: 50,
         gold_reserve: 100, stability: Math.max(40, Math.min(100, 70 + stab)), granary_capacity: 500, mobilization_rate: 0.1,
       });
     }

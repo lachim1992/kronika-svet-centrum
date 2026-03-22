@@ -1161,8 +1161,8 @@ async function executeAction(
       const hexQ = action.targetHexQ;
       const hexR = action.targetHexR;
 
-      // Cost check
-      if (resources.gold < 200 || resources.wood < 50 || resources.stone < 30) return "insufficient_resources";
+      // Cost check (new economy: 150 production + 100 wealth)
+      if (resources.production < 150 || resources.gold < 100) return "insufficient_resources";
       if (hexQ === undefined || hexR === undefined) return "missing_hex_coords";
 
       // Check hex is not occupied by another city
@@ -1171,9 +1171,8 @@ async function executeAction(
 
       // Deduct resources
       await supabase.from("realm_resources").update({
-        gold_reserve: resources.gold - 200,
-        wood_reserve: resources.wood - 50,
-        stone_reserve: resources.stone - 30,
+        gold_reserve: resources.gold - 100,
+        production_reserve: resources.production - 150,
       }).eq("session_id", sessionId).eq("player_name", factionName);
 
       // Find province for this hex
