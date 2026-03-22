@@ -57,6 +57,7 @@ const EconomyTab = ({ sessionId, currentPlayerName, currentTurn, cities, resourc
   const [citySortAsc, setCitySortAsc] = useState(false);
   const [recomputing, setRecomputing] = useState(false);
   const [showDebug, setShowDebug] = useState(false);
+  const [cityNodeMap, setCityNodeMap] = useState<Map<string, any>>(new Map());
 
   const myCities = useMemo(() => cities.filter(c => c.owner_player === currentPlayerName), [cities, currentPlayerName]);
 
