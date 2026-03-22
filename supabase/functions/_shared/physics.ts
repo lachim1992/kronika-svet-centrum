@@ -1854,3 +1854,255 @@ export function computeCollapseSeverity(nodeClass: NodeClass, importanceScore: n
   };
   return Math.round(Math.min(100, importanceScore * (classWeight[nodeClass] || 0.5)));
 }
+
+// ═══════════════════════════════════════════
+// HEX-BASED FLOW PATHFINDING
+// Dijkstra across hex grid between strategic nodes.
+// Cost depends on terrain, infrastructure, control, military presence.
+// ═══════════════════════════════════════════
+
+/** Biome family → base traversal cost */
+export const BIOME_TRAVERSAL_COST: Record<string, number> = {
+  grassland: 1.0,
+  plains: 1.0,
+  steppe: 1.2,
+  forest: 1.8,
+  dense_forest: 2.5,
+  hills: 2.0,
+  mountain: 8.0,
+  desert: 2.5,
+  tundra: 3.0,
+  swamp: 3.5,
+  wetland: 2.0,
+  coastal: 1.0,
+  ocean: 0.8,  // sea travel is efficient
+  river_valley: 0.8,
+  delta: 0.7,
+};
+
+export interface HexCostContext {
+  biome_family: string;
+  mean_height: number;
+  has_river: boolean;
+  has_bridge: boolean;
+  is_passable: boolean;
+  coastal: boolean;
+  /** 0 = no infrastructure, 1 = path, 2 = road, 3 = paved */
+  infrastructure_level: number;
+  /** Who controls this hex (player name or null) */
+  controlled_by: string | null;
+  /** Is there a fortress on this hex */
+  has_fortress: boolean;
+  /** Is there active conflict on this hex */
+  is_contested: boolean;
+  /** Existing trade density (0-100) — high density = lower cost (established corridor) */
+  trade_density: number;
+}
+
+/**
+ * Compute traversal cost for a single hex.
+ * Lower = easier to traverse. 0 = impassable.
+ */
+export function hexTraversalCost(
+  hex: HexCostContext,
+  /** The player evaluating the path */
+  forPlayer: string | null = null,
+): number {
+  if (!hex.is_passable) return Infinity;
+
+  let cost = BIOME_TRAVERSAL_COST[hex.biome_family] ?? 2.0;
+
+  // Height penalty: steep terrain costs more
+  if (hex.mean_height > 0.7) cost += (hex.mean_height - 0.7) * 5;
+
+  // River crossing: expensive unless bridged
+  if (hex.has_river && !hex.has_bridge) cost += 3.0;
+
+  // Infrastructure discount
+  const infraDiscount = [0, 0.15, 0.30, 0.45][hex.infrastructure_level] ?? 0;
+  cost *= (1 - infraDiscount);
+
+  // Political control penalty: hostile territory costs more
+  if (hex.controlled_by && forPlayer && hex.controlled_by !== forPlayer) {
+    cost *= 1.5;  // 50% penalty in foreign territory
+  }
+
+  // Fortress on hex: major control point
+  if (hex.has_fortress) {
+    if (hex.controlled_by === forPlayer) {
+      cost *= 0.7;  // Own fortress = safe corridor
+    } else if (hex.controlled_by) {
+      cost *= 2.5;  // Enemy fortress = massive choke
+    }
+  }
+
+  // Contested hex: risky
+  if (hex.is_contested) cost *= 1.8;
+
+  // Trade density discount: established corridors are cheaper
+  if (hex.trade_density > 0) {
+    cost *= Math.max(0.6, 1 - hex.trade_density * 0.004);
+  }
+
+  // Coastal bonus for coastal trade
+  if (hex.coastal) cost *= 0.9;
+
+  return Math.round(cost * 100) / 100;
+}
+
+/** Axial hex neighbors */
+const HEX_NEIGHBORS = [
+  { dq: 1, dr: 0 }, { dq: -1, dr: 0 },
+  { dq: 0, dr: 1 }, { dq: 0, dr: -1 },
+  { dq: 1, dr: -1 }, { dq: -1, dr: 1 },
+];
+
+export interface DijkstraResult {
+  path: Array<{ q: number; r: number; cost: number }>;
+  totalCost: number;
+  bottleneck: { q: number; r: number; cost: number } | null;
+  pathLength: number;
+}
+
+/**
+ * Dijkstra shortest path between two hexes on the grid.
+ * hexCostFn returns traversal cost for a given (q, r), or Infinity if impassable.
+ * maxRange limits search radius to avoid infinite exploration on large maps.
+ */
+export function dijkstraHexPath(
+  startQ: number, startR: number,
+  endQ: number, endR: number,
+  hexCostFn: (q: number, r: number) => number,
+  maxRange: number = 40,
+): DijkstraResult | null {
+  const key = (q: number, r: number) => `${q},${r}`;
+  const startKey = key(startQ, startR);
+  const endKey = key(endQ, endR);
+
+  if (startKey === endKey) {
+    return { path: [{ q: startQ, r: startR, cost: 0 }], totalCost: 0, bottleneck: null, pathLength: 0 };
+  }
+
+  const dist = new Map<string, number>();
+  const prev = new Map<string, string>();
+  const visited = new Set<string>();
+
+  // Simple priority queue (array-based, fine for node-to-node with maxRange ~40)
+  const pq: Array<{ q: number; r: number; cost: number }> = [];
+
+  dist.set(startKey, 0);
+  pq.push({ q: startQ, r: startR, cost: 0 });
+
+  while (pq.length > 0) {
+    // Extract minimum
+    pq.sort((a, b) => a.cost - b.cost);
+    const current = pq.shift()!;
+    const ck = key(current.q, current.r);
+
+    if (visited.has(ck)) continue;
+    visited.add(ck);
+
+    if (ck === endKey) break;
+
+    // Expand neighbors
+    for (const { dq, dr } of HEX_NEIGHBORS) {
+      const nq = current.q + dq;
+      const nr = current.r + dr;
+      const nk = key(nq, nr);
+
+      if (visited.has(nk)) continue;
+
+      // Range limit
+      const dFromStart = (Math.abs(nq - startQ) + Math.abs(nq - startQ + nr - startR) + Math.abs(nr - startR)) / 2;
+      if (dFromStart > maxRange) continue;
+
+      const edgeCost = hexCostFn(nq, nr);
+      if (edgeCost === Infinity || edgeCost <= 0) continue;
+
+      const newDist = current.cost + edgeCost;
+      if (newDist < (dist.get(nk) ?? Infinity)) {
+        dist.set(nk, newDist);
+        prev.set(nk, ck);
+        pq.push({ q: nq, r: nr, cost: newDist });
+      }
+    }
+  }
+
+  // Reconstruct path
+  if (!dist.has(endKey)) return null; // No path found
+
+  const path: Array<{ q: number; r: number; cost: number }> = [];
+  let current = endKey;
+  while (current) {
+    const [q, r] = current.split(",").map(Number);
+    const stepCost = hexCostFn(q, r);
+    path.unshift({ q, r, cost: current === startKey ? 0 : stepCost });
+    current = prev.get(current)!;
+    if (current === undefined && path[0].q !== startQ) break;
+  }
+
+  // Find bottleneck (highest single-hex cost)
+  let bottleneck: DijkstraResult["bottleneck"] = null;
+  let maxCost = 0;
+  for (const step of path) {
+    if (step.cost > maxCost) {
+      maxCost = step.cost;
+      bottleneck = step;
+    }
+  }
+
+  return {
+    path,
+    totalCost: dist.get(endKey)!,
+    bottleneck,
+    pathLength: path.length,
+  };
+}
+
+/**
+ * Compute flow paths between all connected node pairs.
+ * Returns path data for each route in the province graph.
+ */
+export interface FlowPathInput {
+  nodeA: { id: string; hex_q: number; hex_r: number };
+  nodeB: { id: string; hex_q: number; hex_r: number };
+  routeId?: string;
+  flowType: string;
+}
+
+export interface FlowPathResult {
+  node_a: string;
+  node_b: string;
+  route_id: string | null;
+  flow_type: string;
+  hex_path: Array<{ q: number; r: number; cost: number }>;
+  total_cost: number;
+  bottleneck: { q: number; r: number; cost: number } | null;
+  path_length: number;
+}
+
+export function computeFlowPath(
+  input: FlowPathInput,
+  hexCostFn: (q: number, r: number) => number,
+  maxRange: number = 40,
+): FlowPathResult | null {
+  const result = dijkstraHexPath(
+    input.nodeA.hex_q, input.nodeA.hex_r,
+    input.nodeB.hex_q, input.nodeB.hex_r,
+    hexCostFn,
+    maxRange,
+  );
+
+  if (!result) return null;
+
+  return {
+    node_a: input.nodeA.id,
+    node_b: input.nodeB.id,
+    route_id: input.routeId ?? null,
+    flow_type: input.flowType,
+    hex_path: result.path,
+    total_cost: result.totalCost,
+    bottleneck: result.bottleneck,
+    path_length: result.pathLength,
+  };
+}
