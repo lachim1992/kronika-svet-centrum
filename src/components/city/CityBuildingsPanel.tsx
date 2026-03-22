@@ -800,9 +800,7 @@ const CityBuildingsPanel = ({
                   <div className="flex gap-2 mt-1.5 flex-wrap items-center">
                     <div className="flex gap-1 text-[9px] text-muted-foreground">
                       {cb.cost_wealth > 0 && <span>💰{cb.cost_wealth}</span>}
-                      {cb.cost_wood > 0 && <span>🪵{cb.cost_wood}</span>}
-                      {cb.cost_stone > 0 && <span>🪨{cb.cost_stone}</span>}
-                      {cb.cost_iron > 0 && <span>⚙️{cb.cost_iron}</span>}
+                      {((cb.cost_wood || 0) + (cb.cost_stone || 0) + (cb.cost_iron || 0)) > 0 && <span>⚒️{(cb.cost_wood || 0) + (cb.cost_stone || 0) + (cb.cost_iron || 0)}</span>}
                       <span>⏱️{cb.build_duration}k</span>
                     </div>
                     <ArrowRight className="h-2.5 w-2.5 text-muted-foreground" />
