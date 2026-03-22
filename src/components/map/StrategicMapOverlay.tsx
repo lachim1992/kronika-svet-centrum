@@ -471,31 +471,37 @@ const StrategicMapOverlay = memo(({ sessionId, offsetX, offsetY, visible, onNode
           );
         }
 
-        // Fallback: interpolated corridor (not straight line, follows hex grid)
+        // Fallback: interpolated corridor snapped to hex centers
         const nA = nodes.find(n => n.id === r.node_a);
         const nB = nodes.find(n => n.id === r.node_b);
         if (nA && nB) {
           const steps = Math.max(2, Math.round(Math.hypot(nB.hex_q - nA.hex_q, nB.hex_r - nA.hex_r)));
-          const points: string[] = [];
+          const visited = new Set<string>();
+          const snappedPoints: Array<{ x: number; y: number }> = [];
           for (let i = 0; i <= steps; i++) {
             const t = i / steps;
-            const q = nA.hex_q + (nB.hex_q - nA.hex_q) * t;
-            const rr = nA.hex_r + (nB.hex_r - nA.hex_r) * t;
+            const q = Math.round(nA.hex_q + (nB.hex_q - nA.hex_q) * t);
+            const rr = Math.round(nA.hex_r + (nB.hex_r - nA.hex_r) * t);
+            const k = `${q},${rr}`;
+            if (visited.has(k)) continue;
+            visited.add(k);
             const px = hexToPixel(q, rr);
-            points.push(`${px.x + offsetX},${px.y + offsetY}`);
+            snappedPoints.push({ x: px.x + offsetX, y: px.y + offsetY });
           }
-          const d = `M${points.join(" L")}`;
-          return (
-            <g key={r.id}>
-              <path d={d} fill="none"
-                stroke={stateColor} strokeWidth={width + 3} opacity={0.10}
-                strokeLinecap="round" strokeLinejoin="round" />
-              <path d={d} fill="none"
-                stroke={color} strokeWidth={width} opacity={0.55}
-                strokeLinecap="round" strokeLinejoin="round"
-                strokeDasharray={isDamaged ? "4,4" : r.route_type === "river_route" || r.route_type === "river" ? "6,3" : undefined} />
-            </g>
-          );
+          if (snappedPoints.length >= 2) {
+            const d = `M${snappedPoints.map(p => `${p.x},${p.y}`).join(" L")}`;
+            return (
+              <g key={r.id}>
+                <path d={d} fill="none"
+                  stroke={stateColor} strokeWidth={width + 3} opacity={0.10}
+                  strokeLinecap="round" strokeLinejoin="round" />
+                <path d={d} fill="none"
+                  stroke={color} strokeWidth={width} opacity={0.55}
+                  strokeLinecap="round" strokeLinejoin="round"
+                  strokeDasharray={isDamaged ? "4,4" : r.route_type === "river_route" || r.route_type === "river" ? "6,3" : undefined} />
+              </g>
+            );
+          }
         }
 
         // Ultimate fallback: straight line
