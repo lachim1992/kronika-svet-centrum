@@ -410,7 +410,7 @@ export default function ProvinceGraphPanel({ sessionId }: Props) {
             <p className="text-xs text-muted-foreground text-center py-4">Žádné strategické nody. Klikněte "Nody".</p>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-              {strategicNodes.map(n => <StrategicNodeCard key={n.id} node={n} />)}
+              {strategicNodes.map(n => <StrategicNodeCard key={n.id} node={n} allNodes={strategicNodes} />)}
             </div>
           )}
         </TabsContent>
