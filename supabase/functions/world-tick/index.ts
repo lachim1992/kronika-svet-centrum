@@ -1049,6 +1049,26 @@ Deno.serve(async (req) => {
           console.warn("Supply chain computation non-fatal:", scErr);
           results.supply_chain_error = (scErr as Error).message;
         }
+
+        // 12f. Compute macro economy flow (Production / Wealth / Capacity)
+        try {
+          const { data: econFlowData, error: econFlowErr } = await supabase.functions.invoke("compute-economy-flow", {
+            body: { session_id: sessionId, turn_number: turnNumber, save_history: true },
+          });
+          if (econFlowErr) {
+            console.warn("compute-economy-flow error:", econFlowErr);
+            results.economy_flow = { error: econFlowErr.message };
+          } else {
+            results.economy_flow = {
+              nodes_computed: econFlowData?.nodes_computed || 0,
+              realm_updates: econFlowData?.realm_updates || 0,
+              totals: econFlowData?.totals_by_player || {},
+            };
+          }
+        } catch (efErr) {
+          console.warn("Economy flow computation non-fatal:", efErr);
+          results.economy_flow_error = (efErr as Error).message;
+        }
       }
     } catch (graphErr) {
       console.warn("Province graph computation non-fatal:", graphErr);
