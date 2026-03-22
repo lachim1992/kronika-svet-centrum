@@ -1861,23 +1861,27 @@ export function computeCollapseSeverity(nodeClass: NodeClass, importanceScore: n
 // Cost depends on terrain, infrastructure, control, military presence.
 // ═══════════════════════════════════════════
 
-/** Biome family → base traversal cost */
+/** Biome family → base traversal cost (resistance).
+ * Ordered: plains/grassland lowest, then forest, hills, desert, mountains, ocean.
+ * Corridors naturally form along plains, then forests, then hills — mountains and
+ * ocean are near-impassable for land routes (use pass nodes / ports instead).
+ */
 export const BIOME_TRAVERSAL_COST: Record<string, number> = {
-  grassland: 1.0,
   plains: 1.0,
-  steppe: 1.2,
-  forest: 1.8,
-  dense_forest: 2.5,
-  hills: 2.0,
-  mountain: 8.0,
-  desert: 2.5,
-  tundra: 3.0,
-  swamp: 3.5,
-  wetland: 2.0,
-  coastal: 1.0,
-  ocean: 0.8,  // sea travel is efficient
-  river_valley: 0.8,
-  delta: 0.7,
+  grassland: 1.0,
+  river_valley: 1.0,
+  delta: 1.0,
+  coastal: 1.2,
+  steppe: 1.3,
+  wetland: 1.8,
+  forest: 2.0,
+  dense_forest: 3.0,
+  hills: 3.5,
+  swamp: 4.0,
+  tundra: 4.5,
+  desert: 6.0,
+  mountain: 12.0,
+  ocean: 50.0,   // effectively impassable for land; sea routes use ports
 };
 
 export interface HexCostContext {
