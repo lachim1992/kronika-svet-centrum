@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, lazy, Suspense } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { dispatchCommand } from "@/lib/commands";
 import { ensureRealmResources, recomputeManpowerPool, UNIT_TYPE_LABELS, UNIT_GOLD_FACTOR, FORMATION_PRESETS } from "@/lib/turnEngine";
@@ -14,11 +14,12 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Progress } from "@/components/ui/progress";
 import { Slider } from "@/components/ui/slider";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { Swords, Shield, Target, Crosshair, Users, Coins, ChevronUp, Plus, Minus, Crown, User, AlertTriangle, CheckCircle2, XCircle, Gauge, Sparkles, Loader2, ImageIcon, Flag, Palette, Check, Navigation } from "lucide-react";
+import { Swords, Shield, Target, Crosshair, Users, Coins, ChevronUp, Plus, Minus, Crown, User, AlertTriangle, CheckCircle2, XCircle, Gauge, Sparkles, Loader2, ImageIcon, Flag, Palette, Check, Navigation, Route } from "lucide-react";
 import { InfoTip } from "@/components/ui/info-tip";
 import { toast } from "sonner";
 import DeployBattlePanel from "@/components/military/DeployBattlePanel";
 import DemobilizeDialog from "@/components/DemobilizeDialog";
+const StrategicOverlay = lazy(() => import("@/components/StrategicOverlay"));
 
 const UNIT_ICONS: Record<string, React.ElementType> = {
   MILITIA: Shield,
@@ -411,6 +412,9 @@ const ArmyTab = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, on
           <TabsTrigger value="deploy" className="font-display text-xs gap-1">
             <Navigation className="h-3 w-3" />Nasazení
           </TabsTrigger>
+          <TabsTrigger value="strategic" className="font-display text-xs gap-1">
+            <Route className="h-3 w-3" />Strategie
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="forces" className="mt-3 space-y-3">
@@ -603,6 +607,12 @@ const ArmyTab = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, on
             cities={cities}
             onRefresh={fetchMilitary}
           />
+        </TabsContent>
+
+        <TabsContent value="strategic" className="mt-3">
+          <Suspense fallback={<div className="flex justify-center py-8"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>}>
+            <StrategicOverlay sessionId={sessionId} currentPlayerName={currentPlayerName} turnNumber={currentTurn} />
+          </Suspense>
         </TabsContent>
       </Tabs>
 
