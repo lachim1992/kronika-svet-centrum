@@ -1319,6 +1319,70 @@ async function executeAction(
     }
 
     // ─── TRADE / EXPLORE (legacy) ───
+    // ─── FORTIFY NODE ───
+    case "fortify_node": {
+      if (!action.targetNodeName) return "missing_params";
+      const { data: node } = await supabase.from("province_nodes")
+        .select("id, name, fortification_level")
+        .eq("session_id", sessionId).eq("controlled_by", factionName)
+        .ilike("name", action.targetNodeName).limit(1).maybeSingle();
+      if (!node) return "node_not_found";
+      const newFort = Math.min(5, (node.fortification_level || 0) + 1);
+      await supabase.from("province_nodes").update({ fortification_level: newFort }).eq("id", node.id);
+      await supabase.from("game_events").insert({
+        session_id: sessionId, event_type: "fortify_node",
+        player: factionName, turn_number: turn, confirmed: true,
+        note: `${factionName} fortifikuje ${node.name} (úroveň ${newFort})`,
+        location: node.name, importance: 5, actor_type: "ai_faction",
+      });
+      return "ok";
+    }
+
+    // ─── REPAIR ROUTE ───
+    case "repair_route": {
+      // Find a damaged route connected to own nodes
+      const { data: myNodes } = await supabase.from("province_nodes")
+        .select("id").eq("session_id", sessionId).eq("controlled_by", factionName);
+      const myIds = (myNodes || []).map((n: any) => n.id);
+      if (myIds.length === 0) return "no_nodes";
+      const { data: damagedRoute } = await supabase.from("province_routes")
+        .select("id, node_a, node_b")
+        .eq("session_id", sessionId).eq("control_state", "damaged")
+        .or(myIds.map(id => `node_a.eq.${id},node_b.eq.${id}`).join(","))
+        .limit(1).maybeSingle();
+      if (!damagedRoute) return "no_damaged_routes";
+      await supabase.from("province_routes").update({ control_state: "open", path_dirty: true }).eq("id", damagedRoute.id);
+      await supabase.from("game_events").insert({
+        session_id: sessionId, event_type: "repair_route",
+        player: factionName, turn_number: turn, confirmed: true,
+        note: `${factionName} opravuje poškozenou trasu`, importance: 4, actor_type: "ai_faction",
+      });
+      return "ok";
+    }
+
+    // ─── BLOCKADE ROUTE ───
+    case "blockade_route": {
+      if (!action.targetNodeName) return "missing_params";
+      // Find enemy node and blockade a route to it
+      const { data: enemyNode } = await supabase.from("province_nodes")
+        .select("id, name").eq("session_id", sessionId)
+        .ilike("name", action.targetNodeName).limit(1).maybeSingle();
+      if (!enemyNode) return "node_not_found";
+      const { data: routeToBlock } = await supabase.from("province_routes")
+        .select("id").eq("session_id", sessionId).eq("control_state", "open")
+        .or(`node_a.eq.${enemyNode.id},node_b.eq.${enemyNode.id}`)
+        .limit(1).maybeSingle();
+      if (!routeToBlock) return "no_route_to_block";
+      await supabase.from("province_routes").update({ control_state: "blocked", path_dirty: true }).eq("id", routeToBlock.id);
+      await supabase.from("game_events").insert({
+        session_id: sessionId, event_type: "blockade_route",
+        player: factionName, turn_number: turn, confirmed: true,
+        note: `${factionName} blokuje trasu k ${enemyNode.name}`,
+        location: enemyNode.name, importance: 7, actor_type: "ai_faction",
+      });
+      return "ok";
+    }
+
     case "trade":
     case "explore":
     default: {
