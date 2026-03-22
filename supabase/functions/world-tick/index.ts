@@ -797,8 +797,8 @@ Deno.serve(async (req) => {
           }));
 
           const flowRoutes: FlowRoute[] = (graphRoutes || []).map((r: any) => ({
-            node_a: r.node_a_id || r.node_a,
-            node_b: r.node_b_id || r.node_b,
+            node_a: r.node_a,
+            node_b: r.node_b,
             capacity_value: r.capacity_value || 5,
             control_state: r.control_state || "open",
             damage_level: r.damage_level || 0,
