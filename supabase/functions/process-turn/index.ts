@@ -397,20 +397,28 @@ Deno.serve(async (req) => {
     const supplyStrain = currentCapacity > 0 ? totalArmySize / (currentCapacity * 100) : 0;
 
     // ══════════════════════════════════════════════════════════════
-    // ▶ PER-CITY NETWORK ECONOMY: PRODUCTION vs DEMAND
-    // Each city resolves its own food balance based on its linked
-    // province_node's production, isolation, and connectivity.
+    // ▶ PER-CITY CIVILIZATIONAL ECONOMY
+    // Each city's economy emerges from:
+    //   1. Population layers (peasants→prod, burghers→wealth, clerics→capacity/faith)
+    //   2. Node network (connectivity, isolation, flow role)
+    //   3. Buildings (per-city multipliers)
+    //   4. Mobilization penalties
     // ══════════════════════════════════════════════════════════════
     const grainRationMult = 1 + (grainRationModifier / 100);
     let globalGrainReserve = realm.grain_reserve || 0;
     let famineCityCount = 0;
     let totalDemand = 0;
     let totalCityProduction = 0;
+    let totalCityWealth = 0;
+    let totalCityCapacity = 0;
+    let totalFaith = 0;
 
     // Per-city breakdown for reporting
     const cityEconResults: Array<{
       cityId: string; cityName: string;
-      nodeProduction: number; demand: number; balance: number;
+      nodeProduction: number; layerProduction: number;
+      layerWealth: number; layerCapacity: number; layerFaith: number;
+      demand: number; balance: number;
       isolationPenalty: number; famine: boolean;
     }> = [];
 
@@ -418,33 +426,35 @@ Deno.serve(async (req) => {
       const cityDemand = Math.max(1, Math.round(computeCityDemand(city) * grainRationMult));
       totalDemand += cityDemand;
 
-      // Find linked node
+      // ── Population layer economy ──
+      const bldgEff = cityBuildingEffects[city.id] || {};
+      const layers = computeCityLayerEconomy(city, bldgEff);
+
+      // ── Node network production ──
       const node = cityNodeMap.get(city.id);
-      let cityProduction = 0;
+      let nodeProduction = 0;
       let isolationPenalty = 0;
 
       if (node) {
-        // Node-driven production: production_output includes isolation from compute-economy-flow
-        cityProduction = node.production_output || 0;
-        // Add incoming production from minor nodes feeding this major node
-        cityProduction += (node.incoming_production || 0) * 0.5;
-        // Flow role bonus
+        nodeProduction = node.production_output || 0;
+        nodeProduction += (node.incoming_production || 0) * 0.5;
         const roleMult = FLOW_ROLE_PRODUCTION_MULT[node.flow_role] || 1.0;
-        cityProduction *= roleMult;
+        nodeProduction *= roleMult;
         isolationPenalty = node.isolation_penalty || 0;
 
-        // Supply chain state: further reduce if disconnected
         const supply = supplyMap.get(node.id);
         if (supply && !supply.connected_to_capital) {
           const isoTurns = supply.isolation_turns || 0;
           const supplyMult = Math.max(0.3, 1 - isoTurns * 0.1);
-          cityProduction *= supplyMult;
+          nodeProduction *= supplyMult;
+          // Isolation also hits wealth and capacity
+          layers.wealth *= supplyMult;
+          layers.capacity *= Math.max(0.5, supplyMult);
 
-          // Generate isolation event after 3+ turns
           if (isoTurns >= 3) {
             newEvents.push({
               event_type: "city_isolated",
-              note: `${city.name} je ${isoTurns} kol odříznuto od hlavního města. Zásobování selhává, produkce klesá na ${Math.round(supplyMult * 100)}%.`,
+              note: `${city.name} je ${isoTurns} kol odříznuto od hlavního města. Zásobování selhává.`,
               importance: isoTurns >= 5 ? "critical" : "important",
               city_id: city.id,
               reference: { isolation_turns: isoTurns, supply_mult: supplyMult, node_id: node.id },
@@ -452,23 +462,27 @@ Deno.serve(async (req) => {
           }
         }
       } else {
-        // No linked node: fallback to share of macro production
         const cityShare = totalPopulation > 0 ? (city.population_total || 0) / totalPopulation : 1 / Math.max(1, myCities.length);
-        cityProduction = totalProduction * cityShare;
+        nodeProduction = totalProduction * cityShare;
       }
 
-      totalCityProduction += cityProduction;
+      // Combined city production = node production + population layer production
+      // Node gives base terrain/flow output, layers add demographic contribution
+      const cityProduction = nodeProduction + layers.production;
 
-      // Per-city balance
+      totalCityProduction += cityProduction;
+      totalCityWealth += layers.wealth;
+      totalCityCapacity += layers.capacity;
+      totalFaith += layers.faith;
+
+      // Per-city food balance
       const cityBalance = cityProduction - cityDemand;
       const cityFamine = cityBalance < 0 && globalGrainReserve <= 0;
 
       if (cityBalance >= 0) {
-        // Surplus goes to global reserve
-        globalGrainReserve += cityBalance * 0.5; // Half goes to reserve, half consumed
+        globalGrainReserve += cityBalance * 0.5;
       } else {
-        // Deficit drains from global reserve
-        globalGrainReserve += cityBalance; // negative
+        globalGrainReserve += cityBalance;
       }
 
       if (cityFamine) {
@@ -477,8 +491,10 @@ Deno.serve(async (req) => {
         const deathToll = Math.floor((city.population_total || 0) * 0.05);
         await supabase.from("cities").update({
           city_stability: newStability,
-          population_peasants: Math.max(0, (city.population_peasants || 0) - Math.floor(deathToll * 0.8)),
-          population_burghers: Math.max(0, (city.population_burghers || 0) - Math.floor(deathToll * 0.2)),
+          population_peasants: Math.max(0, (city.population_peasants || 0) - Math.floor(deathToll * 0.7)),
+          population_burghers: Math.max(0, (city.population_burghers || 0) - Math.floor(deathToll * 0.15)),
+          population_warriors: Math.max(0, (city.population_warriors || 0) - Math.floor(deathToll * 0.1)),
+          population_clerics: Math.max(0, (city.population_clerics || 0) - Math.floor(deathToll * 0.05)),
           famine_turn: true,
           famine_consecutive_turns: (city.famine_consecutive_turns || 0) + 1,
         }).eq("id", city.id);
@@ -486,7 +502,7 @@ Deno.serve(async (req) => {
         logEntries.push(`⚠️ Hladomor v ${city.name}! Ztráta ${deathToll} obyvatel.`);
         newEvents.push({
           event_type: "famine",
-          note: `Hladomor zachvátil ${city.name}. Produkce uzlu (${cityProduction.toFixed(1)}) nestačí na pokrytí poptávky (${cityDemand}). Zemřelo ${deathToll} obyvatel.`,
+          note: `Hladomor zachvátil ${city.name}. Produkce (${cityProduction.toFixed(1)}) nestačí na pokrytí poptávky (${cityDemand}). Zemřelo ${deathToll} obyvatel.`,
           importance: "critical",
           city_id: city.id,
           reference: { production: cityProduction, demand: cityDemand, death_toll: deathToll, isolation: isolationPenalty },
@@ -497,25 +513,34 @@ Deno.serve(async (req) => {
         }
       }
 
-      // Generate trade boom event for highly productive nodes
-      if (node && node.wealth_output > 5 && node.flow_role === "hub") {
+      // Trade boom event for hub nodes
+      if (node && layers.wealth > 3 && node.flow_role === "hub") {
         newEvents.push({
           event_type: "trade_boom",
-          note: `Obchodní centrum ${city.name} zažívá rozkvět. Bohatství uzlu: ${node.wealth_output.toFixed(1)}, konektivita: ${(node.connectivity_score || 0).toFixed(2)}.`,
+          note: `Obchodní centrum ${city.name} zažívá rozkvět. Bohatství: ${layers.wealth.toFixed(1)}.`,
           importance: "normal",
           city_id: city.id,
-          reference: { wealth_output: node.wealth_output, connectivity: node.connectivity_score, flow_role: node.flow_role },
+          reference: { wealth: layers.wealth, flow_role: node.flow_role },
         });
       }
 
       cityEconResults.push({
         cityId: city.id, cityName: city.name,
-        nodeProduction: Math.round(cityProduction * 10) / 10,
-        demand: cityDemand, balance: Math.round(cityBalance * 10) / 10,
+        nodeProduction: Math.round(nodeProduction * 10) / 10,
+        layerProduction: Math.round(layers.production * 10) / 10,
+        layerWealth: Math.round(layers.wealth * 10) / 10,
+        layerCapacity: Math.round(layers.capacity * 10) / 10,
+        layerFaith: Math.round(layers.faith * 10) / 10,
+        demand: cityDemand,
+        balance: Math.round((cityProduction - cityDemand) * 10) / 10,
         isolationPenalty: Math.round(isolationPenalty * 100),
         famine: cityFamine,
       });
     }
+
+    // Apply mobilization penalties to totals
+    totalCityProduction = Math.max(0, totalCityProduction - mobProductionPenalty);
+    totalCityWealth = Math.max(0, totalCityWealth - mobWealthPenalty);
 
     // Small empire buffer
     if (myCities.length <= 3) globalGrainReserve += 10;
