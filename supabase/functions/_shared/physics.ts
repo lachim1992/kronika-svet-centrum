@@ -1416,3 +1416,164 @@ export function computeNodeFlows(
 
   return results;
 }
+
+// ═══════════════════════════════════════════
+// SUPPLY CHAIN COMPUTATION — per-node connectivity
+// ═══════════════════════════════════════════
+
+export interface SupplyChainInput {
+  playerName: string;
+  nodes: Array<{
+    id: string;
+    node_type: string;
+    controlled_by: string | null;
+    economic_value: number;
+    population: number;
+  }>;
+  routes: Array<{
+    node_a: string;
+    node_b: string;
+    control_state: string;
+    capacity_value: number;
+    damage_level: number;
+    safety_value: number;
+  }>;
+  previousState: Array<{
+    node_id: string;
+    isolation_turns: number;
+  }>;
+}
+
+export interface SupplyChainResult {
+  node_id: string;
+  connected_to_capital: boolean;
+  isolation_turns: number;
+  supply_level: number;
+  route_quality: number;
+  production_modifier: number;
+  stability_modifier: number;
+  morale_modifier: number;
+  supply_source_node_id: string | null;
+  hop_distance: number;
+}
+
+/**
+ * Compute per-node supply chain status via BFS from capital.
+ * Each node gets a supply level based on hop distance and route quality.
+ * Isolated nodes accumulate isolation_turns with escalating penalties.
+ */
+export function computeSupplyChain(input: SupplyChainInput): SupplyChainResult[] {
+  const myNodes = input.nodes.filter(n => n.controlled_by === input.playerName);
+  if (myNodes.length === 0) return [];
+
+  const myNodeIds = new Set(myNodes.map(n => n.id));
+
+  // Build weighted adjacency (only through non-blocked routes touching our nodes)
+  const adj: Record<string, Array<{ target: string; quality: number }>> = {};
+  for (const r of input.routes) {
+    if (r.control_state === "blocked") continue;
+    const aOurs = myNodeIds.has(r.node_a);
+    const bOurs = myNodeIds.has(r.node_b);
+    if (!aOurs && !bOurs) continue;
+
+    // Route quality: capacity * safety * (1 - damage)
+    const quality = Math.max(0.1,
+      (r.capacity_value / 10) * (r.safety_value / 10) * (1 - (r.damage_level || 0) / 10)
+    );
+
+    if (!adj[r.node_a]) adj[r.node_a] = [];
+    if (!adj[r.node_b]) adj[r.node_b] = [];
+    adj[r.node_a].push({ target: r.node_b, quality });
+    adj[r.node_b].push({ target: r.node_a, quality });
+  }
+
+  // BFS from primary cities
+  const capitals = myNodes.filter(n => n.node_type === "primary_city");
+  const startNodes = capitals.length > 0 ? capitals : [myNodes[0]];
+
+  const visited = new Map<string, { hopDistance: number; quality: number; sourceId: string }>();
+  const queue: Array<{ id: string; hops: number; quality: number; sourceId: string }> = [];
+
+  for (const s of startNodes) {
+    visited.set(s.id, { hopDistance: 0, quality: 1.0, sourceId: s.id });
+    queue.push({ id: s.id, hops: 0, quality: 1.0, sourceId: s.id });
+  }
+
+  while (queue.length > 0) {
+    const current = queue.shift()!;
+    for (const edge of (adj[current.id] || [])) {
+      if (!myNodeIds.has(edge.target)) continue;
+      const newHops = current.hops + 1;
+      const newQuality = current.quality * edge.quality;
+      const existing = visited.get(edge.target);
+      // Visit if not visited or found better quality path
+      if (!existing || newQuality > existing.quality) {
+        visited.set(edge.target, { hopDistance: newHops, quality: newQuality, sourceId: current.sourceId });
+        queue.push({ id: edge.target, hops: newHops, quality: newQuality, sourceId: current.sourceId });
+      }
+    }
+  }
+
+  // Build previous state lookup
+  const prevMap = new Map<string, number>();
+  for (const p of input.previousState) {
+    prevMap.set(p.node_id, p.isolation_turns);
+  }
+
+  // Generate results
+  const results: SupplyChainResult[] = [];
+  for (const node of myNodes) {
+    const info = visited.get(node.id);
+    const connected = !!info;
+    const prevIsolation = prevMap.get(node.id) || 0;
+    const isolationTurns = connected ? 0 : prevIsolation + 1;
+
+    // Supply level: 10 at capital, decreasing with hops and route quality
+    let supplyLevel = 10;
+    let routeQuality = 1.0;
+    let hopDistance = 0;
+    let sourceId: string | null = null;
+
+    if (connected && info) {
+      hopDistance = info.hopDistance;
+      routeQuality = Math.round(info.quality * 100) / 100;
+      sourceId = info.sourceId;
+      // Supply decays: -1 per hop, multiplied by route quality
+      supplyLevel = Math.max(1, Math.round((10 - hopDistance * 1.5) * routeQuality));
+    } else {
+      supplyLevel = Math.max(0, 3 - isolationTurns); // Rapidly decays when isolated
+      routeQuality = 0;
+    }
+
+    // Compute penalties based on supply level and isolation
+    // Production: 100% at supply 10, down to 20% at supply 0
+    const productionModifier = connected
+      ? Math.round((0.2 + 0.8 * (supplyLevel / 10)) * 100) / 100
+      : Math.max(0.1, Math.round((0.3 - isolationTurns * 0.05) * 100) / 100);
+
+    // Stability: 0 when fully supplied, up to -25 when isolated
+    const stabilityModifier = connected
+      ? Math.round(Math.max(-10, (supplyLevel - 7) * -2))
+      : Math.round(Math.min(0, -10 - isolationTurns * 5));
+
+    // Morale: 0 at good supply, up to -30 when isolated
+    const moraleModifier = connected
+      ? Math.round(Math.max(-10, (supplyLevel - 6) * -2))
+      : Math.round(Math.min(0, -15 - isolationTurns * 5));
+
+    results.push({
+      node_id: node.id,
+      connected_to_capital: connected,
+      isolation_turns: isolationTurns,
+      supply_level: supplyLevel,
+      route_quality: routeQuality,
+      production_modifier: productionModifier,
+      stability_modifier: stabilityModifier,
+      morale_modifier: moraleModifier,
+      supply_source_node_id: sourceId,
+      hop_distance: hopDistance,
+    });
+  }
+
+  return results;
+}
