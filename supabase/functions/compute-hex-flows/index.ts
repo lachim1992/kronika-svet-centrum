@@ -99,8 +99,9 @@ Deno.serve(async (req) => {
         infrastructure_level: 0, // TODO: could come from road improvements
         controlled_by: ctrl?.controlled_by ?? null,
         has_fortress: ctrl?.has_fortress ?? false,
-        is_contested: false, // TODO: from battle_lobbies
+        is_contested: false,
         trade_density: ctrl?.trade_density ?? 0,
+        has_pass: ctrl?.has_pass ?? false,
       };
 
       return hexTraversalCost(ctx, forPlayer);

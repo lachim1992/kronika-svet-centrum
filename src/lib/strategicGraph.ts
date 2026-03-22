@@ -222,6 +222,7 @@ export const PROJECT_COSTS: Record<string, { production: number; wealth: number;
   create_port: { production: 80, wealth: 50, capacity_req: 12, turns: 4 },
   expand_hub: { production: 50, wealth: 40, capacity_req: 10, turns: 3 },
   repair_route: { production: 20, wealth: 10, capacity_req: 3, turns: 2 },
+  build_pass: { production: 120, wealth: 40, capacity_req: 20, turns: 6 },
 };
 
 /** Route type labels in Czech */
