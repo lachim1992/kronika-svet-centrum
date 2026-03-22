@@ -1354,13 +1354,14 @@ async function executeMoveStackRoute(
   const { data: targetNode } = await supabase.from("province_nodes")
     .select("name, hex_q, hex_r").eq("id", targetNodeId).single();
 
-  // Update stack: set travel state
+  // Update stack: set travel state + stance
   await supabase.from("military_stacks").update({
     travel_route_id: selectedRouteId,
     travel_target_node_id: targetNodeId,
     travel_progress: 0,
     travel_departed_turn: turnNumber,
     moved_this_turn: true,
+    stance: "marching",
   }).eq("id", stackId);
 
   const routeLabels: Record<string, string> = {
@@ -1505,9 +1506,10 @@ async function executeFortifyNode(
     if (!stack) return { events: [], error: "Stack not found" };
     if (stack.player_name !== actor.name) return { events: [], error: "Not your stack" };
 
-    // Set stack's current node and update node control
+    // Set stack's current node, stance and update node control
     await supabase.from("military_stacks").update({
       current_node_id: nodeId,
+      stance: "defending",
     }).eq("id", stackId);
 
     await supabase.from("province_nodes").update({

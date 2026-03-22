@@ -87,6 +87,7 @@ Deno.serve(async (req) => {
           city_id: mainCity.id,
           strategic_value: 10, economic_value: 8, defense_value: 5,
           mobility_relevance: 7, supply_relevance: 9,
+          is_major: true, population: mainCity.population_total || 0,
           metadata: { settlement_level: mainCity.settlement_level, population: mainCity.population_total },
         });
       }
@@ -100,6 +101,7 @@ Deno.serve(async (req) => {
           name: `Přístav ${prov.name}`, hex_q: portHex.q, hex_r: portHex.r,
           strategic_value: 6, economic_value: 7, defense_value: 3,
           mobility_relevance: 9, supply_relevance: 8,
+          is_major: true,
           metadata: { biome: portHex.biome_family },
         });
       }
@@ -113,6 +115,7 @@ Deno.serve(async (req) => {
           name: `Pevnost ${prov.name}`, hex_q: fortHex.q, hex_r: fortHex.r,
           strategic_value: 8, economic_value: 1, defense_value: 10,
           mobility_relevance: 3, supply_relevance: 4,
+          is_major: true, fortification_level: 1,
           metadata: { elevation: fortHex.mean_height, biome: fortHex.biome_family },
         });
       }
@@ -139,6 +142,7 @@ Deno.serve(async (req) => {
             name: `Tržiště ${prov.name}`, hex_q: bq, hex_r: br,
             strategic_value: 4, economic_value: 9, defense_value: 2,
             mobility_relevance: 8, supply_relevance: 7,
+            is_major: true,
             metadata: { adjacent_provinces: best[1].size },
           });
         }

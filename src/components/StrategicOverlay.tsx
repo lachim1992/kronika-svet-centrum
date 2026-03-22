@@ -30,6 +30,11 @@ interface StrategicNode {
   defense_value: number;
   controlled_by: string | null;
   garrison_strength: number;
+  is_major: boolean;
+  population: number;
+  fortification_level: number;
+  infrastructure_level: number;
+  parent_node_id: string | null;
 }
 
 interface ProvinceRoute {
@@ -41,6 +46,10 @@ interface ProvinceRoute {
   control_state: string;
   upgrade_level: number;
   build_cost: number;
+  speed_value: number;
+  safety_value: number;
+  controlled_by: string | null;
+  is_cross_province: boolean;
 }
 
 const NODE_ICONS: Record<string, typeof Landmark> = {
@@ -72,13 +81,13 @@ const StrategicOverlay = memo(function StrategicOverlay({ sessionId, currentPlay
   const loadData = useCallback(async () => {
     const [nRes, rRes, sRes] = await Promise.all([
       supabase.from("province_nodes")
-        .select("id, province_id, node_type, name, hex_q, hex_r, strategic_value, economic_value, defense_value, controlled_by, garrison_strength")
+        .select("id, province_id, node_type, name, hex_q, hex_r, strategic_value, economic_value, defense_value, controlled_by, garrison_strength, is_major, population, fortification_level, infrastructure_level, parent_node_id")
         .eq("session_id", sessionId),
       supabase.from("province_routes")
-        .select("id, node_a, node_b, route_type, capacity_value, control_state, upgrade_level, build_cost")
+        .select("id, node_a, node_b, route_type, capacity_value, control_state, upgrade_level, build_cost, speed_value, safety_value, controlled_by, is_cross_province")
         .eq("session_id", sessionId),
       supabase.from("military_stacks")
-        .select("id, name, current_node_id, travel_route_id, travel_progress, travel_target_node_id, player_name, power")
+        .select("id, name, current_node_id, travel_route_id, travel_progress, travel_target_node_id, player_name, power, stance")
         .eq("session_id", sessionId).eq("player_name", currentPlayerName).eq("is_active", true),
     ]);
     setNodes((nRes.data || []) as StrategicNode[]);

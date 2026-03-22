@@ -93,6 +93,12 @@ export const ROUTE_TYPE_LABELS: Record<string, string> = {
   sea_lane: "Námořní trasa",
   mountain_pass: "Horský průsmyk",
   caravan_route: "Karavanní stezka",
+  road: "Cesta",
+  caravan: "Karavana",
+  river: "Řeka",
+  pass: "Průsmyk",
+  fortified_corridor: "Opevněný koridor",
+  custom_project: "Vlastní projekt",
 };
 
 /** Control state labels */
@@ -100,6 +106,8 @@ export const CONTROL_STATE_LABELS: Record<string, string> = {
   open: "Průchozí",
   contested: "Sporná",
   blocked: "Zablokovaná",
+  damaged: "Poškozená",
+  embargoed: "Embargo",
 };
 
 /** Node type labels */
@@ -111,4 +119,17 @@ export const NODE_TYPE_LABELS: Record<string, string> = {
   trade_hub: "Tržiště",
   pass: "Průsmyk",
   resource_node: "Zdroj surovin",
+  village_cluster: "Vesnice",
+  religious_center: "Chrám",
+  logistic_hub: "Logistické centrum",
+};
+
+/** Stance labels */
+export const STANCE_LABELS: Record<string, string> = {
+  idle: "Čeká",
+  marching: "Na pochodu",
+  besieging: "Obléhá",
+  defending: "Brání",
+  intercepting: "Zachycuje",
+  raiding: "Plení",
 };

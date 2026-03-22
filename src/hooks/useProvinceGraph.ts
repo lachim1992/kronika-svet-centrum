@@ -46,6 +46,14 @@ export interface StrategicNode {
   defense_value: number;
   mobility_relevance: number;
   supply_relevance: number;
+  controlled_by: string | null;
+  garrison_strength: number | null;
+  is_major: boolean;
+  population: number;
+  fortification_level: number;
+  infrastructure_level: number;
+  parent_node_id: string | null;
+  is_active: boolean;
   metadata: Record<string, any>;
 }
 
@@ -86,7 +94,7 @@ export function useProvinceGraph(sessionId: string) {
           .eq("session_id", sessionId),
         supabase
           .from("province_nodes")
-          .select("id, province_id, node_type, name, hex_q, hex_r, city_id, strategic_value, economic_value, defense_value, mobility_relevance, supply_relevance, metadata")
+          .select("id, province_id, node_type, name, hex_q, hex_r, city_id, strategic_value, economic_value, defense_value, mobility_relevance, supply_relevance, controlled_by, garrison_strength, is_major, population, fortification_level, infrastructure_level, parent_node_id, is_active, metadata")
           .eq("session_id", sessionId),
         supabase
           .from("province_routes")
@@ -134,6 +142,14 @@ export function useProvinceGraph(sessionId: string) {
           defense_value: n.defense_value,
           mobility_relevance: n.mobility_relevance,
           supply_relevance: n.supply_relevance,
+          controlled_by: n.controlled_by,
+          garrison_strength: n.garrison_strength,
+          is_major: n.is_major ?? false,
+          population: n.population ?? 0,
+          fortification_level: n.fortification_level ?? 0,
+          infrastructure_level: n.infrastructure_level ?? 0,
+          parent_node_id: n.parent_node_id,
+          is_active: n.is_active ?? true,
           metadata: (n.metadata as any) || {},
         })));
       }
