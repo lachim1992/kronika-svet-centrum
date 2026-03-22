@@ -111,12 +111,20 @@ function computeNodeProduction(node: NodeData, routeAccess: number, cityData?: a
 
 // ── WEALTH ──────────────────────────────────────────────────────
 // wealth_gain = incoming_production * trade_efficiency * connectivity_score
+// For city-linked nodes: add burgher-driven wealth
 function computeNodeWealth(
   incomingProduction: number,
   tradeEfficiency: number,
   connectivityScore: number,
+  cityData?: any,
 ): number {
-  return incomingProduction * tradeEfficiency * Math.max(0.1, connectivityScore);
+  let wealth = incomingProduction * tradeEfficiency * Math.max(0.1, connectivityScore);
+  if (cityData) {
+    const burghers = cityData.population_burghers || 0;
+    const marketBonus = 1 + (cityData.market_level || 0) * 0.12;
+    wealth += burghers * 0.01 * marketBonus;
+  }
+  return wealth;
 }
 
 // ── CAPACITY ────────────────────────────────────────────────────
