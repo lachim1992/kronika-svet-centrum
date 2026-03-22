@@ -3,9 +3,12 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Loader2, Network, RefreshCw, MapPin, Landmark, Shield, Anchor, Store, Mountain, Wheat, Route, Church, Package, Home } from "lucide-react";
+import { Progress } from "@/components/ui/progress";
+import { Loader2, Network, RefreshCw, MapPin, Landmark, Shield, Anchor, Store, Mountain, Wheat, Route, Church, Package, Home, TrendingUp, Coins, Building2 } from "lucide-react";
 import { toast } from "sonner";
 import { FLOW_ROLE_LABELS, HINTERLAND_LABELS } from "@/lib/strategicGraph";
+import { MACRO_LAYER_ICONS, getImportanceLabel, getImportanceColor, getIsolationSeverity, ISOLATION_PENALTY_LABELS, STRATEGIC_RESOURCE_ICONS, STRATEGIC_TIER_LABELS } from "@/lib/economyFlow";
+import { supabase } from "@/integrations/supabase/client";
 import { useProvinceGraph, type ProvinceNode, type ProvinceEdge, type StrategicNode, type ProvinceRoute } from "@/hooks/useProvinceGraph";
 
 interface Props { sessionId: string; }
