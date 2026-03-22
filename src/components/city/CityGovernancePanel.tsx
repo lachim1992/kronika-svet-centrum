@@ -472,8 +472,7 @@ const CityGovernancePanel = ({ sessionId, city, realm, currentPlayerName, curren
                         setSaving(true);
                         await supabase.from("realm_resources").update({
                           gold_reserve: (realm.gold_reserve || 0) - cost.wealth,
-                          wood_reserve: (realm.wood_reserve || 0) - cost.wood,
-                          stone_reserve: (realm.stone_reserve || 0) - cost.stone,
+                          production_reserve: Math.max(0, (realm.production_reserve || 0) - (cost.wood + cost.stone)),
                         } as any).eq("id", realm.id);
                         await supabase.from("cities").update({
                           [infra.field]: currentLevel + 1,

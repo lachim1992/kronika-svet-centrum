@@ -216,17 +216,10 @@ Vygeneruj hlas lidu a analýzu poradců.`;
       }
 
       if (selectedConcession === "open_stores") {
-        // All material reserves → 0 (not gold), famine immediately ends
+        // All reserves → 0 (production + grain), famine immediately ends
         await supabase.from("realm_resources").update({
-          grain_reserve: 0, wood_reserve: 0, stone_reserve: 0, iron_reserve: 0,
+          grain_reserve: 0, production_reserve: 0,
         }).eq("session_id", sessionId).eq("player_name", playerName);
-
-        // Sync player_resources stockpiles to 0 for food/wood/stone/iron
-        for (const resType of ["food", "wood", "stone", "iron"]) {
-          await supabase.from("player_resources").update({
-            stockpile: 0,
-          }).eq("session_id", sessionId).eq("player_name", playerName).eq("resource_type", resType);
-        }
 
         const cooldownUntil = currentTurn + 5;
         await supabase.from("cities").update({

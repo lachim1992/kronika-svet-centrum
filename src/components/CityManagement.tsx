@@ -588,10 +588,9 @@ const CityManagement = ({ sessionId, cityId, currentPlayerName, currentTurn, onB
             {/* Resources bar */}
             {realm && (
               <div className="flex flex-wrap gap-3 text-xs">
-                <span className="flex items-center gap-1"><Trees className="h-3 w-3" />Dřevo: <strong>{realm.wood_reserve}</strong></span>
-                <span className="flex items-center gap-1"><Mountain className="h-3 w-3" />Kámen: <strong>{realm.stone_reserve}</strong></span>
-                <span className="flex items-center gap-1"><Anvil className="h-3 w-3" />Železo: <strong>{realm.iron_reserve}</strong></span>
-                <span className="flex items-center gap-1"><Coins className="h-3 w-3" />Zlato: <strong>{realm.gold_reserve}</strong></span>
+                <span className="flex items-center gap-1">⚒️ Produkce: <strong>{Math.round(realm.production_reserve || 0)}</strong></span>
+                <span className="flex items-center gap-1">💰 Bohatství: <strong>{Math.round(realm.gold_reserve || 0)}</strong></span>
+                <span className="flex items-center gap-1">🌾 Zásoby: <strong>{Math.round(realm.grain_reserve || 0)}</strong></span>
               </div>
             )}
 
