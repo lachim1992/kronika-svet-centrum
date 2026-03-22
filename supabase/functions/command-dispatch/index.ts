@@ -1296,3 +1296,244 @@ async function executeLiftEmbargo(
     reference: { pactId: embargoId, action: "lift_embargo", targetPlayer },
   }]);
 }
+
+// ═══════════════════════════════════════════
+// MOVE_STACK_ROUTE — route-based strategic movement
+// ═══════════════════════════════════════════
+
+async function executeMoveStackRoute(
+  supabase: any, base: any, actor: Actor, payload: any,
+  commandId: string, sessionId: string, turnNumber: number,
+): Promise<CommandResult> {
+  const { stackId, targetNodeId, routeId } = payload;
+  if (!stackId) return { events: [], error: "Missing stackId" };
+  if (!targetNodeId) return { events: [], error: "Missing targetNodeId" };
+
+  // Verify stack
+  const { data: stack } = await supabase.from("military_stacks")
+    .select("id, player_name, current_node_id, travel_route_id, hex_q, hex_r")
+    .eq("id", stackId).eq("session_id", sessionId).single();
+
+  if (!stack) return { events: [], error: "Stack not found" };
+  if (stack.player_name !== actor.name) return { events: [], error: "Not your stack" };
+  if (stack.travel_route_id) return { events: [], error: "Stack is already in transit" };
+
+  // Find the route connecting current node to target
+  const fromNodeId = stack.current_node_id;
+  if (!fromNodeId) return { events: [], error: "Stack is not at a strategic node — use hex movement or assign to node first" };
+
+  let selectedRouteId = routeId;
+  if (!selectedRouteId) {
+    // Auto-find route between nodes
+    const { data: foundRoutes } = await supabase.from("province_routes")
+      .select("id, control_state, capacity_value, route_type, metadata")
+      .eq("session_id", sessionId)
+      .or(`and(node_a.eq.${fromNodeId},node_b.eq.${targetNodeId}),and(node_a.eq.${targetNodeId},node_b.eq.${fromNodeId})`);
+
+    if (!foundRoutes || foundRoutes.length === 0) return { events: [], error: "No route between these nodes" };
+    const openRoute = foundRoutes.find((r: any) => r.control_state !== "blocked");
+    if (!openRoute) return { events: [], error: "All routes are blocked" };
+    selectedRouteId = openRoute.id;
+  }
+
+  // Verify route exists and is not blocked
+  const { data: route } = await supabase.from("province_routes")
+    .select("id, node_a, node_b, control_state, capacity_value, route_type, metadata")
+    .eq("id", selectedRouteId).eq("session_id", sessionId).single();
+
+  if (!route) return { events: [], error: "Route not found" };
+  if (route.control_state === "blocked") return { events: [], error: "Route is blocked" };
+
+  // Verify route connects current node to target
+  const nodeSet = new Set([route.node_a, route.node_b]);
+  if (!nodeSet.has(fromNodeId) || !nodeSet.has(targetNodeId)) {
+    return { events: [], error: "Route does not connect source and target nodes" };
+  }
+
+  // Get target node name for narrative
+  const { data: targetNode } = await supabase.from("province_nodes")
+    .select("name, hex_q, hex_r").eq("id", targetNodeId).single();
+
+  // Update stack: set travel state
+  await supabase.from("military_stacks").update({
+    travel_route_id: selectedRouteId,
+    travel_target_node_id: targetNodeId,
+    travel_progress: 0,
+    travel_departed_turn: turnNumber,
+    moved_this_turn: true,
+  }).eq("id", stackId);
+
+  const routeLabels: Record<string, string> = {
+    land_road: "silnici", river_route: "říční cestu", sea_lane: "námořní trasu",
+    mountain_pass: "horský průsmyk", caravan_route: "karavanní stezku",
+  };
+
+  const note = `${actor.name} vyslal armádu ${payload.stackName || ""} po ${routeLabels[route.route_type] || "cestě"} směrem k ${targetNode?.name || "cíli"}.`;
+
+  return insertEventsWithChronicle(supabase, commandId, sessionId, turnNumber, [{
+    ...base,
+    event_type: "military",
+    note,
+    importance: "normal",
+    reference: { ...payload, routeType: route.route_type, targetNodeName: targetNode?.name },
+  }], payload.chronicleText);
+}
+
+// ═══════════════════════════════════════════
+// BUILD_ROUTE — construct new route between nodes
+// ═══════════════════════════════════════════
+
+async function executeBuildRoute(
+  supabase: any, base: any, actor: Actor, payload: any,
+  commandId: string, sessionId: string, turnNumber: number,
+): Promise<CommandResult> {
+  const { nodeAId, nodeBId, routeType } = payload;
+  if (!nodeAId || !nodeBId) return { events: [], error: "Missing nodeAId or nodeBId" };
+
+  // Verify both nodes exist and at least one is controlled by actor
+  const { data: nodeA } = await supabase.from("province_nodes")
+    .select("id, name, controlled_by, province_id").eq("id", nodeAId).eq("session_id", sessionId).single();
+  const { data: nodeB } = await supabase.from("province_nodes")
+    .select("id, name, controlled_by, province_id").eq("id", nodeBId).eq("session_id", sessionId).single();
+
+  if (!nodeA || !nodeB) return { events: [], error: "Node not found" };
+  if (nodeA.controlled_by !== actor.name && nodeB.controlled_by !== actor.name) {
+    return { events: [], error: "You must control at least one endpoint node" };
+  }
+
+  // Check no existing route
+  const ordA = nodeAId < nodeBId ? nodeAId : nodeBId;
+  const ordB = nodeAId < nodeBId ? nodeBId : nodeAId;
+  const { data: existing } = await supabase.from("province_routes")
+    .select("id").eq("session_id", sessionId).eq("node_a", ordA).eq("node_b", ordB).maybeSingle();
+  if (existing) return { events: [], error: "Route already exists between these nodes" };
+
+  const buildCostMap: Record<string, number> = {
+    land_road: 50, river_route: 30, sea_lane: 20, mountain_pass: 80, caravan_route: 60,
+  };
+  const type = routeType || "land_road";
+  const cost = buildCostMap[type] || 50;
+
+  // Deduct gold
+  const { data: realm } = await supabase.from("realm_resources")
+    .select("id, gold_reserve").eq("session_id", sessionId).eq("player_name", actor.name).single();
+  if (!realm || realm.gold_reserve < cost) return { events: [], error: `Nedostatek zlata (potřeba: ${cost})` };
+
+  await supabase.from("realm_resources").update({ gold_reserve: realm.gold_reserve - cost }).eq("id", realm.id);
+
+  // Insert route
+  await supabase.from("province_routes").insert({
+    session_id: sessionId,
+    node_a: ordA, node_b: ordB,
+    route_type: type,
+    capacity_value: 5,
+    military_relevance: 3, economic_relevance: 3,
+    vulnerability_score: 4,
+    control_state: "open",
+    build_cost: cost, upgrade_level: 1,
+    metadata: { built_by: actor.name, built_turn: turnNumber },
+  });
+
+  const note = `${actor.name} vybudoval ${type === "land_road" ? "silnici" : type} mezi ${nodeA.name} a ${nodeB.name} za ${cost} zlata.`;
+
+  return insertEventsWithChronicle(supabase, commandId, sessionId, turnNumber, [{
+    ...base,
+    event_type: "construction",
+    note, importance: "normal",
+    reference: { nodeAId, nodeBId, routeType: type, cost },
+  }], payload.chronicleText);
+}
+
+// ═══════════════════════════════════════════
+// UPGRADE_ROUTE — improve an existing route
+// ═══════════════════════════════════════════
+
+async function executeUpgradeRoute(
+  supabase: any, base: any, actor: Actor, payload: any,
+  commandId: string, sessionId: string, turnNumber: number,
+): Promise<CommandResult> {
+  const { routeId } = payload;
+  if (!routeId) return { events: [], error: "Missing routeId" };
+
+  const { data: route } = await supabase.from("province_routes")
+    .select("id, node_a, node_b, upgrade_level, build_cost, route_type, capacity_value")
+    .eq("id", routeId).eq("session_id", sessionId).single();
+  if (!route) return { events: [], error: "Route not found" };
+
+  const upgradeCost = Math.round(route.build_cost * 0.5 * (route.upgrade_level + 1));
+
+  const { data: realm } = await supabase.from("realm_resources")
+    .select("id, gold_reserve").eq("session_id", sessionId).eq("player_name", actor.name).single();
+  if (!realm || realm.gold_reserve < upgradeCost) return { events: [], error: `Nedostatek zlata (potřeba: ${upgradeCost})` };
+
+  await supabase.from("realm_resources").update({ gold_reserve: realm.gold_reserve - upgradeCost }).eq("id", realm.id);
+
+  await supabase.from("province_routes").update({
+    upgrade_level: route.upgrade_level + 1,
+    capacity_value: route.capacity_value + 2,
+  }).eq("id", routeId);
+
+  const note = `${actor.name} vylepšil trasu na úroveň ${route.upgrade_level + 1} za ${upgradeCost} zlata.`;
+
+  return insertEventsWithChronicle(supabase, commandId, sessionId, turnNumber, [{
+    ...base,
+    event_type: "construction", note, importance: "normal",
+    reference: { routeId, newLevel: route.upgrade_level + 1, cost: upgradeCost },
+  }], payload.chronicleText);
+}
+
+// ═══════════════════════════════════════════
+// FORTIFY_NODE — assign garrison to a strategic node
+// ═══════════════════════════════════════════
+
+async function executeFortifyNode(
+  supabase: any, base: any, actor: Actor, payload: any,
+  commandId: string, sessionId: string, turnNumber: number,
+): Promise<CommandResult> {
+  const { nodeId, stackId } = payload;
+  if (!nodeId) return { events: [], error: "Missing nodeId" };
+
+  const { data: node } = await supabase.from("province_nodes")
+    .select("id, name, province_id, controlled_by")
+    .eq("id", nodeId).eq("session_id", sessionId).single();
+  if (!node) return { events: [], error: "Node not found" };
+
+  // If assigning a stack as garrison
+  if (stackId) {
+    const { data: stack } = await supabase.from("military_stacks")
+      .select("id, player_name, power, name").eq("id", stackId).eq("session_id", sessionId).single();
+    if (!stack) return { events: [], error: "Stack not found" };
+    if (stack.player_name !== actor.name) return { events: [], error: "Not your stack" };
+
+    // Set stack's current node and update node control
+    await supabase.from("military_stacks").update({
+      current_node_id: nodeId,
+    }).eq("id", stackId);
+
+    await supabase.from("province_nodes").update({
+      controlled_by: actor.name,
+      garrison_strength: stack.power || 0,
+    }).eq("id", nodeId);
+
+    const note = `${actor.name} opevnil ${node.name} armádou ${stack.name}.`;
+
+    return insertEventsWithChronicle(supabase, commandId, sessionId, turnNumber, [{
+      ...base,
+      event_type: "military", note, importance: "normal",
+      reference: { nodeId, stackId, nodeName: node.name },
+    }], payload.chronicleText);
+  }
+
+  // Claim uncontrolled node
+  if (!node.controlled_by) {
+    await supabase.from("province_nodes").update({ controlled_by: actor.name }).eq("id", nodeId);
+    const note = `${actor.name} převzal kontrolu nad ${node.name}.`;
+    return insertEventsWithChronicle(supabase, commandId, sessionId, turnNumber, [{
+      ...base,
+      event_type: "military", note, importance: "normal",
+      reference: { nodeId, nodeName: node.name },
+    }], payload.chronicleText);
+  }
+
+  return { events: [], error: "Node is already controlled by another player" };
+}

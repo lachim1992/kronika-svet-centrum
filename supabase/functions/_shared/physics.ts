@@ -1058,3 +1058,163 @@ export function getTradeEfficiencyModifier(pacts: DiplomaticPact[], playerA: str
 
   return modifier;
 }
+
+// ═══════════════════════════════════════════
+// PROVINCE CONTROL — node-weighted ownership
+// ═══════════════════════════════════════════
+
+export interface NodeControlEntry {
+  id: string;
+  province_id: string;
+  node_type: string;
+  strategic_value: number;
+  economic_value: number;
+  defense_value: number;
+  controlled_by: string | null;
+}
+
+export interface ProvinceControlResult {
+  province_id: string;
+  control_player: string | null;
+  control_scores: Record<string, number>;
+  /** 0-1 dominance ratio of the controlling player */
+  dominance: number;
+}
+
+/** Weight multipliers for node types in control calculation */
+const NODE_CONTROL_WEIGHTS: Record<string, number> = {
+  primary_city: 3.0,
+  secondary_city: 2.0,
+  fortress: 2.5,
+  port: 1.5,
+  trade_hub: 1.5,
+  pass: 2.0,
+  resource_node: 1.0,
+};
+
+/**
+ * Compute province control based on weighted strategic node ownership.
+ * A player controls a province if they hold >50% of weighted node value.
+ */
+export function computeProvinceControl(
+  provinceId: string,
+  nodes: NodeControlEntry[],
+): ProvinceControlResult {
+  const provNodes = nodes.filter(n => n.province_id === provinceId);
+  if (provNodes.length === 0) {
+    return { province_id: provinceId, control_player: null, control_scores: {}, dominance: 0 };
+  }
+
+  const scores: Record<string, number> = {};
+  let totalWeight = 0;
+
+  for (const node of provNodes) {
+    const typeWeight = NODE_CONTROL_WEIGHTS[node.node_type] || 1.0;
+    const nodeWeight = typeWeight * (node.strategic_value + node.economic_value * 0.5 + node.defense_value * 0.3);
+    totalWeight += nodeWeight;
+
+    if (node.controlled_by) {
+      scores[node.controlled_by] = (scores[node.controlled_by] || 0) + nodeWeight;
+    }
+  }
+
+  if (totalWeight === 0) {
+    return { province_id: provinceId, control_player: null, control_scores: scores, dominance: 0 };
+  }
+
+  // Find player with highest control score
+  let maxPlayer: string | null = null;
+  let maxScore = 0;
+  for (const [player, score] of Object.entries(scores)) {
+    if (score > maxScore) { maxScore = score; maxPlayer = player; }
+  }
+
+  const dominance = maxScore / totalWeight;
+  // Must have >50% to control
+  const controlPlayer = dominance > 0.5 ? maxPlayer : null;
+
+  return { province_id: provinceId, control_player: controlPlayer, control_scores: scores, dominance };
+}
+
+// ═══════════════════════════════════════════
+// ROUTE TRAVERSAL — advance armies along routes
+// ═══════════════════════════════════════════
+
+/**
+ * Advance all in-transit stacks by one turn.
+ * Called during world-tick / commit-turn.
+ * Returns list of arrivals for event generation.
+ */
+export function computeRouteTraversalProgress(
+  stack: { id: string; travel_progress: number; travel_departed_turn: number | null },
+  route: { capacity_value: number; route_type: string; metadata?: any; control_state: string },
+  currentTurn: number,
+): { newProgress: number; arrived: boolean } {
+  if (!stack.travel_departed_turn) return { newProgress: 0, arrived: false };
+
+  // Base speed: 1 turn = 50% progress for capacity 5 route
+  // Higher capacity = faster traversal
+  const baseSpeed = Math.min(1.0, 0.1 * (route.capacity_value || 5));
+  const contestedPenalty = route.control_state === "contested" ? 0.5 : 1.0;
+  const turnProgress = baseSpeed * contestedPenalty;
+
+  const newProgress = Math.min(1.0, stack.travel_progress + turnProgress);
+  return { newProgress, arrived: newProgress >= 1.0 };
+}
+
+// ═══════════════════════════════════════════
+// ISOLATION PENALTY — hybrid economy model
+// ═══════════════════════════════════════════
+
+export interface IsolationInput {
+  playerName: string;
+  nodes: Array<{ id: string; province_id: string; controlled_by: string | null; node_type: string }>;
+  routes: Array<{ node_a: string; node_b: string; control_state: string }>;
+}
+
+/**
+ * Compute isolation penalty for a player's realm.
+ * Measures what fraction of the player's nodes are disconnected from their capital/primary cities.
+ * Returns penalty 0-1 (0 = fully connected, 1 = fully isolated).
+ */
+export function computeIsolationPenalty(input: IsolationInput): { penalty: number; connectedNodes: number; totalNodes: number } {
+  const myNodes = input.nodes.filter(n => n.controlled_by === input.playerName);
+  if (myNodes.length <= 1) return { penalty: 0, connectedNodes: myNodes.length, totalNodes: myNodes.length };
+
+  const myNodeIds = new Set(myNodes.map(n => n.id));
+
+  // Build adjacency from open/contested routes
+  const adj: Record<string, string[]> = {};
+  for (const r of input.routes) {
+    if (r.control_state === "blocked") continue;
+    if (myNodeIds.has(r.node_a) || myNodeIds.has(r.node_b)) {
+      if (!adj[r.node_a]) adj[r.node_a] = [];
+      if (!adj[r.node_b]) adj[r.node_b] = [];
+      adj[r.node_a].push(r.node_b);
+      adj[r.node_b].push(r.node_a);
+    }
+  }
+
+  // BFS from primary city nodes
+  const primaryCities = myNodes.filter(n => n.node_type === "primary_city");
+  const startNodes = primaryCities.length > 0 ? primaryCities : [myNodes[0]];
+  const visited = new Set<string>();
+  const queue = startNodes.map(n => n.id);
+  for (const id of queue) visited.add(id);
+
+  while (queue.length > 0) {
+    const current = queue.shift()!;
+    for (const neighbor of (adj[current] || [])) {
+      if (!visited.has(neighbor) && myNodeIds.has(neighbor)) {
+        visited.add(neighbor);
+        queue.push(neighbor);
+      }
+    }
+  }
+
+  const connectedNodes = visited.size;
+  const totalNodes = myNodes.length;
+  const penalty = totalNodes > 0 ? Math.max(0, 1 - connectedNodes / totalNodes) : 0;
+
+  return { penalty: Math.round(penalty * 100) / 100, connectedNodes, totalNodes };
+}
