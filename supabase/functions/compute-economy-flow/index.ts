@@ -213,7 +213,7 @@ Deno.serve(async (req) => {
         .select("id, session_id, province_id, node_type, flow_role, is_major, parent_node_id, controlled_by, city_id, population, infrastructure_level, urbanization_score, hinterland_level, cumulative_trade_flow, throughput_military, toll_rate, strategic_value, economic_value, defense_value, resource_output, metadata, development_level, stability_factor")
         .eq("session_id", session_id),
       sb.from("province_routes")
-        .select("id, node_a_id, node_b_id, capacity_value, control_state, damage_level, speed_value, safety_value")
+        .select("id, node_a, node_b, capacity_value, control_state, damage_level, speed_value, safety_value")
         .eq("session_id", session_id),
       sb.from("supply_chain_state")
         .select("node_id, connected_to_capital, hop_distance, isolation_turns, supply_level, route_quality")
