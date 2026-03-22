@@ -481,8 +481,12 @@ Deno.serve(async (req) => {
       let routeBlocked = false;
       let tollTotal = 0;
 
-      if (route.start_node_id && route.end_node_id) {
-        const pathResult = findRoutePath(route.start_node_id, route.end_node_id, adjacency);
+      // Resolve node IDs: prefer explicit start/end_node_id, fallback to city→node map
+      const startNodeId = route.start_node_id || (route.from_city_id ? cityNodeMap.get(route.from_city_id)?.id : null);
+      const endNodeId = route.end_node_id || (route.to_city_id ? cityNodeMap.get(route.to_city_id)?.id : null);
+
+      if (startNodeId && endNodeId) {
+        const pathResult = findRoutePath(startNodeId, endNodeId, adjacency);
 
         if (!pathResult) {
           // No path exists — trade route is severed
