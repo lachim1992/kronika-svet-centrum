@@ -1233,6 +1233,13 @@ export interface FlowNode {
   is_major: boolean;
   parent_node_id: string | null;
   city_id: string | null;
+  throughput_military: number;
+  toll_rate: number;
+  cumulative_trade_flow: number;
+  urbanization_score: number;
+  hinterland_level: number;
+  resource_output: Record<string, number>;
+  flow_role: string;
 }
 
 export interface FlowRoute {
@@ -1270,7 +1277,17 @@ export interface NodeFlowResult {
   congestion_score: number;
   throughput_score: number;
   isolation_penalty: number;
+  toll_income: number;
+  trade_flow_delta: number;
+  urbanization_delta: number;
 }
+
+/** Urbanization thresholds: cumulative trade flow → hinterland level */
+export const URBANIZATION_THRESHOLDS: Array<{ level: number; threshold: number; label: string; spawns: string }> = [
+  { level: 1, threshold: 200, label: "Vesnice", spawns: "village_cluster" },
+  { level: 2, threshold: 800, label: "Dílny", spawns: "resource_node" },
+  { level: 3, threshold: 2000, label: "Předměstí", spawns: "trade_hub" },
+];
 
 /**
  * Compute flow state for all nodes in a session.

@@ -257,6 +257,23 @@ export const NODE_TYPE_LABELS: Record<string, string> = {
   logistic_hub: "Logistické centrum",
 };
 
+/** Flow role labels */
+export const FLOW_ROLE_LABELS: Record<string, string> = {
+  neutral: "Neutrální",
+  regulator: "Regulátor",
+  gateway: "Brána",
+  producer: "Producent",
+  hub: "Centrum",
+};
+
+/** Hinterland level labels */
+export const HINTERLAND_LABELS: Record<number, string> = {
+  0: "Pustina",
+  1: "Vesnice",
+  2: "Dílny",
+  3: "Předměstí",
+};
+
 /** Stance labels */
 export const STANCE_LABELS: Record<string, string> = {
   idle: "Čeká",
