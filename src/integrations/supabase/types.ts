@@ -5608,6 +5608,66 @@ export type Database = {
           },
         ]
       }
+      node_economy_history: {
+        Row: {
+          capacity_score: number
+          connectivity_score: number
+          created_at: string
+          id: string
+          importance_score: number
+          incoming_production: number
+          isolation_penalty: number
+          node_id: string
+          production_output: number
+          session_id: string
+          turn_number: number
+          wealth_output: number
+        }
+        Insert: {
+          capacity_score?: number
+          connectivity_score?: number
+          created_at?: string
+          id?: string
+          importance_score?: number
+          incoming_production?: number
+          isolation_penalty?: number
+          node_id: string
+          production_output?: number
+          session_id: string
+          turn_number?: number
+          wealth_output?: number
+        }
+        Update: {
+          capacity_score?: number
+          connectivity_score?: number
+          created_at?: string
+          id?: string
+          importance_score?: number
+          incoming_production?: number
+          isolation_penalty?: number
+          node_id?: string
+          production_output?: number
+          session_id?: string
+          turn_number?: number
+          wealth_output?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "node_economy_history_node_id_fkey"
+            columns: ["node_id"]
+            isOneToOne: false
+            referencedRelation: "province_nodes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "node_economy_history_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       node_flow_state: {
         Row: {
           civilian_flow: number | null
@@ -6287,11 +6347,14 @@ export type Database = {
         Row: {
           besieged_by: string | null
           besieging_stack_id: string | null
+          capacity_score: number
           city_id: string | null
+          connectivity_score: number
           controlled_by: string | null
           created_at: string
           cumulative_trade_flow: number
           defense_value: number
+          development_level: number
           economic_value: number
           flow_role: string
           fortification_level: number
@@ -6301,34 +6364,47 @@ export type Database = {
           hex_r: number
           hinterland_level: number
           id: string
+          importance_score: number
+          incoming_production: number
           infrastructure_level: number
           is_active: boolean
           is_major: boolean
+          isolation_penalty: number
           metadata: Json | null
           mobility_relevance: number
           name: string
           node_type: string
           parent_node_id: string | null
           population: number
+          production_output: number
           province_id: string
           resource_output: Json
+          route_access_factor: number
           session_id: string
           siege_turn_start: number | null
+          stability_factor: number
+          strategic_resource_tier: number
+          strategic_resource_type: string | null
           strategic_value: number
           supply_relevance: number
           throughput_military: number
           toll_rate: number
+          trade_efficiency: number
           updated_at: string
           urbanization_score: number
+          wealth_output: number
         }
         Insert: {
           besieged_by?: string | null
           besieging_stack_id?: string | null
+          capacity_score?: number
           city_id?: string | null
+          connectivity_score?: number
           controlled_by?: string | null
           created_at?: string
           cumulative_trade_flow?: number
           defense_value?: number
+          development_level?: number
           economic_value?: number
           flow_role?: string
           fortification_level?: number
@@ -6338,34 +6414,47 @@ export type Database = {
           hex_r?: number
           hinterland_level?: number
           id?: string
+          importance_score?: number
+          incoming_production?: number
           infrastructure_level?: number
           is_active?: boolean
           is_major?: boolean
+          isolation_penalty?: number
           metadata?: Json | null
           mobility_relevance?: number
           name?: string
           node_type?: string
           parent_node_id?: string | null
           population?: number
+          production_output?: number
           province_id: string
           resource_output?: Json
+          route_access_factor?: number
           session_id: string
           siege_turn_start?: number | null
+          stability_factor?: number
+          strategic_resource_tier?: number
+          strategic_resource_type?: string | null
           strategic_value?: number
           supply_relevance?: number
           throughput_military?: number
           toll_rate?: number
+          trade_efficiency?: number
           updated_at?: string
           urbanization_score?: number
+          wealth_output?: number
         }
         Update: {
           besieged_by?: string | null
           besieging_stack_id?: string | null
+          capacity_score?: number
           city_id?: string | null
+          connectivity_score?: number
           controlled_by?: string | null
           created_at?: string
           cumulative_trade_flow?: number
           defense_value?: number
+          development_level?: number
           economic_value?: number
           flow_role?: string
           fortification_level?: number
@@ -6375,25 +6464,35 @@ export type Database = {
           hex_r?: number
           hinterland_level?: number
           id?: string
+          importance_score?: number
+          incoming_production?: number
           infrastructure_level?: number
           is_active?: boolean
           is_major?: boolean
+          isolation_penalty?: number
           metadata?: Json | null
           mobility_relevance?: number
           name?: string
           node_type?: string
           parent_node_id?: string | null
           population?: number
+          production_output?: number
           province_id?: string
           resource_output?: Json
+          route_access_factor?: number
           session_id?: string
           siege_turn_start?: number | null
+          stability_factor?: number
+          strategic_resource_tier?: number
+          strategic_resource_type?: string | null
           strategic_value?: number
           supply_relevance?: number
           throughput_military?: number
           toll_rate?: number
+          trade_efficiency?: number
           updated_at?: string
           urbanization_score?: number
+          wealth_output?: number
         }
         Relationships: [
           {
@@ -6753,7 +6852,16 @@ export type Database = {
           stability: number
           stables_capacity: number
           stone_reserve: number
+          strategic_copper_tier: number
+          strategic_gold_tier: number
+          strategic_horses_tier: number
+          strategic_iron_tier: number
+          strategic_salt_tier: number
+          total_capacity: number
+          total_importance: number
           total_nodes: number | null
+          total_production: number
+          total_wealth: number
           updated_at: string
           wood_reserve: number
         }
@@ -6796,7 +6904,16 @@ export type Database = {
           stability?: number
           stables_capacity?: number
           stone_reserve?: number
+          strategic_copper_tier?: number
+          strategic_gold_tier?: number
+          strategic_horses_tier?: number
+          strategic_iron_tier?: number
+          strategic_salt_tier?: number
+          total_capacity?: number
+          total_importance?: number
           total_nodes?: number | null
+          total_production?: number
+          total_wealth?: number
           updated_at?: string
           wood_reserve?: number
         }
@@ -6839,7 +6956,16 @@ export type Database = {
           stability?: number
           stables_capacity?: number
           stone_reserve?: number
+          strategic_copper_tier?: number
+          strategic_gold_tier?: number
+          strategic_horses_tier?: number
+          strategic_iron_tier?: number
+          strategic_salt_tier?: number
+          total_capacity?: number
+          total_importance?: number
           total_nodes?: number | null
+          total_production?: number
+          total_wealth?: number
           updated_at?: string
           wood_reserve?: number
         }

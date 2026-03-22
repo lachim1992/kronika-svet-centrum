@@ -63,6 +63,16 @@ export interface StrategicNode {
   hinterland_level: number;
   resource_output: Record<string, number>;
   flow_role: string;
+  // Economy flow fields
+  production_output: number;
+  wealth_output: number;
+  capacity_score: number;
+  importance_score: number;
+  incoming_production: number;
+  connectivity_score: number;
+  route_access_factor: number;
+  trade_efficiency: number;
+  isolation_penalty: number;
 }
 
 export interface ProvinceRoute {
@@ -102,7 +112,7 @@ export function useProvinceGraph(sessionId: string) {
           .eq("session_id", sessionId),
         supabase
           .from("province_nodes")
-          .select("id, province_id, node_type, name, hex_q, hex_r, city_id, strategic_value, economic_value, defense_value, mobility_relevance, supply_relevance, controlled_by, garrison_strength, is_major, population, fortification_level, infrastructure_level, parent_node_id, is_active, metadata, throughput_military, toll_rate, cumulative_trade_flow, urbanization_score, hinterland_level, resource_output, flow_role")
+          .select("id, province_id, node_type, name, hex_q, hex_r, city_id, strategic_value, economic_value, defense_value, mobility_relevance, supply_relevance, controlled_by, garrison_strength, is_major, population, fortification_level, infrastructure_level, parent_node_id, is_active, metadata, throughput_military, toll_rate, cumulative_trade_flow, urbanization_score, hinterland_level, resource_output, flow_role, production_output, wealth_output, capacity_score, importance_score, incoming_production, connectivity_score, route_access_factor, trade_efficiency, isolation_penalty")
           .eq("session_id", sessionId),
         supabase
           .from("province_routes")
@@ -166,6 +176,15 @@ export function useProvinceGraph(sessionId: string) {
           hinterland_level: n.hinterland_level ?? 0,
           resource_output: (n.resource_output as any) || {},
           flow_role: n.flow_role || "neutral",
+          production_output: n.production_output ?? 0,
+          wealth_output: n.wealth_output ?? 0,
+          capacity_score: n.capacity_score ?? 0,
+          importance_score: n.importance_score ?? 0,
+          incoming_production: n.incoming_production ?? 0,
+          connectivity_score: n.connectivity_score ?? 0,
+          route_access_factor: n.route_access_factor ?? 1.0,
+          trade_efficiency: n.trade_efficiency ?? 1.0,
+          isolation_penalty: n.isolation_penalty ?? 0,
         })));
       }
       if (routesRes.data) {
