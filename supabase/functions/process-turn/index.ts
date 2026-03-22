@@ -20,26 +20,96 @@ import { computeStructuralBonuses, getOpenBordersBonuses, hasActiveEmbargo, getT
  * 4. Anomalies (isolation, trade boom, blockade) generate game_events
  */
 
-// --- Per-capita demand constants ---
-const DEMAND_PER_CAPITA = { peasants: 0.005, burghers: 0.010, clerics: 0.008 };
+// ═══════════════════════════════════════════════════════════════
+// CIVILIZATIONAL ECONOMY CONSTANTS
+// Population layers drive economy:
+//   Peasants → Production (food, raw materials)
+//   Burghers → Wealth (trade, crafts, tax)
+//   Warriors → Combat quality + discipline
+//   Clerics  → Capacity (administration) + Faith
+// ═══════════════════════════════════════════════════════════════
+
+// Per-capita demand (food consumption)
+const DEMAND_PER_CAPITA = { peasants: 0.005, burghers: 0.010, clerics: 0.008, warriors: 0.012 };
 const DEMAND_PER_CAPITA_FLAT = 0.006;
 const RATION_DEMAND_MULT: Record<string, number> = {
   equal: 1.0, elite: 0.95, austerity: 0.80, sacrifice: 1.15,
+};
+
+// Per-capita economic contribution
+const PRODUCTION_PER_PEASANT = 0.012;  // Peasants are primary producers
+const PRODUCTION_PER_BURGHER = 0.003;  // Burghers produce some crafts
+const WEALTH_PER_BURGHER = 0.015;      // Burghers are primary wealth generators
+const WEALTH_PER_PEASANT = 0.002;      // Peasants contribute market surplus
+const CAPACITY_PER_CLERIC = 0.010;     // Clerics administrate
+const CAPACITY_PER_BURGHER = 0.004;    // Burghers contribute infrastructure
+const FAITH_PER_CLERIC = 0.008;        // Clerics generate faith
+const FAITH_PER_WARRIOR = 0.002;       // Warriors contribute discipline/order
+
+// Mobilization penalties (% of mobilized manpower)
+const MOB_PRODUCTION_PENALTY_RATE = 0.15; // Each mobilized man costs 15% of a peasant's production
+const MOB_WEALTH_PENALTY_RATE = 0.08;     // Mobilization disrupts trade
+
+// Supply strain: army_size / capacity
+const SUPPLY_STRAIN_THRESHOLDS = {
+  healthy: 0.6,    // Below 60% → no penalty
+  stressed: 0.8,   // 60-80% → minor morale/attrition
+  strained: 1.0,   // 80-100% → significant penalties
+  collapsing: 1.5, // >100% → supply collapse
+};
+
+// Strategic resource unlock bonuses
+const STRATEGIC_TIER_BONUSES: Record<string, Record<number, any>> = {
+  iron: { 1: { combat_mult: 1.05 }, 2: { combat_mult: 1.12, heavy_infantry: true }, 3: { combat_mult: 1.20, elite_units: true } },
+  horses: { 1: { mobility: 1.1 }, 2: { cavalry_doctrine: true, mobility: 1.2 }, 3: { cavalry_doctrine: true, mobility: 1.35 } },
+  salt: { 1: { supply_bonus: 0.05 }, 2: { supply_bonus: 0.12 }, 3: { supply_bonus: 0.20 } },
+  copper: { 1: { wealth_mult: 1.05 }, 2: { wealth_mult: 1.10 }, 3: { wealth_mult: 1.15 } },
+  gold: { 1: { mercenary_access: true, wealth_mult: 1.08 }, 2: { wealth_mult: 1.15 }, 3: { wealth_mult: 1.25 } },
 };
 
 function computeCityDemand(city: any): number {
   const peas = city.population_peasants || 0;
   const burg = city.population_burghers || 0;
   const cler = city.population_clerics || 0;
+  const warr = city.population_warriors || 0;
   const rationMult = RATION_DEMAND_MULT[city.ration_policy] || 1.0;
-  if (peas + burg + cler > 0) {
+  if (peas + burg + cler + warr > 0) {
     return Math.round(
       (peas * DEMAND_PER_CAPITA.peasants +
        burg * DEMAND_PER_CAPITA.burghers +
-       cler * DEMAND_PER_CAPITA.clerics) * rationMult
+       cler * DEMAND_PER_CAPITA.clerics +
+       warr * DEMAND_PER_CAPITA.warriors) * rationMult
     );
   }
   return Math.round((city.population_total || 0) * DEMAND_PER_CAPITA_FLAT * rationMult);
+}
+
+// Per-city population-driven economy
+function computeCityLayerEconomy(city: any, buildingEffects: Record<string, number>) {
+  const peas = city.population_peasants || 0;
+  const burg = city.population_burghers || 0;
+  const cler = city.population_clerics || 0;
+  const warr = city.population_warriors || 0;
+
+  // Building multipliers (from completed buildings in this city)
+  const prodMult = 1 + (buildingEffects.production_modifier || 0) / 100;
+  const wealthMult = 1 + (buildingEffects.wealth_modifier || 0) / 100;
+  const capacityMult = 1 + (buildingEffects.capacity_modifier || 0) / 100;
+  const faithMult = 1 + (buildingEffects.faith_modifier || 0) / 100;
+
+  // Temple level boosts faith
+  const templeBonus = 1 + (city.temple_level || 0) * 0.15;
+
+  // Market level boosts wealth
+  const marketBonus = 1 + (city.market_level || 0) * 0.12;
+
+  return {
+    production: (peas * PRODUCTION_PER_PEASANT + burg * PRODUCTION_PER_BURGHER) * prodMult,
+    wealth: (burg * WEALTH_PER_BURGHER + peas * WEALTH_PER_PEASANT) * wealthMult * marketBonus,
+    capacity: (cler * CAPACITY_PER_CLERIC + burg * CAPACITY_PER_BURGHER) * capacityMult,
+    faith: (cler * FAITH_PER_CLERIC + warr * FAITH_PER_WARRIOR) * faithMult * templeBonus,
+    warriorRatio: (city.population_total || 1) > 0 ? warr / (city.population_total || 1) : 0,
+  };
 }
 
 // Flow role production multipliers: how well a node converts its base production
