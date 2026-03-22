@@ -588,9 +588,7 @@ const CityBuildingsPanel = ({
                   {upgradeCosts && (
                     <div className="flex gap-1 text-[9px] text-muted-foreground mt-0.5">
                       {upgradeCosts.cost_wealth > 0 && <span>💰{upgradeCosts.cost_wealth}</span>}
-                      {upgradeCosts.cost_wood > 0 && <span>🪵{upgradeCosts.cost_wood}</span>}
-                      {upgradeCosts.cost_stone > 0 && <span>🪨{upgradeCosts.cost_stone}</span>}
-                      {upgradeCosts.cost_iron > 0 && <span>⚙️{upgradeCosts.cost_iron}</span>}
+                      {(upgradeCosts.cost_wood + upgradeCosts.cost_stone + upgradeCosts.cost_iron) > 0 && <span>⚒️{upgradeCosts.cost_wood + upgradeCosts.cost_stone + upgradeCosts.cost_iron}</span>}
                     </div>
                   )}
                 </div>
