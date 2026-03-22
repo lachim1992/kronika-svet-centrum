@@ -48,7 +48,7 @@ interface Props {
   onTabChange?: (tab: string) => void;
 }
 
-type CitySortKey = "name" | "population" | "settlement" | "vulnerability";
+type CitySortKey = "name" | "population" | "settlement" | "vulnerability" | "balance";
 
 const EconomyTab = ({ sessionId, currentPlayerName, currentTurn, cities, resources, armies, myRole, onEntityClick, onRefetch, onTabChange }: Props) => {
   const [realm, setRealm] = useState<any>(null);
