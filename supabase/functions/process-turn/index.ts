@@ -20,26 +20,96 @@ import { computeStructuralBonuses, getOpenBordersBonuses, hasActiveEmbargo, getT
  * 4. Anomalies (isolation, trade boom, blockade) generate game_events
  */
 
-// --- Per-capita demand constants ---
-const DEMAND_PER_CAPITA = { peasants: 0.005, burghers: 0.010, clerics: 0.008 };
+// ═══════════════════════════════════════════════════════════════
+// CIVILIZATIONAL ECONOMY CONSTANTS
+// Population layers drive economy:
+//   Peasants → Production (food, raw materials)
+//   Burghers → Wealth (trade, crafts, tax)
+//   Warriors → Combat quality + discipline
+//   Clerics  → Capacity (administration) + Faith
+// ═══════════════════════════════════════════════════════════════
+
+// Per-capita demand (food consumption)
+const DEMAND_PER_CAPITA = { peasants: 0.005, burghers: 0.010, clerics: 0.008, warriors: 0.012 };
 const DEMAND_PER_CAPITA_FLAT = 0.006;
 const RATION_DEMAND_MULT: Record<string, number> = {
   equal: 1.0, elite: 0.95, austerity: 0.80, sacrifice: 1.15,
+};
+
+// Per-capita economic contribution
+const PRODUCTION_PER_PEASANT = 0.012;  // Peasants are primary producers
+const PRODUCTION_PER_BURGHER = 0.003;  // Burghers produce some crafts
+const WEALTH_PER_BURGHER = 0.015;      // Burghers are primary wealth generators
+const WEALTH_PER_PEASANT = 0.002;      // Peasants contribute market surplus
+const CAPACITY_PER_CLERIC = 0.010;     // Clerics administrate
+const CAPACITY_PER_BURGHER = 0.004;    // Burghers contribute infrastructure
+const FAITH_PER_CLERIC = 0.008;        // Clerics generate faith
+const FAITH_PER_WARRIOR = 0.002;       // Warriors contribute discipline/order
+
+// Mobilization penalties (% of mobilized manpower)
+const MOB_PRODUCTION_PENALTY_RATE = 0.15; // Each mobilized man costs 15% of a peasant's production
+const MOB_WEALTH_PENALTY_RATE = 0.08;     // Mobilization disrupts trade
+
+// Supply strain: army_size / capacity
+const SUPPLY_STRAIN_THRESHOLDS = {
+  healthy: 0.6,    // Below 60% → no penalty
+  stressed: 0.8,   // 60-80% → minor morale/attrition
+  strained: 1.0,   // 80-100% → significant penalties
+  collapsing: 1.5, // >100% → supply collapse
+};
+
+// Strategic resource unlock bonuses
+const STRATEGIC_TIER_BONUSES: Record<string, Record<number, any>> = {
+  iron: { 1: { combat_mult: 1.05 }, 2: { combat_mult: 1.12, heavy_infantry: true }, 3: { combat_mult: 1.20, elite_units: true } },
+  horses: { 1: { mobility: 1.1 }, 2: { cavalry_doctrine: true, mobility: 1.2 }, 3: { cavalry_doctrine: true, mobility: 1.35 } },
+  salt: { 1: { supply_bonus: 0.05 }, 2: { supply_bonus: 0.12 }, 3: { supply_bonus: 0.20 } },
+  copper: { 1: { wealth_mult: 1.05 }, 2: { wealth_mult: 1.10 }, 3: { wealth_mult: 1.15 } },
+  gold: { 1: { mercenary_access: true, wealth_mult: 1.08 }, 2: { wealth_mult: 1.15 }, 3: { wealth_mult: 1.25 } },
 };
 
 function computeCityDemand(city: any): number {
   const peas = city.population_peasants || 0;
   const burg = city.population_burghers || 0;
   const cler = city.population_clerics || 0;
+  const warr = city.population_warriors || 0;
   const rationMult = RATION_DEMAND_MULT[city.ration_policy] || 1.0;
-  if (peas + burg + cler > 0) {
+  if (peas + burg + cler + warr > 0) {
     return Math.round(
       (peas * DEMAND_PER_CAPITA.peasants +
        burg * DEMAND_PER_CAPITA.burghers +
-       cler * DEMAND_PER_CAPITA.clerics) * rationMult
+       cler * DEMAND_PER_CAPITA.clerics +
+       warr * DEMAND_PER_CAPITA.warriors) * rationMult
     );
   }
   return Math.round((city.population_total || 0) * DEMAND_PER_CAPITA_FLAT * rationMult);
+}
+
+// Per-city population-driven economy
+function computeCityLayerEconomy(city: any, buildingEffects: Record<string, number>) {
+  const peas = city.population_peasants || 0;
+  const burg = city.population_burghers || 0;
+  const cler = city.population_clerics || 0;
+  const warr = city.population_warriors || 0;
+
+  // Building multipliers (from completed buildings in this city)
+  const prodMult = 1 + (buildingEffects.production_modifier || 0) / 100;
+  const wealthMult = 1 + (buildingEffects.wealth_modifier || 0) / 100;
+  const capacityMult = 1 + (buildingEffects.capacity_modifier || 0) / 100;
+  const faithMult = 1 + (buildingEffects.faith_modifier || 0) / 100;
+
+  // Temple level boosts faith
+  const templeBonus = 1 + (city.temple_level || 0) * 0.15;
+
+  // Market level boosts wealth
+  const marketBonus = 1 + (city.market_level || 0) * 0.12;
+
+  return {
+    production: (peas * PRODUCTION_PER_PEASANT + burg * PRODUCTION_PER_BURGHER) * prodMult,
+    wealth: (burg * WEALTH_PER_BURGHER + peas * WEALTH_PER_PEASANT) * wealthMult * marketBonus,
+    capacity: (cler * CAPACITY_PER_CLERIC + burg * CAPACITY_PER_BURGHER) * capacityMult,
+    faith: (cler * FAITH_PER_CLERIC + warr * FAITH_PER_WARRIOR) * faithMult * templeBonus,
+    warriorRatio: (city.population_total || 1) > 0 ? warr / (city.population_total || 1) : 0,
+  };
 }
 
 // Flow role production multipliers: how well a node converts its base production
@@ -204,18 +274,22 @@ Deno.serve(async (req) => {
     }
 
     // ══════════════════════════════════════════
-    // BUILDING EFFECTS (aggregate)
+    // BUILDING EFFECTS (per-city aggregate)
     // ══════════════════════════════════════════
     const { data: completedBuildings } = await supabase.from("city_buildings")
       .select("city_id, effects").eq("session_id", sessionId).eq("status", "completed")
       .in("city_id", cityIds.length > 0 ? cityIds : ["00000000-0000-0000-0000-000000000000"]);
 
+    // Per-city building effects map
+    const cityBuildingEffects: Record<string, Record<string, number>> = {};
     const globalBuildingEffects: Record<string, number> = {};
     for (const b of (completedBuildings || [])) {
       const eff = b.effects as Record<string, number> | null;
       if (!eff) continue;
+      if (!cityBuildingEffects[b.city_id]) cityBuildingEffects[b.city_id] = {};
       for (const [k, v] of Object.entries(eff)) {
         if (typeof v !== "number") continue;
+        cityBuildingEffects[b.city_id][k] = (cityBuildingEffects[b.city_id][k] || 0) + v;
         globalBuildingEffects[k] = (globalBuildingEffects[k] || 0) + v;
       }
     }
@@ -276,16 +350,18 @@ Deno.serve(async (req) => {
     }
 
     // ══════════════════════════════════════════
-    // WORKFORCE & MANPOWER
+    // WORKFORCE & MANPOWER (with warriors)
     // ══════════════════════════════════════════
-    const ACTIVE_POP_WEIGHTS = { peasants: 1.0, burghers: 0.7, clerics: 0.2 };
-    let activePopRaw = 0, totalPopulation = 0;
+    const ACTIVE_POP_WEIGHTS = { peasants: 1.0, burghers: 0.7, clerics: 0.2, warriors: 0.9 };
+    let activePopRaw = 0, totalPopulation = 0, totalWarriors = 0;
     for (const city of myCities) {
       if (city.status && city.status !== "ok") continue;
       totalPopulation += city.population_total || 0;
+      totalWarriors += city.population_warriors || 0;
       activePopRaw += (city.population_peasants || 0) * ACTIVE_POP_WEIGHTS.peasants
                     + (city.population_burghers || 0) * ACTIVE_POP_WEIGHTS.burghers
-                    + (city.population_clerics || 0) * ACTIVE_POP_WEIGHTS.clerics;
+                    + (city.population_clerics || 0) * ACTIVE_POP_WEIGHTS.clerics
+                    + (city.population_warriors || 0) * ACTIVE_POP_WEIGHTS.warriors;
     }
     activePopRaw = Math.floor(activePopRaw);
     const effectiveRatio = Math.max(0.1, Math.min(0.9, 0.5 + activePopModifier));
@@ -294,36 +370,55 @@ Deno.serve(async (req) => {
     const mobilized = Math.floor(effectiveActivePop * mobRate);
     const workforce = effectiveActivePop - mobilized;
     const workforceRatio = effectiveActivePop > 0 ? workforce / effectiveActivePop : 1;
+    const warriorRatio = totalPopulation > 0 ? totalWarriors / totalPopulation : 0;
+
+    // Mobilization penalties on economy
+    const mobProductionPenalty = mobilized * MOB_PRODUCTION_PENALTY_RATE;
+    const mobWealthPenalty = mobilized * MOB_WEALTH_PENALTY_RATE;
 
     // ══════════════════════════════════════════
-    // ARMY UPKEEP
+    // ARMY UPKEEP + SUPPLY STRAIN
     // ══════════════════════════════════════════
     const { data: stacks } = await supabase.from("military_stacks")
       .select("id, unit_count, maintenance_cost")
       .eq("session_id", sessionId).eq("owner_player", playerName);
 
-    let armyProductionUpkeep = 0, armyWealthUpkeep = 0;
+    let totalArmySize = 0, armyProductionUpkeep = 0, armyWealthUpkeep = 0;
     for (const s of (stacks || [])) {
       const men = s.unit_count || 0;
-      armyProductionUpkeep += Math.ceil(men / 500);
-      armyWealthUpkeep += Math.ceil(men / 100);
+      totalArmySize += men;
+      // Mixed upkeep: 0.4 prod, 0.3 wealth (remaining via manpower/capacity implicitly)
+      armyProductionUpkeep += Math.ceil(men * 0.004); // ~2 per 500
+      armyWealthUpkeep += Math.ceil(men * 0.003);     // ~3 per 1000
     }
 
+    // Supply strain = army_size / logistic_capacity
+    const currentCapacity = Math.max(5, totalCapacity * 2 + (infra?.roads_level || 0) * 2);
+    const supplyStrain = currentCapacity > 0 ? totalArmySize / (currentCapacity * 100) : 0;
+
     // ══════════════════════════════════════════════════════════════
-    // ▶ PER-CITY NETWORK ECONOMY: PRODUCTION vs DEMAND
-    // Each city resolves its own food balance based on its linked
-    // province_node's production, isolation, and connectivity.
+    // ▶ PER-CITY CIVILIZATIONAL ECONOMY
+    // Each city's economy emerges from:
+    //   1. Population layers (peasants→prod, burghers→wealth, clerics→capacity/faith)
+    //   2. Node network (connectivity, isolation, flow role)
+    //   3. Buildings (per-city multipliers)
+    //   4. Mobilization penalties
     // ══════════════════════════════════════════════════════════════
     const grainRationMult = 1 + (grainRationModifier / 100);
     let globalGrainReserve = realm.grain_reserve || 0;
     let famineCityCount = 0;
     let totalDemand = 0;
     let totalCityProduction = 0;
+    let totalCityWealth = 0;
+    let totalCityCapacity = 0;
+    let totalFaith = 0;
 
     // Per-city breakdown for reporting
     const cityEconResults: Array<{
       cityId: string; cityName: string;
-      nodeProduction: number; demand: number; balance: number;
+      nodeProduction: number; layerProduction: number;
+      layerWealth: number; layerCapacity: number; layerFaith: number;
+      demand: number; balance: number;
       isolationPenalty: number; famine: boolean;
     }> = [];
 
@@ -331,33 +426,35 @@ Deno.serve(async (req) => {
       const cityDemand = Math.max(1, Math.round(computeCityDemand(city) * grainRationMult));
       totalDemand += cityDemand;
 
-      // Find linked node
+      // ── Population layer economy ──
+      const bldgEff = cityBuildingEffects[city.id] || {};
+      const layers = computeCityLayerEconomy(city, bldgEff);
+
+      // ── Node network production ──
       const node = cityNodeMap.get(city.id);
-      let cityProduction = 0;
+      let nodeProduction = 0;
       let isolationPenalty = 0;
 
       if (node) {
-        // Node-driven production: production_output includes isolation from compute-economy-flow
-        cityProduction = node.production_output || 0;
-        // Add incoming production from minor nodes feeding this major node
-        cityProduction += (node.incoming_production || 0) * 0.5;
-        // Flow role bonus
+        nodeProduction = node.production_output || 0;
+        nodeProduction += (node.incoming_production || 0) * 0.5;
         const roleMult = FLOW_ROLE_PRODUCTION_MULT[node.flow_role] || 1.0;
-        cityProduction *= roleMult;
+        nodeProduction *= roleMult;
         isolationPenalty = node.isolation_penalty || 0;
 
-        // Supply chain state: further reduce if disconnected
         const supply = supplyMap.get(node.id);
         if (supply && !supply.connected_to_capital) {
           const isoTurns = supply.isolation_turns || 0;
           const supplyMult = Math.max(0.3, 1 - isoTurns * 0.1);
-          cityProduction *= supplyMult;
+          nodeProduction *= supplyMult;
+          // Isolation also hits wealth and capacity
+          layers.wealth *= supplyMult;
+          layers.capacity *= Math.max(0.5, supplyMult);
 
-          // Generate isolation event after 3+ turns
           if (isoTurns >= 3) {
             newEvents.push({
               event_type: "city_isolated",
-              note: `${city.name} je ${isoTurns} kol odříznuto od hlavního města. Zásobování selhává, produkce klesá na ${Math.round(supplyMult * 100)}%.`,
+              note: `${city.name} je ${isoTurns} kol odříznuto od hlavního města. Zásobování selhává.`,
               importance: isoTurns >= 5 ? "critical" : "important",
               city_id: city.id,
               reference: { isolation_turns: isoTurns, supply_mult: supplyMult, node_id: node.id },
@@ -365,23 +462,27 @@ Deno.serve(async (req) => {
           }
         }
       } else {
-        // No linked node: fallback to share of macro production
         const cityShare = totalPopulation > 0 ? (city.population_total || 0) / totalPopulation : 1 / Math.max(1, myCities.length);
-        cityProduction = totalProduction * cityShare;
+        nodeProduction = totalProduction * cityShare;
       }
 
-      totalCityProduction += cityProduction;
+      // Combined city production = node production + population layer production
+      // Node gives base terrain/flow output, layers add demographic contribution
+      const cityProduction = nodeProduction + layers.production;
 
-      // Per-city balance
+      totalCityProduction += cityProduction;
+      totalCityWealth += layers.wealth;
+      totalCityCapacity += layers.capacity;
+      totalFaith += layers.faith;
+
+      // Per-city food balance
       const cityBalance = cityProduction - cityDemand;
       const cityFamine = cityBalance < 0 && globalGrainReserve <= 0;
 
       if (cityBalance >= 0) {
-        // Surplus goes to global reserve
-        globalGrainReserve += cityBalance * 0.5; // Half goes to reserve, half consumed
+        globalGrainReserve += cityBalance * 0.5;
       } else {
-        // Deficit drains from global reserve
-        globalGrainReserve += cityBalance; // negative
+        globalGrainReserve += cityBalance;
       }
 
       if (cityFamine) {
@@ -390,8 +491,10 @@ Deno.serve(async (req) => {
         const deathToll = Math.floor((city.population_total || 0) * 0.05);
         await supabase.from("cities").update({
           city_stability: newStability,
-          population_peasants: Math.max(0, (city.population_peasants || 0) - Math.floor(deathToll * 0.8)),
-          population_burghers: Math.max(0, (city.population_burghers || 0) - Math.floor(deathToll * 0.2)),
+          population_peasants: Math.max(0, (city.population_peasants || 0) - Math.floor(deathToll * 0.7)),
+          population_burghers: Math.max(0, (city.population_burghers || 0) - Math.floor(deathToll * 0.15)),
+          population_warriors: Math.max(0, (city.population_warriors || 0) - Math.floor(deathToll * 0.1)),
+          population_clerics: Math.max(0, (city.population_clerics || 0) - Math.floor(deathToll * 0.05)),
           famine_turn: true,
           famine_consecutive_turns: (city.famine_consecutive_turns || 0) + 1,
         }).eq("id", city.id);
@@ -399,7 +502,7 @@ Deno.serve(async (req) => {
         logEntries.push(`⚠️ Hladomor v ${city.name}! Ztráta ${deathToll} obyvatel.`);
         newEvents.push({
           event_type: "famine",
-          note: `Hladomor zachvátil ${city.name}. Produkce uzlu (${cityProduction.toFixed(1)}) nestačí na pokrytí poptávky (${cityDemand}). Zemřelo ${deathToll} obyvatel.`,
+          note: `Hladomor zachvátil ${city.name}. Produkce (${cityProduction.toFixed(1)}) nestačí na pokrytí poptávky (${cityDemand}). Zemřelo ${deathToll} obyvatel.`,
           importance: "critical",
           city_id: city.id,
           reference: { production: cityProduction, demand: cityDemand, death_toll: deathToll, isolation: isolationPenalty },
@@ -410,25 +513,34 @@ Deno.serve(async (req) => {
         }
       }
 
-      // Generate trade boom event for highly productive nodes
-      if (node && node.wealth_output > 5 && node.flow_role === "hub") {
+      // Trade boom event for hub nodes
+      if (node && layers.wealth > 3 && node.flow_role === "hub") {
         newEvents.push({
           event_type: "trade_boom",
-          note: `Obchodní centrum ${city.name} zažívá rozkvět. Bohatství uzlu: ${node.wealth_output.toFixed(1)}, konektivita: ${(node.connectivity_score || 0).toFixed(2)}.`,
+          note: `Obchodní centrum ${city.name} zažívá rozkvět. Bohatství: ${layers.wealth.toFixed(1)}.`,
           importance: "normal",
           city_id: city.id,
-          reference: { wealth_output: node.wealth_output, connectivity: node.connectivity_score, flow_role: node.flow_role },
+          reference: { wealth: layers.wealth, flow_role: node.flow_role },
         });
       }
 
       cityEconResults.push({
         cityId: city.id, cityName: city.name,
-        nodeProduction: Math.round(cityProduction * 10) / 10,
-        demand: cityDemand, balance: Math.round(cityBalance * 10) / 10,
+        nodeProduction: Math.round(nodeProduction * 10) / 10,
+        layerProduction: Math.round(layers.production * 10) / 10,
+        layerWealth: Math.round(layers.wealth * 10) / 10,
+        layerCapacity: Math.round(layers.capacity * 10) / 10,
+        layerFaith: Math.round(layers.faith * 10) / 10,
+        demand: cityDemand,
+        balance: Math.round((cityProduction - cityDemand) * 10) / 10,
         isolationPenalty: Math.round(isolationPenalty * 100),
         famine: cityFamine,
       });
     }
+
+    // Apply mobilization penalties to totals
+    totalCityProduction = Math.max(0, totalCityProduction - mobProductionPenalty);
+    totalCityWealth = Math.max(0, totalCityWealth - mobWealthPenalty);
 
     // Small empire buffer
     if (myCities.length <= 3) globalGrainReserve += 10;
@@ -440,13 +552,17 @@ Deno.serve(async (req) => {
     const netProduction = totalCityProduction - totalDemand - armyProductionUpkeep;
 
     // ══════════════════════════════════════════════════════════════
-    // ▶ WEALTH: TRADE ROUTES WITH GRAPH VALIDATION & INTERCEPCION
-    // Trade routes are validated through the province graph.
-    // Regulator nodes along the path take tolls.
-    // Blocked nodes interrupt trade.
+    // ▶ WEALTH: Layer-driven + Trade Routes + Graph Validation
+    // Wealth = city layers (burghers) + macro node wealth + trade
     // ══════════════════════════════════════════════════════════════
     const taxMult = 1 + (taxRateModifier / 100);
-    const wealthIncome = Math.max(0, Math.round(totalWealth * taxMult));
+    // Strategic resource wealth multipliers
+    const copperMult = STRATEGIC_TIER_BONUSES.copper[realm.strategic_copper_tier || 0]?.wealth_mult || 1.0;
+    const goldMult = STRATEGIC_TIER_BONUSES.gold[realm.strategic_gold_tier || 0]?.wealth_mult || 1.0;
+    const wealthFromLayers = totalCityWealth * copperMult * goldMult;
+    const wealthFromNodes = totalWealth; // From compute-economy-flow
+    const combinedWealth = wealthFromLayers + wealthFromNodes * 0.3; // Layers primary, nodes secondary
+    const wealthIncome = Math.max(0, Math.round(combinedWealth * taxMult));
     const sportFundingPct = realm.sport_funding_pct || 0;
     let newGoldReserve = (realm.gold_reserve || 0) + wealthIncome - armyWealthUpkeep;
 
@@ -601,18 +717,66 @@ Deno.serve(async (req) => {
     // ══════════════════════════════════════════
     // MANPOWER
     // ══════════════════════════════════════════
+    // ══════════════════════════════════════════
+    // MANPOWER (warriors contribute elite officers)
+    // ══════════════════════════════════════════
     let manpowerGrowth = 0;
     for (const c of myCities) {
+      // Peasants provide bulk manpower, warriors provide quality
       manpowerGrowth += Math.floor((c.population_peasants || 0) * 0.015);
+      manpowerGrowth += Math.floor((c.population_warriors || 0) * 0.005); // Small elite contribution
     }
     const mobilizationSpeed = civIdentity?.mobilization_speed || 1.0;
     manpowerGrowth = Math.floor(manpowerGrowth * mobilizationSpeed);
     const manpowerPool = (realm.manpower_pool || 0) + manpowerGrowth;
 
     // ══════════════════════════════════════════
-    // CAPACITY → LOGISTICS
+    // CAPACITY → LOGISTICS (layers + nodes)
     // ══════════════════════════════════════════
-    const logisticCapacity = Math.max(5, Math.round(totalCapacity * 2) + (infra?.roads_level || 0) * 2);
+    const logisticCapacity = Math.max(5,
+      Math.round(totalCapacity * 2 + totalCityCapacity) + (infra?.roads_level || 0) * 2
+    );
+
+    // ══════════════════════════════════════════
+    // FAITH (new axis: clerics + temples)
+    // ══════════════════════════════════════════
+    const currentFaith = realm.faith || 0;
+    // Faith grows from clerics, decays naturally
+    const faithDecay = Math.max(0, currentFaith * 0.02); // 2% natural decay
+    const faithGrowth = totalFaith - faithDecay;
+    const newFaith = Math.max(0, Math.min(100, currentFaith + faithGrowth));
+    // Faith effects: morale bonus, mobilization willingness
+    const faithMoraleMult = 1 + newFaith * 0.003; // Up to +30% morale at faith=100
+    const faithMobWillingness = newFaith > 50 ? 0.05 : (newFaith < 20 ? -0.05 : 0); // Faith affects unrest from mobilization
+
+    // ══════════════════════════════════════════
+    // SUPPLY STRAIN EVENTS
+    // ══════════════════════════════════════════
+    if (supplyStrain > SUPPLY_STRAIN_THRESHOLDS.collapsing) {
+      newEvents.push({
+        event_type: "supply_collapse",
+        note: `Zásobování armády kolabuje! Armáda (${totalArmySize} mužů) přesahuje logistickou kapacitu (${Math.round(currentCapacity * 100)}). Očekávejte ztráty a dezerci.`,
+        importance: "critical",
+        reference: { army_size: totalArmySize, capacity: currentCapacity, strain: supplyStrain },
+      });
+    } else if (supplyStrain > SUPPLY_STRAIN_THRESHOLDS.strained) {
+      newEvents.push({
+        event_type: "supply_strained",
+        note: `Zásobovací linie jsou pod tlakem. Armáda operuje na ${Math.round(supplyStrain * 100)}% kapacity.`,
+        importance: "important",
+        reference: { army_size: totalArmySize, capacity: currentCapacity, strain: supplyStrain },
+      });
+    }
+
+    // Mobilization unrest event
+    if (mobRate > 0.25 && faithMobWillingness <= 0) {
+      newEvents.push({
+        event_type: "mobilization_pressure",
+        note: `Vysoká mobilizace (${Math.round(mobRate * 100)}%) způsobuje nepokoje. ${newFaith < 30 ? "Nízká víra zhoršuje situaci." : ""}`,
+        importance: mobRate > 0.4 ? "critical" : "important",
+        reference: { mobilization_rate: mobRate, faith: newFaith, production_penalty: mobProductionPenalty },
+      });
+    }
 
     // ══════════════════════════════════════════
     // FACTION SATISFACTION
@@ -708,7 +872,7 @@ Deno.serve(async (req) => {
     }
 
     // ══════════════════════════════════════════
-    // UPDATE REALM RESOURCES
+    // UPDATE REALM RESOURCES (with faith + supply strain + mobilization penalties)
     // ══════════════════════════════════════════
     await supabase.from("realm_resources").update({
       grain_reserve: globalGrainReserve,
@@ -724,6 +888,13 @@ Deno.serve(async (req) => {
       last_turn_iron_prod: 0,
       gold_reserve: newGoldReserve,
       famine_city_count: famineCityCount,
+      faith: Math.round(newFaith * 100) / 100,
+      faith_growth: Math.round(faithGrowth * 100) / 100,
+      warrior_ratio: Math.round(warriorRatio * 1000) / 1000,
+      supply_strain: Math.round(supplyStrain * 1000) / 1000,
+      mobilization_production_penalty: Math.round(mobProductionPenalty * 10) / 10,
+      mobilization_wealth_penalty: Math.round(mobWealthPenalty * 10) / 10,
+      last_turn_faith_delta: Math.round(faithGrowth * 100) / 100,
       updated_at: new Date().toISOString(),
     }).eq("id", realm.id);
 
@@ -765,11 +936,11 @@ Deno.serve(async (req) => {
     await supabase.from("world_action_log").insert({
       session_id: sessionId, turn_number: currentTurn, player_name: playerName,
       action_type: "turn_processing",
-      description: `Kolo ${currentTurn}: ⚒️${totalCityProduction.toFixed(0)} 💰${totalWealth.toFixed(0)} 🏛️${totalCapacity.toFixed(0)} | pop ${totalPopulation} | manpower ${manpowerPool}`,
+      description: `Kolo ${currentTurn}: ⚒️${totalCityProduction.toFixed(0)} 💰${wealthIncome} 🏛️${logisticCapacity} ⛪${newFaith.toFixed(0)} | pop ${totalPopulation} | ⚔${totalWarriors} | manpower ${manpowerPool}`,
       metadata: {
         total_production: totalCityProduction,
-        total_wealth: totalWealth,
-        total_capacity: totalCapacity,
+        total_wealth: combinedWealth,
+        total_capacity: logisticCapacity,
         total_importance: totalImportance,
         demand: totalDemand,
         net_production: netProduction,
@@ -778,6 +949,12 @@ Deno.serve(async (req) => {
         manpower_pool: manpowerPool,
         famine_cities: famineCityCount,
         workforce_ratio: workforceRatio,
+        warrior_ratio: warriorRatio,
+        faith: newFaith,
+        faith_growth: faithGrowth,
+        supply_strain: supplyStrain,
+        army_size: totalArmySize,
+        mobilization_penalties: { production: mobProductionPenalty, wealth: mobWealthPenalty },
         trade_gold: tradeGoldDelta,
         tolls_paid: totalTollsPaid,
         events_generated: newEvents.length,
@@ -788,16 +965,20 @@ Deno.serve(async (req) => {
     return new Response(JSON.stringify({
       ok: true, turn: currentTurn,
       summary: {
-        totalProduction: totalCityProduction, totalWealth, totalCapacity, totalImportance,
+        totalProduction: totalCityProduction, totalWealth: combinedWealth,
+        totalCapacity: logisticCapacity, totalImportance,
         demand: totalDemand, netProduction,
         grainReserve: globalGrainReserve, granaryCapacity,
         goldReserve: newGoldReserve,
         manpowerPool, logisticCapacity, totalPopulation,
+        faith: newFaith, faithGrowth,
+        warriorRatio, supplyStrain,
         famineCities: famineCityCount,
         tradeGoldDelta, tollsPaid: totalTollsPaid,
         eventsGenerated: newEvents.length,
         cityEconomy: cityEconResults,
         lawEffects: { taxRateModifier, grainRationModifier, tradeRestriction },
+        mobPenalties: { production: mobProductionPenalty, wealth: mobWealthPenalty },
       },
     }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
 

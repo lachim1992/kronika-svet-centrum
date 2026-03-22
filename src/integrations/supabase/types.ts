@@ -891,6 +891,7 @@ export type Database = {
           population_clerics: number
           population_peasants: number
           population_total: number
+          population_warriors: number | null
           province: string | null
           province_id: string | null
           province_q: number
@@ -959,6 +960,7 @@ export type Database = {
           population_clerics?: number
           population_peasants?: number
           population_total?: number
+          population_warriors?: number | null
           province?: string | null
           province_id?: string | null
           province_q?: number
@@ -1027,6 +1029,7 @@ export type Database = {
           population_clerics?: number
           population_peasants?: number
           population_total?: number
+          population_warriors?: number | null
           province?: string | null
           province_id?: string | null
           province_q?: number
@@ -6821,6 +6824,8 @@ export type Database = {
           created_at: string
           cultural_prestige: number
           economic_prestige: number
+          faith: number | null
+          faith_growth: number | null
           famine_city_count: number
           gold_reserve: number
           grain_reserve: number
@@ -6832,6 +6837,7 @@ export type Database = {
           knowledge: number
           labor_reserve: number
           last_processed_turn: number
+          last_turn_faith_delta: number | null
           last_turn_grain_cons: number
           last_turn_grain_net: number
           last_turn_grain_prod: number
@@ -6842,7 +6848,9 @@ export type Database = {
           manpower_committed: number
           manpower_pool: number
           military_prestige: number
+          mobilization_production_penalty: number | null
           mobilization_rate: number
+          mobilization_wealth_penalty: number | null
           player_name: string
           prestige: number
           realm_report_cached: string | null
@@ -6857,12 +6865,14 @@ export type Database = {
           strategic_horses_tier: number
           strategic_iron_tier: number
           strategic_salt_tier: number
+          supply_strain: number | null
           total_capacity: number
           total_importance: number
           total_nodes: number | null
           total_production: number
           total_wealth: number
           updated_at: string
+          warrior_ratio: number | null
           wood_reserve: number
         }
         Insert: {
@@ -6873,6 +6883,8 @@ export type Database = {
           created_at?: string
           cultural_prestige?: number
           economic_prestige?: number
+          faith?: number | null
+          faith_growth?: number | null
           famine_city_count?: number
           gold_reserve?: number
           grain_reserve?: number
@@ -6884,6 +6896,7 @@ export type Database = {
           knowledge?: number
           labor_reserve?: number
           last_processed_turn?: number
+          last_turn_faith_delta?: number | null
           last_turn_grain_cons?: number
           last_turn_grain_net?: number
           last_turn_grain_prod?: number
@@ -6894,7 +6907,9 @@ export type Database = {
           manpower_committed?: number
           manpower_pool?: number
           military_prestige?: number
+          mobilization_production_penalty?: number | null
           mobilization_rate?: number
+          mobilization_wealth_penalty?: number | null
           player_name: string
           prestige?: number
           realm_report_cached?: string | null
@@ -6909,12 +6924,14 @@ export type Database = {
           strategic_horses_tier?: number
           strategic_iron_tier?: number
           strategic_salt_tier?: number
+          supply_strain?: number | null
           total_capacity?: number
           total_importance?: number
           total_nodes?: number | null
           total_production?: number
           total_wealth?: number
           updated_at?: string
+          warrior_ratio?: number | null
           wood_reserve?: number
         }
         Update: {
@@ -6925,6 +6942,8 @@ export type Database = {
           created_at?: string
           cultural_prestige?: number
           economic_prestige?: number
+          faith?: number | null
+          faith_growth?: number | null
           famine_city_count?: number
           gold_reserve?: number
           grain_reserve?: number
@@ -6936,6 +6955,7 @@ export type Database = {
           knowledge?: number
           labor_reserve?: number
           last_processed_turn?: number
+          last_turn_faith_delta?: number | null
           last_turn_grain_cons?: number
           last_turn_grain_net?: number
           last_turn_grain_prod?: number
@@ -6946,7 +6966,9 @@ export type Database = {
           manpower_committed?: number
           manpower_pool?: number
           military_prestige?: number
+          mobilization_production_penalty?: number | null
           mobilization_rate?: number
+          mobilization_wealth_penalty?: number | null
           player_name?: string
           prestige?: number
           realm_report_cached?: string | null
@@ -6961,12 +6983,14 @@ export type Database = {
           strategic_horses_tier?: number
           strategic_iron_tier?: number
           strategic_salt_tier?: number
+          supply_strain?: number | null
           total_capacity?: number
           total_importance?: number
           total_nodes?: number | null
           total_production?: number
           total_wealth?: number
           updated_at?: string
+          warrior_ratio?: number | null
           wood_reserve?: number
         }
         Relationships: [
