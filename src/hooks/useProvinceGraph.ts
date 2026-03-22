@@ -55,6 +55,14 @@ export interface StrategicNode {
   parent_node_id: string | null;
   is_active: boolean;
   metadata: Record<string, any>;
+  // Regulation & urbanization
+  throughput_military: number;
+  toll_rate: number;
+  cumulative_trade_flow: number;
+  urbanization_score: number;
+  hinterland_level: number;
+  resource_output: Record<string, number>;
+  flow_role: string;
 }
 
 export interface ProvinceRoute {
