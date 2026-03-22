@@ -183,11 +183,10 @@ const CityManagement = ({ sessionId, cityId, currentPlayerName, currentTurn, onB
 
     setBuilding(true);
     try {
-      // Deduct resources
+      // Deduct resources (new economy)
+      const prodCost = (t.cost_wood || 0) + (t.cost_stone || 0) + (t.cost_iron || 0);
       await supabase.from("realm_resources").update({
-        wood_reserve: (realm.wood_reserve || 0) - t.cost_wood,
-        stone_reserve: (realm.stone_reserve || 0) - t.cost_stone,
-        iron_reserve: (realm.iron_reserve || 0) - t.cost_iron,
+        production_reserve: Math.max(0, (realm.production_reserve || 0) - prodCost),
         gold_reserve: (realm.gold_reserve || 0) - t.cost_wealth,
       } as any).eq("id", realm.id);
 
