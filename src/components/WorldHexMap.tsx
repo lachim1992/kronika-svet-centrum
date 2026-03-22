@@ -359,6 +359,7 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
   const [showLegend, setShowLegend] = useState(false);
   const [showFoundDialog, setShowFoundDialog] = useState(false);
   const [showProvinceLayer, setShowProvinceLayer] = useState(true);
+  const [showStrategicLayer, setShowStrategicLayer] = useState(false);
   const [expandingProvince, setExpandingProvince] = useState(false);
 
   // Province data
