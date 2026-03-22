@@ -274,18 +274,22 @@ Deno.serve(async (req) => {
     }
 
     // ══════════════════════════════════════════
-    // BUILDING EFFECTS (aggregate)
+    // BUILDING EFFECTS (per-city aggregate)
     // ══════════════════════════════════════════
     const { data: completedBuildings } = await supabase.from("city_buildings")
       .select("city_id, effects").eq("session_id", sessionId).eq("status", "completed")
       .in("city_id", cityIds.length > 0 ? cityIds : ["00000000-0000-0000-0000-000000000000"]);
 
+    // Per-city building effects map
+    const cityBuildingEffects: Record<string, Record<string, number>> = {};
     const globalBuildingEffects: Record<string, number> = {};
     for (const b of (completedBuildings || [])) {
       const eff = b.effects as Record<string, number> | null;
       if (!eff) continue;
+      if (!cityBuildingEffects[b.city_id]) cityBuildingEffects[b.city_id] = {};
       for (const [k, v] of Object.entries(eff)) {
         if (typeof v !== "number") continue;
+        cityBuildingEffects[b.city_id][k] = (cityBuildingEffects[b.city_id][k] || 0) + v;
         globalBuildingEffects[k] = (globalBuildingEffects[k] || 0) + v;
       }
     }
