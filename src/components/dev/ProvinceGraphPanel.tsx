@@ -3,8 +3,9 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Loader2, Network, RefreshCw, MapPin, Landmark, Shield, Anchor, Store, Mountain, Wheat, Route } from "lucide-react";
+import { Loader2, Network, RefreshCw, MapPin, Landmark, Shield, Anchor, Store, Mountain, Wheat, Route, Church, Package, Home } from "lucide-react";
 import { toast } from "sonner";
+import { FLOW_ROLE_LABELS, HINTERLAND_LABELS } from "@/lib/strategicGraph";
 import { useProvinceGraph, type ProvinceNode, type ProvinceEdge, type StrategicNode, type ProvinceRoute } from "@/hooks/useProvinceGraph";
 
 interface Props { sessionId: string; }
@@ -23,6 +24,9 @@ const NODE_TYPE_ICONS: Record<string, { icon: typeof Landmark; label: string; co
   trade_hub: { icon: Store, label: "Tržiště", color: "text-emerald-400" },
   pass: { icon: Mountain, label: "Průsmyk", color: "text-stone-400" },
   resource_node: { icon: Wheat, label: "Zdroj", color: "text-amber-400" },
+  village_cluster: { icon: Home, label: "Vesnice", color: "text-orange-300" },
+  religious_center: { icon: Church, label: "Chrám", color: "text-purple-400" },
+  logistic_hub: { icon: Package, label: "Logistika", color: "text-cyan-400" },
 };
 
 const NODE_TYPE_SHAPES: Record<string, string> = {
@@ -125,9 +129,24 @@ function ProvinceGraphSVG({ nodes, edges, strategicNodes, routes, showNodes, sho
 }
 
 /* ─── Cards ─── */
-function StrategicNodeCard({ node }: { node: StrategicNode }) {
+function StrategicNodeCard({ node, allNodes }: { node: StrategicNode; allNodes: StrategicNode[] }) {
   const cfg = NODE_TYPE_ICONS[node.node_type] || NODE_TYPE_ICONS.resource_node;
   const Icon = cfg.icon;
+  const parentNode = node.parent_node_id ? allNodes.find(n => n.id === node.parent_node_id) : null;
+  const childNodes = allNodes.filter(n => n.parent_node_id === node.id);
+  const roleLabel = FLOW_ROLE_LABELS[node.flow_role] || node.flow_role;
+  const hintLabel = HINTERLAND_LABELS[node.hinterland_level] ?? `Lv${node.hinterland_level}`;
+  const resOut = node.resource_output || {};
+  const hasResOutput = Object.values(resOut).some(v => v > 0);
+
+  const ROLE_COLORS: Record<string, string> = {
+    neutral: "bg-muted text-muted-foreground",
+    regulator: "bg-red-500/20 text-red-300",
+    gateway: "bg-yellow-500/20 text-yellow-300",
+    producer: "bg-emerald-500/20 text-emerald-300",
+    hub: "bg-blue-500/20 text-blue-300",
+  };
+
   return (
     <Card className="border-border">
       <CardHeader className="pb-1 pt-2 px-3">
@@ -135,9 +154,13 @@ function StrategicNodeCard({ node }: { node: StrategicNode }) {
           <Icon className={`h-3.5 w-3.5 ${cfg.color}`} />
           {node.name}
           <Badge variant="outline" className="text-[7px] ml-auto">{cfg.label}</Badge>
+          <Badge className={`text-[7px] ${ROLE_COLORS[node.flow_role] || ROLE_COLORS.neutral}`}>
+            {roleLabel}
+          </Badge>
         </CardTitle>
       </CardHeader>
-      <CardContent className="px-3 pb-2 space-y-1">
+      <CardContent className="px-3 pb-2 space-y-1.5">
+        {/* Core stats */}
         <div className="grid grid-cols-5 gap-1 text-[9px]">
           {[{ l: "Strat", v: node.strategic_value }, { l: "Ekon", v: node.economic_value },
             { l: "Obrana", v: node.defense_value }, { l: "Mobil", v: node.mobility_relevance },
@@ -148,11 +171,65 @@ function StrategicNodeCard({ node }: { node: StrategicNode }) {
             </div>
           ))}
         </div>
-        <p className="text-[8px] text-muted-foreground">
-          Hex: ({node.hex_q}, {node.hex_r})
-          {node.metadata?.resource_type && ` · ${node.metadata.resource_type}`}
-          {node.metadata?.elevation && ` · elev:${node.metadata.elevation}`}
-        </p>
+
+        {/* Regulation & urbanization row */}
+        <div className="grid grid-cols-4 gap-1 text-[9px]">
+          <div className="bg-muted/40 rounded p-0.5 text-center">
+            <span className="text-muted-foreground block text-[7px]">Průchod</span>
+            <span className="font-bold">{Math.round(node.throughput_military * 100)}%</span>
+          </div>
+          <div className="bg-muted/40 rounded p-0.5 text-center">
+            <span className="text-muted-foreground block text-[7px]">Clo</span>
+            <span className="font-bold">{Math.round(node.toll_rate * 100)}%</span>
+          </div>
+          <div className="bg-muted/40 rounded p-0.5 text-center">
+            <span className="text-muted-foreground block text-[7px]">Urbanizace</span>
+            <span className="font-bold">{Math.round(node.urbanization_score)}</span>
+          </div>
+          <div className="bg-muted/40 rounded p-0.5 text-center">
+            <span className="text-muted-foreground block text-[7px]">Zástavba</span>
+            <span className="font-bold">{hintLabel}</span>
+          </div>
+        </div>
+
+        {/* Resource output */}
+        {hasResOutput && (
+          <div className="flex flex-wrap gap-1.5 text-[8px]">
+            {resOut.grain > 0 && <span>🌾{resOut.grain}</span>}
+            {resOut.wood > 0 && <span>🪵{resOut.wood}</span>}
+            {resOut.stone > 0 && <span>🧱{resOut.stone}</span>}
+            {resOut.iron > 0 && <span>⛏{resOut.iron}</span>}
+            {resOut.wealth > 0 && <span>💰{resOut.wealth}</span>}
+          </div>
+        )}
+
+        {/* Trade flow + hierarchy */}
+        <div className="flex items-center gap-2 text-[8px] text-muted-foreground flex-wrap">
+          <span>Hex: ({node.hex_q}, {node.hex_r})</span>
+          <span>· Tok: {Math.round(node.cumulative_trade_flow)}</span>
+          {node.is_major && <Badge variant="secondary" className="text-[6px] h-3">MAJOR</Badge>}
+          {!node.is_active && <Badge variant="destructive" className="text-[6px] h-3">NEAKTIVNÍ</Badge>}
+        </div>
+
+        {/* Parent / children */}
+        {parentNode && (
+          <p className="text-[8px] text-muted-foreground">
+            ↑ Rodič: <span className="text-foreground font-semibold">{parentNode.name}</span>
+          </p>
+        )}
+        {childNodes.length > 0 && (
+          <div className="flex flex-wrap gap-1">
+            {childNodes.map(c => (
+              <Badge key={c.id} variant="outline" className="text-[6px]">
+                ↓ {c.name}
+              </Badge>
+            ))}
+          </div>
+        )}
+
+        {node.metadata?.resource_type && (
+          <p className="text-[7px] text-muted-foreground">Surovina: {node.metadata.resource_type}</p>
+        )}
       </CardContent>
     </Card>
   );
@@ -333,7 +410,7 @@ export default function ProvinceGraphPanel({ sessionId }: Props) {
             <p className="text-xs text-muted-foreground text-center py-4">Žádné strategické nody. Klikněte "Nody".</p>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-              {strategicNodes.map(n => <StrategicNodeCard key={n.id} node={n} />)}
+              {strategicNodes.map(n => <StrategicNodeCard key={n.id} node={n} allNodes={strategicNodes} />)}
             </div>
           )}
         </TabsContent>
