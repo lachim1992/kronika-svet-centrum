@@ -350,16 +350,18 @@ Deno.serve(async (req) => {
     }
 
     // ══════════════════════════════════════════
-    // WORKFORCE & MANPOWER
+    // WORKFORCE & MANPOWER (with warriors)
     // ══════════════════════════════════════════
-    const ACTIVE_POP_WEIGHTS = { peasants: 1.0, burghers: 0.7, clerics: 0.2 };
-    let activePopRaw = 0, totalPopulation = 0;
+    const ACTIVE_POP_WEIGHTS = { peasants: 1.0, burghers: 0.7, clerics: 0.2, warriors: 0.9 };
+    let activePopRaw = 0, totalPopulation = 0, totalWarriors = 0;
     for (const city of myCities) {
       if (city.status && city.status !== "ok") continue;
       totalPopulation += city.population_total || 0;
+      totalWarriors += city.population_warriors || 0;
       activePopRaw += (city.population_peasants || 0) * ACTIVE_POP_WEIGHTS.peasants
                     + (city.population_burghers || 0) * ACTIVE_POP_WEIGHTS.burghers
-                    + (city.population_clerics || 0) * ACTIVE_POP_WEIGHTS.clerics;
+                    + (city.population_clerics || 0) * ACTIVE_POP_WEIGHTS.clerics
+                    + (city.population_warriors || 0) * ACTIVE_POP_WEIGHTS.warriors;
     }
     activePopRaw = Math.floor(activePopRaw);
     const effectiveRatio = Math.max(0.1, Math.min(0.9, 0.5 + activePopModifier));
@@ -368,20 +370,31 @@ Deno.serve(async (req) => {
     const mobilized = Math.floor(effectiveActivePop * mobRate);
     const workforce = effectiveActivePop - mobilized;
     const workforceRatio = effectiveActivePop > 0 ? workforce / effectiveActivePop : 1;
+    const warriorRatio = totalPopulation > 0 ? totalWarriors / totalPopulation : 0;
+
+    // Mobilization penalties on economy
+    const mobProductionPenalty = mobilized * MOB_PRODUCTION_PENALTY_RATE;
+    const mobWealthPenalty = mobilized * MOB_WEALTH_PENALTY_RATE;
 
     // ══════════════════════════════════════════
-    // ARMY UPKEEP
+    // ARMY UPKEEP + SUPPLY STRAIN
     // ══════════════════════════════════════════
     const { data: stacks } = await supabase.from("military_stacks")
       .select("id, unit_count, maintenance_cost")
       .eq("session_id", sessionId).eq("owner_player", playerName);
 
-    let armyProductionUpkeep = 0, armyWealthUpkeep = 0;
+    let totalArmySize = 0, armyProductionUpkeep = 0, armyWealthUpkeep = 0;
     for (const s of (stacks || [])) {
       const men = s.unit_count || 0;
-      armyProductionUpkeep += Math.ceil(men / 500);
-      armyWealthUpkeep += Math.ceil(men / 100);
+      totalArmySize += men;
+      // Mixed upkeep: 0.4 prod, 0.3 wealth (remaining via manpower/capacity implicitly)
+      armyProductionUpkeep += Math.ceil(men * 0.004); // ~2 per 500
+      armyWealthUpkeep += Math.ceil(men * 0.003);     // ~3 per 1000
     }
+
+    // Supply strain = army_size / logistic_capacity
+    const currentCapacity = Math.max(5, totalCapacity * 2 + (infra?.roads_level || 0) * 2);
+    const supplyStrain = currentCapacity > 0 ? totalArmySize / (currentCapacity * 100) : 0;
 
     // ══════════════════════════════════════════════════════════════
     // ▶ PER-CITY NETWORK ECONOMY: PRODUCTION vs DEMAND
