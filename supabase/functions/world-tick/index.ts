@@ -684,8 +684,8 @@ Deno.serve(async (req) => {
         { data: graphNodes },
         { data: graphRoutes },
       ] = await Promise.all([
-        supabase.from("province_nodes").select("id, province_id, node_type, controlled_by, strategic_value, economic_value, defense_value").eq("session_id", sessionId),
-        supabase.from("province_routes").select("node_a_id, node_b_id, control_state").eq("session_id", sessionId),
+        supabase.from("province_nodes").select("id, province_id, node_type, controlled_by, strategic_value, economic_value, defense_value, is_major, population, city_id").eq("session_id", sessionId),
+        supabase.from("province_routes").select("node_a_id, node_b_id, control_state, capacity_value, damage_level, safety_value, speed_value").eq("session_id", sessionId),
       ]);
 
       if (graphNodes && graphNodes.length > 0) {
