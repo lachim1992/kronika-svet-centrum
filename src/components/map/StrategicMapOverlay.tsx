@@ -73,11 +73,19 @@ interface StrategicNode {
 interface ProvinceRoute {
   id: string; node_a: string; node_b: string; route_type: string;
   capacity_value: number; control_state: string; upgrade_level: number;
+  hex_path_cost: number | null; hex_bottleneck_q: number | null; hex_bottleneck_r: number | null;
+  hex_path_length: number | null;
 }
 interface SupplyState {
   node_id: string; connected_to_capital: boolean; supply_level: number;
   isolation_turns: number; hop_distance: number | null;
   production_modifier: number; stability_modifier: number; morale_modifier: number;
+}
+interface FlowPath {
+  id: string; route_id: string | null; node_a: string; node_b: string;
+  flow_type: string; hex_path: Array<{ q: number; r: number; cost: number }>;
+  total_cost: number; bottleneck_hex: { q: number; r: number; cost: number } | null;
+  path_length: number;
 }
 
 interface FlowParticle {
@@ -86,6 +94,8 @@ interface FlowParticle {
   fromX: number; fromY: number;
   toX: number; toY: number;
   intensity: number;
+  /** SVG path data following hex waypoints */
+  svgPath?: string;
 }
 
 interface Props {
