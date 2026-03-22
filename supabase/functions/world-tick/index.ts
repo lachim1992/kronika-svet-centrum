@@ -901,13 +901,12 @@ Deno.serve(async (req) => {
               for (const isoNode of isolatedNodes) {
                 const linkedNode = graphNodes.find((n: any) => n.id === isoNode.node_id && n.city_id);
                 if (linkedNode?.city_id) {
-                  await supabase.rpc("", {}).catch(() => {});
-                  // Direct update: reduce stability of linked city
-                  await supabase.from("cities").update({
-                    city_stability: Math.max(0,
-                      (await supabase.from("cities").select("city_stability").eq("id", linkedNode.city_id).single()).data?.city_stability + isoNode.stability_modifier
-                    ),
-                  }).eq("id", linkedNode.city_id);
+                  const { data: cityData } = await supabase.from("cities").select("city_stability").eq("id", linkedNode.city_id).single();
+                  if (cityData) {
+                    await supabase.from("cities").update({
+                      city_stability: Math.max(0, cityData.city_stability + isoNode.stability_modifier),
+                    }).eq("id", linkedNode.city_id);
+                  }
                 }
               }
 
