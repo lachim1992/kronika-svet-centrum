@@ -46,21 +46,13 @@ Generate starting conditions as JSON:
 {
   "realm_resources": {
     "grain_reserve": <int 10-40>,
-    "wood_reserve": <int 5-25>,
-    "stone_reserve": <int 3-20>,
-    "iron_reserve": <int 2-15>,
+    "production_reserve": <int 20-80>,
     "horses_reserve": <int 0-15>,
     "gold_reserve": <int 50-200>,
+    "faith_reserve": <int 0-20>,
     "stability": <int 55-80>,
     "granary_capacity": <int 300-800>,
     "stables_capacity": <int 50-200>
-  },
-  "player_resources": {
-    "food": { "income": <int 2-8>, "upkeep": <int 1-4>, "stockpile": <int 5-20> },
-    "wood": { "income": <int 1-6>, "upkeep": <int 0-3>, "stockpile": <int 3-15> },
-    "stone": { "income": <int 1-4>, "upkeep": <int 0-2>, "stockpile": <int 1-10> },
-    "iron": { "income": <int 0-3>, "upkeep": <int 0-1>, "stockpile": <int 0-8> },
-    "wealth": { "income": <int 1-5>, "upkeep": <int 0-2>, "stockpile": <int 3-15> }
   },
   "settlement": {
     "population_total": <int 800-1500>,
