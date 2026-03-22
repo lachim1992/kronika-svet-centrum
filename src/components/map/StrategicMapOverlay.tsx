@@ -21,6 +21,20 @@ const FLOW_COLORS = {
   faith:      "hsl(280, 65%, 60%)",  // purple
 } as const;
 
+/** Density-based color ramp: low → high traffic */
+function densityColor(density: number, maxDensity: number): string {
+  const t = maxDensity > 1 ? Math.min(1, (density - 1) / (maxDensity - 1)) : 0;
+  // green → yellow → orange → red
+  const hue = 120 - t * 120; // 120=green, 60=yellow, 0=red
+  const sat = 50 + t * 30;
+  const light = 50 - t * 5;
+  return `hsl(${hue}, ${sat}%, ${light}%)`;
+}
+function densityWidth(density: number, maxDensity: number, baseWidth: number): number {
+  const t = maxDensity > 1 ? Math.min(1, (density - 1) / (maxDensity - 1)) : 0;
+  return baseWidth + t * 3; // up to +3px for busiest
+}
+
 const FLOW_PARTICLE_SIZES = {
   production: { r: 2.0, rMax: 2.8 },
   wealth:     { r: 1.5, rMax: 2.2 },
