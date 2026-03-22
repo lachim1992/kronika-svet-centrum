@@ -142,6 +142,7 @@ Deno.serve(async (req) => {
             name: `Tržiště ${prov.name}`, hex_q: bq, hex_r: br,
             strategic_value: 4, economic_value: 9, defense_value: 2,
             mobility_relevance: 8, supply_relevance: 7,
+            is_major: true,
             metadata: { adjacent_provinces: best[1].size },
           });
         }

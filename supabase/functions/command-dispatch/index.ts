@@ -1506,9 +1506,10 @@ async function executeFortifyNode(
     if (!stack) return { events: [], error: "Stack not found" };
     if (stack.player_name !== actor.name) return { events: [], error: "Not your stack" };
 
-    // Set stack's current node and update node control
+    // Set stack's current node, stance and update node control
     await supabase.from("military_stacks").update({
       current_node_id: nodeId,
+      stance: "defending",
     }).eq("id", stackId);
 
     await supabase.from("province_nodes").update({
