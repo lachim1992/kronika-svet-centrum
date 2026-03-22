@@ -210,6 +210,24 @@ const StrategicOverlay = memo(function StrategicOverlay({ sessionId, currentPlay
     setBusy(false);
   };
 
+  const handleStartProject = async (projectType: string, nodeId?: string, routeId?: string) => {
+    setBusy(true);
+    const res = await startProject({
+      sessionId, turnNumber, playerName: currentPlayerName,
+      projectType, nodeId, routeId,
+    });
+    if (res.ok) { toast.success("Projekt zahájen"); await loadData(); setNewProjectType(""); }
+    else toast.error(res.error || "Chyba");
+    setBusy(false);
+  };
+
+  const handleCancelProject = async (projectId: string) => {
+    setBusy(true);
+    const res = await cancelProject({ sessionId, turnNumber, playerName: currentPlayerName, projectId });
+    if (res.ok) { toast.success("Projekt zrušen"); await loadData(); }
+    else toast.error(res.error || "Chyba");
+    setBusy(false);
+  };
   const NodeIcon = ({ type }: { type: string }) => {
     const Icon = NODE_ICONS[type] || Landmark;
     return <Icon className={`h-3.5 w-3.5 ${NODE_COLORS[type] || "text-muted-foreground"}`} />;
