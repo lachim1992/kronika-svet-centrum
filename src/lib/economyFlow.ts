@@ -11,6 +11,7 @@ export const MACRO_LAYER_LABELS = {
   production: "Produkce",
   wealth: "Bohatství",
   capacity: "Kapacita",
+  faith: "Víra",
 } as const;
 
 export const MACRO_LAYER_DESCRIPTIONS = {

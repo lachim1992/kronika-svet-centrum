@@ -80,6 +80,7 @@ const RealmIndicators = ({ realm, cities, currentTurn }: Props) => {
   const peasantPct = stats.totalPop > 0 ? Math.round((stats.totalPeasants / stats.totalPop) * 100) : 0;
   const burgherPct = stats.totalPop > 0 ? Math.round((stats.totalBurghers / stats.totalPop) * 100) : 0;
   const clericPct = stats.totalPop > 0 ? Math.round((stats.totalClerics / stats.totalPop) * 100) : 0;
+  const warriorPct = stats.totalPop > 0 ? Math.round((stats.totalWarriors / stats.totalPop) * 100) : 0;
   const maxMacro = Math.max(stats.totalProduction, stats.totalWealth, stats.totalCapacity, 1);
 
   return (
