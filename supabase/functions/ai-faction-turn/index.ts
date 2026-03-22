@@ -287,11 +287,10 @@ Deno.serve(async (req) => {
     const resources = {
       gold: realmRes?.gold_reserve || 0,
       grain: realmRes?.grain_reserve || 0,
-      wood: realmRes?.wood_reserve || 0,
-      stone: realmRes?.stone_reserve || 0,
-      iron: realmRes?.iron_reserve || 0,
+      production: realmRes?.production_reserve || 0,
       manpower: realmRes?.manpower_pool || 0,
       manpowerCommitted: realmRes?.manpower_committed || 0,
+      faith: realmRes?.faith || 0,
     };
 
     const activeWars = (warDeclarations || []).filter((w: any) => w.status === "active");
@@ -299,7 +298,7 @@ Deno.serve(async (req) => {
 
     // ── MILITARY METRICS ──
     const milMetrics = computeMilitaryMetrics(
-      resources,
+      { ...resources, wood: 0, stone: 0, iron: 0 },
       realmRes?.mobilization_rate || 0.1,
       activeWars,
       tensionData || [],
@@ -310,11 +309,11 @@ Deno.serve(async (req) => {
       enemyStacks || [],
     );
 
-    // Affordable buildings
-    const affordableBuildings = (buildingTemplates || []).filter((t: any) =>
-      t.cost_wood <= resources.wood && t.cost_stone <= resources.stone &&
-      t.cost_iron <= resources.iron && t.cost_wealth <= resources.gold
-    ).map((t: any) => t.name).slice(0, 8);
+    // Affordable buildings: merged production cost = cost_wood + cost_stone + cost_iron; wealth = cost_wealth
+    const affordableBuildings = (buildingTemplates || []).filter((t: any) => {
+      const prodCost = (t.cost_wood || 0) + (t.cost_stone || 0) + (t.cost_iron || 0);
+      return prodCost <= resources.production && (t.cost_wealth || 0) <= resources.gold;
+    }).map((t: any) => t.name).slice(0, 8);
 
     const personality = faction.personality || "diplomatic";
     const goals = faction.goals || [];
