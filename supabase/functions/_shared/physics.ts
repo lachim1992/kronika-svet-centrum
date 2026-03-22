@@ -2112,7 +2112,7 @@ export function computeFlowPath(
   hexCostFn: (q: number, r: number) => number,
   maxRange: number = 40,
 ): FlowPathResult | null {
-  const result = dijkstraHexPath(
+  const result = astarHexPath(
     input.nodeA.hex_q, input.nodeA.hex_r,
     input.nodeB.hex_q, input.nodeB.hex_r,
     hexCostFn,
