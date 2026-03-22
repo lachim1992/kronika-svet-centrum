@@ -321,6 +321,41 @@ Deno.serve(async (req) => {
       }).eq("id", lobby_id);
     }
 
+    // ═══ POST-BATTLE NODE/ROUTE CONTROL TRANSFER ═══
+    const isVictory = result === "decisive_victory" || result === "victory" || result === "pyrrhic_victory";
+
+    // Node control transfer after siege victory
+    if (isVictory && inputNodeId && battleContext === "node_siege") {
+      const attackerPlayer = player_name || attackerStack.player_name;
+      await supabase.from("province_nodes").update({
+        controlled_by: attackerPlayer,
+        besieged_by: null,
+        besieging_stack_id: null,
+        siege_turn_start: null,
+        garrison_strength: 0,
+      }).eq("id", inputNodeId);
+
+      await supabase.from("game_events").insert({
+        session_id, player: attackerPlayer, event_type: "node_captured",
+        turn_number: turnNumber, confirmed: true, truth_state: "canon",
+        note: `Uzel dobyt po bitvě!`, importance: "critical",
+      });
+    }
+
+    // Route unblocking after blockade battle victory
+    if (isVictory && inputRouteId && battleContext === "route_blockade") {
+      await supabase.from("province_routes").update({
+        control_state: "open",
+        blocked_by: [],
+      }).eq("id", inputRouteId);
+    }
+
+    // Clear battle context on stacks
+    await supabase.from("military_stacks").update({ battle_context: null }).eq("id", attacker_stack_id);
+    if (defender_stack_id) {
+      await supabase.from("military_stacks").update({ battle_context: null }).eq("id", defender_stack_id);
+    }
+
     // Post-battle decision
     if (needsDecision && defender_city_id) {
       await supabase.from("action_queue").insert({
