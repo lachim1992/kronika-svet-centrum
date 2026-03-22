@@ -459,7 +459,7 @@ Deno.serve(async (req) => {
 
     // Load active trade routes
     const { data: activeTradeRoutes } = await supabase.from("trade_routes")
-      .select("id, from_player, to_player, resource_type, amount_per_turn, return_resource_type, return_amount, gold_per_turn, route_safety, start_node_id, end_node_id")
+      .select("id, from_player, to_player, resource_type, amount_per_turn, return_resource_type, return_amount, gold_per_turn, route_safety, start_node_id, end_node_id, from_city_id, to_city_id")
       .eq("session_id", sessionId).eq("status", "active")
       .or(`from_player.eq.${playerName},to_player.eq.${playerName}`);
 
