@@ -1968,24 +1968,34 @@ const HEX_NEIGHBORS = [
   { dq: 1, dr: -1 }, { dq: -1, dr: 1 },
 ];
 
-export interface DijkstraResult {
+export interface AStarResult {
   path: Array<{ q: number; r: number; cost: number }>;
   totalCost: number;
   bottleneck: { q: number; r: number; cost: number } | null;
   pathLength: number;
 }
 
+/** @deprecated Use astarHexPath instead */
+export type DijkstraResult = AStarResult;
+
+/** Axial hex distance heuristic */
+function hexDist(q1: number, r1: number, q2: number, r2: number): number {
+  const dq = q1 - q2, dr = r1 - r2;
+  return (Math.abs(dq) + Math.abs(dq + dr) + Math.abs(dr)) / 2;
+}
+
 /**
- * Dijkstra shortest path between two hexes on the grid.
+ * A* shortest path between two hexes on the grid.
+ * Uses hex distance as admissible heuristic (minimum possible cost = 1.0 per hex).
  * hexCostFn returns traversal cost for a given (q, r), or Infinity if impassable.
  * maxRange limits search radius to avoid infinite exploration on large maps.
  */
-export function dijkstraHexPath(
+export function astarHexPath(
   startQ: number, startR: number,
   endQ: number, endR: number,
   hexCostFn: (q: number, r: number) => number,
   maxRange: number = 40,
-): DijkstraResult | null {
+): AStarResult | null {
   const key = (q: number, r: number) => `${q},${r}`;
   const startKey = key(startQ, startR);
   const endKey = key(endQ, endR);
@@ -1994,19 +2004,20 @@ export function dijkstraHexPath(
     return { path: [{ q: startQ, r: startR, cost: 0 }], totalCost: 0, bottleneck: null, pathLength: 0 };
   }
 
-  const dist = new Map<string, number>();
+  const gScore = new Map<string, number>();
   const prev = new Map<string, string>();
   const visited = new Set<string>();
 
-  // Simple priority queue (array-based, fine for node-to-node with maxRange ~40)
-  const pq: Array<{ q: number; r: number; cost: number }> = [];
+  // Priority queue with f = g + h (A*)
+  const pq: Array<{ q: number; r: number; g: number; f: number }> = [];
 
-  dist.set(startKey, 0);
-  pq.push({ q: startQ, r: startR, cost: 0 });
+  gScore.set(startKey, 0);
+  const startH = hexDist(startQ, startR, endQ, endR);
+  pq.push({ q: startQ, r: startR, g: 0, f: startH });
 
   while (pq.length > 0) {
-    // Extract minimum
-    pq.sort((a, b) => a.cost - b.cost);
+    // Extract minimum f-score
+    pq.sort((a, b) => a.f - b.f);
     const current = pq.shift()!;
     const ck = key(current.q, current.r);
 
@@ -2024,23 +2035,24 @@ export function dijkstraHexPath(
       if (visited.has(nk)) continue;
 
       // Range limit
-      const dFromStart = (Math.abs(nq - startQ) + Math.abs(nq - startQ + nr - startR) + Math.abs(nr - startR)) / 2;
+      const dFromStart = hexDist(nq, nr, startQ, startR);
       if (dFromStart > maxRange) continue;
 
       const edgeCost = hexCostFn(nq, nr);
       if (edgeCost === Infinity || edgeCost <= 0) continue;
 
-      const newDist = current.cost + edgeCost;
-      if (newDist < (dist.get(nk) ?? Infinity)) {
-        dist.set(nk, newDist);
+      const tentativeG = current.g + edgeCost;
+      if (tentativeG < (gScore.get(nk) ?? Infinity)) {
+        gScore.set(nk, tentativeG);
         prev.set(nk, ck);
-        pq.push({ q: nq, r: nr, cost: newDist });
+        const h = hexDist(nq, nr, endQ, endR); // admissible: min biome cost = 1.0
+        pq.push({ q: nq, r: nr, g: tentativeG, f: tentativeG + h });
       }
     }
   }
 
   // Reconstruct path
-  if (!dist.has(endKey)) return null; // No path found
+  if (!gScore.has(endKey)) return null;
 
   const path: Array<{ q: number; r: number; cost: number }> = [];
   let current = endKey;
@@ -2053,7 +2065,7 @@ export function dijkstraHexPath(
   }
 
   // Find bottleneck (highest single-hex cost)
-  let bottleneck: DijkstraResult["bottleneck"] = null;
+  let bottleneck: AStarResult["bottleneck"] = null;
   let maxCost = 0;
   for (const step of path) {
     if (step.cost > maxCost) {
@@ -2064,11 +2076,14 @@ export function dijkstraHexPath(
 
   return {
     path,
-    totalCost: dist.get(endKey)!,
+    totalCost: gScore.get(endKey)!,
     bottleneck,
     pathLength: path.length,
   };
 }
+
+/** @deprecated Alias for astarHexPath for backward compatibility */
+export const dijkstraHexPath = astarHexPath;
 
 /**
  * Compute flow paths between all connected node pairs.
