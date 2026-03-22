@@ -5,16 +5,19 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { Progress } from "@/components/ui/progress";
 import {
   Landmark, Shield, Anchor, Store, Mountain, Wheat, Route,
   Swords, ArrowRight, Hammer, ChevronUp, Loader2, Lock, Unlock, AlertTriangle,
-  Crosshair, Ban, Bomb, Eye,
+  Crosshair, Ban, Bomb, Eye, HardHat, X, Wrench,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
   moveStackRoute, buildRoute, upgradeRoute, fortifyNode,
   blockadeRoute, ambushRoute, siegeNode, disruptRoute,
+  startProject, cancelProject,
   ROUTE_TYPE_LABELS, CONTROL_STATE_LABELS, NODE_TYPE_LABELS, STANCE_LABELS,
+  PROJECT_TYPE_LABELS, PROJECT_COSTS,
 } from "@/lib/strategicGraph";
 
 interface Props {
@@ -81,16 +84,18 @@ const StrategicOverlay = memo(function StrategicOverlay({ sessionId, currentPlay
   const [nodes, setNodes] = useState<StrategicNode[]>([]);
   const [routes, setRoutes] = useState<ProvinceRoute[]>([]);
   const [stacks, setStacks] = useState<any[]>([]);
+  const [projects, setProjects] = useState<any[]>([]);
   const [selectedNode, setSelectedNode] = useState<StrategicNode | null>(null);
   const [selectedRoute, setSelectedRoute] = useState<ProvinceRoute | null>(null);
   const [moveTarget, setMoveTarget] = useState("");
   const [moveStack, setMoveStack] = useState("");
   const [fortifyStack, setFortifyStack] = useState("");
   const [warfareStack, setWarfareStack] = useState("");
+  const [newProjectType, setNewProjectType] = useState("");
   const [busy, setBusy] = useState(false);
 
   const loadData = useCallback(async () => {
-    const [nRes, rRes, sRes] = await Promise.all([
+    const [nRes, rRes, sRes, pRes] = await Promise.all([
       supabase.from("province_nodes")
         .select("id, province_id, node_type, name, hex_q, hex_r, strategic_value, economic_value, defense_value, controlled_by, garrison_strength, is_major, population, fortification_level, infrastructure_level, parent_node_id, besieged_by, siege_turn_start")
         .eq("session_id", sessionId),
@@ -100,10 +105,15 @@ const StrategicOverlay = memo(function StrategicOverlay({ sessionId, currentPlay
       supabase.from("military_stacks")
         .select("id, name, current_node_id, travel_route_id, travel_progress, travel_target_node_id, player_name, power, stance")
         .eq("session_id", sessionId).eq("player_name", currentPlayerName).eq("is_active", true),
+      supabase.from("node_projects")
+        .select("*")
+        .eq("session_id", sessionId).eq("initiated_by", currentPlayerName).eq("status", "active"),
     ]);
     setNodes((nRes.data || []) as StrategicNode[]);
     setRoutes((rRes.data || []) as ProvinceRoute[]);
     setStacks(sRes.data || []);
+    setProjects(pRes.data || []);
+  }, [sessionId, currentPlayerName]);
   }, [sessionId, currentPlayerName]);
 
   useEffect(() => { loadData(); }, [loadData]);
@@ -200,6 +210,24 @@ const StrategicOverlay = memo(function StrategicOverlay({ sessionId, currentPlay
     setBusy(false);
   };
 
+  const handleStartProject = async (projectType: string, nodeId?: string, routeId?: string) => {
+    setBusy(true);
+    const res = await startProject({
+      sessionId, turnNumber, playerName: currentPlayerName,
+      projectType, nodeId, routeId,
+    });
+    if (res.ok) { toast.success("Projekt zahájen"); await loadData(); setNewProjectType(""); }
+    else toast.error(res.error || "Chyba");
+    setBusy(false);
+  };
+
+  const handleCancelProject = async (projectId: string) => {
+    setBusy(true);
+    const res = await cancelProject({ sessionId, turnNumber, playerName: currentPlayerName, projectId });
+    if (res.ok) { toast.success("Projekt zrušen"); await loadData(); }
+    else toast.error(res.error || "Chyba");
+    setBusy(false);
+  };
   const NodeIcon = ({ type }: { type: string }) => {
     const Icon = NODE_ICONS[type] || Landmark;
     return <Icon className={`h-3.5 w-3.5 ${NODE_COLORS[type] || "text-muted-foreground"}`} />;
@@ -268,6 +296,39 @@ const StrategicOverlay = memo(function StrategicOverlay({ sessionId, currentPlay
         </Card>
       )}
 
+      {/* Active Projects */}
+      {projects.length > 0 && (
+        <Card>
+          <CardHeader className="pb-1 pt-2 px-3">
+            <CardTitle className="text-[11px] flex items-center gap-1.5">
+              <HardHat className="h-3.5 w-3.5 text-primary" /> Aktivní projekty ({projects.length})
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="px-3 pb-2 space-y-1.5">
+            {projects.map((p: any) => {
+              const progressPct = Math.round(((p.progress || 0) / (p.total_turns || 1)) * 100);
+              const remaining = (p.total_turns || 1) - (p.progress || 0);
+              return (
+                <div key={p.id} className="bg-muted/40 rounded p-2 space-y-1">
+                  <div className="flex items-center gap-2 text-[10px]">
+                    <Wrench className="h-3 w-3 text-primary" />
+                    <span className="font-medium flex-1">{p.name}</span>
+                    <Badge variant="outline" className="text-[7px]">{remaining} kol</Badge>
+                    <button onClick={() => handleCancelProject(p.id)} className="text-muted-foreground hover:text-destructive">
+                      <X className="h-3 w-3" />
+                    </button>
+                  </div>
+                  <Progress value={progressPct} className="h-1" />
+                  <p className="text-[8px] text-muted-foreground">
+                    {PROJECT_TYPE_LABELS[p.project_type] || p.project_type} · {progressPct}%
+                  </p>
+                </div>
+              );
+            })}
+          </CardContent>
+        </Card>
+      )}
+
       {/* My controlled nodes */}
       <div className="space-y-1.5">
         <p className="text-[10px] font-display font-semibold text-muted-foreground">
@@ -294,7 +355,7 @@ const StrategicOverlay = memo(function StrategicOverlay({ sessionId, currentPlay
         </div>
       </div>
 
-      {/* Enemy nodes (clickable for siege) */}
+      {/* Enemy nodes */}
       {contestedNodes.length > 0 && (
         <div className="space-y-1.5">
           <p className="text-[10px] font-display font-semibold text-muted-foreground">
@@ -348,6 +409,67 @@ const StrategicOverlay = memo(function StrategicOverlay({ sessionId, currentPlay
           <p className="text-[8px] text-muted-foreground text-center">…a dalších {routes.length - 8} tras</p>
         )}
       </div>
+
+      {/* New Project */}
+      <Card>
+        <CardHeader className="pb-1 pt-2 px-3">
+          <CardTitle className="text-[11px] flex items-center gap-1.5">
+            <HardHat className="h-3.5 w-3.5 text-accent-foreground" /> Nový projekt
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="px-3 pb-2 space-y-2">
+          <Select value={newProjectType} onValueChange={setNewProjectType}>
+            <SelectTrigger className="h-7 text-xs"><SelectValue placeholder="Typ projektu" /></SelectTrigger>
+            <SelectContent>
+              {Object.entries(PROJECT_TYPE_LABELS).map(([key, label]) => {
+                const cost = PROJECT_COSTS[key];
+                return (
+                  <SelectItem key={key} value={key}>
+                    {label} ({cost?.turns}k · 💰{cost?.gold} 🪵{cost?.wood} 🪨{cost?.stone} ⛏{cost?.iron})
+                  </SelectItem>
+                );
+              })}
+            </SelectContent>
+          </Select>
+          {newProjectType && (
+            <>
+              {(newProjectType === "create_fort" || newProjectType === "create_port" || newProjectType === "expand_hub") && (
+                <Select onValueChange={(nodeId) => handleStartProject(newProjectType, nodeId)}>
+                  <SelectTrigger className="h-7 text-xs"><SelectValue placeholder="Vyberte uzel" /></SelectTrigger>
+                  <SelectContent>
+                    {myNodes.map(n => (
+                      <SelectItem key={n.id} value={n.id}>{n.name} ({NODE_TYPE_LABELS[n.node_type]})</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+              {(newProjectType === "upgrade_route" || newProjectType === "repair_route") && (
+                <Select onValueChange={(routeId) => handleStartProject(newProjectType, undefined, routeId)}>
+                  <SelectTrigger className="h-7 text-xs"><SelectValue placeholder="Vyberte trasu" /></SelectTrigger>
+                  <SelectContent>
+                    {routes.map(r => {
+                      const na = nodes.find(n => n.id === r.node_a);
+                      const nb = nodes.find(n => n.id === r.node_b);
+                      return (
+                        <SelectItem key={r.id} value={r.id}>
+                          {na?.name} → {nb?.name} (L{r.upgrade_level}{r.damage_level ? ` · Dmg ${r.damage_level}` : ""})
+                        </SelectItem>
+                      );
+                    })}
+                  </SelectContent>
+                </Select>
+              )}
+              {newProjectType === "build_route" && (
+                <Button size="sm" className="w-full h-7 text-xs gap-1"
+                  onClick={() => handleStartProject(newProjectType)} disabled={busy}>
+                  {busy ? <Loader2 className="h-3 w-3 animate-spin" /> : <Hammer className="h-3 w-3" />}
+                  Zahájit stavbu
+                </Button>
+              )}
+            </>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Node detail sheet */}
       <Sheet open={!!selectedNode} onOpenChange={() => setSelectedNode(null)}>

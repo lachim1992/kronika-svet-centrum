@@ -305,6 +305,12 @@ async function executeCommand(
     case "DISRUPT_ROUTE":
       return await executeDisruptRoute(supabase, base, actor, payload, commandId, sessionId, turnNumber);
 
+    case "START_PROJECT":
+      return await executeStartProject(supabase, base, actor, payload, commandId, sessionId, turnNumber);
+
+    case "CANCEL_PROJECT":
+      return await executeCancelProject(supabase, base, actor, payload, commandId, sessionId, turnNumber);
+
     case "PROPOSE_PACT":
       return await executeProposePact(supabase, base, actor, payload, commandId, sessionId, turnNumber);
 
@@ -1733,5 +1739,103 @@ async function executeDisruptRoute(
   return insertEventsWithChronicle(supabase, commandId, sessionId, turnNumber, [{
     ...base, event_type: "military", note, importance: newState === "blocked" ? "critical" : "normal",
     reference: { routeId, damageLevel: newDamage, action: "disrupt" },
+  }], payload.chronicleText);
+}
+
+// ═══════════════════════════════════════════
+// START_PROJECT — begin a node/route construction project
+// ═══════════════════════════════════════════
+
+const PROJECT_TEMPLATES: Record<string, { name: string; totalTurns: number; costGold: number; costWood: number; costStone: number; costIron: number }> = {
+  build_route: { name: "Stavba cesty", totalTurns: 3, costGold: 50, costWood: 30, costStone: 20, costIron: 0 },
+  upgrade_route: { name: "Vylepšení cesty", totalTurns: 2, costGold: 30, costWood: 10, costStone: 15, costIron: 5 },
+  create_fort: { name: "Stavba pevnosti", totalTurns: 5, costGold: 100, costWood: 40, costStone: 60, costIron: 30 },
+  create_port: { name: "Stavba přístavu", totalTurns: 4, costGold: 80, costWood: 50, costStone: 40, costIron: 10 },
+  expand_hub: { name: "Rozšíření centra", totalTurns: 3, costGold: 60, costWood: 20, costStone: 30, costIron: 10 },
+  repair_route: { name: "Oprava cesty", totalTurns: 2, costGold: 20, costWood: 15, costStone: 10, costIron: 0 },
+};
+
+async function executeStartProject(
+  supabase: any, base: any, actor: Actor, payload: any,
+  commandId: string, sessionId: string, turnNumber: number,
+): Promise<CommandResult> {
+  const { projectType, nodeId, routeId, targetNodeId, provinceId, customName } = payload;
+  if (!projectType) return { events: [], error: "Missing projectType" };
+
+  const template = PROJECT_TEMPLATES[projectType];
+  if (!template) return { events: [], error: `Unknown project type: ${projectType}` };
+
+  // Check player has enough resources
+  const { data: realm } = await supabase.from("realm_resources")
+    .select("gold_reserve, wood_reserve, stone_reserve, iron_reserve")
+    .eq("session_id", sessionId).eq("player_name", actor.name).maybeSingle();
+
+  if (realm) {
+    if ((realm.gold_reserve || 0) < template.costGold) return { events: [], error: "Nedostatek zlata" };
+    if ((realm.wood_reserve || 0) < template.costWood) return { events: [], error: "Nedostatek dřeva" };
+    if ((realm.stone_reserve || 0) < template.costStone) return { events: [], error: "Nedostatek kamene" };
+    if ((realm.iron_reserve || 0) < template.costIron) return { events: [], error: "Nedostatek železa" };
+
+    // Deduct resources
+    await supabase.from("realm_resources").update({
+      gold_reserve: (realm.gold_reserve || 0) - template.costGold,
+      wood_reserve: (realm.wood_reserve || 0) - template.costWood,
+      stone_reserve: (realm.stone_reserve || 0) - template.costStone,
+      iron_reserve: (realm.iron_reserve || 0) - template.costIron,
+    }).eq("session_id", sessionId).eq("player_name", actor.name);
+  }
+
+  // Create project
+  const { data: project, error: projErr } = await supabase.from("node_projects").insert({
+    session_id: sessionId,
+    project_type: projectType,
+    province_id: provinceId || null,
+    node_id: nodeId || null,
+    route_id: routeId || null,
+    target_node_id: targetNodeId || null,
+    initiated_by: actor.name,
+    name: customName || template.name,
+    cost_gold: template.costGold,
+    cost_wood: template.costWood,
+    cost_stone: template.costStone,
+    cost_iron: template.costIron,
+    total_turns: template.totalTurns,
+    created_turn: turnNumber,
+    status: "active",
+  }).select("id").single();
+
+  if (projErr) return { events: [], error: `Project creation failed: ${projErr.message}` };
+
+  const note = `${actor.name} zahájil projekt: ${customName || template.name}. Dokončení za ${template.totalTurns} kol.`;
+  return insertEventsWithChronicle(supabase, commandId, sessionId, turnNumber, [{
+    ...base, event_type: "construction", note, importance: "normal",
+    reference: { projectId: project.id, projectType, nodeId, routeId, targetNodeId },
+  }], payload.chronicleText, { projectId: project.id });
+}
+
+// ═══════════════════════════════════════════
+// CANCEL_PROJECT — cancel an active project (no refund)
+// ═══════════════════════════════════════════
+
+async function executeCancelProject(
+  supabase: any, base: any, actor: Actor, payload: any,
+  commandId: string, sessionId: string, turnNumber: number,
+): Promise<CommandResult> {
+  const { projectId } = payload;
+  if (!projectId) return { events: [], error: "Missing projectId" };
+
+  const { data: project } = await supabase.from("node_projects")
+    .select("id, initiated_by, name, status")
+    .eq("id", projectId).eq("session_id", sessionId).single();
+
+  if (!project) return { events: [], error: "Project not found" };
+  if (project.initiated_by !== actor.name) return { events: [], error: "Not your project" };
+  if (project.status !== "active") return { events: [], error: "Project is not active" };
+
+  await supabase.from("node_projects").update({ status: "cancelled" }).eq("id", projectId);
+
+  return insertEventsWithChronicle(supabase, commandId, sessionId, turnNumber, [{
+    ...base, event_type: "construction", note: `${actor.name} zrušil projekt: ${project.name}.`, importance: "normal",
+    reference: { projectId, action: "cancel" },
   }], payload.chronicleText);
 }
