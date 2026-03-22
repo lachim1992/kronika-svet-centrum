@@ -313,7 +313,11 @@ Deno.serve(async (req) => {
         const { _parentTempIdx, ...rest } = n;
         return rest;
       });
-      const { data: inserted } = await sb.from("province_nodes").insert(batch).select("id");
+      const { data: inserted, error: insertErr } = await sb.from("province_nodes").insert(batch).select("id");
+      if (insertErr) {
+        console.error("Insert error:", insertErr.message, insertErr.details, insertErr.hint, JSON.stringify(batch[0]));
+        throw new Error(`Insert failed: ${insertErr.message}`);
+      }
       if (inserted) {
         for (const row of inserted) insertedIds.push(row.id);
       }
