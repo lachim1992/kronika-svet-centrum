@@ -383,11 +383,10 @@ const StrategicMapOverlay = memo(({ sessionId, offsetX, offsetY, visible, onNode
           <path key={`hfp-${hp.key}`} id={`hexflow-${hp.key}`}
             d={hp.d} fill="none" />
         ))}
-        {/* Fallback straight-line paths */}
-        {Array.from(particlePathDefs.entries()).map(([key, fp]) => (
+        {/* Fallback hex-snapped paths */}
+        {Array.from(particlePathDefs.entries()).map(([key, d]) => (
           <path key={`path-${key}`} id={`flow-${key}`}
-            d={`M${fp.fromX},${fp.fromY} L${fp.toX},${fp.toY}`}
-            fill="none" />
+            d={d} fill="none" />
         ))}
       </defs>
 
