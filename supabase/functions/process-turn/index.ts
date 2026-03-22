@@ -552,13 +552,17 @@ Deno.serve(async (req) => {
     const netProduction = totalCityProduction - totalDemand - armyProductionUpkeep;
 
     // ══════════════════════════════════════════════════════════════
-    // ▶ WEALTH: TRADE ROUTES WITH GRAPH VALIDATION & INTERCEPCION
-    // Trade routes are validated through the province graph.
-    // Regulator nodes along the path take tolls.
-    // Blocked nodes interrupt trade.
+    // ▶ WEALTH: Layer-driven + Trade Routes + Graph Validation
+    // Wealth = city layers (burghers) + macro node wealth + trade
     // ══════════════════════════════════════════════════════════════
     const taxMult = 1 + (taxRateModifier / 100);
-    const wealthIncome = Math.max(0, Math.round(totalWealth * taxMult));
+    // Strategic resource wealth multipliers
+    const copperMult = STRATEGIC_TIER_BONUSES.copper[realm.strategic_copper_tier || 0]?.wealth_mult || 1.0;
+    const goldMult = STRATEGIC_TIER_BONUSES.gold[realm.strategic_gold_tier || 0]?.wealth_mult || 1.0;
+    const wealthFromLayers = totalCityWealth * copperMult * goldMult;
+    const wealthFromNodes = totalWealth; // From compute-economy-flow
+    const combinedWealth = wealthFromLayers + wealthFromNodes * 0.3; // Layers primary, nodes secondary
+    const wealthIncome = Math.max(0, Math.round(combinedWealth * taxMult));
     const sportFundingPct = realm.sport_funding_pct || 0;
     let newGoldReserve = (realm.gold_reserve || 0) + wealthIncome - armyWealthUpkeep;
 
