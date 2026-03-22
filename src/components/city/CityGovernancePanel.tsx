@@ -342,8 +342,7 @@ const CityGovernancePanel = ({ sessionId, city, realm, currentPlayerName, curren
                     <p className="text-[9px] text-muted-foreground line-clamp-2">{d.description}</p>
                     <div className="flex gap-1 mt-1 text-[9px] text-muted-foreground">
                       <span>💰{d.build_cost_wealth}</span>
-                      <span>🪵{d.build_cost_wood}</span>
-                      <span>🪨{d.build_cost_stone}</span>
+                      <span>⚒️{d.build_cost_wood + d.build_cost_stone}</span>
                       <span>⏱️{d.build_turns}k</span>
                     </div>
                   </button>
