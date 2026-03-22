@@ -169,12 +169,11 @@ const CityBuildingsPanel = ({
     const maxLevel = b.max_level || (b.is_ai_generated ? 5 : 3);
     const isWonderConversion = b.is_ai_generated && newLevel === 5;
 
-    // Deduct resources
+    // Deduct resources (new economy: production_reserve + gold_reserve)
+    const prodCost = getProductionCost(costs);
     await supabase.from("realm_resources").update({
-      gold_reserve: Math.max(0, (realm.gold_reserve || 0) - costs.cost_wealth),
-      wood_reserve: Math.max(0, (realm.wood_reserve || 0) - costs.cost_wood),
-      stone_reserve: Math.max(0, (realm.stone_reserve || 0) - costs.cost_stone),
-      iron_reserve: Math.max(0, (realm.iron_reserve || 0) - costs.cost_iron),
+      gold_reserve: Math.max(0, (realm.gold_reserve || 0) - (costs.cost_wealth || 0)),
+      production_reserve: Math.max(0, (realm.production_reserve || 0) - prodCost),
     } as any).eq("id", realm.id);
 
     // Update building
