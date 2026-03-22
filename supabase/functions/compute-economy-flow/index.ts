@@ -143,7 +143,7 @@ function computeRouteAccess(
   routes: RouteData[],
 ): number {
   const connectedRoutes = routes.filter(
-    r => (r.node_a_id === nodeId || r.node_b_id === nodeId) && r.control_state !== "blocked",
+    r => (r.node_a === nodeId || r.node_b === nodeId) && r.control_state !== "blocked",
   );
   if (connectedRoutes.length === 0) return 0.3; // Isolated but not zero
 
