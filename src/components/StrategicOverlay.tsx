@@ -736,6 +736,6 @@ const StrategicOverlay = memo(function StrategicOverlay({ sessionId, currentPlay
       </Sheet>
     </div>
   );
-});
+}
 
 export default StrategicOverlay;
