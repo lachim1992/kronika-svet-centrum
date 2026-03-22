@@ -496,8 +496,33 @@ const StrategicOverlay = memo(function StrategicOverlay({ sessionId, currentPlay
           )}
         </CardContent>
       </Card>
+
+      {/* Node detail sheet */}
+      <Sheet open={!!selectedNode} onOpenChange={() => setSelectedNode(null)}>
+        <SheetContent side="right" className="w-80 sm:w-96">
+          {selectedNode && (
+            <>
+              <SheetHeader>
+                <SheetTitle className="flex items-center gap-2 text-sm">
+                  <NodeIcon type={selectedNode.node_type} />
+                  {selectedNode.name}
+                  {selectedNode.besieged_by && (
+                    <Badge variant="destructive" className="text-[8px]">Obléháno</Badge>
+                  )}
+                </SheetTitle>
+              </SheetHeader>
+              <div className="space-y-3 mt-4">
+                <div className="grid grid-cols-3 gap-1.5 text-[10px]">
+                  {[
+                    { l: "Strategická", v: selectedNode.strategic_value },
+                    { l: "Ekonomická", v: selectedNode.economic_value },
+                    { l: "Obranná", v: selectedNode.defense_value },
+                  ].map(s => (
+                    <div key={s.l} className="bg-muted/40 rounded p-1.5 text-center">
+                      <span className="text-muted-foreground block text-[8px]">{s.l}</span>
+                      <span className="font-bold">{s.v}</span>
+                    </div>
                   ))}
-                </div>
 
                 <div className="grid grid-cols-2 gap-1.5 text-[10px]">
                   <div className="bg-muted/40 rounded p-1.5 text-center">
