@@ -1117,6 +1117,24 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
                 </div>
               </div>
             )}
+            {/* Strategic layer toggle */}
+            <div className="mb-2 pb-2 border-b border-border">
+              <div className="flex items-center justify-between mb-1">
+                <p className="text-[10px] font-display font-semibold text-foreground flex items-center gap-1">🗺️ Strategická síť</p>
+                <label className="flex items-center gap-1 text-[9px] text-muted-foreground cursor-pointer">
+                  <input type="checkbox" checked={showStrategicLayer} onChange={e => setShowStrategicLayer(e.target.checked)} className="w-3 h-3" />
+                  Zobrazit
+                </label>
+              </div>
+              {showStrategicLayer && (
+                <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[9px]">
+                  <span className="flex items-center gap-1 text-muted-foreground"><span className="w-2 h-2 rounded-full bg-primary inline-block" /> Major uzel</span>
+                  <span className="flex items-center gap-1 text-muted-foreground"><span className="w-1.5 h-1.5 rounded-full bg-muted-foreground inline-block" /> Minor uzel</span>
+                  <span className="flex items-center gap-1 text-muted-foreground"><span className="w-3 h-0.5 bg-[hsl(45,60%,55%)] inline-block" /> Cesta</span>
+                  <span className="flex items-center gap-1 text-muted-foreground"><span className="w-3 h-0.5 bg-[hsl(200,70%,55%)] inline-block" /> Řeka</span>
+                </div>
+              )}
+            </div>
             <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-[10px]">
               {Object.entries(BIOME_LABELS).map(([key, label]) => (
                 <div key={key} className="flex items-center gap-1.5">
