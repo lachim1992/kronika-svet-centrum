@@ -263,8 +263,47 @@ const StrategicMapOverlay = memo(({ sessionId, offsetX, offsetY, visible, onNode
     return particles;
   }, [routes, nodePositions, supply, parentMap]);
 
-  // Group particles by route for path defs
-  const flowPaths = useMemo(() => {
+  // Build hex-path SVG polylines from flow_paths data
+  const hexFlowSvgPaths = useMemo(() => {
+    const result: Array<{ key: string; d: string; flowType: string; totalCost: number; bottleneck: FlowPath["bottleneck_hex"] }> = [];
+    for (const fp of flowPaths) {
+      if (!fp.hex_path || fp.hex_path.length < 2) continue;
+      const points = fp.hex_path.map(h => {
+        const px = hexToPixel(h.q, h.r);
+        return { x: px.x + offsetX, y: px.y + offsetY };
+      });
+      const d = `M${points.map(p => `${p.x},${p.y}`).join(" L")}`;
+      result.push({ key: `${fp.node_a}-${fp.node_b}-${fp.flow_type}`, d, flowType: fp.flow_type, totalCost: fp.total_cost, bottleneck: fp.bottleneck_hex });
+    }
+    return result;
+  }, [flowPaths, offsetX, offsetY]);
+
+  // Build corridor heatmap: count how many flows pass through each hex
+  const hexHeatmap = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const fp of flowPaths) {
+      if (!fp.hex_path) continue;
+      for (const h of fp.hex_path) {
+        const k = `${h.q},${h.r}`;
+        counts.set(k, (counts.get(k) || 0) + 1);
+      }
+    }
+    return counts;
+  }, [flowPaths]);
+
+  // Bottleneck hexes from flow_paths
+  const bottleneckHexes = useMemo(() => {
+    const result: Array<{ q: number; r: number; cost: number }> = [];
+    for (const fp of flowPaths) {
+      if (fp.bottleneck_hex && fp.bottleneck_hex.cost > 3) {
+        result.push(fp.bottleneck_hex);
+      }
+    }
+    return result;
+  }, [flowPaths]);
+
+  // Group particles by route for path defs (fallback when no hex paths)
+  const particlePathDefs = useMemo(() => {
     const pathMap = new Map<string, { fromX: number; fromY: number; toX: number; toY: number }>();
     for (const p of flowParticles) {
       const key = `${p.routeId}-${p.flowType}`;
@@ -275,18 +314,78 @@ const StrategicMapOverlay = memo(({ sessionId, offsetX, offsetY, visible, onNode
     return pathMap;
   }, [flowParticles]);
 
+  // Map route_id → hex flow SVG path for particle animation
+  const routeHexPathMap = useMemo(() => {
+    const m = new Map<string, string>(); // route_id → SVG path id suffix
+    for (const fp of flowPaths) {
+      if (fp.route_id && fp.hex_path && fp.hex_path.length >= 2) {
+        m.set(`${fp.route_id}-${fp.flow_type}`, `hexflow-${fp.node_a}-${fp.node_b}-${fp.flow_type}`);
+      }
+    }
+    return m;
+  }, [flowPaths]);
+
   if (!visible || nodes.length === 0) return null;
 
   return (
     <g className="strategic-overlay" style={{ pointerEvents: "auto" }}>
-      {/* Flow path defs */}
+      {/* SVG path defs for particle animation */}
       <defs>
-        {Array.from(flowPaths.entries()).map(([key, fp]) => (
+        {/* Hex-based flow paths */}
+        {hexFlowSvgPaths.map(hp => (
+          <path key={`hfp-${hp.key}`} id={`hexflow-${hp.key}`}
+            d={hp.d} fill="none" />
+        ))}
+        {/* Fallback straight-line paths */}
+        {Array.from(particlePathDefs.entries()).map(([key, fp]) => (
           <path key={`path-${key}`} id={`flow-${key}`}
             d={`M${fp.fromX},${fp.fromY} L${fp.toX},${fp.toY}`}
             fill="none" />
         ))}
       </defs>
+
+      {/* ── Hex corridor heatmap ── */}
+      {showHexFlows && Array.from(hexHeatmap.entries()).map(([k, count]) => {
+        if (count < 2) return null; // Only show for busy corridors
+        const [q, r] = k.split(",").map(Number);
+        const pos = hexToPixel(q, r);
+        const intensity = Math.min(1, count * 0.15);
+        return (
+          <circle key={`heat-${k}`}
+            cx={pos.x + offsetX} cy={pos.y + offsetY}
+            r={HEX_SIZE * 0.45}
+            fill="hsl(48, 90%, 60%)" opacity={intensity * 0.25}
+            style={{ pointerEvents: "none" }} />
+        );
+      })}
+
+      {/* ── Bottleneck markers ── */}
+      {showHexFlows && bottleneckHexes.map((b, i) => {
+        const pos = hexToPixel(b.q, b.r);
+        return (
+          <g key={`btn-${i}`} style={{ pointerEvents: "none" }}>
+            <circle cx={pos.x + offsetX} cy={pos.y + offsetY}
+              r={HEX_SIZE * 0.35} fill="none"
+              stroke="hsl(0, 70%, 55%)" strokeWidth={1.5} opacity={0.7}
+              strokeDasharray="3,2" />
+            <text x={pos.x + offsetX} y={pos.y + offsetY + 1}
+              textAnchor="middle" dominantBaseline="middle"
+              fontSize={8} fill="hsl(0, 70%, 55%)" opacity={0.8}>⚠</text>
+          </g>
+        );
+      })}
+
+      {/* ── Hex flow path polylines ── */}
+      {showHexFlows && hexFlowSvgPaths.map(hp => {
+        const ft = hp.flowType as FlowType;
+        const color = FLOW_COLORS[ft] || FLOW_COLORS.wealth;
+        return (
+          <path key={`hfline-${hp.key}`} d={hp.d}
+            fill="none" stroke={color}
+            strokeWidth={1.5} opacity={0.35}
+            strokeLinecap="round" strokeLinejoin="round" />
+        );
+      })}
 
       {/* Routes (lines) */}
       {routes.map(r => {
