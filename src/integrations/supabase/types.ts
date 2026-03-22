@@ -6129,6 +6129,72 @@ export type Database = {
           },
         ]
       }
+      province_control_snapshots: {
+        Row: {
+          contested: boolean
+          control_player: string | null
+          control_scores: Json
+          controlled_node_count: number
+          created_at: string
+          dominance: number
+          id: string
+          node_count: number
+          province_id: string
+          route_access_score: number
+          session_id: string
+          supply_health: number
+          total_strategic_value: number
+          turn_number: number
+        }
+        Insert: {
+          contested?: boolean
+          control_player?: string | null
+          control_scores?: Json
+          controlled_node_count?: number
+          created_at?: string
+          dominance?: number
+          id?: string
+          node_count?: number
+          province_id: string
+          route_access_score?: number
+          session_id: string
+          supply_health?: number
+          total_strategic_value?: number
+          turn_number?: number
+        }
+        Update: {
+          contested?: boolean
+          control_player?: string | null
+          control_scores?: Json
+          controlled_node_count?: number
+          created_at?: string
+          dominance?: number
+          id?: string
+          node_count?: number
+          province_id?: string
+          route_access_score?: number
+          session_id?: string
+          supply_health?: number
+          total_strategic_value?: number
+          turn_number?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "province_control_snapshots_province_id_fkey"
+            columns: ["province_id"]
+            isOneToOne: false
+            referencedRelation: "provinces"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "province_control_snapshots_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       province_hexes: {
         Row: {
           biome_family: string

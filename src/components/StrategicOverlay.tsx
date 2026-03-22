@@ -86,6 +86,7 @@ const StrategicOverlay = memo(function StrategicOverlay({ sessionId, currentPlay
   const [stacks, setStacks] = useState<any[]>([]);
   const [projects, setProjects] = useState<any[]>([]);
   const [supplyState, setSupplyState] = useState<Record<string, any>>({});
+  const [controlSnapshots, setControlSnapshots] = useState<any[]>([]);
   const [selectedNode, setSelectedNode] = useState<StrategicNode | null>(null);
   const [selectedRoute, setSelectedRoute] = useState<ProvinceRoute | null>(null);
   const [moveTarget, setMoveTarget] = useState("");
@@ -96,7 +97,7 @@ const StrategicOverlay = memo(function StrategicOverlay({ sessionId, currentPlay
   const [busy, setBusy] = useState(false);
 
   const loadData = useCallback(async () => {
-    const [nRes, rRes, sRes, pRes, scRes] = await Promise.all([
+    const [nRes, rRes, sRes, pRes, scRes, csRes] = await Promise.all([
       supabase.from("province_nodes")
         .select("id, province_id, node_type, name, hex_q, hex_r, strategic_value, economic_value, defense_value, controlled_by, garrison_strength, is_major, population, fortification_level, infrastructure_level, parent_node_id, besieged_by, siege_turn_start")
         .eq("session_id", sessionId),
@@ -112,11 +113,15 @@ const StrategicOverlay = memo(function StrategicOverlay({ sessionId, currentPlay
       supabase.from("supply_chain_state")
         .select("node_id, connected_to_capital, isolation_turns, supply_level, route_quality, production_modifier, stability_modifier, morale_modifier, hop_distance")
         .eq("session_id", sessionId).eq("turn_number", turnNumber),
+      supabase.from("province_control_snapshots")
+        .select("province_id, control_player, dominance, contested, supply_health, route_access_score, node_count, controlled_node_count, total_strategic_value")
+        .eq("session_id", sessionId).eq("turn_number", turnNumber),
     ]);
     setNodes((nRes.data || []) as StrategicNode[]);
     setRoutes((rRes.data || []) as ProvinceRoute[]);
     setStacks(sRes.data || []);
     setProjects(pRes.data || []);
+    setControlSnapshots(csRes.data || []);
     // Build supply lookup by node_id
     const scMap: Record<string, any> = {};
     for (const s of (scRes.data || [])) scMap[s.node_id] = s;
@@ -346,6 +351,39 @@ const StrategicOverlay = memo(function StrategicOverlay({ sessionId, currentPlay
           </Card>
         );
       })()}
+
+      {/* Province Control Overview */}
+      {controlSnapshots.length > 0 && (
+        <Card>
+          <CardHeader className="pb-1 pt-2 px-3">
+            <CardTitle className="text-[11px] flex items-center gap-1.5">
+              <Landmark className="h-3.5 w-3.5 text-primary" /> Kontrola provincií
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="px-3 pb-2 space-y-1">
+            {controlSnapshots.map((cs: any) => {
+              const dominancePct = Math.round((cs.dominance || 0) * 100);
+              const isMine = cs.control_player === currentPlayerName;
+              return (
+                <div key={cs.province_id} className={`flex items-center gap-2 text-[10px] rounded p-1.5 ${
+                  cs.contested ? "bg-accent/20" : isMine ? "bg-primary/10" : "bg-muted/40"
+                }`}>
+                  <span className={`text-[10px] font-bold ${isMine ? "text-primary" : cs.control_player ? "text-destructive" : "text-muted-foreground"}`}>
+                    {cs.control_player || "Nikdo"}
+                  </span>
+                  <Progress value={dominancePct} className="h-1 flex-1 max-w-[60px]" />
+                  <span className="text-[8px] text-muted-foreground">{dominancePct}%</span>
+                  {cs.contested && <Badge variant="outline" className="text-[7px] text-accent-foreground">Sporná</Badge>}
+                  <span className="text-[8px] text-muted-foreground ml-auto">
+                    📦{Math.round((cs.supply_health || 0) * 100)}%
+                    🛤️{Math.round((cs.route_access_score || 0) * 100)}%
+                  </span>
+                </div>
+              );
+            })}
+          </CardContent>
+        </Card>
+      )}
 
       {/* Active Projects */}
       {projects.length > 0 && (

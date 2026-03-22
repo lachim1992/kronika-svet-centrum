@@ -684,8 +684,8 @@ Deno.serve(async (req) => {
         { data: graphNodes },
         { data: graphRoutes },
       ] = await Promise.all([
-        supabase.from("province_nodes").select("id, province_id, node_type, controlled_by, strategic_value, economic_value, defense_value").eq("session_id", sessionId),
-        supabase.from("province_routes").select("node_a_id, node_b_id, control_state").eq("session_id", sessionId),
+        supabase.from("province_nodes").select("id, province_id, node_type, controlled_by, strategic_value, economic_value, defense_value, is_major, population, city_id").eq("session_id", sessionId),
+        supabase.from("province_routes").select("node_a_id, node_b_id, control_state, capacity_value, damage_level, safety_value, speed_value").eq("session_id", sessionId),
       ]);
 
       if (graphNodes && graphNodes.length > 0) {
@@ -715,6 +715,25 @@ Deno.serve(async (req) => {
             control_player: controlResult.control_player,
             dominance: controlResult.dominance,
           });
+
+          // Persist control snapshot
+          const provNodes = graphNodes.filter((n: any) => n.province_id === provId);
+          const controlledNodes = provNodes.filter((n: any) => n.controlled_by === controlResult.control_player);
+          const totalSV = provNodes.reduce((s: number, n: any) => s + (n.strategic_value || 0), 0);
+          const contested = Object.keys(controlResult.control_scores).length > 1 && controlResult.dominance < 0.75;
+
+          await supabase.from("province_control_snapshots").upsert({
+            session_id: sessionId,
+            province_id: provId,
+            turn_number: turnNumber,
+            control_player: controlResult.control_player,
+            dominance: controlResult.dominance,
+            control_scores: controlResult.control_scores,
+            total_strategic_value: totalSV,
+            node_count: provNodes.length,
+            controlled_node_count: controlledNodes.length,
+            contested,
+          }, { onConflict: "session_id,province_id,turn_number" });
         }
 
         // 12b. Compute isolation penalty per player
@@ -914,6 +933,38 @@ Deno.serve(async (req) => {
             }
           }
           results.supply_chain = supplyResults;
+
+          // 12e. Enrich province control snapshots with supply health & route access
+          try {
+            const uniqueProvIds = [...new Set(graphNodes.map((n: any) => n.province_id).filter(Boolean))];
+            for (const provId of uniqueProvIds) {
+              const provNodeIds = graphNodes.filter((n: any) => n.province_id === provId).map((n: any) => n.id);
+              // Collect all supply results for this province's nodes
+              const allChainResults = supplyResults.flatMap((sr: any) => sr.chainResults || []);
+              // Fallback: compute from persisted data
+              const { data: snapSupply } = await supabase.from("supply_chain_state")
+                .select("supply_level, connected_to_capital")
+                .eq("session_id", sessionId).eq("turn_number", turnNumber)
+                .in("node_id", provNodeIds);
+              if (snapSupply && snapSupply.length > 0) {
+                const avgSupply = snapSupply.reduce((s: number, r: any) => s + (r.supply_level || 0), 0) / snapSupply.length;
+                const connectedRatio = snapSupply.filter((r: any) => r.connected_to_capital).length / snapSupply.length;
+                // Route access: ratio of open routes touching this province
+                const provRoutes = (graphRoutes || []).filter((r: any) =>
+                  provNodeIds.includes(r.node_a_id || r.node_a) || provNodeIds.includes(r.node_b_id || r.node_b)
+                );
+                const openRoutes = provRoutes.filter((r: any) => r.control_state === "open" || !r.control_state);
+                const routeAccess = provRoutes.length > 0 ? openRoutes.length / provRoutes.length : 1.0;
+
+                await supabase.from("province_control_snapshots").update({
+                  supply_health: Math.round(avgSupply / 10 * 100) / 100,
+                  route_access_score: Math.round(routeAccess * 100) / 100,
+                }).eq("session_id", sessionId).eq("province_id", provId).eq("turn_number", turnNumber);
+              }
+            }
+          } catch (enrichErr) {
+            console.warn("Snapshot enrichment non-fatal:", enrichErr);
+          }
         } catch (scErr) {
           console.warn("Supply chain computation non-fatal:", scErr);
           results.supply_chain_error = (scErr as Error).message;
