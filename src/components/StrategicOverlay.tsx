@@ -401,7 +401,101 @@ const StrategicOverlay = memo(function StrategicOverlay({ sessionId, currentPlay
                     <div key={s.l} className="bg-muted/40 rounded p-1.5 text-center">
                       <span className="text-muted-foreground block text-[8px]">{s.l}</span>
                       <span className="font-bold">{s.v}</span>
-                    </div>
+      </div>
+
+      {/* Active Projects */}
+      {projects.length > 0 && (
+        <Card>
+          <CardHeader className="pb-1 pt-2 px-3">
+            <CardTitle className="text-[11px] flex items-center gap-1.5">
+              <HardHat className="h-3.5 w-3.5 text-primary" /> Aktivní projekty ({projects.length})
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="px-3 pb-2 space-y-1.5">
+            {projects.map((p: any) => {
+              const progressPct = Math.round(((p.progress || 0) / (p.total_turns || 1)) * 100);
+              const remaining = (p.total_turns || 1) - (p.progress || 0);
+              return (
+                <div key={p.id} className="bg-muted/40 rounded p-2 space-y-1">
+                  <div className="flex items-center gap-2 text-[10px]">
+                    <Wrench className="h-3 w-3 text-primary" />
+                    <span className="font-medium flex-1">{p.name}</span>
+                    <Badge variant="outline" className="text-[7px]">{remaining} kol</Badge>
+                    <button onClick={() => handleCancelProject(p.id)} className="text-muted-foreground hover:text-destructive">
+                      <X className="h-3 w-3" />
+                    </button>
+                  </div>
+                  <Progress value={progressPct} className="h-1" />
+                  <p className="text-[8px] text-muted-foreground">
+                    {PROJECT_TYPE_LABELS[p.project_type] || p.project_type} · {progressPct}%
+                  </p>
+                </div>
+              );
+            })}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Start New Project */}
+      <Card>
+        <CardHeader className="pb-1 pt-2 px-3">
+          <CardTitle className="text-[11px] flex items-center gap-1.5">
+            <HardHat className="h-3.5 w-3.5 text-accent-foreground" /> Nový projekt
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="px-3 pb-2 space-y-2">
+          <Select value={newProjectType} onValueChange={setNewProjectType}>
+            <SelectTrigger className="h-7 text-xs"><SelectValue placeholder="Typ projektu" /></SelectTrigger>
+            <SelectContent>
+              {Object.entries(PROJECT_TYPE_LABELS).map(([key, label]) => {
+                const cost = PROJECT_COSTS[key];
+                return (
+                  <SelectItem key={key} value={key}>
+                    {label} ({cost?.turns}k · 💰{cost?.gold} 🪵{cost?.wood} 🪨{cost?.stone} ⛏{cost?.iron})
+                  </SelectItem>
+                );
+              })}
+            </SelectContent>
+          </Select>
+          {newProjectType && (
+            <>
+              {(newProjectType === "create_fort" || newProjectType === "create_port" || newProjectType === "expand_hub") && (
+                <Select onValueChange={(nodeId) => handleStartProject(newProjectType, nodeId)}>
+                  <SelectTrigger className="h-7 text-xs"><SelectValue placeholder="Vyberte uzel" /></SelectTrigger>
+                  <SelectContent>
+                    {myNodes.map(n => (
+                      <SelectItem key={n.id} value={n.id}>{n.name} ({NODE_TYPE_LABELS[n.node_type]})</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+              {(newProjectType === "upgrade_route" || newProjectType === "repair_route") && (
+                <Select onValueChange={(routeId) => handleStartProject(newProjectType, undefined, routeId)}>
+                  <SelectTrigger className="h-7 text-xs"><SelectValue placeholder="Vyberte trasu" /></SelectTrigger>
+                  <SelectContent>
+                    {routes.map(r => {
+                      const na = nodes.find(n => n.id === r.node_a);
+                      const nb = nodes.find(n => n.id === r.node_b);
+                      return (
+                        <SelectItem key={r.id} value={r.id}>
+                          {na?.name} → {nb?.name} (L{r.upgrade_level}{r.damage_level ? ` · Dmg ${r.damage_level}` : ""})
+                        </SelectItem>
+                      );
+                    })}
+                  </SelectContent>
+                </Select>
+              )}
+              {newProjectType === "build_route" && (
+                <Button size="sm" className="w-full h-7 text-xs gap-1"
+                  onClick={() => handleStartProject(newProjectType)} disabled={busy}>
+                  {busy ? <Loader2 className="h-3 w-3 animate-spin" /> : <Hammer className="h-3 w-3" />}
+                  Zahájit stavbu
+                </Button>
+              )}
+            </>
+          )}
+        </CardContent>
+      </Card>
                   ))}
                 </div>
 
