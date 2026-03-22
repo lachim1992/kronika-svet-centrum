@@ -253,11 +253,10 @@ const CityBuildingsPanel = ({
     if (template.is_unique && alreadyBuilt.has(template.id)) { toast.error("Tato stavba je unikátní a již stojí."); return; }
     setSaving(true);
 
+    const prodCostBuild = (template.cost_wood || 0) + (template.cost_stone || 0) + (template.cost_iron || 0);
     await supabase.from("realm_resources").update({
       gold_reserve: (realm.gold_reserve || 0) - template.cost_wealth,
-      wood_reserve: (realm.wood_reserve || 0) - template.cost_wood,
-      stone_reserve: (realm.stone_reserve || 0) - template.cost_stone,
-      iron_reserve: (realm.iron_reserve || 0) - template.cost_iron,
+      production_reserve: Math.max(0, (realm.production_reserve || 0) - prodCostBuild),
     } as any).eq("id", realm.id);
 
     await supabase.from("city_buildings").insert({
