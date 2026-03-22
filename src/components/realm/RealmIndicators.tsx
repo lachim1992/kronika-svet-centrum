@@ -1,10 +1,12 @@
 import { useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Progress } from "@/components/ui/progress";
 import {
-  TrendingUp, TrendingDown, Minus, Users, Shield, Swords, Coins,
-  Wheat, AlertTriangle, Timer, Crown
+  TrendingUp, TrendingDown, Minus, Users, Shield, Swords,
+  AlertTriangle, Timer, Network
 } from "lucide-react";
+import { MACRO_LAYER_ICONS, MACRO_LAYER_LABELS, STRATEGIC_RESOURCE_ICONS, STRATEGIC_RESOURCE_LABELS, STRATEGIC_TIER_LABELS, type StrategicResource } from "@/lib/economyFlow";
 
 interface Props {
   realm: any;
@@ -32,24 +34,10 @@ const RealmIndicators = ({ realm, cities, currentTurn }: Props) => {
       ? Math.round(cities.reduce((s, c) => s + (c.legitimacy || 50), 0) / cities.length)
       : 0;
 
-    // Population growth estimate based on birth/death rates
-    const avgBirth = cities.length > 0
-      ? cities.reduce((s, c) => s + (c.birth_rate || 0), 0) / cities.length
-      : 0;
-    const avgDeath = cities.length > 0
-      ? cities.reduce((s, c) => s + (c.death_rate || 0), 0) / cities.length
-      : 0;
+    const avgBirth = cities.length > 0 ? cities.reduce((s, c) => s + (c.birth_rate || 0), 0) / cities.length : 0;
+    const avgDeath = cities.length > 0 ? cities.reduce((s, c) => s + (c.death_rate || 0), 0) / cities.length : 0;
     const growthRate = avgBirth - avgDeath;
     const growthPerTurn = Math.round(totalPop * growthRate);
-
-    const netGrain = realm?.last_turn_grain_net ?? 0;
-    const grainReserve = realm?.grain_reserve || 0;
-    const grainCap = realm?.granary_capacity || 500;
-
-    // Projection: turns until grain runs out (if negative net)
-    const turnsUntilFamine = netGrain < 0 ? Math.max(0, Math.floor(grainReserve / Math.abs(netGrain))) : null;
-    // Projection: turns until granary full (if positive net)
-    const turnsUntilFull = netGrain > 0 ? Math.max(0, Math.ceil((grainCap - grainReserve) / netGrain)) : null;
 
     const famineCities = cities.filter(c => c.famine_turn);
     const epidemicCities = cities.filter(c => c.epidemic_active);
@@ -58,22 +46,35 @@ const RealmIndicators = ({ realm, cities, currentTurn }: Props) => {
     const availableManpower = (realm?.manpower_pool || 0) - (realm?.manpower_committed || 0);
     const mobRate = Math.round((realm?.mobilization_rate || 0.1) * 100);
 
+    // Macro economy
+    const totalProduction = realm?.total_production ?? 0;
+    const totalWealth = realm?.total_wealth ?? 0;
+    const totalCapacity = realm?.total_capacity ?? 0;
+    const totalImportance = realm?.total_importance ?? 0;
+
+    // Strategic tiers
+    const strategicTiers = [
+      { key: "iron" as StrategicResource, tier: realm?.strategic_iron_tier ?? 0 },
+      { key: "horses" as StrategicResource, tier: realm?.strategic_horses_tier ?? 0 },
+      { key: "salt" as StrategicResource, tier: realm?.strategic_salt_tier ?? 0 },
+      { key: "copper" as StrategicResource, tier: realm?.strategic_copper_tier ?? 0 },
+      { key: "gold_deposit" as StrategicResource, tier: realm?.strategic_gold_tier ?? 0 },
+    ].filter(s => s.tier > 0);
+
     return {
       totalPop, totalPeasants, totalBurghers, totalClerics,
       avgStability, avgLegitimacy, growthRate, growthPerTurn,
-      netGrain, grainReserve, grainCap, turnsUntilFamine, turnsUntilFull,
       famineCities, epidemicCities, lowStabilityCities,
       availableManpower, mobRate,
-      gold: realm?.gold_reserve || 0,
-      wood: realm?.wood_reserve || 0,
-      stone: realm?.stone_reserve || 0,
-      iron: realm?.iron_reserve || 0,
+      totalProduction, totalWealth, totalCapacity, totalImportance,
+      strategicTiers,
     };
   }, [realm, cities, currentTurn]);
 
   const peasantPct = stats.totalPop > 0 ? Math.round((stats.totalPeasants / stats.totalPop) * 100) : 0;
   const burgherPct = stats.totalPop > 0 ? Math.round((stats.totalBurghers / stats.totalPop) * 100) : 0;
   const clericPct = stats.totalPop > 0 ? Math.round((stats.totalClerics / stats.totalPop) * 100) : 0;
+  const maxMacro = Math.max(stats.totalProduction, stats.totalWealth, stats.totalCapacity, 1);
 
   return (
     <div className="space-y-3">
@@ -98,6 +99,48 @@ const RealmIndicators = ({ realm, cities, currentTurn }: Props) => {
         </Card>
       )}
 
+      {/* Macro Economy — 3 Layers */}
+      <Card>
+        <CardHeader className="p-3 pb-1">
+          <CardTitle className="text-xs flex items-center gap-1"><Network className="h-3 w-3" />Ekonomika toku</CardTitle>
+        </CardHeader>
+        <CardContent className="p-3 pt-1 space-y-2">
+          {(["production", "wealth", "capacity"] as const).map(layer => {
+            const val = layer === "production" ? stats.totalProduction : layer === "wealth" ? stats.totalWealth : stats.totalCapacity;
+            return (
+              <div key={layer} className="space-y-0.5">
+                <div className="flex justify-between text-xs">
+                  <span className="text-muted-foreground">{MACRO_LAYER_ICONS[layer]} {MACRO_LAYER_LABELS[layer]}</span>
+                  <span className="font-bold">{val.toFixed(1)}</span>
+                </div>
+                <Progress value={Math.min(100, (val / maxMacro) * 100)} className="h-1" />
+              </div>
+            );
+          })}
+          <div className="flex justify-between text-xs border-t border-border/50 pt-1">
+            <span className="text-muted-foreground">⭐ Celková důležitost</span>
+            <span className="font-bold">{stats.totalImportance.toFixed(1)}</span>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Strategic Resources */}
+      {stats.strategicTiers.length > 0 && (
+        <Card>
+          <CardHeader className="p-3 pb-1">
+            <CardTitle className="text-xs flex items-center gap-1">⚡ Strategické suroviny</CardTitle>
+          </CardHeader>
+          <CardContent className="p-3 pt-1 space-y-1">
+            {stats.strategicTiers.map(s => (
+              <div key={s.key} className="flex justify-between text-xs">
+                <span className="text-muted-foreground">{STRATEGIC_RESOURCE_ICONS[s.key]} {STRATEGIC_RESOURCE_LABELS[s.key]}</span>
+                <Badge variant="secondary" className="text-[9px]">{STRATEGIC_TIER_LABELS[s.tier]}</Badge>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
+
       {/* Population & Demographics */}
       <Card>
         <CardHeader className="p-3 pb-1">
@@ -114,7 +157,6 @@ const RealmIndicators = ({ realm, cities, currentTurn }: Props) => {
               <Trend val={stats.growthPerTurn} />
             </div>
           </div>
-          {/* Class ratios bar */}
           <div>
             <div className="flex h-2 rounded-full overflow-hidden bg-muted">
               <div className="bg-emerald-600 transition-all" style={{ width: `${peasantPct}%` }} title={`Rolníci ${peasantPct}%`} />
@@ -129,60 +171,6 @@ const RealmIndicators = ({ realm, cities, currentTurn }: Props) => {
           </div>
         </CardContent>
       </Card>
-
-      {/* Economy Summary */}
-      <Card>
-        <CardHeader className="p-3 pb-1">
-          <CardTitle className="text-xs flex items-center gap-1"><Coins className="h-3 w-3" />Ekonomika</CardTitle>
-        </CardHeader>
-        <CardContent className="p-3 pt-1">
-          <div className="grid grid-cols-3 gap-2 text-xs">
-            <div className="flex justify-between"><span className="text-muted-foreground">Zlato</span><span className="font-bold">{stats.gold}</span></div>
-            <div className="flex justify-between"><span className="text-muted-foreground">Dřevo</span><span className="font-bold">{stats.wood}</span></div>
-            <div className="flex justify-between"><span className="text-muted-foreground">Kámen</span><span className="font-bold">{stats.stone}</span></div>
-            <div className="flex justify-between"><span className="text-muted-foreground">Železo</span><span className="font-bold">{stats.iron}</span></div>
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Obilí</span>
-              <span className="font-bold">{stats.grainReserve}/{stats.grainCap}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Bilance</span>
-              <Trend val={stats.netGrain} />
-            </div>
-          </div>
-          {/* Grain bar */}
-          <div className="w-full bg-muted rounded-full h-1.5 mt-2">
-            <div className="bg-primary rounded-full h-1.5 transition-all" style={{ width: `${Math.min(100, (stats.grainReserve / Math.max(1, stats.grainCap)) * 100)}%` }} />
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Projections */}
-      {(stats.turnsUntilFamine !== null || stats.turnsUntilFull !== null) && (
-        <Card>
-          <CardHeader className="p-3 pb-1">
-            <CardTitle className="text-xs flex items-center gap-1"><Timer className="h-3 w-3" />Projekce</CardTitle>
-          </CardHeader>
-          <CardContent className="p-3 pt-1 text-xs space-y-1">
-            {stats.turnsUntilFamine !== null && (
-              <div className="flex justify-between">
-                <span className={stats.turnsUntilFamine <= 3 ? "text-destructive font-semibold" : "text-muted-foreground"}>
-                  ⏰ Hladomor za
-                </span>
-                <span className={stats.turnsUntilFamine <= 3 ? "text-destructive font-bold" : "font-bold"}>
-                  {stats.turnsUntilFamine} kol
-                </span>
-              </div>
-            )}
-            {stats.turnsUntilFull !== null && (
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">🏛️ Sýpky plné za</span>
-                <span className="font-bold">{stats.turnsUntilFull} kol</span>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      )}
 
       {/* Stability & Military */}
       <div className="grid grid-cols-2 gap-3">
