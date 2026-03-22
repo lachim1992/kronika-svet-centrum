@@ -184,11 +184,13 @@ const RealmIndicators = ({ realm, cities, currentTurn }: Props) => {
               <div className="bg-emerald-600 transition-all" style={{ width: `${peasantPct}%` }} title={`Rolníci ${peasantPct}%`} />
               <div className="bg-amber-500 transition-all" style={{ width: `${burgherPct}%` }} title={`Měšťané ${burgherPct}%`} />
               <div className="bg-violet-500 transition-all" style={{ width: `${clericPct}%` }} title={`Klerici ${clericPct}%`} />
+              <div className="bg-red-600 transition-all" style={{ width: `${warriorPct}%` }} title={`Válečníci ${warriorPct}%`} />
             </div>
-            <div className="flex justify-between text-[10px] text-muted-foreground mt-0.5">
+            <div className="flex justify-between text-[10px] text-muted-foreground mt-0.5 flex-wrap gap-x-2">
               <span>🌾 Rolníci {peasantPct}%</span>
               <span>🔨 Měšťané {burgherPct}%</span>
               <span>📿 Klerici {clericPct}%</span>
+              <span>⚔ Válečníci {warriorPct}%</span>
             </div>
           </div>
         </CardContent>
