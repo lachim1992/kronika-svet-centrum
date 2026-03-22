@@ -1011,6 +1011,16 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
               />
             );
           })}
+          {/* Strategic node/route overlay */}
+          <StrategicMapOverlay
+            sessionId={sessionId}
+            offsetX={offsetX}
+            offsetY={offsetY}
+            visible={showStrategicLayer}
+            onNodeClick={(node) => {
+              setCurrentPos({ q: node.hex_q, r: node.hex_r });
+            }}
+          />
         </g>
       </svg>
 
