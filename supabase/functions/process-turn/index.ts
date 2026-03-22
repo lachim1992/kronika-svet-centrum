@@ -138,7 +138,7 @@ Deno.serve(async (req) => {
         .select("id, city_id, node_type, flow_role, production_output, wealth_output, capacity_score, importance_score, incoming_production, connectivity_score, route_access_factor, isolation_penalty, controlled_by, toll_rate, throughput_military, province_id")
         .eq("session_id", sessionId),
       supabase.from("province_routes")
-        .select("id, node_a_id, node_b_id, control_state, capacity_value, damage_level")
+        .select("id, node_a, node_b, control_state, capacity_value, damage_level")
         .eq("session_id", sessionId),
       supabase.from("supply_chain_state")
         .select("node_id, connected_to_capital, isolation_turns, supply_level, hop_distance")
