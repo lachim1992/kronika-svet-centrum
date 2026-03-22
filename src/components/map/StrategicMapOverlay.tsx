@@ -73,11 +73,19 @@ interface StrategicNode {
 interface ProvinceRoute {
   id: string; node_a: string; node_b: string; route_type: string;
   capacity_value: number; control_state: string; upgrade_level: number;
+  hex_path_cost: number | null; hex_bottleneck_q: number | null; hex_bottleneck_r: number | null;
+  hex_path_length: number | null;
 }
 interface SupplyState {
   node_id: string; connected_to_capital: boolean; supply_level: number;
   isolation_turns: number; hop_distance: number | null;
   production_modifier: number; stability_modifier: number; morale_modifier: number;
+}
+interface FlowPath {
+  id: string; route_id: string | null; node_a: string; node_b: string;
+  flow_type: string; hex_path: Array<{ q: number; r: number; cost: number }>;
+  total_cost: number; bottleneck_hex: { q: number; r: number; cost: number } | null;
+  path_length: number;
 }
 
 interface FlowParticle {
@@ -86,6 +94,8 @@ interface FlowParticle {
   fromX: number; fromY: number;
   toX: number; toY: number;
   intensity: number;
+  /** SVG path data following hex waypoints */
+  svgPath?: string;
 }
 
 interface Props {
@@ -100,20 +110,25 @@ const StrategicMapOverlay = memo(({ sessionId, offsetX, offsetY, visible, onNode
   const [nodes, setNodes] = useState<StrategicNode[]>([]);
   const [routes, setRoutes] = useState<ProvinceRoute[]>([]);
   const [supply, setSupply] = useState<Map<string, SupplyState>>(new Map());
+  const [flowPaths, setFlowPaths] = useState<FlowPath[]>([]);
   const [hoveredNode, setHoveredNode] = useState<string | null>(null);
+  const [showHexFlows, setShowHexFlows] = useState(true);
 
   const loadData = useCallback(async () => {
-    const [nodesRes, routesRes, supplyRes] = await Promise.all([
+    const [nodesRes, routesRes, supplyRes, flowPathsRes] = await Promise.all([
       supabase.from("province_nodes")
         .select("id, province_id, node_type, name, hex_q, hex_r, city_id, strategic_value, economic_value, defense_value, is_major, is_active, controlled_by, garrison_strength, fortification_level, infrastructure_level, population, parent_node_id, production_output, wealth_output, capacity_score")
         .eq("session_id", sessionId),
       supabase.from("province_routes")
-        .select("id, node_a, node_b, route_type, capacity_value, control_state, upgrade_level")
+        .select("id, node_a, node_b, route_type, capacity_value, control_state, upgrade_level, hex_path_cost, hex_bottleneck_q, hex_bottleneck_r, hex_path_length")
         .eq("session_id", sessionId),
       supabase.from("supply_chain_state")
         .select("node_id, connected_to_capital, supply_level, isolation_turns, hop_distance, production_modifier, stability_modifier, morale_modifier")
         .eq("session_id", sessionId)
         .order("turn_number", { ascending: false }),
+      supabase.from("flow_paths")
+        .select("id, route_id, node_a, node_b, flow_type, hex_path, total_cost, bottleneck_hex, path_length")
+        .eq("session_id", sessionId),
     ]);
     if (nodesRes.data) setNodes(nodesRes.data as StrategicNode[]);
     if (routesRes.data) setRoutes(routesRes.data as ProvinceRoute[]);
@@ -124,6 +139,7 @@ const StrategicMapOverlay = memo(({ sessionId, offsetX, offsetY, visible, onNode
       }
       setSupply(m);
     }
+    if (flowPathsRes.data) setFlowPaths(flowPathsRes.data as FlowPath[]);
   }, [sessionId]);
 
   useEffect(() => { if (visible) loadData(); }, [visible, loadData]);
@@ -247,8 +263,47 @@ const StrategicMapOverlay = memo(({ sessionId, offsetX, offsetY, visible, onNode
     return particles;
   }, [routes, nodePositions, supply, parentMap]);
 
-  // Group particles by route for path defs
-  const flowPaths = useMemo(() => {
+  // Build hex-path SVG polylines from flow_paths data
+  const hexFlowSvgPaths = useMemo(() => {
+    const result: Array<{ key: string; d: string; flowType: string; totalCost: number; bottleneck: FlowPath["bottleneck_hex"] }> = [];
+    for (const fp of flowPaths) {
+      if (!fp.hex_path || fp.hex_path.length < 2) continue;
+      const points = fp.hex_path.map(h => {
+        const px = hexToPixel(h.q, h.r);
+        return { x: px.x + offsetX, y: px.y + offsetY };
+      });
+      const d = `M${points.map(p => `${p.x},${p.y}`).join(" L")}`;
+      result.push({ key: `${fp.node_a}-${fp.node_b}-${fp.flow_type}`, d, flowType: fp.flow_type, totalCost: fp.total_cost, bottleneck: fp.bottleneck_hex });
+    }
+    return result;
+  }, [flowPaths, offsetX, offsetY]);
+
+  // Build corridor heatmap: count how many flows pass through each hex
+  const hexHeatmap = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const fp of flowPaths) {
+      if (!fp.hex_path) continue;
+      for (const h of fp.hex_path) {
+        const k = `${h.q},${h.r}`;
+        counts.set(k, (counts.get(k) || 0) + 1);
+      }
+    }
+    return counts;
+  }, [flowPaths]);
+
+  // Bottleneck hexes from flow_paths
+  const bottleneckHexes = useMemo(() => {
+    const result: Array<{ q: number; r: number; cost: number }> = [];
+    for (const fp of flowPaths) {
+      if (fp.bottleneck_hex && fp.bottleneck_hex.cost > 3) {
+        result.push(fp.bottleneck_hex);
+      }
+    }
+    return result;
+  }, [flowPaths]);
+
+  // Group particles by route for path defs (fallback when no hex paths)
+  const particlePathDefs = useMemo(() => {
     const pathMap = new Map<string, { fromX: number; fromY: number; toX: number; toY: number }>();
     for (const p of flowParticles) {
       const key = `${p.routeId}-${p.flowType}`;
@@ -259,18 +314,78 @@ const StrategicMapOverlay = memo(({ sessionId, offsetX, offsetY, visible, onNode
     return pathMap;
   }, [flowParticles]);
 
+  // Map route_id → hex flow SVG path for particle animation
+  const routeHexPathMap = useMemo(() => {
+    const m = new Map<string, string>(); // route_id → SVG path id suffix
+    for (const fp of flowPaths) {
+      if (fp.route_id && fp.hex_path && fp.hex_path.length >= 2) {
+        m.set(`${fp.route_id}-${fp.flow_type}`, `hexflow-${fp.node_a}-${fp.node_b}-${fp.flow_type}`);
+      }
+    }
+    return m;
+  }, [flowPaths]);
+
   if (!visible || nodes.length === 0) return null;
 
   return (
     <g className="strategic-overlay" style={{ pointerEvents: "auto" }}>
-      {/* Flow path defs */}
+      {/* SVG path defs for particle animation */}
       <defs>
-        {Array.from(flowPaths.entries()).map(([key, fp]) => (
+        {/* Hex-based flow paths */}
+        {hexFlowSvgPaths.map(hp => (
+          <path key={`hfp-${hp.key}`} id={`hexflow-${hp.key}`}
+            d={hp.d} fill="none" />
+        ))}
+        {/* Fallback straight-line paths */}
+        {Array.from(particlePathDefs.entries()).map(([key, fp]) => (
           <path key={`path-${key}`} id={`flow-${key}`}
             d={`M${fp.fromX},${fp.fromY} L${fp.toX},${fp.toY}`}
             fill="none" />
         ))}
       </defs>
+
+      {/* ── Hex corridor heatmap ── */}
+      {showHexFlows && Array.from(hexHeatmap.entries()).map(([k, count]) => {
+        if (count < 2) return null; // Only show for busy corridors
+        const [q, r] = k.split(",").map(Number);
+        const pos = hexToPixel(q, r);
+        const intensity = Math.min(1, count * 0.15);
+        return (
+          <circle key={`heat-${k}`}
+            cx={pos.x + offsetX} cy={pos.y + offsetY}
+            r={HEX_SIZE * 0.45}
+            fill="hsl(48, 90%, 60%)" opacity={intensity * 0.25}
+            style={{ pointerEvents: "none" }} />
+        );
+      })}
+
+      {/* ── Bottleneck markers ── */}
+      {showHexFlows && bottleneckHexes.map((b, i) => {
+        const pos = hexToPixel(b.q, b.r);
+        return (
+          <g key={`btn-${i}`} style={{ pointerEvents: "none" }}>
+            <circle cx={pos.x + offsetX} cy={pos.y + offsetY}
+              r={HEX_SIZE * 0.35} fill="none"
+              stroke="hsl(0, 70%, 55%)" strokeWidth={1.5} opacity={0.7}
+              strokeDasharray="3,2" />
+            <text x={pos.x + offsetX} y={pos.y + offsetY + 1}
+              textAnchor="middle" dominantBaseline="middle"
+              fontSize={8} fill="hsl(0, 70%, 55%)" opacity={0.8}>⚠</text>
+          </g>
+        );
+      })}
+
+      {/* ── Hex flow path polylines ── */}
+      {showHexFlows && hexFlowSvgPaths.map(hp => {
+        const ft = hp.flowType as FlowType;
+        const color = FLOW_COLORS[ft] || FLOW_COLORS.wealth;
+        return (
+          <path key={`hfline-${hp.key}`} d={hp.d}
+            fill="none" stroke={color}
+            strokeWidth={1.5} opacity={0.35}
+            strokeLinecap="round" strokeLinejoin="round" />
+        );
+      })}
 
       {/* Routes (lines) */}
       {routes.map(r => {
@@ -298,12 +413,11 @@ const StrategicMapOverlay = memo(({ sessionId, offsetX, offsetY, visible, onNode
         );
       })}
 
-      {/* Flow particles — 4 distinct flow types */}
+      {/* Flow particles — use hex paths when available, fallback to straight lines */}
       {flowParticles.map((fp, idx) => {
         const key = `${fp.routeId}-${fp.flowType}`;
         const color = FLOW_COLORS[fp.flowType];
         const sizes = FLOW_PARTICLE_SIZES[fp.flowType];
-        // Offset perpendicular to route so different flows don't overlap
         const offsetMap: Record<FlowType, number> = { production: -3, wealth: -1, supply: 1, faith: 3 };
         const perpOffset = offsetMap[fp.flowType];
         const dx = fp.toX - fp.fromX;
@@ -312,15 +426,18 @@ const StrategicMapOverlay = memo(({ sessionId, offsetX, offsetY, visible, onNode
         const nx = -dy / len * perpOffset;
         const ny = dx / len * perpOffset;
 
+        // Prefer hex-based path for animation
+        const hexPathId = routeHexPathMap.get(key);
+        const pathRef = hexPathId ? `#${hexPathId}` : `#flow-${key}`;
+
         return Array.from({ length: fp.intensity }, (_, i) => {
           const dur = `${3.5 + i * 0.8}s`;
           const delay = `${i * 1.0 + idx * 0.15}s`;
-          const pathKey = `flow-${key}`;
           return (
             <g key={`particle-${key}-${i}`} transform={`translate(${nx},${ny})`}>
               <circle r={sizes.r} fill={color} opacity={0.75}>
                 <animateMotion dur={dur} begin={delay} repeatCount="indefinite">
-                  <mpath xlinkHref={`#${pathKey}`} />
+                  <mpath xlinkHref={pathRef} />
                 </animateMotion>
                 <animate attributeName="opacity" values="0;0.85;0.85;0" dur={dur} begin={delay} repeatCount="indefinite" />
                 <animate attributeName="r" values={`${sizes.r};${sizes.rMax};${sizes.r}`} dur={dur} begin={delay} repeatCount="indefinite" />
@@ -484,14 +601,23 @@ const StrategicMapOverlay = memo(({ sessionId, offsetX, offsetY, visible, onNode
         );
       })}
 
-      {/* Flow legend (bottom-left of overlay) */}
-      <g transform="translate(20, -80)">
+      {/* Flow legend + hex flow toggle */}
+      <g transform="translate(20, -110)">
+        {/* Toggle hex flows */}
+        <g className="cursor-pointer" onClick={() => setShowHexFlows(p => !p)} style={{ pointerEvents: "auto" }}>
+          <rect x={0} y={-14} width={90} height={16} rx={4}
+            fill={showHexFlows ? "hsl(48, 90%, 60%)" : "hsl(var(--muted))"} opacity={0.8} />
+          <text x={45} y={-3} textAnchor="middle" fontSize={7}
+            fill={showHexFlows ? "hsl(var(--card))" : "hsl(var(--muted-foreground))"} fontWeight="bold">
+            {showHexFlows ? "🗺 Hex flows ON" : "🗺 Hex flows OFF"}
+          </text>
+        </g>
         {(["production", "wealth", "supply", "faith"] as FlowType[]).map((ft, i) => {
           const labels: Record<FlowType, string> = {
             production: "⚒ Produkce", wealth: "💰 Bohatství", supply: "📦 Zásobování", faith: "⛪ Víra",
           };
           return (
-            <g key={ft} transform={`translate(0, ${i * 14})`}>
+            <g key={ft} transform={`translate(0, ${i * 14 + 8})`}>
               <circle cx={6} cy={0} r={4} fill={FLOW_COLORS[ft]} opacity={0.8} />
               <text x={14} y={3} fontSize={8} fill="hsl(var(--foreground))" opacity={0.7}>
                 {labels[ft]}
@@ -499,6 +625,15 @@ const StrategicMapOverlay = memo(({ sessionId, offsetX, offsetY, visible, onNode
             </g>
           );
         })}
+        {/* Bottleneck legend */}
+        {showHexFlows && (
+          <g transform={`translate(0, ${4 * 14 + 14})`}>
+            <circle cx={6} cy={0} r={4} fill="none" stroke="hsl(0, 70%, 55%)" strokeWidth={1.2} strokeDasharray="2,1" />
+            <text x={14} y={3} fontSize={8} fill="hsl(0, 70%, 55%)" opacity={0.7}>
+              ⚠ Bottleneck
+            </text>
+          </g>
+        )}
       </g>
     </g>
   );
