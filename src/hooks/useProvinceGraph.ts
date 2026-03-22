@@ -46,6 +46,14 @@ export interface StrategicNode {
   defense_value: number;
   mobility_relevance: number;
   supply_relevance: number;
+  controlled_by: string | null;
+  garrison_strength: number | null;
+  is_major: boolean;
+  population: number;
+  fortification_level: number;
+  infrastructure_level: number;
+  parent_node_id: string | null;
+  is_active: boolean;
   metadata: Record<string, any>;
 }
 
