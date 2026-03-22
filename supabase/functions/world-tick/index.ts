@@ -834,6 +834,91 @@ Deno.serve(async (req) => {
           console.warn("Node flow computation non-fatal:", flowErr);
           results.node_flow_error = (flowErr as Error).message;
         }
+
+        // 12d. Compute per-node supply chain
+        try {
+          const supplyRoutes = (graphRoutes || []).map((r: any) => ({
+            node_a: r.node_a_id || r.node_a,
+            node_b: r.node_b_id || r.node_b,
+            control_state: r.control_state || "open",
+            capacity_value: r.capacity_value || 5,
+            damage_level: r.damage_level || 0,
+            safety_value: r.safety_value || 5,
+          }));
+          const supplyNodes = graphNodes.map((n: any) => ({
+            id: n.id,
+            node_type: n.node_type,
+            controlled_by: n.controlled_by,
+            economic_value: n.economic_value || 0,
+            population: n.population || 0,
+          }));
+
+          const supplyResults: any[] = [];
+          for (const actorName of allActorNames) {
+            // Fetch previous turn's isolation state
+            const { data: prevState } = await supabase
+              .from("supply_chain_state")
+              .select("node_id, isolation_turns")
+              .eq("session_id", sessionId)
+              .eq("turn_number", turnNumber - 1);
+
+            const chainResults = computeSupplyChain({
+              playerName: actorName,
+              nodes: supplyNodes,
+              routes: supplyRoutes,
+              previousState: (prevState || []).map((p: any) => ({
+                node_id: p.node_id,
+                isolation_turns: p.isolation_turns || 0,
+              })),
+            });
+
+            if (chainResults.length > 0) {
+              const rows = chainResults.map(r => ({
+                session_id: sessionId,
+                node_id: r.node_id,
+                turn_number: turnNumber,
+                connected_to_capital: r.connected_to_capital,
+                isolation_turns: r.isolation_turns,
+                supply_level: r.supply_level,
+                route_quality: r.route_quality,
+                production_modifier: r.production_modifier,
+                stability_modifier: r.stability_modifier,
+                morale_modifier: r.morale_modifier,
+                supply_source_node_id: r.supply_source_node_id,
+                hop_distance: r.hop_distance,
+              }));
+
+              const BATCH = 50;
+              for (let i = 0; i < rows.length; i += BATCH) {
+                await supabase.from("supply_chain_state").upsert(
+                  rows.slice(i, i + BATCH),
+                  { onConflict: "session_id,node_id,turn_number" },
+                );
+              }
+
+              // Apply stability/morale penalties to cities linked to isolated nodes
+              const isolatedNodes = chainResults.filter(r => !r.connected_to_capital);
+              for (const isoNode of isolatedNodes) {
+                const linkedNode = graphNodes.find((n: any) => n.id === isoNode.node_id && n.city_id);
+                if (linkedNode?.city_id) {
+                  await supabase.rpc("", {}).catch(() => {});
+                  // Direct update: reduce stability of linked city
+                  await supabase.from("cities").update({
+                    city_stability: Math.max(0,
+                      (await supabase.from("cities").select("city_stability").eq("id", linkedNode.city_id).single()).data?.city_stability + isoNode.stability_modifier
+                    ),
+                  }).eq("id", linkedNode.city_id);
+                }
+              }
+
+              supplyResults.push({ player: actorName, nodes: chainResults.length, isolated: isolatedNodes.length });
+            }
+          }
+          results.supply_chain = supplyResults;
+        } catch (scErr) {
+          console.warn("Supply chain computation non-fatal:", scErr);
+          results.supply_chain_error = (scErr as Error).message;
+        }
       }
     } catch (graphErr) {
       console.warn("Province graph computation non-fatal:", graphErr);
