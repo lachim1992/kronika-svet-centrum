@@ -110,20 +110,25 @@ const StrategicMapOverlay = memo(({ sessionId, offsetX, offsetY, visible, onNode
   const [nodes, setNodes] = useState<StrategicNode[]>([]);
   const [routes, setRoutes] = useState<ProvinceRoute[]>([]);
   const [supply, setSupply] = useState<Map<string, SupplyState>>(new Map());
+  const [flowPaths, setFlowPaths] = useState<FlowPath[]>([]);
   const [hoveredNode, setHoveredNode] = useState<string | null>(null);
+  const [showHexFlows, setShowHexFlows] = useState(true);
 
   const loadData = useCallback(async () => {
-    const [nodesRes, routesRes, supplyRes] = await Promise.all([
+    const [nodesRes, routesRes, supplyRes, flowPathsRes] = await Promise.all([
       supabase.from("province_nodes")
         .select("id, province_id, node_type, name, hex_q, hex_r, city_id, strategic_value, economic_value, defense_value, is_major, is_active, controlled_by, garrison_strength, fortification_level, infrastructure_level, population, parent_node_id, production_output, wealth_output, capacity_score")
         .eq("session_id", sessionId),
       supabase.from("province_routes")
-        .select("id, node_a, node_b, route_type, capacity_value, control_state, upgrade_level")
+        .select("id, node_a, node_b, route_type, capacity_value, control_state, upgrade_level, hex_path_cost, hex_bottleneck_q, hex_bottleneck_r, hex_path_length")
         .eq("session_id", sessionId),
       supabase.from("supply_chain_state")
         .select("node_id, connected_to_capital, supply_level, isolation_turns, hop_distance, production_modifier, stability_modifier, morale_modifier")
         .eq("session_id", sessionId)
         .order("turn_number", { ascending: false }),
+      supabase.from("flow_paths")
+        .select("id, route_id, node_a, node_b, flow_type, hex_path, total_cost, bottleneck_hex, path_length")
+        .eq("session_id", sessionId),
     ]);
     if (nodesRes.data) setNodes(nodesRes.data as StrategicNode[]);
     if (routesRes.data) setRoutes(routesRes.data as ProvinceRoute[]);
@@ -134,6 +139,7 @@ const StrategicMapOverlay = memo(({ sessionId, offsetX, offsetY, visible, onNode
       }
       setSupply(m);
     }
+    if (flowPathsRes.data) setFlowPaths(flowPathsRes.data as FlowPath[]);
   }, [sessionId]);
 
   useEffect(() => { if (visible) loadData(); }, [visible, loadData]);
