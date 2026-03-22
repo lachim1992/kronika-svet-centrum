@@ -762,3 +762,4 @@ const StrategicMapOverlay = memo(({ sessionId, offsetX, offsetY, visible, onNode
 
 StrategicMapOverlay.displayName = "StrategicMapOverlay";
 export default StrategicMapOverlay;
+
