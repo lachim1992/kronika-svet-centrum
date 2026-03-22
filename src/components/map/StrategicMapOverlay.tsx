@@ -483,8 +483,6 @@ const StrategicMapOverlay = memo(({ sessionId, offsetX, offsetY, visible, onNode
           </g>
         );
       })}
-        );
-      })}
 
       {/* Flow particles — use hex paths when available, fallback to straight lines */}
       {flowParticles.map((fp, idx) => {
