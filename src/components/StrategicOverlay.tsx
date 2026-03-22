@@ -296,6 +296,39 @@ const StrategicOverlay = memo(function StrategicOverlay({ sessionId, currentPlay
         </Card>
       )}
 
+      {/* Active Projects */}
+      {projects.length > 0 && (
+        <Card>
+          <CardHeader className="pb-1 pt-2 px-3">
+            <CardTitle className="text-[11px] flex items-center gap-1.5">
+              <HardHat className="h-3.5 w-3.5 text-primary" /> Aktivní projekty ({projects.length})
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="px-3 pb-2 space-y-1.5">
+            {projects.map((p: any) => {
+              const progressPct = Math.round(((p.progress || 0) / (p.total_turns || 1)) * 100);
+              const remaining = (p.total_turns || 1) - (p.progress || 0);
+              return (
+                <div key={p.id} className="bg-muted/40 rounded p-2 space-y-1">
+                  <div className="flex items-center gap-2 text-[10px]">
+                    <Wrench className="h-3 w-3 text-primary" />
+                    <span className="font-medium flex-1">{p.name}</span>
+                    <Badge variant="outline" className="text-[7px]">{remaining} kol</Badge>
+                    <button onClick={() => handleCancelProject(p.id)} className="text-muted-foreground hover:text-destructive">
+                      <X className="h-3 w-3" />
+                    </button>
+                  </div>
+                  <Progress value={progressPct} className="h-1" />
+                  <p className="text-[8px] text-muted-foreground">
+                    {PROJECT_TYPE_LABELS[p.project_type] || p.project_type} · {progressPct}%
+                  </p>
+                </div>
+              );
+            })}
+          </CardContent>
+        </Card>
+      )}
+
       {/* My controlled nodes */}
       <div className="space-y-1.5">
         <p className="text-[10px] font-display font-semibold text-muted-foreground">
@@ -322,7 +355,7 @@ const StrategicOverlay = memo(function StrategicOverlay({ sessionId, currentPlay
         </div>
       </div>
 
-      {/* Enemy nodes (clickable for siege) */}
+      {/* Enemy nodes */}
       {contestedNodes.length > 0 && (
         <div className="space-y-1.5">
           <p className="text-[10px] font-display font-semibold text-muted-foreground">
@@ -377,66 +410,7 @@ const StrategicOverlay = memo(function StrategicOverlay({ sessionId, currentPlay
         )}
       </div>
 
-      {/* Node detail sheet */}
-      <Sheet open={!!selectedNode} onOpenChange={() => setSelectedNode(null)}>
-        <SheetContent side="right" className="w-80 sm:w-96">
-          {selectedNode && (
-            <>
-              <SheetHeader>
-                <SheetTitle className="flex items-center gap-2 text-sm">
-                  <NodeIcon type={selectedNode.node_type} />
-                  {selectedNode.name}
-                  {selectedNode.besieged_by && (
-                    <Badge variant="destructive" className="text-[8px]">Obléháno</Badge>
-                  )}
-                </SheetTitle>
-              </SheetHeader>
-              <div className="space-y-3 mt-4">
-                <div className="grid grid-cols-3 gap-1.5 text-[10px]">
-                  {[
-                    { l: "Strategická", v: selectedNode.strategic_value },
-                    { l: "Ekonomická", v: selectedNode.economic_value },
-                    { l: "Obranná", v: selectedNode.defense_value },
-                  ].map(s => (
-                    <div key={s.l} className="bg-muted/40 rounded p-1.5 text-center">
-                      <span className="text-muted-foreground block text-[8px]">{s.l}</span>
-                      <span className="font-bold">{s.v}</span>
-      </div>
-
-      {/* Active Projects */}
-      {projects.length > 0 && (
-        <Card>
-          <CardHeader className="pb-1 pt-2 px-3">
-            <CardTitle className="text-[11px] flex items-center gap-1.5">
-              <HardHat className="h-3.5 w-3.5 text-primary" /> Aktivní projekty ({projects.length})
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="px-3 pb-2 space-y-1.5">
-            {projects.map((p: any) => {
-              const progressPct = Math.round(((p.progress || 0) / (p.total_turns || 1)) * 100);
-              const remaining = (p.total_turns || 1) - (p.progress || 0);
-              return (
-                <div key={p.id} className="bg-muted/40 rounded p-2 space-y-1">
-                  <div className="flex items-center gap-2 text-[10px]">
-                    <Wrench className="h-3 w-3 text-primary" />
-                    <span className="font-medium flex-1">{p.name}</span>
-                    <Badge variant="outline" className="text-[7px]">{remaining} kol</Badge>
-                    <button onClick={() => handleCancelProject(p.id)} className="text-muted-foreground hover:text-destructive">
-                      <X className="h-3 w-3" />
-                    </button>
-                  </div>
-                  <Progress value={progressPct} className="h-1" />
-                  <p className="text-[8px] text-muted-foreground">
-                    {PROJECT_TYPE_LABELS[p.project_type] || p.project_type} · {progressPct}%
-                  </p>
-                </div>
-              );
-            })}
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Start New Project */}
+      {/* New Project */}
       <Card>
         <CardHeader className="pb-1 pt-2 px-3">
           <CardTitle className="text-[11px] flex items-center gap-1.5">
@@ -523,6 +497,7 @@ const StrategicOverlay = memo(function StrategicOverlay({ sessionId, currentPlay
                       <span className="font-bold">{s.v}</span>
                     </div>
                   ))}
+                </div>
 
                 <div className="grid grid-cols-2 gap-1.5 text-[10px]">
                   <div className="bg-muted/40 rounded p-1.5 text-center">
