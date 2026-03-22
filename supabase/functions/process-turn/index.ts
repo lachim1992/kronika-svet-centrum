@@ -717,18 +717,66 @@ Deno.serve(async (req) => {
     // ══════════════════════════════════════════
     // MANPOWER
     // ══════════════════════════════════════════
+    // ══════════════════════════════════════════
+    // MANPOWER (warriors contribute elite officers)
+    // ══════════════════════════════════════════
     let manpowerGrowth = 0;
     for (const c of myCities) {
+      // Peasants provide bulk manpower, warriors provide quality
       manpowerGrowth += Math.floor((c.population_peasants || 0) * 0.015);
+      manpowerGrowth += Math.floor((c.population_warriors || 0) * 0.005); // Small elite contribution
     }
     const mobilizationSpeed = civIdentity?.mobilization_speed || 1.0;
     manpowerGrowth = Math.floor(manpowerGrowth * mobilizationSpeed);
     const manpowerPool = (realm.manpower_pool || 0) + manpowerGrowth;
 
     // ══════════════════════════════════════════
-    // CAPACITY → LOGISTICS
+    // CAPACITY → LOGISTICS (layers + nodes)
     // ══════════════════════════════════════════
-    const logisticCapacity = Math.max(5, Math.round(totalCapacity * 2) + (infra?.roads_level || 0) * 2);
+    const logisticCapacity = Math.max(5,
+      Math.round(totalCapacity * 2 + totalCityCapacity) + (infra?.roads_level || 0) * 2
+    );
+
+    // ══════════════════════════════════════════
+    // FAITH (new axis: clerics + temples)
+    // ══════════════════════════════════════════
+    const currentFaith = realm.faith || 0;
+    // Faith grows from clerics, decays naturally
+    const faithDecay = Math.max(0, currentFaith * 0.02); // 2% natural decay
+    const faithGrowth = totalFaith - faithDecay;
+    const newFaith = Math.max(0, Math.min(100, currentFaith + faithGrowth));
+    // Faith effects: morale bonus, mobilization willingness
+    const faithMoraleMult = 1 + newFaith * 0.003; // Up to +30% morale at faith=100
+    const faithMobWillingness = newFaith > 50 ? 0.05 : (newFaith < 20 ? -0.05 : 0); // Faith affects unrest from mobilization
+
+    // ══════════════════════════════════════════
+    // SUPPLY STRAIN EVENTS
+    // ══════════════════════════════════════════
+    if (supplyStrain > SUPPLY_STRAIN_THRESHOLDS.collapsing) {
+      newEvents.push({
+        event_type: "supply_collapse",
+        note: `Zásobování armády kolabuje! Armáda (${totalArmySize} mužů) přesahuje logistickou kapacitu (${Math.round(currentCapacity * 100)}). Očekávejte ztráty a dezerci.`,
+        importance: "critical",
+        reference: { army_size: totalArmySize, capacity: currentCapacity, strain: supplyStrain },
+      });
+    } else if (supplyStrain > SUPPLY_STRAIN_THRESHOLDS.strained) {
+      newEvents.push({
+        event_type: "supply_strained",
+        note: `Zásobovací linie jsou pod tlakem. Armáda operuje na ${Math.round(supplyStrain * 100)}% kapacity.`,
+        importance: "important",
+        reference: { army_size: totalArmySize, capacity: currentCapacity, strain: supplyStrain },
+      });
+    }
+
+    // Mobilization unrest event
+    if (mobRate > 0.25 && faithMobWillingness <= 0) {
+      newEvents.push({
+        event_type: "mobilization_pressure",
+        note: `Vysoká mobilizace (${Math.round(mobRate * 100)}%) způsobuje nepokoje. ${newFaith < 30 ? "Nízká víra zhoršuje situaci." : ""}`,
+        importance: mobRate > 0.4 ? "critical" : "important",
+        reference: { mobilization_rate: mobRate, faith: newFaith, production_penalty: mobProductionPenalty },
+      });
+    }
 
     // ══════════════════════════════════════════
     // FACTION SATISFACTION
