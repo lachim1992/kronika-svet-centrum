@@ -119,10 +119,51 @@ const StrategicMapOverlay = memo(({ sessionId, offsetX, offsetY, visible, onNode
     return m;
   }, [nodes, offsetX, offsetY]);
 
+  // Determine flow direction: resources flow from minor→major, or toward capital (lower hop_distance)
+  const flowDirections = useMemo(() => {
+    const dirs = new Map<string, { fromX: number; fromY: number; toX: number; toY: number; intensity: number }>();
+    for (const r of routes) {
+      const a = nodePositions.get(r.node_a);
+      const b = nodePositions.get(r.node_b);
+      if (!a || !b) continue;
+      const nodeA = a.node;
+      const nodeB = b.node;
+      const supA = supply.get(r.node_a);
+      const supB = supply.get(r.node_b);
+      // Flow toward the node with lower hop_distance (closer to capital)
+      const hopA = supA?.hop_distance ?? 99;
+      const hopB = supB?.hop_distance ?? 99;
+      const towardA = hopA < hopB;
+      // Intensity based on capacity and supply health
+      const avgSupply = ((supA?.supply_level ?? 5) + (supB?.supply_level ?? 5)) / 2;
+      const intensity = Math.min(3, Math.max(1, Math.round(r.capacity_value / 3 * (avgSupply / 10))));
+      if (r.control_state === "blocked" || r.control_state === "embargoed") continue;
+      dirs.set(r.id, {
+        fromX: towardA ? b.x : a.x, fromY: towardA ? b.y : a.y,
+        toX: towardA ? a.x : b.x, toY: towardA ? a.y : b.y,
+        intensity,
+      });
+    }
+    return dirs;
+  }, [routes, nodePositions, supply]);
+
   if (!visible || nodes.length === 0) return null;
 
   return (
     <g className="strategic-overlay" style={{ pointerEvents: "auto" }}>
+      {/* Route defs for flow paths */}
+      <defs>
+        {routes.map(r => {
+          const flow = flowDirections.get(r.id);
+          if (!flow) return null;
+          return (
+            <path key={`path-${r.id}`} id={`flow-${r.id}`}
+              d={`M${flow.fromX},${flow.fromY} L${flow.toX},${flow.toY}`}
+              fill="none" />
+          );
+        })}
+      </defs>
+
       {/* Routes */}
       {routes.map(r => {
         const a = nodePositions.get(r.node_a);
@@ -132,6 +173,7 @@ const StrategicMapOverlay = memo(({ sessionId, offsetX, offsetY, visible, onNode
         const stateColor = CONTROL_STROKE[r.control_state] || color;
         const isDamaged = r.control_state === "damaged" || r.control_state === "blocked";
         const width = 1.5 + r.upgrade_level * 0.5 + (r.capacity_value > 5 ? 1 : 0);
+        const flow = flowDirections.get(r.id);
         return (
           <g key={r.id}>
             {/* Glow */}
@@ -143,6 +185,25 @@ const StrategicMapOverlay = memo(({ sessionId, offsetX, offsetY, visible, onNode
               stroke={color} strokeWidth={width} opacity={0.7}
               strokeLinecap="round"
               strokeDasharray={isDamaged ? "4,4" : r.route_type === "river_route" || r.route_type === "river" ? "6,3" : undefined} />
+            {/* Flow particles */}
+            {flow && !isDamaged && Array.from({ length: flow.intensity }, (_, i) => {
+              const dur = `${3 + i * 0.7}s`;
+              const delay = `${i * 1.2}s`;
+              const particleColor = r.route_type === "river_route" || r.route_type === "river"
+                ? "hsl(200, 80%, 70%)"
+                : r.route_type === "sea_lane"
+                  ? "hsl(210, 70%, 65%)"
+                  : "hsl(45, 80%, 65%)";
+              return (
+                <circle key={`particle-${r.id}-${i}`} r={1.8} fill={particleColor} opacity={0.7}>
+                  <animateMotion dur={dur} begin={delay} repeatCount="indefinite">
+                    <mpath xlinkHref={`#flow-${r.id}`} />
+                  </animateMotion>
+                  <animate attributeName="opacity" values="0;0.8;0.8;0" dur={dur} begin={delay} repeatCount="indefinite" />
+                  <animate attributeName="r" values="1;2.2;1" dur={dur} begin={delay} repeatCount="indefinite" />
+                </circle>
+              );
+            })}
             {/* Capacity dot at midpoint */}
             {r.capacity_value >= 5 && (
               <circle cx={(a.x + b.x) / 2} cy={(a.y + b.y) / 2} r={3}
