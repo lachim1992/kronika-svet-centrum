@@ -4,7 +4,9 @@ import {
   computeInfluence, computeTension, evaluateRebellion,
   clampReputation, REPUTATION_DELTAS, REPUTATION_DECAY,
   CRISIS_THRESHOLD, WAR_THRESHOLD, SETTLEMENT_LEVEL_THRESHOLDS,
+  computeProvinceControl, computeIsolationPenalty,
   type CityForGrowth, type InfluenceInput,
+  type NodeControlEntry, type IsolationInput,
 } from "../_shared/physics.ts";
 
 const corsHeaders = {
@@ -671,6 +673,89 @@ Deno.serve(async (req) => {
 
     // ========== 11. ECONOMY — handled by process-turn, NOT here ==========
     // economy-recompute removed; process-turn is the single economy engine.
+
+    // ========== 12. PROVINCE CONTROL (strategic graph) ==========
+    const provinceControlResults: any[] = [];
+    try {
+      const [
+        { data: graphNodes },
+        { data: graphRoutes },
+      ] = await Promise.all([
+        supabase.from("province_nodes").select("id, province_id, node_type, controlled_by, strategic_value, economic_value, defense_value").eq("session_id", sessionId),
+        supabase.from("province_routes").select("node_a_id, node_b_id, control_state").eq("session_id", sessionId),
+      ]);
+
+      if (graphNodes && graphNodes.length > 0) {
+        // 12a. Recalculate province control from node ownership
+        const uniqueProvinceIds = [...new Set(graphNodes.map((n: any) => n.province_id).filter(Boolean))];
+        for (const provId of uniqueProvinceIds) {
+          const controlResult = computeProvinceControl(
+            provId,
+            graphNodes.map((n: any) => ({
+              id: n.id,
+              province_id: n.province_id,
+              node_type: n.node_type,
+              controlled_by: n.controlled_by,
+              strategic_value: n.strategic_value || 1,
+              economic_value: n.economic_value || 0,
+              defense_value: n.defense_value || 0,
+            })),
+          );
+
+          await supabase.from("provinces").update({
+            control_player: controlResult.control_player,
+            control_scores: controlResult.control_scores,
+          }).eq("id", provId);
+
+          provinceControlResults.push({
+            province: provId,
+            control_player: controlResult.control_player,
+            dominance: controlResult.dominance,
+          });
+        }
+
+        // 12b. Compute isolation penalty per player
+        const isolationResults: any[] = [];
+        const routesForIsolation = (graphRoutes || []).map((r: any) => ({
+          node_a: r.node_a_id,
+          node_b: r.node_b_id,
+          control_state: r.control_state || "open",
+        }));
+        const nodesForIsolation = graphNodes.map((n: any) => ({
+          id: n.id,
+          province_id: n.province_id,
+          controlled_by: n.controlled_by,
+          node_type: n.node_type,
+        }));
+
+        for (const actorName of allActorNames) {
+          const isolation = computeIsolationPenalty({
+            playerName: actorName,
+            nodes: nodesForIsolation,
+            routes: routesForIsolation,
+          });
+
+          if (isolation.penalty > 0) {
+            await supabase.from("realm_resources").update({
+              isolation_penalty: isolation.penalty,
+            }).eq("session_id", sessionId).eq("player_name", actorName);
+          }
+
+          isolationResults.push({
+            player: actorName,
+            penalty: isolation.penalty,
+            connected: isolation.connectedNodes,
+            total: isolation.totalNodes,
+          });
+        }
+
+        results.province_control = provinceControlResults;
+        results.isolation = isolationResults;
+      }
+    } catch (graphErr) {
+      console.warn("Province graph computation non-fatal:", graphErr);
+      results.province_control_error = (graphErr as Error).message;
+    }
 
     // ========== FINALIZE TICK ==========
     await supabase.from("world_tick_log").update({

@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { computeRouteTraversalProgress } from "../_shared/physics.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -77,14 +78,81 @@ Deno.serve(async (req) => {
       }
       tickResult.arrivedOrders = (arrivedOrders || []).length;
 
-      // 3. Reset expired time pools
+      // 3. Route-based army traversal (strategic movement)
+      const { data: travelingStacks } = await supabase
+        .from("military_stacks")
+        .select("id, travel_progress, travel_departed_turn, travel_route_id, travel_target_node_id")
+        .eq("session_id", sessionId)
+        .eq("is_active", true)
+        .not("travel_route_id", "is", null);
+
+      let routeArrivals = 0;
+      for (const stack of (travelingStacks || [])) {
+        if (!stack.travel_route_id) continue;
+
+        const { data: route } = await supabase
+          .from("province_routes")
+          .select("capacity_value, route_type, control_state, metadata")
+          .eq("id", stack.travel_route_id)
+          .single();
+
+        if (!route) continue;
+
+        // Get current turn from game session
+        const { data: sess } = await supabase
+          .from("game_sessions")
+          .select("current_turn")
+          .eq("id", sessionId)
+          .single();
+
+        const currentTurn = sess?.current_turn || 0;
+
+        const { newProgress, arrived } = computeRouteTraversalProgress(
+          { id: stack.id, travel_progress: stack.travel_progress || 0, travel_departed_turn: stack.travel_departed_turn },
+          route,
+          currentTurn,
+        );
+
+        if (arrived) {
+          // Move stack to target node, clear travel state
+          const updatePayload: any = {
+            travel_progress: 1.0,
+            current_node_id: stack.travel_target_node_id,
+            travel_route_id: null,
+            travel_target_node_id: null,
+            travel_departed_turn: null,
+          };
+
+          // Also update province_id if target node has one
+          if (stack.travel_target_node_id) {
+            const { data: targetNode } = await supabase
+              .from("province_nodes")
+              .select("province_id")
+              .eq("id", stack.travel_target_node_id)
+              .single();
+            if (targetNode?.province_id) {
+              updatePayload.province_id = targetNode.province_id;
+            }
+          }
+
+          await supabase.from("military_stacks").update(updatePayload).eq("id", stack.id);
+          routeArrivals++;
+        } else {
+          await supabase.from("military_stacks")
+            .update({ travel_progress: newProgress })
+            .eq("id", stack.id);
+        }
+      }
+      tickResult.routeArrivals = routeArrivals;
+
+      // 4. Reset expired time pools
       await supabase
         .from("time_pools")
         .update({ used_minutes: 0, resets_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString() })
         .eq("session_id", sessionId)
         .lte("resets_at", now);
 
-      // 4. Check inactivity & auto-delegate
+      // 5. Check inactivity & auto-delegate
       const { data: config } = await supabase.from("server_config")
         .select("inactivity_threshold_hours, delegation_enabled")
         .eq("session_id", sessionId).single();
