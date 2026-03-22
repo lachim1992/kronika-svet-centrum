@@ -102,7 +102,7 @@ export function useProvinceGraph(sessionId: string) {
           .eq("session_id", sessionId),
         supabase
           .from("province_nodes")
-          .select("id, province_id, node_type, name, hex_q, hex_r, city_id, strategic_value, economic_value, defense_value, mobility_relevance, supply_relevance, controlled_by, garrison_strength, is_major, population, fortification_level, infrastructure_level, parent_node_id, is_active, metadata")
+          .select("id, province_id, node_type, name, hex_q, hex_r, city_id, strategic_value, economic_value, defense_value, mobility_relevance, supply_relevance, controlled_by, garrison_strength, is_major, population, fortification_level, infrastructure_level, parent_node_id, is_active, metadata, throughput_military, toll_rate, cumulative_trade_flow, urbanization_score, hinterland_level, resource_output, flow_role")
           .eq("session_id", sessionId),
         supabase
           .from("province_routes")
