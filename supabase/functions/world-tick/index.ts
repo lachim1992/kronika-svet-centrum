@@ -1031,7 +1031,7 @@ Deno.serve(async (req) => {
                 const connectedRatio = snapSupply.filter((r: any) => r.connected_to_capital).length / snapSupply.length;
                 // Route access: ratio of open routes touching this province
                 const provRoutes = (graphRoutes || []).filter((r: any) =>
-                  provNodeIds.includes(r.node_a_id || r.node_a) || provNodeIds.includes(r.node_b_id || r.node_b)
+                  provNodeIds.includes(r.node_a) || provNodeIds.includes(r.node_b)
                 );
                 const openRoutes = provRoutes.filter((r: any) => r.control_state === "open" || !r.control_state);
                 const routeAccess = provRoutes.length > 0 ? openRoutes.length / provRoutes.length : 1.0;
