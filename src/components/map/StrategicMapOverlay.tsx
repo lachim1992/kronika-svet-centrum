@@ -4,7 +4,7 @@
  */
 import { useState, useEffect, useCallback, useMemo, memo } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { NODE_TYPE_LABELS, ROUTE_TYPE_LABELS, CONTROL_STATE_LABELS } from "@/lib/strategicGraph";
+import { NODE_TYPE_LABELS } from "@/lib/strategicGraph";
 
 /* ── Coordinate conversion (must match WorldHexMap) ── */
 const HEX_SIZE = 38;
@@ -12,6 +12,23 @@ const SQRT3 = Math.sqrt(3);
 function hexToPixel(q: number, r: number) {
   return { x: HEX_SIZE * (SQRT3 * q + (SQRT3 / 2) * r), y: HEX_SIZE * 1.5 * r };
 }
+
+/* ── Flow type colors ── */
+const FLOW_COLORS = {
+  production: "hsl(25, 85%, 55%)",   // orange
+  wealth:     "hsl(48, 90%, 60%)",   // gold
+  supply:     "hsl(145, 60%, 50%)",  // green
+  faith:      "hsl(280, 65%, 60%)",  // purple
+} as const;
+
+const FLOW_PARTICLE_SIZES = {
+  production: { r: 2.0, rMax: 2.8 },
+  wealth:     { r: 1.5, rMax: 2.2 },
+  supply:     { r: 1.8, rMax: 2.5 },
+  faith:      { r: 1.3, rMax: 2.0 },
+};
+
+type FlowType = keyof typeof FLOW_COLORS;
 
 /* ── Visual config ── */
 const NODE_ICONS: Record<string, string> = {
@@ -37,17 +54,10 @@ const CONTROL_STROKE: Record<string, string> = {
   embargoed: "hsl(270, 50%, 50%)",
 };
 const SUPPLY_COLORS = [
-  "hsl(0, 70%, 50%)",   // 0 – critical
-  "hsl(15, 70%, 50%)",  // 1
-  "hsl(30, 70%, 50%)",  // 2
-  "hsl(45, 70%, 50%)",  // 3
-  "hsl(60, 60%, 45%)",  // 4
-  "hsl(80, 50%, 45%)",  // 5
-  "hsl(100, 50%, 45%)", // 6
-  "hsl(120, 50%, 45%)", // 7
-  "hsl(130, 50%, 50%)", // 8
-  "hsl(140, 55%, 50%)", // 9
-  "hsl(150, 60%, 50%)", // 10 – fully supplied
+  "hsl(0, 70%, 50%)",   "hsl(15, 70%, 50%)",  "hsl(30, 70%, 50%)",
+  "hsl(45, 70%, 50%)",  "hsl(60, 60%, 45%)",  "hsl(80, 50%, 45%)",
+  "hsl(100, 50%, 45%)", "hsl(120, 50%, 45%)", "hsl(130, 50%, 50%)",
+  "hsl(140, 55%, 50%)", "hsl(150, 60%, 50%)",
 ];
 
 interface StrategicNode {
@@ -57,6 +67,8 @@ interface StrategicNode {
   is_major: boolean; is_active: boolean; controlled_by: string | null;
   garrison_strength: number | null; fortification_level: number;
   infrastructure_level: number; population: number;
+  parent_node_id: string | null;
+  production_output: number; wealth_output: number; capacity_score: number;
 }
 interface ProvinceRoute {
   id: string; node_a: string; node_b: string; route_type: string;
@@ -66,6 +78,14 @@ interface SupplyState {
   node_id: string; connected_to_capital: boolean; supply_level: number;
   isolation_turns: number; hop_distance: number | null;
   production_modifier: number; stability_modifier: number; morale_modifier: number;
+}
+
+interface FlowParticle {
+  routeId: string;
+  flowType: FlowType;
+  fromX: number; fromY: number;
+  toX: number; toY: number;
+  intensity: number;
 }
 
 interface Props {
@@ -85,7 +105,7 @@ const StrategicMapOverlay = memo(({ sessionId, offsetX, offsetY, visible, onNode
   const loadData = useCallback(async () => {
     const [nodesRes, routesRes, supplyRes] = await Promise.all([
       supabase.from("province_nodes")
-        .select("id, province_id, node_type, name, hex_q, hex_r, city_id, strategic_value, economic_value, defense_value, is_major, is_active, controlled_by, garrison_strength, fortification_level, infrastructure_level, population")
+        .select("id, province_id, node_type, name, hex_q, hex_r, city_id, strategic_value, economic_value, defense_value, is_major, is_active, controlled_by, garrison_strength, fortification_level, infrastructure_level, population, parent_node_id, production_output, wealth_output, capacity_score")
         .eq("session_id", sessionId),
       supabase.from("province_routes")
         .select("id, node_a, node_b, route_type, capacity_value, control_state, upgrade_level")
@@ -99,7 +119,6 @@ const StrategicMapOverlay = memo(({ sessionId, offsetX, offsetY, visible, onNode
     if (routesRes.data) setRoutes(routesRes.data as ProvinceRoute[]);
     if (supplyRes.data) {
       const m = new Map<string, SupplyState>();
-      // Ordered by turn_number desc, so first occurrence per node_id is latest
       for (const s of supplyRes.data as SupplyState[]) {
         if (!m.has(s.node_id)) m.set(s.node_id, s);
       }
@@ -119,52 +138,141 @@ const StrategicMapOverlay = memo(({ sessionId, offsetX, offsetY, visible, onNode
     return m;
   }, [nodes, offsetX, offsetY]);
 
-  // Determine flow direction: resources flow from minor→major, or toward capital (lower hop_distance)
-  const flowDirections = useMemo(() => {
-    const dirs = new Map<string, { fromX: number; fromY: number; toX: number; toY: number; intensity: number }>();
+  // Build parent lookup: minor → parent major node
+  // Uses parent_node_id if set, else finds nearest major node connected by route
+  const parentMap = useMemo(() => {
+    const map = new Map<string, string>(); // minor_id → major_id
+    const majorIds = new Set(nodes.filter(n => n.is_major).map(n => n.id));
+    for (const n of nodes) {
+      if (n.is_major) continue;
+      // Prefer explicit parent_node_id
+      if (n.parent_node_id && majorIds.has(n.parent_node_id)) {
+        map.set(n.id, n.parent_node_id);
+        continue;
+      }
+      // Fallback: find nearest connected major via routes
+      const connectedMajors = routes
+        .filter(r => (r.node_a === n.id || r.node_b === n.id) && r.control_state !== "blocked")
+        .map(r => r.node_a === n.id ? r.node_b : r.node_a)
+        .filter(id => majorIds.has(id));
+      if (connectedMajors.length > 0) {
+        // Pick closest by hex distance
+        const nPos = hexToPixel(n.hex_q, n.hex_r);
+        let best = connectedMajors[0];
+        let bestDist = Infinity;
+        for (const mid of connectedMajors) {
+          const mNode = nodes.find(nn => nn.id === mid);
+          if (!mNode) continue;
+          const mPos = hexToPixel(mNode.hex_q, mNode.hex_r);
+          const d = Math.hypot(mPos.x - nPos.x, mPos.y - nPos.y);
+          if (d < bestDist) { bestDist = d; best = mid; }
+        }
+        map.set(n.id, best);
+      }
+    }
+    return map;
+  }, [nodes, routes]);
+
+  // Compute multi-type flow particles per route
+  const flowParticles = useMemo(() => {
+    const particles: FlowParticle[] = [];
+
     for (const r of routes) {
-      const a = nodePositions.get(r.node_a);
-      const b = nodePositions.get(r.node_b);
-      if (!a || !b) continue;
-      const nodeA = a.node;
-      const nodeB = b.node;
+      if (r.control_state === "blocked" || r.control_state === "embargoed") continue;
+      const posA = nodePositions.get(r.node_a);
+      const posB = nodePositions.get(r.node_b);
+      if (!posA || !posB) continue;
+      const nodeA = posA.node;
+      const nodeB = posB.node;
+
+      // Determine direction for PRODUCTION flow: minor→parent, or toward capital (lower hop)
+      const aIsMinor = !nodeA.is_major;
+      const bIsMinor = !nodeB.is_major;
+      const aParent = parentMap.get(nodeA.id);
+      const bParent = parentMap.get(nodeB.id);
+
+      // Production: flows from producer → consumer (minor→major parent, or toward capital)
+      const prodA = nodeA.production_output || 0;
+      const prodB = nodeB.production_output || 0;
+      if (prodA > 0 || prodB > 0) {
+        let fromId = r.node_a, toId = r.node_b;
+        // Minor flows to its parent
+        if (aIsMinor && aParent === nodeB.id) { fromId = r.node_a; toId = r.node_b; }
+        else if (bIsMinor && bParent === nodeA.id) { fromId = r.node_b; toId = r.node_a; }
+        else {
+          // Between majors: toward capital (lower hop distance)
+          const hopA = supply.get(r.node_a)?.hop_distance ?? 99;
+          const hopB = supply.get(r.node_b)?.hop_distance ?? 99;
+          if (hopA < hopB) { fromId = r.node_b; toId = r.node_a; }
+        }
+        const from = nodePositions.get(fromId)!;
+        const to = nodePositions.get(toId)!;
+        const intensity = Math.min(3, Math.max(1, Math.round((prodA + prodB) / 8)));
+        particles.push({ routeId: r.id, flowType: "production", fromX: from.x, fromY: from.y, toX: to.x, toY: to.y, intensity });
+      }
+
+      // Wealth: flows along trade routes toward hubs
+      const wealthA = nodeA.wealth_output || 0;
+      const wealthB = nodeB.wealth_output || 0;
+      if (wealthA > 1 || wealthB > 1) {
+        // Wealth flows toward the node with higher wealth (trade hub attraction)
+        const [fromPos, toPos] = wealthA > wealthB
+          ? [posB, posA] : [posA, posB];
+        const intensity = Math.min(2, Math.max(1, Math.round((wealthA + wealthB) / 12)));
+        particles.push({ routeId: r.id, flowType: "wealth", fromX: fromPos.x, fromY: fromPos.y, toX: toPos.x, toY: toPos.y, intensity });
+      }
+
+      // Supply: flows FROM capital outward (reverse of production)
       const supA = supply.get(r.node_a);
       const supB = supply.get(r.node_b);
-      // Flow toward the node with lower hop_distance (closer to capital)
       const hopA = supA?.hop_distance ?? 99;
       const hopB = supB?.hop_distance ?? 99;
-      const towardA = hopA < hopB;
-      // Intensity based on capacity and supply health
-      const avgSupply = ((supA?.supply_level ?? 5) + (supB?.supply_level ?? 5)) / 2;
-      const intensity = Math.min(3, Math.max(1, Math.round(r.capacity_value / 3 * (avgSupply / 10))));
-      if (r.control_state === "blocked" || r.control_state === "embargoed") continue;
-      dirs.set(r.id, {
-        fromX: towardA ? b.x : a.x, fromY: towardA ? b.y : a.y,
-        toX: towardA ? a.x : b.x, toY: towardA ? a.y : b.y,
-        intensity,
-      });
+      if ((supA?.connected_to_capital || supB?.connected_to_capital) && Math.abs(hopA - hopB) >= 1) {
+        // Supply flows from lower hop (closer to capital) to higher hop
+        const [fromPos, toPos] = hopA < hopB ? [posA, posB] : [posB, posA];
+        const avgSup = ((supA?.supply_level ?? 5) + (supB?.supply_level ?? 5)) / 2;
+        const intensity = avgSup >= 7 ? 2 : 1;
+        particles.push({ routeId: r.id, flowType: "supply", fromX: fromPos.x, fromY: fromPos.y, toX: toPos.x, toY: toPos.y, intensity });
+      }
+
+      // Faith: flows from religious centers and temples outward
+      const isReligiousA = nodeA.node_type === "religious_center";
+      const isReligiousB = nodeB.node_type === "religious_center";
+      if (isReligiousA || isReligiousB) {
+        const [fromPos, toPos] = isReligiousA ? [posA, posB] : [posB, posA];
+        particles.push({ routeId: r.id, flowType: "faith", fromX: fromPos.x, fromY: fromPos.y, toX: toPos.x, toY: toPos.y, intensity: 1 });
+      }
     }
-    return dirs;
-  }, [routes, nodePositions, supply]);
+
+    return particles;
+  }, [routes, nodePositions, supply, parentMap]);
+
+  // Group particles by route for path defs
+  const flowPaths = useMemo(() => {
+    const pathMap = new Map<string, { fromX: number; fromY: number; toX: number; toY: number }>();
+    for (const p of flowParticles) {
+      const key = `${p.routeId}-${p.flowType}`;
+      if (!pathMap.has(key)) {
+        pathMap.set(key, { fromX: p.fromX, fromY: p.fromY, toX: p.toX, toY: p.toY });
+      }
+    }
+    return pathMap;
+  }, [flowParticles]);
 
   if (!visible || nodes.length === 0) return null;
 
   return (
     <g className="strategic-overlay" style={{ pointerEvents: "auto" }}>
-      {/* Route defs for flow paths */}
+      {/* Flow path defs */}
       <defs>
-        {routes.map(r => {
-          const flow = flowDirections.get(r.id);
-          if (!flow) return null;
-          return (
-            <path key={`path-${r.id}`} id={`flow-${r.id}`}
-              d={`M${flow.fromX},${flow.fromY} L${flow.toX},${flow.toY}`}
-              fill="none" />
-          );
-        })}
+        {Array.from(flowPaths.entries()).map(([key, fp]) => (
+          <path key={`path-${key}`} id={`flow-${key}`}
+            d={`M${fp.fromX},${fp.fromY} L${fp.toX},${fp.toY}`}
+            fill="none" />
+        ))}
       </defs>
 
-      {/* Routes */}
+      {/* Routes (lines) */}
       {routes.map(r => {
         const a = nodePositions.get(r.node_a);
         const b = nodePositions.get(r.node_b);
@@ -173,44 +281,53 @@ const StrategicMapOverlay = memo(({ sessionId, offsetX, offsetY, visible, onNode
         const stateColor = CONTROL_STROKE[r.control_state] || color;
         const isDamaged = r.control_state === "damaged" || r.control_state === "blocked";
         const width = 1.5 + r.upgrade_level * 0.5 + (r.capacity_value > 5 ? 1 : 0);
-        const flow = flowDirections.get(r.id);
         return (
           <g key={r.id}>
-            {/* Glow */}
             <line x1={a.x} y1={a.y} x2={b.x} y2={b.y}
-              stroke={stateColor} strokeWidth={width + 3} opacity={0.15}
+              stroke={stateColor} strokeWidth={width + 3} opacity={0.12}
               strokeLinecap="round" />
-            {/* Main line */}
             <line x1={a.x} y1={a.y} x2={b.x} y2={b.y}
-              stroke={color} strokeWidth={width} opacity={0.7}
+              stroke={color} strokeWidth={width} opacity={0.6}
               strokeLinecap="round"
               strokeDasharray={isDamaged ? "4,4" : r.route_type === "river_route" || r.route_type === "river" ? "6,3" : undefined} />
-            {/* Flow particles */}
-            {flow && !isDamaged && Array.from({ length: flow.intensity }, (_, i) => {
-              const dur = `${3 + i * 0.7}s`;
-              const delay = `${i * 1.2}s`;
-              const particleColor = r.route_type === "river_route" || r.route_type === "river"
-                ? "hsl(200, 80%, 70%)"
-                : r.route_type === "sea_lane"
-                  ? "hsl(210, 70%, 65%)"
-                  : "hsl(45, 80%, 65%)";
-              return (
-                <circle key={`particle-${r.id}-${i}`} r={1.8} fill={particleColor} opacity={0.7}>
-                  <animateMotion dur={dur} begin={delay} repeatCount="indefinite">
-                    <mpath xlinkHref={`#flow-${r.id}`} />
-                  </animateMotion>
-                  <animate attributeName="opacity" values="0;0.8;0.8;0" dur={dur} begin={delay} repeatCount="indefinite" />
-                  <animate attributeName="r" values="1;2.2;1" dur={dur} begin={delay} repeatCount="indefinite" />
-                </circle>
-              );
-            })}
-            {/* Capacity dot at midpoint */}
             {r.capacity_value >= 5 && (
               <circle cx={(a.x + b.x) / 2} cy={(a.y + b.y) / 2} r={3}
-                fill={stateColor} opacity={0.6} />
+                fill={stateColor} opacity={0.5} />
             )}
           </g>
         );
+      })}
+
+      {/* Flow particles — 4 distinct flow types */}
+      {flowParticles.map((fp, idx) => {
+        const key = `${fp.routeId}-${fp.flowType}`;
+        const color = FLOW_COLORS[fp.flowType];
+        const sizes = FLOW_PARTICLE_SIZES[fp.flowType];
+        // Offset perpendicular to route so different flows don't overlap
+        const offsetMap: Record<FlowType, number> = { production: -3, wealth: -1, supply: 1, faith: 3 };
+        const perpOffset = offsetMap[fp.flowType];
+        const dx = fp.toX - fp.fromX;
+        const dy = fp.toY - fp.fromY;
+        const len = Math.hypot(dx, dy) || 1;
+        const nx = -dy / len * perpOffset;
+        const ny = dx / len * perpOffset;
+
+        return Array.from({ length: fp.intensity }, (_, i) => {
+          const dur = `${3.5 + i * 0.8}s`;
+          const delay = `${i * 1.0 + idx * 0.15}s`;
+          const pathKey = `flow-${key}`;
+          return (
+            <g key={`particle-${key}-${i}`} transform={`translate(${nx},${ny})`}>
+              <circle r={sizes.r} fill={color} opacity={0.75}>
+                <animateMotion dur={dur} begin={delay} repeatCount="indefinite">
+                  <mpath xlinkHref={`#${pathKey}`} />
+                </animateMotion>
+                <animate attributeName="opacity" values="0;0.85;0.85;0" dur={dur} begin={delay} repeatCount="indefinite" />
+                <animate attributeName="r" values={`${sizes.r};${sizes.rMax};${sizes.r}`} dur={dur} begin={delay} repeatCount="indefinite" />
+              </circle>
+            </g>
+          );
+        });
       })}
 
       {/* Nodes */}
@@ -223,6 +340,8 @@ const StrategicMapOverlay = memo(({ sessionId, offsetX, offsetY, visible, onNode
         const isIsolated = sup?.connected_to_capital === false;
         const isHovered = hoveredNode === n.id;
         const icon = NODE_ICONS[n.node_type] || "📍";
+        const parent = parentMap.get(n.id);
+        const isMinor = !n.is_major;
 
         return (
           <g key={n.id}
@@ -240,8 +359,7 @@ const StrategicMapOverlay = memo(({ sessionId, offsetX, offsetY, visible, onNode
             {/* Isolation pulse */}
             {isIsolated && (
               <circle cx={pos.x} cy={pos.y} r={r + 8}
-                fill="none" stroke="hsl(0, 70%, 50%)" strokeWidth={1}
-                opacity={0.3}>
+                fill="none" stroke="hsl(0, 70%, 50%)" strokeWidth={1} opacity={0.3}>
                 <animate attributeName="r" from={r + 5} to={r + 14} dur="2s" repeatCount="indefinite" />
                 <animate attributeName="opacity" from="0.4" to="0" dur="2s" repeatCount="indefinite" />
               </circle>
@@ -253,6 +371,17 @@ const StrategicMapOverlay = memo(({ sessionId, offsetX, offsetY, visible, onNode
               stroke={isIsolated ? "hsl(0, 60%, 50%)" : n.is_major ? "hsl(var(--primary))" : "hsl(var(--border))"}
               strokeWidth={n.is_major ? 2 : 1.2}
               opacity={isHovered ? 1 : 0.9} />
+
+            {/* Minor→parent link indicator */}
+            {isMinor && parent && (() => {
+              const parentPos = nodePositions.get(parent);
+              if (!parentPos) return null;
+              return (
+                <line x1={pos.x} y1={pos.y} x2={parentPos.x} y2={parentPos.y}
+                  stroke="hsl(var(--primary))" strokeWidth={0.5} opacity={0.15}
+                  strokeDasharray="2,3" />
+              );
+            })()}
 
             {/* Fortification indicator */}
             {n.fortification_level > 0 && (
@@ -268,7 +397,7 @@ const StrategicMapOverlay = memo(({ sessionId, offsetX, offsetY, visible, onNode
               {icon}
             </text>
 
-            {/* Name label (on hover or for major nodes) */}
+            {/* Name label */}
             {(isHovered || n.is_major) && (
               <g>
                 <rect x={pos.x - n.name.length * 2.8} y={pos.y + r + 3}
@@ -291,13 +420,11 @@ const StrategicMapOverlay = memo(({ sessionId, offsetX, offsetY, visible, onNode
                   fill="hsl(var(--destructive))" stroke="hsl(var(--card))" strokeWidth={0.8} />
                 <text x={pos.x + r - 2} y={pos.y - r + 3} textAnchor="middle"
                   dominantBaseline="middle" fontSize={5} fill="hsl(var(--destructive-foreground))"
-                  style={{ pointerEvents: "none" }}>
-                  ⚔
-                </text>
+                  style={{ pointerEvents: "none" }}>⚔</text>
               </g>
             )}
 
-            {/* Supply level badge (bottom-left) */}
+            {/* Supply level badge */}
             {sup && supplyLevel < 8 && (
               <g>
                 <circle cx={pos.x - r + 2} cy={pos.y + r - 2} r={5}
@@ -313,22 +440,28 @@ const StrategicMapOverlay = memo(({ sessionId, offsetX, offsetY, visible, onNode
             {/* Tooltip on hover */}
             {isHovered && (
               <g style={{ pointerEvents: "none" }}>
-                <rect x={pos.x + r + 8} y={pos.y - 40}
-                  width={140} height={68} rx={6}
+                <rect x={pos.x + r + 8} y={pos.y - 50}
+                  width={150} height={82} rx={6}
                   fill="hsl(var(--popover))" stroke="hsl(var(--border))" strokeWidth={1}
                   opacity={0.95}
                   filter="drop-shadow(0 2px 6px rgba(0,0,0,0.3))" />
-                <text x={pos.x + r + 14} y={pos.y - 26}
+                <text x={pos.x + r + 14} y={pos.y - 36}
                   fill="hsl(var(--foreground))" fontSize={8} fontWeight="bold">
                   {n.name}
                 </text>
-                <text x={pos.x + r + 14} y={pos.y - 15}
+                <text x={pos.x + r + 14} y={pos.y - 25}
                   fill="hsl(var(--muted-foreground))" fontSize={7}>
                   {NODE_TYPE_LABELS[n.node_type] || n.node_type} · Pop: {n.population}
                 </text>
-                <text x={pos.x + r + 14} y={pos.y - 4}
+                <text x={pos.x + r + 14} y={pos.y - 14}
                   fill="hsl(var(--muted-foreground))" fontSize={7}>
                   ⚔{n.strategic_value} 💰{n.economic_value} 🛡{n.defense_value}
+                </text>
+                {/* Flow outputs */}
+                <text x={pos.x + r + 14} y={pos.y - 3} fontSize={7}>
+                  <tspan fill={FLOW_COLORS.production}>⚒{n.production_output?.toFixed(1) ?? "?"}</tspan>
+                  <tspan fill={FLOW_COLORS.wealth}> 💰{n.wealth_output?.toFixed(1) ?? "?"}</tspan>
+                  <tspan fill={FLOW_COLORS.supply}> 🏛{n.capacity_score?.toFixed(1) ?? "?"}</tspan>
                 </text>
                 <text x={pos.x + r + 14} y={pos.y + 7}
                   fill={SUPPLY_COLORS[supplyLevel]} fontSize={7}>
@@ -339,11 +472,34 @@ const StrategicMapOverlay = memo(({ sessionId, offsetX, offsetY, visible, onNode
                   🏗 Fort:{n.fortification_level} Infra:{n.infrastructure_level}
                   {n.garrison_strength ? ` Posádka:${n.garrison_strength}` : ""}
                 </text>
+                {isMinor && parent && (
+                  <text x={pos.x + r + 14} y={pos.y + 27}
+                    fill="hsl(var(--muted-foreground))" fontSize={6}>
+                    ↗ Parent: {nodes.find(nn => nn.id === parent)?.name || "?"}
+                  </text>
+                )}
               </g>
             )}
           </g>
         );
       })}
+
+      {/* Flow legend (bottom-left of overlay) */}
+      <g transform="translate(20, -80)">
+        {(["production", "wealth", "supply", "faith"] as FlowType[]).map((ft, i) => {
+          const labels: Record<FlowType, string> = {
+            production: "⚒ Produkce", wealth: "💰 Bohatství", supply: "📦 Zásobování", faith: "⛪ Víra",
+          };
+          return (
+            <g key={ft} transform={`translate(0, ${i * 14})`}>
+              <circle cx={6} cy={0} r={4} fill={FLOW_COLORS[ft]} opacity={0.8} />
+              <text x={14} y={3} fontSize={8} fill="hsl(var(--foreground))" opacity={0.7}>
+                {labels[ft]}
+              </text>
+            </g>
+          );
+        })}
+      </g>
     </g>
   );
 });
