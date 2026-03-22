@@ -546,7 +546,7 @@ async function buildStrategicMapContext(client: SupabaseClient, sessionId: strin
         const children = minors.filter(n => n.parent_node_id === m.id);
         const sup = supMap.get(m.id);
         const connections = (adjMap.get(m.id) || []).map(id => nodeNameMap.get(id) || "?").slice(0, 5);
-        parts.push(`  🔵 ${m.name} [${m.node_type}/${m.flow_role}] (${m.hex_q},${m.hex_r}) ⚒${(m.production_output||0).toFixed(1)} 💰${(m.wealth_output||0).toFixed(1)} 🏛${(m.capacity_score||0).toFixed(1)}${m.garrison_strength ? ` ⚔${m.garrison_strength}` : ""}${m.fortification_level ? ` 🏰${m.fortification_level}` : ""} hop:${sup?.hop_distance ?? "?"} supply:${sup?.supply_level ?? "?"}/10`);
+        parts.push(`  🔵 ${m.name} [${(m as any).node_class || m.node_type}/${m.flow_role}] (${m.hex_q},${m.hex_r}) ⚒${(m.production_output||0).toFixed(1)} 💰${(m.wealth_output||0).toFixed(1)} ⛪${((m as any).faith_output||0).toFixed(1)} 🏛${(m.capacity_score||0).toFixed(1)}${m.garrison_strength ? ` ⚔${m.garrison_strength}` : ""}${m.fortification_level ? ` 🏰${m.fortification_level}` : ""}${(m as any).strategic_resource_type && (m as any).strategic_resource_type !== "NONE" ? ` ✦${(m as any).strategic_resource_type}` : ""} score:${(m as any).node_score || 0} collapse:${(m as any).collapse_severity || 0} hop:${sup?.hop_distance ?? "?"} supply:${sup?.supply_level ?? "?"}/10`);
         if (children.length > 0) {
           parts.push(`    └ Minor: ${children.map(c => `${c.name}(⚒${(c.production_output||0).toFixed(1)})`).join(", ")}`);
         }
