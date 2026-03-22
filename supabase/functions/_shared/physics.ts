@@ -1901,6 +1901,8 @@ export interface HexCostContext {
   is_contested: boolean;
   /** Existing trade density (0-100) — high density = lower cost (established corridor) */
   trade_density: number;
+  /** Is there a mountain pass node on this hex (reduces mountain cost dramatically) */
+  has_pass?: boolean;
 }
 
 /**
