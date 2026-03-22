@@ -872,7 +872,7 @@ Deno.serve(async (req) => {
     }
 
     // ══════════════════════════════════════════
-    // UPDATE REALM RESOURCES
+    // UPDATE REALM RESOURCES (with faith + supply strain + mobilization penalties)
     // ══════════════════════════════════════════
     await supabase.from("realm_resources").update({
       grain_reserve: globalGrainReserve,
@@ -888,6 +888,13 @@ Deno.serve(async (req) => {
       last_turn_iron_prod: 0,
       gold_reserve: newGoldReserve,
       famine_city_count: famineCityCount,
+      faith: Math.round(newFaith * 100) / 100,
+      faith_growth: Math.round(faithGrowth * 100) / 100,
+      warrior_ratio: Math.round(warriorRatio * 1000) / 1000,
+      supply_strain: Math.round(supplyStrain * 1000) / 1000,
+      mobilization_production_penalty: Math.round(mobProductionPenalty * 10) / 10,
+      mobilization_wealth_penalty: Math.round(mobWealthPenalty * 10) / 10,
+      last_turn_faith_delta: Math.round(faithGrowth * 100) / 100,
       updated_at: new Date().toISOString(),
     }).eq("id", realm.id);
 
@@ -929,11 +936,11 @@ Deno.serve(async (req) => {
     await supabase.from("world_action_log").insert({
       session_id: sessionId, turn_number: currentTurn, player_name: playerName,
       action_type: "turn_processing",
-      description: `Kolo ${currentTurn}: ⚒️${totalCityProduction.toFixed(0)} 💰${totalWealth.toFixed(0)} 🏛️${totalCapacity.toFixed(0)} | pop ${totalPopulation} | manpower ${manpowerPool}`,
+      description: `Kolo ${currentTurn}: ⚒️${totalCityProduction.toFixed(0)} 💰${wealthIncome} 🏛️${logisticCapacity} ⛪${newFaith.toFixed(0)} | pop ${totalPopulation} | ⚔${totalWarriors} | manpower ${manpowerPool}`,
       metadata: {
         total_production: totalCityProduction,
-        total_wealth: totalWealth,
-        total_capacity: totalCapacity,
+        total_wealth: combinedWealth,
+        total_capacity: logisticCapacity,
         total_importance: totalImportance,
         demand: totalDemand,
         net_production: netProduction,
@@ -942,6 +949,12 @@ Deno.serve(async (req) => {
         manpower_pool: manpowerPool,
         famine_cities: famineCityCount,
         workforce_ratio: workforceRatio,
+        warrior_ratio: warriorRatio,
+        faith: newFaith,
+        faith_growth: faithGrowth,
+        supply_strain: supplyStrain,
+        army_size: totalArmySize,
+        mobilization_penalties: { production: mobProductionPenalty, wealth: mobWealthPenalty },
         trade_gold: tradeGoldDelta,
         tolls_paid: totalTollsPaid,
         events_generated: newEvents.length,
@@ -952,16 +965,20 @@ Deno.serve(async (req) => {
     return new Response(JSON.stringify({
       ok: true, turn: currentTurn,
       summary: {
-        totalProduction: totalCityProduction, totalWealth, totalCapacity, totalImportance,
+        totalProduction: totalCityProduction, totalWealth: combinedWealth,
+        totalCapacity: logisticCapacity, totalImportance,
         demand: totalDemand, netProduction,
         grainReserve: globalGrainReserve, granaryCapacity,
         goldReserve: newGoldReserve,
         manpowerPool, logisticCapacity, totalPopulation,
+        faith: newFaith, faithGrowth,
+        warriorRatio, supplyStrain,
         famineCities: famineCityCount,
         tradeGoldDelta, tollsPaid: totalTollsPaid,
         eventsGenerated: newEvents.length,
         cityEconomy: cityEconResults,
         lawEffects: { taxRateModifier, grainRationModifier, tradeRestriction },
+        mobPenalties: { production: mobProductionPenalty, wealth: mobWealthPenalty },
       },
     }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
