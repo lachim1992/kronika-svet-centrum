@@ -509,8 +509,104 @@ ${(activeIntents || []).map((i: any) => `  ${i.intent_type}${i.target_faction ? 
 ═══ TVOJE MINULÉ AKCE (paměť) ═══
 ${(myPastActions || []).map((a: any) => `  [Rok ${a.turn_number}] ${a.action_type}: ${a.description}`).join("\n") || "žádné záznamy"}
 
+═══ STRATEGICKÝ GRAF — TVOJE UZLY ═══
+${(() => {
+  const myNodes = (strategicNodes || []).filter((n: any) => n.controlled_by === factionName);
+  const supMap = new Map<string, any>();
+  for (const s of (supplyStates || [])) { if (!supMap.has(s.node_id)) supMap.set(s.node_id, s); }
+  
+  const nodeLines = myNodes.slice(0, 15).map((n: any) => {
+    const sup = supMap.get(n.id);
+    const isolated = sup?.connected_to_capital === false;
+    return `  ${n.name} [${n.node_type}] hex(${n.hex_q},${n.hex_r}) ⚔${n.strategic_value} 💰${n.economic_value} 🛡${n.defense_value} prod=${n.production_output?.toFixed(1)} wealth=${n.wealth_output?.toFixed(1)} fort=${n.fortification_level} infra=${n.infrastructure_level} trade_flow=${n.cumulative_trade_flow || 0}${isolated ? " ⚠IZOLOVÁN" : ""} supply=${sup?.supply_level ?? "?"}`;
+  });
+  return nodeLines.join("\n") || "žádné uzly";
+})()}
+
+═══ STRATEGICKÝ GRAF — NEPŘÁTELSKÉ UZLY (blízké) ═══
+${(() => {
+  const myNodeHexes = (strategicNodes || []).filter((n: any) => n.controlled_by === factionName);
+  const enemyNodes = (strategicNodes || []).filter((n: any) => n.controlled_by && n.controlled_by !== factionName && n.is_major);
+  // Filter to those within reasonable distance (hex distance <= 8 from any of my nodes)
+  const nearEnemyNodes = enemyNodes.filter((en: any) => 
+    myNodeHexes.some((mn: any) => hexDistance(mn.hex_q, mn.hex_r, en.hex_q, en.hex_r) <= 8)
+  ).slice(0, 10);
+  return nearEnemyNodes.map((n: any) => 
+    `  ${n.name} [${n.node_type}] vlastník=${n.controlled_by} hex(${n.hex_q},${n.hex_r}) ⚔${n.strategic_value} 💰${n.economic_value} fort=${n.fortification_level}`
+  ).join("\n") || "žádné blízké nepřátelské uzly";
+})()}
+
+═══ STRATEGICKÝ GRAF — KLÍČOVÉ TRASY ═══
+${(() => {
+  const nodeNameMap = new Map<string, string>();
+  for (const n of (strategicNodes || [])) nodeNameMap.set(n.id, n.name);
+  
+  // Routes connected to my nodes
+  const myNodeIds = new Set((strategicNodes || []).filter((n: any) => n.controlled_by === factionName).map((n: any) => n.id));
+  const myRoutes = (strategicRoutes || []).filter((r: any) => myNodeIds.has(r.node_a) || myNodeIds.has(r.node_b));
+  
+  return myRoutes.slice(0, 15).map((r: any) => {
+    const blocked = r.control_state === "blocked" || r.control_state === "embargoed";
+    const damaged = r.control_state === "damaged";
+    const bottleneck = r.hex_bottleneck_q != null ? ` bottleneck(${r.hex_bottleneck_q},${r.hex_bottleneck_r})` : "";
+    return `  ${nodeNameMap.get(r.node_a) || "?"} ↔ ${nodeNameMap.get(r.node_b) || "?"} [${r.route_type}] cap=${r.capacity_value} cost=${r.hex_path_cost || "?"}${bottleneck}${blocked ? " 🚫BLOKOVÁNO" : ""}${damaged ? " ⚠POŠKOZENO" : ""}`;
+  }).join("\n") || "žádné trasy";
+})()}
+
+═══ STRATEGICKÁ DOPORUČENÍ ═══
+${(() => {
+  const supMap = new Map<string, any>();
+  for (const s of (supplyStates || [])) { if (!supMap.has(s.node_id)) supMap.set(s.node_id, s); }
+  
+  const recommendations: string[] = [];
+  
+  // 1. Uncontrolled high-value nodes nearby (expansion targets)
+  const uncontr = (strategicNodes || []).filter((n: any) => !n.controlled_by && n.is_major && (n.economic_value >= 5 || n.strategic_value >= 5));
+  const myNodeHexes = (strategicNodes || []).filter((n: any) => n.controlled_by === factionName);
+  const nearUncontr = uncontr.filter((un: any) => myNodeHexes.some((mn: any) => hexDistance(mn.hex_q, mn.hex_r, un.hex_q, un.hex_r) <= 6)).slice(0, 3);
+  if (nearUncontr.length > 0) {
+    recommendations.push(`🏗 ZAKLÁDÁNÍ: Blízké volné uzly s vysokou hodnotou: ${nearUncontr.map((n: any) => `${n.name}(⚔${n.strategic_value},💰${n.economic_value}) hex(${n.hex_q},${n.hex_r})`).join(", ")}`);
+  }
+  
+  // 2. Isolated own nodes (need reconnection or fortification)
+  const isolated = (strategicNodes || []).filter((n: any) => n.controlled_by === factionName && supMap.get(n.id)?.connected_to_capital === false);
+  if (isolated.length > 0) {
+    recommendations.push(`⚠ IZOLACE: ${isolated.length} tvých uzlů je izolováno! Oprav cesty nebo fortifikuj: ${isolated.slice(0, 3).map((n: any) => n.name).join(", ")}`);
+  }
+  
+  // 3. Enemy chokepoints (war targets)
+  const enemyChokes = (strategicNodes || []).filter((n: any) => 
+    n.controlled_by && n.controlled_by !== factionName && 
+    (n.node_type === "fortress" || n.node_type === "pass") && 
+    n.strategic_value >= 6
+  );
+  if (enemyChokes.length > 0 && milMetrics.warState !== "peace") {
+    recommendations.push(`🎯 CHOKEPOINTS: Nepřátelské strategické body k útoku: ${enemyChokes.slice(0, 3).map((n: any) => `${n.name}(${n.controlled_by}) ⚔${n.strategic_value}`).join(", ")}`);
+  }
+  
+  // 4. Damaged/blocked routes to repair
+  const damagedRoutes = (strategicRoutes || []).filter((r: any) => 
+    (r.control_state === "damaged" || r.control_state === "blocked") && 
+    (strategicNodes || []).some((n: any) => n.controlled_by === factionName && (n.id === r.node_a || n.id === r.node_b))
+  );
+  if (damagedRoutes.length > 0) {
+    recommendations.push(`🔧 OPRAVY: ${damagedRoutes.length} poškozených/blokovaných tras — oprav pro obnovení toku`);
+  }
+  
+  // 5. High-traffic nodes without fortification (vulnerable corridors)
+  const unfortifiedTraffic = (strategicNodes || []).filter((n: any) => 
+    n.controlled_by === factionName && (n.cumulative_trade_flow || 0) > 20 && n.fortification_level < 1
+  );
+  if (unfortifiedTraffic.length > 0) {
+    recommendations.push(`🏰 FORTIFIKACE: Vytížené uzly bez opevnění: ${unfortifiedTraffic.slice(0, 3).map((n: any) => `${n.name}(flow=${n.cumulative_trade_flow})`).join(", ")}`);
+  }
+  
+  return recommendations.join("\n") || "Žádná zvláštní doporučení";
+})()}
+
 ═══ ZAKLÁDÁNÍ OSAD ═══
 Můžeš založit novou osadu na volném hexu ve vlastní provincii. Stojí: 150 produkce + 100 bohatství.
+DŮLEŽITÉ: Zakládej osady na UZLECH s vysokým node_score! Preferuj: trade hub pozice, food basin, resource node, chokepoint.
 Tvé provincie: ${(myProvinces || []).map((p: any) => `${p.name} [${p.hex_q},${p.hex_r}]`).join(", ") || "žádné"}
 Volné hexy existují, pokud v provincii není přelidněno.
 
