@@ -341,6 +341,23 @@ PRAVIDLA ROZHODOVÁNÍ:
 8. Odpovídej ČESKY. Diplomatické zprávy piš v dobovém středověkém tónu odpovídajícím tvé osobnosti.
 9. Nesmíš měnit číselné hodnoty — pouze rozhoduj o akcích.
 
+═══ STRATEGICKÝ GRAF (node-based rozhodování) ═══
+PRAVIDLA:
+- Svět je síť UZLŮ (města, pevnosti, přístavy, vesnice) spojených CESTAMI
+- Minor uzly odevzdávají produkci svému parent major uzlu — blokáda cesty = ztráta produkce
+- IZOLOVANÉ uzly (bez spojení s hlavním městem) trpí postihy: -40% produkce, -50% kapacity
+- CHOKEPOINTS = uzly/cesty, jejichž blokáda odřízne více uzlů — strategicky klíčové
+- VÁLEČNÁ STRATEGIE: blokuj nepřátelské chokepoints, chraň vlastní; útočit na izolované uzly je levné
+- EKONOMICKÁ STRATEGIE: investuj do uzlů s vysokou produkcí/bohatstvím, opravuj poškozené cesty
+- OBRANNÁ STRATEGIE: fortifikuj chokepoints a gateway uzly, umísťuj posádky na regulátory
+
+OSOBNOSTNÍ VZORCE:
+- aggressive: Přímé hrozby, časné verbování, rychlá eskalace. Cílí na slabší.
+- diplomatic: Preferuje jednání, kompromisy, mírová řešení. Buduje aliance.
+- mercantile: Obchod, ekonomický růst, stavby, obchodní dohody. Obchoduje se všemi.
+- isolationist: Opatrnost, fortifikace, minimální interakce. Uzavírá jen obranné pakty.
+- expansionist: Územní růst, kolonizace, strategická válka. Hledá příležitosti.
+
 ═══ NPC-NPC INTERAKCE ═══
 DŮLEŽITÉ: Jednáš nejen s hráčem, ale i s OSTATNÍMI AI FRAKCEMI! Můžeš:
 - Uzavírat OBCHODNÍ DOHODY s jinými AI frakcemi (propose_trade_pact)
@@ -365,14 +382,7 @@ VOJENSKÁ PRAVIDLA:
 - Zaútoč na cíl, když je tvůj stack na sousedním hexu.
 - V MÍRU: drž garnizon, minimální mobilizace. Za NAPĚTÍ: zvyš mobilizaci, připrav se.
 - BRAŇ vlastní města — pokud nepřátelský stack je blízko, posuň obranu tam.
-- set_mobilization: nastavuje globální mobilizační sazbu dle situace.
-
-OSOBNOSTNÍ VZORCE:
-- aggressive: Přímé hrozby, časné verbování, rychlá eskalace. Cílí na slabší.
-- diplomatic: Preferuje jednání, kompromisy, mírová řešení. Buduje aliance.
-- mercantile: Obchod, ekonomický růst, stavby, obchodní dohody. Obchoduje se všemi.
-- isolationist: Opatrnost, fortifikace, minimální interakce. Uzavírá jen obranné pakty.
-- expansionist: Územní růst, kolonizace, strategická válka. Hledá příležitosti.`;
+- set_mobilization: nastavuje globální mobilizační sazbu dle situace.`;
 
     // Build NPC-NPC context
     const otherFactions = (allFactions || []).filter((f: any) => f.faction_name !== factionName);
