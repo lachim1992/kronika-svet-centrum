@@ -715,6 +715,25 @@ Deno.serve(async (req) => {
             control_player: controlResult.control_player,
             dominance: controlResult.dominance,
           });
+
+          // Persist control snapshot
+          const provNodes = graphNodes.filter((n: any) => n.province_id === provId);
+          const controlledNodes = provNodes.filter((n: any) => n.controlled_by === controlResult.control_player);
+          const totalSV = provNodes.reduce((s: number, n: any) => s + (n.strategic_value || 0), 0);
+          const contested = Object.keys(controlResult.control_scores).length > 1 && controlResult.dominance < 0.75;
+
+          await supabase.from("province_control_snapshots").upsert({
+            session_id: sessionId,
+            province_id: provId,
+            turn_number: turnNumber,
+            control_player: controlResult.control_player,
+            dominance: controlResult.dominance,
+            control_scores: controlResult.control_scores,
+            total_strategic_value: totalSV,
+            node_count: provNodes.length,
+            controlled_node_count: controlledNodes.length,
+            contested,
+          }, { onConflict: "session_id,province_id,turn_number" });
         }
 
         // 12b. Compute isolation penalty per player
