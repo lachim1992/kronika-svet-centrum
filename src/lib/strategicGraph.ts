@@ -209,14 +209,18 @@ export const PROJECT_TYPE_LABELS: Record<string, string> = {
   repair_route: "Oprava cesty",
 };
 
-/** Project costs for UI display */
-export const PROJECT_COSTS: Record<string, { gold: number; wood: number; stone: number; iron: number; turns: number }> = {
-  build_route: { gold: 50, wood: 30, stone: 20, iron: 0, turns: 3 },
-  upgrade_route: { gold: 30, wood: 10, stone: 15, iron: 5, turns: 2 },
-  create_fort: { gold: 100, wood: 40, stone: 60, iron: 30, turns: 5 },
-  create_port: { gold: 80, wood: 50, stone: 40, iron: 10, turns: 4 },
-  expand_hub: { gold: 60, wood: 20, stone: 30, iron: 10, turns: 3 },
-  repair_route: { gold: 20, wood: 15, stone: 10, iron: 0, turns: 2 },
+/** Project costs for UI display — new civilizational economy
+ * production = physical materials (from peasant output)
+ * wealth = financing (from burgher/trade output)
+ * capacity_req = minimum logistic capacity required (not consumed)
+ */
+export const PROJECT_COSTS: Record<string, { production: number; wealth: number; capacity_req: number; turns: number }> = {
+  build_route: { production: 40, wealth: 30, capacity_req: 5, turns: 3 },
+  upgrade_route: { production: 25, wealth: 20, capacity_req: 8, turns: 2 },
+  create_fort: { production: 100, wealth: 60, capacity_req: 15, turns: 5 },
+  create_port: { production: 80, wealth: 50, capacity_req: 12, turns: 4 },
+  expand_hub: { production: 50, wealth: 40, capacity_req: 10, turns: 3 },
+  repair_route: { production: 20, wealth: 10, capacity_req: 3, turns: 2 },
 };
 
 /** Route type labels in Czech */

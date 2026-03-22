@@ -521,7 +521,7 @@ const StrategicOverlay = memo(function StrategicOverlay({ sessionId, currentPlay
                 const cost = PROJECT_COSTS[key];
                 return (
                   <SelectItem key={key} value={key}>
-                    {label} ({cost?.turns}k · 💰{cost?.gold} 🪵{cost?.wood} 🪨{cost?.stone} ⛏{cost?.iron})
+                    {label} ({cost?.turns}k · ⚒️{cost?.production} 💰{cost?.wealth} 🏛️≥{cost?.capacity_req})
                   </SelectItem>
                 );
               })}

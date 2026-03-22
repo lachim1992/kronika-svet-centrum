@@ -1771,13 +1771,13 @@ async function executeDisruptRoute(
 // START_PROJECT — begin a node/route construction project
 // ═══════════════════════════════════════════
 
-const PROJECT_TEMPLATES: Record<string, { name: string; totalTurns: number; costGold: number; costWood: number; costStone: number; costIron: number }> = {
-  build_route: { name: "Stavba cesty", totalTurns: 3, costGold: 50, costWood: 30, costStone: 20, costIron: 0 },
-  upgrade_route: { name: "Vylepšení cesty", totalTurns: 2, costGold: 30, costWood: 10, costStone: 15, costIron: 5 },
-  create_fort: { name: "Stavba pevnosti", totalTurns: 5, costGold: 100, costWood: 40, costStone: 60, costIron: 30 },
-  create_port: { name: "Stavba přístavu", totalTurns: 4, costGold: 80, costWood: 50, costStone: 40, costIron: 10 },
-  expand_hub: { name: "Rozšíření centra", totalTurns: 3, costGold: 60, costWood: 20, costStone: 30, costIron: 10 },
-  repair_route: { name: "Oprava cesty", totalTurns: 2, costGold: 20, costWood: 15, costStone: 10, costIron: 0 },
+const PROJECT_TEMPLATES: Record<string, { name: string; totalTurns: number; costProduction: number; costWealth: number; capacityReq: number }> = {
+  build_route: { name: "Stavba cesty", totalTurns: 3, costProduction: 40, costWealth: 30, capacityReq: 5 },
+  upgrade_route: { name: "Vylepšení cesty", totalTurns: 2, costProduction: 25, costWealth: 20, capacityReq: 8 },
+  create_fort: { name: "Stavba pevnosti", totalTurns: 5, costProduction: 100, costWealth: 60, capacityReq: 15 },
+  create_port: { name: "Stavba přístavu", totalTurns: 4, costProduction: 80, costWealth: 50, capacityReq: 12 },
+  expand_hub: { name: "Rozšíření centra", totalTurns: 3, costProduction: 50, costWealth: 40, capacityReq: 10 },
+  repair_route: { name: "Oprava cesty", totalTurns: 2, costProduction: 20, costWealth: 10, capacityReq: 3 },
 };
 
 async function executeStartProject(
@@ -1790,23 +1790,20 @@ async function executeStartProject(
   const template = PROJECT_TEMPLATES[projectType];
   if (!template) return { events: [], error: `Unknown project type: ${projectType}` };
 
-  // Check player has enough resources
+  // Check player has enough resources (new civilizational economy)
   const { data: realm } = await supabase.from("realm_resources")
-    .select("gold_reserve, wood_reserve, stone_reserve, iron_reserve")
+    .select("gold_reserve, production_reserve, total_capacity")
     .eq("session_id", sessionId).eq("player_name", actor.name).maybeSingle();
 
   if (realm) {
-    if ((realm.gold_reserve || 0) < template.costGold) return { events: [], error: "Nedostatek zlata" };
-    if ((realm.wood_reserve || 0) < template.costWood) return { events: [], error: "Nedostatek dřeva" };
-    if ((realm.stone_reserve || 0) < template.costStone) return { events: [], error: "Nedostatek kamene" };
-    if ((realm.iron_reserve || 0) < template.costIron) return { events: [], error: "Nedostatek železa" };
+    if ((realm.production_reserve || 0) < template.costProduction) return { events: [], error: `Nedostatek produkce (${realm.production_reserve || 0}/${template.costProduction})` };
+    if ((realm.gold_reserve || 0) < template.costWealth) return { events: [], error: `Nedostatek bohatství (${realm.gold_reserve || 0}/${template.costWealth})` };
+    if ((realm.total_capacity || 0) < template.capacityReq) return { events: [], error: `Nedostatečná kapacita (${realm.total_capacity || 0}/${template.capacityReq})` };
 
-    // Deduct resources
+    // Deduct production + wealth (capacity is a throughput limit, not consumed)
     await supabase.from("realm_resources").update({
-      gold_reserve: (realm.gold_reserve || 0) - template.costGold,
-      wood_reserve: (realm.wood_reserve || 0) - template.costWood,
-      stone_reserve: (realm.stone_reserve || 0) - template.costStone,
-      iron_reserve: (realm.iron_reserve || 0) - template.costIron,
+      production_reserve: (realm.production_reserve || 0) - template.costProduction,
+      gold_reserve: (realm.gold_reserve || 0) - template.costWealth,
     }).eq("session_id", sessionId).eq("player_name", actor.name);
   }
 
