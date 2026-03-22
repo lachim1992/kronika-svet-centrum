@@ -388,9 +388,14 @@ const StrategicOverlay = memo(function StrategicOverlay({ sessionId, currentPlay
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
           {myNodes.map(n => {
             const garrison = stacks.find(s => s.current_node_id === n.id && !s.travel_route_id);
+            const sc = supplyState[n.id];
+            const isIsolated = sc && !sc.connected_to_capital;
+            const isLowSupply = sc && sc.supply_level <= 4 && sc.connected_to_capital;
             return (
               <button key={n.id} onClick={() => setSelectedNode(n)}
-                className="flex items-center gap-1.5 p-1.5 rounded bg-muted/40 hover:bg-muted/60 transition text-left text-[10px]">
+                className={`flex items-center gap-1.5 p-1.5 rounded transition text-left text-[10px] ${
+                  isIsolated ? "bg-destructive/15 border border-destructive/30" : isLowSupply ? "bg-accent/30" : "bg-muted/40 hover:bg-muted/60"
+                }`}>
                 <NodeIcon type={n.node_type} />
                 <div className="flex-1 min-w-0">
                   <p className="font-medium truncate">{n.name}</p>
@@ -398,6 +403,8 @@ const StrategicOverlay = memo(function StrategicOverlay({ sessionId, currentPlay
                     {NODE_TYPE_LABELS[n.node_type] || n.node_type}
                     {garrison && ` · ⚔${garrison.power || 0}`}
                     {garrison?.stance && garrison.stance !== "idle" && ` · ${STANCE_LABELS[garrison.stance] || garrison.stance}`}
+                    {sc && ` · 📦${sc.supply_level}`}
+                    {isIsolated && " · ⚠️"}
                   </p>
                 </div>
               </button>
