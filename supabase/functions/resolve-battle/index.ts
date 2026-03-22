@@ -88,6 +88,9 @@ Deno.serve(async (req) => {
       defender_formation: inputDefenderFormation,
       seed, biome: inputBiome, player_name, current_turn,
       lobby_id,
+      battle_context: inputBattleContext,
+      node_id: inputNodeId,
+      route_id: inputRouteId,
     } = await req.json();
 
     if (!session_id || !attacker_stack_id) {
@@ -196,8 +199,26 @@ Deno.serve(async (req) => {
     const defFormBonus = FORMATION_BASE_BONUSES[defenderFormation] || { attack: 0, defense: 0, fortIgnore: 0 };
     const matchupBonus = (FORMATION_MATCHUPS[attackerFormation] || {})[defenderFormation] || 0;
 
+    // ═══ NODE FORTIFICATION BONUS ═══
+    let nodeFortBonus = 0;
+    const battleContext = inputBattleContext || "field_battle";
+    if (inputNodeId && (battleContext === "node_siege" || defender_city_id)) {
+      const { data: bNode } = await supabase.from("province_nodes")
+        .select("fortification_level, defense_value")
+        .eq("id", inputNodeId).maybeSingle();
+      if (bNode) {
+        nodeFortBonus = (bNode.fortification_level || 0) * 0.10 + (bNode.defense_value || 0) * 0.02;
+      }
+    }
+
+    // ═══ AMBUSH BONUS ═══
+    let ambushBonus = 0;
+    if (battleContext === "route_ambush") {
+      ambushBonus = 0.20; // 20% surprise attack bonus
+    }
+
     // Fort ignore from FLANK
-    const effectiveFortification = fortificationBonus * (1 - atkFormBonus.fortIgnore);
+    const effectiveFortification = (fortificationBonus + nodeFortBonus) * (1 - atkFormBonus.fortIgnore);
 
     // SIEGE city bonus
     const siegeCityBonus = (attackerFormation === "SIEGE" && defender_city_id) ? SIEGE_CITY_BONUS : 0;
@@ -210,7 +231,7 @@ Deno.serve(async (req) => {
 
     // Attack multipliers
     const attackerCivFort = defender_city_id ? 0 : (civBonuses.fortification_bonus || 0) * 0.5;
-    const effectiveAttackerBase = Math.round(attackerStrength * (1 + attackerCivFort + atkFormBonus.attack + matchupBonus + siegeCityBonus));
+    const effectiveAttackerBase = Math.round(attackerStrength * (1 + attackerCivFort + atkFormBonus.attack + matchupBonus + siegeCityBonus + ambushBonus));
 
     // RNG
     const rng = seededRandom(battleSeed);
@@ -298,6 +319,41 @@ Deno.serve(async (req) => {
       await supabase.from("battle_lobbies").update({
         status: "resolved", battle_id: battleRecord.id, resolved_at: new Date().toISOString(),
       }).eq("id", lobby_id);
+    }
+
+    // ═══ POST-BATTLE NODE/ROUTE CONTROL TRANSFER ═══
+    const isVictory = result === "decisive_victory" || result === "victory" || result === "pyrrhic_victory";
+
+    // Node control transfer after siege victory
+    if (isVictory && inputNodeId && battleContext === "node_siege") {
+      const attackerPlayer = player_name || attackerStack.player_name;
+      await supabase.from("province_nodes").update({
+        controlled_by: attackerPlayer,
+        besieged_by: null,
+        besieging_stack_id: null,
+        siege_turn_start: null,
+        garrison_strength: 0,
+      }).eq("id", inputNodeId);
+
+      await supabase.from("game_events").insert({
+        session_id, player: attackerPlayer, event_type: "node_captured",
+        turn_number: turnNumber, confirmed: true, truth_state: "canon",
+        note: `Uzel dobyt po bitvě!`, importance: "critical",
+      });
+    }
+
+    // Route unblocking after blockade battle victory
+    if (isVictory && inputRouteId && battleContext === "route_blockade") {
+      await supabase.from("province_routes").update({
+        control_state: "open",
+        blocked_by: [],
+      }).eq("id", inputRouteId);
+    }
+
+    // Clear battle context on stacks
+    await supabase.from("military_stacks").update({ battle_context: null }).eq("id", attacker_stack_id);
+    if (defender_stack_id) {
+      await supabase.from("military_stacks").update({ battle_context: null }).eq("id", defender_stack_id);
     }
 
     // Post-battle decision

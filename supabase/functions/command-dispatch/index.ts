@@ -293,6 +293,18 @@ async function executeCommand(
     case "FORTIFY_NODE":
       return await executeFortifyNode(supabase, base, actor, payload, commandId, sessionId, turnNumber);
 
+    case "BLOCKADE_ROUTE":
+      return await executeBlockadeRoute(supabase, base, actor, payload, commandId, sessionId, turnNumber);
+
+    case "AMBUSH_ROUTE":
+      return await executeAmbushRoute(supabase, base, actor, payload, commandId, sessionId, turnNumber);
+
+    case "SIEGE_NODE":
+      return await executeSiegeNode(supabase, base, actor, payload, commandId, sessionId, turnNumber);
+
+    case "DISRUPT_ROUTE":
+      return await executeDisruptRoute(supabase, base, actor, payload, commandId, sessionId, turnNumber);
+
     case "PROPOSE_PACT":
       return await executeProposePact(supabase, base, actor, payload, commandId, sessionId, turnNumber);
 
@@ -1538,4 +1550,188 @@ async function executeFortifyNode(
   }
 
   return { events: [], error: "Node is already controlled by another player" };
+}
+
+// ═══════════════════════════════════════════
+// BLOCKADE_ROUTE — block a route with a military stack
+// ═══════════════════════════════════════════
+
+async function executeBlockadeRoute(
+  supabase: any, base: any, actor: Actor, payload: any,
+  commandId: string, sessionId: string, turnNumber: number,
+): Promise<CommandResult> {
+  const { stackId, routeId } = payload;
+  if (!stackId || !routeId) return { events: [], error: "Missing stackId or routeId" };
+
+  const { data: stack } = await supabase.from("military_stacks")
+    .select("id, player_name, name, current_node_id")
+    .eq("id", stackId).eq("session_id", sessionId).single();
+  if (!stack) return { events: [], error: "Stack not found" };
+  if (stack.player_name !== actor.name) return { events: [], error: "Not your stack" };
+
+  const { data: route } = await supabase.from("province_routes")
+    .select("id, node_a, node_b, control_state, blocked_by")
+    .eq("id", routeId).eq("session_id", sessionId).single();
+  if (!route) return { events: [], error: "Route not found" };
+
+  // Stack must be at one of the route endpoints
+  if (stack.current_node_id !== route.node_a && stack.current_node_id !== route.node_b) {
+    return { events: [], error: "Stack must be at one of the route endpoints to blockade" };
+  }
+
+  const blockedBy = [...(route.blocked_by || []), actor.name];
+  await supabase.from("province_routes").update({
+    control_state: "blocked",
+    blocked_by: blockedBy,
+  }).eq("id", routeId);
+
+  await supabase.from("military_stacks").update({
+    stance: "intercepting",
+    blockading_route_id: routeId,
+  }).eq("id", stackId);
+
+  const note = `${actor.name} zablokoval cestu armádou ${stack.name}.`;
+  return insertEventsWithChronicle(supabase, commandId, sessionId, turnNumber, [{
+    ...base, event_type: "military", note, importance: "normal",
+    reference: { stackId, routeId, action: "blockade" },
+  }], payload.chronicleText);
+}
+
+// ═══════════════════════════════════════════
+// AMBUSH_ROUTE — set ambush on a route
+// ═══════════════════════════════════════════
+
+async function executeAmbushRoute(
+  supabase: any, base: any, actor: Actor, payload: any,
+  commandId: string, sessionId: string, turnNumber: number,
+): Promise<CommandResult> {
+  const { stackId, routeId } = payload;
+  if (!stackId || !routeId) return { events: [], error: "Missing stackId or routeId" };
+
+  const { data: stack } = await supabase.from("military_stacks")
+    .select("id, player_name, name, current_node_id")
+    .eq("id", stackId).eq("session_id", sessionId).single();
+  if (!stack) return { events: [], error: "Stack not found" };
+  if (stack.player_name !== actor.name) return { events: [], error: "Not your stack" };
+
+  const { data: route } = await supabase.from("province_routes")
+    .select("id, node_a, node_b")
+    .eq("id", routeId).eq("session_id", sessionId).single();
+  if (!route) return { events: [], error: "Route not found" };
+
+  if (stack.current_node_id !== route.node_a && stack.current_node_id !== route.node_b) {
+    return { events: [], error: "Stack must be at a route endpoint to set ambush" };
+  }
+
+  await supabase.from("province_routes").update({
+    ambush_stack_id: stackId,
+  }).eq("id", routeId);
+
+  await supabase.from("military_stacks").update({
+    stance: "intercepting",
+  }).eq("id", stackId);
+
+  const note = `${actor.name} nastražil léčku na cestě armádou ${stack.name}.`;
+  return insertEventsWithChronicle(supabase, commandId, sessionId, turnNumber, [{
+    ...base, event_type: "military", note, importance: "normal",
+    reference: { stackId, routeId, action: "ambush" },
+  }], payload.chronicleText);
+}
+
+// ═══════════════════════════════════════════
+// SIEGE_NODE — begin siege of a strategic node
+// ═══════════════════════════════════════════
+
+async function executeSiegeNode(
+  supabase: any, base: any, actor: Actor, payload: any,
+  commandId: string, sessionId: string, turnNumber: number,
+): Promise<CommandResult> {
+  const { stackId, nodeId } = payload;
+  if (!stackId || !nodeId) return { events: [], error: "Missing stackId or nodeId" };
+
+  const { data: stack } = await supabase.from("military_stacks")
+    .select("id, player_name, name, current_node_id")
+    .eq("id", stackId).eq("session_id", sessionId).single();
+  if (!stack) return { events: [], error: "Stack not found" };
+  if (stack.player_name !== actor.name) return { events: [], error: "Not your stack" };
+
+  const { data: node } = await supabase.from("province_nodes")
+    .select("id, name, controlled_by, garrison_strength, fortification_level, besieged_by")
+    .eq("id", nodeId).eq("session_id", sessionId).single();
+  if (!node) return { events: [], error: "Node not found" };
+  if (node.controlled_by === actor.name) return { events: [], error: "You already control this node" };
+  if (node.besieged_by) return { events: [], error: "Node is already under siege" };
+
+  // Stack must be at the node or adjacent (at a route endpoint)
+  if (stack.current_node_id !== nodeId) {
+    // Check if stack is at a connected node
+    const { data: connRoutes } = await supabase.from("province_routes")
+      .select("id")
+      .eq("session_id", sessionId)
+      .or(`and(node_a.eq.${stack.current_node_id},node_b.eq.${nodeId}),and(node_a.eq.${nodeId},node_b.eq.${stack.current_node_id})`);
+    if (!connRoutes || connRoutes.length === 0) {
+      return { events: [], error: "Stack must be at or adjacent to the node to siege" };
+    }
+  }
+
+  await supabase.from("province_nodes").update({
+    besieged_by: actor.name,
+    besieging_stack_id: stackId,
+    siege_turn_start: turnNumber,
+  }).eq("id", nodeId);
+
+  await supabase.from("military_stacks").update({
+    stance: "besieging",
+    current_node_id: nodeId,
+  }).eq("id", stackId);
+
+  const note = `${actor.name} zahájil obléhání ${node.name} armádou ${stack.name}.`;
+  return insertEventsWithChronicle(supabase, commandId, sessionId, turnNumber, [{
+    ...base, event_type: "military", note, importance: "critical",
+    reference: { stackId, nodeId, nodeName: node.name, action: "siege" },
+  }], payload.chronicleText);
+}
+
+// ═══════════════════════════════════════════
+// DISRUPT_ROUTE — damage a route (sabotage)
+// ═══════════════════════════════════════════
+
+async function executeDisruptRoute(
+  supabase: any, base: any, actor: Actor, payload: any,
+  commandId: string, sessionId: string, turnNumber: number,
+): Promise<CommandResult> {
+  const { routeId, stackId } = payload;
+  if (!routeId) return { events: [], error: "Missing routeId" };
+
+  const { data: route } = await supabase.from("province_routes")
+    .select("id, node_a, node_b, damage_level, control_state, capacity_value")
+    .eq("id", routeId).eq("session_id", sessionId).single();
+  if (!route) return { events: [], error: "Route not found" };
+
+  // Verify stack is at endpoint if provided
+  if (stackId) {
+    const { data: stack } = await supabase.from("military_stacks")
+      .select("current_node_id, player_name")
+      .eq("id", stackId).eq("session_id", sessionId).single();
+    if (!stack || stack.player_name !== actor.name) return { events: [], error: "Invalid stack" };
+    if (stack.current_node_id !== route.node_a && stack.current_node_id !== route.node_b) {
+      return { events: [], error: "Stack must be at a route endpoint" };
+    }
+  }
+
+  const newDamage = Math.min(10, (route.damage_level || 0) + 3);
+  const newState = newDamage >= 8 ? "blocked" : newDamage >= 4 ? "damaged" : route.control_state;
+  const capacityPenalty = Math.max(1, route.capacity_value - 2);
+
+  await supabase.from("province_routes").update({
+    damage_level: newDamage,
+    control_state: newState,
+    capacity_value: capacityPenalty,
+  }).eq("id", routeId);
+
+  const note = `${actor.name} poškodil cestu (poškození: ${newDamage}/10). ${newState === "blocked" ? "Cesta je neprůchodná!" : ""}`;
+  return insertEventsWithChronicle(supabase, commandId, sessionId, turnNumber, [{
+    ...base, event_type: "military", note, importance: newState === "blocked" ? "critical" : "normal",
+    reference: { routeId, damageLevel: newDamage, action: "disrupt" },
+  }], payload.chronicleText);
 }

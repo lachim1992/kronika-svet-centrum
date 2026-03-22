@@ -145,6 +145,131 @@ Deno.serve(async (req) => {
       }
       tickResult.routeArrivals = routeArrivals;
 
+      // 3b. Route interception — ambush check for traveling stacks
+      let ambushTriggered = 0;
+      for (const stack of (travelingStacks || [])) {
+        if (!stack.travel_route_id) continue;
+        // Check if ambush is set on this route
+        const { data: ambushRoute } = await supabase
+          .from("province_routes")
+          .select("ambush_stack_id")
+          .eq("id", stack.travel_route_id)
+          .not("ambush_stack_id", "is", null)
+          .maybeSingle();
+
+        if (ambushRoute?.ambush_stack_id) {
+          // Check ambush stack is enemy
+          const { data: ambushStack } = await supabase
+            .from("military_stacks")
+            .select("id, player_name, is_active")
+            .eq("id", ambushRoute.ambush_stack_id)
+            .single();
+
+          if (ambushStack?.is_active) {
+            const { data: travelStack } = await supabase
+              .from("military_stacks")
+              .select("player_name")
+              .eq("id", stack.id)
+              .single();
+
+            if (travelStack && ambushStack.player_name !== travelStack.player_name) {
+              // Trigger ambush — stop traveling stack and create battle lobby
+              await supabase.from("military_stacks").update({
+                travel_route_id: null,
+                travel_target_node_id: null,
+                travel_progress: stack.travel_progress || 0,
+                stance: "idle",
+                battle_context: "route_ambush",
+              }).eq("id", stack.id);
+
+              // Clear ambush
+              await supabase.from("province_routes").update({
+                ambush_stack_id: null,
+              }).eq("id", stack.travel_route_id);
+
+              // Create auto battle lobby
+              const currentTurn = (await supabase.from("game_sessions").select("current_turn").eq("id", sessionId).single()).data?.current_turn || 0;
+              await supabase.from("battle_lobbies").insert({
+                session_id: sessionId,
+                attacker_player: ambushStack.player_name,
+                attacker_stack_id: ambushStack.id,
+                defender_player: travelStack.player_name,
+                defender_stack_id: stack.id,
+                status: "pending",
+                turn_number: currentTurn,
+              });
+
+              // Game event
+              await supabase.from("game_events").insert({
+                session_id: sessionId,
+                player: ambushStack.player_name,
+                event_type: "battle",
+                turn_number: currentTurn,
+                note: `Léčka! Armáda byla přepadena na cestě.`,
+                importance: "critical",
+                confirmed: true,
+                truth_state: "canon",
+              });
+
+              ambushTriggered++;
+            }
+          }
+        }
+      }
+      tickResult.ambushTriggered = ambushTriggered;
+
+      // 3c. Siege progression — reduce garrison of besieged nodes each tick
+      const { data: besiegedNodes } = await supabase
+        .from("province_nodes")
+        .select("id, garrison_strength, siege_turn_start, besieging_stack_id, name, controlled_by")
+        .eq("session_id", sessionId)
+        .not("besieged_by", "is", null);
+
+      let siegeCaptures = 0;
+      for (const node of (besiegedNodes || [])) {
+        const garrisonLoss = Math.max(1, Math.floor((node.garrison_strength || 0) * 0.15));
+        const newGarrison = Math.max(0, (node.garrison_strength || 0) - garrisonLoss);
+
+        if (newGarrison <= 0 && node.besieging_stack_id) {
+          // Node falls to besieger
+          const { data: siegeStack } = await supabase.from("military_stacks")
+            .select("player_name").eq("id", node.besieging_stack_id).single();
+          const newOwner = siegeStack?.player_name || null;
+
+          await supabase.from("province_nodes").update({
+            garrison_strength: 0,
+            controlled_by: newOwner,
+            besieged_by: null,
+            besieging_stack_id: null,
+            siege_turn_start: null,
+          }).eq("id", node.id);
+
+          await supabase.from("military_stacks").update({
+            stance: "defending",
+          }).eq("id", node.besieging_stack_id);
+
+          // Game event
+          const currentTurn = (await supabase.from("game_sessions").select("current_turn").eq("id", sessionId).single()).data?.current_turn || 0;
+          await supabase.from("game_events").insert({
+            session_id: sessionId,
+            player: newOwner || "system",
+            event_type: "node_captured",
+            turn_number: currentTurn,
+            note: `${node.name} padl po obléhání! Nový pán: ${newOwner || "nikdo"}.`,
+            importance: "critical",
+            confirmed: true,
+            truth_state: "canon",
+          });
+
+          siegeCaptures++;
+        } else {
+          await supabase.from("province_nodes").update({
+            garrison_strength: newGarrison,
+          }).eq("id", node.id);
+        }
+      }
+      tickResult.siegeCaptures = siegeCaptures;
+
       // 4. Reset expired time pools
       await supabase
         .from("time_pools")
