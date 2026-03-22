@@ -247,10 +247,9 @@ const CityManagement = ({ sessionId, cityId, currentPlayerName, currentTurn, onB
     if (!canAfford(aiPreview)) { toast.error("Nedostatek surovin!"); return; }
     setBuilding(true);
     try {
+      const aiProdCost = (aiPreview.cost_wood || 0) + (aiPreview.cost_stone || 0) + (aiPreview.cost_iron || 0);
       await supabase.from("realm_resources").update({
-        wood_reserve: (realm.wood_reserve || 0) - aiPreview.cost_wood,
-        stone_reserve: (realm.stone_reserve || 0) - aiPreview.cost_stone,
-        iron_reserve: (realm.iron_reserve || 0) - aiPreview.cost_iron,
+        production_reserve: Math.max(0, (realm.production_reserve || 0) - aiProdCost),
         gold_reserve: (realm.gold_reserve || 0) - aiPreview.cost_wealth,
       } as any).eq("id", realm.id);
 
