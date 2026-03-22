@@ -914,9 +914,7 @@ const CityBuildingsPanel = ({
                           <div className="flex gap-2 mt-1.5 flex-wrap items-center">
                             <div className="flex gap-1 text-[9px] text-muted-foreground">
                               {t.cost_wealth > 0 && <span>💰{t.cost_wealth}</span>}
-                              {t.cost_wood > 0 && <span>🪵{t.cost_wood}</span>}
-                              {t.cost_stone > 0 && <span>🪨{t.cost_stone}</span>}
-                              {t.cost_iron > 0 && <span>⚙️{t.cost_iron}</span>}
+                              {((t.cost_wood || 0) + (t.cost_stone || 0) + (t.cost_iron || 0)) > 0 && <span>⚒️{(t.cost_wood || 0) + (t.cost_stone || 0) + (t.cost_iron || 0)}</span>}
                               <span>⏱️{t.build_turns}k</span>
                             </div>
                             <ArrowRight className="h-2.5 w-2.5 text-muted-foreground" />

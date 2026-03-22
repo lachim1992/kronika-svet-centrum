@@ -115,16 +115,27 @@ const ResourceHUD = ({ sessionId, playerName, cities, currentTurn }: ResourceHUD
     fetchData();
   };
 
+  // Reserve values (spendable stocks)
+  const prodReserve = realm.production_reserve ?? 0;
+  const wealthReserve = realm.gold_reserve ?? 0;
+  const grainReserve = realm.grain_reserve ?? 0;
+
   const chips: { icon: React.ReactNode; label: string; value: string; warning?: boolean }[] = [
     {
       icon: <span className="text-xs">{MACRO_LAYER_ICONS.production}</span>,
       label: "Produkce",
-      value: totalProd.toFixed(1),
+      value: `${Math.round(prodReserve)} (+${totalProd.toFixed(0)}/k)`,
     },
     {
       icon: <span className="text-xs">{MACRO_LAYER_ICONS.wealth}</span>,
       label: "Bohatství",
-      value: totalWealth.toFixed(1),
+      value: `${Math.round(wealthReserve)} (+${totalWealth.toFixed(0)}/k)`,
+    },
+    {
+      icon: <span className="text-xs">🌾</span>,
+      label: "Zásoby",
+      value: `${Math.round(grainReserve)}/${realm.granary_capacity ?? 0}`,
+      warning: grainReserve < 20,
     },
     {
       icon: <span className="text-xs">{MACRO_LAYER_ICONS.capacity}</span>,
@@ -135,11 +146,6 @@ const ResourceHUD = ({ sessionId, playerName, cities, currentTurn }: ResourceHUD
       icon: <Church className="h-3 w-3" />,
       label: "Víra",
       value: (realm.faith ?? 0).toFixed(0),
-    },
-    {
-      icon: <Network className="h-3 w-3" />,
-      label: "Importance",
-      value: totalImp.toFixed(0),
     },
     {
       icon: <Users className="h-3 w-3" />,
