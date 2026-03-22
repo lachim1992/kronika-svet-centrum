@@ -1233,6 +1233,13 @@ export interface FlowNode {
   is_major: boolean;
   parent_node_id: string | null;
   city_id: string | null;
+  throughput_military: number;
+  toll_rate: number;
+  cumulative_trade_flow: number;
+  urbanization_score: number;
+  hinterland_level: number;
+  resource_output: Record<string, number>;
+  flow_role: string;
 }
 
 export interface FlowRoute {
@@ -1270,11 +1277,26 @@ export interface NodeFlowResult {
   congestion_score: number;
   throughput_score: number;
   isolation_penalty: number;
+  toll_income: number;
+  trade_flow_delta: number;
+  urbanization_delta: number;
 }
+
+/** Urbanization thresholds: cumulative trade flow → hinterland level */
+export const URBANIZATION_THRESHOLDS: Array<{ level: number; threshold: number; label: string; spawns: string }> = [
+  { level: 1, threshold: 200, label: "Vesnice", spawns: "village_cluster" },
+  { level: 2, threshold: 800, label: "Dílny", spawns: "resource_node" },
+  { level: 3, threshold: 2000, label: "Předměstí", spawns: "trade_hub" },
+];
 
 /**
  * Compute flow state for all nodes in a session.
- * Minor nodes produce → major nodes aggregate → routes distribute.
+ *
+ * NEW MODEL:
+ * - Minor nodes REGULATE flow (throughput_military, toll_rate) instead of producing
+ * - Minor nodes generate small SUPPORT FLOW to parent major node (resource_output)
+ * - Trade flow passing through nodes accumulates urbanization_score
+ * - Major nodes + gateway minors auto-grow hinterland based on trade flow
  */
 export function computeNodeFlows(
   nodes: FlowNode[],
@@ -1282,14 +1304,27 @@ export function computeNodeFlows(
   cities: FlowCity[],
 ): NodeFlowResult[] {
   const cityById = new Map(cities.map(c => [c.id, c]));
+  const nodeById = new Map(nodes.map(n => [n.id, n]));
 
-  // Build adjacency with effective capacity
+  // Build adjacency with regulation applied
   const adj: Record<string, Array<{ target: string; capacity: number }>> = {};
   for (const r of routes) {
     if (r.control_state === "blocked") continue;
     const effectiveCap = Math.max(1, r.capacity_value - (r.damage_level || 0));
     const safetyMult = r.control_state === "contested" ? 0.5 : r.control_state === "damaged" ? 0.7 : 1.0;
-    const cap = Math.round(effectiveCap * safetyMult);
+
+    // Regulator minor nodes reduce throughput on adjacent routes
+    const nodeA = nodeById.get(r.node_a);
+    const nodeB = nodeById.get(r.node_b);
+    let regulationMult = 1.0;
+    if (nodeA && !nodeA.is_major && nodeA.flow_role === "regulator") {
+      regulationMult *= nodeA.throughput_military;
+    }
+    if (nodeB && !nodeB.is_major && nodeB.flow_role === "regulator") {
+      regulationMult *= nodeB.throughput_military;
+    }
+
+    const cap = Math.round(effectiveCap * safetyMult * regulationMult);
     if (!adj[r.node_a]) adj[r.node_a] = [];
     if (!adj[r.node_b]) adj[r.node_b] = [];
     adj[r.node_a].push({ target: r.node_b, capacity: cap });
@@ -1297,14 +1332,13 @@ export function computeNodeFlows(
   }
 
   const results: NodeFlowResult[] = [];
-  const nodeById = new Map(nodes.map(n => [n.id, n]));
 
-  // Phase 1: Base production per node
+  // Phase 1: Base production — major nodes produce, minor nodes provide support flow
   const production: Record<string, { grain: number; wood: number; stone: number; iron: number; wealth: number }> = {};
   for (const n of nodes) {
     const base = { grain: 0, wood: 0, stone: 0, iron: 0, wealth: 0 };
 
-    if (n.city_id) {
+    if (n.is_major && n.city_id) {
       const city = cityById.get(n.city_id);
       if (city) {
         base.grain = city.last_turn_grain_prod || 0;
@@ -1313,24 +1347,23 @@ export function computeNodeFlows(
         base.iron = city.last_turn_iron_prod || 0;
         base.wealth = (city.market_level || 0) * 2 + (city.development_level || 0);
       }
-    } else if (n.node_type === "resource_node") {
-      // Minor resource nodes produce based on population
-      const pop = n.population || 0;
-      base.grain = Math.floor(pop * 0.01);
-      base.wood = Math.floor(pop * 0.005);
-      base.stone = Math.floor(pop * 0.003);
-    } else if (n.node_type === "village_cluster") {
-      base.grain = Math.floor((n.population || 0) * 0.008);
-    } else if (n.node_type === "trade_hub") {
-      base.wealth = (n.economic_value || 0) * 2;
-    } else if (n.node_type === "port") {
-      base.wealth = (n.economic_value || 0);
+    } else if (n.is_major) {
+      if (n.node_type === "trade_hub") base.wealth = (n.economic_value || 0) * 2;
+      else if (n.node_type === "port") base.wealth = (n.economic_value || 0);
+    } else {
+      // Minor node: support flow from resource_output (set by urbanization/projects)
+      const ro = n.resource_output || {};
+      base.grain = ro.grain || 0;
+      base.wood = ro.wood || 0;
+      base.stone = ro.stone || 0;
+      base.iron = ro.iron || 0;
+      base.wealth = ro.wealth || 0;
     }
 
     production[n.id] = base;
   }
 
-  // Phase 2: Minor → Major aggregation
+  // Phase 2: Minor → Major aggregation (support flow)
   for (const n of nodes) {
     if (n.parent_node_id && !n.is_major) {
       const parent = production[n.parent_node_id];
@@ -1345,11 +1378,13 @@ export function computeNodeFlows(
     }
   }
 
-  // Phase 3: Route-based trade flow
+  // Phase 3: Route-based trade flow with toll extraction
   const incomingTrade: Record<string, number> = {};
   const outgoingTrade: Record<string, number> = {};
   const incomingSupply: Record<string, number> = {};
   const outgoingSupply: Record<string, number> = {};
+  const tollIncome: Record<string, number> = {};
+  const tradeFlowThrough: Record<string, number> = {};
 
   for (const n of nodes) {
     if (!n.is_major) continue;
@@ -1359,16 +1394,30 @@ export function computeNodeFlows(
     const totalProd = prod.grain + prod.wood + prod.stone + prod.iron + prod.wealth;
     const neighbors = adj[n.id] || [];
 
-    // Distribute excess to connected major nodes
     for (const link of neighbors) {
       const target = nodeById.get(link.target);
       if (!target || !target.is_major) continue;
 
-      const tradeFlow = Math.min(totalProd, link.capacity);
+      let tradeFlow = Math.min(totalProd, link.capacity);
+
+      // Toll extraction by regulator nodes adjacent to endpoints
+      const regulatorNodes = nodes.filter(mn =>
+        !mn.is_major && mn.flow_role === "regulator" && mn.toll_rate > 0 &&
+        (adj[mn.id] || []).some(l => l.target === n.id || l.target === link.target)
+      );
+      for (const reg of regulatorNodes) {
+        const toll = Math.floor(tradeFlow * reg.toll_rate);
+        tollIncome[reg.id] = (tollIncome[reg.id] || 0) + toll;
+        tradeFlowThrough[reg.id] = (tradeFlowThrough[reg.id] || 0) + tradeFlow;
+        tradeFlow -= toll;
+      }
+
+      tradeFlowThrough[n.id] = (tradeFlowThrough[n.id] || 0) + tradeFlow;
+      tradeFlowThrough[link.target] = (tradeFlowThrough[link.target] || 0) + tradeFlow;
+
       outgoingTrade[n.id] = (outgoingTrade[n.id] || 0) + tradeFlow;
       incomingTrade[link.target] = (incomingTrade[link.target] || 0) + tradeFlow;
 
-      // Military supply flow based on controlled_by match
       if (n.controlled_by && n.controlled_by === target.controlled_by) {
         const supplyFlow = Math.min(Math.floor(link.capacity * 0.5), 10);
         outgoingSupply[n.id] = (outgoingSupply[n.id] || 0) + supplyFlow;
@@ -1377,24 +1426,30 @@ export function computeNodeFlows(
     }
   }
 
-  // Phase 4: Compute derived scores
+  // Phase 4: Derived scores + urbanization deltas
   for (const n of nodes) {
     const prod = production[n.id] || { grain: 0, wood: 0, stone: 0, iron: 0, wealth: 0 };
     const inTrade = incomingTrade[n.id] || 0;
     const outTrade = outgoingTrade[n.id] || 0;
     const inSupply = incomingSupply[n.id] || 0;
     const outSupply = outgoingSupply[n.id] || 0;
+    const nodeToll = tollIncome[n.id] || 0;
+    const nodeTradeThrough = tradeFlowThrough[n.id] || 0;
 
     const totalFlow = inTrade + outTrade + inSupply + outSupply;
     const neighbors = adj[n.id] || [];
     const totalCapacity = neighbors.reduce((s, l) => s + l.capacity, 0);
 
     const congestion = totalCapacity > 0 ? Math.min(100, Math.round((totalFlow / totalCapacity) * 100)) : 0;
-    const prosperity = Math.min(100, prod.grain + prod.wealth * 2 + inTrade);
+    const prosperity = Math.min(100, prod.grain + prod.wealth * 2 + inTrade + nodeToll);
     const throughput = totalFlow;
-
-    // Isolation: node with no connections
     const isolationPenalty = neighbors.length === 0 && n.is_major ? 50 : 0;
+
+    const urbanizationDelta = (n.is_major || n.flow_role === "gateway")
+      ? Math.round(nodeTradeThrough * 0.1)
+      : n.flow_role === "regulator"
+        ? Math.round(nodeToll * 0.5)
+        : 0;
 
     results.push({
       node_id: n.id,
@@ -1411,6 +1466,9 @@ export function computeNodeFlows(
       congestion_score: congestion,
       throughput_score: throughput,
       isolation_penalty: isolationPenalty,
+      toll_income: nodeToll,
+      trade_flow_delta: nodeTradeThrough,
+      urbanization_delta: urbanizationDelta,
     });
   }
 

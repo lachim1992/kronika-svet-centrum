@@ -55,6 +55,14 @@ export interface StrategicNode {
   parent_node_id: string | null;
   is_active: boolean;
   metadata: Record<string, any>;
+  // Regulation & urbanization
+  throughput_military: number;
+  toll_rate: number;
+  cumulative_trade_flow: number;
+  urbanization_score: number;
+  hinterland_level: number;
+  resource_output: Record<string, number>;
+  flow_role: string;
 }
 
 export interface ProvinceRoute {
@@ -94,7 +102,7 @@ export function useProvinceGraph(sessionId: string) {
           .eq("session_id", sessionId),
         supabase
           .from("province_nodes")
-          .select("id, province_id, node_type, name, hex_q, hex_r, city_id, strategic_value, economic_value, defense_value, mobility_relevance, supply_relevance, controlled_by, garrison_strength, is_major, population, fortification_level, infrastructure_level, parent_node_id, is_active, metadata")
+          .select("id, province_id, node_type, name, hex_q, hex_r, city_id, strategic_value, economic_value, defense_value, mobility_relevance, supply_relevance, controlled_by, garrison_strength, is_major, population, fortification_level, infrastructure_level, parent_node_id, is_active, metadata, throughput_military, toll_rate, cumulative_trade_flow, urbanization_score, hinterland_level, resource_output, flow_role")
           .eq("session_id", sessionId),
         supabase
           .from("province_routes")
@@ -151,6 +159,13 @@ export function useProvinceGraph(sessionId: string) {
           parent_node_id: n.parent_node_id,
           is_active: n.is_active ?? true,
           metadata: (n.metadata as any) || {},
+          throughput_military: n.throughput_military ?? 1.0,
+          toll_rate: n.toll_rate ?? 0.0,
+          cumulative_trade_flow: n.cumulative_trade_flow ?? 0,
+          urbanization_score: n.urbanization_score ?? 0,
+          hinterland_level: n.hinterland_level ?? 0,
+          resource_output: (n.resource_output as any) || {},
+          flow_role: n.flow_role || "neutral",
         })));
       }
       if (routesRes.data) {

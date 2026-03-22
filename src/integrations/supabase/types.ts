@@ -6290,13 +6290,16 @@ export type Database = {
           city_id: string | null
           controlled_by: string | null
           created_at: string
+          cumulative_trade_flow: number
           defense_value: number
           economic_value: number
+          flow_role: string
           fortification_level: number
           garrison_strength: number | null
           growth_rate: number
           hex_q: number
           hex_r: number
+          hinterland_level: number
           id: string
           infrastructure_level: number
           is_active: boolean
@@ -6308,11 +6311,15 @@ export type Database = {
           parent_node_id: string | null
           population: number
           province_id: string
+          resource_output: Json
           session_id: string
           siege_turn_start: number | null
           strategic_value: number
           supply_relevance: number
+          throughput_military: number
+          toll_rate: number
           updated_at: string
+          urbanization_score: number
         }
         Insert: {
           besieged_by?: string | null
@@ -6320,13 +6327,16 @@ export type Database = {
           city_id?: string | null
           controlled_by?: string | null
           created_at?: string
+          cumulative_trade_flow?: number
           defense_value?: number
           economic_value?: number
+          flow_role?: string
           fortification_level?: number
           garrison_strength?: number | null
           growth_rate?: number
           hex_q?: number
           hex_r?: number
+          hinterland_level?: number
           id?: string
           infrastructure_level?: number
           is_active?: boolean
@@ -6338,11 +6348,15 @@ export type Database = {
           parent_node_id?: string | null
           population?: number
           province_id: string
+          resource_output?: Json
           session_id: string
           siege_turn_start?: number | null
           strategic_value?: number
           supply_relevance?: number
+          throughput_military?: number
+          toll_rate?: number
           updated_at?: string
+          urbanization_score?: number
         }
         Update: {
           besieged_by?: string | null
@@ -6350,13 +6364,16 @@ export type Database = {
           city_id?: string | null
           controlled_by?: string | null
           created_at?: string
+          cumulative_trade_flow?: number
           defense_value?: number
           economic_value?: number
+          flow_role?: string
           fortification_level?: number
           garrison_strength?: number | null
           growth_rate?: number
           hex_q?: number
           hex_r?: number
+          hinterland_level?: number
           id?: string
           infrastructure_level?: number
           is_active?: boolean
@@ -6368,11 +6385,15 @@ export type Database = {
           parent_node_id?: string | null
           population?: number
           province_id?: string
+          resource_output?: Json
           session_id?: string
           siege_turn_start?: number | null
           strategic_value?: number
           supply_relevance?: number
+          throughput_military?: number
+          toll_rate?: number
           updated_at?: string
+          urbanization_score?: number
         }
         Relationships: [
           {
