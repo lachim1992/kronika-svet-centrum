@@ -4,7 +4,7 @@ import { Slider } from "@/components/ui/slider";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   Users, Gauge,
-  ChevronDown, Skull, TrendingUp, Network, Zap
+  ChevronDown, Skull, TrendingUp, Network, Zap, Church
 } from "lucide-react";
 import { computeWorkforceBreakdown } from "@/lib/economyConstants";
 import { MACRO_LAYER_ICONS, STRATEGIC_RESOURCE_ICONS, STRATEGIC_TIER_LABELS, type StrategicResource } from "@/lib/economyFlow";
@@ -130,6 +130,11 @@ const ResourceHUD = ({ sessionId, playerName, cities, currentTurn }: ResourceHUD
       icon: <span className="text-xs">{MACRO_LAYER_ICONS.capacity}</span>,
       label: "Kapacita",
       value: totalCap.toFixed(1),
+    },
+    {
+      icon: <Church className="h-3 w-3" />,
+      label: "Víra",
+      value: (realm.faith ?? 0).toFixed(0),
     },
     {
       icon: <Network className="h-3 w-3" />,

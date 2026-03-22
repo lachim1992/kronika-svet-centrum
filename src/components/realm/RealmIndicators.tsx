@@ -26,6 +26,7 @@ const RealmIndicators = ({ realm, cities, currentTurn }: Props) => {
     const totalPeasants = cities.reduce((s, c) => s + (c.population_peasants || 0), 0);
     const totalBurghers = cities.reduce((s, c) => s + (c.population_burghers || 0), 0);
     const totalClerics = cities.reduce((s, c) => s + (c.population_clerics || 0), 0);
+    const totalWarriors = cities.reduce((s, c) => s + (c.population_warriors || 0), 0);
 
     const avgStability = cities.length > 0
       ? Math.round(cities.reduce((s, c) => s + (c.city_stability || 50), 0) / cities.length)
@@ -51,6 +52,10 @@ const RealmIndicators = ({ realm, cities, currentTurn }: Props) => {
     const totalWealth = realm?.total_wealth ?? 0;
     const totalCapacity = realm?.total_capacity ?? 0;
     const totalImportance = realm?.total_importance ?? 0;
+    const faith = realm?.faith ?? 0;
+    const faithGrowth = realm?.faith_growth ?? 0;
+    const warriorRatio = realm?.warrior_ratio ?? 0;
+    const supplyStrain = realm?.supply_strain ?? 0;
 
     // Strategic tiers
     const strategicTiers = [
@@ -62,11 +67,12 @@ const RealmIndicators = ({ realm, cities, currentTurn }: Props) => {
     ].filter(s => s.tier > 0);
 
     return {
-      totalPop, totalPeasants, totalBurghers, totalClerics,
+      totalPop, totalPeasants, totalBurghers, totalClerics, totalWarriors,
       avgStability, avgLegitimacy, growthRate, growthPerTurn,
       famineCities, epidemicCities, lowStabilityCities,
       availableManpower, mobRate,
       totalProduction, totalWealth, totalCapacity, totalImportance,
+      faith, faithGrowth, warriorRatio, supplyStrain,
       strategicTiers,
     };
   }, [realm, cities, currentTurn]);
@@ -74,6 +80,7 @@ const RealmIndicators = ({ realm, cities, currentTurn }: Props) => {
   const peasantPct = stats.totalPop > 0 ? Math.round((stats.totalPeasants / stats.totalPop) * 100) : 0;
   const burgherPct = stats.totalPop > 0 ? Math.round((stats.totalBurghers / stats.totalPop) * 100) : 0;
   const clericPct = stats.totalPop > 0 ? Math.round((stats.totalClerics / stats.totalPop) * 100) : 0;
+  const warriorPct = stats.totalPop > 0 ? Math.round((stats.totalWarriors / stats.totalPop) * 100) : 0;
   const maxMacro = Math.max(stats.totalProduction, stats.totalWealth, stats.totalCapacity, 1);
 
   return (
@@ -99,7 +106,7 @@ const RealmIndicators = ({ realm, cities, currentTurn }: Props) => {
         </Card>
       )}
 
-      {/* Macro Economy — 3 Layers */}
+      {/* Macro Economy — 3 Layers + Faith */}
       <Card>
         <CardHeader className="p-3 pb-1">
           <CardTitle className="text-xs flex items-center gap-1"><Network className="h-3 w-3" />Ekonomika toku</CardTitle>
@@ -121,6 +128,21 @@ const RealmIndicators = ({ realm, cities, currentTurn }: Props) => {
             <span className="text-muted-foreground">⭐ Celková důležitost</span>
             <span className="font-bold">{stats.totalImportance.toFixed(1)}</span>
           </div>
+          <div className="flex justify-between text-xs">
+            <span className="text-muted-foreground">⛪ Víra</span>
+            <span className="font-bold flex items-center gap-1">
+              {stats.faith.toFixed(0)}
+              <Trend val={Math.round(stats.faithGrowth * 10) / 10} />
+            </span>
+          </div>
+          {stats.supplyStrain > 0.6 && (
+            <div className="flex justify-between text-xs">
+              <span className="text-muted-foreground">📦 Zásobovací zátěž</span>
+              <span className={`font-bold ${stats.supplyStrain > 1.0 ? "text-destructive" : "text-amber-500"}`}>
+                {Math.round(stats.supplyStrain * 100)}%
+              </span>
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -162,11 +184,13 @@ const RealmIndicators = ({ realm, cities, currentTurn }: Props) => {
               <div className="bg-emerald-600 transition-all" style={{ width: `${peasantPct}%` }} title={`Rolníci ${peasantPct}%`} />
               <div className="bg-amber-500 transition-all" style={{ width: `${burgherPct}%` }} title={`Měšťané ${burgherPct}%`} />
               <div className="bg-violet-500 transition-all" style={{ width: `${clericPct}%` }} title={`Klerici ${clericPct}%`} />
+              <div className="bg-red-600 transition-all" style={{ width: `${warriorPct}%` }} title={`Válečníci ${warriorPct}%`} />
             </div>
-            <div className="flex justify-between text-[10px] text-muted-foreground mt-0.5">
+            <div className="flex justify-between text-[10px] text-muted-foreground mt-0.5 flex-wrap gap-x-2">
               <span>🌾 Rolníci {peasantPct}%</span>
               <span>🔨 Měšťané {burgherPct}%</span>
               <span>📿 Klerici {clericPct}%</span>
+              <span>⚔ Válečníci {warriorPct}%</span>
             </div>
           </div>
         </CardContent>

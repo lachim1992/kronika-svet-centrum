@@ -93,36 +93,59 @@ interface SupplyState {
 
 // ── PRODUCTION ──────────────────────────────────────────────────
 // production_output = base_value * development_level * stability * route_access_factor
-function computeNodeProduction(node: NodeData, routeAccess: number): number {
+// For city-linked nodes: add demographic bonus from peasants
+function computeNodeProduction(node: NodeData, routeAccess: number, cityData?: any): number {
   const base = BASE_PRODUCTION[node.node_type] ?? 2;
   const dev = Math.max(0.1, node.development_level || 1.0);
   const stab = Math.max(0.1, node.stability_factor || 1.0);
   const access = Math.max(0.1, routeAccess);
-  return base * dev * stab * access;
+  let production = base * dev * stab * access;
+  // Demographic bonus: peasants drive production
+  if (cityData) {
+    const peasants = cityData.population_peasants || 0;
+    const burghers = cityData.population_burghers || 0;
+    production += (peasants * 0.008 + burghers * 0.002);
+  }
+  return production;
 }
 
 // ── WEALTH ──────────────────────────────────────────────────────
 // wealth_gain = incoming_production * trade_efficiency * connectivity_score
+// For city-linked nodes: add burgher-driven wealth
 function computeNodeWealth(
   incomingProduction: number,
   tradeEfficiency: number,
   connectivityScore: number,
+  cityData?: any,
 ): number {
-  return incomingProduction * tradeEfficiency * Math.max(0.1, connectivityScore);
+  let wealth = incomingProduction * tradeEfficiency * Math.max(0.1, connectivityScore);
+  if (cityData) {
+    const burghers = cityData.population_burghers || 0;
+    const marketBonus = 1 + (cityData.market_level || 0) * 0.12;
+    wealth += burghers * 0.01 * marketBonus;
+  }
+  return wealth;
 }
 
 // ── CAPACITY ────────────────────────────────────────────────────
 // capacity = population * infrastructure_level * connectivity_score
+// For city-linked nodes: clerics drive administrative capacity
 function computeNodeCapacity(
   population: number,
   infrastructureLevel: number,
   connectivityScore: number,
+  cityData?: any,
 ): number {
   const pop = Math.max(1, population);
   const infra = Math.max(0.1, infrastructureLevel);
   const conn = Math.max(0.1, connectivityScore);
-  // Normalize: per 1000 pop → 1.0 base
-  return (pop / 1000) * infra * conn;
+  let capacity = (pop / 1000) * infra * conn;
+  if (cityData) {
+    const clerics = cityData.population_clerics || 0;
+    const burghers = cityData.population_burghers || 0;
+    capacity += (clerics * 0.006 + burghers * 0.002);
+  }
+  return capacity;
 }
 
 // ── IMPORTANCE ──────────────────────────────────────────────────
@@ -208,7 +231,7 @@ Deno.serve(async (req) => {
     const sb = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 
     // ── FETCH DATA ────────────────────────────────────────────
-    const [nodesRes, routesRes, supplyRes] = await Promise.all([
+    const [nodesRes, routesRes, supplyRes, citiesRes] = await Promise.all([
       sb.from("province_nodes")
         .select("id, session_id, province_id, node_type, flow_role, is_major, parent_node_id, controlled_by, city_id, population, infrastructure_level, urbanization_score, hinterland_level, cumulative_trade_flow, throughput_military, toll_rate, strategic_value, economic_value, defense_value, resource_output, metadata, development_level, stability_factor")
         .eq("session_id", session_id),
@@ -217,6 +240,9 @@ Deno.serve(async (req) => {
         .eq("session_id", session_id),
       sb.from("supply_chain_state")
         .select("node_id, connected_to_capital, hop_distance, isolation_turns, supply_level, route_quality")
+        .eq("session_id", session_id),
+      sb.from("cities")
+        .select("id, population_total, population_peasants, population_burghers, population_clerics, population_warriors, market_level, temple_level")
         .eq("session_id", session_id),
     ]);
 
@@ -230,6 +256,10 @@ Deno.serve(async (req) => {
     const routes: RouteData[] = routesRes.data || [];
     const supplyMap = new Map<string, SupplyState>();
     for (const s of (supplyRes.data || [])) supplyMap.set(s.node_id, s as SupplyState);
+
+    // Build city demographics map for city-linked nodes
+    const cityMap = new Map<string, any>();
+    for (const c of (citiesRes.data || [])) cityMap.set(c.id, c);
 
     // ── NODE INDEX ─────────────────────────────────────────────
     const nodeMap = new Map<string, NodeData>();
@@ -249,11 +279,12 @@ Deno.serve(async (req) => {
       isolation_penalty: number;
     }> = [];
 
-    // Phase 1: compute raw production for all nodes
+    // Phase 1: compute raw production for all nodes (with city demographics)
     const rawProduction = new Map<string, number>();
     for (const node of nodes) {
       const routeAccess = computeRouteAccess(node.id, routes);
-      const prod = computeNodeProduction(node, routeAccess);
+      const cityData = node.city_id ? cityMap.get(node.city_id) : undefined;
+      const prod = computeNodeProduction(node, routeAccess, cityData);
       rawProduction.set(node.id, prod);
     }
 
@@ -269,26 +300,26 @@ Deno.serve(async (req) => {
       if (!node.is_major && node.parent_node_id) {
         const parentProd = majorIncoming.get(node.parent_node_id) || 0;
         const nodeProd = rawProduction.get(node.id) || 0;
-        // Throughput from parent's regulation
         const parent = nodeMap.get(node.parent_node_id);
         const throughput = parent ? (parent.throughput_military || 1.0) : 1.0;
         majorIncoming.set(node.parent_node_id, parentProd + nodeProd * throughput);
       }
     }
 
-    // Phase 3: compute wealth, capacity, importance per node
+    // Phase 3: compute wealth, capacity, importance per node (with city demographics)
     for (const node of nodes) {
       const routeAccess = computeRouteAccess(node.id, routes);
       const connectivity = computeConnectivity(node.id, routes, nodes.length);
       const production = rawProduction.get(node.id) || 0;
       const incoming = node.is_major ? (majorIncoming.get(node.id) || 0) : production;
       const tradeEff = ROLE_TRADE_EFFICIENCY[node.flow_role] || 0.2;
+      const cityData = node.city_id ? cityMap.get(node.city_id) : undefined;
 
       let wealth = node.is_major
-        ? computeNodeWealth(incoming, tradeEff, connectivity)
+        ? computeNodeWealth(incoming, tradeEff, connectivity, cityData)
         : computeNodeWealth(production * 0.1, tradeEff * 0.5, connectivity);
 
-      let capacity = computeNodeCapacity(node.population, node.infrastructure_level, connectivity);
+      let capacity = computeNodeCapacity(node.population, node.infrastructure_level, connectivity, cityData);
 
       // Apply isolation
       const supply = supplyMap.get(node.id);
