@@ -46,6 +46,10 @@ interface ProvinceRoute {
   control_state: string;
   upgrade_level: number;
   build_cost: number;
+  speed_value: number;
+  safety_value: number;
+  controlled_by: string | null;
+  is_cross_province: boolean;
 }
 
 const NODE_ICONS: Record<string, typeof Landmark> = {
