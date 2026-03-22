@@ -3071,6 +3071,75 @@ export type Database = {
           },
         ]
       }
+      flow_paths: {
+        Row: {
+          bottleneck_cost: number | null
+          bottleneck_hex: Json | null
+          computed_turn: number
+          created_at: string
+          flow_type: string
+          hex_path: Json
+          id: string
+          is_dirty: boolean
+          node_a: string
+          node_b: string
+          path_length: number
+          route_id: string | null
+          session_id: string
+          total_cost: number
+          updated_at: string
+        }
+        Insert: {
+          bottleneck_cost?: number | null
+          bottleneck_hex?: Json | null
+          computed_turn?: number
+          created_at?: string
+          flow_type?: string
+          hex_path?: Json
+          id?: string
+          is_dirty?: boolean
+          node_a: string
+          node_b: string
+          path_length?: number
+          route_id?: string | null
+          session_id: string
+          total_cost?: number
+          updated_at?: string
+        }
+        Update: {
+          bottleneck_cost?: number | null
+          bottleneck_hex?: Json | null
+          computed_turn?: number
+          created_at?: string
+          flow_type?: string
+          hex_path?: Json
+          id?: string
+          is_dirty?: boolean
+          node_a?: string
+          node_b?: string
+          path_length?: number
+          route_id?: string | null
+          session_id?: string
+          total_cost?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "flow_paths_route_id_fkey"
+            columns: ["route_id"]
+            isOneToOne: false
+            referencedRelation: "province_routes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "flow_paths_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       game_chat: {
         Row: {
           channel: string
@@ -6567,12 +6636,18 @@ export type Database = {
           created_at: string
           damage_level: number | null
           economic_relevance: number
+          hex_bottleneck_q: number | null
+          hex_bottleneck_r: number | null
+          hex_path_cost: number | null
+          hex_path_length: number | null
           id: string
           is_cross_province: boolean
+          last_path_turn: number | null
           metadata: Json
           military_relevance: number
           node_a: string
           node_b: string
+          path_dirty: boolean | null
           route_type: string
           safety_value: number
           session_id: string
@@ -6590,12 +6665,18 @@ export type Database = {
           created_at?: string
           damage_level?: number | null
           economic_relevance?: number
+          hex_bottleneck_q?: number | null
+          hex_bottleneck_r?: number | null
+          hex_path_cost?: number | null
+          hex_path_length?: number | null
           id?: string
           is_cross_province?: boolean
+          last_path_turn?: number | null
           metadata?: Json
           military_relevance?: number
           node_a: string
           node_b: string
+          path_dirty?: boolean | null
           route_type?: string
           safety_value?: number
           session_id: string
@@ -6613,12 +6694,18 @@ export type Database = {
           created_at?: string
           damage_level?: number | null
           economic_relevance?: number
+          hex_bottleneck_q?: number | null
+          hex_bottleneck_r?: number | null
+          hex_path_cost?: number | null
+          hex_path_length?: number | null
           id?: string
           is_cross_province?: boolean
+          last_path_turn?: number | null
           metadata?: Json
           military_relevance?: number
           node_a?: string
           node_b?: string
+          path_dirty?: boolean | null
           route_type?: string
           safety_value?: number
           session_id?: string
