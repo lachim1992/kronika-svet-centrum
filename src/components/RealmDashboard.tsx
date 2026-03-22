@@ -49,8 +49,11 @@ const RealmDashboard = ({ sessionId, currentPlayerName, currentTurn, myRole, cit
         toast.info(`Kolo ${currentTurn} již bylo zpracováno`);
       } else {
         const s = data?.summary;
+        const famineNote = s?.famineCities > 0 ? ` | ⚠️ ${s.famineCities} měst hladoví` : "";
+        const tollNote = s?.tollsPaid > 0 ? ` | 🏛️ Mýtné: -${s.tollsPaid}` : "";
+        const evtNote = s?.eventsGenerated > 0 ? ` | 📜 ${s.eventsGenerated} událostí` : "";
         toast.success(`Kolo ${currentTurn} zpracováno`, {
-          description: `⚒️ ${s?.totalProduction?.toFixed(0) || 0} | 💰 ${s?.totalWealth?.toFixed(0) || 0} | 🏛️ ${s?.totalCapacity?.toFixed(0) || 0} | Rezerva: ${s?.grainReserve || 0}/${s?.granaryCapacity || 0}`,
+          description: `⚒️ ${s?.totalProduction?.toFixed(0) || 0} | 💰 ${s?.totalWealth?.toFixed(0) || 0} | 🏛️ ${s?.totalCapacity?.toFixed(0) || 0} | Rezerva: ${s?.grainReserve || 0}/${s?.granaryCapacity || 0}${famineNote}${tollNote}${evtNote}`,
         });
       }
       await fetchData();
