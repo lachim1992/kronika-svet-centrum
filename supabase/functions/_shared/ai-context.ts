@@ -508,11 +508,20 @@ async function buildStrategicMapContext(client: SupabaseClient, sessionId: strin
     for (const n of nodeData) nodeNameMap.set(n.id, n.name);
 
     parts.push("\n=== GRAF STRATEGICKÝCH UZLŮ ===");
-    parts.push("PRAVIDLA GRAFU:");
-    parts.push("- Minor uzly (vesnice, dílny) VŽDY odevzdávají produkci svému parent major uzlu");
-    parts.push("- Flow odchází pouze z měst a major uzlů směrem k hlavnímu městu");
-    parts.push("- Izolované uzly (bez spojení s hlavním městem) mají postih na produkci a stabilitu");
-    parts.push("- Chokepoints = uzly/cesty, jejichž blokáda izoluje více uzlů");
+    parts.push("TYPY UZLŮ (node_class):");
+    parts.push("- transit: průsmyk/most/úžina — kdo kontroluje, kontroluje tok");
+    parts.push("- trade_hub: přístav/tržiště — generuje bohatství");
+    parts.push("- food_basin: úrodná oblast — stabilita regionu");
+    parts.push("- sacred: svatyně/poutní místo — faith pressure");
+    parts.push("- resource: železo/koně/sůl — odemyká vojenské doktríny");
+    parts.push("- fortress: choke defense / staging area");
+    parts.push("- generic: běžný uzel");
+    parts.push("\nPRAVIDLA:");
+    parts.push("- node_score = priorita pro zakládání sídel (0-100)");
+    parts.push("- collapse_severity = dopad ztráty uzlu (0-100)");
+    parts.push("- Ztráta trade_hub → wealth crash, food_basin → hlad, sacred → revolt, transit → izolace");
+    parts.push("- Minor uzly odevzdávají produkci parent major uzlu");
+    parts.push("- Izolované uzly mají postih na produkci a stabilitu");
 
     // Group by owner
     const byOwner = new Map<string, typeof nodeData>();
