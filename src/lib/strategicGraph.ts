@@ -1,6 +1,7 @@
 /**
  * Client-side helpers for the province graph strategic layer.
- * Provides commands for route-based movement, route building, and node fortification.
+ * Provides commands for route-based movement, route building, node fortification,
+ * and construction projects.
  */
 import { dispatchCommand } from "@/lib/commands";
 
