@@ -3,10 +3,11 @@ import { supabase } from "@/integrations/supabase/client";
 import { Slider } from "@/components/ui/slider";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
-  Wheat, Trees, Mountain, Anvil, Zap, Coins, Users, Gauge,
-  ChevronDown, Skull
+  Users, Gauge,
+  ChevronDown, Skull, TrendingUp, Network, Zap
 } from "lucide-react";
-import { computeWealthIncome, computeWorkforceBreakdown } from "@/lib/economyConstants";
+import { computeWorkforceBreakdown } from "@/lib/economyConstants";
+import { MACRO_LAYER_ICONS, STRATEGIC_RESOURCE_ICONS, STRATEGIC_TIER_LABELS, type StrategicResource } from "@/lib/economyFlow";
 import DemobilizeDialog from "@/components/DemobilizeDialog";
 
 interface ResourceHUDProps {
@@ -18,29 +19,18 @@ interface ResourceHUDProps {
 
 const ResourceHUD = ({ sessionId, playerName, cities, currentTurn }: ResourceHUDProps) => {
   const [realm, setRealm] = useState<any>(null);
-  const [playerRes, setPlayerRes] = useState<Record<string, any>>({});
   const [showDemobilize, setShowDemobilize] = useState(false);
   const [activeStacks, setActiveStacks] = useState<any[]>([]);
   const [pendingMobRate, setPendingMobRate] = useState<number | null>(null);
 
   const fetchData = useCallback(async () => {
-    const [realmRes, prRes] = await Promise.all([
-      supabase
-        .from("realm_resources")
-        .select("*")
-        .eq("session_id", sessionId)
-        .eq("player_name", playerName)
-        .maybeSingle(),
-      supabase
-        .from("player_resources")
-        .select("*")
-        .eq("session_id", sessionId)
-        .eq("player_name", playerName),
-    ]);
-    if (realmRes.data) setRealm(realmRes.data);
-    const map: Record<string, any> = {};
-    for (const r of (prRes.data || [])) map[r.resource_type] = r;
-    setPlayerRes(map);
+    const { data } = await supabase
+      .from("realm_resources")
+      .select("*")
+      .eq("session_id", sessionId)
+      .eq("player_name", playerName)
+      .maybeSingle();
+    if (data) setRealm(data);
   }, [sessionId, playerName]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
@@ -49,12 +39,10 @@ const ResourceHUD = ({ sessionId, playerName, cities, currentTurn }: ResourceHUD
     const ch = supabase
       .channel(`hud-${sessionId}-${playerName}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "realm_resources", filter: `session_id=eq.${sessionId}` }, () => fetchData())
-      .on("postgres_changes", { event: "*", schema: "public", table: "player_resources", filter: `session_id=eq.${sessionId}` }, () => fetchData())
       .subscribe();
     return () => { supabase.removeChannel(ch); };
   }, [sessionId, playerName, fetchData]);
 
-  // Fetch active stacks for demobilize dialog
   const fetchStacks = useCallback(async () => {
     const { data } = await supabase
       .from("military_stacks")
@@ -62,25 +50,15 @@ const ResourceHUD = ({ sessionId, playerName, cities, currentTurn }: ResourceHUD
       .eq("session_id", sessionId)
       .eq("player_name", playerName)
       .eq("is_active", true);
-
     if (!data || data.length === 0) { setActiveStacks([]); return; }
-
-    // Fetch compositions
     const { data: comps } = await supabase
       .from("military_stack_composition")
       .select("stack_id, manpower")
       .in("stack_id", data.map(s => s.id));
-
     const compMap: Record<string, number> = {};
-    for (const c of (comps || [])) {
-      compMap[c.stack_id] = (compMap[c.stack_id] || 0) + (c.manpower || 0);
-    }
-
+    for (const c of (comps || [])) compMap[c.stack_id] = (compMap[c.stack_id] || 0) + (c.manpower || 0);
     setActiveStacks(data.map(s => ({
-      id: s.id,
-      name: s.name,
-      formation_type: s.formation_type,
-      morale: s.morale,
+      id: s.id, name: s.name, formation_type: s.formation_type, morale: s.morale,
       totalManpower: compMap[s.id] || 0,
     })));
   }, [sessionId, playerName]);
@@ -94,89 +72,41 @@ const ResourceHUD = ({ sessionId, playerName, cities, currentTurn }: ResourceHUD
   const computedPool = wf.effectiveActivePop;
   const committed = realm.manpower_committed || 0;
   const availableManpower = computedPool - committed;
+  const minMobPct = computedPool > 0 ? Math.ceil((committed / computedPool) * 100) : 0;
 
-  // Calculate minimum mobilization % based on committed troops
-  const minMobPct = computedPool > 0
-    ? Math.ceil((committed / computedPool) * 100)
-    : 0;
+  // Macro economy values
+  const totalProd = realm.total_production ?? 0;
+  const totalWealth = realm.total_wealth ?? 0;
+  const totalCap = realm.total_capacity ?? 0;
+  const totalImp = realm.total_importance ?? 0;
 
-  const getRes = (type: string) => {
-    const r = playerRes[type];
-    const income = r?.income || 0;
-    const upkeep = r?.upkeep || 0;
-    const stockpile = r?.stockpile || 0;
-    return { income, upkeep, net: income - upkeep, stockpile };
-  };
+  // Strategic tiers for display
+  const strats = [
+    { key: "iron" as StrategicResource, tier: realm.strategic_iron_tier ?? 0 },
+    { key: "horses" as StrategicResource, tier: realm.strategic_horses_tier ?? 0 },
+    { key: "salt" as StrategicResource, tier: realm.strategic_salt_tier ?? 0 },
+    { key: "copper" as StrategicResource, tier: realm.strategic_copper_tier ?? 0 },
+    { key: "gold_deposit" as StrategicResource, tier: realm.strategic_gold_tier ?? 0 },
+  ].filter(s => s.tier > 0);
 
-  const wood = getRes("wood");
-
-  // Grain: compute from city-level data to avoid buffer confusion
-  const cityGrainProd = myCities.reduce((s, c) => s + (c.last_turn_grain_prod || 0), 0);
-  const grainBuffer = myCities.length <= 3 ? 10 : 0;
-  const grainCons = myCities.reduce((s, c) => s + (c.last_turn_grain_cons || 0), 0);
-  const grainTotalIncome = cityGrainProd + grainBuffer;
-  const grainNet = grainTotalIncome - grainCons;
-  const grainStock = realm.grain_reserve ?? getRes("food").stockpile ?? 0;
-
-  // Stone: base resource from all cities
-  const stoneIncome = myCities.reduce((s, c) => s + (c.last_turn_stone_prod || 0), 0);
-  const stoneStock = getRes("stone").stockpile;
-
-  // Iron: special resource from some cities
-  const ironIncome = myCities.reduce((s, c) => s + (c.last_turn_iron_prod || 0), 0);
-  const ironStock = getRes("iron").stockpile;
-
-  // Compute wealth client-side using shared formula
-  const computedWealthIncome = computeWealthIncome(myCities);
-  const wealth = getRes("wealth");
-  const sportFundingPct = realm.sport_funding_pct || 0;
-  const wealthStockRaw = realm.gold_reserve ?? wealth.stockpile ?? 0;
-  const sportFundingExpense = sportFundingPct > 0 ? Math.floor(wealthStockRaw * sportFundingPct / 100) : 0;
-  const wealthNet = (computedWealthIncome > 0 ? computedWealthIncome : wealth.income) - wealth.upkeep - sportFundingExpense;
-  const wealthStock = wealthStockRaw;
-
-  const grainCapacity = realm.granary_capacity || 500;
-
-  const chips: { icon: React.ReactNode; label: string; value: string; warning?: boolean }[] = [
-    {
-      icon: <Wheat className="h-3 w-3" />,
-      label: "Obilí",
-      value: `${grainNet >= 0 ? "+" : ""}${grainNet} · ${grainStock}/${grainCapacity}`,
-      warning: grainNet < 0,
-    },
-    { icon: <Trees className="h-3 w-3" />, label: "Dřevo", value: `+${wood.net} · ${wood.stockpile}` },
-    { icon: <Mountain className="h-3 w-3" />, label: "Kámen", value: `+${stoneIncome} · ${stoneStock}` },
-    { icon: <Anvil className="h-3 w-3" />, label: "Železo", value: `+${ironIncome} · ${ironStock}` },
-    { icon: <Zap className="h-3 w-3" />, label: "Koně", value: `${realm.horses_reserve || 0}/${realm.stables_capacity || 100}` },
-    { icon: <Coins className="h-3 w-3" />, label: "Zlato", value: `${wealthNet >= 0 ? "+" : ""}${wealthNet} · ${wealthStock}` },
-    {
-      icon: <Users className="h-3 w-3" />,
-      label: "Muži",
-      value: `${availableManpower}/${computedPool}`,
-    },
-  ];
-
+  const currentMobPct = Math.round((realm.mobilization_rate || 0.1) * 100);
   const targetCap = pendingMobRate !== null ? Math.floor(computedPool * pendingMobRate) : committed;
 
   const handleMobilizationChange = async (val: number[]) => {
     const requestedPct = val[0];
     const newCap = Math.floor(computedPool * (requestedPct / 100));
-
-    // If committed troops exceed the new cap, force demobilize
     if (committed > newCap) {
       setPendingMobRate(requestedPct / 100);
       await fetchStacks();
       setShowDemobilize(true);
       return;
     }
-
     const rate = requestedPct / 100;
     await supabase.from("realm_resources").update({ mobilization_rate: rate }).eq("id", realm.id);
     setRealm((r: any) => ({ ...r, mobilization_rate: rate }));
   };
 
   const handleDemobilizeDone = async () => {
-    // After demobilize completes, apply the pending mobilization rate
     if (pendingMobRate !== null) {
       await supabase.from("realm_resources").update({ mobilization_rate: pendingMobRate }).eq("id", realm.id);
       setRealm((r: any) => ({ ...r, mobilization_rate: pendingMobRate }));
@@ -185,14 +115,38 @@ const ResourceHUD = ({ sessionId, playerName, cities, currentTurn }: ResourceHUD
     fetchData();
   };
 
-  const grainPct = Math.min(100, (grainStock / Math.max(1, grainCapacity)) * 100);
-
-  const currentMobPct = Math.round((realm.mobilization_rate || 0.1) * 100);
+  const chips: { icon: React.ReactNode; label: string; value: string; warning?: boolean }[] = [
+    {
+      icon: <span className="text-xs">{MACRO_LAYER_ICONS.production}</span>,
+      label: "Produkce",
+      value: totalProd.toFixed(1),
+    },
+    {
+      icon: <span className="text-xs">{MACRO_LAYER_ICONS.wealth}</span>,
+      label: "Bohatství",
+      value: totalWealth.toFixed(1),
+    },
+    {
+      icon: <span className="text-xs">{MACRO_LAYER_ICONS.capacity}</span>,
+      label: "Kapacita",
+      value: totalCap.toFixed(1),
+    },
+    {
+      icon: <Network className="h-3 w-3" />,
+      label: "Importance",
+      value: totalImp.toFixed(0),
+    },
+    {
+      icon: <Users className="h-3 w-3" />,
+      label: "Muži",
+      value: `${availableManpower}/${computedPool}`,
+    },
+  ];
 
   return (
     <>
       <div className="bg-secondary/80 backdrop-blur-sm border-b border-border px-4 py-2 flex items-center gap-1.5 overflow-x-auto scrollbar-hide">
-        {/* Resource chips */}
+        {/* Macro chips */}
         {chips.map(chip => (
           <div
             key={chip.label}
@@ -206,6 +160,14 @@ const ResourceHUD = ({ sessionId, playerName, cities, currentTurn }: ResourceHUD
             <span className={chip.warning ? "" : "text-primary"}>{chip.icon}</span>
             <span className="hidden sm:inline text-muted-foreground">{chip.label}</span>
             <span>{chip.value}</span>
+          </div>
+        ))}
+
+        {/* Strategic resource badges */}
+        {strats.map(s => (
+          <div key={s.key} className="flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-semibold shrink-0 border border-border bg-card/60" title={`${STRATEGIC_TIER_LABELS[s.tier]}`}>
+            <span>{STRATEGIC_RESOURCE_ICONS[s.key]}</span>
+            <span className="text-muted-foreground hidden sm:inline">{s.tier}</span>
           </div>
         ))}
 
@@ -234,29 +196,27 @@ const ResourceHUD = ({ sessionId, playerName, cities, currentTurn }: ResourceHUD
           <PopoverContent className="w-72 p-3" align="end">
             <h4 className="font-display font-semibold text-sm mb-2 text-primary">Ekonomický přehled</h4>
 
-            <div className="space-y-1 text-xs mb-3">
-              <div className="flex justify-between"><span className="text-muted-foreground">Produkce sídel</span><span className="font-semibold">{cityGrainProd}</span></div>
-              {grainBuffer > 0 && <div className="flex justify-between"><span className="text-muted-foreground">Bonus malé říše</span><span className="font-semibold text-primary">+{grainBuffer}</span></div>}
-              <div className="flex justify-between"><span className="text-muted-foreground">Spotřeba</span><span className="font-semibold">{grainCons}</span></div>
-              <div className="flex justify-between"><span className="text-muted-foreground">Bilance</span><span className={`font-semibold ${grainNet < 0 ? "text-destructive" : "text-primary"}`}>{grainNet >= 0 ? "+" : ""}{grainNet}</span></div>
-              <div className="w-full bg-muted rounded h-1.5 mt-1">
-                <div className="bg-primary rounded h-1.5 transition-all" style={{ width: `${grainPct}%` }} />
+            {/* Macro layers detail */}
+            <div className="space-y-1.5 text-xs mb-3">
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">{MACRO_LAYER_ICONS.production} Produkce</span>
+                <span className="font-bold">{totalProd.toFixed(1)}</span>
               </div>
-              <div className="flex justify-between text-[10px] text-muted-foreground">
-                <span>Zásoby: {grainStock}</span>
-                <span>Kapacita: {grainCapacity}</span>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">{MACRO_LAYER_ICONS.wealth} Bohatství</span>
+                <span className="font-bold">{totalWealth.toFixed(1)}</span>
               </div>
-              {/* Explain: grain cap breakdown */}
-              <details className="mt-1">
-                <summary className="text-[9px] text-muted-foreground cursor-pointer hover:text-foreground">📋 Proč tato kapacita?</summary>
-                <div className="mt-1 space-y-0.5 text-[9px] text-muted-foreground pl-2 border-l border-border">
-                  <div>Základ (infrastruktura): 500</div>
-                  <div>Bonusy z budov: +{(grainCapacity - 500) > 0 ? grainCapacity - 500 : 0}</div>
-                  <div className="font-semibold text-foreground">Celkem: {grainCapacity}</div>
-                </div>
-              </details>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">{MACRO_LAYER_ICONS.capacity} Kapacita</span>
+                <span className="font-bold">{totalCap.toFixed(1)}</span>
+              </div>
+              <div className="flex justify-between border-t border-border/50 pt-1">
+                <span className="text-muted-foreground">⭐ Importance</span>
+                <span className="font-bold">{totalImp.toFixed(1)}</span>
+              </div>
             </div>
 
+            {/* Mobilization */}
             <div className="space-y-1 mb-3">
               <div className="flex justify-between text-xs">
                 <span className="text-muted-foreground">Mobilizace</span>
@@ -279,19 +239,10 @@ const ResourceHUD = ({ sessionId, playerName, cities, currentTurn }: ResourceHUD
               </div>
             </div>
 
+            {/* Vulnerable cities */}
             {myCities.length > 0 && (
               <div className="space-y-1">
-              {/* Explain: population breakdown */}
-              <details className="mt-1 mb-2">
-                <summary className="text-[9px] text-muted-foreground cursor-pointer hover:text-foreground">📋 Proč tato populace?</summary>
-                <div className="mt-1 space-y-0.5 text-[9px] text-muted-foreground pl-2 border-l border-border">
-                  <div>Celková pop.: {myCities.reduce((s, c) => s + (c.population_total || 0), 0).toLocaleString()}</div>
-                  <div>Aktivní pop. (vážená): {computedPool}</div>
-                  <div>Mobilizováno: {committed}</div>
-                  <div>Zdroj: cities.population_total (engine: world-tick)</div>
-                </div>
-              </details>
-              <h5 className="text-[10px] font-semibold text-muted-foreground">Nejzranitelnější města</h5>
+                <h5 className="text-[10px] font-semibold text-muted-foreground">Nejzranitelnější města</h5>
                 {[...myCities]
                   .sort((a, b) => (b.vulnerability_score || 0) - (a.vulnerability_score || 0))
                   .slice(0, 3)
@@ -309,7 +260,6 @@ const ResourceHUD = ({ sessionId, playerName, cities, currentTurn }: ResourceHUD
         </Popover>
       </div>
 
-      {/* Demobilize dialog */}
       <DemobilizeDialog
         open={showDemobilize}
         onClose={() => { setShowDemobilize(false); setPendingMobRate(null); }}
