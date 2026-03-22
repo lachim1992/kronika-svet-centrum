@@ -61,12 +61,15 @@ const EconomyTab = ({ sessionId, currentPlayerName, currentTurn, cities, resourc
   const myCities = useMemo(() => cities.filter(c => c.owner_player === currentPlayerName), [cities, currentPlayerName]);
 
   const fetchData = useCallback(async () => {
-    const [realmRes, nodesRes] = await Promise.all([
+    const [realmRes, nodesRes, cityNodesRes] = await Promise.all([
       supabase.from("realm_resources").select("*")
         .eq("session_id", sessionId).eq("player_name", currentPlayerName).maybeSingle(),
       supabase.from("province_nodes")
-        .select("id, name, node_type, flow_role, is_major, controlled_by, production_output, wealth_output, capacity_score, importance_score, connectivity_score, isolation_penalty, strategic_resource_type, strategic_resource_tier")
+        .select("id, name, node_type, flow_role, is_major, controlled_by, production_output, wealth_output, capacity_score, importance_score, connectivity_score, isolation_penalty, strategic_resource_type, strategic_resource_tier, incoming_production, city_id")
         .eq("session_id", sessionId).eq("controlled_by", currentPlayerName),
+      supabase.from("province_nodes")
+        .select("id, city_id, production_output, incoming_production, flow_role, isolation_penalty, wealth_output")
+        .eq("session_id", sessionId).not("city_id", "is", null),
     ]);
     if (realmRes.data) {
       setRealm(realmRes.data);
@@ -75,6 +78,12 @@ const EconomyTab = ({ sessionId, currentPlayerName, currentTurn, cities, resourc
       setRealm(r);
     }
     setNodeStats(nodesRes.data || []);
+    // Build city→node map
+    const map = new Map<string, any>();
+    for (const n of (cityNodesRes.data || [])) {
+      if (n.city_id) map.set(n.city_id, n);
+    }
+    setCityNodeMap(map);
   }, [sessionId, currentPlayerName]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
