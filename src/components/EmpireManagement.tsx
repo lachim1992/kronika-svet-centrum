@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import type { Tables } from "@/integrations/supabase/types";
 import { addCity, updateCity, deleteCity, updateResource, addArmy, updateArmy, addTrade } from "@/hooks/useGameSession";
 import { Button } from "@/components/ui/button";
