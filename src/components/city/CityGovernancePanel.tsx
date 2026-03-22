@@ -132,18 +132,17 @@ const CityGovernancePanel = ({ sessionId, city, realm, currentPlayerName, curren
     }
     const tmpl = DISTRICT_TYPES[typeKey];
     if (!realm) { toast.error("Nedostupné zdroje"); return; }
+    const districtProdCost = tmpl.build_cost_wood + tmpl.build_cost_stone;
     if ((realm.gold_reserve || 0) < tmpl.build_cost_wealth ||
-        (realm.wood_reserve || 0) < tmpl.build_cost_wood ||
-        (realm.stone_reserve || 0) < tmpl.build_cost_stone) {
+        (realm.production_reserve || 0) < districtProdCost) {
       toast.error("Nedostatek surovin!");
       return;
     }
     setSaving(true);
-    // Deduct
+    // Deduct (new economy: production_reserve + gold_reserve)
     await supabase.from("realm_resources").update({
       gold_reserve: (realm.gold_reserve || 0) - tmpl.build_cost_wealth,
-      wood_reserve: (realm.wood_reserve || 0) - tmpl.build_cost_wood,
-      stone_reserve: (realm.stone_reserve || 0) - tmpl.build_cost_stone,
+      production_reserve: Math.max(0, (realm.production_reserve || 0) - districtProdCost),
     } as any).eq("id", realm.id);
     // Insert district
     await supabase.from("city_districts").insert({
