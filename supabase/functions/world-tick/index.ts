@@ -686,7 +686,7 @@ Deno.serve(async (req) => {
         { data: graphRoutes },
       ] = await Promise.all([
         supabase.from("province_nodes").select("id, province_id, node_type, controlled_by, strategic_value, economic_value, defense_value, is_major, population, city_id, throughput_military, toll_rate, cumulative_trade_flow, urbanization_score, hinterland_level, resource_output, flow_role, parent_node_id, infrastructure_level").eq("session_id", sessionId),
-        supabase.from("province_routes").select("node_a_id, node_b_id, control_state, capacity_value, damage_level, safety_value, speed_value").eq("session_id", sessionId),
+        supabase.from("province_routes").select("node_a, node_b, control_state, capacity_value, damage_level, safety_value, speed_value").eq("session_id", sessionId),
       ]);
 
       if (graphNodes && graphNodes.length > 0) {
@@ -740,8 +740,8 @@ Deno.serve(async (req) => {
         // 12b. Compute isolation penalty per player
         const isolationResults: any[] = [];
         const routesForIsolation = (graphRoutes || []).map((r: any) => ({
-          node_a: r.node_a_id,
-          node_b: r.node_b_id,
+          node_a: r.node_a,
+          node_b: r.node_b,
           control_state: r.control_state || "open",
         }));
         const nodesForIsolation = graphNodes.map((n: any) => ({
@@ -797,8 +797,8 @@ Deno.serve(async (req) => {
           }));
 
           const flowRoutes: FlowRoute[] = (graphRoutes || []).map((r: any) => ({
-            node_a: r.node_a_id || r.node_a,
-            node_b: r.node_b_id || r.node_b,
+            node_a: r.node_a,
+            node_b: r.node_b,
             capacity_value: r.capacity_value || 5,
             control_state: r.control_state || "open",
             damage_level: r.damage_level || 0,
@@ -937,8 +937,8 @@ Deno.serve(async (req) => {
         // 12d. Compute per-node supply chain
         try {
           const supplyRoutes = (graphRoutes || []).map((r: any) => ({
-            node_a: r.node_a_id || r.node_a,
-            node_b: r.node_b_id || r.node_b,
+            node_a: r.node_a,
+            node_b: r.node_b,
             control_state: r.control_state || "open",
             capacity_value: r.capacity_value || 5,
             damage_level: r.damage_level || 0,
@@ -1031,7 +1031,7 @@ Deno.serve(async (req) => {
                 const connectedRatio = snapSupply.filter((r: any) => r.connected_to_capital).length / snapSupply.length;
                 // Route access: ratio of open routes touching this province
                 const provRoutes = (graphRoutes || []).filter((r: any) =>
-                  provNodeIds.includes(r.node_a_id || r.node_a) || provNodeIds.includes(r.node_b_id || r.node_b)
+                  provNodeIds.includes(r.node_a) || provNodeIds.includes(r.node_b)
                 );
                 const openRoutes = provRoutes.filter((r: any) => r.control_state === "open" || !r.control_state);
                 const routeAccess = provRoutes.length > 0 ? openRoutes.length / provRoutes.length : 1.0;

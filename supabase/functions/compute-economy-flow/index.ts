@@ -73,8 +73,8 @@ interface NodeData {
 
 interface RouteData {
   id: string;
-  node_a_id: string;
-  node_b_id: string;
+  node_a: string;
+  node_b: string;
   capacity_value: number;
   control_state: string;
   damage_level: number;
@@ -143,7 +143,7 @@ function computeRouteAccess(
   routes: RouteData[],
 ): number {
   const connectedRoutes = routes.filter(
-    r => (r.node_a_id === nodeId || r.node_b_id === nodeId) && r.control_state !== "blocked",
+    r => (r.node_a === nodeId || r.node_b === nodeId) && r.control_state !== "blocked",
   );
   if (connectedRoutes.length === 0) return 0.3; // Isolated but not zero
 
@@ -164,7 +164,7 @@ function computeConnectivity(
   totalNodes: number,
 ): number {
   const connectedRoutes = routes.filter(
-    r => (r.node_a_id === nodeId || r.node_b_id === nodeId) && r.control_state !== "blocked",
+    r => (r.node_a === nodeId || r.node_b === nodeId) && r.control_state !== "blocked",
   );
   const degree = connectedRoutes.length;
   // Normalize degree by sqrt of total nodes
@@ -213,7 +213,7 @@ Deno.serve(async (req) => {
         .select("id, session_id, province_id, node_type, flow_role, is_major, parent_node_id, controlled_by, city_id, population, infrastructure_level, urbanization_score, hinterland_level, cumulative_trade_flow, throughput_military, toll_rate, strategic_value, economic_value, defense_value, resource_output, metadata, development_level, stability_factor")
         .eq("session_id", session_id),
       sb.from("province_routes")
-        .select("id, node_a_id, node_b_id, capacity_value, control_state, damage_level, speed_value, safety_value")
+        .select("id, node_a, node_b, capacity_value, control_state, damage_level, speed_value, safety_value")
         .eq("session_id", session_id),
       sb.from("supply_chain_state")
         .select("node_id, connected_to_capital, hop_distance, isolation_turns, supply_level, route_quality")
