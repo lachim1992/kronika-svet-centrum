@@ -138,7 +138,7 @@ Deno.serve(async (req) => {
         .select("id, city_id, node_type, flow_role, production_output, wealth_output, capacity_score, importance_score, incoming_production, connectivity_score, route_access_factor, isolation_penalty, controlled_by, toll_rate, throughput_military, province_id")
         .eq("session_id", sessionId),
       supabase.from("province_routes")
-        .select("id, node_a_id, node_b_id, control_state, capacity_value, damage_level")
+        .select("id, node_a, node_b, control_state, capacity_value, damage_level")
         .eq("session_id", sessionId),
       supabase.from("supply_chain_state")
         .select("node_id, connected_to_capital, isolation_turns, supply_level, hop_distance")
@@ -162,10 +162,12 @@ Deno.serve(async (req) => {
     // Build route adjacency for pathfinding
     const adjacency = new Map<string, Array<{ neighbor: string; routeId: string; controlState: string }>>();
     for (const r of allRoutes) {
-      if (!adjacency.has(r.node_a_id)) adjacency.set(r.node_a_id, []);
-      if (!adjacency.has(r.node_b_id)) adjacency.set(r.node_b_id, []);
-      adjacency.get(r.node_a_id)!.push({ neighbor: r.node_b_id, routeId: r.id, controlState: r.control_state || "open" });
-      adjacency.get(r.node_b_id)!.push({ neighbor: r.node_a_id, routeId: r.id, controlState: r.control_state || "open" });
+      const a = r.node_a;
+      const b = r.node_b;
+      if (!adjacency.has(a)) adjacency.set(a, []);
+      if (!adjacency.has(b)) adjacency.set(b, []);
+      adjacency.get(a)!.push({ neighbor: b, routeId: r.id, controlState: r.control_state || "open" });
+      adjacency.get(b)!.push({ neighbor: a, routeId: r.id, controlState: r.control_state || "open" });
     }
 
     // ── Load infrastructure ──
@@ -457,7 +459,7 @@ Deno.serve(async (req) => {
 
     // Load active trade routes
     const { data: activeTradeRoutes } = await supabase.from("trade_routes")
-      .select("id, from_player, to_player, resource_type, amount_per_turn, return_resource_type, return_amount, gold_per_turn, route_safety, start_node_id, end_node_id")
+      .select("id, from_player, to_player, resource_type, amount_per_turn, return_resource_type, return_amount, gold_per_turn, route_safety, start_node_id, end_node_id, from_city_id, to_city_id")
       .eq("session_id", sessionId).eq("status", "active")
       .or(`from_player.eq.${playerName},to_player.eq.${playerName}`);
 
@@ -479,8 +481,12 @@ Deno.serve(async (req) => {
       let routeBlocked = false;
       let tollTotal = 0;
 
-      if (route.start_node_id && route.end_node_id) {
-        const pathResult = findRoutePath(route.start_node_id, route.end_node_id, adjacency);
+      // Resolve node IDs: prefer explicit start/end_node_id, fallback to city→node map
+      const startNodeId = route.start_node_id || (route.from_city_id ? cityNodeMap.get(route.from_city_id)?.id : null);
+      const endNodeId = route.end_node_id || (route.to_city_id ? cityNodeMap.get(route.to_city_id)?.id : null);
+
+      if (startNodeId && endNodeId) {
+        const pathResult = findRoutePath(startNodeId, endNodeId, adjacency);
 
         if (!pathResult) {
           // No path exists — trade route is severed
@@ -491,7 +497,7 @@ Deno.serve(async (req) => {
             event_type: "trade_route_severed",
             note: `Obchodní trasa mezi ${playerName} a ${otherPlayer} byla přerušena — neexistuje průchozí cesta v síti.`,
             importance: "important",
-            reference: { from: route.start_node_id, to: route.end_node_id, other_player: otherPlayer },
+            reference: { from: startNodeId, to: endNodeId, other_player: otherPlayer },
           });
         } else if (pathResult.blocked) {
           // Path exists but goes through blocked/embargoed segment

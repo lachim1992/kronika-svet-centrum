@@ -403,6 +403,12 @@ Deno.serve(async (req) => {
         const shouldAccept = canAfford && isFair && !isHostile;
 
         if (shouldAccept) {
+          // Resolve city→node for graph-based trade validation
+          const [fromNodeRes, toNodeRes] = await Promise.all([
+            supabase.from("province_nodes").select("id").eq("session_id", sessionId).eq("city_id", offer.from_city_id).maybeSingle(),
+            supabase.from("province_nodes").select("id").eq("session_id", sessionId).eq("city_id", offer.to_city_id).maybeSingle(),
+          ]);
+
           // Accept: create trade route + update offer
           await supabase.from("trade_routes").insert({
             session_id: sessionId,
@@ -418,6 +424,8 @@ Deno.serve(async (req) => {
             started_turn: turnNumber,
             expires_turn: offer.duration_turns ? turnNumber + offer.duration_turns : null,
             status: "active",
+            start_node_id: fromNodeRes.data?.id || null,
+            end_node_id: toNodeRes.data?.id || null,
           });
           await supabase.from("trade_offers").update({
             status: "accepted", responded_at: new Date().toISOString(),
