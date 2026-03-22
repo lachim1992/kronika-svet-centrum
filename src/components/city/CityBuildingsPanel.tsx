@@ -311,11 +311,10 @@ const CityBuildingsPanel = ({
       if (data?.error) { toast.error(data.error); return; }
 
       if (realm) {
+        const aiProdCost = (data.cost_wood || 0) + (data.cost_stone || 0) + (data.cost_iron || 0);
         await supabase.from("realm_resources").update({
           gold_reserve: Math.max(0, (realm.gold_reserve || 0) - (data.cost_wealth || 0)),
-          wood_reserve: Math.max(0, (realm.wood_reserve || 0) - (data.cost_wood || 0)),
-          stone_reserve: Math.max(0, (realm.stone_reserve || 0) - (data.cost_stone || 0)),
-          iron_reserve: Math.max(0, (realm.iron_reserve || 0) - (data.cost_iron || 0)),
+          production_reserve: Math.max(0, (realm.production_reserve || 0) - aiProdCost),
         } as any).eq("id", realm.id);
       }
 
