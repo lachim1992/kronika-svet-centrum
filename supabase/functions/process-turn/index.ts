@@ -497,7 +497,7 @@ Deno.serve(async (req) => {
             event_type: "trade_route_severed",
             note: `Obchodní trasa mezi ${playerName} a ${otherPlayer} byla přerušena — neexistuje průchozí cesta v síti.`,
             importance: "important",
-            reference: { from: route.start_node_id, to: route.end_node_id, other_player: otherPlayer },
+            reference: { from: startNodeId, to: endNodeId, other_player: otherPlayer },
           });
         } else if (pathResult.blocked) {
           // Path exists but goes through blocked/embargoed segment
