@@ -93,12 +93,20 @@ interface SupplyState {
 
 // ── PRODUCTION ──────────────────────────────────────────────────
 // production_output = base_value * development_level * stability * route_access_factor
-function computeNodeProduction(node: NodeData, routeAccess: number): number {
+// For city-linked nodes: add demographic bonus from peasants
+function computeNodeProduction(node: NodeData, routeAccess: number, cityData?: any): number {
   const base = BASE_PRODUCTION[node.node_type] ?? 2;
   const dev = Math.max(0.1, node.development_level || 1.0);
   const stab = Math.max(0.1, node.stability_factor || 1.0);
   const access = Math.max(0.1, routeAccess);
-  return base * dev * stab * access;
+  let production = base * dev * stab * access;
+  // Demographic bonus: peasants drive production
+  if (cityData) {
+    const peasants = cityData.population_peasants || 0;
+    const burghers = cityData.population_burghers || 0;
+    production += (peasants * 0.008 + burghers * 0.002);
+  }
+  return production;
 }
 
 // ── WEALTH ──────────────────────────────────────────────────────
