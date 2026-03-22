@@ -413,12 +413,11 @@ const StrategicMapOverlay = memo(({ sessionId, offsetX, offsetY, visible, onNode
         );
       })}
 
-      {/* Flow particles — 4 distinct flow types */}
+      {/* Flow particles — use hex paths when available, fallback to straight lines */}
       {flowParticles.map((fp, idx) => {
         const key = `${fp.routeId}-${fp.flowType}`;
         const color = FLOW_COLORS[fp.flowType];
         const sizes = FLOW_PARTICLE_SIZES[fp.flowType];
-        // Offset perpendicular to route so different flows don't overlap
         const offsetMap: Record<FlowType, number> = { production: -3, wealth: -1, supply: 1, faith: 3 };
         const perpOffset = offsetMap[fp.flowType];
         const dx = fp.toX - fp.fromX;
@@ -427,15 +426,18 @@ const StrategicMapOverlay = memo(({ sessionId, offsetX, offsetY, visible, onNode
         const nx = -dy / len * perpOffset;
         const ny = dx / len * perpOffset;
 
+        // Prefer hex-based path for animation
+        const hexPathId = routeHexPathMap.get(key);
+        const pathRef = hexPathId ? `#${hexPathId}` : `#flow-${key}`;
+
         return Array.from({ length: fp.intensity }, (_, i) => {
           const dur = `${3.5 + i * 0.8}s`;
           const delay = `${i * 1.0 + idx * 0.15}s`;
-          const pathKey = `flow-${key}`;
           return (
             <g key={`particle-${key}-${i}`} transform={`translate(${nx},${ny})`}>
               <circle r={sizes.r} fill={color} opacity={0.75}>
                 <animateMotion dur={dur} begin={delay} repeatCount="indefinite">
-                  <mpath xlinkHref={`#${pathKey}`} />
+                  <mpath xlinkHref={pathRef} />
                 </animateMotion>
                 <animate attributeName="opacity" values="0;0.85;0.85;0" dur={dur} begin={delay} repeatCount="indefinite" />
                 <animate attributeName="r" values={`${sizes.r};${sizes.rMax};${sizes.r}`} dur={dur} begin={delay} repeatCount="indefinite" />
