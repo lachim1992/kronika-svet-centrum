@@ -5,10 +5,11 @@ import {
   clampReputation, REPUTATION_DELTAS, REPUTATION_DECAY,
   CRISIS_THRESHOLD, WAR_THRESHOLD, SETTLEMENT_LEVEL_THRESHOLDS,
   computeProvinceControl, computeIsolationPenalty,
-  computeNodeFlows,
+  computeNodeFlows, computeSupplyChain,
   type CityForGrowth, type InfluenceInput,
   type NodeControlEntry, type IsolationInput,
   type FlowNode, type FlowRoute, type FlowCity,
+  type SupplyChainInput,
 } from "../_shared/physics.ts";
 
 const corsHeaders = {
