@@ -303,6 +303,50 @@ const StrategicOverlay = memo(function StrategicOverlay({ sessionId, currentPlay
         </Card>
       )}
 
+      {/* Supply Chain Alerts */}
+      {(() => {
+        const isolatedNodes = myNodes.filter(n => supplyState[n.id] && !supplyState[n.id].connected_to_capital);
+        const lowSupplyNodes = myNodes.filter(n => supplyState[n.id] && supplyState[n.id].supply_level <= 4 && supplyState[n.id].connected_to_capital);
+        if (isolatedNodes.length === 0 && lowSupplyNodes.length === 0) return null;
+        return (
+          <Card className="border-destructive/30">
+            <CardHeader className="pb-1 pt-2 px-3">
+              <CardTitle className="text-[11px] flex items-center gap-1.5 text-destructive">
+                <AlertTriangle className="h-3.5 w-3.5" /> Zásobovací řetězec
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="px-3 pb-2 space-y-1">
+              {isolatedNodes.map(n => {
+                const sc = supplyState[n.id];
+                return (
+                  <div key={n.id} className="flex items-center gap-2 text-[10px] bg-destructive/10 rounded p-1.5">
+                    <Ban className="h-3 w-3 text-destructive" />
+                    <span className="font-medium">{n.name}</span>
+                    <span className="text-destructive text-[8px]">IZOLOVÁN {sc.isolation_turns} kol</span>
+                    <Badge variant="destructive" className="text-[7px] ml-auto">
+                      Produkce: {Math.round(sc.production_modifier * 100)}%
+                    </Badge>
+                  </div>
+                );
+              })}
+              {lowSupplyNodes.map(n => {
+                const sc = supplyState[n.id];
+                return (
+                  <div key={n.id} className="flex items-center gap-2 text-[10px] bg-accent/40 rounded p-1.5">
+                    <AlertTriangle className="h-3 w-3 text-accent-foreground" />
+                    <span className="font-medium">{n.name}</span>
+                    <span className="text-muted-foreground text-[8px]">Zásoby: {sc.supply_level}/10</span>
+                    <Badge variant="outline" className="text-[7px] ml-auto">
+                      {sc.hop_distance} skoků
+                    </Badge>
+                  </div>
+                );
+              })}
+            </CardContent>
+          </Card>
+        );
+      })()}
+
       {/* Active Projects */}
       {projects.length > 0 && (
         <Card>
