@@ -60,7 +60,7 @@ serve(async (req) => {
           .in("player_name", aiPlayerNames),
         // Realm resources
         sb.from("realm_resources")
-          .select("grain_reserve, wood_reserve, stone_reserve, iron_reserve, gold_reserve, horses_reserve, manpower_pool, manpower_committed, mobilization_rate, player_name")
+          .select("grain_reserve, production_reserve, gold_reserve, faith_reserve, horses_reserve, manpower_pool, manpower_committed, mobilization_rate, player_name")
           .eq("session_id", sessionId)
           .in("player_name", aiPlayerNames),
       ]);

@@ -76,10 +76,13 @@ const CATEGORY_META: Record<string, { label: string; icon: React.ReactNode; colo
 
 const EFFECT_LABELS: Record<string, { label: string; icon: React.ReactNode }> = {
   food_income: { label: "Obilí", icon: <Wheat className="h-3 w-3" /> },
-  wood_income: { label: "Dřevo", icon: <Trees className="h-3 w-3" /> },
-  stone_income: { label: "Kámen", icon: <Mountain className="h-3 w-3" /> },
-  iron_income: { label: "Železo", icon: <Anvil className="h-3 w-3" /> },
+  production_income: { label: "Produkce", icon: <Hammer className="h-3 w-3" /> },
+  // Legacy aliases → production_income
+  wood_income: { label: "Produkce", icon: <Hammer className="h-3 w-3" /> },
+  stone_income: { label: "Produkce", icon: <Hammer className="h-3 w-3" /> },
+  iron_income: { label: "Produkce", icon: <Hammer className="h-3 w-3" /> },
   wealth_income: { label: "Bohatství", icon: <Coins className="h-3 w-3" /> },
+  faith_income: { label: "Víra", icon: <Church className="h-3 w-3" /> },
   stability_bonus: { label: "Stabilita", icon: <Shield className="h-3 w-3" /> },
   stability: { label: "Stabilita", icon: <Shield className="h-3 w-3" /> },
   influence_bonus: { label: "Vliv", icon: <TrendingUp className="h-3 w-3" /> },
@@ -91,7 +94,7 @@ const EFFECT_LABELS: Record<string, { label: string; icon: React.ReactNode }> = 
   defense_bonus: { label: "Obrana", icon: <Shield className="h-3 w-3" /> },
   defense: { label: "Obrana", icon: <Shield className="h-3 w-3" /> },
   granary_capacity: { label: "Kapacita sýpky", icon: <Wheat className="h-3 w-3" /> },
-  production: { label: "Produkce", icon: <Anvil className="h-3 w-3" /> },
+  production: { label: "Produkce", icon: <Hammer className="h-3 w-3" /> },
   garrison: { label: "Posádka", icon: <Swords className="h-3 w-3" /> },
 };
 

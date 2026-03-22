@@ -376,12 +376,9 @@ const HomeTab = ({
                     <div className="flex items-center gap-4 text-sm px-3 py-2 rounded-lg bg-muted/40">
                       <span className="text-muted-foreground font-semibold text-xs">Produkce:</span>
                       <span className="flex items-center gap-1"><Wheat className="h-3.5 w-3.5 text-primary" />+{grainProd}</span>
-                      <span className="flex items-center gap-1"><Trees className="h-3.5 w-3.5 text-primary" />+{city.last_turn_wood_prod || 0}</span>
-                      {city.special_resource_type === "STONE" && (
-                        <span className="flex items-center gap-1"><Mountain className="h-3.5 w-3.5 text-primary" />+{city.last_turn_special_prod || 0}</span>
-                      )}
-                      {city.special_resource_type === "IRON" && (
-                        <span className="flex items-center gap-1"><Anvil className="h-3.5 w-3.5 text-primary" />+{city.last_turn_special_prod || 0}</span>
+                      <span className="flex items-center gap-1 text-orange-400">⚒️ +{(city.last_turn_wood_prod || 0) + (city.last_turn_stone_prod || 0) + (city.last_turn_iron_prod || 0)}</span>
+                      {city.special_resource_type && city.special_resource_type !== "NONE" && (
+                        <span className="flex items-center gap-1 text-amber-400">✦ {city.special_resource_type}</span>
                       )}
                     </div>
 

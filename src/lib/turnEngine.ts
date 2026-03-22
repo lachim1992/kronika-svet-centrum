@@ -143,7 +143,7 @@ export async function migrateLegacyMilitary(sessionId: string) {
       "Lehká": "INFANTRY", "Těžká": "INFANTRY", "Obléhací": "SIEGE", "Námořní": "INFANTRY",
     };
     const unitType = unitTypeMap[legacy.army_type] || "INFANTRY";
-    const manpower = legacy.iron_cost * 200; // Estimate from iron cost
+    const manpower = (legacy.iron_cost || 1) * 200; // Estimate from legacy iron cost
 
     const { data: stack } = await supabase.from("military_stacks").insert({
       session_id: sessionId,
