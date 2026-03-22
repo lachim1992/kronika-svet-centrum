@@ -412,7 +412,7 @@ async function buildStrategicMapContext(client: SupabaseClient, sessionId: strin
       .select("name, owner_player, province_q, province_r, settlement_level")
       .eq("session_id", sessionId),
     client.from("province_nodes")
-      .select("id, name, node_type, is_major, parent_node_id, controlled_by, production_output, wealth_output, capacity_score, importance_score, isolation_penalty, hex_q, hex_r, flow_role, garrison_strength, fortification_level, city_id")
+      .select("id, name, node_type, node_class, node_score, collapse_severity, is_major, parent_node_id, controlled_by, production_output, wealth_output, faith_output, food_value, sacred_influence, capacity_score, importance_score, isolation_penalty, hex_q, hex_r, flow_role, garrison_strength, fortification_level, city_id, strategic_resource_type, cumulative_trade_flow")
       .eq("session_id", sessionId).eq("is_active", true),
     client.from("province_routes")
       .select("node_a, node_b, route_type, capacity_value, control_state, damage_level")
