@@ -1918,6 +1918,11 @@ export function hexTraversalCost(
 
   let cost = BIOME_TRAVERSAL_COST[hex.biome_family] ?? 2.0;
 
+  // Mountain pass node: dramatically reduces mountain/hill cost
+  if (hex.has_pass && (hex.biome_family === "mountain" || hex.biome_family === "hills")) {
+    cost = 2.0; // Pass reduces mountain to roughly forest-level traversal
+  }
+
   // Height penalty: steep terrain costs more
   if (hex.mean_height > 0.7) cost += (hex.mean_height - 0.7) * 5;
 
