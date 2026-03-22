@@ -7,6 +7,8 @@ import {
   computeProvinceControl, computeIsolationPenalty,
   computeNodeFlows, computeSupplyChain,
   URBANIZATION_THRESHOLDS,
+  classifyNode, computeNodeScore, computeCollapseSeverity,
+  type NodeClass,
   type CityForGrowth, type InfluenceInput,
   type NodeControlEntry, type IsolationInput,
   type FlowNode, type FlowRoute, type FlowCity,
