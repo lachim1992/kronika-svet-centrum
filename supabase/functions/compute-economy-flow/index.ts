@@ -129,16 +129,23 @@ function computeNodeWealth(
 
 // ── CAPACITY ────────────────────────────────────────────────────
 // capacity = population * infrastructure_level * connectivity_score
+// For city-linked nodes: clerics drive administrative capacity
 function computeNodeCapacity(
   population: number,
   infrastructureLevel: number,
   connectivityScore: number,
+  cityData?: any,
 ): number {
   const pop = Math.max(1, population);
   const infra = Math.max(0.1, infrastructureLevel);
   const conn = Math.max(0.1, connectivityScore);
-  // Normalize: per 1000 pop → 1.0 base
-  return (pop / 1000) * infra * conn;
+  let capacity = (pop / 1000) * infra * conn;
+  if (cityData) {
+    const clerics = cityData.population_clerics || 0;
+    const burghers = cityData.population_burghers || 0;
+    capacity += (clerics * 0.006 + burghers * 0.002);
+  }
+  return capacity;
 }
 
 // ── IMPORTANCE ──────────────────────────────────────────────────
