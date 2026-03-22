@@ -159,6 +159,13 @@ export function useProvinceGraph(sessionId: string) {
           parent_node_id: n.parent_node_id,
           is_active: n.is_active ?? true,
           metadata: (n.metadata as any) || {},
+          throughput_military: n.throughput_military ?? 1.0,
+          toll_rate: n.toll_rate ?? 0.0,
+          cumulative_trade_flow: n.cumulative_trade_flow ?? 0,
+          urbanization_score: n.urbanization_score ?? 0,
+          hinterland_level: n.hinterland_level ?? 0,
+          resource_output: (n.resource_output as any) || {},
+          flow_role: n.flow_role || "neutral",
         })));
       }
       if (routesRes.data) {
