@@ -293,6 +293,18 @@ async function executeCommand(
     case "FORTIFY_NODE":
       return await executeFortifyNode(supabase, base, actor, payload, commandId, sessionId, turnNumber);
 
+    case "BLOCKADE_ROUTE":
+      return await executeBlockadeRoute(supabase, base, actor, payload, commandId, sessionId, turnNumber);
+
+    case "AMBUSH_ROUTE":
+      return await executeAmbushRoute(supabase, base, actor, payload, commandId, sessionId, turnNumber);
+
+    case "SIEGE_NODE":
+      return await executeSiegeNode(supabase, base, actor, payload, commandId, sessionId, turnNumber);
+
+    case "DISRUPT_ROUTE":
+      return await executeDisruptRoute(supabase, base, actor, payload, commandId, sessionId, turnNumber);
+
     case "PROPOSE_PACT":
       return await executeProposePact(supabase, base, actor, payload, commandId, sessionId, turnNumber);
 
