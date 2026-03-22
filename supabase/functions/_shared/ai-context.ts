@@ -396,11 +396,12 @@ export async function createAIContext(
 
 /**
  * Build a compressed strategic map summary for AI.
- * Includes: biome distribution, chokepoints, rivers, mountain barriers, city positions.
+ * Includes: biome distribution, chokepoints, rivers, mountain barriers, city positions,
+ * AND node graph topology with flow data.
  */
 async function buildStrategicMapContext(client: SupabaseClient, sessionId: string): Promise<string | null> {
-  // Load hex summary stats
-  const [{ data: hexes }, { data: provinces }, { data: cities }] = await Promise.all([
+  // Load hex summary stats + node graph
+  const [{ data: hexes }, { data: provinces }, { data: cities }, { data: nodeData }, { data: routeData }, { data: supplyData }] = await Promise.all([
     client.from("province_hexes")
       .select("q, r, biome_family, has_river, has_bridge, coastal, is_passable, owner_player, province_id")
       .eq("session_id", sessionId).limit(4000),
@@ -410,6 +411,16 @@ async function buildStrategicMapContext(client: SupabaseClient, sessionId: strin
     client.from("cities")
       .select("name, owner_player, province_q, province_r, settlement_level")
       .eq("session_id", sessionId),
+    client.from("province_nodes")
+      .select("id, name, node_type, is_major, parent_node_id, controlled_by, production_output, wealth_output, capacity_score, importance_score, isolation_penalty, hex_q, hex_r, flow_role, garrison_strength, fortification_level, city_id")
+      .eq("session_id", sessionId).eq("is_active", true),
+    client.from("province_routes")
+      .select("node_a, node_b, route_type, capacity_value, control_state, damage_level")
+      .eq("session_id", sessionId),
+    client.from("supply_chain_state")
+      .select("node_id, connected_to_capital, supply_level, hop_distance, isolation_turns")
+      .eq("session_id", sessionId)
+      .order("turn_number", { ascending: false }).limit(500),
   ]);
 
   if (!hexes || hexes.length === 0) return null;
@@ -419,8 +430,6 @@ async function buildStrategicMapContext(client: SupabaseClient, sessionId: strin
   let riverCount = 0, bridgeCount = 0, coastalCount = 0, impassableCount = 0;
   const rivers: string[] = [];
   const mountains: string[] = [];
-
-  // Territory ownership
   const ownerHexCounts: Record<string, number> = {};
 
   for (const h of hexes) {
@@ -447,7 +456,6 @@ async function buildStrategicMapContext(client: SupabaseClient, sessionId: strin
   parts.push(`\nBIOMY: ${Object.entries(biomeCounts).map(([b, c]) => `${b}: ${c}`).join(", ")}`);
   parts.push(`Pobřežní: ${coastalCount}, Řeky: ${riverCount}, Mosty: ${bridgeCount}`);
 
-  // Territory control summary
   if (Object.keys(ownerHexCounts).length > 0) {
     parts.push("\nÚZEMNÍ KONTROLA:");
     const unowned = hexes.filter(h => !h.owner_player).length;
@@ -457,7 +465,6 @@ async function buildStrategicMapContext(client: SupabaseClient, sessionId: strin
     parts.push(`  Neutrální/nezabrané: ${unowned} hexů`);
   }
 
-  // Province summary
   if (provinces && provinces.length > 0) {
     parts.push("\nPROVINCIE:");
     for (const p of provinces) {
@@ -477,6 +484,98 @@ async function buildStrategicMapContext(client: SupabaseClient, sessionId: strin
     for (const c of cities) {
       parts.push(`  ${c.name} (${c.owner_player}) na (${c.province_q},${c.province_r}) [${c.settlement_level}]`);
     }
+  }
+
+  // ── NODE GRAPH TOPOLOGY ──
+  if (nodeData && nodeData.length > 0) {
+    // Build supply lookup (latest per node)
+    const supMap = new Map<string, any>();
+    for (const s of (supplyData || [])) {
+      if (!supMap.has(s.node_id)) supMap.set(s.node_id, s);
+    }
+
+    // Build adjacency
+    const adjMap = new Map<string, string[]>();
+    for (const r of (routeData || [])) {
+      if (!adjMap.has(r.node_a)) adjMap.set(r.node_a, []);
+      if (!adjMap.has(r.node_b)) adjMap.set(r.node_b, []);
+      adjMap.get(r.node_a)!.push(r.node_b);
+      adjMap.get(r.node_b)!.push(r.node_a);
+    }
+
+    // Build node name map
+    const nodeNameMap = new Map<string, string>();
+    for (const n of nodeData) nodeNameMap.set(n.id, n.name);
+
+    parts.push("\n=== GRAF STRATEGICKÝCH UZLŮ ===");
+    parts.push("PRAVIDLA GRAFU:");
+    parts.push("- Minor uzly (vesnice, dílny) VŽDY odevzdávají produkci svému parent major uzlu");
+    parts.push("- Flow odchází pouze z měst a major uzlů směrem k hlavnímu městu");
+    parts.push("- Izolované uzly (bez spojení s hlavním městem) mají postih na produkci a stabilitu");
+    parts.push("- Chokepoints = uzly/cesty, jejichž blokáda izoluje více uzlů");
+
+    // Group by owner
+    const byOwner = new Map<string, typeof nodeData>();
+    for (const n of nodeData) {
+      const owner = n.controlled_by || "Neutrální";
+      if (!byOwner.has(owner)) byOwner.set(owner, []);
+      byOwner.get(owner)!.push(n);
+    }
+
+    for (const [owner, ownerNodes] of byOwner) {
+      const majors = ownerNodes.filter(n => n.is_major);
+      const minors = ownerNodes.filter(n => !n.is_major);
+      const totalProd = ownerNodes.reduce((s, n) => s + (n.production_output || 0), 0);
+      const totalWealth = ownerNodes.reduce((s, n) => s + (n.wealth_output || 0), 0);
+      const totalCap = ownerNodes.reduce((s, n) => s + (n.capacity_score || 0), 0);
+      const isolated = ownerNodes.filter(n => { const sup = supMap.get(n.id); return sup && !sup.connected_to_capital; });
+
+      parts.push(`\n[${owner}] ${majors.length} major, ${minors.length} minor uzlů | ⚒${totalProd.toFixed(1)} 💰${totalWealth.toFixed(1)} 🏛${totalCap.toFixed(1)}`);
+
+      // List major nodes with their children
+      for (const m of majors.slice(0, 10)) {
+        const children = minors.filter(n => n.parent_node_id === m.id);
+        const sup = supMap.get(m.id);
+        const connections = (adjMap.get(m.id) || []).map(id => nodeNameMap.get(id) || "?").slice(0, 5);
+        parts.push(`  🔵 ${m.name} [${m.node_type}/${m.flow_role}] (${m.hex_q},${m.hex_r}) ⚒${(m.production_output||0).toFixed(1)} 💰${(m.wealth_output||0).toFixed(1)} 🏛${(m.capacity_score||0).toFixed(1)}${m.garrison_strength ? ` ⚔${m.garrison_strength}` : ""}${m.fortification_level ? ` 🏰${m.fortification_level}` : ""} hop:${sup?.hop_distance ?? "?"} supply:${sup?.supply_level ?? "?"}/10`);
+        if (children.length > 0) {
+          parts.push(`    └ Minor: ${children.map(c => `${c.name}(⚒${(c.production_output||0).toFixed(1)})`).join(", ")}`);
+        }
+        if (connections.length > 0) {
+          parts.push(`    → Spojení: ${connections.join(", ")}`);
+        }
+      }
+
+      // Isolation warnings
+      if (isolated.length > 0) {
+        parts.push(`  ⚠ IZOLOVANÉ: ${isolated.map(n => `${n.name}(${(supMap.get(n.id) as any)?.isolation_turns || 0} kol)`).join(", ")}`);
+      }
+    }
+
+    // Route disruptions
+    const disrupted = (routeData || []).filter(r => r.control_state === "blocked" || r.control_state === "damaged" || r.control_state === "embargoed");
+    if (disrupted.length > 0) {
+      parts.push("\n⚠ NARUŠENÉ CESTY:");
+      for (const r of disrupted.slice(0, 10)) {
+        const nameA = nodeNameMap.get(r.node_a) || "?";
+        const nameB = nodeNameMap.get(r.node_b) || "?";
+        parts.push(`  ${nameA} ⟷ ${nameB}: ${r.control_state}${r.damage_level > 0 ? ` (poškození: ${r.damage_level})` : ""}`);
+      }
+    }
+
+    // Chokepoint detection: nodes whose removal disconnects most nodes
+    const highConnectivity = (nodeData || [])
+      .filter(n => n.is_major && (adjMap.get(n.id)?.length || 0) >= 3)
+      .sort((a, b) => (b.importance_score || 0) - (a.importance_score || 0))
+      .slice(0, 5);
+    if (highConnectivity.length > 0) {
+      parts.push("\n🎯 KLÍČOVÉ STRATEGICKÉ BODY (vysoká konektivita + důležitost):");
+      for (const n of highConnectivity) {
+        parts.push(`  ${n.name} [${n.controlled_by || "neutrální"}] důležitost: ${(n.importance_score||0).toFixed(1)}, spojení: ${adjMap.get(n.id)?.length || 0}`);
+      }
+    }
+
+    parts.push("=== KONEC GRAFU UZLŮ ===");
   }
 
   parts.push("=== KONEC STRATEGICKÉ MAPY ===");
