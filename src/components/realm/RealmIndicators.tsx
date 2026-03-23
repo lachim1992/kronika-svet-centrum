@@ -167,7 +167,7 @@ const RealmIndicators = ({ realm, cities, currentTurn }: Props) => {
       {/* Population & Demographics */}
       <Card>
         <CardHeader className="p-3 pb-1">
-          <CardTitle className="text-xs flex items-center gap-1"><Users className="h-3 w-3" />Populace & demografie</CardTitle>
+          <CardTitle className="text-xs flex items-center gap-1"><Users className="h-3 w-3" />Populace & demografie <InfoTip>Růst: birth_rate − death_rate. Složení se mění s úrovní sídla (HAMLET→POLIS). Rolníci→produkce, Měšťané→wealth, Klerici→kapacita+víra, Válečníci→morálka. Počítáno v world-tick.</InfoTip></CardTitle>
         </CardHeader>
         <CardContent className="p-3 pt-1 space-y-2">
           <div className="grid grid-cols-2 gap-3 text-xs">
