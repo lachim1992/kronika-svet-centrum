@@ -4,7 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skull, Zap, Shield, GitBranch } from "lucide-react";
 import { DB_TABLES, DB_TABLE_COLUMNS, DB_RELATIONS } from "./dbSchemaData";
-import { DATA_FLOW_ENTRIES } from "./dataFlowAuditData";
+import { DATA_FLOW_AUDIT } from "./dataFlowAuditData";
 
 /* ── 1. Dead Data Detector ── */
 // Columns that exist in the DB but are never referenced in code read/write audit
