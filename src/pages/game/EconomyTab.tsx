@@ -257,7 +257,16 @@ const EconomyTab = ({ sessionId, currentPlayerName, currentTurn, cities, resourc
                   {icon}
                 </div>
                 <div>
-                  <h3 className="font-display font-bold text-lg">{label}</h3>
+                  <h3 className="font-display font-bold text-lg flex items-center gap-1">
+                    {label}
+                    <InfoTip side="right">
+                      {layer === "production"
+                        ? "Generováno: base dle typu uzlu (resource_node=8, village=6, city=4, port=5) × role multiplikátor × (1 − izolace). Rolníci zvyšují produkci. compute-economy-flow sčítá minor→major→hlavní město."
+                        : layer === "wealth"
+                        ? "Generováno: průchodem produkce přes trasy. Trade efficiency dle role uzlu (hub=1.0, gateway=0.8, regulator=0.6, producer=0.3). Měšťané zvyšují wealth. Obchodní dohody přidávají bonus."
+                        : "Generováno: z urbanizační úrovně a infrastruktury uzlů (logistic_hub, trade_hub). Klerici přispívají ke kapacitě. Ovlivňuje maximální počet tras a staveb."}
+                    </InfoTip>
+                  </h3>
                   <span className="text-[10px] text-muted-foreground">{desc}</span>
                 </div>
               </div>
