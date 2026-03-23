@@ -201,7 +201,7 @@ const RealmIndicators = ({ realm, cities, currentTurn }: Props) => {
       <div className="grid grid-cols-2 gap-3">
         <Card>
           <CardHeader className="p-3 pb-1">
-            <CardTitle className="text-xs flex items-center gap-1"><Shield className="h-3 w-3" />Stabilita</CardTitle>
+            <CardTitle className="text-xs flex items-center gap-1"><Shield className="h-3 w-3" />Stabilita <InfoTip>Průměr city_stability všech měst. Klesá hladomorem, epidemií, vysokou mobilizací. Roste zákonodárstvím a legitimací. Pod 30% hrozí rebelie.</InfoTip></CardTitle>
           </CardHeader>
           <CardContent className="p-3 pt-1 text-xs space-y-1">
             <div className="flex justify-between">
