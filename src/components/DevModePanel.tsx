@@ -140,7 +140,7 @@ const DevModePanel = ({
         </TabsContent>
 
         <TabsContent value="observatory" className="mt-3">
-          <ObservatoryPanel />
+          <ObservatoryPanel sessionId={sessionId} />
         </TabsContent>
       </Tabs>
     </div>
