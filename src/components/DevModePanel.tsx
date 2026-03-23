@@ -1,6 +1,6 @@
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Bug, Droplets, Play, Shield, Sprout, FlaskConical, BarChart3, Compass, Info, Map, Zap, Telescope, MapPinPlus, Settings2 } from "lucide-react";
+import { Bug, Droplets, Play, Shield, Sprout, FlaskConical, BarChart3, Compass, Info, Map, Zap, Telescope, MapPinPlus, Settings2, Users } from "lucide-react";
 import HydrationSection from "@/components/dev/HydrationSection";
 import SimulationSection from "@/components/dev/SimulationSection";
 import RealSimulationSection from "@/components/dev/RealSimulationSection";
@@ -14,6 +14,7 @@ import SeedMapManager from "@/components/dev/SeedMapManager";
 import ObservatoryPanel from "@/components/dev/observatory/ObservatoryPanel";
 import DevNodeSpawner from "@/components/dev/DevNodeSpawner";
 import DevNodeEditor from "@/components/dev/DevNodeEditor";
+import DevPlayerEditor from "@/components/dev/DevPlayerEditor";
 import { getPermissions } from "@/lib/permissions";
 
 interface DevModePanelProps {
@@ -108,6 +109,9 @@ const DevModePanel = ({
           <TabsTrigger value="node-editor" className="text-xs gap-1 py-2">
             <Settings2 className="h-3 w-3" /> Node Editor
           </TabsTrigger>
+          <TabsTrigger value="player-editor" className="text-xs gap-1 py-2">
+            <Users className="h-3 w-3" /> Player Editor
+          </TabsTrigger>
         </TabsList>
 
         {perms.canRunServerDevTools && (
@@ -157,6 +161,10 @@ const DevModePanel = ({
 
         <TabsContent value="node-editor" className="mt-3">
           <DevNodeEditor sessionId={sessionId} onRefetch={onRefetch} />
+        </TabsContent>
+
+        <TabsContent value="player-editor" className="mt-3">
+          <DevPlayerEditor sessionId={sessionId} onRefetch={onRefetch} />
         </TabsContent>
       </Tabs>
     </div>
