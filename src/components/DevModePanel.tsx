@@ -1,6 +1,6 @@
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Bug, Droplets, Play, Shield, Sprout, FlaskConical, BarChart3, Compass, Info, Map, Zap, Telescope } from "lucide-react";
+import { Bug, Droplets, Play, Shield, Sprout, FlaskConical, BarChart3, Compass, Info, Map, Zap, Telescope, MapPinPlus } from "lucide-react";
 import HydrationSection from "@/components/dev/HydrationSection";
 import SimulationSection from "@/components/dev/SimulationSection";
 import RealSimulationSection from "@/components/dev/RealSimulationSection";
@@ -12,6 +12,7 @@ import LocalSimulationSection from "@/components/dev/LocalSimulationSection";
 import EventEngineSection from "@/components/dev/EventEngineSection";
 import SeedMapManager from "@/components/dev/SeedMapManager";
 import ObservatoryPanel from "@/components/dev/observatory/ObservatoryPanel";
+import DevNodeSpawner from "@/components/dev/DevNodeSpawner";
 import { getPermissions } from "@/lib/permissions";
 
 interface DevModePanelProps {
@@ -62,7 +63,7 @@ const DevModePanel = ({
 
       {/* Tabs */}
       <Tabs defaultValue={perms.canRunServerDevTools ? "hydration" : "local-sim"} className="w-full">
-        <TabsList className={`grid w-full h-auto ${perms.canRunServerDevTools ? "grid-cols-11" : "grid-cols-3"}`}>
+        <TabsList className="flex flex-wrap w-full h-auto gap-0.5">
           {perms.canRunServerDevTools && (
             <>
               <TabsTrigger value="hydration" className="text-xs gap-1 py-2">
@@ -99,6 +100,9 @@ const DevModePanel = ({
           </TabsTrigger>
           <TabsTrigger value="observatory" className="text-xs gap-1 py-2">
             <Telescope className="h-3 w-3" /> Observatory
+          </TabsTrigger>
+          <TabsTrigger value="node-spawner" className="text-xs gap-1 py-2">
+            <MapPinPlus className="h-3 w-3" /> Node Spawner
           </TabsTrigger>
         </TabsList>
 
@@ -141,6 +145,10 @@ const DevModePanel = ({
 
         <TabsContent value="observatory" className="mt-3">
           <ObservatoryPanel sessionId={sessionId} />
+        </TabsContent>
+
+        <TabsContent value="node-spawner" className="mt-3">
+          <DevNodeSpawner sessionId={sessionId} onRefetch={onRefetch} />
         </TabsContent>
       </Tabs>
     </div>
