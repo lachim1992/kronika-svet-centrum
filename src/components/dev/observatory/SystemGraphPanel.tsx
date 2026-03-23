@@ -297,7 +297,7 @@ const SystemGraphPanel = () => {
           className="h-6 text-[10px] gap-1 px-2"
           onClick={() => setMode("intersection")}
         >
-          <Intersect className="h-3 w-3" /> Intersect
+          <Merge className="h-3 w-3" /> Intersect
         </Button>
 
         {/* Selected chips */}
