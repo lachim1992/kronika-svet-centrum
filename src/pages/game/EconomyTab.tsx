@@ -390,7 +390,7 @@ const EconomyTab = ({ sessionId, currentPlayerName, currentTurn, cities, resourc
           <div className="flex items-center gap-2">
             <Users className="h-5 w-5 text-primary" />
             <h3 className="font-display font-semibold text-base">Lidská síla</h3>
-            <InfoTip side="right">Pracovní síla = kolik populace produkuje. Vyšší mobilizace = méně pracovníků = nižší produkce uzlů.</InfoTip>
+            <InfoTip side="right">Pracovní síla = celková populace − vojáci. Vyšší mobilizace = méně pracovníků = penalizace produkce uzlů. Mobilizace nad 15% způsobuje progresivní penalty. Počítáno v compute-economy-flow z realm_resources.mobilization_rate × total population.</InfoTip>
           </div>
           <div className="grid grid-cols-3 gap-4 text-center">
             <div className="bg-muted/40 rounded-lg p-3">
