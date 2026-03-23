@@ -4,7 +4,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
-import { Loader2, Network, RefreshCw, MapPin, Landmark, Shield, Anchor, Store, Mountain, Wheat, Route, Church, Package, Home, TrendingUp, Coins, Building2 } from "lucide-react";
+import { Loader2, Network, RefreshCw, MapPin, Landmark, Shield, Anchor, Store, Mountain, Wheat, Route, Church, Package, Home, TrendingUp, Coins, Building2, Plus } from "lucide-react";
+import DevNodeSpawner from "@/components/dev/DevNodeSpawner";
 import { toast } from "sonner";
 import { FLOW_ROLE_LABELS, HINTERLAND_LABELS } from "@/lib/strategicGraph";
 import { MACRO_LAYER_ICONS, getImportanceLabel, getImportanceColor, getIsolationSeverity, ISOLATION_PENALTY_LABELS, STRATEGIC_RESOURCE_ICONS, STRATEGIC_TIER_LABELS } from "@/lib/economyFlow";
@@ -543,6 +544,7 @@ export default function ProvinceGraphPanel({ sessionId }: Props) {
           <TabsTrigger value="routes" className="text-[10px] h-6">Trasy ({routes.length})</TabsTrigger>
           <TabsTrigger value="economy" className="text-[10px] h-6">⚒️ Ekonomika</TabsTrigger>
           <TabsTrigger value="adjacency" className="text-[10px] h-6">Sousednosti</TabsTrigger>
+          <TabsTrigger value="spawner" className="text-[10px] h-6">📍 Spawner</TabsTrigger>
         </TabsList>
 
         <TabsContent value="graph" className="mt-2">
@@ -642,6 +644,10 @@ export default function ProvinceGraphPanel({ sessionId }: Props) {
           ) : (
             <p className="text-xs text-muted-foreground text-center py-4">Žádné sousednosti</p>
           )}
+        </TabsContent>
+
+        <TabsContent value="spawner" className="mt-2">
+          <DevNodeSpawner sessionId={sessionId} onRefetch={loadGraph} />
         </TabsContent>
       </Tabs>
     </section>
