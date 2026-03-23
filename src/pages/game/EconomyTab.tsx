@@ -257,7 +257,16 @@ const EconomyTab = ({ sessionId, currentPlayerName, currentTurn, cities, resourc
                   {icon}
                 </div>
                 <div>
-                  <h3 className="font-display font-bold text-lg">{label}</h3>
+                  <h3 className="font-display font-bold text-lg flex items-center gap-1">
+                    {label}
+                    <InfoTip side="right">
+                      {layer === "production"
+                        ? "Generováno: base dle typu uzlu (resource_node=8, village=6, city=4, port=5) × role multiplikátor × (1 − izolace). Rolníci zvyšují produkci. compute-economy-flow sčítá minor→major→hlavní město."
+                        : layer === "wealth"
+                        ? "Generováno: průchodem produkce přes trasy. Trade efficiency dle role uzlu (hub=1.0, gateway=0.8, regulator=0.6, producer=0.3). Měšťané zvyšují wealth. Obchodní dohody přidávají bonus."
+                        : "Generováno: z urbanizační úrovně a infrastruktury uzlů (logistic_hub, trade_hub). Klerici přispívají ke kapacitě. Ovlivňuje maximální počet tras a staveb."}
+                    </InfoTip>
+                  </h3>
                   <span className="text-[10px] text-muted-foreground">{desc}</span>
                 </div>
               </div>
@@ -381,7 +390,7 @@ const EconomyTab = ({ sessionId, currentPlayerName, currentTurn, cities, resourc
           <div className="flex items-center gap-2">
             <Users className="h-5 w-5 text-primary" />
             <h3 className="font-display font-semibold text-base">Lidská síla</h3>
-            <InfoTip side="right">Pracovní síla = kolik populace produkuje. Vyšší mobilizace = méně pracovníků = nižší produkce uzlů.</InfoTip>
+            <InfoTip side="right">Pracovní síla = celková populace − vojáci. Vyšší mobilizace = méně pracovníků = penalizace produkce uzlů. Mobilizace nad 15% způsobuje progresivní penalty. Počítáno v compute-economy-flow z realm_resources.mobilization_rate × total population.</InfoTip>
           </div>
           <div className="grid grid-cols-3 gap-4 text-center">
             <div className="bg-muted/40 rounded-lg p-3">
@@ -412,6 +421,7 @@ const EconomyTab = ({ sessionId, currentPlayerName, currentTurn, cities, resourc
           <div className="flex items-center gap-2">
             <span className="text-xl">🌾</span>
             <h3 className="font-display font-semibold text-base">Zásoby obilí</h3>
+            <InfoTip side="right">Produkce obilí: rolníci × irrigation_level × ration_policy. Spotřeba: populace × 0.006/kolo. Bilance se ukládá do grain_reserve. Kapacita sýpky závisí na budovách (granary). Záporná bilance → hladomor po vyčerpání rezerv. Počítáno v process-turn.</InfoTip>
             <span className="ml-auto text-sm font-mono font-bold">
               {Math.round(realm.grain_reserve || 0)} / {Math.round(realm.granary_capacity || 0)}
             </span>
@@ -439,6 +449,7 @@ const EconomyTab = ({ sessionId, currentPlayerName, currentTurn, cities, resourc
           <div className="flex items-center gap-2">
             <span className="text-xl">💰</span>
             <h3 className="font-display font-semibold text-base">Zlatá pokladna</h3>
+            <InfoTip side="right">Přírůstek: wealth tok ze sítě uzlů + obchodní dohody + daně (tax_rate_percent z laws). Spotřeba: údržba armád, stavby, diplomatické akce. Počítáno každé kolo v compute-economy-flow → realm_resources.gold_reserve.</InfoTip>
             <span className="ml-auto text-2xl font-mono font-bold text-primary">{Math.round(realm.gold_reserve || 0)}</span>
           </div>
         </div>
@@ -449,7 +460,7 @@ const EconomyTab = ({ sessionId, currentPlayerName, currentTurn, cities, resourc
         <div className="px-5 pt-4 pb-2">
           <h3 className="text-base font-display font-semibold flex items-center gap-2">
             Přehled sídel — síťová ekonomika
-            <InfoTip side="right">Produkce a bohatství měst plyne z uzlového systému. Bilance = produkce − poptávka. Izolace od hlavního města snižuje produkci.</InfoTip>
+            <InfoTip side="right">Produkce města = (vlastní production_output + příchozí incoming_production × 0.5) × role multiplikátor. Poptávka = populace × 0.006. Bilance = produkce − poptávka. Wealth = wealth_output uzlu města. Izolace (⛓️) = izolační penalizace uzlu vůči hlavnímu městu, snižuje produkci. A* pathfinding hledá cestu nejmenšího odporu přes biomy.</InfoTip>
           </h3>
         </div>
         <Table>
