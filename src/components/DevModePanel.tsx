@@ -97,6 +97,9 @@ const DevModePanel = ({
           <TabsTrigger value="event-engine" className="text-xs gap-1 py-2">
             <Info className="h-3 w-3" /> Event Engine
           </TabsTrigger>
+          <TabsTrigger value="observatory" className="text-xs gap-1 py-2">
+            <Telescope className="h-3 w-3" /> Observatory
+          </TabsTrigger>
         </TabsList>
 
         {perms.canRunServerDevTools && (
