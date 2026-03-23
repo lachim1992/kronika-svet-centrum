@@ -11,6 +11,7 @@ import EconomyQASection from "@/components/dev/EconomyQASection";
 import LocalSimulationSection from "@/components/dev/LocalSimulationSection";
 import EventEngineSection from "@/components/dev/EventEngineSection";
 import SeedMapManager from "@/components/dev/SeedMapManager";
+import ObservatoryPanel from "@/components/dev/observatory/ObservatoryPanel";
 import { getPermissions } from "@/lib/permissions";
 
 interface DevModePanelProps {
