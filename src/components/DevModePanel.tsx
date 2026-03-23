@@ -138,6 +138,10 @@ const DevModePanel = ({
         <TabsContent value="event-engine" className="mt-3">
           <EventEngineSection />
         </TabsContent>
+
+        <TabsContent value="observatory" className="mt-3">
+          <ObservatoryPanel />
+        </TabsContent>
       </Tabs>
     </div>
   );
