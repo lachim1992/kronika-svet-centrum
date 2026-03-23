@@ -645,6 +645,10 @@ export default function ProvinceGraphPanel({ sessionId }: Props) {
             <p className="text-xs text-muted-foreground text-center py-4">Žádné sousednosti</p>
           )}
         </TabsContent>
+
+        <TabsContent value="spawner" className="mt-2">
+          <DevNodeSpawner sessionId={sessionId} onRefetch={loadGraph} />
+        </TabsContent>
       </Tabs>
     </section>
   );
