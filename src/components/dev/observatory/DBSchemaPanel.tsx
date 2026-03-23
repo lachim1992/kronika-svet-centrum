@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState, useCallback } from "react";
 import {
   ReactFlow,
   Background,
@@ -12,17 +12,23 @@ import {
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { Badge } from "@/components/ui/badge";
-import { DB_TABLES, DB_RELATIONS, CATEGORY_COLORS, type DBTable } from "./dbSchemaData";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { DB_TABLES, DB_RELATIONS, CATEGORY_COLORS, DB_TABLE_COLUMNS, type DBTable } from "./dbSchemaData";
+import { ArrowRight, ArrowLeft, Key, Table2 } from "lucide-react";
 
-function TableNodeComponent({ data }: NodeProps) {
+function TableNodeComponent({ data, id }: NodeProps) {
   const table = data.table as DBTable;
+  const onSelect = data.onSelect as (name: string) => void;
   const colors = CATEGORY_COLORS[table.category];
   const incomingCount = DB_RELATIONS.filter(r => r.to === table.name).length;
   const outgoingCount = DB_RELATIONS.filter(r => r.from === table.name).length;
+  const cols = DB_TABLE_COLUMNS[table.name] || [];
 
   return (
     <div
-      className="rounded-lg border-2 px-3 py-2 min-w-[160px] max-w-[220px] shadow-lg"
+      onClick={(e) => { e.stopPropagation(); onSelect(table.name); }}
+      className="rounded-lg border-2 px-3 py-2 min-w-[160px] max-w-[220px] shadow-lg cursor-pointer hover:scale-105 transition-transform"
       style={{ background: colors.bg, borderColor: colors.border, color: "#f3f4f6" }}
     >
       <Handle type="target" position={Position.Top} className="!bg-muted !w-2 !h-2" />
@@ -33,7 +39,7 @@ function TableNodeComponent({ data }: NodeProps) {
           {table.category}
         </span>
         <span className="text-[9px] px-1 rounded" style={{ background: "rgba(0,0,0,0.3)" }}>
-          {table.columnCount} cols
+          {cols.length} cols
         </span>
       </div>
       <div className="text-[9px] opacity-70">
@@ -46,7 +52,7 @@ function TableNodeComponent({ data }: NodeProps) {
 
 const nodeTypes = { tableNode: TableNodeComponent };
 
-function layoutSchema(): { nodes: Node[]; edges: Edge[] } {
+function layoutSchema(onSelect: (name: string) => void): { nodes: Node[]; edges: Edge[] } {
   const categories = ["core", "spatial", "economy", "military", "social", "narrative", "league", "meta"] as const;
   const colPositions: Record<string, number> = {};
   categories.forEach((c, i) => { colPositions[c] = i * 260; });
@@ -60,7 +66,7 @@ function layoutSchema(): { nodes: Node[]; edges: Edge[] } {
       id: table.name,
       type: "tableNode",
       position: { x: colPositions[col] ?? 0, y: idx * 110 },
-      data: { table },
+      data: { table, onSelect },
     };
   });
 
@@ -77,22 +83,29 @@ function layoutSchema(): { nodes: Node[]; edges: Edge[] } {
 }
 
 const DBSchemaPanel = () => {
-  const { nodes, edges } = useMemo(() => layoutSchema(), []);
+  const [selectedTable, setSelectedTable] = useState<string | null>(null);
+
+  const handleSelect = useCallback((name: string) => setSelectedTable(name), []);
+
+  const { nodes, edges } = useMemo(() => layoutSchema(handleSelect), [handleSelect]);
+
+  const table = selectedTable ? DB_TABLES.find(t => t.name === selectedTable) : null;
+  const columns = selectedTable ? (DB_TABLE_COLUMNS[selectedTable] || []) : [];
+  const incomingFKs = selectedTable ? DB_RELATIONS.filter(r => r.to === selectedTable) : [];
+  const outgoingFKs = selectedTable ? DB_RELATIONS.filter(r => r.from === selectedTable) : [];
+
+  // Identify which columns are FK columns for this table
+  const fkColSet = new Set(outgoingFKs.map(r => r.fromCol));
 
   return (
     <div className="space-y-3">
       <p className="text-xs text-muted-foreground">
-        Plná mapa DB schématu — {DB_TABLES.length} tabulek, {DB_RELATIONS.length} FK vazeb.
+        Plná mapa DB schématu — {DB_TABLES.length} tabulek. Klikni na tabulku pro detail všech sloupců a FK vazeb.
       </p>
 
       <div className="flex flex-wrap gap-2 mb-2">
         {Object.entries(CATEGORY_COLORS).map(([key, c]) => (
-          <Badge
-            key={key}
-            variant="outline"
-            className="text-[10px] gap-1"
-            style={{ borderColor: c.border, color: c.border }}
-          >
+          <Badge key={key} variant="outline" className="text-[10px] gap-1" style={{ borderColor: c.border, color: c.border }}>
             <span className="w-2 h-2 rounded-full inline-block" style={{ background: c.border }} />
             {key} ({DB_TABLES.filter(t => t.category === key).length})
           </Badge>
@@ -114,12 +127,132 @@ const DBSchemaPanel = () => {
           <MiniMap
             nodeStrokeWidth={3}
             nodeColor={(n) => {
-              const table = DB_TABLES.find(t => t.name === n.id);
-              return table ? CATEGORY_COLORS[table.category].border : "#666";
+              const t = DB_TABLES.find(t => t.name === n.id);
+              return t ? CATEGORY_COLORS[t.category].border : "#666";
             }}
           />
         </ReactFlow>
       </div>
+
+      {/* ── Detail Sheet ── */}
+      <Sheet open={!!selectedTable} onOpenChange={(open) => { if (!open) setSelectedTable(null); }}>
+        <SheetContent className="w-[420px] sm:w-[520px] overflow-y-auto">
+          {table && (
+            <>
+              <SheetHeader>
+                <SheetTitle className="flex items-center gap-2 font-mono">
+                  <Table2 className="h-4 w-4" style={{ color: CATEGORY_COLORS[table.category].border }} />
+                  {table.name}
+                </SheetTitle>
+                <SheetDescription>{table.description}</SheetDescription>
+              </SheetHeader>
+
+              <div className="mt-4 space-y-4">
+                {/* Meta */}
+                <div className="flex flex-wrap gap-2">
+                  <Badge style={{ background: CATEGORY_COLORS[table.category].bg, borderColor: CATEGORY_COLORS[table.category].border, color: "#f3f4f6" }}>
+                    {table.category}
+                  </Badge>
+                  <Badge variant="outline" className="text-[10px]">{columns.length} columns</Badge>
+                  <Badge variant="outline" className="text-[10px]">{table.hasRLS ? "✅ RLS" : "⚠️ No RLS"}</Badge>
+                  <Badge variant="outline" className="text-[10px]">{incomingFKs.length} FK in</Badge>
+                  <Badge variant="outline" className="text-[10px]">{outgoingFKs.length} FK out</Badge>
+                </div>
+
+                {/* Outgoing FK relations */}
+                {outgoingFKs.length > 0 && (
+                  <div>
+                    <p className="text-[10px] text-muted-foreground font-medium mb-1 flex items-center gap-1">
+                      <ArrowRight className="h-3 w-3" /> References (FK out)
+                    </p>
+                    {outgoingFKs.map((fk, i) => (
+                      <div
+                        key={i}
+                        className="flex items-center gap-2 text-[10px] py-1 px-2 rounded hover:bg-muted/30 cursor-pointer"
+                        onClick={() => setSelectedTable(fk.to)}
+                      >
+                        <Key className="h-3 w-3 text-yellow-500 shrink-0" />
+                        <span className="font-mono font-medium">{fk.fromCol}</span>
+                        <span className="text-muted-foreground">→</span>
+                        <span className="font-mono text-primary">{fk.to}</span>
+                        <span className="text-muted-foreground">.{fk.toCol}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Incoming FK relations */}
+                {incomingFKs.length > 0 && (
+                  <div>
+                    <p className="text-[10px] text-muted-foreground font-medium mb-1 flex items-center gap-1">
+                      <ArrowLeft className="h-3 w-3" /> Referenced by (FK in)
+                    </p>
+                    {incomingFKs.map((fk, i) => (
+                      <div
+                        key={i}
+                        className="flex items-center gap-2 text-[10px] py-1 px-2 rounded hover:bg-muted/30 cursor-pointer"
+                        onClick={() => setSelectedTable(fk.from)}
+                      >
+                        <Key className="h-3 w-3 text-blue-500 shrink-0" />
+                        <span className="font-mono text-primary">{fk.from}</span>
+                        <span className="text-muted-foreground">.{fk.fromCol}</span>
+                        <span className="text-muted-foreground">→</span>
+                        <span className="font-mono font-medium">{table.name}.{fk.toCol}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* All columns */}
+                <div>
+                  <p className="text-[10px] text-muted-foreground font-medium mb-1">
+                    Všechny sloupce ({columns.length})
+                  </p>
+                  <ScrollArea className="h-[350px] border rounded-lg">
+                    <div className="p-1">
+                      {columns.map(col => {
+                        const isFK = fkColSet.has(col);
+                        const isPK = col === "id";
+                        return (
+                          <div
+                            key={col}
+                            className={`flex items-center gap-2 text-[10px] py-1 px-2 rounded ${
+                              isFK ? "bg-yellow-500/10" : isPK ? "bg-blue-500/10" : "hover:bg-muted/20"
+                            }`}
+                          >
+                            {isPK && <Key className="h-3 w-3 text-blue-400 shrink-0" />}
+                            {isFK && !isPK && <Key className="h-3 w-3 text-yellow-500 shrink-0" />}
+                            {!isPK && !isFK && <span className="w-3 shrink-0" />}
+                            <span className={`font-mono ${isPK ? "font-bold text-blue-400" : isFK ? "font-medium text-yellow-400" : ""}`}>
+                              {col}
+                            </span>
+                            {isPK && <Badge variant="outline" className="text-[8px] h-3.5 ml-auto">PK</Badge>}
+                            {isFK && (
+                              <Badge variant="outline" className="text-[8px] h-3.5 ml-auto text-yellow-500 border-yellow-500/50">
+                                FK → {outgoingFKs.find(f => f.fromCol === col)?.to}
+                              </Badge>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </ScrollArea>
+                </div>
+
+                {/* Key columns highlight */}
+                <div>
+                  <p className="text-[10px] text-muted-foreground font-medium mb-1">Key columns (z definice)</p>
+                  <div className="flex flex-wrap gap-1">
+                    {table.keyColumns.map(kc => (
+                      <Badge key={kc} variant="secondary" className="text-[9px] font-mono">{kc}</Badge>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
+        </SheetContent>
+      </Sheet>
     </div>
   );
 };
