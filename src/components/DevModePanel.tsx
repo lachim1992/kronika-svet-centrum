@@ -101,6 +101,9 @@ const DevModePanel = ({
           <TabsTrigger value="observatory" className="text-xs gap-1 py-2">
             <Telescope className="h-3 w-3" /> Observatory
           </TabsTrigger>
+          <TabsTrigger value="node-spawner" className="text-xs gap-1 py-2">
+            <MapPinPlus className="h-3 w-3" /> Node Spawner
+          </TabsTrigger>
         </TabsList>
 
         {perms.canRunServerDevTools && (
