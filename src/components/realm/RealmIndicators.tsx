@@ -110,7 +110,7 @@ const RealmIndicators = ({ realm, cities, currentTurn }: Props) => {
       {/* Macro Economy — 3 Layers + Faith */}
       <Card>
         <CardHeader className="p-3 pb-1">
-          <CardTitle className="text-xs flex items-center gap-1"><Network className="h-3 w-3" />Ekonomika toku</CardTitle>
+          <CardTitle className="text-xs flex items-center gap-1"><Network className="h-3 w-3" />Ekonomika toku <InfoTip>Produkce: base × role uzel. Wealth: trade efficiency tras. Kapacita: urbanizace + logistika. Vše počítáno v compute-economy-flow.</InfoTip></CardTitle>
         </CardHeader>
         <CardContent className="p-3 pt-1 space-y-2">
           {(["production", "wealth", "capacity"] as const).map(layer => {
