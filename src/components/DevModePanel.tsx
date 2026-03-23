@@ -1,6 +1,6 @@
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Bug, Droplets, Play, Shield, Sprout, FlaskConical, BarChart3, Compass, Info, Map, Zap } from "lucide-react";
+import { Bug, Droplets, Play, Shield, Sprout, FlaskConical, BarChart3, Compass, Info, Map, Zap, Telescope } from "lucide-react";
 import HydrationSection from "@/components/dev/HydrationSection";
 import SimulationSection from "@/components/dev/SimulationSection";
 import RealSimulationSection from "@/components/dev/RealSimulationSection";
