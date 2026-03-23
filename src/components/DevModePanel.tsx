@@ -13,6 +13,7 @@ import EventEngineSection from "@/components/dev/EventEngineSection";
 import SeedMapManager from "@/components/dev/SeedMapManager";
 import ObservatoryPanel from "@/components/dev/observatory/ObservatoryPanel";
 import DevNodeSpawner from "@/components/dev/DevNodeSpawner";
+import DevNodeEditor from "@/components/dev/DevNodeEditor";
 import { getPermissions } from "@/lib/permissions";
 
 interface DevModePanelProps {
