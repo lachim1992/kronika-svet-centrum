@@ -146,6 +146,10 @@ const DevModePanel = ({
         <TabsContent value="observatory" className="mt-3">
           <ObservatoryPanel sessionId={sessionId} />
         </TabsContent>
+
+        <TabsContent value="node-spawner" className="mt-3">
+          <DevNodeSpawner sessionId={sessionId} onRefetch={onRefetch} />
+        </TabsContent>
       </Tabs>
     </div>
   );
