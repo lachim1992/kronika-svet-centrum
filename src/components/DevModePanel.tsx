@@ -162,6 +162,10 @@ const DevModePanel = ({
         <TabsContent value="node-editor" className="mt-3">
           <DevNodeEditor sessionId={sessionId} onRefetch={onRefetch} />
         </TabsContent>
+
+        <TabsContent value="player-editor" className="mt-3">
+          <DevPlayerEditor sessionId={sessionId} onRefetch={onRefetch} />
+        </TabsContent>
       </Tabs>
     </div>
   );
