@@ -109,6 +109,9 @@ const DevModePanel = ({
           <TabsTrigger value="node-editor" className="text-xs gap-1 py-2">
             <Settings2 className="h-3 w-3" /> Node Editor
           </TabsTrigger>
+          <TabsTrigger value="player-editor" className="text-xs gap-1 py-2">
+            <Users className="h-3 w-3" /> Player Editor
+          </TabsTrigger>
         </TabsList>
 
         {perms.canRunServerDevTools && (
