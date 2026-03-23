@@ -449,6 +449,7 @@ const EconomyTab = ({ sessionId, currentPlayerName, currentTurn, cities, resourc
           <div className="flex items-center gap-2">
             <span className="text-xl">💰</span>
             <h3 className="font-display font-semibold text-base">Zlatá pokladna</h3>
+            <InfoTip side="right">Přírůstek: wealth tok ze sítě uzlů + obchodní dohody + daně (tax_rate_percent z laws). Spotřeba: údržba armád, stavby, diplomatické akce. Počítáno každé kolo v compute-economy-flow → realm_resources.gold_reserve.</InfoTip>
             <span className="ml-auto text-2xl font-mono font-bold text-primary">{Math.round(realm.gold_reserve || 0)}</span>
           </div>
         </div>
