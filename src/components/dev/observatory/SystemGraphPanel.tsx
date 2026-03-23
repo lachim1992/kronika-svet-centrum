@@ -18,7 +18,7 @@ import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import { SYSTEM_NODES, SYSTEM_EDGES, STATUS_COLORS, LINK_STYLES, type SystemNode as SysNode, type LinkType } from "./observatoryData";
-import { X, Combine, Intersect, RotateCcw } from "lucide-react";
+import { X, Combine, Merge, RotateCcw } from "lucide-react";
 
 // ─── Helpers ──────────────────────────────────────────────
 
