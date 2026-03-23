@@ -460,7 +460,7 @@ const EconomyTab = ({ sessionId, currentPlayerName, currentTurn, cities, resourc
         <div className="px-5 pt-4 pb-2">
           <h3 className="text-base font-display font-semibold flex items-center gap-2">
             Přehled sídel — síťová ekonomika
-            <InfoTip side="right">Produkce a bohatství měst plyne z uzlového systému. Bilance = produkce − poptávka. Izolace od hlavního města snižuje produkci.</InfoTip>
+            <InfoTip side="right">Produkce města = (vlastní production_output + příchozí incoming_production × 0.5) × role multiplikátor. Poptávka = populace × 0.006. Bilance = produkce − poptávka. Wealth = wealth_output uzlu města. Izolace (⛓️) = izolační penalizace uzlu vůči hlavnímu městu, snižuje produkci. A* pathfinding hledá cestu nejmenšího odporu přes biomy.</InfoTip>
           </h3>
         </div>
         <Table>
