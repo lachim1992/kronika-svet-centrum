@@ -421,6 +421,7 @@ const EconomyTab = ({ sessionId, currentPlayerName, currentTurn, cities, resourc
           <div className="flex items-center gap-2">
             <span className="text-xl">🌾</span>
             <h3 className="font-display font-semibold text-base">Zásoby obilí</h3>
+            <InfoTip side="right">Produkce obilí: rolníci × irrigation_level × ration_policy. Spotřeba: populace × 0.006/kolo. Bilance se ukládá do grain_reserve. Kapacita sýpky závisí na budovách (granary). Záporná bilance → hladomor po vyčerpání rezerv. Počítáno v process-turn.</InfoTip>
             <span className="ml-auto text-sm font-mono font-bold">
               {Math.round(realm.grain_reserve || 0)} / {Math.round(realm.granary_capacity || 0)}
             </span>
