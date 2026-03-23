@@ -105,6 +105,9 @@ const DevModePanel = ({
           <TabsTrigger value="node-spawner" className="text-xs gap-1 py-2">
             <MapPinPlus className="h-3 w-3" /> Node Spawner
           </TabsTrigger>
+          <TabsTrigger value="node-editor" className="text-xs gap-1 py-2">
+            <Settings2 className="h-3 w-3" /> Node Editor
+          </TabsTrigger>
         </TabsList>
 
         {perms.canRunServerDevTools && (
