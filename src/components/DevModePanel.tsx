@@ -62,7 +62,7 @@ const DevModePanel = ({
 
       {/* Tabs */}
       <Tabs defaultValue={perms.canRunServerDevTools ? "hydration" : "local-sim"} className="w-full">
-        <TabsList className={`grid w-full h-auto ${perms.canRunServerDevTools ? "grid-cols-10" : "grid-cols-2"}`}>
+        <TabsList className={`grid w-full h-auto ${perms.canRunServerDevTools ? "grid-cols-11" : "grid-cols-3"}`}>
           {perms.canRunServerDevTools && (
             <>
               <TabsTrigger value="hydration" className="text-xs gap-1 py-2">
