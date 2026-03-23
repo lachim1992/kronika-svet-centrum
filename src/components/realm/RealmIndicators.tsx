@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
+import { InfoTip } from "@/components/ui/info-tip";
 import {
   TrendingUp, TrendingDown, Minus, Users, Shield, Swords,
   AlertTriangle, Timer, Network
