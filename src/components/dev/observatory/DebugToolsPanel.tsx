@@ -12,7 +12,7 @@ function DeadDataDetector() {
   const deadData = useMemo(() => {
     // Gather all columns mentioned in data flow audit
     const referencedCols = new Set<string>();
-    for (const entry of DATA_FLOW_ENTRIES) {
+    for (const entry of DATA_FLOW_AUDIT) {
       referencedCols.add(`${entry.table}.${entry.column}`);
     }
 
