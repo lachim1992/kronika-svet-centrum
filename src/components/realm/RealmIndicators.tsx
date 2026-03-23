@@ -219,7 +219,7 @@ const RealmIndicators = ({ realm, cities, currentTurn }: Props) => {
 
         <Card>
           <CardHeader className="p-3 pb-1">
-            <CardTitle className="text-xs flex items-center gap-1"><Swords className="h-3 w-3" />Vojsko</CardTitle>
+            <CardTitle className="text-xs flex items-center gap-1"><Swords className="h-3 w-3" />Vojsko <InfoTip>K dispozici = manpower_pool − manpower_committed. Mobilizace = % populace pod zbraněmi. Nad 15% penalizuje produkci uzlů.</InfoTip></CardTitle>
           </CardHeader>
           <CardContent className="p-3 pt-1 text-xs space-y-1">
             <div className="flex justify-between">
