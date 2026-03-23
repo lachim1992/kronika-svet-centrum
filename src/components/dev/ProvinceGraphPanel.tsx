@@ -544,6 +544,7 @@ export default function ProvinceGraphPanel({ sessionId }: Props) {
           <TabsTrigger value="routes" className="text-[10px] h-6">Trasy ({routes.length})</TabsTrigger>
           <TabsTrigger value="economy" className="text-[10px] h-6">⚒️ Ekonomika</TabsTrigger>
           <TabsTrigger value="adjacency" className="text-[10px] h-6">Sousednosti</TabsTrigger>
+          <TabsTrigger value="spawner" className="text-[10px] h-6">📍 Spawner</TabsTrigger>
         </TabsList>
 
         <TabsContent value="graph" className="mt-2">
