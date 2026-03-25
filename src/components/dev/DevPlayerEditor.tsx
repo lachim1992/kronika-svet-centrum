@@ -20,17 +20,12 @@ interface Props {
   onRefetch?: () => void;
 }
 
-// ── Realm resource field groups
+// ── Realm resource field groups (Unified Economy v2)
 const REALM_STOCKPILES = [
-  { key: "gold_reserve", label: "Zlato", icon: Coins },
-  { key: "grain_reserve", label: "Obilí", icon: Wheat },
   { key: "production_reserve", label: "Produkce", icon: Factory },
-  { key: "wood_reserve", label: "Dřevo", icon: Package },
-  { key: "stone_reserve", label: "Kámen", icon: Pickaxe },
-  { key: "iron_reserve", label: "Železo", icon: Pickaxe },
-  { key: "horses_reserve", label: "Koně", icon: Zap },
+  { key: "gold_reserve", label: "Bohatství", icon: Coins },
+  { key: "grain_reserve", label: "Zásoby", icon: Wheat },
   { key: "faith", label: "Víra", icon: Church },
-  { key: "knowledge", label: "Znalosti", icon: Shield },
 ] as const;
 
 const REALM_RATES = [
