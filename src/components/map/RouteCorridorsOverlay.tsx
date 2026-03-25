@@ -72,12 +72,12 @@ interface NodeInfo {
   id: string;
   hex_q: number;
   hex_r: number;
-  label: string;
+  name: string;
   node_type: string;
-  node_role: string;
+  flow_role: string;
   controlled_by: string | null;
-  cumulative_production: number;
-  cumulative_wealth: number;
+  production_output: number;
+  wealth_output: number;
   cumulative_trade_flow: number;
 }
 
