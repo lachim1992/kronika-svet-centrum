@@ -60,40 +60,36 @@ export interface MajorNodeDef {
 
 export const MAJOR_NODE_TYPES: MajorNodeDef[] = [
   {
-    key: "city",
-    label: "Město",
-    icon: "🏙️",
+    key: "city", label: "Město", icon: "🏙️",
     preferredBiomes: ["plains", "grassland", "temperate", "river", "coastal"],
     description: "Hlavní sídlo s vysokou populací. Hub pro ekonomické toky a zásobování.",
     dbNodeType: "primary_city",
     bonusEffect: "Hub role — akumuluje produkci z minor uzlů, generuje bohatství",
+    upkeep: { supplies: 10, wealth: 6 },
   },
   {
-    key: "fortress",
-    label: "Hrad",
-    icon: "🏰",
+    key: "fortress", label: "Hrad", icon: "🏰",
     preferredBiomes: ["hills", "mountain", "highland", "forest"],
     description: "Opevněné sídlo. Kontroluje průchod a poskytuje vojenskou ochranu.",
     dbNodeType: "fortress",
     bonusEffect: "+fortifikace, gateway role — blokuje nepřátelský postup",
+    upkeep: { supplies: 8, wealth: 4 },
   },
   {
-    key: "trade_hub",
-    label: "Obchodní stanice",
-    icon: "🏪",
+    key: "trade_hub", label: "Obchodní stanice", icon: "🏪",
     preferredBiomes: ["plains", "grassland", "coastal", "river", "steppe"],
     description: "Velké obchodní centrum na křižovatce tras. Maximalizuje wealth throughput.",
     dbNodeType: "trade_hub",
     bonusEffect: "+trade efficiency, wealth multiplikátor z průchozích tras",
+    upkeep: { supplies: 6, wealth: 8 },
   },
   {
-    key: "guard_station",
-    label: "Strážní stanice",
-    icon: "⚔️",
+    key: "guard_station", label: "Strážní stanice", icon: "⚔️",
     preferredBiomes: ["hills", "mountain", "highland", "plains", "steppe", "forest"],
     description: "Vojenská stanice kontrolující oblast. Strategický přehled a obrana.",
     dbNodeType: "fortress",
     bonusEffect: "+vision, zpomalení nepřátel, regulator role",
+    upkeep: { supplies: 6, wealth: 3 },
   },
 ];
 
