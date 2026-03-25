@@ -7067,6 +7067,7 @@ export type Database = {
           total_importance: number
           total_nodes: number | null
           total_production: number
+          total_supplies: number | null
           total_wealth: number
           updated_at: string
           warrior_ratio: number | null
@@ -7137,6 +7138,7 @@ export type Database = {
           total_importance?: number
           total_nodes?: number | null
           total_production?: number
+          total_supplies?: number | null
           total_wealth?: number
           updated_at?: string
           warrior_ratio?: number | null
@@ -7207,6 +7209,7 @@ export type Database = {
           total_importance?: number
           total_nodes?: number | null
           total_production?: number
+          total_supplies?: number | null
           total_wealth?: number
           updated_at?: string
           warrior_ratio?: number | null
