@@ -135,6 +135,8 @@ interface NodeOnHex {
   id: string; name: string; hex_q: number; hex_r: number; node_tier: string;
   node_type: string; node_subtype: string | null; controlled_by: string | null; upgrade_level: number;
   max_upgrade_level: number; parent_node_id: string | null; strategic_resource_type: string | null;
+  production_output?: number; wealth_output?: number;
+  region_prod_modifier?: number; region_wealth_modifier?: number;
 }
 interface Props {
   sessionId: string; playerName: string; myRole: string;
