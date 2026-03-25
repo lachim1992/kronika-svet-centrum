@@ -363,6 +363,7 @@ Deno.serve(async (req) => {
           population: 0,
           growth_rate: 0,
           garrison_strength: 0,
+          strategic_resource_tier: 0,
           ...rest,
         };
       });
