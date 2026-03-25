@@ -25,6 +25,69 @@ const BASE_PRODUCTION: Record<string, number> = {
   logistic_hub: 3,
 };
 
+/** Minor node subtype base production (from nodeTypes.ts definitions) */
+const MINOR_SUBTYPE_PRODUCTION: Record<string, { grain: number; wood: number; stone: number; iron: number; wealth: number; faith: number }> = {
+  village: { grain: 4, wood: 2, stone: 0, iron: 0, wealth: 1, faith: 0 },
+  lumber_camp: { grain: 1, wood: 8, stone: 0, iron: 0, wealth: 1, faith: 0 },
+  fishing_village: { grain: 6, wood: 1, stone: 0, iron: 0, wealth: 2, faith: 0 },
+  mining_camp: { grain: 0, wood: 0, stone: 4, iron: 6, wealth: 1, faith: 0 },
+  pastoral_camp: { grain: 5, wood: 0, stone: 0, iron: 0, wealth: 2, faith: 0 },
+  trade_post: { grain: 1, wood: 0, stone: 0, iron: 0, wealth: 6, faith: 0 },
+  shrine: { grain: 0, wood: 0, stone: 0, iron: 0, wealth: 1, faith: 8 },
+  watchtower: { grain: 0, wood: 0, stone: 1, iron: 1, wealth: 0, faith: 0 },
+};
+
+/** Micro node subtype base production */
+const MICRO_SUBTYPE_PRODUCTION: Record<string, { grain: number; wood: number; stone: number; iron: number; wealth: number; faith: number }> = {
+  field: { grain: 6, wood: 0, stone: 0, iron: 0, wealth: 0, faith: 0 },
+  sawmill: { grain: 0, wood: 7, stone: 0, iron: 0, wealth: 1, faith: 0 },
+  mine: { grain: 0, wood: 0, stone: 2, iron: 5, wealth: 1, faith: 0 },
+  hunting_ground: { grain: 4, wood: 1, stone: 0, iron: 0, wealth: 1, faith: 0 },
+  fishery: { grain: 5, wood: 0, stone: 0, iron: 0, wealth: 2, faith: 0 },
+  quarry: { grain: 0, wood: 0, stone: 7, iron: 0, wealth: 0, faith: 0 },
+  vineyard: { grain: 1, wood: 0, stone: 0, iron: 0, wealth: 5, faith: 0 },
+  herbalist: { grain: 0, wood: 0, stone: 0, iron: 0, wealth: 1, faith: 4 },
+  smithy: { grain: 0, wood: 0, stone: 0, iron: 3, wealth: 2, faith: 0 },
+  outpost: { grain: 0, wood: 0, stone: 0, iron: 0, wealth: 0, faith: 0 },
+  resin_collector: { grain: 2, wood: 2, stone: 0, iron: 0, wealth: 1, faith: 0 },
+  salt_pan: { grain: 0, wood: 0, stone: 0, iron: 0, wealth: 4, faith: 0 },
+};
+
+/** Upgrade bonus per level for subtypes */
+const SUBTYPE_UPGRADE_BONUS: Record<string, number> = {
+  village: 0.2, lumber_camp: 0.25, fishing_village: 0.2, mining_camp: 0.3,
+  pastoral_camp: 0.2, trade_post: 0.25, shrine: 0.2, watchtower: 0.15,
+  field: 0.3, sawmill: 0.25, mine: 0.3, hunting_ground: 0.2, fishery: 0.2,
+  quarry: 0.25, vineyard: 0.25, herbalist: 0.2, smithy: 0.3, outpost: 0.1,
+  resin_collector: 0.2, salt_pan: 0.25,
+};
+
+/** Biome match for preferred biomes — returns production multiplier */
+const MINOR_BIOME_PREFS: Record<string, string[]> = {
+  village: ["plains", "forest", "grassland", "temperate"],
+  lumber_camp: ["forest", "dense_forest", "taiga"],
+  fishing_village: ["coastal", "lake", "river", "marsh"],
+  mining_camp: ["hills", "mountain", "mountain_pass", "highland"],
+  pastoral_camp: ["steppe", "plains", "grassland", "savanna"],
+  trade_post: ["plains", "grassland", "steppe", "coastal", "river"],
+  shrine: ["forest", "mountain", "highland", "marsh", "sacred"],
+  watchtower: ["hills", "mountain", "highland", "plains", "steppe"],
+};
+const MICRO_BIOME_PREFS: Record<string, string[]> = {
+  field: ["plains", "grassland", "temperate", "river"],
+  sawmill: ["forest", "dense_forest", "taiga"],
+  mine: ["hills", "mountain", "highland"],
+  hunting_ground: ["forest", "steppe", "grassland", "taiga"],
+  fishery: ["coastal", "lake", "river", "marsh"],
+  quarry: ["hills", "mountain", "highland"],
+  vineyard: ["temperate", "plains", "grassland", "hills"],
+  herbalist: ["forest", "marsh", "jungle", "temperate"],
+  smithy: ["hills", "mountain", "highland"],
+  outpost: ["plains", "hills", "steppe", "mountain", "highland", "forest"],
+  resin_collector: ["forest", "dense_forest", "taiga"],
+  salt_pan: ["coastal", "desert", "steppe"],
+};
+
 /** Base trade_efficiency multiplier by flow_role */
 const ROLE_TRADE_EFFICIENCY: Record<string, number> = {
   hub: 1.0,
