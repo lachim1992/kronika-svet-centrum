@@ -2458,6 +2458,47 @@ export type Database = {
           },
         ]
       }
+      economy_overrides: {
+        Row: {
+          created_at: string
+          description: string | null
+          id: string
+          override_key: string
+          override_value: Json
+          session_id: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          override_key: string
+          override_value?: Json
+          session_id: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          override_key?: string
+          override_value?: Json
+          session_id?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "economy_overrides_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       encyclopedia_images: {
         Row: {
           created_at: string
