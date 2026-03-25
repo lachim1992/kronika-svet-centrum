@@ -1460,6 +1460,29 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
                               {isMajor ? "sídlo" : n.node_tier === "minor" ? "osada" : "zázemí"} lv.{n.upgrade_level}/{n.max_upgrade_level || 3}
                             </Badge>
                           </div>
+                          {/* Economy & region modifier */}
+                          {(n.production_output != null || n.wealth_output != null) && (
+                            <div className="flex items-center gap-2 text-[10px] text-muted-foreground px-1">
+                              {n.production_output != null && <span>⚒️ {n.production_output.toFixed(1)}</span>}
+                              {n.wealth_output != null && <span>💰 {n.wealth_output.toFixed(1)}</span>}
+                            </div>
+                          )}
+                          {selectedHex?.macro_region && (
+                            <div className="flex items-center gap-1.5 text-[10px] px-1">
+                              <span className="text-muted-foreground">🌍 Region:</span>
+                              {(() => {
+                                const mr = selectedHex.macro_region;
+                                const c = mr.climate_band, e = mr.elevation_band, m = mr.moisture_band;
+                                const CLIM_PROD = [0.50, 0.70, 1.00, 1.10, 0.85];
+                                const ELEV_FARM = [1.15, 1.00, 0.80, 0.55, 0.35];
+                                const MOIST_PROD = [0.55, 0.75, 1.00, 1.10, 0.85];
+                                const approxMult = CLIM_PROD[c] * ELEV_FARM[e] * MOIST_PROD[m];
+                                const pct = Math.round((approxMult - 1) * 100);
+                                const color = pct >= 0 ? "text-emerald-400" : "text-destructive";
+                                return <span className={`font-mono font-bold ${color}`}>{pct >= 0 ? "+" : ""}{pct}% produkce</span>;
+                              })()}
+                            </div>
+                          )}
                           {canUpgrade && (
                             <Button variant="ghost" size="sm" className="w-full text-[10px] h-6 gap-1"
                               onClick={() => handleUpgrade(n.id, n.upgrade_level)}>
