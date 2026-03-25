@@ -42,25 +42,25 @@ const ROUTE_TYPE_DASH: Record<string, string | undefined> = {
 
 /** Distinct colors per flow type — used for dots on routes & legend */
 const FLOW_TYPE_COLORS: Record<string, string> = {
+  production: "hsl(25, 85%, 55%)",
+  supply:     "hsl(140, 60%, 45%)",
+  wealth:     "hsl(48, 90%, 60%)",
   trade:      "hsl(45, 90%, 60%)",
   military:   "hsl(0, 70%, 55%)",
-  supply:     "hsl(120, 60%, 50%)",
   faith:      "hsl(270, 60%, 65%)",
   migration:  "hsl(200, 70%, 55%)",
-  production: "hsl(30, 80%, 55%)",
-  wealth:     "hsl(50, 95%, 65%)",
   food:       "hsl(90, 55%, 45%)",
   culture:    "hsl(300, 50%, 55%)",
 };
 
 const FLOW_TYPE_LABEL: Record<string, string> = {
+  production: "Produkce ⚒️",
+  supply:     "Zásoby 🌾",
+  wealth:     "Bohatství 💰",
   trade:      "Obchod",
   military:   "Vojenský",
-  supply:     "Zásobování",
   faith:      "Víra",
   migration:  "Migrace",
-  production: "Produkce",
-  wealth:     "Bohatství",
   food:       "Potraviny",
   culture:    "Kultura",
 };
@@ -173,17 +173,46 @@ const RouteCorridorsOverlay = memo(({ sessionId, offsetX, offsetY }: Props) => {
     return m;
   }, [flowPaths]);
 
-  // All flow paths for a route
+  // All flow paths for a route — but remap to economic flow types based on node data
   const routeAllFlows = useMemo(() => {
     const m = new Map<string, FlowPathData[]>();
     for (const fp of flowPaths) {
       if (!fp.route_id) continue;
-      const arr = m.get(fp.route_id) || [];
-      arr.push(fp);
-      m.set(fp.route_id, arr);
+      // Only keep one hex_path per route for geometry
+      if (m.has(fp.route_id)) continue;
+
+      const nodeA = nodeMap.get(fp.node_a);
+      const nodeB = nodeMap.get(fp.node_b);
+      if (!nodeA && !nodeB) continue;
+
+      const prodA = nodeA?.production_output || 0;
+      const prodB = nodeB?.production_output || 0;
+      const suppA = nodeA?.food_value || 0;
+      const suppB = nodeB?.food_value || 0;
+      const wealthA = nodeA?.wealth_output || 0;
+      const wealthB = nodeB?.wealth_output || 0;
+
+      const entries: FlowPathData[] = [];
+      // Production flow (orange)
+      if (prodA > 0.5 || prodB > 0.5) {
+        entries.push({ ...fp, flow_type: "production" });
+      }
+      // Supply flow (green)
+      if (suppA > 0.5 || suppB > 0.5) {
+        entries.push({ ...fp, flow_type: "supply" });
+      }
+      // Wealth flow (gold)
+      if (wealthA > 0.5 || wealthB > 0.5) {
+        entries.push({ ...fp, flow_type: "wealth" });
+      }
+      // Fallback: at least show the route
+      if (entries.length === 0) {
+        entries.push({ ...fp, flow_type: "trade" });
+      }
+      m.set(fp.route_id, entries);
     }
     return m;
-  }, [flowPaths]);
+  }, [flowPaths, nodeMap]);
 
   const activeRouteId = selectedRouteId || hoveredRouteId;
   const activeRoute = useMemo(() => {
@@ -274,7 +303,7 @@ const RouteCorridorsOverlay = memo(({ sessionId, offsetX, offsetY }: Props) => {
       }
     }
 
-    // Flow-type colored dots at hex waypoints
+    // Economic flow colored dots at hex waypoints
     for (const route of routes) {
       if (route.control_state === "blocked") continue;
       const allFlows = routeAllFlows.get(route.id) || [];
@@ -286,7 +315,7 @@ const RouteCorridorsOverlay = memo(({ sessionId, offsetX, offsetY }: Props) => {
         if (!hexPath || hexPath.length < 2) continue;
         const dotColor = FLOW_TYPE_COLORS[fp.flow_type] || "hsl(0, 0%, 70%)";
         const angleOffset = (fi / allFlows.length) * Math.PI * 2;
-        const spread = allFlows.length > 1 ? 3 : 0;
+        const spread = allFlows.length > 1 ? 4 : 0;
 
         for (let hi = 1; hi < hexPath.length - 1; hi++) {
           const p = hexToPixel(hexPath[hi].q, hexPath[hi].r);
@@ -294,9 +323,24 @@ const RouteCorridorsOverlay = memo(({ sessionId, offsetX, offsetY }: Props) => {
           const dy = spread * Math.sin(angleOffset);
           elements.push(
             <circle key={`dot-${route.id}-${fi}-${hi}`}
-              cx={p.x + offsetX + dx} cy={p.y + offsetY + dy} r={2.5}
-              fill={dotColor} fillOpacity={0.85}
-              stroke={dotColor} strokeWidth={0.5} strokeOpacity={0.4}
+              cx={p.x + offsetX + dx} cy={p.y + offsetY + dy} r={3.5}
+              fill={dotColor} fillOpacity={0.9}
+              stroke={dotColor} strokeWidth={0.8} strokeOpacity={0.5}
+              style={{ pointerEvents: "none" }} />
+          );
+        }
+
+        // Also show dots at endpoints for short routes
+        if (hexPath.length === 2) {
+          const midX = (hexToPixel(hexPath[0].q, hexPath[0].r).x + hexToPixel(hexPath[1].q, hexPath[1].r).x) / 2;
+          const midY = (hexToPixel(hexPath[0].q, hexPath[0].r).y + hexToPixel(hexPath[1].q, hexPath[1].r).y) / 2;
+          const dx = spread * Math.cos(angleOffset);
+          const dy = spread * Math.sin(angleOffset);
+          elements.push(
+            <circle key={`dot-mid-${route.id}-${fi}`}
+              cx={midX + offsetX + dx} cy={midY + offsetY + dy} r={3.5}
+              fill={dotColor} fillOpacity={0.9}
+              stroke={dotColor} strokeWidth={0.8} strokeOpacity={0.5}
               style={{ pointerEvents: "none" }} />
           );
         }
