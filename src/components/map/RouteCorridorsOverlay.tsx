@@ -268,38 +268,6 @@ const RouteCorridorsOverlay = memo(({ sessionId, offsetX, offsetY }: Props) => {
             strokeDasharray={isActive ? undefined : dash}
             style={{ pointerEvents: "none", transition: "stroke-width 0.15s, stroke 0.15s" }} />
         );
-      } else {
-        const posA = nodePositions.get(route.node_a);
-        const posB = nodePositions.get(route.node_b);
-        if (!posA || !posB) continue;
-
-        elements.push(
-          <line key={`hit-${route.id}`}
-            x1={posA.x} y1={posA.y} x2={posB.x} y2={posB.y}
-            stroke="transparent" strokeWidth={16} strokeLinecap="round"
-            style={{ pointerEvents: "stroke", cursor: "pointer" }}
-            onMouseEnter={() => handleRouteMouseEnter(route.id)}
-            onMouseLeave={handleRouteMouseLeave}
-            onClick={(e) => handleRouteClick(route.id, e)} />
-        );
-
-        if (isActive) {
-          elements.push(
-            <line key={`glow-${route.id}`}
-              x1={posA.x} y1={posA.y} x2={posB.x} y2={posB.y}
-              stroke={color} strokeWidth={width + 4} strokeOpacity={0.3}
-              strokeLinecap="round" style={{ pointerEvents: "none" }} />
-          );
-        }
-
-        elements.push(
-          <line key={route.id}
-            x1={posA.x} y1={posA.y} x2={posB.x} y2={posB.y}
-            stroke={isActive ? "hsl(50, 100%, 70%)" : color}
-            strokeWidth={width} strokeOpacity={opacity} strokeLinecap="round"
-            strokeDasharray={isActive ? undefined : dash}
-            style={{ pointerEvents: "none", transition: "stroke-width 0.15s, stroke 0.15s" }} />
-        );
       }
     }
 
