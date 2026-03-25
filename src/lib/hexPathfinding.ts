@@ -61,13 +61,9 @@ function hexDist(q1: number, r1: number, q2: number, r2: number): number {
   return (Math.abs(dq) + Math.abs(dq + dr) + Math.abs(dr)) / 2;
 }
 
-/**
- * Build a hex cost function from raw hex data + node positions.
- * Pass nodes on mountain/hill hexes reduce cost to ~forest level.
- */
+/** Build a hex cost function from raw hex data. */
 export function buildHexCostFn(
   hexes: HexData[],
-  passNodeHexes?: Set<string>,
 ): (q: number, r: number) => number {
   const hexMap = new Map<string, HexData>();
   for (const h of hexes) hexMap.set(`${h.q},${h.r}`, h);
@@ -75,16 +71,11 @@ export function buildHexCostFn(
   return (q: number, r: number): number => {
     const k = `${q},${r}`;
     const hex = hexMap.get(k);
-    if (!hex) return 5.0; // Unknown frontier hex
+    if (!hex) return Infinity; // Unknown hex is not traversable for canonical routing
 
     if (hex.is_passable === false) return Infinity;
 
     let cost = BIOME_TRAVERSAL_COST[hex.biome_family] ?? 2.0;
-
-    // Mountain pass node reduces mountain/hill cost
-    if (passNodeHexes?.has(k) && (hex.biome_family === "mountain" || hex.biome_family === "hills")) {
-      cost = 2.0;
-    }
 
     // Height penalty
     const height = hex.mean_height ?? 0.5;
