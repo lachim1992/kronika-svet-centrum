@@ -10,11 +10,11 @@ import { toast } from "sonner";
 import { Loader2, Hammer, Sparkles } from "lucide-react";
 import {
   type NodeTier, NODE_TIER_LABELS,
-  MINOR_NODE_TYPES, MICRO_NODE_TYPES,
-  suggestMinorType, suggestMicroType,
-  getCompatibleMinorTypes, getCompatibleMicroTypes,
+  MINOR_NODE_TYPES, MICRO_NODE_TYPES, MAJOR_NODE_TYPES,
+  suggestMinorType, suggestMicroType, suggestMajorType,
+  getCompatibleMinorTypes, getCompatibleMicroTypes, getCompatibleMajorTypes,
   rollStrategicResource, computeNodeProduction, totalProduction,
-  type MinorNodeDef, type MicroNodeDef,
+  type MinorNodeDef, type MicroNodeDef, type MajorNodeDef,
 } from "@/lib/nodeTypes";
 import { STRATEGIC_RESOURCE_META } from "@/lib/economyFlow";
 
