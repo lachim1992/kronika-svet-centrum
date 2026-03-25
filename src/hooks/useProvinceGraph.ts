@@ -37,6 +37,10 @@ export interface StrategicNode {
   id: string;
   province_id: string;
   node_type: string;
+  node_tier: string | null;
+  node_subtype: string | null;
+  upgrade_level: number;
+  biome_at_build: string | null;
   name: string;
   hex_q: number;
   hex_r: number;
@@ -66,6 +70,8 @@ export interface StrategicNode {
   // Economy flow fields
   production_output: number;
   wealth_output: number;
+  faith_output: number;
+  food_value: number;
   capacity_score: number;
   importance_score: number;
   incoming_production: number;
@@ -115,7 +121,7 @@ export function useProvinceGraph(sessionId: string) {
           .eq("session_id", sessionId),
         supabase
           .from("province_nodes")
-          .select("id, province_id, node_type, name, hex_q, hex_r, city_id, strategic_value, economic_value, defense_value, mobility_relevance, supply_relevance, controlled_by, garrison_strength, is_major, population, fortification_level, infrastructure_level, parent_node_id, is_active, metadata, throughput_military, toll_rate, cumulative_trade_flow, urbanization_score, hinterland_level, resource_output, flow_role, production_output, wealth_output, capacity_score, importance_score, incoming_production, connectivity_score, route_access_factor, trade_efficiency, isolation_penalty")
+          .select("id, province_id, node_type, node_tier, node_subtype, upgrade_level, biome_at_build, name, hex_q, hex_r, city_id, strategic_value, economic_value, defense_value, mobility_relevance, supply_relevance, controlled_by, garrison_strength, is_major, population, fortification_level, infrastructure_level, parent_node_id, is_active, metadata, throughput_military, toll_rate, cumulative_trade_flow, urbanization_score, hinterland_level, resource_output, flow_role, production_output, wealth_output, faith_output, food_value, capacity_score, importance_score, incoming_production, connectivity_score, route_access_factor, trade_efficiency, isolation_penalty")
           .eq("session_id", sessionId),
         supabase
           .from("province_routes")
@@ -154,6 +160,10 @@ export function useProvinceGraph(sessionId: string) {
           id: n.id,
           province_id: n.province_id,
           node_type: n.node_type,
+          node_tier: n.node_tier ?? null,
+          node_subtype: n.node_subtype ?? null,
+          upgrade_level: n.upgrade_level ?? 1,
+          biome_at_build: n.biome_at_build ?? null,
           name: n.name,
           hex_q: n.hex_q,
           hex_r: n.hex_r,
@@ -181,6 +191,8 @@ export function useProvinceGraph(sessionId: string) {
           flow_role: n.flow_role || "neutral",
           production_output: n.production_output ?? 0,
           wealth_output: n.wealth_output ?? 0,
+          faith_output: n.faith_output ?? 0,
+          food_value: n.food_value ?? 0,
           capacity_score: n.capacity_score ?? 0,
           importance_score: n.importance_score ?? 0,
           incoming_production: n.incoming_production ?? 0,

@@ -9,6 +9,7 @@ import DevNodeSpawner from "@/components/dev/DevNodeSpawner";
 import { toast } from "sonner";
 import { FLOW_ROLE_LABELS, HINTERLAND_LABELS } from "@/lib/strategicGraph";
 import { MACRO_LAYER_ICONS, getImportanceLabel, getImportanceColor, getIsolationSeverity, ISOLATION_PENALTY_LABELS, STRATEGIC_RESOURCE_ICONS, STRATEGIC_RESOURCE_LABELS, STRATEGIC_TIER_LABELS, STRATEGIC_TIER_DB_COLUMNS } from "@/lib/economyFlow";
+import { MINOR_NODE_TYPES, MICRO_NODE_TYPES } from "@/lib/nodeTypes";
 import { supabase } from "@/integrations/supabase/client";
 import { useProvinceGraph, type ProvinceNode, type ProvinceEdge, type StrategicNode, type ProvinceRoute } from "@/hooks/useProvinceGraph";
 
@@ -46,6 +47,18 @@ const ROUTE_LABELS: Record<string, string> = {
   land_road: "Silnice", river_route: "Říční", sea_lane: "Námořní", mountain_pass: "Průsmyk", caravan_route: "Karavana",
 };
 
+/** Get subtype icon from node_tier + node_subtype */
+function getSubtypeIcon(tier: string, subtype: string): string {
+  if (tier === "minor") {
+    const def = MINOR_NODE_TYPES.find(t => t.key === subtype);
+    return def?.icon || "🏘️";
+  }
+  if (tier === "micro") {
+    const def = MICRO_NODE_TYPES.find(t => t.key === subtype);
+    return def?.icon || "📍";
+  }
+  return "●";
+}
 /* ─── SVG graph vis ─── */
 function ProvinceGraphSVG({ nodes, edges, strategicNodes, routes, showNodes, showRoutes }: {
   nodes: ProvinceNode[]; edges: ProvinceEdge[]; strategicNodes: StrategicNode[]; routes: ProvinceRoute[];
@@ -120,15 +133,28 @@ function ProvinceGraphSVG({ nodes, edges, strategicNodes, routes, showNodes, sho
         const provColor = prov ? GRAPH_COLORS[prov.color_index % GRAPH_COLORS.length] : "gray";
         const resType = sn.strategic_resource_type;
         const resIcon = resType ? (STRATEGIC_RESOURCE_ICONS[resType as keyof typeof STRATEGIC_RESOURCE_ICONS] || "") : "";
+        // Tier-aware icon
+        const tierIcon = sn.node_tier === "minor" || sn.node_tier === "micro"
+          ? (sn.node_subtype ? getSubtypeIcon(sn.node_tier, sn.node_subtype) : "")
+          : "";
+        const tierColor = sn.node_tier === "minor" ? "hsl(45,80%,55%)" : sn.node_tier === "micro" ? "hsl(140,60%,50%)" : provColor;
         return (
           <g key={sn.id}>
-            <circle cx={p.x} cy={p.y} r={resType ? 8 : 6} fill="hsl(var(--card))" stroke={resType ? "hsl(45,90%,55%)" : provColor} strokeWidth={resType ? 2 : 1.5} />
-            <text x={p.x} y={p.y + 3.5} textAnchor="middle" fontSize={resType ? "10" : "8"} fill={provColor} fontWeight="700">
-              {resIcon || shape}
+            <circle cx={p.x} cy={p.y} r={resType ? 8 : sn.node_tier ? 7 : 6}
+              fill="hsl(var(--card))" stroke={resType ? "hsl(45,90%,55%)" : tierColor}
+              strokeWidth={resType ? 2 : sn.node_tier ? 1.8 : 1.5} />
+            <text x={p.x} y={p.y + 3.5} textAnchor="middle" fontSize={resType ? "10" : "8"} fill={tierColor} fontWeight="700">
+              {resIcon || tierIcon || shape}
             </text>
             <text x={p.x} y={p.y - (resType ? 11 : 9)} textAnchor="middle" fontSize="6" fill="hsl(var(--muted-foreground))">
               {sn.name.length > 18 ? sn.name.slice(0, 16) + "…" : sn.name}
             </text>
+            {sn.node_tier && (
+              <text x={p.x + 10} y={p.y - 5} textAnchor="start" fontSize="5" fill={tierColor} fontWeight="600">
+                {sn.node_tier === "minor" ? "M" : sn.node_tier === "micro" ? "μ" : "★"}
+                {sn.upgrade_level > 1 ? `↑${sn.upgrade_level}` : ""}
+              </text>
+            )}
             {resType && (
               <text x={p.x} y={p.y + 14} textAnchor="middle" fontSize="5" fill="hsl(45,90%,55%)" fontWeight="600">
                 T{sn.strategic_resource_tier}
@@ -165,7 +191,15 @@ function StrategicNodeCard({ node, allNodes }: { node: StrategicNode; allNodes: 
       <CardHeader className="pb-1 pt-2 px-3">
         <CardTitle className="text-[11px] font-display flex items-center gap-1.5">
           <Icon className={`h-3.5 w-3.5 ${cfg.color}`} />
+          {node.node_tier && node.node_subtype && (
+            <span className="text-xs">{getSubtypeIcon(node.node_tier, node.node_subtype)}</span>
+          )}
           {node.name}
+          {node.node_tier && (
+            <Badge variant="outline" className="text-[7px]">
+              {node.node_tier === "minor" ? "osada" : node.node_tier === "micro" ? "zázemí" : "major"} lv.{node.upgrade_level || 1}
+            </Badge>
+          )}
           <Badge variant="outline" className="text-[7px] ml-auto">{cfg.label}</Badge>
           <Badge className={`text-[7px] ${ROLE_COLORS[node.flow_role] || ROLE_COLORS.neutral}`}>
             {roleLabel}

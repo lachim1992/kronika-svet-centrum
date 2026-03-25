@@ -25,6 +25,69 @@ const BASE_PRODUCTION: Record<string, number> = {
   logistic_hub: 3,
 };
 
+/** Minor node subtype base production (from nodeTypes.ts definitions) */
+const MINOR_SUBTYPE_PRODUCTION: Record<string, { grain: number; wood: number; stone: number; iron: number; wealth: number; faith: number }> = {
+  village: { grain: 4, wood: 2, stone: 0, iron: 0, wealth: 1, faith: 0 },
+  lumber_camp: { grain: 1, wood: 8, stone: 0, iron: 0, wealth: 1, faith: 0 },
+  fishing_village: { grain: 6, wood: 1, stone: 0, iron: 0, wealth: 2, faith: 0 },
+  mining_camp: { grain: 0, wood: 0, stone: 4, iron: 6, wealth: 1, faith: 0 },
+  pastoral_camp: { grain: 5, wood: 0, stone: 0, iron: 0, wealth: 2, faith: 0 },
+  trade_post: { grain: 1, wood: 0, stone: 0, iron: 0, wealth: 6, faith: 0 },
+  shrine: { grain: 0, wood: 0, stone: 0, iron: 0, wealth: 1, faith: 8 },
+  watchtower: { grain: 0, wood: 0, stone: 1, iron: 1, wealth: 0, faith: 0 },
+};
+
+/** Micro node subtype base production */
+const MICRO_SUBTYPE_PRODUCTION: Record<string, { grain: number; wood: number; stone: number; iron: number; wealth: number; faith: number }> = {
+  field: { grain: 6, wood: 0, stone: 0, iron: 0, wealth: 0, faith: 0 },
+  sawmill: { grain: 0, wood: 7, stone: 0, iron: 0, wealth: 1, faith: 0 },
+  mine: { grain: 0, wood: 0, stone: 2, iron: 5, wealth: 1, faith: 0 },
+  hunting_ground: { grain: 4, wood: 1, stone: 0, iron: 0, wealth: 1, faith: 0 },
+  fishery: { grain: 5, wood: 0, stone: 0, iron: 0, wealth: 2, faith: 0 },
+  quarry: { grain: 0, wood: 0, stone: 7, iron: 0, wealth: 0, faith: 0 },
+  vineyard: { grain: 1, wood: 0, stone: 0, iron: 0, wealth: 5, faith: 0 },
+  herbalist: { grain: 0, wood: 0, stone: 0, iron: 0, wealth: 1, faith: 4 },
+  smithy: { grain: 0, wood: 0, stone: 0, iron: 3, wealth: 2, faith: 0 },
+  outpost: { grain: 0, wood: 0, stone: 0, iron: 0, wealth: 0, faith: 0 },
+  resin_collector: { grain: 2, wood: 2, stone: 0, iron: 0, wealth: 1, faith: 0 },
+  salt_pan: { grain: 0, wood: 0, stone: 0, iron: 0, wealth: 4, faith: 0 },
+};
+
+/** Upgrade bonus per level for subtypes */
+const SUBTYPE_UPGRADE_BONUS: Record<string, number> = {
+  village: 0.2, lumber_camp: 0.25, fishing_village: 0.2, mining_camp: 0.3,
+  pastoral_camp: 0.2, trade_post: 0.25, shrine: 0.2, watchtower: 0.15,
+  field: 0.3, sawmill: 0.25, mine: 0.3, hunting_ground: 0.2, fishery: 0.2,
+  quarry: 0.25, vineyard: 0.25, herbalist: 0.2, smithy: 0.3, outpost: 0.1,
+  resin_collector: 0.2, salt_pan: 0.25,
+};
+
+/** Biome match for preferred biomes — returns production multiplier */
+const MINOR_BIOME_PREFS: Record<string, string[]> = {
+  village: ["plains", "forest", "grassland", "temperate"],
+  lumber_camp: ["forest", "dense_forest", "taiga"],
+  fishing_village: ["coastal", "lake", "river", "marsh"],
+  mining_camp: ["hills", "mountain", "mountain_pass", "highland"],
+  pastoral_camp: ["steppe", "plains", "grassland", "savanna"],
+  trade_post: ["plains", "grassland", "steppe", "coastal", "river"],
+  shrine: ["forest", "mountain", "highland", "marsh", "sacred"],
+  watchtower: ["hills", "mountain", "highland", "plains", "steppe"],
+};
+const MICRO_BIOME_PREFS: Record<string, string[]> = {
+  field: ["plains", "grassland", "temperate", "river"],
+  sawmill: ["forest", "dense_forest", "taiga"],
+  mine: ["hills", "mountain", "highland"],
+  hunting_ground: ["forest", "steppe", "grassland", "taiga"],
+  fishery: ["coastal", "lake", "river", "marsh"],
+  quarry: ["hills", "mountain", "highland"],
+  vineyard: ["temperate", "plains", "grassland", "hills"],
+  herbalist: ["forest", "marsh", "jungle", "temperate"],
+  smithy: ["hills", "mountain", "highland"],
+  outpost: ["plains", "hills", "steppe", "mountain", "highland", "forest"],
+  resin_collector: ["forest", "dense_forest", "taiga"],
+  salt_pan: ["coastal", "desert", "steppe"],
+};
+
 /** Base trade_efficiency multiplier by flow_role */
 const ROLE_TRADE_EFFICIENCY: Record<string, number> = {
   hub: 1.0,
@@ -49,6 +112,10 @@ interface NodeData {
   session_id: string;
   province_id: string;
   node_type: string;
+  node_tier: string | null;
+  node_subtype: string | null;
+  upgrade_level: number;
+  biome_at_build: string | null;
   flow_role: string;
   is_major: boolean;
   parent_node_id: string | null;
@@ -69,6 +136,8 @@ interface NodeData {
   // Existing supply chain data
   development_level: number;
   stability_factor: number;
+  faith_output: number;
+  food_value: number;
 }
 
 interface RouteData {
@@ -92,15 +161,41 @@ interface SupplyState {
 }
 
 // ── PRODUCTION ──────────────────────────────────────────────────
-// production_output = base_value * development_level * stability * route_access_factor
-// For city-linked nodes: add demographic bonus from peasants
+// Tier-aware: minor/micro nodes use subtype definitions; major/legacy use BASE_PRODUCTION
 function computeNodeProduction(node: NodeData, routeAccess: number, cityData?: any): number {
-  const base = BASE_PRODUCTION[node.node_type] ?? 2;
   const dev = Math.max(0.1, node.development_level || 1.0);
   const stab = Math.max(0.1, node.stability_factor || 1.0);
   const access = Math.max(0.1, routeAccess);
-  let production = base * dev * stab * access;
-  // Demographic bonus: peasants drive production
+
+  let production: number;
+
+  // Use tier-aware production if node_tier and node_subtype are set
+  if (node.node_tier === "minor" && node.node_subtype && MINOR_SUBTYPE_PRODUCTION[node.node_subtype]) {
+    const baseProd = MINOR_SUBTYPE_PRODUCTION[node.node_subtype];
+    const totalBase = Object.values(baseProd).reduce((a, b) => a + b, 0);
+    const upgradeBonus = SUBTYPE_UPGRADE_BONUS[node.node_subtype] || 0.2;
+    const upgradeMult = 1 + ((node.upgrade_level || 1) - 1) * upgradeBonus;
+    // Biome match
+    const biome = (node.biome_at_build || "").toLowerCase();
+    const prefs = MINOR_BIOME_PREFS[node.node_subtype] || [];
+    const biomeMatch = prefs.some(pb => biome.includes(pb)) ? 1.0 : 0.6;
+    production = totalBase * upgradeMult * biomeMatch * stab * access;
+  } else if (node.node_tier === "micro" && node.node_subtype && MICRO_SUBTYPE_PRODUCTION[node.node_subtype]) {
+    const baseProd = MICRO_SUBTYPE_PRODUCTION[node.node_subtype];
+    const totalBase = Object.values(baseProd).reduce((a, b) => a + b, 0);
+    const upgradeBonus = SUBTYPE_UPGRADE_BONUS[node.node_subtype] || 0.2;
+    const upgradeMult = 1 + ((node.upgrade_level || 1) - 1) * upgradeBonus;
+    const biome = (node.biome_at_build || "").toLowerCase();
+    const prefs = MICRO_BIOME_PREFS[node.node_subtype] || [];
+    const biomeMatch = prefs.some(pb => biome.includes(pb)) ? 1.0 : 0.6;
+    production = totalBase * upgradeMult * biomeMatch * stab * access;
+  } else {
+    // Legacy: use BASE_PRODUCTION by node_type
+    const base = BASE_PRODUCTION[node.node_type] ?? 2;
+    production = base * dev * stab * access;
+  }
+
+  // Demographic bonus: peasants drive production (city-linked major nodes)
   if (cityData) {
     const peasants = cityData.population_peasants || 0;
     const burghers = cityData.population_burghers || 0;
@@ -233,7 +328,7 @@ Deno.serve(async (req) => {
     // ── FETCH DATA ────────────────────────────────────────────
     const [nodesRes, routesRes, supplyRes, citiesRes] = await Promise.all([
       sb.from("province_nodes")
-        .select("id, session_id, province_id, node_type, flow_role, is_major, parent_node_id, controlled_by, city_id, population, infrastructure_level, urbanization_score, hinterland_level, cumulative_trade_flow, throughput_military, toll_rate, strategic_value, economic_value, defense_value, resource_output, metadata, development_level, stability_factor, strategic_resource_type, strategic_resource_tier")
+        .select("id, session_id, province_id, node_type, node_tier, node_subtype, upgrade_level, biome_at_build, flow_role, is_major, parent_node_id, controlled_by, city_id, population, infrastructure_level, urbanization_score, hinterland_level, cumulative_trade_flow, throughput_military, toll_rate, strategic_value, economic_value, defense_value, resource_output, metadata, development_level, stability_factor, strategic_resource_type, strategic_resource_tier, faith_output, food_value")
         .eq("session_id", session_id),
       sb.from("province_routes")
         .select("id, node_a, node_b, capacity_value, control_state, damage_level, speed_value, safety_value")
@@ -252,6 +347,12 @@ Deno.serve(async (req) => {
       metadata: n.metadata || {},
       development_level: n.development_level || 1.0,
       stability_factor: n.stability_factor || 1.0,
+      node_tier: n.node_tier || null,
+      node_subtype: n.node_subtype || null,
+      upgrade_level: n.upgrade_level || 1,
+      biome_at_build: n.biome_at_build || null,
+      faith_output: n.faith_output || 0,
+      food_value: n.food_value || 0,
     }));
     const routes: RouteData[] = routesRes.data || [];
     const supplyMap = new Map<string, SupplyState>();
@@ -288,16 +389,40 @@ Deno.serve(async (req) => {
       rawProduction.set(node.id, prod);
     }
 
-    // Phase 2: aggregate production into major nodes
+    // Phase 2: aggregate production — 3-tier: micro→minor→major
+    // First: micro nodes feed into their parent minor nodes
+    const minorIncoming = new Map<string, number>();
+    for (const node of nodes) {
+      if (node.node_tier === "minor" || (!node.node_tier && !node.is_major)) {
+        minorIncoming.set(node.id, rawProduction.get(node.id) || 0);
+      }
+    }
+    for (const node of nodes) {
+      if (node.node_tier === "micro" && node.parent_node_id) {
+        const parentProd = minorIncoming.get(node.parent_node_id) || 0;
+        const nodeProd = rawProduction.get(node.id) || 0;
+        minorIncoming.set(node.parent_node_id, parentProd + nodeProd);
+      }
+    }
+
+    // Then: minor nodes feed into their parent major nodes (or nearest major)
     const majorIncoming = new Map<string, number>();
     for (const node of nodes) {
-      if (node.is_major) {
+      if (node.is_major || node.node_tier === "major") {
         majorIncoming.set(node.id, rawProduction.get(node.id) || 0);
       }
     }
-    // Minor nodes feed their production to parent
     for (const node of nodes) {
-      if (!node.is_major && node.parent_node_id) {
+      const isMicro = node.node_tier === "micro";
+      const isMinor = node.node_tier === "minor" || (!node.node_tier && !node.is_major && !isMicro);
+      if (isMinor && node.parent_node_id) {
+        const effectiveProd = minorIncoming.get(node.id) || rawProduction.get(node.id) || 0;
+        const parentProd = majorIncoming.get(node.parent_node_id) || 0;
+        const parent = nodeMap.get(node.parent_node_id);
+        const throughput = parent ? (parent.throughput_military || 1.0) : 1.0;
+        majorIncoming.set(node.parent_node_id, parentProd + effectiveProd * throughput);
+      } else if (!isMicro && !isMinor && !node.is_major && node.parent_node_id) {
+        // Legacy minor without tier — feed to parent
         const parentProd = majorIncoming.get(node.parent_node_id) || 0;
         const nodeProd = rawProduction.get(node.id) || 0;
         const parent = nodeMap.get(node.parent_node_id);

@@ -97,8 +97,8 @@ export const PRESTIGE_META: Record<PrestigeComponent, {
     label: "Kulturní",
     icon: "🎭",
     dbColumn: "cultural_prestige",
-    description: "Prestiž z divů světa, unikátních budov, kronik a akademií",
-    sources: ["Div světa (+20)", "Unikátní budova (+3)", "Kronika (+1)", "Akademie (+2)", "Polis (+5)"],
+    description: "Prestiž z divů světa, unikátních budov, kronik, akademií a civilizačního vlivu",
+    sources: ["Div světa (+20)", "Unikátní budova (+3)", "Kronika (+1)", "Akademie (+2)", "Polis (+5)", "Civilizační vliv (+0.5/bod)"],
   },
   economic: {
     label: "Ekonomická",
