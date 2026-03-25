@@ -105,7 +105,8 @@ const RoadNetworkOverlay = memo(({ sessionId, offsetX, offsetY, visible }: Props
       const nB = nodeMap.get(route.node_b);
       if (!nA || !nB) continue;
 
-      const path = flowPathByRoute.get(route.id);
+      const pathEntry = flowPathByRoute.get(route.id);
+      const path = pathEntry?.path;
       if (!path || path.length < 2) {
         missingPathRoutes += 1;
         continue;
