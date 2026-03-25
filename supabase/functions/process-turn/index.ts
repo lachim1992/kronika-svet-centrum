@@ -5,7 +5,7 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-import { computeStructuralBonuses, getOpenBordersBonuses, hasActiveEmbargo, getTradeEfficiencyModifier, type DiplomaticPact } from "../_shared/physics.ts";
+import { computeStructuralBonuses, getOpenBordersBonuses, hasActiveEmbargo, getTradeEfficiencyModifier, computePrestigeEffects, type DiplomaticPact } from "../_shared/physics.ts";
 
 /**
  * process-turn v3: HYBRID NETWORK ECONOMY
