@@ -240,7 +240,19 @@ function StrategicNodeCard({ node, allNodes }: { node: StrategicNode; allNodes: 
           </div>
         )}
 
-        {node.metadata?.resource_type && (
+        {node.strategic_resource_type && (
+          <div className="flex items-center gap-1.5 p-1.5 rounded border border-yellow-500/30 bg-yellow-500/10">
+            <span className="text-sm">{STRATEGIC_RESOURCE_ICONS[node.strategic_resource_type as keyof typeof STRATEGIC_RESOURCE_ICONS] || "📦"}</span>
+            <span className="text-[9px] font-semibold text-yellow-300">
+              {STRATEGIC_RESOURCE_LABELS[node.strategic_resource_type as keyof typeof STRATEGIC_RESOURCE_LABELS] || node.strategic_resource_type}
+            </span>
+            <Badge variant="outline" className="text-[6px] ml-auto">
+              {STRATEGIC_TIER_LABELS[node.strategic_resource_tier] || `Tier ${node.strategic_resource_tier}`}
+            </Badge>
+          </div>
+        )}
+
+        {node.metadata?.resource_type && !node.strategic_resource_type && (
           <p className="text-[7px] text-muted-foreground">Surovina: {node.metadata.resource_type}</p>
         )}
       </CardContent>
