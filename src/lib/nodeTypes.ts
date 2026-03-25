@@ -126,6 +126,7 @@ export interface MinorNodeDef {
   description: string;
   maxUpgrade: number;
   upgradeBonus: number;
+  upkeep: NodeUpkeep;
 }
 
 export const MINOR_NODE_TYPES: MinorNodeDef[] = [
