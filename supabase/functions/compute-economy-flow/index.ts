@@ -389,16 +389,40 @@ Deno.serve(async (req) => {
       rawProduction.set(node.id, prod);
     }
 
-    // Phase 2: aggregate production into major nodes
+    // Phase 2: aggregate production — 3-tier: micro→minor→major
+    // First: micro nodes feed into their parent minor nodes
+    const minorIncoming = new Map<string, number>();
+    for (const node of nodes) {
+      if (node.node_tier === "minor" || (!node.node_tier && !node.is_major)) {
+        minorIncoming.set(node.id, rawProduction.get(node.id) || 0);
+      }
+    }
+    for (const node of nodes) {
+      if (node.node_tier === "micro" && node.parent_node_id) {
+        const parentProd = minorIncoming.get(node.parent_node_id) || 0;
+        const nodeProd = rawProduction.get(node.id) || 0;
+        minorIncoming.set(node.parent_node_id, parentProd + nodeProd);
+      }
+    }
+
+    // Then: minor nodes feed into their parent major nodes (or nearest major)
     const majorIncoming = new Map<string, number>();
     for (const node of nodes) {
-      if (node.is_major) {
+      if (node.is_major || node.node_tier === "major") {
         majorIncoming.set(node.id, rawProduction.get(node.id) || 0);
       }
     }
-    // Minor nodes feed their production to parent
     for (const node of nodes) {
-      if (!node.is_major && node.parent_node_id) {
+      const isMicro = node.node_tier === "micro";
+      const isMinor = node.node_tier === "minor" || (!node.node_tier && !node.is_major && !isMicro);
+      if (isMinor && node.parent_node_id) {
+        const effectiveProd = minorIncoming.get(node.id) || rawProduction.get(node.id) || 0;
+        const parentProd = majorIncoming.get(node.parent_node_id) || 0;
+        const parent = nodeMap.get(node.parent_node_id);
+        const throughput = parent ? (parent.throughput_military || 1.0) : 1.0;
+        majorIncoming.set(node.parent_node_id, parentProd + effectiveProd * throughput);
+      } else if (!isMicro && !isMinor && !node.is_major && node.parent_node_id) {
+        // Legacy minor without tier — feed to parent
         const parentProd = majorIncoming.get(node.parent_node_id) || 0;
         const nodeProd = rawProduction.get(node.id) || 0;
         const parent = nodeMap.get(node.parent_node_id);
