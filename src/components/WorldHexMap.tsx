@@ -1139,11 +1139,18 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
             <Eye className="h-3 w-3" /> DEV
           </label>
           {devMode && (
-            <Button size="sm" variant="outline" className="h-7 text-[10px] gap-1 bg-card/70 backdrop-blur-sm"
-              onClick={handleRecomputeBiomes} disabled={recomputing}>
-              {recomputing ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
-              Přepočítat
-            </Button>
+            <>
+              <Button size="sm" variant="outline" className="h-7 text-[10px] gap-1 bg-card/70 backdrop-blur-sm"
+                onClick={handleRecomputeBiomes} disabled={recomputing}>
+                {recomputing ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
+                Přepočítat
+              </Button>
+              <Button size="sm" variant="outline" className="h-7 text-[10px] gap-1 bg-card/70 backdrop-blur-sm"
+                onClick={handleRecomputeRoads} disabled={recomputingRoads}>
+                {recomputingRoads ? <Loader2 className="h-3 w-3 animate-spin" /> : <MapIcon className="h-3 w-3" />}
+                Cesty
+              </Button>
+            </>
           )}
         </div>
       )}
