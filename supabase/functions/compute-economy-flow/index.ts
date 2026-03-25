@@ -58,6 +58,40 @@ const BASE_PRODUCTION_LEGACY: Record<string, number> = {
   port: 5, fortress: 1, trade_hub: 2, pass: 0, religious_center: 2, logistic_hub: 3,
 };
 
+// ── UPKEEP COSTS (supplies, wealth) ─────────────────────────────
+const MINOR_SUBTYPE_UPKEEP: Record<string, { supplies: number; wealth: number }> = {
+  village:          { supplies: 3, wealth: 2 },
+  lumber_camp:      { supplies: 3, wealth: 2 },
+  fishing_village:  { supplies: 3, wealth: 2 },
+  mining_camp:      { supplies: 4, wealth: 2 },
+  pastoral_camp:    { supplies: 2, wealth: 2 },
+  trade_post:       { supplies: 2, wealth: 3 },
+  shrine:           { supplies: 2, wealth: 1 },
+  watchtower:       { supplies: 2, wealth: 1 },
+};
+
+const MICRO_SUBTYPE_UPKEEP: Record<string, { supplies: number; wealth: number }> = {
+  field:            { supplies: 1, wealth: 0.5 },
+  sawmill:          { supplies: 1.5, wealth: 1 },
+  mine:             { supplies: 2, wealth: 1 },
+  hunting_ground:   { supplies: 1, wealth: 0.5 },
+  fishery:          { supplies: 1, wealth: 0.5 },
+  quarry:           { supplies: 1.5, wealth: 0.5 },
+  vineyard:         { supplies: 1.5, wealth: 1 },
+  herbalist:        { supplies: 1, wealth: 0.5 },
+  smithy:           { supplies: 2, wealth: 1 },
+  outpost:          { supplies: 0.5, wealth: 0.5 },
+  resin_collector:  { supplies: 1, wealth: 0.5 },
+  salt_pan:         { supplies: 1, wealth: 1 },
+};
+
+const MAJOR_SUBTYPE_UPKEEP: Record<string, { supplies: number; wealth: number }> = {
+  city:             { supplies: 10, wealth: 6 },
+  fortress:         { supplies: 8, wealth: 4 },
+  trade_hub:        { supplies: 6, wealth: 8 },
+  guard_station:    { supplies: 6, wealth: 3 },
+};
+
 const SUBTYPE_UPGRADE_BONUS: Record<string, number> = {
   village: 0.2, lumber_camp: 0.25, fishing_village: 0.2, mining_camp: 0.3,
   pastoral_camp: 0.2, trade_post: 0.25, shrine: 0.2, watchtower: 0.15,
@@ -382,9 +416,13 @@ Deno.serve(async (req) => {
     }
 
     // ════════════════════════════════════════════════════════════
-    // PHASE 2: Upward aggregation with tier consumption
+    // PHASE 2: Upward aggregation with tier consumption + upkeep
     //   micro → minor → major → capital (both production AND supplies)
+    //   Net = gross - upkeep. Only surplus (net > 0) flows upward.
+    //   Deficit nodes are tracked for UI visualization.
     // ════════════════════════════════════════════════════════════
+
+    const nodeUpkeepData = new Map<string, { upkeep_supplies: number; upkeep_wealth: number; net_balance: number }>();
 
     // Step 2a: Micro → Minor
     const microForwarded = new Map<string, DualOutput>();
@@ -393,10 +431,20 @@ Deno.serve(async (req) => {
     for (const node of nodes) {
       if (node.node_tier !== "micro") continue;
       const own = rawDual.get(node.id) || { production: 0, supplies: 0 };
+      const subtype = node.node_subtype || "";
+      const upkeep = MICRO_SUBTYPE_UPKEEP[subtype] || { supplies: 1, wealth: 0.5 };
       const consumed = TIER_CONSUMPTION.micro;
+
+      // Net after upkeep
+      const netSupplies = own.supplies - upkeep.supplies;
+      const netWealth = -upkeep.wealth; // wealth upkeep tracked separately
+      const netBalance = own.production + netSupplies + netWealth;
+      nodeUpkeepData.set(node.id, { upkeep_supplies: upkeep.supplies, upkeep_wealth: upkeep.wealth, net_balance: Math.round(netBalance * 100) / 100 });
+
+      // Only forward surplus (positive values) after tier consumption
       const fwd: DualOutput = {
-        production: own.production * (1 - consumed),
-        supplies: own.supplies * (1 - consumed),
+        production: Math.max(0, own.production) * (1 - consumed),
+        supplies: Math.max(0, netSupplies) * (1 - consumed),
       };
       microForwarded.set(node.id, fwd);
 
@@ -426,10 +474,17 @@ Deno.serve(async (req) => {
       };
       minorTotalDual.set(node.id, total);
 
+      const subtype = node.node_subtype || "";
+      const upkeep = MINOR_SUBTYPE_UPKEEP[subtype] || { supplies: 3, wealth: 2 };
+      const netSupplies = total.supplies - upkeep.supplies;
+      const netWealth = -upkeep.wealth;
+      const netBalance = total.production + netSupplies + netWealth;
+      nodeUpkeepData.set(node.id, { upkeep_supplies: upkeep.supplies, upkeep_wealth: upkeep.wealth, net_balance: Math.round(netBalance * 100) / 100 });
+
       const consumed = TIER_CONSUMPTION.minor;
       const fwd: DualOutput = {
-        production: total.production * (1 - consumed),
-        supplies: total.supplies * (1 - consumed),
+        production: Math.max(0, total.production) * (1 - consumed),
+        supplies: Math.max(0, netSupplies) * (1 - consumed),
       };
       minorForwarded.set(node.id, fwd);
 
@@ -468,10 +523,18 @@ Deno.serve(async (req) => {
       };
       majorTotalDual.set(node.id, total);
 
+      // Upkeep for major nodes
+      const subtype = node.node_subtype || "";
+      const upkeep = MAJOR_SUBTYPE_UPKEEP[subtype] || { supplies: 10, wealth: 6 };
+      const netSupplies = total.supplies - upkeep.supplies;
+      const netWealth = -upkeep.wealth;
+      const netBalance = total.production + netSupplies + netWealth;
+      nodeUpkeepData.set(node.id, { upkeep_supplies: upkeep.supplies, upkeep_wealth: upkeep.wealth, net_balance: Math.round(netBalance * 100) / 100 });
+
       const consumed = TIER_CONSUMPTION.major;
       const fwd: DualOutput = {
-        production: total.production * (1 - consumed),
-        supplies: total.supplies * (1 - consumed),
+        production: Math.max(0, total.production) * (1 - consumed),
+        supplies: Math.max(0, netSupplies) * (1 - consumed),
       };
       majorForwarded.set(node.id, fwd);
 
@@ -625,7 +688,7 @@ Deno.serve(async (req) => {
       id: string;
       production_output: number;
       wealth_output: number;
-      food_value: number; // supplies
+      food_value: number;
       capacity_score: number;
       importance_score: number;
       incoming_production: number;
@@ -633,6 +696,9 @@ Deno.serve(async (req) => {
       route_access_factor: number;
       trade_efficiency: number;
       isolation_penalty: number;
+      upkeep_supplies: number;
+      upkeep_wealth: number;
+      net_balance: number;
     }> = [];
 
     for (const node of nodes) {
@@ -698,6 +764,8 @@ Deno.serve(async (req) => {
       // Importance
       const importance = production * 0.25 + supplies * 0.15 + wealth * 0.3 + connectivity * 0.15 + node.strategic_value * 0.15;
 
+      const upkeepInfo = nodeUpkeepData.get(node.id) || { upkeep_supplies: 0, upkeep_wealth: 0, net_balance: 0 };
+
       nodeResults.push({
         id: node.id,
         production_output: Math.round(production * 100) / 100,
@@ -710,6 +778,9 @@ Deno.serve(async (req) => {
         route_access_factor: Math.round(routeAccess * 100) / 100,
         trade_efficiency: Math.round(tradeEff * 100) / 100,
         isolation_penalty: Math.round(isolationPenalty * 100) / 100,
+        upkeep_supplies: upkeepInfo.upkeep_supplies,
+        upkeep_wealth: upkeepInfo.upkeep_wealth,
+        net_balance: upkeepInfo.net_balance,
       });
     }
 
@@ -729,6 +800,9 @@ Deno.serve(async (req) => {
           route_access_factor: nr.route_access_factor,
           trade_efficiency: nr.trade_efficiency,
           isolation_penalty: nr.isolation_penalty,
+          upkeep_supplies: nr.upkeep_supplies,
+          upkeep_wealth: nr.upkeep_wealth,
+          net_balance: nr.net_balance,
         }).eq("id", nr.id);
       }
     }
