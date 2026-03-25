@@ -157,6 +157,9 @@ const BuildNodeDialog = ({
         flow_role: flowRole,
         population: tier === "major" ? 200 : tier === "minor" ? 50 : 0,
         resource_output: prod,
+        upkeep_supplies: netBalanceLv1?.upkeepSupplies || 0,
+        upkeep_wealth: netBalanceLv1?.upkeepWealth || 0,
+        net_balance: netBalanceLv1?.netBalance || 0,
       } as any);
 
       if (error) throw error;
