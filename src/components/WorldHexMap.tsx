@@ -133,7 +133,7 @@ interface StackOnHex {
 }
 interface NodeOnHex {
   id: string; name: string; hex_q: number; hex_r: number; node_tier: string;
-  node_subtype: string | null; controlled_by: string | null; upgrade_level: number;
+  node_type: string; node_subtype: string | null; controlled_by: string | null; upgrade_level: number;
   max_upgrade_level: number; parent_node_id: string | null; strategic_resource_type: string | null;
 }
 interface Props {
