@@ -144,6 +144,11 @@ const ResourceHUD = ({ sessionId, playerName, cities, currentTurn }: ResourceHUD
       value: (realm.faith ?? 0).toFixed(0),
     },
     {
+      icon: <span className="text-xs">⭐</span>,
+      label: "Prestiž",
+      value: `${Math.round(totalPrestige)}`,
+    },
+    {
       icon: <Users className="h-3 w-3" />,
       label: "Muži",
       value: `${availableManpower}/${computedPool}`,

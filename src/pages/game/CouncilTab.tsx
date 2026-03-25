@@ -94,10 +94,11 @@ const CouncilTab = ({
   const recentTrades = useMemo(() => trades.filter(t => t.turn_number >= currentTurn - 3), [trades, currentTurn]);
 
   // ── Apply immediate (one-time) decree effects to realm/cities ──
-  const IMMEDIATE_EFFECT_TYPES = new Set(["gold", "grain", "wood", "stone", "iron", "manpower", "stability"]);
+  const IMMEDIATE_EFFECT_TYPES = new Set(["gold", "wealth", "grain", "supplies", "production", "manpower", "stability"]);
   const RESOURCE_FIELD_MAP: Record<string, string> = {
-    gold: "gold_reserve", grain: "grain_reserve", wood: "wood_reserve",
-    stone: "stone_reserve", iron: "iron_reserve", manpower: "manpower_pool",
+    gold: "gold_reserve", wealth: "gold_reserve",
+    grain: "grain_reserve", supplies: "grain_reserve",
+    production: "production_reserve", manpower: "manpower_pool",
   };
 
   const applyImmediateEffects = async (effects: { type: string; value: number }[]) => {

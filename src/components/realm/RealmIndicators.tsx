@@ -151,6 +151,27 @@ const RealmIndicators = ({ realm, cities, currentTurn }: Props) => {
         </CardContent>
       </Card>
 
+      {/* Prestige */}
+      <Card>
+        <CardHeader className="p-3 pb-1">
+          <CardTitle className="text-xs flex items-center gap-1">
+            ⭐ Prestiž
+            <Badge variant="secondary" className="text-[9px] ml-1">{PRESTIGE_TIER_LABELS[stats.prestigeTier]}</Badge>
+            <span className="ml-auto font-mono font-bold text-sm">{Math.round(stats.totalPrestige)}</span>
+          </CardTitle>
+        </CardHeader>
+        {stats.prestigeComponents.length > 0 && (
+          <CardContent className="p-3 pt-1 space-y-1">
+            {stats.prestigeComponents.map(p => (
+              <div key={p.key} className="flex justify-between text-xs">
+                <span className="text-muted-foreground">{p.meta.icon} {p.meta.label}</span>
+                <span className="font-bold">{Math.round(p.value)}</span>
+              </div>
+            ))}
+          </CardContent>
+        )}
+      </Card>
+
       {/* Strategic Resources */}
       {stats.strategicTiers.length > 0 && (
         <Card>
