@@ -443,14 +443,13 @@ function RealmEconomySummary({ sessionId }: { sessionId: string }) {
             {/* Strategic tiers */}
             <div className="flex flex-wrap gap-1.5 text-[8px]">
               {Object.entries(STRATEGIC_TIER_DB_COLUMNS).map(([key, col]) => {
-                const v = r[col.replace('strategic_', 'strategic_').replace('_tier', '_tier')];
+                const v = r[col];
                 return v > 0 ? (
                   <Badge key={key} variant="outline" className="text-[7px]">
                     {STRATEGIC_RESOURCE_ICONS[key as keyof typeof STRATEGIC_RESOURCE_ICONS]} {STRATEGIC_TIER_LABELS[v]}
                   </Badge>
                 ) : null;
               })}
-            </div>
             </div>
           </CardContent>
         </Card>
