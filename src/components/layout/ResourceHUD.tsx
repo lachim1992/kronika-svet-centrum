@@ -132,6 +132,11 @@ const ResourceHUD = ({ sessionId, playerName, cities, currentTurn }: ResourceHUD
       label: "Zásoby",
       value: `${Math.round(grainReserve)}/${realm.granary_capacity ?? 0}`,
       warning: grainReserve < 20,
+      suffix: (() => {
+        const net = realm.last_turn_grain_net ?? 0;
+        if (net === 0) return "";
+        return net > 0 ? ` (+${net}/k)` : ` (${net}/k)`;
+      })(),
     },
     {
       icon: <span className="text-xs">{MACRO_LAYER_ICONS.capacity}</span>,
