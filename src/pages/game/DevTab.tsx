@@ -30,55 +30,23 @@ const DevTab = ({
   const handleNextTurn = async () => {
     setAdvancing(true);
     try {
-      const nextTurn = currentTurn + 1;
+      // Use the unified commit-turn pipeline (same as production)
+      const { data, error } = await supabase.functions.invoke("commit-turn", {
+        body: { sessionId, playerName: currentPlayerName, skipNarrative: true },
+      });
 
-      // 1. World Tick — physics (population, influence, tension, rebellion)
-      try {
-        const { error: tickErr } = await supabase.functions.invoke("world-tick", {
-          body: { sessionId, turnNumber: currentTurn },
-        });
-        if (tickErr) {
-          // HTTP 409 = already processed, continue gracefully
-          if (/already processed|409/i.test(tickErr.message || "")) {
-            console.info("world-tick already processed for this turn, continuing.");
-          } else {
-            console.warn("world-tick warning:", tickErr.message);
+      if (error) {
+        let msg = error.message || "Neznámá chyba";
+        try {
+          if (error.context && typeof error.context === "object" && "json" in error.context) {
+            const body = await (error.context as Response).json();
+            msg = body?.error || msg;
           }
-        }
-      } catch (e: any) {
-        console.warn("world-tick error (non-fatal):", e.message);
+        } catch { /* ignore */ }
+        throw new Error(msg);
       }
 
-      // 2. Process-tick — housekeeping (action_queue, travel_orders)
-      try {
-        await supabase.functions.invoke("process-tick", { body: { sessionId } });
-      } catch (e: any) {
-        console.warn("process-tick warning:", e.message);
-      }
-
-      // 3. Advance turn (game_sessions.current_turn + reset flags)
-      const { error: updateErr } = await supabase
-        .from("game_sessions")
-        .update({ current_turn: nextTurn, turn_closed_p1: false, turn_closed_p2: false })
-        .eq("id", sessionId);
-      if (updateErr) throw updateErr;
-
-      await supabase
-        .from("game_players")
-        .update({ turn_closed: false })
-        .eq("session_id", sessionId);
-
-      // 4. Process-turn — economy for ALL players (production, consumption, famine, stockpiles)
-      const { data: allPlayers } = await supabase.from("game_players")
-        .select("player_name").eq("session_id", sessionId);
-      for (const p of (allPlayers || [])) {
-        const { error: ptErr } = await supabase.functions.invoke("process-turn", {
-          body: { sessionId, playerName: p.player_name },
-        });
-        if (ptErr) console.warn(`process-turn for ${p.player_name}:`, ptErr.message);
-      }
-
-      toast.success(`Kolo posunuto na ${nextTurn}`);
+      toast.success(`Kolo posunuto na ${currentTurn + 1}`);
       onRefetch();
     } catch (err: any) {
       toast.error("Chyba při posunu kola: " + (err.message || "Neznámá chyba"));

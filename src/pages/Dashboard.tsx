@@ -86,13 +86,15 @@ const Dashboard = () => {
   // Auto-trigger next turn when all multiplayer players have closed
   const allPlayersClosed = players.length > 1 && players.every(p => p.turn_closed);
   const prevAllClosed = useRef(false);
+  const commitLockRef = useRef(false);
 
   useEffect(() => {
     if (!isMultiplayer) return;
-    if (allPlayersClosed && !prevAllClosed.current && !turnProcessing) {
-      // All players just closed — auto-trigger next turn
+    if (allPlayersClosed && !prevAllClosed.current && !turnProcessing && !commitLockRef.current) {
+      // All players just closed — auto-trigger next turn (with lock to prevent race condition)
       prevAllClosed.current = true;
-      processNextTurn();
+      commitLockRef.current = true;
+      processNextTurn().finally(() => { commitLockRef.current = false; });
     } else if (!allPlayersClosed) {
       prevAllClosed.current = false;
     }
