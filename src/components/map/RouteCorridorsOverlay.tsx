@@ -135,7 +135,7 @@ const RouteCorridorsOverlay = memo(({ sessionId, offsetX, offsetY }: Props) => {
         .select("route_id, node_a, node_b, flow_type, hex_path, total_cost, bottleneck_hex, bottleneck_cost, path_length")
         .eq("session_id", sessionId),
       supabase.from("province_nodes")
-        .select("id, hex_q, hex_r, name, node_type, node_tier, flow_role, controlled_by, production_output, wealth_output, incoming_production, cumulative_trade_flow")
+        .select("id, hex_q, hex_r, name, node_type, node_tier, flow_role, controlled_by, production_output, wealth_output, food_value, incoming_production, cumulative_trade_flow")
         .eq("session_id", sessionId)
         .eq("is_active", true),
     ]);
