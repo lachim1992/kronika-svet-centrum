@@ -15,7 +15,9 @@ import { toast } from "sonner";
 import { useHexMap, AXIAL_NEIGHBORS, type HexData } from "@/hooks/useHexMap";
 import CityMarkerBadge from "@/components/CityMarkerBadge";
 import FoundSettlementDialog from "@/components/FoundSettlementDialog";
+import BuildNodeDialog from "@/components/BuildNodeDialog";
 import StrategicMapOverlay from "@/components/map/StrategicMapOverlay";
+import { MINOR_NODE_TYPES, MICRO_NODE_TYPES } from "@/lib/nodeTypes";
 
 /* ───── Config ───── */
 const HEX_SIZE = 38;
