@@ -38,6 +38,31 @@ const ROUTE_TYPE_DASH: Record<string, string | undefined> = {
   pass: "3,3",
 };
 
+/** Distinct colors per flow type — used for dots on routes & legend */
+const FLOW_TYPE_COLORS: Record<string, string> = {
+  trade:      "hsl(45, 90%, 60%)",
+  military:   "hsl(0, 70%, 55%)",
+  supply:     "hsl(120, 60%, 50%)",
+  faith:      "hsl(270, 60%, 65%)",
+  migration:  "hsl(200, 70%, 55%)",
+  production: "hsl(30, 80%, 55%)",
+  wealth:     "hsl(50, 95%, 65%)",
+  food:       "hsl(90, 55%, 45%)",
+  culture:    "hsl(300, 50%, 55%)",
+};
+
+const FLOW_TYPE_LABEL: Record<string, string> = {
+  trade:      "Obchod",
+  military:   "Vojenský",
+  supply:     "Zásobování",
+  faith:      "Víra",
+  migration:  "Migrace",
+  production: "Produkce",
+  wealth:     "Bohatství",
+  food:       "Potraviny",
+  culture:    "Kultura",
+};
+
 interface RouteData {
   id: string;
   node_a: string;
