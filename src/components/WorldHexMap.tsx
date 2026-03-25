@@ -9,13 +9,15 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import {
   Loader2, Hexagon, Map as MapIcon, Eye, Plus, Minus, RefreshCw,
   Home, Pencil, Swords, Castle, Compass, ChevronUp, ChevronDown,
-  Layers, Info, X,
+  Layers, Info, X, Hammer,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useHexMap, AXIAL_NEIGHBORS, type HexData } from "@/hooks/useHexMap";
 import CityMarkerBadge from "@/components/CityMarkerBadge";
 import FoundSettlementDialog from "@/components/FoundSettlementDialog";
+import BuildNodeDialog from "@/components/BuildNodeDialog";
 import StrategicMapOverlay from "@/components/map/StrategicMapOverlay";
+import { MINOR_NODE_TYPES, MICRO_NODE_TYPES } from "@/lib/nodeTypes";
 
 /* ───── Config ───── */
 const HEX_SIZE = 38;
@@ -361,6 +363,13 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
   const [showProvinceLayer, setShowProvinceLayer] = useState(true);
   const [showStrategicLayer, setShowStrategicLayer] = useState(false);
   const [expandingProvince, setExpandingProvince] = useState(false);
+  const [showBuildNodeDialog, setShowBuildNodeDialog] = useState(false);
+  const [buildNodeTier, setBuildNodeTier] = useState<"minor" | "micro" | undefined>(undefined);
+  const [buildNodeParent, setBuildNodeParent] = useState<{ id: string; name: string } | null>(null);
+
+  // Nodes on hex map
+  interface NodeOnHex { id: string; name: string; hex_q: number; hex_r: number; node_tier: string; node_subtype: string | null; controlled_by: string | null; upgrade_level: number; parent_node_id: string | null; }
+  const [allNodes, setAllNodes] = useState<NodeOnHex[]>([]);
 
   // Province data
   const [provinceHexMap, setProvinceHexMap] = useState<Map<string, { provinceId: string; colorIndex: number }>>(new Map());
@@ -474,6 +483,15 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
     }
   }, [sessionId]);
 
+  /* ── Fetch nodes ── */
+  const fetchNodes = useCallback(async () => {
+    const { data } = await supabase.from("province_nodes")
+      .select("id, name, hex_q, hex_r, node_tier, node_subtype, controlled_by, upgrade_level, parent_node_id")
+      .eq("session_id", sessionId)
+      .in("node_tier", ["minor", "micro"]);
+    setAllNodes((data || []) as NodeOnHex[]);
+  }, [sessionId]);
+
   /* ── Lookups ── */
   const citiesByCoord = useMemo(() => {
     const visible = allCities.filter(c => devMode || c.owner_player === playerName || isAdmin || discoveredCoords.has(hKey(c.q, c.r)));
@@ -488,6 +506,12 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
     for (const s of visible) { const key = hKey(s.q, s.r); const list = m.get(key) || []; list.push(s); m.set(key, list); }
     return m;
   }, [allStacks, playerName, isAdmin, discoveredCoords, devMode]);
+
+  const nodesByCoord = useMemo(() => {
+    const m = new Map<string, NodeOnHex[]>();
+    for (const n of allNodes) { const key = hKey(n.hex_q, n.hex_r); const list = m.get(key) || []; list.push(n); m.set(key, list); }
+    return m;
+  }, [allNodes]);
 
   /* ── Load discoveries ── */
   const fetchDiscoveries = useCallback(async () => {
@@ -587,7 +611,7 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      await Promise.all([fetchCities(), fetchStacks(), fetchProvinces()]);
+      await Promise.all([fetchCities(), fetchStacks(), fetchProvinces(), fetchNodes()]);
       if (cancelled) return;
       if (isAdmin) await loadAllGenerated();
       await fetchDiscoveries();
@@ -1298,6 +1322,44 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
                 </div>
               )}
 
+              {/* Nodes on this hex */}
+              {(() => {
+                const hexNodes = nodesByCoord.get(hKey(selectedHex.q, selectedHex.r)) || [];
+                if (hexNodes.length === 0) return null;
+                return (
+                  <div className="p-3 rounded-lg border border-border bg-muted/30 space-y-1.5">
+                    <p className="text-xs font-display font-semibold flex items-center gap-1.5">
+                      🏘️ Uzly ({hexNodes.length})
+                    </p>
+                    {hexNodes.map(n => {
+                      const def = n.node_tier === "minor"
+                        ? MINOR_NODE_TYPES.find(t => t.key === n.node_subtype)
+                        : MICRO_NODE_TYPES.find(t => t.key === n.node_subtype);
+                      return (
+                        <div key={n.id} className="flex items-center gap-2 text-xs py-1">
+                          <span>{def?.icon || "📍"}</span>
+                          <span className="font-display font-semibold">{n.name}</span>
+                          <Badge variant="outline" className="text-[8px] h-4 ml-auto">
+                            {n.node_tier === "minor" ? "osada" : "zázemí"} lv.{n.upgrade_level}
+                          </Badge>
+                        </div>
+                      );
+                    })}
+                    {/* Build micro node under a minor on this hex */}
+                    {hexNodes.filter(n => n.node_tier === "minor").map(minor => (
+                      <Button key={`micro-${minor.id}`} variant="ghost" size="sm" className="w-full text-[10px] h-7 gap-1 mt-1"
+                        onClick={() => {
+                          setBuildNodeParent({ id: minor.id, name: minor.name });
+                          setBuildNodeTier("micro");
+                          setShowBuildNodeDialog(true);
+                        }}>
+                        <Plus className="h-3 w-3" /> Postavit zázemí pro {minor.name}
+                      </Button>
+                    ))}
+                  </div>
+                );
+              })()}
+
               {/* Actions */}
               <div className="space-y-2">
                 <Button variant="outline" size="sm" className="w-full font-display text-xs gap-2"
@@ -1311,6 +1373,24 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
                     onClick={() => { setShowFoundDialog(true); }}>
                     <Castle className="h-3.5 w-3.5" /> Založit osadu zde
                   </Button>
+                )}
+
+                {/* Build Minor Node button */}
+                {!IMPASSABLE_BIOMES.has(selectedHex.biome_family) && (
+                  <Button variant="secondary" size="sm" className="w-full font-display text-xs gap-2"
+                    onClick={() => { setBuildNodeTier("minor"); setBuildNodeParent(null); setShowBuildNodeDialog(true); }}>
+                    <Hammer className="h-3.5 w-3.5" /> Postavit osadu (minor node)
+                  </Button>
+                )}
+
+                {/* Dev: Build any node */}
+                {devMode && !IMPASSABLE_BIOMES.has(selectedHex.biome_family) && (
+                  <>
+                    <Button variant="outline" size="sm" className="w-full text-xs gap-2 border-primary/30"
+                      onClick={() => { setBuildNodeTier(undefined); setBuildNodeParent(null); setShowBuildNodeDialog(true); }}>
+                      <Hammer className="h-3.5 w-3.5 text-primary" /> DEV: Postavit libovolný uzel
+                    </Button>
+                  </>
                 )}
 
                 {/* Expand province button */}
@@ -1327,6 +1407,25 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
           )}
         </SheetContent>
       </Sheet>
+
+      {/* Build Node Dialog */}
+      {selectedHex && showBuildNodeDialog && (
+        <BuildNodeDialog
+          open={showBuildNodeDialog}
+          onClose={() => { setShowBuildNodeDialog(false); setBuildNodeParent(null); }}
+          sessionId={sessionId}
+          playerName={playerName}
+          hexQ={selectedHex.q}
+          hexR={selectedHex.r}
+          biome={selectedHex.biome_family}
+          provinceId={provinceHexMap.get(hKey(selectedHex.q, selectedHex.r))?.provinceId || null}
+          parentNodeId={buildNodeParent?.id}
+          parentNodeName={buildNodeParent?.name}
+          devMode={devMode}
+          forceTier={buildNodeTier}
+          onBuilt={() => { fetchNodes(); }}
+        />
+      )}
 
       {/* Battle dialog */}
       <Dialog open={!!battleTarget} onOpenChange={(open) => { if (!open) { setBattleTarget(null); setSpeechResult(null); setBattleSpeech(""); } }}>
