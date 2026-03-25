@@ -611,7 +611,7 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      await Promise.all([fetchCities(), fetchStacks(), fetchProvinces()]);
+      await Promise.all([fetchCities(), fetchStacks(), fetchProvinces(), fetchNodes()]);
       if (cancelled) return;
       if (isAdmin) await loadAllGenerated();
       await fetchDiscoveries();
