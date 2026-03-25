@@ -260,6 +260,17 @@ export function useProvinceGraph(sessionId: string) {
         body: { session_id: sessionId },
       });
       if (error) throw error;
+
+      const { error: flowErr } = await supabase.functions.invoke("compute-hex-flows", {
+        body: { session_id: sessionId, force_all: true },
+      });
+      if (flowErr) throw flowErr;
+
+      const { error: econErr } = await supabase.functions.invoke("compute-economy-flow", {
+        body: { session_id: sessionId },
+      });
+      if (econErr) throw econErr;
+
       await loadGraph();
       return data;
     } finally {
