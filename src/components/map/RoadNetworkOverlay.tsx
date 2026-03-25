@@ -41,6 +41,8 @@ interface RouteInfo {
 interface FlowPathRow {
   route_id: string | null;
   hex_path: Array<{ q: number; r: number; cost?: number }> | null;
+  total_cost: number | null;
+  path_length: number | null;
 }
 
 interface Props {
@@ -69,7 +71,7 @@ const RoadNetworkOverlay = memo(({ sessionId, offsetX, offsetY, visible }: Props
         .eq("session_id", sessionId),
       supabase
         .from("flow_paths")
-        .select("route_id, hex_path")
+        .select("route_id, hex_path, total_cost, path_length")
         .eq("session_id", sessionId),
     ]);
 
@@ -80,14 +82,16 @@ const RoadNetworkOverlay = memo(({ sessionId, offsetX, offsetY, visible }: Props
     const nodeMap = new Map<string, NodeInfo>();
     for (const n of nodes) nodeMap.set(n.id, n);
 
-    const flowPathByRoute = new Map<string, Array<{ q: number; r: number }>>();
+    const flowPathByRoute = new Map<string, { path: Array<{ q: number; r: number }>; score: number }>();
     for (const fp of flowPaths) {
       if (!fp.route_id || !fp.hex_path || fp.hex_path.length < 2) continue;
-      if (!flowPathByRoute.has(fp.route_id)) {
-        flowPathByRoute.set(
-          fp.route_id,
-          fp.hex_path.map((h) => ({ q: h.q, r: h.r })),
-        );
+
+      const candidatePath = fp.hex_path.map((h) => ({ q: h.q, r: h.r }));
+      const candidateScore = (fp.total_cost ?? Number.MAX_SAFE_INTEGER) * 1000 + (fp.path_length ?? Number.MAX_SAFE_INTEGER);
+      const current = flowPathByRoute.get(fp.route_id);
+
+      if (!current || candidateScore < current.score) {
+        flowPathByRoute.set(fp.route_id, { path: candidatePath, score: candidateScore });
       }
     }
 
