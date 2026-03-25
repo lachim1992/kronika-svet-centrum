@@ -1050,6 +1050,35 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
               />
             );
           })}
+          {/* Province overlay layer — rendered ON TOP of hex tiles for visibility */}
+          {showProvinceLayer && renderCoords.map(c => {
+            const provData = provinceHexMap.get(hKey(c.q, c.r));
+            if (!provData || c.isFrontier) return null;
+            const pos = hexToPixel(c.q, c.r);
+            const cx = pos.x + offsetX;
+            const cy = pos.y + offsetY;
+            const pts = hexPoints(cx, cy);
+            const ci = provData.colorIndex % PROVINCE_COLORS.length;
+            const borderEdges: { x1: number; y1: number; x2: number; y2: number }[] = [];
+            for (let di = 0; di < HEX_EDGE_DIRS.length; di++) {
+              const [dq, dr] = HEX_EDGE_DIRS[di];
+              const nk = hKey(c.q + dq, c.r + dr);
+              const neighborProv = provinceHexMap.get(nk);
+              if (!neighborProv || neighborProv.colorIndex !== provData.colorIndex) {
+                const [x1, y1, x2, y2] = hexEdgeVertices(cx, cy, di);
+                borderEdges.push({ x1, y1, x2, y2 });
+              }
+            }
+            return (
+              <g key={`prov-${hKey(c.q, c.r)}`} style={{ pointerEvents: "none" }}>
+                <polygon points={pts} fill={PROVINCE_COLORS[ci]} />
+                {borderEdges.map((e, i) => (
+                  <line key={i} x1={e.x1} y1={e.y1} x2={e.x2} y2={e.y2}
+                    stroke={PROVINCE_BORDER_COLORS[ci]} strokeWidth={3} strokeLinecap="round" />
+                ))}
+              </g>
+            );
+          })}
           {/* Route corridors — rendered on top of hex tiles for interactivity */}
           <RouteCorridorsOverlay key={routeRefreshKey} sessionId={sessionId} offsetX={offsetX} offsetY={offsetY} />
           {/* Strategic node/route overlay */}
