@@ -454,6 +454,12 @@ Deno.serve(async (req) => {
           growth_rate: rest.growth_rate ?? 0,
           garrison_strength: rest.garrison_strength ?? 0,
           strategic_resource_tier: rest.strategic_resource_tier ?? 0,
+          production_base: rest.production_base ?? 0,
+          production_output: rest.production_output ?? 0,
+          wealth_output: rest.wealth_output ?? 0,
+          faith_output: rest.faith_output ?? 0,
+          food_value: rest.food_value ?? 0,
+          resource_output: rest.resource_output ?? {},
           upgrade_level: rest.upgrade_level ?? 1,
           max_upgrade_level: rest.max_upgrade_level ?? (rest.node_tier === "major" ? 5 : 3),
         };
