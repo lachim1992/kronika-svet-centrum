@@ -303,7 +303,7 @@ const RouteCorridorsOverlay = memo(({ sessionId, offsetX, offsetY }: Props) => {
       }
     }
 
-    // Flow-type colored dots at hex waypoints
+    // Economic flow colored dots at hex waypoints
     for (const route of routes) {
       if (route.control_state === "blocked") continue;
       const allFlows = routeAllFlows.get(route.id) || [];
@@ -315,7 +315,7 @@ const RouteCorridorsOverlay = memo(({ sessionId, offsetX, offsetY }: Props) => {
         if (!hexPath || hexPath.length < 2) continue;
         const dotColor = FLOW_TYPE_COLORS[fp.flow_type] || "hsl(0, 0%, 70%)";
         const angleOffset = (fi / allFlows.length) * Math.PI * 2;
-        const spread = allFlows.length > 1 ? 3 : 0;
+        const spread = allFlows.length > 1 ? 4 : 0;
 
         for (let hi = 1; hi < hexPath.length - 1; hi++) {
           const p = hexToPixel(hexPath[hi].q, hexPath[hi].r);
@@ -323,9 +323,24 @@ const RouteCorridorsOverlay = memo(({ sessionId, offsetX, offsetY }: Props) => {
           const dy = spread * Math.sin(angleOffset);
           elements.push(
             <circle key={`dot-${route.id}-${fi}-${hi}`}
-              cx={p.x + offsetX + dx} cy={p.y + offsetY + dy} r={2.5}
-              fill={dotColor} fillOpacity={0.85}
-              stroke={dotColor} strokeWidth={0.5} strokeOpacity={0.4}
+              cx={p.x + offsetX + dx} cy={p.y + offsetY + dy} r={3.5}
+              fill={dotColor} fillOpacity={0.9}
+              stroke={dotColor} strokeWidth={0.8} strokeOpacity={0.5}
+              style={{ pointerEvents: "none" }} />
+          );
+        }
+
+        // Also show dots at endpoints for short routes
+        if (hexPath.length === 2) {
+          const midX = (hexToPixel(hexPath[0].q, hexPath[0].r).x + hexToPixel(hexPath[1].q, hexPath[1].r).x) / 2;
+          const midY = (hexToPixel(hexPath[0].q, hexPath[0].r).y + hexToPixel(hexPath[1].q, hexPath[1].r).y) / 2;
+          const dx = spread * Math.cos(angleOffset);
+          const dy = spread * Math.sin(angleOffset);
+          elements.push(
+            <circle key={`dot-mid-${route.id}-${fi}`}
+              cx={midX + offsetX + dx} cy={midY + offsetY + dy} r={3.5}
+              fill={dotColor} fillOpacity={0.9}
+              stroke={dotColor} strokeWidth={0.8} strokeOpacity={0.5}
               style={{ pointerEvents: "none" }} />
           );
         }
