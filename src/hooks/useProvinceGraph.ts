@@ -188,6 +188,8 @@ export function useProvinceGraph(sessionId: string) {
           route_access_factor: n.route_access_factor ?? 1.0,
           trade_efficiency: n.trade_efficiency ?? 1.0,
           isolation_penalty: n.isolation_penalty ?? 0,
+          strategic_resource_type: n.strategic_resource_type ?? null,
+          strategic_resource_tier: n.strategic_resource_tier ?? 0,
         })));
       }
       if (routesRes.data) {
