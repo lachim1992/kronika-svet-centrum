@@ -1063,6 +1063,7 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
                 onAttackClick={handleAttackClick}
                 myPlayerName={playerName}
                 nodes={nodesByCoord.get(hKey(c.q, c.r)) || []}
+                onNodeClick={(node) => setSelectedNode(node)}
               />
             );
           })}
