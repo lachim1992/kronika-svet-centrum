@@ -409,7 +409,7 @@ function RealmEconomySummary({ sessionId }: { sessionId: string }) {
   const [data, setData] = useState<any>(null);
   useEffect(() => {
     supabase.from("realm_resources")
-      .select("player_name, total_production, total_wealth, total_capacity, total_importance, strategic_iron_tier, strategic_horses_tier, strategic_salt_tier, strategic_copper_tier, strategic_gold_tier")
+      .select("player_name, total_production, total_wealth, total_capacity, total_importance, strategic_iron_tier, strategic_horses_tier, strategic_salt_tier, strategic_copper_tier, strategic_gold_tier, strategic_marble_tier, strategic_gems_tier, strategic_timber_tier, strategic_obsidian_tier, strategic_silk_tier, strategic_incense_tier")
       .eq("session_id", sessionId)
       .then(({ data }) => setData(data));
   }, [sessionId]);
