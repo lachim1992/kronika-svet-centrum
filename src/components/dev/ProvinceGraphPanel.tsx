@@ -191,7 +191,15 @@ function StrategicNodeCard({ node, allNodes }: { node: StrategicNode; allNodes: 
       <CardHeader className="pb-1 pt-2 px-3">
         <CardTitle className="text-[11px] font-display flex items-center gap-1.5">
           <Icon className={`h-3.5 w-3.5 ${cfg.color}`} />
+          {node.node_tier && node.node_subtype && (
+            <span className="text-xs">{getSubtypeIcon(node.node_tier, node.node_subtype)}</span>
+          )}
           {node.name}
+          {node.node_tier && (
+            <Badge variant="outline" className="text-[7px]">
+              {node.node_tier === "minor" ? "osada" : node.node_tier === "micro" ? "zázemí" : "major"} lv.{node.upgrade_level || 1}
+            </Badge>
+          )}
           <Badge variant="outline" className="text-[7px] ml-auto">{cfg.label}</Badge>
           <Badge className={`text-[7px] ${ROLE_COLORS[node.flow_role] || ROLE_COLORS.neutral}`}>
             {roleLabel}
