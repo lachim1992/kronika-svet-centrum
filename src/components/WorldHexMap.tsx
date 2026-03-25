@@ -397,7 +397,7 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
   const [buildNodeParent, setBuildNodeParent] = useState<{ id: string; name: string } | null>(null);
 
   // Nodes on hex map
-  interface NodeOnHex { id: string; name: string; hex_q: number; hex_r: number; node_tier: string; node_subtype: string | null; controlled_by: string | null; upgrade_level: number; parent_node_id: string | null; }
+  interface NodeOnHex { id: string; name: string; hex_q: number; hex_r: number; node_tier: string; node_subtype: string | null; controlled_by: string | null; upgrade_level: number; max_upgrade_level: number; parent_node_id: string | null; strategic_resource_type: string | null; }
   const [allNodes, setAllNodes] = useState<NodeOnHex[]>([]);
 
   // Province data
