@@ -878,7 +878,121 @@ Deno.serve(async (req) => {
     }
 
     // ══════════════════════════════════════════
-    // UPDATE REALM RESOURCES (with faith + supply strain + mobilization penalties)
+    // PRESTIGE COMPUTATION (6 sub-types, hybrid)
+    // ══════════════════════════════════════════
+    // Military prestige: army size, battles won, strategic nodes
+    const { data: battlesWon } = await supabase.from("battles")
+      .select("id", { count: "exact", head: true })
+      .eq("session_id", sessionId)
+      .or(`attacker_stack_id.in.(${(stacks || []).map((s: any) => s.id).join(",")})`);
+    const battlesWonCount = battlesWon || 0;
+    const militaryPrestige = Math.min(100,
+      Math.floor(totalArmySize / 500) +  // +1 per 500 soldiers
+      (typeof battlesWonCount === 'number' ? battlesWonCount * 5 : 0) +  // +5 per victory
+      Math.floor((realm.strategic_iron_tier || 0) * 2) +
+      Math.floor((realm.strategic_horses_tier || 0) * 2) +
+      Math.floor((realm.strategic_obsidian_tier || 0) * 3)
+    );
+
+    // Cultural prestige: wonders, unique buildings, academies
+    const { data: wonderCount } = await supabase.from("city_buildings")
+      .select("id", { count: "exact", head: true })
+      .eq("session_id", sessionId).eq("is_wonder", true).eq("status", "completed")
+      .in("city_id", cityIds.length > 0 ? cityIds : ["00000000-0000-0000-0000-000000000000"]);
+    const { data: uniqueCount } = await supabase.from("city_buildings")
+      .select("id", { count: "exact", head: true })
+      .eq("session_id", sessionId).eq("is_ai_generated", true).eq("status", "completed")
+      .in("city_id", cityIds.length > 0 ? cityIds : ["00000000-0000-0000-0000-000000000000"]);
+    const polisCount = myCities.filter(c => c.settlement_level === "polis" || c.settlement_level === "metropolis").length;
+    const culturalPrestige = Math.min(100,
+      (typeof wonderCount === 'number' ? wonderCount : 0) * 20 +
+      (typeof uniqueCount === 'number' ? uniqueCount : 0) * 3 +
+      polisCount * 5 +
+      Math.floor((realm.strategic_marble_tier || 0) * 3) +
+      Math.floor((realm.strategic_gems_tier || 0) * 2)
+    );
+
+    // Economic prestige: wealth flow, trade routes, market levels
+    const activeTradeCount = (activeTradeRoutes || []).length;
+    const totalMarketLevel = myCities.reduce((s, c) => s + (c.market_level || 0), 0);
+    const economicPrestige = Math.min(100,
+      Math.floor(wealthIncome / 10) +
+      activeTradeCount * 2 +
+      totalMarketLevel +
+      Math.floor((realm.strategic_copper_tier || 0) * 1) +
+      Math.floor((realm.strategic_gold_tier || 0) * 4) +
+      Math.floor((realm.strategic_silk_tier || 0) * 3)
+    );
+
+    // Sport prestige: from existing sport_prestige + academies
+    const { data: acadCount } = await supabase.from("academies")
+      .select("id", { count: "exact", head: true })
+      .eq("session_id", sessionId).eq("player_name", playerName);
+    const sportPrestige = Math.min(100,
+      (realm.sport_prestige || 0) +
+      (typeof acadCount === 'number' ? acadCount : 0) * 2
+    );
+
+    // Geopolitical prestige: provinces, alliances, city states
+    const { data: provCount } = await supabase.from("provinces")
+      .select("id", { count: "exact", head: true })
+      .eq("session_id", sessionId).eq("owner_player", playerName);
+    const allianceCount = allPacts.filter(p => p.pact_type === "alliance" && p.status === "active").length;
+    const vassalCount = allPacts.filter(p => p.pact_type === "vassalage" && p.status === "active").length;
+    const geopoliticalPrestige = Math.min(100,
+      (typeof provCount === 'number' ? provCount : 0) +
+      allianceCount * 3 +
+      vassalCount * 5
+    );
+
+    // Technological prestige: strategic resource diversity + infrastructure
+    const stratTiers = [
+      realm.strategic_iron_tier, realm.strategic_horses_tier, realm.strategic_salt_tier,
+      realm.strategic_copper_tier, realm.strategic_gold_tier, realm.strategic_marble_tier,
+      realm.strategic_gems_tier, realm.strategic_timber_tier, realm.strategic_obsidian_tier,
+      realm.strategic_silk_tier, realm.strategic_incense_tier,
+    ].filter((t: number) => (t || 0) > 0);
+    const technologicalPrestige = Math.min(100,
+      stratTiers.length * 3 +  // +3 per unique resource type
+      stratTiers.reduce((s: number, t: number) => s + (t || 0), 0) * 2 +  // +2 per tier level
+      (infra?.roads_level || 0) * 2 +
+      Math.floor(logisticCapacity / 10)
+    );
+
+    // ══════════════════════════════════════════
+    // PRESTIGE THRESHOLD BONUSES (hybrid: continuous + milestone)
+    // ══════════════════════════════════════════
+    const totalPrestige = militaryPrestige + culturalPrestige + economicPrestige +
+      sportPrestige + geopoliticalPrestige + technologicalPrestige;
+
+    // Continuous bonuses: +0.1% wealth per prestige point, +0.05% stability
+    const prestigeWealthBonus = Math.round(wealthIncome * totalPrestige * 0.001);
+    newGoldReserve += prestigeWealthBonus;
+
+    // Milestone bonuses applied as events
+    const prevPrestige = (realm.military_prestige || 0) + (realm.cultural_prestige || 0) +
+      (realm.economic_prestige || 0) + (realm.sport_prestige || 0) +
+      (realm.geopolitical_prestige || 0) + (realm.technological_prestige || 0);
+
+    const PRESTIGE_MILESTONES = [
+      { threshold: 20, label: "Regionální", event: "prestige_milestone" },
+      { threshold: 50, label: "Kontinentální", event: "prestige_milestone" },
+      { threshold: 100, label: "Světová velmoc", event: "prestige_milestone" },
+      { threshold: 200, label: "Legendární", event: "prestige_milestone" },
+    ];
+    for (const ms of PRESTIGE_MILESTONES) {
+      if (totalPrestige >= ms.threshold && prevPrestige < ms.threshold) {
+        newEvents.push({
+          event_type: ms.event,
+          note: `Vaše říše dosáhla statusu "${ms.label}" s celkovou prestiží ${totalPrestige}!`,
+          importance: "critical",
+          reference: { total_prestige: totalPrestige, tier: ms.label },
+        });
+      }
+    }
+
+    // ══════════════════════════════════════════
+    // UPDATE REALM RESOURCES (with faith + prestige + supply strain + mobilization penalties)
     // ══════════════════════════════════════════
     // Production reserve accumulation: totalCityProduction (net of army upkeep) added each turn
     const productionIncome = Math.max(0, Math.round(totalCityProduction - armyProductionUpkeep));
@@ -906,6 +1020,13 @@ Deno.serve(async (req) => {
       mobilization_production_penalty: Math.round(mobProductionPenalty * 10) / 10,
       mobilization_wealth_penalty: Math.round(mobWealthPenalty * 10) / 10,
       last_turn_faith_delta: Math.round(faithGrowth * 100) / 100,
+      // Prestige sub-types
+      military_prestige: militaryPrestige,
+      cultural_prestige: culturalPrestige,
+      economic_prestige: economicPrestige,
+      sport_prestige: sportPrestige,
+      geopolitical_prestige: geopoliticalPrestige,
+      technological_prestige: technologicalPrestige,
       updated_at: new Date().toISOString(),
     }).eq("id", realm.id);
 
