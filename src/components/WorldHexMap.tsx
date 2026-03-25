@@ -53,16 +53,16 @@ const FOG_COLOR = "#111318";
 
 /* Province palette — 10 distinct, muted colors for overlay */
 const PROVINCE_COLORS = [
-  "hsla(210, 60%, 50%, 0.12)", // blue
-  "hsla(30, 70%, 50%, 0.12)",  // orange
-  "hsla(120, 50%, 40%, 0.12)", // green
-  "hsla(0, 60%, 50%, 0.12)",   // red
-  "hsla(270, 50%, 50%, 0.12)", // purple
-  "hsla(60, 60%, 45%, 0.12)",  // yellow
-  "hsla(180, 50%, 40%, 0.12)", // teal
-  "hsla(330, 50%, 50%, 0.12)", // pink
-  "hsla(150, 50%, 40%, 0.12)", // emerald
-  "hsla(45, 70%, 50%, 0.12)",  // gold
+  "hsla(210, 60%, 50%, 0.30)", // blue
+  "hsla(30, 70%, 50%, 0.30)",  // orange
+  "hsla(120, 50%, 40%, 0.30)", // green
+  "hsla(0, 60%, 50%, 0.30)",   // red
+  "hsla(270, 50%, 50%, 0.30)", // purple
+  "hsla(60, 60%, 45%, 0.30)",  // yellow
+  "hsla(180, 50%, 40%, 0.30)", // teal
+  "hsla(330, 50%, 50%, 0.30)", // pink
+  "hsla(150, 50%, 40%, 0.30)", // emerald
+  "hsla(45, 70%, 50%, 0.30)",  // gold
 ];
 const PROVINCE_BORDER_COLORS = [
   "hsla(210, 70%, 60%, 0.7)",
