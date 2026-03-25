@@ -90,6 +90,16 @@ const DevNodeSpawner = ({ sessionId, onRefetch }: Props) => {
     setSpawning(true);
     try {
       const isMajor = nodeClass === "major";
+      const prod = (nodeTier === "minor" || nodeTier === "micro") && nodeSubtype
+        ? computeNodeProduction(nodeTier, nodeSubtype, 1, "plains")
+        : null;
+
+      let spawnedResource: string | null = null;
+      if (nodeTier === "micro" && nodeSubtype) {
+        const microDef = MICRO_NODE_TYPES.find(t => t.key === nodeSubtype);
+        if (microDef) spawnedResource = rollStrategicResource(microDef);
+      }
+
       const { data, error } = await supabase.from("province_nodes").insert({
         session_id: sessionId,
         name,
@@ -97,15 +107,24 @@ const DevNodeSpawner = ({ sessionId, onRefetch }: Props) => {
         hex_r: hexR,
         node_type: nodeType,
         node_class: nodeClass,
+        node_tier: nodeTier,
+        node_subtype: nodeSubtype || null,
         flow_role: flowRole,
         is_major: isMajor,
         is_active: true,
         population,
         node_score: nodeScore,
         province_id: selectedProvince || null,
-        production_output: isMajor ? 5 : 1,
-        wealth_output: flowRole === "hub" ? 3 : 0,
-        food_value: nodeType === "resource_node" ? 4 : 1,
+        production_output: prod ? totalProduction(prod) : (isMajor ? 5 : 1),
+        wealth_output: prod ? (prod.wealth || 0) : (flowRole === "hub" ? 3 : 0),
+        food_value: prod ? (prod.grain || 0) : (nodeType === "resource_node" ? 4 : 1),
+        faith_output: prod ? (prod.faith || 0) : 0,
+        production_base: prod ? totalProduction(prod) : 0,
+        resource_output: prod || {},
+        upgrade_level: 1,
+        biome_at_build: "plains",
+        strategic_resource_type: spawnedResource,
+        spawned_strategic_resource: spawnedResource,
         trade_efficiency: flowRole === "hub" ? 1.0 : flowRole === "gateway" ? 0.8 : 0.5,
         connectivity_score: 0,
         supply_relevance: 1,
@@ -117,7 +136,7 @@ const DevNodeSpawner = ({ sessionId, onRefetch }: Props) => {
         fortification_level: nodeType === "fortress" ? 2 : 0,
         collapse_severity: 0,
         controlled_by: null,
-      }).select("id, name").single();
+      } as any).select("id, name").single();
 
       if (error) throw error;
       toast.success(`Uzel "${name}" vytvořen na [${hexQ}, ${hexR}]`);
