@@ -2,6 +2,10 @@
  * Static system map for Chronicle Observatory.
  * Defines all game mechanics as nodes and their relationships as edges.
  * Purely declarative — no runtime data fetching.
+ *
+ * UPDATED 2026-03: Reflects unified 6-pillar economy, workforce system,
+ * tiered strategic resources, prestige sub-types, capacity limits,
+ * faith bonuses, military upkeep, and population growth engine.
  */
 
 export type SystemNodeType =
@@ -68,110 +72,116 @@ export interface SystemEdge {
 // ─── NODE DEFINITIONS ────────────────────────────────────────
 
 export const SYSTEM_NODES: SystemNode[] = [
-  // ── RESOURCES ──
+  // ══════════════ CORE RESOURCES (6 PILLARS) ══════════════
+
   {
-    id: "grain", label: "Grain (Obilí)", type: "resource", status: "full",
+    id: "grain", label: "🌾 Zásoby (Grain)", type: "resource", status: "full",
     playerFacing: true, usedByAI: true, readOnly: false, agency: "indirect",
     upstreamCount: 3, downstreamCount: 4, playerInfluenceScore: 6, aiDependencyScore: 8, uiSurfacingLevel: 9,
-    gaps: [], formula: "peasants × 0.03 × irrigation_mod × ration_policy",
-    description: "Jediná surovina se spotřebou. Buffer pro populaci. Hladomor při deficitu.",
+    gaps: [], formula: "rolníci × irrigation_level × ration_policy_mult",
+    description: "Potravinový buffer. Spotřeba = pop × 0.006/kolo. Deficit → hladomor → smrt populace. Záporná bilance vyčerpává grain_reserve.",
   },
   {
-    id: "production", label: "Production (Produkce)", type: "resource", status: "full",
+    id: "production", label: "⚒️ Produkce", type: "resource", status: "full",
     playerFacing: true, usedByAI: true, readOnly: false, agency: "indirect",
-    upstreamCount: 2, downstreamCount: 3, playerInfluenceScore: 5, aiDependencyScore: 7, uiSurfacingLevel: 8,
-    gaps: [], formula: "peasants × base_rate + building_bonuses",
-    description: "Akumuluje se v production_reserve. Slouží ke stavbě a údržbě vojska.",
+    upstreamCount: 4, downstreamCount: 3, playerInfluenceScore: 5, aiDependencyScore: 7, uiSurfacingLevel: 9,
+    gaps: [], formula: "base[node_type] × role_mult × (1 − isolation) × workforce_ratio",
+    description: "Fyzický výstup uzlů — generován demograficky (rolníci). Base: resource_node=8, village=6, port=5, city=4. Akumuluje se v production_reserve.",
   },
   {
-    id: "wealth", label: "Wealth (Bohatství)", type: "resource", status: "full",
+    id: "wealth", label: "💰 Bohatství", type: "resource", status: "full",
     playerFacing: true, usedByAI: true, readOnly: false, agency: "indirect",
-    upstreamCount: 3, downstreamCount: 3, playerInfluenceScore: 5, aiDependencyScore: 8, uiSurfacingLevel: 9,
-    gaps: [], formula: "production_flow × route_efficiency × node_role_modifier",
-    description: "Vzniká průchodem produkce přes obchodní trasy. Klíčová pro armádu a budovy.",
+    upstreamCount: 4, downstreamCount: 3, playerInfluenceScore: 5, aiDependencyScore: 8, uiSurfacingLevel: 9,
+    gaps: [], formula: "production_flow × trade_eff[role] + settlement_income + prestige_bonus",
+    description: "Obchodní tok — vzniká průchodem produkce přes trasy. Trade eff: hub=1.0, gateway=0.8, regulator=0.6. +0.1% za bod prestiže. Spotřebovává ho vojsko a stavby.",
   },
   {
-    id: "capacity", label: "Capacity (Kapacita)", type: "resource", status: "dead",
-    playerFacing: true, usedByAI: false, readOnly: true, agency: "none",
-    upstreamCount: 2, downstreamCount: 0, playerInfluenceScore: 0, aiDependencyScore: 0, uiSurfacingLevel: 5,
-    gaps: ["Dead metric", "No downstream", "No player agency"],
-    formula: "burghers × rate + clerics × rate",
-    description: "Počítá se, ale nikde se neutrácí. Žádný mechanický dopad.",
+    id: "capacity", label: "🏛️ Kapacita", type: "resource", status: "full",
+    playerFacing: true, usedByAI: false, readOnly: true, agency: "indirect",
+    upstreamCount: 3, downstreamCount: 3, playerInfluenceScore: 4, aiDependencyScore: 3, uiSurfacingLevel: 8,
+    gaps: [],
+    formula: "Σ(urbanizace sídel) + Σ(infra_uzly × 2) + Σ(klerici × 0.05)",
+    description: "Administrativní limit. Určuje max stavebních projektů (cap/5), obchodních tras (cap/3), správu provincií (cap/10). HAMLET=1, TOWNSHIP=2, TOWN=3, CITY=5, POLIS=8.",
   },
   {
-    id: "faith", label: "Faith (Víra)", type: "resource", status: "partial",
-    playerFacing: true, usedByAI: false, readOnly: true, agency: "none",
-    upstreamCount: 2, downstreamCount: 1, playerInfluenceScore: 1, aiDependencyScore: 2, uiSurfacingLevel: 5,
-    gaps: ["No player agency", "Threshold unused"],
-    formula: "clerics × rate + warriors × rate + temple_level_bonus",
-    description: "Chybí prahové efekty (zázraky). Pouze přispívá k morálce.",
+    id: "faith", label: "⛪ Víra", type: "resource", status: "full",
+    playerFacing: true, usedByAI: false, readOnly: true, agency: "indirect",
+    upstreamCount: 2, downstreamCount: 3, playerInfluenceScore: 3, aiDependencyScore: 2, uiSurfacingLevel: 8,
+    gaps: [],
+    formula: "Σ(klerici × 0.01) + Σ(temple_level × 0.5)",
+    description: "Duchovní síla. Klerici +0.01/kolo, chrámy +0.5/level/kolo. Bonus morálka vojska +0.5%/bod, stabilita měst +0.2%/bod. Přispívá k náboženské prestiži.",
   },
   {
-    id: "iron", label: "Iron (Železo)", type: "resource", status: "partial",
-    playerFacing: true, usedByAI: true, readOnly: true, agency: "indirect",
-    upstreamCount: 1, downstreamCount: 1, playerInfluenceScore: 3, aiDependencyScore: 4, uiSurfacingLevel: 6,
-    gaps: ["Threshold unused"],
-    formula: "hex.special_resource === 'iron' ? tier_output : 0",
-    description: "Strategická surovina. Odemyká elitní jednotky (zatím jen narativně).",
-  },
-  {
-    id: "horses", label: "Horses (Koně)", type: "resource", status: "partial",
-    playerFacing: true, usedByAI: true, readOnly: true, agency: "indirect",
-    upstreamCount: 1, downstreamCount: 1, playerInfluenceScore: 3, aiDependencyScore: 4, uiSurfacingLevel: 6,
-    gaps: ["Threshold unused"],
-    formula: "hex.special_resource === 'horses' ? tier_output : 0",
-    description: "Strategická surovina. Odemyká jízdu (zatím jen narativně).",
+    id: "prestige", label: "⭐ Prestiž", type: "resource", status: "full",
+    playerFacing: true, usedByAI: false, readOnly: true, agency: "indirect",
+    upstreamCount: 6, downstreamCount: 2, playerInfluenceScore: 3, aiDependencyScore: 2, uiSurfacingLevel: 9,
+    gaps: [],
+    formula: "military + cultural + economic + sport + geopolitical + technological",
+    description: "Kompozitní ukazatel — 6 sub-typů. Plynulý bonus +0.1% wealth/bod. Milníky 5/20/50/100/200 odemykají tituly a bonusy. Vojenská: vítězství+armáda. Kulturní: divy+polis. Ekonomická: obchod+wealth. Sportovní: olympiáda. Geopolitická: provincie. Technologická: suroviny.",
   },
 
-  // ── STATS ──
+  // ══════════════ STRATEGIC RESOURCES (11 TYPES) ══════════════
+
   {
-    id: "population", label: "Population (Populace)", type: "stat", status: "full",
+    id: "strategic_resources", label: "⚡ Strategické suroviny", type: "resource", status: "partial",
+    playerFacing: true, usedByAI: true, readOnly: true, agency: "indirect",
+    upstreamCount: 1, downstreamCount: 3, playerInfluenceScore: 4, aiDependencyScore: 5, uiSurfacingLevel: 8,
+    gaps: ["Threshold unused"],
+    formula: "1 kontrolovaný minor uzel = +1 tier (max 3). 11 typů.",
+    description: "Access-based model: Železo, Koně, Sůl, Měď, Zlato, Mramor, Drahokamy, Dřevo, Obsidián, Hedvábí, Kadidlo. Tiery odemykají bonusy (T1=základní, T2=pokročilé, T3=dominantní). Skryté pod mlhou dějin — odhalují se průzkumem hexu. Mechanické efekty zatím narativní.",
+  },
+
+  // ══════════════ STATS ══════════════
+
+  {
+    id: "population", label: "👥 Populace", type: "stat", status: "full",
     playerFacing: true, usedByAI: true, readOnly: false, agency: "indirect",
-    upstreamCount: 3, downstreamCount: 5, playerInfluenceScore: 4, aiDependencyScore: 9, uiSurfacingLevel: 10,
-    gaps: [], formula: "birth_rate × pop - death_rate × pop ± migration ± famine_deaths",
-    description: "Motor spotřeby i produkce. Hlavní páka simulace.",
+    upstreamCount: 4, downstreamCount: 5, playerInfluenceScore: 4, aiDependencyScore: 9, uiSurfacingLevel: 10,
+    gaps: [], formula: "base_rate(1.2%) × food_surplus × stability × housing_mult",
+    description: "4 třídy: Rolníci(55%), Měšťané(20%+market), Klerici(10%+temple), Válečníci(garrison). Settlement upgrade: 100→Vesnice, 500→Městečko, 2000→Město, 8000→Velké město, 20000→Polis.",
   },
   {
-    id: "stability", label: "Stability (Stabilita)", type: "stat", status: "full",
+    id: "workforce", label: "🔧 Pracovní síla", type: "stat", status: "full",
+    playerFacing: true, usedByAI: true, readOnly: true, agency: "indirect",
+    upstreamCount: 2, downstreamCount: 1, playerInfluenceScore: 4, aiDependencyScore: 7, uiSurfacingLevel: 8,
+    gaps: [],
+    formula: "active_pop − mobilized. active_pop = peasants×1.0 + burghers×0.7 + clerics×0.2",
+    description: "Efektivní pracovní síla. Snížena mobilizací. Over-mobilization (>15%) progresivně penalizuje produkce uzlů: penalty = (mob−max) × 2, max 80%.",
+  },
+  {
+    id: "stability", label: "🛡️ Stabilita", type: "stat", status: "full",
     playerFacing: true, usedByAI: true, readOnly: false, agency: "indirect",
     upstreamCount: 5, downstreamCount: 4, playerInfluenceScore: 6, aiDependencyScore: 9, uiSurfacingLevel: 9,
-    gaps: [], formula: "base ± famine_penalty ± overcrowding ± garrison ± policy_effects",
-    description: "Regulátor driftu a rebelií. Pod 30% hrozí povstání.",
+    gaps: [], formula: "base(50) ± famine(−5%/kolo) ± overcrowding ± garrison ± faith(+0.2%/bod) ± policy",
+    description: "Pod 30% hrozí rebelie. Pod 15% téměř jisté. Ovlivňuje růst populace (stability/100 multiplikátor).",
   },
   {
-    id: "influence", label: "Influence (Vliv)", type: "stat", status: "full",
+    id: "influence", label: "🌍 Vliv", type: "stat", status: "full",
     playerFacing: true, usedByAI: true, readOnly: true, agency: "indirect",
     upstreamCount: 7, downstreamCount: 2, playerInfluenceScore: 4, aiDependencyScore: 8, uiSurfacingLevel: 8,
     gaps: [], formula: "military(22%) + trade(18%) + territory(18%) + diplomacy(13%) + reputation(10%) + culture(10%) + laws(9%)",
     description: "Kompozitní skóre z 7 složek. Používá se pro vítězné podmínky.",
   },
   {
-    id: "tension", label: "Tension (Tenze)", type: "stat", status: "full",
+    id: "tension", label: "⚠️ Tenze", type: "stat", status: "full",
     playerFacing: true, usedByAI: true, readOnly: false, agency: "indirect",
     upstreamCount: 3, downstreamCount: 3, playerInfluenceScore: 5, aiDependencyScore: 9, uiSurfacingLevel: 7,
     gaps: [], formula: "border_friction + grievance_score + diplomatic_incidents",
     description: "Termostat diplomatických krizí. Prahy 65/88 spouští krize a války.",
   },
 
-  // ── SOCIAL DRIVERS ──
+  // ══════════════ SOCIAL DRIVERS ══════════════
+
   {
-    id: "legitimacy", label: "Legitimacy (Legitimita)", type: "social_driver", status: "readonly",
+    id: "legitimacy", label: "👑 Legitimita", type: "social_driver", status: "readonly",
     playerFacing: true, usedByAI: false, readOnly: true, agency: "none",
     upstreamCount: 2, downstreamCount: 0, playerInfluenceScore: 0, aiDependencyScore: 1, uiSurfacingLevel: 4,
     gaps: ["Dead metric", "No player agency", "No downstream"],
     formula: "base + policy_effects + stability_drift",
-    description: "Zobrazuje se v UI, ale nemá žádný mechanický dopad.",
+    description: "Zobrazuje se v UI, ale nemá žádný mechanický dopad. Kandidát na propojení se stabilitou.",
   },
   {
-    id: "prestige", label: "Prestige (Prestiž)", type: "social_driver", status: "readonly",
-    playerFacing: true, usedByAI: false, readOnly: true, agency: "none",
-    upstreamCount: 1, downstreamCount: 0, playerInfluenceScore: 0, aiDependencyScore: 1, uiSurfacingLevel: 4,
-    gaps: ["Dead metric", "No player agency", "No downstream"],
-    formula: "wonders_built + great_persons + victories",
-    description: "Zobrazuje se v UI, ale nemá žádný mechanický dopad.",
-  },
-  {
-    id: "renown", label: "Renown (Věhlas)", type: "social_driver", status: "partial",
+    id: "renown", label: "🏅 Věhlas", type: "social_driver", status: "partial",
     playerFacing: true, usedByAI: false, readOnly: true, agency: "none",
     upstreamCount: 2, downstreamCount: 1, playerInfluenceScore: 1, aiDependencyScore: 2, uiSurfacingLevel: 5,
     gaps: ["No player agency"],
@@ -179,39 +189,49 @@ export const SYSTEM_NODES: SystemNode[] = [
     description: "Přispívá ke cultural_score v Influence, ale hráč nemůže přímo ovlivnit.",
   },
   {
-    id: "faction_power", label: "Faction Power", type: "social_driver", status: "full",
+    id: "faction_power", label: "⚖️ Frakce", type: "social_driver", status: "full",
     playerFacing: true, usedByAI: true, readOnly: false, agency: "indirect",
     upstreamCount: 3, downstreamCount: 2, playerInfluenceScore: 4, aiDependencyScore: 6, uiSurfacingLevel: 6,
     gaps: [], formula: "population_class_ratio × satisfaction × loyalty",
     description: "Ovlivňuje stabilitu a politické požadavky frakcí ve městech.",
   },
 
-  // ── MILITARY DRIVERS ──
+  // ══════════════ MILITARY DRIVERS ══════════════
+
   {
-    id: "mobilization", label: "Mobilization (Mobilizace)", type: "military_driver", status: "full",
+    id: "mobilization", label: "⚙️ Mobilizace", type: "military_driver", status: "full",
     playerFacing: true, usedByAI: true, readOnly: false, agency: "direct",
-    upstreamCount: 2, downstreamCount: 3, playerInfluenceScore: 9, aiDependencyScore: 8, uiSurfacingLevel: 8,
-    gaps: [], formula: "recruited_warriors / eligible_population",
-    description: "Trade-off produkce vs. manpower. Hráč přímo rekrutuje jednotky.",
+    upstreamCount: 2, downstreamCount: 4, playerInfluenceScore: 9, aiDependencyScore: 8, uiSurfacingLevel: 8,
+    gaps: [], formula: "mobilized = active_pop × mobilization_rate",
+    description: "Trade-off: víc vojáků = méně pracovníků = nižší produkce. Over-mob >15% → progresivní penalty.",
   },
   {
-    id: "morale", label: "Morale (Morálka)", type: "military_driver", status: "full",
+    id: "military_upkeep", label: "🗡️ Vojenská údržba", type: "military_driver", status: "full",
+    playerFacing: true, usedByAI: true, readOnly: true, agency: "indirect",
+    upstreamCount: 1, downstreamCount: 2, playerInfluenceScore: 3, aiDependencyScore: 6, uiSurfacingLevel: 8,
+    gaps: [],
+    formula: "gold_upkeep = ⌈manpower/100⌉, food_upkeep = ⌈manpower/500⌉",
+    description: "Armáda spotřebovává bohatství a zásoby každé kolo. Vizualizováno v Economy Tab per-stack.",
+  },
+  {
+    id: "morale", label: "💪 Morálka", type: "military_driver", status: "full",
     playerFacing: true, usedByAI: true, readOnly: false, agency: "indirect",
     upstreamCount: 4, downstreamCount: 2, playerInfluenceScore: 5, aiDependencyScore: 7, uiSurfacingLevel: 7,
-    gaps: [], formula: "base + faith_bonus + stability_mod + speech_modifier",
-    description: "Ovlivňuje výsledek bitev. Hráč může ovlivnit řečí před bitvou.",
+    gaps: [], formula: "base + faith_bonus(+0.5%/bod) + stability_mod + speech_modifier",
+    description: "Ovlivňuje výsledek bitev. Hráč může ovlivnit řečí před bitvou a vírou.",
   },
   {
-    id: "garrison", label: "Garrison (Posádka)", type: "military_driver", status: "full",
+    id: "garrison", label: "🏰 Posádka", type: "military_driver", status: "full",
     playerFacing: true, usedByAI: true, readOnly: false, agency: "direct",
     upstreamCount: 1, downstreamCount: 2, playerInfluenceScore: 8, aiDependencyScore: 7, uiSurfacingLevel: 7,
     gaps: [], formula: "stationed_units_in_city",
     description: "Přispívá ke stabilitě a obraně města.",
   },
 
-  // ── ECONOMIC DRIVERS ──
+  // ══════════════ ECONOMIC DRIVERS ══════════════
+
   {
-    id: "node_score", label: "Node Score", type: "hidden_engine_stat", status: "auto",
+    id: "node_score", label: "📊 Node Score", type: "hidden_engine_stat", status: "auto",
     playerFacing: false, usedByAI: true, readOnly: true, agency: "none",
     upstreamCount: 6, downstreamCount: 2, playerInfluenceScore: 0, aiDependencyScore: 9, uiSurfacingLevel: 2,
     gaps: ["UI hidden", "No player agency", "AI only"],
@@ -219,14 +239,22 @@ export const SYSTEM_NODES: SystemNode[] = [
     description: "AI používá k rozhodování o expanzi a urbanizaci. Hráč nevidí.",
   },
   {
-    id: "trade_flow", label: "Trade Flow", type: "economic_driver", status: "full",
+    id: "trade_flow", label: "🔄 Obchodní tok", type: "economic_driver", status: "full",
     playerFacing: true, usedByAI: true, readOnly: true, agency: "indirect",
-    upstreamCount: 3, downstreamCount: 2, playerInfluenceScore: 4, aiDependencyScore: 7, uiSurfacingLevel: 6,
+    upstreamCount: 3, downstreamCount: 2, playerInfluenceScore: 4, aiDependencyScore: 7, uiSurfacingLevel: 7,
     gaps: [], formula: "production × route_efficiency × node_role",
-    description: "Tok produkce sítí. Hráč ovlivňuje stavbou infrastruktury.",
+    description: "Tok produkce sítí. Hub=1.0, Gateway=0.8, Regulator=0.6, Producer=0.3. Hráč ovlivňuje stavbou infrastruktury.",
   },
   {
-    id: "labor_allocation", label: "Labor Allocation", type: "economic_driver", status: "dead",
+    id: "isolation", label: "⛓️ Izolace uzlů", type: "economic_driver", status: "full",
+    playerFacing: true, usedByAI: true, readOnly: true, agency: "indirect",
+    upstreamCount: 2, downstreamCount: 2, playerInfluenceScore: 4, aiDependencyScore: 6, uiSurfacingLevel: 7,
+    gaps: [],
+    formula: "A* pathfinding k hlavnímu městu. Nenalezená cesta = 100% izolace",
+    description: "Penalizace produkce izolovaných uzlů. <15% mírná, 15-35% částečná, 35-55% těžká, >55% odříznuto.",
+  },
+  {
+    id: "labor_allocation", label: "👷 Alokace práce", type: "economic_driver", status: "dead",
     playerFacing: true, usedByAI: false, readOnly: false, agency: "direct",
     upstreamCount: 1, downstreamCount: 0, playerInfluenceScore: 2, aiDependencyScore: 0, uiSurfacingLevel: 6,
     gaps: ["Dead metric", "No downstream"],
@@ -234,23 +262,32 @@ export const SYSTEM_NODES: SystemNode[] = [
     description: "Hráč může měnit, ale engine priority ignoruje. FAKE MECHANIKA.",
   },
   {
-    id: "ration_policy", label: "Ration Policy", type: "economic_driver", status: "full",
+    id: "ration_policy", label: "🍽️ Příděly", type: "economic_driver", status: "full",
     playerFacing: true, usedByAI: true, readOnly: false, agency: "direct",
     upstreamCount: 1, downstreamCount: 2, playerInfluenceScore: 8, aiDependencyScore: 5, uiSurfacingLevel: 7,
     gaps: [], formula: "player_choice → grain_consumption_modifier",
     description: "Přímo ovlivňuje spotřebu obilí a riziko hladomoru.",
   },
-
-  // ── NARRATIVE DRIVERS ──
   {
-    id: "chronicles", label: "Chronicles (Kronika)", type: "narrative_driver", status: "auto",
+    id: "reserves", label: "🏦 Rezervy", type: "economic_driver", status: "full",
+    playerFacing: true, usedByAI: true, readOnly: true, agency: "indirect",
+    upstreamCount: 3, downstreamCount: 2, playerInfluenceScore: 3, aiDependencyScore: 5, uiSurfacingLevel: 8,
+    gaps: [],
+    formula: "gold_reserve += wealth_income − army_upkeep − building_costs; production_reserve += production",
+    description: "Pokladna: akumulace bohatství a produkce. Spotřebovává se na stavby, armádu, diplomacii.",
+  },
+
+  // ══════════════ NARRATIVE DRIVERS ══════════════
+
+  {
+    id: "chronicles", label: "📜 Kronika", type: "narrative_driver", status: "auto",
     playerFacing: true, usedByAI: true, readOnly: true, agency: "none",
     upstreamCount: 5, downstreamCount: 1, playerInfluenceScore: 2, aiDependencyScore: 6, uiSurfacingLevel: 9,
     gaps: [], formula: "AI generates 800-1200 words from game_events + battles + rumors",
     description: "AI kronikář generuje záznamy z herních dat. Přispívá k wiki.",
   },
   {
-    id: "wiki", label: "Wiki (Encyklopedie)", type: "narrative_driver", status: "auto",
+    id: "wiki", label: "📖 Encyklopedie", type: "narrative_driver", status: "auto",
     playerFacing: true, usedByAI: true, readOnly: true, agency: "none",
     upstreamCount: 4, downstreamCount: 0, playerInfluenceScore: 1, aiDependencyScore: 4, uiSurfacingLevel: 8,
     gaps: ["No downstream"],
@@ -258,14 +295,14 @@ export const SYSTEM_NODES: SystemNode[] = [
     description: "Automaticky generované záznamy. Nemají mechanický dopad.",
   },
   {
-    id: "rumors", label: "Rumors (Zvěsti)", type: "narrative_driver", status: "partial",
+    id: "rumors", label: "🗣️ Zvěsti", type: "narrative_driver", status: "partial",
     playerFacing: true, usedByAI: true, readOnly: true, agency: "none",
     upstreamCount: 3, downstreamCount: 1, playerInfluenceScore: 1, aiDependencyScore: 5, uiSurfacingLevel: 7,
     gaps: [], formula: "AI generates from city state + events + world_events",
     description: "Zvěsti informují AI rozhodování a přispívají ke kronice.",
   },
   {
-    id: "diplomatic_memory", label: "Diplomatic Memory", type: "narrative_driver", status: "full",
+    id: "diplomatic_memory", label: "🧠 Diplomatická paměť", type: "narrative_driver", status: "full",
     playerFacing: false, usedByAI: true, readOnly: true, agency: "indirect",
     upstreamCount: 3, downstreamCount: 2, playerInfluenceScore: 6, aiDependencyScore: 9, uiSurfacingLevel: 3,
     gaps: ["UI hidden"],
@@ -273,17 +310,18 @@ export const SYSTEM_NODES: SystemNode[] = [
     description: "AI paměť vztahů. Hráč ovlivňuje svými diplomatickými akcemi.",
   },
 
-  // ── HIDDEN ENGINE STATS ──
+  // ══════════════ HIDDEN ENGINE STATS ══════════════
+
   {
-    id: "dev_level", label: "Development Level", type: "hidden_engine_stat", status: "partial",
+    id: "dev_level", label: "📈 Development Level", type: "hidden_engine_stat", status: "partial",
     playerFacing: true, usedByAI: true, readOnly: true, agency: "indirect",
     upstreamCount: 3, downstreamCount: 1, playerInfluenceScore: 3, aiDependencyScore: 5, uiSurfacingLevel: 5,
     gaps: [],
     formula: "buildings_completed + population_tier + infrastructure",
-    description: "Ovlivňuje urbanizační milníky. UI chybí indikátor postupu.",
+    description: "Ovlivňuje urbanizační milníky. Nyní vizualizován v PopulationPanel s progress bary.",
   },
   {
-    id: "migration_pressure", label: "Migration Pressure", type: "hidden_engine_stat", status: "auto",
+    id: "migration_pressure", label: "🚶 Migration Pressure", type: "hidden_engine_stat", status: "auto",
     playerFacing: false, usedByAI: false, readOnly: true, agency: "none",
     upstreamCount: 3, downstreamCount: 1, playerInfluenceScore: 0, aiDependencyScore: 2, uiSurfacingLevel: 1,
     gaps: ["UI hidden", "No player agency"],
@@ -291,7 +329,7 @@ export const SYSTEM_NODES: SystemNode[] = [
     description: "Automaticky počítaný tlak na migraci. Hráč nevidí ani neovlivní.",
   },
   {
-    id: "disease_level", label: "Disease Level", type: "hidden_engine_stat", status: "auto",
+    id: "disease_level", label: "🦠 Disease Level", type: "hidden_engine_stat", status: "auto",
     playerFacing: false, usedByAI: false, readOnly: true, agency: "none",
     upstreamCount: 2, downstreamCount: 2, playerInfluenceScore: 0, aiDependencyScore: 1, uiSurfacingLevel: 1,
     gaps: ["UI hidden", "No player agency"],
@@ -299,7 +337,7 @@ export const SYSTEM_NODES: SystemNode[] = [
     description: "Spouští epidemie. Automatický engine systém.",
   },
   {
-    id: "vulnerability", label: "Vulnerability Score", type: "hidden_engine_stat", status: "auto",
+    id: "vulnerability", label: "🎯 Vulnerability", type: "hidden_engine_stat", status: "auto",
     playerFacing: false, usedByAI: true, readOnly: true, agency: "none",
     upstreamCount: 4, downstreamCount: 1, playerInfluenceScore: 0, aiDependencyScore: 7, uiSurfacingLevel: 0,
     gaps: ["UI hidden", "AI only", "No player agency"],
@@ -311,74 +349,98 @@ export const SYSTEM_NODES: SystemNode[] = [
 // ─── EDGE DEFINITIONS ────────────────────────────────────────
 
 export const SYSTEM_EDGES: SystemEdge[] = [
-  // Grain connections
-  { source: "population", target: "grain", linkType: "causal", label: "consumption" },
-  { source: "grain", target: "population", linkType: "threshold", label: "famine → death" },
-  { source: "grain", target: "stability", linkType: "modifier", label: "famine penalty" },
-  { source: "ration_policy", target: "grain", linkType: "modifier", label: "consumption rate" },
+  // ── Grain (Zásoby) ──
+  { source: "population", target: "grain", linkType: "causal", label: "spotřeba pop×0.006" },
+  { source: "grain", target: "population", linkType: "threshold", label: "hladomor → smrt" },
+  { source: "grain", target: "stability", linkType: "modifier", label: "deficit → −stabilita" },
+  { source: "ration_policy", target: "grain", linkType: "modifier", label: "spotřeba modifier" },
+  { source: "military_upkeep", target: "grain", linkType: "causal", label: "−⌈manpower/500⌉/kolo" },
 
-  // Production flow
-  { source: "population", target: "production", linkType: "causal", label: "labor" },
+  // ── Production ──
+  { source: "workforce", target: "production", linkType: "causal", label: "workforce_ratio multiplikátor" },
+  { source: "isolation", target: "production", linkType: "modifier", label: "−izolace %" },
+  { source: "capacity", target: "production", linkType: "modifier", label: "limit projektů" },
   { source: "production", target: "trade_flow", linkType: "causal", label: "network flow" },
-  { source: "trade_flow", target: "wealth", linkType: "causal", label: "route efficiency" },
-  { source: "production", target: "wealth", linkType: "causal", label: "direct conversion" },
+  { source: "production", target: "reserves", linkType: "causal", label: "akumulace" },
+  { source: "strategic_resources", target: "production", linkType: "modifier", label: "tier bonusy" },
 
-  // Mobilization
+  // ── Wealth ──
+  { source: "trade_flow", target: "wealth", linkType: "causal", label: "trade efficiency" },
+  { source: "production", target: "wealth", linkType: "causal", label: "přímá konverze" },
+  { source: "prestige", target: "wealth", linkType: "modifier", label: "+0.1%/bod" },
+  { source: "capacity", target: "wealth", linkType: "modifier", label: "limit tras" },
+  { source: "wealth", target: "reserves", linkType: "causal", label: "+wealth/kolo" },
+
+  // ── Workforce & Mobilization ──
+  { source: "population", target: "workforce", linkType: "causal", label: "active_pop" },
+  { source: "mobilization", target: "workforce", linkType: "modifier", label: "−mobilized" },
   { source: "population", target: "mobilization", linkType: "causal", label: "eligible pop" },
-  { source: "mobilization", target: "production", linkType: "modifier", label: "labor drain" },
+  { source: "mobilization", target: "military_upkeep", linkType: "causal", label: "manpower → údržba" },
   { source: "mobilization", target: "garrison", linkType: "causal", label: "stationed units" },
-  { source: "garrison", target: "stability", linkType: "modifier", label: "security bonus" },
 
-  // Stability chain
-  { source: "stability", target: "population", linkType: "threshold", label: "rebellion → deaths" },
+  // ── Military upkeep ──
+  { source: "military_upkeep", target: "reserves", linkType: "causal", label: "−gold/kolo" },
+
+  // ── Stability chain ──
+  { source: "stability", target: "population", linkType: "threshold", label: "rebelie → smrt" },
   { source: "stability", target: "tension", linkType: "modifier", label: "instability drift" },
   { source: "faction_power", target: "stability", linkType: "modifier", label: "faction unrest" },
+  { source: "garrison", target: "stability", linkType: "modifier", label: "security bonus" },
+  { source: "faith", target: "stability", linkType: "modifier", label: "+0.2%/bod" },
 
-  // Tension → Crisis
+  // ── Faith ──
+  { source: "faith", target: "morale", linkType: "modifier", label: "+0.5%/bod" },
+  { source: "faith", target: "prestige", linkType: "causal", label: "+náboženská prestiž" },
+
+  // ── Prestige composition ──
+  { source: "mobilization", target: "prestige", linkType: "projection", label: "+vojenská" },
+  { source: "wealth", target: "prestige", linkType: "projection", label: "+ekonomická" },
+  { source: "renown", target: "prestige", linkType: "projection", label: "+sportovní" },
+  { source: "strategic_resources", target: "prestige", linkType: "projection", label: "+technologická" },
+
+  // ── Capacity sources ──
+  // (capacity is computed from urbanization + infra + clerics, implicit)
+
+  // ── Tension → Crisis ──
   { source: "tension", target: "diplomatic_memory", linkType: "event_driven", label: "crisis events" },
   { source: "tension", target: "morale", linkType: "modifier", label: "war footing" },
 
-  // Influence composition
+  // ── Influence composition ──
   { source: "mobilization", target: "influence", linkType: "projection", label: "military 22%" },
   { source: "trade_flow", target: "influence", linkType: "projection", label: "trade 18%" },
   { source: "renown", target: "influence", linkType: "projection", label: "culture 10%" },
   { source: "stability", target: "influence", linkType: "projection", label: "laws 9%" },
 
-  // Faith
-  { source: "faith", target: "morale", linkType: "modifier", label: "faith bonus" },
-
-  // Morale
+  // ── Morale ──
   { source: "morale", target: "garrison", linkType: "modifier", label: "battle effectiveness" },
   { source: "stability", target: "morale", linkType: "modifier", label: "stability mod" },
 
-  // Node score → AI
+  // ── Node score → AI ──
   { source: "node_score", target: "vulnerability", linkType: "projection" },
   { source: "trade_flow", target: "node_score", linkType: "causal", label: "trade potential" },
   { source: "grain", target: "node_score", linkType: "causal", label: "food potential" },
-  { source: "iron", target: "node_score", linkType: "causal", label: "strategic value" },
-  { source: "horses", target: "node_score", linkType: "causal", label: "strategic value" },
+  { source: "strategic_resources", target: "node_score", linkType: "causal", label: "strategic value" },
 
-  // Hidden metrics
+  // ── Hidden metrics ──
   { source: "population", target: "migration_pressure", linkType: "causal" },
   { source: "grain", target: "migration_pressure", linkType: "modifier", label: "famine push" },
   { source: "population", target: "disease_level", linkType: "causal", label: "overcrowding" },
   { source: "disease_level", target: "population", linkType: "threshold", label: "epidemic deaths" },
 
-  // Vulnerability
+  // ── Vulnerability ──
   { source: "stability", target: "vulnerability", linkType: "causal" },
   { source: "garrison", target: "vulnerability", linkType: "modifier", label: "defense" },
   { source: "grain", target: "vulnerability", linkType: "modifier", label: "famine risk" },
+  { source: "isolation", target: "vulnerability", linkType: "modifier", label: "cut-off risk" },
 
-  // Narrative
+  // ── Narrative ──
   { source: "chronicles", target: "wiki", linkType: "causal", label: "enrichment" },
   { source: "rumors", target: "chronicles", linkType: "causal", label: "source material" },
   { source: "diplomatic_memory", target: "tension", linkType: "modifier", label: "grievance" },
 
-  // Dead ends — explicitly shown
-  { source: "capacity", target: "capacity", linkType: "projection", label: "NO OUTPUT" },
+  // ── Dead ends (explicit) ──
   { source: "labor_allocation", target: "labor_allocation", linkType: "projection", label: "IGNORED" },
   { source: "legitimacy", target: "legitimacy", linkType: "projection", label: "NO OUTPUT" },
-  { source: "prestige", target: "prestige", linkType: "projection", label: "NO OUTPUT" },
 ];
 
 // ─── STATUS COLORS ────────────────────────────────────────
@@ -411,12 +473,12 @@ export const AGENCY_LAYERS = {
   },
   indirect: {
     label: "Nepřímý vliv",
-    description: "Hráč ovlivňuje skrze jiné systémy (stavby, diplomacie, válka).",
+    description: "Hráč ovlivňuje prostřednictvím jiných systémů.",
     color: "#eab308",
   },
   none: {
-    label: "Žádný vliv",
-    description: "Automatický engine nebo AI-only systém. Hráč nemůže ovlivnit.",
+    label: "Bez vlivu",
+    description: "Hráč nemá žádný vliv. Čistě automatický engine.",
     color: "#ef4444",
   },
-} as const;
+};
