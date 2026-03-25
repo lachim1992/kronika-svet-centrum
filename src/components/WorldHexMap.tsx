@@ -9,7 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import {
   Loader2, Hexagon, Map as MapIcon, Eye, Plus, Minus, RefreshCw,
   Home, Pencil, Swords, Castle, Compass, ChevronUp, ChevronDown,
-  Layers, Info, X, Hammer,
+  Layers, Info, X, Hammer, Trash2, Save,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useHexMap, AXIAL_NEIGHBORS, type HexData } from "@/hooks/useHexMap";
@@ -148,7 +148,7 @@ interface Props {
 /* ───── HexTile (memoized) ───── */
 const HexTile = memo(({
   q, r, hex, isFrontier, isCurrent, devMode, loading, onClick, onDoubleClick, offsetX, offsetY, cities, onCityClick, stacks,
-  selectedStackId, isMoveTarget, isAttackTarget, onStackClick, onMoveClick, onAttackClick, myPlayerName, nodes,
+  selectedStackId, isMoveTarget, isAttackTarget, onStackClick, onMoveClick, onAttackClick, myPlayerName, nodes, onNodeClick,
 }: {
   q: number; r: number; hex?: HexData; isFrontier: boolean; isCurrent: boolean;
   devMode: boolean; loading: boolean;
@@ -164,6 +164,7 @@ const HexTile = memo(({
   onAttackClick?: (q: number, r: number) => void;
   myPlayerName?: string;
   nodes?: NodeOnHex[];
+  onNodeClick?: (node: NodeOnHex) => void;
 }) => {
   const pos = hexToPixel(q, r);
   const cx = pos.x + offsetX;
@@ -225,9 +226,10 @@ const HexTile = memo(({
                 }
                 const ny = i === 0 ? cy - 6 : cy + 8;
                 return (
-                  <g key={n.id}>
+                  <g key={n.id} className="cursor-pointer" onClick={(e) => { e.stopPropagation(); onNodeClick?.(n); }}>
+                    <circle cx={cx} cy={ny} r={n.node_tier === "major" ? 10 : 8} fill="black" fillOpacity={0.01} />
                     <text x={cx} y={ny} textAnchor="middle" dominantBaseline="middle"
-                      fill="white" fontSize={n.node_tier === "major" ? "14" : i === 0 ? "11" : "9"} style={{ pointerEvents: "none" }}>
+                      fill="white" fontSize={n.node_tier === "major" ? "14" : i === 0 ? "11" : "9"}>
                       {icon}
                     </text>
                   </g>
@@ -410,6 +412,10 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
 
   // Nodes on hex map
   const [allNodes, setAllNodes] = useState<NodeOnHex[]>([]);
+  const [selectedNode, setSelectedNode] = useState<NodeOnHex | null>(null);
+  const [nodeEditName, setNodeEditName] = useState("");
+  const [nodeSaving, setNodeSaving] = useState(false);
+  const [nodeDeleting, setNodeDeleting] = useState(false);
   const [routeRefreshKey, setRouteRefreshKey] = useState(0);
 
   // Province data
@@ -1060,6 +1066,7 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
                 onAttackClick={handleAttackClick}
                 myPlayerName={playerName}
                 nodes={nodesByCoord.get(hKey(c.q, c.r)) || []}
+                onNodeClick={(node) => { setSelectedNode(node); setNodeEditName(node.name); }}
               />
             );
           })}
@@ -1748,6 +1755,122 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
           }}
         />
       )}
+
+      {/* Node Detail Sheet */}
+      <Sheet open={!!selectedNode} onOpenChange={(open) => { if (!open) setSelectedNode(null); }}>
+        <SheetContent side="right" className="w-[340px] overflow-y-auto">
+          <SheetHeader>
+            <SheetTitle className="font-display flex items-center gap-2 text-base">
+              {selectedNode && (() => {
+                const n = selectedNode;
+                let icon = "📍";
+                if (n.node_tier === "major") icon = MAJOR_NODE_TYPES.find(t => t.dbNodeType === n.node_type)?.icon || "🏛";
+                else if (n.node_tier === "minor") icon = MINOR_NODE_TYPES.find(t => t.key === n.node_subtype)?.icon || "🏘";
+                else icon = MICRO_NODE_TYPES.find(t => t.key === n.node_subtype)?.icon || "⛏";
+                return <>{icon} {n.name}</>;
+              })()}
+            </SheetTitle>
+          </SheetHeader>
+          {selectedNode && (() => {
+            const n = selectedNode;
+            const tierLabel = n.node_tier === "major" ? "Sídlo (Major)" : n.node_tier === "minor" ? "Osada (Minor)" : "Zázemí (Micro)";
+            const def = n.node_tier === "major"
+              ? MAJOR_NODE_TYPES.find(t => t.dbNodeType === n.node_type)
+              : n.node_tier === "minor"
+              ? MINOR_NODE_TYPES.find(t => t.key === n.node_subtype)
+              : MICRO_NODE_TYPES.find(t => t.key === n.node_subtype);
+
+            return (
+              <div className="space-y-4 mt-4">
+                <div className="grid grid-cols-2 gap-2">
+                  <InfoRow label="Tier" value={tierLabel} />
+                  <InfoRow label="Typ" value={def?.label || n.node_type} />
+                  <InfoRow label="Úroveň" value={`${n.upgrade_level} / ${n.max_upgrade_level || 3}`} />
+                  <InfoRow label="Pozice" value={`(${n.hex_q}, ${n.hex_r})`} />
+                  {n.controlled_by && <InfoRow label="Vlastník" value={n.controlled_by} />}
+                  {n.strategic_resource_type && <InfoRow label="Strategický zdroj" value={`💎 ${n.strategic_resource_type}`} />}
+                </div>
+
+                {(n.production_output != null || n.wealth_output != null) && (
+                  <div className="p-3 rounded-lg border border-border bg-muted/30 space-y-1">
+                    <p className="text-xs font-display font-semibold">Ekonomika</p>
+                    <div className="grid grid-cols-2 gap-2 text-xs">
+                      {n.production_output != null && (
+                        <div className="flex items-center gap-1.5">
+                          <span>⚒️</span> <span className="text-muted-foreground">Produkce:</span> <span className="font-mono font-bold">{n.production_output.toFixed(1)}</span>
+                        </div>
+                      )}
+                      {n.wealth_output != null && (
+                        <div className="flex items-center gap-1.5">
+                          <span>💰</span> <span className="text-muted-foreground">Bohatství:</span> <span className="font-mono font-bold">{n.wealth_output.toFixed(1)}</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                <div className="p-3 rounded-lg border border-border bg-muted/30 space-y-2">
+                  <p className="text-xs font-display font-semibold flex items-center gap-1.5">
+                    <Pencil className="h-3 w-3" /> Upravit název
+                  </p>
+                  <div className="flex gap-2">
+                    <input
+                      className="flex-1 h-8 px-2 text-xs rounded border border-border bg-background"
+                      value={nodeEditName}
+                      onChange={e => setNodeEditName(e.target.value)}
+                    />
+                    <Button size="sm" className="h-8 text-xs gap-1" disabled={nodeSaving || nodeEditName === n.name || !nodeEditName.trim()} onClick={async () => {
+                      setNodeSaving(true);
+                      try {
+                        const { error } = await supabase.from("province_nodes").update({ name: nodeEditName } as any).eq("id", n.id);
+                        if (error) throw error;
+                        toast.success("Uzel uložen");
+                        fetchNodes();
+                        setSelectedNode({ ...n, name: nodeEditName });
+                      } catch (e: any) { toast.error("Chyba: " + e.message); }
+                      finally { setNodeSaving(false); }
+                    }}>
+                      {nodeSaving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />} Uložit
+                    </Button>
+                  </div>
+                </div>
+
+                {n.upgrade_level < (n.max_upgrade_level || 3) && (
+                  <Button variant="secondary" size="sm" className="w-full text-xs gap-2"
+                    onClick={async () => {
+                      const { error } = await supabase.from("province_nodes").update({ upgrade_level: n.upgrade_level + 1 } as any).eq("id", n.id);
+                      if (error) { toast.error("Upgrade selhal: " + error.message); return; }
+                      toast.success(`Vylepšen na lv.${n.upgrade_level + 1}`);
+                      fetchNodes();
+                      setSelectedNode({ ...n, upgrade_level: n.upgrade_level + 1 });
+                    }}>
+                    <ChevronUp className="h-3.5 w-3.5" /> Vylepšit na lv.{n.upgrade_level + 1}
+                  </Button>
+                )}
+
+                <Button variant="destructive" size="sm" className="w-full text-xs gap-2"
+                  onClick={async () => {
+                    if (!confirm(`Opravdu smazat uzel "${n.name}"? Tato akce je nevratná.`)) return;
+                    setNodeDeleting(true);
+                    try {
+                      await supabase.from("province_routes").delete().or(`node_a.eq.${n.id},node_b.eq.${n.id}`);
+                      const { error } = await supabase.from("province_nodes").delete().eq("id", n.id);
+                      if (error) throw error;
+                      toast.success(`Uzel "${n.name}" smazán`);
+                      setSelectedNode(null);
+                      fetchNodes();
+                      setRouteRefreshKey(k => k + 1);
+                    } catch (e: any) { toast.error("Smazání selhalo: " + e.message); }
+                    finally { setNodeDeleting(false); }
+                  }} disabled={nodeDeleting}>
+                  {nodeDeleting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+                  Smazat uzel
+                </Button>
+              </div>
+            );
+          })()}
+        </SheetContent>
+      </Sheet>
     </div>
   );
 };
