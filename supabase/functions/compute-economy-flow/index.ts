@@ -416,9 +416,13 @@ Deno.serve(async (req) => {
     }
 
     // ════════════════════════════════════════════════════════════
-    // PHASE 2: Upward aggregation with tier consumption
+    // PHASE 2: Upward aggregation with tier consumption + upkeep
     //   micro → minor → major → capital (both production AND supplies)
+    //   Net = gross - upkeep. Only surplus (net > 0) flows upward.
+    //   Deficit nodes are tracked for UI visualization.
     // ════════════════════════════════════════════════════════════
+
+    const nodeUpkeepData = new Map<string, { upkeep_supplies: number; upkeep_wealth: number; net_balance: number }>();
 
     // Step 2a: Micro → Minor
     const microForwarded = new Map<string, DualOutput>();
@@ -427,10 +431,20 @@ Deno.serve(async (req) => {
     for (const node of nodes) {
       if (node.node_tier !== "micro") continue;
       const own = rawDual.get(node.id) || { production: 0, supplies: 0 };
+      const subtype = node.node_subtype || "";
+      const upkeep = MICRO_SUBTYPE_UPKEEP[subtype] || { supplies: 1, wealth: 0.5 };
       const consumed = TIER_CONSUMPTION.micro;
+
+      // Net after upkeep
+      const netSupplies = own.supplies - upkeep.supplies;
+      const netWealth = -upkeep.wealth; // wealth upkeep tracked separately
+      const netBalance = own.production + netSupplies + netWealth;
+      nodeUpkeepData.set(node.id, { upkeep_supplies: upkeep.supplies, upkeep_wealth: upkeep.wealth, net_balance: Math.round(netBalance * 100) / 100 });
+
+      // Only forward surplus (positive values) after tier consumption
       const fwd: DualOutput = {
-        production: own.production * (1 - consumed),
-        supplies: own.supplies * (1 - consumed),
+        production: Math.max(0, own.production) * (1 - consumed),
+        supplies: Math.max(0, netSupplies) * (1 - consumed),
       };
       microForwarded.set(node.id, fwd);
 
@@ -460,10 +474,17 @@ Deno.serve(async (req) => {
       };
       minorTotalDual.set(node.id, total);
 
+      const subtype = node.node_subtype || "";
+      const upkeep = MINOR_SUBTYPE_UPKEEP[subtype] || { supplies: 3, wealth: 2 };
+      const netSupplies = total.supplies - upkeep.supplies;
+      const netWealth = -upkeep.wealth;
+      const netBalance = total.production + netSupplies + netWealth;
+      nodeUpkeepData.set(node.id, { upkeep_supplies: upkeep.supplies, upkeep_wealth: upkeep.wealth, net_balance: Math.round(netBalance * 100) / 100 });
+
       const consumed = TIER_CONSUMPTION.minor;
       const fwd: DualOutput = {
-        production: total.production * (1 - consumed),
-        supplies: total.supplies * (1 - consumed),
+        production: Math.max(0, total.production) * (1 - consumed),
+        supplies: Math.max(0, netSupplies) * (1 - consumed),
       };
       minorForwarded.set(node.id, fwd);
 
