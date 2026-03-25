@@ -47,6 +47,18 @@ const ROUTE_LABELS: Record<string, string> = {
   land_road: "Silnice", river_route: "Říční", sea_lane: "Námořní", mountain_pass: "Průsmyk", caravan_route: "Karavana",
 };
 
+/** Get subtype icon from node_tier + node_subtype */
+function getSubtypeIcon(tier: string, subtype: string): string {
+  if (tier === "minor") {
+    const def = MINOR_NODE_TYPES.find(t => t.key === subtype);
+    return def?.icon || "🏘️";
+  }
+  if (tier === "micro") {
+    const def = MICRO_NODE_TYPES.find(t => t.key === subtype);
+    return def?.icon || "📍";
+  }
+  return "●";
+}
 /* ─── SVG graph vis ─── */
 function ProvinceGraphSVG({ nodes, edges, strategicNodes, routes, showNodes, showRoutes }: {
   nodes: ProvinceNode[]; edges: ProvinceEdge[]; strategicNodes: StrategicNode[]; routes: ProvinceRoute[];
