@@ -176,7 +176,7 @@ const ResourceHUD = ({ sessionId, playerName, cities, currentTurn }: ResourceHUD
           >
             <span className={chip.warning ? "" : "text-primary"}>{chip.icon}</span>
             <span className="hidden sm:inline text-muted-foreground">{chip.label}</span>
-            <span>{chip.value}</span>
+            <span>{chip.value}{chip.suffix && <span className={`ml-0.5 ${(chip.suffix.includes("-") || chip.suffix.includes("−")) ? "text-destructive" : "text-emerald-500"}`}>{chip.suffix}</span>}</span>
           </div>
         ))}
 
