@@ -508,7 +508,7 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Phase 3: compute wealth, capacity, importance per node (with city demographics)
+    // Phase 3: compute wealth, capacity, importance per node (with city demographics + region)
     for (const node of nodes) {
       const routeAccess = computeRouteAccess(node.id, routes);
       const connectivity = computeConnectivity(node.id, routes, nodes.length);
@@ -516,10 +516,11 @@ Deno.serve(async (req) => {
       const incoming = node.is_major ? (majorIncoming.get(node.id) || 0) : production;
       const tradeEff = ROLE_TRADE_EFFICIENCY[node.flow_role] || 0.2;
       const cityData = node.city_id ? cityMap.get(node.city_id) : undefined;
+      const regMod = regionModifiers.get(node.id) || { production: 1.0, wealth: 1.0 };
 
       let wealth = node.is_major
-        ? computeNodeWealth(incoming, tradeEff, connectivity, cityData)
-        : computeNodeWealth(production * 0.1, tradeEff * 0.5, connectivity);
+        ? computeNodeWealth(incoming, tradeEff, connectivity, cityData) * regMod.wealth
+        : computeNodeWealth(production * 0.1, tradeEff * 0.5, connectivity) * regMod.wealth;
 
       let capacity = computeNodeCapacity(node.population, node.infrastructure_level, connectivity, cityData);
 
@@ -543,6 +544,8 @@ Deno.serve(async (req) => {
         route_access_factor: Math.round(routeAccess * 100) / 100,
         trade_efficiency: Math.round(tradeEff * 100) / 100,
         isolation_penalty: Math.round(isolated.penalty * 100) / 100,
+        region_prod_modifier: regMod.production,
+        region_wealth_modifier: regMod.wealth,
       });
     }
 
