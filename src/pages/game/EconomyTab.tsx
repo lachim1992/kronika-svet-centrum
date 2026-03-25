@@ -41,6 +41,9 @@ import PrestigeBreakdown from "@/components/economy/PrestigeBreakdown";
 import StrategicResourcesDetail from "@/components/economy/StrategicResourcesDetail";
 import FaithPanel from "@/components/economy/FaithPanel";
 import PopulationPanel from "@/components/economy/PopulationPanel";
+import CapacityPanel from "@/components/economy/CapacityPanel";
+import MilitaryUpkeepPanel from "@/components/economy/MilitaryUpkeepPanel";
+import FormulasReferencePanel from "@/components/economy/FormulasReferencePanel";
 
 interface Props {
   sessionId: string;
