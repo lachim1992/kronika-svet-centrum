@@ -7006,6 +7006,7 @@ export type Database = {
           army_sigil_confirmed: boolean
           army_sigil_prompt: string | null
           army_sigil_url: string | null
+          computed_modifiers: Json | null
           connected_nodes: number | null
           created_at: string
           cultural_prestige: number
@@ -7075,6 +7076,7 @@ export type Database = {
           army_sigil_confirmed?: boolean
           army_sigil_prompt?: string | null
           army_sigil_url?: string | null
+          computed_modifiers?: Json | null
           connected_nodes?: number | null
           created_at?: string
           cultural_prestige?: number
@@ -7144,6 +7146,7 @@ export type Database = {
           army_sigil_confirmed?: boolean
           army_sigil_prompt?: string | null
           army_sigil_url?: string | null
+          computed_modifiers?: Json | null
           connected_nodes?: number | null
           created_at?: string
           cultural_prestige?: number

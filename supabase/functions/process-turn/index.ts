@@ -5,7 +5,7 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-import { computeStructuralBonuses, getOpenBordersBonuses, hasActiveEmbargo, getTradeEfficiencyModifier, type DiplomaticPact } from "../_shared/physics.ts";
+import { computeStructuralBonuses, getOpenBordersBonuses, hasActiveEmbargo, getTradeEfficiencyModifier, computePrestigeEffects, type DiplomaticPact } from "../_shared/physics.ts";
 
 /**
  * process-turn v3: HYBRID NETWORK ECONOMY
@@ -269,13 +269,24 @@ Deno.serve(async (req) => {
       .in("city_id", cityIds.length > 0 ? cityIds : ["00000000-0000-0000-0000-000000000000"]);
 
     let completedCount = 0;
+    // Capacity-based building speed: if too many active projects, some may be delayed
+    const activeBuildingCount = (allBuildings || []).length;
+    const capacityBuildLimit = Math.max(2, Math.floor(totalCapacity / 5 + 2)); // Minimum 2 projects at full speed
+    const capacityOverload = activeBuildingCount > capacityBuildLimit;
+    if (capacityOverload) {
+      logEntries.push(`🏛️ Kapacita přetížena: ${activeBuildingCount} staveb vs limit ${capacityBuildLimit} — stavby zpomaleny`);
+    }
+
     for (const b of (allBuildings || [])) {
-      const finishTurn = (b.build_started_turn || 0) + (b.build_duration || 1);
+      // Marble reduces build duration, capacity overload increases it
+      const baseDuration = b.build_duration || 1;
+      const adjustedDuration = Math.max(1, Math.round(baseDuration * strategicBonuses.build_cost_mult * (capacityOverload ? 1.5 : 1.0)));
+      const finishTurn = (b.build_started_turn || 0) + adjustedDuration;
       if (currentTurn >= finishTurn) {
         await supabase.from("city_buildings").update({ status: "completed", completed_turn: currentTurn }).eq("id", b.id);
         completedCount++;
         const cityName = myCities.find(c => c.id === b.city_id)?.name || "?";
-        logEntries.push(`🏗️ Stavba "${b.name}" v ${cityName} dokončena!`);
+        logEntries.push(`🏗️ Stavba "${b.name}" v ${cityName} dokončena!${strategicBonuses.build_cost_mult < 1 ? " (mramorový bonus)" : ""}`);
       }
     }
 
@@ -386,7 +397,7 @@ Deno.serve(async (req) => {
     // ARMY UPKEEP + SUPPLY STRAIN
     // ══════════════════════════════════════════
     const { data: stacks } = await supabase.from("military_stacks")
-      .select("id, unit_count, maintenance_cost")
+      .select("id, unit_count, maintenance_cost, morale, combat_power")
       .eq("session_id", sessionId).eq("owner_player", playerName);
 
     let totalArmySize = 0, armyProductionUpkeep = 0, armyWealthUpkeep = 0;
@@ -418,6 +429,84 @@ Deno.serve(async (req) => {
     let totalCityWealth = 0;
     let totalCityCapacity = 0;
     let totalFaith = 0;
+
+    // ══════════════════════════════════════════
+    // STRATEGIC RESOURCE BONUSES (all 11 types)
+    // ══════════════════════════════════════════
+    const strategicBonuses = {
+      combat_mult: 1.0,
+      wealth_mult: 1.0,
+      faith_bonus: 0,
+      supply_bonus: 0,
+      stability_bonus: 0,
+      build_cost_mult: 1.0,
+      travel_cost_mult: 1.0,
+      mobility: 1.0,
+      diplomacy_bonus: 0,
+    };
+    const resourceKeys = ["iron", "horses", "salt", "copper", "gold", "marble", "gems", "timber", "obsidian", "silk", "incense"];
+    const tierColumns: Record<string, string> = {
+      iron: "strategic_iron_tier", horses: "strategic_horses_tier", salt: "strategic_salt_tier",
+      copper: "strategic_copper_tier", gold: "strategic_gold_tier", marble: "strategic_marble_tier",
+      gems: "strategic_gems_tier", timber: "strategic_timber_tier", obsidian: "strategic_obsidian_tier",
+      silk: "strategic_silk_tier", incense: "strategic_incense_tier",
+    };
+    for (const rk of resourceKeys) {
+      const tier = realm[tierColumns[rk]] || 0;
+      if (tier <= 0) continue;
+      const bonus = STRATEGIC_TIER_BONUSES[rk]?.[tier];
+      if (!bonus) continue;
+      if (bonus.combat_mult) strategicBonuses.combat_mult *= bonus.combat_mult;
+      if (bonus.wealth_mult) strategicBonuses.wealth_mult *= bonus.wealth_mult;
+      if (bonus.faith_bonus) strategicBonuses.faith_bonus += bonus.faith_bonus;
+      if (bonus.supply_bonus) strategicBonuses.supply_bonus += bonus.supply_bonus;
+      if (bonus.stability_bonus) strategicBonuses.stability_bonus += bonus.stability_bonus;
+      if (bonus.build_cost_mult) strategicBonuses.build_cost_mult *= bonus.build_cost_mult;
+      if (bonus.travel_cost_mult) strategicBonuses.travel_cost_mult *= bonus.travel_cost_mult;
+      if (bonus.mobility) strategicBonuses.mobility = Math.max(strategicBonuses.mobility, bonus.mobility);
+      if (bonus.diplomacy_bonus) strategicBonuses.diplomacy_bonus += bonus.diplomacy_bonus;
+    }
+    logEntries.push(`🎖️ Suroviny: ⚔️×${strategicBonuses.combat_mult.toFixed(2)} 💰×${strategicBonuses.wealth_mult.toFixed(2)} ⛪+${strategicBonuses.faith_bonus} 🌾+${(strategicBonuses.supply_bonus * 100).toFixed(0)}%`);
+
+    // ══════════════════════════════════════════
+    // PRESTIGE EFFECTS (from physics.ts)
+    // ══════════════════════════════════════════
+    const prestigeEffects = computePrestigeEffects(
+      realm.military_prestige || 0,
+      realm.economic_prestige || 0,
+      realm.cultural_prestige || 0,
+    );
+    logEntries.push(`⭐ Prestiž: morále+${prestigeEffects.moraleBonus} obchod×${prestigeEffects.tradeMultiplier.toFixed(2)} stab+${prestigeEffects.stabilityBonus} růst+${(prestigeEffects.popGrowthBonus * 100).toFixed(1)}%`);
+
+    // ══════════════════════════════════════════
+    // LABOR ALLOCATION MODIFIERS (per-city averaged)
+    // ══════════════════════════════════════════
+    let avgFarming = 0, avgCrafting = 0, avgScribes = 0, avgMaintenance = 0;
+    let laborCityCount = 0;
+    for (const city of myCities) {
+      const labor = (city.labor_allocation && typeof city.labor_allocation === "object") ? city.labor_allocation as any : null;
+      if (labor && (labor.farming || labor.crafting || labor.scribes || labor.maintenance)) {
+        avgFarming += (labor.farming || 25);
+        avgCrafting += (labor.crafting || 25);
+        avgScribes += (labor.scribes || 25);
+        avgMaintenance += (labor.maintenance || 25);
+        laborCityCount++;
+      }
+    }
+    if (laborCityCount > 0) {
+      avgFarming /= laborCityCount;
+      avgCrafting /= laborCityCount;
+      avgScribes /= laborCityCount;
+      avgMaintenance /= laborCityCount;
+    } else {
+      avgFarming = 25; avgCrafting = 25; avgScribes = 25; avgMaintenance = 25;
+    }
+    // Labor modifiers: deviation from 25% baseline (each ±1% = ±2% effect)
+    const laborGrainMult = 1 + (avgFarming - 25) * 0.02;
+    const laborWealthMult = 1 + (avgCrafting - 25) * 0.02;
+    const laborCapacityMult = 1 + (avgScribes - 25) * 0.02;
+    const laborStabilityBonus = (avgMaintenance - 25) * 0.1; // ±2.5 stability per tick
+    logEntries.push(`👷 Práce: 🌾×${laborGrainMult.toFixed(2)} 💰×${laborWealthMult.toFixed(2)} 🏛️×${laborCapacityMult.toFixed(2)} stab${laborStabilityBonus >= 0 ? "+" : ""}${laborStabilityBonus.toFixed(1)}`);
 
     // Per-city breakdown for reporting
     const cityEconResults: Array<{
@@ -473,13 +562,28 @@ Deno.serve(async (req) => {
       }
 
       // Combined city production = node production + population layer production
-      // Node gives base terrain/flow output, layers add demographic contribution
-      const cityProduction = nodeProduction + layers.production;
+      // Apply labor allocation and strategic resource modifiers
+      const cityProduction = (nodeProduction + layers.production) * laborGrainMult;
+
+      // Apply labor + strategic multipliers to wealth and capacity
+      const cityWealth = layers.wealth * laborWealthMult * strategicBonuses.wealth_mult * prestigeEffects.tradeMultiplier;
+      const cityCapacity = layers.capacity * laborCapacityMult;
+      const cityFaith = layers.faith + strategicBonuses.faith_bonus * 0.1; // Strategic faith distributed per-city
+
+      // Apply labor stability + strategic stability + prestige stability to city
+      const stabilityDelta = laborStabilityBonus + strategicBonuses.stability_bonus * 0.1 + prestigeEffects.stabilityBonus * 0.1;
+      if (Math.abs(stabilityDelta) > 0.05) {
+        const currentStab = city.city_stability || 50;
+        const newStab = Math.max(0, Math.min(100, currentStab + stabilityDelta));
+        if (Math.round(newStab) !== Math.round(currentStab)) {
+          await supabase.from("cities").update({ city_stability: Math.round(newStab) }).eq("id", city.id);
+        }
+      }
 
       totalCityProduction += cityProduction;
-      totalCityWealth += layers.wealth;
-      totalCityCapacity += layers.capacity;
-      totalFaith += layers.faith;
+      totalCityWealth += cityWealth;
+      totalCityCapacity += cityCapacity;
+      totalFaith += cityFaith;
 
       // Per-city food balance
       const cityBalance = cityProduction - cityDemand;
@@ -557,10 +661,17 @@ Deno.serve(async (req) => {
 
     // Small empire buffer
     if (myCities.length <= 3) globalGrainReserve += 10;
+    // Strategic salt supply bonus
+    if (strategicBonuses.supply_bonus > 0) {
+      const saltBonus = Math.round(globalGrainReserve * strategicBonuses.supply_bonus);
+      globalGrainReserve += saltBonus;
+      logEntries.push(`🧂 Solný bonus: +${saltBonus} zásob`);
+    }
     // Army upkeep from global reserve
     globalGrainReserve -= armyProductionUpkeep;
-    // Cap
-    globalGrainReserve = Math.max(0, Math.min(granaryCapacity, globalGrainReserve));
+    // Cap (salt also increases granary capacity)
+    const adjustedGranary = Math.round(granaryCapacity * (1 + strategicBonuses.supply_bonus));
+    globalGrainReserve = Math.max(0, Math.min(adjustedGranary, globalGrainReserve));
 
     const netProduction = totalCityProduction - totalDemand - armyProductionUpkeep;
 
@@ -754,13 +865,41 @@ Deno.serve(async (req) => {
     // FAITH (new axis: clerics + temples)
     // ══════════════════════════════════════════
     const currentFaith = realm.faith || 0;
-    // Faith grows from clerics, decays naturally
+    // Faith grows from clerics + strategic bonuses (gems, obsidian, incense), decays naturally
     const faithDecay = Math.max(0, currentFaith * 0.02); // 2% natural decay
-    const faithGrowth = totalFaith - faithDecay;
+    const faithGrowth = totalFaith + strategicBonuses.faith_bonus - faithDecay;
     const newFaith = Math.max(0, Math.min(100, currentFaith + faithGrowth));
-    // Faith effects: morale bonus, mobilization willingness
+    // Faith effects: morale bonus, mobilization willingness, rebellion threshold
     const faithMoraleMult = 1 + newFaith * 0.003; // Up to +30% morale at faith=100
-    const faithMobWillingness = newFaith > 50 ? 0.05 : (newFaith < 20 ? -0.05 : 0); // Faith affects unrest from mobilization
+    const faithMobWillingness = newFaith > 50 ? 0.05 : (newFaith < 20 ? -0.05 : 0);
+    // Faith raises rebellion threshold (high faith = people tolerate more instability)
+    const faithStabilityBuffer = Math.round(newFaith * 0.1); // Up to +10 stability buffer
+
+    // ══════════════════════════════════════════
+    // APPLY FAITH & STRATEGIC COMBAT TO MILITARY
+    // ══════════════════════════════════════════
+    if ((stacks || []).length > 0 && (faithMoraleMult > 1.001 || strategicBonuses.combat_mult > 1.001 || prestigeEffects.moraleBonus > 0)) {
+      for (const s of (stacks || [])) {
+        const currentMorale = s.morale ?? 70;
+        // Faith morale: drift toward faith-based ceiling
+        const faithMoraleCeiling = Math.min(100, 60 + newFaith * 0.4); // 60-100 based on faith
+        const moraleDrift = currentMorale < faithMoraleCeiling ? Math.min(3, faithMoraleCeiling - currentMorale) : 0;
+        const prestigeMoraleDrift = prestigeEffects.moraleBonus * 0.2; // Prestige slowly boosts morale
+        const newMorale = Math.max(0, Math.min(100, Math.round(currentMorale + moraleDrift + prestigeMoraleDrift)));
+
+        // Strategic combat power bonus (iron, obsidian)
+        const basePower = s.combat_power || s.unit_count || 0;
+        const adjustedPower = Math.round(basePower * strategicBonuses.combat_mult);
+
+        if (newMorale !== currentMorale || adjustedPower !== basePower) {
+          await supabase.from("military_stacks").update({
+            morale: newMorale,
+            combat_power: adjustedPower,
+          }).eq("id", s.id);
+        }
+      }
+      logEntries.push(`⚔️ Armáda: morále×${faithMoraleMult.toFixed(2)} síla×${strategicBonuses.combat_mult.toFixed(2)} prestiž+${prestigeEffects.moraleBonus}`);
+    }
 
     // ══════════════════════════════════════════
     // SUPPLY STRAIN EVENTS
@@ -1007,7 +1146,7 @@ Deno.serve(async (req) => {
 
     await supabase.from("realm_resources").update({
       grain_reserve: globalGrainReserve,
-      granary_capacity: granaryCapacity,
+      granary_capacity: adjustedGranary,
       manpower_pool: manpowerPool,
       logistic_capacity: logisticCapacity,
       last_processed_turn: currentTurn,
@@ -1034,6 +1173,45 @@ Deno.serve(async (req) => {
       sport_prestige: sportPrestige,
       geopolitical_prestige: geopoliticalPrestige,
       technological_prestige: technologicalPrestige,
+      // All computed gameplay modifiers for UI display
+      computed_modifiers: {
+        strategic: {
+          combat_mult: Math.round(strategicBonuses.combat_mult * 1000) / 1000,
+          wealth_mult: Math.round(strategicBonuses.wealth_mult * 1000) / 1000,
+          faith_bonus: strategicBonuses.faith_bonus,
+          supply_bonus: Math.round(strategicBonuses.supply_bonus * 1000) / 1000,
+          stability_bonus: strategicBonuses.stability_bonus,
+          build_cost_mult: Math.round(strategicBonuses.build_cost_mult * 1000) / 1000,
+          travel_cost_mult: Math.round(strategicBonuses.travel_cost_mult * 1000) / 1000,
+          mobility: strategicBonuses.mobility,
+          diplomacy_bonus: strategicBonuses.diplomacy_bonus,
+        },
+        prestige: {
+          morale_bonus: prestigeEffects.moraleBonus,
+          recruit_discount: Math.round(prestigeEffects.recruitDiscount * 1000) / 1000,
+          trade_multiplier: Math.round(prestigeEffects.tradeMultiplier * 1000) / 1000,
+          build_discount: Math.round(prestigeEffects.buildDiscount * 1000) / 1000,
+          stability_bonus: prestigeEffects.stabilityBonus,
+          pop_growth_bonus: Math.round(prestigeEffects.popGrowthBonus * 10000) / 10000,
+          tension_reduction: Math.round(prestigeEffects.tensionReduction * 100) / 100,
+        },
+        faith: {
+          morale_mult: Math.round(faithMoraleMult * 1000) / 1000,
+          mob_willingness: faithMobWillingness,
+          stability_buffer: faithStabilityBuffer,
+        },
+        labor: {
+          grain_mult: Math.round(laborGrainMult * 1000) / 1000,
+          wealth_mult: Math.round(laborWealthMult * 1000) / 1000,
+          capacity_mult: Math.round(laborCapacityMult * 1000) / 1000,
+          stability_bonus: Math.round(laborStabilityBonus * 10) / 10,
+        },
+        capacity: {
+          build_limit: capacityBuildLimit,
+          active_projects: activeBuildingCount,
+          overloaded: capacityOverload,
+        },
+      },
       updated_at: new Date().toISOString(),
     }).eq("id", realm.id);
 
