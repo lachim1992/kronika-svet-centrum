@@ -444,18 +444,18 @@ Deno.serve(async (req) => {
     const insertedIds: string[] = [];
     const BATCH = 50;
     for (let i = 0; i < allNodes.length; i += BATCH) {
-      const batch = allNodes.slice(i, i + BATCH).map(n => {
+      const batch = allNodes.slice(i, i + BATCH).map((n) => {
         const { _parentMajorIdx, _parentMinorIdx, ...rest } = n;
         return {
-          fortification_level: 0,
-          infrastructure_level: 0,
-          population: 0,
-          growth_rate: 0,
-          garrison_strength: 0,
-          strategic_resource_tier: 0,
-          upgrade_level: 1,
-          max_upgrade_level: 3,
           ...rest,
+          fortification_level: rest.fortification_level ?? 0,
+          infrastructure_level: rest.infrastructure_level ?? 0,
+          population: rest.population ?? 0,
+          growth_rate: rest.growth_rate ?? 0,
+          garrison_strength: rest.garrison_strength ?? 0,
+          strategic_resource_tier: rest.strategic_resource_tier ?? 0,
+          upgrade_level: rest.upgrade_level ?? 1,
+          max_upgrade_level: rest.max_upgrade_level ?? (rest.node_tier === "major" ? 5 : 3),
         };
       });
       const { data: inserted, error: insertErr } = await sb.from("province_nodes").insert(batch).select("id");
