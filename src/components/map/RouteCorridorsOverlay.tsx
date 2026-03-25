@@ -38,6 +38,31 @@ const ROUTE_TYPE_DASH: Record<string, string | undefined> = {
   pass: "3,3",
 };
 
+/** Distinct colors per flow type — used for dots on routes & legend */
+const FLOW_TYPE_COLORS: Record<string, string> = {
+  trade:      "hsl(45, 90%, 60%)",
+  military:   "hsl(0, 70%, 55%)",
+  supply:     "hsl(120, 60%, 50%)",
+  faith:      "hsl(270, 60%, 65%)",
+  migration:  "hsl(200, 70%, 55%)",
+  production: "hsl(30, 80%, 55%)",
+  wealth:     "hsl(50, 95%, 65%)",
+  food:       "hsl(90, 55%, 45%)",
+  culture:    "hsl(300, 50%, 55%)",
+};
+
+const FLOW_TYPE_LABEL: Record<string, string> = {
+  trade:      "Obchod",
+  military:   "Vojenský",
+  supply:     "Zásobování",
+  faith:      "Víra",
+  migration:  "Migrace",
+  production: "Produkce",
+  wealth:     "Bohatství",
+  food:       "Potraviny",
+  culture:    "Kultura",
+};
+
 interface RouteData {
   id: string;
   node_a: string;
@@ -296,8 +321,46 @@ const RouteCorridorsOverlay = memo(({ sessionId, offsetX, offsetY }: Props) => {
       }
     }
 
+    // Render flow-type colored dots at hex waypoints
+    for (const route of routes) {
+      if (route.control_state === "blocked") continue;
+      const allFlows = routeAllFlows.get(route.id) || [];
+      if (allFlows.length === 0) continue;
+
+      for (let fi = 0; fi < allFlows.length; fi++) {
+        const fp = allFlows[fi];
+        const hexPath = fp.hex_path as Array<{ q: number; r: number }>;
+        if (!hexPath || hexPath.length < 2) continue;
+        const dotColor = FLOW_TYPE_COLORS[fp.flow_type] || "hsl(0, 0%, 70%)";
+        // Offset dots slightly for multiple flows on same route
+        const angleOffset = (fi / allFlows.length) * Math.PI * 2;
+        const spread = allFlows.length > 1 ? 3 : 0;
+
+        // Skip first & last hex (they're at nodes)
+        for (let hi = 1; hi < hexPath.length - 1; hi++) {
+          const p = hexToPixel(hexPath[hi].q, hexPath[hi].r);
+          const dx = spread * Math.cos(angleOffset);
+          const dy = spread * Math.sin(angleOffset);
+          elements.push(
+            <circle
+              key={`dot-${route.id}-${fi}-${hi}`}
+              cx={p.x + offsetX + dx}
+              cy={p.y + offsetY + dy}
+              r={2.5}
+              fill={dotColor}
+              fillOpacity={0.85}
+              stroke={dotColor}
+              strokeWidth={0.5}
+              strokeOpacity={0.4}
+              style={{ pointerEvents: "none" }}
+            />
+          );
+        }
+      }
+    }
+
     return elements;
-  }, [routes, routeHexPaths, nodePositions, offsetX, offsetY, hoveredRouteId, handleRouteMouseEnter, handleRouteMouseMove, handleRouteMouseLeave]);
+  }, [routes, routeHexPaths, routeAllFlows, nodePositions, offsetX, offsetY, hoveredRouteId, handleRouteMouseEnter, handleRouteMouseMove, handleRouteMouseLeave]);
 
   if (routes.length === 0) return null;
 
@@ -385,7 +448,13 @@ const RouteCorridorsOverlay = memo(({ sessionId, offsetX, offsetY }: Props) => {
                     return (
                       <div key={i} className="bg-muted/40 rounded px-2 py-1 space-y-0.5">
                         <div className="flex items-center justify-between">
-                          <span className="font-medium text-foreground capitalize">{f.flow_type}</span>
+                          <div className="flex items-center gap-1.5">
+                            <span
+                              className="inline-block w-2.5 h-2.5 rounded-full shrink-0"
+                              style={{ backgroundColor: FLOW_TYPE_COLORS[f.flow_type] || "hsl(0,0%,70%)" }}
+                            />
+                            <span className="font-medium text-foreground">{FLOW_TYPE_LABEL[f.flow_type] || f.flow_type}</span>
+                          </div>
                           <span className="text-muted-foreground">{f.path_length} hexů · ∑{f.total_cost.toFixed(1)}</span>
                         </div>
                         <div className="text-muted-foreground">
@@ -402,7 +471,24 @@ const RouteCorridorsOverlay = memo(({ sessionId, offsetX, offsetY }: Props) => {
                 </div>
               )}
 
-              {/* Node production context */}
+              {/* Flow color legend */}
+              {flows.length > 0 && (
+                <div className="border-t border-border/50 pt-1.5">
+                  <span className="text-muted-foreground font-semibold text-[10px] uppercase tracking-wider">Legenda barev</span>
+                  <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-1">
+                    {flows.map((f, i) => (
+                      <div key={i} className="flex items-center gap-1">
+                        <span
+                          className="inline-block w-2 h-2 rounded-full"
+                          style={{ backgroundColor: FLOW_TYPE_COLORS[f.flow_type] || "hsl(0,0%,70%)" }}
+                        />
+                        <span className="text-muted-foreground text-[10px]">{FLOW_TYPE_LABEL[f.flow_type] || f.flow_type}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {(nodeA || nodeB) && (
                 <div className="border-t border-border/50 pt-1.5 space-y-0.5">
                   <span className="text-muted-foreground font-semibold text-[10px] uppercase tracking-wider">Produkce uzlů</span>
