@@ -420,15 +420,34 @@ const EconomyTab = ({ sessionId, currentPlayerName, currentTurn, cities, resourc
 
       {/* ═══ WEALTH RESERVE ═══ */}
       {realm && (
-        <div className="game-card p-5">
+        <div className="game-card p-5 space-y-3">
           <div className="flex items-center gap-2">
             <span className="text-xl">💰</span>
             <h3 className="font-display font-semibold text-base">Pokladna bohatství</h3>
-            <InfoTip side="right">Přírůstek: wealth tok ze sítě uzlů + obchodní dohody + daně (tax_rate_percent z laws). Spotřeba: údržba armád, stavby, diplomatické akce.</InfoTip>
+            <InfoTip side="right">Přírůstek: wealth tok ze sítě uzlů + obchodní dohody + daně (tax_rate_percent z laws). Spotřeba: údržba armád (1 gold/100 vojáků), stavby, diplomatické akce. Prestiž přidává +0.1% bonus za bod.</InfoTip>
             <span className="ml-auto text-2xl font-mono font-bold text-primary">{Math.round(realm.gold_reserve || 0)}</span>
+          </div>
+          <div className="flex justify-between text-xs text-muted-foreground">
+            <span>⚒️ Tok ze sítě: +{totalWealth.toFixed(1)}/kolo</span>
+            <span>⚒️ Produkční rezerva: {Math.round(realm.production_reserve || 0)}</span>
           </div>
         </div>
       )}
+
+      {/* ═══ FAITH ═══ */}
+      {realm && <FaithPanel realm={realm} cities={myCities} />}
+
+      {/* ═══ POPULATION & DEMOGRAPHICS ═══ */}
+      <PopulationPanel cities={myCities} realm={realm} />
+
+      {/* ═══ PRESTIGE ═══ */}
+      {realm && <PrestigeBreakdown realm={realm} />}
+
+      {/* ═══ STRATEGIC RESOURCES DETAIL ═══ */}
+      {realm && <StrategicResourcesDetail realm={realm} />}
+
+      {/* ═══ DEPENDENCY MAP ═══ */}
+      <EconomyDependencyMap />
 
       {/* ═══ CITY TABLE ═══ */}
       <div className="game-card p-0 overflow-hidden">
