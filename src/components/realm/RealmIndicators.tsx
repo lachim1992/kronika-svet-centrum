@@ -58,14 +58,17 @@ const RealmIndicators = ({ realm, cities, currentTurn }: Props) => {
     const warriorRatio = realm?.warrior_ratio ?? 0;
     const supplyStrain = realm?.supply_strain ?? 0;
 
-    // Strategic tiers
-    const strategicTiers = [
-      { key: "iron" as StrategicResource, tier: realm?.strategic_iron_tier ?? 0 },
-      { key: "horses" as StrategicResource, tier: realm?.strategic_horses_tier ?? 0 },
-      { key: "salt" as StrategicResource, tier: realm?.strategic_salt_tier ?? 0 },
-      { key: "copper" as StrategicResource, tier: realm?.strategic_copper_tier ?? 0 },
-      { key: "gold_deposit" as StrategicResource, tier: realm?.strategic_gold_tier ?? 0 },
-    ].filter(s => s.tier > 0);
+    // Strategic tiers (all 11 resources)
+    const strategicTiers = getStrategicTiers(realm);
+
+    // Prestige composite
+    const totalPrestige = computeTotalPrestige(realm);
+    const prestigeTier = getPrestigeTier(totalPrestige);
+    const prestigeComponents = PRESTIGE_COMPONENTS.map(key => ({
+      key,
+      meta: PRESTIGE_META[key],
+      value: realm?.[PRESTIGE_META[key].dbColumn] ?? 0,
+    })).filter(p => p.value > 0);
 
     return {
       totalPop, totalPeasants, totalBurghers, totalClerics, totalWarriors,
