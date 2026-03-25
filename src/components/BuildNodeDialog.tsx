@@ -225,26 +225,39 @@ const BuildNodeDialog = ({
           </div>
 
           {/* Preview */}
-          {activeDef && previewProduction && (
+          {activeDef && (
             <div className="p-3 rounded-lg border border-border bg-muted/30 space-y-2">
               <p className="text-xs font-display font-semibold">{activeDef.icon} {activeDef.label}</p>
               <p className="text-[10px] text-muted-foreground">{activeDef.description}</p>
 
-              <div className="grid grid-cols-3 gap-1 mt-2">
-                {Object.entries(previewProduction).map(([key, val]) => val > 0 && (
-                  <div key={key} className="flex items-center gap-1 text-[10px]">
-                    <span>{key === "grain" ? "🌾" : key === "wood" ? "🪵" : key === "stone" ? "🪨" : key === "iron" ? "⛏️" : key === "wealth" ? "💰" : "⛪"}</span>
-                    <span className="font-mono font-semibold">{val}</span>
-                    <span className="text-muted-foreground">{key}</span>
-                  </div>
-                ))}
-              </div>
+              {/* Major nodes: show role & bonus, no production grid */}
+              {tier === "major" && (
+                <div className="space-y-1 mt-2">
+                  <p className="text-[10px] text-primary">{(activeDef as MajorNodeDef).bonusEffect}</p>
+                  <p className="text-[10px] text-muted-foreground">
+                    Major uzly negenerují vlastní produkci — agregují toky z přiřazených minor a micro uzlů.
+                  </p>
+                </div>
+              )}
 
-              {'bonusEffect' in activeDef && (activeDef as MinorNodeDef).bonusEffect && (
+              {/* Minor/Micro: production preview */}
+              {previewProduction && (
+                <div className="grid grid-cols-3 gap-1 mt-2">
+                  {Object.entries(previewProduction).map(([key, val]) => val > 0 && (
+                    <div key={key} className="flex items-center gap-1 text-[10px]">
+                      <span>{key === "grain" ? "🌾" : key === "wood" ? "🪵" : key === "stone" ? "🪨" : key === "iron" ? "⛏️" : key === "wealth" ? "💰" : "⛪"}</span>
+                      <span className="font-mono font-semibold">{val}</span>
+                      <span className="text-muted-foreground">{key}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {tier === "minor" && 'bonusEffect' in activeDef && (activeDef as MinorNodeDef).bonusEffect && (
                 <p className="text-[10px] text-primary mt-1">{(activeDef as MinorNodeDef).bonusEffect}</p>
               )}
 
-              {tier === "micro" && (activeDef as MicroNodeDef).strategicResourcePool.length > 0 && (
+              {tier === "micro" && (activeDef as MicroNodeDef).strategicResourcePool?.length > 0 && (
                 <div className="flex items-center gap-1 text-[10px] mt-1">
                   <Sparkles className="h-3 w-3 text-yellow-500" />
                   <span className="text-muted-foreground">
@@ -257,8 +270,8 @@ const BuildNodeDialog = ({
                 </div>
               )}
 
-              {/* Biome match warning */}
-              {!devMode && !(activeDef as any).preferredBiomes?.some((pb: string) => biome.toLowerCase().includes(pb)) && (
+              {/* Biome match warning — only for minor/micro */}
+              {!devMode && tier !== "major" && !(activeDef as any).preferredBiomes?.some((pb: string) => biome.toLowerCase().includes(pb)) && (
                 <p className="text-[10px] text-destructive mt-1">
                   ⚠️ Biom "{biome}" není ideální — produkce snížena o 40%
                 </p>
