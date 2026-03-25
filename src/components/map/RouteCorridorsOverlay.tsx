@@ -321,8 +321,46 @@ const RouteCorridorsOverlay = memo(({ sessionId, offsetX, offsetY }: Props) => {
       }
     }
 
+    // Render flow-type colored dots at hex waypoints
+    for (const route of routes) {
+      if (route.control_state === "blocked") continue;
+      const allFlows = routeAllFlows.get(route.id) || [];
+      if (allFlows.length === 0) continue;
+
+      for (let fi = 0; fi < allFlows.length; fi++) {
+        const fp = allFlows[fi];
+        const hexPath = fp.hex_path as Array<{ q: number; r: number }>;
+        if (!hexPath || hexPath.length < 2) continue;
+        const dotColor = FLOW_TYPE_COLORS[fp.flow_type] || "hsl(0, 0%, 70%)";
+        // Offset dots slightly for multiple flows on same route
+        const angleOffset = (fi / allFlows.length) * Math.PI * 2;
+        const spread = allFlows.length > 1 ? 3 : 0;
+
+        // Skip first & last hex (they're at nodes)
+        for (let hi = 1; hi < hexPath.length - 1; hi++) {
+          const p = hexToPixel(hexPath[hi].q, hexPath[hi].r);
+          const dx = spread * Math.cos(angleOffset);
+          const dy = spread * Math.sin(angleOffset);
+          elements.push(
+            <circle
+              key={`dot-${route.id}-${fi}-${hi}`}
+              cx={p.x + offsetX + dx}
+              cy={p.y + offsetY + dy}
+              r={2.5}
+              fill={dotColor}
+              fillOpacity={0.85}
+              stroke={dotColor}
+              strokeWidth={0.5}
+              strokeOpacity={0.4}
+              style={{ pointerEvents: "none" }}
+            />
+          );
+        }
+      }
+    }
+
     return elements;
-  }, [routes, routeHexPaths, nodePositions, offsetX, offsetY, hoveredRouteId, handleRouteMouseEnter, handleRouteMouseMove, handleRouteMouseLeave]);
+  }, [routes, routeHexPaths, routeAllFlows, nodePositions, offsetX, offsetY, hoveredRouteId, handleRouteMouseEnter, handleRouteMouseMove, handleRouteMouseLeave]);
 
   if (routes.length === 0) return null;
 
