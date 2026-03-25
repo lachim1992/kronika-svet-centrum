@@ -377,9 +377,9 @@ Deno.serve(async (req) => {
     const sb = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 
     // ── FETCH DATA ────────────────────────────────────────────
-    const [nodesRes, routesRes, supplyRes, citiesRes] = await Promise.all([
+    const [nodesRes, routesRes, supplyRes, citiesRes, hexesRes] = await Promise.all([
       sb.from("province_nodes")
-        .select("id, session_id, province_id, node_type, node_tier, node_subtype, upgrade_level, biome_at_build, flow_role, is_major, parent_node_id, controlled_by, city_id, population, infrastructure_level, urbanization_score, hinterland_level, cumulative_trade_flow, throughput_military, toll_rate, strategic_value, economic_value, defense_value, resource_output, metadata, development_level, stability_factor, strategic_resource_type, strategic_resource_tier, faith_output, food_value")
+        .select("id, session_id, province_id, node_type, node_tier, node_subtype, upgrade_level, biome_at_build, flow_role, is_major, parent_node_id, controlled_by, city_id, population, infrastructure_level, urbanization_score, hinterland_level, cumulative_trade_flow, throughput_military, toll_rate, strategic_value, economic_value, defense_value, resource_output, metadata, development_level, stability_factor, strategic_resource_type, strategic_resource_tier, faith_output, food_value, hex_q, hex_r")
         .eq("session_id", session_id),
       sb.from("province_routes")
         .select("id, node_a, node_b, capacity_value, control_state, damage_level, speed_value, safety_value")
@@ -390,6 +390,11 @@ Deno.serve(async (req) => {
       sb.from("cities")
         .select("id, population_total, population_peasants, population_burghers, population_clerics, population_warriors, market_level, temple_level")
         .eq("session_id", session_id),
+      sb.from("province_hexes")
+        .select("q, r, macro_region_id, macro_regions(climate_band, elevation_band, moisture_band)")
+        .eq("session_id", session_id)
+        .not("macro_region_id", "is", null)
+        .limit(10000),
     ]);
 
     const nodes: NodeData[] = (nodesRes.data || []).map((n: any) => ({
@@ -404,10 +409,25 @@ Deno.serve(async (req) => {
       biome_at_build: n.biome_at_build || null,
       faith_output: n.faith_output || 0,
       food_value: n.food_value || 0,
+      hex_q: n.hex_q || 0,
+      hex_r: n.hex_r || 0,
     }));
     const routes: RouteData[] = routesRes.data || [];
     const supplyMap = new Map<string, SupplyState>();
     for (const s of (supplyRes.data || [])) supplyMap.set(s.node_id, s as SupplyState);
+
+    // Build hex→macro_region map for regional modifiers
+    const hexRegionMap = new Map<string, MacroRegionData>();
+    for (const h of (hexesRes.data || [])) {
+      const mr = (h as any).macro_regions;
+      if (mr) {
+        hexRegionMap.set(`${h.q},${h.r}`, {
+          climate_band: mr.climate_band ?? 2,
+          elevation_band: mr.elevation_band ?? 0,
+          moisture_band: mr.moisture_band ?? 2,
+        });
+      }
+    }
 
     // Build city demographics map for city-linked nodes
     const cityMap = new Map<string, any>();
@@ -429,14 +449,20 @@ Deno.serve(async (req) => {
       route_access_factor: number;
       trade_efficiency: number;
       isolation_penalty: number;
+      region_prod_modifier: number;
+      region_wealth_modifier: number;
     }> = [];
 
-    // Phase 1: compute raw production for all nodes (with city demographics)
+    // Phase 1: compute raw production for all nodes (with city demographics + macro region)
     const rawProduction = new Map<string, number>();
+    const regionModifiers = new Map<string, { production: number; wealth: number }>();
     for (const node of nodes) {
       const routeAccess = computeRouteAccess(node.id, routes);
       const cityData = node.city_id ? cityMap.get(node.city_id) : undefined;
-      const prod = computeNodeProduction(node, routeAccess, cityData);
+      const region = hexRegionMap.get(`${node.hex_q},${node.hex_r}`) || null;
+      const regMod = computeMacroRegionModifier(node, region);
+      regionModifiers.set(node.id, regMod);
+      const prod = computeNodeProduction(node, routeAccess, regMod, cityData);
       rawProduction.set(node.id, prod);
     }
 
