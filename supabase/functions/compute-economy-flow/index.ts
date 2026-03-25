@@ -233,7 +233,7 @@ Deno.serve(async (req) => {
     // ── FETCH DATA ────────────────────────────────────────────
     const [nodesRes, routesRes, supplyRes, citiesRes] = await Promise.all([
       sb.from("province_nodes")
-        .select("id, session_id, province_id, node_type, flow_role, is_major, parent_node_id, controlled_by, city_id, population, infrastructure_level, urbanization_score, hinterland_level, cumulative_trade_flow, throughput_military, toll_rate, strategic_value, economic_value, defense_value, resource_output, metadata, development_level, stability_factor")
+        .select("id, session_id, province_id, node_type, flow_role, is_major, parent_node_id, controlled_by, city_id, population, infrastructure_level, urbanization_score, hinterland_level, cumulative_trade_flow, throughput_military, toll_rate, strategic_value, economic_value, defense_value, resource_output, metadata, development_level, stability_factor, strategic_resource_type, strategic_resource_tier")
         .eq("session_id", session_id),
       sb.from("province_routes")
         .select("id, node_a, node_b, capacity_value, control_state, damage_level, speed_value, safety_value")
