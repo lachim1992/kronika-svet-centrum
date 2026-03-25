@@ -6460,6 +6460,9 @@ export type Database = {
         Row: {
           besieged_by: string | null
           besieging_stack_id: string | null
+          biome_at_build: string | null
+          built_by: string | null
+          built_turn: number | null
           capacity_score: number
           city_id: string | null
           collapse_severity: number
@@ -6473,6 +6476,7 @@ export type Database = {
           faith_output: number
           faith_pressure: number
           flow_role: string
+          flow_target_node_id: string | null
           food_value: number
           fortification_level: number
           garrison_strength: number | null
@@ -6487,14 +6491,18 @@ export type Database = {
           is_active: boolean
           is_major: boolean
           isolation_penalty: number
+          max_upgrade_level: number
           metadata: Json | null
           mobility_relevance: number
           name: string
           node_class: string
           node_score: number
+          node_subtype: string | null
+          node_tier: string
           node_type: string
           parent_node_id: string | null
           population: number
+          production_base: number
           production_output: number
           province_id: string
           resource_output: Json
@@ -6502,6 +6510,7 @@ export type Database = {
           sacred_influence: number
           session_id: string
           siege_turn_start: number | null
+          spawned_strategic_resource: string | null
           stability_factor: number
           strategic_resource_tier: number
           strategic_resource_type: string | null
@@ -6511,12 +6520,16 @@ export type Database = {
           toll_rate: number
           trade_efficiency: number
           updated_at: string
+          upgrade_level: number
           urbanization_score: number
           wealth_output: number
         }
         Insert: {
           besieged_by?: string | null
           besieging_stack_id?: string | null
+          biome_at_build?: string | null
+          built_by?: string | null
+          built_turn?: number | null
           capacity_score?: number
           city_id?: string | null
           collapse_severity?: number
@@ -6530,6 +6543,7 @@ export type Database = {
           faith_output?: number
           faith_pressure?: number
           flow_role?: string
+          flow_target_node_id?: string | null
           food_value?: number
           fortification_level?: number
           garrison_strength?: number | null
@@ -6544,14 +6558,18 @@ export type Database = {
           is_active?: boolean
           is_major?: boolean
           isolation_penalty?: number
+          max_upgrade_level?: number
           metadata?: Json | null
           mobility_relevance?: number
           name?: string
           node_class?: string
           node_score?: number
+          node_subtype?: string | null
+          node_tier?: string
           node_type?: string
           parent_node_id?: string | null
           population?: number
+          production_base?: number
           production_output?: number
           province_id: string
           resource_output?: Json
@@ -6559,6 +6577,7 @@ export type Database = {
           sacred_influence?: number
           session_id: string
           siege_turn_start?: number | null
+          spawned_strategic_resource?: string | null
           stability_factor?: number
           strategic_resource_tier?: number
           strategic_resource_type?: string | null
@@ -6568,12 +6587,16 @@ export type Database = {
           toll_rate?: number
           trade_efficiency?: number
           updated_at?: string
+          upgrade_level?: number
           urbanization_score?: number
           wealth_output?: number
         }
         Update: {
           besieged_by?: string | null
           besieging_stack_id?: string | null
+          biome_at_build?: string | null
+          built_by?: string | null
+          built_turn?: number | null
           capacity_score?: number
           city_id?: string | null
           collapse_severity?: number
@@ -6587,6 +6610,7 @@ export type Database = {
           faith_output?: number
           faith_pressure?: number
           flow_role?: string
+          flow_target_node_id?: string | null
           food_value?: number
           fortification_level?: number
           garrison_strength?: number | null
@@ -6601,14 +6625,18 @@ export type Database = {
           is_active?: boolean
           is_major?: boolean
           isolation_penalty?: number
+          max_upgrade_level?: number
           metadata?: Json | null
           mobility_relevance?: number
           name?: string
           node_class?: string
           node_score?: number
+          node_subtype?: string | null
+          node_tier?: string
           node_type?: string
           parent_node_id?: string | null
           population?: number
+          production_base?: number
           production_output?: number
           province_id?: string
           resource_output?: Json
@@ -6616,6 +6644,7 @@ export type Database = {
           sacred_influence?: number
           session_id?: string
           siege_turn_start?: number | null
+          spawned_strategic_resource?: string | null
           stability_factor?: number
           strategic_resource_tier?: number
           strategic_resource_type?: string | null
@@ -6625,6 +6654,7 @@ export type Database = {
           toll_rate?: number
           trade_efficiency?: number
           updated_at?: string
+          upgrade_level?: number
           urbanization_score?: number
           wealth_output?: number
         }
@@ -6641,6 +6671,13 @@ export type Database = {
             columns: ["city_id"]
             isOneToOne: false
             referencedRelation: "cities"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "province_nodes_flow_target_node_id_fkey"
+            columns: ["flow_target_node_id"]
+            isOneToOne: false
+            referencedRelation: "province_nodes"
             referencedColumns: ["id"]
           },
           {
