@@ -163,7 +163,7 @@ const BuildNodeDialog = ({
         <DialogHeader>
           <DialogTitle className="font-display flex items-center gap-2 text-base">
             <Hammer className="h-5 w-5 text-primary" />
-            Postavit {tier === "minor" ? "osadu" : tier === "micro" ? "zázemí" : "uzel"} na ({hexQ}, {hexR})
+            Postavit {tier === "major" ? "sídlo" : tier === "minor" ? "osadu" : tier === "micro" ? "zázemí" : "uzel"} na ({hexQ}, {hexR})
           </DialogTitle>
         </DialogHeader>
 
