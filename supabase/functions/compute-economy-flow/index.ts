@@ -7,53 +7,56 @@ const corsHeaders = {
 };
 
 // ═══════════════════════════════════════════════════════════════
-// Chronicle Economic Model v1 — Flow-based macro economy
-// 3 layers: PRODUCTION, WEALTH, CAPACITY
+// Chronicle Economic Model v2 — Directional Flow Economy
+//
+// PRODUCTION flows UPWARD:  micro → minor → major → capital
+// WEALTH    flows DOWNWARD:  capital → major → minor
+//
+// Each tier consumes a % of throughput (self-sustenance).
+// Capital generates wealth via market mechanism from incoming production.
+// Wealth is distributed back proportionally to production contribution.
 // ═══════════════════════════════════════════════════════════════
 
-/** Base production values by node_type */
-const BASE_PRODUCTION: Record<string, number> = {
-  resource_node: 8,
-  village_cluster: 6,
-  primary_city: 4,
-  secondary_city: 3,
-  port: 5,
-  fortress: 1,
-  trade_hub: 2,
-  pass: 0,
-  religious_center: 2,
-  logistic_hub: 3,
+// ── TIER CONSUMPTION RATES ─────────────────────────────────────
+// % of production consumed at each tier (not forwarded upward)
+const TIER_CONSUMPTION: Record<string, number> = {
+  micro: 0.05,   // 5% consumed locally
+  minor: 0.10,   // 10% consumed locally
+  major: 0.15,   // 15% consumed locally (fortress/garrison)
 };
 
-/** Minor node subtype base production (from nodeTypes.ts definitions) */
-const MINOR_SUBTYPE_PRODUCTION: Record<string, { grain: number; wood: number; stone: number; iron: number; wealth: number; faith: number }> = {
-  village: { grain: 4, wood: 2, stone: 0, iron: 0, wealth: 1, faith: 0 },
-  lumber_camp: { grain: 1, wood: 8, stone: 0, iron: 0, wealth: 1, faith: 0 },
-  fishing_village: { grain: 6, wood: 1, stone: 0, iron: 0, wealth: 2, faith: 0 },
-  mining_camp: { grain: 0, wood: 0, stone: 4, iron: 6, wealth: 1, faith: 0 },
-  pastoral_camp: { grain: 5, wood: 0, stone: 0, iron: 0, wealth: 2, faith: 0 },
-  trade_post: { grain: 1, wood: 0, stone: 0, iron: 0, wealth: 6, faith: 0 },
-  shrine: { grain: 0, wood: 0, stone: 0, iron: 0, wealth: 1, faith: 8 },
-  watchtower: { grain: 0, wood: 0, stone: 1, iron: 1, wealth: 0, faith: 0 },
+// ── BASE PRODUCTION ────────────────────────────────────────────
+const MINOR_SUBTYPE_PRODUCTION: Record<string, Record<string, number>> = {
+  village:          { grain: 4, wood: 2, stone: 0, iron: 0, wealth: 1, faith: 0 },
+  lumber_camp:      { grain: 1, wood: 8, stone: 0, iron: 0, wealth: 1, faith: 0 },
+  fishing_village:  { grain: 6, wood: 1, stone: 0, iron: 0, wealth: 2, faith: 0 },
+  mining_camp:      { grain: 0, wood: 0, stone: 4, iron: 6, wealth: 1, faith: 0 },
+  pastoral_camp:    { grain: 5, wood: 0, stone: 0, iron: 0, wealth: 2, faith: 0 },
+  trade_post:       { grain: 1, wood: 0, stone: 0, iron: 0, wealth: 6, faith: 0 },
+  shrine:           { grain: 0, wood: 0, stone: 0, iron: 0, wealth: 1, faith: 8 },
+  watchtower:       { grain: 0, wood: 0, stone: 1, iron: 1, wealth: 0, faith: 0 },
 };
 
-/** Micro node subtype base production */
-const MICRO_SUBTYPE_PRODUCTION: Record<string, { grain: number; wood: number; stone: number; iron: number; wealth: number; faith: number }> = {
-  field: { grain: 6, wood: 0, stone: 0, iron: 0, wealth: 0, faith: 0 },
-  sawmill: { grain: 0, wood: 7, stone: 0, iron: 0, wealth: 1, faith: 0 },
-  mine: { grain: 0, wood: 0, stone: 2, iron: 5, wealth: 1, faith: 0 },
-  hunting_ground: { grain: 4, wood: 1, stone: 0, iron: 0, wealth: 1, faith: 0 },
-  fishery: { grain: 5, wood: 0, stone: 0, iron: 0, wealth: 2, faith: 0 },
-  quarry: { grain: 0, wood: 0, stone: 7, iron: 0, wealth: 0, faith: 0 },
-  vineyard: { grain: 1, wood: 0, stone: 0, iron: 0, wealth: 5, faith: 0 },
-  herbalist: { grain: 0, wood: 0, stone: 0, iron: 0, wealth: 1, faith: 4 },
-  smithy: { grain: 0, wood: 0, stone: 0, iron: 3, wealth: 2, faith: 0 },
-  outpost: { grain: 0, wood: 0, stone: 0, iron: 0, wealth: 0, faith: 0 },
-  resin_collector: { grain: 2, wood: 2, stone: 0, iron: 0, wealth: 1, faith: 0 },
-  salt_pan: { grain: 0, wood: 0, stone: 0, iron: 0, wealth: 4, faith: 0 },
+const MICRO_SUBTYPE_PRODUCTION: Record<string, Record<string, number>> = {
+  field:            { grain: 6, wood: 0, stone: 0, iron: 0, wealth: 0, faith: 0 },
+  sawmill:          { grain: 0, wood: 7, stone: 0, iron: 0, wealth: 1, faith: 0 },
+  mine:             { grain: 0, wood: 0, stone: 2, iron: 5, wealth: 1, faith: 0 },
+  hunting_ground:   { grain: 4, wood: 1, stone: 0, iron: 0, wealth: 1, faith: 0 },
+  fishery:          { grain: 5, wood: 0, stone: 0, iron: 0, wealth: 2, faith: 0 },
+  quarry:           { grain: 0, wood: 0, stone: 7, iron: 0, wealth: 0, faith: 0 },
+  vineyard:         { grain: 1, wood: 0, stone: 0, iron: 0, wealth: 5, faith: 0 },
+  herbalist:        { grain: 0, wood: 0, stone: 0, iron: 0, wealth: 1, faith: 4 },
+  smithy:           { grain: 0, wood: 0, stone: 0, iron: 3, wealth: 2, faith: 0 },
+  outpost:          { grain: 0, wood: 0, stone: 0, iron: 0, wealth: 0, faith: 0 },
+  resin_collector:  { grain: 2, wood: 2, stone: 0, iron: 0, wealth: 1, faith: 0 },
+  salt_pan:         { grain: 0, wood: 0, stone: 0, iron: 0, wealth: 4, faith: 0 },
 };
 
-/** Upgrade bonus per level for subtypes */
+const BASE_PRODUCTION_LEGACY: Record<string, number> = {
+  resource_node: 8, village_cluster: 6, primary_city: 4, secondary_city: 3,
+  port: 5, fortress: 1, trade_hub: 2, pass: 0, religious_center: 2, logistic_hub: 3,
+};
+
 const SUBTYPE_UPGRADE_BONUS: Record<string, number> = {
   village: 0.2, lumber_camp: 0.25, fishing_village: 0.2, mining_camp: 0.3,
   pastoral_camp: 0.2, trade_post: 0.25, shrine: 0.2, watchtower: 0.15,
@@ -62,7 +65,6 @@ const SUBTYPE_UPGRADE_BONUS: Record<string, number> = {
   resin_collector: 0.2, salt_pan: 0.25,
 };
 
-/** Biome match for preferred biomes — returns production multiplier */
 const MINOR_BIOME_PREFS: Record<string, string[]> = {
   village: ["plains", "forest", "grassland", "temperate"],
   lumber_camp: ["forest", "dense_forest", "taiga"],
@@ -88,71 +90,24 @@ const MICRO_BIOME_PREFS: Record<string, string[]> = {
   salt_pan: ["coastal", "desert", "steppe"],
 };
 
-/** Base trade_efficiency multiplier by flow_role */
-const ROLE_TRADE_EFFICIENCY: Record<string, number> = {
-  hub: 1.0,
-  gateway: 0.8,
-  regulator: 0.6,
-  producer: 0.3,
-  neutral: 0.2,
-};
-/** Strategic resource tier thresholds: how many nodes = which tier */
-const STRATEGIC_TIER_THRESHOLDS = [0, 1, 3, 6];
-
-function computeTier(count: number): number {
-  for (let i = STRATEGIC_TIER_THRESHOLDS.length - 1; i >= 0; i--) {
-    if (count >= STRATEGIC_TIER_THRESHOLDS[i]) return i;
-  }
-  return 0;
-}
-
 // ── MACRO REGION MODIFIERS ─────────────────────────────────────
-// Climate: 0=arctic, 1=cold, 2=temperate, 3=warm, 4=tropical
 const CLIMATE_PROD_MULT = [0.50, 0.70, 1.00, 1.10, 0.85];
 const CLIMATE_WEALTH_MULT = [0.40, 0.65, 1.00, 1.15, 0.80];
-// Elevation: 0=lowlands, 1=hills, 2=highlands, 3=mountains, 4=high_mountains
 const ELEVATION_FARM_MULT = [1.15, 1.00, 0.80, 0.55, 0.35];
 const ELEVATION_MINE_MULT = [0.50, 1.00, 1.30, 1.50, 1.20];
-// Moisture: 0=dry, 1=drier, 2=moist, 3=rainy, 4=wetland
 const MOISTURE_PROD_MULT = [0.55, 0.75, 1.00, 1.10, 0.85];
 const MOISTURE_FAITH_MULT = [0.80, 0.90, 1.00, 1.10, 1.30];
-
-interface MacroRegionData {
-  climate_band: number;
-  elevation_band: number;
-  moisture_band: number;
-}
 
 const MINING_SUBTYPES = new Set(["mining_camp", "mine", "quarry", "smithy"]);
 const FARM_SUBTYPES = new Set(["village", "field", "pastoral_camp", "fishing_village", "fishery", "vineyard", "hunting_ground"]);
 const FAITH_SUBTYPES = new Set(["shrine", "herbalist", "religious_center"]);
 
-function computeMacroRegionModifier(node: NodeData, region: MacroRegionData | null): { production: number; wealth: number; label: string } {
-  if (!region) return { production: 1.0, wealth: 1.0, label: "" };
-  const c = Math.min(4, Math.max(0, region.climate_band));
-  const e = Math.min(4, Math.max(0, region.elevation_band));
-  const m = Math.min(4, Math.max(0, region.moisture_band));
-
-  // Decide which elevation curve to use based on node subtype
-  const subtype = node.node_subtype || "";
-  const isMining = MINING_SUBTYPES.has(subtype);
-  const isFarming = FARM_SUBTYPES.has(subtype);
-  const isFaith = FAITH_SUBTYPES.has(subtype);
-
-  const elevMult = isMining ? ELEVATION_MINE_MULT[e] : ELEVATION_FARM_MULT[e];
-  let prodMult = CLIMATE_PROD_MULT[c] * elevMult * MOISTURE_PROD_MULT[m];
-  let wealthMult = CLIMATE_WEALTH_MULT[c];
-
-  // Faith subtypes get moisture faith bonus instead of production moisture
-  if (isFaith) {
-    prodMult = CLIMATE_PROD_MULT[c] * ELEVATION_FARM_MULT[e] * MOISTURE_FAITH_MULT[m];
+const STRATEGIC_TIER_THRESHOLDS = [0, 1, 3, 6];
+function computeTier(count: number): number {
+  for (let i = STRATEGIC_TIER_THRESHOLDS.length - 1; i >= 0; i--) {
+    if (count >= STRATEGIC_TIER_THRESHOLDS[i]) return i;
   }
-
-  return {
-    production: Math.round(prodMult * 100) / 100,
-    wealth: Math.round(wealthMult * 100) / 100,
-    label: `c${c}e${e}m${m}`,
-  };
+  return 0;
 }
 
 interface NodeData {
@@ -181,12 +136,10 @@ interface NodeData {
   defense_value: number;
   resource_output: Record<string, number>;
   metadata: Record<string, any> | null;
-  // Existing supply chain data
   development_level: number;
   stability_factor: number;
   faith_output: number;
   food_value: number;
-  // Hex coordinates for macro region lookup
   hex_q: number;
   hex_r: number;
 }
@@ -202,26 +155,19 @@ interface RouteData {
   safety_value: number;
 }
 
-interface SupplyState {
-  node_id: string;
-  connected_to_capital: boolean;
-  hop_distance: number;
-  isolation_turns: number;
-  supply_level: number;
-  route_quality: number;
+interface MacroRegionData {
+  climate_band: number;
+  elevation_band: number;
+  moisture_band: number;
 }
 
-// ── PRODUCTION ──────────────────────────────────────────────────
-// Tier-aware: minor/micro nodes use subtype definitions; major/legacy use BASE_PRODUCTION
-function computeNodeProduction(node: NodeData, routeAccess: number, regionMod: { production: number; wealth: number }, cityData?: any): number {
-  const dev = Math.max(0.1, node.development_level || 1.0);
+// ── PRODUCTION COMPUTATION ─────────────────────────────────────
+function computeRawProduction(node: NodeData, routeAccess: number, regMod: number, cityData?: any): number {
   const stab = Math.max(0.1, node.stability_factor || 1.0);
   const access = Math.max(0.1, routeAccess);
-  const regMult = regionMod.production;
 
   let production: number;
 
-  // Use tier-aware production if node_tier and node_subtype are set
   if (node.node_tier === "minor" && node.node_subtype && MINOR_SUBTYPE_PRODUCTION[node.node_subtype]) {
     const baseProd = MINOR_SUBTYPE_PRODUCTION[node.node_subtype];
     const totalBase = Object.values(baseProd).reduce((a, b) => a + b, 0);
@@ -230,7 +176,7 @@ function computeNodeProduction(node: NodeData, routeAccess: number, regionMod: {
     const biome = (node.biome_at_build || "").toLowerCase();
     const prefs = MINOR_BIOME_PREFS[node.node_subtype] || [];
     const biomeMatch = prefs.some(pb => biome.includes(pb)) ? 1.0 : 0.6;
-    production = totalBase * upgradeMult * biomeMatch * stab * access * regMult;
+    production = totalBase * upgradeMult * biomeMatch * stab * access * regMod;
   } else if (node.node_tier === "micro" && node.node_subtype && MICRO_SUBTYPE_PRODUCTION[node.node_subtype]) {
     const baseProd = MICRO_SUBTYPE_PRODUCTION[node.node_subtype];
     const totalBase = Object.values(baseProd).reduce((a, b) => a + b, 0);
@@ -239,14 +185,17 @@ function computeNodeProduction(node: NodeData, routeAccess: number, regionMod: {
     const biome = (node.biome_at_build || "").toLowerCase();
     const prefs = MICRO_BIOME_PREFS[node.node_subtype] || [];
     const biomeMatch = prefs.some(pb => biome.includes(pb)) ? 1.0 : 0.6;
-    production = totalBase * upgradeMult * biomeMatch * stab * access * regMult;
+    production = totalBase * upgradeMult * biomeMatch * stab * access * regMod;
+  } else if (node.is_major || node.node_tier === "major") {
+    // Major nodes have minimal own production — they aggregate
+    const base = BASE_PRODUCTION_LEGACY[node.node_type] ?? 2;
+    production = base * Math.max(0.1, node.development_level || 1.0) * stab * access * regMod;
   } else {
-    // Legacy: use BASE_PRODUCTION by node_type
-    const base = BASE_PRODUCTION[node.node_type] ?? 2;
-    production = base * dev * stab * access * regMult;
+    const base = BASE_PRODUCTION_LEGACY[node.node_type] ?? 2;
+    production = base * Math.max(0.1, node.development_level || 1.0) * stab * access * regMod;
   }
 
-  // Demographic bonus: peasants drive production (city-linked major nodes)
+  // Demographic bonus for city-linked nodes
   if (cityData) {
     const peasants = cityData.population_peasants || 0;
     const burghers = cityData.population_burghers || 0;
@@ -255,113 +204,54 @@ function computeNodeProduction(node: NodeData, routeAccess: number, regionMod: {
   return production;
 }
 
-// ── WEALTH ──────────────────────────────────────────────────────
-// wealth_gain = incoming_production * trade_efficiency * connectivity_score
-// For city-linked nodes: add burgher-driven wealth
-function computeNodeWealth(
-  incomingProduction: number,
-  tradeEfficiency: number,
-  connectivityScore: number,
-  cityData?: any,
-): number {
-  let wealth = incomingProduction * tradeEfficiency * Math.max(0.1, connectivityScore);
-  if (cityData) {
-    const burghers = cityData.population_burghers || 0;
-    const marketBonus = 1 + (cityData.market_level || 0) * 0.12;
-    wealth += burghers * 0.01 * marketBonus;
+function computeRegionModifier(node: NodeData, region: MacroRegionData | null): { production: number; wealth: number } {
+  if (!region) return { production: 1.0, wealth: 1.0 };
+  const c = Math.min(4, Math.max(0, region.climate_band));
+  const e = Math.min(4, Math.max(0, region.elevation_band));
+  const m = Math.min(4, Math.max(0, region.moisture_band));
+
+  const subtype = node.node_subtype || "";
+  const isMining = MINING_SUBTYPES.has(subtype);
+  const isFaith = FAITH_SUBTYPES.has(subtype);
+
+  const elevMult = isMining ? ELEVATION_MINE_MULT[e] : ELEVATION_FARM_MULT[e];
+  let prodMult = CLIMATE_PROD_MULT[c] * elevMult * MOISTURE_PROD_MULT[m];
+  const wealthMult = CLIMATE_WEALTH_MULT[c];
+
+  if (isFaith) {
+    prodMult = CLIMATE_PROD_MULT[c] * ELEVATION_FARM_MULT[e] * MOISTURE_FAITH_MULT[m];
   }
-  return wealth;
+
+  return {
+    production: Math.round(prodMult * 100) / 100,
+    wealth: Math.round(wealthMult * 100) / 100,
+  };
 }
 
-// ── CAPACITY ────────────────────────────────────────────────────
-// capacity = population * infrastructure_level * connectivity_score
-// For city-linked nodes: clerics drive administrative capacity
-function computeNodeCapacity(
-  population: number,
-  infrastructureLevel: number,
-  connectivityScore: number,
-  cityData?: any,
-): number {
-  const pop = Math.max(1, population);
-  const infra = Math.max(0.1, infrastructureLevel);
-  const conn = Math.max(0.1, connectivityScore);
-  let capacity = (pop / 1000) * infra * conn;
-  if (cityData) {
-    const clerics = cityData.population_clerics || 0;
-    const burghers = cityData.population_burghers || 0;
-    capacity += (clerics * 0.006 + burghers * 0.002);
-  }
-  return capacity;
-}
-
-// ── IMPORTANCE ──────────────────────────────────────────────────
-// importance = flow_volume + centrality + wealth + strategic_value
-function computeImportance(
-  production: number,
-  wealth: number,
-  centrality: number,
-  strategicValue: number,
-): number {
-  return production * 0.3 + wealth * 0.3 + centrality * 0.2 + strategicValue * 0.2;
-}
-
-// ── ROUTE ACCESS FACTOR ─────────────────────────────────────────
-// How well-connected is this node via routes?
-function computeRouteAccess(
-  nodeId: string,
-  routes: RouteData[],
-): number {
-  const connectedRoutes = routes.filter(
+// ── ROUTE ACCESS ───────────────────────────────────────────────
+function computeRouteAccess(nodeId: string, routes: RouteData[]): number {
+  const connected = routes.filter(
     r => (r.node_a === nodeId || r.node_b === nodeId) && r.control_state !== "blocked",
   );
-  if (connectedRoutes.length === 0) return 0.3; // Isolated but not zero
-
-  let totalCapacity = 0;
-  for (const r of connectedRoutes) {
+  if (connected.length === 0) return 0.3;
+  let totalCap = 0;
+  for (const r of connected) {
     const damageMult = 1 - (r.damage_level || 0) * 0.1;
-    totalCapacity += (r.capacity_value || 5) * Math.max(0.1, damageMult);
+    totalCap += (r.capacity_value || 5) * Math.max(0.1, damageMult);
   }
-  // Normalize: 1 route with cap 5 → ~0.7, 3+ routes → ~1.0+
-  return Math.min(1.5, 0.3 + totalCapacity / 15);
+  return Math.min(1.5, 0.3 + totalCap / 15);
 }
 
-// ── CONNECTIVITY SCORE ──────────────────────────────────────────
-// How central is this node in the graph?
-function computeConnectivity(
-  nodeId: string,
-  routes: RouteData[],
-  totalNodes: number,
-): number {
-  const connectedRoutes = routes.filter(
+function computeConnectivity(nodeId: string, routes: RouteData[], totalNodes: number): number {
+  const degree = routes.filter(
     r => (r.node_a === nodeId || r.node_b === nodeId) && r.control_state !== "blocked",
-  );
-  const degree = connectedRoutes.length;
-  // Normalize degree by sqrt of total nodes
+  ).length;
   return Math.min(2.0, degree / Math.max(1, Math.sqrt(totalNodes)));
 }
 
-// ── ISOLATION PENALTY ───────────────────────────────────────────
-function applyIsolationPenalty(
-  production: number,
-  wealth: number,
-  capacity: number,
-  supply: SupplyState | undefined,
-): { production: number; wealth: number; capacity: number; penalty: number } {
-  if (!supply || supply.connected_to_capital) {
-    return { production, wealth, capacity, penalty: 0 };
-  }
-  // Disconnected from capital
-  const isolationFactor = Math.min(supply.isolation_turns, 5);
-  const pMult = Math.max(0.2, 1 - isolationFactor * 0.08); // min 60% at 5 turns
-  const wMult = Math.max(0.3, 1 - isolationFactor * 0.06);
-  const cMult = Math.max(0.1, 1 - isolationFactor * 0.10);
-  return {
-    production: production * pMult,
-    wealth: wealth * wMult,
-    capacity: capacity * cMult,
-    penalty: 1 - pMult,
-  };
-}
+// ═══════════════════════════════════════════════════════════════
+// MAIN HANDLER
+// ═══════════════════════════════════════════════════════════════
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
@@ -388,7 +278,7 @@ Deno.serve(async (req) => {
         .select("node_id, connected_to_capital, hop_distance, isolation_turns, supply_level, route_quality")
         .eq("session_id", session_id),
       sb.from("cities")
-        .select("id, population_total, population_peasants, population_burghers, population_clerics, population_warriors, market_level, temple_level")
+        .select("id, is_capital, population_total, population_peasants, population_burghers, population_clerics, population_warriors, market_level, temple_level")
         .eq("session_id", session_id),
       sb.from("province_hexes")
         .select("q, r, macro_region_id, macro_regions(climate_band, elevation_band, moisture_band)")
@@ -413,10 +303,12 @@ Deno.serve(async (req) => {
       hex_r: n.hex_r || 0,
     }));
     const routes: RouteData[] = routesRes.data || [];
-    const supplyMap = new Map<string, SupplyState>();
-    for (const s of (supplyRes.data || [])) supplyMap.set(s.node_id, s as SupplyState);
 
-    // Build hex→macro_region map for regional modifiers
+    // Supply chain state
+    const supplyMap = new Map<string, any>();
+    for (const s of (supplyRes.data || [])) supplyMap.set(s.node_id, s);
+
+    // Hex → macro region
     const hexRegionMap = new Map<string, MacroRegionData>();
     for (const h of (hexesRes.data || [])) {
       const mr = (h as any).macro_regions;
@@ -429,15 +321,268 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Build city demographics map for city-linked nodes
+    // City data map + identify capitals
     const cityMap = new Map<string, any>();
-    for (const c of (citiesRes.data || [])) cityMap.set(c.id, c);
+    const capitalCityIds = new Set<string>();
+    for (const c of (citiesRes.data || [])) {
+      cityMap.set(c.id, c);
+      if (c.is_capital) capitalCityIds.add(c.id);
+    }
 
     // ── NODE INDEX ─────────────────────────────────────────────
     const nodeMap = new Map<string, NodeData>();
     for (const n of nodes) nodeMap.set(n.id, n);
 
-    // ── COMPUTE PER-NODE ───────────────────────────────────────
+    // Identify capital nodes (major nodes linked to capital cities)
+    const capitalNodeIds = new Set<string>();
+    for (const n of nodes) {
+      if (n.city_id && capitalCityIds.has(n.city_id) && (n.is_major || n.node_tier === "major")) {
+        capitalNodeIds.add(n.id);
+      }
+    }
+
+    // Build children maps: parent → children
+    const microsByParent = new Map<string, NodeData[]>();
+    const minorsByParent = new Map<string, NodeData[]>();
+
+    for (const n of nodes) {
+      if (!n.parent_node_id) continue;
+      if (n.node_tier === "micro") {
+        const arr = microsByParent.get(n.parent_node_id) || [];
+        arr.push(n);
+        microsByParent.set(n.parent_node_id, arr);
+      } else if (n.node_tier === "minor" || (!n.node_tier && !n.is_major)) {
+        const arr = minorsByParent.get(n.parent_node_id) || [];
+        arr.push(n);
+        minorsByParent.set(n.parent_node_id, arr);
+      }
+    }
+
+    // ════════════════════════════════════════════════════════════
+    // PHASE 1: Raw production per node
+    // ════════════════════════════════════════════════════════════
+    const rawProd = new Map<string, number>();
+    const regionMods = new Map<string, { production: number; wealth: number }>();
+
+    for (const node of nodes) {
+      const routeAccess = computeRouteAccess(node.id, routes);
+      const region = hexRegionMap.get(`${node.hex_q},${node.hex_r}`) || null;
+      const regMod = computeRegionModifier(node, region);
+      regionMods.set(node.id, regMod);
+      const cityData = node.city_id ? cityMap.get(node.city_id) : undefined;
+      const prod = computeRawProduction(node, routeAccess, regMod.production, cityData);
+      rawProd.set(node.id, prod);
+    }
+
+    // ════════════════════════════════════════════════════════════
+    // PHASE 2: Upward production aggregation with tier consumption
+    //   micro → minor → major → capital
+    // ════════════════════════════════════════════════════════════
+
+    // Step 2a: Micro → Minor
+    // Each micro consumes 5%, forwards 95% to parent minor
+    const microForwarded = new Map<string, number>(); // micro_id → amount forwarded
+    const minorReceivedFromMicros = new Map<string, number>(); // minor_id → total received
+
+    for (const node of nodes) {
+      if (node.node_tier !== "micro") continue;
+      const ownProd = rawProd.get(node.id) || 0;
+      const consumed = ownProd * TIER_CONSUMPTION.micro;
+      const forwarded = ownProd - consumed;
+      microForwarded.set(node.id, forwarded);
+
+      if (node.parent_node_id) {
+        const prev = minorReceivedFromMicros.get(node.parent_node_id) || 0;
+        minorReceivedFromMicros.set(node.parent_node_id, prev + forwarded);
+      }
+    }
+
+    // Step 2b: Minor → Major
+    // Minor's total = own production + received from micros
+    // Minor consumes 10%, forwards 90% to parent major
+    const minorTotalProd = new Map<string, number>(); // minor_id → total production (own + micros)
+    const minorForwarded = new Map<string, number>(); // minor_id → forwarded to major
+    const majorReceivedFromMinors = new Map<string, number>(); // major_id → total received
+
+    for (const node of nodes) {
+      const isMinor = node.node_tier === "minor" || (!node.node_tier && !node.is_major && node.node_tier !== "micro");
+      if (!isMinor) continue;
+
+      const ownProd = rawProd.get(node.id) || 0;
+      const fromMicros = minorReceivedFromMicros.get(node.id) || 0;
+      const total = ownProd + fromMicros;
+      minorTotalProd.set(node.id, total);
+
+      const consumed = total * TIER_CONSUMPTION.minor;
+      const forwarded = total - consumed;
+      minorForwarded.set(node.id, forwarded);
+
+      if (node.parent_node_id) {
+        const prev = majorReceivedFromMinors.get(node.parent_node_id) || 0;
+        majorReceivedFromMinors.set(node.parent_node_id, prev + forwarded);
+      }
+    }
+
+    // Step 2c: Major → Capital
+    // Major's total incoming = own production + received from minors
+    // Major consumes 15%, forwards 85%
+    const majorTotalIncoming = new Map<string, number>();
+    const majorForwarded = new Map<string, number>();
+
+    // Group majors by player to find their capital
+    const playerCapitalNode = new Map<string, string>(); // player → capital_node_id
+    for (const n of nodes) {
+      if (capitalNodeIds.has(n.id) && n.controlled_by) {
+        playerCapitalNode.set(n.controlled_by, n.id);
+      }
+    }
+
+    // For each player's capital, accumulate forwarded from all their majors
+    const capitalIncomingProd = new Map<string, number>(); // capital_node_id → total incoming
+    const majorContribToCapital = new Map<string, number>(); // major_id → what it sent to capital
+
+    for (const node of nodes) {
+      if (!(node.is_major || node.node_tier === "major")) continue;
+      if (capitalNodeIds.has(node.id)) continue; // Capital handled separately
+
+      const ownProd = rawProd.get(node.id) || 0;
+      const fromMinors = majorReceivedFromMinors.get(node.id) || 0;
+      const totalIncoming = ownProd + fromMinors;
+      majorTotalIncoming.set(node.id, totalIncoming);
+
+      const consumed = totalIncoming * TIER_CONSUMPTION.major;
+      const forwarded = totalIncoming - consumed;
+      majorForwarded.set(node.id, forwarded);
+
+      // Find this player's capital
+      const player = node.controlled_by;
+      if (player) {
+        const capId = playerCapitalNode.get(player);
+        if (capId) {
+          const prev = capitalIncomingProd.get(capId) || 0;
+          capitalIncomingProd.set(capId, prev + forwarded);
+          majorContribToCapital.set(node.id, forwarded);
+        }
+      }
+    }
+
+    // Capital itself also has own production + minors feeding it
+    for (const capId of capitalNodeIds) {
+      const capNode = nodeMap.get(capId);
+      if (!capNode) continue;
+      const ownProd = rawProd.get(capId) || 0;
+      const fromMinors = majorReceivedFromMinors.get(capId) || 0;
+      const totalOwn = ownProd + fromMinors;
+      majorTotalIncoming.set(capId, totalOwn);
+
+      const prev = capitalIncomingProd.get(capId) || 0;
+      capitalIncomingProd.set(capId, prev + totalOwn);
+    }
+
+    // ════════════════════════════════════════════════════════════
+    // PHASE 3: Wealth generation at Capital (Market Mechanism)
+    //
+    // wealth = incoming_prod × market_efficiency × demand_factor
+    //
+    // market_efficiency: how well capital converts production to wealth
+    //   = base (0.25) + burgher_ratio (up to 0.35) + market_level (up to 0.30)
+    //
+    // demand_factor: supply/demand balance
+    //   = sigmoid based on consumer/producer ratio
+    //   balanced economy → 1.0, oversupply → lower, undersupply → higher
+    // ════════════════════════════════════════════════════════════
+
+    const capitalWealthGenerated = new Map<string, number>(); // capital_id → total wealth generated
+
+    for (const capId of capitalNodeIds) {
+      const capNode = nodeMap.get(capId);
+      if (!capNode) continue;
+
+      const totalIncoming = capitalIncomingProd.get(capId) || 0;
+      const cityData = capNode.city_id ? cityMap.get(capNode.city_id) : undefined;
+
+      // Market efficiency
+      const burghers = cityData?.population_burghers || 0;
+      const totalPop = cityData?.population_total || 1;
+      const burgherRatio = Math.min(0.35, (burghers / Math.max(1, totalPop)) * 0.7);
+      const marketLevel = cityData?.market_level || 0;
+      const marketBonus = Math.min(0.30, marketLevel * 0.06);
+      const marketEfficiency = 0.25 + burgherRatio + marketBonus;
+
+      // Demand factor: based on ratio of consumers (population) to producers (incoming prod)
+      // More consumers per production unit → higher demand → higher prices → more wealth
+      const consumerRatio = totalPop / Math.max(1, totalIncoming * 10);
+      // Sigmoid-like: tanh capped between 0.5 and 1.5
+      const demandFactor = 0.5 + 1.0 / (1 + Math.exp(-2 * (consumerRatio - 1)));
+
+      const regionMod = regionMods.get(capId) || { production: 1.0, wealth: 1.0 };
+      const wealthGenerated = totalIncoming * marketEfficiency * demandFactor * regionMod.wealth;
+
+      capitalWealthGenerated.set(capId, wealthGenerated);
+    }
+
+    // ════════════════════════════════════════════════════════════
+    // PHASE 4: Wealth distribution downward
+    //   Capital keeps 30% → distributes 70% to majors proportionally
+    //   Major keeps 20% → distributes 80% to minors proportionally
+    //   Minor keeps all received wealth
+    // ════════════════════════════════════════════════════════════
+
+    const CAPITAL_WEALTH_RETENTION = 0.30;
+    const MAJOR_WEALTH_RETENTION = 0.20;
+
+    const nodeWealth = new Map<string, number>(); // node_id → final wealth
+
+    for (const capId of capitalNodeIds) {
+      const capNode = nodeMap.get(capId);
+      if (!capNode) continue;
+      const player = capNode.controlled_by;
+      if (!player) continue;
+
+      const totalWealth = capitalWealthGenerated.get(capId) || 0;
+      const capitalKeeps = totalWealth * CAPITAL_WEALTH_RETENTION;
+      const toDistribute = totalWealth - capitalKeeps;
+
+      // Capital's own wealth
+      nodeWealth.set(capId, (nodeWealth.get(capId) || 0) + capitalKeeps);
+
+      // Find all majors belonging to this player (excluding capital)
+      const playerMajors = nodes.filter(n =>
+        (n.is_major || n.node_tier === "major") &&
+        !capitalNodeIds.has(n.id) &&
+        n.controlled_by === player
+      );
+
+      // Total contribution from all majors
+      const totalMajorContrib = playerMajors.reduce((sum, m) => sum + (majorContribToCapital.get(m.id) || 0), 0);
+
+      for (const major of playerMajors) {
+        const majorContrib = majorContribToCapital.get(major.id) || 0;
+        const proportionalShare = totalMajorContrib > 0 ? (majorContrib / totalMajorContrib) : (1 / Math.max(1, playerMajors.length));
+        const majorWealthShare = toDistribute * proportionalShare;
+
+        const majorKeeps = majorWealthShare * MAJOR_WEALTH_RETENTION;
+        const toMinors = majorWealthShare - majorKeeps;
+
+        nodeWealth.set(major.id, (nodeWealth.get(major.id) || 0) + majorKeeps);
+
+        // Distribute to this major's minors proportionally to their production
+        const myMinors = minorsByParent.get(major.id) || [];
+        const totalMinorProd = myMinors.reduce((sum, m) => sum + (minorForwarded.get(m.id) || 0), 0);
+
+        for (const minor of myMinors) {
+          const minorContrib = minorForwarded.get(minor.id) || 0;
+          const minorShare = totalMinorProd > 0 ? (minorContrib / totalMinorProd) : (1 / Math.max(1, myMinors.length));
+          const minorWealth = toMinors * minorShare;
+          nodeWealth.set(minor.id, (nodeWealth.get(minor.id) || 0) + minorWealth);
+        }
+      }
+    }
+
+    // ════════════════════════════════════════════════════════════
+    // PHASE 5: Compute final metrics + isolation penalties
+    // ════════════════════════════════════════════════════════════
+
     const nodeResults: Array<{
       id: string;
       production_output: number;
@@ -449,93 +594,70 @@ Deno.serve(async (req) => {
       route_access_factor: number;
       trade_efficiency: number;
       isolation_penalty: number;
-      region_prod_modifier: number;
-      region_wealth_modifier: number;
     }> = [];
 
-    // Phase 1: compute raw production for all nodes (with city demographics + macro region)
-    const rawProduction = new Map<string, number>();
-    const regionModifiers = new Map<string, { production: number; wealth: number }>();
-    for (const node of nodes) {
-      const routeAccess = computeRouteAccess(node.id, routes);
-      const cityData = node.city_id ? cityMap.get(node.city_id) : undefined;
-      const region = hexRegionMap.get(`${node.hex_q},${node.hex_r}`) || null;
-      const regMod = computeMacroRegionModifier(node, region);
-      regionModifiers.set(node.id, regMod);
-      const prod = computeNodeProduction(node, routeAccess, regMod, cityData);
-      rawProduction.set(node.id, prod);
-    }
-
-    // Phase 2: aggregate production — 3-tier: micro→minor→major
-    // First: micro nodes feed into their parent minor nodes
-    const minorIncoming = new Map<string, number>();
-    for (const node of nodes) {
-      if (node.node_tier === "minor" || (!node.node_tier && !node.is_major)) {
-        minorIncoming.set(node.id, rawProduction.get(node.id) || 0);
-      }
-    }
-    for (const node of nodes) {
-      if (node.node_tier === "micro" && node.parent_node_id) {
-        const parentProd = minorIncoming.get(node.parent_node_id) || 0;
-        const nodeProd = rawProduction.get(node.id) || 0;
-        minorIncoming.set(node.parent_node_id, parentProd + nodeProd);
-      }
-    }
-
-    // Then: minor nodes feed into their parent major nodes (or nearest major)
-    const majorIncoming = new Map<string, number>();
-    for (const node of nodes) {
-      if (node.is_major || node.node_tier === "major") {
-        majorIncoming.set(node.id, rawProduction.get(node.id) || 0);
-      }
-    }
-    for (const node of nodes) {
-      const isMicro = node.node_tier === "micro";
-      const isMinor = node.node_tier === "minor" || (!node.node_tier && !node.is_major && !isMicro);
-      if (isMinor && node.parent_node_id) {
-        const effectiveProd = minorIncoming.get(node.id) || rawProduction.get(node.id) || 0;
-        const parentProd = majorIncoming.get(node.parent_node_id) || 0;
-        const parent = nodeMap.get(node.parent_node_id);
-        const throughput = parent ? (parent.throughput_military || 1.0) : 1.0;
-        majorIncoming.set(node.parent_node_id, parentProd + effectiveProd * throughput);
-      } else if (!isMicro && !isMinor && !node.is_major && node.parent_node_id) {
-        // Legacy minor without tier — feed to parent
-        const parentProd = majorIncoming.get(node.parent_node_id) || 0;
-        const nodeProd = rawProduction.get(node.id) || 0;
-        const parent = nodeMap.get(node.parent_node_id);
-        const throughput = parent ? (parent.throughput_military || 1.0) : 1.0;
-        majorIncoming.set(node.parent_node_id, parentProd + nodeProd * throughput);
-      }
-    }
-
-    // Phase 3: compute wealth, capacity, importance per node (with city demographics + region)
     for (const node of nodes) {
       const routeAccess = computeRouteAccess(node.id, routes);
       const connectivity = computeConnectivity(node.id, routes, nodes.length);
-      const production = rawProduction.get(node.id) || 0;
-      const incoming = node.is_major ? (majorIncoming.get(node.id) || 0) : production;
-      const tradeEff = ROLE_TRADE_EFFICIENCY[node.flow_role] || 0.2;
       const cityData = node.city_id ? cityMap.get(node.city_id) : undefined;
-      const regMod = regionModifiers.get(node.id) || { production: 1.0, wealth: 1.0 };
 
-      let wealth = node.is_major
-        ? computeNodeWealth(incoming, tradeEff, connectivity, cityData) * regMod.wealth
-        : computeNodeWealth(production * 0.1, tradeEff * 0.5, connectivity) * regMod.wealth;
+      // Production output = node's own raw production
+      let production = rawProd.get(node.id) || 0;
 
-      let capacity = computeNodeCapacity(node.population, node.infrastructure_level, connectivity, cityData);
+      // Incoming production (for display): what flowed through this node
+      let incoming: number;
+      if (capitalNodeIds.has(node.id)) {
+        incoming = capitalIncomingProd.get(node.id) || 0;
+      } else if (node.is_major || node.node_tier === "major") {
+        incoming = majorTotalIncoming.get(node.id) || 0;
+      } else if (node.node_tier === "minor" || (!node.node_tier && !node.is_major && node.node_tier !== "micro")) {
+        incoming = minorTotalProd.get(node.id) || 0;
+      } else {
+        incoming = production;
+      }
 
-      // Apply isolation
+      // Wealth
+      let wealth = nodeWealth.get(node.id) || 0;
+      // Micro nodes get a tiny trickle of wealth
+      if (node.node_tier === "micro" && wealth === 0) {
+        wealth = production * 0.02;
+      }
+
+      // Capacity
+      const pop = Math.max(1, node.population);
+      const infra = Math.max(0.1, node.infrastructure_level);
+      let capacity = (pop / 1000) * infra * Math.max(0.1, connectivity);
+      if (cityData) {
+        const clerics = cityData.population_clerics || 0;
+        const burghers = cityData.population_burghers || 0;
+        capacity += (clerics * 0.006 + burghers * 0.002);
+      }
+
+      // Apply isolation penalty
       const supply = supplyMap.get(node.id);
-      const isolated = applyIsolationPenalty(production, wealth, capacity, supply);
-      const finalProd = isolated.production;
-      wealth = isolated.wealth;
-      capacity = isolated.capacity;
+      if (supply && !supply.connected_to_capital) {
+        const isolFactor = Math.min(supply.isolation_turns, 5);
+        const pMult = Math.max(0.2, 1 - isolFactor * 0.08);
+        const wMult = Math.max(0.3, 1 - isolFactor * 0.06);
+        const cMult = Math.max(0.1, 1 - isolFactor * 0.10);
+        production *= pMult;
+        wealth *= wMult;
+        capacity *= cMult;
+      }
+      const isolationPenalty = (supply && !supply.connected_to_capital)
+        ? Math.min(1, Math.min(supply.isolation_turns, 5) * 0.08)
+        : 0;
 
-      const importance = computeImportance(finalProd, wealth, connectivity, node.strategic_value);
+      // Trade efficiency based on flow role
+      const ROLE_EFF: Record<string, number> = { hub: 1.0, gateway: 0.8, regulator: 0.6, producer: 0.3, neutral: 0.2 };
+      const tradeEff = ROLE_EFF[node.flow_role] || 0.2;
+
+      // Importance
+      const importance = production * 0.3 + wealth * 0.3 + connectivity * 0.2 + node.strategic_value * 0.2;
 
       nodeResults.push({
         id: node.id,
-        production_output: Math.round(finalProd * 100) / 100,
+        production_output: Math.round(production * 100) / 100,
         wealth_output: Math.round(wealth * 100) / 100,
         capacity_score: Math.round(capacity * 100) / 100,
         importance_score: Math.round(importance * 100) / 100,
@@ -543,9 +665,7 @@ Deno.serve(async (req) => {
         connectivity_score: Math.round(connectivity * 100) / 100,
         route_access_factor: Math.round(routeAccess * 100) / 100,
         trade_efficiency: Math.round(tradeEff * 100) / 100,
-        isolation_penalty: Math.round(isolated.penalty * 100) / 100,
-        region_prod_modifier: regMod.production,
-        region_wealth_modifier: regMod.wealth,
+        isolation_penalty: Math.round(isolationPenalty * 100) / 100,
       });
     }
 
@@ -613,7 +733,6 @@ Deno.serve(async (req) => {
       pt.capacity += nr.capacity_score;
       pt.importance += nr.importance_score;
 
-      // Count strategic resource nodes (from strategic_resource_type on node OR metadata)
       const stratRes = (node as any).strategic_resource_type || node.metadata?.strategic_resource;
       if (stratRes === "iron" || stratRes === "mineral") pt.iron++;
       if (stratRes === "horses") pt.horses++;
@@ -628,7 +747,6 @@ Deno.serve(async (req) => {
       if (stratRes === "incense") pt.incense++;
     }
 
-    const realmUpdates: any[] = [];
     for (const [player, totals] of playerTotals) {
       const update = {
         total_production: Math.round(totals.production * 100) / 100,
@@ -649,21 +767,29 @@ Deno.serve(async (req) => {
       };
       await sb.from("realm_resources").update(update)
         .eq("session_id", session_id).eq("player_name", player);
-      realmUpdates.push({ player, ...update });
     }
 
     // ── RESPONSE ──────────────────────────────────────────────
+    const capitalSummaries = Array.from(capitalNodeIds).map(capId => {
+      const capNode = nodeMap.get(capId);
+      return {
+        capital_node: capNode?.city_id,
+        player: capNode?.controlled_by,
+        incoming_production: Math.round((capitalIncomingProd.get(capId) || 0) * 10) / 10,
+        wealth_generated: Math.round((capitalWealthGenerated.get(capId) || 0) * 10) / 10,
+      };
+    });
+
     const summary = {
       ok: true,
+      model: "v2_directional_flow",
       nodes_computed: nodeResults.length,
-      realm_updates: realmUpdates.length,
-      history_saved: save_history ? nodeResults.length : 0,
+      capital_economies: capitalSummaries,
       totals_by_player: Object.fromEntries(
         Array.from(playerTotals.entries()).map(([p, t]) => [p, {
           production: Math.round(t.production),
           wealth: Math.round(t.wealth),
           capacity: Math.round(t.capacity),
-          importance: Math.round(t.importance),
         }]),
       ),
       top_nodes: nodeResults
