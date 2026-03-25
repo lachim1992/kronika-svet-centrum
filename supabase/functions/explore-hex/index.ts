@@ -135,6 +135,38 @@ Deno.serve(async (req) => {
       source: "explore",
     }, { onConflict: "session_id,player_name,entity_type,entity_id" });
 
+    // 4b. Check for strategic resources on province_nodes at this hex
+    const { data: nodesOnHex } = await sb
+      .from("province_nodes")
+      .select("id, name, node_type, strategic_resource_type, strategic_resource_tier")
+      .eq("session_id", session_id)
+      .eq("hex_q", q)
+      .eq("hex_r", r);
+
+    const resourceFinds = (nodesOnHex || [])
+      .filter((n: any) => n.strategic_resource_type)
+      .map((n: any) => ({
+        node_id: n.id,
+        node_name: n.name,
+        node_type: n.node_type,
+        resource_type: n.strategic_resource_type,
+        resource_tier: n.strategic_resource_tier || 1,
+      }));
+
+    // Auto-discover nodes with resources
+    if (resourceFinds.length > 0) {
+      const nodeDiscoveries = resourceFinds.map((rf: any) => ({
+        session_id,
+        player_name,
+        entity_type: "strategic_resource",
+        entity_id: rf.node_id,
+        source: "explore",
+      }));
+      await sb.from("discoveries").upsert(nodeDiscoveries, {
+        onConflict: "session_id,player_name,entity_type,entity_id",
+      });
+    }
+
     // 5. Bootstrap: if player had 0 discoveries, auto-reveal 2-ring (19 hexes)
     const isBootstrap = discoveredIds.size === 0;
     if (isBootstrap) {
