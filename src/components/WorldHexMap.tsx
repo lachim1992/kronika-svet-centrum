@@ -1055,8 +1055,7 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
               </g>
             );
           })}
-          {/* Route corridors background lines — rendered under hex tiles */}
-          <RouteCorridorsOverlay key={routeRefreshKey} sessionId={sessionId} offsetX={offsetX} offsetY={offsetY} interactive={false} />
+          {/* Route corridors rendered below hex tiles for background visuals */}
           {renderCoords.map(c => {
             const hex = getHex(c.q, c.r);
             const isCurrent = currentPos !== null && c.q === currentPos.q && c.r === currentPos.r && !c.isFrontier;
