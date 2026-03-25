@@ -18,6 +18,7 @@ import FoundSettlementDialog from "@/components/FoundSettlementDialog";
 import BuildNodeDialog from "@/components/BuildNodeDialog";
 import StrategicMapOverlay from "@/components/map/StrategicMapOverlay";
 import RouteCorridorsOverlay from "@/components/map/RouteCorridorsOverlay";
+import RoadNetworkOverlay, { ROAD_STYLES } from "@/components/map/RoadNetworkOverlay";
 import { MINOR_NODE_TYPES, MICRO_NODE_TYPES, MAJOR_NODE_TYPES } from "@/lib/nodeTypes";
 
 /* ───── Config ───── */
