@@ -8,6 +8,11 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { toast } from "sonner";
 import { Plus, Trash2, MapPin, Route, RefreshCw, Loader2, Zap, Link2 } from "lucide-react";
+import {
+  type NodeTier, NODE_TIER_LABELS,
+  MINOR_NODE_TYPES, MICRO_NODE_TYPES,
+  computeNodeProduction, totalProduction, rollStrategicResource,
+} from "@/lib/nodeTypes";
 
 interface Props {
   sessionId: string;
