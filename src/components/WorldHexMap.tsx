@@ -9,7 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import {
   Loader2, Hexagon, Map as MapIcon, Eye, Plus, Minus, RefreshCw,
   Home, Pencil, Swords, Castle, Compass, ChevronUp, ChevronDown,
-  Layers, Info, X, Hammer,
+  Layers, Info, X, Hammer, Trash2, Save,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useHexMap, AXIAL_NEIGHBORS, type HexData } from "@/hooks/useHexMap";
