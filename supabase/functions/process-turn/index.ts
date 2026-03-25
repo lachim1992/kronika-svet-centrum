@@ -58,13 +58,19 @@ const SUPPLY_STRAIN_THRESHOLDS = {
   collapsing: 1.5, // >100% → supply collapse
 };
 
-// Strategic resource unlock bonuses
+// Strategic resource unlock bonuses (expanded to all 11)
 const STRATEGIC_TIER_BONUSES: Record<string, Record<number, any>> = {
   iron: { 1: { combat_mult: 1.05 }, 2: { combat_mult: 1.12, heavy_infantry: true }, 3: { combat_mult: 1.20, elite_units: true } },
   horses: { 1: { mobility: 1.1 }, 2: { cavalry_doctrine: true, mobility: 1.2 }, 3: { cavalry_doctrine: true, mobility: 1.35 } },
   salt: { 1: { supply_bonus: 0.05 }, 2: { supply_bonus: 0.12 }, 3: { supply_bonus: 0.20 } },
   copper: { 1: { wealth_mult: 1.05 }, 2: { wealth_mult: 1.10 }, 3: { wealth_mult: 1.15 } },
   gold: { 1: { mercenary_access: true, wealth_mult: 1.08 }, 2: { wealth_mult: 1.15 }, 3: { wealth_mult: 1.25 } },
+  marble: { 1: { build_cost_mult: 0.90, cultural_prestige: 2 }, 2: { build_cost_mult: 0.80, cultural_prestige: 5 }, 3: { build_cost_mult: 0.70, cultural_prestige: 10 } },
+  gems: { 1: { wealth_mult: 1.05, faith_bonus: 1 }, 2: { wealth_mult: 1.10, faith_bonus: 3 }, 3: { wealth_mult: 1.15, faith_bonus: 5 } },
+  timber: { 1: { travel_cost_mult: 0.90 }, 2: { travel_cost_mult: 0.80, naval: true }, 3: { travel_cost_mult: 0.70, naval_dominance: true } },
+  obsidian: { 1: { combat_mult: 1.05, faith_bonus: 1 }, 2: { combat_mult: 1.10, faith_bonus: 3 }, 3: { combat_mult: 1.15, faith_bonus: 5 } },
+  silk: { 1: { wealth_mult: 1.05, diplomacy_bonus: 1 }, 2: { wealth_mult: 1.10, diplomacy_bonus: 3 }, 3: { wealth_mult: 1.20, diplomacy_bonus: 5 } },
+  incense: { 1: { faith_bonus: 2, wealth_mult: 1.03 }, 2: { faith_bonus: 5, stability_bonus: 2 }, 3: { faith_bonus: 8, stability_bonus: 5 } },
 };
 
 function computeCityDemand(city: any): number {
