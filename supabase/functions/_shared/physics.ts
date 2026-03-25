@@ -1864,7 +1864,7 @@ export function computeCollapseSeverity(nodeClass: NodeClass, importanceScore: n
 /** Biome family → base traversal cost (resistance).
  * Ordered: plains/grassland lowest, then forest, hills, desert, mountains, ocean.
  * Corridors naturally form along plains, then forests, then hills — mountains and
- * ocean are near-impassable for land routes (use pass nodes / ports instead).
+ * ocean are near-impassable for land routes (ports handle sea mobility separately).
  */
 export const BIOME_TRAVERSAL_COST: Record<string, number> = {
   plains: 1.0,
@@ -1901,8 +1901,6 @@ export interface HexCostContext {
   is_contested: boolean;
   /** Existing trade density (0-100) — high density = lower cost (established corridor) */
   trade_density: number;
-  /** Is there a mountain pass node on this hex (reduces mountain cost dramatically) */
-  has_pass?: boolean;
 }
 
 /**
@@ -1917,11 +1915,6 @@ export function hexTraversalCost(
   if (!hex.is_passable) return Infinity;
 
   let cost = BIOME_TRAVERSAL_COST[hex.biome_family] ?? 2.0;
-
-  // Mountain pass node: dramatically reduces mountain/hill cost
-  if (hex.has_pass && (hex.biome_family === "mountain" || hex.biome_family === "hills")) {
-    cost = 2.0; // Pass reduces mountain to roughly forest-level traversal
-  }
 
   // Height penalty: steep terrain costs more
   if (hex.mean_height > 0.7) cost += (hex.mean_height - 0.7) * 5;

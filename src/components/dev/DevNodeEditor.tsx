@@ -31,7 +31,7 @@ interface Props {
 // ── Types
 const NODE_TYPES = [
   "primary_city", "secondary_city", "fortress", "port", "trade_hub",
-  "pass", "resource_node", "village_cluster", "religious_center", "logistic_hub",
+  "resource_node", "village_cluster", "religious_center", "logistic_hub",
 ];
 const NODE_CLASSES = ["major", "minor", "transit"];
 const FLOW_ROLES = ["neutral", "regulator", "gateway", "producer", "hub"];

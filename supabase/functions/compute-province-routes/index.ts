@@ -47,7 +47,6 @@ interface Route {
 function inferRouteType(a: Node, b: Node): string {
   if (a.node_type === "port" && b.node_type === "port") return "sea_lane";
   if (a.node_type === "port" || b.node_type === "port") return "sea_lane";
-  if (a.node_type === "pass" || b.node_type === "pass") return "mountain_pass";
   if (a.node_type === "trade_hub" || b.node_type === "trade_hub") return "caravan_route";
   return "land_road";
 }
@@ -103,7 +102,9 @@ Deno.serve(async (req) => {
         .eq("session_id", session_id),
     ]);
 
-    const nodes: Node[] = (nodesRes.data || []).map((n: any) => ({ ...n, metadata: n.metadata || {} }));
+    const nodes: Node[] = (nodesRes.data || [])
+      .map((n: any) => ({ ...n, metadata: n.metadata || {} }))
+      .filter((n: Node) => n.node_type !== "pass");
     const adjacency = adjRes.data || [];
 
     if (nodes.length === 0) {
@@ -225,17 +226,6 @@ Deno.serve(async (req) => {
       }
       if (bestPair) addRoute(bestPair[0], bestPair[1], { tier_link: "cross_major" });
 
-      // Pass gateway: if a pass exists on border, connect it to nearest major on OTHER side only
-      const passA = nodesA.find(n => n.node_type === "pass");
-      const passB = nodesB.find(n => n.node_type === "pass");
-      if (passA && majorsB.length > 0) {
-        const nearest = findNearest(passA, majorsB);
-        if (nearest) addRoute(passA, nearest, { tier_link: "pass→cross_major" });
-      }
-      if (passB && majorsA.length > 0) {
-        const nearest = findNearest(passB, majorsA);
-        if (nearest) addRoute(passB, nearest, { tier_link: "pass→cross_major" });
-      }
     }
 
     // ═══════════════════════════════════════

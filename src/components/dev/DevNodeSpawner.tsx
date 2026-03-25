@@ -21,14 +21,14 @@ interface Props {
 
 const NODE_TYPES = [
   "primary_city", "secondary_city", "fortress", "port", "trade_hub",
-  "pass", "resource_node", "village_cluster", "religious_center", "logistic_hub",
+  "resource_node", "village_cluster", "religious_center", "logistic_hub",
 ];
 
 const NODE_CLASSES = ["major", "minor", "transit"];
 
 const FLOW_ROLES = ["neutral", "regulator", "gateway", "producer", "hub"];
 
-const ROUTE_TYPES = ["land_road", "river_route", "sea_lane", "mountain_pass", "caravan_route"];
+const ROUTE_TYPES = ["land_road", "river_route", "sea_lane", "caravan_route"];
 
 type SpawnedNode = {
   id: string; name: string; hex_q: number; hex_r: number;
