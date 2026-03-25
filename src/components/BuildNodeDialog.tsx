@@ -176,7 +176,7 @@ const BuildNodeDialog = ({
           body: { session_id: sessionId, force_all: true },
         });
         await supabase.functions.invoke("compute-economy-flow", {
-          body: { sessionId },
+          body: { session_id: sessionId },
         });
         toast.success("Trasy a toky přepočteny", { id: recomputeToast });
       } catch (recomputeErr) {
