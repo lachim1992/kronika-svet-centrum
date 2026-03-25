@@ -433,7 +433,59 @@ const RouteCorridorsOverlay = memo(({ sessionId, offsetX, offsetY }: Props) => {
 
             {/* Node production context */}
             {(nodeA || nodeB) && (
-              <div className="border-t border-border/50 pt-1.5 space-y-0.5">
+              <div className="border-t border-border/50 pt-1.5 space-y-1">
+                {/* ── Route flow summary ── */}
+                {(() => {
+                  const prodA = nodeA?.production_output ?? 0;
+                  const prodB = nodeB?.production_output ?? 0;
+                  const wealthA = nodeA?.wealth_output ?? 0;
+                  const wealthB = nodeB?.wealth_output ?? 0;
+                  const totalProd = prodA + prodB;
+                  const totalWealth = wealthA + wealthB;
+                  const totalFlow = totalProd + totalWealth;
+                  // Importance tier
+                  const tier = totalFlow >= 60 ? "critical" : totalFlow >= 30 ? "high" : totalFlow >= 10 ? "medium" : "low";
+                  const tierLabel: Record<string, string> = { critical: "Klíčová", high: "Důležitá", medium: "Střední", low: "Okrajová" };
+                  const tierColor: Record<string, string> = { critical: "text-red-400", high: "text-amber-400", medium: "text-blue-400", low: "text-muted-foreground" };
+                  const tierBg: Record<string, string> = { critical: "bg-red-500/15", high: "bg-amber-500/15", medium: "bg-blue-500/15", low: "bg-muted/30" };
+
+                  return (
+                    <div className={`rounded px-2 py-1.5 ${tierBg[tier]}`}>
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-muted-foreground font-semibold text-[10px] uppercase tracking-wider">Tok trasou</span>
+                        <span className={`text-[10px] font-bold ${tierColor[tier]}`}>{tierLabel[tier]}</span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-[11px]">
+                        <div className="flex items-center gap-1">
+                          <span>⚒️</span>
+                          <span className="text-muted-foreground">Produkce</span>
+                        </div>
+                        <span className="text-foreground font-semibold text-right">{totalProd.toFixed(1)}</span>
+                        <div className="flex items-center gap-1">
+                          <span>💰</span>
+                          <span className="text-muted-foreground">Bohatství</span>
+                        </div>
+                        <span className="text-foreground font-semibold text-right">{totalWealth.toFixed(1)}</span>
+                      </div>
+                      {/* Bar visualization */}
+                      <div className="mt-1.5 flex gap-0.5 h-1.5 rounded-full overflow-hidden bg-black/20">
+                        {totalProd > 0 && (
+                          <div className="h-full rounded-full" style={{
+                            width: `${(totalProd / (totalFlow || 1)) * 100}%`,
+                            backgroundColor: "hsl(25, 85%, 55%)",
+                          }} />
+                        )}
+                        {totalWealth > 0 && (
+                          <div className="h-full rounded-full" style={{
+                            width: `${(totalWealth / (totalFlow || 1)) * 100}%`,
+                            backgroundColor: "hsl(48, 90%, 60%)",
+                          }} />
+                        )}
+                      </div>
+                    </div>
+                  );
+                })()}
+
                 <span className="text-muted-foreground font-semibold text-[10px] uppercase tracking-wider">Produkce uzlů</span>
                 {nodeA && (
                   <div className="flex items-center justify-between">
