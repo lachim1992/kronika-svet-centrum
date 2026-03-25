@@ -74,6 +74,24 @@ const BuildNodeDialog = ({
     if (!activeDef) return;
     setBuilding(true);
     try {
+      // Resolve province from hex if not provided
+      let resolvedProvinceId = provinceId;
+      if (!resolvedProvinceId) {
+        const { data: hexData } = await supabase
+          .from("province_hexes")
+          .select("province_id")
+          .eq("session_id", sessionId)
+          .eq("q", hexQ)
+          .eq("r", hexR)
+          .maybeSingle();
+        resolvedProvinceId = hexData?.province_id;
+      }
+      if (!resolvedProvinceId) {
+        toast.error("Tento hex nemá přiřazenou provincii");
+        setBuilding(false);
+        return;
+      }
+
       // Roll strategic resource for micronodes
       let spawnedResource: string | null = null;
       if (tier === "micro") {
