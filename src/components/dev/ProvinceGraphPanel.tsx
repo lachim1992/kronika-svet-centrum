@@ -8,7 +8,7 @@ import { Loader2, Network, RefreshCw, MapPin, Landmark, Shield, Anchor, Store, M
 import DevNodeSpawner from "@/components/dev/DevNodeSpawner";
 import { toast } from "sonner";
 import { FLOW_ROLE_LABELS, HINTERLAND_LABELS } from "@/lib/strategicGraph";
-import { MACRO_LAYER_ICONS, getImportanceLabel, getImportanceColor, getIsolationSeverity, ISOLATION_PENALTY_LABELS, STRATEGIC_RESOURCE_ICONS, STRATEGIC_TIER_LABELS, STRATEGIC_TIER_DB_COLUMNS } from "@/lib/economyFlow";
+import { MACRO_LAYER_ICONS, getImportanceLabel, getImportanceColor, getIsolationSeverity, ISOLATION_PENALTY_LABELS, STRATEGIC_RESOURCE_ICONS, STRATEGIC_RESOURCE_LABELS, STRATEGIC_TIER_LABELS, STRATEGIC_TIER_DB_COLUMNS } from "@/lib/economyFlow";
 import { supabase } from "@/integrations/supabase/client";
 import { useProvinceGraph, type ProvinceNode, type ProvinceEdge, type StrategicNode, type ProvinceRoute } from "@/hooks/useProvinceGraph";
 
@@ -118,13 +118,22 @@ function ProvinceGraphSVG({ nodes, edges, strategicNodes, routes, showNodes, sho
         const shape = NODE_TYPE_SHAPES[sn.node_type] || "●";
         const prov = nodeMap.get(sn.province_id);
         const provColor = prov ? GRAPH_COLORS[prov.color_index % GRAPH_COLORS.length] : "gray";
+        const resType = sn.strategic_resource_type;
+        const resIcon = resType ? (STRATEGIC_RESOURCE_ICONS[resType as keyof typeof STRATEGIC_RESOURCE_ICONS] || "") : "";
         return (
           <g key={sn.id}>
-            <circle cx={p.x} cy={p.y} r={6} fill="hsl(var(--card))" stroke={provColor} strokeWidth={1.5} />
-            <text x={p.x} y={p.y + 3.5} textAnchor="middle" fontSize="8" fill={provColor} fontWeight="700">{shape}</text>
-            <text x={p.x} y={p.y - 9} textAnchor="middle" fontSize="6" fill="hsl(var(--muted-foreground))">
+            <circle cx={p.x} cy={p.y} r={resType ? 8 : 6} fill="hsl(var(--card))" stroke={resType ? "hsl(45,90%,55%)" : provColor} strokeWidth={resType ? 2 : 1.5} />
+            <text x={p.x} y={p.y + 3.5} textAnchor="middle" fontSize={resType ? "10" : "8"} fill={provColor} fontWeight="700">
+              {resIcon || shape}
+            </text>
+            <text x={p.x} y={p.y - (resType ? 11 : 9)} textAnchor="middle" fontSize="6" fill="hsl(var(--muted-foreground))">
               {sn.name.length > 18 ? sn.name.slice(0, 16) + "…" : sn.name}
             </text>
+            {resType && (
+              <text x={p.x} y={p.y + 14} textAnchor="middle" fontSize="5" fill="hsl(45,90%,55%)" fontWeight="600">
+                T{sn.strategic_resource_tier}
+              </text>
+            )}
           </g>
         );
       })}
@@ -231,7 +240,19 @@ function StrategicNodeCard({ node, allNodes }: { node: StrategicNode; allNodes: 
           </div>
         )}
 
-        {node.metadata?.resource_type && (
+        {node.strategic_resource_type && (
+          <div className="flex items-center gap-1.5 p-1.5 rounded border border-yellow-500/30 bg-yellow-500/10">
+            <span className="text-sm">{STRATEGIC_RESOURCE_ICONS[node.strategic_resource_type as keyof typeof STRATEGIC_RESOURCE_ICONS] || "📦"}</span>
+            <span className="text-[9px] font-semibold text-yellow-300">
+              {STRATEGIC_RESOURCE_LABELS[node.strategic_resource_type as keyof typeof STRATEGIC_RESOURCE_LABELS] || node.strategic_resource_type}
+            </span>
+            <Badge variant="outline" className="text-[6px] ml-auto">
+              {STRATEGIC_TIER_LABELS[node.strategic_resource_tier] || `Tier ${node.strategic_resource_tier}`}
+            </Badge>
+          </div>
+        )}
+
+        {node.metadata?.resource_type && !node.strategic_resource_type && (
           <p className="text-[7px] text-muted-foreground">Surovina: {node.metadata.resource_type}</p>
         )}
       </CardContent>
