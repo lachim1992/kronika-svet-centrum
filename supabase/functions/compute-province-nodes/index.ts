@@ -495,6 +495,22 @@ Deno.serve(async (req) => {
     const byType = allNodes.reduce((acc, n) => { acc[n.node_type] = (acc[n.node_type] || 0) + 1; return acc; }, {} as Record<string, number>);
     const strategicCount = allNodes.filter(n => n.strategic_resource_type).length;
 
+    // Chain: compute routes → hex flows after node generation
+    let chainResults: Record<string, any> = {};
+    try {
+      const { data: routesRes } = await sb.functions.invoke("compute-province-routes", {
+        body: { session_id },
+      });
+      chainResults.routes = routesRes;
+      const { data: flowsRes } = await sb.functions.invoke("compute-hex-flows", {
+        body: { session_id, force_all: true },
+      });
+      chainResults.flows = flowsRes;
+    } catch (chainErr: any) {
+      console.error("Chain recompute after nodes error:", chainErr);
+      chainResults.error = chainErr.message;
+    }
+
     return new Response(JSON.stringify({
       ok: true,
       nodes_created: allNodes.length,
@@ -502,6 +518,7 @@ Deno.serve(async (req) => {
       by_tier: byTier,
       by_type: byType,
       strategic_resources_spawned: strategicCount,
+      chain: chainResults,
     }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
   } catch (e: any) {
     console.error("compute-province-nodes error:", e);

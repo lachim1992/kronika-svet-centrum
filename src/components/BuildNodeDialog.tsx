@@ -166,6 +166,24 @@ const BuildNodeDialog = ({
         toast.success(`${nodeName} postaveno na (${hexQ}, ${hexR})`);
       }
 
+      // Auto-recompute routes → hex flows → economy flow
+      const recomputeToast = toast.loading("Propojuji trasy a toky…");
+      try {
+        await supabase.functions.invoke("compute-province-routes", {
+          body: { session_id: sessionId },
+        });
+        await supabase.functions.invoke("compute-hex-flows", {
+          body: { session_id: sessionId, force_all: true },
+        });
+        await supabase.functions.invoke("compute-economy-flow", {
+          body: { sessionId },
+        });
+        toast.success("Trasy a toky přepočteny", { id: recomputeToast });
+      } catch (recomputeErr) {
+        console.error("Recompute chain error:", recomputeErr);
+        toast.error("Přepočet tras selhal", { id: recomputeToast });
+      }
+
       onBuilt?.();
       onClose();
     } catch (err: any) {
