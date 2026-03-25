@@ -520,9 +520,9 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
   /* ── Fetch nodes ── */
   const fetchNodes = useCallback(async () => {
     const { data } = await supabase.from("province_nodes")
-      .select("id, name, hex_q, hex_r, node_tier, node_subtype, controlled_by, upgrade_level, max_upgrade_level, parent_node_id, strategic_resource_type")
+      .select("id, name, hex_q, hex_r, node_tier, node_type, node_subtype, controlled_by, upgrade_level, max_upgrade_level, parent_node_id, strategic_resource_type")
       .eq("session_id", sessionId)
-      .in("node_tier", ["minor", "micro"]);
+      .eq("is_active", true);
     setAllNodes((data || []) as NodeOnHex[]);
   }, [sessionId]);
 
