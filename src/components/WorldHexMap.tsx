@@ -226,13 +226,34 @@ const HexTile = memo(({
                   icon = MICRO_NODE_TYPES.find(t => t.key === n.node_subtype)?.icon || "⛏";
                 }
                 const ny = i === 0 ? cy - 6 : cy + 8;
+                const rad = n.node_tier === "major" ? 12 : 9;
+                // Glow for minor/major nodes based on net_balance
+                const showGlow = (n.node_tier === "minor" || n.node_tier === "major") && n.net_balance !== undefined && n.net_balance !== 0;
+                const glowColor = n.net_balance !== undefined && n.net_balance < 0
+                  ? "hsl(0, 70%, 55%)" : "hsl(140, 60%, 50%)";
+                const glowOpacity = showGlow ? Math.min(0.7, Math.abs(n.net_balance || 0) / 15) : 0;
                 return (
                   <g key={n.id} className="cursor-pointer" onClick={(e) => { e.stopPropagation(); onNodeClick?.(n); }}>
-                    <circle cx={cx} cy={ny} r={n.node_tier === "major" ? 10 : 8} fill="black" fillOpacity={0.01} />
+                    {showGlow && (
+                      <circle cx={cx} cy={ny} r={rad + 4} fill={glowColor} fillOpacity={glowOpacity} style={{ pointerEvents: "none" }} />
+                    )}
+                    <circle cx={cx} cy={ny} r={rad} fill="black" fillOpacity={0.01} />
                     <text x={cx} y={ny} textAnchor="middle" dominantBaseline="middle"
                       fill="white" fontSize={n.node_tier === "major" ? "14" : i === 0 ? "11" : "9"}>
                       {icon}
                     </text>
+                    {/* Net balance badge */}
+                    {showGlow && (
+                      <g style={{ pointerEvents: "none" }}>
+                        <rect x={cx + rad - 2} y={ny - rad + 1} width={18} height={8} rx={3}
+                          fill="hsl(0, 0%, 8%)" fillOpacity={0.85} />
+                        <text x={cx + rad + 7} y={ny - rad + 5.5} textAnchor="middle" dominantBaseline="middle"
+                          fill={n.net_balance !== undefined && n.net_balance < 0 ? "hsl(0, 70%, 65%)" : "hsl(140, 60%, 65%)"}
+                          fontSize="5" fontWeight="700">
+                          {n.net_balance !== undefined && n.net_balance > 0 ? "+" : ""}{Math.round((n.net_balance || 0) * 10) / 10}
+                        </text>
+                      </g>
+                    )}
                   </g>
                 );
               })}
