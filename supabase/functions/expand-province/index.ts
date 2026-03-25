@@ -93,7 +93,7 @@ Deno.serve(async (req) => {
       if (isAdjacent) break;
     }
 
-    if (!isAdjacent) {
+    if (!isAdjacent && !skip_cost) {
       return new Response(
         JSON.stringify({ error: "Hex není sousední s vaší provincií" }),
         { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
