@@ -18,7 +18,7 @@ import FoundSettlementDialog from "@/components/FoundSettlementDialog";
 import BuildNodeDialog from "@/components/BuildNodeDialog";
 import StrategicMapOverlay from "@/components/map/StrategicMapOverlay";
 import RouteCorridorsOverlay from "@/components/map/RouteCorridorsOverlay";
-import { MINOR_NODE_TYPES, MICRO_NODE_TYPES } from "@/lib/nodeTypes";
+import { MINOR_NODE_TYPES, MICRO_NODE_TYPES, MAJOR_NODE_TYPES } from "@/lib/nodeTypes";
 
 /* ───── Config ───── */
 const HEX_SIZE = 38;
@@ -133,7 +133,7 @@ interface StackOnHex {
 }
 interface NodeOnHex {
   id: string; name: string; hex_q: number; hex_r: number; node_tier: string;
-  node_subtype: string | null; controlled_by: string | null; upgrade_level: number;
+  node_type: string; node_subtype: string | null; controlled_by: string | null; upgrade_level: number;
   max_upgrade_level: number; parent_node_id: string | null; strategic_resource_type: string | null;
 }
 interface Props {
@@ -215,15 +215,21 @@ const HexTile = memo(({
             <>
               {/* Show node icons instead of biome when nodes exist */}
               {nodes.slice(0, 2).map((n, i) => {
-                const def = n.node_tier === "minor"
-                  ? MINOR_NODE_TYPES.find(t => t.key === n.node_subtype)
-                  : MICRO_NODE_TYPES.find(t => t.key === n.node_subtype);
+                let icon = "📍";
+                if (n.node_tier === "major") {
+                  const majorDef = MAJOR_NODE_TYPES.find(t => t.dbNodeType === n.node_type);
+                  icon = majorDef?.icon || "🏛";
+                } else if (n.node_tier === "minor") {
+                  icon = MINOR_NODE_TYPES.find(t => t.key === n.node_subtype)?.icon || "🏘";
+                } else {
+                  icon = MICRO_NODE_TYPES.find(t => t.key === n.node_subtype)?.icon || "⛏";
+                }
                 const ny = i === 0 ? cy - 6 : cy + 8;
                 return (
                   <g key={n.id}>
                     <text x={cx} y={ny} textAnchor="middle" dominantBaseline="middle"
-                      fill="white" fontSize={i === 0 ? "11" : "9"} style={{ pointerEvents: "none" }}>
-                      {def?.icon || "📍"}
+                      fill="white" fontSize={n.node_tier === "major" ? "14" : i === 0 ? "11" : "9"} style={{ pointerEvents: "none" }}>
+                      {icon}
                     </text>
                   </g>
                 );
@@ -404,6 +410,7 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
 
   // Nodes on hex map
   const [allNodes, setAllNodes] = useState<NodeOnHex[]>([]);
+  const [routeRefreshKey, setRouteRefreshKey] = useState(0);
 
   // Province data
   const [provinceHexMap, setProvinceHexMap] = useState<Map<string, { provinceId: string; colorIndex: number }>>(new Map());
@@ -520,9 +527,9 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
   /* ── Fetch nodes ── */
   const fetchNodes = useCallback(async () => {
     const { data } = await supabase.from("province_nodes")
-      .select("id, name, hex_q, hex_r, node_tier, node_subtype, controlled_by, upgrade_level, max_upgrade_level, parent_node_id, strategic_resource_type")
+      .select("id, name, hex_q, hex_r, node_tier, node_type, node_subtype, controlled_by, upgrade_level, max_upgrade_level, parent_node_id, strategic_resource_type")
       .eq("session_id", sessionId)
-      .in("node_tier", ["minor", "micro"]);
+      .eq("is_active", true);
     setAllNodes((data || []) as NodeOnHex[]);
   }, [sessionId]);
 
@@ -1047,7 +1054,7 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
             );
           })}
           {/* Route corridors — always visible */}
-          <RouteCorridorsOverlay sessionId={sessionId} offsetX={offsetX} offsetY={offsetY} />
+          <RouteCorridorsOverlay key={routeRefreshKey} sessionId={sessionId} offsetX={offsetX} offsetY={offsetY} />
           {renderCoords.map(c => {
             const hex = getHex(c.q, c.r);
             const isCurrent = currentPos !== null && c.q === currentPos.q && c.r === currentPos.r && !c.isFrontier;
@@ -1482,7 +1489,7 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
           parentNodeName={buildNodeParent?.name}
           devMode={devMode}
           forceTier={buildNodeTier}
-          onBuilt={() => { fetchNodes(); }}
+          onBuilt={() => { fetchNodes(); setRouteRefreshKey(k => k + 1); }}
         />
       )}
 
