@@ -42,25 +42,25 @@ const ROUTE_TYPE_DASH: Record<string, string | undefined> = {
 
 /** Distinct colors per flow type — used for dots on routes & legend */
 const FLOW_TYPE_COLORS: Record<string, string> = {
+  production: "hsl(25, 85%, 55%)",
+  supply:     "hsl(140, 60%, 45%)",
+  wealth:     "hsl(48, 90%, 60%)",
   trade:      "hsl(45, 90%, 60%)",
   military:   "hsl(0, 70%, 55%)",
-  supply:     "hsl(120, 60%, 50%)",
   faith:      "hsl(270, 60%, 65%)",
   migration:  "hsl(200, 70%, 55%)",
-  production: "hsl(30, 80%, 55%)",
-  wealth:     "hsl(50, 95%, 65%)",
   food:       "hsl(90, 55%, 45%)",
   culture:    "hsl(300, 50%, 55%)",
 };
 
 const FLOW_TYPE_LABEL: Record<string, string> = {
+  production: "Produkce ⚒️",
+  supply:     "Zásoby 🌾",
+  wealth:     "Bohatství 💰",
   trade:      "Obchod",
   military:   "Vojenský",
-  supply:     "Zásobování",
   faith:      "Víra",
   migration:  "Migrace",
-  production: "Produkce",
-  wealth:     "Bohatství",
   food:       "Potraviny",
   culture:    "Kultura",
 };
