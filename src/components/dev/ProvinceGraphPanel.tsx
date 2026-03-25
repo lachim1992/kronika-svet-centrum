@@ -57,8 +57,19 @@ function getSubtypeIcon(tier: string, subtype: string): string {
     const def = MICRO_NODE_TYPES.find(t => t.key === subtype);
     return def?.icon || "📍";
   }
+  if (tier === "major") {
+    const map: Record<string, string> = { city: "🏙️", fortress: "🏰", trade_hub: "🏪", guard_station: "⚔️" };
+    return map[subtype] || "★";
+  }
   return "●";
 }
+
+const TIER_SIZES: Record<string, number> = { major: 10, minor: 6.5, micro: 4 };
+const TIER_STROKE: Record<string, string> = {
+  major: "hsl(var(--primary))",
+  minor: "hsl(45,80%,55%)",
+  micro: "hsl(140,60%,50%)",
+};
 /* ─── SVG graph vis ─── */
 function ProvinceGraphSVG({ nodes, edges, strategicNodes, routes, showNodes, showRoutes }: {
   nodes: ProvinceNode[]; edges: ProvinceEdge[]; strategicNodes: StrategicNode[]; routes: ProvinceRoute[];
