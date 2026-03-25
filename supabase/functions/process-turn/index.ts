@@ -386,7 +386,7 @@ Deno.serve(async (req) => {
     // ARMY UPKEEP + SUPPLY STRAIN
     // ══════════════════════════════════════════
     const { data: stacks } = await supabase.from("military_stacks")
-      .select("id, unit_count, maintenance_cost")
+      .select("id, unit_count, maintenance_cost, morale, combat_power")
       .eq("session_id", sessionId).eq("owner_player", playerName);
 
     let totalArmySize = 0, armyProductionUpkeep = 0, armyWealthUpkeep = 0;
