@@ -483,6 +483,15 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
     }
   }, [sessionId]);
 
+  /* ── Fetch nodes ── */
+  const fetchNodes = useCallback(async () => {
+    const { data } = await supabase.from("province_nodes")
+      .select("id, name, hex_q, hex_r, node_tier, node_subtype, controlled_by, upgrade_level, parent_node_id")
+      .eq("session_id", sessionId)
+      .in("node_tier", ["minor", "micro"]);
+    setAllNodes((data || []) as NodeOnHex[]);
+  }, [sessionId]);
+
   /* ── Lookups ── */
   const citiesByCoord = useMemo(() => {
     const visible = allCities.filter(c => devMode || c.owner_player === playerName || isAdmin || discoveredCoords.has(hKey(c.q, c.r)));
@@ -497,6 +506,12 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
     for (const s of visible) { const key = hKey(s.q, s.r); const list = m.get(key) || []; list.push(s); m.set(key, list); }
     return m;
   }, [allStacks, playerName, isAdmin, discoveredCoords, devMode]);
+
+  const nodesByCoord = useMemo(() => {
+    const m = new Map<string, NodeOnHex[]>();
+    for (const n of allNodes) { const key = hKey(n.hex_q, n.hex_r); const list = m.get(key) || []; list.push(n); m.set(key, list); }
+    return m;
+  }, [allNodes]);
 
   /* ── Load discoveries ── */
   const fetchDiscoveries = useCallback(async () => {
