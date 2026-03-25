@@ -116,7 +116,7 @@ const ResourceHUD = ({ sessionId, playerName, cities, currentTurn }: ResourceHUD
   const wealthReserve = realm.gold_reserve ?? 0;
   const grainReserve = realm.grain_reserve ?? 0;
 
-  const chips: { icon: React.ReactNode; label: string; value: string; warning?: boolean }[] = [
+  const chips: { icon: React.ReactNode; label: string; value: string; warning?: boolean; suffix?: string }[] = [
     {
       icon: <span className="text-xs">{MACRO_LAYER_ICONS.production}</span>,
       label: "Produkce",
@@ -132,6 +132,11 @@ const ResourceHUD = ({ sessionId, playerName, cities, currentTurn }: ResourceHUD
       label: "Zásoby",
       value: `${Math.round(grainReserve)}/${realm.granary_capacity ?? 0}`,
       warning: grainReserve < 20,
+      suffix: (() => {
+        const net = realm.last_turn_grain_net ?? 0;
+        if (net === 0) return "";
+        return net > 0 ? ` (+${net}/k)` : ` (${net}/k)`;
+      })(),
     },
     {
       icon: <span className="text-xs">{MACRO_LAYER_ICONS.capacity}</span>,
@@ -171,7 +176,7 @@ const ResourceHUD = ({ sessionId, playerName, cities, currentTurn }: ResourceHUD
           >
             <span className={chip.warning ? "" : "text-primary"}>{chip.icon}</span>
             <span className="hidden sm:inline text-muted-foreground">{chip.label}</span>
-            <span>{chip.value}</span>
+            <span>{chip.value}{chip.suffix && <span className={`ml-0.5 ${(chip.suffix.includes("-") || chip.suffix.includes("−")) ? "text-destructive" : "text-emerald-500"}`}>{chip.suffix}</span>}</span>
           </div>
         ))}
 
