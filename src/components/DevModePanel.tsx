@@ -15,6 +15,7 @@ import ObservatoryPanel from "@/components/dev/observatory/ObservatoryPanel";
 import DevNodeSpawner from "@/components/dev/DevNodeSpawner";
 import DevNodeEditor from "@/components/dev/DevNodeEditor";
 import DevPlayerEditor from "@/components/dev/DevPlayerEditor";
+import FormulaTunerPanel from "@/components/dev/FormulaTunerPanel";
 import { getPermissions } from "@/lib/permissions";
 
 interface DevModePanelProps {
