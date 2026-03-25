@@ -31,6 +31,7 @@ import {
   STRATEGIC_RESOURCE_LABELS, STRATEGIC_RESOURCE_ICONS, STRATEGIC_TIER_LABELS,
   getImportanceLabel, getImportanceColor,
   getIsolationSeverity, ISOLATION_PENALTY_LABELS,
+  getStrategicTiers,
   type StrategicResource,
 } from "@/lib/economyFlow";
 import TradePanel from "@/components/TradePanel";
