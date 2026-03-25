@@ -48,9 +48,12 @@ const BuildNodeDialog = ({
   const [building, setBuilding] = useState(false);
 
   // Suggest type based on biome
-  const suggestedType = tier === "minor" ? suggestMinorType(biome) : suggestMicroType(biome);
+  const suggestedType = tier === "major" ? suggestMajorType(biome) : tier === "minor" ? suggestMinorType(biome) : suggestMicroType(biome);
 
   // Get compatible types
+  const compatibleMajor = useMemo(() =>
+    devMode ? MAJOR_NODE_TYPES : getCompatibleMajorTypes(biome),
+  [biome, devMode]);
   const compatibleMinor = useMemo(() =>
     devMode ? MINOR_NODE_TYPES : getCompatibleMinorTypes(biome),
   [biome, devMode]);
@@ -59,11 +62,13 @@ const BuildNodeDialog = ({
   [biome, devMode]);
 
   const activeType = selectedType || suggestedType;
-  const activeDef = tier === "minor"
+  const activeDef = tier === "major"
+    ? MAJOR_NODE_TYPES.find(t => t.key === activeType)
+    : tier === "minor"
     ? MINOR_NODE_TYPES.find(t => t.key === activeType)
     : MICRO_NODE_TYPES.find(t => t.key === activeType);
 
-  const previewProduction = activeDef ? computeNodeProduction(tier, activeType, 1, biome) : null;
+  const previewProduction = activeDef && tier !== "major" ? computeNodeProduction(tier, activeType, 1, biome) : null;
 
   const handleBuild = async () => {
     if (!activeDef) return;
