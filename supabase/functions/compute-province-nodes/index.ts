@@ -453,6 +453,8 @@ Deno.serve(async (req) => {
           growth_rate: 0,
           garrison_strength: 0,
           strategic_resource_tier: 0,
+          upgrade_level: 1,
+          max_upgrade_level: 3,
           ...rest,
         };
       });
