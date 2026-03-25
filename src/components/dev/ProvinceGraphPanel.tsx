@@ -120,15 +120,28 @@ function ProvinceGraphSVG({ nodes, edges, strategicNodes, routes, showNodes, sho
         const provColor = prov ? GRAPH_COLORS[prov.color_index % GRAPH_COLORS.length] : "gray";
         const resType = sn.strategic_resource_type;
         const resIcon = resType ? (STRATEGIC_RESOURCE_ICONS[resType as keyof typeof STRATEGIC_RESOURCE_ICONS] || "") : "";
+        // Tier-aware icon
+        const tierIcon = sn.node_tier === "minor" || sn.node_tier === "micro"
+          ? (sn.node_subtype ? getSubtypeIcon(sn.node_tier, sn.node_subtype) : "")
+          : "";
+        const tierColor = sn.node_tier === "minor" ? "hsl(45,80%,55%)" : sn.node_tier === "micro" ? "hsl(140,60%,50%)" : provColor;
         return (
           <g key={sn.id}>
-            <circle cx={p.x} cy={p.y} r={resType ? 8 : 6} fill="hsl(var(--card))" stroke={resType ? "hsl(45,90%,55%)" : provColor} strokeWidth={resType ? 2 : 1.5} />
-            <text x={p.x} y={p.y + 3.5} textAnchor="middle" fontSize={resType ? "10" : "8"} fill={provColor} fontWeight="700">
-              {resIcon || shape}
+            <circle cx={p.x} cy={p.y} r={resType ? 8 : sn.node_tier ? 7 : 6}
+              fill="hsl(var(--card))" stroke={resType ? "hsl(45,90%,55%)" : tierColor}
+              strokeWidth={resType ? 2 : sn.node_tier ? 1.8 : 1.5} />
+            <text x={p.x} y={p.y + 3.5} textAnchor="middle" fontSize={resType ? "10" : "8"} fill={tierColor} fontWeight="700">
+              {resIcon || tierIcon || shape}
             </text>
             <text x={p.x} y={p.y - (resType ? 11 : 9)} textAnchor="middle" fontSize="6" fill="hsl(var(--muted-foreground))">
               {sn.name.length > 18 ? sn.name.slice(0, 16) + "…" : sn.name}
             </text>
+            {sn.node_tier && (
+              <text x={p.x + 10} y={p.y - 5} textAnchor="start" fontSize="5" fill={tierColor} fontWeight="600">
+                {sn.node_tier === "minor" ? "M" : sn.node_tier === "micro" ? "μ" : "★"}
+                {sn.upgrade_level > 1 ? `↑${sn.upgrade_level}` : ""}
+              </text>
+            )}
             {resType && (
               <text x={p.x} y={p.y + 14} textAnchor="middle" fontSize="5" fill="hsl(45,90%,55%)" fontWeight="600">
                 T{sn.strategic_resource_tier}
