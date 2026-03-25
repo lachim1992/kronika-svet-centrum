@@ -42,6 +42,11 @@ export const EMPTY_PRODUCTION: NodeProduction = { production: 0, supplies: 0, we
 // MAJOR NODE TYPES
 // ═══════════════════════════════════════════
 
+export interface NodeUpkeep {
+  supplies: number;
+  wealth: number;
+}
+
 export interface MajorNodeDef {
   key: string;
   label: string;
@@ -50,6 +55,7 @@ export interface MajorNodeDef {
   description: string;
   dbNodeType: string;
   bonusEffect: string;
+  upkeep: NodeUpkeep;
 }
 
 export const MAJOR_NODE_TYPES: MajorNodeDef[] = [
