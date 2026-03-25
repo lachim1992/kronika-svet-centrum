@@ -450,8 +450,9 @@ const RouteCorridorsOverlay = memo(({ sessionId, offsetX, offsetY }: Props) => {
                   const wealthTarget = prodSource;
 
                   const prodFlow = prodSource?.incoming_production ?? prodSource?.production_output ?? 0;
+                  const supplyFlow = prodSource?.food_value ?? 0;
                   const wealthFlow = wealthTarget?.wealth_output ?? 0;
-                  const totalFlow = prodFlow + wealthFlow;
+                  const totalFlow = prodFlow + supplyFlow + wealthFlow;
 
                   const tier = totalFlow >= 60 ? "critical" : totalFlow >= 30 ? "high" : totalFlow >= 10 ? "medium" : "low";
                   const tierLabel: Record<string, string> = { critical: "Klíčová", high: "Důležitá", medium: "Střední", low: "Okrajová" };
@@ -472,6 +473,14 @@ const RouteCorridorsOverlay = memo(({ sessionId, offsetX, offsetY }: Props) => {
                         <span className="text-muted-foreground truncate">{prodTarget?.name || "?"}</span>
                         <span className="text-foreground font-semibold ml-auto">{prodFlow.toFixed(1)}</span>
                       </div>
+                      {/* Supplies direction (same as production — upward) */}
+                      <div className="flex items-center gap-1 text-[11px] mb-0.5">
+                        <span>🌾</span>
+                        <span className="text-muted-foreground truncate">{prodSource?.name || "?"}</span>
+                        <span className="text-emerald-400">→</span>
+                        <span className="text-muted-foreground truncate">{prodTarget?.name || "?"}</span>
+                        <span className="text-foreground font-semibold ml-auto">{supplyFlow.toFixed(1)}</span>
+                      </div>
                       {/* Wealth direction (reverse) */}
                       <div className="flex items-center gap-1 text-[11px]">
                         <span>💰</span>
@@ -486,6 +495,12 @@ const RouteCorridorsOverlay = memo(({ sessionId, offsetX, offsetY }: Props) => {
                           <div className="h-full rounded-full" style={{
                             width: `${(prodFlow / (totalFlow || 1)) * 100}%`,
                             backgroundColor: "hsl(25, 85%, 55%)",
+                          }} />
+                        )}
+                        {supplyFlow > 0 && (
+                          <div className="h-full rounded-full" style={{
+                            width: `${(supplyFlow / (totalFlow || 1)) * 100}%`,
+                            backgroundColor: "hsl(140, 60%, 45%)",
                           }} />
                         )}
                         {wealthFlow > 0 && (
