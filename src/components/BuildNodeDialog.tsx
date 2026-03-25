@@ -127,7 +127,7 @@ const BuildNodeDialog = ({
 
       const { error } = await supabase.from("province_nodes").insert({
         session_id: sessionId,
-        province_id: provinceId || "00000000-0000-0000-0000-000000000000",
+        province_id: resolvedProvinceId,
         name: nodeName,
         hex_q: hexQ,
         hex_r: hexR,
