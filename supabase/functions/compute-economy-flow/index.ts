@@ -764,6 +764,8 @@ Deno.serve(async (req) => {
       // Importance
       const importance = production * 0.25 + supplies * 0.15 + wealth * 0.3 + connectivity * 0.15 + node.strategic_value * 0.15;
 
+      const upkeepInfo = nodeUpkeepData.get(node.id) || { upkeep_supplies: 0, upkeep_wealth: 0, net_balance: 0 };
+
       nodeResults.push({
         id: node.id,
         production_output: Math.round(production * 100) / 100,
@@ -776,6 +778,9 @@ Deno.serve(async (req) => {
         route_access_factor: Math.round(routeAccess * 100) / 100,
         trade_efficiency: Math.round(tradeEff * 100) / 100,
         isolation_penalty: Math.round(isolationPenalty * 100) / 100,
+        upkeep_supplies: upkeepInfo.upkeep_supplies,
+        upkeep_wealth: upkeepInfo.upkeep_wealth,
+        net_balance: upkeepInfo.net_balance,
       });
     }
 
@@ -795,6 +800,9 @@ Deno.serve(async (req) => {
           route_access_factor: nr.route_access_factor,
           trade_efficiency: nr.trade_efficiency,
           isolation_penalty: nr.isolation_penalty,
+          upkeep_supplies: nr.upkeep_supplies,
+          upkeep_wealth: nr.upkeep_wealth,
+          net_balance: nr.net_balance,
         }).eq("id", nr.id);
       }
     }
