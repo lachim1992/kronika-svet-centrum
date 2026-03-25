@@ -83,32 +83,29 @@ const BuildNodeDialog = ({
 
       const nodeName = customName.trim() || activeDef.label;
 
-      // Determine node_type for DB compatibility
-      const nodeTypeMap: Record<string, string> = {
-        village: "village_cluster",
-        lumber_camp: "resource_node",
-        fishing_village: "port",
-        mining_camp: "resource_node",
-        pastoral_camp: "village_cluster",
-        trade_post: "trade_hub",
-        shrine: "religious_center",
-        watchtower: "fortress",
-        // micronodes
-        field: "resource_node",
-        sawmill: "resource_node",
-        mine: "resource_node",
-        hunting_ground: "resource_node",
-        fishery: "resource_node",
-        quarry: "resource_node",
-        vineyard: "resource_node",
-        herbalist: "religious_center",
-        smithy: "resource_node",
-        outpost: "fortress",
-        resin_collector: "resource_node",
-        salt_pan: "resource_node",
-      };
+      // Determine node_type for DB
+      let dbNodeType: string;
+      if (tier === "major") {
+        const majorDef = MAJOR_NODE_TYPES.find(t => t.key === activeType);
+        dbNodeType = majorDef?.dbNodeType || "primary_city";
+      } else {
+        const nodeTypeMap: Record<string, string> = {
+          village: "village_cluster", lumber_camp: "resource_node", fishing_village: "port",
+          mining_camp: "resource_node", pastoral_camp: "village_cluster", trade_post: "trade_hub",
+          shrine: "religious_center", watchtower: "fortress",
+          field: "resource_node", sawmill: "resource_node", mine: "resource_node",
+          hunting_ground: "resource_node", fishery: "resource_node", quarry: "resource_node",
+          vineyard: "resource_node", herbalist: "religious_center", smithy: "resource_node",
+          outpost: "fortress", resin_collector: "resource_node", salt_pan: "resource_node",
+        };
+        dbNodeType = nodeTypeMap[activeType] || "village_cluster";
+      }
 
-      const prod = computeNodeProduction(tier, activeType, 1, biome);
+      const prod = tier !== "major" ? computeNodeProduction(tier, activeType, 1, biome) : { grain: 0, wood: 0, stone: 0, iron: 0, wealth: 0, faith: 0 };
+
+      const flowRole = tier === "major"
+        ? (activeType === "city" ? "hub" : activeType === "trade_hub" ? "hub" : activeType === "fortress" ? "gateway" : "regulator")
+        : tier === "micro" ? "producer" : "neutral";
 
       const { error } = await supabase.from("province_nodes").insert({
         session_id: sessionId,
@@ -116,19 +113,19 @@ const BuildNodeDialog = ({
         name: nodeName,
         hex_q: hexQ,
         hex_r: hexR,
-        node_type: nodeTypeMap[activeType] || "village_cluster",
+        node_type: dbNodeType,
         node_tier: tier,
         node_subtype: activeType,
-        node_class: tier === "micro" ? "transit" : "minor",
-        is_major: false,
+        node_class: tier === "major" ? "major" : tier === "micro" ? "transit" : "minor",
+        is_major: tier === "major",
         is_active: true,
         parent_node_id: parentNodeId || null,
         controlled_by: playerName,
         built_by: playerName,
-        built_turn: 0, // will be set by engine
+        built_turn: 0,
         biome_at_build: biome,
         upgrade_level: 1,
-        max_upgrade_level: (activeDef as any).maxUpgrade || 3,
+        max_upgrade_level: tier === "major" ? 5 : (activeDef as any).maxUpgrade || 3,
         production_base: totalProduction(prod),
         production_output: prod.grain + prod.wood + prod.stone + prod.iron,
         wealth_output: prod.wealth,
@@ -137,8 +134,8 @@ const BuildNodeDialog = ({
         strategic_resource_type: spawnedResource,
         spawned_strategic_resource: spawnedResource,
         strategic_resource_tier: spawnedResource ? 1 : 0,
-        flow_role: tier === "micro" ? "producer" : "neutral",
-        population: tier === "minor" ? 50 : 0,
+        flow_role: flowRole,
+        population: tier === "major" ? 200 : tier === "minor" ? 50 : 0,
         resource_output: prod,
       } as any);
 
