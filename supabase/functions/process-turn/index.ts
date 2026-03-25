@@ -551,13 +551,28 @@ Deno.serve(async (req) => {
       }
 
       // Combined city production = node production + population layer production
-      // Node gives base terrain/flow output, layers add demographic contribution
-      const cityProduction = nodeProduction + layers.production;
+      // Apply labor allocation and strategic resource modifiers
+      const cityProduction = (nodeProduction + layers.production) * laborGrainMult;
+
+      // Apply labor + strategic multipliers to wealth and capacity
+      const cityWealth = layers.wealth * laborWealthMult * strategicBonuses.wealth_mult * prestigeEffects.tradeMultiplier;
+      const cityCapacity = layers.capacity * laborCapacityMult;
+      const cityFaith = layers.faith + strategicBonuses.faith_bonus * 0.1; // Strategic faith distributed per-city
+
+      // Apply labor stability + strategic stability + prestige stability to city
+      const stabilityDelta = laborStabilityBonus + strategicBonuses.stability_bonus * 0.1 + prestigeEffects.stabilityBonus * 0.1;
+      if (Math.abs(stabilityDelta) > 0.05) {
+        const currentStab = city.city_stability || 50;
+        const newStab = Math.max(0, Math.min(100, currentStab + stabilityDelta));
+        if (Math.round(newStab) !== Math.round(currentStab)) {
+          await supabase.from("cities").update({ city_stability: Math.round(newStab) }).eq("id", city.id);
+        }
+      }
 
       totalCityProduction += cityProduction;
-      totalCityWealth += layers.wealth;
-      totalCityCapacity += layers.capacity;
-      totalFaith += layers.faith;
+      totalCityWealth += cityWealth;
+      totalCityCapacity += cityCapacity;
+      totalFaith += cityFaith;
 
       // Per-city food balance
       const cityBalance = cityProduction - cityDemand;
