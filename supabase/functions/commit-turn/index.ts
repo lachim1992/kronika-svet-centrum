@@ -506,15 +506,31 @@ Deno.serve(async (req) => {
     }));
 
     // ═══════════════════════════════════════════
-    // 4b. COMPUTE ECONOMY FLOW (refresh macro data before process-turn)
+    // 4b. RECOMPUTE ROUTES + HEX FLOWS + ECONOMY FLOW
+    // Ensures new nodes built between turns get connected before economy runs.
     // ═══════════════════════════════════════════
     try {
+      // Always recompute routes to pick up any new nodes
+      const { data: routesRes, error: routesErr } = await supabase.functions.invoke("compute-province-routes", {
+        body: { session_id: sessionId },
+      });
+      if (routesErr) console.warn("compute-province-routes warning:", routesErr.message);
+      results.routes = routesRes || { error: routesErr?.message };
+
+      // Recompute hex flows (force_all since routes were rebuilt)
+      const { data: preFlowRes, error: preFlowErr } = await supabase.functions.invoke("compute-hex-flows", {
+        body: { session_id: sessionId, force_all: true },
+      });
+      if (preFlowErr) console.warn("compute-hex-flows pre-economy warning:", preFlowErr.message);
+      results.preHexFlows = preFlowRes || { error: preFlowErr?.message };
+
+      // Now compute economy flow with fresh topology
       await supabase.functions.invoke("compute-economy-flow", {
         body: { sessionId },
       });
       results.economyFlow = { ok: true };
     } catch (e) {
-      console.warn("compute-economy-flow warning:", (e as Error).message);
+      console.warn("Route/flow/economy chain warning:", (e as Error).message);
       results.economyFlow = { error: (e as Error).message };
     }
 
