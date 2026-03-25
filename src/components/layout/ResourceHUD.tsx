@@ -7,7 +7,7 @@ import {
   ChevronDown, Skull, TrendingUp, Network, Zap, Church
 } from "lucide-react";
 import { computeWorkforceBreakdown } from "@/lib/economyConstants";
-import { MACRO_LAYER_ICONS, STRATEGIC_RESOURCE_ICONS, STRATEGIC_TIER_LABELS, getStrategicTiers, computeTotalPrestige, getPrestigeTier, PRESTIGE_TIER_LABELS, type StrategicResource } from "@/lib/economyFlow";
+import { MACRO_LAYER_ICONS, STRATEGIC_RESOURCE_ICONS, STRATEGIC_TIER_LABELS, getStrategicTiers, computeTotalPrestige, getPrestigeTier, PRESTIGE_TIER_LABELS, PRESTIGE_META, PRESTIGE_COMPONENTS, type StrategicResource, type PrestigeComponent } from "@/lib/economyFlow";
 import DemobilizeDialog from "@/components/DemobilizeDialog";
 
 interface ResourceHUDProps {
@@ -205,7 +205,7 @@ const ResourceHUD = ({ sessionId, playerName, cities, currentTurn }: ResourceHUD
               <ChevronDown className="h-3 w-3" />
             </button>
           </PopoverTrigger>
-          <PopoverContent className="w-72 p-3" align="end">
+          <PopoverContent className="w-80 p-3 max-h-[70vh] overflow-y-auto" align="end">
             <h4 className="font-display font-semibold text-sm mb-2 text-primary">Ekonomický přehled</h4>
 
             {/* Macro layers detail */}
@@ -226,6 +226,21 @@ const ResourceHUD = ({ sessionId, playerName, cities, currentTurn }: ResourceHUD
                 <span className="text-muted-foreground">⭐ Importance</span>
                 <span className="font-bold">{totalImp.toFixed(1)}</span>
               </div>
+            </div>
+
+            {/* Prestige breakdown */}
+            <div className="space-y-1.5 text-xs mb-3 border-t border-border/50 pt-2">
+              <h5 className="text-[10px] font-semibold text-muted-foreground mb-1">⭐ Prestiž: {Math.round(totalPrestige)} — {PRESTIGE_TIER_LABELS[prestigeTier]}</h5>
+              {PRESTIGE_COMPONENTS.map(key => {
+                const meta = PRESTIGE_META[key];
+                const val = realm?.[meta.dbColumn] ?? 0;
+                return (
+                  <div key={key} className="flex justify-between">
+                    <span className="text-muted-foreground">{meta.icon} {meta.label}</span>
+                    <span className="font-bold">{val}</span>
+                  </div>
+                );
+              })}
             </div>
 
             {/* Mobilization */}

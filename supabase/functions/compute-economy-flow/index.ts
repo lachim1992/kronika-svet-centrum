@@ -233,7 +233,7 @@ Deno.serve(async (req) => {
     // ── FETCH DATA ────────────────────────────────────────────
     const [nodesRes, routesRes, supplyRes, citiesRes] = await Promise.all([
       sb.from("province_nodes")
-        .select("id, session_id, province_id, node_type, flow_role, is_major, parent_node_id, controlled_by, city_id, population, infrastructure_level, urbanization_score, hinterland_level, cumulative_trade_flow, throughput_military, toll_rate, strategic_value, economic_value, defense_value, resource_output, metadata, development_level, stability_factor")
+        .select("id, session_id, province_id, node_type, flow_role, is_major, parent_node_id, controlled_by, city_id, population, infrastructure_level, urbanization_score, hinterland_level, cumulative_trade_flow, throughput_military, toll_rate, strategic_value, economic_value, defense_value, resource_output, metadata, development_level, stability_factor, strategic_resource_type, strategic_resource_tier")
         .eq("session_id", session_id),
       sb.from("province_routes")
         .select("id, node_a, node_b, capacity_value, control_state, damage_level, speed_value, safety_value")
@@ -386,6 +386,7 @@ Deno.serve(async (req) => {
     const playerTotals = new Map<string, {
       production: number; wealth: number; capacity: number; importance: number;
       iron: number; horses: number; salt: number; copper: number; gold_res: number;
+      marble: number; gems: number; timber: number; obsidian: number; silk: number; incense: number;
     }>();
 
     for (const node of nodes) {
@@ -398,6 +399,7 @@ Deno.serve(async (req) => {
         playerTotals.set(player, {
           production: 0, wealth: 0, capacity: 0, importance: 0,
           iron: 0, horses: 0, salt: 0, copper: 0, gold_res: 0,
+          marble: 0, gems: 0, timber: 0, obsidian: 0, silk: 0, incense: 0,
         });
       }
       const pt = playerTotals.get(player)!;
@@ -406,13 +408,19 @@ Deno.serve(async (req) => {
       pt.capacity += nr.capacity_score;
       pt.importance += nr.importance_score;
 
-      // Count strategic resource nodes
-      const resType = node.metadata?.resource_type || node.metadata?.strategic_resource;
-      if (resType === "iron" || resType === "mineral") pt.iron++;
-      if (resType === "horses") pt.horses++;
-      if (resType === "salt") pt.salt++;
-      if (resType === "copper") pt.copper++;
-      if (resType === "gold_deposit") pt.gold_res++;
+      // Count strategic resource nodes (from strategic_resource_type on node OR metadata)
+      const stratRes = (node as any).strategic_resource_type || node.metadata?.strategic_resource;
+      if (stratRes === "iron" || stratRes === "mineral") pt.iron++;
+      if (stratRes === "horses") pt.horses++;
+      if (stratRes === "salt") pt.salt++;
+      if (stratRes === "copper") pt.copper++;
+      if (stratRes === "gold_deposit") pt.gold_res++;
+      if (stratRes === "marble") pt.marble++;
+      if (stratRes === "gems") pt.gems++;
+      if (stratRes === "timber") pt.timber++;
+      if (stratRes === "obsidian") pt.obsidian++;
+      if (stratRes === "silk") pt.silk++;
+      if (stratRes === "incense") pt.incense++;
     }
 
     const realmUpdates: any[] = [];
@@ -427,6 +435,12 @@ Deno.serve(async (req) => {
         strategic_salt_tier: computeTier(totals.salt),
         strategic_copper_tier: computeTier(totals.copper),
         strategic_gold_tier: computeTier(totals.gold_res),
+        strategic_marble_tier: computeTier(totals.marble),
+        strategic_gems_tier: computeTier(totals.gems),
+        strategic_timber_tier: computeTier(totals.timber),
+        strategic_obsidian_tier: computeTier(totals.obsidian),
+        strategic_silk_tier: computeTier(totals.silk),
+        strategic_incense_tier: computeTier(totals.incense),
       };
       await sb.from("realm_resources").update(update)
         .eq("session_id", session_id).eq("player_name", player);

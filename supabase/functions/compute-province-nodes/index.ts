@@ -222,7 +222,7 @@ Deno.serve(async (req) => {
         }
       }
 
-      // 5. RESOURCE_NODE (minor producer)
+      // 5. RESOURCE_NODE (minor producer) + Strategic Resource Assignment
       const forests = pHexes.filter(h => h.biome_family === "forest" && h.is_passable);
       const plains = pHexes.filter(h => h.biome_family === "plains" && h.is_passable);
       const hills = pHexes.filter(h => h.biome_family === "hills" && h.is_passable);
@@ -243,18 +243,63 @@ Deno.serve(async (req) => {
         });
       }
 
+      // Strategic resource assignment table: [type, spawnChance, biomeAffinity]
+      const STRATEGIC_SPAWN_TABLE: Array<{ type: string; chance: number; biomes: string[]; label: string }> = [
+        { type: "iron", chance: 0.15, biomes: ["hills", "mountain"], label: "Železo" },
+        { type: "horses", chance: 0.10, biomes: ["plains", "steppe"], label: "Koně" },
+        { type: "salt", chance: 0.10, biomes: ["plains", "desert", "hills"], label: "Sůl" },
+        { type: "copper", chance: 0.15, biomes: ["hills", "mountain"], label: "Měď" },
+        { type: "gold_deposit", chance: 0.05, biomes: ["hills", "mountain", "desert"], label: "Zlato" },
+        { type: "marble", chance: 0.08, biomes: ["hills", "mountain"], label: "Mramor" },
+        { type: "gems", chance: 0.05, biomes: ["mountain", "hills", "jungle"], label: "Drahokamy" },
+        { type: "timber", chance: 0.15, biomes: ["forest", "taiga"], label: "Kvalitní dřevo" },
+        { type: "obsidian", chance: 0.05, biomes: ["mountain", "volcanic"], label: "Obsidián" },
+        { type: "silk", chance: 0.05, biomes: ["forest", "jungle", "plains"], label: "Hedvábí" },
+        { type: "incense", chance: 0.08, biomes: ["desert", "jungle", "savanna"], label: "Kadidlo" },
+      ];
+
+      // Seeded random based on province + session
+      function seededRandom(seed: string): number {
+        let h = 0;
+        for (let i = 0; i < seed.length; i++) h = ((h << 5) - h + seed.charCodeAt(i)) | 0;
+        return (Math.abs(h) % 10000) / 10000;
+      }
+
       for (const cluster of resourceClusters) {
         const avgQ = Math.round(cluster.hexes.reduce((s, h) => s + h.q, 0) / cluster.hexes.length);
         const avgR = Math.round(cluster.hexes.reduce((s, h) => s + h.r, 0) / cluster.hexes.length);
         const resHex = cluster.hexes.sort((a, b) => axialDist(a.q, a.r, avgQ, avgR) - axialDist(b.q, b.r, avgQ, avgR))[0];
-        const meta = { resource_type: cluster.type, cluster_size: cluster.hexes.length };
+        const meta: Record<string, any> = { resource_type: cluster.type, cluster_size: cluster.hexes.length };
         const role = assignFlowRole("resource_node", meta);
+
+        // Roll for strategic resource on this minor node
+        let assignedStrategic: string | null = null;
+        const biome = resHex.biome_family || cluster.type;
+        const seed = `${session_id}-${prov.id}-${resHex.q}-${resHex.r}`;
+        const roll = seededRandom(seed);
+        let cumulative = 0;
+        for (const sr of STRATEGIC_SPAWN_TABLE) {
+          const biomeBonus = sr.biomes.includes(biome) ? 1.5 : 0.5;
+          const effectiveChance = sr.chance * biomeBonus;
+          cumulative += effectiveChance;
+          if (roll < cumulative && !assignedStrategic) {
+            assignedStrategic = sr.type;
+            meta.strategic_resource = sr.type;
+            meta.strategic_resource_label = sr.label;
+          }
+        }
+        // Cap: max ~30% chance of any strategic resource per node
+        if (roll >= 0.30) assignedStrategic = null;
+
         allNodes.push({
           session_id, province_id: prov.id, node_type: "resource_node",
           name: cluster.name, hex_q: resHex.q, hex_r: resHex.r,
           controlled_by: owner,
-          strategic_value: 2, economic_value: 6, defense_value: 1,
+          strategic_value: assignedStrategic ? 5 : 2,
+          economic_value: 6, defense_value: 1,
           mobility_relevance: 4, supply_relevance: 6,
+          strategic_resource_type: assignedStrategic,
+          strategic_resource_tier: assignedStrategic ? 1 : 0,
           metadata: meta,
           ...role,
         });
