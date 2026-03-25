@@ -112,6 +112,10 @@ interface NodeData {
   session_id: string;
   province_id: string;
   node_type: string;
+  node_tier: string | null;
+  node_subtype: string | null;
+  upgrade_level: number;
+  biome_at_build: string | null;
   flow_role: string;
   is_major: boolean;
   parent_node_id: string | null;
@@ -132,6 +136,8 @@ interface NodeData {
   // Existing supply chain data
   development_level: number;
   stability_factor: number;
+  faith_output: number;
+  food_value: number;
 }
 
 interface RouteData {
