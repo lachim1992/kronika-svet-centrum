@@ -106,6 +106,7 @@ interface NodeInfo {
   controlled_by: string | null;
   production_output: number;
   wealth_output: number;
+  food_value: number; // supplies
   incoming_production: number;
   cumulative_trade_flow: number;
 }
@@ -134,7 +135,7 @@ const RouteCorridorsOverlay = memo(({ sessionId, offsetX, offsetY }: Props) => {
         .select("route_id, node_a, node_b, flow_type, hex_path, total_cost, bottleneck_hex, bottleneck_cost, path_length")
         .eq("session_id", sessionId),
       supabase.from("province_nodes")
-        .select("id, hex_q, hex_r, name, node_type, node_tier, flow_role, controlled_by, production_output, wealth_output, incoming_production, cumulative_trade_flow")
+        .select("id, hex_q, hex_r, name, node_type, node_tier, flow_role, controlled_by, production_output, wealth_output, food_value, incoming_production, cumulative_trade_flow")
         .eq("session_id", sessionId)
         .eq("is_active", true),
     ]);
@@ -449,8 +450,9 @@ const RouteCorridorsOverlay = memo(({ sessionId, offsetX, offsetY }: Props) => {
                   const wealthTarget = prodSource;
 
                   const prodFlow = prodSource?.incoming_production ?? prodSource?.production_output ?? 0;
+                  const supplyFlow = prodSource?.food_value ?? 0;
                   const wealthFlow = wealthTarget?.wealth_output ?? 0;
-                  const totalFlow = prodFlow + wealthFlow;
+                  const totalFlow = prodFlow + supplyFlow + wealthFlow;
 
                   const tier = totalFlow >= 60 ? "critical" : totalFlow >= 30 ? "high" : totalFlow >= 10 ? "medium" : "low";
                   const tierLabel: Record<string, string> = { critical: "Klíčová", high: "Důležitá", medium: "Střední", low: "Okrajová" };
@@ -471,6 +473,14 @@ const RouteCorridorsOverlay = memo(({ sessionId, offsetX, offsetY }: Props) => {
                         <span className="text-muted-foreground truncate">{prodTarget?.name || "?"}</span>
                         <span className="text-foreground font-semibold ml-auto">{prodFlow.toFixed(1)}</span>
                       </div>
+                      {/* Supplies direction (same as production — upward) */}
+                      <div className="flex items-center gap-1 text-[11px] mb-0.5">
+                        <span>🌾</span>
+                        <span className="text-muted-foreground truncate">{prodSource?.name || "?"}</span>
+                        <span className="text-emerald-400">→</span>
+                        <span className="text-muted-foreground truncate">{prodTarget?.name || "?"}</span>
+                        <span className="text-foreground font-semibold ml-auto">{supplyFlow.toFixed(1)}</span>
+                      </div>
                       {/* Wealth direction (reverse) */}
                       <div className="flex items-center gap-1 text-[11px]">
                         <span>💰</span>
@@ -485,6 +495,12 @@ const RouteCorridorsOverlay = memo(({ sessionId, offsetX, offsetY }: Props) => {
                           <div className="h-full rounded-full" style={{
                             width: `${(prodFlow / (totalFlow || 1)) * 100}%`,
                             backgroundColor: "hsl(25, 85%, 55%)",
+                          }} />
+                        )}
+                        {supplyFlow > 0 && (
+                          <div className="h-full rounded-full" style={{
+                            width: `${(supplyFlow / (totalFlow || 1)) * 100}%`,
+                            backgroundColor: "hsl(140, 60%, 45%)",
                           }} />
                         )}
                         {wealthFlow > 0 && (
@@ -503,7 +519,7 @@ const RouteCorridorsOverlay = memo(({ sessionId, offsetX, offsetY }: Props) => {
                   <div className="flex items-center justify-between">
                     <span className="text-foreground">{nodeA.name}</span>
                     <span className="text-muted-foreground">
-                      ⚒️{nodeA.production_output?.toFixed(0) || 0} · 💰{nodeA.wealth_output?.toFixed(0) || 0} · 📥{nodeA.incoming_production?.toFixed(0) || 0}
+                      ⚒️{nodeA.production_output?.toFixed(0) || 0} · 🌾{nodeA.food_value?.toFixed(0) || 0} · 💰{nodeA.wealth_output?.toFixed(0) || 0} · 📥{nodeA.incoming_production?.toFixed(0) || 0}
                     </span>
                   </div>
                 )}
@@ -511,7 +527,7 @@ const RouteCorridorsOverlay = memo(({ sessionId, offsetX, offsetY }: Props) => {
                   <div className="flex items-center justify-between">
                     <span className="text-foreground">{nodeB.name}</span>
                     <span className="text-muted-foreground">
-                      ⚒️{nodeB.production_output?.toFixed(0) || 0} · 💰{nodeB.wealth_output?.toFixed(0) || 0} · 📥{nodeB.incoming_production?.toFixed(0) || 0}
+                      ⚒️{nodeB.production_output?.toFixed(0) || 0} · 🌾{nodeB.food_value?.toFixed(0) || 0} · 💰{nodeB.wealth_output?.toFixed(0) || 0} · 📥{nodeB.incoming_production?.toFixed(0) || 0}
                     </span>
                   </div>
                 )}

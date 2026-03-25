@@ -119,7 +119,7 @@ const BuildNodeDialog = ({
         dbNodeType = nodeTypeMap[activeType] || "village_cluster";
       }
 
-      const prod = tier !== "major" ? computeNodeProduction(tier, activeType, 1, biome) : { grain: 0, wood: 0, stone: 0, iron: 0, wealth: 0, faith: 0 };
+      const prod = tier !== "major" ? computeNodeProduction(tier, activeType, 1, biome) : { production: 0, supplies: 0, wealth: 0, faith: 0 };
 
       const flowRole = tier === "major"
         ? (activeType === "city" ? "hub" : activeType === "trade_hub" ? "hub" : activeType === "fortress" ? "gateway" : "regulator")
@@ -145,10 +145,10 @@ const BuildNodeDialog = ({
         upgrade_level: 1,
         max_upgrade_level: tier === "major" ? 5 : (activeDef as any).maxUpgrade || 3,
         production_base: totalProduction(prod),
-        production_output: prod.grain + prod.wood + prod.stone + prod.iron,
+        production_output: prod.production,
         wealth_output: prod.wealth,
         faith_output: prod.faith,
-        food_value: prod.grain,
+        food_value: prod.supplies,
         strategic_resource_type: spawnedResource,
         spawned_strategic_resource: spawnedResource,
         strategic_resource_tier: spawnedResource ? 1 : 0,
@@ -281,7 +281,7 @@ const BuildNodeDialog = ({
                 <div className="grid grid-cols-3 gap-1 mt-2">
                   {Object.entries(previewProduction).map(([key, val]) => val > 0 && (
                     <div key={key} className="flex items-center gap-1 text-[10px]">
-                      <span>{key === "grain" ? "🌾" : key === "wood" ? "🪵" : key === "stone" ? "🪨" : key === "iron" ? "⛏️" : key === "wealth" ? "💰" : "⛪"}</span>
+                      <span>{key === "supplies" ? "🌾" : key === "production" ? "⚒️" : key === "wealth" ? "💰" : "⛪"}</span>
                       <span className="font-mono font-semibold">{val}</span>
                       <span className="text-muted-foreground">{key}</span>
                     </div>
