@@ -37,6 +37,10 @@ export interface StrategicNode {
   id: string;
   province_id: string;
   node_type: string;
+  node_tier: string | null;
+  node_subtype: string | null;
+  upgrade_level: number;
+  biome_at_build: string | null;
   name: string;
   hex_q: number;
   hex_r: number;
@@ -66,6 +70,8 @@ export interface StrategicNode {
   // Economy flow fields
   production_output: number;
   wealth_output: number;
+  faith_output: number;
+  food_value: number;
   capacity_score: number;
   importance_score: number;
   incoming_production: number;
