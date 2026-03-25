@@ -113,6 +113,9 @@ const DevModePanel = ({
           <TabsTrigger value="player-editor" className="text-xs gap-1 py-2">
             <Users className="h-3 w-3" /> Player Editor
           </TabsTrigger>
+          <TabsTrigger value="formula-tuner" className="text-xs gap-1 py-2">
+            <SlidersHorizontal className="h-3 w-3" /> Formula Tuner
+          </TabsTrigger>
         </TabsList>
 
         {perms.canRunServerDevTools && (
