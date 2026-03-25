@@ -776,6 +776,21 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
     finally { setRecomputing(false); }
   }, [hexes, sessionId, isAdmin, loadAllGenerated, fetchDiscoveries]);
 
+  /* ── Recompute hex roads (compute-hex-flows + compute-province-routes) ── */
+  const [recomputingRoads, setRecomputingRoads] = useState(false);
+  const handleRecomputeRoads = useCallback(async () => {
+    setRecomputingRoads(true);
+    try {
+      const { data: rData, error: rErr } = await supabase.functions.invoke("compute-province-routes", { body: { session_id: sessionId } });
+      if (rErr) throw rErr;
+      const { data: fData, error: fErr } = await supabase.functions.invoke("compute-hex-flows", { body: { session_id: sessionId } });
+      if (fErr) throw fErr;
+      setRouteRefreshKey(k => k + 1);
+      toast.success(`Cesty: ${rData?.routes_created || 0} tras, ${fData?.paths_computed || 0} hex toků`);
+    } catch (e: any) { toast.error("Chyba cest: " + (e.message || "neznámá")); }
+    finally { setRecomputingRoads(false); }
+  }, [sessionId]);
+
   /* ── Save biome ── */
   const handleSaveBiome = useCallback(async () => {
     if (!selectedHex || !editBiome || editBiome === selectedHex.biome_family) return;
@@ -1139,11 +1154,18 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
             <Eye className="h-3 w-3" /> DEV
           </label>
           {devMode && (
-            <Button size="sm" variant="outline" className="h-7 text-[10px] gap-1 bg-card/70 backdrop-blur-sm"
-              onClick={handleRecomputeBiomes} disabled={recomputing}>
-              {recomputing ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
-              Přepočítat
-            </Button>
+            <>
+              <Button size="sm" variant="outline" className="h-7 text-[10px] gap-1 bg-card/70 backdrop-blur-sm"
+                onClick={handleRecomputeBiomes} disabled={recomputing}>
+                {recomputing ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
+                Přepočítat
+              </Button>
+              <Button size="sm" variant="outline" className="h-7 text-[10px] gap-1 bg-card/70 backdrop-blur-sm"
+                onClick={handleRecomputeRoads} disabled={recomputingRoads}>
+                {recomputingRoads ? <Loader2 className="h-3 w-3 animate-spin" /> : <MapIcon className="h-3 w-3" />}
+                Cesty
+              </Button>
+            </>
           )}
         </div>
       )}

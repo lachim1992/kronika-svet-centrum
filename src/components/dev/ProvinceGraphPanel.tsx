@@ -561,12 +561,28 @@ export default function ProvinceGraphPanel({ sessionId }: Props) {
       });
       if (error) throw error;
       toast.success(`Ekonomika: ${data?.nodes_computed || 0} uzlů spočítáno`);
-      // Reload to see updated values
       await loadGraph();
     } catch (e: any) {
       toast.error("Chyba ekonomiky: " + e.message);
     } finally {
       setComputingEcon(false);
+    }
+  };
+
+  const [computingHexFlows, setComputingHexFlows] = useState(false);
+  const handleComputeHexFlows = async () => {
+    setComputingHexFlows(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("compute-hex-flows", {
+        body: { session_id: sessionId },
+      });
+      if (error) throw error;
+      toast.success(`Hex cesty: ${data?.paths_computed || 0} spočítáno`);
+      await loadGraph();
+    } catch (e: any) {
+      toast.error("Chyba hex cest: " + e.message);
+    } finally {
+      setComputingHexFlows(false);
     }
   };
 
@@ -596,6 +612,9 @@ export default function ProvinceGraphPanel({ sessionId }: Props) {
         </Button>
         <Button size="sm" variant="default" className="h-7 text-xs gap-1" onClick={handleComputeEconomy} disabled={computingEcon}>
           {computingEcon ? <Loader2 className="h-3 w-3 animate-spin" /> : <TrendingUp className="h-3 w-3" />} Ekonomika
+        </Button>
+        <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={handleComputeHexFlows} disabled={computingHexFlows}>
+          {computingHexFlows ? <Loader2 className="h-3 w-3 animate-spin" /> : <MapPin className="h-3 w-3" />} Hex cesty
         </Button>
         <div className="flex gap-1 ml-auto">
           <Button size="sm" variant={showNodes ? "secondary" : "ghost"} className="h-7 text-xs" onClick={() => setShowNodes(!showNodes)}>
