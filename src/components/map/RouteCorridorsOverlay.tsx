@@ -408,9 +408,9 @@ const RouteCorridorsOverlay = memo(({ sessionId, offsetX, offsetY }: Props) => {
                   <span className="text-muted-foreground font-semibold text-[10px] uppercase tracking-wider">Produkce uzlů</span>
                   {nodeA && (
                     <div className="flex items-center justify-between">
-                      <span className="text-foreground">{nodeA.label}</span>
+                      <span className="text-foreground">{nodeA.name}</span>
                       <span className="text-muted-foreground">
-                        ⚒️{nodeA.cumulative_production?.toFixed(0) || 0} · 💰{nodeA.cumulative_wealth?.toFixed(0) || 0} · 📦{nodeA.cumulative_trade_flow?.toFixed(0) || 0}
+                        ⚒️{nodeA.production_output?.toFixed(0) || 0} · 💰{nodeA.wealth_output?.toFixed(0) || 0} · 📦{nodeA.cumulative_trade_flow?.toFixed(0) || 0}
                       </span>
                     </div>
                   )}
