@@ -107,18 +107,16 @@ Deno.serve(async (req) => {
 
     const sb = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 
-    // Load provinces, hexes, cities, adjacency
-    const [provRes, hexRes, cityRes, adjRes] = await Promise.all([
+    // Load provinces, hexes, cities
+    const [provRes, hexRes, cityRes] = await Promise.all([
       sb.from("provinces").select("id, name, owner_player, center_q, center_r").eq("session_id", session_id),
       sb.from("province_hexes").select("id, q, r, province_id, biome_family, coastal, mean_height, is_passable, movement_cost").eq("session_id", session_id).limit(10000),
       sb.from("cities").select("id, name, province_id, province_q, province_r, is_capital, settlement_level, population_total, owner_player").eq("session_id", session_id),
-      sb.from("province_adjacency").select("province_a, province_b, border_length").eq("session_id", session_id),
     ]);
 
     const provinces = provRes.data || [];
     const allHexes = hexRes.data || [];
     const cities = cityRes.data || [];
-    const adjacency = adjRes.data || [];
 
     // Index hexes
     const hexByProv: Record<string, typeof allHexes> = {};
@@ -264,37 +262,6 @@ Deno.serve(async (req) => {
       // Ensure at least 1 minor per province
       if (clusters.length === 0 && pHexes.length > 0) {
         clusters.push({ hexes: pHexes.filter(h => h.is_passable), biome: pHexes[0]?.biome_family || "plains", name: `Osada ${prov.name}` });
-      }
-
-      // Pass node (gateway between provinces)
-      const provAdj = adjacency.filter(a => a.province_a === prov.id || a.province_b === prov.id);
-      if (provAdj.length > 0 && pBorder.length > 0) {
-        const narrowest = provAdj.sort((a, b) => a.border_length - b.border_length)[0];
-        const otherProv = narrowest.province_a === prov.id ? narrowest.province_b : narrowest.province_a;
-        const passHexes = pBorder.filter(h => {
-          for (const [dq, dr] of NEIGHBORS) {
-            const n = hexByCoord[hexKey(h.q + dq, h.r + dr)];
-            if (n && n.province_id === otherProv) return true;
-          }
-          return false;
-        });
-        if (passHexes.length > 0) {
-          const passHex = passHexes.sort((a, b) => b.movement_cost - a.movement_cost)[0];
-          const idx = allNodes.length;
-          allNodes.push({
-            session_id, province_id: prov.id, node_type: "pass",
-            node_tier: "minor", node_subtype: "watchtower", node_class: "minor",
-            name: `Průsmyk ${prov.name}`, hex_q: passHex.q, hex_r: passHex.r,
-            controlled_by: owner,
-            strategic_value: 7, economic_value: 2, defense_value: 6,
-            mobility_relevance: 10, supply_relevance: 5,
-            is_major: false, flow_role: "gateway",
-            throughput_military: 0.7, toll_rate: 0.08,
-            resource_output: {},
-            metadata: { connects_to: otherProv, movement_cost: passHex.movement_cost },
-          });
-          minorIndices.push({ idx, provId: prov.id, hex_q: passHex.q, hex_r: passHex.r });
-        }
       }
 
       // Trade hub at border crossing (minor gateway)
