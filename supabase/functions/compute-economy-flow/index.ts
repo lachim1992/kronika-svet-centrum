@@ -96,7 +96,6 @@ const ROLE_TRADE_EFFICIENCY: Record<string, number> = {
   producer: 0.3,
   neutral: 0.2,
 };
-
 /** Strategic resource tier thresholds: how many nodes = which tier */
 const STRATEGIC_TIER_THRESHOLDS = [0, 1, 3, 6];
 
@@ -105,6 +104,55 @@ function computeTier(count: number): number {
     if (count >= STRATEGIC_TIER_THRESHOLDS[i]) return i;
   }
   return 0;
+}
+
+// ── MACRO REGION MODIFIERS ─────────────────────────────────────
+// Climate: 0=arctic, 1=cold, 2=temperate, 3=warm, 4=tropical
+const CLIMATE_PROD_MULT = [0.50, 0.70, 1.00, 1.10, 0.85];
+const CLIMATE_WEALTH_MULT = [0.40, 0.65, 1.00, 1.15, 0.80];
+// Elevation: 0=lowlands, 1=hills, 2=highlands, 3=mountains, 4=high_mountains
+const ELEVATION_FARM_MULT = [1.15, 1.00, 0.80, 0.55, 0.35];
+const ELEVATION_MINE_MULT = [0.50, 1.00, 1.30, 1.50, 1.20];
+// Moisture: 0=dry, 1=drier, 2=moist, 3=rainy, 4=wetland
+const MOISTURE_PROD_MULT = [0.55, 0.75, 1.00, 1.10, 0.85];
+const MOISTURE_FAITH_MULT = [0.80, 0.90, 1.00, 1.10, 1.30];
+
+interface MacroRegionData {
+  climate_band: number;
+  elevation_band: number;
+  moisture_band: number;
+}
+
+const MINING_SUBTYPES = new Set(["mining_camp", "mine", "quarry", "smithy"]);
+const FARM_SUBTYPES = new Set(["village", "field", "pastoral_camp", "fishing_village", "fishery", "vineyard", "hunting_ground"]);
+const FAITH_SUBTYPES = new Set(["shrine", "herbalist", "religious_center"]);
+
+function computeMacroRegionModifier(node: NodeData, region: MacroRegionData | null): { production: number; wealth: number; label: string } {
+  if (!region) return { production: 1.0, wealth: 1.0, label: "" };
+  const c = Math.min(4, Math.max(0, region.climate_band));
+  const e = Math.min(4, Math.max(0, region.elevation_band));
+  const m = Math.min(4, Math.max(0, region.moisture_band));
+
+  // Decide which elevation curve to use based on node subtype
+  const subtype = node.node_subtype || "";
+  const isMining = MINING_SUBTYPES.has(subtype);
+  const isFarming = FARM_SUBTYPES.has(subtype);
+  const isFaith = FAITH_SUBTYPES.has(subtype);
+
+  const elevMult = isMining ? ELEVATION_MINE_MULT[e] : ELEVATION_FARM_MULT[e];
+  let prodMult = CLIMATE_PROD_MULT[c] * elevMult * MOISTURE_PROD_MULT[m];
+  let wealthMult = CLIMATE_WEALTH_MULT[c];
+
+  // Faith subtypes get moisture faith bonus instead of production moisture
+  if (isFaith) {
+    prodMult = CLIMATE_PROD_MULT[c] * ELEVATION_FARM_MULT[e] * MOISTURE_FAITH_MULT[m];
+  }
+
+  return {
+    production: Math.round(prodMult * 100) / 100,
+    wealth: Math.round(wealthMult * 100) / 100,
+    label: `c${c}e${e}m${m}`,
+  };
 }
 
 interface NodeData {
@@ -138,6 +186,9 @@ interface NodeData {
   stability_factor: number;
   faith_output: number;
   food_value: number;
+  // Hex coordinates for macro region lookup
+  hex_q: number;
+  hex_r: number;
 }
 
 interface RouteData {
