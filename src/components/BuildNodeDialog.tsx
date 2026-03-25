@@ -119,7 +119,7 @@ const BuildNodeDialog = ({
         dbNodeType = nodeTypeMap[activeType] || "village_cluster";
       }
 
-      const prod = tier !== "major" ? computeNodeProduction(tier, activeType, 1, biome) : { grain: 0, wood: 0, stone: 0, iron: 0, wealth: 0, faith: 0 };
+      const prod = tier !== "major" ? computeNodeProduction(tier, activeType, 1, biome) : { production: 0, supplies: 0, wealth: 0, faith: 0 };
 
       const flowRole = tier === "major"
         ? (activeType === "city" ? "hub" : activeType === "trade_hub" ? "hub" : activeType === "fortress" ? "gateway" : "regulator")
