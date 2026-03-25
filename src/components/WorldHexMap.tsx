@@ -178,15 +178,12 @@ const HexTile = memo(({
       {isFrontier && <title>Prozkoumat ({q}, {r})</title>}
       <polygon
         points={pts}
-        fill={showBiome ? `url(#biome-grad-${hex.biome_family})` : showFrontierBiome ? `url(#biome-grad-${hex.biome_family})` : FOG_COLOR}
-        stroke={isCurrent ? "hsl(45, 90%, 55%)" : isFrontier ? "transparent" : "hsl(var(--border))"}
+        fill={showBiome ? `url(#biome-grad-${hex.biome_family})` : FOG_COLOR}
+        stroke={isCurrent ? "hsl(45, 90%, 55%)" : isFrontier ? "none" : "hsl(var(--border))"}
         strokeWidth={isCurrent ? 2.5 : isFrontier ? 0 : 0.8}
-        opacity={showBiome ? 1 : showFrontierBiome ? 0.2 : isFrontier ? 0 : 0.3}
-        className={isFrontier ? "hover:opacity-40 transition-opacity" : ""}
+        opacity={showBiome ? 1 : isFrontier ? 0 : 0.3}
+        className={isFrontier ? "hover:opacity-30 transition-opacity" : ""}
       />
-      {showFrontierBiome && (
-        <polygon points={pts} fill={FOG_COLOR} opacity={0.6} style={{ pointerEvents: "none" }} />
-      )}
       {showBiome && (
         <polygon points={pts} fill={`url(#pat-${hex.biome_family})`} style={{ pointerEvents: "none" }} />
       )}
