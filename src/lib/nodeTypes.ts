@@ -1,6 +1,10 @@
 /**
  * Minor & Micro Node Type Definitions
  * Hierarchie: Micronode → Minor Node → Major Node → Capital
+ *
+ * Resources: Production (⚒️), Supplies (🌾), Wealth (💰), Faith (⛪)
+ *   - grain merged into Supplies
+ *   - wood, stone, iron merged into Production
  */
 
 // ═══════════════════════════════════════════
@@ -22,7 +26,20 @@ export const NODE_TIER_COLORS: Record<NodeTier, string> = {
 };
 
 // ═══════════════════════════════════════════
-// MAJOR NODE TYPES (4 typy — město, hrad, obchodní hub, strážní stanice)
+// UNIFIED PRODUCTION INTERFACE
+// ═══════════════════════════════════════════
+
+export interface NodeProduction {
+  production: number; // ⚒️ merged from wood, stone, iron
+  supplies: number;   // 🌾 merged from grain/food
+  wealth: number;     // 💰
+  faith: number;      // ⛪
+}
+
+export const EMPTY_PRODUCTION: NodeProduction = { production: 0, supplies: 0, wealth: 0, faith: 0 };
+
+// ═══════════════════════════════════════════
+// MAJOR NODE TYPES
 // ═══════════════════════════════════════════
 
 export interface MajorNodeDef {
@@ -31,7 +48,7 @@ export interface MajorNodeDef {
   icon: string;
   preferredBiomes: string[];
   description: string;
-  dbNodeType: string; // maps to province_nodes.node_type
+  dbNodeType: string;
   bonusEffect: string;
 }
 
@@ -98,11 +115,11 @@ export interface MinorNodeDef {
   label: string;
   icon: string;
   preferredBiomes: string[];
-  baseProduction: { grain: number; wood: number; stone: number; iron: number; wealth: number; faith: number };
+  baseProduction: NodeProduction;
   bonusEffect: string;
   description: string;
   maxUpgrade: number;
-  upgradeBonus: number; // production multiplier per level
+  upgradeBonus: number;
 }
 
 export const MINOR_NODE_TYPES: MinorNodeDef[] = [
@@ -111,7 +128,7 @@ export const MINOR_NODE_TYPES: MinorNodeDef[] = [
     label: "Vesnice",
     icon: "🏘️",
     preferredBiomes: ["plains", "forest", "grassland", "temperate"],
-    baseProduction: { grain: 4, wood: 2, stone: 0, iron: 0, wealth: 1, faith: 0 },
+    baseProduction: { production: 2, supplies: 4, wealth: 1, faith: 0 },
     bonusEffect: "Vyvážená produkce, základní populace",
     description: "Obecná osada s vyváženou produkcí. Základ pro kolonizaci nového území.",
     maxUpgrade: 5,
@@ -122,8 +139,8 @@ export const MINOR_NODE_TYPES: MinorNodeDef[] = [
     label: "Dřevařská osada",
     icon: "🪵",
     preferredBiomes: ["forest", "dense_forest", "taiga"],
-    baseProduction: { grain: 1, wood: 8, stone: 0, iron: 0, wealth: 1, faith: 0 },
-    bonusEffect: "+50% wood z okolních micro lesních hexů",
+    baseProduction: { production: 8, supplies: 1, wealth: 1, faith: 0 },
+    bonusEffect: "+50% production z okolních micro lesních hexů",
     description: "Osada zaměřená na těžbu dřeva. Ideální v hustých lesích.",
     maxUpgrade: 5,
     upgradeBonus: 0.25,
@@ -133,7 +150,7 @@ export const MINOR_NODE_TYPES: MinorNodeDef[] = [
     label: "Rybářská osada",
     icon: "🎣",
     preferredBiomes: ["coastal", "lake", "river", "marsh"],
-    baseProduction: { grain: 6, wood: 1, stone: 0, iron: 0, wealth: 2, faith: 0 },
+    baseProduction: { production: 1, supplies: 6, wealth: 2, faith: 0 },
     bonusEffect: "+trade efficiency z pobřeží",
     description: "Pobřežní osada živící se rybolovem a drobným námořním obchodem.",
     maxUpgrade: 5,
@@ -144,7 +161,7 @@ export const MINOR_NODE_TYPES: MinorNodeDef[] = [
     label: "Hornická osada",
     icon: "⛏️",
     preferredBiomes: ["hills", "mountain", "mountain_pass", "highland"],
-    baseProduction: { grain: 0, wood: 0, stone: 4, iron: 6, wealth: 1, faith: 0 },
+    baseProduction: { production: 10, supplies: 0, wealth: 1, faith: 0 },
     bonusEffect: "+zvýšená šance na spawn strategických surovin v micro",
     description: "Hornická osada v kopcích. Produkuje kov a kámen.",
     maxUpgrade: 5,
@@ -155,7 +172,7 @@ export const MINOR_NODE_TYPES: MinorNodeDef[] = [
     label: "Pastýřská osada",
     icon: "🐑",
     preferredBiomes: ["steppe", "plains", "grassland", "savanna"],
-    baseProduction: { grain: 5, wood: 0, stone: 0, iron: 0, wealth: 2, faith: 0 },
+    baseProduction: { production: 0, supplies: 5, wealth: 2, faith: 0 },
     bonusEffect: "+mobilita jednotek, spawn koní",
     description: "Pastevecká osada na otevřených pláních. Dodává potraviny a kůže.",
     maxUpgrade: 5,
@@ -166,7 +183,7 @@ export const MINOR_NODE_TYPES: MinorNodeDef[] = [
     label: "Obchodní stanice",
     icon: "🏪",
     preferredBiomes: ["plains", "grassland", "steppe", "coastal", "river"],
-    baseProduction: { grain: 1, wood: 0, stone: 0, iron: 0, wealth: 6, faith: 0 },
+    baseProduction: { production: 0, supplies: 1, wealth: 6, faith: 0 },
     bonusEffect: "+trade efficiency, wealth multiplikátor z průchodu",
     description: "Obchodní stanice na křižovatce tras. Generuje bohatství z průchodu zboží.",
     maxUpgrade: 5,
@@ -177,7 +194,7 @@ export const MINOR_NODE_TYPES: MinorNodeDef[] = [
     label: "Svatyně",
     icon: "⛪",
     preferredBiomes: ["forest", "mountain", "highland", "marsh", "sacred"],
-    baseProduction: { grain: 0, wood: 0, stone: 0, iron: 0, wealth: 1, faith: 8 },
+    baseProduction: { production: 0, supplies: 0, wealth: 1, faith: 8 },
     bonusEffect: "+stabilita okolních osad, víra",
     description: "Posvátné místo víry. Zvyšuje stabilitu a morálku v okolí.",
     maxUpgrade: 5,
@@ -188,7 +205,7 @@ export const MINOR_NODE_TYPES: MinorNodeDef[] = [
     label: "Strážní věž",
     icon: "🏰",
     preferredBiomes: ["hills", "mountain", "highland", "plains", "steppe"],
-    baseProduction: { grain: 0, wood: 0, stone: 1, iron: 1, wealth: 0, faith: 0 },
+    baseProduction: { production: 2, supplies: 0, wealth: 0, faith: 0 },
     bonusEffect: "+strategický přehled (vision), +fortifikace, zpomalení nepřátel",
     description: "Vojenská hlídka kontrolující okolní území. Malá produkce, velký strategický význam.",
     maxUpgrade: 3,
@@ -205,9 +222,9 @@ export interface MicroNodeDef {
   label: string;
   icon: string;
   preferredBiomes: string[];
-  baseProduction: { grain: number; wood: number; stone: number; iron: number; wealth: number; faith: number };
-  strategicResourcePool: string[]; // which strategic resources can spawn here
-  spawnChance: number; // 0-1 chance to spawn a strategic resource at build
+  baseProduction: NodeProduction;
+  strategicResourcePool: string[];
+  spawnChance: number;
   description: string;
   maxUpgrade: number;
   upgradeBonus: number;
@@ -219,10 +236,10 @@ export const MICRO_NODE_TYPES: MicroNodeDef[] = [
     label: "Pole",
     icon: "🌾",
     preferredBiomes: ["plains", "grassland", "temperate", "river"],
-    baseProduction: { grain: 6, wood: 0, stone: 0, iron: 0, wealth: 0, faith: 0 },
+    baseProduction: { production: 0, supplies: 6, wealth: 0, faith: 0 },
     strategicResourcePool: ["salt"],
     spawnChance: 0.08,
-    description: "Orná půda. Hlavní zdroj obilí pro okolní osady.",
+    description: "Orná půda. Hlavní zdroj zásob pro okolní osady.",
     maxUpgrade: 3,
     upgradeBonus: 0.3,
   },
@@ -231,7 +248,7 @@ export const MICRO_NODE_TYPES: MicroNodeDef[] = [
     label: "Pila",
     icon: "🪚",
     preferredBiomes: ["forest", "dense_forest", "taiga"],
-    baseProduction: { grain: 0, wood: 7, stone: 0, iron: 0, wealth: 1, faith: 0 },
+    baseProduction: { production: 7, supplies: 0, wealth: 1, faith: 0 },
     strategicResourcePool: ["timber"],
     spawnChance: 0.12,
     description: "Zpracovává dřevo z okolních lesů. Klíčová pro stavební projekty.",
@@ -243,7 +260,7 @@ export const MICRO_NODE_TYPES: MicroNodeDef[] = [
     label: "Důl",
     icon: "⛏️",
     preferredBiomes: ["hills", "mountain", "highland"],
-    baseProduction: { grain: 0, wood: 0, stone: 2, iron: 5, wealth: 1, faith: 0 },
+    baseProduction: { production: 7, supplies: 0, wealth: 1, faith: 0 },
     strategicResourcePool: ["iron", "copper", "gold_deposit", "gems"],
     spawnChance: 0.18,
     description: "Hlubinný důl těžící kovy a minerály. Vysoká šance na strategické suroviny.",
@@ -255,7 +272,7 @@ export const MICRO_NODE_TYPES: MicroNodeDef[] = [
     label: "Loviště",
     icon: "🏹",
     preferredBiomes: ["forest", "steppe", "grassland", "taiga"],
-    baseProduction: { grain: 4, wood: 1, stone: 0, iron: 0, wealth: 1, faith: 0 },
+    baseProduction: { production: 1, supplies: 4, wealth: 1, faith: 0 },
     strategicResourcePool: ["horses"],
     spawnChance: 0.10,
     description: "Lovecký revír. Dodává potraviny a kůže.",
@@ -267,7 +284,7 @@ export const MICRO_NODE_TYPES: MicroNodeDef[] = [
     label: "Rybárna",
     icon: "🐟",
     preferredBiomes: ["coastal", "lake", "river", "marsh"],
-    baseProduction: { grain: 5, wood: 0, stone: 0, iron: 0, wealth: 2, faith: 0 },
+    baseProduction: { production: 0, supplies: 5, wealth: 2, faith: 0 },
     strategicResourcePool: ["salt"],
     spawnChance: 0.10,
     description: "Rybářské zázemí. Stabilní zdroj potravin z vody.",
@@ -279,7 +296,7 @@ export const MICRO_NODE_TYPES: MicroNodeDef[] = [
     label: "Lom",
     icon: "🪨",
     preferredBiomes: ["hills", "mountain", "highland"],
-    baseProduction: { grain: 0, wood: 0, stone: 7, iron: 0, wealth: 0, faith: 0 },
+    baseProduction: { production: 7, supplies: 0, wealth: 0, faith: 0 },
     strategicResourcePool: ["marble"],
     spawnChance: 0.12,
     description: "Kamenolom. Klíčový pro výstavbu monumentů a opevnění.",
@@ -291,7 +308,7 @@ export const MICRO_NODE_TYPES: MicroNodeDef[] = [
     label: "Vinice",
     icon: "🍇",
     preferredBiomes: ["temperate", "plains", "grassland", "hills"],
-    baseProduction: { grain: 1, wood: 0, stone: 0, iron: 0, wealth: 5, faith: 0 },
+    baseProduction: { production: 0, supplies: 1, wealth: 5, faith: 0 },
     strategicResourcePool: ["silk"],
     spawnChance: 0.08,
     description: "Vinice a ovocné sady. Generují bohatství z luxusních produktů.",
@@ -303,7 +320,7 @@ export const MICRO_NODE_TYPES: MicroNodeDef[] = [
     label: "Bylinkárna",
     icon: "🌿",
     preferredBiomes: ["forest", "marsh", "jungle", "temperate"],
-    baseProduction: { grain: 0, wood: 0, stone: 0, iron: 0, wealth: 1, faith: 4 },
+    baseProduction: { production: 0, supplies: 0, wealth: 1, faith: 4 },
     strategicResourcePool: ["incense"],
     spawnChance: 0.12,
     description: "Bylinkářská dílna. Produkuje léčiva a kadidlo pro víru.",
@@ -315,7 +332,7 @@ export const MICRO_NODE_TYPES: MicroNodeDef[] = [
     label: "Kovárna",
     icon: "🔨",
     preferredBiomes: ["hills", "mountain", "highland"],
-    baseProduction: { grain: 0, wood: 0, stone: 0, iron: 3, wealth: 2, faith: 0 },
+    baseProduction: { production: 5, supplies: 0, wealth: 2, faith: 0 },
     strategicResourcePool: ["obsidian"],
     spawnChance: 0.10,
     description: "Kovárna zpracovávající suroviny. Vyžaduje přístup k železu pro plný výkon.",
@@ -327,7 +344,7 @@ export const MICRO_NODE_TYPES: MicroNodeDef[] = [
     label: "Hlídka",
     icon: "👁️",
     preferredBiomes: ["plains", "hills", "steppe", "mountain", "highland", "forest"],
-    baseProduction: { grain: 0, wood: 0, stone: 0, iron: 0, wealth: 0, faith: 0 },
+    baseProduction: { production: 0, supplies: 0, wealth: 0, faith: 0 },
     strategicResourcePool: [],
     spawnChance: 0,
     description: "Vojenská hlídka. Žádná produkce, ale strategický přehled a obrana.",
@@ -339,7 +356,7 @@ export const MICRO_NODE_TYPES: MicroNodeDef[] = [
     label: "Sběrna pryskyřice",
     icon: "🌲",
     preferredBiomes: ["forest", "dense_forest", "taiga"],
-    baseProduction: { grain: 2, wood: 2, stone: 0, iron: 0, wealth: 1, faith: 0 },
+    baseProduction: { production: 2, supplies: 2, wealth: 1, faith: 0 },
     strategicResourcePool: ["timber"],
     spawnChance: 0.10,
     description: "Sběr pryskyřice a lesních produktů. Zásoby a dřevo.",
@@ -351,7 +368,7 @@ export const MICRO_NODE_TYPES: MicroNodeDef[] = [
     label: "Solná pánev",
     icon: "🧂",
     preferredBiomes: ["coastal", "desert", "steppe"],
-    baseProduction: { grain: 0, wood: 0, stone: 0, iron: 0, wealth: 4, faith: 0 },
+    baseProduction: { production: 0, supplies: 0, wealth: 4, faith: 0 },
     strategicResourcePool: ["salt"],
     spawnChance: 0.20,
     description: "Solná pánev na pobřeží nebo v poušti. Sůl je cenná obchodní komodita.",
@@ -417,11 +434,10 @@ export function computeNodeProduction(
   subtype: string,
   upgradeLevel: number,
   biome: string,
-): Record<string, number> {
-  // Major nodes don't have base production — they aggregate from minor/micro
-  if (tier === "major") return { grain: 0, wood: 0, stone: 0, iron: 0, wealth: 0, faith: 0 };
+): NodeProduction {
+  if (tier === "major") return { ...EMPTY_PRODUCTION };
 
-  let def: { baseProduction: Record<string, number>; upgradeBonus: number; preferredBiomes: string[] } | undefined;
+  let def: { baseProduction: NodeProduction; upgradeBonus: number; preferredBiomes: string[] } | undefined;
 
   if (tier === "minor") {
     def = MINOR_NODE_TYPES.find(t => t.key === subtype);
@@ -429,21 +445,22 @@ export function computeNodeProduction(
     def = MICRO_NODE_TYPES.find(t => t.key === subtype);
   }
 
-  if (!def) return { grain: 0, wood: 0, stone: 0, iron: 0, wealth: 0, faith: 0 };
+  if (!def) return { ...EMPTY_PRODUCTION };
 
   const b = biome?.toLowerCase() || "";
   const biomeMatch = def.preferredBiomes.some(pb => b.includes(pb));
-  const biomeMult = biomeMatch ? 1.0 : 0.6; // 40% penalty if wrong biome
+  const biomeMult = biomeMatch ? 1.0 : 0.6;
   const upgradeMult = 1 + (upgradeLevel - 1) * def.upgradeBonus;
 
-  const result: Record<string, number> = {};
-  for (const [key, val] of Object.entries(def.baseProduction)) {
-    result[key] = Math.round(val * biomeMult * upgradeMult * 10) / 10;
-  }
-  return result;
+  return {
+    production: Math.round(def.baseProduction.production * biomeMult * upgradeMult * 10) / 10,
+    supplies: Math.round(def.baseProduction.supplies * biomeMult * upgradeMult * 10) / 10,
+    wealth: Math.round(def.baseProduction.wealth * biomeMult * upgradeMult * 10) / 10,
+    faith: Math.round(def.baseProduction.faith * biomeMult * upgradeMult * 10) / 10,
+  };
 }
 
 /** Total production as single number for display */
-export function totalProduction(prod: Record<string, number>): number {
-  return Object.values(prod).reduce((a, b) => a + b, 0);
+export function totalProduction(prod: NodeProduction): number {
+  return prod.production + prod.supplies + prod.wealth + prod.faith;
 }
