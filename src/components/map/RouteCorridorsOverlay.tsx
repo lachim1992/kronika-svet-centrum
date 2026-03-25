@@ -101,10 +101,12 @@ interface NodeInfo {
   hex_r: number;
   name: string;
   node_type: string;
+  node_tier: string | null;
   flow_role: string;
   controlled_by: string | null;
   production_output: number;
   wealth_output: number;
+  incoming_production: number;
   cumulative_trade_flow: number;
 }
 
