@@ -1191,6 +1191,26 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
                 </div>
               </div>
             )}
+            {/* Road network toggle */}
+            <div className="mb-2 pb-2 border-b border-border">
+              <div className="flex items-center justify-between mb-1">
+                <p className="text-[10px] font-display font-semibold text-foreground flex items-center gap-1">🛤️ Silnice</p>
+                <label className="flex items-center gap-1 text-[9px] text-muted-foreground cursor-pointer">
+                  <input type="checkbox" checked={showRoadLayer} onChange={e => setShowRoadLayer(e.target.checked)} className="w-3 h-3" />
+                  Zobrazit
+                </label>
+              </div>
+              {showRoadLayer && (
+                <div className="grid grid-cols-1 gap-y-1 text-[9px]">
+                  {(Object.entries(ROAD_STYLES) as Array<[string, { width: number; color: string; dash: string | undefined; label: string }]>).map(([key, style]) => (
+                    <span key={key} className="flex items-center gap-1.5 text-muted-foreground">
+                      <span className="w-4 h-0 inline-block border-t-[2px]" style={{ borderColor: style.color, borderStyle: style.dash ? "dashed" : "solid" }} />
+                      {style.label}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
             {/* Strategic layer toggle */}
             <div className="mb-2 pb-2 border-b border-border">
               <div className="flex items-center justify-between mb-1">
