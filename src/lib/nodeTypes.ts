@@ -416,3 +416,47 @@ export function computeNodeProduction(
 export function totalProduction(prod: NodeProduction): number {
   return prod.production + prod.supplies + prod.wealth + prod.faith;
 }
+
+/** Get upkeep for a node subtype */
+export function getNodeUpkeep(tier: NodeTier, subtype: string): NodeUpkeep {
+  if (tier === "major") {
+    const def = MAJOR_NODE_TYPES.find(t => t.key === subtype);
+    return def?.upkeep || { supplies: 10, wealth: 6 };
+  }
+  if (tier === "minor") {
+    const def = MINOR_NODE_TYPES.find(t => t.key === subtype);
+    return def?.upkeep || { supplies: 3, wealth: 2 };
+  }
+  const def = MICRO_NODE_TYPES.find(t => t.key === subtype);
+  return def?.upkeep || { supplies: 1, wealth: 0.5 };
+}
+
+/** Compute net balance for a node at given upgrade level */
+export interface NetBalanceResult {
+  grossProduction: number;
+  grossSupplies: number;
+  grossWealth: number;
+  upkeepSupplies: number;
+  upkeepWealth: number;
+  netBalance: number;
+  isDeficit: boolean;
+}
+
+export function computeNetBalance(
+  tier: NodeTier, subtype: string, upgradeLevel: number, biome: string,
+): NetBalanceResult {
+  const upkeep = getNodeUpkeep(tier, subtype);
+  const prod = computeNodeProduction(tier, subtype, upgradeLevel, biome);
+  const totalOut = prod.production + prod.supplies + prod.wealth + prod.faith;
+  const totalUpkeep = upkeep.supplies + upkeep.wealth;
+  const netBalance = totalOut - totalUpkeep;
+  return {
+    grossProduction: prod.production,
+    grossSupplies: prod.supplies,
+    grossWealth: prod.wealth,
+    upkeepSupplies: upkeep.supplies,
+    upkeepWealth: upkeep.wealth,
+    netBalance: Math.round(netBalance * 10) / 10,
+    isDeficit: netBalance < 0,
+  };
+}
