@@ -448,7 +448,13 @@ const RouteCorridorsOverlay = memo(({ sessionId, offsetX, offsetY }: Props) => {
                     return (
                       <div key={i} className="bg-muted/40 rounded px-2 py-1 space-y-0.5">
                         <div className="flex items-center justify-between">
-                          <span className="font-medium text-foreground capitalize">{f.flow_type}</span>
+                          <div className="flex items-center gap-1.5">
+                            <span
+                              className="inline-block w-2.5 h-2.5 rounded-full shrink-0"
+                              style={{ backgroundColor: FLOW_TYPE_COLORS[f.flow_type] || "hsl(0,0%,70%)" }}
+                            />
+                            <span className="font-medium text-foreground">{FLOW_TYPE_LABEL[f.flow_type] || f.flow_type}</span>
+                          </div>
                           <span className="text-muted-foreground">{f.path_length} hexů · ∑{f.total_cost.toFixed(1)}</span>
                         </div>
                         <div className="text-muted-foreground">
