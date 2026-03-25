@@ -389,7 +389,7 @@ const RouteCorridorsOverlay = memo(({ sessionId, offsetX, offsetY }: Props) => {
                           <span className="text-muted-foreground">{f.path_length} hexů · ∑{f.total_cost.toFixed(1)}</span>
                         </div>
                         <div className="text-muted-foreground">
-                          {fNodeA?.label || "?"} → {fNodeB?.label || "?"}
+                          {fNodeA?.name || "?"} → {fNodeB?.name || "?"}
                         </div>
                         {f.bottleneck_cost != null && f.bottleneck_cost > 0 && f.bottleneck_hex && (
                           <div className="text-amber-400 text-[10px]">
