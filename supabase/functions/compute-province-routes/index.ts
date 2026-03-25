@@ -68,6 +68,18 @@ function calcMetrics(a: Node, b: Node, dist: number, routeType: string): Partial
   };
 }
 
+/** Find the nearest node from `candidates` to `target` */
+function findNearest(target: Node, candidates: Node[]): Node | null {
+  if (candidates.length === 0) return null;
+  let best = candidates[0];
+  let bestDist = axialDist(target.hex_q, target.hex_r, best.hex_q, best.hex_r);
+  for (let i = 1; i < candidates.length; i++) {
+    const d = axialDist(target.hex_q, target.hex_r, candidates[i].hex_q, candidates[i].hex_r);
+    if (d < bestDist) { bestDist = d; best = candidates[i]; }
+  }
+  return best;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -84,7 +96,8 @@ Deno.serve(async (req) => {
     const [nodesRes, adjRes] = await Promise.all([
       sb.from("province_nodes")
         .select("id, province_id, node_type, node_tier, node_subtype, name, hex_q, hex_r, strategic_value, economic_value, defense_value, parent_node_id, is_major, flow_role, metadata")
-        .eq("session_id", session_id),
+        .eq("session_id", session_id)
+        .eq("is_active", true),
       sb.from("province_adjacency")
         .select("province_a, province_b")
         .eq("session_id", session_id),
@@ -136,7 +149,8 @@ Deno.serve(async (req) => {
     };
 
     // ═══════════════════════════════════════
-    // STRATEGY 1: HIERARCHY BACKBONE (micro→minor→major)
+    // STRATEGY 1: HIERARCHY BACKBONE (micro→parent, minor→parent)
+    // Each node connects ONLY to its parent — clean tree structure
     // ═══════════════════════════════════════
     for (const n of nodes) {
       if (n.parent_node_id) {
@@ -146,38 +160,52 @@ Deno.serve(async (req) => {
     }
 
     // ═══════════════════════════════════════
-    // STRATEGY 2: INTRA-PROVINCE major↔major backbone
+    // STRATEGY 2: INTRA-PROVINCE — nearest-neighbor backbone for majors
+    // Instead of all-to-all, connect each major to its nearest major (MST-like)
     // ═══════════════════════════════════════
     for (const [, pNodes] of Object.entries(nodesByProv)) {
       const majors = pNodes.filter(n => n.is_major || n.node_tier === "major");
-      // Connect all majors in same province
-      for (let i = 0; i < majors.length; i++) {
-        for (let j = i + 1; j < majors.length; j++) {
-          addRoute(majors[i], majors[j], { tier_link: "major↔major" });
-        }
-      }
-      // Connect minor nodes to each other if they share the same parent
-      const minors = pNodes.filter(n => n.node_tier === "minor");
-      const byParent: Record<string, Node[]> = {};
-      for (const m of minors) {
-        const pk = m.parent_node_id || "_none";
-        if (!byParent[pk]) byParent[pk] = [];
-        byParent[pk].push(m);
-      }
-      for (const siblings of Object.values(byParent)) {
-        if (siblings.length < 2) continue;
-        // Connect siblings within reasonable distance
-        for (let i = 0; i < siblings.length; i++) {
-          for (let j = i + 1; j < siblings.length; j++) {
-            const dist = axialDist(siblings[i].hex_q, siblings[i].hex_r, siblings[j].hex_q, siblings[j].hex_r);
-            if (dist < 10) addRoute(siblings[i], siblings[j], { tier_link: "minor↔minor" });
+      if (majors.length < 2) continue;
+
+      // Nearest-neighbor chain: connect each major to its closest unconnected major
+      const connected = new Set<string>([majors[0].id]);
+      const remaining = new Set<string>(majors.slice(1).map(n => n.id));
+
+      while (remaining.size > 0) {
+        let bestA: Node | null = null, bestB: Node | null = null, bestDist = Infinity;
+        for (const cid of connected) {
+          const cNode = nodeById.get(cid)!;
+          for (const rid of remaining) {
+            const rNode = nodeById.get(rid)!;
+            const d = axialDist(cNode.hex_q, cNode.hex_r, rNode.hex_q, rNode.hex_r);
+            if (d < bestDist) { bestDist = d; bestA = cNode; bestB = rNode; }
           }
         }
+        if (bestA && bestB) {
+          addRoute(bestA, bestB, { tier_link: "major↔major" });
+          connected.add(bestB.id);
+          remaining.delete(bestB.id);
+        } else break;
+      }
+
+      // Orphan minors (no parent_node_id): connect to nearest major in same province
+      const orphanMinors = pNodes.filter(n => n.node_tier === "minor" && !n.parent_node_id);
+      for (const m of orphanMinors) {
+        const nearest = findNearest(m, majors);
+        if (nearest) addRoute(m, nearest, { tier_link: "minor→major_fallback" });
+      }
+
+      // Orphan micros (no parent): connect to nearest minor in same province
+      const minors = pNodes.filter(n => n.node_tier === "minor");
+      const orphanMicros = pNodes.filter(n => n.node_tier === "micro" && !n.parent_node_id);
+      for (const mc of orphanMicros) {
+        const nearest = findNearest(mc, minors.length > 0 ? minors : majors);
+        if (nearest) addRoute(mc, nearest, { tier_link: "micro→minor_fallback" });
       }
     }
 
     // ═══════════════════════════════════════
-    // STRATEGY 3: CROSS-PROVINCE (major↔major, pass↔city)
+    // STRATEGY 3: CROSS-PROVINCE — single nearest major↔major bridge per border
     // ═══════════════════════════════════════
     for (const adj of adjacency) {
       const nodesA = nodesByProv[adj.province_a] || [];
@@ -187,7 +215,7 @@ Deno.serve(async (req) => {
       const majorsA = nodesA.filter(n => n.is_major || n.node_tier === "major");
       const majorsB = nodesB.filter(n => n.is_major || n.node_tier === "major");
 
-      // Connect nearest major↔major across border
+      // Single nearest major↔major across border
       let bestPair: [Node, Node] | null = null, bestDist = Infinity;
       for (const a of majorsA) {
         for (const b of majorsB) {
@@ -197,34 +225,30 @@ Deno.serve(async (req) => {
       }
       if (bestPair) addRoute(bestPair[0], bestPair[1], { tier_link: "cross_major" });
 
-      // Pass/trade_hub cross-connections
+      // Pass gateway: if a pass exists on border, connect it to nearest major on OTHER side only
       const passA = nodesA.find(n => n.node_type === "pass");
       const passB = nodesB.find(n => n.node_type === "pass");
-      if (passA && passB) addRoute(passA, passB, { tier_link: "cross_pass" });
-
-      const hubA = nodesA.find(n => n.node_type === "trade_hub");
-      const hubB = nodesB.find(n => n.node_type === "trade_hub");
-      if (hubA && hubB) addRoute(hubA, hubB, { tier_link: "cross_trade" });
-
-      // Pass → nearest major across border
       if (passA && majorsB.length > 0) {
-        const nearest = majorsB.sort((a, b) => axialDist(passA.hex_q, passA.hex_r, a.hex_q, a.hex_r) - axialDist(passA.hex_q, passA.hex_r, b.hex_q, b.hex_r))[0];
-        addRoute(passA, nearest, { tier_link: "cross_pass_major" });
+        const nearest = findNearest(passA, majorsB);
+        if (nearest) addRoute(passA, nearest, { tier_link: "pass→cross_major" });
       }
       if (passB && majorsA.length > 0) {
-        const nearest = majorsA.sort((a, b) => axialDist(passB.hex_q, passB.hex_r, a.hex_q, a.hex_r) - axialDist(passB.hex_q, passB.hex_r, b.hex_q, b.hex_r))[0];
-        addRoute(passB, nearest, { tier_link: "cross_pass_major" });
+        const nearest = findNearest(passB, majorsA);
+        if (nearest) addRoute(passB, nearest, { tier_link: "pass→cross_major" });
       }
     }
 
     // ═══════════════════════════════════════
-    // STRATEGY 4: SEA LANES (port↔port within range)
+    // STRATEGY 4: SEA LANES — nearest port only (max dist 12)
     // ═══════════════════════════════════════
     const ports = nodes.filter(n => n.node_type === "port");
-    for (let i = 0; i < ports.length; i++) {
-      for (let j = i + 1; j < ports.length; j++) {
-        const dist = axialDist(ports[i].hex_q, ports[i].hex_r, ports[j].hex_q, ports[j].hex_r);
-        if (dist < 20) addRoute(ports[i], ports[j], { tier_link: "sea_lane" });
+    for (const p of ports) {
+      // Connect to nearest other port within range
+      const others = ports.filter(o => o.id !== p.id && o.province_id !== p.province_id);
+      const nearest = findNearest(p, others);
+      if (nearest) {
+        const d = axialDist(p.hex_q, p.hex_r, nearest.hex_q, nearest.hex_r);
+        if (d <= 12) addRoute(p, nearest, { tier_link: "sea_lane" });
       }
     }
 
