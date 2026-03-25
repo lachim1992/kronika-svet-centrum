@@ -78,6 +78,7 @@ const RealmIndicators = ({ realm, cities, currentTurn }: Props) => {
       totalProduction, totalWealth, totalCapacity, totalImportance,
       faith, faithGrowth, warriorRatio, supplyStrain,
       strategicTiers,
+      totalPrestige, prestigeTier, prestigeComponents,
     };
   }, [realm, cities, currentTurn]);
 
