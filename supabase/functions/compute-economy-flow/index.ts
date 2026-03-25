@@ -58,6 +58,40 @@ const BASE_PRODUCTION_LEGACY: Record<string, number> = {
   port: 5, fortress: 1, trade_hub: 2, pass: 0, religious_center: 2, logistic_hub: 3,
 };
 
+// ── UPKEEP COSTS (supplies, wealth) ─────────────────────────────
+const MINOR_SUBTYPE_UPKEEP: Record<string, { supplies: number; wealth: number }> = {
+  village:          { supplies: 3, wealth: 2 },
+  lumber_camp:      { supplies: 3, wealth: 2 },
+  fishing_village:  { supplies: 3, wealth: 2 },
+  mining_camp:      { supplies: 4, wealth: 2 },
+  pastoral_camp:    { supplies: 2, wealth: 2 },
+  trade_post:       { supplies: 2, wealth: 3 },
+  shrine:           { supplies: 2, wealth: 1 },
+  watchtower:       { supplies: 2, wealth: 1 },
+};
+
+const MICRO_SUBTYPE_UPKEEP: Record<string, { supplies: number; wealth: number }> = {
+  field:            { supplies: 1, wealth: 0.5 },
+  sawmill:          { supplies: 1.5, wealth: 1 },
+  mine:             { supplies: 2, wealth: 1 },
+  hunting_ground:   { supplies: 1, wealth: 0.5 },
+  fishery:          { supplies: 1, wealth: 0.5 },
+  quarry:           { supplies: 1.5, wealth: 0.5 },
+  vineyard:         { supplies: 1.5, wealth: 1 },
+  herbalist:        { supplies: 1, wealth: 0.5 },
+  smithy:           { supplies: 2, wealth: 1 },
+  outpost:          { supplies: 0.5, wealth: 0.5 },
+  resin_collector:  { supplies: 1, wealth: 0.5 },
+  salt_pan:         { supplies: 1, wealth: 1 },
+};
+
+const MAJOR_SUBTYPE_UPKEEP: Record<string, { supplies: number; wealth: number }> = {
+  city:             { supplies: 10, wealth: 6 },
+  fortress:         { supplies: 8, wealth: 4 },
+  trade_hub:        { supplies: 6, wealth: 8 },
+  guard_station:    { supplies: 6, wealth: 3 },
+};
+
 const SUBTYPE_UPGRADE_BONUS: Record<string, number> = {
   village: 0.2, lumber_camp: 0.25, fishing_village: 0.2, mining_camp: 0.3,
   pastoral_camp: 0.2, trade_post: 0.25, shrine: 0.2, watchtower: 0.15,
