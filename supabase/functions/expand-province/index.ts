@@ -100,27 +100,38 @@ Deno.serve(async (req) => {
       );
     }
 
-    // 4. Check expansion cost — deduct from realm_resources
+    // 4. Check expansion cost — deduct from realm_resources (skip if skip_cost)
     const EXPANSION_COST = { gold_reserve: 20, wood_reserve: 5 };
-    const { data: resources } = await sb
-      .from("realm_resources")
-      .select("gold_reserve, wood_reserve")
-      .eq("session_id", session_id)
-      .eq("player_name", player_name)
-      .single();
+    if (!skip_cost) {
+      const { data: resources } = await sb
+        .from("realm_resources")
+        .select("gold_reserve, wood_reserve")
+        .eq("session_id", session_id)
+        .eq("player_name", player_name)
+        .single();
 
-    if (!resources) {
-      return new Response(
-        JSON.stringify({ error: "Zdroje nenalezeny" }),
-        { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
+      if (!resources) {
+        return new Response(
+          JSON.stringify({ error: "Zdroje nenalezeny" }),
+          { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
 
-    if (resources.gold_reserve < EXPANSION_COST.gold_reserve || resources.wood_reserve < EXPANSION_COST.wood_reserve) {
-      return new Response(
-        JSON.stringify({ error: `Nedostatek zdrojů. Potřeba: ${EXPANSION_COST.gold_reserve} zlata, ${EXPANSION_COST.wood_reserve} dřeva` }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      if (resources.gold_reserve < EXPANSION_COST.gold_reserve || resources.wood_reserve < EXPANSION_COST.wood_reserve) {
+        return new Response(
+          JSON.stringify({ error: `Nedostatek zdrojů. Potřeba: ${EXPANSION_COST.gold_reserve} zlata, ${EXPANSION_COST.wood_reserve} dřeva` }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      // Deduct resources later (step 7)
+      await sb.from("realm_resources")
+        .update({
+          gold_reserve: resources.gold_reserve - EXPANSION_COST.gold_reserve,
+          wood_reserve: resources.wood_reserve - EXPANSION_COST.wood_reserve,
+        })
+        .eq("session_id", session_id)
+        .eq("player_name", player_name);
     }
 
     // 5. Generate the hex if it doesn't exist yet
