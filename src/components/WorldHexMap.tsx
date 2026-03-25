@@ -1322,6 +1322,44 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
                 </div>
               )}
 
+              {/* Nodes on this hex */}
+              {(() => {
+                const hexNodes = nodesByCoord.get(hKey(selectedHex.q, selectedHex.r)) || [];
+                if (hexNodes.length === 0) return null;
+                return (
+                  <div className="p-3 rounded-lg border border-border bg-muted/30 space-y-1.5">
+                    <p className="text-xs font-display font-semibold flex items-center gap-1.5">
+                      🏘️ Uzly ({hexNodes.length})
+                    </p>
+                    {hexNodes.map(n => {
+                      const def = n.node_tier === "minor"
+                        ? MINOR_NODE_TYPES.find(t => t.key === n.node_subtype)
+                        : MICRO_NODE_TYPES.find(t => t.key === n.node_subtype);
+                      return (
+                        <div key={n.id} className="flex items-center gap-2 text-xs py-1">
+                          <span>{def?.icon || "📍"}</span>
+                          <span className="font-display font-semibold">{n.name}</span>
+                          <Badge variant="outline" className="text-[8px] h-4 ml-auto">
+                            {n.node_tier === "minor" ? "osada" : "zázemí"} lv.{n.upgrade_level}
+                          </Badge>
+                        </div>
+                      );
+                    })}
+                    {/* Build micro node under a minor on this hex */}
+                    {hexNodes.filter(n => n.node_tier === "minor").map(minor => (
+                      <Button key={`micro-${minor.id}`} variant="ghost" size="sm" className="w-full text-[10px] h-7 gap-1 mt-1"
+                        onClick={() => {
+                          setBuildNodeParent({ id: minor.id, name: minor.name });
+                          setBuildNodeTier("micro");
+                          setShowBuildNodeDialog(true);
+                        }}>
+                        <Plus className="h-3 w-3" /> Postavit zázemí pro {minor.name}
+                      </Button>
+                    ))}
+                  </div>
+                );
+              })()}
+
               {/* Actions */}
               <div className="space-y-2">
                 <Button variant="outline" size="sm" className="w-full font-display text-xs gap-2"
@@ -1335,6 +1373,24 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
                     onClick={() => { setShowFoundDialog(true); }}>
                     <Castle className="h-3.5 w-3.5" /> Založit osadu zde
                   </Button>
+                )}
+
+                {/* Build Minor Node button */}
+                {!IMPASSABLE_BIOMES.has(selectedHex.biome_family) && (
+                  <Button variant="secondary" size="sm" className="w-full font-display text-xs gap-2"
+                    onClick={() => { setBuildNodeTier("minor"); setBuildNodeParent(null); setShowBuildNodeDialog(true); }}>
+                    <Hammer className="h-3.5 w-3.5" /> Postavit osadu (minor node)
+                  </Button>
+                )}
+
+                {/* Dev: Build any node */}
+                {devMode && !IMPASSABLE_BIOMES.has(selectedHex.biome_family) && (
+                  <>
+                    <Button variant="outline" size="sm" className="w-full text-xs gap-2 border-primary/30"
+                      onClick={() => { setBuildNodeTier(undefined); setBuildNodeParent(null); setShowBuildNodeDialog(true); }}>
+                      <Hammer className="h-3.5 w-3.5 text-primary" /> DEV: Postavit libovolný uzel
+                    </Button>
+                  </>
                 )}
 
                 {/* Expand province button */}
@@ -1351,6 +1407,25 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
           )}
         </SheetContent>
       </Sheet>
+
+      {/* Build Node Dialog */}
+      {selectedHex && showBuildNodeDialog && (
+        <BuildNodeDialog
+          open={showBuildNodeDialog}
+          onClose={() => { setShowBuildNodeDialog(false); setBuildNodeParent(null); }}
+          sessionId={sessionId}
+          playerName={playerName}
+          hexQ={selectedHex.q}
+          hexR={selectedHex.r}
+          biome={selectedHex.biome_family}
+          provinceId={provinceHexMap.get(hKey(selectedHex.q, selectedHex.r))?.provinceId || null}
+          parentNodeId={buildNodeParent?.id}
+          parentNodeName={buildNodeParent?.name}
+          devMode={devMode}
+          forceTier={buildNodeTier}
+          onBuilt={() => { fetchNodes(); }}
+        />
+      )}
 
       {/* Battle dialog */}
       <Dialog open={!!battleTarget} onOpenChange={(open) => { if (!open) { setBattleTarget(null); setSpeechResult(null); setBattleSpeech(""); } }}>
