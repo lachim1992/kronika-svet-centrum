@@ -226,9 +226,10 @@ const HexTile = memo(({
                 }
                 const ny = i === 0 ? cy - 6 : cy + 8;
                 return (
-                  <g key={n.id}>
+                  <g key={n.id} className="cursor-pointer" onClick={(e) => { e.stopPropagation(); onNodeClick?.(n); }}>
+                    <circle cx={cx} cy={ny} r={n.node_tier === "major" ? 10 : 8} fill="black" fillOpacity={0.01} />
                     <text x={cx} y={ny} textAnchor="middle" dominantBaseline="middle"
-                      fill="white" fontSize={n.node_tier === "major" ? "14" : i === 0 ? "11" : "9"} style={{ pointerEvents: "none" }}>
+                      fill="white" fontSize={n.node_tier === "major" ? "14" : i === 0 ? "11" : "9"}>
                       {icon}
                     </text>
                   </g>
