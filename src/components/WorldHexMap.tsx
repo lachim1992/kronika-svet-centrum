@@ -363,6 +363,13 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
   const [showProvinceLayer, setShowProvinceLayer] = useState(true);
   const [showStrategicLayer, setShowStrategicLayer] = useState(false);
   const [expandingProvince, setExpandingProvince] = useState(false);
+  const [showBuildNodeDialog, setShowBuildNodeDialog] = useState(false);
+  const [buildNodeTier, setBuildNodeTier] = useState<"minor" | "micro" | undefined>(undefined);
+  const [buildNodeParent, setBuildNodeParent] = useState<{ id: string; name: string } | null>(null);
+
+  // Nodes on hex map
+  interface NodeOnHex { id: string; name: string; hex_q: number; hex_r: number; node_tier: string; node_subtype: string | null; controlled_by: string | null; upgrade_level: number; parent_node_id: string | null; }
+  const [allNodes, setAllNodes] = useState<NodeOnHex[]>([]);
 
   // Province data
   const [provinceHexMap, setProvinceHexMap] = useState<Map<string, { provinceId: string; colorIndex: number }>>(new Map());
