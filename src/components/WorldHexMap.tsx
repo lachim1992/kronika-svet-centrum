@@ -1052,6 +1052,8 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
               />
             );
           })}
+          {/* Road network — hex-traced paths between nodes */}
+          <RoadNetworkOverlay sessionId={sessionId} offsetX={offsetX} offsetY={offsetY} visible={showRoadLayer} />
           {/* Province overlay layer — rendered ON TOP of hex tiles for visibility */}
           {showProvinceLayer && renderCoords.map(c => {
             const provData = provinceHexMap.get(hKey(c.q, c.r));
