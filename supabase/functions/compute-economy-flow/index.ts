@@ -523,10 +523,18 @@ Deno.serve(async (req) => {
       };
       majorTotalDual.set(node.id, total);
 
+      // Upkeep for major nodes
+      const subtype = node.node_subtype || "";
+      const upkeep = MAJOR_SUBTYPE_UPKEEP[subtype] || { supplies: 10, wealth: 6 };
+      const netSupplies = total.supplies - upkeep.supplies;
+      const netWealth = -upkeep.wealth;
+      const netBalance = total.production + netSupplies + netWealth;
+      nodeUpkeepData.set(node.id, { upkeep_supplies: upkeep.supplies, upkeep_wealth: upkeep.wealth, net_balance: Math.round(netBalance * 100) / 100 });
+
       const consumed = TIER_CONSUMPTION.major;
       const fwd: DualOutput = {
-        production: total.production * (1 - consumed),
-        supplies: total.supplies * (1 - consumed),
+        production: Math.max(0, total.production) * (1 - consumed),
+        supplies: Math.max(0, netSupplies) * (1 - consumed),
       };
       majorForwarded.set(node.id, fwd);
 
