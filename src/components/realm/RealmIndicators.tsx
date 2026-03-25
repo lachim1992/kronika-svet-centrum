@@ -7,7 +7,7 @@ import {
   TrendingUp, TrendingDown, Minus, Users, Shield, Swords,
   AlertTriangle, Timer, Network
 } from "lucide-react";
-import { MACRO_LAYER_ICONS, MACRO_LAYER_LABELS, STRATEGIC_RESOURCE_ICONS, STRATEGIC_RESOURCE_LABELS, STRATEGIC_TIER_LABELS, type StrategicResource } from "@/lib/economyFlow";
+import { MACRO_LAYER_ICONS, MACRO_LAYER_LABELS, STRATEGIC_RESOURCE_ICONS, STRATEGIC_RESOURCE_LABELS, STRATEGIC_TIER_LABELS, getStrategicTiers, computeTotalPrestige, getPrestigeTier, PRESTIGE_TIER_LABELS, PRESTIGE_META, PRESTIGE_COMPONENTS, type StrategicResource } from "@/lib/economyFlow";
 
 interface Props {
   realm: any;
