@@ -419,7 +419,7 @@ const StrategicMapOverlay = memo(({ sessionId, offsetX, offsetY, visible, onNode
       <defs>
         {/* Hex-based flow paths */}
         {hexFlowSvgPaths.map(hp => (
-          <path key={`hfp-${hp.key}`} id={`hexflow-${hp.key}`}
+          <path key={`hfp-route-${hp.routeId}`} id={`hexflow-route-${hp.routeId}`}
             d={hp.d} fill="none" />
         ))}
         {/* Fallback hex-snapped paths */}
@@ -467,10 +467,9 @@ const StrategicMapOverlay = memo(({ sessionId, offsetX, offsetY, visible, onNode
 
       {/* ── Hex flow path polylines ── */}
       {showHexFlows && hexFlowSvgPaths.map(hp => {
-        const ft = hp.flowType as FlowType;
-        const color = FLOW_COLORS[ft] || FLOW_COLORS.wealth;
+        const color = ROUTE_COLORS[hp.routeType] || "hsl(48, 90%, 60%)";
         return (
-          <path key={`hfline-${hp.key}`} d={hp.d}
+          <path key={`hfline-route-${hp.routeId}`} d={hp.d}
             fill="none" stroke={color}
             strokeWidth={1.5} opacity={0.35}
             strokeLinecap="round" strokeLinejoin="round" />
@@ -492,9 +491,9 @@ const StrategicMapOverlay = memo(({ sessionId, offsetX, offsetY, visible, onNode
 
           // Get hex waypoints (from flow_paths or interpolated)
           let hexWaypoints: Array<{ q: number; r: number }> = [];
-          const hexFp = flowPaths.find(fp => fp.route_id === r.id && fp.hex_path && fp.hex_path.length >= 2);
-          if (hexFp) {
-            hexWaypoints = hexFp.hex_path.map(h => ({ q: h.q, r: h.r }));
+          const hexPath = canonicalRouteHexPaths.get(r.id);
+          if (hexPath) {
+            hexWaypoints = hexPath.map(h => ({ q: h.q, r: h.r }));
           } else {
             const nA = nodes.find(n => n.id === r.node_a);
             const nB = nodes.find(n => n.id === r.node_b);
