@@ -179,14 +179,13 @@ const HexTile = memo(({
       <polygon
         points={pts}
         fill={showBiome ? `url(#biome-grad-${hex.biome_family})` : showFrontierBiome ? `url(#biome-grad-${hex.biome_family})` : FOG_COLOR}
-        stroke={isCurrent ? "hsl(45, 90%, 55%)" : isFrontier ? "hsl(var(--primary) / 0.4)" : "hsl(var(--border))"}
-        strokeWidth={isCurrent ? 2.5 : isFrontier ? 1.2 : 0.8}
-        opacity={showBiome ? 1 : showFrontierBiome ? 0.35 : isFrontier ? 0.25 : 0.3}
-        strokeDasharray={isFrontier ? "3,3" : undefined}
-        className={isFrontier ? "hover:opacity-60 transition-opacity" : ""}
+        stroke={isCurrent ? "hsl(45, 90%, 55%)" : isFrontier ? "transparent" : "hsl(var(--border))"}
+        strokeWidth={isCurrent ? 2.5 : isFrontier ? 0 : 0.8}
+        opacity={showBiome ? 1 : showFrontierBiome ? 0.2 : isFrontier ? 0 : 0.3}
+        className={isFrontier ? "hover:opacity-40 transition-opacity" : ""}
       />
       {showFrontierBiome && (
-        <polygon points={pts} fill={FOG_COLOR} opacity={0.45} style={{ pointerEvents: "none" }} />
+        <polygon points={pts} fill={FOG_COLOR} opacity={0.6} style={{ pointerEvents: "none" }} />
       )}
       {showBiome && (
         <polygon points={pts} fill={`url(#pat-${hex.biome_family})`} style={{ pointerEvents: "none" }} />
