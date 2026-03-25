@@ -1024,37 +1024,7 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
           </pattern>
         </defs>
         <g transform={`translate(${pan.x / zoom}, ${pan.y / zoom}) scale(${zoom})`}>
-          {/* Province overlay layer — fill + border edges */}
-          {showProvinceLayer && renderCoords.map(c => {
-            const provData = provinceHexMap.get(hKey(c.q, c.r));
-            if (!provData || c.isFrontier) return null;
-            const pos = hexToPixel(c.q, c.r);
-            const cx = pos.x + offsetX;
-            const cy = pos.y + offsetY;
-            const pts = hexPoints(cx, cy);
-            const ci = provData.colorIndex % PROVINCE_COLORS.length;
-            // Find edges where neighbor belongs to a different owner/province
-            const borderEdges: { x1: number; y1: number; x2: number; y2: number }[] = [];
-            for (let di = 0; di < HEX_EDGE_DIRS.length; di++) {
-              const [dq, dr] = HEX_EDGE_DIRS[di];
-              const nk = hKey(c.q + dq, c.r + dr);
-              const neighborProv = provinceHexMap.get(nk);
-              // Draw border if neighbor is different owner OR is unowned
-              if (!neighborProv || neighborProv.colorIndex !== provData.colorIndex) {
-                const [x1, y1, x2, y2] = hexEdgeVertices(cx, cy, di);
-                borderEdges.push({ x1, y1, x2, y2 });
-              }
-            }
-            return (
-              <g key={`prov-${hKey(c.q, c.r)}`} style={{ pointerEvents: "none" }}>
-                <polygon points={pts} fill={PROVINCE_COLORS[ci]} />
-                {borderEdges.map((e, i) => (
-                  <line key={i} x1={e.x1} y1={e.y1} x2={e.x2} y2={e.y2}
-                    stroke={PROVINCE_BORDER_COLORS[ci]} strokeWidth={2.5} strokeLinecap="round" />
-                ))}
-              </g>
-            );
-          })}
+          {/* Hex tiles rendered first as base layer */}
           {/* Route corridors rendered below hex tiles for background visuals */}
           {renderCoords.map(c => {
             const hex = getHex(c.q, c.r);
