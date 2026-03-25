@@ -688,7 +688,7 @@ Deno.serve(async (req) => {
       id: string;
       production_output: number;
       wealth_output: number;
-      food_value: number; // supplies
+      food_value: number;
       capacity_score: number;
       importance_score: number;
       incoming_production: number;
@@ -696,6 +696,9 @@ Deno.serve(async (req) => {
       route_access_factor: number;
       trade_efficiency: number;
       isolation_penalty: number;
+      upkeep_supplies: number;
+      upkeep_wealth: number;
+      net_balance: number;
     }> = [];
 
     for (const node of nodes) {
