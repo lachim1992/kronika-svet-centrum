@@ -9,7 +9,7 @@ import DevNodeSpawner from "@/components/dev/DevNodeSpawner";
 import { toast } from "sonner";
 import { FLOW_ROLE_LABELS, HINTERLAND_LABELS } from "@/lib/strategicGraph";
 import { MACRO_LAYER_ICONS, getImportanceLabel, getImportanceColor, getIsolationSeverity, ISOLATION_PENALTY_LABELS, STRATEGIC_RESOURCE_ICONS, STRATEGIC_RESOURCE_LABELS, STRATEGIC_TIER_LABELS, STRATEGIC_TIER_DB_COLUMNS } from "@/lib/economyFlow";
-import { MINOR_NODE_TYPES, MICRO_NODE_TYPES } from "@/lib/nodeTypes";
+import { MINOR_NODE_TYPES, MICRO_NODE_TYPES, MAJOR_NODE_TYPES } from "@/lib/nodeTypes";
 import { supabase } from "@/integrations/supabase/client";
 import { useProvinceGraph, type ProvinceNode, type ProvinceEdge, type StrategicNode, type ProvinceRoute } from "@/hooks/useProvinceGraph";
 
@@ -57,8 +57,19 @@ function getSubtypeIcon(tier: string, subtype: string): string {
     const def = MICRO_NODE_TYPES.find(t => t.key === subtype);
     return def?.icon || "📍";
   }
+  if (tier === "major") {
+    const map: Record<string, string> = { city: "🏙️", fortress: "🏰", trade_hub: "🏪", guard_station: "⚔️" };
+    return map[subtype] || "★";
+  }
   return "●";
 }
+
+const TIER_SIZES: Record<string, number> = { major: 10, minor: 6.5, micro: 4 };
+const TIER_STROKE: Record<string, string> = {
+  major: "hsl(var(--primary))",
+  minor: "hsl(45,80%,55%)",
+  micro: "hsl(140,60%,50%)",
+};
 /* ─── SVG graph vis ─── */
 function ProvinceGraphSVG({ nodes, edges, strategicNodes, routes, showNodes, showRoutes }: {
   nodes: ProvinceNode[]; edges: ProvinceEdge[]; strategicNodes: StrategicNode[]; routes: ProvinceRoute[];
@@ -103,12 +114,24 @@ function ProvinceGraphSVG({ nodes, edges, strategicNodes, routes, showNodes, sho
           stroke={color} strokeWidth={w} opacity={r.control_state === "blocked" ? 0.2 : 0.6} strokeDasharray={dash} />;
       })}
 
-      {showNodes && !showRoutes && strategicNodes.map(sn => {
+      {/* Parent-child links (hierarchy backbone) */}
+      {showNodes && strategicNodes.map(sn => {
+        if (!sn.parent_node_id) return null;
+        const parent = snodeMap.get(sn.parent_node_id);
+        if (!parent) return null;
+        const pa = toXY(sn.hex_q, sn.hex_r), pb = toXY(parent.hex_q, parent.hex_r);
+        const tierColor = TIER_STROKE[sn.node_tier || "minor"];
+        return <line key={`hier-${sn.id}`} x1={pa.x} y1={pa.y} x2={pb.x} y2={pb.y}
+          stroke={tierColor} strokeWidth={0.8} opacity={0.4} strokeDasharray="3 2" />;
+      })}
+
+      {/* Province center → major node links (faint) */}
+      {showNodes && !showRoutes && strategicNodes.filter(sn => sn.node_tier === "major" || sn.is_major).map(sn => {
         const prov = nodeMap.get(sn.province_id);
         if (!prov) return null;
         const pc = toXY(prov.center_q, prov.center_r), ns = toXY(sn.hex_q, sn.hex_r);
         return <line key={`lk-${sn.id}`} x1={pc.x} y1={pc.y} x2={ns.x} y2={ns.y}
-          stroke={GRAPH_COLORS[prov.color_index % GRAPH_COLORS.length]} strokeWidth={0.5} opacity={0.3} strokeDasharray="2 2" />;
+          stroke={GRAPH_COLORS[prov.color_index % GRAPH_COLORS.length]} strokeWidth={0.5} opacity={0.2} strokeDasharray="2 2" />;
       })}
 
       {nodes.map(n => {
@@ -128,35 +151,31 @@ function ProvinceGraphSVG({ nodes, edges, strategicNodes, routes, showNodes, sho
 
       {showNodes && strategicNodes.map(sn => {
         const p = toXY(sn.hex_q, sn.hex_r);
-        const shape = NODE_TYPE_SHAPES[sn.node_type] || "●";
-        const prov = nodeMap.get(sn.province_id);
-        const provColor = prov ? GRAPH_COLORS[prov.color_index % GRAPH_COLORS.length] : "gray";
+        const tier = sn.node_tier || "minor";
+        const nodeR = TIER_SIZES[tier] || 6;
+        const strokeColor = TIER_STROKE[tier] || "hsl(var(--muted-foreground))";
         const resType = sn.strategic_resource_type;
         const resIcon = resType ? (STRATEGIC_RESOURCE_ICONS[resType as keyof typeof STRATEGIC_RESOURCE_ICONS] || "") : "";
-        // Tier-aware icon
-        const tierIcon = sn.node_tier === "minor" || sn.node_tier === "micro"
-          ? (sn.node_subtype ? getSubtypeIcon(sn.node_tier, sn.node_subtype) : "")
-          : "";
-        const tierColor = sn.node_tier === "minor" ? "hsl(45,80%,55%)" : sn.node_tier === "micro" ? "hsl(140,60%,50%)" : provColor;
+        const icon = resIcon || (sn.node_subtype ? getSubtypeIcon(tier, sn.node_subtype) : (NODE_TYPE_SHAPES[sn.node_type] || "●"));
+        const hasResource = !!resType;
+
         return (
           <g key={sn.id}>
-            <circle cx={p.x} cy={p.y} r={resType ? 8 : sn.node_tier ? 7 : 6}
-              fill="hsl(var(--card))" stroke={resType ? "hsl(45,90%,55%)" : tierColor}
-              strokeWidth={resType ? 2 : sn.node_tier ? 1.8 : 1.5} />
-            <text x={p.x} y={p.y + 3.5} textAnchor="middle" fontSize={resType ? "10" : "8"} fill={tierColor} fontWeight="700">
-              {resIcon || tierIcon || shape}
+            <circle cx={p.x} cy={p.y} r={nodeR}
+              fill="hsl(var(--card))" stroke={hasResource ? "hsl(45,90%,55%)" : strokeColor}
+              strokeWidth={tier === "major" ? 2.5 : tier === "minor" ? 1.8 : 1} />
+            <text x={p.x} y={p.y + (tier === "micro" ? 2.5 : 3.5)} textAnchor="middle"
+              fontSize={tier === "major" ? "10" : tier === "minor" ? "7" : "5.5"}
+              fill={strokeColor} fontWeight="700">
+              {icon}
             </text>
-            <text x={p.x} y={p.y - (resType ? 11 : 9)} textAnchor="middle" fontSize="6" fill="hsl(var(--muted-foreground))">
-              {sn.name.length > 18 ? sn.name.slice(0, 16) + "…" : sn.name}
-            </text>
-            {sn.node_tier && (
-              <text x={p.x + 10} y={p.y - 5} textAnchor="start" fontSize="5" fill={tierColor} fontWeight="600">
-                {sn.node_tier === "minor" ? "M" : sn.node_tier === "micro" ? "μ" : "★"}
-                {sn.upgrade_level > 1 ? `↑${sn.upgrade_level}` : ""}
+            {tier !== "micro" && (
+              <text x={p.x} y={p.y - nodeR - 2} textAnchor="middle" fontSize="5.5" fill="hsl(var(--muted-foreground))">
+                {sn.name.length > 18 ? sn.name.slice(0, 16) + "…" : sn.name}
               </text>
             )}
-            {resType && (
-              <text x={p.x} y={p.y + 14} textAnchor="middle" fontSize="5" fill="hsl(45,90%,55%)" fontWeight="600">
+            {hasResource && (
+              <text x={p.x} y={p.y + nodeR + 7} textAnchor="middle" fontSize="5" fill="hsl(45,90%,55%)" fontWeight="600">
                 T{sn.strategic_resource_tier}
               </text>
             )}

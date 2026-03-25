@@ -6,66 +6,92 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-const NEIGHBORS = [
-  [1, 0], [-1, 0], [0, 1], [0, -1], [1, -1], [-1, 1],
-];
+const NEIGHBORS = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, -1], [-1, 1]];
 const hexKey = (q: number, r: number) => `${q},${r}`;
 const axialDist = (q1: number, r1: number, q2: number, r2: number) => {
   const dq = q1 - q2, dr = r1 - r2;
   return (Math.abs(dq) + Math.abs(dq + dr) + Math.abs(dr)) / 2;
 };
 
-/** Determine flow_role and regulation params based on node_type + topology */
-function assignFlowRole(nodeType: string, metadata: Record<string, any>): {
-  flow_role: string;
-  is_major: boolean;
-  throughput_military: number;
-  toll_rate: number;
-  resource_output: Record<string, number>;
-} {
-  switch (nodeType) {
-    case "primary_city":
-    case "secondary_city":
-      return { flow_role: "hub", is_major: true, throughput_military: 1.0, toll_rate: 0, resource_output: {} };
-    case "port":
-      return { flow_role: "hub", is_major: true, throughput_military: 1.0, toll_rate: 0.05, resource_output: { wealth: 2 } };
-    case "fortress":
-      // Regulators: control military passage, extract tolls
-      return { flow_role: "regulator", is_major: false, throughput_military: 0.8, toll_rate: 0.1, resource_output: {} };
-    case "trade_hub":
-      // Gateways at borders: facilitate trade but can impose tolls
-      return { flow_role: "gateway", is_major: false, throughput_military: 1.0, toll_rate: 0.05, resource_output: { wealth: 1 } };
-    case "pass":
-      // Gateways between provinces: restrict military movement
-      return { flow_role: "gateway", is_major: false, throughput_military: 0.7, toll_rate: 0.08, resource_output: {} };
-    case "resource_node":
-      // Producers: generate resources flowing to parent major node
-      const resType = metadata?.resource_type;
-      const clusterSize = metadata?.cluster_size || 5;
-      const output: Record<string, number> = {};
-      if (resType === "timber") {
-        output.wood = Math.max(1, Math.floor(clusterSize * 0.3));
-        output.grain = Math.max(1, Math.floor(clusterSize * 0.1));
-      } else if (resType === "farmland") {
-        output.grain = Math.max(2, Math.floor(clusterSize * 0.4));
-        output.wood = 1;
-      } else if (resType === "mineral") {
-        output.stone = Math.max(1, Math.floor(clusterSize * 0.3));
-        output.iron = Math.max(1, Math.floor(clusterSize * 0.15));
-      } else {
-        output.grain = 2;
-        output.wood = 1;
-      }
-      return { flow_role: "producer", is_major: false, throughput_military: 1.0, toll_rate: 0, resource_output: output };
-    case "village_cluster":
-      return { flow_role: "producer", is_major: false, throughput_military: 1.0, toll_rate: 0, resource_output: { grain: 3, wood: 1 } };
-    case "religious_center":
-      return { flow_role: "hub", is_major: true, throughput_military: 1.0, toll_rate: 0, resource_output: { wealth: 1 } };
-    case "logistic_hub":
-      return { flow_role: "hub", is_major: true, throughput_military: 1.0, toll_rate: 0, resource_output: {} };
-    default:
-      return { flow_role: "neutral", is_major: false, throughput_military: 1.0, toll_rate: 0, resource_output: {} };
+function seededRandom(seed: string): number {
+  let h = 0;
+  for (let i = 0; i < seed.length; i++) h = ((h << 5) - h + seed.charCodeAt(i)) | 0;
+  return (Math.abs(h) % 10000) / 10000;
+}
+
+// Strategic resource spawn table
+const STRATEGIC_SPAWN_TABLE = [
+  { type: "iron", chance: 0.15, biomes: ["hills", "mountain"], label: "Železo" },
+  { type: "horses", chance: 0.10, biomes: ["plains", "steppe"], label: "Koně" },
+  { type: "salt", chance: 0.10, biomes: ["plains", "desert", "hills", "coastal"], label: "Sůl" },
+  { type: "copper", chance: 0.15, biomes: ["hills", "mountain"], label: "Měď" },
+  { type: "gold_deposit", chance: 0.05, biomes: ["hills", "mountain", "desert"], label: "Zlato" },
+  { type: "marble", chance: 0.08, biomes: ["hills", "mountain"], label: "Mramor" },
+  { type: "gems", chance: 0.05, biomes: ["mountain", "hills", "jungle"], label: "Drahokamy" },
+  { type: "timber", chance: 0.15, biomes: ["forest", "taiga"], label: "Kvalitní dřevo" },
+  { type: "obsidian", chance: 0.05, biomes: ["mountain", "volcanic"], label: "Obsidián" },
+  { type: "silk", chance: 0.05, biomes: ["forest", "jungle", "plains"], label: "Hedvábí" },
+  { type: "incense", chance: 0.08, biomes: ["desert", "jungle", "savanna"], label: "Kadidlo" },
+];
+
+// Minor node subtypes with base production
+const MINOR_SUBTYPES: Record<string, { biomes: string[]; prod: Record<string, number>; label: string; icon: string }> = {
+  village:       { biomes: ["plains", "grassland", "temperate", "forest"], prod: { grain: 4, wood: 2, wealth: 1 }, label: "Vesnice", icon: "🏘️" },
+  lumber_camp:   { biomes: ["forest", "taiga"], prod: { wood: 8, grain: 1, wealth: 1 }, label: "Dřevařská osada", icon: "🪵" },
+  fishing_village:{ biomes: ["coastal", "lake", "river"], prod: { grain: 6, wood: 1, wealth: 2 }, label: "Rybářská osada", icon: "🎣" },
+  mining_camp:   { biomes: ["hills", "mountain", "highland"], prod: { stone: 4, iron: 6, wealth: 1 }, label: "Hornická osada", icon: "⛏️" },
+  pastoral_camp: { biomes: ["steppe", "plains", "grassland", "savanna"], prod: { grain: 5, wealth: 2 }, label: "Pastýřská osada", icon: "🐑" },
+  trade_post:    { biomes: ["plains", "grassland", "steppe", "coastal", "river"], prod: { wealth: 6, grain: 1 }, label: "Obchodní stanice", icon: "🏪" },
+  shrine:        { biomes: ["forest", "mountain", "highland", "marsh"], prod: { faith: 8, wealth: 1 }, label: "Svatyně", icon: "⛪" },
+  watchtower:    { biomes: ["hills", "mountain", "highland", "plains", "steppe"], prod: { stone: 1, iron: 1 }, label: "Strážní věž", icon: "🏰" },
+};
+
+// Micro node subtypes
+const MICRO_SUBTYPES: Record<string, { biomes: string[]; prod: Record<string, number>; strategicPool: string[]; spawnChance: number; label: string; icon: string }> = {
+  field:          { biomes: ["plains", "grassland", "temperate", "river"], prod: { grain: 6 }, strategicPool: ["salt"], spawnChance: 0.08, label: "Pole", icon: "🌾" },
+  sawmill:        { biomes: ["forest", "taiga"], prod: { wood: 7, wealth: 1 }, strategicPool: ["timber"], spawnChance: 0.12, label: "Pila", icon: "🪚" },
+  mine:           { biomes: ["hills", "mountain", "highland"], prod: { iron: 5, stone: 2, wealth: 1 }, strategicPool: ["iron", "copper", "gold_deposit", "gems"], spawnChance: 0.18, label: "Důl", icon: "⛏️" },
+  hunting_ground: { biomes: ["forest", "steppe", "grassland", "taiga"], prod: { grain: 4, wood: 1, wealth: 1 }, strategicPool: ["horses"], spawnChance: 0.10, label: "Loviště", icon: "🏹" },
+  fishery:        { biomes: ["coastal", "lake", "river", "marsh"], prod: { grain: 5, wealth: 2 }, strategicPool: ["salt"], spawnChance: 0.10, label: "Rybárna", icon: "🐟" },
+  quarry:         { biomes: ["hills", "mountain", "highland"], prod: { stone: 7 }, strategicPool: ["marble"], spawnChance: 0.12, label: "Lom", icon: "🪨" },
+  vineyard:       { biomes: ["temperate", "plains", "grassland", "hills"], prod: { wealth: 5, grain: 1 }, strategicPool: ["silk"], spawnChance: 0.08, label: "Vinice", icon: "🍇" },
+  herbalist:      { biomes: ["forest", "marsh", "jungle", "temperate"], prod: { faith: 4, wealth: 1 }, strategicPool: ["incense"], spawnChance: 0.12, label: "Bylinkárna", icon: "🌿" },
+  smithy:         { biomes: ["hills", "mountain"], prod: { iron: 3, wealth: 2 }, strategicPool: ["obsidian"], spawnChance: 0.10, label: "Kovárna", icon: "🔨" },
+  salt_pan:       { biomes: ["coastal", "desert", "steppe"], prod: { wealth: 4 }, strategicPool: ["salt"], spawnChance: 0.20, label: "Solná pánev", icon: "🧂" },
+};
+
+function pickMinorSubtype(biome: string, seed: string): string {
+  const b = biome?.toLowerCase() || "";
+  // Find best match
+  const matches = Object.entries(MINOR_SUBTYPES)
+    .filter(([, def]) => def.biomes.some(pb => b.includes(pb)))
+    .map(([key]) => key);
+  if (matches.length === 0) return "village";
+  const idx = Math.floor(seededRandom(seed + "_minor") * matches.length);
+  return matches[idx];
+}
+
+function pickMicroSubtype(biome: string, seed: string): string {
+  const b = biome?.toLowerCase() || "";
+  const matches = Object.entries(MICRO_SUBTYPES)
+    .filter(([, def]) => def.biomes.some(pb => b.includes(pb)))
+    .map(([key]) => key);
+  if (matches.length === 0) return "field";
+  const idx = Math.floor(seededRandom(seed + "_micro") * matches.length);
+  return matches[idx];
+}
+
+function rollStrategicResource(biome: string, seed: string): { type: string; label: string } | null {
+  const b = biome?.toLowerCase() || "";
+  const roll = seededRandom(seed + "_strat");
+  if (roll > 0.30) return null; // max 30% chance
+  let cumulative = 0;
+  for (const sr of STRATEGIC_SPAWN_TABLE) {
+    const biomeBonus = sr.biomes.some(sb => b.includes(sb)) ? 1.5 : 0.5;
+    cumulative += sr.chance * biomeBonus;
+    if (roll < cumulative) return { type: sr.type, label: sr.label };
   }
+  return null;
 }
 
 Deno.serve(async (req) => {
@@ -85,7 +111,7 @@ Deno.serve(async (req) => {
     const [provRes, hexRes, cityRes, adjRes] = await Promise.all([
       sb.from("provinces").select("id, name, owner_player, center_q, center_r").eq("session_id", session_id),
       sb.from("province_hexes").select("id, q, r, province_id, biome_family, coastal, mean_height, is_passable, movement_cost").eq("session_id", session_id).limit(10000),
-      sb.from("cities").select("id, name, province_id, province_q, province_r, is_capital, settlement_level, population_total").eq("session_id", session_id),
+      sb.from("cities").select("id, name, province_id, province_q, province_r, is_capital, settlement_level, population_total, owner_player").eq("session_id", session_id),
       sb.from("province_adjacency").select("province_a, province_b, border_length").eq("session_id", session_id),
     ]);
 
@@ -94,7 +120,7 @@ Deno.serve(async (req) => {
     const cities = cityRes.data || [];
     const adjacency = adjRes.data || [];
 
-    // Index hexes by province
+    // Index hexes
     const hexByProv: Record<string, typeof allHexes> = {};
     const hexByCoord: Record<string, typeof allHexes[0]> = {};
     for (const h of allHexes) {
@@ -105,7 +131,7 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Build border hex set per province
+    // Border hexes per province
     const borderHexes: Record<string, typeof allHexes> = {};
     for (const h of allHexes) {
       if (!h.province_id) continue;
@@ -122,192 +148,127 @@ Deno.serve(async (req) => {
     // Delete old nodes
     await sb.from("province_nodes").delete().eq("session_id", session_id);
 
-    // Province owner map
-    const provOwner: Record<string, string> = {};
-    for (const p of provinces) provOwner[p.id] = p.owner_player || "";
-
     const allNodes: any[] = [];
+    // Track indices for parent assignment
+    const majorIndices: Array<{ idx: number; provId: string; hex_q: number; hex_r: number }> = [];
+    const minorIndices: Array<{ idx: number; provId: string; hex_q: number; hex_r: number }> = [];
 
     for (const prov of provinces) {
       const pHexes = hexByProv[prov.id] || [];
       const pBorder = borderHexes[prov.id] || [];
-      const cq = prov.center_q || 0;
-      const cr = prov.center_r || 0;
       const owner = prov.owner_player || null;
 
-      // Track major nodes for parent assignment
-      const majorNodes: Array<{ tempIdx: number; hex_q: number; hex_r: number }> = [];
-
-      // 1. PRIMARY_CITY
+      // ═══════════════════════════════════════
+      // TIER 1: MAJOR NODES (cities, ports, fortresses)
+      // ═══════════════════════════════════════
       const provCities = cities.filter(c => c.province_id === prov.id);
+      
+      // Primary city → major hub
       const mainCity = provCities.sort((a, b) => (b.population_total || 0) - (a.population_total || 0))[0];
       if (mainCity) {
-        const role = assignFlowRole("primary_city", {});
         const idx = allNodes.length;
         allNodes.push({
           session_id, province_id: prov.id, node_type: "primary_city",
+          node_tier: "major", node_subtype: "city", node_class: "major",
           name: mainCity.name, hex_q: mainCity.province_q, hex_r: mainCity.province_r,
           city_id: mainCity.id, controlled_by: owner,
           strategic_value: 10, economic_value: 8, defense_value: 5,
           mobility_relevance: 7, supply_relevance: 9,
           population: mainCity.population_total || 0,
+          is_major: true, flow_role: "hub",
+          throughput_military: 1.0, toll_rate: 0,
+          resource_output: {},
           metadata: { settlement_level: mainCity.settlement_level, population: mainCity.population_total },
-          ...role,
         });
-        majorNodes.push({ tempIdx: idx, hex_q: mainCity.province_q, hex_r: mainCity.province_r });
+        majorIndices.push({ idx, provId: prov.id, hex_q: mainCity.province_q, hex_r: mainCity.province_r });
       }
 
-      // 2. PORT
+      // Secondary cities → major hub
+      for (const sc of provCities.filter(c => c.id !== mainCity?.id)) {
+        const idx = allNodes.length;
+        allNodes.push({
+          session_id, province_id: prov.id, node_type: "secondary_city",
+          node_tier: "major", node_subtype: "city", node_class: "major",
+          name: sc.name, hex_q: sc.province_q, hex_r: sc.province_r,
+          city_id: sc.id, controlled_by: owner,
+          strategic_value: 7, economic_value: 6, defense_value: 4,
+          mobility_relevance: 6, supply_relevance: 7,
+          population: sc.population_total || 0,
+          is_major: true, flow_role: "hub",
+          throughput_military: 1.0, toll_rate: 0,
+          resource_output: {},
+          metadata: { settlement_level: sc.settlement_level, population: sc.population_total },
+        });
+        majorIndices.push({ idx, provId: prov.id, hex_q: sc.province_q, hex_r: sc.province_r });
+      }
+
+      // Port → major hub (if coastal province)
       const coastalHexes = pHexes.filter(h => h.coastal && h.is_passable);
       if (coastalHexes.length > 0) {
-        const portHex = coastalHexes.sort((a, b) => axialDist(b.q, b.r, cq, cr) - axialDist(a.q, a.r, cq, cr))[0];
-        const role = assignFlowRole("port", {});
+        const portHex = coastalHexes.sort((a, b) =>
+          axialDist(a.q, a.r, prov.center_q || 0, prov.center_r || 0) -
+          axialDist(b.q, b.r, prov.center_q || 0, prov.center_r || 0)
+        )[0];
         const idx = allNodes.length;
         allNodes.push({
           session_id, province_id: prov.id, node_type: "port",
+          node_tier: "major", node_subtype: "trade_hub", node_class: "major",
           name: `Přístav ${prov.name}`, hex_q: portHex.q, hex_r: portHex.r,
           controlled_by: owner,
           strategic_value: 6, economic_value: 7, defense_value: 3,
           mobility_relevance: 9, supply_relevance: 8,
+          is_major: true, flow_role: "hub",
+          throughput_military: 1.0, toll_rate: 0.05,
+          resource_output: { wealth: 2 },
           metadata: { biome: portHex.biome_family },
-          ...role,
         });
-        majorNodes.push({ tempIdx: idx, hex_q: portHex.q, hex_r: portHex.r });
+        majorIndices.push({ idx, provId: prov.id, hex_q: portHex.q, hex_r: portHex.r });
       }
 
-      // 3. FORTRESS (minor regulator)
+      // Fortress → major gateway (if hills/mountain border)
       const hillBorder = pBorder.filter(h => h.biome_family === "hills" || h.mean_height > 55);
       if (hillBorder.length > 0) {
         const fortHex = hillBorder.sort((a, b) => b.mean_height - a.mean_height)[0];
-        const role = assignFlowRole("fortress", {});
+        const idx = allNodes.length;
         allNodes.push({
           session_id, province_id: prov.id, node_type: "fortress",
+          node_tier: "major", node_subtype: "fortress", node_class: "major",
           name: `Pevnost ${prov.name}`, hex_q: fortHex.q, hex_r: fortHex.r,
           controlled_by: owner,
           strategic_value: 8, economic_value: 1, defense_value: 10,
           mobility_relevance: 3, supply_relevance: 4,
+          is_major: true, flow_role: "gateway",
+          throughput_military: 0.8, toll_rate: 0.1,
           fortification_level: 1,
+          resource_output: {},
           metadata: { elevation: fortHex.mean_height, biome: fortHex.biome_family },
-          ...role,
         });
+        majorIndices.push({ idx, provId: prov.id, hex_q: fortHex.q, hex_r: fortHex.r });
       }
 
-      // 4. TRADE_HUB (minor gateway at border)
-      if (pBorder.length > 0) {
-        const hexProvCount: Record<string, Set<string>> = {};
-        for (const h of pBorder) {
-          const key = hexKey(h.q, h.r);
-          if (!hexProvCount[key]) hexProvCount[key] = new Set();
-          for (const [dq, dr] of NEIGHBORS) {
-            const n = hexByCoord[hexKey(h.q + dq, h.r + dr)];
-            if (n && n.province_id && n.province_id !== prov.id) {
-              hexProvCount[key].add(n.province_id);
-            }
-          }
-        }
-        const best = Object.entries(hexProvCount)
-          .sort((a, b) => b[1].size - a[1].size)[0];
-        if (best && best[1].size > 0) {
-          const [bq, br] = best[0].split(",").map(Number);
-          const role = assignFlowRole("trade_hub", {});
-          allNodes.push({
-            session_id, province_id: prov.id, node_type: "trade_hub",
-            name: `Tržiště ${prov.name}`, hex_q: bq, hex_r: br,
-            controlled_by: owner,
-            strategic_value: 4, economic_value: 9, defense_value: 2,
-            mobility_relevance: 8, supply_relevance: 7,
-            metadata: { adjacent_provinces: best[1].size },
-            ...role,
-          });
-        }
-      }
-
-      // 5. RESOURCE_NODE (minor producer) + Strategic Resource Assignment
+      // ═══════════════════════════════════════
+      // TIER 2: MINOR NODES (settlements / resource clusters)
+      // ═══════════════════════════════════════
       const forests = pHexes.filter(h => h.biome_family === "forest" && h.is_passable);
-      const plains = pHexes.filter(h => h.biome_family === "plains" && h.is_passable);
+      const plains = pHexes.filter(h => (h.biome_family === "plains" || h.biome_family === "grassland") && h.is_passable);
       const hills = pHexes.filter(h => h.biome_family === "hills" && h.is_passable);
+      const coastal = pHexes.filter(h => h.coastal && h.is_passable);
+      const other = pHexes.filter(h => h.is_passable && !["forest", "plains", "grassland", "hills"].includes(h.biome_family || ""));
 
-      // Create resource nodes for each significant cluster
-      const resourceClusters: Array<{ hexes: typeof pHexes; type: string; name: string }> = [];
-      if (forests.length >= 3) resourceClusters.push({ hexes: forests, type: "timber", name: `Hvozd ${prov.name}` });
-      if (plains.length >= 3) resourceClusters.push({ hexes: plains, type: "farmland", name: `Pole ${prov.name}` });
-      if (hills.length >= 5) resourceClusters.push({ hexes: hills, type: "mineral", name: `Lom ${prov.name}` });
-
-      // If no clusters, use any available
-      if (resourceClusters.length === 0 && pHexes.length > 0) {
-        const resPool = forests.length > 0 ? forests : plains.length > 0 ? plains : pHexes;
-        resourceClusters.push({
-          hexes: resPool,
-          type: forests.length > 0 ? "timber" : "farmland",
-          name: forests.length > 0 ? `Hvozd ${prov.name}` : `Pole ${prov.name}`,
-        });
+      const clusters: Array<{ hexes: typeof pHexes; biome: string; name: string }> = [];
+      if (forests.length >= 3) clusters.push({ hexes: forests, biome: "forest", name: `Hvozd ${prov.name}` });
+      if (plains.length >= 3) clusters.push({ hexes: plains, biome: "plains", name: `Pole ${prov.name}` });
+      if (hills.length >= 3) clusters.push({ hexes: hills, biome: "hills", name: `Lom ${prov.name}` });
+      if (coastal.length >= 2 && coastalHexes.length === 0) clusters.push({ hexes: coastal, biome: "coastal", name: `Pobřeží ${prov.name}` });
+      if (other.length >= 3) clusters.push({ hexes: other, biome: other[0]?.biome_family || "plains", name: `Sídliště ${prov.name}` });
+      // Ensure at least 1 minor per province
+      if (clusters.length === 0 && pHexes.length > 0) {
+        clusters.push({ hexes: pHexes.filter(h => h.is_passable), biome: pHexes[0]?.biome_family || "plains", name: `Osada ${prov.name}` });
       }
 
-      // Strategic resource assignment table: [type, spawnChance, biomeAffinity]
-      const STRATEGIC_SPAWN_TABLE: Array<{ type: string; chance: number; biomes: string[]; label: string }> = [
-        { type: "iron", chance: 0.15, biomes: ["hills", "mountain"], label: "Železo" },
-        { type: "horses", chance: 0.10, biomes: ["plains", "steppe"], label: "Koně" },
-        { type: "salt", chance: 0.10, biomes: ["plains", "desert", "hills"], label: "Sůl" },
-        { type: "copper", chance: 0.15, biomes: ["hills", "mountain"], label: "Měď" },
-        { type: "gold_deposit", chance: 0.05, biomes: ["hills", "mountain", "desert"], label: "Zlato" },
-        { type: "marble", chance: 0.08, biomes: ["hills", "mountain"], label: "Mramor" },
-        { type: "gems", chance: 0.05, biomes: ["mountain", "hills", "jungle"], label: "Drahokamy" },
-        { type: "timber", chance: 0.15, biomes: ["forest", "taiga"], label: "Kvalitní dřevo" },
-        { type: "obsidian", chance: 0.05, biomes: ["mountain", "volcanic"], label: "Obsidián" },
-        { type: "silk", chance: 0.05, biomes: ["forest", "jungle", "plains"], label: "Hedvábí" },
-        { type: "incense", chance: 0.08, biomes: ["desert", "jungle", "savanna"], label: "Kadidlo" },
-      ];
-
-      // Seeded random based on province + session
-      function seededRandom(seed: string): number {
-        let h = 0;
-        for (let i = 0; i < seed.length; i++) h = ((h << 5) - h + seed.charCodeAt(i)) | 0;
-        return (Math.abs(h) % 10000) / 10000;
-      }
-
-      for (const cluster of resourceClusters) {
-        const avgQ = Math.round(cluster.hexes.reduce((s, h) => s + h.q, 0) / cluster.hexes.length);
-        const avgR = Math.round(cluster.hexes.reduce((s, h) => s + h.r, 0) / cluster.hexes.length);
-        const resHex = cluster.hexes.sort((a, b) => axialDist(a.q, a.r, avgQ, avgR) - axialDist(b.q, b.r, avgQ, avgR))[0];
-        const meta: Record<string, any> = { resource_type: cluster.type, cluster_size: cluster.hexes.length };
-        const role = assignFlowRole("resource_node", meta);
-
-        // Roll for strategic resource on this minor node
-        let assignedStrategic: string | null = null;
-        const biome = resHex.biome_family || cluster.type;
-        const seed = `${session_id}-${prov.id}-${resHex.q}-${resHex.r}`;
-        const roll = seededRandom(seed);
-        let cumulative = 0;
-        for (const sr of STRATEGIC_SPAWN_TABLE) {
-          const biomeBonus = sr.biomes.includes(biome) ? 1.5 : 0.5;
-          const effectiveChance = sr.chance * biomeBonus;
-          cumulative += effectiveChance;
-          if (roll < cumulative && !assignedStrategic) {
-            assignedStrategic = sr.type;
-            meta.strategic_resource = sr.type;
-            meta.strategic_resource_label = sr.label;
-          }
-        }
-        // Cap: max ~30% chance of any strategic resource per node
-        if (roll >= 0.30) assignedStrategic = null;
-
-        allNodes.push({
-          session_id, province_id: prov.id, node_type: "resource_node",
-          name: cluster.name, hex_q: resHex.q, hex_r: resHex.r,
-          controlled_by: owner,
-          strategic_value: assignedStrategic ? 5 : 2,
-          economic_value: 6, defense_value: 1,
-          mobility_relevance: 4, supply_relevance: 6,
-          strategic_resource_type: assignedStrategic,
-          strategic_resource_tier: assignedStrategic ? 1 : 0,
-          metadata: meta,
-          ...role,
-        });
-      }
-
-      // 6. PASS (minor gateway between provinces)
+      // Pass node (gateway between provinces)
       const provAdj = adjacency.filter(a => a.province_a === prov.id || a.province_b === prov.id);
-      if (provAdj.length > 0) {
+      if (provAdj.length > 0 && pBorder.length > 0) {
         const narrowest = provAdj.sort((a, b) => a.border_length - b.border_length)[0];
         const otherProv = narrowest.province_a === prov.id ? narrowest.province_b : narrowest.province_a;
         const passHexes = pBorder.filter(h => {
@@ -319,44 +280,172 @@ Deno.serve(async (req) => {
         });
         if (passHexes.length > 0) {
           const passHex = passHexes.sort((a, b) => b.movement_cost - a.movement_cost)[0];
-          const role = assignFlowRole("pass", {});
+          const idx = allNodes.length;
           allNodes.push({
             session_id, province_id: prov.id, node_type: "pass",
+            node_tier: "minor", node_subtype: "watchtower", node_class: "minor",
             name: `Průsmyk ${prov.name}`, hex_q: passHex.q, hex_r: passHex.r,
             controlled_by: owner,
             strategic_value: 7, economic_value: 2, defense_value: 6,
             mobility_relevance: 10, supply_relevance: 5,
+            is_major: false, flow_role: "gateway",
+            throughput_military: 0.7, toll_rate: 0.08,
+            resource_output: {},
             metadata: { connects_to: otherProv, movement_cost: passHex.movement_cost },
-            ...role,
           });
+          minorIndices.push({ idx, provId: prov.id, hex_q: passHex.q, hex_r: passHex.r });
         }
       }
 
-      // Assign parent_node_id for minor nodes → nearest major node in this province
-      if (majorNodes.length > 0) {
-        for (let i = 0; i < allNodes.length; i++) {
-          const n = allNodes[i];
-          if (n.province_id !== prov.id || n.is_major) continue;
-          // Find nearest major node
-          let bestDist = Infinity;
-          let bestMajorIdx = majorNodes[0].tempIdx;
-          for (const mj of majorNodes) {
-            const d = axialDist(n.hex_q, n.hex_r, mj.hex_q, mj.hex_r);
-            if (d < bestDist) { bestDist = d; bestMajorIdx = mj.tempIdx; }
+      // Trade hub at border crossing (minor gateway)
+      if (pBorder.length > 0) {
+        const hexProvCount: Record<string, Set<string>> = {};
+        for (const h of pBorder) {
+          const key = hexKey(h.q, h.r);
+          if (!hexProvCount[key]) hexProvCount[key] = new Set();
+          for (const [dq, dr] of NEIGHBORS) {
+            const n = hexByCoord[hexKey(h.q + dq, h.r + dr)];
+            if (n && n.province_id && n.province_id !== prov.id) hexProvCount[key].add(n.province_id);
           }
-          // Store temp reference (will be resolved after insert)
-          n._parentTempIdx = bestMajorIdx;
+        }
+        const best = Object.entries(hexProvCount).sort((a, b) => b[1].size - a[1].size)[0];
+        if (best && best[1].size > 0) {
+          const [bq, br] = best[0].split(",").map(Number);
+          const idx = allNodes.length;
+          allNodes.push({
+            session_id, province_id: prov.id, node_type: "trade_hub",
+            node_tier: "minor", node_subtype: "trade_post", node_class: "minor",
+            name: `Tržiště ${prov.name}`, hex_q: bq, hex_r: br,
+            controlled_by: owner,
+            strategic_value: 4, economic_value: 9, defense_value: 2,
+            mobility_relevance: 8, supply_relevance: 7,
+            is_major: false, flow_role: "gateway",
+            throughput_military: 1.0, toll_rate: 0.05,
+            resource_output: { wealth: 3 },
+            metadata: { adjacent_provinces: best[1].size },
+          });
+          minorIndices.push({ idx, provId: prov.id, hex_q: bq, hex_r: br });
+        }
+      }
+
+      // Resource cluster minor nodes
+      for (const cluster of clusters) {
+        const avgQ = Math.round(cluster.hexes.reduce((s, h) => s + h.q, 0) / cluster.hexes.length);
+        const avgR = Math.round(cluster.hexes.reduce((s, h) => s + h.r, 0) / cluster.hexes.length);
+        const centerHex = cluster.hexes.sort((a, b) =>
+          axialDist(a.q, a.r, avgQ, avgR) - axialDist(b.q, b.r, avgQ, avgR)
+        )[0];
+
+        const seed = `${session_id}-${prov.id}-${centerHex.q}-${centerHex.r}`;
+        const subtype = pickMinorSubtype(cluster.biome, seed);
+        const subtypeDef = MINOR_SUBTYPES[subtype] || MINOR_SUBTYPES.village;
+
+        // Roll strategic resource on minor node
+        const strat = rollStrategicResource(cluster.biome, seed);
+
+        const idx = allNodes.length;
+        allNodes.push({
+          session_id, province_id: prov.id,
+          node_type: "resource_node",
+          node_tier: "minor", node_subtype: subtype, node_class: "minor",
+          name: `${subtypeDef.icon} ${cluster.name}`,
+          hex_q: centerHex.q, hex_r: centerHex.r,
+          controlled_by: owner,
+          strategic_value: strat ? 5 : 2, economic_value: 6, defense_value: 1,
+          mobility_relevance: 4, supply_relevance: 6,
+          is_major: false, flow_role: "producer",
+          throughput_military: 1.0, toll_rate: 0,
+          resource_output: { ...subtypeDef.prod },
+          production_base: Object.values(subtypeDef.prod).reduce((a, b) => a + b, 0),
+          strategic_resource_type: strat?.type || null,
+          strategic_resource_tier: strat ? 1 : 0,
+          spawned_strategic_resource: strat?.type || null,
+          biome_at_build: cluster.biome,
+          upgrade_level: 1,
+          max_upgrade_level: 5,
+          metadata: {
+            cluster_size: cluster.hexes.length,
+            biome: cluster.biome,
+            ...(strat ? { strategic_resource: strat.type, strategic_resource_label: strat.label } : {}),
+          },
+        });
+        minorIndices.push({ idx, provId: prov.id, hex_q: centerHex.q, hex_r: centerHex.r });
+
+        // ═══════════════════════════════════════
+        // TIER 3: MICRO NODES (1-2 per minor, production units)
+        // ═══════════════════════════════════════
+        const microCount = cluster.hexes.length >= 5 ? 2 : 1;
+        const usedHexes = new Set([hexKey(centerHex.q, centerHex.r)]);
+
+        for (let mi = 0; mi < microCount; mi++) {
+          // Pick a hex near the minor node but not the same
+          const candidates = cluster.hexes.filter(h => !usedHexes.has(hexKey(h.q, h.r)));
+          if (candidates.length === 0) break;
+          const microHex = candidates.sort((a, b) =>
+            axialDist(a.q, a.r, centerHex.q, centerHex.r) - axialDist(b.q, b.r, centerHex.q, centerHex.r)
+          )[0];
+          usedHexes.add(hexKey(microHex.q, microHex.r));
+
+          const microSeed = `${seed}-micro-${mi}`;
+          const microSubtype = pickMicroSubtype(microHex.biome_family || cluster.biome, microSeed);
+          const microDef = MICRO_SUBTYPES[microSubtype] || MICRO_SUBTYPES.field;
+
+          // Roll strategic resource on micro node
+          const microStrat = rollStrategicResource(microHex.biome_family || cluster.biome, microSeed);
+
+          allNodes.push({
+            session_id, province_id: prov.id,
+            node_type: "resource_node",
+            node_tier: "micro", node_subtype: microSubtype, node_class: "transit",
+            name: `${microDef.icon} ${microDef.label}`,
+            hex_q: microHex.q, hex_r: microHex.r,
+            controlled_by: owner,
+            strategic_value: microStrat ? 3 : 1, economic_value: 4, defense_value: 0,
+            mobility_relevance: 2, supply_relevance: 4,
+            is_major: false, flow_role: "producer",
+            throughput_military: 1.0, toll_rate: 0,
+            resource_output: { ...microDef.prod },
+            production_base: Object.values(microDef.prod).reduce((a, b) => a + b, 0),
+            strategic_resource_type: microStrat?.type || null,
+            strategic_resource_tier: microStrat ? 1 : 0,
+            spawned_strategic_resource: microStrat?.type || null,
+            biome_at_build: microHex.biome_family || cluster.biome,
+            upgrade_level: 1,
+            max_upgrade_level: 3,
+            // _parentMinorIdx will be resolved after insert
+            _parentMinorIdx: idx,
+            metadata: {
+              biome: microHex.biome_family || cluster.biome,
+              parent_minor: cluster.name,
+              ...(microStrat ? { strategic_resource: microStrat.type, strategic_resource_label: microStrat.label } : {}),
+            },
+          });
         }
       }
     }
 
-    // Batch insert and collect IDs
+    // ═══════════════════════════════════════
+    // PARENT ASSIGNMENT: minor → nearest major in same province
+    // ═══════════════════════════════════════
+    for (const mi of minorIndices) {
+      const provMajors = majorIndices.filter(m => m.provId === mi.provId);
+      if (provMajors.length === 0) continue;
+      let bestDist = Infinity, bestIdx = provMajors[0].idx;
+      for (const mj of provMajors) {
+        const d = axialDist(mi.hex_q, mi.hex_r, mj.hex_q, mj.hex_r);
+        if (d < bestDist) { bestDist = d; bestIdx = mj.idx; }
+      }
+      allNodes[mi.idx]._parentMajorIdx = bestIdx;
+    }
+
+    // ═══════════════════════════════════════
+    // BATCH INSERT
+    // ═══════════════════════════════════════
     const insertedIds: string[] = [];
     const BATCH = 50;
     for (let i = 0; i < allNodes.length; i += BATCH) {
       const batch = allNodes.slice(i, i + BATCH).map(n => {
-        const { _parentTempIdx, ...rest } = n;
-        // Ensure NOT NULL columns have defaults
+        const { _parentMajorIdx, _parentMinorIdx, ...rest } = n;
         return {
           fortification_level: 0,
           infrastructure_level: 0,
@@ -369,20 +458,23 @@ Deno.serve(async (req) => {
       });
       const { data: inserted, error: insertErr } = await sb.from("province_nodes").insert(batch).select("id");
       if (insertErr) {
-        console.error("Insert error:", insertErr.message, insertErr.details, insertErr.hint, JSON.stringify(batch[0]));
+        console.error("Insert error:", insertErr.message, insertErr.details, JSON.stringify(batch[0]));
         throw new Error(`Insert failed: ${insertErr.message}`);
       }
-      if (inserted) {
-        for (const row of inserted) insertedIds.push(row.id);
-      }
+      if (inserted) for (const row of inserted) insertedIds.push(row.id);
     }
 
-    // Update parent_node_id for minor nodes
+    // ═══════════════════════════════════════
+    // RESOLVE PARENT LINKS (minor→major, micro→minor)
+    // ═══════════════════════════════════════
     const parentUpdates: Array<{ id: string; parent_node_id: string }> = [];
     for (let i = 0; i < allNodes.length; i++) {
       const n = allNodes[i];
-      if (n._parentTempIdx !== undefined && insertedIds[i] && insertedIds[n._parentTempIdx]) {
-        parentUpdates.push({ id: insertedIds[i], parent_node_id: insertedIds[n._parentTempIdx] });
+      if (n._parentMajorIdx !== undefined && insertedIds[i] && insertedIds[n._parentMajorIdx]) {
+        parentUpdates.push({ id: insertedIds[i], parent_node_id: insertedIds[n._parentMajorIdx] });
+      }
+      if (n._parentMinorIdx !== undefined && insertedIds[i] && insertedIds[n._parentMinorIdx]) {
+        parentUpdates.push({ id: insertedIds[i], parent_node_id: insertedIds[n._parentMinorIdx] });
       }
     }
 
@@ -390,12 +482,18 @@ Deno.serve(async (req) => {
       await sb.from("province_nodes").update({ parent_node_id: upd.parent_node_id }).eq("id", upd.id);
     }
 
+    // Stats
+    const byTier = allNodes.reduce((acc, n) => { acc[n.node_tier || "unknown"] = (acc[n.node_tier || "unknown"] || 0) + 1; return acc; }, {} as Record<string, number>);
+    const byType = allNodes.reduce((acc, n) => { acc[n.node_type] = (acc[n.node_type] || 0) + 1; return acc; }, {} as Record<string, number>);
+    const strategicCount = allNodes.filter(n => n.strategic_resource_type).length;
+
     return new Response(JSON.stringify({
       ok: true,
       nodes_created: allNodes.length,
       parent_links: parentUpdates.length,
-      by_type: allNodes.reduce((acc, n) => { acc[n.node_type] = (acc[n.node_type] || 0) + 1; return acc; }, {} as Record<string, number>),
-      by_role: allNodes.reduce((acc, n) => { acc[n.flow_role] = (acc[n.flow_role] || 0) + 1; return acc; }, {} as Record<string, number>),
+      by_tier: byTier,
+      by_type: byType,
+      strategic_resources_spawned: strategicCount,
     }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
   } catch (e: any) {
     console.error("compute-province-nodes error:", e);

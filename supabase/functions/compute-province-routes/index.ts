@@ -15,14 +15,17 @@ interface Node {
   id: string;
   province_id: string;
   node_type: string;
+  node_tier: string | null;
+  node_subtype: string | null;
   name: string;
   hex_q: number;
   hex_r: number;
   strategic_value: number;
   economic_value: number;
   defense_value: number;
-  mobility_relevance: number;
-  supply_relevance: number;
+  parent_node_id: string | null;
+  is_major: boolean;
+  flow_role: string;
   metadata: Record<string, any>;
 }
 
@@ -41,39 +44,25 @@ interface Route {
   metadata: Record<string, any>;
 }
 
-/* Determine route type from node types and terrain */
-function inferRouteType(a: Node, b: Node, sameProv: boolean): string {
+function inferRouteType(a: Node, b: Node): string {
   if (a.node_type === "port" && b.node_type === "port") return "sea_lane";
-  if (a.node_type === "port" || b.node_type === "port") {
-    // Port to inland within same province = land_road, cross-province port = sea_lane
-    if (!sameProv && (a.node_type === "port" && b.node_type === "port")) return "sea_lane";
-  }
+  if (a.node_type === "port" || b.node_type === "port") return "sea_lane";
   if (a.node_type === "pass" || b.node_type === "pass") return "mountain_pass";
   if (a.node_type === "trade_hub" || b.node_type === "trade_hub") return "caravan_route";
-  // Check if either node is on a river (metadata)
-  if (a.metadata?.biome === "wetland" || b.metadata?.biome === "wetland") return "river_route";
   return "land_road";
 }
 
-/* Calculate route metrics from node properties */
 function calcMetrics(a: Node, b: Node, dist: number, routeType: string): Partial<Route> {
-  const avgEcon = Math.round((a.economic_value + b.economic_value) / 2);
-  const avgMil = Math.round((a.strategic_value + b.strategic_value) / 2);
-  const avgDef = Math.round((a.defense_value + b.defense_value) / 2);
-
-  // Longer routes = more vulnerable, less capacity
   const distFactor = Math.min(dist / 5, 3);
   const capacity = Math.max(1, 10 - Math.round(distFactor * 2));
   const vulnerability = Math.min(10, Math.round(2 + distFactor * 2));
-
   const buildCostMap: Record<string, number> = {
     land_road: 50, river_route: 30, sea_lane: 20, mountain_pass: 80, caravan_route: 60,
   };
-
   return {
     capacity_value: capacity,
-    military_relevance: avgMil,
-    economic_relevance: avgEcon,
+    military_relevance: Math.round((a.strategic_value + b.strategic_value) / 2),
+    economic_relevance: Math.round((a.economic_value + b.economic_value) / 2),
     vulnerability_score: vulnerability,
     build_cost: buildCostMap[routeType] || 50,
   };
@@ -92,19 +81,16 @@ Deno.serve(async (req) => {
 
     const sb = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 
-    // Load nodes, adjacency
     const [nodesRes, adjRes] = await Promise.all([
       sb.from("province_nodes")
-        .select("id, province_id, node_type, name, hex_q, hex_r, strategic_value, economic_value, defense_value, mobility_relevance, supply_relevance, metadata")
+        .select("id, province_id, node_type, node_tier, node_subtype, name, hex_q, hex_r, strategic_value, economic_value, defense_value, parent_node_id, is_major, flow_role, metadata")
         .eq("session_id", session_id),
       sb.from("province_adjacency")
         .select("province_a, province_b")
         .eq("session_id", session_id),
     ]);
 
-    const nodes: Node[] = (nodesRes.data || []).map((n: any) => ({
-      ...n, metadata: n.metadata || {},
-    }));
+    const nodes: Node[] = (nodesRes.data || []).map((n: any) => ({ ...n, metadata: n.metadata || {} }));
     const adjacency = adjRes.data || [];
 
     if (nodes.length === 0) {
@@ -113,14 +99,8 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Build adjacency set for province pairs
-    const adjSet = new Set<string>();
-    for (const a of adjacency) {
-      adjSet.add(`${a.province_a}|${a.province_b}`);
-      adjSet.add(`${a.province_b}|${a.province_a}`);
-    }
-
-    // Index nodes by province
+    // Index
+    const nodeById = new Map(nodes.map(n => [n.id, n]));
     const nodesByProv: Record<string, Node[]> = {};
     for (const n of nodes) {
       if (!nodesByProv[n.province_id]) nodesByProv[n.province_id] = [];
@@ -131,15 +111,14 @@ Deno.serve(async (req) => {
     const routeSet = new Set<string>();
     const routes: Route[] = [];
 
-    const addRoute = (a: Node, b: Node, sameProv: boolean) => {
+    const addRoute = (a: Node, b: Node, meta?: Record<string, any>) => {
       const key = routeKey(a.id, b.id);
       if (routeSet.has(key)) return;
       routeSet.add(key);
-
       const dist = axialDist(a.hex_q, a.hex_r, b.hex_q, b.hex_r);
-      const routeType = inferRouteType(a, b, sameProv);
+      const routeType = inferRouteType(a, b);
       const metrics = calcMetrics(a, b, dist, routeType);
-
+      const sameProv = a.province_id === b.province_id;
       routes.push({
         session_id,
         node_a: a.id < b.id ? a.id : b.id,
@@ -152,95 +131,122 @@ Deno.serve(async (req) => {
         control_state: "open",
         build_cost: metrics.build_cost!,
         upgrade_level: 0,
-        metadata: { distance: dist, cross_province: !sameProv },
+        metadata: { distance: dist, cross_province: !sameProv, tier_link: meta?.tier_link || "peer", ...meta },
       });
     };
 
-    // === STRATEGY 1: Intra-province backbone ===
-    // Connect primary_city to every other node in same province
-    for (const [provId, pNodes] of Object.entries(nodesByProv)) {
-      const primary = pNodes.find(n => n.node_type === "primary_city");
-      if (!primary) continue;
-      for (const n of pNodes) {
-        if (n.id === primary.id) continue;
-        addRoute(primary, n, true);
+    // ═══════════════════════════════════════
+    // STRATEGY 1: HIERARCHY BACKBONE (micro→minor→major)
+    // ═══════════════════════════════════════
+    for (const n of nodes) {
+      if (n.parent_node_id) {
+        const parent = nodeById.get(n.parent_node_id);
+        if (parent) addRoute(n, parent, { tier_link: `${n.node_tier || "?"}→${parent.node_tier || "?"}` });
       }
-      // Connect fortress to pass if both exist (defense corridor)
-      const fort = pNodes.find(n => n.node_type === "fortress");
-      const pass = pNodes.find(n => n.node_type === "pass");
-      if (fort && pass) addRoute(fort, pass, true);
-
-      // Connect trade_hub to resource_node (supply chain)
-      const hub = pNodes.find(n => n.node_type === "trade_hub");
-      const res = pNodes.find(n => n.node_type === "resource_node");
-      if (hub && res) addRoute(hub, res, true);
     }
 
-    // === STRATEGY 2: Cross-province connections ===
+    // ═══════════════════════════════════════
+    // STRATEGY 2: INTRA-PROVINCE major↔major backbone
+    // ═══════════════════════════════════════
+    for (const [, pNodes] of Object.entries(nodesByProv)) {
+      const majors = pNodes.filter(n => n.is_major || n.node_tier === "major");
+      // Connect all majors in same province
+      for (let i = 0; i < majors.length; i++) {
+        for (let j = i + 1; j < majors.length; j++) {
+          addRoute(majors[i], majors[j], { tier_link: "major↔major" });
+        }
+      }
+      // Connect minor nodes to each other if they share the same parent
+      const minors = pNodes.filter(n => n.node_tier === "minor");
+      const byParent: Record<string, Node[]> = {};
+      for (const m of minors) {
+        const pk = m.parent_node_id || "_none";
+        if (!byParent[pk]) byParent[pk] = [];
+        byParent[pk].push(m);
+      }
+      for (const siblings of Object.values(byParent)) {
+        if (siblings.length < 2) continue;
+        // Connect siblings within reasonable distance
+        for (let i = 0; i < siblings.length; i++) {
+          for (let j = i + 1; j < siblings.length; j++) {
+            const dist = axialDist(siblings[i].hex_q, siblings[i].hex_r, siblings[j].hex_q, siblings[j].hex_r);
+            if (dist < 10) addRoute(siblings[i], siblings[j], { tier_link: "minor↔minor" });
+          }
+        }
+      }
+    }
+
+    // ═══════════════════════════════════════
+    // STRATEGY 3: CROSS-PROVINCE (major↔major, pass↔city)
+    // ═══════════════════════════════════════
     for (const adj of adjacency) {
       const nodesA = nodesByProv[adj.province_a] || [];
       const nodesB = nodesByProv[adj.province_b] || [];
       if (nodesA.length === 0 || nodesB.length === 0) continue;
 
-      // Connect primary cities across adjacent provinces (backbone corridor)
-      const cityA = nodesA.find(n => n.node_type === "primary_city");
-      const cityB = nodesB.find(n => n.node_type === "primary_city");
-      if (cityA && cityB) addRoute(cityA, cityB, false);
+      const majorsA = nodesA.filter(n => n.is_major || n.node_tier === "major");
+      const majorsB = nodesB.filter(n => n.is_major || n.node_tier === "major");
 
-      // Connect passes across provinces (chokepoint link)
+      // Connect nearest major↔major across border
+      let bestPair: [Node, Node] | null = null, bestDist = Infinity;
+      for (const a of majorsA) {
+        for (const b of majorsB) {
+          const d = axialDist(a.hex_q, a.hex_r, b.hex_q, b.hex_r);
+          if (d < bestDist) { bestDist = d; bestPair = [a, b]; }
+        }
+      }
+      if (bestPair) addRoute(bestPair[0], bestPair[1], { tier_link: "cross_major" });
+
+      // Pass/trade_hub cross-connections
       const passA = nodesA.find(n => n.node_type === "pass");
       const passB = nodesB.find(n => n.node_type === "pass");
-      if (passA && passB) {
-        const dist = axialDist(passA.hex_q, passA.hex_r, passB.hex_q, passB.hex_r);
-        if (dist < 12) addRoute(passA, passB, false);
-      }
-      // Pass connects to nearest city across border
-      if (passA && cityB) addRoute(passA, cityB, false);
-      if (passB && cityA) addRoute(passB, cityA, false);
+      if (passA && passB) addRoute(passA, passB, { tier_link: "cross_pass" });
 
-      // Connect trade hubs across provinces (caravan route)
       const hubA = nodesA.find(n => n.node_type === "trade_hub");
       const hubB = nodesB.find(n => n.node_type === "trade_hub");
-      if (hubA && hubB) addRoute(hubA, hubB, false);
-      // Trade hub to nearest city across border
-      if (hubA && cityB) addRoute(hubA, cityB, false);
-      if (hubB && cityA) addRoute(hubB, cityA, false);
+      if (hubA && hubB) addRoute(hubA, hubB, { tier_link: "cross_trade" });
+
+      // Pass → nearest major across border
+      if (passA && majorsB.length > 0) {
+        const nearest = majorsB.sort((a, b) => axialDist(passA.hex_q, passA.hex_r, a.hex_q, a.hex_r) - axialDist(passA.hex_q, passA.hex_r, b.hex_q, b.hex_r))[0];
+        addRoute(passA, nearest, { tier_link: "cross_pass_major" });
+      }
+      if (passB && majorsA.length > 0) {
+        const nearest = majorsA.sort((a, b) => axialDist(passB.hex_q, passB.hex_r, a.hex_q, a.hex_r) - axialDist(passB.hex_q, passB.hex_r, b.hex_q, b.hex_r))[0];
+        addRoute(passB, nearest, { tier_link: "cross_pass_major" });
+      }
     }
 
-    // === STRATEGY 3: Sea lanes between all ports ===
+    // ═══════════════════════════════════════
+    // STRATEGY 4: SEA LANES (port↔port within range)
+    // ═══════════════════════════════════════
     const ports = nodes.filter(n => n.node_type === "port");
     for (let i = 0; i < ports.length; i++) {
       for (let j = i + 1; j < ports.length; j++) {
         const dist = axialDist(ports[i].hex_q, ports[i].hex_r, ports[j].hex_q, ports[j].hex_r);
-        // Only connect ports within reasonable range (avoid global mesh)
-        if (dist < 20) {
-          addRoute(ports[i], ports[j], ports[i].province_id === ports[j].province_id);
-        }
+        if (dist < 20) addRoute(ports[i], ports[j], { tier_link: "sea_lane" });
       }
     }
 
-    // Delete old routes and insert new
+    // Delete old and insert new
     await sb.from("province_routes").delete().eq("session_id", session_id);
-
     const BATCH = 50;
     for (let i = 0; i < routes.length; i += BATCH) {
       const { error } = await sb.from("province_routes").insert(routes.slice(i, i + BATCH));
       if (error) console.error("Insert batch error:", error);
     }
 
-    // Compute centrality stats
+    // Stats
     const nodeDegree: Record<string, number> = {};
     for (const r of routes) {
       nodeDegree[r.node_a] = (nodeDegree[r.node_a] || 0) + 1;
       nodeDegree[r.node_b] = (nodeDegree[r.node_b] || 0) + 1;
     }
     const maxDegree = Math.max(...Object.values(nodeDegree), 0);
-    const chokepoints = Object.entries(nodeDegree)
-      .filter(([, d]) => d >= maxDegree * 0.7)
-      .map(([id]) => nodes.find(n => n.id === id)?.name || id);
-
-    const byType = routes.reduce((acc, r) => {
-      acc[r.route_type] = (acc[r.route_type] || 0) + 1;
+    const byType = routes.reduce((acc, r) => { acc[r.route_type] = (acc[r.route_type] || 0) + 1; return acc; }, {} as Record<string, number>);
+    const byTierLink = routes.reduce((acc, r) => {
+      const tl = (r.metadata as any)?.tier_link || "unknown";
+      acc[tl] = (acc[tl] || 0) + 1;
       return acc;
     }, {} as Record<string, number>);
 
@@ -248,7 +254,7 @@ Deno.serve(async (req) => {
       ok: true,
       routes_created: routes.length,
       by_type: byType,
-      chokepoints,
+      by_tier_link: byTierLink,
       max_degree: maxDegree,
     }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
   } catch (e: any) {
