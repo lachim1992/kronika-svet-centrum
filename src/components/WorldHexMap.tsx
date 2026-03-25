@@ -1761,8 +1761,7 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
         <SheetContent side="right" className="w-[340px] overflow-y-auto">
           <SheetHeader>
             <SheetTitle className="font-display flex items-center gap-2 text-base">
-              {(() => {
-                if (!selectedNode) return null;
+              {selectedNode && (() => {
                 const n = selectedNode;
                 let icon = "📍";
                 if (n.node_tier === "major") icon = MAJOR_NODE_TYPES.find(t => t.dbNodeType === n.node_type)?.icon || "🏛";
@@ -1781,58 +1780,8 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
               ? MINOR_NODE_TYPES.find(t => t.key === n.node_subtype)
               : MICRO_NODE_TYPES.find(t => t.key === n.node_subtype);
 
-            const [editName, setEditName] = useState(n.name);
-            const [saving, setSaving] = useState(false);
-            const [deleting, setDeleting] = useState(false);
-
-            const handleSaveNode = async () => {
-              setSaving(true);
-              try {
-                const { error } = await supabase.from("province_nodes")
-                  .update({ name: editName } as any)
-                  .eq("id", n.id);
-                if (error) throw error;
-                toast.success("Uzel uložen");
-                fetchNodes();
-                setSelectedNode({ ...n, name: editName });
-              } catch (e: any) { toast.error("Chyba: " + e.message); }
-              finally { setSaving(false); }
-            };
-
-            const handleDeleteNode = async () => {
-              if (!confirm(`Opravdu smazat uzel "${n.name}"? Tato akce je nevratná.`)) return;
-              setDeleting(true);
-              try {
-                // Delete related routes first
-                await supabase.from("province_routes")
-                  .delete()
-                  .or(`node_a.eq.${n.id},node_b.eq.${n.id}`);
-                // Delete the node
-                const { error } = await supabase.from("province_nodes")
-                  .delete()
-                  .eq("id", n.id);
-                if (error) throw error;
-                toast.success(`Uzel "${n.name}" smazán`);
-                setSelectedNode(null);
-                fetchNodes();
-                setRouteRefreshKey(k => k + 1);
-              } catch (e: any) { toast.error("Smazání selhalo: " + e.message); }
-              finally { setDeleting(false); }
-            };
-
-            const handleUpgradeNode = async () => {
-              const { error } = await supabase.from("province_nodes")
-                .update({ upgrade_level: n.upgrade_level + 1 } as any)
-                .eq("id", n.id);
-              if (error) { toast.error("Upgrade selhal: " + error.message); return; }
-              toast.success(`Vylepšen na lv.${n.upgrade_level + 1}`);
-              fetchNodes();
-              setSelectedNode({ ...n, upgrade_level: n.upgrade_level + 1 });
-            };
-
             return (
               <div className="space-y-4 mt-4">
-                {/* Basic info */}
                 <div className="grid grid-cols-2 gap-2">
                   <InfoRow label="Tier" value={tierLabel} />
                   <InfoRow label="Typ" value={def?.label || n.node_type} />
@@ -1842,7 +1791,6 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
                   {n.strategic_resource_type && <InfoRow label="Strategický zdroj" value={`💎 ${n.strategic_resource_type}`} />}
                 </div>
 
-                {/* Economy */}
                 {(n.production_output != null || n.wealth_output != null) && (
                   <div className="p-3 rounded-lg border border-border bg-muted/30 space-y-1">
                     <p className="text-xs font-display font-semibold">Ekonomika</p>
@@ -1861,7 +1809,6 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
                   </div>
                 )}
 
-                {/* Edit name */}
                 <div className="p-3 rounded-lg border border-border bg-muted/30 space-y-2">
                   <p className="text-xs font-display font-semibold flex items-center gap-1.5">
                     <Pencil className="h-3 w-3" /> Upravit název
@@ -1869,27 +1816,54 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
                   <div className="flex gap-2">
                     <input
                       className="flex-1 h-8 px-2 text-xs rounded border border-border bg-background"
-                      value={editName}
-                      onChange={e => setEditName(e.target.value)}
+                      value={nodeEditName}
+                      onChange={e => setNodeEditName(e.target.value)}
                     />
-                    <Button size="sm" className="h-8 text-xs gap-1" disabled={saving || editName === n.name || !editName.trim()} onClick={handleSaveNode}>
-                      {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />} Uložit
+                    <Button size="sm" className="h-8 text-xs gap-1" disabled={nodeSaving || nodeEditName === n.name || !nodeEditName.trim()} onClick={async () => {
+                      setNodeSaving(true);
+                      try {
+                        const { error } = await supabase.from("province_nodes").update({ name: nodeEditName } as any).eq("id", n.id);
+                        if (error) throw error;
+                        toast.success("Uzel uložen");
+                        fetchNodes();
+                        setSelectedNode({ ...n, name: nodeEditName });
+                      } catch (e: any) { toast.error("Chyba: " + e.message); }
+                      finally { setNodeSaving(false); }
+                    }}>
+                      {nodeSaving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />} Uložit
                     </Button>
                   </div>
                 </div>
 
-                {/* Upgrade */}
                 {n.upgrade_level < (n.max_upgrade_level || 3) && (
                   <Button variant="secondary" size="sm" className="w-full text-xs gap-2"
-                    onClick={handleUpgradeNode}>
+                    onClick={async () => {
+                      const { error } = await supabase.from("province_nodes").update({ upgrade_level: n.upgrade_level + 1 } as any).eq("id", n.id);
+                      if (error) { toast.error("Upgrade selhal: " + error.message); return; }
+                      toast.success(`Vylepšen na lv.${n.upgrade_level + 1}`);
+                      fetchNodes();
+                      setSelectedNode({ ...n, upgrade_level: n.upgrade_level + 1 });
+                    }}>
                     <ChevronUp className="h-3.5 w-3.5" /> Vylepšit na lv.{n.upgrade_level + 1}
                   </Button>
                 )}
 
-                {/* Delete */}
                 <Button variant="destructive" size="sm" className="w-full text-xs gap-2"
-                  onClick={handleDeleteNode} disabled={deleting}>
-                  {deleting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+                  onClick={async () => {
+                    if (!confirm(`Opravdu smazat uzel "${n.name}"? Tato akce je nevratná.`)) return;
+                    setNodeDeleting(true);
+                    try {
+                      await supabase.from("province_routes").delete().or(`node_a.eq.${n.id},node_b.eq.${n.id}`);
+                      const { error } = await supabase.from("province_nodes").delete().eq("id", n.id);
+                      if (error) throw error;
+                      toast.success(`Uzel "${n.name}" smazán`);
+                      setSelectedNode(null);
+                      fetchNodes();
+                      setRouteRefreshKey(k => k + 1);
+                    } catch (e: any) { toast.error("Smazání selhalo: " + e.message); }
+                    finally { setNodeDeleting(false); }
+                  }} disabled={nodeDeleting}>
+                  {nodeDeleting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
                   Smazat uzel
                 </Button>
               </div>
