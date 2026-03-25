@@ -519,7 +519,7 @@ const RouteCorridorsOverlay = memo(({ sessionId, offsetX, offsetY }: Props) => {
                   <div className="flex items-center justify-between">
                     <span className="text-foreground">{nodeA.name}</span>
                     <span className="text-muted-foreground">
-                      ⚒️{nodeA.production_output?.toFixed(0) || 0} · 💰{nodeA.wealth_output?.toFixed(0) || 0} · 📥{nodeA.incoming_production?.toFixed(0) || 0}
+                      ⚒️{nodeA.production_output?.toFixed(0) || 0} · 🌾{nodeA.food_value?.toFixed(0) || 0} · 💰{nodeA.wealth_output?.toFixed(0) || 0} · 📥{nodeA.incoming_production?.toFixed(0) || 0}
                     </span>
                   </div>
                 )}
@@ -527,7 +527,7 @@ const RouteCorridorsOverlay = memo(({ sessionId, offsetX, offsetY }: Props) => {
                   <div className="flex items-center justify-between">
                     <span className="text-foreground">{nodeB.name}</span>
                     <span className="text-muted-foreground">
-                      ⚒️{nodeB.production_output?.toFixed(0) || 0} · 💰{nodeB.wealth_output?.toFixed(0) || 0} · 📥{nodeB.incoming_production?.toFixed(0) || 0}
+                      ⚒️{nodeB.production_output?.toFixed(0) || 0} · 🌾{nodeB.food_value?.toFixed(0) || 0} · 💰{nodeB.wealth_output?.toFixed(0) || 0} · 📥{nodeB.incoming_production?.toFixed(0) || 0}
                     </span>
                   </div>
                 )}
