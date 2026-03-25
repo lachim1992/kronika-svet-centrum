@@ -1146,7 +1146,7 @@ Deno.serve(async (req) => {
 
     await supabase.from("realm_resources").update({
       grain_reserve: globalGrainReserve,
-      granary_capacity: granaryCapacity,
+      granary_capacity: adjustedGranary,
       manpower_pool: manpowerPool,
       logistic_capacity: logisticCapacity,
       last_processed_turn: currentTurn,
@@ -1173,6 +1173,45 @@ Deno.serve(async (req) => {
       sport_prestige: sportPrestige,
       geopolitical_prestige: geopoliticalPrestige,
       technological_prestige: technologicalPrestige,
+      // All computed gameplay modifiers for UI display
+      computed_modifiers: {
+        strategic: {
+          combat_mult: Math.round(strategicBonuses.combat_mult * 1000) / 1000,
+          wealth_mult: Math.round(strategicBonuses.wealth_mult * 1000) / 1000,
+          faith_bonus: strategicBonuses.faith_bonus,
+          supply_bonus: Math.round(strategicBonuses.supply_bonus * 1000) / 1000,
+          stability_bonus: strategicBonuses.stability_bonus,
+          build_cost_mult: Math.round(strategicBonuses.build_cost_mult * 1000) / 1000,
+          travel_cost_mult: Math.round(strategicBonuses.travel_cost_mult * 1000) / 1000,
+          mobility: strategicBonuses.mobility,
+          diplomacy_bonus: strategicBonuses.diplomacy_bonus,
+        },
+        prestige: {
+          morale_bonus: prestigeEffects.moraleBonus,
+          recruit_discount: Math.round(prestigeEffects.recruitDiscount * 1000) / 1000,
+          trade_multiplier: Math.round(prestigeEffects.tradeMultiplier * 1000) / 1000,
+          build_discount: Math.round(prestigeEffects.buildDiscount * 1000) / 1000,
+          stability_bonus: prestigeEffects.stabilityBonus,
+          pop_growth_bonus: Math.round(prestigeEffects.popGrowthBonus * 10000) / 10000,
+          tension_reduction: Math.round(prestigeEffects.tensionReduction * 100) / 100,
+        },
+        faith: {
+          morale_mult: Math.round(faithMoraleMult * 1000) / 1000,
+          mob_willingness: faithMobWillingness,
+          stability_buffer: faithStabilityBuffer,
+        },
+        labor: {
+          grain_mult: Math.round(laborGrainMult * 1000) / 1000,
+          wealth_mult: Math.round(laborWealthMult * 1000) / 1000,
+          capacity_mult: Math.round(laborCapacityMult * 1000) / 1000,
+          stability_bonus: Math.round(laborStabilityBonus * 10) / 10,
+        },
+        capacity: {
+          build_limit: capacityBuildLimit,
+          active_projects: activeBuildingCount,
+          overloaded: capacityOverload,
+        },
+      },
       updated_at: new Date().toISOString(),
     }).eq("id", realm.id);
 
