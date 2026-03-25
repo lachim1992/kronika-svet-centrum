@@ -68,7 +68,7 @@ const DevNodeSpawner = ({ sessionId, onRefetch }: Props) => {
     setLoading(true);
     const [nodesRes, provRes] = await Promise.all([
       supabase.from("province_nodes")
-        .select("id, name, hex_q, hex_r, node_type, flow_role, is_major")
+        .select("id, name, hex_q, hex_r, node_type, flow_role, is_major, node_tier, node_subtype")
         .eq("session_id", sessionId)
         .order("created_at", { ascending: false })
         .limit(100),
