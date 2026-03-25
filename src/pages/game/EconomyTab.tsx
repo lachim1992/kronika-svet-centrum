@@ -31,6 +31,7 @@ import {
   STRATEGIC_RESOURCE_LABELS, STRATEGIC_RESOURCE_ICONS, STRATEGIC_TIER_LABELS,
   getImportanceLabel, getImportanceColor,
   getIsolationSeverity, ISOLATION_PENALTY_LABELS,
+  getStrategicTiers,
   type StrategicResource,
 } from "@/lib/economyFlow";
 import TradePanel from "@/components/TradePanel";
@@ -97,14 +98,8 @@ const EconomyTab = ({ sessionId, currentPlayerName, currentTurn, cities, resourc
   const totalImportance = realm?.total_importance ?? 0;
   const maxMacro = Math.max(totalProduction, totalWealth, totalCapacity, 1);
 
-  // Strategic tiers
-  const strategicTiers = [
-    { key: "iron" as StrategicResource, tier: realm?.strategic_iron_tier ?? 0 },
-    { key: "horses" as StrategicResource, tier: realm?.strategic_horses_tier ?? 0 },
-    { key: "salt" as StrategicResource, tier: realm?.strategic_salt_tier ?? 0 },
-    { key: "copper" as StrategicResource, tier: realm?.strategic_copper_tier ?? 0 },
-    { key: "gold_deposit" as StrategicResource, tier: realm?.strategic_gold_tier ?? 0 },
-  ].filter(s => s.tier > 0);
+  // Strategic tiers (all 11 resources)
+  const strategicTiers = getStrategicTiers(realm);
 
   // Node breakdown by role
   const nodesByRole = useMemo(() => {
@@ -443,13 +438,13 @@ const EconomyTab = ({ sessionId, currentPlayerName, currentTurn, cities, resourc
         </div>
       )}
 
-      {/* ═══ GOLD RESERVE ═══ */}
+      {/* ═══ WEALTH RESERVE ═══ */}
       {realm && (
         <div className="game-card p-5">
           <div className="flex items-center gap-2">
             <span className="text-xl">💰</span>
-            <h3 className="font-display font-semibold text-base">Zlatá pokladna</h3>
-            <InfoTip side="right">Přírůstek: wealth tok ze sítě uzlů + obchodní dohody + daně (tax_rate_percent z laws). Spotřeba: údržba armád, stavby, diplomatické akce. Počítáno každé kolo v compute-economy-flow → realm_resources.gold_reserve.</InfoTip>
+            <h3 className="font-display font-semibold text-base">Pokladna bohatství</h3>
+            <InfoTip side="right">Přírůstek: wealth tok ze sítě uzlů + obchodní dohody + daně (tax_rate_percent z laws). Spotřeba: údržba armád, stavby, diplomatické akce.</InfoTip>
             <span className="ml-auto text-2xl font-mono font-bold text-primary">{Math.round(realm.gold_reserve || 0)}</span>
           </div>
         </div>

@@ -6935,6 +6935,7 @@ export type Database = {
           faith: number | null
           faith_growth: number | null
           famine_city_count: number
+          geopolitical_prestige: number
           gold_reserve: number
           grain_reserve: number
           granary_capacity: number
@@ -6966,15 +6967,23 @@ export type Database = {
           realm_report_last_turn: number
           session_id: string
           sport_funding_pct: number
+          sport_prestige: number
           stability: number
           stables_capacity: number
           stone_reserve: number
           strategic_copper_tier: number
+          strategic_gems_tier: number
           strategic_gold_tier: number
           strategic_horses_tier: number
+          strategic_incense_tier: number
           strategic_iron_tier: number
+          strategic_marble_tier: number
+          strategic_obsidian_tier: number
           strategic_salt_tier: number
+          strategic_silk_tier: number
+          strategic_timber_tier: number
           supply_strain: number | null
+          technological_prestige: number
           total_capacity: number
           total_importance: number
           total_nodes: number | null
@@ -6995,6 +7004,7 @@ export type Database = {
           faith?: number | null
           faith_growth?: number | null
           famine_city_count?: number
+          geopolitical_prestige?: number
           gold_reserve?: number
           grain_reserve?: number
           granary_capacity?: number
@@ -7026,15 +7036,23 @@ export type Database = {
           realm_report_last_turn?: number
           session_id: string
           sport_funding_pct?: number
+          sport_prestige?: number
           stability?: number
           stables_capacity?: number
           stone_reserve?: number
           strategic_copper_tier?: number
+          strategic_gems_tier?: number
           strategic_gold_tier?: number
           strategic_horses_tier?: number
+          strategic_incense_tier?: number
           strategic_iron_tier?: number
+          strategic_marble_tier?: number
+          strategic_obsidian_tier?: number
           strategic_salt_tier?: number
+          strategic_silk_tier?: number
+          strategic_timber_tier?: number
           supply_strain?: number | null
+          technological_prestige?: number
           total_capacity?: number
           total_importance?: number
           total_nodes?: number | null
@@ -7055,6 +7073,7 @@ export type Database = {
           faith?: number | null
           faith_growth?: number | null
           famine_city_count?: number
+          geopolitical_prestige?: number
           gold_reserve?: number
           grain_reserve?: number
           granary_capacity?: number
@@ -7086,15 +7105,23 @@ export type Database = {
           realm_report_last_turn?: number
           session_id?: string
           sport_funding_pct?: number
+          sport_prestige?: number
           stability?: number
           stables_capacity?: number
           stone_reserve?: number
           strategic_copper_tier?: number
+          strategic_gems_tier?: number
           strategic_gold_tier?: number
           strategic_horses_tier?: number
+          strategic_incense_tier?: number
           strategic_iron_tier?: number
+          strategic_marble_tier?: number
+          strategic_obsidian_tier?: number
           strategic_salt_tier?: number
+          strategic_silk_tier?: number
+          strategic_timber_tier?: number
           supply_strain?: number | null
+          technological_prestige?: number
           total_capacity?: number
           total_importance?: number
           total_nodes?: number | null

@@ -7,7 +7,7 @@ import {
   ChevronDown, Skull, TrendingUp, Network, Zap, Church
 } from "lucide-react";
 import { computeWorkforceBreakdown } from "@/lib/economyConstants";
-import { MACRO_LAYER_ICONS, STRATEGIC_RESOURCE_ICONS, STRATEGIC_TIER_LABELS, type StrategicResource } from "@/lib/economyFlow";
+import { MACRO_LAYER_ICONS, STRATEGIC_RESOURCE_ICONS, STRATEGIC_TIER_LABELS, getStrategicTiers, computeTotalPrestige, getPrestigeTier, PRESTIGE_TIER_LABELS, type StrategicResource } from "@/lib/economyFlow";
 import DemobilizeDialog from "@/components/DemobilizeDialog";
 
 interface ResourceHUDProps {
@@ -81,13 +81,9 @@ const ResourceHUD = ({ sessionId, playerName, cities, currentTurn }: ResourceHUD
   const totalImp = realm.total_importance ?? 0;
 
   // Strategic tiers for display
-  const strats = [
-    { key: "iron" as StrategicResource, tier: realm.strategic_iron_tier ?? 0 },
-    { key: "horses" as StrategicResource, tier: realm.strategic_horses_tier ?? 0 },
-    { key: "salt" as StrategicResource, tier: realm.strategic_salt_tier ?? 0 },
-    { key: "copper" as StrategicResource, tier: realm.strategic_copper_tier ?? 0 },
-    { key: "gold_deposit" as StrategicResource, tier: realm.strategic_gold_tier ?? 0 },
-  ].filter(s => s.tier > 0);
+  const strats = getStrategicTiers(realm);
+  const totalPrestige = computeTotalPrestige(realm);
+  const prestigeTier = getPrestigeTier(totalPrestige);
 
   const currentMobPct = Math.round((realm.mobilization_rate || 0.1) * 100);
   const targetCap = pendingMobRate !== null ? Math.floor(computedPool * pendingMobRate) : committed;
@@ -146,6 +142,11 @@ const ResourceHUD = ({ sessionId, playerName, cities, currentTurn }: ResourceHUD
       icon: <Church className="h-3 w-3" />,
       label: "Víra",
       value: (realm.faith ?? 0).toFixed(0),
+    },
+    {
+      icon: <span className="text-xs">⭐</span>,
+      label: "Prestiž",
+      value: `${Math.round(totalPrestige)}`,
     },
     {
       icon: <Users className="h-3 w-3" />,

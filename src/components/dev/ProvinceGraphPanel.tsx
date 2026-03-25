@@ -8,7 +8,7 @@ import { Loader2, Network, RefreshCw, MapPin, Landmark, Shield, Anchor, Store, M
 import DevNodeSpawner from "@/components/dev/DevNodeSpawner";
 import { toast } from "sonner";
 import { FLOW_ROLE_LABELS, HINTERLAND_LABELS } from "@/lib/strategicGraph";
-import { MACRO_LAYER_ICONS, getImportanceLabel, getImportanceColor, getIsolationSeverity, ISOLATION_PENALTY_LABELS, STRATEGIC_RESOURCE_ICONS, STRATEGIC_TIER_LABELS } from "@/lib/economyFlow";
+import { MACRO_LAYER_ICONS, getImportanceLabel, getImportanceColor, getIsolationSeverity, ISOLATION_PENALTY_LABELS, STRATEGIC_RESOURCE_ICONS, STRATEGIC_TIER_LABELS, STRATEGIC_TIER_DB_COLUMNS } from "@/lib/economyFlow";
 import { supabase } from "@/integrations/supabase/client";
 import { useProvinceGraph, type ProvinceNode, type ProvinceEdge, type StrategicNode, type ProvinceRoute } from "@/hooks/useProvinceGraph";
 
@@ -409,7 +409,7 @@ function RealmEconomySummary({ sessionId }: { sessionId: string }) {
   const [data, setData] = useState<any>(null);
   useEffect(() => {
     supabase.from("realm_resources")
-      .select("player_name, total_production, total_wealth, total_capacity, total_importance, strategic_iron_tier, strategic_horses_tier, strategic_salt_tier, strategic_copper_tier, strategic_gold_tier")
+      .select("player_name, total_production, total_wealth, total_capacity, total_importance, strategic_iron_tier, strategic_horses_tier, strategic_salt_tier, strategic_copper_tier, strategic_gold_tier, strategic_marble_tier, strategic_gems_tier, strategic_timber_tier, strategic_obsidian_tier, strategic_silk_tier, strategic_incense_tier")
       .eq("session_id", sessionId)
       .then(({ data }) => setData(data));
   }, [sessionId]);
@@ -442,17 +442,14 @@ function RealmEconomySummary({ sessionId }: { sessionId: string }) {
             </div>
             {/* Strategic tiers */}
             <div className="flex flex-wrap gap-1.5 text-[8px]">
-              {[
-                { k: "iron", v: r.strategic_iron_tier },
-                { k: "horses", v: r.strategic_horses_tier },
-                { k: "salt", v: r.strategic_salt_tier },
-                { k: "copper", v: r.strategic_copper_tier },
-                { k: "gold_deposit", v: r.strategic_gold_tier },
-              ].filter(t => t.v > 0).map(t => (
-                <Badge key={t.k} variant="outline" className="text-[7px]">
-                  {STRATEGIC_RESOURCE_ICONS[t.k as keyof typeof STRATEGIC_RESOURCE_ICONS]} {STRATEGIC_TIER_LABELS[t.v]}
-                </Badge>
-              ))}
+              {Object.entries(STRATEGIC_TIER_DB_COLUMNS).map(([key, col]) => {
+                const v = r[col];
+                return v > 0 ? (
+                  <Badge key={key} variant="outline" className="text-[7px]">
+                    {STRATEGIC_RESOURCE_ICONS[key as keyof typeof STRATEGIC_RESOURCE_ICONS]} {STRATEGIC_TIER_LABELS[v]}
+                  </Badge>
+                ) : null;
+              })}
             </div>
           </CardContent>
         </Card>

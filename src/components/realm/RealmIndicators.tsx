@@ -7,7 +7,7 @@ import {
   TrendingUp, TrendingDown, Minus, Users, Shield, Swords,
   AlertTriangle, Timer, Network
 } from "lucide-react";
-import { MACRO_LAYER_ICONS, MACRO_LAYER_LABELS, STRATEGIC_RESOURCE_ICONS, STRATEGIC_RESOURCE_LABELS, STRATEGIC_TIER_LABELS, type StrategicResource } from "@/lib/economyFlow";
+import { MACRO_LAYER_ICONS, MACRO_LAYER_LABELS, STRATEGIC_RESOURCE_ICONS, STRATEGIC_RESOURCE_LABELS, STRATEGIC_TIER_LABELS, getStrategicTiers, computeTotalPrestige, getPrestigeTier, PRESTIGE_TIER_LABELS, PRESTIGE_META, PRESTIGE_COMPONENTS, type StrategicResource } from "@/lib/economyFlow";
 
 interface Props {
   realm: any;
@@ -58,14 +58,17 @@ const RealmIndicators = ({ realm, cities, currentTurn }: Props) => {
     const warriorRatio = realm?.warrior_ratio ?? 0;
     const supplyStrain = realm?.supply_strain ?? 0;
 
-    // Strategic tiers
-    const strategicTiers = [
-      { key: "iron" as StrategicResource, tier: realm?.strategic_iron_tier ?? 0 },
-      { key: "horses" as StrategicResource, tier: realm?.strategic_horses_tier ?? 0 },
-      { key: "salt" as StrategicResource, tier: realm?.strategic_salt_tier ?? 0 },
-      { key: "copper" as StrategicResource, tier: realm?.strategic_copper_tier ?? 0 },
-      { key: "gold_deposit" as StrategicResource, tier: realm?.strategic_gold_tier ?? 0 },
-    ].filter(s => s.tier > 0);
+    // Strategic tiers (all 11 resources)
+    const strategicTiers = getStrategicTiers(realm);
+
+    // Prestige composite
+    const totalPrestige = computeTotalPrestige(realm);
+    const prestigeTier = getPrestigeTier(totalPrestige);
+    const prestigeComponents = PRESTIGE_COMPONENTS.map(key => ({
+      key,
+      meta: PRESTIGE_META[key],
+      value: realm?.[PRESTIGE_META[key].dbColumn] ?? 0,
+    })).filter(p => p.value > 0);
 
     return {
       totalPop, totalPeasants, totalBurghers, totalClerics, totalWarriors,
@@ -75,6 +78,7 @@ const RealmIndicators = ({ realm, cities, currentTurn }: Props) => {
       totalProduction, totalWealth, totalCapacity, totalImportance,
       faith, faithGrowth, warriorRatio, supplyStrain,
       strategicTiers,
+      totalPrestige, prestigeTier, prestigeComponents,
     };
   }, [realm, cities, currentTurn]);
 
@@ -145,6 +149,27 @@ const RealmIndicators = ({ realm, cities, currentTurn }: Props) => {
             </div>
           )}
         </CardContent>
+      </Card>
+
+      {/* Prestige */}
+      <Card>
+        <CardHeader className="p-3 pb-1">
+          <CardTitle className="text-xs flex items-center gap-1">
+            ⭐ Prestiž
+            <Badge variant="secondary" className="text-[9px] ml-1">{PRESTIGE_TIER_LABELS[stats.prestigeTier]}</Badge>
+            <span className="ml-auto font-mono font-bold text-sm">{Math.round(stats.totalPrestige)}</span>
+          </CardTitle>
+        </CardHeader>
+        {stats.prestigeComponents.length > 0 && (
+          <CardContent className="p-3 pt-1 space-y-1">
+            {stats.prestigeComponents.map(p => (
+              <div key={p.key} className="flex justify-between text-xs">
+                <span className="text-muted-foreground">{p.meta.icon} {p.meta.label}</span>
+                <span className="font-bold">{Math.round(p.value)}</span>
+              </div>
+            ))}
+          </CardContent>
+        )}
       </Card>
 
       {/* Strategic Resources */}

@@ -20,17 +20,12 @@ interface Props {
   onRefetch?: () => void;
 }
 
-// ── Realm resource field groups
+// ── Realm resource field groups (Unified Economy v2)
 const REALM_STOCKPILES = [
-  { key: "gold_reserve", label: "Zlato", icon: Coins },
-  { key: "grain_reserve", label: "Obilí", icon: Wheat },
   { key: "production_reserve", label: "Produkce", icon: Factory },
-  { key: "wood_reserve", label: "Dřevo", icon: Package },
-  { key: "stone_reserve", label: "Kámen", icon: Pickaxe },
-  { key: "iron_reserve", label: "Železo", icon: Pickaxe },
-  { key: "horses_reserve", label: "Koně", icon: Zap },
+  { key: "gold_reserve", label: "Bohatství", icon: Coins },
+  { key: "grain_reserve", label: "Zásoby", icon: Wheat },
   { key: "faith", label: "Víra", icon: Church },
-  { key: "knowledge", label: "Znalosti", icon: Shield },
 ] as const;
 
 const REALM_RATES = [
@@ -315,17 +310,52 @@ const DevPlayerEditor = ({ sessionId, onRefetch }: Props) => {
                     </div>
                   </div>
                   <Separator />
+                  {/* Prestiž sub-components */}
+                  <div>
+                    <p className="text-xs font-semibold text-muted-foreground mb-1">Prestiž (složky)</p>
+                    <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                      {[
+                        { key: "military_prestige", label: "⚔️ Vojenská" },
+                        { key: "cultural_prestige", label: "🎭 Kulturní" },
+                        { key: "economic_prestige", label: "📈 Ekonomická" },
+                        { key: "sport_prestige", label: "🏆 Sportovní" },
+                        { key: "geopolitical_prestige", label: "🌐 Geopolitická" },
+                        { key: "technological_prestige", label: "🔬 Technologická" },
+                      ].map((p) => (
+                        <NumField
+                          key={p.key}
+                          label={p.label}
+                          value={realm[p.key] ?? 0}
+                          min={0}
+                          onChange={(v) => updateRealm(p.key, v)}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                  <Separator />
                   {/* Strategic tiers */}
                   <div>
-                    <p className="text-xs font-semibold text-muted-foreground mb-1">Strategické suroviny (tier)</p>
+                    <p className="text-xs font-semibold text-muted-foreground mb-1">Strategické suroviny (přístupy)</p>
                     <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
-                      {["iron", "horses", "salt", "copper", "gold"].map((res) => (
+                      {[
+                        { key: "strategic_iron_tier", label: "⛏️ Železo" },
+                        { key: "strategic_horses_tier", label: "🐴 Koně" },
+                        { key: "strategic_salt_tier", label: "🧂 Sůl" },
+                        { key: "strategic_copper_tier", label: "🪙 Měď" },
+                        { key: "strategic_gold_tier", label: "✨ Zlato" },
+                        { key: "strategic_marble_tier", label: "🏛️ Mramor" },
+                        { key: "strategic_gems_tier", label: "💎 Drahokamy" },
+                        { key: "strategic_timber_tier", label: "🪵 Dřevo" },
+                        { key: "strategic_obsidian_tier", label: "🗡️ Obsidián" },
+                        { key: "strategic_silk_tier", label: "🧵 Hedvábí" },
+                        { key: "strategic_incense_tier", label: "🪔 Kadidlo" },
+                      ].map((res) => (
                         <NumField
-                          key={res}
-                          label={res.charAt(0).toUpperCase() + res.slice(1)}
-                          value={realm[`strategic_${res}_tier`] ?? 0}
+                          key={res.key}
+                          label={res.label}
+                          value={realm[res.key] ?? 0}
                           min={0}
-                          onChange={(v) => updateRealm(`strategic_${res}_tier`, v)}
+                          onChange={(v) => updateRealm(res.key, v)}
                         />
                       ))}
                     </div>
