@@ -269,13 +269,24 @@ Deno.serve(async (req) => {
       .in("city_id", cityIds.length > 0 ? cityIds : ["00000000-0000-0000-0000-000000000000"]);
 
     let completedCount = 0;
+    // Capacity-based building speed: if too many active projects, some may be delayed
+    const activeBuildingCount = (allBuildings || []).length;
+    const capacityBuildLimit = Math.max(2, Math.floor(totalCapacity / 5 + 2)); // Minimum 2 projects at full speed
+    const capacityOverload = activeBuildingCount > capacityBuildLimit;
+    if (capacityOverload) {
+      logEntries.push(`🏛️ Kapacita přetížena: ${activeBuildingCount} staveb vs limit ${capacityBuildLimit} — stavby zpomaleny`);
+    }
+
     for (const b of (allBuildings || [])) {
-      const finishTurn = (b.build_started_turn || 0) + (b.build_duration || 1);
+      // Marble reduces build duration, capacity overload increases it
+      const baseDuration = b.build_duration || 1;
+      const adjustedDuration = Math.max(1, Math.round(baseDuration * strategicBonuses.build_cost_mult * (capacityOverload ? 1.5 : 1.0)));
+      const finishTurn = (b.build_started_turn || 0) + adjustedDuration;
       if (currentTurn >= finishTurn) {
         await supabase.from("city_buildings").update({ status: "completed", completed_turn: currentTurn }).eq("id", b.id);
         completedCount++;
         const cityName = myCities.find(c => c.id === b.city_id)?.name || "?";
-        logEntries.push(`🏗️ Stavba "${b.name}" v ${cityName} dokončena!`);
+        logEntries.push(`🏗️ Stavba "${b.name}" v ${cityName} dokončena!${strategicBonuses.build_cost_mult < 1 ? " (mramorový bonus)" : ""}`);
       }
     }
 
