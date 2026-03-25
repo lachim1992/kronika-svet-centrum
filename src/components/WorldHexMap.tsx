@@ -413,6 +413,9 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
   // Nodes on hex map
   const [allNodes, setAllNodes] = useState<NodeOnHex[]>([]);
   const [selectedNode, setSelectedNode] = useState<NodeOnHex | null>(null);
+  const [nodeEditName, setNodeEditName] = useState("");
+  const [nodeSaving, setNodeSaving] = useState(false);
+  const [nodeDeleting, setNodeDeleting] = useState(false);
   const [routeRefreshKey, setRouteRefreshKey] = useState(0);
 
   // Province data
