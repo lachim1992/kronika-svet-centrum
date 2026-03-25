@@ -16,7 +16,7 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { session_id, player_name, province_id, target_q, target_r } = await req.json();
+    const { session_id, player_name, province_id, target_q, target_r, skip_cost } = await req.json();
 
     if (!session_id || !player_name || !province_id || target_q === undefined || target_r === undefined) {
       return new Response(
