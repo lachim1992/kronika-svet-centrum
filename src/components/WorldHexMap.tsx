@@ -1360,6 +1360,16 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
               {(() => {
                 const hexNodes = nodesByCoord.get(hKey(selectedHex.q, selectedHex.r)) || [];
                 if (hexNodes.length === 0) return null;
+
+                const handleUpgrade = async (nodeId: string, currentLevel: number) => {
+                  const { error } = await supabase.from("province_nodes")
+                    .update({ upgrade_level: currentLevel + 1 } as any)
+                    .eq("id", nodeId);
+                  if (error) { toast.error("Upgrade selhal: " + error.message); return; }
+                  toast.success(`Uzel vylepšen na úroveň ${currentLevel + 1}`);
+                  fetchNodes();
+                };
+
                 return (
                   <div className="p-3 rounded-lg border border-border bg-muted/30 space-y-1.5">
                     <p className="text-xs font-display font-semibold flex items-center gap-1.5">
@@ -1369,13 +1379,25 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
                       const def = n.node_tier === "minor"
                         ? MINOR_NODE_TYPES.find(t => t.key === n.node_subtype)
                         : MICRO_NODE_TYPES.find(t => t.key === n.node_subtype);
+                      const canUpgrade = n.upgrade_level < (n.max_upgrade_level || 3);
                       return (
-                        <div key={n.id} className="flex items-center gap-2 text-xs py-1">
-                          <span>{def?.icon || "📍"}</span>
-                          <span className="font-display font-semibold">{n.name}</span>
-                          <Badge variant="outline" className="text-[8px] h-4 ml-auto">
-                            {n.node_tier === "minor" ? "osada" : "zázemí"} lv.{n.upgrade_level}
-                          </Badge>
+                        <div key={n.id} className="space-y-1">
+                          <div className="flex items-center gap-2 text-xs py-1">
+                            <span>{def?.icon || "📍"}</span>
+                            <span className="font-display font-semibold">{n.name}</span>
+                            {n.strategic_resource_type && (
+                              <Badge variant="secondary" className="text-[8px] h-4">💎 {n.strategic_resource_type}</Badge>
+                            )}
+                            <Badge variant="outline" className="text-[8px] h-4 ml-auto">
+                              {n.node_tier === "minor" ? "osada" : "zázemí"} lv.{n.upgrade_level}/{n.max_upgrade_level || 3}
+                            </Badge>
+                          </div>
+                          {canUpgrade && (
+                            <Button variant="ghost" size="sm" className="w-full text-[10px] h-6 gap-1"
+                              onClick={() => handleUpgrade(n.id, n.upgrade_level)}>
+                              <ChevronUp className="h-3 w-3" /> Vylepšit na lv.{n.upgrade_level + 1}
+                            </Button>
+                          )}
                         </div>
                       );
                     })}
