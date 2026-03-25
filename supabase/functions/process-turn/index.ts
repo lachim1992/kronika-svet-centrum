@@ -544,6 +544,115 @@ Deno.serve(async (req) => {
       });
     }
 
+    // ══════════════════════════════════════════════════════════════
+    // ▶ POPULATION GROWTH & DEMOGRAPHICS
+    // Growth = base_rate × food_surplus_mult × stability_mult × housing_mult
+    // Each class grows based on city infrastructure & policies
+    // ══════════════════════════════════════════════════════════════
+    const BASE_GROWTH_RATE = 0.012; // ~1.2% base per turn
+    const GROWTH_STARVATION_MULT = 0.0; // No growth during famine
+    const DEATH_AGING_RATE = 0.003; // Natural deaths ~0.3%
+
+    for (const city of myCities) {
+      if (city.status && city.status !== "ok") continue;
+      const pop = city.population_total || 0;
+      if (pop <= 0) continue;
+
+      const cityEcon = cityEconResults.find(r => r.cityId === city.id);
+      const isFamine = cityEcon?.famine || false;
+
+      // Growth multipliers
+      const foodMult = isFamine ? GROWTH_STARVATION_MULT
+        : (cityEcon && cityEcon.balance > 0) ? Math.min(2.0, 1.0 + cityEcon.balance / (cityEcon.demand || 1)) : 0.5;
+      const stabilityMult = Math.max(0.2, (city.city_stability || 50) / 100);
+      const housingCap = city.housing_capacity || pop * 1.5;
+      const housingMult = pop >= housingCap ? 0.1 : Math.max(0.3, 1 - pop / housingCap);
+
+      const growthRate = BASE_GROWTH_RATE * foodMult * stabilityMult * housingMult;
+      const naturalDeaths = Math.floor(pop * DEATH_AGING_RATE);
+      const births = Math.floor(pop * growthRate);
+      const netGrowth = births - naturalDeaths;
+
+      if (netGrowth === 0) continue;
+
+      // Distribute growth by city's infrastructure
+      const peas = city.population_peasants || 0;
+      const burg = city.population_burghers || 0;
+      const cler = city.population_clerics || 0;
+      const warr = city.population_warriors || 0;
+
+      // Attraction weights: base from demographics + building effects
+      const bldgEff = cityBuildingEffects[city.id] || {};
+      const marketAttraction = 1 + (city.market_level || 0) * 0.3 + (bldgEff.burgher_attraction || 0);
+      const templeAttraction = 1 + (city.temple_level || 0) * 0.2 + (bldgEff.cleric_attraction || 0);
+      const garrisonAttraction = (city.military_garrison || 0) > 50 ? 0.5 : 0.1;
+
+      // Peasants get most growth (rural base)
+      const peasantShare = 0.55;
+      const burgherShare = 0.20 * marketAttraction;
+      const clericShare = 0.10 * templeAttraction;
+      const warriorShare = 0.05 + garrisonAttraction * 0.1;
+      const totalShares = peasantShare + burgherShare + clericShare + warriorShare;
+
+      const dPeas = Math.round(netGrowth * peasantShare / totalShares);
+      const dBurg = Math.round(netGrowth * burgherShare / totalShares);
+      const dCler = Math.round(netGrowth * clericShare / totalShares);
+      const dWarr = netGrowth - dPeas - dBurg - dCler; // remainder to warriors
+
+      const newPeas = Math.max(0, peas + dPeas);
+      const newBurg = Math.max(0, burg + dBurg);
+      const newCler = Math.max(0, cler + dCler);
+      const newWarr = Math.max(0, warr + dWarr);
+      const newTotal = newPeas + newBurg + newCler + newWarr;
+
+      // Update city demographics
+      await supabase.from("cities").update({
+        population_peasants: newPeas,
+        population_burghers: newBurg,
+        population_clerics: newCler,
+        population_warriors: newWarr,
+        population_total: newTotal,
+        birth_rate: Math.round(growthRate * 10000) / 100,
+        death_rate: Math.round(DEATH_AGING_RATE * 10000) / 100,
+        overcrowding_ratio: Math.round((newTotal / housingCap) * 100) / 100,
+      }).eq("id", city.id);
+
+      if (netGrowth > 10) {
+        logEntries.push(`👶 ${city.name}: +${netGrowth} obyvatel (celkem ${newTotal})`);
+      }
+
+      // Settlement level upgrade check
+      const SETTLEMENT_THRESHOLDS: Record<string, { next: string; pop: number }> = {
+        outpost: { next: "village", pop: 100 },
+        village: { next: "town", pop: 500 },
+        town: { next: "city", pop: 2000 },
+        city: { next: "metropolis", pop: 8000 },
+        metropolis: { next: "polis", pop: 20000 },
+      };
+      const threshold = SETTLEMENT_THRESHOLDS[city.settlement_level];
+      if (threshold && newTotal >= threshold.pop) {
+        await supabase.from("cities").update({ settlement_level: threshold.next }).eq("id", city.id);
+        logEntries.push(`🏙️ ${city.name} povýšeno na ${threshold.next}!`);
+        newEvents.push({
+          event_type: "settlement_upgrade",
+          note: `${city.name} dosáhlo ${newTotal} obyvatel a bylo povýšeno na ${threshold.next}.`,
+          importance: "important",
+          city_id: city.id,
+          reference: { old_level: city.settlement_level, new_level: threshold.next, population: newTotal },
+        });
+      }
+    }
+
+    // Recalculate total population after growth
+    totalPopulation = 0;
+    totalWarriors = 0;
+    for (const city of myCities) {
+      const cityEcon = cityEconResults.find(r => r.cityId === city.id);
+      // Use updated values if we modified them
+      totalPopulation += city.population_total || 0;
+      totalWarriors += city.population_warriors || 0;
+    }
+
     // Apply mobilization penalties to totals
     totalCityProduction = Math.max(0, totalCityProduction - mobProductionPenalty);
     totalCityWealth = Math.max(0, totalCityWealth - mobWealthPenalty);
