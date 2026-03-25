@@ -173,17 +173,46 @@ const RouteCorridorsOverlay = memo(({ sessionId, offsetX, offsetY }: Props) => {
     return m;
   }, [flowPaths]);
 
-  // All flow paths for a route
+  // All flow paths for a route — but remap to economic flow types based on node data
   const routeAllFlows = useMemo(() => {
     const m = new Map<string, FlowPathData[]>();
     for (const fp of flowPaths) {
       if (!fp.route_id) continue;
-      const arr = m.get(fp.route_id) || [];
-      arr.push(fp);
-      m.set(fp.route_id, arr);
+      // Only keep one hex_path per route for geometry
+      if (m.has(fp.route_id)) continue;
+
+      const nodeA = nodeMap.get(fp.node_a);
+      const nodeB = nodeMap.get(fp.node_b);
+      if (!nodeA && !nodeB) continue;
+
+      const prodA = nodeA?.production_output || 0;
+      const prodB = nodeB?.production_output || 0;
+      const suppA = nodeA?.food_value || 0;
+      const suppB = nodeB?.food_value || 0;
+      const wealthA = nodeA?.wealth_output || 0;
+      const wealthB = nodeB?.wealth_output || 0;
+
+      const entries: FlowPathData[] = [];
+      // Production flow (orange)
+      if (prodA > 0.5 || prodB > 0.5) {
+        entries.push({ ...fp, flow_type: "production" });
+      }
+      // Supply flow (green)
+      if (suppA > 0.5 || suppB > 0.5) {
+        entries.push({ ...fp, flow_type: "supply" });
+      }
+      // Wealth flow (gold)
+      if (wealthA > 0.5 || wealthB > 0.5) {
+        entries.push({ ...fp, flow_type: "wealth" });
+      }
+      // Fallback: at least show the route
+      if (entries.length === 0) {
+        entries.push({ ...fp, flow_type: "trade" });
+      }
+      m.set(fp.route_id, entries);
     }
     return m;
-  }, [flowPaths]);
+  }, [flowPaths, nodeMap]);
 
   const activeRouteId = selectedRouteId || hoveredRouteId;
   const activeRoute = useMemo(() => {
