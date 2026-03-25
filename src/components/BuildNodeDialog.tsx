@@ -281,7 +281,7 @@ const BuildNodeDialog = ({
                 <div className="grid grid-cols-3 gap-1 mt-2">
                   {Object.entries(previewProduction).map(([key, val]) => val > 0 && (
                     <div key={key} className="flex items-center gap-1 text-[10px]">
-                      <span>{key === "grain" ? "🌾" : key === "wood" ? "🪵" : key === "stone" ? "🪨" : key === "iron" ? "⛏️" : key === "wealth" ? "💰" : "⛪"}</span>
+                      <span>{key === "supplies" ? "🌾" : key === "production" ? "⚒️" : key === "wealth" ? "💰" : "⛪"}</span>
                       <span className="font-mono font-semibold">{val}</span>
                       <span className="text-muted-foreground">{key}</span>
                     </div>
