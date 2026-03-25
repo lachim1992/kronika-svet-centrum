@@ -170,6 +170,10 @@ const DevModePanel = ({
         <TabsContent value="player-editor" className="mt-3">
           <DevPlayerEditor sessionId={sessionId} onRefetch={onRefetch} />
         </TabsContent>
+
+        <TabsContent value="formula-tuner" className="mt-3">
+          <FormulaTunerPanel sessionId={sessionId} />
+        </TabsContent>
       </Tabs>
     </div>
   );
