@@ -148,7 +148,7 @@ interface Props {
 /* ───── HexTile (memoized) ───── */
 const HexTile = memo(({
   q, r, hex, isFrontier, isCurrent, devMode, loading, onClick, onDoubleClick, offsetX, offsetY, cities, onCityClick, stacks,
-  selectedStackId, isMoveTarget, isAttackTarget, onStackClick, onMoveClick, onAttackClick, myPlayerName, nodes,
+  selectedStackId, isMoveTarget, isAttackTarget, onStackClick, onMoveClick, onAttackClick, myPlayerName, nodes, onNodeClick,
 }: {
   q: number; r: number; hex?: HexData; isFrontier: boolean; isCurrent: boolean;
   devMode: boolean; loading: boolean;
@@ -164,6 +164,7 @@ const HexTile = memo(({
   onAttackClick?: (q: number, r: number) => void;
   myPlayerName?: string;
   nodes?: NodeOnHex[];
+  onNodeClick?: (node: NodeOnHex) => void;
 }) => {
   const pos = hexToPixel(q, r);
   const cx = pos.x + offsetX;
