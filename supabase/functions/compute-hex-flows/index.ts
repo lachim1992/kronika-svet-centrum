@@ -10,6 +10,19 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
+const HEX_PAGE_SIZE = 1000;
+
+const axialDist = (q1: number, r1: number, q2: number, r2: number) => {
+  const dq = q1 - q2;
+  const dr = r1 - r2;
+  return (Math.abs(dq) + Math.abs(dq + dr) + Math.abs(dr)) / 2;
+};
+
+const isAdjacentStep = (
+  a: { q: number; r: number },
+  b: { q: number; r: number },
+) => axialDist(a.q, a.r, b.q, b.r) === 1;
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -23,12 +36,23 @@ Deno.serve(async (req) => {
 
     const sb = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 
-    // 1. Load hexes for this session
-    const { data: hexRows } = await sb
-      .from("province_hexes")
-      .select("q, r, biome_family, mean_height, has_river, has_bridge, is_passable, coastal")
-      .eq("session_id", session_id)
-      .limit(4000);
+    // 1. Load all hexes for this session (paged)
+    const hexRows: any[] = [];
+    for (let from = 0; ; from += HEX_PAGE_SIZE) {
+      const to = from + HEX_PAGE_SIZE - 1;
+      const { data: pageRows, error: hexErr } = await sb
+        .from("province_hexes")
+        .select("id, q, r, biome_family, mean_height, has_river, has_bridge, is_passable, coastal")
+        .eq("session_id", session_id)
+        .order("id", { ascending: true })
+        .range(from, to);
+
+      if (hexErr) throw hexErr;
+      if (!pageRows || pageRows.length === 0) break;
+
+      hexRows.push(...pageRows);
+      if (pageRows.length < HEX_PAGE_SIZE) break;
+    }
 
     const hexMap = new Map<string, any>();
     for (const h of (hexRows || [])) {
@@ -42,8 +66,8 @@ Deno.serve(async (req) => {
       .eq("session_id", session_id)
       .eq("is_active", true);
 
-    // Build fortress/control/pass lookup by hex
-    const hexControl = new Map<string, { controlled_by: string | null; has_fortress: boolean; trade_density: number; has_pass: boolean }>();
+    // Build fortress/control lookup by hex
+    const hexControl = new Map<string, { controlled_by: string | null; has_fortress: boolean; trade_density: number }>();
     for (const n of (nodes || [])) {
       const k = `${n.hex_q},${n.hex_r}`;
       const existing = hexControl.get(k);
@@ -51,7 +75,6 @@ Deno.serve(async (req) => {
         controlled_by: n.controlled_by,
         has_fortress: (existing?.has_fortress ?? false) || (n.fortification_level || 0) >= 2 || n.node_type === "fortress",
         trade_density: Math.min(100, (n.cumulative_trade_flow || 0) * 0.5),
-        has_pass: (existing?.has_pass ?? false) || n.node_type === "pass",
       });
     }
 
@@ -84,8 +107,8 @@ Deno.serve(async (req) => {
       const k = `${q},${r}`;
       const hex = hexMap.get(k);
       if (!hex) {
-        // Unknown hex — high cost but passable (frontier)
-        return 5.0;
+        // Unknown hex is not traversable for canonical route generation.
+        return Infinity;
       }
 
       const ctrl = hexControl.get(k);
@@ -101,7 +124,6 @@ Deno.serve(async (req) => {
         has_fortress: ctrl?.has_fortress ?? false,
         is_contested: false,
         trade_density: ctrl?.trade_density ?? 0,
-        has_pass: ctrl?.has_pass ?? false,
       };
 
       return hexTraversalCost(ctx, forPlayer);
@@ -112,6 +134,7 @@ Deno.serve(async (req) => {
     const flowPathRows: any[] = [];
     const routeUpdates: Array<{ id: string; hex_path_cost: number; hex_bottleneck_q: number | null; hex_bottleneck_r: number | null; hex_path_length: number; path_dirty: boolean; last_path_turn: number }> = [];
     let failedPaths = 0;
+    let rejectedNonAdjacentPaths = 0;
 
     for (const route of routes) {
       const nodeA = nodeMap.get(route.node_a);
@@ -130,6 +153,19 @@ Deno.serve(async (req) => {
       const result = computeFlowPath(input, costFn, 50);
 
       if (!result) {
+        failedPaths++;
+        continue;
+      }
+
+      let hasInvalidStep = false;
+      for (let i = 1; i < result.hex_path.length; i++) {
+        if (!isAdjacentStep(result.hex_path[i - 1], result.hex_path[i])) {
+          hasInvalidStep = true;
+          break;
+        }
+      }
+      if (hasInvalidStep) {
+        rejectedNonAdjacentPaths++;
         failedPaths++;
         continue;
       }
@@ -179,6 +215,7 @@ Deno.serve(async (req) => {
       ok: true,
       paths_computed: flowPathRows.length,
       failed_paths: failedPaths,
+      rejected_non_adjacent_paths: rejectedNonAdjacentPaths,
       total_routes_processed: routes.length,
     }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
   } catch (e: any) {
