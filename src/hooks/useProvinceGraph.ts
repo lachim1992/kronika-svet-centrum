@@ -73,6 +73,9 @@ export interface StrategicNode {
   route_access_factor: number;
   trade_efficiency: number;
   isolation_penalty: number;
+  // Strategic resource
+  strategic_resource_type: string | null;
+  strategic_resource_tier: number;
 }
 
 export interface ProvinceRoute {
