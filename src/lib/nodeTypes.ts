@@ -22,6 +22,74 @@ export const NODE_TIER_COLORS: Record<NodeTier, string> = {
 };
 
 // ═══════════════════════════════════════════
+// MAJOR NODE TYPES (4 typy — město, hrad, obchodní hub, strážní stanice)
+// ═══════════════════════════════════════════
+
+export interface MajorNodeDef {
+  key: string;
+  label: string;
+  icon: string;
+  preferredBiomes: string[];
+  description: string;
+  dbNodeType: string; // maps to province_nodes.node_type
+  bonusEffect: string;
+}
+
+export const MAJOR_NODE_TYPES: MajorNodeDef[] = [
+  {
+    key: "city",
+    label: "Město",
+    icon: "🏙️",
+    preferredBiomes: ["plains", "grassland", "temperate", "river", "coastal"],
+    description: "Hlavní sídlo s vysokou populací. Hub pro ekonomické toky a zásobování.",
+    dbNodeType: "primary_city",
+    bonusEffect: "Hub role — akumuluje produkci z minor uzlů, generuje bohatství",
+  },
+  {
+    key: "fortress",
+    label: "Hrad",
+    icon: "🏰",
+    preferredBiomes: ["hills", "mountain", "highland", "forest"],
+    description: "Opevněné sídlo. Kontroluje průchod a poskytuje vojenskou ochranu.",
+    dbNodeType: "fortress",
+    bonusEffect: "+fortifikace, gateway role — blokuje nepřátelský postup",
+  },
+  {
+    key: "trade_hub",
+    label: "Obchodní stanice",
+    icon: "🏪",
+    preferredBiomes: ["plains", "grassland", "coastal", "river", "steppe"],
+    description: "Velké obchodní centrum na křižovatce tras. Maximalizuje wealth throughput.",
+    dbNodeType: "trade_hub",
+    bonusEffect: "+trade efficiency, wealth multiplikátor z průchozích tras",
+  },
+  {
+    key: "guard_station",
+    label: "Strážní stanice",
+    icon: "⚔️",
+    preferredBiomes: ["hills", "mountain", "highland", "plains", "steppe", "forest"],
+    description: "Vojenská stanice kontrolující oblast. Strategický přehled a obrana.",
+    dbNodeType: "fortress",
+    bonusEffect: "+vision, zpomalení nepřátel, regulator role",
+  },
+];
+
+export function suggestMajorType(biome: string): string {
+  const b = biome?.toLowerCase() || "";
+  if (b.includes("hill") || b.includes("mountain") || b.includes("highland")) return "fortress";
+  if (b.includes("coast") || b.includes("river")) return "trade_hub";
+  if (b.includes("steppe") || b.includes("desert")) return "guard_station";
+  return "city";
+}
+
+export function getCompatibleMajorTypes(biome: string): MajorNodeDef[] {
+  const b = biome?.toLowerCase() || "";
+  return MAJOR_NODE_TYPES.filter(t =>
+    t.preferredBiomes.some(pb => b.includes(pb)) || t.key === "guard_station"
+  );
+}
+
+// ═══════════════════════════════════════════
 // MINOR NODE TYPES (8 osad)
 // ═══════════════════════════════════════════
 
