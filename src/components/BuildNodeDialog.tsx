@@ -69,6 +69,8 @@ const BuildNodeDialog = ({
     : MICRO_NODE_TYPES.find(t => t.key === activeType);
 
   const previewProduction = activeDef && tier !== "major" ? computeNodeProduction(tier, activeType, 1, biome) : null;
+  const netBalanceLv1 = activeDef ? computeNetBalance(tier, activeType, 1, biome) : null;
+  const netBalanceLv2 = activeDef ? computeNetBalance(tier, activeType, 2, biome) : null;
 
   const handleBuild = async () => {
     if (!activeDef) return;
