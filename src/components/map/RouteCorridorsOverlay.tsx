@@ -1,9 +1,11 @@
 /**
  * Interactive SVG overlay that renders route corridors as colored lines
- * through hex centers on the world map. Hover to highlight & see analytics.
+ * through hex centers on the world map. Click to show flow analytics panel.
  */
 import { useState, useEffect, useCallback, useMemo, memo, useRef } from "react";
+import { createPortal } from "react-dom";
 import { supabase } from "@/integrations/supabase/client";
+import { X } from "lucide-react";
 import {
   ROUTE_TYPE_LABELS,
   CONTROL_STATE_LABELS,
@@ -117,7 +119,8 @@ const RouteCorridorsOverlay = memo(({ sessionId, offsetX, offsetY }: Props) => {
   const [flowPaths, setFlowPaths] = useState<FlowPathData[]>([]);
   const [nodeMap, setNodeMap] = useState<Map<string, NodeInfo>>(new Map());
   const [hoveredRouteId, setHoveredRouteId] = useState<string | null>(null);
-  const [tooltipPos, setTooltipPos] = useState<{ x: number; y: number } | null>(null);
+  const [selectedRouteId, setSelectedRouteId] = useState<string | null>(null);
+  const [panelPos, setPanelPos] = useState<{ x: number; y: number } | null>(null);
   const svgRef = useRef<SVGGElement>(null);
 
   const loadData = useCallback(async () => {
@@ -156,7 +159,7 @@ const RouteCorridorsOverlay = memo(({ sessionId, offsetX, offsetY }: Props) => {
     return m;
   }, [nodeMap, offsetX, offsetY]);
 
-  // route_id → hex_path lookup
+  // route_id → first hex_path lookup
   const routeHexPaths = useMemo(() => {
     const m = new Map<string, FlowPathData>();
     for (const fp of flowPaths) {
@@ -167,7 +170,7 @@ const RouteCorridorsOverlay = memo(({ sessionId, offsetX, offsetY }: Props) => {
     return m;
   }, [flowPaths]);
 
-  // All flow paths for a route (there may be multiple flow types)
+  // All flow paths for a route
   const routeAllFlows = useMemo(() => {
     const m = new Map<string, FlowPathData[]>();
     for (const fp of flowPaths) {
@@ -179,38 +182,49 @@ const RouteCorridorsOverlay = memo(({ sessionId, offsetX, offsetY }: Props) => {
     return m;
   }, [flowPaths]);
 
-  const hoveredRoute = useMemo(() => {
-    if (!hoveredRouteId) return null;
-    return routes.find(r => r.id === hoveredRouteId) || null;
-  }, [hoveredRouteId, routes]);
+  const activeRouteId = selectedRouteId || hoveredRouteId;
+  const activeRoute = useMemo(() => {
+    if (!activeRouteId) return null;
+    return routes.find(r => r.id === activeRouteId) || null;
+  }, [activeRouteId, routes]);
 
-  const handleRouteMouseEnter = useCallback((routeId: string, evt: React.MouseEvent) => {
-    setHoveredRouteId(routeId);
-    setTooltipPos({ x: evt.clientX, y: evt.clientY });
-  }, []);
-
-  const handleRouteMouseMove = useCallback((evt: React.MouseEvent) => {
-    setTooltipPos({ x: evt.clientX, y: evt.clientY });
-  }, []);
+  const handleRouteMouseEnter = useCallback((routeId: string) => {
+    if (!selectedRouteId) setHoveredRouteId(routeId);
+  }, [selectedRouteId]);
 
   const handleRouteMouseLeave = useCallback(() => {
-    setHoveredRouteId(null);
-    setTooltipPos(null);
+    if (!selectedRouteId) setHoveredRouteId(null);
+  }, [selectedRouteId]);
+
+  const handleRouteClick = useCallback((routeId: string, evt: React.MouseEvent) => {
+    evt.stopPropagation();
+    if (selectedRouteId === routeId) {
+      setSelectedRouteId(null);
+      setPanelPos(null);
+    } else {
+      setSelectedRouteId(routeId);
+      setPanelPos({ x: evt.clientX, y: evt.clientY });
+    }
+  }, [selectedRouteId]);
+
+  const handleClose = useCallback(() => {
+    setSelectedRouteId(null);
+    setPanelPos(null);
   }, []);
 
-  // Render lines
+  // Render route lines + dots
   const routeElements = useMemo(() => {
     const elements: React.ReactNode[] = [];
 
     for (const route of routes) {
       if (route.control_state === "blocked") continue;
 
-      const isHovered = route.id === hoveredRouteId;
+      const isActive = route.id === activeRouteId;
       const color = ROUTE_TYPE_COLORS[route.route_type] || "hsl(45, 40%, 45%)";
       const dash = ROUTE_TYPE_DASH[route.route_type];
       const baseWidth = 1.0 + route.upgrade_level * 0.3 + (route.capacity_value > 6 ? 0.4 : 0);
-      const width = isHovered ? baseWidth + 3 : baseWidth;
-      const opacity = isHovered ? 0.95 : (route.control_state === "damaged" ? 0.3 : 0.5);
+      const width = isActive ? baseWidth + 3 : baseWidth;
+      const opacity = isActive ? 0.95 : (route.control_state === "damaged" ? 0.3 : 0.5);
 
       const fp = routeHexPaths.get(route.id);
 
@@ -228,100 +242,68 @@ const RouteCorridorsOverlay = memo(({ sessionId, offsetX, offsetY }: Props) => {
             points={points}
             fill="none"
             stroke="transparent"
-            strokeWidth={14}
+            strokeWidth={16}
             strokeLinecap="round"
             strokeLinejoin="round"
             style={{ pointerEvents: "stroke", cursor: "pointer" }}
-            onMouseEnter={(e) => handleRouteMouseEnter(route.id, e)}
-            onMouseMove={handleRouteMouseMove}
+            onMouseEnter={() => handleRouteMouseEnter(route.id)}
             onMouseLeave={handleRouteMouseLeave}
+            onClick={(e) => handleRouteClick(route.id, e)}
           />
         );
 
-        // Glow for hovered
-        if (isHovered) {
+        if (isActive) {
           elements.push(
-            <polyline
-              key={`glow-${route.id}`}
-              points={points}
-              fill="none"
-              stroke={color}
-              strokeWidth={width + 4}
-              strokeOpacity={0.3}
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              style={{ pointerEvents: "none" }}
-            />
+            <polyline key={`glow-${route.id}`} points={points} fill="none"
+              stroke={color} strokeWidth={width + 4} strokeOpacity={0.3}
+              strokeLinecap="round" strokeLinejoin="round" style={{ pointerEvents: "none" }} />
           );
         }
 
         elements.push(
-          <polyline
-            key={route.id}
-            points={points}
-            fill="none"
-            stroke={isHovered ? "hsl(50, 100%, 70%)" : color}
-            strokeWidth={width}
-            strokeOpacity={opacity}
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeDasharray={isHovered ? undefined : dash}
-            style={{ pointerEvents: "none", transition: "stroke-width 0.15s, stroke 0.15s" }}
-          />
+          <polyline key={route.id} points={points} fill="none"
+            stroke={isActive ? "hsl(50, 100%, 70%)" : color}
+            strokeWidth={width} strokeOpacity={opacity}
+            strokeLinecap="round" strokeLinejoin="round"
+            strokeDasharray={isActive ? undefined : dash}
+            style={{ pointerEvents: "none", transition: "stroke-width 0.15s, stroke 0.15s" }} />
         );
       } else {
         const posA = nodePositions.get(route.node_a);
         const posB = nodePositions.get(route.node_b);
         if (!posA || !posB) continue;
 
-        // Hit area
         elements.push(
-          <line
-            key={`hit-${route.id}`}
-            x1={posA.x} y1={posA.y}
-            x2={posB.x} y2={posB.y}
-            stroke="transparent"
-            strokeWidth={14}
-            strokeLinecap="round"
+          <line key={`hit-${route.id}`}
+            x1={posA.x} y1={posA.y} x2={posB.x} y2={posB.y}
+            stroke="transparent" strokeWidth={16} strokeLinecap="round"
             style={{ pointerEvents: "stroke", cursor: "pointer" }}
-            onMouseEnter={(e) => handleRouteMouseEnter(route.id, e)}
-            onMouseMove={handleRouteMouseMove}
+            onMouseEnter={() => handleRouteMouseEnter(route.id)}
             onMouseLeave={handleRouteMouseLeave}
-          />
+            onClick={(e) => handleRouteClick(route.id, e)} />
         );
 
-        if (isHovered) {
+        if (isActive) {
           elements.push(
-            <line
-              key={`glow-${route.id}`}
-              x1={posA.x} y1={posA.y}
-              x2={posB.x} y2={posB.y}
-              stroke={color}
-              strokeWidth={width + 4}
-              strokeOpacity={0.3}
-              strokeLinecap="round"
-              style={{ pointerEvents: "none" }}
-            />
+            <line key={`glow-${route.id}`}
+              x1={posA.x} y1={posA.y} x2={posB.x} y2={posB.y}
+              stroke={color} strokeWidth={width + 4} strokeOpacity={0.3}
+              strokeLinecap="round" style={{ pointerEvents: "none" }} />
           );
         }
 
         elements.push(
-          <line
-            key={route.id}
-            x1={posA.x} y1={posA.y}
-            x2={posB.x} y2={posB.y}
-            stroke={isHovered ? "hsl(50, 100%, 70%)" : color}
-            strokeWidth={width}
-            strokeOpacity={opacity}
-            strokeLinecap="round"
-            strokeDasharray={isHovered ? undefined : dash}
-            style={{ pointerEvents: "none", transition: "stroke-width 0.15s, stroke 0.15s" }}
-          />
+          <line key={route.id}
+            x1={posA.x} y1={posA.y} x2={posB.x} y2={posB.y}
+            stroke={isActive ? "hsl(50, 100%, 70%)" : color}
+            strokeWidth={width} strokeOpacity={opacity} strokeLinecap="round"
+            strokeDasharray={isActive ? undefined : dash}
+            style={{ pointerEvents: "none", transition: "stroke-width 0.15s, stroke 0.15s" }} />
         );
       }
     }
 
-    // Render flow-type colored dots at hex waypoints
+    // Flow-type colored dots at hex waypoints
     for (const route of routes) {
       if (route.control_state === "blocked") continue;
       const allFlows = routeAllFlows.get(route.id) || [];
@@ -332,42 +314,38 @@ const RouteCorridorsOverlay = memo(({ sessionId, offsetX, offsetY }: Props) => {
         const hexPath = fp.hex_path as Array<{ q: number; r: number }>;
         if (!hexPath || hexPath.length < 2) continue;
         const dotColor = FLOW_TYPE_COLORS[fp.flow_type] || "hsl(0, 0%, 70%)";
-        // Offset dots slightly for multiple flows on same route
         const angleOffset = (fi / allFlows.length) * Math.PI * 2;
         const spread = allFlows.length > 1 ? 3 : 0;
 
-        // Skip first & last hex (they're at nodes)
         for (let hi = 1; hi < hexPath.length - 1; hi++) {
           const p = hexToPixel(hexPath[hi].q, hexPath[hi].r);
           const dx = spread * Math.cos(angleOffset);
           const dy = spread * Math.sin(angleOffset);
           elements.push(
-            <circle
-              key={`dot-${route.id}-${fi}-${hi}`}
-              cx={p.x + offsetX + dx}
-              cy={p.y + offsetY + dy}
-              r={2.5}
-              fill={dotColor}
-              fillOpacity={0.85}
-              stroke={dotColor}
-              strokeWidth={0.5}
-              strokeOpacity={0.4}
-              style={{ pointerEvents: "none" }}
-            />
+            <circle key={`dot-${route.id}-${fi}-${hi}`}
+              cx={p.x + offsetX + dx} cy={p.y + offsetY + dy} r={2.5}
+              fill={dotColor} fillOpacity={0.85}
+              stroke={dotColor} strokeWidth={0.5} strokeOpacity={0.4}
+              style={{ pointerEvents: "none" }} />
           );
         }
       }
     }
 
     return elements;
-  }, [routes, routeHexPaths, routeAllFlows, nodePositions, offsetX, offsetY, hoveredRouteId, handleRouteMouseEnter, handleRouteMouseMove, handleRouteMouseLeave]);
+  }, [routes, routeHexPaths, routeAllFlows, nodePositions, offsetX, offsetY, activeRouteId, handleRouteMouseEnter, handleRouteMouseLeave, handleRouteClick]);
 
   if (routes.length === 0) return null;
 
-  const nodeA = hoveredRoute ? nodeMap.get(hoveredRoute.node_a) : null;
-  const nodeB = hoveredRoute ? nodeMap.get(hoveredRoute.node_b) : null;
-  const flows = hoveredRoute ? (routeAllFlows.get(hoveredRoute.id) || []) : [];
-  const primaryFlow = hoveredRoute ? routeHexPaths.get(hoveredRoute.id) : null;
+  const nodeA = activeRoute ? nodeMap.get(activeRoute.node_a) : null;
+  const nodeB = activeRoute ? nodeMap.get(activeRoute.node_b) : null;
+  const flows = activeRoute ? (routeAllFlows.get(activeRoute.id) || []) : [];
+
+  // Clamp panel position to viewport
+  const clampedPos = panelPos ? {
+    x: Math.min(panelPos.x + 16, window.innerWidth - 360),
+    y: Math.max(10, Math.min(panelPos.y - 10, window.innerHeight - 500)),
+  } : null;
 
   return (
     <>
@@ -375,154 +353,179 @@ const RouteCorridorsOverlay = memo(({ sessionId, offsetX, offsetY }: Props) => {
         {routeElements}
       </g>
 
-      {/* Tooltip rendered as HTML overlay via foreignObject won't work well — use portal-style fixed div */}
-      {hoveredRoute && tooltipPos && (
-        <foreignObject x={0} y={0} width={1} height={1} style={{ overflow: "visible", pointerEvents: "none" }}>
-          <div
-            style={{
-              position: "fixed",
-              left: tooltipPos.x + 16,
-              top: tooltipPos.y - 10,
-              zIndex: 9999,
-              pointerEvents: "none",
-              maxWidth: 340,
-            }}
-          >
-            <div className="bg-card/95 backdrop-blur-md border border-border rounded-lg shadow-xl p-3 text-xs space-y-2">
-              {/* Header */}
-              <div className="flex items-center justify-between gap-2">
-                <span className="font-bold text-sm text-foreground">
-                  {ROUTE_TYPE_LABELS[hoveredRoute.route_type] || hoveredRoute.route_type}
-                </span>
+      {/* Info panel rendered via portal — outside SVG for proper HTML rendering */}
+      {selectedRouteId && activeRoute && clampedPos && createPortal(
+        <div
+          style={{
+            position: "fixed",
+            left: clampedPos.x,
+            top: clampedPos.y,
+            zIndex: 9999,
+            maxWidth: 350,
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="bg-card/95 backdrop-blur-md border border-border rounded-lg shadow-xl p-3 text-xs space-y-2">
+            {/* Header */}
+            <div className="flex items-center justify-between gap-2">
+              <span className="font-bold text-sm text-foreground">
+                {ROUTE_TYPE_LABELS[activeRoute.route_type] || activeRoute.route_type}
+              </span>
+              <div className="flex items-center gap-1.5">
                 <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${
-                  hoveredRoute.control_state === "open" ? "bg-emerald-500/20 text-emerald-400" :
-                  hoveredRoute.control_state === "damaged" ? "bg-amber-500/20 text-amber-400" :
-                  hoveredRoute.control_state === "contested" ? "bg-red-500/20 text-red-400" :
+                  activeRoute.control_state === "open" ? "bg-emerald-500/20 text-emerald-400" :
+                  activeRoute.control_state === "damaged" ? "bg-amber-500/20 text-amber-400" :
+                  activeRoute.control_state === "contested" ? "bg-red-500/20 text-red-400" :
                   "bg-muted text-muted-foreground"
                 }`}>
-                  {CONTROL_STATE_LABELS[hoveredRoute.control_state] || hoveredRoute.control_state}
+                  {CONTROL_STATE_LABELS[activeRoute.control_state] || activeRoute.control_state}
                 </span>
+                <button onClick={handleClose}
+                  className="p-0.5 rounded hover:bg-muted/60 text-muted-foreground hover:text-foreground transition-colors">
+                  <X className="w-3.5 h-3.5" />
+                </button>
               </div>
+            </div>
 
-              {/* Nodes */}
-              <div className="space-y-1 border-t border-border/50 pt-1.5">
-                <div className="flex items-center gap-1.5">
-                  <span className="text-muted-foreground">A:</span>
-                  <span className="font-medium text-foreground">{nodeA?.name || "?"}</span>
-                  {nodeA && <span className="text-muted-foreground">({NODE_TYPE_LABELS[nodeA.node_type] || nodeA.node_type})</span>}
-                </div>
-                <div className="text-center text-muted-foreground">↕</div>
-                <div className="flex items-center gap-1.5">
-                  <span className="text-muted-foreground">B:</span>
-                  <span className="font-medium text-foreground">{nodeB?.name || "?"}</span>
-                  {nodeB && <span className="text-muted-foreground">({NODE_TYPE_LABELS[nodeB.node_type] || nodeB.node_type})</span>}
-                </div>
-              </div>
+            {/* Start & End Nodes */}
+            <div className="space-y-1.5 border-t border-border/50 pt-1.5">
+              <div className="text-[10px] text-muted-foreground font-semibold uppercase tracking-wider">Start → Cíl</div>
+              <NodeBadge node={nodeA} label="Start" />
+              <div className="text-center text-muted-foreground text-[10px]">↕ trasa ↕</div>
+              <NodeBadge node={nodeB} label="Cíl" />
+            </div>
 
-              {/* Stats grid */}
-              <div className="grid grid-cols-2 gap-x-3 gap-y-1 border-t border-border/50 pt-1.5">
-                <Stat label="Kapacita" value={hoveredRoute.capacity_value} />
-                <Stat label="Úroveň" value={`Lv.${hoveredRoute.upgrade_level}`} />
-                <Stat label="Rychlost" value={hoveredRoute.speed_value.toFixed(1)} />
-                <Stat label="Bezpečnost" value={hoveredRoute.safety_value.toFixed(1)} />
-                <Stat label="Ekon. význam" value={hoveredRoute.economic_relevance.toFixed(1)} />
-                <Stat label="Voj. význam" value={hoveredRoute.military_relevance.toFixed(1)} />
-                {hoveredRoute.hex_path_length != null && (
-                  <Stat label="Délka cesty" value={`${hoveredRoute.hex_path_length} hexů`} />
-                )}
-                {hoveredRoute.hex_path_cost != null && (
-                  <Stat label="Cena cesty" value={hoveredRoute.hex_path_cost.toFixed(1)} />
-                )}
-                {hoveredRoute.is_cross_province && (
-                  <span className="col-span-2 text-amber-400 text-[10px]">⚡ Meziprovinční</span>
-                )}
-              </div>
-
-              {/* Flow analytics */}
-              {flows.length > 0 && (
-                <div className="border-t border-border/50 pt-1.5 space-y-1">
-                  <span className="text-muted-foreground font-semibold text-[10px] uppercase tracking-wider">Toky</span>
-                  {flows.map((f, i) => {
-                    const fNodeA = nodeMap.get(f.node_a);
-                    const fNodeB = nodeMap.get(f.node_b);
-                    return (
-                      <div key={i} className="bg-muted/40 rounded px-2 py-1 space-y-0.5">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-1.5">
-                            <span
-                              className="inline-block w-2.5 h-2.5 rounded-full shrink-0"
-                              style={{ backgroundColor: FLOW_TYPE_COLORS[f.flow_type] || "hsl(0,0%,70%)" }}
-                            />
-                            <span className="font-medium text-foreground">{FLOW_TYPE_LABEL[f.flow_type] || f.flow_type}</span>
-                          </div>
-                          <span className="text-muted-foreground">{f.path_length} hexů · ∑{f.total_cost.toFixed(1)}</span>
-                        </div>
-                        <div className="text-muted-foreground">
-                          {fNodeA?.name || "?"} → {fNodeB?.name || "?"}
-                        </div>
-                        {f.bottleneck_cost != null && f.bottleneck_cost > 0 && f.bottleneck_hex && (
-                          <div className="text-amber-400 text-[10px]">
-                            ⚠ Úzké hrdlo: náklady {f.bottleneck_cost.toFixed(1)} na [{(f.bottleneck_hex as any).q},{(f.bottleneck_hex as any).r}]
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
+            {/* Stats grid */}
+            <div className="grid grid-cols-2 gap-x-3 gap-y-1 border-t border-border/50 pt-1.5">
+              <Stat label="Kapacita" value={activeRoute.capacity_value} />
+              <Stat label="Úroveň" value={`Lv.${activeRoute.upgrade_level}`} />
+              <Stat label="Rychlost" value={activeRoute.speed_value.toFixed(1)} />
+              <Stat label="Bezpečnost" value={activeRoute.safety_value.toFixed(1)} />
+              <Stat label="Ekon. význam" value={activeRoute.economic_relevance.toFixed(1)} />
+              <Stat label="Voj. význam" value={activeRoute.military_relevance.toFixed(1)} />
+              {activeRoute.hex_path_length != null && activeRoute.hex_path_length > 0 && (
+                <Stat label="Délka cesty" value={`${activeRoute.hex_path_length} hexů`} />
               )}
+              {activeRoute.hex_path_cost != null && activeRoute.hex_path_cost > 0 && (
+                <Stat label="Cena cesty" value={activeRoute.hex_path_cost.toFixed(1)} />
+              )}
+              {activeRoute.is_cross_province && (
+                <span className="col-span-2 text-amber-400 text-[10px]">⚡ Meziprovinční trasa</span>
+              )}
+            </div>
 
-              {/* Flow color legend */}
-              {flows.length > 0 && (
-                <div className="border-t border-border/50 pt-1.5">
+            {/* Flow analytics */}
+            {flows.length > 0 ? (
+              <div className="border-t border-border/50 pt-1.5 space-y-1">
+                <span className="text-muted-foreground font-semibold text-[10px] uppercase tracking-wider">Aktivní toky</span>
+                {flows.map((f, i) => {
+                  const fNodeA = nodeMap.get(f.node_a);
+                  const fNodeB = nodeMap.get(f.node_b);
+                  return (
+                    <div key={i} className="bg-muted/40 rounded px-2 py-1 space-y-0.5">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-1.5">
+                          <span className="inline-block w-2.5 h-2.5 rounded-full shrink-0"
+                            style={{ backgroundColor: FLOW_TYPE_COLORS[f.flow_type] || "hsl(0,0%,70%)" }} />
+                          <span className="font-medium text-foreground">{FLOW_TYPE_LABEL[f.flow_type] || f.flow_type}</span>
+                        </div>
+                        <span className="text-muted-foreground">{f.path_length} hexů · ∑{f.total_cost.toFixed(1)}</span>
+                      </div>
+                      <div className="text-muted-foreground">
+                        {fNodeA?.name || "?"} → {fNodeB?.name || "?"}
+                      </div>
+                      {f.bottleneck_cost != null && f.bottleneck_cost > 0 && f.bottleneck_hex && (
+                        <div className="text-amber-400 text-[10px]">
+                          ⚠ Úzké hrdlo: náklady {f.bottleneck_cost.toFixed(1)} na [{(f.bottleneck_hex as any).q},{(f.bottleneck_hex as any).r}]
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+
+                {/* Legend */}
+                <div className="pt-1">
                   <span className="text-muted-foreground font-semibold text-[10px] uppercase tracking-wider">Legenda barev</span>
                   <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-1">
                     {flows.map((f, i) => (
                       <div key={i} className="flex items-center gap-1">
-                        <span
-                          className="inline-block w-2 h-2 rounded-full"
-                          style={{ backgroundColor: FLOW_TYPE_COLORS[f.flow_type] || "hsl(0,0%,70%)" }}
-                        />
+                        <span className="inline-block w-2 h-2 rounded-full"
+                          style={{ backgroundColor: FLOW_TYPE_COLORS[f.flow_type] || "hsl(0,0%,70%)" }} />
                         <span className="text-muted-foreground text-[10px]">{FLOW_TYPE_LABEL[f.flow_type] || f.flow_type}</span>
                       </div>
                     ))}
                   </div>
                 </div>
-              )}
+              </div>
+            ) : (
+              <div className="border-t border-border/50 pt-1.5">
+                <span className="text-muted-foreground text-[10px]">Žádné aktivní toky — cesty ještě nebyly přepočítány</span>
+              </div>
+            )}
 
-              {(nodeA || nodeB) && (
-                <div className="border-t border-border/50 pt-1.5 space-y-0.5">
-                  <span className="text-muted-foreground font-semibold text-[10px] uppercase tracking-wider">Produkce uzlů</span>
-                  {nodeA && (
-                    <div className="flex items-center justify-between">
-                      <span className="text-foreground">{nodeA.name}</span>
-                      <span className="text-muted-foreground">
-                        ⚒️{nodeA.production_output?.toFixed(0) || 0} · 💰{nodeA.wealth_output?.toFixed(0) || 0} · 📦{nodeA.cumulative_trade_flow?.toFixed(0) || 0}
-                      </span>
-                    </div>
-                  )}
-                  {nodeB && (
-                    <div className="flex items-center justify-between">
-                      <span className="text-foreground">{nodeB.name}</span>
-                      <span className="text-muted-foreground">
-                        ⚒️{nodeB.production_output?.toFixed(0) || 0} · 💰{nodeB.wealth_output?.toFixed(0) || 0} · 📦{nodeB.cumulative_trade_flow?.toFixed(0) || 0}
-                      </span>
-                    </div>
-                  )}
-                </div>
-              )}
+            {/* Node production context */}
+            {(nodeA || nodeB) && (
+              <div className="border-t border-border/50 pt-1.5 space-y-0.5">
+                <span className="text-muted-foreground font-semibold text-[10px] uppercase tracking-wider">Produkce uzlů</span>
+                {nodeA && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-foreground">{nodeA.name}</span>
+                    <span className="text-muted-foreground">
+                      ⚒️{nodeA.production_output?.toFixed(0) || 0} · 💰{nodeA.wealth_output?.toFixed(0) || 0} · 📦{nodeA.cumulative_trade_flow?.toFixed(0) || 0}
+                    </span>
+                  </div>
+                )}
+                {nodeB && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-foreground">{nodeB.name}</span>
+                    <span className="text-muted-foreground">
+                      ⚒️{nodeB.production_output?.toFixed(0) || 0} · 💰{nodeB.wealth_output?.toFixed(0) || 0} · 📦{nodeB.cumulative_trade_flow?.toFixed(0) || 0}
+                    </span>
+                  </div>
+                )}
+              </div>
+            )}
 
-              {hoveredRoute.vulnerability_score > 0 && (
-                <div className="text-red-400 text-[10px] border-t border-border/50 pt-1">
-                  ⚠ Zranitelnost: {hoveredRoute.vulnerability_score.toFixed(1)}
-                </div>
-              )}
-            </div>
+            {activeRoute.vulnerability_score > 0 && (
+              <div className="text-red-400 text-[10px] border-t border-border/50 pt-1">
+                ⚠ Zranitelnost: {activeRoute.vulnerability_score.toFixed(1)}
+              </div>
+            )}
           </div>
-        </foreignObject>
+        </div>,
+        document.body
       )}
     </>
   );
 });
+
+/** Node badge with role & production info */
+function NodeBadge({ node, label }: { node: NodeInfo | null | undefined; label: string }) {
+  if (!node) return (
+    <div className="flex items-center gap-1.5 text-muted-foreground">
+      <span className="text-[10px]">{label}:</span> <span>?</span>
+    </div>
+  );
+  return (
+    <div className="bg-muted/40 rounded px-2 py-1">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-1.5">
+          <span className="text-[10px] text-muted-foreground">{label}:</span>
+          <span className="font-medium text-foreground">{node.name}</span>
+        </div>
+        <span className="text-[10px] text-muted-foreground">{NODE_TYPE_LABELS[node.node_type] || node.node_type}</span>
+      </div>
+      <div className="flex items-center justify-between mt-0.5">
+        <span className="text-[10px] text-muted-foreground">
+          Role: {FLOW_ROLE_LABELS[node.flow_role] || node.flow_role}
+        </span>
+        <span className="text-[10px] text-muted-foreground">
+          {node.controlled_by || "Neutrální"}
+        </span>
+      </div>
+    </div>
+  );
+}
 
 function Stat({ label, value }: { label: string; value: string | number }) {
   return (
