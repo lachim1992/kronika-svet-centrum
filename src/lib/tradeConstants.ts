@@ -1,15 +1,15 @@
 /**
- * Trade constants — new civilizational economy
- * Trade now exchanges Production and Wealth between players.
+ * Trade constants — unified economy v2
+ * Trade exchanges Production and Wealth between players.
  */
 
-export const TRADEABLE_RESOURCES = ["production", "wealth", "grain"] as const;
+export const TRADEABLE_RESOURCES = ["production", "wealth", "supplies"] as const;
 export type TradeResource = (typeof TRADEABLE_RESOURCES)[number];
 
 export const TRADE_RESOURCE_META: Record<TradeResource, { label: string; icon: string }> = {
   production: { label: "Produkce", icon: "⚒️" },
   wealth: { label: "Bohatství", icon: "💰" },
-  grain: { label: "Zásoby", icon: "🌾" },
+  supplies: { label: "Zásoby", icon: "🌾" },
 };
 
 export const TRADE_STATUS_LABELS: Record<string, string> = {
@@ -43,5 +43,5 @@ export function computeTradeEfficiency(routeSafety: number, marketLevel: number)
 export const TRADE_RESOURCE_COLUMN: Record<TradeResource, string> = {
   production: "production_reserve",
   wealth: "gold_reserve",
-  grain: "grain_reserve",
+  supplies: "grain_reserve",
 };

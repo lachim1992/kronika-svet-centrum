@@ -1,39 +1,47 @@
-import { Wheat, Factory, Coins, Building2, Anvil, Zap, Church } from "lucide-react";
+import { Wheat, Factory, Coins, Building2, Church, Star } from "lucide-react";
 import React from "react";
 
-/** New civilizational economy resource icons
- * Production = physical output (merged wood/stone/iron)
- * Wealth = financial reserves
- * Grain = food supply
- * Faith = religious influence
+/**
+ * Unified Civilizational Economy v2
+ * 6 Core Resources: Produkce, Bohatství, Zásoby, Kapacita, Víra, Prestiž
+ * Legacy aliases (food, gold, grain) preserved for backward compat
  */
 export const RESOURCE_ICONS: Record<string, React.ReactNode> = {
   production: React.createElement(Factory, { className: "h-4 w-4" }),
   wealth: React.createElement(Coins, { className: "h-4 w-4" }),
-  grain: React.createElement(Wheat, { className: "h-4 w-4" }),
+  supplies: React.createElement(Wheat, { className: "h-4 w-4" }),
   capacity: React.createElement(Building2, { className: "h-4 w-4" }),
   faith: React.createElement(Church, { className: "h-4 w-4" }),
+  prestige: React.createElement(Star, { className: "h-4 w-4" }),
   // Legacy aliases
   food: React.createElement(Wheat, { className: "h-4 w-4" }),
+  grain: React.createElement(Wheat, { className: "h-4 w-4" }),
+  gold: React.createElement(Coins, { className: "h-4 w-4" }),
 };
 
 export const RESOURCE_ICONS_SM: Record<string, React.ReactNode> = {
   production: React.createElement(Factory, { className: "h-3 w-3" }),
   wealth: React.createElement(Coins, { className: "h-3 w-3" }),
-  grain: React.createElement(Wheat, { className: "h-3 w-3" }),
+  supplies: React.createElement(Wheat, { className: "h-3 w-3" }),
   capacity: React.createElement(Building2, { className: "h-3 w-3" }),
   faith: React.createElement(Church, { className: "h-3 w-3" }),
+  prestige: React.createElement(Star, { className: "h-3 w-3" }),
   food: React.createElement(Wheat, { className: "h-3 w-3" }),
-  horses: React.createElement(Zap, { className: "h-3 w-3" }),
+  grain: React.createElement(Wheat, { className: "h-3 w-3" }),
+  gold: React.createElement(Coins, { className: "h-3 w-3" }),
 };
 
 export const RESOURCE_LABELS: Record<string, string> = {
   production: "Produkce",
   wealth: "Bohatství",
-  grain: "Zásoby",
+  supplies: "Zásoby",
   capacity: "Kapacita",
   faith: "Víra",
-  food: "Obilí",
+  prestige: "Prestiž",
+  // Legacy
+  food: "Zásoby",
+  grain: "Zásoby",
+  gold: "Bohatství",
 };
 
 export const SETTLEMENT_LABELS: Record<string, string> = {
@@ -96,12 +104,10 @@ export function computeWorkforceBreakdown(
   const effectiveRatio = Math.max(0.1, Math.min(0.9, DEFAULT_ACTIVE_POP_RATIO + activePopRatioModifier));
   const effectiveActivePop = Math.floor(activePopRaw * effectiveRatio);
   const maxMob = Math.max(0.05, Math.min(0.5, DEFAULT_MAX_MOBILIZATION + maxMobilizationModifier));
-  // Soft cap: allow mobilization above maxMob but track the overshoot
   const isOverMob = mobilizationRate > maxMob;
   const mobilized = Math.floor(effectiveActivePop * mobilizationRate);
   const workforce = effectiveActivePop - mobilized;
   const workforceRatio = effectiveActivePop > 0 ? workforce / effectiveActivePop : 1;
-  // Penalty multiplier for production when over mob cap: each % over cap = 2% production penalty
   const overMobPenalty = isOverMob ? Math.min(0.8, (mobilizationRate - maxMob) * 2) : 0;
   const effectiveWorkforceRatio = Math.max(0.05, workforceRatio * (1 - overMobPenalty));
 
