@@ -308,6 +308,36 @@ const BuildNodeDialog = ({
                 </div>
               )}
 
+              {/* Upkeep & net balance preview */}
+              {netBalanceLv1 && (
+                <div className="mt-2 p-2 rounded border border-border bg-background/50 space-y-1">
+                  <p className="text-[10px] font-display font-semibold">📊 Ekonomický výhled</p>
+                  <div className="flex items-center gap-2 text-[10px]">
+                    <span className="text-muted-foreground">Údržba:</span>
+                    <span className="font-mono">-{netBalanceLv1.upkeepSupplies}🌾</span>
+                    <span className="font-mono">-{netBalanceLv1.upkeepWealth}💰</span>
+                  </div>
+                  <div className="flex items-center gap-2 text-[10px]">
+                    <span className="text-muted-foreground">Lv.1 bilance:</span>
+                    <span className={`font-mono font-semibold ${netBalanceLv1.isDeficit ? "text-destructive" : "text-emerald-500"}`}>
+                      {netBalanceLv1.netBalance > 0 ? "+" : ""}{netBalanceLv1.netBalance}
+                    </span>
+                    {netBalanceLv1.isDeficit && <span className="text-destructive">⚠️ deficit</span>}
+                  </div>
+                  {netBalanceLv2 && (
+                    <div className="flex items-center gap-2 text-[10px]">
+                      <span className="text-muted-foreground">Lv.2 bilance:</span>
+                      <span className={`font-mono font-semibold ${netBalanceLv2.isDeficit ? "text-destructive" : "text-emerald-500"}`}>
+                        {netBalanceLv2.netBalance > 0 ? "+" : ""}{netBalanceLv2.netBalance}
+                      </span>
+                      {!netBalanceLv2.isDeficit && netBalanceLv1.isDeficit && (
+                        <span className="text-emerald-500">✓ break-even</span>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* Biome match warning — only for minor/micro */}
               {!devMode && tier !== "major" && !(activeDef as any).preferredBiomes?.some((pb: string) => biome.toLowerCase().includes(pb)) && (
                 <p className="text-[10px] text-destructive mt-1">
