@@ -345,7 +345,7 @@ const RouteCorridorsOverlay = memo(({ sessionId, offsetX, offsetY }: Props) => {
               <div className="space-y-1 border-t border-border/50 pt-1.5">
                 <div className="flex items-center gap-1.5">
                   <span className="text-muted-foreground">A:</span>
-                  <span className="font-medium text-foreground">{nodeA?.label || "?"}</span>
+                  <span className="font-medium text-foreground">{nodeA?.name || "?"}</span>
                   {nodeA && <span className="text-muted-foreground">({NODE_TYPE_LABELS[nodeA.node_type] || nodeA.node_type})</span>}
                 </div>
                 <div className="text-center text-muted-foreground">↕</div>
