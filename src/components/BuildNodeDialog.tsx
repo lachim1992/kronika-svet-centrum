@@ -13,7 +13,7 @@ import {
   MINOR_NODE_TYPES, MICRO_NODE_TYPES, MAJOR_NODE_TYPES,
   suggestMinorType, suggestMicroType, suggestMajorType,
   getCompatibleMinorTypes, getCompatibleMicroTypes, getCompatibleMajorTypes,
-  rollStrategicResource, computeNodeProduction, totalProduction,
+  rollStrategicResource, computeNodeProduction, totalProduction, computeNetBalance,
   type MinorNodeDef, type MicroNodeDef, type MajorNodeDef,
 } from "@/lib/nodeTypes";
 import { STRATEGIC_RESOURCE_META } from "@/lib/economyFlow";
