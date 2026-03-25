@@ -41,6 +41,9 @@ import PrestigeBreakdown from "@/components/economy/PrestigeBreakdown";
 import StrategicResourcesDetail from "@/components/economy/StrategicResourcesDetail";
 import FaithPanel from "@/components/economy/FaithPanel";
 import PopulationPanel from "@/components/economy/PopulationPanel";
+import CapacityPanel from "@/components/economy/CapacityPanel";
+import MilitaryUpkeepPanel from "@/components/economy/MilitaryUpkeepPanel";
+import FormulasReferencePanel from "@/components/economy/FormulasReferencePanel";
 
 interface Props {
   sessionId: string;
@@ -437,8 +440,14 @@ const EconomyTab = ({ sessionId, currentPlayerName, currentTurn, cities, resourc
       {/* ═══ FAITH ═══ */}
       {realm && <FaithPanel realm={realm} cities={myCities} />}
 
+      {/* ═══ CAPACITY ═══ */}
+      {realm && <CapacityPanel realm={realm} cities={myCities} nodeStats={nodeStats} />}
+
       {/* ═══ POPULATION & DEMOGRAPHICS ═══ */}
       <PopulationPanel cities={myCities} realm={realm} />
+
+      {/* ═══ MILITARY UPKEEP ═══ */}
+      {realm && <MilitaryUpkeepPanel armies={armies} realm={realm} />}
 
       {/* ═══ PRESTIGE ═══ */}
       {realm && <PrestigeBreakdown realm={realm} />}
@@ -446,8 +455,11 @@ const EconomyTab = ({ sessionId, currentPlayerName, currentTurn, cities, resourc
       {/* ═══ STRATEGIC RESOURCES DETAIL ═══ */}
       {realm && <StrategicResourcesDetail realm={realm} />}
 
-      {/* ═══ DEPENDENCY MAP ═══ */}
-      <EconomyDependencyMap />
+      {/* ═══ DEPENDENCY MAP WITH LIVE VALUES ═══ */}
+      <EconomyDependencyMap realm={realm} cities={myCities} armies={armies} />
+
+      {/* ═══ FORMULAS REFERENCE ═══ */}
+      <FormulasReferencePanel />
 
       {/* ═══ CITY TABLE ═══ */}
       <div className="game-card p-0 overflow-hidden">

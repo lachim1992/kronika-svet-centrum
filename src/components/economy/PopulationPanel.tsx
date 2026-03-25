@@ -10,19 +10,19 @@ interface Props {
 }
 
 const CLASS_META = [
-  { key: "peasants", label: "Rolníci", icon: "🌾", color: "bg-emerald-600", role: "Produkce potravin a surovin. Základ ekonomiky.", effects: "Zvyšují produkci uzlů. Spotřebovávají zásoby." },
-  { key: "burghers", label: "Měšťané", icon: "🔨", color: "bg-amber-500", role: "Obchod a řemesla. Generují bohatství.", effects: "Zvyšují wealth tok. Rostou s market_level." },
-  { key: "clerics", label: "Klerici", icon: "📿", color: "bg-violet-500", role: "Duchovní a akademická vrstva.", effects: "Generují víru a kapacitu. Rostou s temple_level." },
-  { key: "warriors", label: "Válečníci", icon: "⚔️", color: "bg-red-600", role: "Vojenská třída — garnizóny a posily.", effects: "Bonus morálky. Rostou s garrison." },
+  { key: "peasants", label: "Rolníci", icon: "🌾", color: "bg-emerald-600", role: "Produkce potravin a surovin. Základ ekonomiky.", effects: "Zvyšují produkci uzlů (weight 1.0 v active_pop). Spotřebovávají zásoby." },
+  { key: "burghers", label: "Měšťané", icon: "🔨", color: "bg-amber-500", role: "Obchod a řemesla. Generují bohatství.", effects: "Zvyšují wealth tok (weight 0.7 v active_pop). +1 wealth/200 měšťanů. Rostou s market_level." },
+  { key: "clerics", label: "Klerici", icon: "📿", color: "bg-violet-500", role: "Duchovní a akademická vrstva.", effects: "Generují víru (+0.01/klerka/kolo) a kapacitu (weight 0.2). Rostou s temple_level." },
+  { key: "warriors", label: "Válečníci", icon: "⚔️", color: "bg-red-600", role: "Vojenská třída — garnizóny a posily.", effects: "Bonus morálky garnizónu. Nezapočítávají se do active_pop. Rostou s garrison." },
 ];
 
 const SETTLEMENT_THRESHOLDS = [
-  { level: "HAMLET", label: "Osada", pop: 0, desc: "Základní osídlení. Omezená infrastruktura." },
-  { level: "VILLAGE", label: "Vesnice", pop: 100, desc: "Malá komunita. Základní zemědělství." },
-  { level: "TOWNSHIP", label: "Městečko", pop: 500, desc: "Tržiště a řemesla. Rostou měšťané." },
-  { level: "TOWN", label: "Velké město", pop: 2000, desc: "Rozvinutá infrastruktura. Chrámy a akademie." },
-  { level: "CITY", label: "Město", pop: 8000, desc: "Metropolitní centrum. Plná diverzifikace." },
-  { level: "POLIS", label: "Polis", pop: 20000, desc: "Městský stát. Kulturní a ekonomický hegemon." },
+  { level: "HAMLET", label: "Osada", pop: 0, nextPop: 100 },
+  { level: "VILLAGE", label: "Vesnice", pop: 100, nextPop: 500 },
+  { level: "TOWNSHIP", label: "Městečko", pop: 500, nextPop: 2000 },
+  { level: "TOWN", label: "Velké město", pop: 2000, nextPop: 8000 },
+  { level: "CITY", label: "Město", pop: 8000, nextPop: 20000 },
+  { level: "POLIS", label: "Polis", pop: 20000, nextPop: null },
 ];
 
 const PopulationPanel = ({ cities, realm }: Props) => {
@@ -39,6 +39,13 @@ const PopulationPanel = ({ cities, realm }: Props) => {
   const growthRate = avgBirth - avgDeath;
   const growthPerTurn = Math.round(totalPop * growthRate);
 
+  // Settlement level counts and progress
+  const settlementCounts = SETTLEMENT_THRESHOLDS.map(s => ({
+    ...s,
+    count: myCities.filter(c => c.settlement_level === s.level).length,
+    cities: myCities.filter(c => c.settlement_level === s.level),
+  }));
+
   return (
     <Card>
       <CardHeader className="p-4 pb-2">
@@ -46,7 +53,7 @@ const PopulationPanel = ({ cities, realm }: Props) => {
           <Users className="h-4 w-4" />
           Populace & demografie
           <span className="ml-auto font-mono font-bold text-lg">{totalPop.toLocaleString()}</span>
-          <InfoTip>Populace je základ všeho. Růst = base_rate (1.2%) × food_surplus_mult × stability_mult × housing_mult. Třídní rozložení závisí na infrastruktuře města (market_level, temple_level, garrison). Počítáno v process-turn.</InfoTip>
+          <InfoTip>Populace je základ všeho. Růst = base_rate (1.2%) × food_surplus_mult × stability_mult × housing_mult. Třídní rozložení závisí na infrastruktuře města. Počítáno v process-turn.</InfoTip>
         </CardTitle>
       </CardHeader>
       <CardContent className="p-4 pt-1 space-y-4">
@@ -97,19 +104,39 @@ const PopulationPanel = ({ cities, realm }: Props) => {
           })}
         </div>
 
-        {/* Settlement levels */}
-        <div className="border-t border-border pt-3 space-y-1.5">
-          <h5 className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Úrovně sídel (automatické povýšení)</h5>
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
-            {SETTLEMENT_THRESHOLDS.map(s => {
-              const count = myCities.filter(c => c.settlement_level === s.level).length;
-              return (
-                <div key={s.level} className={`rounded border p-2 text-[10px] ${count > 0 ? "border-primary/20 bg-primary/5" : "border-border/30 opacity-50"}`}>
-                  <div className="font-semibold">{s.label} {count > 0 && <Badge variant="secondary" className="text-[8px] ml-1">×{count}</Badge>}</div>
-                  <div className="text-muted-foreground">od {s.pop} pop.</div>
-                </div>
-              );
-            })}
+        {/* Settlement levels WITH PROGRESS */}
+        <div className="border-t border-border pt-3 space-y-2">
+          <h5 className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Úrovně sídel — postup</h5>
+          {settlementCounts.filter(s => s.count > 0).map(s => (
+            <div key={s.level} className="space-y-1">
+              <div className="flex items-center justify-between text-xs">
+                <span className="font-semibold">{s.label}</span>
+                <Badge variant="secondary" className="text-[10px]">×{s.count}</Badge>
+              </div>
+              {/* Show each city's progress to next level */}
+              {s.nextPop && s.cities.map(city => {
+                const pop = city.population_total || 0;
+                const progress = Math.min(100, (pop / s.nextPop!) * 100);
+                return (
+                  <div key={city.id} className="pl-2 space-y-0.5">
+                    <div className="flex items-center justify-between text-[10px] text-muted-foreground">
+                      <span>{city.name}</span>
+                      <span className="font-mono">{pop.toLocaleString()} / {s.nextPop!.toLocaleString()}</span>
+                    </div>
+                    <Progress value={progress} className="h-1.5" />
+                  </div>
+                );
+              })}
+            </div>
+          ))}
+          {/* Legend for all levels */}
+          <div className="bg-muted/40 rounded-lg p-2.5 text-[10px] text-muted-foreground">
+            <span className="font-semibold text-foreground">Prahy povýšení:</span>{" "}
+            {SETTLEMENT_THRESHOLDS.map((s, i) => (
+              <span key={s.level}>
+                {s.label} ({s.pop}+){i < SETTLEMENT_THRESHOLDS.length - 1 ? " → " : ""}
+              </span>
+            ))}
           </div>
         </div>
       </CardContent>
