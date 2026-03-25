@@ -112,6 +112,8 @@ interface FlowParticle {
   svgPath?: string;
 }
 
+type CanonicalHexPath = Array<{ q: number; r: number; cost?: number }>;
+
 interface Props {
   sessionId: string;
   offsetX: number;
@@ -277,20 +279,43 @@ const StrategicMapOverlay = memo(({ sessionId, offsetX, offsetY, visible, onNode
     return particles;
   }, [routes, nodePositions, supply, parentMap]);
 
-  // Build hex-path SVG polylines from flow_paths data
-  const hexFlowSvgPaths = useMemo(() => {
-    const result: Array<{ key: string; d: string; flowType: string; totalCost: number; bottleneck: FlowPath["bottleneck_hex"] }> = [];
+  // Canonical route hex geometry: keep only the best server-computed path per route.
+  const canonicalRouteHexPaths = useMemo(() => {
+    const pathByRoute = new Map<string, CanonicalHexPath>();
+    const scoreByRoute = new Map<string, number>();
+
     for (const fp of flowPaths) {
-      if (!fp.hex_path || fp.hex_path.length < 2) continue;
-      const points = fp.hex_path.map(h => {
+      if (!fp.route_id || !fp.hex_path || fp.hex_path.length < 2) continue;
+
+      const score = (fp.total_cost ?? Number.MAX_SAFE_INTEGER) * 1000 + (fp.path_length ?? Number.MAX_SAFE_INTEGER);
+      const current = scoreByRoute.get(fp.route_id);
+
+      if (current == null || score < current) {
+        scoreByRoute.set(fp.route_id, score);
+        pathByRoute.set(fp.route_id, fp.hex_path);
+      }
+    }
+
+    return pathByRoute;
+  }, [flowPaths]);
+
+  // Build canonical route hex-path SVG polylines
+  const hexFlowSvgPaths = useMemo(() => {
+    const result: Array<{ routeId: string; d: string; routeType: string }> = [];
+    for (const [routeId, hexPath] of canonicalRouteHexPaths) {
+      if (!hexPath || hexPath.length < 2) continue;
+      const route = routes.find(r => r.id === routeId);
+      if (!route) continue;
+
+      const points = hexPath.map(h => {
         const px = hexToPixel(h.q, h.r);
         return { x: px.x + offsetX, y: px.y + offsetY };
       });
       const d = `M${points.map(p => `${p.x},${p.y}`).join(" L")}`;
-      result.push({ key: `${fp.node_a}-${fp.node_b}-${fp.flow_type}`, d, flowType: fp.flow_type, totalCost: fp.total_cost, bottleneck: fp.bottleneck_hex });
+      result.push({ routeId, d, routeType: route.route_type });
     }
     return result;
-  }, [flowPaths, offsetX, offsetY]);
+  }, [canonicalRouteHexPaths, routes, offsetX, offsetY]);
 
   // Build corridor heatmap from BOTH flow_paths AND route connections
   const hexHeatmap = useMemo(() => {
@@ -375,16 +400,16 @@ const StrategicMapOverlay = memo(({ sessionId, offsetX, offsetY, visible, onNode
     return pathMap;
   }, [flowParticles, routes, nodes, offsetX, offsetY]);
 
-  // Map route_id → hex flow SVG path for particle animation
+  // Map route_id + flowType → canonical route hex flow SVG path for particle animation
   const routeHexPathMap = useMemo(() => {
-    const m = new Map<string, string>(); // route_id → SVG path id suffix
-    for (const fp of flowPaths) {
-      if (fp.route_id && fp.hex_path && fp.hex_path.length >= 2) {
-        m.set(`${fp.route_id}-${fp.flow_type}`, `hexflow-${fp.node_a}-${fp.node_b}-${fp.flow_type}`);
+    const m = new Map<string, string>();
+    for (const p of flowParticles) {
+      if (canonicalRouteHexPaths.has(p.routeId)) {
+        m.set(`${p.routeId}-${p.flowType}`, `hexflow-route-${p.routeId}`);
       }
     }
     return m;
-  }, [flowPaths]);
+  }, [flowParticles, canonicalRouteHexPaths]);
 
   if (!visible || nodes.length === 0) return null;
 
@@ -394,7 +419,7 @@ const StrategicMapOverlay = memo(({ sessionId, offsetX, offsetY, visible, onNode
       <defs>
         {/* Hex-based flow paths */}
         {hexFlowSvgPaths.map(hp => (
-          <path key={`hfp-${hp.key}`} id={`hexflow-${hp.key}`}
+          <path key={`hfp-route-${hp.routeId}`} id={`hexflow-route-${hp.routeId}`}
             d={hp.d} fill="none" />
         ))}
         {/* Fallback hex-snapped paths */}
@@ -442,10 +467,9 @@ const StrategicMapOverlay = memo(({ sessionId, offsetX, offsetY, visible, onNode
 
       {/* ── Hex flow path polylines ── */}
       {showHexFlows && hexFlowSvgPaths.map(hp => {
-        const ft = hp.flowType as FlowType;
-        const color = FLOW_COLORS[ft] || FLOW_COLORS.wealth;
+        const color = ROUTE_COLORS[hp.routeType] || "hsl(48, 90%, 60%)";
         return (
-          <path key={`hfline-${hp.key}`} d={hp.d}
+          <path key={`hfline-route-${hp.routeId}`} d={hp.d}
             fill="none" stroke={color}
             strokeWidth={1.5} opacity={0.35}
             strokeLinecap="round" strokeLinejoin="round" />
@@ -467,9 +491,9 @@ const StrategicMapOverlay = memo(({ sessionId, offsetX, offsetY, visible, onNode
 
           // Get hex waypoints (from flow_paths or interpolated)
           let hexWaypoints: Array<{ q: number; r: number }> = [];
-          const hexFp = flowPaths.find(fp => fp.route_id === r.id && fp.hex_path && fp.hex_path.length >= 2);
-          if (hexFp) {
-            hexWaypoints = hexFp.hex_path.map(h => ({ q: h.q, r: h.r }));
+          const hexPath = canonicalRouteHexPaths.get(r.id);
+          if (hexPath) {
+            hexWaypoints = hexPath.map(h => ({ q: h.q, r: h.r }));
           } else {
             const nA = nodes.find(n => n.id === r.node_a);
             const nB = nodes.find(n => n.id === r.node_b);
