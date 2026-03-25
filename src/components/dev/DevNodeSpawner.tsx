@@ -255,6 +255,32 @@ const DevNodeSpawner = ({ sessionId, onRefetch }: Props) => {
             </div>
           </div>
 
+          {/* Tier & Subtype selectors */}
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="text-[9px] text-muted-foreground">Node Tier</label>
+              <Select value={nodeTier} onValueChange={(v) => { setNodeTier(v as NodeTier); setNodeSubtype(""); }}>
+                <SelectTrigger className="text-xs h-8"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="major" className="text-xs">Major</SelectItem>
+                  <SelectItem value="minor" className="text-xs">Minor (osada)</SelectItem>
+                  <SelectItem value="micro" className="text-xs">Micro (zázemí)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <label className="text-[9px] text-muted-foreground">Subtype</label>
+              <Select value={nodeSubtype} onValueChange={setNodeSubtype}>
+                <SelectTrigger className="text-xs h-8"><SelectValue placeholder="—" /></SelectTrigger>
+                <SelectContent>
+                  {(nodeTier === "minor" ? MINOR_NODE_TYPES : MICRO_NODE_TYPES).map(t => (
+                    <SelectItem key={t.key} value={t.key} className="text-xs">{t.icon} {t.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
           <div className="grid grid-cols-3 gap-2">
             <Select value={nodeType} onValueChange={setNodeType}>
               <SelectTrigger className="text-xs h-8"><SelectValue /></SelectTrigger>
