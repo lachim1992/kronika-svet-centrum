@@ -650,10 +650,17 @@ Deno.serve(async (req) => {
 
     // Small empire buffer
     if (myCities.length <= 3) globalGrainReserve += 10;
+    // Strategic salt supply bonus
+    if (strategicBonuses.supply_bonus > 0) {
+      const saltBonus = Math.round(globalGrainReserve * strategicBonuses.supply_bonus);
+      globalGrainReserve += saltBonus;
+      logEntries.push(`🧂 Solný bonus: +${saltBonus} zásob`);
+    }
     // Army upkeep from global reserve
     globalGrainReserve -= armyProductionUpkeep;
-    // Cap
-    globalGrainReserve = Math.max(0, Math.min(granaryCapacity, globalGrainReserve));
+    // Cap (salt also increases granary capacity)
+    const adjustedGranary = Math.round(granaryCapacity * (1 + strategicBonuses.supply_bonus));
+    globalGrainReserve = Math.max(0, Math.min(adjustedGranary, globalGrainReserve));
 
     const netProduction = totalCityProduction - totalDemand - armyProductionUpkeep;
 
