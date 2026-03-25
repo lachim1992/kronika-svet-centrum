@@ -235,6 +235,7 @@ export interface MicroNodeDef {
   description: string;
   maxUpgrade: number;
   upgradeBonus: number;
+  upkeep: NodeUpkeep;
 }
 
 export const MICRO_NODE_TYPES: MicroNodeDef[] = [
