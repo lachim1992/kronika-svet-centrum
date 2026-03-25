@@ -1489,7 +1489,7 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
           parentNodeName={buildNodeParent?.name}
           devMode={devMode}
           forceTier={buildNodeTier}
-          onBuilt={() => { fetchNodes(); }}
+          onBuilt={() => { fetchNodes(); setRouteRefreshKey(k => k + 1); }}
         />
       )}
 
