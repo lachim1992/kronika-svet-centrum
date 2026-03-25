@@ -561,12 +561,28 @@ export default function ProvinceGraphPanel({ sessionId }: Props) {
       });
       if (error) throw error;
       toast.success(`Ekonomika: ${data?.nodes_computed || 0} uzlů spočítáno`);
-      // Reload to see updated values
       await loadGraph();
     } catch (e: any) {
       toast.error("Chyba ekonomiky: " + e.message);
     } finally {
       setComputingEcon(false);
+    }
+  };
+
+  const [computingHexFlows, setComputingHexFlows] = useState(false);
+  const handleComputeHexFlows = async () => {
+    setComputingHexFlows(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("compute-hex-flows", {
+        body: { session_id: sessionId },
+      });
+      if (error) throw error;
+      toast.success(`Hex cesty: ${data?.paths_computed || 0} spočítáno`);
+      await loadGraph();
+    } catch (e: any) {
+      toast.error("Chyba hex cest: " + e.message);
+    } finally {
+      setComputingHexFlows(false);
     }
   };
 
