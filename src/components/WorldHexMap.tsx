@@ -205,6 +205,34 @@ const HexTile = memo(({
                   fill="white" fontSize="7" fontWeight="700" style={{ pointerEvents: "none" }}>+{cities.length - 3}</text>
               )}
             </>
+          ) : nodes && nodes.length > 0 ? (
+            <>
+              {/* Show node icons instead of biome when nodes exist */}
+              {nodes.slice(0, 2).map((n, i) => {
+                const def = n.node_tier === "minor"
+                  ? MINOR_NODE_TYPES.find(t => t.key === n.node_subtype)
+                  : MICRO_NODE_TYPES.find(t => t.key === n.node_subtype);
+                const ny = i === 0 ? cy - 6 : cy + 8;
+                return (
+                  <g key={n.id}>
+                    <text x={cx} y={ny} textAnchor="middle" dominantBaseline="middle"
+                      fill="white" fontSize={i === 0 ? "11" : "9"} style={{ pointerEvents: "none" }}>
+                      {def?.icon || "📍"}
+                    </text>
+                  </g>
+                );
+              })}
+              {nodes.length === 1 && (
+                <text x={cx} y={cy + 8} textAnchor="middle" dominantBaseline="middle"
+                  fill="white" fontSize="6" fontWeight="600" opacity={0.8} style={{ pointerEvents: "none" }}>
+                  {nodes[0].name.length > 8 ? nodes[0].name.slice(0, 7) + "…" : nodes[0].name}
+                </text>
+              )}
+              {nodes.length > 2 && (
+                <text x={cx + 12} y={cy + 14} textAnchor="middle" dominantBaseline="middle"
+                  fill="hsl(45, 80%, 65%)" fontSize="6" fontWeight="700" style={{ pointerEvents: "none" }}>+{nodes.length - 2}</text>
+              )}
+            </>
           ) : (
             <>
               {/* Biome icon */}
