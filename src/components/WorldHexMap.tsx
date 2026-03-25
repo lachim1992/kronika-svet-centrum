@@ -1097,8 +1097,8 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
               </g>
             );
           })}
-          {/* Route corridors — rendered on top of hex tiles for interactivity */}
-          <RouteCorridorsOverlay key={routeRefreshKey} sessionId={sessionId} offsetX={offsetX} offsetY={offsetY} />
+          {/* Route corridors — only visible when road layer is on */}
+          {showRoadLayer && <RouteCorridorsOverlay key={routeRefreshKey} sessionId={sessionId} offsetX={offsetX} offsetY={offsetY} />}
           {/* Strategic node/route overlay */}
           <StrategicMapOverlay
             sessionId={sessionId}
