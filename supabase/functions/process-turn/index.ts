@@ -419,6 +419,84 @@ Deno.serve(async (req) => {
     let totalCityCapacity = 0;
     let totalFaith = 0;
 
+    // ══════════════════════════════════════════
+    // STRATEGIC RESOURCE BONUSES (all 11 types)
+    // ══════════════════════════════════════════
+    const strategicBonuses = {
+      combat_mult: 1.0,
+      wealth_mult: 1.0,
+      faith_bonus: 0,
+      supply_bonus: 0,
+      stability_bonus: 0,
+      build_cost_mult: 1.0,
+      travel_cost_mult: 1.0,
+      mobility: 1.0,
+      diplomacy_bonus: 0,
+    };
+    const resourceKeys = ["iron", "horses", "salt", "copper", "gold", "marble", "gems", "timber", "obsidian", "silk", "incense"];
+    const tierColumns: Record<string, string> = {
+      iron: "strategic_iron_tier", horses: "strategic_horses_tier", salt: "strategic_salt_tier",
+      copper: "strategic_copper_tier", gold: "strategic_gold_tier", marble: "strategic_marble_tier",
+      gems: "strategic_gems_tier", timber: "strategic_timber_tier", obsidian: "strategic_obsidian_tier",
+      silk: "strategic_silk_tier", incense: "strategic_incense_tier",
+    };
+    for (const rk of resourceKeys) {
+      const tier = realm[tierColumns[rk]] || 0;
+      if (tier <= 0) continue;
+      const bonus = STRATEGIC_TIER_BONUSES[rk]?.[tier];
+      if (!bonus) continue;
+      if (bonus.combat_mult) strategicBonuses.combat_mult *= bonus.combat_mult;
+      if (bonus.wealth_mult) strategicBonuses.wealth_mult *= bonus.wealth_mult;
+      if (bonus.faith_bonus) strategicBonuses.faith_bonus += bonus.faith_bonus;
+      if (bonus.supply_bonus) strategicBonuses.supply_bonus += bonus.supply_bonus;
+      if (bonus.stability_bonus) strategicBonuses.stability_bonus += bonus.stability_bonus;
+      if (bonus.build_cost_mult) strategicBonuses.build_cost_mult *= bonus.build_cost_mult;
+      if (bonus.travel_cost_mult) strategicBonuses.travel_cost_mult *= bonus.travel_cost_mult;
+      if (bonus.mobility) strategicBonuses.mobility = Math.max(strategicBonuses.mobility, bonus.mobility);
+      if (bonus.diplomacy_bonus) strategicBonuses.diplomacy_bonus += bonus.diplomacy_bonus;
+    }
+    logEntries.push(`🎖️ Suroviny: ⚔️×${strategicBonuses.combat_mult.toFixed(2)} 💰×${strategicBonuses.wealth_mult.toFixed(2)} ⛪+${strategicBonuses.faith_bonus} 🌾+${(strategicBonuses.supply_bonus * 100).toFixed(0)}%`);
+
+    // ══════════════════════════════════════════
+    // PRESTIGE EFFECTS (from physics.ts)
+    // ══════════════════════════════════════════
+    const prestigeEffects = computePrestigeEffects(
+      realm.military_prestige || 0,
+      realm.economic_prestige || 0,
+      realm.cultural_prestige || 0,
+    );
+    logEntries.push(`⭐ Prestiž: morále+${prestigeEffects.moraleBonus} obchod×${prestigeEffects.tradeMultiplier.toFixed(2)} stab+${prestigeEffects.stabilityBonus} růst+${(prestigeEffects.popGrowthBonus * 100).toFixed(1)}%`);
+
+    // ══════════════════════════════════════════
+    // LABOR ALLOCATION MODIFIERS (per-city averaged)
+    // ══════════════════════════════════════════
+    let avgFarming = 0, avgCrafting = 0, avgScribes = 0, avgMaintenance = 0;
+    let laborCityCount = 0;
+    for (const city of myCities) {
+      const labor = (city.labor_allocation && typeof city.labor_allocation === "object") ? city.labor_allocation as any : null;
+      if (labor && (labor.farming || labor.crafting || labor.scribes || labor.maintenance)) {
+        avgFarming += (labor.farming || 25);
+        avgCrafting += (labor.crafting || 25);
+        avgScribes += (labor.scribes || 25);
+        avgMaintenance += (labor.maintenance || 25);
+        laborCityCount++;
+      }
+    }
+    if (laborCityCount > 0) {
+      avgFarming /= laborCityCount;
+      avgCrafting /= laborCityCount;
+      avgScribes /= laborCityCount;
+      avgMaintenance /= laborCityCount;
+    } else {
+      avgFarming = 25; avgCrafting = 25; avgScribes = 25; avgMaintenance = 25;
+    }
+    // Labor modifiers: deviation from 25% baseline (each ±1% = ±2% effect)
+    const laborGrainMult = 1 + (avgFarming - 25) * 0.02;
+    const laborWealthMult = 1 + (avgCrafting - 25) * 0.02;
+    const laborCapacityMult = 1 + (avgScribes - 25) * 0.02;
+    const laborStabilityBonus = (avgMaintenance - 25) * 0.1; // ±2.5 stability per tick
+    logEntries.push(`👷 Práce: 🌾×${laborGrainMult.toFixed(2)} 💰×${laborWealthMult.toFixed(2)} 🏛️×${laborCapacityMult.toFixed(2)} stab${laborStabilityBonus >= 0 ? "+" : ""}${laborStabilityBonus.toFixed(1)}`);
+
     // Per-city breakdown for reporting
     const cityEconResults: Array<{
       cityId: string; cityName: string;
