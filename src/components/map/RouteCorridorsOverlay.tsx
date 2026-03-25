@@ -471,7 +471,24 @@ const RouteCorridorsOverlay = memo(({ sessionId, offsetX, offsetY }: Props) => {
                 </div>
               )}
 
-              {/* Node production context */}
+              {/* Flow color legend */}
+              {flows.length > 0 && (
+                <div className="border-t border-border/50 pt-1.5">
+                  <span className="text-muted-foreground font-semibold text-[10px] uppercase tracking-wider">Legenda barev</span>
+                  <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-1">
+                    {flows.map((f, i) => (
+                      <div key={i} className="flex items-center gap-1">
+                        <span
+                          className="inline-block w-2 h-2 rounded-full"
+                          style={{ backgroundColor: FLOW_TYPE_COLORS[f.flow_type] || "hsl(0,0%,70%)" }}
+                        />
+                        <span className="text-muted-foreground text-[10px]">{FLOW_TYPE_LABEL[f.flow_type] || f.flow_type}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {(nodeA || nodeB) && (
                 <div className="border-t border-border/50 pt-1.5 space-y-0.5">
                   <span className="text-muted-foreground font-semibold text-[10px] uppercase tracking-wider">Produkce uzlů</span>
