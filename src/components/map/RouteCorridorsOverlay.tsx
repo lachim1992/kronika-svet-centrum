@@ -106,6 +106,7 @@ interface NodeInfo {
   controlled_by: string | null;
   production_output: number;
   wealth_output: number;
+  food_value: number; // supplies
   incoming_production: number;
   cumulative_trade_flow: number;
 }
