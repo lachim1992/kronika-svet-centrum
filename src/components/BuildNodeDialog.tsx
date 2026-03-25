@@ -195,15 +195,15 @@ const BuildNodeDialog = ({
           {/* Type selector */}
           <div className="space-y-1">
             <label className="text-xs font-display font-semibold">
-              Typ {tier === "minor" ? "osady" : "zázemí"}
+              Typ {tier === "major" ? "sídla" : tier === "minor" ? "osady" : "zázemí"}
               <span className="text-muted-foreground font-normal ml-2">
-                (doporučeno: {(tier === "minor" ? MINOR_NODE_TYPES : MICRO_NODE_TYPES).find(t => t.key === suggestedType)?.icon} {(tier === "minor" ? MINOR_NODE_TYPES : MICRO_NODE_TYPES).find(t => t.key === suggestedType)?.label})
+                (doporučeno: {(tier === "major" ? MAJOR_NODE_TYPES : tier === "minor" ? MINOR_NODE_TYPES : MICRO_NODE_TYPES).find(t => t.key === suggestedType)?.icon} {(tier === "major" ? MAJOR_NODE_TYPES : tier === "minor" ? MINOR_NODE_TYPES : MICRO_NODE_TYPES).find(t => t.key === suggestedType)?.label})
               </span>
             </label>
             <Select value={activeType} onValueChange={setSelectedType}>
               <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
               <SelectContent>
-                {(tier === "minor" ? compatibleMinor : compatibleMicro).map(t => (
+                {(tier === "major" ? compatibleMajor : tier === "minor" ? compatibleMinor : compatibleMicro).map(t => (
                   <SelectItem key={t.key} value={t.key} className="text-xs">
                     {t.icon} {t.label}
                     {t.key === suggestedType && " ⭐"}
