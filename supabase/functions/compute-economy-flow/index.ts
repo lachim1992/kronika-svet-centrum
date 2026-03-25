@@ -96,7 +96,6 @@ const ROLE_TRADE_EFFICIENCY: Record<string, number> = {
   producer: 0.3,
   neutral: 0.2,
 };
-
 /** Strategic resource tier thresholds: how many nodes = which tier */
 const STRATEGIC_TIER_THRESHOLDS = [0, 1, 3, 6];
 
@@ -105,6 +104,55 @@ function computeTier(count: number): number {
     if (count >= STRATEGIC_TIER_THRESHOLDS[i]) return i;
   }
   return 0;
+}
+
+// ── MACRO REGION MODIFIERS ─────────────────────────────────────
+// Climate: 0=arctic, 1=cold, 2=temperate, 3=warm, 4=tropical
+const CLIMATE_PROD_MULT = [0.50, 0.70, 1.00, 1.10, 0.85];
+const CLIMATE_WEALTH_MULT = [0.40, 0.65, 1.00, 1.15, 0.80];
+// Elevation: 0=lowlands, 1=hills, 2=highlands, 3=mountains, 4=high_mountains
+const ELEVATION_FARM_MULT = [1.15, 1.00, 0.80, 0.55, 0.35];
+const ELEVATION_MINE_MULT = [0.50, 1.00, 1.30, 1.50, 1.20];
+// Moisture: 0=dry, 1=drier, 2=moist, 3=rainy, 4=wetland
+const MOISTURE_PROD_MULT = [0.55, 0.75, 1.00, 1.10, 0.85];
+const MOISTURE_FAITH_MULT = [0.80, 0.90, 1.00, 1.10, 1.30];
+
+interface MacroRegionData {
+  climate_band: number;
+  elevation_band: number;
+  moisture_band: number;
+}
+
+const MINING_SUBTYPES = new Set(["mining_camp", "mine", "quarry", "smithy"]);
+const FARM_SUBTYPES = new Set(["village", "field", "pastoral_camp", "fishing_village", "fishery", "vineyard", "hunting_ground"]);
+const FAITH_SUBTYPES = new Set(["shrine", "herbalist", "religious_center"]);
+
+function computeMacroRegionModifier(node: NodeData, region: MacroRegionData | null): { production: number; wealth: number; label: string } {
+  if (!region) return { production: 1.0, wealth: 1.0, label: "" };
+  const c = Math.min(4, Math.max(0, region.climate_band));
+  const e = Math.min(4, Math.max(0, region.elevation_band));
+  const m = Math.min(4, Math.max(0, region.moisture_band));
+
+  // Decide which elevation curve to use based on node subtype
+  const subtype = node.node_subtype || "";
+  const isMining = MINING_SUBTYPES.has(subtype);
+  const isFarming = FARM_SUBTYPES.has(subtype);
+  const isFaith = FAITH_SUBTYPES.has(subtype);
+
+  const elevMult = isMining ? ELEVATION_MINE_MULT[e] : ELEVATION_FARM_MULT[e];
+  let prodMult = CLIMATE_PROD_MULT[c] * elevMult * MOISTURE_PROD_MULT[m];
+  let wealthMult = CLIMATE_WEALTH_MULT[c];
+
+  // Faith subtypes get moisture faith bonus instead of production moisture
+  if (isFaith) {
+    prodMult = CLIMATE_PROD_MULT[c] * ELEVATION_FARM_MULT[e] * MOISTURE_FAITH_MULT[m];
+  }
+
+  return {
+    production: Math.round(prodMult * 100) / 100,
+    wealth: Math.round(wealthMult * 100) / 100,
+    label: `c${c}e${e}m${m}`,
+  };
 }
 
 interface NodeData {
@@ -138,6 +186,9 @@ interface NodeData {
   stability_factor: number;
   faith_output: number;
   food_value: number;
+  // Hex coordinates for macro region lookup
+  hex_q: number;
+  hex_r: number;
 }
 
 interface RouteData {
@@ -162,10 +213,11 @@ interface SupplyState {
 
 // ── PRODUCTION ──────────────────────────────────────────────────
 // Tier-aware: minor/micro nodes use subtype definitions; major/legacy use BASE_PRODUCTION
-function computeNodeProduction(node: NodeData, routeAccess: number, cityData?: any): number {
+function computeNodeProduction(node: NodeData, routeAccess: number, regionMod: { production: number; wealth: number }, cityData?: any): number {
   const dev = Math.max(0.1, node.development_level || 1.0);
   const stab = Math.max(0.1, node.stability_factor || 1.0);
   const access = Math.max(0.1, routeAccess);
+  const regMult = regionMod.production;
 
   let production: number;
 
@@ -175,11 +227,10 @@ function computeNodeProduction(node: NodeData, routeAccess: number, cityData?: a
     const totalBase = Object.values(baseProd).reduce((a, b) => a + b, 0);
     const upgradeBonus = SUBTYPE_UPGRADE_BONUS[node.node_subtype] || 0.2;
     const upgradeMult = 1 + ((node.upgrade_level || 1) - 1) * upgradeBonus;
-    // Biome match
     const biome = (node.biome_at_build || "").toLowerCase();
     const prefs = MINOR_BIOME_PREFS[node.node_subtype] || [];
     const biomeMatch = prefs.some(pb => biome.includes(pb)) ? 1.0 : 0.6;
-    production = totalBase * upgradeMult * biomeMatch * stab * access;
+    production = totalBase * upgradeMult * biomeMatch * stab * access * regMult;
   } else if (node.node_tier === "micro" && node.node_subtype && MICRO_SUBTYPE_PRODUCTION[node.node_subtype]) {
     const baseProd = MICRO_SUBTYPE_PRODUCTION[node.node_subtype];
     const totalBase = Object.values(baseProd).reduce((a, b) => a + b, 0);
@@ -188,11 +239,11 @@ function computeNodeProduction(node: NodeData, routeAccess: number, cityData?: a
     const biome = (node.biome_at_build || "").toLowerCase();
     const prefs = MICRO_BIOME_PREFS[node.node_subtype] || [];
     const biomeMatch = prefs.some(pb => biome.includes(pb)) ? 1.0 : 0.6;
-    production = totalBase * upgradeMult * biomeMatch * stab * access;
+    production = totalBase * upgradeMult * biomeMatch * stab * access * regMult;
   } else {
     // Legacy: use BASE_PRODUCTION by node_type
     const base = BASE_PRODUCTION[node.node_type] ?? 2;
-    production = base * dev * stab * access;
+    production = base * dev * stab * access * regMult;
   }
 
   // Demographic bonus: peasants drive production (city-linked major nodes)
@@ -326,9 +377,9 @@ Deno.serve(async (req) => {
     const sb = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 
     // ── FETCH DATA ────────────────────────────────────────────
-    const [nodesRes, routesRes, supplyRes, citiesRes] = await Promise.all([
+    const [nodesRes, routesRes, supplyRes, citiesRes, hexesRes] = await Promise.all([
       sb.from("province_nodes")
-        .select("id, session_id, province_id, node_type, node_tier, node_subtype, upgrade_level, biome_at_build, flow_role, is_major, parent_node_id, controlled_by, city_id, population, infrastructure_level, urbanization_score, hinterland_level, cumulative_trade_flow, throughput_military, toll_rate, strategic_value, economic_value, defense_value, resource_output, metadata, development_level, stability_factor, strategic_resource_type, strategic_resource_tier, faith_output, food_value")
+        .select("id, session_id, province_id, node_type, node_tier, node_subtype, upgrade_level, biome_at_build, flow_role, is_major, parent_node_id, controlled_by, city_id, population, infrastructure_level, urbanization_score, hinterland_level, cumulative_trade_flow, throughput_military, toll_rate, strategic_value, economic_value, defense_value, resource_output, metadata, development_level, stability_factor, strategic_resource_type, strategic_resource_tier, faith_output, food_value, hex_q, hex_r")
         .eq("session_id", session_id),
       sb.from("province_routes")
         .select("id, node_a, node_b, capacity_value, control_state, damage_level, speed_value, safety_value")
@@ -339,6 +390,11 @@ Deno.serve(async (req) => {
       sb.from("cities")
         .select("id, population_total, population_peasants, population_burghers, population_clerics, population_warriors, market_level, temple_level")
         .eq("session_id", session_id),
+      sb.from("province_hexes")
+        .select("q, r, macro_region_id, macro_regions(climate_band, elevation_band, moisture_band)")
+        .eq("session_id", session_id)
+        .not("macro_region_id", "is", null)
+        .limit(10000),
     ]);
 
     const nodes: NodeData[] = (nodesRes.data || []).map((n: any) => ({
@@ -353,10 +409,25 @@ Deno.serve(async (req) => {
       biome_at_build: n.biome_at_build || null,
       faith_output: n.faith_output || 0,
       food_value: n.food_value || 0,
+      hex_q: n.hex_q || 0,
+      hex_r: n.hex_r || 0,
     }));
     const routes: RouteData[] = routesRes.data || [];
     const supplyMap = new Map<string, SupplyState>();
     for (const s of (supplyRes.data || [])) supplyMap.set(s.node_id, s as SupplyState);
+
+    // Build hex→macro_region map for regional modifiers
+    const hexRegionMap = new Map<string, MacroRegionData>();
+    for (const h of (hexesRes.data || [])) {
+      const mr = (h as any).macro_regions;
+      if (mr) {
+        hexRegionMap.set(`${h.q},${h.r}`, {
+          climate_band: mr.climate_band ?? 2,
+          elevation_band: mr.elevation_band ?? 0,
+          moisture_band: mr.moisture_band ?? 2,
+        });
+      }
+    }
 
     // Build city demographics map for city-linked nodes
     const cityMap = new Map<string, any>();
@@ -378,14 +449,20 @@ Deno.serve(async (req) => {
       route_access_factor: number;
       trade_efficiency: number;
       isolation_penalty: number;
+      region_prod_modifier: number;
+      region_wealth_modifier: number;
     }> = [];
 
-    // Phase 1: compute raw production for all nodes (with city demographics)
+    // Phase 1: compute raw production for all nodes (with city demographics + macro region)
     const rawProduction = new Map<string, number>();
+    const regionModifiers = new Map<string, { production: number; wealth: number }>();
     for (const node of nodes) {
       const routeAccess = computeRouteAccess(node.id, routes);
       const cityData = node.city_id ? cityMap.get(node.city_id) : undefined;
-      const prod = computeNodeProduction(node, routeAccess, cityData);
+      const region = hexRegionMap.get(`${node.hex_q},${node.hex_r}`) || null;
+      const regMod = computeMacroRegionModifier(node, region);
+      regionModifiers.set(node.id, regMod);
+      const prod = computeNodeProduction(node, routeAccess, regMod, cityData);
       rawProduction.set(node.id, prod);
     }
 
@@ -431,7 +508,7 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Phase 3: compute wealth, capacity, importance per node (with city demographics)
+    // Phase 3: compute wealth, capacity, importance per node (with city demographics + region)
     for (const node of nodes) {
       const routeAccess = computeRouteAccess(node.id, routes);
       const connectivity = computeConnectivity(node.id, routes, nodes.length);
@@ -439,10 +516,11 @@ Deno.serve(async (req) => {
       const incoming = node.is_major ? (majorIncoming.get(node.id) || 0) : production;
       const tradeEff = ROLE_TRADE_EFFICIENCY[node.flow_role] || 0.2;
       const cityData = node.city_id ? cityMap.get(node.city_id) : undefined;
+      const regMod = regionModifiers.get(node.id) || { production: 1.0, wealth: 1.0 };
 
       let wealth = node.is_major
-        ? computeNodeWealth(incoming, tradeEff, connectivity, cityData)
-        : computeNodeWealth(production * 0.1, tradeEff * 0.5, connectivity);
+        ? computeNodeWealth(incoming, tradeEff, connectivity, cityData) * regMod.wealth
+        : computeNodeWealth(production * 0.1, tradeEff * 0.5, connectivity) * regMod.wealth;
 
       let capacity = computeNodeCapacity(node.population, node.infrastructure_level, connectivity, cityData);
 
@@ -466,6 +544,8 @@ Deno.serve(async (req) => {
         route_access_factor: Math.round(routeAccess * 100) / 100,
         trade_efficiency: Math.round(tradeEff * 100) / 100,
         isolation_penalty: Math.round(isolated.penalty * 100) / 100,
+        region_prod_modifier: regMod.production,
+        region_wealth_modifier: regMod.wealth,
       });
     }
 
