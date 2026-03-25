@@ -6495,6 +6495,7 @@ export type Database = {
           metadata: Json | null
           mobility_relevance: number
           name: string
+          net_balance: number | null
           node_class: string
           node_score: number
           node_subtype: string | null
@@ -6521,6 +6522,8 @@ export type Database = {
           trade_efficiency: number
           updated_at: string
           upgrade_level: number
+          upkeep_supplies: number | null
+          upkeep_wealth: number | null
           urbanization_score: number
           wealth_output: number
         }
@@ -6562,6 +6565,7 @@ export type Database = {
           metadata?: Json | null
           mobility_relevance?: number
           name?: string
+          net_balance?: number | null
           node_class?: string
           node_score?: number
           node_subtype?: string | null
@@ -6588,6 +6592,8 @@ export type Database = {
           trade_efficiency?: number
           updated_at?: string
           upgrade_level?: number
+          upkeep_supplies?: number | null
+          upkeep_wealth?: number | null
           urbanization_score?: number
           wealth_output?: number
         }
@@ -6629,6 +6635,7 @@ export type Database = {
           metadata?: Json | null
           mobility_relevance?: number
           name?: string
+          net_balance?: number | null
           node_class?: string
           node_score?: number
           node_subtype?: string | null
@@ -6655,6 +6662,8 @@ export type Database = {
           trade_efficiency?: number
           updated_at?: string
           upgrade_level?: number
+          upkeep_supplies?: number | null
+          upkeep_wealth?: number | null
           urbanization_score?: number
           wealth_output?: number
         }
