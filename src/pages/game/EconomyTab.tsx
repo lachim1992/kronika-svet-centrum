@@ -36,6 +36,11 @@ import {
 } from "@/lib/economyFlow";
 import TradePanel from "@/components/TradePanel";
 import SupplyChainPanel from "@/components/SupplyChainPanel";
+import EconomyDependencyMap from "@/components/economy/EconomyDependencyMap";
+import PrestigeBreakdown from "@/components/economy/PrestigeBreakdown";
+import StrategicResourcesDetail from "@/components/economy/StrategicResourcesDetail";
+import FaithPanel from "@/components/economy/FaithPanel";
+import PopulationPanel from "@/components/economy/PopulationPanel";
 
 interface Props {
   sessionId: string;
@@ -272,40 +277,15 @@ const EconomyTab = ({ sessionId, currentPlayerName, currentTurn, cities, resourc
         })}
       </div>
 
-      {/* ═══ IMPORTANCE + STRATEGIC RESOURCES ═══ */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {/* Importance */}
-        <div className="game-card p-5 space-y-3">
-          <div className="flex items-center gap-2">
-            <Network className="h-5 w-5 text-primary" />
-            <h3 className="font-display font-semibold text-base">Celková důležitost</h3>
-            <InfoTip side="right">Suma importance skóre všech kontrolovaných uzlů. Vyšší = silnější ekonomická pozice.</InfoTip>
-          </div>
-          <div className="text-3xl font-bold font-display">{totalImportance.toFixed(1)}</div>
-          <div className="text-xs text-muted-foreground">{nodeStats.length} kontrolovaných uzlů</div>
+      {/* ═══ IMPORTANCE ═══ */}
+      <div className="game-card p-5 space-y-3">
+        <div className="flex items-center gap-2">
+          <Network className="h-5 w-5 text-primary" />
+          <h3 className="font-display font-semibold text-base">Celková důležitost</h3>
+          <InfoTip side="right">Suma importance skóre všech kontrolovaných uzlů. Vyšší = silnější ekonomická pozice. Důležitost uzlu = produkce × konektivita × role multiplikátor.</InfoTip>
+          <span className="ml-auto text-2xl font-mono font-bold text-primary">{totalImportance.toFixed(1)}</span>
         </div>
-
-        {/* Strategic Resources */}
-        <div className="game-card p-5 space-y-3">
-          <div className="flex items-center gap-2">
-            <Zap className="h-5 w-5 text-primary" />
-            <h3 className="font-display font-semibold text-base">Strategické suroviny</h3>
-            <InfoTip side="right">Strategické suroviny neplodí tok — odemykají schopnosti (jednotky, budovy, technologie).</InfoTip>
-          </div>
-          {strategicTiers.length === 0 ? (
-            <p className="text-xs text-muted-foreground">Žádné strategické suroviny. Kontrolujte uzly s doly, stájemi nebo solnými pánvemi.</p>
-          ) : (
-            <div className="space-y-2">
-              {strategicTiers.map(s => (
-                <div key={s.key} className="flex items-center gap-2 text-sm">
-                  <span className="text-lg">{STRATEGIC_RESOURCE_ICONS[s.key]}</span>
-                  <span className="font-semibold">{STRATEGIC_RESOURCE_LABELS[s.key]}</span>
-                  <Badge variant="secondary" className="text-[9px] ml-auto">{STRATEGIC_TIER_LABELS[s.tier]}</Badge>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+        <div className="text-xs text-muted-foreground">{nodeStats.length} kontrolovaných uzlů</div>
       </div>
 
       {/* ═══ NODE BREAKDOWN BY ROLE ═══ */}
@@ -440,15 +420,34 @@ const EconomyTab = ({ sessionId, currentPlayerName, currentTurn, cities, resourc
 
       {/* ═══ WEALTH RESERVE ═══ */}
       {realm && (
-        <div className="game-card p-5">
+        <div className="game-card p-5 space-y-3">
           <div className="flex items-center gap-2">
             <span className="text-xl">💰</span>
             <h3 className="font-display font-semibold text-base">Pokladna bohatství</h3>
-            <InfoTip side="right">Přírůstek: wealth tok ze sítě uzlů + obchodní dohody + daně (tax_rate_percent z laws). Spotřeba: údržba armád, stavby, diplomatické akce.</InfoTip>
+            <InfoTip side="right">Přírůstek: wealth tok ze sítě uzlů + obchodní dohody + daně (tax_rate_percent z laws). Spotřeba: údržba armád (1 gold/100 vojáků), stavby, diplomatické akce. Prestiž přidává +0.1% bonus za bod.</InfoTip>
             <span className="ml-auto text-2xl font-mono font-bold text-primary">{Math.round(realm.gold_reserve || 0)}</span>
+          </div>
+          <div className="flex justify-between text-xs text-muted-foreground">
+            <span>⚒️ Tok ze sítě: +{totalWealth.toFixed(1)}/kolo</span>
+            <span>⚒️ Produkční rezerva: {Math.round(realm.production_reserve || 0)}</span>
           </div>
         </div>
       )}
+
+      {/* ═══ FAITH ═══ */}
+      {realm && <FaithPanel realm={realm} cities={myCities} />}
+
+      {/* ═══ POPULATION & DEMOGRAPHICS ═══ */}
+      <PopulationPanel cities={myCities} realm={realm} />
+
+      {/* ═══ PRESTIGE ═══ */}
+      {realm && <PrestigeBreakdown realm={realm} />}
+
+      {/* ═══ STRATEGIC RESOURCES DETAIL ═══ */}
+      {realm && <StrategicResourcesDetail realm={realm} />}
+
+      {/* ═══ DEPENDENCY MAP ═══ */}
+      <EconomyDependencyMap />
 
       {/* ═══ CITY TABLE ═══ */}
       <div className="game-card p-0 overflow-hidden">
