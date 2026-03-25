@@ -613,6 +613,9 @@ export default function ProvinceGraphPanel({ sessionId }: Props) {
         <Button size="sm" variant="default" className="h-7 text-xs gap-1" onClick={handleComputeEconomy} disabled={computingEcon}>
           {computingEcon ? <Loader2 className="h-3 w-3 animate-spin" /> : <TrendingUp className="h-3 w-3" />} Ekonomika
         </Button>
+        <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={handleComputeHexFlows} disabled={computingHexFlows}>
+          {computingHexFlows ? <Loader2 className="h-3 w-3 animate-spin" /> : <MapPin className="h-3 w-3" />} Hex cesty
+        </Button>
         <div className="flex gap-1 ml-auto">
           <Button size="sm" variant={showNodes ? "secondary" : "ghost"} className="h-7 text-xs" onClick={() => setShowNodes(!showNodes)}>
             {showNodes ? "Skrýt nody" : "Nody"}
