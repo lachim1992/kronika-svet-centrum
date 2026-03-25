@@ -506,6 +506,19 @@ Deno.serve(async (req) => {
     }));
 
     // ═══════════════════════════════════════════
+    // 4b. COMPUTE ECONOMY FLOW (refresh macro data before process-turn)
+    // ═══════════════════════════════════════════
+    try {
+      await supabase.functions.invoke("compute-economy-flow", {
+        body: { sessionId },
+      });
+      results.economyFlow = { ok: true };
+    } catch (e) {
+      console.warn("compute-economy-flow warning:", (e as Error).message);
+      results.economyFlow = { error: (e as Error).message };
+    }
+
+    // ═══════════════════════════════════════════
     // 5. PROCESS TURN (economy for all players + AI factions)
     // ═══════════════════════════════════════════
     try {

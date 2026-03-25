@@ -298,12 +298,7 @@ export async function closeTurnForPlayer(sessionId: string, playerNumber: number
   const { error } = await supabase.from("game_players").update({ turn_closed: true })
     .eq("session_id", sessionId).eq("player_number", playerNumber);
   if (error) console.error(error);
-
-  if (playerNumber === 1) {
-    await supabase.from("game_sessions").update({ turn_closed_p1: true }).eq("id", sessionId);
-  } else if (playerNumber === 2) {
-    await supabase.from("game_sessions").update({ turn_closed_p2: true }).eq("id", sessionId);
-  }
+  // Legacy p1/p2 columns removed — using game_players.turn_closed only
 }
 
 export async function advanceTurn(sessionId: string, currentTurn: number) {
