@@ -854,13 +854,41 @@ Deno.serve(async (req) => {
     // FAITH (new axis: clerics + temples)
     // ══════════════════════════════════════════
     const currentFaith = realm.faith || 0;
-    // Faith grows from clerics, decays naturally
+    // Faith grows from clerics + strategic bonuses (gems, obsidian, incense), decays naturally
     const faithDecay = Math.max(0, currentFaith * 0.02); // 2% natural decay
-    const faithGrowth = totalFaith - faithDecay;
+    const faithGrowth = totalFaith + strategicBonuses.faith_bonus - faithDecay;
     const newFaith = Math.max(0, Math.min(100, currentFaith + faithGrowth));
-    // Faith effects: morale bonus, mobilization willingness
+    // Faith effects: morale bonus, mobilization willingness, rebellion threshold
     const faithMoraleMult = 1 + newFaith * 0.003; // Up to +30% morale at faith=100
-    const faithMobWillingness = newFaith > 50 ? 0.05 : (newFaith < 20 ? -0.05 : 0); // Faith affects unrest from mobilization
+    const faithMobWillingness = newFaith > 50 ? 0.05 : (newFaith < 20 ? -0.05 : 0);
+    // Faith raises rebellion threshold (high faith = people tolerate more instability)
+    const faithStabilityBuffer = Math.round(newFaith * 0.1); // Up to +10 stability buffer
+
+    // ══════════════════════════════════════════
+    // APPLY FAITH & STRATEGIC COMBAT TO MILITARY
+    // ══════════════════════════════════════════
+    if ((stacks || []).length > 0 && (faithMoraleMult > 1.001 || strategicBonuses.combat_mult > 1.001 || prestigeEffects.moraleBonus > 0)) {
+      for (const s of (stacks || [])) {
+        const currentMorale = s.morale ?? 70;
+        // Faith morale: drift toward faith-based ceiling
+        const faithMoraleCeiling = Math.min(100, 60 + newFaith * 0.4); // 60-100 based on faith
+        const moraleDrift = currentMorale < faithMoraleCeiling ? Math.min(3, faithMoraleCeiling - currentMorale) : 0;
+        const prestigeMoraleDrift = prestigeEffects.moraleBonus * 0.2; // Prestige slowly boosts morale
+        const newMorale = Math.max(0, Math.min(100, Math.round(currentMorale + moraleDrift + prestigeMoraleDrift)));
+
+        // Strategic combat power bonus (iron, obsidian)
+        const basePower = s.combat_power || s.unit_count || 0;
+        const adjustedPower = Math.round(basePower * strategicBonuses.combat_mult);
+
+        if (newMorale !== currentMorale || adjustedPower !== basePower) {
+          await supabase.from("military_stacks").update({
+            morale: newMorale,
+            combat_power: adjustedPower,
+          }).eq("id", s.id);
+        }
+      }
+      logEntries.push(`⚔️ Armáda: morále×${faithMoraleMult.toFixed(2)} síla×${strategicBonuses.combat_mult.toFixed(2)} prestiž+${prestigeEffects.moraleBonus}`);
+    }
 
     // ══════════════════════════════════════════
     // SUPPLY STRAIN EVENTS
