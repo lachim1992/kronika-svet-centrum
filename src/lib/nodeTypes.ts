@@ -418,6 +418,9 @@ export function computeNodeProduction(
   upgradeLevel: number,
   biome: string,
 ): Record<string, number> {
+  // Major nodes don't have base production — they aggregate from minor/micro
+  if (tier === "major") return { grain: 0, wood: 0, stone: 0, iron: 0, wealth: 0, faith: 0 };
+
   let def: { baseProduction: Record<string, number>; upgradeBonus: number; preferredBiomes: string[] } | undefined;
 
   if (tier === "minor") {
