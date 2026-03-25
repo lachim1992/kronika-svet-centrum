@@ -16,7 +16,7 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { session_id, player_name, province_id, target_q, target_r } = await req.json();
+    const { session_id, player_name, province_id, target_q, target_r, skip_cost } = await req.json();
 
     if (!session_id || !player_name || !province_id || target_q === undefined || target_r === undefined) {
       return new Response(
@@ -93,34 +93,45 @@ Deno.serve(async (req) => {
       if (isAdjacent) break;
     }
 
-    if (!isAdjacent) {
+    if (!isAdjacent && !skip_cost) {
       return new Response(
         JSON.stringify({ error: "Hex není sousední s vaší provincií" }),
         { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    // 4. Check expansion cost — deduct from realm_resources
+    // 4. Check expansion cost — deduct from realm_resources (skip if skip_cost)
     const EXPANSION_COST = { gold_reserve: 20, wood_reserve: 5 };
-    const { data: resources } = await sb
-      .from("realm_resources")
-      .select("gold_reserve, wood_reserve")
-      .eq("session_id", session_id)
-      .eq("player_name", player_name)
-      .single();
+    if (!skip_cost) {
+      const { data: resources } = await sb
+        .from("realm_resources")
+        .select("gold_reserve, wood_reserve")
+        .eq("session_id", session_id)
+        .eq("player_name", player_name)
+        .single();
 
-    if (!resources) {
-      return new Response(
-        JSON.stringify({ error: "Zdroje nenalezeny" }),
-        { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
+      if (!resources) {
+        return new Response(
+          JSON.stringify({ error: "Zdroje nenalezeny" }),
+          { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
 
-    if (resources.gold_reserve < EXPANSION_COST.gold_reserve || resources.wood_reserve < EXPANSION_COST.wood_reserve) {
-      return new Response(
-        JSON.stringify({ error: `Nedostatek zdrojů. Potřeba: ${EXPANSION_COST.gold_reserve} zlata, ${EXPANSION_COST.wood_reserve} dřeva` }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      if (resources.gold_reserve < EXPANSION_COST.gold_reserve || resources.wood_reserve < EXPANSION_COST.wood_reserve) {
+        return new Response(
+          JSON.stringify({ error: `Nedostatek zdrojů. Potřeba: ${EXPANSION_COST.gold_reserve} zlata, ${EXPANSION_COST.wood_reserve} dřeva` }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      // Deduct resources later (step 7)
+      await sb.from("realm_resources")
+        .update({
+          gold_reserve: resources.gold_reserve - EXPANSION_COST.gold_reserve,
+          wood_reserve: resources.wood_reserve - EXPANSION_COST.wood_reserve,
+        })
+        .eq("session_id", session_id)
+        .eq("player_name", player_name);
     }
 
     // 5. Generate the hex if it doesn't exist yet
@@ -145,14 +156,7 @@ Deno.serve(async (req) => {
       .update({ province_id })
       .eq("id", hexId);
 
-    // 7. Deduct resources
-    await sb.from("realm_resources")
-      .update({
-        gold_reserve: resources.gold_reserve - EXPANSION_COST.gold_reserve,
-        wood_reserve: resources.wood_reserve - EXPANSION_COST.wood_reserve,
-      })
-      .eq("session_id", session_id)
-      .eq("player_name", player_name);
+    // 7. (Resources already deducted in step 4 if not skip_cost)
 
     // 8. Add discovery
     await sb.from("discoveries").upsert({

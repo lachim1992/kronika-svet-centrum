@@ -53,16 +53,16 @@ const FOG_COLOR = "#111318";
 
 /* Province palette — 10 distinct, muted colors for overlay */
 const PROVINCE_COLORS = [
-  "hsla(210, 60%, 50%, 0.12)", // blue
-  "hsla(30, 70%, 50%, 0.12)",  // orange
-  "hsla(120, 50%, 40%, 0.12)", // green
-  "hsla(0, 60%, 50%, 0.12)",   // red
-  "hsla(270, 50%, 50%, 0.12)", // purple
-  "hsla(60, 60%, 45%, 0.12)",  // yellow
-  "hsla(180, 50%, 40%, 0.12)", // teal
-  "hsla(330, 50%, 50%, 0.12)", // pink
-  "hsla(150, 50%, 40%, 0.12)", // emerald
-  "hsla(45, 70%, 50%, 0.12)",  // gold
+  "hsla(210, 60%, 50%, 0.30)", // blue
+  "hsla(30, 70%, 50%, 0.30)",  // orange
+  "hsla(120, 50%, 40%, 0.30)", // green
+  "hsla(0, 60%, 50%, 0.30)",   // red
+  "hsla(270, 50%, 50%, 0.30)", // purple
+  "hsla(60, 60%, 45%, 0.30)",  // yellow
+  "hsla(180, 50%, 40%, 0.30)", // teal
+  "hsla(330, 50%, 50%, 0.30)", // pink
+  "hsla(150, 50%, 40%, 0.30)", // emerald
+  "hsla(45, 70%, 50%, 0.30)",  // gold
 ];
 const PROVINCE_BORDER_COLORS = [
   "hsla(210, 70%, 60%, 0.7)",
@@ -1380,32 +1380,95 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
                   fetchNodes();
                 };
 
+                const handleExpandBorders = async (node: NodeOnHex) => {
+                  setExpandingProvince(true);
+                  try {
+                    // Get the province this major node belongs to
+                    const provData = provinceHexMap.get(hKey(node.hex_q, node.hex_r));
+                    if (!provData?.provinceId) {
+                      toast.error("Tento uzel nemá přiřazenou provincii");
+                      return;
+                    }
+                    // Collect all hexes within radius 2 that are not yet in any province
+                    const hexesToClaim: { q: number; r: number }[] = [];
+                    for (let dq = -2; dq <= 2; dq++) {
+                      for (let dr = -2; dr <= 2; dr++) {
+                        if (Math.abs(dq + dr) > 2) continue; // hex distance check
+                        if (dq === 0 && dr === 0) continue;
+                        const tq = node.hex_q + dq;
+                        const tr = node.hex_r + dr;
+                        const existing = provinceHexMap.get(hKey(tq, tr));
+                        if (!existing) {
+                          hexesToClaim.push({ q: tq, r: tr });
+                        }
+                      }
+                    }
+                    if (hexesToClaim.length === 0) {
+                      toast.info("Všechny okolní hexy už patří do provincií");
+                      return;
+                    }
+                    // Expand each hex
+                    let claimed = 0;
+                    for (const hex of hexesToClaim) {
+                      try {
+                        const { data, error } = await supabase.functions.invoke("expand-province", {
+                          body: {
+                            session_id: sessionId,
+                            player_name: playerName,
+                            province_id: provData.provinceId,
+                            target_q: hex.q,
+                            target_r: hex.r,
+                            skip_cost: true,
+                          },
+                        });
+                        if (!error && !data?.error) claimed++;
+                      } catch { /* skip hex */ }
+                    }
+                    toast.success(`Hranice rozšířeny: ${claimed} hexů připojeno`);
+                    await fetchProvinces();
+                  } catch (e: any) {
+                    toast.error("Expanze hranic selhala: " + (e.message || "neznámá chyba"));
+                  } finally {
+                    setExpandingProvince(false);
+                  }
+                };
+
                 return (
                   <div className="p-3 rounded-lg border border-border bg-muted/30 space-y-1.5">
                     <p className="text-xs font-display font-semibold flex items-center gap-1.5">
                       🏘️ Uzly ({hexNodes.length})
                     </p>
                     {hexNodes.map(n => {
-                      const def = n.node_tier === "minor"
+                      const def = n.node_tier === "major"
+                        ? MAJOR_NODE_TYPES.find(t => t.key === n.node_subtype)
+                        : n.node_tier === "minor"
                         ? MINOR_NODE_TYPES.find(t => t.key === n.node_subtype)
                         : MICRO_NODE_TYPES.find(t => t.key === n.node_subtype);
                       const canUpgrade = n.upgrade_level < (n.max_upgrade_level || 3);
+                      const isMajor = n.node_tier === "major";
                       return (
                         <div key={n.id} className="space-y-1">
                           <div className="flex items-center gap-2 text-xs py-1">
-                            <span>{def?.icon || "📍"}</span>
+                            <span>{def?.icon || (isMajor ? "🏙️" : "📍")}</span>
                             <span className="font-display font-semibold">{n.name}</span>
                             {n.strategic_resource_type && (
                               <Badge variant="secondary" className="text-[8px] h-4">💎 {n.strategic_resource_type}</Badge>
                             )}
                             <Badge variant="outline" className="text-[8px] h-4 ml-auto">
-                              {n.node_tier === "minor" ? "osada" : "zázemí"} lv.{n.upgrade_level}/{n.max_upgrade_level || 3}
+                              {isMajor ? "sídlo" : n.node_tier === "minor" ? "osada" : "zázemí"} lv.{n.upgrade_level}/{n.max_upgrade_level || 3}
                             </Badge>
                           </div>
                           {canUpgrade && (
                             <Button variant="ghost" size="sm" className="w-full text-[10px] h-6 gap-1"
                               onClick={() => handleUpgrade(n.id, n.upgrade_level)}>
                               <ChevronUp className="h-3 w-3" /> Vylepšit na lv.{n.upgrade_level + 1}
+                            </Button>
+                          )}
+                          {isMajor && (
+                            <Button variant="secondary" size="sm" className="w-full text-[10px] h-7 gap-1"
+                              onClick={() => handleExpandBorders(n)} disabled={expandingProvince}>
+                              {expandingProvince ? <Loader2 className="h-3 w-3 animate-spin" /> : <MapIcon className="h-3 w-3" />}
+                              Rozšířit hranice (2 hexy)
                             </Button>
                           )}
                         </div>
