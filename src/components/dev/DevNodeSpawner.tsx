@@ -375,22 +375,28 @@ const DevNodeSpawner = ({ sessionId, onRefetch }: Props) => {
           ) : (
             <ScrollArea className="h-[250px]">
               <div className="space-y-1">
-                {existingNodes.map(n => (
-                  <div key={n.id} className="flex items-center gap-2 text-xs py-1.5 px-2 rounded hover:bg-muted/30 group">
-                    <MapPin className="h-3 w-3 text-muted-foreground shrink-0" />
-                    <span className="font-mono font-medium truncate">{n.name || "—"}</span>
-                    <Badge variant="outline" className="text-[8px] h-4 shrink-0">{n.node_type}</Badge>
-                    <Badge variant="outline" className="text-[8px] h-4 shrink-0">{n.flow_role}</Badge>
-                    <span className="text-[9px] text-muted-foreground ml-auto shrink-0">[{n.hex_q},{n.hex_r}]</span>
-                    <Button
-                      size="icon" variant="ghost"
-                      className="h-5 w-5 opacity-0 group-hover:opacity-100 shrink-0"
-                      onClick={() => handleDelete(n.id)}
-                    >
-                      <Trash2 className="h-3 w-3 text-destructive" />
-                    </Button>
-                  </div>
-                ))}
+                {existingNodes.map(n => {
+                  const subDef = n.node_tier === "minor"
+                    ? MINOR_NODE_TYPES.find(t => t.key === n.node_subtype)
+                    : MICRO_NODE_TYPES.find(t => t.key === n.node_subtype);
+                  return (
+                    <div key={n.id} className="flex items-center gap-2 text-xs py-1.5 px-2 rounded hover:bg-muted/30 group">
+                      <span className="shrink-0">{subDef?.icon || "📍"}</span>
+                      <span className="font-mono font-medium truncate">{n.name || "—"}</span>
+                      {n.node_tier && <Badge variant="outline" className="text-[8px] h-4 shrink-0">{n.node_tier}</Badge>}
+                      <Badge variant="outline" className="text-[8px] h-4 shrink-0">{n.node_type}</Badge>
+                      <Badge variant="outline" className="text-[8px] h-4 shrink-0">{n.flow_role}</Badge>
+                      <span className="text-[9px] text-muted-foreground ml-auto shrink-0">[{n.hex_q},{n.hex_r}]</span>
+                      <Button
+                        size="icon" variant="ghost"
+                        className="h-5 w-5 opacity-0 group-hover:opacity-100 shrink-0"
+                        onClick={() => handleDelete(n.id)}
+                      >
+                        <Trash2 className="h-3 w-3 text-destructive" />
+                      </Button>
+                    </div>
+                  );
+                })}
                 {existingNodes.length === 0 && (
                   <p className="text-xs text-muted-foreground text-center py-4">Žádné uzly</p>
                 )}
