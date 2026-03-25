@@ -156,14 +156,7 @@ Deno.serve(async (req) => {
       .update({ province_id })
       .eq("id", hexId);
 
-    // 7. Deduct resources
-    await sb.from("realm_resources")
-      .update({
-        gold_reserve: resources.gold_reserve - EXPANSION_COST.gold_reserve,
-        wood_reserve: resources.wood_reserve - EXPANSION_COST.wood_reserve,
-      })
-      .eq("session_id", session_id)
-      .eq("player_name", player_name);
+    // 7. (Resources already deducted in step 4 if not skip_cost)
 
     // 8. Add discovery
     await sb.from("discoveries").upsert({
