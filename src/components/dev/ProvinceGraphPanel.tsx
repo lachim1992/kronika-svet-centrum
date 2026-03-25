@@ -118,13 +118,22 @@ function ProvinceGraphSVG({ nodes, edges, strategicNodes, routes, showNodes, sho
         const shape = NODE_TYPE_SHAPES[sn.node_type] || "●";
         const prov = nodeMap.get(sn.province_id);
         const provColor = prov ? GRAPH_COLORS[prov.color_index % GRAPH_COLORS.length] : "gray";
+        const resType = sn.strategic_resource_type;
+        const resIcon = resType ? (STRATEGIC_RESOURCE_ICONS[resType as keyof typeof STRATEGIC_RESOURCE_ICONS] || "") : "";
         return (
           <g key={sn.id}>
-            <circle cx={p.x} cy={p.y} r={6} fill="hsl(var(--card))" stroke={provColor} strokeWidth={1.5} />
-            <text x={p.x} y={p.y + 3.5} textAnchor="middle" fontSize="8" fill={provColor} fontWeight="700">{shape}</text>
-            <text x={p.x} y={p.y - 9} textAnchor="middle" fontSize="6" fill="hsl(var(--muted-foreground))">
+            <circle cx={p.x} cy={p.y} r={resType ? 8 : 6} fill="hsl(var(--card))" stroke={resType ? "hsl(45,90%,55%)" : provColor} strokeWidth={resType ? 2 : 1.5} />
+            <text x={p.x} y={p.y + 3.5} textAnchor="middle" fontSize={resType ? "10" : "8"} fill={provColor} fontWeight="700">
+              {resIcon || shape}
+            </text>
+            <text x={p.x} y={p.y - (resType ? 11 : 9)} textAnchor="middle" fontSize="6" fill="hsl(var(--muted-foreground))">
               {sn.name.length > 18 ? sn.name.slice(0, 16) + "…" : sn.name}
             </text>
+            {resType && (
+              <text x={p.x} y={p.y + 14} textAnchor="middle" fontSize="5" fill="hsl(45,90%,55%)" fontWeight="600">
+                T{sn.strategic_resource_tier}
+              </text>
+            )}
           </g>
         );
       })}

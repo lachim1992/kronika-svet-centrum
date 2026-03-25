@@ -204,7 +204,7 @@ Deno.serve(async (req) => {
       }
     }
 
-    return new Response(JSON.stringify({ hex, discovered: true, bootstrap: isBootstrap }), {
+    return new Response(JSON.stringify({ hex, discovered: true, bootstrap: isBootstrap, resources: resourceFinds }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (e) {
