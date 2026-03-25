@@ -138,6 +138,7 @@ interface NodeOnHex {
   max_upgrade_level: number; parent_node_id: string | null; strategic_resource_type: string | null;
   production_output?: number; wealth_output?: number;
   region_prod_modifier?: number; region_wealth_modifier?: number;
+  net_balance?: number;
 }
 interface Props {
   sessionId: string; playerName: string; myRole: string;
