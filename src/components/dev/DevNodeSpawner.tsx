@@ -8,6 +8,11 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { toast } from "sonner";
 import { Plus, Trash2, MapPin, Route, RefreshCw, Loader2, Zap, Link2 } from "lucide-react";
+import {
+  type NodeTier, NODE_TIER_LABELS,
+  MINOR_NODE_TYPES, MICRO_NODE_TYPES,
+  computeNodeProduction, totalProduction, rollStrategicResource,
+} from "@/lib/nodeTypes";
 
 interface Props {
   sessionId: string;
@@ -28,6 +33,7 @@ const ROUTE_TYPES = ["land_road", "river_route", "sea_lane", "mountain_pass", "c
 type SpawnedNode = {
   id: string; name: string; hex_q: number; hex_r: number;
   node_type: string; flow_role: string; is_major: boolean;
+  node_tier?: string; node_subtype?: string;
 };
 
 const DevNodeSpawner = ({ sessionId, onRefetch }: Props) => {
@@ -41,6 +47,8 @@ const DevNodeSpawner = ({ sessionId, onRefetch }: Props) => {
   const [population, setPopulation] = useState(100);
   const [nodeScore, setNodeScore] = useState(30);
   const [spawning, setSpawning] = useState(false);
+  const [nodeTier, setNodeTier] = useState<NodeTier>("minor");
+  const [nodeSubtype, setNodeSubtype] = useState("");
 
   // ── Existing nodes
   const [existingNodes, setExistingNodes] = useState<SpawnedNode[]>([]);
@@ -60,7 +68,7 @@ const DevNodeSpawner = ({ sessionId, onRefetch }: Props) => {
     setLoading(true);
     const [nodesRes, provRes] = await Promise.all([
       supabase.from("province_nodes")
-        .select("id, name, hex_q, hex_r, node_type, flow_role, is_major")
+        .select("id, name, hex_q, hex_r, node_type, flow_role, is_major, node_tier, node_subtype")
         .eq("session_id", sessionId)
         .order("created_at", { ascending: false })
         .limit(100),
@@ -82,6 +90,16 @@ const DevNodeSpawner = ({ sessionId, onRefetch }: Props) => {
     setSpawning(true);
     try {
       const isMajor = nodeClass === "major";
+      const prod = (nodeTier === "minor" || nodeTier === "micro") && nodeSubtype
+        ? computeNodeProduction(nodeTier, nodeSubtype, 1, "plains")
+        : null;
+
+      let spawnedResource: string | null = null;
+      if (nodeTier === "micro" && nodeSubtype) {
+        const microDef = MICRO_NODE_TYPES.find(t => t.key === nodeSubtype);
+        if (microDef) spawnedResource = rollStrategicResource(microDef);
+      }
+
       const { data, error } = await supabase.from("province_nodes").insert({
         session_id: sessionId,
         name,
@@ -89,15 +107,24 @@ const DevNodeSpawner = ({ sessionId, onRefetch }: Props) => {
         hex_r: hexR,
         node_type: nodeType,
         node_class: nodeClass,
+        node_tier: nodeTier,
+        node_subtype: nodeSubtype || null,
         flow_role: flowRole,
         is_major: isMajor,
         is_active: true,
         population,
         node_score: nodeScore,
         province_id: selectedProvince || null,
-        production_output: isMajor ? 5 : 1,
-        wealth_output: flowRole === "hub" ? 3 : 0,
-        food_value: nodeType === "resource_node" ? 4 : 1,
+        production_output: prod ? totalProduction(prod) : (isMajor ? 5 : 1),
+        wealth_output: prod ? (prod.wealth || 0) : (flowRole === "hub" ? 3 : 0),
+        food_value: prod ? (prod.grain || 0) : (nodeType === "resource_node" ? 4 : 1),
+        faith_output: prod ? (prod.faith || 0) : 0,
+        production_base: prod ? totalProduction(prod) : 0,
+        resource_output: prod || {},
+        upgrade_level: 1,
+        biome_at_build: "plains",
+        strategic_resource_type: spawnedResource,
+        spawned_strategic_resource: spawnedResource,
         trade_efficiency: flowRole === "hub" ? 1.0 : flowRole === "gateway" ? 0.8 : 0.5,
         connectivity_score: 0,
         supply_relevance: 1,
@@ -109,7 +136,7 @@ const DevNodeSpawner = ({ sessionId, onRefetch }: Props) => {
         fortification_level: nodeType === "fortress" ? 2 : 0,
         collapse_severity: 0,
         controlled_by: null,
-      }).select("id, name").single();
+      } as any).select("id, name").single();
 
       if (error) throw error;
       toast.success(`Uzel "${name}" vytvořen na [${hexQ}, ${hexR}]`);
@@ -228,6 +255,32 @@ const DevNodeSpawner = ({ sessionId, onRefetch }: Props) => {
             </div>
           </div>
 
+          {/* Tier & Subtype selectors */}
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="text-[9px] text-muted-foreground">Node Tier</label>
+              <Select value={nodeTier} onValueChange={(v) => { setNodeTier(v as NodeTier); setNodeSubtype(""); }}>
+                <SelectTrigger className="text-xs h-8"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="major" className="text-xs">Major</SelectItem>
+                  <SelectItem value="minor" className="text-xs">Minor (osada)</SelectItem>
+                  <SelectItem value="micro" className="text-xs">Micro (zázemí)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <label className="text-[9px] text-muted-foreground">Subtype</label>
+              <Select value={nodeSubtype} onValueChange={setNodeSubtype}>
+                <SelectTrigger className="text-xs h-8"><SelectValue placeholder="—" /></SelectTrigger>
+                <SelectContent>
+                  {(nodeTier === "minor" ? MINOR_NODE_TYPES : MICRO_NODE_TYPES).map(t => (
+                    <SelectItem key={t.key} value={t.key} className="text-xs">{t.icon} {t.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
           <div className="grid grid-cols-3 gap-2">
             <Select value={nodeType} onValueChange={setNodeType}>
               <SelectTrigger className="text-xs h-8"><SelectValue /></SelectTrigger>
@@ -322,22 +375,28 @@ const DevNodeSpawner = ({ sessionId, onRefetch }: Props) => {
           ) : (
             <ScrollArea className="h-[250px]">
               <div className="space-y-1">
-                {existingNodes.map(n => (
-                  <div key={n.id} className="flex items-center gap-2 text-xs py-1.5 px-2 rounded hover:bg-muted/30 group">
-                    <MapPin className="h-3 w-3 text-muted-foreground shrink-0" />
-                    <span className="font-mono font-medium truncate">{n.name || "—"}</span>
-                    <Badge variant="outline" className="text-[8px] h-4 shrink-0">{n.node_type}</Badge>
-                    <Badge variant="outline" className="text-[8px] h-4 shrink-0">{n.flow_role}</Badge>
-                    <span className="text-[9px] text-muted-foreground ml-auto shrink-0">[{n.hex_q},{n.hex_r}]</span>
-                    <Button
-                      size="icon" variant="ghost"
-                      className="h-5 w-5 opacity-0 group-hover:opacity-100 shrink-0"
-                      onClick={() => handleDelete(n.id)}
-                    >
-                      <Trash2 className="h-3 w-3 text-destructive" />
-                    </Button>
-                  </div>
-                ))}
+                {existingNodes.map(n => {
+                  const subDef = n.node_tier === "minor"
+                    ? MINOR_NODE_TYPES.find(t => t.key === n.node_subtype)
+                    : MICRO_NODE_TYPES.find(t => t.key === n.node_subtype);
+                  return (
+                    <div key={n.id} className="flex items-center gap-2 text-xs py-1.5 px-2 rounded hover:bg-muted/30 group">
+                      <span className="shrink-0">{subDef?.icon || "📍"}</span>
+                      <span className="font-mono font-medium truncate">{n.name || "—"}</span>
+                      {n.node_tier && <Badge variant="outline" className="text-[8px] h-4 shrink-0">{n.node_tier}</Badge>}
+                      <Badge variant="outline" className="text-[8px] h-4 shrink-0">{n.node_type}</Badge>
+                      <Badge variant="outline" className="text-[8px] h-4 shrink-0">{n.flow_role}</Badge>
+                      <span className="text-[9px] text-muted-foreground ml-auto shrink-0">[{n.hex_q},{n.hex_r}]</span>
+                      <Button
+                        size="icon" variant="ghost"
+                        className="h-5 w-5 opacity-0 group-hover:opacity-100 shrink-0"
+                        onClick={() => handleDelete(n.id)}
+                      >
+                        <Trash2 className="h-3 w-3 text-destructive" />
+                      </Button>
+                    </div>
+                  );
+                })}
                 {existingNodes.length === 0 && (
                   <p className="text-xs text-muted-foreground text-center py-4">Žádné uzly</p>
                 )}

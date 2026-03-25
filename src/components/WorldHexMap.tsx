@@ -130,6 +130,11 @@ interface StackOnHex {
   manpower: number; formation_type: string; morale?: number;
   imageUrl?: string | null; sigilUrl?: string | null;
 }
+interface NodeOnHex {
+  id: string; name: string; hex_q: number; hex_r: number; node_tier: string;
+  node_subtype: string | null; controlled_by: string | null; upgrade_level: number;
+  max_upgrade_level: number; parent_node_id: string | null; strategic_resource_type: string | null;
+}
 interface Props {
   sessionId: string; playerName: string; myRole: string;
   currentTurn?: number;
@@ -139,7 +144,7 @@ interface Props {
 /* ───── HexTile (memoized) ───── */
 const HexTile = memo(({
   q, r, hex, isFrontier, isCurrent, devMode, loading, onClick, onDoubleClick, offsetX, offsetY, cities, onCityClick, stacks,
-  selectedStackId, isMoveTarget, isAttackTarget, onStackClick, onMoveClick, onAttackClick, myPlayerName,
+  selectedStackId, isMoveTarget, isAttackTarget, onStackClick, onMoveClick, onAttackClick, myPlayerName, nodes,
 }: {
   q: number; r: number; hex?: HexData; isFrontier: boolean; isCurrent: boolean;
   devMode: boolean; loading: boolean;
@@ -154,6 +159,7 @@ const HexTile = memo(({
   onMoveClick?: (q: number, r: number) => void;
   onAttackClick?: (q: number, r: number) => void;
   myPlayerName?: string;
+  nodes?: NodeOnHex[];
 }) => {
   const pos = hexToPixel(q, r);
   const cx = pos.x + offsetX;
@@ -202,6 +208,34 @@ const HexTile = memo(({
               {cities.length > 3 && (
                 <text x={cx + 14} y={cy + 18} textAnchor="middle" dominantBaseline="middle"
                   fill="white" fontSize="7" fontWeight="700" style={{ pointerEvents: "none" }}>+{cities.length - 3}</text>
+              )}
+            </>
+          ) : nodes && nodes.length > 0 ? (
+            <>
+              {/* Show node icons instead of biome when nodes exist */}
+              {nodes.slice(0, 2).map((n, i) => {
+                const def = n.node_tier === "minor"
+                  ? MINOR_NODE_TYPES.find(t => t.key === n.node_subtype)
+                  : MICRO_NODE_TYPES.find(t => t.key === n.node_subtype);
+                const ny = i === 0 ? cy - 6 : cy + 8;
+                return (
+                  <g key={n.id}>
+                    <text x={cx} y={ny} textAnchor="middle" dominantBaseline="middle"
+                      fill="white" fontSize={i === 0 ? "11" : "9"} style={{ pointerEvents: "none" }}>
+                      {def?.icon || "📍"}
+                    </text>
+                  </g>
+                );
+              })}
+              {nodes.length === 1 && (
+                <text x={cx} y={cy + 8} textAnchor="middle" dominantBaseline="middle"
+                  fill="white" fontSize="6" fontWeight="600" opacity={0.8} style={{ pointerEvents: "none" }}>
+                  {nodes[0].name.length > 8 ? nodes[0].name.slice(0, 7) + "…" : nodes[0].name}
+                </text>
+              )}
+              {nodes.length > 2 && (
+                <text x={cx + 12} y={cy + 14} textAnchor="middle" dominantBaseline="middle"
+                  fill="hsl(45, 80%, 65%)" fontSize="6" fontWeight="700" style={{ pointerEvents: "none" }}>+{nodes.length - 2}</text>
               )}
             </>
           ) : (
@@ -368,7 +402,6 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
   const [buildNodeParent, setBuildNodeParent] = useState<{ id: string; name: string } | null>(null);
 
   // Nodes on hex map
-  interface NodeOnHex { id: string; name: string; hex_q: number; hex_r: number; node_tier: string; node_subtype: string | null; controlled_by: string | null; upgrade_level: number; parent_node_id: string | null; }
   const [allNodes, setAllNodes] = useState<NodeOnHex[]>([]);
 
   // Province data
@@ -486,7 +519,7 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
   /* ── Fetch nodes ── */
   const fetchNodes = useCallback(async () => {
     const { data } = await supabase.from("province_nodes")
-      .select("id, name, hex_q, hex_r, node_tier, node_subtype, controlled_by, upgrade_level, parent_node_id")
+      .select("id, name, hex_q, hex_r, node_tier, node_subtype, controlled_by, upgrade_level, max_upgrade_level, parent_node_id, strategic_resource_type")
       .eq("session_id", sessionId)
       .in("node_tier", ["minor", "micro"]);
     setAllNodes((data || []) as NodeOnHex[]);
@@ -1032,6 +1065,7 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
                 onMoveClick={handleMoveStackToHex}
                 onAttackClick={handleAttackClick}
                 myPlayerName={playerName}
+                nodes={nodesByCoord.get(hKey(c.q, c.r)) || []}
               />
             );
           })}
@@ -1326,6 +1360,16 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
               {(() => {
                 const hexNodes = nodesByCoord.get(hKey(selectedHex.q, selectedHex.r)) || [];
                 if (hexNodes.length === 0) return null;
+
+                const handleUpgrade = async (nodeId: string, currentLevel: number) => {
+                  const { error } = await supabase.from("province_nodes")
+                    .update({ upgrade_level: currentLevel + 1 } as any)
+                    .eq("id", nodeId);
+                  if (error) { toast.error("Upgrade selhal: " + error.message); return; }
+                  toast.success(`Uzel vylepšen na úroveň ${currentLevel + 1}`);
+                  fetchNodes();
+                };
+
                 return (
                   <div className="p-3 rounded-lg border border-border bg-muted/30 space-y-1.5">
                     <p className="text-xs font-display font-semibold flex items-center gap-1.5">
@@ -1335,13 +1379,25 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
                       const def = n.node_tier === "minor"
                         ? MINOR_NODE_TYPES.find(t => t.key === n.node_subtype)
                         : MICRO_NODE_TYPES.find(t => t.key === n.node_subtype);
+                      const canUpgrade = n.upgrade_level < (n.max_upgrade_level || 3);
                       return (
-                        <div key={n.id} className="flex items-center gap-2 text-xs py-1">
-                          <span>{def?.icon || "📍"}</span>
-                          <span className="font-display font-semibold">{n.name}</span>
-                          <Badge variant="outline" className="text-[8px] h-4 ml-auto">
-                            {n.node_tier === "minor" ? "osada" : "zázemí"} lv.{n.upgrade_level}
-                          </Badge>
+                        <div key={n.id} className="space-y-1">
+                          <div className="flex items-center gap-2 text-xs py-1">
+                            <span>{def?.icon || "📍"}</span>
+                            <span className="font-display font-semibold">{n.name}</span>
+                            {n.strategic_resource_type && (
+                              <Badge variant="secondary" className="text-[8px] h-4">💎 {n.strategic_resource_type}</Badge>
+                            )}
+                            <Badge variant="outline" className="text-[8px] h-4 ml-auto">
+                              {n.node_tier === "minor" ? "osada" : "zázemí"} lv.{n.upgrade_level}/{n.max_upgrade_level || 3}
+                            </Badge>
+                          </div>
+                          {canUpgrade && (
+                            <Button variant="ghost" size="sm" className="w-full text-[10px] h-6 gap-1"
+                              onClick={() => handleUpgrade(n.id, n.upgrade_level)}>
+                              <ChevronUp className="h-3 w-3" /> Vylepšit na lv.{n.upgrade_level + 1}
+                            </Button>
+                          )}
                         </div>
                       );
                     })}
