@@ -51,18 +51,18 @@ const IMPASSABLE_BIOMES = new Set(["sea", "mountains"]);
 const CITY_ALLOWED_BIOMES = new Set(["plains", "hills", "forest", "swamp"]);
 const FOG_COLOR = "#111318";
 
-/* Province palette — 10 distinct, muted colors for overlay */
+/* Province palette — 10 distinct, vivid colors for overlay */
 const PROVINCE_COLORS = [
-  "hsla(210, 60%, 50%, 0.30)", // blue
-  "hsla(30, 70%, 50%, 0.30)",  // orange
-  "hsla(120, 50%, 40%, 0.30)", // green
-  "hsla(0, 60%, 50%, 0.30)",   // red
-  "hsla(270, 50%, 50%, 0.30)", // purple
-  "hsla(60, 60%, 45%, 0.30)",  // yellow
-  "hsla(180, 50%, 40%, 0.30)", // teal
-  "hsla(330, 50%, 50%, 0.30)", // pink
-  "hsla(150, 50%, 40%, 0.30)", // emerald
-  "hsla(45, 70%, 50%, 0.30)",  // gold
+  "hsla(210, 70%, 55%, 0.45)", // blue
+  "hsla(30, 80%, 55%, 0.45)",  // orange
+  "hsla(120, 60%, 45%, 0.45)", // green
+  "hsla(0, 70%, 55%, 0.45)",   // red
+  "hsla(270, 60%, 55%, 0.45)", // purple
+  "hsla(60, 70%, 50%, 0.45)",  // yellow
+  "hsla(180, 60%, 45%, 0.45)", // teal
+  "hsla(330, 60%, 55%, 0.45)", // pink
+  "hsla(150, 60%, 45%, 0.45)", // emerald
+  "hsla(45, 80%, 55%, 0.45)",  // gold
 ];
 const PROVINCE_BORDER_COLORS = [
   "hsla(210, 70%, 60%, 0.7)",
