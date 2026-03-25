@@ -238,7 +238,9 @@ const BuildNodeDialog = ({
                 ))}
               </div>
 
-              <p className="text-[10px] text-primary mt-1">{activeDef.bonusEffect || (activeDef as any).description}</p>
+              {'bonusEffect' in activeDef && (activeDef as MinorNodeDef).bonusEffect && (
+                <p className="text-[10px] text-primary mt-1">{(activeDef as MinorNodeDef).bonusEffect}</p>
+              )}
 
               {tier === "micro" && (activeDef as MicroNodeDef).strategicResourcePool.length > 0 && (
                 <div className="flex items-center gap-1 text-[10px] mt-1">
