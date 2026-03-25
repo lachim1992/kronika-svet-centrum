@@ -215,15 +215,21 @@ const HexTile = memo(({
             <>
               {/* Show node icons instead of biome when nodes exist */}
               {nodes.slice(0, 2).map((n, i) => {
-                const def = n.node_tier === "minor"
-                  ? MINOR_NODE_TYPES.find(t => t.key === n.node_subtype)
-                  : MICRO_NODE_TYPES.find(t => t.key === n.node_subtype);
+                let icon = "📍";
+                if (n.node_tier === "major") {
+                  const majorDef = MAJOR_NODE_TYPES.find(t => t.dbNodeType === n.node_type);
+                  icon = majorDef?.icon || "🏛";
+                } else if (n.node_tier === "minor") {
+                  icon = MINOR_NODE_TYPES.find(t => t.key === n.node_subtype)?.icon || "🏘";
+                } else {
+                  icon = MICRO_NODE_TYPES.find(t => t.key === n.node_subtype)?.icon || "⛏";
+                }
                 const ny = i === 0 ? cy - 6 : cy + 8;
                 return (
                   <g key={n.id}>
                     <text x={cx} y={ny} textAnchor="middle" dominantBaseline="middle"
-                      fill="white" fontSize={i === 0 ? "11" : "9"} style={{ pointerEvents: "none" }}>
-                      {def?.icon || "📍"}
+                      fill="white" fontSize={n.node_tier === "major" ? "14" : i === 0 ? "11" : "9"} style={{ pointerEvents: "none" }}>
+                      {icon}
                     </text>
                   </g>
                 );
