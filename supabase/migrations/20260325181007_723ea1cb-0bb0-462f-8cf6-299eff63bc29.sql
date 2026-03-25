@@ -1,0 +1,1 @@
+ALTER TABLE public.province_nodes ALTER COLUMN strategic_resource_tier SET DEFAULT 0;
