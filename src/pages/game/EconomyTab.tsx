@@ -98,14 +98,8 @@ const EconomyTab = ({ sessionId, currentPlayerName, currentTurn, cities, resourc
   const totalImportance = realm?.total_importance ?? 0;
   const maxMacro = Math.max(totalProduction, totalWealth, totalCapacity, 1);
 
-  // Strategic tiers
-  const strategicTiers = [
-    { key: "iron" as StrategicResource, tier: realm?.strategic_iron_tier ?? 0 },
-    { key: "horses" as StrategicResource, tier: realm?.strategic_horses_tier ?? 0 },
-    { key: "salt" as StrategicResource, tier: realm?.strategic_salt_tier ?? 0 },
-    { key: "copper" as StrategicResource, tier: realm?.strategic_copper_tier ?? 0 },
-    { key: "gold_deposit" as StrategicResource, tier: realm?.strategic_gold_tier ?? 0 },
-  ].filter(s => s.tier > 0);
+  // Strategic tiers (all 11 resources)
+  const strategicTiers = getStrategicTiers(realm);
 
   // Node breakdown by role
   const nodesByRole = useMemo(() => {
