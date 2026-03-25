@@ -116,7 +116,7 @@ const ResourceHUD = ({ sessionId, playerName, cities, currentTurn }: ResourceHUD
   const wealthReserve = realm.gold_reserve ?? 0;
   const grainReserve = realm.grain_reserve ?? 0;
 
-  const chips: { icon: React.ReactNode; label: string; value: string; warning?: boolean }[] = [
+  const chips: { icon: React.ReactNode; label: string; value: string; warning?: boolean; suffix?: string }[] = [
     {
       icon: <span className="text-xs">{MACRO_LAYER_ICONS.production}</span>,
       label: "Produkce",
