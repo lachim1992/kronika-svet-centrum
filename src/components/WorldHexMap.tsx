@@ -410,6 +410,7 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
 
   // Nodes on hex map
   const [allNodes, setAllNodes] = useState<NodeOnHex[]>([]);
+  const [routeRefreshKey, setRouteRefreshKey] = useState(0);
 
   // Province data
   const [provinceHexMap, setProvinceHexMap] = useState<Map<string, { provinceId: string; colorIndex: number }>>(new Map());
