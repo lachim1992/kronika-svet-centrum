@@ -213,10 +213,11 @@ interface SupplyState {
 
 // ── PRODUCTION ──────────────────────────────────────────────────
 // Tier-aware: minor/micro nodes use subtype definitions; major/legacy use BASE_PRODUCTION
-function computeNodeProduction(node: NodeData, routeAccess: number, cityData?: any): number {
+function computeNodeProduction(node: NodeData, routeAccess: number, regionMod: { production: number; wealth: number }, cityData?: any): number {
   const dev = Math.max(0.1, node.development_level || 1.0);
   const stab = Math.max(0.1, node.stability_factor || 1.0);
   const access = Math.max(0.1, routeAccess);
+  const regMult = regionMod.production;
 
   let production: number;
 
@@ -226,11 +227,10 @@ function computeNodeProduction(node: NodeData, routeAccess: number, cityData?: a
     const totalBase = Object.values(baseProd).reduce((a, b) => a + b, 0);
     const upgradeBonus = SUBTYPE_UPGRADE_BONUS[node.node_subtype] || 0.2;
     const upgradeMult = 1 + ((node.upgrade_level || 1) - 1) * upgradeBonus;
-    // Biome match
     const biome = (node.biome_at_build || "").toLowerCase();
     const prefs = MINOR_BIOME_PREFS[node.node_subtype] || [];
     const biomeMatch = prefs.some(pb => biome.includes(pb)) ? 1.0 : 0.6;
-    production = totalBase * upgradeMult * biomeMatch * stab * access;
+    production = totalBase * upgradeMult * biomeMatch * stab * access * regMult;
   } else if (node.node_tier === "micro" && node.node_subtype && MICRO_SUBTYPE_PRODUCTION[node.node_subtype]) {
     const baseProd = MICRO_SUBTYPE_PRODUCTION[node.node_subtype];
     const totalBase = Object.values(baseProd).reduce((a, b) => a + b, 0);
@@ -239,11 +239,11 @@ function computeNodeProduction(node: NodeData, routeAccess: number, cityData?: a
     const biome = (node.biome_at_build || "").toLowerCase();
     const prefs = MICRO_BIOME_PREFS[node.node_subtype] || [];
     const biomeMatch = prefs.some(pb => biome.includes(pb)) ? 1.0 : 0.6;
-    production = totalBase * upgradeMult * biomeMatch * stab * access;
+    production = totalBase * upgradeMult * biomeMatch * stab * access * regMult;
   } else {
     // Legacy: use BASE_PRODUCTION by node_type
     const base = BASE_PRODUCTION[node.node_type] ?? 2;
-    production = base * dev * stab * access;
+    production = base * dev * stab * access * regMult;
   }
 
   // Demographic bonus: peasants drive production (city-linked major nodes)
