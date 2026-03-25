@@ -33,6 +33,7 @@ const ROUTE_TYPES = ["land_road", "river_route", "sea_lane", "mountain_pass", "c
 type SpawnedNode = {
   id: string; name: string; hex_q: number; hex_r: number;
   node_type: string; flow_role: string; is_major: boolean;
+  node_tier?: string; node_subtype?: string;
 };
 
 const DevNodeSpawner = ({ sessionId, onRefetch }: Props) => {
@@ -46,6 +47,8 @@ const DevNodeSpawner = ({ sessionId, onRefetch }: Props) => {
   const [population, setPopulation] = useState(100);
   const [nodeScore, setNodeScore] = useState(30);
   const [spawning, setSpawning] = useState(false);
+  const [nodeTier, setNodeTier] = useState<NodeTier>("minor");
+  const [nodeSubtype, setNodeSubtype] = useState("");
 
   // ── Existing nodes
   const [existingNodes, setExistingNodes] = useState<SpawnedNode[]>([]);
