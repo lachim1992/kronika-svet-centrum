@@ -342,6 +342,32 @@ const HomeTab = ({
     );
   }
 
+  // ═══ MOBILE VIEW ═══
+  if (isMobile) {
+    return (
+      <MobileRealmDashboard
+        realm={realm}
+        myCities={myCities}
+        capital={capital}
+        provinces={provinces}
+        nodeStats={nodeStats}
+        stacks={stacks}
+        activeWars={activeWars}
+        famineCities={famineCities}
+        isolatedNodes={isolatedNodes}
+        deficitNodes={deficitNodes}
+        surplusNodes={surplusNodes}
+        currentTurn={currentTurn}
+        currentPlayerName={currentPlayerName}
+        recomputing={recomputing}
+        onRecompute={handleRecompute}
+        onCityClick={onEntityClick}
+        onTabChange={onTabChange}
+        onFoundCity={onFoundCity}
+      />
+    );
+  }
+
   return (
     <div className="space-y-6 pb-24 px-1">
       {/* Header */}
