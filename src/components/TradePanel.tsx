@@ -224,7 +224,7 @@ const TradePanel = ({ sessionId, currentPlayerName, currentTurn, myCities, allCi
           ) : (
             <div className="space-y-2">
               {/* Net trade flows */}
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 <div className="p-2 rounded bg-muted/30">
                   <p className="text-[10px] text-muted-foreground font-semibold uppercase mb-1">Příjmy z obchodu</p>
                   {Object.entries(tradeIncome).length > 0 ? (

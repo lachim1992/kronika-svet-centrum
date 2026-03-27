@@ -547,7 +547,7 @@ const HomeTab = ({
       </Collapsible>
 
       {/* ═══ SECTION 3: MACRO ECONOMY ═══ */}
-      <div className="grid grid-cols-3 gap-2 sm:gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
         {(["production", "wealth", "capacity"] as const).map(layer => {
           const val = layer === "production" ? totalProduction : layer === "wealth" ? totalWealth : totalCapacity;
           const icon = MACRO_LAYER_ICONS[layer];
@@ -559,10 +559,10 @@ const HomeTab = ({
                 <div className="h-8 w-8 sm:h-10 sm:w-10 rounded-xl bg-primary/10 flex items-center justify-center text-base sm:text-xl">{icon}</div>
                 <div className="min-w-0">
                   <h3 className="font-display font-bold text-sm sm:text-lg truncate">{label}</h3>
-                  <span className="text-[8px] sm:text-[10px] text-muted-foreground hidden sm:block">{desc}</span>
+                  <span className="text-[10px] text-muted-foreground hidden sm:block">{desc}</span>
                 </div>
               </div>
-              <div className="text-xl sm:text-3xl font-bold font-display text-primary">{val.toFixed(1)}</div>
+              <div className="text-2xl sm:text-3xl font-bold font-display text-primary">{val.toFixed(1)}</div>
               <Progress value={Math.min(100, (val / maxMacro) * 100)} className="h-1.5 sm:h-2" />
             </div>
           );
