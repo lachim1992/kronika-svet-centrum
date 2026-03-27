@@ -400,6 +400,7 @@ HexTile.displayName = "HexTile";
    MAIN COMPONENT
    ═══════════════════════════════════════════════════ */
 const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }: Props) => {
+  const isMobile = useIsMobile();
   const isAdmin = myRole === "admin" || myRole === "moderator";
   const [devMode, setDevMode] = useState(isAdmin);
   const [selectedHex, setSelectedHex] = useState<HexData | null>(null);
