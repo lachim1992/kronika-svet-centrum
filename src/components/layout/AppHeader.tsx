@@ -218,15 +218,15 @@ const AppHeader = ({ roomCode, currentTurn, worldName, playerName, myRole, curre
             {isLight ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
           </Button>
 
-          <Button variant="ghost" size="sm" onClick={copyCode} className="font-mono text-xs h-8 px-3 text-muted-foreground hover:text-foreground">
+          <Button variant="ghost" size="sm" onClick={copyCode} className="font-mono text-xs h-8 px-2 sm:px-3 text-muted-foreground hover:text-foreground hidden sm:flex">
             <Copy className="h-3.5 w-3.5 mr-1.5" />{roomCode}
           </Button>
 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <button className="h-9 px-3 rounded-lg bg-secondary border border-border hover:bg-secondary/80 hover:border-primary/20 transition-all duration-200 flex items-center gap-2 text-sm font-display">
+              <button className="h-8 sm:h-9 px-2 sm:px-3 rounded-lg bg-secondary border border-border hover:bg-secondary/80 hover:border-primary/20 transition-all duration-200 flex items-center gap-1.5 sm:gap-2 text-sm font-display">
                 <User className="h-4 w-4 text-primary" />
-                <span className="text-xs font-semibold max-w-[100px] truncate">{playerName}</span>
+                <span className="text-[10px] sm:text-xs font-semibold max-w-[60px] sm:max-w-[100px] truncate">{playerName}</span>
                 {(myRole === "admin" || myRole === "moderator") && <span className="text-xs text-primary">{myRole === "moderator" ? "⚙" : "★"}</span>}
               </button>
             </DropdownMenuTrigger>

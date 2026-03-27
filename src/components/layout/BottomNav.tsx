@@ -35,7 +35,7 @@ const BottomNav = ({ activeTab, onTabChange, showDevTab = false, showPersistentT
     <nav className="fixed bottom-0 left-0 right-0 z-50 border-t border-border backdrop-blur-md"
       style={{ background: "hsl(220 28% 8% / 0.95)" }}
     >
-      <div className="flex items-center justify-evenly w-full h-14 px-0.5">
+      <div className="flex items-center w-full h-14 px-0.5 overflow-x-auto scrollbar-hide">
         {tabs.map((tab) => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.id;
@@ -43,17 +43,17 @@ const BottomNav = ({ activeTab, onTabChange, showDevTab = false, showPersistentT
             <button
               key={tab.id}
               onClick={() => onTabChange(tab.id)}
-              style={{ flex: "1 1 0%", minWidth: 0 }}
-              className={`flex flex-col items-center gap-0.5 py-1.5 rounded-lg transition-all duration-200 relative ${
+              style={{ flex: "0 0 auto", minWidth: 48 }}
+              className={`flex flex-col items-center gap-0.5 py-1.5 px-1.5 rounded-lg transition-all duration-200 relative ${
                 isActive
                   ? "text-primary"
                   : "text-muted-foreground hover:text-foreground hover:bg-muted/30"
               }`}
             >
               <Icon className="h-[18px] w-[18px]" strokeWidth={isActive ? 2.2 : 1.5} />
-              <span className="text-[8px] uppercase tracking-[0.1em] leading-none" style={{ fontFamily: "'Cinzel', serif" }}>{tab.label}</span>
+              <span className="text-[7px] uppercase tracking-[0.05em] leading-none whitespace-nowrap" style={{ fontFamily: "'Cinzel', serif" }}>{tab.label}</span>
               {isActive && (
-                <span className="absolute -bottom-1 w-6 h-[2px] rounded-full bg-primary"
+                <span className="absolute -bottom-1 w-5 h-[2px] rounded-full bg-primary"
                   style={{ boxShadow: "0 0 8px hsl(var(--primary) / 0.4)" }}
                 />
               )}

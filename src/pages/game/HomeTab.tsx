@@ -682,66 +682,109 @@ const HomeTab = ({
         onDismiss={() => {}}
       />
 
-      {/* ═══ CITY TABLE ═══ */}
+      {/* ═══ CITY TABLE (desktop) / CITY CARDS (mobile) ═══ */}
       <div className="game-card p-0 overflow-hidden">
-        <div className="px-5 pt-4 pb-2">
-          <h3 className="text-base font-display font-semibold flex items-center gap-2">
-            Přehled sídel — síťová ekonomika
+        <div className="px-3 sm:px-5 pt-3 sm:pt-4 pb-2">
+          <h3 className="text-sm sm:text-base font-display font-semibold flex items-center gap-2">
+            Přehled sídel
             <InfoTip side="right">Produkce města = (vlastní production_output + příchozí incoming_production × 0.5) × role multiplikátor. Poptávka = populace × 0.006. Bilance = produkce − poptávka.</InfoTip>
           </h3>
         </div>
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead className="text-xs px-3">Město <SortIcon field="name" /></TableHead>
-              <TableHead className="text-xs px-3">Úroveň <SortIcon field="settlement" /></TableHead>
-              <TableHead className="text-xs px-3 text-right">Pop. <SortIcon field="population" /></TableHead>
-              <TableHead className="text-xs px-3 text-right">⚒️ Prod.</TableHead>
-              <TableHead className="text-xs px-3 text-right">💰 Wealth</TableHead>
-              <TableHead className="text-xs px-3 text-right">Bilance <SortIcon field="balance" /></TableHead>
-              <TableHead className="text-xs px-3 text-right">Stabilita</TableHead>
-              <TableHead className="text-xs px-3 text-center">Stav</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {sortedCitiesTable.map(c => {
-              const econ = cityEconMap.get(c.id);
-              const balance = econ?.balance ?? 0;
-              const balanceColor = balance > 0 ? "text-accent" : balance < 0 ? "text-destructive" : "";
-              return (
-                <TableRow key={c.id} className="cursor-pointer hover:bg-muted/50" onClick={() => onEntityClick?.("city", c.id)}>
-                  <TableCell className="text-sm px-3 font-semibold">
+
+        {/* Mobile: card list */}
+        <div className="sm:hidden divide-y divide-border">
+          {sortedCitiesTable.map(c => {
+            const econ = cityEconMap.get(c.id);
+            const balance = econ?.balance ?? 0;
+            const balanceColor = balance > 0 ? "text-accent" : balance < 0 ? "text-destructive" : "text-muted-foreground";
+            return (
+              <div key={c.id} className="px-3 py-2.5 active:bg-muted/50" onClick={() => onEntityClick?.("city", c.id)}>
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-sm font-semibold flex items-center gap-1">
                     {c.name}
-                    {c.famine_turn && <Skull className="h-3.5 w-3.5 inline ml-1.5 text-destructive" />}
-                    {c.is_capital && <span className="text-[9px] ml-1 text-primary">★</span>}
-                    {(econ?.isolation ?? 0) > 0 && (
-                      <span className="text-[9px] ml-1 text-destructive">⛓️-{econ!.isolation}%</span>
-                    )}
-                  </TableCell>
-                  <TableCell className="text-xs px-3">
-                    <Badge variant="secondary" className="text-[10px]">{SETTLEMENT_LABELS[c.settlement_level] || c.settlement_level}</Badge>
-                  </TableCell>
-                  <TableCell className="text-sm px-3 text-right">{(c.population_total || 0).toLocaleString()}</TableCell>
-                  <TableCell className="text-sm px-3 text-right font-mono">{econ?.production?.toFixed(1) ?? "—"}</TableCell>
-                  <TableCell className="text-sm px-3 text-right font-mono">{econ?.wealthOutput?.toFixed(1) ?? "—"}</TableCell>
-                  <TableCell className={`text-sm px-3 text-right font-mono font-semibold ${balanceColor}`}>
+                    {c.is_capital && <span className="text-[9px] text-primary">★</span>}
+                    {c.famine_turn && <Skull className="h-3 w-3 text-destructive" />}
+                  </span>
+                  <Badge variant="secondary" className="text-[9px]">{SETTLEMENT_LABELS[c.settlement_level] || c.settlement_level}</Badge>
+                </div>
+                <div className="grid grid-cols-4 gap-1 text-[10px]">
+                  <div>
+                    <span className="text-muted-foreground">Pop </span>
+                    <span className="font-semibold">{(c.population_total || 0).toLocaleString()}</span>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">⚒️ </span>
+                    <span className="font-mono font-semibold">{econ?.production?.toFixed(1) ?? "—"}</span>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">💰 </span>
+                    <span className="font-mono font-semibold">{econ?.wealthOutput?.toFixed(1) ?? "—"}</span>
+                  </div>
+                  <div className={`font-mono font-semibold ${balanceColor}`}>
                     {balance > 0 ? "+" : ""}{balance.toFixed(1)}
-                  </TableCell>
-                  <TableCell className="text-sm px-3 text-right">
-                    <span className={(c.city_stability || 50) < 30 ? "text-destructive" : (c.city_stability || 50) < 50 ? "text-amber-500" : ""}>
-                      {c.city_stability || 50}%
-                    </span>
-                  </TableCell>
-                  <TableCell className="text-xs px-3 text-center">
-                    {c.famine_turn ? <Badge variant="destructive" className="text-[9px]">Hladomor</Badge>
-                      : c.epidemic_active ? <Badge variant="destructive" className="text-[9px]">Epidemie</Badge>
-                      : <Badge variant="secondary" className="text-[9px]">OK</Badge>}
-                  </TableCell>
-                </TableRow>
-              );
-            })}
-          </TableBody>
-        </Table>
+                    {(econ?.isolation ?? 0) > 0 && <span className="text-destructive ml-0.5">⛓️</span>}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Desktop: full table */}
+        <div className="hidden sm:block">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="text-xs px-3">Město <SortIcon field="name" /></TableHead>
+                <TableHead className="text-xs px-3">Úroveň <SortIcon field="settlement" /></TableHead>
+                <TableHead className="text-xs px-3 text-right">Pop. <SortIcon field="population" /></TableHead>
+                <TableHead className="text-xs px-3 text-right">⚒️ Prod.</TableHead>
+                <TableHead className="text-xs px-3 text-right">💰 Wealth</TableHead>
+                <TableHead className="text-xs px-3 text-right">Bilance <SortIcon field="balance" /></TableHead>
+                <TableHead className="text-xs px-3 text-right">Stabilita</TableHead>
+                <TableHead className="text-xs px-3 text-center">Stav</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {sortedCitiesTable.map(c => {
+                const econ = cityEconMap.get(c.id);
+                const balance = econ?.balance ?? 0;
+                const balanceColor = balance > 0 ? "text-accent" : balance < 0 ? "text-destructive" : "";
+                return (
+                  <TableRow key={c.id} className="cursor-pointer hover:bg-muted/50" onClick={() => onEntityClick?.("city", c.id)}>
+                    <TableCell className="text-sm px-3 font-semibold">
+                      {c.name}
+                      {c.famine_turn && <Skull className="h-3.5 w-3.5 inline ml-1.5 text-destructive" />}
+                      {c.is_capital && <span className="text-[9px] ml-1 text-primary">★</span>}
+                      {(econ?.isolation ?? 0) > 0 && (
+                        <span className="text-[9px] ml-1 text-destructive">⛓️-{econ!.isolation}%</span>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-xs px-3">
+                      <Badge variant="secondary" className="text-[10px]">{SETTLEMENT_LABELS[c.settlement_level] || c.settlement_level}</Badge>
+                    </TableCell>
+                    <TableCell className="text-sm px-3 text-right">{(c.population_total || 0).toLocaleString()}</TableCell>
+                    <TableCell className="text-sm px-3 text-right font-mono">{econ?.production?.toFixed(1) ?? "—"}</TableCell>
+                    <TableCell className="text-sm px-3 text-right font-mono">{econ?.wealthOutput?.toFixed(1) ?? "—"}</TableCell>
+                    <TableCell className={`text-sm px-3 text-right font-mono font-semibold ${balanceColor}`}>
+                      {balance > 0 ? "+" : ""}{balance.toFixed(1)}
+                    </TableCell>
+                    <TableCell className="text-sm px-3 text-right">
+                      <span className={(c.city_stability || 50) < 30 ? "text-destructive" : (c.city_stability || 50) < 50 ? "text-amber-500" : ""}>
+                        {c.city_stability || 50}%
+                      </span>
+                    </TableCell>
+                    <TableCell className="text-xs px-3 text-center">
+                      {c.famine_turn ? <Badge variant="destructive" className="text-[9px]">Hladomor</Badge>
+                        : c.epidemic_active ? <Badge variant="destructive" className="text-[9px]">Epidemie</Badge>
+                        : <Badge variant="secondary" className="text-[9px]">OK</Badge>}
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
+        </div>
       </div>
 
       {/* ═══ DEPENDENCY MAP ═══ */}
