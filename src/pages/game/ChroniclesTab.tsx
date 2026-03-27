@@ -41,6 +41,13 @@ const ChroniclesTab = ({
         <h2 className="text-lg font-display font-bold">Kroniky</h2>
       </div>
 
+      {/* Victory Progress — Game Goal */}
+      <VictoryProgressPanel
+        sessionId={sessionId}
+        currentPlayerName={currentPlayerName}
+        currentTurn={currentTurn}
+      />
+
       <Tabs defaultValue="events" className="w-full">
         <TabsList className="w-full justify-start bg-card border border-border h-auto p-1 gap-1 flex-wrap">
           <TabsTrigger value="events" className="font-display text-xs gap-1">
