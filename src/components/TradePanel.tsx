@@ -403,7 +403,7 @@ const TradePanel = ({ sessionId, currentPlayerName, currentTurn, myCities, allCi
             </Button>
           ) : (
             <div className="space-y-3">
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 <div>
                   <label className="text-[10px] text-muted-foreground font-semibold">Vaše město</label>
                   <Select value={fromCityId} onValueChange={setFromCityId}>
