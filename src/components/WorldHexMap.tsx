@@ -1343,12 +1343,22 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
         )}
       </div>
 
-      {/* Bottom-center: keyboard hint */}
-      <div className="absolute bottom-3 left-1/2 -translate-x-1/2 z-20 pointer-events-none">
-        <div className="px-3 py-1 rounded-full bg-card/60 backdrop-blur-sm border border-border text-[9px] text-muted-foreground">
-          WASD / šipky = posun · kolečko = zoom · klik = průzkum / detail · ESC = zrušit
+      {/* Bottom-center: keyboard hint (desktop only) */}
+      {!isMobile && (
+        <div className="absolute bottom-3 left-1/2 -translate-x-1/2 z-20 pointer-events-none">
+          <div className="px-3 py-1 rounded-full bg-card/60 backdrop-blur-sm border border-border text-[9px] text-muted-foreground">
+            WASD / šipky = posun · kolečko = zoom · klik = průzkum / detail · ESC = zrušit
+          </div>
         </div>
-      </div>
+      )}
+      {/* Mobile hint */}
+      {isMobile && (
+        <div className="absolute bottom-3 left-1/2 -translate-x-1/2 z-20 pointer-events-none">
+          <div className="px-3 py-1 rounded-full bg-card/60 backdrop-blur-sm border border-border text-[9px] text-muted-foreground">
+            Tažení = posun · Dvěma prsty = zoom · Klepnutí = detail
+          </div>
+        </div>
+      )}
 
       {/* Bottom-right: selected unit panel */}
       {selectedStack && (
