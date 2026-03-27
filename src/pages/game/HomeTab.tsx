@@ -342,13 +342,13 @@ const HomeTab = ({
   return (
     <div className="space-y-6 pb-24 px-1">
       {/* Header */}
-      <div className="flex items-center gap-3 pt-2">
-        <Crown className="h-6 w-6 text-primary" />
-        <h2 className="text-xl font-display font-bold">Moje říše</h2>
-        <span className="text-sm text-muted-foreground font-display">Rok {currentTurn}</span>
-        <Button variant="outline" size="sm" className="ml-auto text-xs h-8" onClick={handleRecompute} disabled={recomputing}>
-          <RefreshCw className={`h-3.5 w-3.5 mr-1 ${recomputing ? "animate-spin" : ""}`} />
-          {recomputing ? "Počítám…" : "Přepočítat"}
+      <div className="flex items-center gap-2 sm:gap-3 pt-2 flex-wrap">
+        <Crown className="h-5 w-5 sm:h-6 sm:w-6 text-primary" />
+        <h2 className="text-lg sm:text-xl font-display font-bold">Moje říše</h2>
+        <span className="text-xs sm:text-sm text-muted-foreground font-display">Rok {currentTurn}</span>
+        <Button variant="outline" size="sm" className="ml-auto text-[10px] sm:text-xs h-7 sm:h-8 px-2 sm:px-3" onClick={handleRecompute} disabled={recomputing}>
+          <RefreshCw className={`h-3 w-3 sm:h-3.5 sm:w-3.5 mr-1 ${recomputing ? "animate-spin" : ""}`} />
+          {recomputing ? "…" : "Přepočítat"}
         </Button>
       </div>
 
