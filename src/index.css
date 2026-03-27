@@ -138,7 +138,14 @@
   h3 { @apply text-lg font-semibold; }
 }
 
-@layer utilities {
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+
   .text-chronicle-myth {
     color: hsl(var(--chronicle-myth));
   }
