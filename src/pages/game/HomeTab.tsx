@@ -429,22 +429,22 @@ const HomeTab = ({
             )}
 
             {/* Node overview */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              <div className="bg-muted/40 rounded-lg p-3 text-center">
-                <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">Celkem uzlů</div>
-                <div className="text-2xl font-bold font-display">{nodeStats.length}</div>
+            <div className="grid grid-cols-4 gap-2 sm:gap-3">
+              <div className="bg-muted/40 rounded-lg p-2 sm:p-3 text-center">
+                <div className="text-[8px] sm:text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-0.5 sm:mb-1">Uzlů</div>
+                <div className="text-lg sm:text-2xl font-bold font-display">{nodeStats.length}</div>
               </div>
-              <div className="bg-muted/40 rounded-lg p-3 text-center">
-                <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">Major</div>
-                <div className="text-2xl font-bold font-display">{majorNodes.length}</div>
+              <div className="bg-muted/40 rounded-lg p-2 sm:p-3 text-center">
+                <div className="text-[8px] sm:text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-0.5 sm:mb-1">Major</div>
+                <div className="text-lg sm:text-2xl font-bold font-display">{majorNodes.length}</div>
               </div>
-              <div className="bg-muted/40 rounded-lg p-3 text-center">
-                <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">Minor</div>
-                <div className="text-2xl font-bold font-display">{minorNodes.length}</div>
+              <div className="bg-muted/40 rounded-lg p-2 sm:p-3 text-center">
+                <div className="text-[8px] sm:text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-0.5 sm:mb-1">Minor</div>
+                <div className="text-lg sm:text-2xl font-bold font-display">{minorNodes.length}</div>
               </div>
-              <div className="bg-muted/40 rounded-lg p-3 text-center">
-                <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">Micro</div>
-                <div className="text-2xl font-bold font-display">{microNodes.length}</div>
+              <div className="bg-muted/40 rounded-lg p-2 sm:p-3 text-center">
+                <div className="text-[8px] sm:text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-0.5 sm:mb-1">Micro</div>
+                <div className="text-lg sm:text-2xl font-bold font-display">{microNodes.length}</div>
               </div>
             </div>
 
