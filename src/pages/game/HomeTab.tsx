@@ -54,6 +54,7 @@ import FaithPanel from "@/components/economy/FaithPanel";
 import PopulationPanel from "@/components/economy/PopulationPanel";
 import CapacityPanel from "@/components/economy/CapacityPanel";
 import MilitaryUpkeepPanel from "@/components/economy/MilitaryUpkeepPanel";
+import MobileRealmDashboard from "@/components/realm/MobileRealmDashboard";
 import FormulasReferencePanel from "@/components/economy/FormulasReferencePanel";
 
 const SETTLEMENT_LABELS: Record<string, string> = {
