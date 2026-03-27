@@ -15,7 +15,7 @@ const allTabs: { id: TabId; label: string; icon: React.ElementType }[] = [
   { id: "worldmap", label: "Mapa", icon: Map },
   { id: "realm", label: "Správa", icon: Shield },
   { id: "army", label: "Armáda", icon: Swords },
-  { id: "economy", label: "Ekonomika", icon: BarChart3 },
+  
   { id: "engine", label: "Engine", icon: Zap },
   { id: "council", label: "Rada", icon: Crown },
   { id: "feed", label: "Šepoty", icon: Newspaper },

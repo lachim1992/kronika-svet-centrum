@@ -4,8 +4,9 @@ import WorldHistoryPanel from "@/components/WorldHistoryPanel";
 import SeptandaFeed from "@/components/SeptandaFeed";
 import EventsLogPanel from "@/components/EventsLogPanel";
 import NarrativeConfigEditor from "@/components/NarrativeConfigEditor";
+import VictoryProgressPanel from "@/components/VictoryProgressPanel";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { BookOpen, BookMarked, List, MessageCircle, Settings2 } from "lucide-react";
+import { BookOpen, BookMarked, List, MessageCircle, Settings2, Trophy } from "lucide-react";
 import type { EntityIndex } from "@/hooks/useEntityIndex";
 
 interface Props {
@@ -39,6 +40,13 @@ const ChroniclesTab = ({
         <BookOpen className="h-5 w-5 text-illuminated" />
         <h2 className="text-lg font-display font-bold">Kroniky</h2>
       </div>
+
+      {/* Victory Progress — Game Goal */}
+      <VictoryProgressPanel
+        sessionId={sessionId}
+        currentPlayerName={currentPlayerName}
+        currentTurn={currentTurn}
+      />
 
       <Tabs defaultValue="events" className="w-full">
         <TabsList className="w-full justify-start bg-card border border-border h-auto p-1 gap-1 flex-wrap">
