@@ -1391,7 +1391,7 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
 
       {/* ── Hex Detail Sheet (slide-out panel) ── */}
       <Sheet open={!!selectedHex} onOpenChange={(open) => { if (!open) { setSelectedHex(null); setEditBiome(null); } }}>
-        <SheetContent side="right" className="w-[340px] sm:w-[380px] overflow-y-auto">
+        <SheetContent side={isMobile ? "bottom" : "right"} className={`${isMobile ? 'max-h-[70vh] rounded-t-xl' : 'w-[340px] sm:w-[380px]'} overflow-y-auto`}>
           <SheetHeader>
             <SheetTitle className="font-display flex items-center gap-2 text-base">
               <Hexagon className="h-5 w-5 text-primary" />
