@@ -446,6 +446,7 @@ DŮLEŽITÉ: Hráčské frakce MUSÍ mít isPlayer=true a playerName musí přes
       factionPlayerMap[cfg.realm_name || cfg.player_name] = cfg.player_name;
     }
 
+    let factionIndex = playerCount; // human players already occupy slots 1..playerCount
     for (const faction of world?.factions || []) {
       let factionPlayerName: string;
       if (faction.isPlayer) {
@@ -473,6 +474,12 @@ DŮLEŽITÉ: Hráčské frakce MUSÍ mít isPlayer=true a playerName musí přes
           session_id: sessionId, faction_name: faction.name, personality: faction.personality,
           disposition, goals: faction.goals || [], is_active: true,
         });
+        // Register AI faction as game_player (no user_id) — mirrors world-generate-init behavior
+        factionIndex++;
+        await sb.from("game_players").insert({
+          session_id: sessionId, player_name: factionPlayerName,
+          player_number: factionIndex,
+        }).catch(() => {}); // Ignore duplicate
       }
 
       for (const rt of ["food", "wood", "stone", "iron", "wealth"]) {
