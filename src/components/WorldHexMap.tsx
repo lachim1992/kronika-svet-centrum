@@ -1069,7 +1069,9 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
   return (
     <div ref={containerRef} className="relative w-full h-full bg-[#0a0c10] overflow-hidden select-none touch-none"
       onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp}
-      onPointerLeave={onPointerUp} tabIndex={0}
+      onPointerLeave={onPointerUp}
+      onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}
+      tabIndex={0}
     >
       {/* ── SVG Map ── */}
       <svg width="100%" height="100%" viewBox={`0 0 ${svgW} ${svgH}`} preserveAspectRatio="xMidYMid meet">
