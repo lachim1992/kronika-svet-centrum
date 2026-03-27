@@ -769,6 +769,47 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
     setPan({ x: dragRef.current.panX + dx, y: dragRef.current.panY + dy });
   }, []);
   const onPointerUp = useCallback(() => { dragRef.current = null; }, []);
+
+  /* ── Pinch-to-zoom for touch ── */
+  const lastTouchDist = useRef<number | null>(null);
+  const lastTouchCenter = useRef<{ x: number; y: number } | null>(null);
+  const onTouchStart = useCallback((e: ReactTouchEvent) => {
+    if (e.touches.length === 2) {
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      lastTouchDist.current = Math.sqrt(dx * dx + dy * dy);
+      lastTouchCenter.current = {
+        x: (e.touches[0].clientX + e.touches[1].clientX) / 2,
+        y: (e.touches[0].clientY + e.touches[1].clientY) / 2,
+      };
+    }
+  }, []);
+  const onTouchMove = useCallback((e: ReactTouchEvent) => {
+    if (e.touches.length === 2 && lastTouchDist.current != null) {
+      e.preventDefault();
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      const scale = dist / lastTouchDist.current;
+      setZoom(z => Math.max(0.3, Math.min(3, z * scale)));
+      lastTouchDist.current = dist;
+      // Pan with two-finger drag
+      const cx = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+      const cy = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+      if (lastTouchCenter.current) {
+        setPan(p => ({
+          x: p.x + (cx - lastTouchCenter.current!.x),
+          y: p.y + (cy - lastTouchCenter.current!.y),
+        }));
+      }
+      lastTouchCenter.current = { x: cx, y: cy };
+    }
+  }, []);
+  const onTouchEnd = useCallback(() => {
+    lastTouchDist.current = null;
+    lastTouchCenter.current = null;
+  }, []);
+
   const onWheelRef = useRef<(e: WheelEvent) => void>();
   onWheelRef.current = (e: WheelEvent) => {
     e.preventDefault();
