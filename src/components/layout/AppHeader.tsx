@@ -124,18 +124,18 @@ const AppHeader = ({ roomCode, currentTurn, worldName, playerName, myRole, curre
     <header className="sticky top-0 z-40 border-b border-border backdrop-blur-md bg-background/95"
       style={{ boxShadow: "0 2px 16px -4px hsl(220 30% 3% / 0.6)" }}
     >
-      <div className="flex items-center justify-between px-5 py-3 max-w-[1600px] mx-auto">
-        <div className="flex items-center gap-4 min-w-0">
+      <div className="flex items-center justify-between px-2 sm:px-5 py-2 sm:py-3 max-w-[1600px] mx-auto">
+        <div className="flex items-center gap-2 sm:gap-4 min-w-0">
           <ChronicleHubLogo variant="mark" size="sm" />
-          <span className="font-display font-semibold text-base text-primary truncate">
+          <span className="font-display font-semibold text-sm sm:text-base text-primary truncate max-w-[120px] sm:max-w-none">
             {worldName || "The Chronicle Hub"}
           </span>
-          <Badge className="bg-primary/15 text-primary border-primary/25 font-display text-xs shrink-0 px-3 py-1">
+          <Badge className="bg-primary/15 text-primary border-primary/25 font-display text-[10px] sm:text-xs shrink-0 px-2 sm:px-3 py-0.5 sm:py-1">
             Rok {currentTurn}
           </Badge>
         </div>
 
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex items-center gap-1 sm:gap-2 shrink-0">
           {/* Multiplayer turn close badge */}
           {gameMode === "tb_multi" && players.length > 1 && currentSessionId && (
             <TurnCloseBadge
