@@ -438,7 +438,7 @@ const Dashboard = () => {
         </>
       }
     >
-      {activeTab === "home" && <HomeTab {...sharedProps} onFoundCity={() => setShowFoundDialog(true)} />}
+      {activeTab === "home" && <HomeTab {...sharedProps} onFoundCity={() => setShowFoundDialog(true)} onTabChange={(tab) => setActiveTab(tab as TabId)} />}
       {activeTab === "world" && <WorldTab {...sharedProps} worldEntityTarget={worldEntityTarget} onClearWorldEntityTarget={() => setWorldEntityTarget(null)} />}
       {activeTab === "worldmap" && (
         <WorldMapTab
