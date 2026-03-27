@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { useIsMobile } from "@/hooks/use-mobile";
 import CityManagement from "@/components/CityManagement";
 import OnboardingChecklist from "@/components/OnboardingChecklist";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -53,6 +54,7 @@ import FaithPanel from "@/components/economy/FaithPanel";
 import PopulationPanel from "@/components/economy/PopulationPanel";
 import CapacityPanel from "@/components/economy/CapacityPanel";
 import MilitaryUpkeepPanel from "@/components/economy/MilitaryUpkeepPanel";
+import MobileRealmDashboard from "@/components/realm/MobileRealmDashboard";
 import FormulasReferencePanel from "@/components/economy/FormulasReferencePanel";
 
 const SETTLEMENT_LABELS: Record<string, string> = {
@@ -94,6 +96,7 @@ const HomeTab = ({
   sessionId, session, cities, players, resources, armies, currentPlayerName, currentTurn, myRole,
   onEntityClick, onRefetch, onFoundCity, onTabChange,
 }: Props) => {
+  const isMobile = useIsMobile();
   const isMultiplayer = session?.game_mode === "tb_multi";
   const [realm, setRealm] = useState<any>(null);
   const [stacks, setStacks] = useState<any[]>([]);
@@ -336,6 +339,32 @@ const HomeTab = ({
           onRefetch={onRefetch}
         />
       </div>
+    );
+  }
+
+  // ═══ MOBILE VIEW ═══
+  if (isMobile) {
+    return (
+      <MobileRealmDashboard
+        realm={realm}
+        myCities={myCities}
+        capital={capital}
+        provinces={provinces}
+        nodeStats={nodeStats}
+        stacks={stacks}
+        activeWars={activeWars}
+        famineCities={famineCities}
+        isolatedNodes={isolatedNodes}
+        deficitNodes={deficitNodes}
+        surplusNodes={surplusNodes}
+        currentTurn={currentTurn}
+        currentPlayerName={currentPlayerName}
+        recomputing={recomputing}
+        onRecompute={handleRecompute}
+        onCityClick={onEntityClick}
+        onTabChange={onTabChange}
+        onFoundCity={onFoundCity}
+      />
     );
   }
 
