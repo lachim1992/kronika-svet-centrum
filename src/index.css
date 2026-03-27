@@ -138,6 +138,7 @@
   h3 { @apply text-lg font-semibold; }
 }
 
+@layer utilities {
   .scrollbar-hide {
     -ms-overflow-style: none;
     scrollbar-width: none;
