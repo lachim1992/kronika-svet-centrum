@@ -1,0 +1,1 @@
+ALTER TABLE public.wiki_entries ADD COLUMN IF NOT EXISTS generating_lock timestamptz DEFAULT NULL;
