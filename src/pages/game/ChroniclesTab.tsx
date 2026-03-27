@@ -4,8 +4,9 @@ import WorldHistoryPanel from "@/components/WorldHistoryPanel";
 import SeptandaFeed from "@/components/SeptandaFeed";
 import EventsLogPanel from "@/components/EventsLogPanel";
 import NarrativeConfigEditor from "@/components/NarrativeConfigEditor";
+import VictoryProgressPanel from "@/components/VictoryProgressPanel";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { BookOpen, BookMarked, List, MessageCircle, Settings2 } from "lucide-react";
+import { BookOpen, BookMarked, List, MessageCircle, Settings2, Trophy } from "lucide-react";
 import type { EntityIndex } from "@/hooks/useEntityIndex";
 
 interface Props {
