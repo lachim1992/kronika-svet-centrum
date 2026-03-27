@@ -472,12 +472,12 @@ const TradePanel = ({ sessionId, currentPlayerName, currentTurn, myCities, allCi
                 className="text-xs"
               />
 
-              <div className="flex gap-2">
-                <Button size="sm" className="text-xs gap-1" onClick={handleCreateOffer} disabled={saving}>
+              <div className="flex flex-col sm:flex-row gap-2">
+                <Button size="sm" className="text-xs gap-1 w-full sm:w-auto" onClick={handleCreateOffer} disabled={saving}>
                   {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Ship className="h-3 w-3" />}
                   Odeslat nabídku
                 </Button>
-                <Button size="sm" variant="outline" className="text-xs" onClick={() => setShowNewOffer(false)}>
+                <Button size="sm" variant="outline" className="text-xs w-full sm:w-auto" onClick={() => setShowNewOffer(false)}>
                   Zrušit
                 </Button>
               </div>

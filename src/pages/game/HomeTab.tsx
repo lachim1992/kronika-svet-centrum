@@ -787,25 +787,36 @@ const HomeTab = ({
         </div>
       </div>
 
-      {/* ═══ DEPENDENCY MAP ═══ */}
-      <EconomyDependencyMap realm={realm} cities={myCities} armies={armies} />
-
-      {/* ═══ TRADE SYSTEM ═══ */}
-      <TradePanel
-        sessionId={sessionId}
-        currentPlayerName={currentPlayerName}
-        currentTurn={currentTurn}
-        myCities={myCities}
-        allCities={cities}
-        realm={realm}
-        onRefetch={onRefetch}
-      />
-
-      {/* ═══ SUPPLY CHAIN ═══ */}
-      <SupplyChainPanel sessionId={sessionId} playerName={currentPlayerName} currentTurn={currentTurn} />
-
-      {/* ═══ FORMULAS REFERENCE ═══ */}
-      <FormulasReferencePanel />
+      {/* ═══ ADVANCED ECON SECTIONS ═══ */}
+      <Collapsible>
+        <div className="game-card p-3 sm:p-4">
+          <div className="flex items-center gap-2">
+            <BarChart3 className="h-4 w-4 text-primary" />
+            <h3 className="text-sm font-display font-semibold">Pokročilá ekonomika</h3>
+            <CollapsibleTrigger asChild>
+              <button className="ml-auto flex items-center gap-1 text-xs text-primary hover:text-primary/80">
+                <ChevronDown className="h-3 w-3" /> Rozbalit
+              </button>
+            </CollapsibleTrigger>
+          </div>
+          <CollapsibleContent>
+            <div className="mt-3 space-y-4">
+              <EconomyDependencyMap realm={realm} cities={myCities} armies={armies} />
+              <TradePanel
+                sessionId={sessionId}
+                currentPlayerName={currentPlayerName}
+                currentTurn={currentTurn}
+                myCities={myCities}
+                allCities={cities}
+                realm={realm}
+                onRefetch={onRefetch}
+              />
+              <SupplyChainPanel sessionId={sessionId} playerName={currentPlayerName} currentTurn={currentTurn} />
+              <FormulasReferencePanel />
+            </div>
+          </CollapsibleContent>
+        </div>
+      </Collapsible>
 
       {/* ═══ COUNCIL LINK ═══ */}
       <Button
