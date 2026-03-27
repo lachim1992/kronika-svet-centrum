@@ -1835,7 +1835,7 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
 
       {/* Node Detail Sheet */}
       <Sheet open={!!selectedNode} onOpenChange={(open) => { if (!open) setSelectedNode(null); }}>
-        <SheetContent side="right" className="w-[340px] overflow-y-auto">
+        <SheetContent side={isMobile ? "bottom" : "right"} className={`${isMobile ? 'max-h-[70vh] rounded-t-xl' : 'w-[340px]'} overflow-y-auto`}>
           <SheetHeader>
             <SheetTitle className="font-display flex items-center gap-2 text-base">
               {selectedNode && (() => {
