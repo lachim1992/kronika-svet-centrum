@@ -160,14 +160,14 @@ const SupplyChainPanel = ({ sessionId, playerName, currentTurn }: Props) => {
         </div>
 
         <Tabs defaultValue="isolated" className="w-full">
-          <TabsList className="w-full grid grid-cols-3">
-            <TabsTrigger value="isolated" className="text-xs">
+          <TabsList className="w-full grid grid-cols-1 sm:grid-cols-3 h-auto gap-1 sm:gap-0 bg-transparent p-0">
+            <TabsTrigger value="isolated" className="text-xs border border-border bg-muted/30 data-[state=active]:bg-secondary">
               Izolované {isolatedNodes.length > 0 && <Badge variant="destructive" className="ml-1 text-[10px] px-1">{isolatedNodes.length}</Badge>}
             </TabsTrigger>
-            <TabsTrigger value="routes" className="text-xs">
+            <TabsTrigger value="routes" className="text-xs border border-border bg-muted/30 data-[state=active]:bg-secondary">
               Trasy {blockedRoutes.length > 0 && <Badge variant="secondary" className="ml-1 text-[10px] px-1">{blockedRoutes.length}</Badge>}
             </TabsTrigger>
-            <TabsTrigger value="nodes" className="text-xs">Uzly</TabsTrigger>
+            <TabsTrigger value="nodes" className="text-xs border border-border bg-muted/30 data-[state=active]:bg-secondary">Uzly</TabsTrigger>
           </TabsList>
 
           <TabsContent value="isolated">

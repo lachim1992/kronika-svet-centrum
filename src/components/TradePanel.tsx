@@ -224,7 +224,7 @@ const TradePanel = ({ sessionId, currentPlayerName, currentTurn, myCities, allCi
           ) : (
             <div className="space-y-2">
               {/* Net trade flows */}
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 <div className="p-2 rounded bg-muted/30">
                   <p className="text-[10px] text-muted-foreground font-semibold uppercase mb-1">Příjmy z obchodu</p>
                   {Object.entries(tradeIncome).length > 0 ? (
@@ -403,7 +403,7 @@ const TradePanel = ({ sessionId, currentPlayerName, currentTurn, myCities, allCi
             </Button>
           ) : (
             <div className="space-y-3">
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 <div>
                   <label className="text-[10px] text-muted-foreground font-semibold">Vaše město</label>
                   <Select value={fromCityId} onValueChange={setFromCityId}>
@@ -426,7 +426,7 @@ const TradePanel = ({ sessionId, currentPlayerName, currentTurn, myCities, allCi
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 <div>
                   <label className="text-[10px] text-muted-foreground font-semibold">Nabízíte</label>
                   <div className="flex gap-1">
@@ -472,12 +472,12 @@ const TradePanel = ({ sessionId, currentPlayerName, currentTurn, myCities, allCi
                 className="text-xs"
               />
 
-              <div className="flex gap-2">
-                <Button size="sm" className="text-xs gap-1" onClick={handleCreateOffer} disabled={saving}>
+              <div className="flex flex-col sm:flex-row gap-2">
+                <Button size="sm" className="text-xs gap-1 w-full sm:w-auto" onClick={handleCreateOffer} disabled={saving}>
                   {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Ship className="h-3 w-3" />}
                   Odeslat nabídku
                 </Button>
-                <Button size="sm" variant="outline" className="text-xs" onClick={() => setShowNewOffer(false)}>
+                <Button size="sm" variant="outline" className="text-xs w-full sm:w-auto" onClick={() => setShowNewOffer(false)}>
                   Zrušit
                 </Button>
               </div>

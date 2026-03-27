@@ -547,7 +547,7 @@ const HomeTab = ({
       </Collapsible>
 
       {/* ═══ SECTION 3: MACRO ECONOMY ═══ */}
-      <div className="grid grid-cols-3 gap-2 sm:gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
         {(["production", "wealth", "capacity"] as const).map(layer => {
           const val = layer === "production" ? totalProduction : layer === "wealth" ? totalWealth : totalCapacity;
           const icon = MACRO_LAYER_ICONS[layer];
@@ -559,10 +559,10 @@ const HomeTab = ({
                 <div className="h-8 w-8 sm:h-10 sm:w-10 rounded-xl bg-primary/10 flex items-center justify-center text-base sm:text-xl">{icon}</div>
                 <div className="min-w-0">
                   <h3 className="font-display font-bold text-sm sm:text-lg truncate">{label}</h3>
-                  <span className="text-[8px] sm:text-[10px] text-muted-foreground hidden sm:block">{desc}</span>
+                  <span className="text-[10px] text-muted-foreground hidden sm:block">{desc}</span>
                 </div>
               </div>
-              <div className="text-xl sm:text-3xl font-bold font-display text-primary">{val.toFixed(1)}</div>
+              <div className="text-2xl sm:text-3xl font-bold font-display text-primary">{val.toFixed(1)}</div>
               <Progress value={Math.min(100, (val / maxMacro) * 100)} className="h-1.5 sm:h-2" />
             </div>
           );
@@ -787,25 +787,36 @@ const HomeTab = ({
         </div>
       </div>
 
-      {/* ═══ DEPENDENCY MAP ═══ */}
-      <EconomyDependencyMap realm={realm} cities={myCities} armies={armies} />
-
-      {/* ═══ TRADE SYSTEM ═══ */}
-      <TradePanel
-        sessionId={sessionId}
-        currentPlayerName={currentPlayerName}
-        currentTurn={currentTurn}
-        myCities={myCities}
-        allCities={cities}
-        realm={realm}
-        onRefetch={onRefetch}
-      />
-
-      {/* ═══ SUPPLY CHAIN ═══ */}
-      <SupplyChainPanel sessionId={sessionId} playerName={currentPlayerName} currentTurn={currentTurn} />
-
-      {/* ═══ FORMULAS REFERENCE ═══ */}
-      <FormulasReferencePanel />
+      {/* ═══ ADVANCED ECON SECTIONS ═══ */}
+      <Collapsible>
+        <div className="game-card p-3 sm:p-4">
+          <div className="flex items-center gap-2">
+            <BarChart3 className="h-4 w-4 text-primary" />
+            <h3 className="text-sm font-display font-semibold">Pokročilá ekonomika</h3>
+            <CollapsibleTrigger asChild>
+              <button className="ml-auto flex items-center gap-1 text-xs text-primary hover:text-primary/80">
+                <ChevronDown className="h-3 w-3" /> Rozbalit
+              </button>
+            </CollapsibleTrigger>
+          </div>
+          <CollapsibleContent>
+            <div className="mt-3 space-y-4">
+              <EconomyDependencyMap realm={realm} cities={myCities} armies={armies} />
+              <TradePanel
+                sessionId={sessionId}
+                currentPlayerName={currentPlayerName}
+                currentTurn={currentTurn}
+                myCities={myCities}
+                allCities={cities}
+                realm={realm}
+                onRefetch={onRefetch}
+              />
+              <SupplyChainPanel sessionId={sessionId} playerName={currentPlayerName} currentTurn={currentTurn} />
+              <FormulasReferencePanel />
+            </div>
+          </CollapsibleContent>
+        </div>
+      </Collapsible>
 
       {/* ═══ COUNCIL LINK ═══ */}
       <Button
