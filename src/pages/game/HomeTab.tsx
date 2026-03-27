@@ -586,18 +586,18 @@ const HomeTab = ({
           <Users className="h-5 w-5 text-primary" />
           <h3 className="font-display font-semibold text-base">Lidská síla</h3>
         </div>
-        <div className="grid grid-cols-3 gap-4 text-center">
-          <div className="bg-muted/40 rounded-lg p-3">
-            <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">Pracovní síla</div>
-            <div className="text-2xl font-bold font-display">{wf.workforce}</div>
+        <div className="grid grid-cols-3 gap-2 sm:gap-4 text-center">
+          <div className="bg-muted/40 rounded-lg p-2 sm:p-3">
+            <div className="text-[8px] sm:text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-0.5 sm:mb-1">Pracovní síla</div>
+            <div className="text-lg sm:text-2xl font-bold font-display">{wf.workforce}</div>
           </div>
-          <div className="bg-muted/40 rounded-lg p-3">
-            <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">Vojáci</div>
-            <div className="text-2xl font-bold font-display">{wf.mobilized}</div>
+          <div className="bg-muted/40 rounded-lg p-2 sm:p-3">
+            <div className="text-[8px] sm:text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-0.5 sm:mb-1">Vojáci</div>
+            <div className="text-lg sm:text-2xl font-bold font-display">{wf.mobilized}</div>
           </div>
-          <div className={`rounded-lg p-3 ${wf.isOverMob ? "bg-destructive/10" : "bg-muted/40"}`}>
-            <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">Mobilizace</div>
-            <div className={`text-2xl font-bold font-display ${wf.isOverMob ? "text-destructive" : ""}`}>{currentMob}%</div>
+          <div className={`rounded-lg p-2 sm:p-3 ${wf.isOverMob ? "bg-destructive/10" : "bg-muted/40"}`}>
+            <div className="text-[8px] sm:text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-0.5 sm:mb-1">Mobilizace</div>
+            <div className={`text-lg sm:text-2xl font-bold font-display ${wf.isOverMob ? "text-destructive" : ""}`}>{currentMob}%</div>
           </div>
         </div>
         {wf.isOverMob && (
