@@ -96,6 +96,7 @@ const HomeTab = ({
   sessionId, session, cities, players, resources, armies, currentPlayerName, currentTurn, myRole,
   onEntityClick, onRefetch, onFoundCity, onTabChange,
 }: Props) => {
+  const isMobile = useIsMobile();
   const isMultiplayer = session?.game_mode === "tb_multi";
   const [realm, setRealm] = useState<any>(null);
   const [stacks, setStacks] = useState<any[]>([]);
