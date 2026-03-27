@@ -1200,20 +1200,22 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
       )}
 
       {/* ── Overlay Controls ── */}
-      {/* Top-left: position + stats */}
+      {/* Top-left: position + stats (simplified on mobile) */}
       <div className="absolute top-3 left-3 z-20 flex flex-col gap-1.5">
         {currentPos && (
           <Badge variant="secondary" className="text-[10px] gap-1 bg-card/80 backdrop-blur-sm border-border">
-            📍 ({currentPos.q}, {currentPos.r})
+            📍 {isMobile ? '' : `(${currentPos.q}, ${currentPos.r})`}
             {(citiesByCoord.get(hKey(currentPos.q, currentPos.r)) || []).length > 0 && (
               <span className="ml-1 font-semibold">{citiesByCoord.get(hKey(currentPos.q, currentPos.r))![0].name}</span>
             )}
           </Badge>
         )}
-        <div className="flex gap-1">
-          <Badge variant="outline" className="text-[9px] bg-card/70 backdrop-blur-sm">{discoveredCoords.size} provincií</Badge>
-          <Badge variant="outline" className="text-[9px] bg-card/70 backdrop-blur-sm">{frontierCoords.size} hranice</Badge>
-        </div>
+        {!isMobile && (
+          <div className="flex gap-1">
+            <Badge variant="outline" className="text-[9px] bg-card/70 backdrop-blur-sm">{discoveredCoords.size} provincií</Badge>
+            <Badge variant="outline" className="text-[9px] bg-card/70 backdrop-blur-sm">{frontierCoords.size} hranice</Badge>
+          </div>
+        )}
       </div>
 
       {/* Top-right: admin controls */}
