@@ -1241,15 +1241,15 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
       )}
 
       {/* Right: zoom + home controls */}
-      <div className="absolute right-3 top-1/2 -translate-y-1/2 z-20 flex flex-col gap-1.5">
-        <Button size="icon" variant="secondary" className="h-8 w-8 bg-card/80 backdrop-blur-sm border-border" onClick={zoomIn}>
-          <Plus className="h-4 w-4" />
+      <div className="absolute right-3 top-1/2 -translate-y-1/2 z-20 flex flex-col gap-2">
+        <Button size="icon" variant="secondary" className={`${isMobile ? 'h-11 w-11' : 'h-8 w-8'} bg-card/80 backdrop-blur-sm border-border`} onClick={zoomIn}>
+          <Plus className={isMobile ? 'h-5 w-5' : 'h-4 w-4'} />
         </Button>
-        <Button size="icon" variant="secondary" className="h-8 w-8 bg-card/80 backdrop-blur-sm border-border" onClick={zoomOut}>
-          <Minus className="h-4 w-4" />
+        <Button size="icon" variant="secondary" className={`${isMobile ? 'h-11 w-11' : 'h-8 w-8'} bg-card/80 backdrop-blur-sm border-border`} onClick={zoomOut}>
+          <Minus className={isMobile ? 'h-5 w-5' : 'h-4 w-4'} />
         </Button>
-        <Button size="icon" variant="secondary" className="h-8 w-8 bg-card/80 backdrop-blur-sm border-border" onClick={goHome} title="Hlavní město">
-          <Home className="h-4 w-4" />
+        <Button size="icon" variant="secondary" className={`${isMobile ? 'h-11 w-11' : 'h-8 w-8'} bg-card/80 backdrop-blur-sm border-border`} onClick={goHome} title="Hlavní město">
+          <Home className={isMobile ? 'h-5 w-5' : 'h-4 w-4'} />
         </Button>
       </div>
 
