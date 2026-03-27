@@ -8510,6 +8510,7 @@ export type Database = {
           entity_id: string | null
           entity_name: string
           entity_type: string
+          generating_lock: string | null
           history_cache: Json | null
           id: string
           image_prompt: string | null
@@ -8531,6 +8532,7 @@ export type Database = {
           entity_id?: string | null
           entity_name: string
           entity_type?: string
+          generating_lock?: string | null
           history_cache?: Json | null
           id?: string
           image_prompt?: string | null
@@ -8552,6 +8554,7 @@ export type Database = {
           entity_id?: string | null
           entity_name?: string
           entity_type?: string
+          generating_lock?: string | null
           history_cache?: Json | null
           id?: string
           image_prompt?: string | null

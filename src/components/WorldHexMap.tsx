@@ -1,4 +1,5 @@
-import { useState, useCallback, useEffect, useRef, useMemo, memo } from "react";
+import { useState, useCallback, useEffect, useRef, useMemo, memo, TouchEvent as ReactTouchEvent } from "react";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { supabase } from "@/integrations/supabase/client";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -399,6 +400,7 @@ HexTile.displayName = "HexTile";
    MAIN COMPONENT
    ═══════════════════════════════════════════════════ */
 const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }: Props) => {
+  const isMobile = useIsMobile();
   const isAdmin = myRole === "admin" || myRole === "moderator";
   const [devMode, setDevMode] = useState(isAdmin);
   const [selectedHex, setSelectedHex] = useState<HexData | null>(null);
@@ -767,6 +769,47 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
     setPan({ x: dragRef.current.panX + dx, y: dragRef.current.panY + dy });
   }, []);
   const onPointerUp = useCallback(() => { dragRef.current = null; }, []);
+
+  /* ── Pinch-to-zoom for touch ── */
+  const lastTouchDist = useRef<number | null>(null);
+  const lastTouchCenter = useRef<{ x: number; y: number } | null>(null);
+  const onTouchStart = useCallback((e: ReactTouchEvent) => {
+    if (e.touches.length === 2) {
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      lastTouchDist.current = Math.sqrt(dx * dx + dy * dy);
+      lastTouchCenter.current = {
+        x: (e.touches[0].clientX + e.touches[1].clientX) / 2,
+        y: (e.touches[0].clientY + e.touches[1].clientY) / 2,
+      };
+    }
+  }, []);
+  const onTouchMove = useCallback((e: ReactTouchEvent) => {
+    if (e.touches.length === 2 && lastTouchDist.current != null) {
+      e.preventDefault();
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      const scale = dist / lastTouchDist.current;
+      setZoom(z => Math.max(0.3, Math.min(3, z * scale)));
+      lastTouchDist.current = dist;
+      // Pan with two-finger drag
+      const cx = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+      const cy = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+      if (lastTouchCenter.current) {
+        setPan(p => ({
+          x: p.x + (cx - lastTouchCenter.current!.x),
+          y: p.y + (cy - lastTouchCenter.current!.y),
+        }));
+      }
+      lastTouchCenter.current = { x: cx, y: cy };
+    }
+  }, []);
+  const onTouchEnd = useCallback(() => {
+    lastTouchDist.current = null;
+    lastTouchCenter.current = null;
+  }, []);
+
   const onWheelRef = useRef<(e: WheelEvent) => void>();
   onWheelRef.current = (e: WheelEvent) => {
     e.preventDefault();
@@ -1026,7 +1069,9 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
   return (
     <div ref={containerRef} className="relative w-full h-full bg-[#0a0c10] overflow-hidden select-none touch-none"
       onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp}
-      onPointerLeave={onPointerUp} tabIndex={0}
+      onPointerLeave={onPointerUp}
+      onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}
+      tabIndex={0}
     >
       {/* ── SVG Map ── */}
       <svg width="100%" height="100%" viewBox={`0 0 ${svgW} ${svgH}`} preserveAspectRatio="xMidYMid meet">
@@ -1155,20 +1200,22 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
       )}
 
       {/* ── Overlay Controls ── */}
-      {/* Top-left: position + stats */}
+      {/* Top-left: position + stats (simplified on mobile) */}
       <div className="absolute top-3 left-3 z-20 flex flex-col gap-1.5">
         {currentPos && (
           <Badge variant="secondary" className="text-[10px] gap-1 bg-card/80 backdrop-blur-sm border-border">
-            📍 ({currentPos.q}, {currentPos.r})
+            📍 {isMobile ? '' : `(${currentPos.q}, ${currentPos.r})`}
             {(citiesByCoord.get(hKey(currentPos.q, currentPos.r)) || []).length > 0 && (
               <span className="ml-1 font-semibold">{citiesByCoord.get(hKey(currentPos.q, currentPos.r))![0].name}</span>
             )}
           </Badge>
         )}
-        <div className="flex gap-1">
-          <Badge variant="outline" className="text-[9px] bg-card/70 backdrop-blur-sm">{discoveredCoords.size} provincií</Badge>
-          <Badge variant="outline" className="text-[9px] bg-card/70 backdrop-blur-sm">{frontierCoords.size} hranice</Badge>
-        </div>
+        {!isMobile && (
+          <div className="flex gap-1">
+            <Badge variant="outline" className="text-[9px] bg-card/70 backdrop-blur-sm">{discoveredCoords.size} provincií</Badge>
+            <Badge variant="outline" className="text-[9px] bg-card/70 backdrop-blur-sm">{frontierCoords.size} hranice</Badge>
+          </div>
+        )}
       </div>
 
       {/* Top-right: admin controls */}
@@ -1196,15 +1243,15 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
       )}
 
       {/* Right: zoom + home controls */}
-      <div className="absolute right-3 top-1/2 -translate-y-1/2 z-20 flex flex-col gap-1.5">
-        <Button size="icon" variant="secondary" className="h-8 w-8 bg-card/80 backdrop-blur-sm border-border" onClick={zoomIn}>
-          <Plus className="h-4 w-4" />
+      <div className="absolute right-3 top-1/2 -translate-y-1/2 z-20 flex flex-col gap-2">
+        <Button size="icon" variant="secondary" className={`${isMobile ? 'h-11 w-11' : 'h-8 w-8'} bg-card/80 backdrop-blur-sm border-border`} onClick={zoomIn}>
+          <Plus className={isMobile ? 'h-5 w-5' : 'h-4 w-4'} />
         </Button>
-        <Button size="icon" variant="secondary" className="h-8 w-8 bg-card/80 backdrop-blur-sm border-border" onClick={zoomOut}>
-          <Minus className="h-4 w-4" />
+        <Button size="icon" variant="secondary" className={`${isMobile ? 'h-11 w-11' : 'h-8 w-8'} bg-card/80 backdrop-blur-sm border-border`} onClick={zoomOut}>
+          <Minus className={isMobile ? 'h-5 w-5' : 'h-4 w-4'} />
         </Button>
-        <Button size="icon" variant="secondary" className="h-8 w-8 bg-card/80 backdrop-blur-sm border-border" onClick={goHome} title="Hlavní město">
-          <Home className="h-4 w-4" />
+        <Button size="icon" variant="secondary" className={`${isMobile ? 'h-11 w-11' : 'h-8 w-8'} bg-card/80 backdrop-blur-sm border-border`} onClick={goHome} title="Hlavní město">
+          <Home className={isMobile ? 'h-5 w-5' : 'h-4 w-4'} />
         </Button>
       </div>
 
@@ -1298,12 +1345,22 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
         )}
       </div>
 
-      {/* Bottom-center: keyboard hint */}
-      <div className="absolute bottom-3 left-1/2 -translate-x-1/2 z-20 pointer-events-none">
-        <div className="px-3 py-1 rounded-full bg-card/60 backdrop-blur-sm border border-border text-[9px] text-muted-foreground">
-          WASD / šipky = posun · kolečko = zoom · klik = průzkum / detail · ESC = zrušit
+      {/* Bottom-center: keyboard hint (desktop only) */}
+      {!isMobile && (
+        <div className="absolute bottom-3 left-1/2 -translate-x-1/2 z-20 pointer-events-none">
+          <div className="px-3 py-1 rounded-full bg-card/60 backdrop-blur-sm border border-border text-[9px] text-muted-foreground">
+            WASD / šipky = posun · kolečko = zoom · klik = průzkum / detail · ESC = zrušit
+          </div>
         </div>
-      </div>
+      )}
+      {/* Mobile hint */}
+      {isMobile && (
+        <div className="absolute bottom-3 left-1/2 -translate-x-1/2 z-20 pointer-events-none">
+          <div className="px-3 py-1 rounded-full bg-card/60 backdrop-blur-sm border border-border text-[9px] text-muted-foreground">
+            Tažení = posun · Dvěma prsty = zoom · Klepnutí = detail
+          </div>
+        </div>
+      )}
 
       {/* Bottom-right: selected unit panel */}
       {selectedStack && (
@@ -1336,7 +1393,7 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
 
       {/* ── Hex Detail Sheet (slide-out panel) ── */}
       <Sheet open={!!selectedHex} onOpenChange={(open) => { if (!open) { setSelectedHex(null); setEditBiome(null); } }}>
-        <SheetContent side="right" className="w-[340px] sm:w-[380px] overflow-y-auto">
+        <SheetContent side={isMobile ? "bottom" : "right"} className={`${isMobile ? 'max-h-[70vh] rounded-t-xl' : 'w-[340px] sm:w-[380px]'} overflow-y-auto`}>
           <SheetHeader>
             <SheetTitle className="font-display flex items-center gap-2 text-base">
               <Hexagon className="h-5 w-5 text-primary" />
@@ -1780,7 +1837,7 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
 
       {/* Node Detail Sheet */}
       <Sheet open={!!selectedNode} onOpenChange={(open) => { if (!open) setSelectedNode(null); }}>
-        <SheetContent side="right" className="w-[340px] overflow-y-auto">
+        <SheetContent side={isMobile ? "bottom" : "right"} className={`${isMobile ? 'max-h-[70vh] rounded-t-xl' : 'w-[340px]'} overflow-y-auto`}>
           <SheetHeader>
             <SheetTitle className="font-display flex items-center gap-2 text-base">
               {selectedNode && (() => {

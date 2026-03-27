@@ -187,7 +187,7 @@ const ChroWikiDetailPanel = ({
       // Direct DB check to avoid stale props
       const { data: dbWiki } = await supabase
         .from("wiki_entries" as any)
-        .select("id, ai_description, last_enriched_turn")
+        .select("id, ai_description, last_enriched_turn, generating_lock")
         .eq("session_id", sessionId)
         .eq("entity_type", entityType)
         .eq("entity_id", entityId)
@@ -195,12 +195,41 @@ const ChroWikiDetailPanel = ({
 
       const aiDesc = (dbWiki as any)?.ai_description;
       const enrichedTurn = (dbWiki as any)?.last_enriched_turn || 0;
+      const generatingLock = (dbWiki as any)?.generating_lock;
 
       // Already has content — check TTL staleness
       if (aiDesc && typeof aiDesc === "string" && aiDesc.trim().length >= 10) {
         const turnsSinceEnrich = (currentTurn || 1) - enrichedTurn;
         if (turnsSinceEnrich >= 10) setWikiStale(true);
         return;
+      }
+
+      // Another player is already generating — wait and poll
+      if (generatingLock) {
+        const lockAge = Date.now() - new Date(generatingLock).getTime();
+        if (lockAge < 120000) { // lock is younger than 2 minutes — skip
+          setLazyGenerating(true);
+          // Poll for content appearing
+          const poll = setInterval(async () => {
+            const { data: check } = await supabase
+              .from("wiki_entries" as any)
+              .select("ai_description")
+              .eq("session_id", sessionId)
+              .eq("entity_type", entityType)
+              .eq("entity_id", entityId)
+              .maybeSingle();
+            const desc = (check as any)?.ai_description;
+            if (desc && typeof desc === "string" && desc.trim().length >= 10) {
+              clearInterval(poll);
+              setLazyGenerating(false);
+              await onRefreshWiki();
+            }
+          }, 3000);
+          // Max wait 60s
+          setTimeout(() => { clearInterval(poll); setLazyGenerating(false); }, 60000);
+          return;
+        }
+        // Lock expired — continue with generation
       }
 
       // No content yet — check if lazy gen is enabled
@@ -211,6 +240,13 @@ const ChroWikiDetailPanel = ({
         .maybeSingle();
       const econ = (cfgData as any)?.economic_params || {};
       if (econ.lazy_generate_on_open === false) return;
+
+      // Set generating lock
+      if (dbWiki) {
+        await supabase.from("wiki_entries" as any)
+          .update({ generating_lock: new Date().toISOString() } as any)
+          .eq("id", (dbWiki as any).id);
+      }
 
       setLazyGenerating(true);
       try {
@@ -223,16 +259,29 @@ const ChroWikiDetailPanel = ({
           },
         });
         if (!error && genData?.aiDescription) {
-          // Mark generation turn
+          // Mark generation turn + clear lock
           if (dbWiki) {
             await supabase.from("wiki_entries" as any)
-              .update({ last_enriched_turn: currentTurn || 1 } as any)
+              .update({ last_enriched_turn: currentTurn || 1, generating_lock: null } as any)
               .eq("id", (dbWiki as any).id);
           }
           await onRefreshWiki();
+        } else {
+          // Clear lock on failure
+          if (dbWiki) {
+            await supabase.from("wiki_entries" as any)
+              .update({ generating_lock: null } as any)
+              .eq("id", (dbWiki as any).id);
+          }
         }
       } catch (e) {
         console.error("Lazy wiki generation failed:", e);
+        // Clear lock on error
+        if (dbWiki) {
+          await supabase.from("wiki_entries" as any)
+            .update({ generating_lock: null } as any)
+            .eq("id", (dbWiki as any).id);
+        }
       } finally {
         setLazyGenerating(false);
       }
