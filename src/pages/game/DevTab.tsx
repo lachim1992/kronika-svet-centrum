@@ -86,6 +86,7 @@ const DevTab = ({
       />
       <DevConsolePanel sessionId={sessionId} currentTurn={currentTurn} />
       <ProvinceGraphPanel sessionId={sessionId} />
+      <HexNodeMechanicsPanel sessionId={sessionId} />
     </div>
   );
 };
