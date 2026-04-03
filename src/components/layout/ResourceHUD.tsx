@@ -3,6 +3,9 @@ import { supabase } from "@/integrations/supabase/client";
 import { Slider } from "@/components/ui/slider";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
+  Tooltip, TooltipContent, TooltipTrigger, TooltipProvider,
+} from "@/components/ui/tooltip";
+import {
   Users, Gauge,
   ChevronDown, Skull, TrendingUp, Network, Zap, Church
 } from "lucide-react";
