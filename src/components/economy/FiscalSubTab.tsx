@@ -1,29 +1,38 @@
+import { useState } from "react";
+import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { InfoTip } from "@/components/ui/info-tip";
 import { Progress } from "@/components/ui/progress";
+import { Button } from "@/components/ui/button";
+import { toast } from "sonner";
 import { TRADE_IDEOLOGIES, type TradeIdeologyDef } from "@/lib/goodsCatalog";
 
 interface Props {
   realm: any;
+  sessionId?: string;
+  playerName?: string;
+  onRefetch?: () => void;
 }
 
-const FiscalSubTab = ({ realm }: Props) => {
+const FiscalSubTab = ({ realm, sessionId, playerName, onRefetch }: Props) => {
+  const [switching, setSwitching] = useState(false);
+
   const taxMarket = realm?.tax_market ?? 0;
   const taxTransit = realm?.tax_transit ?? 0;
   const taxExtraction = realm?.tax_extraction ?? 0;
-  const popTax = realm?.total_wealth ?? 0; // legacy pop tax from wealth flow
+  const popTax = realm?.total_wealth ?? 0;
   const capture = realm?.commercial_capture ?? 0;
   const retention = realm?.commercial_retention ?? 0;
   const ideology = realm?.trade_ideology || "balanced";
   const goldReserve = realm?.gold_reserve ?? 0;
 
-  const totalFiscal = taxMarket + taxTransit + taxExtraction + popTax;
-  const maxComponent = Math.max(taxMarket, taxTransit, taxExtraction, popTax, 1);
-
   const idData = TRADE_IDEOLOGIES.find((t: TradeIdeologyDef) => t.key === ideology) || TRADE_IDEOLOGIES[0];
   const flow_multiplier = idData.merchantFlowMult;
   const tariff_base = idData.tariffBase;
-  const domestic_retention_bonus = ideology === "crown_mercantile" ? 0.15 : ideology === "guild_chartered" ? 0.10 : 0;
+  const domestic_retention_bonus = ideology === "crown_mercantile" ? 0.15 : ideology === "guild_chartered" ? 0.10 : ideology === "palace_commanded" ? 0.20 : 0;
+
+  const totalFiscal = taxMarket + taxTransit + taxExtraction + popTax;
+  const maxComponent = Math.max(taxMarket, taxTransit, taxExtraction, popTax, 1);
 
   const components = [
     { label: "👥 Population Tax", value: popTax, desc: "Odvod z populace a urbanizace (legacy wealth flow)", color: "bg-emerald-500" },
@@ -31,6 +40,22 @@ const FiscalSubTab = ({ realm }: Props) => {
     { label: "🚢 Transit Tax", value: taxTransit, desc: "Clo z průchozích obchodních toků přes huby a přístavy", color: "bg-amber-500" },
     { label: "⛏️ Extraction Tax", value: taxExtraction, desc: "Příjem z korunních dolů a monopolních source nodes", color: "bg-orange-500" },
   ];
+
+  const handleIdeologySwitch = async (newIdeology: string) => {
+    if (!sessionId || !playerName || newIdeology === ideology) return;
+    setSwitching(true);
+    try {
+      await supabase.from("realm_resources").update({
+        trade_ideology: newIdeology,
+      }).eq("session_id", sessionId).eq("player_name", playerName);
+      toast.success(`Obchodní ideologie změněna na "${TRADE_IDEOLOGIES.find(t => t.key === newIdeology)?.label}"`);
+      onRefetch?.();
+    } catch (e: any) {
+      toast.error("Chyba při změně ideologie");
+    } finally {
+      setSwitching(false);
+    }
+  };
 
   return (
     <div className="space-y-4">
@@ -94,19 +119,20 @@ const FiscalSubTab = ({ realm }: Props) => {
         </Card>
       </div>
 
-      {/* Trade ideology */}
+      {/* Trade ideology with switcher */}
       <Card>
         <CardHeader className="p-4 pb-2">
           <CardTitle className="text-sm flex items-center gap-2">
-            📜 Obchodní ideologie: <span className="text-primary">{idData.label}</span>
-            <InfoTip>Ideologie ovlivňuje multiplikátory obchodních toků, celní sazby a domácí retenci. Nastavuje se v realm_resources.trade_ideology.</InfoTip>
+            📜 Obchodní ideologie
+            <InfoTip>Ideologie ovlivňuje multiplikátory obchodních toků, celní sazby a domácí retenci. Změna platí od příštího kola.</InfoTip>
           </CardTitle>
         </CardHeader>
-        <CardContent className="p-4 pt-1">
+        <CardContent className="p-4 pt-1 space-y-4">
+          {/* Current ideology stats */}
           <div className="grid grid-cols-3 gap-3 text-xs">
             <div className="bg-muted/40 rounded-lg p-3 text-center">
               <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">Flow Mult</div>
-            <div className="text-lg font-bold font-mono">{flow_multiplier}×</div>
+              <div className="text-lg font-bold font-mono">{flow_multiplier}×</div>
             </div>
             <div className="bg-muted/40 rounded-lg p-3 text-center">
               <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">Tariff Base</div>
@@ -117,6 +143,31 @@ const FiscalSubTab = ({ realm }: Props) => {
               <div className="text-lg font-bold font-mono">{domestic_retention_bonus > 0 ? "+" : ""}{(domestic_retention_bonus * 100).toFixed(0)}%</div>
             </div>
           </div>
+
+          {/* Ideology switcher */}
+          {sessionId && playerName && (
+            <div className="space-y-2">
+              <h5 className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Změnit ideologii</h5>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {TRADE_IDEOLOGIES.map((tid) => (
+                  <Button
+                    key={tid.key}
+                    variant={tid.key === ideology ? "default" : "outline"}
+                    size="sm"
+                    className="text-xs h-auto py-2 px-3 justify-start"
+                    disabled={switching || tid.key === ideology}
+                    onClick={() => handleIdeologySwitch(tid.key)}
+                  >
+                    <span className="mr-1.5">{tid.icon}</span>
+                    <div className="text-left">
+                      <div className="font-semibold">{tid.label}</div>
+                      <div className="text-[9px] text-muted-foreground font-normal">{tid.description}</div>
+                    </div>
+                  </Button>
+                ))}
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
 
