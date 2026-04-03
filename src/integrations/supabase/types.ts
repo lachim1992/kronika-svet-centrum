@@ -6684,9 +6684,12 @@ export type Database = {
       }
       province_hexes: {
         Row: {
+          access_score: number | null
           biome_family: string
           coastal: boolean
           created_at: string
+          forest_density: number | null
+          geology_type: string | null
           has_bridge: boolean
           has_river: boolean
           id: string
@@ -6699,15 +6702,19 @@ export type Database = {
           province_id: string | null
           q: number
           r: number
+          resource_deposits: Json | null
           river_direction: string | null
           seed: string
           session_id: string
           temp_band: number
         }
         Insert: {
+          access_score?: number | null
           biome_family?: string
           coastal?: boolean
           created_at?: string
+          forest_density?: number | null
+          geology_type?: string | null
           has_bridge?: boolean
           has_river?: boolean
           id?: string
@@ -6720,15 +6727,19 @@ export type Database = {
           province_id?: string | null
           q: number
           r: number
+          resource_deposits?: Json | null
           river_direction?: string | null
           seed: string
           session_id: string
           temp_band?: number
         }
         Update: {
+          access_score?: number | null
           biome_family?: string
           coastal?: boolean
           created_at?: string
+          forest_density?: number | null
+          geology_type?: string | null
           has_bridge?: boolean
           has_river?: boolean
           id?: string
@@ -6741,6 +6752,7 @@ export type Database = {
           province_id?: string | null
           q?: number
           r?: number
+          resource_deposits?: Json | null
           river_direction?: string | null
           seed?: string
           session_id?: string
@@ -6772,11 +6784,13 @@ export type Database = {
       }
       province_nodes: {
         Row: {
+          active_recipes: Json | null
           besieged_by: string | null
           besieging_stack_id: string | null
           biome_at_build: string | null
           built_by: string | null
           built_turn: number | null
+          capability_tags: string[] | null
           capacity_score: number
           city_id: string | null
           collapse_severity: number
@@ -6795,6 +6809,7 @@ export type Database = {
           fortification_level: number
           garrison_strength: number | null
           growth_rate: number
+          guild_level: number | null
           hex_q: number
           hex_r: number
           hinterland_level: number
@@ -6819,6 +6834,7 @@ export type Database = {
           population: number
           production_base: number
           production_output: number
+          production_role: string | null
           province_id: string
           resource_output: Json
           route_access_factor: number
@@ -6826,6 +6842,7 @@ export type Database = {
           session_id: string
           siege_turn_start: number | null
           spawned_strategic_resource: string | null
+          specialization_scores: Json | null
           stability_factor: number
           strategic_resource_tier: number
           strategic_resource_type: string | null
@@ -6842,11 +6859,13 @@ export type Database = {
           wealth_output: number
         }
         Insert: {
+          active_recipes?: Json | null
           besieged_by?: string | null
           besieging_stack_id?: string | null
           biome_at_build?: string | null
           built_by?: string | null
           built_turn?: number | null
+          capability_tags?: string[] | null
           capacity_score?: number
           city_id?: string | null
           collapse_severity?: number
@@ -6865,6 +6884,7 @@ export type Database = {
           fortification_level?: number
           garrison_strength?: number | null
           growth_rate?: number
+          guild_level?: number | null
           hex_q?: number
           hex_r?: number
           hinterland_level?: number
@@ -6889,6 +6909,7 @@ export type Database = {
           population?: number
           production_base?: number
           production_output?: number
+          production_role?: string | null
           province_id: string
           resource_output?: Json
           route_access_factor?: number
@@ -6896,6 +6917,7 @@ export type Database = {
           session_id: string
           siege_turn_start?: number | null
           spawned_strategic_resource?: string | null
+          specialization_scores?: Json | null
           stability_factor?: number
           strategic_resource_tier?: number
           strategic_resource_type?: string | null
@@ -6912,11 +6934,13 @@ export type Database = {
           wealth_output?: number
         }
         Update: {
+          active_recipes?: Json | null
           besieged_by?: string | null
           besieging_stack_id?: string | null
           biome_at_build?: string | null
           built_by?: string | null
           built_turn?: number | null
+          capability_tags?: string[] | null
           capacity_score?: number
           city_id?: string | null
           collapse_severity?: number
@@ -6935,6 +6959,7 @@ export type Database = {
           fortification_level?: number
           garrison_strength?: number | null
           growth_rate?: number
+          guild_level?: number | null
           hex_q?: number
           hex_r?: number
           hinterland_level?: number
@@ -6959,6 +6984,7 @@ export type Database = {
           population?: number
           production_base?: number
           production_output?: number
+          production_role?: string | null
           province_id?: string
           resource_output?: Json
           route_access_factor?: number
@@ -6966,6 +6992,7 @@ export type Database = {
           session_id?: string
           siege_turn_start?: number | null
           spawned_strategic_resource?: string | null
+          specialization_scores?: Json | null
           stability_factor?: number
           strategic_resource_tier?: number
           strategic_resource_type?: string | null
@@ -7329,6 +7356,8 @@ export type Database = {
           army_sigil_confirmed: boolean
           army_sigil_prompt: string | null
           army_sigil_url: string | null
+          commercial_capture: number | null
+          commercial_retention: number | null
           computed_modifiers: Json | null
           connected_nodes: number | null
           created_at: string
@@ -7385,6 +7414,10 @@ export type Database = {
           strategic_silk_tier: number
           strategic_timber_tier: number
           supply_strain: number | null
+          tax_extraction: number | null
+          tax_market: number | null
+          tax_population: number | null
+          tax_transit: number | null
           technological_prestige: number
           total_capacity: number
           total_importance: number
@@ -7392,6 +7425,7 @@ export type Database = {
           total_production: number
           total_supplies: number | null
           total_wealth: number
+          trade_ideology: string | null
           updated_at: string
           warrior_ratio: number | null
           wood_reserve: number
@@ -7400,6 +7434,8 @@ export type Database = {
           army_sigil_confirmed?: boolean
           army_sigil_prompt?: string | null
           army_sigil_url?: string | null
+          commercial_capture?: number | null
+          commercial_retention?: number | null
           computed_modifiers?: Json | null
           connected_nodes?: number | null
           created_at?: string
@@ -7456,6 +7492,10 @@ export type Database = {
           strategic_silk_tier?: number
           strategic_timber_tier?: number
           supply_strain?: number | null
+          tax_extraction?: number | null
+          tax_market?: number | null
+          tax_population?: number | null
+          tax_transit?: number | null
           technological_prestige?: number
           total_capacity?: number
           total_importance?: number
@@ -7463,6 +7503,7 @@ export type Database = {
           total_production?: number
           total_supplies?: number | null
           total_wealth?: number
+          trade_ideology?: string | null
           updated_at?: string
           warrior_ratio?: number | null
           wood_reserve?: number
@@ -7471,6 +7512,8 @@ export type Database = {
           army_sigil_confirmed?: boolean
           army_sigil_prompt?: string | null
           army_sigil_url?: string | null
+          commercial_capture?: number | null
+          commercial_retention?: number | null
           computed_modifiers?: Json | null
           connected_nodes?: number | null
           created_at?: string
@@ -7527,6 +7570,10 @@ export type Database = {
           strategic_silk_tier?: number
           strategic_timber_tier?: number
           supply_strain?: number | null
+          tax_extraction?: number | null
+          tax_market?: number | null
+          tax_population?: number | null
+          tax_transit?: number | null
           technological_prestige?: number
           total_capacity?: number
           total_importance?: number
@@ -7534,6 +7581,7 @@ export type Database = {
           total_production?: number
           total_supplies?: number | null
           total_wealth?: number
+          trade_ideology?: string | null
           updated_at?: string
           warrior_ratio?: number | null
           wood_reserve?: number
