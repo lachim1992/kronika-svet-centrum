@@ -1,7 +1,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { InfoTip } from "@/components/ui/info-tip";
 import { Progress } from "@/components/ui/progress";
-import { TRADE_IDEOLOGIES } from "@/lib/goodsCatalog";
+import { TRADE_IDEOLOGIES, type TradeIdeologyDef } from "@/lib/goodsCatalog";
 
 interface Props {
   realm: any;
