@@ -186,6 +186,15 @@ const AUDIT_ITEMS: AuditItem[] = [
   { feature: "Road visualization ↔ flow_paths", status: "implemented", serverFile: "flow_paths tabulka", clientFile: "RoadNetworkOverlay.tsx", notes: "Striktně z DB, bez fallbacků" },
   { feature: "Emergent urbanization", status: "missing", serverFile: "—", clientFile: "—", notes: "Trade flow akumulace má generovat minor zástavbu — nepropojeno" },
   { feature: "Toll collection (regulators)", status: "partial", serverFile: "process-turn", clientFile: "—", notes: "Definováno v designu, implementace nejistá" },
+  // GOODS ECONOMY v4.1 — planned features
+  { feature: "Goods production chain (source→processing→urban→guild)", status: "missing", serverFile: "compute-economy-flow (planned)", clientFile: "goodsCatalog.ts", notes: "Architektura připravena, engine nezpracovává recipes" },
+  { feature: "Demand basket computation", status: "missing", serverFile: "compute-economy-flow (planned)", clientFile: "goodsCatalog.ts", notes: "DB tabulka demand_baskets vytvořena, engine neplní" },
+  { feature: "Trade pressure engine", status: "missing", serverFile: "compute-trade-flows (planned)", clientFile: "goodsCatalog.ts", notes: "Vzorec definován, edge function neexistuje" },
+  { feature: "Commercial retention/capture", status: "missing", serverFile: "process-turn (planned)", clientFile: "—", notes: "Sloupce přidány do realm_resources" },
+  { feature: "Macro aggregation from goods", status: "missing", serverFile: "process-turn (planned)", clientFile: "goodsCatalog.ts", notes: "Top-bar stats mají být odvozeny z goods layer" },
+  { feature: "Quality inheritance (variants)", status: "missing", serverFile: "—", clientFile: "goodsCatalog.ts", notes: "Pravidlo: variants dekorují, nepřepisují parent ekonomiku" },
+  { feature: "Node capability tags", status: "partial", serverFile: "—", clientFile: "goodsCatalog.ts", notes: "Mapping definován v goodsCatalog.ts, DB sloupec přidán" },
+  { feature: "Guild specialization memory", status: "missing", serverFile: "—", clientFile: "—", notes: "specialization_scores jsonb na province_nodes — engine nepoužívá" },
 ];
 
 // ═══════════════════════════════════════════
