@@ -85,6 +85,7 @@ const DevTab = ({
         memoriesCount={memoriesCount}
         playersCount={playersCount}
       />
+      <GoodsEconomyDebugPanel sessionId={sessionId} />
       <DevConsolePanel sessionId={sessionId} currentTurn={currentTurn} />
       <ProvinceGraphPanel sessionId={sessionId} />
       <HexNodeMechanicsPanel sessionId={sessionId} />
