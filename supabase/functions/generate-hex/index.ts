@@ -301,7 +301,48 @@ Deno.serve(async (req) => {
       if (newRegion) macroRegionId = newRegion.id;
     }
 
-    // Insert hex
+    // ── Generate resource_deposits based on biome ──
+    const BIOME_RESOURCE_MAP: Record<string, Array<{ key: string; yield_range: [number, number]; quality_range: [number, number]; chance: number }>> = {
+      plains:    [{ key: "wheat", yield_range: [4,8], quality_range: [40,80], chance: 0.8 }, { key: "flax", yield_range: [2,5], quality_range: [40,70], chance: 0.3 }, { key: "cattle", yield_range: [1,4], quality_range: [50,80], chance: 0.4 }],
+      forest:    [{ key: "timber", yield_range: [4,8], quality_range: [50,90], chance: 0.9 }, { key: "game", yield_range: [2,4], quality_range: [40,70], chance: 0.5 }, { key: "resin", yield_range: [1,3], quality_range: [50,80], chance: 0.3 }, { key: "herbs", yield_range: [1,3], quality_range: [40,70], chance: 0.3 }],
+      hills:     [{ key: "stone", yield_range: [3,7], quality_range: [50,90], chance: 0.7 }, { key: "iron_ore", yield_range: [2,5], quality_range: [40,80], chance: 0.5 }, { key: "copper_ore", yield_range: [1,4], quality_range: [40,80], chance: 0.3 }, { key: "sheep", yield_range: [2,5], quality_range: [50,80], chance: 0.4 }],
+      mountains: [{ key: "iron_ore", yield_range: [3,7], quality_range: [50,90], chance: 0.6 }, { key: "stone", yield_range: [3,6], quality_range: [60,95], chance: 0.7 }, { key: "gold_ore", yield_range: [1,3], quality_range: [40,80], chance: 0.15 }, { key: "gems_raw", yield_range: [1,2], quality_range: [50,90], chance: 0.1 }],
+      desert:    [{ key: "salt", yield_range: [2,5], quality_range: [50,90], chance: 0.5 }, { key: "incense_raw", yield_range: [1,3], quality_range: [60,90], chance: 0.2 }],
+      swamp:     [{ key: "clay", yield_range: [3,6], quality_range: [40,70], chance: 0.6 }, { key: "herbs", yield_range: [2,4], quality_range: [50,80], chance: 0.5 }, { key: "fish", yield_range: [2,5], quality_range: [40,70], chance: 0.4 }],
+      tundra:    [{ key: "furs", yield_range: [2,4], quality_range: [60,90], chance: 0.5 }, { key: "stone", yield_range: [1,4], quality_range: [40,70], chance: 0.3 }],
+    };
+
+    // Coastal bonus
+    const COASTAL_RESOURCES = [
+      { key: "fish", yield_range: [3,7] as [number,number], quality_range: [50,80] as [number,number], chance: 0.7 },
+      { key: "salt", yield_range: [1,4] as [number,number], quality_range: [50,80] as [number,number], chance: 0.3 },
+    ];
+
+    const deposits: Array<{ resource_type_key: string; yield_per_turn: number; quality: number }> = [];
+    const biomeResources = BIOME_RESOURCE_MAP[biomeFamily] || [];
+    
+    for (const res of biomeResources) {
+      const roll = hashSeed(`${hexSeed}:res:${res.key}`);
+      if (roll < res.chance) {
+        const yieldVal = res.yield_range[0] + Math.round(hashSeed(`${hexSeed}:yield:${res.key}`) * (res.yield_range[1] - res.yield_range[0]));
+        const qualityVal = res.quality_range[0] + Math.round(hashSeed(`${hexSeed}:qual:${res.key}`) * (res.quality_range[1] - res.quality_range[0]));
+        deposits.push({ resource_type_key: res.key, yield_per_turn: yieldVal, quality: qualityVal });
+      }
+    }
+
+    // Coastal extras
+    if (coastal) {
+      for (const res of COASTAL_RESOURCES) {
+        const roll = hashSeed(`${hexSeed}:coast:${res.key}`);
+        if (roll < res.chance && !deposits.find(d => d.resource_type_key === res.key)) {
+          const yieldVal = res.yield_range[0] + Math.round(hashSeed(`${hexSeed}:cyield:${res.key}`) * (res.yield_range[1] - res.yield_range[0]));
+          const qualityVal = res.quality_range[0] + Math.round(hashSeed(`${hexSeed}:cqual:${res.key}`) * (res.quality_range[1] - res.quality_range[0]));
+          deposits.push({ resource_type_key: res.key, yield_per_turn: yieldVal, quality: qualityVal });
+        }
+      }
+    }
+
+    // Insert hex with resource_deposits
     const { data: hex, error } = await sb
       .from("province_hexes")
       .insert({
@@ -315,6 +356,7 @@ Deno.serve(async (req) => {
         biome_family: biomeFamily,
         coastal,
         macro_region_id: macroRegionId,
+        resource_deposits: deposits.length > 0 ? deposits : null,
       })
       .select()
       .single();

@@ -1145,18 +1145,144 @@ Deno.serve(async (req) => {
     const newProductionReserve = Math.max(0, (realm.production_reserve || 0) + productionIncome);
 
     // ── Goods economy: blend fiscal data from compute-trade-flows ──
-    // Read back the goods fiscal columns (written by compute-trade-flows)
     const goodsTaxMarket = realm.tax_market || 0;
     const goodsTaxTransit = realm.tax_transit || 0;
     const goodsTaxExtraction = realm.tax_extraction || 0;
     const goodsCapture = realm.commercial_capture || 0;
     const goodsRetention = realm.commercial_retention || 0;
 
-    // Blend goods fiscal data into wealth income (additive layer, not replacement yet)
-    const goodsFiscalBonus = Math.round(goodsTaxMarket + goodsTaxTransit + goodsTaxExtraction + goodsCapture);
+    // Full goods fiscal integration (replaces legacy for wealth component)
+    const goodsFiscalTotal = goodsTaxMarket + goodsTaxTransit + goodsTaxExtraction + goodsCapture;
+    const goodsFiscalBonus = Math.round(goodsFiscalTotal);
     newGoldReserve += goodsFiscalBonus;
     if (goodsFiscalBonus > 0) {
       logEntries.push(`📦 Goods ekonomika: +${goodsFiscalBonus} 💰 (trh ${Math.round(goodsTaxMarket)} + tranzit ${Math.round(goodsTaxTransit)} + těžba ${Math.round(goodsTaxExtraction)} + export ${Math.round(goodsCapture)})`);
+    }
+
+    // ── Demand basket feedback → city stability & population ──
+    // Load demand baskets computed by compute-trade-flows
+    const { data: demandBaskets } = await supabase.from("demand_baskets")
+      .select("city_id, basket_type, satisfaction, deficit_volume")
+      .eq("session_id", sessionId);
+
+    if (demandBaskets && demandBaskets.length > 0) {
+      // Group by city
+      const basketsByCity = new Map<string, any[]>();
+      for (const b of demandBaskets) {
+        const arr = basketsByCity.get(b.city_id) || [];
+        arr.push(b);
+        basketsByCity.set(b.city_id, arr);
+      }
+
+      for (const city of myCities) {
+        const baskets = basketsByCity.get(city.id) || [];
+        if (baskets.length === 0) continue;
+
+        // Avg satisfaction across all baskets
+        const avgSat = baskets.reduce((s: number, b: any) => s + (b.satisfaction || 0), 0) / baskets.length;
+        // Staple food satisfaction drives population
+        const stapleSat = baskets.find((b: any) => b.basket_type === "staple_food")?.satisfaction || 0;
+        // Ritual satisfaction drives faith
+        const ritualSat = baskets.find((b: any) => b.basket_type === "ritual")?.satisfaction || 0;
+
+        // Stability drift from demand fulfillment
+        let stabilityDrift = 0;
+        if (avgSat > 0.8) stabilityDrift = 2;      // Well-supplied
+        else if (avgSat > 0.5) stabilityDrift = 0;  // OK
+        else if (avgSat > 0.3) stabilityDrift = -2;  // Under-supplied
+        else stabilityDrift = -5;                      // Critical shortage
+
+        // Population growth modifier from staple fulfillment
+        let popGrowthMod = 0;
+        if (stapleSat > 0.8) popGrowthMod = 0.002;   // +0.2% bonus growth
+        else if (stapleSat < 0.3) popGrowthMod = -0.003; // -0.3% growth penalty
+
+        // Apply stability drift
+        const newStability = Math.max(0, Math.min(100, (city.city_stability || 50) + stabilityDrift));
+        const popDelta = Math.round((city.population_total || 0) * popGrowthMod);
+
+        if (stabilityDrift !== 0 || popDelta !== 0) {
+          const updates: any = {};
+          if (stabilityDrift !== 0) updates.city_stability = newStability;
+          if (popDelta !== 0) {
+            updates.population_total = Math.max(10, (city.population_total || 0) + popDelta);
+            updates.population_peasants = Math.max(5, (city.population_peasants || 0) + Math.round(popDelta * 0.6));
+          }
+          await supabase.from("cities").update(updates).eq("id", city.id);
+        }
+
+        // Generate events for critical shortages
+        if (avgSat < 0.3) {
+          newEvents.push({
+            event_type: "goods_shortage_crisis",
+            note: `${city.name}: Kritický nedostatek goods — spokojenost basketů ${Math.round(avgSat * 100)}%. Stabilita klesá.`,
+            importance: "critical",
+            city_id: city.id,
+            reference: { satisfaction: avgSat, staple: stapleSat, stability_drift: stabilityDrift },
+          });
+        }
+
+        // Ritual satisfaction → faith bonus
+        if (ritualSat > 0.7) {
+          const ritualFaithBonus = ritualSat * 2;
+          // Will be added to faith below
+          newEvents.push({
+            event_type: "ritual_economy_strong",
+            note: `${city.name}: Silná rituální ekonomika — chrámové zásobování na ${Math.round(ritualSat * 100)}%.`,
+            importance: "minor",
+            city_id: city.id,
+            reference: { ritual_satisfaction: ritualSat, faith_bonus: ritualFaithBonus },
+          });
+        }
+      }
+    }
+
+    // ── Guild level progression ──
+    const { data: guildNodes } = await supabase.from("province_nodes")
+      .select("id, guild_level, specialization_scores, city_id, controlled_by, name")
+      .eq("session_id", sessionId)
+      .eq("controlled_by", playerName)
+      .not("guild_level", "is", null);
+
+    if (guildNodes) {
+      for (const gn of guildNodes) {
+        const guildLevel = gn.guild_level || 0;
+        const scores = (gn.specialization_scores || {}) as Record<string, number>;
+        const totalSpec = Object.values(scores).reduce((s, v) => s + v, 0);
+
+        // Guild levels up when specialization accumulates enough
+        // Thresholds: level 1→2 at 10 spec, 2→3 at 30, 3→4 at 60, 4→5 at 100
+        const thresholds = [0, 10, 30, 60, 100];
+        let newLevel = guildLevel;
+        for (let lvl = guildLevel + 1; lvl <= 5; lvl++) {
+          if (totalSpec >= (thresholds[lvl - 1] || 999)) newLevel = lvl;
+          else break;
+        }
+
+        if (newLevel > guildLevel) {
+          await supabase.from("province_nodes").update({ guild_level: newLevel }).eq("id", gn.id);
+          
+          newEvents.push({
+            event_type: "guild_established",
+            note: `Cech v "${gn.name}" dosáhl úrovně ${newLevel}! Kvalita produkce se zvyšuje.`,
+            importance: newLevel >= 4 ? "critical" : "important",
+            reference: { node_id: gn.id, guild_level: newLevel, specialization: totalSpec },
+          });
+
+          // Famous goods emergence at guild level 4+
+          if (newLevel >= 4) {
+            const topBranch = Object.entries(scores).sort((a, b) => b[1] - a[1])[0];
+            if (topBranch) {
+              newEvents.push({
+                event_type: "famous_good_created",
+                note: `"${gn.name}" je nyní proslulé svou produkcí "${topBranch[0]}"! Přitahuje obchodníky a zvyšuje prestiž.`,
+                importance: "critical",
+                reference: { node_id: gn.id, branch: topBranch[0], mastery: topBranch[1], guild_level: newLevel },
+              });
+            }
+          }
+        }
+      }
     }
 
     // Pop tax derived from goods layer
