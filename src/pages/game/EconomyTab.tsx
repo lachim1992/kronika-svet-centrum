@@ -476,7 +476,7 @@ const EconomyTab = ({ sessionId, currentPlayerName, currentTurn, cities, resourc
             🏛️ Fiskální rozklad
             <InfoTip side="right">Breakdown příjmů: population tax, market tax, transit tax, extraction tax + retention/capture metriky.</InfoTip>
           </h3>
-          <FiscalSubTab realm={realm} />
+          <FiscalSubTab realm={realm} sessionId={sessionId} playerName={currentPlayerName} onRefetch={fetchData} />
         </div>
       )}
 

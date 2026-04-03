@@ -251,13 +251,49 @@ Deno.serve(async (req) => {
 
     // Upsert city_market_summary
     if (summaryRows.length > 0) {
-      // Delete old for this session+turn
       await sb.from("city_market_summary").delete()
         .eq("session_id", session_id)
         .eq("turn_number", turn_number || 1);
-
       for (let i = 0; i < summaryRows.length; i += 50) {
         await sb.from("city_market_summary").insert(summaryRows.slice(i, i + 50));
+      }
+    }
+
+    // ════════════════════════════════════════════
+    // PHASE 2b: Persist demand_baskets with satisfaction
+    // ════════════════════════════════════════════
+    const demandBasketRows: any[] = [];
+    for (const [cityId, demands] of cityDemands) {
+      const citySupply = cityGoodSupply.get(cityId) || new Map();
+      
+      for (const [basketKey, demandQty] of demands) {
+        // Calculate satisfaction: how much of this basket's demand is met
+        const relevantGoods = goods.filter(g => g.demand_basket === basketKey);
+        let domesticSatisfaction = 0;
+        for (const g of relevantGoods) {
+          const supply = citySupply.get(g.key);
+          if (supply) domesticSatisfaction += supply.quantity;
+        }
+        const satisfaction = demandQty > 0 ? Math.min(1.0, domesticSatisfaction / demandQty) : 1.0;
+        const deficit = Math.max(0, demandQty - domesticSatisfaction);
+
+        demandBasketRows.push({
+          session_id,
+          city_id: cityId,
+          basket_type: basketKey,
+          demand_volume: Math.round(demandQty * 10) / 10,
+          supply_volume: Math.round(domesticSatisfaction * 10) / 10,
+          satisfaction: Math.round(satisfaction * 1000) / 1000,
+          deficit_volume: Math.round(deficit * 10) / 10,
+          turn_number: turn_number || 1,
+        });
+      }
+    }
+
+    if (demandBasketRows.length > 0) {
+      await sb.from("demand_baskets").delete().eq("session_id", session_id);
+      for (let i = 0; i < demandBasketRows.length; i += 50) {
+        await sb.from("demand_baskets").insert(demandBasketRows.slice(i, i + 50));
       }
     }
 
