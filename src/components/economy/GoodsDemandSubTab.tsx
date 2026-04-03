@@ -28,11 +28,11 @@ const GoodsDemandSubTab = ({ sessionId, playerName }: Props) => {
     const fetch = async () => {
       setLoading(true);
       const [g, r, d, m, t] = await Promise.all([
-        supabase.from("goods").select("*").order("tier").limit(100),
-        supabase.from("production_recipes").select("*").limit(200),
-        supabase.from("demand_baskets").select("*").eq("session_id", sessionId).limit(200),
-        supabase.from("city_market_summary").select("*").eq("session_id", sessionId).limit(500),
-        supabase.from("trade_flows").select("*").eq("session_id", sessionId).limit(200),
+        supabase.from("goods" as any).select("*").order("tier").limit(100),
+        supabase.from("production_recipes" as any).select("*").limit(200),
+        supabase.from("demand_baskets" as any).select("*").eq("session_id", sessionId).limit(200),
+        supabase.from("city_market_summary" as any).select("*").eq("session_id", sessionId).limit(500),
+        supabase.from("trade_flows" as any).select("*").eq("session_id", sessionId).limit(200),
       ]);
       setGoods(g.data || []);
       setRecipes(r.data || []);
