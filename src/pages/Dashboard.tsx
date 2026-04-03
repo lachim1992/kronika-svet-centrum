@@ -461,7 +461,20 @@ const Dashboard = () => {
           onRefetch={refetch}
         />
       )}
-      {/* Economy merged into HomeTab */}
+      {activeTab === "economy" && (
+        <EconomyTab
+          sessionId={session.id}
+          currentPlayerName={myPlayerName}
+          currentTurn={currentTurn}
+          cities={cities}
+          resources={resources}
+          armies={armies}
+          myRole={myRole}
+          onEntityClick={handleEntityClick}
+          onRefetch={refetch}
+          onTabChange={(tab) => setActiveTab(tab as TabId)}
+        />
+      )}
       {activeTab === "chronicles" && <ChroniclesTab {...sharedProps} />}
       {activeTab === "feed" && <FeedTab {...sharedProps} />}
       {activeTab === "engine" && (
