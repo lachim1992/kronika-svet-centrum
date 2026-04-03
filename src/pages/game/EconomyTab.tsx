@@ -44,6 +44,8 @@ import PopulationPanel from "@/components/economy/PopulationPanel";
 import CapacityPanel from "@/components/economy/CapacityPanel";
 import MilitaryUpkeepPanel from "@/components/economy/MilitaryUpkeepPanel";
 import FormulasReferencePanel from "@/components/economy/FormulasReferencePanel";
+import GoodsDemandSubTab from "@/components/economy/GoodsDemandSubTab";
+import FiscalSubTab from "@/components/economy/FiscalSubTab";
 
 interface Props {
   sessionId: string;
