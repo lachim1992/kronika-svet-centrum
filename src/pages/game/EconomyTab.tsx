@@ -44,6 +44,8 @@ import PopulationPanel from "@/components/economy/PopulationPanel";
 import CapacityPanel from "@/components/economy/CapacityPanel";
 import MilitaryUpkeepPanel from "@/components/economy/MilitaryUpkeepPanel";
 import FormulasReferencePanel from "@/components/economy/FormulasReferencePanel";
+import GoodsDemandSubTab from "@/components/economy/GoodsDemandSubTab";
+import FiscalSubTab from "@/components/economy/FiscalSubTab";
 
 interface Props {
   sessionId: string;
@@ -456,7 +458,27 @@ const EconomyTab = ({ sessionId, currentPlayerName, currentTurn, cities, resourc
       {realm && <StrategicResourcesDetail realm={realm} />}
 
       {/* ═══ DEPENDENCY MAP WITH LIVE VALUES ═══ */}
-      <EconomyDependencyMap realm={realm} cities={myCities} armies={armies} />
+      <EconomyDependencyMap realm={realm} cities={myCities} armies={armies} sessionId={sessionId} playerName={currentPlayerName} />
+
+      {/* ═══ GOODS & DEMAND ═══ */}
+      <div className="game-card p-5 space-y-3">
+        <h3 className="text-base font-display font-semibold flex items-center gap-2">
+          📦 Goods, recepty a obchodní toky
+          <InfoTip side="right">Detailní přehled goods economy: katalog goods, produkční recepty, demand baskets per město a obchodní toky.</InfoTip>
+        </h3>
+        <GoodsDemandSubTab sessionId={sessionId} playerName={currentPlayerName} />
+      </div>
+
+      {/* ═══ FISCAL BREAKDOWN ═══ */}
+      {realm && (
+        <div className="game-card p-5 space-y-3">
+          <h3 className="text-base font-display font-semibold flex items-center gap-2">
+            🏛️ Fiskální rozklad
+            <InfoTip side="right">Breakdown příjmů: population tax, market tax, transit tax, extraction tax + retention/capture metriky.</InfoTip>
+          </h3>
+          <FiscalSubTab realm={realm} />
+        </div>
+      )}
 
       {/* ═══ FORMULAS REFERENCE ═══ */}
       <FormulasReferencePanel />
