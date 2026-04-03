@@ -548,6 +548,7 @@ const Dashboard = () => {
           worldCrises={worldCrises}
         />
       )}
+      </ErrorBoundary>
     </AppShell>
     </DevModeProvider>
   );
