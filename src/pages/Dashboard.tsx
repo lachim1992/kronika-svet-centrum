@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import ErrorBoundary from "@/components/ErrorBoundary";
 import { useParams, useNavigate } from "react-router-dom";
 import { useGameSession } from "@/hooks/useGameSession";
 import { useAuth } from "@/hooks/useAuth";
@@ -438,6 +439,9 @@ const Dashboard = () => {
         </>
       }
     >
+      <ErrorBoundary>
+      {/* Debug: active tab indicator */}
+      <div className="text-xs text-muted-foreground px-2 py-1 bg-muted/20 rounded mb-2">Tab: {activeTab}</div>
       {activeTab === "home" && <HomeTab {...sharedProps} onFoundCity={() => setShowFoundDialog(true)} onTabChange={(tab) => setActiveTab(tab as TabId)} />}
       {activeTab === "world" && <WorldTab {...sharedProps} worldEntityTarget={worldEntityTarget} onClearWorldEntityTarget={() => setWorldEntityTarget(null)} />}
       {activeTab === "worldmap" && (
@@ -546,6 +550,7 @@ const Dashboard = () => {
           worldCrises={worldCrises}
         />
       )}
+      </ErrorBoundary>
     </AppShell>
     </DevModeProvider>
   );
