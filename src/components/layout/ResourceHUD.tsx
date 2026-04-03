@@ -178,23 +178,32 @@ const ResourceHUD = ({ sessionId, playerName, cities, currentTurn }: ResourceHUD
 
   return (
     <>
-      <div className="bg-secondary/80 backdrop-blur-sm border-b border-border px-4 py-2 flex items-center gap-1.5 overflow-x-auto scrollbar-hide">
-        {/* Macro chips */}
-        {chips.map(chip => (
-          <div
-            key={chip.label}
-            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-semibold shrink-0 border transition-colors ${
-              chip.warning
-                ? "border-destructive/30 bg-destructive/10 text-destructive"
-                : "border-border bg-card/60 text-foreground hover:border-primary/30 hover:bg-card/80"
-            }`}
-            title={chip.label}
-          >
-            <span className={chip.warning ? "" : "text-primary"}>{chip.icon}</span>
-            <span className="hidden sm:inline text-muted-foreground">{chip.label}</span>
-            <span>{chip.value}{chip.suffix && <span className={`ml-0.5 ${(chip.suffix.includes("-") || chip.suffix.includes("−")) ? "text-destructive" : "text-emerald-500"}`}>{chip.suffix}</span>}</span>
-          </div>
-        ))}
+      <TooltipProvider delayDuration={300}>
+        <div className="bg-secondary/80 backdrop-blur-sm border-b border-border px-4 py-2 flex items-center gap-1.5 overflow-x-auto scrollbar-hide">
+          {/* Macro chips with derivation tooltips */}
+          {chips.map(chip => (
+            <Tooltip key={chip.label}>
+              <TooltipTrigger asChild>
+                <div
+                  className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-semibold shrink-0 border transition-colors cursor-help ${
+                    chip.warning
+                      ? "border-destructive/30 bg-destructive/10 text-destructive"
+                      : "border-border bg-card/60 text-foreground hover:border-primary/30 hover:bg-card/80"
+                  }`}
+                >
+                  <span className={chip.warning ? "" : "text-primary"}>{chip.icon}</span>
+                  <span className="hidden sm:inline text-muted-foreground">{chip.label}</span>
+                  <span>{chip.value}{chip.suffix && <span className={`ml-0.5 ${(chip.suffix.includes("-") || chip.suffix.includes("−")) ? "text-destructive" : "text-emerald-500"}`}>{chip.suffix}</span>}</span>
+                </div>
+              </TooltipTrigger>
+              {chip.derivation && (
+                <TooltipContent side="bottom" className="max-w-xs text-xs">
+                  <p className="font-semibold mb-0.5">{chip.label}</p>
+                  <p className="text-muted-foreground">{chip.derivation}</p>
+                </TooltipContent>
+              )}
+            </Tooltip>
+          ))}
 
         {/* Strategic resource badges */}
         {strats.map(s => (
