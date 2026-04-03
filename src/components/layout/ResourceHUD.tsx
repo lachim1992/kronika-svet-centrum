@@ -315,7 +315,8 @@ const ResourceHUD = ({ sessionId, playerName, cities, currentTurn }: ResourceHUD
             )}
           </PopoverContent>
         </Popover>
-      </div>
+        </div>
+      </TooltipProvider>
 
       <DemobilizeDialog
         open={showDemobilize}
