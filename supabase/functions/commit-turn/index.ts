@@ -529,6 +529,18 @@ Deno.serve(async (req) => {
         body: { sessionId },
       });
       results.economyFlow = { ok: true };
+
+      // Goods economy: compute trade flows (recipes → inventory → market → flows)
+      try {
+        const { data: tfRes, error: tfErr } = await supabase.functions.invoke("compute-trade-flows", {
+          body: { session_id: sessionId, turn_number: turnNumber + 1 },
+        });
+        if (tfErr) console.warn("compute-trade-flows warning:", tfErr.message);
+        results.tradeFlows = tfRes || { error: tfErr?.message };
+      } catch (tfE) {
+        console.warn("compute-trade-flows warning:", (tfE as Error).message);
+        results.tradeFlows = { error: (tfE as Error).message };
+      }
     } catch (e) {
       console.warn("Route/flow/economy chain warning:", (e as Error).message);
       results.economyFlow = { error: (e as Error).message };

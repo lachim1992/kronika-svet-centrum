@@ -3,6 +3,9 @@ import { supabase } from "@/integrations/supabase/client";
 import { Slider } from "@/components/ui/slider";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
+  Tooltip, TooltipContent, TooltipTrigger, TooltipProvider,
+} from "@/components/ui/tooltip";
+import {
   Users, Gauge,
   ChevronDown, Skull, TrendingUp, Network, Zap, Church
 } from "lucide-react";
@@ -116,16 +119,24 @@ const ResourceHUD = ({ sessionId, playerName, cities, currentTurn }: ResourceHUD
   const wealthReserve = realm.gold_reserve ?? 0;
   const grainReserve = realm.grain_reserve ?? 0;
 
-  const chips: { icon: React.ReactNode; label: string; value: string; warning?: boolean; suffix?: string }[] = [
+  // Goods economy derivation data
+  const mods = realm.computed_modifiers || {};
+  const ge = mods.goods_economy || {};
+
+  const chips: { icon: React.ReactNode; label: string; value: string; warning?: boolean; suffix?: string; derivation?: string }[] = [
     {
       icon: <span className="text-xs">{MACRO_LAYER_ICONS.production}</span>,
       label: "Produkce",
       value: `${Math.round(prodReserve)} (+${totalProd.toFixed(0)}/k)`,
+      derivation: `Agregát produkčních chainů (source→processing→urban→guild). Workforce ratio: ${(wf.effectiveWorkforceRatio * 100).toFixed(0)}%`,
     },
     {
       icon: <span className="text-xs">{MACRO_LAYER_ICONS.wealth}</span>,
       label: "Bohatství",
       value: `${Math.round(wealthReserve)} (+${totalWealth.toFixed(0)}/k)`,
+      derivation: ge.fiscal_bonus > 0
+        ? `Pop daň: ${ge.tax_pop || 0} | Tržní: ${ge.tax_market || 0} | Tranzit: ${ge.tax_transit || 0} | Těžba: ${ge.tax_extraction || 0} | Export: ${ge.capture || 0} | Retenční index: ${((ge.retention || 0) * 100).toFixed(0)}%`
+        : `Tržní aktivita + daně + obchod`,
     },
     {
       icon: <span className="text-xs">🌾</span>,
@@ -137,48 +148,62 @@ const ResourceHUD = ({ sessionId, playerName, cities, currentTurn }: ResourceHUD
         if (net === 0) return "";
         return net > 0 ? ` (+${net}/k)` : ` (${net}/k)`;
       })(),
+      derivation: `Skladovatelné goods (obilí, mouka, sůl, dřevo, železo…). Bilance: produkce − spotřeba − armáda`,
     },
     {
       icon: <span className="text-xs">{MACRO_LAYER_ICONS.capacity}</span>,
       label: "Kapacita",
       value: totalCap.toFixed(1),
+      derivation: `Stavební materiály + infrastruktura + guild sophistication + logistická síť`,
     },
     {
       icon: <Church className="h-3 w-3" />,
       label: "Víra",
       value: (realm.faith ?? 0).toFixed(0),
+      derivation: `Rituální goods (víno, kadidlo, oleje) + chrámy + duchovní. Růst: ${(realm.faith_growth ?? 0).toFixed(1)}/k`,
     },
     {
       icon: <span className="text-xs">⭐</span>,
       label: "Prestiž",
       value: `${Math.round(totalPrestige)}`,
+      derivation: `Luxury/famous goods + monumenty + export high-tier produkce + kulturní dominance`,
     },
     {
       icon: <Users className="h-3 w-3" />,
       label: "Muži",
       value: `${availableManpower}/${computedPool}`,
+      derivation: `Demografie: staple fulfillment → růst, urban pull → migrace, economic opportunity`,
     },
   ];
 
   return (
     <>
-      <div className="bg-secondary/80 backdrop-blur-sm border-b border-border px-4 py-2 flex items-center gap-1.5 overflow-x-auto scrollbar-hide">
-        {/* Macro chips */}
-        {chips.map(chip => (
-          <div
-            key={chip.label}
-            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-semibold shrink-0 border transition-colors ${
-              chip.warning
-                ? "border-destructive/30 bg-destructive/10 text-destructive"
-                : "border-border bg-card/60 text-foreground hover:border-primary/30 hover:bg-card/80"
-            }`}
-            title={chip.label}
-          >
-            <span className={chip.warning ? "" : "text-primary"}>{chip.icon}</span>
-            <span className="hidden sm:inline text-muted-foreground">{chip.label}</span>
-            <span>{chip.value}{chip.suffix && <span className={`ml-0.5 ${(chip.suffix.includes("-") || chip.suffix.includes("−")) ? "text-destructive" : "text-emerald-500"}`}>{chip.suffix}</span>}</span>
-          </div>
-        ))}
+      <TooltipProvider delayDuration={300}>
+        <div className="bg-secondary/80 backdrop-blur-sm border-b border-border px-4 py-2 flex items-center gap-1.5 overflow-x-auto scrollbar-hide">
+          {/* Macro chips with derivation tooltips */}
+          {chips.map(chip => (
+            <Tooltip key={chip.label}>
+              <TooltipTrigger asChild>
+                <div
+                  className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-semibold shrink-0 border transition-colors cursor-help ${
+                    chip.warning
+                      ? "border-destructive/30 bg-destructive/10 text-destructive"
+                      : "border-border bg-card/60 text-foreground hover:border-primary/30 hover:bg-card/80"
+                  }`}
+                >
+                  <span className={chip.warning ? "" : "text-primary"}>{chip.icon}</span>
+                  <span className="hidden sm:inline text-muted-foreground">{chip.label}</span>
+                  <span>{chip.value}{chip.suffix && <span className={`ml-0.5 ${(chip.suffix.includes("-") || chip.suffix.includes("−")) ? "text-destructive" : "text-emerald-500"}`}>{chip.suffix}</span>}</span>
+                </div>
+              </TooltipTrigger>
+              {chip.derivation && (
+                <TooltipContent side="bottom" className="max-w-xs text-xs">
+                  <p className="font-semibold mb-0.5">{chip.label}</p>
+                  <p className="text-muted-foreground">{chip.derivation}</p>
+                </TooltipContent>
+              )}
+            </Tooltip>
+          ))}
 
         {/* Strategic resource badges */}
         {strats.map(s => (
@@ -290,7 +315,8 @@ const ResourceHUD = ({ sessionId, playerName, cities, currentTurn }: ResourceHUD
             )}
           </PopoverContent>
         </Popover>
-      </div>
+        </div>
+      </TooltipProvider>
 
       <DemobilizeDialog
         open={showDemobilize}

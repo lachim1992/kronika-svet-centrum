@@ -1144,6 +1144,24 @@ Deno.serve(async (req) => {
     const productionIncome = Math.max(0, Math.round(totalCityProduction - armyProductionUpkeep));
     const newProductionReserve = Math.max(0, (realm.production_reserve || 0) + productionIncome);
 
+    // ── Goods economy: blend fiscal data from compute-trade-flows ──
+    // Read back the goods fiscal columns (written by compute-trade-flows)
+    const goodsTaxMarket = realm.tax_market || 0;
+    const goodsTaxTransit = realm.tax_transit || 0;
+    const goodsTaxExtraction = realm.tax_extraction || 0;
+    const goodsCapture = realm.commercial_capture || 0;
+    const goodsRetention = realm.commercial_retention || 0;
+
+    // Blend goods fiscal data into wealth income (additive layer, not replacement yet)
+    const goodsFiscalBonus = Math.round(goodsTaxMarket + goodsTaxTransit + goodsTaxExtraction + goodsCapture);
+    newGoldReserve += goodsFiscalBonus;
+    if (goodsFiscalBonus > 0) {
+      logEntries.push(`📦 Goods ekonomika: +${goodsFiscalBonus} 💰 (trh ${Math.round(goodsTaxMarket)} + tranzit ${Math.round(goodsTaxTransit)} + těžba ${Math.round(goodsTaxExtraction)} + export ${Math.round(goodsCapture)})`);
+    }
+
+    // Pop tax derived from goods layer
+    const goodsPopTax = Math.round(totalPopulation * 0.002 * (1 + myCities.filter(c => c.settlement_level === "polis" || c.settlement_level === "metropolis").length * 0.1));
+
     await supabase.from("realm_resources").update({
       grain_reserve: globalGrainReserve,
       granary_capacity: adjustedGranary,
@@ -1166,6 +1184,8 @@ Deno.serve(async (req) => {
       mobilization_production_penalty: Math.round(mobProductionPenalty * 10) / 10,
       mobilization_wealth_penalty: Math.round(mobWealthPenalty * 10) / 10,
       last_turn_faith_delta: Math.round(faithGrowth * 100) / 100,
+      // Goods economy fiscal columns
+      tax_pop: goodsPopTax,
       // Prestige sub-types
       military_prestige: militaryPrestige,
       cultural_prestige: culturalPrestige,
@@ -1210,6 +1230,15 @@ Deno.serve(async (req) => {
           build_limit: capacityBuildLimit,
           active_projects: activeBuildingCount,
           overloaded: capacityOverload,
+        },
+        goods_economy: {
+          tax_pop: goodsPopTax,
+          tax_market: Math.round(goodsTaxMarket * 10) / 10,
+          tax_transit: Math.round(goodsTaxTransit * 10) / 10,
+          tax_extraction: Math.round(goodsTaxExtraction * 10) / 10,
+          capture: Math.round(goodsCapture * 10) / 10,
+          retention: Math.round(goodsRetention * 1000) / 1000,
+          fiscal_bonus: goodsFiscalBonus,
         },
       },
       updated_at: new Date().toISOString(),
