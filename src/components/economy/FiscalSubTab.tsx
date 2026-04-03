@@ -106,15 +106,15 @@ const FiscalSubTab = ({ realm }: Props) => {
           <div className="grid grid-cols-3 gap-3 text-xs">
             <div className="bg-muted/40 rounded-lg p-3 text-center">
               <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">Flow Mult</div>
-              <div className="text-lg font-bold font-mono">{idData.flow_multiplier}×</div>
+            <div className="text-lg font-bold font-mono">{flow_multiplier}×</div>
             </div>
             <div className="bg-muted/40 rounded-lg p-3 text-center">
               <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">Tariff Base</div>
-              <div className="text-lg font-bold font-mono">{(idData.tariff_base * 100).toFixed(0)}%</div>
+              <div className="text-lg font-bold font-mono">{(tariff_base * 100).toFixed(0)}%</div>
             </div>
             <div className="bg-muted/40 rounded-lg p-3 text-center">
               <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">Retention</div>
-              <div className="text-lg font-bold font-mono">{idData.domestic_retention_bonus > 0 ? "+" : ""}{(idData.domestic_retention_bonus * 100).toFixed(0)}%</div>
+              <div className="text-lg font-bold font-mono">{domestic_retention_bonus > 0 ? "+" : ""}{(domestic_retention_bonus * 100).toFixed(0)}%</div>
             </div>
           </div>
         </CardContent>

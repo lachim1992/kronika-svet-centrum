@@ -33,15 +33,15 @@ const EconomyDependencyMap = ({ realm, cities = [], armies = [], sessionId, play
     if (!sessionId) return;
     const fetchLive = async () => {
       const [g, r, f, inv] = await Promise.all([
-        supabase.from("goods").select("key", { count: "exact", head: true }),
-        supabase.from("production_recipes").select("id", { count: "exact", head: true }),
-        supabase.from("trade_flows").select("id", { count: "exact", head: true }).eq("session_id", sessionId),
-        supabase.from("node_inventory").select("quantity").eq("session_id", sessionId),
+        supabase.from("goods" as any).select("key", { count: "exact", head: true }),
+        supabase.from("production_recipes" as any).select("id", { count: "exact", head: true }),
+        supabase.from("trade_flows" as any).select("id", { count: "exact", head: true }).eq("session_id", sessionId),
+        supabase.from("node_inventory" as any).select("quantity").eq("session_id", sessionId),
       ]);
       setGoodsCount(g.count || 0);
       setRecipesCount(r.count || 0);
       setFlowsCount(f.count || 0);
-      setInventoryTotal((inv.data || []).reduce((s: number, r: any) => s + (r.quantity || 0), 0));
+      setInventoryTotal(((inv.data as any[]) || []).reduce((s: number, r: any) => s + (r.quantity || 0), 0));
     };
     fetchLive();
   }, [sessionId]);
