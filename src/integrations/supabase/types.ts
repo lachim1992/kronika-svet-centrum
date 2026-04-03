@@ -4553,6 +4553,101 @@ export type Database = {
           },
         ]
       }
+      good_variants: {
+        Row: {
+          created_at: string
+          cultural_origin: string | null
+          description: string | null
+          display_name: string
+          id: string
+          parent_good_key: string
+          prestige_modifier: number
+          quality_modifier: number
+          variant_key: string
+        }
+        Insert: {
+          created_at?: string
+          cultural_origin?: string | null
+          description?: string | null
+          display_name?: string
+          id?: string
+          parent_good_key: string
+          prestige_modifier?: number
+          quality_modifier?: number
+          variant_key: string
+        }
+        Update: {
+          created_at?: string
+          cultural_origin?: string | null
+          description?: string | null
+          display_name?: string
+          id?: string
+          parent_good_key?: string
+          prestige_modifier?: number
+          quality_modifier?: number
+          variant_key?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "good_variants_parent_good_key_fkey"
+            columns: ["parent_good_key"]
+            isOneToOne: false
+            referencedRelation: "goods"
+            referencedColumns: ["key"]
+          },
+        ]
+      }
+      goods: {
+        Row: {
+          base_price_band: number
+          base_price_numeric: number
+          category: string
+          created_at: string
+          demand_basket: string | null
+          description: string | null
+          display_name: string
+          icon: string | null
+          id: string
+          key: string
+          market_tier: string
+          production_stage: string
+          storable: boolean
+          substitution_map: Json | null
+        }
+        Insert: {
+          base_price_band?: number
+          base_price_numeric?: number
+          category?: string
+          created_at?: string
+          demand_basket?: string | null
+          description?: string | null
+          display_name?: string
+          icon?: string | null
+          id?: string
+          key: string
+          market_tier?: string
+          production_stage?: string
+          storable?: boolean
+          substitution_map?: Json | null
+        }
+        Update: {
+          base_price_band?: number
+          base_price_numeric?: number
+          category?: string
+          created_at?: string
+          demand_basket?: string | null
+          description?: string | null
+          display_name?: string
+          icon?: string | null
+          id?: string
+          key?: string
+          market_tier?: string
+          production_stage?: string
+          storable?: boolean
+          substitution_map?: Json | null
+        }
+        Relationships: []
+      }
       great_persons: {
         Row: {
           bio: string | null
@@ -6211,6 +6306,59 @@ export type Database = {
           },
         ]
       }
+      production_recipes: {
+        Row: {
+          created_at: string
+          description: string | null
+          id: string
+          input_items: Json
+          labor_cost: number
+          min_quality_input: number
+          output_good_key: string
+          output_quantity: number
+          quality_output_bonus: number
+          recipe_key: string
+          required_role: string
+          required_tags: string[]
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          input_items?: Json
+          labor_cost?: number
+          min_quality_input?: number
+          output_good_key: string
+          output_quantity?: number
+          quality_output_bonus?: number
+          recipe_key: string
+          required_role?: string
+          required_tags?: string[]
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          input_items?: Json
+          labor_cost?: number
+          min_quality_input?: number
+          output_good_key?: string
+          output_quantity?: number
+          quality_output_bonus?: number
+          recipe_key?: string
+          required_role?: string
+          required_tags?: string[]
+        }
+        Relationships: [
+          {
+            foreignKeyName: "production_recipes_output_good_key_fkey"
+            columns: ["output_good_key"]
+            isOneToOne: false
+            referencedRelation: "goods"
+            referencedColumns: ["key"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           avatar_url: string | null
@@ -7305,6 +7453,51 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      resource_types: {
+        Row: {
+          base_quality_band: number
+          category: string
+          created_at: string
+          description: string | null
+          display_name: string
+          icon: string | null
+          id: string
+          key: string
+          replicable: boolean
+          spawn_biomes: string[] | null
+          storable: boolean
+          strategic_weight: string
+        }
+        Insert: {
+          base_quality_band?: number
+          category?: string
+          created_at?: string
+          description?: string | null
+          display_name?: string
+          icon?: string | null
+          id?: string
+          key: string
+          replicable?: boolean
+          spawn_biomes?: string[] | null
+          storable?: boolean
+          strategic_weight?: string
+        }
+        Update: {
+          base_quality_band?: number
+          category?: string
+          created_at?: string
+          description?: string | null
+          display_name?: string
+          icon?: string | null
+          id?: string
+          key?: string
+          replicable?: boolean
+          spawn_biomes?: string[] | null
+          storable?: boolean
+          strategic_weight?: string
+        }
+        Relationships: []
       }
       rumor_generation_log: {
         Row: {
