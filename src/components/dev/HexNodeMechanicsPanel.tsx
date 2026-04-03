@@ -66,6 +66,22 @@ const CAUSAL_LINKS: CausalLink[] = [
   { from: "preferredBiomes", to: "node placement AI", effect: "AI uses for suggestMajorType only, not economic bonus", status: "partial", where: "nodeTypes.ts → AI faction turn" },
   { from: "micro.strategicResourcePool", to: "resource spawn", effect: "rollStrategicResource with spawnChance", status: "active", where: "nodeTypes.ts + generate-hex" },
   { from: "node.maxUpgrade", to: "upgrade cap", effect: "Major=5, Minor=5, Micro=2-3 — enforced in UI", status: "partial", where: "UI only — no server validation" },
+  // GOODS ECONOMY v4.1 — new causal links
+  { from: "resource_deposits", to: "source_node_output", effect: "Hex resource yield × quality → raw goods extraction", status: "planned", where: "goodsCatalog.ts + compute-economy-flow (planned)" },
+  { from: "capability_tags", to: "recipe_eligibility", effect: "Node tags must match recipe required_tags", status: "planned", where: "goodsCatalog.ts + compute-economy-flow (planned)" },
+  { from: "production_role", to: "goods_chain_position", effect: "source→processing→urban→guild pipeline", status: "planned", where: "goodsCatalog.ts" },
+  { from: "guild_level", to: "branch_unlock + quality", effect: "Lv.3+ unlocks luxury/famous tier recipes", status: "planned", where: "goodsCatalog.ts" },
+  { from: "specialization_scores", to: "famous_good_chance", effect: "Cumulative branch mastery → variant unlock probability", status: "planned", where: "province_nodes.specialization_scores" },
+  { from: "demand_basket_satisfaction", to: "city_stability", effect: "Unfulfilled tier 1-2 baskets → stability penalty", status: "planned", where: "demand_baskets table" },
+  { from: "trade_pressure", to: "trade_flow_creation", effect: "High pressure → new city-to-city flows", status: "planned", where: "compute-trade-flows (planned)" },
+  { from: "commercial_retention", to: "wealth_tax_base", effect: "Higher domestic fulfillment → stronger market tax", status: "planned", where: "realm_resources.commercial_retention" },
+  { from: "commercial_capture", to: "export_income", effect: "Serving foreign demand → capture bonus wealth", status: "planned", where: "realm_resources.commercial_capture" },
+  { from: "trade_ideology", to: "merchant_flow + tariffs", effect: "5 ideologies with mechanical multipliers", status: "planned", where: "realm_resources.trade_ideology + goodsCatalog.ts" },
+  { from: "goods_output", to: "macro_production", effect: "Aggregated chain output → top-bar Production", status: "planned", where: "compute-economy-flow (planned)" },
+  { from: "market_tax + transit_tax", to: "macro_wealth", effect: "Tax components → top-bar Wealth", status: "planned", where: "realm_resources tax columns" },
+  { from: "storable_goods_surplus", to: "macro_supplies", effect: "Storable goods balance → top-bar Supplies", status: "planned", where: "goods.storable + node_inventory" },
+  { from: "ritual_basket_fulfillment", to: "macro_faith", effect: "Ritual basket satisfaction → top-bar Faith", status: "planned", where: "demand_baskets (planned)" },
+  { from: "luxury_famous_output", to: "macro_prestige", effect: "Luxury/famous goods volume → top-bar Prestige", status: "planned", where: "goods.market_tier + trade_flows" },
 ];
 
 // ═══════════════════════════════════════════
