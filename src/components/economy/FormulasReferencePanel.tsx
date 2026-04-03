@@ -82,6 +82,36 @@ const FORMULA_SECTIONS = [
       { name: "Incoming production", detail: "Minor uzly posílají 50% produkce do nadřazeného major uzlu" },
     ],
   },
+  {
+    title: "📦 Goods produkce (v4.1)",
+    formulas: [
+      { name: "Recipe output", formula: "recipe_base × quality_input × guild_bonus × workforce_ratio" },
+      { name: "Source extraction", formula: "hex_yield × quality_band × biome_match" },
+      { name: "Processing throughput", formula: "Σ(input_qty × conversion_rate) → output_good" },
+      { name: "Urban divergence", detail: "Stejný processed base → různé finální produkty dle active_recipes a capability_tags" },
+      { name: "Guild quality boost", detail: "Lv.2: +1 quality, Lv.4-5: +2 quality. Branch unlock od Lv.3" },
+    ],
+  },
+  {
+    title: "🛒 Demand & Trade (v4.1)",
+    formulas: [
+      { name: "Basket satisfaction", formula: "Σ(good_qty × substitution_score) / basket_need" },
+      { name: "Trade pressure", formula: "need×1.0 + upgrade×0.6 + variety×0.4 + prestige×0.3 + ritual×0.5 − price_delta − friction" },
+      { name: "Variety pressure", formula: "missing_branches / total_relevant_branches" },
+      { name: "Retention", formula: "domestic_fulfilled / total_demand" },
+      { name: "Capture", formula: "export_fulfilled / reachable_foreign_demand" },
+    ],
+  },
+  {
+    title: "💵 Fiskální systém (v4.1)",
+    formulas: [
+      { name: "Populační daň", formula: "pop × urbanization_factor" },
+      { name: "Tržní daň", formula: "domestic_trade_volume × market_level × ideology_rate" },
+      { name: "Tranzitní daň", formula: "through_flow_volume × toll_rate" },
+      { name: "Extrakční daň", formula: "crown_node_output × extraction_rate" },
+      { name: "Macro Wealth", formula: "pop_tax + market_tax + transit_tax + extraction_tax + capture_bonus − leakage" },
+    ],
+  },
 ];
 
 const FormulasReferencePanel = () => {

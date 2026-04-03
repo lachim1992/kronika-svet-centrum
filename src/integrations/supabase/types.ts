@@ -1371,6 +1371,73 @@ export type Database = {
           },
         ]
       }
+      city_market_summary: {
+        Row: {
+          avg_quality: number
+          city_node_id: string
+          demand_volume: number
+          domestic_share: number
+          good_key: string
+          id: string
+          import_share: number
+          price_band: number
+          price_numeric: number
+          session_id: string
+          supply_volume: number
+          turn_number: number
+        }
+        Insert: {
+          avg_quality?: number
+          city_node_id: string
+          demand_volume?: number
+          domestic_share?: number
+          good_key: string
+          id?: string
+          import_share?: number
+          price_band?: number
+          price_numeric?: number
+          session_id: string
+          supply_volume?: number
+          turn_number?: number
+        }
+        Update: {
+          avg_quality?: number
+          city_node_id?: string
+          demand_volume?: number
+          domestic_share?: number
+          good_key?: string
+          id?: string
+          import_share?: number
+          price_band?: number
+          price_numeric?: number
+          session_id?: string
+          supply_volume?: number
+          turn_number?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "city_market_summary_city_node_id_fkey"
+            columns: ["city_node_id"]
+            isOneToOne: false
+            referencedRelation: "province_nodes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "city_market_summary_good_key_fkey"
+            columns: ["good_key"]
+            isOneToOne: false
+            referencedRelation: "goods"
+            referencedColumns: ["key"]
+          },
+          {
+            foreignKeyName: "city_market_summary_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       city_policies: {
         Row: {
           city_id: string
@@ -2134,6 +2201,66 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "declarations_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      demand_baskets: {
+        Row: {
+          basket_key: string
+          city_id: string
+          fulfillment_type: string
+          id: string
+          min_quality: number
+          preferred_quality: number
+          quantity_fulfilled: number
+          quantity_needed: number
+          satisfaction_score: number
+          session_id: string
+          tier: number
+          turn_number: number
+        }
+        Insert: {
+          basket_key: string
+          city_id: string
+          fulfillment_type?: string
+          id?: string
+          min_quality?: number
+          preferred_quality?: number
+          quantity_fulfilled?: number
+          quantity_needed?: number
+          satisfaction_score?: number
+          session_id: string
+          tier?: number
+          turn_number?: number
+        }
+        Update: {
+          basket_key?: string
+          city_id?: string
+          fulfillment_type?: string
+          id?: string
+          min_quality?: number
+          preferred_quality?: number
+          quantity_fulfilled?: number
+          quantity_needed?: number
+          satisfaction_score?: number
+          session_id?: string
+          tier?: number
+          turn_number?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "demand_baskets_city_id_fkey"
+            columns: ["city_id"]
+            isOneToOne: false
+            referencedRelation: "province_nodes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "demand_baskets_session_id_fkey"
             columns: ["session_id"]
             isOneToOne: false
             referencedRelation: "game_sessions"
@@ -4553,6 +4680,101 @@ export type Database = {
           },
         ]
       }
+      good_variants: {
+        Row: {
+          created_at: string
+          cultural_origin: string | null
+          description: string | null
+          display_name: string
+          id: string
+          parent_good_key: string
+          prestige_modifier: number
+          quality_modifier: number
+          variant_key: string
+        }
+        Insert: {
+          created_at?: string
+          cultural_origin?: string | null
+          description?: string | null
+          display_name?: string
+          id?: string
+          parent_good_key: string
+          prestige_modifier?: number
+          quality_modifier?: number
+          variant_key: string
+        }
+        Update: {
+          created_at?: string
+          cultural_origin?: string | null
+          description?: string | null
+          display_name?: string
+          id?: string
+          parent_good_key?: string
+          prestige_modifier?: number
+          quality_modifier?: number
+          variant_key?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "good_variants_parent_good_key_fkey"
+            columns: ["parent_good_key"]
+            isOneToOne: false
+            referencedRelation: "goods"
+            referencedColumns: ["key"]
+          },
+        ]
+      }
+      goods: {
+        Row: {
+          base_price_band: number
+          base_price_numeric: number
+          category: string
+          created_at: string
+          demand_basket: string | null
+          description: string | null
+          display_name: string
+          icon: string | null
+          id: string
+          key: string
+          market_tier: string
+          production_stage: string
+          storable: boolean
+          substitution_map: Json | null
+        }
+        Insert: {
+          base_price_band?: number
+          base_price_numeric?: number
+          category?: string
+          created_at?: string
+          demand_basket?: string | null
+          description?: string | null
+          display_name?: string
+          icon?: string | null
+          id?: string
+          key: string
+          market_tier?: string
+          production_stage?: string
+          storable?: boolean
+          substitution_map?: Json | null
+        }
+        Update: {
+          base_price_band?: number
+          base_price_numeric?: number
+          category?: string
+          created_at?: string
+          demand_basket?: string | null
+          description?: string | null
+          display_name?: string
+          icon?: string | null
+          id?: string
+          key?: string
+          market_tier?: string
+          production_stage?: string
+          storable?: boolean
+          substitution_map?: Json | null
+        }
+        Relationships: []
+      }
       great_persons: {
         Row: {
           bio: string | null
@@ -5865,6 +6087,45 @@ export type Database = {
           },
         ]
       }
+      node_inventory: {
+        Row: {
+          good_key: string
+          id: string
+          node_id: string
+          quality_band: number
+          quantity: number
+        }
+        Insert: {
+          good_key: string
+          id?: string
+          node_id: string
+          quality_band?: number
+          quantity?: number
+        }
+        Update: {
+          good_key?: string
+          id?: string
+          node_id?: string
+          quality_band?: number
+          quantity?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "node_inventory_good_key_fkey"
+            columns: ["good_key"]
+            isOneToOne: false
+            referencedRelation: "goods"
+            referencedColumns: ["key"]
+          },
+          {
+            foreignKeyName: "node_inventory_node_id_fkey"
+            columns: ["node_id"]
+            isOneToOne: false
+            referencedRelation: "province_nodes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       node_projects: {
         Row: {
           completed_turn: number | null
@@ -6211,6 +6472,59 @@ export type Database = {
           },
         ]
       }
+      production_recipes: {
+        Row: {
+          created_at: string
+          description: string | null
+          id: string
+          input_items: Json
+          labor_cost: number
+          min_quality_input: number
+          output_good_key: string
+          output_quantity: number
+          quality_output_bonus: number
+          recipe_key: string
+          required_role: string
+          required_tags: string[]
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          input_items?: Json
+          labor_cost?: number
+          min_quality_input?: number
+          output_good_key: string
+          output_quantity?: number
+          quality_output_bonus?: number
+          recipe_key: string
+          required_role?: string
+          required_tags?: string[]
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          input_items?: Json
+          labor_cost?: number
+          min_quality_input?: number
+          output_good_key?: string
+          output_quantity?: number
+          quality_output_bonus?: number
+          recipe_key?: string
+          required_role?: string
+          required_tags?: string[]
+        }
+        Relationships: [
+          {
+            foreignKeyName: "production_recipes_output_good_key_fkey"
+            columns: ["output_good_key"]
+            isOneToOne: false
+            referencedRelation: "goods"
+            referencedColumns: ["key"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           avatar_url: string | null
@@ -6370,9 +6684,12 @@ export type Database = {
       }
       province_hexes: {
         Row: {
+          access_score: number | null
           biome_family: string
           coastal: boolean
           created_at: string
+          forest_density: number | null
+          geology_type: string | null
           has_bridge: boolean
           has_river: boolean
           id: string
@@ -6385,15 +6702,19 @@ export type Database = {
           province_id: string | null
           q: number
           r: number
+          resource_deposits: Json | null
           river_direction: string | null
           seed: string
           session_id: string
           temp_band: number
         }
         Insert: {
+          access_score?: number | null
           biome_family?: string
           coastal?: boolean
           created_at?: string
+          forest_density?: number | null
+          geology_type?: string | null
           has_bridge?: boolean
           has_river?: boolean
           id?: string
@@ -6406,15 +6727,19 @@ export type Database = {
           province_id?: string | null
           q: number
           r: number
+          resource_deposits?: Json | null
           river_direction?: string | null
           seed: string
           session_id: string
           temp_band?: number
         }
         Update: {
+          access_score?: number | null
           biome_family?: string
           coastal?: boolean
           created_at?: string
+          forest_density?: number | null
+          geology_type?: string | null
           has_bridge?: boolean
           has_river?: boolean
           id?: string
@@ -6427,6 +6752,7 @@ export type Database = {
           province_id?: string | null
           q?: number
           r?: number
+          resource_deposits?: Json | null
           river_direction?: string | null
           seed?: string
           session_id?: string
@@ -6458,11 +6784,13 @@ export type Database = {
       }
       province_nodes: {
         Row: {
+          active_recipes: Json | null
           besieged_by: string | null
           besieging_stack_id: string | null
           biome_at_build: string | null
           built_by: string | null
           built_turn: number | null
+          capability_tags: string[] | null
           capacity_score: number
           city_id: string | null
           collapse_severity: number
@@ -6481,6 +6809,7 @@ export type Database = {
           fortification_level: number
           garrison_strength: number | null
           growth_rate: number
+          guild_level: number | null
           hex_q: number
           hex_r: number
           hinterland_level: number
@@ -6505,6 +6834,7 @@ export type Database = {
           population: number
           production_base: number
           production_output: number
+          production_role: string | null
           province_id: string
           resource_output: Json
           route_access_factor: number
@@ -6512,6 +6842,7 @@ export type Database = {
           session_id: string
           siege_turn_start: number | null
           spawned_strategic_resource: string | null
+          specialization_scores: Json | null
           stability_factor: number
           strategic_resource_tier: number
           strategic_resource_type: string | null
@@ -6528,11 +6859,13 @@ export type Database = {
           wealth_output: number
         }
         Insert: {
+          active_recipes?: Json | null
           besieged_by?: string | null
           besieging_stack_id?: string | null
           biome_at_build?: string | null
           built_by?: string | null
           built_turn?: number | null
+          capability_tags?: string[] | null
           capacity_score?: number
           city_id?: string | null
           collapse_severity?: number
@@ -6551,6 +6884,7 @@ export type Database = {
           fortification_level?: number
           garrison_strength?: number | null
           growth_rate?: number
+          guild_level?: number | null
           hex_q?: number
           hex_r?: number
           hinterland_level?: number
@@ -6575,6 +6909,7 @@ export type Database = {
           population?: number
           production_base?: number
           production_output?: number
+          production_role?: string | null
           province_id: string
           resource_output?: Json
           route_access_factor?: number
@@ -6582,6 +6917,7 @@ export type Database = {
           session_id: string
           siege_turn_start?: number | null
           spawned_strategic_resource?: string | null
+          specialization_scores?: Json | null
           stability_factor?: number
           strategic_resource_tier?: number
           strategic_resource_type?: string | null
@@ -6598,11 +6934,13 @@ export type Database = {
           wealth_output?: number
         }
         Update: {
+          active_recipes?: Json | null
           besieged_by?: string | null
           besieging_stack_id?: string | null
           biome_at_build?: string | null
           built_by?: string | null
           built_turn?: number | null
+          capability_tags?: string[] | null
           capacity_score?: number
           city_id?: string | null
           collapse_severity?: number
@@ -6621,6 +6959,7 @@ export type Database = {
           fortification_level?: number
           garrison_strength?: number | null
           growth_rate?: number
+          guild_level?: number | null
           hex_q?: number
           hex_r?: number
           hinterland_level?: number
@@ -6645,6 +6984,7 @@ export type Database = {
           population?: number
           production_base?: number
           production_output?: number
+          production_role?: string | null
           province_id?: string
           resource_output?: Json
           route_access_factor?: number
@@ -6652,6 +6992,7 @@ export type Database = {
           session_id?: string
           siege_turn_start?: number | null
           spawned_strategic_resource?: string | null
+          specialization_scores?: Json | null
           stability_factor?: number
           strategic_resource_tier?: number
           strategic_resource_type?: string | null
@@ -7015,6 +7356,8 @@ export type Database = {
           army_sigil_confirmed: boolean
           army_sigil_prompt: string | null
           army_sigil_url: string | null
+          commercial_capture: number | null
+          commercial_retention: number | null
           computed_modifiers: Json | null
           connected_nodes: number | null
           created_at: string
@@ -7071,6 +7414,10 @@ export type Database = {
           strategic_silk_tier: number
           strategic_timber_tier: number
           supply_strain: number | null
+          tax_extraction: number | null
+          tax_market: number | null
+          tax_population: number | null
+          tax_transit: number | null
           technological_prestige: number
           total_capacity: number
           total_importance: number
@@ -7078,6 +7425,7 @@ export type Database = {
           total_production: number
           total_supplies: number | null
           total_wealth: number
+          trade_ideology: string | null
           updated_at: string
           warrior_ratio: number | null
           wood_reserve: number
@@ -7086,6 +7434,8 @@ export type Database = {
           army_sigil_confirmed?: boolean
           army_sigil_prompt?: string | null
           army_sigil_url?: string | null
+          commercial_capture?: number | null
+          commercial_retention?: number | null
           computed_modifiers?: Json | null
           connected_nodes?: number | null
           created_at?: string
@@ -7142,6 +7492,10 @@ export type Database = {
           strategic_silk_tier?: number
           strategic_timber_tier?: number
           supply_strain?: number | null
+          tax_extraction?: number | null
+          tax_market?: number | null
+          tax_population?: number | null
+          tax_transit?: number | null
           technological_prestige?: number
           total_capacity?: number
           total_importance?: number
@@ -7149,6 +7503,7 @@ export type Database = {
           total_production?: number
           total_supplies?: number | null
           total_wealth?: number
+          trade_ideology?: string | null
           updated_at?: string
           warrior_ratio?: number | null
           wood_reserve?: number
@@ -7157,6 +7512,8 @@ export type Database = {
           army_sigil_confirmed?: boolean
           army_sigil_prompt?: string | null
           army_sigil_url?: string | null
+          commercial_capture?: number | null
+          commercial_retention?: number | null
           computed_modifiers?: Json | null
           connected_nodes?: number | null
           created_at?: string
@@ -7213,6 +7570,10 @@ export type Database = {
           strategic_silk_tier?: number
           strategic_timber_tier?: number
           supply_strain?: number | null
+          tax_extraction?: number | null
+          tax_market?: number | null
+          tax_population?: number | null
+          tax_transit?: number | null
           technological_prestige?: number
           total_capacity?: number
           total_importance?: number
@@ -7220,6 +7581,7 @@ export type Database = {
           total_production?: number
           total_supplies?: number | null
           total_wealth?: number
+          trade_ideology?: string | null
           updated_at?: string
           warrior_ratio?: number | null
           wood_reserve?: number
@@ -7305,6 +7667,51 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      resource_types: {
+        Row: {
+          base_quality_band: number
+          category: string
+          created_at: string
+          description: string | null
+          display_name: string
+          icon: string | null
+          id: string
+          key: string
+          replicable: boolean
+          spawn_biomes: string[] | null
+          storable: boolean
+          strategic_weight: string
+        }
+        Insert: {
+          base_quality_band?: number
+          category?: string
+          created_at?: string
+          description?: string | null
+          display_name?: string
+          icon?: string | null
+          id?: string
+          key: string
+          replicable?: boolean
+          spawn_biomes?: string[] | null
+          storable?: boolean
+          strategic_weight?: string
+        }
+        Update: {
+          base_quality_band?: number
+          category?: string
+          created_at?: string
+          description?: string | null
+          display_name?: string
+          icon?: string | null
+          id?: string
+          key?: string
+          replicable?: boolean
+          spawn_biomes?: string[] | null
+          storable?: boolean
+          strategic_weight?: string
+        }
+        Relationships: []
       }
       rumor_generation_log: {
         Row: {
@@ -7951,6 +8358,108 @@ export type Database = {
             columns: ["session_id"]
             isOneToOne: false
             referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      trade_flows: {
+        Row: {
+          created_at: string
+          effective_price: number
+          flow_type: string
+          friction_score: number
+          good_key: string
+          id: string
+          maturity: number
+          price_band: number
+          quality_band: number
+          route_path_id: string | null
+          session_id: string
+          source_city_id: string
+          source_player: string | null
+          status: string
+          target_city_id: string
+          target_player: string | null
+          trade_pressure: number
+          turn_created: number
+          volume_per_turn: number
+        }
+        Insert: {
+          created_at?: string
+          effective_price?: number
+          flow_type?: string
+          friction_score?: number
+          good_key: string
+          id?: string
+          maturity?: number
+          price_band?: number
+          quality_band?: number
+          route_path_id?: string | null
+          session_id: string
+          source_city_id: string
+          source_player?: string | null
+          status?: string
+          target_city_id: string
+          target_player?: string | null
+          trade_pressure?: number
+          turn_created?: number
+          volume_per_turn?: number
+        }
+        Update: {
+          created_at?: string
+          effective_price?: number
+          flow_type?: string
+          friction_score?: number
+          good_key?: string
+          id?: string
+          maturity?: number
+          price_band?: number
+          quality_band?: number
+          route_path_id?: string | null
+          session_id?: string
+          source_city_id?: string
+          source_player?: string | null
+          status?: string
+          target_city_id?: string
+          target_player?: string | null
+          trade_pressure?: number
+          turn_created?: number
+          volume_per_turn?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "trade_flows_good_key_fkey"
+            columns: ["good_key"]
+            isOneToOne: false
+            referencedRelation: "goods"
+            referencedColumns: ["key"]
+          },
+          {
+            foreignKeyName: "trade_flows_route_path_id_fkey"
+            columns: ["route_path_id"]
+            isOneToOne: false
+            referencedRelation: "flow_paths"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "trade_flows_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "trade_flows_source_city_id_fkey"
+            columns: ["source_city_id"]
+            isOneToOne: false
+            referencedRelation: "province_nodes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "trade_flows_target_city_id_fkey"
+            columns: ["target_city_id"]
+            isOneToOne: false
+            referencedRelation: "province_nodes"
             referencedColumns: ["id"]
           },
         ]

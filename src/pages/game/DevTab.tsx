@@ -3,6 +3,7 @@ import DevModePanel from "@/components/DevModePanel";
 import DevConsolePanel from "@/components/dev/DevConsolePanel";
 import ProvinceGraphPanel from "@/components/dev/ProvinceGraphPanel";
 import HexNodeMechanicsPanel from "@/components/dev/HexNodeMechanicsPanel";
+import GoodsEconomyDebugPanel from "@/components/dev/GoodsEconomyDebugPanel";
 import { Wrench, SkipForward, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
@@ -84,6 +85,7 @@ const DevTab = ({
         memoriesCount={memoriesCount}
         playersCount={playersCount}
       />
+      <GoodsEconomyDebugPanel sessionId={sessionId} />
       <DevConsolePanel sessionId={sessionId} currentTurn={currentTurn} />
       <ProvinceGraphPanel sessionId={sessionId} />
       <HexNodeMechanicsPanel sessionId={sessionId} />
