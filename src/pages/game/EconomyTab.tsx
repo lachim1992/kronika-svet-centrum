@@ -1,6 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import {
@@ -21,6 +20,7 @@ import {
 import {
   Tooltip, TooltipContent, TooltipTrigger, TooltipProvider,
 } from "@/components/ui/tooltip";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ensureRealmResources } from "@/lib/turnEngine";
 import {
   SETTLEMENT_LABELS,
@@ -91,7 +91,6 @@ const EconomyTab = ({ sessionId, currentPlayerName, currentTurn, cities, resourc
       setRealm(r);
     }
     setNodeStats(nodesRes.data || []);
-    // Build city→node map
     const map = new Map<string, any>();
     for (const n of (cityNodesRes.data || [])) {
       if (n.city_id) map.set(n.city_id, n);
@@ -108,9 +107,6 @@ const EconomyTab = ({ sessionId, currentPlayerName, currentTurn, cities, resourc
   const totalImportance = realm?.total_importance ?? 0;
   const maxMacro = Math.max(totalProduction, totalWealth, totalCapacity, 1);
 
-  // Strategic tiers (all 11 resources)
-  const strategicTiers = getStrategicTiers(realm);
-
   // Node breakdown by role
   const nodesByRole = useMemo(() => {
     const roles: Record<string, { count: number; production: number; wealth: number; capacity: number }> = {};
@@ -125,17 +121,14 @@ const EconomyTab = ({ sessionId, currentPlayerName, currentTurn, cities, resourc
     return roles;
   }, [nodeStats]);
 
-  // Top nodes by importance
   const topNodes = useMemo(() =>
     [...nodeStats].sort((a, b) => (b.importance_score ?? 0) - (a.importance_score ?? 0)).slice(0, 5),
   [nodeStats]);
 
-  // Isolated nodes
   const isolatedNodes = useMemo(() =>
     nodeStats.filter(n => (n.isolation_penalty ?? 0) > 0),
   [nodeStats]);
 
-  // Per-city economy from node data
   const FLOW_ROLE_MULT: Record<string, number> = { hub: 0.8, gateway: 0.9, regulator: 0.7, producer: 1.2, neutral: 1.0 };
   const cityEconMap = useMemo(() => {
     const map = new Map<string, { production: number; demand: number; balance: number; isolation: number; wealthOutput: number }>();
@@ -157,16 +150,15 @@ const EconomyTab = ({ sessionId, currentPlayerName, currentTurn, cities, resourc
     return map;
   }, [myCities, cityNodeMap]);
 
-  // Workforce
   const mobRate = realm?.mobilization_rate || 0.1;
   const wf = computeWorkforceBreakdown(myCities, mobRate);
+  const currentMob = Math.round(mobRate * 100);
 
   // Alerts
   const alerts: { text: string; severity: "error" | "warning" }[] = [];
   const famineCities = myCities.filter(c => c.famine_turn);
   if (famineCities.length > 0) alerts.push({ text: `${famineCities.length} sídel trpí hladomorem!`, severity: "error" });
   if (isolatedNodes.length > 0) alerts.push({ text: `${isolatedNodes.length} uzlů je izolováno od hlavního města`, severity: "warning" });
-  const currentMob = Math.round(mobRate * 100);
   if (currentMob > 20) alerts.push({ text: `Vysoká mobilizace (${currentMob}%)`, severity: "warning" });
 
   const sortedCities = useMemo(() => {
@@ -193,7 +185,6 @@ const EconomyTab = ({ sessionId, currentPlayerName, currentTurn, cities, resourc
   const handleRecompute = useCallback(async () => {
     setRecomputing(true);
     try {
-      // Run economy flow computation
       const { data, error } = await supabase.functions.invoke("compute-economy-flow", {
         body: { session_id: sessionId },
       });
@@ -216,368 +207,324 @@ const EconomyTab = ({ sessionId, currentPlayerName, currentTurn, cities, resourc
   );
 
   const ROLE_LABELS: Record<string, string> = {
-    hub: "Centra",
-    producer: "Producenti",
-    regulator: "Regulátory",
-    gateway: "Brány",
-    neutral: "Neutrální",
+    hub: "Centra", producer: "Producenti", regulator: "Regulátory",
+    gateway: "Brány", neutral: "Neutrální",
   };
 
   return (
-    <div className="space-y-6 pb-24 px-1">
-      {/* Header */}
+    <div className="space-y-5 pb-24 px-1">
+      {/* ═══ HEADER ═══ */}
       <div className="flex items-center gap-3 pt-2">
-        <BarChart3 className="h-6 w-6 text-primary" />
-        <h2 className="text-xl font-display font-bold">Ekonomika</h2>
-        <span className="text-sm text-muted-foreground ml-auto font-display">Rok {currentTurn}</span>
-        <Button variant="outline" size="sm" className="ml-2 text-sm h-9" onClick={handleRecompute} disabled={recomputing}>
-          <RefreshCw className={`h-4 w-4 mr-1.5 ${recomputing ? "animate-spin" : ""}`} />
-          {recomputing ? "Počítám…" : "Přepočítat tok"}
+        <div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center">
+          <BarChart3 className="h-5 w-5 text-primary" />
+        </div>
+        <div>
+          <h2 className="text-xl font-display font-bold tracking-tight">Ekonomika</h2>
+          <p className="text-xs text-muted-foreground">Rok {currentTurn} · {myCities.length} sídel · {nodeStats.length} uzlů</p>
+        </div>
+        <Button variant="outline" size="sm" className="ml-auto text-xs h-8 gap-1.5 border-border/50" onClick={handleRecompute} disabled={recomputing}>
+          <RefreshCw className={`h-3.5 w-3.5 ${recomputing ? "animate-spin" : ""}`} />
+          {recomputing ? "Počítám…" : "Přepočítat"}
         </Button>
       </div>
 
       {/* ═══ ALERTS ═══ */}
       {alerts.length > 0 && (
-        <div className="game-card border-destructive/30 bg-destructive/5 p-4 space-y-2">
+        <div className="rounded-xl border border-destructive/20 bg-destructive/5 p-3 space-y-1.5 animate-fade-in">
           {alerts.map((a, i) => (
-            <div key={i} className={`flex items-start gap-2 text-xs ${a.severity === "error" ? "text-destructive" : "text-foreground"}`}>
-              {a.severity === "error" ? <Skull className="h-3.5 w-3.5 shrink-0 mt-0.5" /> : <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" />}
+            <div key={i} className={`flex items-center gap-2 text-xs ${a.severity === "error" ? "text-destructive" : "text-foreground"}`}>
+              {a.severity === "error" ? <Skull className="h-3.5 w-3.5 shrink-0" /> : <AlertTriangle className="h-3.5 w-3.5 shrink-0" />}
               <span>{a.text}</span>
             </div>
           ))}
         </div>
       )}
 
-      {/* ═══ TOP TIER: 3 Macro Layers ═══ */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        {(["production", "wealth", "capacity"] as const).map(layer => {
-          const val = layer === "production" ? totalProduction : layer === "wealth" ? totalWealth : totalCapacity;
-          const icon = MACRO_LAYER_ICONS[layer];
-          const label = MACRO_LAYER_LABELS[layer];
-          const desc = MACRO_LAYER_DESCRIPTIONS[layer];
-          return (
-            <div key={layer} className="game-card p-5 space-y-3">
-              <div className="flex items-center gap-3">
-                <div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center text-xl">
-                  {icon}
-                </div>
-                <div>
-                  <h3 className="font-display font-bold text-lg flex items-center gap-1">
-                    {label}
-                    <InfoTip side="right">
-                      {layer === "production"
-                        ? "Generováno: base dle typu uzlu (resource_node=8, village=6, city=4, port=5) × role multiplikátor × (1 − izolace). Rolníci zvyšují produkci. compute-economy-flow sčítá minor→major→hlavní město."
-                        : layer === "wealth"
-                        ? "Generováno: průchodem produkce přes trasy. Trade efficiency dle role uzlu (hub=1.0, gateway=0.8, regulator=0.6, producer=0.3). Měšťané zvyšují wealth. Obchodní dohody přidávají bonus."
-                        : "Generováno: z urbanizační úrovně a infrastruktury uzlů (logistic_hub, trade_hub). Klerici přispívají ke kapacitě. Ovlivňuje maximální počet tras a staveb."}
-                    </InfoTip>
-                  </h3>
-                  <span className="text-[10px] text-muted-foreground">{desc}</span>
-                </div>
+      {/* ═══ MACRO SUMMARY ROW ═══ */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 animate-fade-in">
+        {[
+          { icon: "⚒️", label: "Produkce", value: totalProduction.toFixed(1), sub: "tok/kolo" },
+          { icon: "💰", label: "Bohatství", value: Math.round(realm?.gold_reserve ?? 0).toString(), sub: `+${totalWealth.toFixed(1)}/k` },
+          { icon: "🌾", label: "Zásoby", value: `${Math.round(realm?.grain_reserve ?? 0)}`, sub: `/${Math.round(realm?.granary_capacity ?? 0)}` },
+          { icon: "🏛️", label: "Kapacita", value: totalCapacity.toFixed(1), sub: "celkem" },
+        ].map((s) => (
+          <div key={s.label} className="rounded-xl border border-border/40 bg-card/50 p-4 space-y-1 hover:border-primary/30 transition-colors">
+            <div className="text-xs text-muted-foreground flex items-center gap-1.5">
+              <span>{s.icon}</span> {s.label}
+            </div>
+            <div className="text-2xl font-bold font-display text-primary tracking-tight">{s.value}</div>
+            <div className="text-[10px] text-muted-foreground">{s.sub}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* ═══ TABBED CONTENT ═══ */}
+      <Tabs defaultValue="overview" className="space-y-4">
+        <TabsList className="w-full grid grid-cols-4 h-10 bg-muted/30 rounded-xl p-1">
+          <TabsTrigger value="overview" className="text-xs font-display rounded-lg data-[state=active]:bg-card data-[state=active]:shadow-sm">
+            📊 Přehled
+          </TabsTrigger>
+          <TabsTrigger value="goods" className="text-xs font-display rounded-lg data-[state=active]:bg-card data-[state=active]:shadow-sm">
+            📦 Goods
+          </TabsTrigger>
+          <TabsTrigger value="fiscal" className="text-xs font-display rounded-lg data-[state=active]:bg-card data-[state=active]:shadow-sm">
+            🏛️ Fiskál
+          </TabsTrigger>
+          <TabsTrigger value="cities" className="text-xs font-display rounded-lg data-[state=active]:bg-card data-[state=active]:shadow-sm">
+            🏙️ Sídla
+          </TabsTrigger>
+        </TabsList>
+
+        {/* ═══ OVERVIEW TAB ═══ */}
+        <TabsContent value="overview" className="space-y-5 animate-fade-in">
+          {/* Workforce */}
+          <TooltipProvider>
+            <div className="rounded-xl border border-border/40 bg-card/50 p-5 space-y-4">
+              <div className="flex items-center gap-2">
+                <Users className="h-4 w-4 text-primary" />
+                <h3 className="font-display font-semibold text-sm">Lidská síla</h3>
+                <InfoTip side="right">Pracovní síla = celková populace − vojáci. Mobilizace nad 15% způsobuje penalizace produkce.</InfoTip>
               </div>
-              <div className="text-3xl font-bold font-display text-primary">{val.toFixed(1)}</div>
-              <Progress value={Math.min(100, (val / maxMacro) * 100)} className="h-2" />
-            </div>
-          );
-        })}
-      </div>
-
-      {/* ═══ IMPORTANCE ═══ */}
-      <div className="game-card p-5 space-y-3">
-        <div className="flex items-center gap-2">
-          <Network className="h-5 w-5 text-primary" />
-          <h3 className="font-display font-semibold text-base">Celková důležitost</h3>
-          <InfoTip side="right">Suma importance skóre všech kontrolovaných uzlů. Vyšší = silnější ekonomická pozice. Důležitost uzlu = produkce × konektivita × role multiplikátor.</InfoTip>
-          <span className="ml-auto text-2xl font-mono font-bold text-primary">{totalImportance.toFixed(1)}</span>
-        </div>
-        <div className="text-xs text-muted-foreground">{nodeStats.length} kontrolovaných uzlů</div>
-      </div>
-
-      {/* ═══ NODE BREAKDOWN BY ROLE ═══ */}
-      <Collapsible>
-        <div className="game-card p-5 space-y-3">
-          <div className="flex items-center gap-2">
-            <TrendingUp className="h-5 w-5 text-primary" />
-            <h3 className="font-display font-semibold text-base">Tok dle typu uzlu</h3>
-            <InfoTip side="right">Jak jednotlivé typy uzlů přispívají k celkové produkci, bohatství a kapacitě.</InfoTip>
-            <CollapsibleTrigger asChild>
-              <button className="ml-auto flex items-center gap-1 text-xs text-primary hover:text-primary/80">
-                <ChevronDown className="h-3 w-3" /> Rozbalit
-              </button>
-            </CollapsibleTrigger>
-          </div>
-
-          {/* Summary row */}
-          <div className="grid grid-cols-4 gap-2 text-xs">
-            <div className="font-semibold text-muted-foreground">Role</div>
-            <div className="text-center font-semibold text-muted-foreground">{MACRO_LAYER_ICONS.production} Produkce</div>
-            <div className="text-center font-semibold text-muted-foreground">{MACRO_LAYER_ICONS.wealth} Bohatství</div>
-            <div className="text-center font-semibold text-muted-foreground">{MACRO_LAYER_ICONS.capacity} Kapacita</div>
-          </div>
-          {Object.entries(nodesByRole).map(([role, data]) => (
-            <div key={role} className="grid grid-cols-4 gap-2 text-xs border-t border-border/30 pt-1">
-              <div className="font-semibold">{ROLE_LABELS[role] || role} <span className="text-muted-foreground">({data.count})</span></div>
-              <div className="text-center font-bold">{data.production.toFixed(1)}</div>
-              <div className="text-center font-bold">{data.wealth.toFixed(1)}</div>
-              <div className="text-center font-bold">{data.capacity.toFixed(1)}</div>
-            </div>
-          ))}
-
-          <CollapsibleContent>
-            {/* Top nodes */}
-            <div className="border-t border-border pt-3 mt-3 space-y-2">
-              <h4 className="text-xs font-semibold text-muted-foreground">Top 5 uzlů dle důležitosti</h4>
-              {topNodes.map(n => {
-                const impLabel = getImportanceLabel(n.importance_score ?? 0);
-                const impColor = getImportanceColor(n.importance_score ?? 0);
-                return (
-                  <div key={n.id} className="flex items-center justify-between text-xs border-b border-border/20 pb-1">
-                    <span className="font-semibold">{n.name}</span>
-                    <div className="flex items-center gap-2">
-                      <span className="text-muted-foreground">{MACRO_LAYER_ICONS.production}{(n.production_output ?? 0).toFixed(1)}</span>
-                      <span className="text-muted-foreground">{MACRO_LAYER_ICONS.wealth}{(n.wealth_output ?? 0).toFixed(1)}</span>
-                      <Badge className={`text-[8px] ${impColor}`}>{impLabel} ({(n.importance_score ?? 0).toFixed(1)})</Badge>
-                    </div>
+              <div className="grid grid-cols-3 gap-3 text-center">
+                {[
+                  { label: "Pracovní síla", value: wf.workforce, alert: false },
+                  { label: "Vojáci", value: wf.mobilized, alert: false },
+                  { label: "Mobilizace", value: `${currentMob}%`, alert: wf.isOverMob },
+                ].map(w => (
+                  <div key={w.label} className={`rounded-lg p-3 ${w.alert ? "bg-destructive/10 border border-destructive/20" : "bg-muted/30"}`}>
+                    <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">{w.label}</div>
+                    <div className={`text-xl font-bold font-display ${w.alert ? "text-destructive" : ""}`}>{w.value}</div>
                   </div>
-                );
-              })}
+                ))}
+              </div>
+              {wf.isOverMob && (
+                <div className="text-xs text-destructive flex items-center gap-1.5">
+                  <AlertTriangle className="h-3 w-3" />
+                  Překročena mobilizační hranice — produkce penalizována o {Math.round(wf.overMobPenalty * 100)}%
+                </div>
+              )}
             </div>
+          </TooltipProvider>
 
-            {/* Isolated nodes */}
-            {isolatedNodes.length > 0 && (
-              <div className="border-t border-border pt-3 mt-3 space-y-2">
-                <h4 className="text-xs font-semibold text-destructive flex items-center gap-1">
-                  <AlertTriangle className="h-3 w-3" /> Izolované uzly ({isolatedNodes.length})
-                </h4>
-                {isolatedNodes.map(n => {
-                  const sev = getIsolationSeverity(n.isolation_penalty ?? 0);
-                  return (
-                    <div key={n.id} className="flex items-center justify-between text-xs">
-                      <span>{n.name}</span>
-                      <span className="text-destructive">{ISOLATION_PENALTY_LABELS[sev]} (-{Math.round((n.isolation_penalty ?? 0) * 100)}%)</span>
+          {/* Grain Reserve */}
+          {realm && (
+            <div className="rounded-xl border border-border/40 bg-card/50 p-5 space-y-3">
+              <div className="flex items-center gap-2">
+                <span className="text-lg">🌾</span>
+                <h3 className="font-display font-semibold text-sm">Zásoby obilí</h3>
+                <span className="ml-auto text-sm font-mono font-bold text-primary">
+                  {Math.round(realm.grain_reserve || 0)} / {Math.round(realm.granary_capacity || 0)}
+                </span>
+              </div>
+              <Progress value={Math.min(100, ((realm.grain_reserve || 0) / Math.max(1, realm.granary_capacity || 1)) * 100)} className="h-2.5" />
+              <div className="flex justify-between text-xs text-muted-foreground">
+                <span>Produkce: {realm.last_turn_grain_prod || 0}</span>
+                <span>Spotřeba: {realm.last_turn_grain_cons || 0}</span>
+                <span className={`font-semibold ${(realm.last_turn_grain_net || 0) >= 0 ? "text-emerald-500" : "text-destructive"}`}>
+                  Bilance: {(realm.last_turn_grain_net || 0) >= 0 ? "+" : ""}{realm.last_turn_grain_net || 0}
+                </span>
+              </div>
+            </div>
+          )}
+
+          {/* Wealth Reserve */}
+          {realm && (
+            <div className="rounded-xl border border-border/40 bg-card/50 p-5 space-y-2">
+              <div className="flex items-center gap-2">
+                <span className="text-lg">💰</span>
+                <h3 className="font-display font-semibold text-sm">Pokladna</h3>
+                <span className="ml-auto text-2xl font-mono font-bold text-primary">{Math.round(realm.gold_reserve || 0)}</span>
+              </div>
+              <div className="text-xs text-muted-foreground">
+                Tok ze sítě: +{totalWealth.toFixed(1)}/kolo · Produkční rezerva: {Math.round(realm.production_reserve || 0)}
+              </div>
+            </div>
+          )}
+
+          {/* Node flow breakdown */}
+          <Collapsible>
+            <div className="rounded-xl border border-border/40 bg-card/50 p-5 space-y-3">
+              <div className="flex items-center gap-2">
+                <Network className="h-4 w-4 text-primary" />
+                <h3 className="font-display font-semibold text-sm">Tok dle rolí</h3>
+                <span className="ml-auto text-xs text-muted-foreground">{nodeStats.length} uzlů</span>
+                <CollapsibleTrigger asChild>
+                  <button className="flex items-center gap-1 text-xs text-primary hover:text-primary/80">
+                    <ChevronDown className="h-3 w-3" /> Detail
+                  </button>
+                </CollapsibleTrigger>
+              </div>
+
+              <div className="grid grid-cols-4 gap-2 text-xs">
+                <div className="font-semibold text-muted-foreground">Role</div>
+                <div className="text-center font-semibold text-muted-foreground">⚒️</div>
+                <div className="text-center font-semibold text-muted-foreground">💰</div>
+                <div className="text-center font-semibold text-muted-foreground">🏛️</div>
+              </div>
+              {Object.entries(nodesByRole).map(([role, data]) => (
+                <div key={role} className="grid grid-cols-4 gap-2 text-xs border-t border-border/20 pt-1">
+                  <div className="font-semibold">{ROLE_LABELS[role] || role} <span className="text-muted-foreground">({data.count})</span></div>
+                  <div className="text-center font-mono">{data.production.toFixed(1)}</div>
+                  <div className="text-center font-mono">{data.wealth.toFixed(1)}</div>
+                  <div className="text-center font-mono">{data.capacity.toFixed(1)}</div>
+                </div>
+              ))}
+
+              <CollapsibleContent className="space-y-4 pt-3">
+                {/* Top nodes */}
+                <div className="border-t border-border/30 pt-3 space-y-2">
+                  <h4 className="text-xs font-semibold text-muted-foreground">Top 5 uzlů</h4>
+                  {topNodes.map(n => (
+                    <div key={n.id} className="flex items-center justify-between text-xs border-b border-border/10 pb-1">
+                      <span className="font-semibold">{n.name}</span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-muted-foreground">⚒️{(n.production_output ?? 0).toFixed(1)}</span>
+                        <span className="text-muted-foreground">💰{(n.wealth_output ?? 0).toFixed(1)}</span>
+                        <Badge className={`text-[8px] ${getImportanceColor(n.importance_score ?? 0)}`}>
+                          {getImportanceLabel(n.importance_score ?? 0)} ({(n.importance_score ?? 0).toFixed(1)})
+                        </Badge>
+                      </div>
                     </div>
+                  ))}
+                </div>
+
+                {isolatedNodes.length > 0 && (
+                  <div className="border-t border-border/30 pt-3 space-y-2">
+                    <h4 className="text-xs font-semibold text-destructive flex items-center gap-1">
+                      <AlertTriangle className="h-3 w-3" /> Izolované uzly ({isolatedNodes.length})
+                    </h4>
+                    {isolatedNodes.map(n => (
+                      <div key={n.id} className="flex items-center justify-between text-xs">
+                        <span>{n.name}</span>
+                        <span className="text-destructive">-{Math.round((n.isolation_penalty ?? 0) * 100)}%</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CollapsibleContent>
+            </div>
+          </Collapsible>
+
+          {/* Sub-panels */}
+          {realm && <FaithPanel realm={realm} cities={myCities} />}
+          {realm && <CapacityPanel realm={realm} cities={myCities} nodeStats={nodeStats} />}
+          <PopulationPanel cities={myCities} realm={realm} />
+          {realm && <MilitaryUpkeepPanel armies={armies} realm={realm} />}
+          {realm && <PrestigeBreakdown realm={realm} />}
+          {realm && <StrategicResourcesDetail realm={realm} />}
+
+          {/* Dependency Map */}
+          <EconomyDependencyMap realm={realm} cities={myCities} armies={armies} sessionId={sessionId} playerName={currentPlayerName} />
+
+          {/* Formulas */}
+          <FormulasReferencePanel />
+        </TabsContent>
+
+        {/* ═══ GOODS TAB ═══ */}
+        <TabsContent value="goods" className="space-y-5 animate-fade-in">
+          <GoodsDemandSubTab sessionId={sessionId} playerName={currentPlayerName} />
+
+          <TradePanel
+            sessionId={sessionId}
+            currentPlayerName={currentPlayerName}
+            currentTurn={currentTurn}
+            myCities={myCities}
+            allCities={cities}
+            realm={realm}
+            onRefetch={onRefetch}
+          />
+
+          <SupplyChainPanel sessionId={sessionId} playerName={currentPlayerName} currentTurn={currentTurn} />
+        </TabsContent>
+
+        {/* ═══ FISCAL TAB ═══ */}
+        <TabsContent value="fiscal" className="space-y-5 animate-fade-in">
+          {realm && (
+            <FiscalSubTab realm={realm} sessionId={sessionId} playerName={currentPlayerName} onRefetch={fetchData} />
+          )}
+        </TabsContent>
+
+        {/* ═══ CITIES TAB ═══ */}
+        <TabsContent value="cities" className="space-y-5 animate-fade-in">
+          <div className="rounded-xl border border-border/40 bg-card/50 overflow-hidden">
+            <div className="px-5 pt-4 pb-2">
+              <h3 className="text-sm font-display font-semibold flex items-center gap-2">
+                🏙️ Přehled sídel
+                <InfoTip side="right">Produkce = (vlastní + příchozí×0.5) × role mult. Poptávka = populace × 0.006. Bilance = produkce − poptávka.</InfoTip>
+              </h3>
+            </div>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="text-xs px-3">Město <SortIcon field="name" /></TableHead>
+                  <TableHead className="text-xs px-3">Úroveň <SortIcon field="settlement" /></TableHead>
+                  <TableHead className="text-xs px-3 text-right">Pop. <SortIcon field="population" /></TableHead>
+                  <TableHead className="text-xs px-3 text-right">⚒️</TableHead>
+                  <TableHead className="text-xs px-3 text-right">💰</TableHead>
+                  <TableHead className="text-xs px-3 text-right">Bilance <SortIcon field="balance" /></TableHead>
+                  <TableHead className="text-xs px-3 text-right">Stabilita</TableHead>
+                  <TableHead className="text-xs px-3 text-center">Stav</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {sortedCities.map(c => {
+                  const econ = cityEconMap.get(c.id);
+                  const balance = econ?.balance ?? 0;
+                  const balanceColor = balance > 0 ? "text-emerald-500" : balance < 0 ? "text-destructive" : "";
+                  return (
+                    <TableRow key={c.id} className="cursor-pointer hover:bg-muted/30 transition-colors" onClick={() => onEntityClick?.("city", c.id)}>
+                      <TableCell className="text-sm px-3 font-semibold">
+                        {c.name}
+                        {c.famine_turn && <Skull className="h-3 w-3 inline ml-1 text-destructive" />}
+                        {c.is_capital && <span className="text-[9px] ml-1 text-primary">★</span>}
+                        {(econ?.isolation ?? 0) > 0 && <span className="text-[9px] ml-1 text-destructive">⛓️</span>}
+                      </TableCell>
+                      <TableCell className="text-xs px-3">
+                        <Badge variant="secondary" className="text-[10px]">{SETTLEMENT_LABELS[c.settlement_level] || c.settlement_level}</Badge>
+                      </TableCell>
+                      <TableCell className="text-sm px-3 text-right font-mono">{(c.population_total || 0).toLocaleString()}</TableCell>
+                      <TableCell className="text-sm px-3 text-right font-mono">{econ?.production?.toFixed(1) ?? "—"}</TableCell>
+                      <TableCell className="text-sm px-3 text-right font-mono">{econ?.wealthOutput?.toFixed(1) ?? "—"}</TableCell>
+                      <TableCell className={`text-sm px-3 text-right font-mono font-semibold ${balanceColor}`}>
+                        {balance > 0 ? "+" : ""}{balance.toFixed(1)}
+                      </TableCell>
+                      <TableCell className="text-sm px-3 text-right">
+                        <span className={(c.city_stability || 50) < 30 ? "text-destructive" : (c.city_stability || 50) < 50 ? "text-amber-500" : ""}>
+                          {c.city_stability || 50}%
+                        </span>
+                      </TableCell>
+                      <TableCell className="text-xs px-3 text-center">
+                        {c.famine_turn ? <Badge variant="destructive" className="text-[9px]">Hlad</Badge>
+                          : c.epidemic_active ? <Badge variant="destructive" className="text-[9px]">Epidemie</Badge>
+                          : <Badge variant="secondary" className="text-[9px]">OK</Badge>}
+                      </TableCell>
+                    </TableRow>
                   );
                 })}
-              </div>
-            )}
-          </CollapsibleContent>
-        </div>
-      </Collapsible>
-
-      {/* ═══ WORKFORCE ═══ */}
-      <TooltipProvider>
-        <div className="game-card p-5 space-y-3">
-          <div className="flex items-center gap-2">
-            <Users className="h-5 w-5 text-primary" />
-            <h3 className="font-display font-semibold text-base">Lidská síla</h3>
-            <InfoTip side="right">Pracovní síla = celková populace − vojáci. Vyšší mobilizace = méně pracovníků = penalizace produkce uzlů. Mobilizace nad 15% způsobuje progresivní penalty. Počítáno v compute-economy-flow z realm_resources.mobilization_rate × total population.</InfoTip>
+              </TableBody>
+            </Table>
           </div>
-          <div className="grid grid-cols-3 gap-4 text-center">
-            <div className="bg-muted/40 rounded-lg p-3">
-              <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">Pracovní síla</div>
-              <div className="text-2xl font-bold font-display">{wf.workforce}</div>
-            </div>
-            <div className="bg-muted/40 rounded-lg p-3">
-              <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">Vojáci</div>
-              <div className="text-2xl font-bold font-display">{wf.mobilized}</div>
-            </div>
-            <div className={`rounded-lg p-3 ${wf.isOverMob ? "bg-destructive/10" : "bg-muted/40"}`}>
-              <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">Mobilizace</div>
-              <div className={`text-2xl font-bold font-display ${wf.isOverMob ? "text-destructive" : ""}`}>{currentMob}%</div>
-            </div>
-          </div>
-          {wf.isOverMob && (
-            <div className="text-xs text-destructive flex items-center gap-1.5">
-              <AlertTriangle className="h-3 w-3" />
-              Překročena mobilizační hranice — produkce uzlů penalizována o {Math.round(wf.overMobPenalty * 100)}%
-            </div>
-          )}
-        </div>
-      </TooltipProvider>
 
-      {/* ═══ GRAIN RESERVE ═══ */}
-      {realm && (
-        <div className="game-card p-5 space-y-3">
-          <div className="flex items-center gap-2">
-            <span className="text-xl">🌾</span>
-            <h3 className="font-display font-semibold text-base">Zásoby obilí</h3>
-            <InfoTip side="right">Produkce obilí: rolníci × irrigation_level × ration_policy. Spotřeba: populace × 0.006/kolo. Bilance se ukládá do grain_reserve. Kapacita sýpky závisí na budovách (granary). Záporná bilance → hladomor po vyčerpání rezerv. Počítáno v process-turn.</InfoTip>
-            <span className="ml-auto text-sm font-mono font-bold">
-              {Math.round(realm.grain_reserve || 0)} / {Math.round(realm.granary_capacity || 0)}
-            </span>
-          </div>
-          <Progress value={Math.min(100, ((realm.grain_reserve || 0) / Math.max(1, realm.granary_capacity || 1)) * 100)} className="h-3" />
-          <div className="flex justify-between text-xs text-muted-foreground">
-            <span>⚒️ Produkce: {realm.last_turn_grain_prod || 0}</span>
-            <span>🍽️ Spotřeba: {realm.last_turn_grain_cons || 0}</span>
-            <span className={`font-semibold ${(realm.last_turn_grain_net || 0) >= 0 ? "text-emerald-500" : "text-destructive"}`}>
-              Bilance: {(realm.last_turn_grain_net || 0) >= 0 ? "+" : ""}{realm.last_turn_grain_net || 0}
-            </span>
-          </div>
-          {(realm.famine_city_count || 0) > 0 && (
-            <div className="text-xs text-destructive flex items-center gap-1.5">
-              <Skull className="h-3 w-3" />
-              {realm.famine_city_count} měst trpí hladomorem — zásoby nestačí pokrýt deficit
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* ═══ WEALTH RESERVE ═══ */}
-      {realm && (
-        <div className="game-card p-5 space-y-3">
-          <div className="flex items-center gap-2">
-            <span className="text-xl">💰</span>
-            <h3 className="font-display font-semibold text-base">Pokladna bohatství</h3>
-            <InfoTip side="right">Přírůstek: wealth tok ze sítě uzlů + obchodní dohody + daně (tax_rate_percent z laws). Spotřeba: údržba armád (1 gold/100 vojáků), stavby, diplomatické akce. Prestiž přidává +0.1% bonus za bod.</InfoTip>
-            <span className="ml-auto text-2xl font-mono font-bold text-primary">{Math.round(realm.gold_reserve || 0)}</span>
-          </div>
-          <div className="flex justify-between text-xs text-muted-foreground">
-            <span>⚒️ Tok ze sítě: +{totalWealth.toFixed(1)}/kolo</span>
-            <span>⚒️ Produkční rezerva: {Math.round(realm.production_reserve || 0)}</span>
-          </div>
-        </div>
-      )}
-
-      {/* ═══ FAITH ═══ */}
-      {realm && <FaithPanel realm={realm} cities={myCities} />}
-
-      {/* ═══ CAPACITY ═══ */}
-      {realm && <CapacityPanel realm={realm} cities={myCities} nodeStats={nodeStats} />}
-
-      {/* ═══ POPULATION & DEMOGRAPHICS ═══ */}
-      <PopulationPanel cities={myCities} realm={realm} />
-
-      {/* ═══ MILITARY UPKEEP ═══ */}
-      {realm && <MilitaryUpkeepPanel armies={armies} realm={realm} />}
-
-      {/* ═══ PRESTIGE ═══ */}
-      {realm && <PrestigeBreakdown realm={realm} />}
-
-      {/* ═══ STRATEGIC RESOURCES DETAIL ═══ */}
-      {realm && <StrategicResourcesDetail realm={realm} />}
-
-      {/* ═══ DEPENDENCY MAP WITH LIVE VALUES ═══ */}
-      <EconomyDependencyMap realm={realm} cities={myCities} armies={armies} sessionId={sessionId} playerName={currentPlayerName} />
-
-      {/* ═══ GOODS & DEMAND ═══ */}
-      <div className="game-card p-5 space-y-3">
-        <h3 className="text-base font-display font-semibold flex items-center gap-2">
-          📦 Goods, recepty a obchodní toky
-          <InfoTip side="right">Detailní přehled goods economy: katalog goods, produkční recepty, demand baskets per město a obchodní toky.</InfoTip>
-        </h3>
-        <GoodsDemandSubTab sessionId={sessionId} playerName={currentPlayerName} />
-      </div>
-
-      {/* ═══ FISCAL BREAKDOWN ═══ */}
-      {realm && (
-        <div className="game-card p-5 space-y-3">
-          <h3 className="text-base font-display font-semibold flex items-center gap-2">
-            🏛️ Fiskální rozklad
-            <InfoTip side="right">Breakdown příjmů: population tax, market tax, transit tax, extraction tax + retention/capture metriky.</InfoTip>
-          </h3>
-          <FiscalSubTab realm={realm} sessionId={sessionId} playerName={currentPlayerName} onRefetch={fetchData} />
-        </div>
-      )}
-
-      {/* ═══ FORMULAS REFERENCE ═══ */}
-      <FormulasReferencePanel />
-
-      {/* ═══ CITY TABLE ═══ */}
-      <div className="game-card p-0 overflow-hidden">
-        <div className="px-5 pt-4 pb-2">
-          <h3 className="text-base font-display font-semibold flex items-center gap-2">
-            Přehled sídel — síťová ekonomika
-            <InfoTip side="right">Produkce města = (vlastní production_output + příchozí incoming_production × 0.5) × role multiplikátor. Poptávka = populace × 0.006. Bilance = produkce − poptávka. Wealth = wealth_output uzlu města. Izolace (⛓️) = izolační penalizace uzlu vůči hlavnímu městu, snižuje produkci. A* pathfinding hledá cestu nejmenšího odporu přes biomy.</InfoTip>
-          </h3>
-        </div>
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead className="text-xs px-3">Město <SortIcon field="name" /></TableHead>
-              <TableHead className="text-xs px-3">Úroveň <SortIcon field="settlement" /></TableHead>
-              <TableHead className="text-xs px-3 text-right">Pop. <SortIcon field="population" /></TableHead>
-              <TableHead className="text-xs px-3 text-right">⚒️ Prod.</TableHead>
-              <TableHead className="text-xs px-3 text-right">💰 Wealth</TableHead>
-              <TableHead className="text-xs px-3 text-right">Bilance <SortIcon field="balance" /></TableHead>
-              <TableHead className="text-xs px-3 text-right">Stabilita</TableHead>
-              <TableHead className="text-xs px-3 text-center">Stav</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {sortedCities.map(c => {
-              const econ = cityEconMap.get(c.id);
-              const balance = econ?.balance ?? 0;
-              const balanceColor = balance > 0 ? "text-emerald-500" : balance < 0 ? "text-destructive" : "";
-              return (
-                <TableRow key={c.id} className="cursor-pointer hover:bg-muted/50" onClick={() => onEntityClick?.("city", c.id)}>
-                  <TableCell className="text-sm px-3 font-semibold">
-                    {c.name}
-                    {c.famine_turn && <Skull className="h-3.5 w-3.5 inline ml-1.5 text-destructive" />}
-                    {c.is_capital && <span className="text-[9px] ml-1 text-primary">★</span>}
-                    {(econ?.isolation ?? 0) > 0 && (
-                      <span className="text-[9px] ml-1 text-destructive">⛓️-{econ!.isolation}%</span>
-                    )}
-                  </TableCell>
-                  <TableCell className="text-xs px-3">
-                    <Badge variant="secondary" className="text-[10px]">{SETTLEMENT_LABELS[c.settlement_level] || c.settlement_level}</Badge>
-                  </TableCell>
-                  <TableCell className="text-sm px-3 text-right">{(c.population_total || 0).toLocaleString()}</TableCell>
-                  <TableCell className="text-sm px-3 text-right font-mono">{econ?.production?.toFixed(1) ?? "—"}</TableCell>
-                  <TableCell className="text-sm px-3 text-right font-mono">{econ?.wealthOutput?.toFixed(1) ?? "—"}</TableCell>
-                  <TableCell className={`text-sm px-3 text-right font-mono font-semibold ${balanceColor}`}>
-                    {balance > 0 ? "+" : ""}{balance.toFixed(1)}
-                  </TableCell>
-                  <TableCell className="text-sm px-3 text-right">
-                    <span className={(c.city_stability || 50) < 30 ? "text-destructive" : (c.city_stability || 50) < 50 ? "text-amber-500" : ""}>
-                      {c.city_stability || 50}%
-                    </span>
-                  </TableCell>
-                  <TableCell className="text-xs px-3 text-center">
-                    {c.famine_turn ? <Badge variant="destructive" className="text-[9px]">Hladomor</Badge>
-                      : c.epidemic_active ? <Badge variant="destructive" className="text-[9px]">Epidemie</Badge>
-                      : <Badge variant="secondary" className="text-[9px]">OK</Badge>}
-                  </TableCell>
-                </TableRow>
-              );
-            })}
-          </TableBody>
-        </Table>
-      </div>
-
-      {/* ═══ TRADE SYSTEM ═══ */}
-      <TradePanel
-        sessionId={sessionId}
-        currentPlayerName={currentPlayerName}
-        currentTurn={currentTurn}
-        myCities={myCities}
-        allCities={cities}
-        realm={realm}
-        onRefetch={onRefetch}
-      />
-
-      {/* ═══ COUNCIL LINK ═══ */}
-      <Button
-        variant="outline"
-        size="sm"
-        className="w-full text-xs gap-1.5"
-        onClick={() => onTabChange?.("council")}
-      >
-        <MessageSquare className="h-3.5 w-3.5" />
-        Poradit se s rádci o ekonomice
-      </Button>
-
-      {/* ═══ SUPPLY CHAIN ═══ */}
-      <SupplyChainPanel sessionId={sessionId} playerName={currentPlayerName} currentTurn={currentTurn} />
+          <Button
+            variant="outline"
+            size="sm"
+            className="w-full text-xs gap-1.5 border-border/40"
+            onClick={() => onTabChange?.("council")}
+          >
+            <MessageSquare className="h-3.5 w-3.5" />
+            Poradit se s rádci o ekonomice
+          </Button>
+        </TabsContent>
+      </Tabs>
 
       {/* ═══ ADMIN DEBUG ═══ */}
       {myRole === "admin" && (
-        <div>
+        <div className="pt-2">
           <Button variant="ghost" size="sm" onClick={() => setShowDebug(!showDebug)} className="text-xs gap-1">
             <Code className="h-3 w-3" />{showDebug ? "Skrýt" : "Debug"} realm_resources
           </Button>
           {showDebug && realm && (
-            <pre className="mt-2 p-3 rounded bg-muted text-[10px] overflow-auto max-h-60 border border-border">
+            <pre className="mt-2 p-3 rounded-lg bg-muted/30 text-[10px] overflow-auto max-h-60 border border-border/30">
               {JSON.stringify(realm, null, 2)}
             </pre>
           )}
