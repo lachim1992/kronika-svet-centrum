@@ -1371,6 +1371,73 @@ export type Database = {
           },
         ]
       }
+      city_market_summary: {
+        Row: {
+          avg_quality: number
+          city_node_id: string
+          demand_volume: number
+          domestic_share: number
+          good_key: string
+          id: string
+          import_share: number
+          price_band: number
+          price_numeric: number
+          session_id: string
+          supply_volume: number
+          turn_number: number
+        }
+        Insert: {
+          avg_quality?: number
+          city_node_id: string
+          demand_volume?: number
+          domestic_share?: number
+          good_key: string
+          id?: string
+          import_share?: number
+          price_band?: number
+          price_numeric?: number
+          session_id: string
+          supply_volume?: number
+          turn_number?: number
+        }
+        Update: {
+          avg_quality?: number
+          city_node_id?: string
+          demand_volume?: number
+          domestic_share?: number
+          good_key?: string
+          id?: string
+          import_share?: number
+          price_band?: number
+          price_numeric?: number
+          session_id?: string
+          supply_volume?: number
+          turn_number?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "city_market_summary_city_node_id_fkey"
+            columns: ["city_node_id"]
+            isOneToOne: false
+            referencedRelation: "province_nodes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "city_market_summary_good_key_fkey"
+            columns: ["good_key"]
+            isOneToOne: false
+            referencedRelation: "goods"
+            referencedColumns: ["key"]
+          },
+          {
+            foreignKeyName: "city_market_summary_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       city_policies: {
         Row: {
           city_id: string
@@ -2134,6 +2201,66 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "declarations_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      demand_baskets: {
+        Row: {
+          basket_key: string
+          city_id: string
+          fulfillment_type: string
+          id: string
+          min_quality: number
+          preferred_quality: number
+          quantity_fulfilled: number
+          quantity_needed: number
+          satisfaction_score: number
+          session_id: string
+          tier: number
+          turn_number: number
+        }
+        Insert: {
+          basket_key: string
+          city_id: string
+          fulfillment_type?: string
+          id?: string
+          min_quality?: number
+          preferred_quality?: number
+          quantity_fulfilled?: number
+          quantity_needed?: number
+          satisfaction_score?: number
+          session_id: string
+          tier?: number
+          turn_number?: number
+        }
+        Update: {
+          basket_key?: string
+          city_id?: string
+          fulfillment_type?: string
+          id?: string
+          min_quality?: number
+          preferred_quality?: number
+          quantity_fulfilled?: number
+          quantity_needed?: number
+          satisfaction_score?: number
+          session_id?: string
+          tier?: number
+          turn_number?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "demand_baskets_city_id_fkey"
+            columns: ["city_id"]
+            isOneToOne: false
+            referencedRelation: "province_nodes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "demand_baskets_session_id_fkey"
             columns: ["session_id"]
             isOneToOne: false
             referencedRelation: "game_sessions"
@@ -5960,6 +6087,45 @@ export type Database = {
           },
         ]
       }
+      node_inventory: {
+        Row: {
+          good_key: string
+          id: string
+          node_id: string
+          quality_band: number
+          quantity: number
+        }
+        Insert: {
+          good_key: string
+          id?: string
+          node_id: string
+          quality_band?: number
+          quantity?: number
+        }
+        Update: {
+          good_key?: string
+          id?: string
+          node_id?: string
+          quality_band?: number
+          quantity?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "node_inventory_good_key_fkey"
+            columns: ["good_key"]
+            isOneToOne: false
+            referencedRelation: "goods"
+            referencedColumns: ["key"]
+          },
+          {
+            foreignKeyName: "node_inventory_node_id_fkey"
+            columns: ["node_id"]
+            isOneToOne: false
+            referencedRelation: "province_nodes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       node_projects: {
         Row: {
           completed_turn: number | null
@@ -8144,6 +8310,108 @@ export type Database = {
             columns: ["session_id"]
             isOneToOne: false
             referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      trade_flows: {
+        Row: {
+          created_at: string
+          effective_price: number
+          flow_type: string
+          friction_score: number
+          good_key: string
+          id: string
+          maturity: number
+          price_band: number
+          quality_band: number
+          route_path_id: string | null
+          session_id: string
+          source_city_id: string
+          source_player: string | null
+          status: string
+          target_city_id: string
+          target_player: string | null
+          trade_pressure: number
+          turn_created: number
+          volume_per_turn: number
+        }
+        Insert: {
+          created_at?: string
+          effective_price?: number
+          flow_type?: string
+          friction_score?: number
+          good_key: string
+          id?: string
+          maturity?: number
+          price_band?: number
+          quality_band?: number
+          route_path_id?: string | null
+          session_id: string
+          source_city_id: string
+          source_player?: string | null
+          status?: string
+          target_city_id: string
+          target_player?: string | null
+          trade_pressure?: number
+          turn_created?: number
+          volume_per_turn?: number
+        }
+        Update: {
+          created_at?: string
+          effective_price?: number
+          flow_type?: string
+          friction_score?: number
+          good_key?: string
+          id?: string
+          maturity?: number
+          price_band?: number
+          quality_band?: number
+          route_path_id?: string | null
+          session_id?: string
+          source_city_id?: string
+          source_player?: string | null
+          status?: string
+          target_city_id?: string
+          target_player?: string | null
+          trade_pressure?: number
+          turn_created?: number
+          volume_per_turn?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "trade_flows_good_key_fkey"
+            columns: ["good_key"]
+            isOneToOne: false
+            referencedRelation: "goods"
+            referencedColumns: ["key"]
+          },
+          {
+            foreignKeyName: "trade_flows_route_path_id_fkey"
+            columns: ["route_path_id"]
+            isOneToOne: false
+            referencedRelation: "flow_paths"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "trade_flows_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "trade_flows_source_city_id_fkey"
+            columns: ["source_city_id"]
+            isOneToOne: false
+            referencedRelation: "province_nodes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "trade_flows_target_city_id_fkey"
+            columns: ["target_city_id"]
+            isOneToOne: false
+            referencedRelation: "province_nodes"
             referencedColumns: ["id"]
           },
         ]
