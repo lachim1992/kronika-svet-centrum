@@ -20,7 +20,10 @@ const FiscalSubTab = ({ realm }: Props) => {
   const totalFiscal = taxMarket + taxTransit + taxExtraction + popTax;
   const maxComponent = Math.max(taxMarket, taxTransit, taxExtraction, popTax, 1);
 
-  const idData = TRADE_IDEOLOGIES[ideology as keyof typeof TRADE_IDEOLOGIES] || TRADE_IDEOLOGIES.balanced;
+  const idData = TRADE_IDEOLOGIES.find((t: TradeIdeologyDef) => t.key === ideology) || TRADE_IDEOLOGIES[0];
+  const flow_multiplier = idData.merchantFlowMult;
+  const tariff_base = idData.tariffBase;
+  const domestic_retention_bonus = ideology === "crown_mercantile" ? 0.15 : ideology === "guild_chartered" ? 0.10 : 0;
 
   const components = [
     { label: "👥 Population Tax", value: popTax, desc: "Odvod z populace a urbanizace (legacy wealth flow)", color: "bg-emerald-500" },
