@@ -345,14 +345,29 @@ const InventoryDemandSection = ({ hexNodes, sessionId }: { hexNodes: NodeOnHex[]
   );
 };
 
-// ─── 4. Trade Route Creator ───
+// ─── 4. Trade Route Creator (integrated with shared utility) ───
 const TradeRouteSection = ({ sessionId, hexNodes, onRouteRefresh }: { sessionId: string; hexNodes: NodeOnHex[]; onRouteRefresh: () => void }) => {
   const [allNodes, setAllNodes] = useState<Array<{ id: string; name: string; node_tier: string }>>([]);
   const [nodeA, setNodeA] = useState(hexNodes[0]?.id || "");
   const [nodeB, setNodeB] = useState("");
   const [routeType, setRouteType] = useState("land_road");
   const [creating, setCreating] = useState(false);
-  const [recomputing, setRecomputing] = useState(false);
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  // Advanced overrides
+  const defaults = getRouteDefaults(routeType);
+  const [capacity, setCapacity] = useState([defaults.capacity]);
+  const [speed, setSpeed] = useState([defaults.speed]);
+  const [safety, setSafety] = useState([defaults.safety]);
+  const [economic, setEconomic] = useState([defaults.economic]);
+  const [military, setMilitary] = useState([defaults.military]);
+  const [controlState, setControlState] = useState("open");
+
+  // Reset defaults when route type changes
+  useEffect(() => {
+    const d = getRouteDefaults(routeType);
+    setCapacity([d.capacity]); setSpeed([d.speed]); setSafety([d.safety]);
+    setEconomic([d.economic]); setMilitary([d.military]);
+  }, [routeType]);
 
   useEffect(() => {
     (async () => {
@@ -366,34 +381,16 @@ const TradeRouteSection = ({ sessionId, hexNodes, onRouteRefresh }: { sessionId:
     })();
   }, [sessionId]);
 
-  const createRoute = async () => {
-    if (!nodeA || !nodeB || nodeA === nodeB) { toast.error("Vyber dva různé uzly"); return; }
+  const handleCreate = async () => {
     setCreating(true);
-    try {
-      const { error } = await supabase.from("province_routes").insert({
-        session_id: sessionId,
-        node_a: nodeA,
-        node_b: nodeB,
-        route_type: routeType,
-        path_dirty: true,
-        capacity: 10,
-        is_active: true,
-      } as any);
-      if (error) throw error;
-      toast.success("Trasa vytvořena");
-      onRouteRefresh();
-    } catch (e: any) { toast.error("Chyba: " + e.message); }
-    finally { setCreating(false); }
-  };
-
-  const recomputeFlows = async () => {
-    setRecomputing(true);
-    try {
-      await supabase.functions.invoke("compute-hex-flows", { body: { session_id: sessionId } });
-      toast.success("Toky přepočítány");
-      onRouteRefresh();
-    } catch (e: any) { toast.error("Chyba: " + e.message); }
-    finally { setRecomputing(false); }
+    await createRouteUtil({
+      sessionId, nodeA, nodeB, routeType,
+      capacity: capacity[0], speedValue: speed[0], safetyValue: safety[0],
+      economicRelevance: economic[0], militaryRelevance: military[0],
+      controlState,
+    });
+    setCreating(false);
+    onRouteRefresh();
   };
 
   return (
@@ -430,14 +427,58 @@ const TradeRouteSection = ({ sessionId, hexNodes, onRouteRefresh }: { sessionId:
           </SelectContent>
         </Select>
       </div>
+
+      {/* Advanced toggle */}
+      <button onClick={() => setShowAdvanced(!showAdvanced)}
+        className="text-[9px] text-primary/70 hover:text-primary underline">
+        {showAdvanced ? "▲ Skrýt parametry" : "▼ Rozšířené parametry"}
+      </button>
+
+      {showAdvanced && (
+        <div className="space-y-1.5 p-1.5 rounded bg-muted/20 border border-border/30">
+          <div className="flex items-center gap-1">
+            <span className="text-[9px] text-muted-foreground w-14">Stav:</span>
+            <Select value={controlState} onValueChange={setControlState}>
+              <SelectTrigger className="h-6 text-[9px] flex-1"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {["open", "contested", "blocked", "damaged", "embargoed"].map(s => (
+                  <SelectItem key={s} value={s} className="text-[9px]">{s}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex items-center gap-1">
+            <span className="text-[9px] text-muted-foreground w-14">Kapacita:</span>
+            <Slider value={capacity} max={30} step={1} className="flex-1" onValueChange={setCapacity} />
+            <span className="text-[9px] w-6 text-right">{capacity[0]}</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <span className="text-[9px] text-muted-foreground w-14">Rychlost:</span>
+            <Slider value={speed} max={5} step={0.1} className="flex-1" onValueChange={setSpeed} />
+            <span className="text-[9px] w-6 text-right">{speed[0].toFixed(1)}</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <span className="text-[9px] text-muted-foreground w-14">Bezpečn.:</span>
+            <Slider value={safety} max={3} step={0.1} className="flex-1" onValueChange={setSafety} />
+            <span className="text-[9px] w-6 text-right">{safety[0].toFixed(1)}</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <span className="text-[9px] text-muted-foreground w-14">Ekon.:</span>
+            <Slider value={economic} max={2} step={0.1} className="flex-1" onValueChange={setEconomic} />
+            <span className="text-[9px] w-6 text-right">{economic[0].toFixed(1)}</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <span className="text-[9px] text-muted-foreground w-14">Vojen.:</span>
+            <Slider value={military} max={2} step={0.1} className="flex-1" onValueChange={setMilitary} />
+            <span className="text-[9px] w-6 text-right">{military[0].toFixed(1)}</span>
+          </div>
+        </div>
+      )}
+
       <div className="flex gap-1">
-        <Button size="sm" className="flex-1 h-7 text-[10px] gap-1" disabled={creating || !nodeA || !nodeB} onClick={createRoute}>
+        <Button size="sm" className="flex-1 h-7 text-[10px] gap-1" disabled={creating || !nodeA || !nodeB} onClick={handleCreate}>
           {creating ? <Loader2 className="h-3 w-3 animate-spin" /> : <Route className="h-3 w-3" />}
           Vytvořit trasu
-        </Button>
-        <Button size="sm" variant="outline" className="h-7 text-[10px] gap-1" disabled={recomputing} onClick={recomputeFlows}>
-          {recomputing ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
-          Toky
         </Button>
       </div>
     </div>
