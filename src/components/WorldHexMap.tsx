@@ -1336,6 +1336,28 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
                 </div>
               )}
             </div>
+            {/* Trade network toggle */}
+            <div className="mb-2 pb-2 border-b border-border">
+              <div className="flex items-center justify-between mb-1">
+                <p className="text-[10px] font-display font-semibold text-foreground flex items-center gap-1">🔄 Obchodní síť</p>
+                <label className="flex items-center gap-1 text-[9px] text-muted-foreground cursor-pointer">
+                  <input type="checkbox" checked={showTradeLayer} onChange={e => setShowTradeLayer(e.target.checked)} className="w-3 h-3" />
+                  Zobrazit
+                </label>
+              </div>
+              {showTradeLayer && (
+                <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[9px]">
+                  <span className="flex items-center gap-1 text-muted-foreground"><span className="w-3 h-0.5 inline-block" style={{ backgroundColor: "hsl(45, 65%, 55%)" }} /> Pozemní</span>
+                  <span className="flex items-center gap-1 text-muted-foreground"><span className="w-3 h-0.5 inline-block border-t border-dashed" style={{ borderColor: "hsl(200, 70%, 55%)" }} /> Říční</span>
+                  <span className="flex items-center gap-1 text-muted-foreground"><span className="w-3 h-0.5 inline-block border-t border-dashed" style={{ borderColor: "hsl(210, 80%, 55%)" }} /> Námořní</span>
+                  <span className="flex items-center gap-1 text-muted-foreground"><span className="w-3 h-0.5 inline-block border-t border-dotted" style={{ borderColor: "hsl(35, 75%, 50%)" }} /> Karavana</span>
+                  <span className="flex items-center gap-1 text-muted-foreground"><span className="w-2 h-2 rounded-full inline-block" style={{ backgroundColor: "hsl(25, 85%, 55%)" }} /> ⚒️ Produkce</span>
+                  <span className="flex items-center gap-1 text-muted-foreground"><span className="w-2 h-2 rounded-full inline-block" style={{ backgroundColor: "hsl(140, 60%, 45%)" }} /> 🌾 Zásoby</span>
+                  <span className="flex items-center gap-1 text-muted-foreground"><span className="w-2 h-2 rounded-full inline-block" style={{ backgroundColor: "hsl(48, 90%, 60%)" }} /> 💰 Bohatství</span>
+                  <span className="flex items-center gap-1 text-muted-foreground">💹 Objem obchodu</span>
+                </div>
+              )}
+            </div>
             <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-[10px]">
               {Object.entries(BIOME_LABELS).map(([key, label]) => (
                 <div key={key} className="flex items-center gap-1.5">
