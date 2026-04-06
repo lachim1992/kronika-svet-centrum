@@ -22,6 +22,7 @@ import RouteCorridorsOverlay from "@/components/map/RouteCorridorsOverlay";
 import RoadNetworkOverlay, { ROAD_STYLES } from "@/components/map/RoadNetworkOverlay";
 import { MINOR_NODE_TYPES, MICRO_NODE_TYPES, MAJOR_NODE_TYPES } from "@/lib/nodeTypes";
 import HexDevTools from "@/components/map/HexDevTools";
+import TradeNetworkOverlay from "@/components/map/TradeNetworkOverlay";
 
 /* ───── Config ───── */
 const HEX_SIZE = 38;
