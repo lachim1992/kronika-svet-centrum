@@ -1688,9 +1688,22 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
                   </Button>
                 )}
               </div>
-            </div>
-          )}
-        </SheetContent>
+
+                {/* Dev tools sections */}
+                {devMode && selectedHex && (
+                  <HexDevTools
+                    sessionId={sessionId}
+                    hexId={selectedHex.id}
+                    hexQ={selectedHex.q}
+                    hexR={selectedHex.r}
+                    hexNodes={nodesByCoord.get(hKey(selectedHex.q, selectedHex.r)) || []}
+                    onRefresh={() => { fetchNodes(); }}
+                    onRouteRefresh={() => { setRouteRefreshKey(k => k + 1); }}
+                  />
+                )}
+              </div>
+            )}
+          </SheetContent>
       </Sheet>
 
       {/* Build Node Dialog */}
