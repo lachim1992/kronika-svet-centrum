@@ -13,6 +13,7 @@ import { Progress } from "@/components/ui/progress";
 import { Loader2, ChevronDown, Trash2, Save, Plus, RefreshCw, Route } from "lucide-react";
 import { toast } from "sonner";
 import { NODE_CAPABILITY_MAP, CAPABILITY_TAGS } from "@/lib/goodsCatalog";
+import { createRoute as createRouteUtil, getRouteDefaults } from "@/lib/routeDefaults";
 
 interface NodeOnHex {
   id: string; name: string; hex_q: number; hex_r: number; node_tier: string;
