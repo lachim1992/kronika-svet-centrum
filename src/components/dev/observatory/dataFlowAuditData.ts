@@ -6,7 +6,7 @@
  * capacity limits, faith bonuses, prestige sub-types, workforce system.
  */
 
-export type Writer = "process-turn" | "world-tick" | "commit-turn" | "command-dispatch" | "UI" | "generate-civ-start" | "process-tick" | "city-seed" | "ai-faction-turn" | "council-session" | "collapse-chain" | "world-generate-init" | "declaration-effects" | "resolve-battle" | "compute-economy-flow" | "compute-province-nodes" | "check-victory" | "law-process" | "chronicle" | "wiki-generate" | "rumor-engine" | "backfill-wiki" | "academy-tick" | "games-resolve" | "explore-hex";
+export type Writer = "process-turn" | "world-tick" | "commit-turn" | "command-dispatch" | "UI" | "generate-civ-start" | "process-tick" | "city-seed" | "ai-faction-turn" | "council-session" | "collapse-chain" | "world-generate-init" | "declaration-effects" | "resolve-battle" | "compute-economy-flow" | "compute-province-nodes" | "check-victory" | "law-process" | "chronicle" | "wiki-generate" | "rumor-engine" | "backfill-wiki" | "academy-tick" | "games-resolve" | "explore-hex" | "backfill-economy-tags";
 
 export type Reader = "process-turn" | "world-tick" | "commit-turn" | "UI" | "AI context" | "ai-faction-turn" | "council-session" | "check-victory" | "chronicle" | "compute-economy-flow" | "compute-province-nodes" | "cityprofile" | "resolve-battle" | "EconomyTab";
 
