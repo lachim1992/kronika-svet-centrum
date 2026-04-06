@@ -104,13 +104,13 @@ const TradeNetworkOverlay = memo(({ sessionId, offsetX, offsetY, visible, refres
     const [routesRes, flowRes, nodesRes] = await Promise.all([
       supabase.from("province_routes")
         .select("id, node_a, node_b, route_type, control_state, capacity_value, upgrade_level, speed_value, safety_value, economic_relevance, military_relevance, hex_path_cost, hex_path_length, is_cross_province, vulnerability_score")
-        .eq("session_id", sessionId).eq("is_active", true),
+        .eq("session_id", sessionId).eq("is_active", true) as any,
       supabase.from("flow_paths")
         .select("route_id, node_a, node_b, flow_type, hex_path, total_cost, bottleneck_hex, bottleneck_cost, path_length")
-        .eq("session_id", sessionId),
+        .eq("session_id", sessionId) as any,
       supabase.from("province_nodes")
         .select("id, hex_q, hex_r, name, node_type, node_tier, flow_role, controlled_by, production_output, wealth_output, food_value, incoming_production, cumulative_trade_flow, capability_tags, guild_level")
-        .eq("session_id", sessionId).eq("is_active", true),
+        .eq("session_id", sessionId).eq("is_active", true) as any,
     ]);
     if (routesRes.data) setRoutes(routesRes.data as RouteData[]);
     if (flowRes.data) setFlowPaths(flowRes.data as FlowPathData[]);
