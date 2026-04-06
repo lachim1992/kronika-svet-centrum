@@ -138,17 +138,23 @@ Deno.serve(async (req) => {
       }
     }
 
-    // ── Persist node_inventory (upsert) ──
+    // ── Persist node_inventory (upsert on unique(node_id, good_key)) ──
     if (nodeInventories.length > 0) {
+      // First delete all existing inventory for nodes in this session
       const nodeIds = [...new Set(nodeInventories.map(ni => ni.node_id))];
       for (let i = 0; i < nodeIds.length; i += 50) {
-        const delRes = await sb.from("node_inventory").delete()
-          .in("node_id", nodeIds.slice(i, i + 50));
-        if (delRes.error) console.error("node_inventory delete error:", delRes.error);
+        const batch = nodeIds.slice(i, i + 50);
+        // Use RPC or direct SQL-style delete — .in() with service role should bypass RLS
+        const { error: delErr } = await sb.from("node_inventory").delete().in("node_id", batch);
+        if (delErr) console.error("node_inventory delete error:", JSON.stringify(delErr));
+        else console.log(`Deleted inventory for ${batch.length} nodes`);
       }
+      // Insert using upsert to handle any race conditions
       for (let i = 0; i < nodeInventories.length; i += 50) {
-        const insRes = await sb.from("node_inventory").insert(nodeInventories.slice(i, i + 50));
-        if (insRes.error) console.error("node_inventory insert error:", JSON.stringify(insRes.error));
+        const { error: insErr, data: insData } = await sb.from("node_inventory")
+          .upsert(nodeInventories.slice(i, i + 50), { onConflict: "node_id,good_key" });
+        if (insErr) console.error("node_inventory upsert error:", JSON.stringify(insErr));
+        else console.log(`Upserted ${nodeInventories.slice(i, i + 50).length} inventory rows`);
       }
     }
 
