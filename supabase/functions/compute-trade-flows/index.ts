@@ -89,14 +89,14 @@ Deno.serve(async (req) => {
 
       // Find eligible recipes for this node
       const eligibleRecipes = recipes.filter(r => {
-        if (r.production_stage !== role) return false;
+        if (r.required_role !== role) return false;
         const reqTags: string[] = r.required_tags || [];
         return reqTags.every(t => tags.includes(t));
       });
 
       for (const recipe of eligibleRecipes) {
-        // Base output from recipe
-        const baseOutput = recipe.base_output || 1;
+        // Base output from recipe (correct column: output_quantity)
+        const baseOutput = recipe.output_quantity || 1;
         const guildBonus = 1 + (node.guild_level || 0) * 0.15;
         const upgradeMult = 1 + ((node.upgrade_level || 1) - 1) * 0.2;
         const nodeProductionFactor = Math.max(0.1, (node.production_output || 1) / 5); // normalize
@@ -106,8 +106,8 @@ Deno.serve(async (req) => {
         if (role === "source") {
           const hexKey = `${node.hex_q},${node.hex_r}`;
           const deposits = depositMap.get(hexKey) || [];
-          // Check if this recipe's output matches any deposit
-          const outputKey = recipe.output_good;
+          // Check if this recipe's output matches any deposit (correct column: output_good_key)
+          const outputKey = recipe.output_good_key;
           const matchingDeposit = deposits.find((d: any) =>
             d.resource_type_key === outputKey || d.resource_type_key?.includes(outputKey?.split("_")[0])
           );
@@ -117,20 +117,20 @@ Deno.serve(async (req) => {
         }
 
         const quantity = Math.round(baseOutput * guildBonus * upgradeMult * nodeProductionFactor * resourceYield * 10) / 10;
-        const qualityBand = Math.min(3, Math.max(0, Math.floor((node.guild_level || 0) / 2) + (recipe.quality_ceiling || 1) - 1));
+        const qualityBand = Math.min(3, Math.max(0, Math.floor((node.guild_level || 0) / 2) + (recipe.quality_output_bonus || 1) - 1));
 
         if (quantity > 0) {
           nodeInventories.push({
             node_id: node.id,
-            good_key: recipe.output_good,
+            good_key: recipe.output_good_key,
             quantity,
-            quality_band: Math.min(qualityBand, recipe.quality_ceiling || 2),
+            quality_band: Math.min(qualityBand, recipe.quality_output_bonus || 2),
           });
 
           // Track specialization
-          if (node.specialization_scores && recipe.output_good) {
+          if (node.specialization_scores && recipe.output_good_key) {
             const scores = node.specialization_scores as Record<string, number>;
-            const branch = recipe.output_good.split("_")[0]; // e.g. "bread" -> "bread", "iron_tools" -> "iron"
+            const branch = recipe.output_good_key.split("_")[0];
             scores[branch] = (scores[branch] || 0) + 1;
             // Will batch update later
           }
