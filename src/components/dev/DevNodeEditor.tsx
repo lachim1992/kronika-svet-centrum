@@ -267,7 +267,7 @@ const DevNodeEditor = ({ sessionId, onRefetch }: Props) => {
         .select("id,node_a,node_b,route_type,speed_value,capacity_value,safety_value,economic_relevance,military_relevance,control_state,upgrade_level,vulnerability_score,damage_level")
         .eq("session_id", sessionId),
     ]);
-    setNodes((nodesRes.data || []) as FullNode[]);
+    setNodes((nodesRes.data || []).map((n: any) => ({ ...n, label: n.label ?? n.name, biome: n.biome_at_build ?? null })) as FullNode[]);
     setCities((citiesRes.data || []) as CityLever[]);
     setRoutes(routesRes.data || []);
     setLoading(false);
