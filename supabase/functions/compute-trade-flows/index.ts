@@ -442,9 +442,9 @@ Deno.serve(async (req) => {
       }
 
       // Capture = export flows from this player's cities
-      const exportFlows = tradeFlows.filter(f => f.from_city_id === city.id);
+      const exportFlows = tradeFlows.filter(f => f.source_city_id === city.id);
       for (const ef of exportFlows) {
-        agg.commercial_capture += ef.flow_volume * (ef.price_at_source || 1) * 0.1;
+        agg.commercial_capture += ef.volume_per_turn * (ef.effective_price || 1) * 0.1;
       }
 
       // Retention = fraction of demand met domestically
@@ -469,14 +469,14 @@ Deno.serve(async (req) => {
     // Transit tax from trade flows passing through player's nodes
     for (const flow of tradeFlows) {
       // Simple: if flow passes between two different owners, intermediate nodes get transit tax
-      const fromCity = cityMap.get(flow.from_city_id);
-      const toCity = cityMap.get(flow.to_city_id);
+      const fromCity = cityMap.get(flow.source_city_id);
+      const toCity = cityMap.get(flow.target_city_id);
       if (fromCity && toCity && fromCity.owner_player !== toCity.owner_player) {
-        // Both sides get small transit benefit
         for (const player of [fromCity.owner_player, toCity.owner_player]) {
           if (!player) continue;
           const agg = playerAggregates.get(player);
-          if (agg) agg.tax_transit += flow.flow_volume * 0.03;
+          if (agg) agg.tax_transit += flow.volume_per_turn * 0.03;
+        }
         }
       }
     }
