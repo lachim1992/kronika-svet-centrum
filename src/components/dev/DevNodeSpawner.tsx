@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { createRoute as createRouteUtil, getRouteDefaults } from "@/lib/routeDefaults";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -176,21 +177,12 @@ const DevNodeSpawner = ({ sessionId, onRefetch }: Props) => {
     }
     setLinkingRoute(true);
     try {
-      const { error } = await supabase.from("province_routes").insert({
-        session_id: sessionId,
-        node_a: routeNodeA,
-        node_b: routeNodeB,
-        route_type: routeType,
-        control_state: "open",
-        speed_value: 1,
-        safety_value: 1,
-        capacity_value: 5,
-        economic_relevance: 0.5,
-        military_relevance: 0.3,
-        path_dirty: true,
+      await createRouteUtil({
+        sessionId,
+        nodeA: routeNodeA,
+        nodeB: routeNodeB,
+        routeType: routeType,
       });
-      if (error) throw error;
-      toast.success("Cesta vytvořena");
       fetchNodes();
       onRefetch?.();
     } catch (err: any) {

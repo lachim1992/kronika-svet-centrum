@@ -22,6 +22,7 @@ import RouteCorridorsOverlay from "@/components/map/RouteCorridorsOverlay";
 import RoadNetworkOverlay, { ROAD_STYLES } from "@/components/map/RoadNetworkOverlay";
 import { MINOR_NODE_TYPES, MICRO_NODE_TYPES, MAJOR_NODE_TYPES } from "@/lib/nodeTypes";
 import HexDevTools from "@/components/map/HexDevTools";
+import TradeNetworkOverlay from "@/components/map/TradeNetworkOverlay";
 
 /* ───── Config ───── */
 const HEX_SIZE = 38;
@@ -432,6 +433,7 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
   const [showProvinceLayer, setShowProvinceLayer] = useState(true);
   const [showStrategicLayer, setShowStrategicLayer] = useState(false);
   const [showRoadLayer, setShowRoadLayer] = useState(true);
+  const [showTradeLayer, setShowTradeLayer] = useState(false);
   const [expandingProvince, setExpandingProvince] = useState(false);
   const [showBuildNodeDialog, setShowBuildNodeDialog] = useState(false);
   const [buildNodeTier, setBuildNodeTier] = useState<"minor" | "micro" | undefined>(undefined);
@@ -1183,6 +1185,14 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
               setCurrentPos({ q: node.hex_q, r: node.hex_r });
             }}
           />
+          {/* Trade network overlay */}
+          <TradeNetworkOverlay
+            sessionId={sessionId}
+            offsetX={offsetX}
+            offsetY={offsetY}
+            visible={showTradeLayer}
+            refreshKey={routeRefreshKey}
+          />
         </g>
       </svg>
 
@@ -1323,6 +1333,28 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
                   <span className="flex items-center gap-1 text-muted-foreground"><span className="w-1.5 h-1.5 rounded-full bg-muted-foreground inline-block" /> Minor uzel</span>
                   <span className="flex items-center gap-1 text-muted-foreground"><span className="w-3 h-0.5 bg-[hsl(45,60%,55%)] inline-block" /> Cesta</span>
                   <span className="flex items-center gap-1 text-muted-foreground"><span className="w-3 h-0.5 bg-[hsl(200,70%,55%)] inline-block" /> Řeka</span>
+                </div>
+              )}
+            </div>
+            {/* Trade network toggle */}
+            <div className="mb-2 pb-2 border-b border-border">
+              <div className="flex items-center justify-between mb-1">
+                <p className="text-[10px] font-display font-semibold text-foreground flex items-center gap-1">🔄 Obchodní síť</p>
+                <label className="flex items-center gap-1 text-[9px] text-muted-foreground cursor-pointer">
+                  <input type="checkbox" checked={showTradeLayer} onChange={e => setShowTradeLayer(e.target.checked)} className="w-3 h-3" />
+                  Zobrazit
+                </label>
+              </div>
+              {showTradeLayer && (
+                <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[9px]">
+                  <span className="flex items-center gap-1 text-muted-foreground"><span className="w-3 h-0.5 inline-block" style={{ backgroundColor: "hsl(45, 65%, 55%)" }} /> Pozemní</span>
+                  <span className="flex items-center gap-1 text-muted-foreground"><span className="w-3 h-0.5 inline-block border-t border-dashed" style={{ borderColor: "hsl(200, 70%, 55%)" }} /> Říční</span>
+                  <span className="flex items-center gap-1 text-muted-foreground"><span className="w-3 h-0.5 inline-block border-t border-dashed" style={{ borderColor: "hsl(210, 80%, 55%)" }} /> Námořní</span>
+                  <span className="flex items-center gap-1 text-muted-foreground"><span className="w-3 h-0.5 inline-block border-t border-dotted" style={{ borderColor: "hsl(35, 75%, 50%)" }} /> Karavana</span>
+                  <span className="flex items-center gap-1 text-muted-foreground"><span className="w-2 h-2 rounded-full inline-block" style={{ backgroundColor: "hsl(25, 85%, 55%)" }} /> ⚒️ Produkce</span>
+                  <span className="flex items-center gap-1 text-muted-foreground"><span className="w-2 h-2 rounded-full inline-block" style={{ backgroundColor: "hsl(140, 60%, 45%)" }} /> 🌾 Zásoby</span>
+                  <span className="flex items-center gap-1 text-muted-foreground"><span className="w-2 h-2 rounded-full inline-block" style={{ backgroundColor: "hsl(48, 90%, 60%)" }} /> 💰 Bohatství</span>
+                  <span className="flex items-center gap-1 text-muted-foreground">💹 Objem obchodu</span>
                 </div>
               )}
             </div>
