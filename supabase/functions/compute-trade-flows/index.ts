@@ -138,23 +138,31 @@ Deno.serve(async (req) => {
       }
     }
 
-    // ── Persist node_inventory (upsert on unique(node_id, good_key)) ──
-    if (nodeInventories.length > 0) {
-      // First delete all existing inventory for nodes in this session
-      const nodeIds = [...new Set(nodeInventories.map(ni => ni.node_id))];
-      for (let i = 0; i < nodeIds.length; i += 50) {
-        const batch = nodeIds.slice(i, i + 50);
-        // Use RPC or direct SQL-style delete — .in() with service role should bypass RLS
-        const { error: delErr } = await sb.from("node_inventory").delete().in("node_id", batch);
-        if (delErr) console.error("node_inventory delete error:", JSON.stringify(delErr));
-        else console.log(`Deleted inventory for ${batch.length} nodes`);
+    // ── Persist node_inventory ──
+    // Aggregate duplicates (same node_id + good_key from multiple recipes)
+    const invAgg = new Map<string, { node_id: string; good_key: string; quantity: number; quality_band: number; count: number }>();
+    for (const ni of nodeInventories) {
+      const key = `${ni.node_id}|${ni.good_key}`;
+      const existing = invAgg.get(key);
+      if (existing) {
+        existing.quantity += ni.quantity;
+        existing.quality_band = Math.max(existing.quality_band, ni.quality_band);
+        existing.count++;
+      } else {
+        invAgg.set(key, { ...ni, count: 1 });
       }
-      // Insert using upsert to handle any race conditions
-      for (let i = 0; i < nodeInventories.length; i += 50) {
-        const { error: insErr, data: insData } = await sb.from("node_inventory")
-          .upsert(nodeInventories.slice(i, i + 50), { onConflict: "node_id,good_key" });
-        if (insErr) console.error("node_inventory upsert error:", JSON.stringify(insErr));
-        else console.log(`Upserted ${nodeInventories.slice(i, i + 50).length} inventory rows`);
+    }
+    const dedupedInventories = [...invAgg.values()].map(({ count, ...rest }) => rest);
+
+    if (dedupedInventories.length > 0) {
+      const nodeIds = [...new Set(dedupedInventories.map(ni => ni.node_id))];
+      for (let i = 0; i < nodeIds.length; i += 50) {
+        const { error: delErr } = await sb.from("node_inventory").delete().in("node_id", nodeIds.slice(i, i + 50));
+        if (delErr) console.error("node_inventory delete error:", JSON.stringify(delErr));
+      }
+      for (let i = 0; i < dedupedInventories.length; i += 50) {
+        const { error: insErr } = await sb.from("node_inventory").insert(dedupedInventories.slice(i, i + 50));
+        if (insErr) console.error("node_inventory insert error:", JSON.stringify(insErr));
       }
     }
 
