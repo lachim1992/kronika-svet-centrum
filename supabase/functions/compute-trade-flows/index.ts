@@ -278,11 +278,11 @@ Deno.serve(async (req) => {
         demandBasketRows.push({
           session_id,
           city_id: cityId,
-          basket_type: basketKey,
-          demand_volume: Math.round(demandQty * 10) / 10,
-          supply_volume: Math.round(domesticSatisfaction * 10) / 10,
-          satisfaction: Math.round(satisfaction * 1000) / 1000,
-          deficit_volume: Math.round(deficit * 10) / 10,
+          basket_key: basketKey,
+          tier: basket?.tier || 1,
+          quantity_needed: Math.round(demandQty * 10) / 10,
+          quantity_fulfilled: Math.round(domesticSatisfaction * 10) / 10,
+          satisfaction_score: Math.round(satisfaction * 1000) / 1000,
           turn_number: turn_number || 1,
         });
       }
@@ -368,15 +368,17 @@ Deno.serve(async (req) => {
 
           tradeFlows.push({
             session_id,
-            from_city_id: neighborId,
-            to_city_id: cityId,
+            source_city_id: neighborId,
+            target_city_id: cityId,
+            source_player: neighborCity.owner_player || "",
+            target_player: city.owner_player || "",
             good_key: bestGoodKey,
-            flow_volume: Math.round(flowVolume * 10) / 10,
-            pressure_score: Math.round(pressure * 100) / 100,
-            price_at_source: goodsMap.get(bestGoodKey)?.base_price_numeric || 1,
-            price_at_dest: (goodsMap.get(bestGoodKey)?.base_price_numeric || 1) * (1 + needPressure * 0.5),
-            flow_status: pressure > 0.5 ? "active" : "trial",
-            turn_established: turn_number || 1,
+            volume_per_turn: Math.round(flowVolume * 10) / 10,
+            trade_pressure: Math.round(pressure * 100) / 100,
+            effective_price: goodsMap.get(bestGoodKey)?.base_price_numeric || 1,
+            price_band: goodsMap.get(bestGoodKey)?.base_price_numeric > 5 ? 1 : 0,
+            status: pressure > 0.5 ? "active" : "trial",
+            turn_created: turn_number || 1,
           });
         }
       }
