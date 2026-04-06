@@ -1,71 +1,68 @@
 
-# Integrace Node Editoru s Economy v4.1
 
-## Problém
+# Dev Tools v mapovem hex detail panelu
 
-Node Editor (`DevNodeEditor.tsx`) operuje na **starém modelu** (v2) — pracuje s `production_output`, `wealth_output`, `food_value` jako přímými čísly, zatímco v4.1 přidala do `province_nodes`:
+## Co se zmeni
 
-- `node_subtype` (klíč do `NODE_CAPABILITY_MAP`)
-- `node_tier` (major/minor/micro)  
-- `capability_tags[]` (co uzel umí vyrábět)
-- `guild_level` (cechovní úroveň)
-- `specialization_scores` (JSON, kumulativní historie produkce)
-- `city_id` (vazba na město)
-- `spawned_strategic_resource`
+Po rozkliknuti hexu na mape se v dev mode objevi rozbalitelne sekce pod stavajicimi akcemi. Kazda sekce je `Collapsible` accordion, vizualne oznacena `DEV` badge.
 
-Editor tyto sloupce **vůbec nezobrazuje ani neupravuje**. Současně `FullNode` type a `NODE_TYPES` seznam neobsahují nové subtypy (bakery, forge, weaver, guild_workshop, etc.).
+## Sekce
 
-## Duplicitní logiky (dvě source of truth)
+### 1. DEV: Suroviny hexu (Resource Deposits)
+- Zobrazuje aktualni `resource_deposits[]` z `province_hexes`
+- Tlacitka pro rychle pridani suroviny: wheat, iron, stone, timber, game, fish, salt, copper, gold, marble, herbs, resin (dle biomu nabidne relevantni)
+- Kazda surovina ma quality slider (1-5) a tlacitko Pridat
+- Moznost odebrat existujici surovinu
+- Uklada primo do `province_hexes.resource_deposits` pres Supabase update
 
-| Koncept | Starý zdroj | v4.1 zdroj |
-|---------|------------|------------|
-| Produkce uzlu | `production_output` (přímé číslo) | `node_subtype` → `computeNodeProduction()` z `nodeTypes.ts` |
-| Typ uzlu | `NODE_TYPES` (9 hodnot) | `NODE_CAPABILITY_MAP` (35+ subtypů) z `goodsCatalog.ts` |
-| Strategická surovina | `strategic_resource_type` + `strategic_resource_tier` | `spawned_strategic_resource` |
-| Trade efektivita | `trade_efficiency` (přímé číslo) | Vypočtená z `flow_role` + `guild_level` |
+### 2. DEV: Node Editor (inline)
+- Pro kazdy uzel na hexu: rozbalitelny mini-editor
+- Editovatelne: `node_subtype` (Select z NODE_CAPABILITY_MAP), `node_tier`, `capability_tags` (checkboxy), `guild_level` (0-5), `flow_role`, `spawned_strategic_resource`
+- Tlacitko Smazat uzel (s potvrzenim)
+- Tlacitko Prejmenovat
+- Pri zmene `node_subtype` auto-nastavi `capability_tags`
+- Uklada primo do `province_nodes`
 
-## Plán implementace
+### 3. DEV: Inventory & Poptavka
+- Readonly fetch `node_inventory` pro uzly na hexu
+- Readonly fetch `demand_baskets` pro mesto na hexu (pokud existuje)
+- Zobrazuje stav zasoby / poptavka satisfaction jako progress bary
 
-### 1. Rozšířit FullNode type a fetch
-- Přidat chybějící sloupce: `node_subtype`, `node_tier`, `capability_tags`, `guild_level`, `specialization_scores`, `city_id`, `spawned_strategic_resource`, `label`
-- Fetch query rozšířit o tyto sloupce
+### 4. DEV: Obchodni trasa
+- Dropdown "Uzel A" (predvyplneny uzlem na tomto hexu)
+- Dropdown "Uzel B" (vsechny major/minor uzly v session)
+- Select typ trasy (land_road, river_route, sea_lane, caravan_route)
+- Tlacitko "Vytvorit trasu" — insert do `province_routes` s `path_dirty: true`
+- Tlacitko "Prepocitat toky" — invoke `compute-hex-flows`
+- Integrace se stavajicim `RouteCorridorsOverlay` a `RoadNetworkOverlay` (po refreshi se trasa zobrazi na mape)
 
-### 2. Přepracovat "Identita & Klasifikace" skupinu
-- Přidat pole `node_subtype` jako Select — dynamický seznam dle `NODE_CAPABILITY_MAP` klíčů
-- Přidat pole `node_tier` jako Select (major/minor/micro)
-- Přidat `capability_tags` jako multi-tag editor (checkboxy z `CAPABILITY_TAGS`)
-- Při změně `node_subtype` automaticky přednastavit `capability_tags` z `NODE_CAPABILITY_MAP`
-- Zobrazit `city_id` jako readonly vazbu
+### 5. DEV: Quick Actions
+- Prepocitat toky (invoke `compute-hex-flows`)
+- Prepocitat province graph (invoke `compute-province-graph`)
+- Prepocitat trade flows (invoke `compute-trade-flows`)
 
-### 3. Přidat novou skupinu "Goods & Cechy"
-- `guild_level` (number 0–5)
-- `specialization_scores` (JSON editor / klíč-hodnota tabulka)
-- `spawned_strategic_resource` (text)
-- Zobrazit aktuální `node_inventory` (readonly fetch z DB) — co uzel aktuálně skladuje
+## Technicke detaily
 
-### 4. Aktualizovat "Produkce & Ekonomika" skupinu
-- Přidat info badge "v4.1: produkce se počítá z node_subtype" 
-- Označit `production_output`, `wealth_output`, `food_value` jako "computed" (šedé, s tooltipem že jsou přepisovány enginem)
-- Přidat live preview: `computeNodeProduction(tier, subtype, upgrade, biome)` výsledek vedle aktuální DB hodnoty
+### Soubor: `src/components/WorldHexMap.tsx`
+- Pridani stavu pro dev sekce (expandovane/kolapsovane)
+- Import `NODE_CAPABILITY_MAP`, `CAPABILITY_TAGS` z `goodsCatalog.ts`
+- Import `Collapsible, CollapsibleContent, CollapsibleTrigger` z ui
+- Fetch `node_inventory` a `demand_baskets` on-demand pri rozkliknuti dev sekce
+- Vsechny dev sekce schovane za `{devMode && (...)}`
 
-### 5. Vzorce (live) tab — aktualizovat
-- Přidat v4.1 vzorce: goods chain, guild quality boost, demand satisfaction
-- Nahradit zastaralý `BASE_PRODUCTION[node_type]` breakdown za `computeNodeProduction` preview
-- Zobrazit `node_inventory` obsah pro vybraný uzel
+### Datove operace
+- Resource deposits: `supabase.from("province_hexes").update({ resource_deposits }).eq("id", hexId)`
+- Node edit: `supabase.from("province_nodes").update({...}).eq("id", nodeId)`
+- Node delete: smazat routes + flow_paths + node (jako v DevNodeSpawner)
+- Route create: insert do `province_routes` s `path_dirty: true`
+- Inventory read: `supabase.from("node_inventory").select("*").eq("node_id", nodeId)`
+- Demand read: `supabase.from("demand_baskets").select("*").eq("city_id", cityId)`
 
-### 6. Globální konstanty tab — rozšířit
-- Přidat sekci `CAPABILITY_TAGS` (přehled všech tagů)
-- Přidat sekci `DEMAND_BASKETS` (přehled košů poptávky)
-- Přidat sekci `NODE_CAPABILITY_MAP` (subtype → role + tags mapování)
+### NodeOnHex interface
+- Rozsireni o: `capability_tags`, `guild_level`, `flow_role`, `spawned_strategic_resource`, `node_subtype` (uz tam je), `city_id`
 
-### 7. Sjednotit NODE_TYPES
-- `NODE_TYPES` array v editoru (9 hodnot) nahradit za union starých major typů + všech subtypů z `NODE_CAPABILITY_MAP`
-- Přidat `node_subtype` dropdown filtrovaný dle zvoleného `node_tier`
+### Vzhled
+- Kazdy accordion: border-primary/20, DEV badge zluta
+- Kompaktni, maximalne usetrny prostor (text-[10px], h-7 buttony)
+- Po ukladani automaticky `fetchNodes()` + `setRouteRefreshKey` pro refresh mapy
 
-## Technické detaily
-
-- Import `NODE_CAPABILITY_MAP`, `CAPABILITY_TAGS`, `DEMAND_BASKETS` z `goodsCatalog.ts`
-- Import `computeNodeProduction`, `MINOR_NODE_TYPES`, `MICRO_NODE_TYPES` z `nodeTypes.ts`
-- Fetch `node_inventory` pro vybraný uzel jako readonly sekci
-- Zachovat zpětnou kompatibilitu — staré sloupce zůstanou editovatelné, ale označené jako "computed by engine"
-- Jeden soubor: `src/components/dev/DevNodeEditor.tsx`
