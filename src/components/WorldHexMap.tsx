@@ -433,6 +433,7 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
   const [showProvinceLayer, setShowProvinceLayer] = useState(true);
   const [showStrategicLayer, setShowStrategicLayer] = useState(false);
   const [showRoadLayer, setShowRoadLayer] = useState(true);
+  const [showTradeLayer, setShowTradeLayer] = useState(false);
   const [expandingProvince, setExpandingProvince] = useState(false);
   const [showBuildNodeDialog, setShowBuildNodeDialog] = useState(false);
   const [buildNodeTier, setBuildNodeTier] = useState<"minor" | "micro" | undefined>(undefined);
