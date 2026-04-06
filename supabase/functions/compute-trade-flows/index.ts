@@ -89,14 +89,14 @@ Deno.serve(async (req) => {
 
       // Find eligible recipes for this node
       const eligibleRecipes = recipes.filter(r => {
-        if (r.production_stage !== role) return false;
+        if (r.required_role !== role) return false;
         const reqTags: string[] = r.required_tags || [];
         return reqTags.every(t => tags.includes(t));
       });
 
       for (const recipe of eligibleRecipes) {
-        // Base output from recipe
-        const baseOutput = recipe.base_output || 1;
+        // Base output from recipe (correct column: output_quantity)
+        const baseOutput = recipe.output_quantity || 1;
         const guildBonus = 1 + (node.guild_level || 0) * 0.15;
         const upgradeMult = 1 + ((node.upgrade_level || 1) - 1) * 0.2;
         const nodeProductionFactor = Math.max(0.1, (node.production_output || 1) / 5); // normalize
@@ -106,8 +106,8 @@ Deno.serve(async (req) => {
         if (role === "source") {
           const hexKey = `${node.hex_q},${node.hex_r}`;
           const deposits = depositMap.get(hexKey) || [];
-          // Check if this recipe's output matches any deposit
-          const outputKey = recipe.output_good;
+          // Check if this recipe's output matches any deposit (correct column: output_good_key)
+          const outputKey = recipe.output_good_key;
           const matchingDeposit = deposits.find((d: any) =>
             d.resource_type_key === outputKey || d.resource_type_key?.includes(outputKey?.split("_")[0])
           );
@@ -117,20 +117,20 @@ Deno.serve(async (req) => {
         }
 
         const quantity = Math.round(baseOutput * guildBonus * upgradeMult * nodeProductionFactor * resourceYield * 10) / 10;
-        const qualityBand = Math.min(3, Math.max(0, Math.floor((node.guild_level || 0) / 2) + (recipe.quality_ceiling || 1) - 1));
+        const qualityBand = Math.min(3, Math.max(0, Math.floor((node.guild_level || 0) / 2) + (recipe.quality_output_bonus || 1) - 1));
 
         if (quantity > 0) {
           nodeInventories.push({
             node_id: node.id,
-            good_key: recipe.output_good,
+            good_key: recipe.output_good_key,
             quantity,
-            quality_band: Math.min(qualityBand, recipe.quality_ceiling || 2),
+            quality_band: Math.min(qualityBand, recipe.quality_output_bonus || 2),
           });
 
           // Track specialization
-          if (node.specialization_scores && recipe.output_good) {
+          if (node.specialization_scores && recipe.output_good_key) {
             const scores = node.specialization_scores as Record<string, number>;
-            const branch = recipe.output_good.split("_")[0]; // e.g. "bread" -> "bread", "iron_tools" -> "iron"
+            const branch = recipe.output_good_key.split("_")[0];
             scores[branch] = (scores[branch] || 0) + 1;
             // Will batch update later
           }
@@ -138,19 +138,31 @@ Deno.serve(async (req) => {
       }
     }
 
-    // ── Persist node_inventory (upsert) ──
-    if (nodeInventories.length > 0) {
-      // Clear old inventory for this session's nodes
-      const nodeIds = [...new Set(nodeInventories.map(ni => ni.node_id))];
-      for (let i = 0; i < nodeIds.length; i += 50) {
-        await sb.from("node_inventory").delete()
-          .eq("session_id", session_id)
-          .in("node_id", nodeIds.slice(i, i + 50));
+    // ── Persist node_inventory ──
+    // Aggregate duplicates (same node_id + good_key from multiple recipes)
+    const invAgg = new Map<string, { node_id: string; good_key: string; quantity: number; quality_band: number; count: number }>();
+    for (const ni of nodeInventories) {
+      const key = `${ni.node_id}|${ni.good_key}`;
+      const existing = invAgg.get(key);
+      if (existing) {
+        existing.quantity += ni.quantity;
+        existing.quality_band = Math.max(existing.quality_band, ni.quality_band);
+        existing.count++;
+      } else {
+        invAgg.set(key, { ...ni, count: 1 });
       }
-      // Insert new
-      const invRows = nodeInventories.map(ni => ({ ...ni, session_id }));
-      for (let i = 0; i < invRows.length; i += 50) {
-        await sb.from("node_inventory").insert(invRows.slice(i, i + 50));
+    }
+    const dedupedInventories = [...invAgg.values()].map(({ count, ...rest }) => rest);
+
+    if (dedupedInventories.length > 0) {
+      const nodeIds = [...new Set(dedupedInventories.map(ni => ni.node_id))];
+      for (let i = 0; i < nodeIds.length; i += 50) {
+        const { error: delErr } = await sb.from("node_inventory").delete().in("node_id", nodeIds.slice(i, i + 50));
+        if (delErr) console.error("node_inventory delete error:", JSON.stringify(delErr));
+      }
+      for (let i = 0; i < dedupedInventories.length; i += 50) {
+        const { error: insErr } = await sb.from("node_inventory").insert(dedupedInventories.slice(i, i + 50));
+        if (insErr) console.error("node_inventory insert error:", JSON.stringify(insErr));
       }
     }
 
@@ -280,11 +292,11 @@ Deno.serve(async (req) => {
         demandBasketRows.push({
           session_id,
           city_id: cityId,
-          basket_type: basketKey,
-          demand_volume: Math.round(demandQty * 10) / 10,
-          supply_volume: Math.round(domesticSatisfaction * 10) / 10,
-          satisfaction: Math.round(satisfaction * 1000) / 1000,
-          deficit_volume: Math.round(deficit * 10) / 10,
+          basket_key: basketKey,
+          tier: DEMAND_BASKETS[basketKey]?.tier || 1,
+          quantity_needed: Math.round(demandQty * 10) / 10,
+          quantity_fulfilled: Math.round(domesticSatisfaction * 10) / 10,
+          satisfaction_score: Math.round(satisfaction * 1000) / 1000,
           turn_number: turn_number || 1,
         });
       }
@@ -370,15 +382,17 @@ Deno.serve(async (req) => {
 
           tradeFlows.push({
             session_id,
-            from_city_id: neighborId,
-            to_city_id: cityId,
+            source_city_id: neighborId,
+            target_city_id: cityId,
+            source_player: neighborCity.owner_player || "",
+            target_player: city.owner_player || "",
             good_key: bestGoodKey,
-            flow_volume: Math.round(flowVolume * 10) / 10,
-            pressure_score: Math.round(pressure * 100) / 100,
-            price_at_source: goodsMap.get(bestGoodKey)?.base_price_numeric || 1,
-            price_at_dest: (goodsMap.get(bestGoodKey)?.base_price_numeric || 1) * (1 + needPressure * 0.5),
-            flow_status: pressure > 0.5 ? "active" : "trial",
-            turn_established: turn_number || 1,
+            volume_per_turn: Math.round(flowVolume * 10) / 10,
+            trade_pressure: Math.round(pressure * 100) / 100,
+            effective_price: goodsMap.get(bestGoodKey)?.base_price_numeric || 1,
+            price_band: goodsMap.get(bestGoodKey)?.base_price_numeric > 5 ? 1 : 0,
+            status: pressure > 0.5 ? "active" : "trial",
+            turn_created: turn_number || 1,
           });
         }
       }
@@ -442,9 +456,9 @@ Deno.serve(async (req) => {
       }
 
       // Capture = export flows from this player's cities
-      const exportFlows = tradeFlows.filter(f => f.from_city_id === city.id);
+      const exportFlows = tradeFlows.filter(f => f.source_city_id === city.id);
       for (const ef of exportFlows) {
-        agg.commercial_capture += ef.flow_volume * (ef.price_at_source || 1) * 0.1;
+        agg.commercial_capture += ef.volume_per_turn * (ef.effective_price || 1) * 0.1;
       }
 
       // Retention = fraction of demand met domestically
@@ -469,14 +483,13 @@ Deno.serve(async (req) => {
     // Transit tax from trade flows passing through player's nodes
     for (const flow of tradeFlows) {
       // Simple: if flow passes between two different owners, intermediate nodes get transit tax
-      const fromCity = cityMap.get(flow.from_city_id);
-      const toCity = cityMap.get(flow.to_city_id);
+      const fromCity = cityMap.get(flow.source_city_id);
+      const toCity = cityMap.get(flow.target_city_id);
       if (fromCity && toCity && fromCity.owner_player !== toCity.owner_player) {
-        // Both sides get small transit benefit
         for (const player of [fromCity.owner_player, toCity.owner_player]) {
           if (!player) continue;
           const agg = playerAggregates.get(player);
-          if (agg) agg.tax_transit += flow.flow_volume * 0.03;
+          if (agg) agg.tax_transit += flow.volume_per_turn * 0.03;
         }
       }
     }

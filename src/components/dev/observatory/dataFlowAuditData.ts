@@ -6,7 +6,7 @@
  * capacity limits, faith bonuses, prestige sub-types, workforce system.
  */
 
-export type Writer = "process-turn" | "world-tick" | "commit-turn" | "command-dispatch" | "UI" | "generate-civ-start" | "process-tick" | "city-seed" | "ai-faction-turn" | "council-session" | "collapse-chain" | "world-generate-init" | "declaration-effects" | "resolve-battle" | "compute-economy-flow" | "compute-province-nodes" | "check-victory" | "law-process" | "chronicle" | "wiki-generate" | "rumor-engine" | "backfill-wiki" | "academy-tick" | "games-resolve" | "explore-hex";
+export type Writer = "process-turn" | "world-tick" | "commit-turn" | "command-dispatch" | "UI" | "generate-civ-start" | "process-tick" | "city-seed" | "ai-faction-turn" | "council-session" | "collapse-chain" | "world-generate-init" | "declaration-effects" | "resolve-battle" | "compute-economy-flow" | "compute-province-nodes" | "check-victory" | "law-process" | "chronicle" | "wiki-generate" | "rumor-engine" | "backfill-wiki" | "academy-tick" | "games-resolve" | "explore-hex" | "backfill-economy-tags";
 
 export type Reader = "process-turn" | "world-tick" | "commit-turn" | "UI" | "AI context" | "ai-faction-turn" | "council-session" | "check-victory" | "chronicle" | "compute-economy-flow" | "compute-province-nodes" | "cityprofile" | "resolve-battle" | "EconomyTab";
 
@@ -99,6 +99,32 @@ export const DATA_FLOW_AUDIT: DataFlowEntry[] = [
 
   // === DISCOVERIES ===
   { table: "discoveries", column: "entity_type", writers: ["explore-hex"], readers: ["UI"], liveUsed: true, notes: "Fog-of-war reveal: strategic_resource discoveries" },
+
+  // === PROVINCE_NODES — goods economy fields ===
+  { table: "province_nodes", column: "capability_tags", writers: ["compute-province-nodes", "UI"], readers: ["compute-economy-flow", "UI", "EconomyTab"], liveUsed: true, notes: "Klíč pro matchování production_recipes. Hydratováno backfill-economy-tags." },
+  { table: "province_nodes", column: "production_role", writers: ["compute-province-nodes", "UI"], readers: ["compute-economy-flow", "UI"], liveUsed: true, notes: "source/processing/urban/guild — filtr receptů" },
+  { table: "province_nodes", column: "guild_level", writers: ["UI"], readers: ["compute-economy-flow", "UI", "EconomyTab"], liveUsed: true, notes: "0-5. Ovlivňuje kvalitu, famous goods, export reach." },
+  { table: "province_nodes", column: "specialization_scores", writers: ["compute-economy-flow"], readers: ["UI", "EconomyTab"], liveUsed: true, notes: "Kumulativní produkční historie per branch" },
+
+  // === NODE_INVENTORY ===
+  { table: "node_inventory", column: "good_key", writers: ["compute-economy-flow"], readers: ["UI", "EconomyTab"], liveUsed: true, notes: "Výstup receptu — klíč do goods tabulky" },
+  { table: "node_inventory", column: "quantity", writers: ["compute-economy-flow"], readers: ["UI", "EconomyTab"], liveUsed: true },
+  { table: "node_inventory", column: "quality_band", writers: ["compute-economy-flow"], readers: ["UI", "EconomyTab"], liveUsed: true },
+
+  // === DEMAND_BASKETS ===
+  { table: "demand_baskets", column: "basket_type", writers: ["compute-economy-flow"], readers: ["UI", "EconomyTab"], liveUsed: true, notes: "staple_food, tools, construction, military, ritual, luxury..." },
+  { table: "demand_baskets", column: "satisfaction", writers: ["compute-economy-flow"], readers: ["UI", "EconomyTab", "process-turn"], liveUsed: true, notes: "0.0-1.0 — klíč pro trade pressure a stabilitu" },
+  { table: "demand_baskets", column: "deficit_volume", writers: ["compute-economy-flow"], readers: ["UI", "EconomyTab"], liveUsed: true },
+
+  // === TRADE_FLOWS ===
+  { table: "trade_flows", column: "flow_volume", writers: ["compute-economy-flow"], readers: ["UI", "EconomyTab"], liveUsed: true, notes: "Objem obchodu mezi městy" },
+  { table: "trade_flows", column: "pressure_score", writers: ["compute-economy-flow"], readers: ["UI"], liveUsed: true },
+  { table: "trade_flows", column: "flow_status", writers: ["compute-economy-flow"], readers: ["UI"], liveUsed: true, notes: "latent/trial/active/dominant/blocked" },
+
+  // === CITY_MARKET_SUMMARY ===
+  { table: "city_market_summary", column: "supply_volume", writers: ["compute-economy-flow"], readers: ["UI", "EconomyTab"], liveUsed: true },
+  { table: "city_market_summary", column: "demand_volume", writers: ["compute-economy-flow"], readers: ["UI", "EconomyTab"], liveUsed: true },
+  { table: "city_market_summary", column: "domestic_share", writers: ["compute-economy-flow"], readers: ["UI"], liveUsed: true },
 
   // === NARRATIVE ===
   { table: "chronicle_entries", column: "text", writers: ["chronicle"], readers: ["UI", "AI context"], liveUsed: true },
