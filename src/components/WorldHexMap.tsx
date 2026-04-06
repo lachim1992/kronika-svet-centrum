@@ -21,6 +21,7 @@ import StrategicMapOverlay from "@/components/map/StrategicMapOverlay";
 import RouteCorridorsOverlay from "@/components/map/RouteCorridorsOverlay";
 import RoadNetworkOverlay, { ROAD_STYLES } from "@/components/map/RoadNetworkOverlay";
 import { MINOR_NODE_TYPES, MICRO_NODE_TYPES, MAJOR_NODE_TYPES } from "@/lib/nodeTypes";
+import HexDevTools from "@/components/map/HexDevTools";
 
 /* ───── Config ───── */
 const HEX_SIZE = 38;
@@ -140,6 +141,8 @@ interface NodeOnHex {
   production_output?: number; wealth_output?: number;
   region_prod_modifier?: number; region_wealth_modifier?: number;
   net_balance?: number;
+  capability_tags?: string[]; guild_level?: number; flow_role?: string;
+  spawned_strategic_resource?: string | null; city_id?: string | null;
 }
 interface Props {
   sessionId: string; playerName: string; myRole: string;
@@ -557,7 +560,7 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
   /* ── Fetch nodes ── */
   const fetchNodes = useCallback(async () => {
     const { data } = await supabase.from("province_nodes")
-      .select("id, name, hex_q, hex_r, node_tier, node_type, node_subtype, controlled_by, upgrade_level, max_upgrade_level, parent_node_id, strategic_resource_type, production_output, wealth_output, net_balance")
+      .select("id, name, hex_q, hex_r, node_tier, node_type, node_subtype, controlled_by, upgrade_level, max_upgrade_level, parent_node_id, strategic_resource_type, production_output, wealth_output, net_balance, capability_tags, guild_level, flow_role, spawned_strategic_resource, city_id")
       .eq("session_id", sessionId)
       .eq("is_active", true);
     setAllNodes((data || []) as NodeOnHex[]);
