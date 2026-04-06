@@ -477,7 +477,6 @@ Deno.serve(async (req) => {
           const agg = playerAggregates.get(player);
           if (agg) agg.tax_transit += flow.volume_per_turn * 0.03;
         }
-        }
       }
     }
 
