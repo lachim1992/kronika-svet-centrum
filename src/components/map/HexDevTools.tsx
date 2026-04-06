@@ -504,6 +504,11 @@ const QuickActionsSection = ({ sessionId, onRouteRefresh }: { sessionId: string;
   return (
     <div className="flex flex-wrap gap-1">
       <Button size="sm" variant="outline" className="h-7 text-[10px] gap-1 flex-1" disabled={!!running}
+        onClick={() => run("backfill-economy-tags", "Hydratace tagů")}>
+        {running === "backfill-economy-tags" ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
+        Hydratace
+      </Button>
+      <Button size="sm" variant="outline" className="h-7 text-[10px] gap-1 flex-1" disabled={!!running}
         onClick={() => run("compute-hex-flows", "Hex toky")}>
         {running === "compute-hex-flows" ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
         Hex toky
