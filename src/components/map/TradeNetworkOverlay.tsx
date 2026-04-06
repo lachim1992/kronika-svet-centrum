@@ -103,7 +103,7 @@ const TradeNetworkOverlay = memo(({ sessionId, offsetX, offsetY, visible, refres
   const loadData = useCallback(async () => {
     const routesRes: any = await (supabase as any).from("province_routes")
       .select("id, node_a, node_b, route_type, control_state, capacity_value, upgrade_level, speed_value, safety_value, economic_relevance, military_relevance, hex_path_cost, hex_path_length, is_cross_province, vulnerability_score")
-      .eq("session_id", sessionId).eq("is_active", true);
+      .eq("session_id", sessionId).neq("control_state", "destroyed");
     const flowRes: any = await (supabase as any).from("flow_paths")
       .select("route_id, node_a, node_b, flow_type, hex_path, total_cost, bottleneck_hex, bottleneck_cost, path_length")
       .eq("session_id", sessionId);

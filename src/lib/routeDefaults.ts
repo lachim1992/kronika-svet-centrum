@@ -62,7 +62,6 @@ export async function createRoute(params: RouteCreateParams): Promise<string | n
       military_relevance: params.militaryRelevance ?? defaults.military,
       upgrade_level: params.upgradeLevel ?? 0,
       path_dirty: true,
-      is_active: true,
     } as any).select("id").single();
 
     if (error) throw error;
