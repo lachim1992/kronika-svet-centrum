@@ -140,15 +140,15 @@ Deno.serve(async (req) => {
 
     // ── Persist node_inventory (upsert) ──
     if (nodeInventories.length > 0) {
-      // Clear old inventory for this session's nodes (no session_id column on node_inventory)
       const nodeIds = [...new Set(nodeInventories.map(ni => ni.node_id))];
       for (let i = 0; i < nodeIds.length; i += 50) {
-        await sb.from("node_inventory").delete()
+        const delRes = await sb.from("node_inventory").delete()
           .in("node_id", nodeIds.slice(i, i + 50));
+        if (delRes.error) console.error("node_inventory delete error:", delRes.error);
       }
-      // Insert new (no session_id field)
       for (let i = 0; i < nodeInventories.length; i += 50) {
-        await sb.from("node_inventory").insert(nodeInventories.slice(i, i + 50));
+        const insRes = await sb.from("node_inventory").insert(nodeInventories.slice(i, i + 50));
+        if (insRes.error) console.error("node_inventory insert error:", JSON.stringify(insRes.error));
       }
     }
 
