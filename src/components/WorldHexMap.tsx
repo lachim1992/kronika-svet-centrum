@@ -1185,6 +1185,14 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
               setCurrentPos({ q: node.hex_q, r: node.hex_r });
             }}
           />
+          {/* Trade network overlay */}
+          <TradeNetworkOverlay
+            sessionId={sessionId}
+            offsetX={offsetX}
+            offsetY={offsetY}
+            visible={showTradeLayer}
+            refreshKey={routeRefreshKey}
+          />
         </g>
       </svg>
 
