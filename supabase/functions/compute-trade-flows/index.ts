@@ -279,7 +279,7 @@ Deno.serve(async (req) => {
           session_id,
           city_id: cityId,
           basket_key: basketKey,
-          tier: basket?.tier || 1,
+          tier: DEMAND_BASKETS[basketKey]?.tier || 1,
           quantity_needed: Math.round(demandQty * 10) / 10,
           quantity_fulfilled: Math.round(domesticSatisfaction * 10) / 10,
           satisfaction_score: Math.round(satisfaction * 1000) / 1000,
