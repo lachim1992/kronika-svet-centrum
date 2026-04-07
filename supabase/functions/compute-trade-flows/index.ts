@@ -321,7 +321,8 @@ Deno.serve(async (req) => {
     if (demandBasketRows.length > 0) {
       await sb.from("demand_baskets").delete().eq("session_id", session_id);
       for (let i = 0; i < demandBasketRows.length; i += 50) {
-        await sb.from("demand_baskets").insert(demandBasketRows.slice(i, i + 50));
+        const { error: dbErr } = await sb.from("demand_baskets").insert(demandBasketRows.slice(i, i + 50));
+        if (dbErr) console.error("demand_baskets insert error:", JSON.stringify(dbErr));
       }
     }
 
