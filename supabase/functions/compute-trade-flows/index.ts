@@ -68,6 +68,13 @@ Deno.serve(async (req) => {
 
     const goodsMap = new Map(goods.map(g => [g.key, g]));
     const cityMap = new Map(cities.map(c => [c.id, c]));
+    // Map cities.id → province_nodes.id (for FK references in demand_baskets, trade_flows)
+    const cityToNodeId = new Map<string, string>();
+    for (const n of nodes) {
+      if (n.city_id && !cityToNodeId.has(n.city_id)) {
+        cityToNodeId.set(n.city_id, n.id);
+      }
+    }
 
     // Build hex deposit lookup
     const depositMap = new Map<string, any[]>();
