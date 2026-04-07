@@ -8,12 +8,14 @@ import {
   computeNodeFlows, computeSupplyChain,
   URBANIZATION_THRESHOLDS,
   classifyNode, computeNodeScore, computeCollapseSeverity,
+  computeLegitimacyDrift, computeMigrationPressure, resolveMigration,
   type NodeClass,
   type CityForGrowth, type InfluenceInput,
   type NodeControlEntry, type IsolationInput,
   type FlowNode, type FlowRoute, type FlowCity,
   type SupplyChainInput,
 } from "../_shared/physics.ts";
+import { computeSocialMobility, computeLaborModifiers } from "../_shared/demographics.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -644,6 +646,180 @@ Deno.serve(async (req) => {
       }
     }
     results.rebellions = rebellionResults;
+
+    // ========== 8b. LEGITIMACY DRIFT (Phase 4 dead metric) ==========
+    const legitimacyResults: any[] = [];
+    // Fetch active policies for legitimacy_effect
+    const { data: allPolicies } = await supabase.from("city_policies")
+      .select("city_id, legitimacy_effect")
+      .eq("session_id", sessionId).eq("is_active", true);
+
+    // Fetch demand satisfaction from city_market_summary (latest turn)
+    const { data: marketSummaries } = await supabase.from("city_market_summary")
+      .select("city_node_id, supply_volume, demand_volume")
+      .eq("session_id", sessionId).eq("turn_number", turnNumber);
+
+    // Map city_id → demand_satisfaction via province_nodes
+    const { data: cityNodes } = await supabase.from("province_nodes")
+      .select("id, city_id").eq("session_id", sessionId).not("city_id", "is", null);
+    const nodeToCity = new Map((cityNodes || []).map((n: any) => [n.id, n.city_id]));
+    const citySatisfaction: Record<string, number> = {};
+    for (const ms of (marketSummaries || [])) {
+      const cityId = nodeToCity.get(ms.city_node_id);
+      if (!cityId) continue;
+      const sat = ms.demand_volume > 0 ? Math.min(1, ms.supply_volume / ms.demand_volume) : 0.5;
+      citySatisfaction[cityId] = (citySatisfaction[cityId] || 0) + sat;
+    }
+    // Average per city (multiple goods)
+    const cityGoodsCounts: Record<string, number> = {};
+    for (const ms of (marketSummaries || [])) {
+      const cityId = nodeToCity.get(ms.city_node_id);
+      if (cityId) cityGoodsCounts[cityId] = (cityGoodsCounts[cityId] || 0) + 1;
+    }
+    for (const cid of Object.keys(citySatisfaction)) {
+      citySatisfaction[cid] /= (cityGoodsCounts[cid] || 1);
+    }
+
+    for (const city of (cities || [])) {
+      if (city.status !== "ok") continue;
+
+      const policyLegSum = (allPolicies || [])
+        .filter((p: any) => p.city_id === city.id)
+        .reduce((s: number, p: any) => s + (p.legitimacy_effect || 0), 0);
+
+      const wasConqueredRecently = city.devastated_round != null && (turnNumber - city.devastated_round) <= 5;
+
+      const legResult = computeLegitimacyDrift({
+        currentLegitimacy: city.legitimacy || 50,
+        famine_consecutive_turns: city.famine_consecutive_turns || 0,
+        temple_level: city.temple_level || 0,
+        demand_satisfaction: citySatisfaction[city.id] ?? 0.5,
+        was_conquered_recently: wasConqueredRecently,
+        policy_legitimacy_sum: policyLegSum,
+      });
+
+      // Apply legitimacy + downstream stability effect
+      const newStability = Math.max(0, Math.min(100, (city.city_stability || 70) + legResult.stabilityEffect));
+
+      await supabase.from("cities").update({
+        legitimacy: legResult.newLegitimacy,
+        city_stability: newStability,
+      }).eq("id", city.id);
+
+      legitimacyResults.push({
+        city: city.name, drift: legResult.drift,
+        newLegitimacy: legResult.newLegitimacy,
+        stabilityEffect: legResult.stabilityEffect,
+      });
+    }
+    results.legitimacy = legitimacyResults;
+
+    // ========== 8c. MIGRATION PRESSURE + RESOLUTION (Phase 4 dead metric) ==========
+    const migrationPressureResults: any[] = [];
+    const migrationCitiesData: Array<{
+      id: string; name: string; owner_player: string;
+      population_total: number; population_peasants: number;
+      migration_pressure: number; housing_capacity: number;
+    }> = [];
+
+    for (const city of (cities || [])) {
+      if (city.status !== "ok") continue;
+
+      const mp = computeMigrationPressure({
+        famine_severity: city.famine_severity || 0,
+        overcrowding_ratio: city.overcrowding_ratio || 0,
+        city_stability: city.city_stability || 70,
+        epidemic_active: city.epidemic_active || false,
+        market_level: city.market_level || 0,
+        housing_capacity: city.housing_capacity || 500,
+        population_total: city.population_total || 0,
+      });
+
+      await supabase.from("cities").update({
+        migration_pressure: mp.pressure,
+      }).eq("id", city.id);
+
+      migrationPressureResults.push({ city: city.name, ...mp });
+      migrationCitiesData.push({
+        id: city.id, name: city.name, owner_player: city.owner_player,
+        population_total: city.population_total, population_peasants: city.population_peasants,
+        migration_pressure: mp.pressure, housing_capacity: city.housing_capacity || 500,
+      });
+    }
+
+    // Resolve actual migration flows
+    const migrationFlows = resolveMigration(migrationCitiesData);
+    for (const flow of migrationFlows) {
+      // Deduct from source
+      await supabase.from("cities").update({
+        population_total: Math.max(50, (migrationCitiesData.find(c => c.id === flow.from_city_id)?.population_total || 0) - flow.migrants),
+        population_peasants: Math.max(0, (migrationCitiesData.find(c => c.id === flow.from_city_id)?.population_peasants || 0) - flow.migrants),
+        last_migration_out: flow.migrants,
+      }).eq("id", flow.from_city_id);
+
+      // Add to destination
+      await supabase.from("cities").update({
+        population_total: (migrationCitiesData.find(c => c.id === flow.to_city_id)?.population_total || 0) + flow.migrants,
+        population_peasants: (migrationCitiesData.find(c => c.id === flow.to_city_id)?.population_peasants || 0) + flow.migrants,
+        last_migration_in: flow.migrants,
+      }).eq("id", flow.to_city_id);
+
+      // Generate event for significant migration
+      if (flow.migrants > 50) {
+        await safeInsert(supabase.from("world_events").insert({
+          session_id: sessionId, turn_number: turnNumber,
+          event_type: "migration",
+          title: `Migrace z ${flow.from_city_name} do ${flow.to_city_name}`,
+          description: `${flow.migrants} obyvatel se přesunulo z ${flow.from_city_name} do ${flow.to_city_name}.`,
+          severity: "minor", status: "active",
+        }));
+      }
+    }
+    results.migration_pressure = migrationPressureResults;
+    results.migration_flows = migrationFlows;
+
+    // ========== 8d. LABOR ALLOCATION → SOCIAL MOBILITY + MODIFIERS (Phase 4 dead metric) ==========
+    const laborResults: any[] = [];
+    for (const city of (cities || [])) {
+      if (city.status !== "ok") continue;
+
+      const labor = (city.labor_allocation as any) || {};
+      const laborMods = computeLaborModifiers(labor);
+
+      // Apply social mobility
+      const mobilityResult = computeSocialMobility({
+        population_peasants: city.population_peasants || 0,
+        population_burghers: city.population_burghers || 0,
+        population_clerics: city.population_clerics || 0,
+        population_total: city.population_total || 0,
+        market_level: city.market_level || 0,
+        temple_level: city.temple_level || 0,
+        labor_allocation: labor,
+        city_stability: city.city_stability || 70,
+      });
+
+      // Apply irrigation from canal allocation
+      const newIrrigation = Math.min(10, (city.irrigation_level || 0) + laborMods.canal_mod);
+
+      await supabase.from("cities").update({
+        population_peasants: mobilityResult.new_peasants,
+        population_burghers: mobilityResult.new_burghers,
+        population_clerics: mobilityResult.new_clerics,
+        mobility_rate: mobilityResult.mobility_rate,
+        irrigation_level: newIrrigation,
+      }).eq("id", city.id);
+
+      laborResults.push({
+        city: city.name,
+        mobility: mobilityResult.mobility_rate,
+        farming_mod: laborMods.farming_mod,
+        crafting_mod: laborMods.crafting_mod,
+        canal_mod: laborMods.canal_mod,
+        peasants_to_burghers: mobilityResult.peasants_to_burghers,
+        burghers_to_clerics: mobilityResult.burghers_to_clerics,
+      });
+    }
+    results.labor_allocation = laborResults;
 
     // ========== 9. NPC / CITY-STATE AUTONOMOUS DIPLOMACY ==========
     const npcResults: any[] = [];

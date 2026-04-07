@@ -235,9 +235,9 @@ const RealmIndicators = ({ realm, cities, currentTurn }: Props) => {
                 {stats.avgStability}%
               </span>
             </div>
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Ø Legitimita</span>
-              <span className="font-bold">{stats.avgLegitimacy}</span>
+            <div className="flex justify-between items-center">
+              <span className="text-muted-foreground flex items-center gap-1">Ø Legitimita <InfoTip>Drift dle zásobování (demand_satisfaction), hladomoru, chrámů a dobytí. Ovlivňuje stabilitu (+/- 0.05 × odchylka od 50) a práh rebelie (pod 25 → snížen o 10).</InfoTip></span>
+              <span className={`font-bold ${stats.avgLegitimacy < 25 ? "text-destructive" : stats.avgLegitimacy < 40 ? "text-amber-500" : "text-accent"}`}>{stats.avgLegitimacy}</span>
             </div>
           </CardContent>
         </Card>

@@ -142,15 +142,6 @@ export interface MigrationCity {
   housing_capacity: number;
   demo_policy?: string; // active demographic policy key
 }
-  name: string;
-  owner_player: string;
-  population_total: number;
-  population_peasants: number;
-  city_stability: number;
-  famine_turn: boolean;
-  overcrowding_ratio: number;
-  housing_capacity: number;
-}
 
 export interface MigrationFlow {
   from_city_id: string;
@@ -434,5 +425,39 @@ export function computeBirthDeathRate(city: {
     birthRate: Math.round(birthRate * 1000) / 1000,
     deathRate: Math.round(deathRate * 1000) / 1000,
     naturalGrowth,
+  };
+}
+
+// ═══════════════════════════════════════════
+// LABOR ALLOCATION → PRODUCTION MODIFIERS
+// ═══════════════════════════════════════════
+
+export interface LaborModifiers {
+  farming_mod: number;    // multiplier on food production
+  crafting_mod: number;   // multiplier on crafting/production output
+  canal_mod: number;      // additive bonus to irrigation_level
+  scribes_mod: number;    // multiplier on social mobility (already used, but now explicit)
+}
+
+/**
+ * Compute production modifiers from labor allocation percentages.
+ * labor fields are 0-100 percentages.
+ */
+export function computeLaborModifiers(labor: {
+  farming?: number;
+  crafting?: number;
+  canal?: number;
+  scribes?: number;
+}): LaborModifiers {
+  const farming = labor.farming ?? 50;
+  const crafting = labor.crafting ?? 20;
+  const canal = labor.canal ?? 0;
+  const scribes = labor.scribes ?? 10;
+
+  return {
+    farming_mod: Math.round((1.0 + (farming - 50) * 0.005) * 1000) / 1000,   // 60% → 1.05
+    crafting_mod: Math.round((1.0 + (crafting - 20) * 0.008) * 1000) / 1000,  // 30% → 1.08
+    canal_mod: Math.round(canal * 0.01 * 100) / 100,                           // 10% → 0.1
+    scribes_mod: Math.round((1.0 + (scribes - 10) * 0.01) * 1000) / 1000,     // 20% → 1.1
   };
 }

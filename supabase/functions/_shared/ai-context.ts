@@ -409,7 +409,7 @@ async function buildStrategicMapContext(client: SupabaseClient, sessionId: strin
       .select("id, name, owner_player, center_q, center_r, color_index")
       .eq("session_id", sessionId),
     client.from("cities")
-      .select("name, owner_player, province_q, province_r, settlement_level")
+      .select("name, owner_player, province_q, province_r, settlement_level, legitimacy")
       .eq("session_id", sessionId),
     client.from("province_nodes")
       .select("id, name, node_type, node_class, node_score, collapse_severity, is_major, parent_node_id, controlled_by, production_output, wealth_output, faith_output, food_value, sacred_influence, capacity_score, importance_score, isolation_penalty, hex_q, hex_r, flow_role, garrison_strength, fortification_level, city_id, strategic_resource_type, cumulative_trade_flow")
@@ -483,6 +483,13 @@ async function buildStrategicMapContext(client: SupabaseClient, sessionId: strin
     parts.push("\nMĚSTA:");
     for (const c of cities) {
       parts.push(`  ${c.name} (${c.owner_player}) na (${c.province_q},${c.province_r}) [${c.settlement_level}]`);
+    }
+
+    // Legitimacy context for AI
+    const avgLeg = cities.reduce((s: number, c: any) => s + (c.legitimacy ?? 50), 0) / cities.length;
+    const lowLegCities = cities.filter((c: any) => (c.legitimacy ?? 50) < 30);
+    if (lowLegCities.length > 0) {
+      parts.push(`\nLEGITIMITA: Průměr ${Math.round(avgLeg)}. Kriticky nízká v: ${lowLegCities.map((c: any) => `${c.name}(${c.legitimacy ?? 50})`).join(", ")}`);
     }
   }
 
