@@ -300,6 +300,9 @@ Deno.serve(async (req) => {
           tier: DEMAND_BASKETS[basketKey]?.tier || 1,
           quantity_needed: Math.round(demandQty * 10) / 10,
           quantity_fulfilled: Math.round(domesticSatisfaction * 10) / 10,
+          fulfillment_type: satisfaction >= 0.8 ? "full" : satisfaction >= 0.3 ? "partial" : "deficit",
+          min_quality: 0,
+          preferred_quality: DEMAND_BASKETS[basketKey]?.tier >= 3 ? 2 : 1,
           satisfaction_score: Math.round(satisfaction * 1000) / 1000,
           turn_number: turn_number || 1,
         });
