@@ -10,7 +10,7 @@ import {
   ChevronDown, Skull, TrendingUp, Network, Zap, Church
 } from "lucide-react";
 import { computeWorkforceBreakdown } from "@/lib/economyConstants";
-import { MACRO_LAYER_ICONS, STRATEGIC_RESOURCE_ICONS, STRATEGIC_TIER_LABELS, getStrategicTiers, computeTotalPrestige, getPrestigeTier, PRESTIGE_TIER_LABELS, PRESTIGE_META, PRESTIGE_COMPONENTS, type StrategicResource, type PrestigeComponent } from "@/lib/economyFlow";
+import { MACRO_LAYER_ICONS, STRATEGIC_RESOURCE_ICONS, STRATEGIC_TIER_LABELS, getStrategicTiers, computeTotalPrestige, getPrestigeTier, PRESTIGE_TIER_LABELS, PRESTIGE_META, PRESTIGE_COMPONENTS, type StrategicResource, type PrestigeComponent, getWealthBreakdown } from "@/lib/economyFlow";
 import DemobilizeDialog from "@/components/DemobilizeDialog";
 
 interface ResourceHUDProps {
@@ -123,7 +123,7 @@ const ResourceHUD = ({ sessionId, playerName, cities, currentTurn }: ResourceHUD
   const mods = realm.computed_modifiers || {};
   const ge = mods.goods_economy || {};
   const goodsProd = realm.goods_production_value ?? 0;
-  const goodsWealth = realm.goods_wealth_fiscal ?? 0;
+  const wb = getWealthBreakdown(realm);
 
   const grainNet = realm.last_turn_grain_net ?? 0;
   const grainNetStr = grainNet > 0 ? `+${grainNet}` : `${grainNet}`;
@@ -138,8 +138,8 @@ const ResourceHUD = ({ sessionId, playerName, cities, currentTurn }: ResourceHUD
     {
       icon: <span className="text-xs">{MACRO_LAYER_ICONS.wealth}</span>,
       label: "Bohatství",
-      value: `${Math.round(wealthReserve)} (+${totalWealth.toFixed(0)}/k)`,
-      derivation: `🏗️ Infra: ${totalWealth.toFixed(1)} | 📦 Goods fiskál: ${goodsWealth.toFixed(1)} | Pop: ${realm.tax_population ?? 0} Trh: ${realm.tax_market ?? 0} Tranzit: ${realm.tax_transit ?? 0} Těžba: ${realm.tax_extraction ?? 0} Export: ${realm.commercial_capture ?? 0}`,
+      value: `${Math.round(wealthReserve)} (${wb.netChange >= 0 ? "+" : ""}${wb.netChange.toFixed(0)}/k)`,
+      derivation: `👥 Pop: ${wb.popTax.toFixed(1)} | 🏪 Trh: ${wb.domesticMarket.toFixed(1)} | 📦 Goods: ${wb.goodsFiscal.toFixed(1)} | 🛤️ Trasy: ${wb.routeCommerce.toFixed(1)}\nPříjem: +${wb.totalIncome.toFixed(1)} | Výdaje: -${wb.totalExpenses.toFixed(1)} | Čistě: ${wb.netChange >= 0 ? "+" : ""}${wb.netChange.toFixed(1)}/kolo`,
     },
     {
       icon: <span className="text-xs">🌾</span>,

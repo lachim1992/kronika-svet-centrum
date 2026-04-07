@@ -703,21 +703,65 @@ Deno.serve(async (req) => {
     const netProduction = totalCityProduction - totalDemand - armyProductionUpkeep;
 
     // ══════════════════════════════════════════════════════════════
-    // ▶ WEALTH: Blended from layers + nodes + goods fiscal
-    // Legacy: city layers (burghers) + macro node wealth + trade
-    // Goods: fiscal flows already distributed per-city above
+    // ▶ WEALTH: 4-Pillar Model (unified, no magic blend)
+    //   1. Population Tax   — flat per-capita levy
+    //   2. Domestic Market   — capital market mechanism (compute-economy-flow)
+    //   3. Goods Fiscal      — tax_market + tax_transit + tax_extraction + capture
+    //   4. Route Commerce    — secondary wealth from trade corridor volume
     // ══════════════════════════════════════════════════════════════
+    const DOMESTIC_MARKET_REALIZATION = 0.5; // Tuning knob: how much of node-flow wealth is realized
+    const ROUTE_COMMERCE_RATE = 0.05;        // Tuning knob: wealth per unit of effective route capacity
+
     const taxMult = 1 + (taxRateModifier / 100);
     // Strategic resource wealth multipliers
     const copperMult = STRATEGIC_TIER_BONUSES.copper[realm.strategic_copper_tier || 0]?.wealth_mult || 1.0;
     const goldMult = STRATEGIC_TIER_BONUSES.gold[realm.strategic_gold_tier || 0]?.wealth_mult || 1.0;
-    const wealthFromLayers = totalCityWealth * copperMult * goldMult;
-    const wealthFromNodes = totalWealth; // From compute-economy-flow
-    // Blend: in goods mode, per-city wealth already includes goods fiscal contribution
-    const combinedWealth = wealthFromLayers + wealthFromNodes * 0.3 * legacyBlend;
-    const wealthIncome = Math.max(0, Math.round(combinedWealth * taxMult));
+
+    // ── Pillar 1: Population Tax (centrální odvod) ──
+    const populationTaxBase = totalCityWealth * copperMult * goldMult;
+    const pillarPopTax = Math.round(populationTaxBase * taxMult * 10) / 10;
+
+    // ── Pillar 2: Domestic Market (capital market mechanism) ──
+    const domesticMarketGross = totalWealth; // From compute-economy-flow
+    const pillarDomesticMarket = Math.round(domesticMarketGross * DOMESTIC_MARKET_REALIZATION * 10) / 10;
+
+    // ── Pillar 3: Goods Fiscal (already computed by compute-trade-flows) ──
+    const goodsTaxMarketPillar = realm.tax_market || 0;
+    const goodsTaxTransitPillar = realm.tax_transit || 0;
+    const goodsTaxExtractionPillar = realm.tax_extraction || 0;
+    const goodsCapturePillar = realm.commercial_capture || 0;
+    const pillarGoodsFiscal = Math.round((goodsTaxMarketPillar + goodsTaxTransitPillar + goodsTaxExtractionPillar + goodsCapturePillar) * 10) / 10;
+
+    // ── Pillar 4: Route Commerce (monetizace průtoku tras) ──
+    let pillarRouteCommerce = 0;
+    const playerRoutes = allRoutes.filter(r => {
+      const nodeA = nodeMap.get(r.node_a);
+      const nodeB = nodeMap.get(r.node_b);
+      return (nodeA?.controlled_by === playerName || nodeB?.controlled_by === playerName);
+    });
+    for (const route of playerRoutes) {
+      const damagePenalty = Math.min((route.damage_level || 0) * 0.1, 0.9);
+      const effectiveCapacity = (route.capacity_value || 0) * (1 - damagePenalty);
+      // Control factor: both ends owned = 1.0, one end = 0.5, contested = 0.25
+      const nodeA = nodeMap.get(route.node_a);
+      const nodeB = nodeMap.get(route.node_b);
+      const ownA = nodeA?.controlled_by === playerName;
+      const ownB = nodeB?.controlled_by === playerName;
+      const controlFactor = (ownA && ownB) ? 1.0 : (ownA || ownB) ? 0.5 : 0.25;
+      // Economic relevance from connected nodes
+      const econRelevance = Math.max(nodeA?.importance_score || 0, nodeB?.importance_score || 0) * 0.1 + 0.5;
+      pillarRouteCommerce += effectiveCapacity * econRelevance * controlFactor * ROUTE_COMMERCE_RATE;
+    }
+    pillarRouteCommerce = Math.round(pillarRouteCommerce * 10) / 10;
+
+    // ── Total Wealth Income ──
+    const totalWealthIncome = pillarPopTax + pillarDomesticMarket + pillarGoodsFiscal + pillarRouteCommerce;
+    const wealthIncome = Math.max(0, Math.round(totalWealthIncome));
+    const combinedWealth = totalWealthIncome; // For backward compat references
     const sportFundingPct = realm.sport_funding_pct || 0;
     let newGoldReserve = (realm.gold_reserve || 0) + wealthIncome - armyWealthUpkeep;
+
+    logEntries.push(`💰 Wealth 4-pilíře: Pop=${pillarPopTax} Trh=${pillarDomesticMarket} Goods=${pillarGoodsFiscal} Trasy=${pillarRouteCommerce} → celkem=${wealthIncome}`);
 
     // Load diplomatic pacts
     const { data: rawPacts } = await supabase.from("diplomatic_pacts").select("*")
@@ -1173,22 +1217,9 @@ Deno.serve(async (req) => {
     const productionIncome = Math.max(0, Math.round(totalCityProduction - armyProductionUpkeep));
     const newProductionReserve = Math.max(0, (realm.production_reserve || 0) + productionIncome);
 
-    // ── Goods economy: blend fiscal data from compute-trade-flows ──
-    // In goods-blend mode, fiscal income is already factored into per-city wealth calculations.
-    // Only add the fiscal bonus when NOT blending (legacy mode) to avoid double-counting.
-    const goodsTaxMarket = realm.tax_market || 0;
-    const goodsTaxTransit = realm.tax_transit || 0;
-    const goodsTaxExtraction = realm.tax_extraction || 0;
-    const goodsCapture = realm.commercial_capture || 0;
+    // ── Goods economy: fiscal data now handled by 4-pillar model (pillar 3) ──
+    // No longer adding goodsFiscalBonus separately — it's already in wealthIncome.
     const goodsRetention = realm.commercial_retention || 0;
-
-    const goodsFiscalTotal = goodsTaxMarket + goodsTaxTransit + goodsTaxExtraction + goodsCapture;
-    // In legacy-only mode (goodsBlend=0), add full fiscal bonus. In blend mode, it's already in per-city wealth.
-    const goodsFiscalBonus = Math.round(goodsFiscalTotal * legacyBlend);
-    newGoldReserve += goodsFiscalBonus;
-    if (goodsFiscalTotal > 0) {
-      logEntries.push(`📦 Goods ekonomika: fiskální celkem ${Math.round(goodsFiscalTotal)} (blend ${Math.round(legacyBlend * 100)}% → +${goodsFiscalBonus} 💰)`);
-    }
 
     // ── Demand basket feedback → city stability & population ──
     // Load demand baskets computed by compute-trade-flows
@@ -1316,7 +1347,7 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Pop tax derived from goods layer
+    // Pop tax derived from goods layer (kept for backward compat in computed_modifiers)
     const goodsPopTax = Math.round(totalPopulation * 0.002 * (1 + myCities.filter(c => c.settlement_level === "polis" || c.settlement_level === "metropolis").length * 0.1));
 
     await supabase.from("realm_resources").update({
@@ -1341,8 +1372,13 @@ Deno.serve(async (req) => {
       mobilization_production_penalty: Math.round(mobProductionPenalty * 10) / 10,
       mobilization_wealth_penalty: Math.round(mobWealthPenalty * 10) / 10,
       last_turn_faith_delta: Math.round(faithGrowth * 100) / 100,
-      // Goods economy fiscal columns
-      tax_pop: goodsPopTax,
+      // Goods economy fiscal columns (fix: was tax_pop, correct column is tax_population)
+      tax_population: goodsPopTax,
+      // ── 4-Pillar Wealth Breakdown ──
+      wealth_pop_tax: pillarPopTax,
+      wealth_domestic_market: pillarDomesticMarket,
+      goods_wealth_fiscal: pillarGoodsFiscal,
+      wealth_route_commerce: pillarRouteCommerce,
       // Prestige sub-types
       military_prestige: militaryPrestige,
       cultural_prestige: culturalPrestige,
@@ -1390,12 +1426,21 @@ Deno.serve(async (req) => {
         },
         goods_economy: {
           tax_pop: goodsPopTax,
-          tax_market: Math.round(goodsTaxMarket * 10) / 10,
-          tax_transit: Math.round(goodsTaxTransit * 10) / 10,
-          tax_extraction: Math.round(goodsTaxExtraction * 10) / 10,
-          capture: Math.round(goodsCapture * 10) / 10,
+          tax_market: Math.round(goodsTaxMarketPillar * 10) / 10,
+          tax_transit: Math.round(goodsTaxTransitPillar * 10) / 10,
+          tax_extraction: Math.round(goodsTaxExtractionPillar * 10) / 10,
+          capture: Math.round(goodsCapturePillar * 10) / 10,
           retention: Math.round(goodsRetention * 1000) / 1000,
-          fiscal_bonus: goodsFiscalBonus,
+        },
+        wealth_breakdown: {
+          pop_tax: pillarPopTax,
+          domestic_market: pillarDomesticMarket,
+          goods_fiscal: pillarGoodsFiscal,
+          route_commerce: pillarRouteCommerce,
+          total_income: Math.round(totalWealthIncome * 10) / 10,
+          army_upkeep: armyWealthUpkeep,
+          tolls: totalTollsPaid,
+          sport_funding: sportFundingExpense,
         },
       },
       updated_at: new Date().toISOString(),

@@ -7432,6 +7432,9 @@ export type Database = {
           trade_ideology: string | null
           updated_at: string
           warrior_ratio: number | null
+          wealth_domestic_market: number | null
+          wealth_pop_tax: number | null
+          wealth_route_commerce: number | null
           wood_reserve: number
         }
         Insert: {
@@ -7514,6 +7517,9 @@ export type Database = {
           trade_ideology?: string | null
           updated_at?: string
           warrior_ratio?: number | null
+          wealth_domestic_market?: number | null
+          wealth_pop_tax?: number | null
+          wealth_route_commerce?: number | null
           wood_reserve?: number
         }
         Update: {
@@ -7596,6 +7602,9 @@ export type Database = {
           trade_ideology?: string | null
           updated_at?: string
           warrior_ratio?: number | null
+          wealth_domestic_market?: number | null
+          wealth_pop_tax?: number | null
+          wealth_route_commerce?: number | null
           wood_reserve?: number
         }
         Relationships: [

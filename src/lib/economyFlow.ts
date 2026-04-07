@@ -414,3 +414,45 @@ export function getImportanceColor(score: number): string {
   if (score >= 2) return "text-muted-foreground";
   return "text-muted-foreground/50";
 }
+
+// ═══════════════════════════════════════════
+// WEALTH BREAKDOWN — 4-Pillar unified selector
+// ═══════════════════════════════════════════
+
+export interface WealthBreakdown {
+  popTax: number;
+  domesticMarket: number;
+  goodsFiscal: number;
+  routeCommerce: number;
+  totalIncome: number;
+  // Expenses
+  armyUpkeep: number;
+  tolls: number;
+  sportFunding: number;
+  totalExpenses: number;
+  netChange: number;
+}
+
+/** Unified wealth breakdown from realm_resources — single source of truth for all UI */
+export function getWealthBreakdown(realm: any): WealthBreakdown {
+  const popTax = Number(realm?.wealth_pop_tax ?? 0);
+  const domesticMarket = Number(realm?.wealth_domestic_market ?? 0);
+  const goodsFiscal = Number(realm?.goods_wealth_fiscal ?? 0);
+  const routeCommerce = Number(realm?.wealth_route_commerce ?? 0);
+  const totalIncome = popTax + domesticMarket + goodsFiscal + routeCommerce;
+
+  // Expenses from computed_modifiers
+  const wb = realm?.computed_modifiers?.wealth_breakdown || {};
+  const armyUpkeep = Number(wb.army_upkeep ?? 0);
+  const tolls = Number(wb.tolls ?? 0);
+  const sportFunding = Number(wb.sport_funding ?? 0);
+  const totalExpenses = armyUpkeep + tolls + sportFunding;
+
+  return {
+    popTax, domesticMarket, goodsFiscal, routeCommerce,
+    totalIncome,
+    armyUpkeep, tolls, sportFunding,
+    totalExpenses,
+    netChange: totalIncome - totalExpenses,
+  };
+}
