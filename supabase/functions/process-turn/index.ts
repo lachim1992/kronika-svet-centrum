@@ -680,6 +680,12 @@ Deno.serve(async (req) => {
     totalCityProduction = Math.max(0, totalCityProduction - mobProductionPenalty);
     totalCityWealth = Math.max(0, totalCityWealth - mobWealthPenalty);
 
+    // Goods supply volume supplements grain reserve (storable goods = strategic supply)
+    if (goodsBlend > 0 && goodsSupplyVolume > 0) {
+      const goodsSupplyBonus = Math.round(goodsSupplyVolume * goodsBlend);
+      globalGrainReserve += goodsSupplyBonus;
+      logEntries.push(`📦 Goods zásoby: +${goodsSupplyBonus} (${goodsSupplyVolume.toFixed(0)} × ${Math.round(goodsBlend * 100)}%)`);
+    }
     // Small empire buffer
     if (myCities.length <= 3) globalGrainReserve += 10;
     // Strategic salt supply bonus
