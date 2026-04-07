@@ -703,8 +703,9 @@ Deno.serve(async (req) => {
     const netProduction = totalCityProduction - totalDemand - armyProductionUpkeep;
 
     // ══════════════════════════════════════════════════════════════
-    // ▶ WEALTH: Layer-driven + Trade Routes + Graph Validation
-    // Wealth = city layers (burghers) + macro node wealth + trade
+    // ▶ WEALTH: Blended from layers + nodes + goods fiscal
+    // Legacy: city layers (burghers) + macro node wealth + trade
+    // Goods: fiscal flows already distributed per-city above
     // ══════════════════════════════════════════════════════════════
     const taxMult = 1 + (taxRateModifier / 100);
     // Strategic resource wealth multipliers
@@ -712,7 +713,8 @@ Deno.serve(async (req) => {
     const goldMult = STRATEGIC_TIER_BONUSES.gold[realm.strategic_gold_tier || 0]?.wealth_mult || 1.0;
     const wealthFromLayers = totalCityWealth * copperMult * goldMult;
     const wealthFromNodes = totalWealth; // From compute-economy-flow
-    const combinedWealth = wealthFromLayers + wealthFromNodes * 0.3; // Layers primary, nodes secondary
+    // Blend: in goods mode, per-city wealth already includes goods fiscal contribution
+    const combinedWealth = wealthFromLayers + wealthFromNodes * 0.3 * legacyBlend;
     const wealthIncome = Math.max(0, Math.round(combinedWealth * taxMult));
     const sportFundingPct = realm.sport_funding_pct || 0;
     let newGoldReserve = (realm.gold_reserve || 0) + wealthIncome - armyWealthUpkeep;
