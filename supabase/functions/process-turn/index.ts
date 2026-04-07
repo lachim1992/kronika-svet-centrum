@@ -1166,18 +1166,20 @@ Deno.serve(async (req) => {
     const newProductionReserve = Math.max(0, (realm.production_reserve || 0) + productionIncome);
 
     // ── Goods economy: blend fiscal data from compute-trade-flows ──
+    // In goods-blend mode, fiscal income is already factored into per-city wealth calculations.
+    // Only add the fiscal bonus when NOT blending (legacy mode) to avoid double-counting.
     const goodsTaxMarket = realm.tax_market || 0;
     const goodsTaxTransit = realm.tax_transit || 0;
     const goodsTaxExtraction = realm.tax_extraction || 0;
     const goodsCapture = realm.commercial_capture || 0;
     const goodsRetention = realm.commercial_retention || 0;
 
-    // Full goods fiscal integration (replaces legacy for wealth component)
     const goodsFiscalTotal = goodsTaxMarket + goodsTaxTransit + goodsTaxExtraction + goodsCapture;
-    const goodsFiscalBonus = Math.round(goodsFiscalTotal);
+    // In legacy-only mode (goodsBlend=0), add full fiscal bonus. In blend mode, it's already in per-city wealth.
+    const goodsFiscalBonus = Math.round(goodsFiscalTotal * legacyBlend);
     newGoldReserve += goodsFiscalBonus;
-    if (goodsFiscalBonus > 0) {
-      logEntries.push(`📦 Goods ekonomika: +${goodsFiscalBonus} 💰 (trh ${Math.round(goodsTaxMarket)} + tranzit ${Math.round(goodsTaxTransit)} + těžba ${Math.round(goodsTaxExtraction)} + export ${Math.round(goodsCapture)})`);
+    if (goodsFiscalTotal > 0) {
+      logEntries.push(`📦 Goods ekonomika: fiskální celkem ${Math.round(goodsFiscalTotal)} (blend ${Math.round(legacyBlend * 100)}% → +${goodsFiscalBonus} 💰)`);
     }
 
     // ── Demand basket feedback → city stability & population ──
