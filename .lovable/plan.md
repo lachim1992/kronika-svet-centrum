@@ -1,176 +1,107 @@
 
 
-# Komplexní revize Dev Tabu, ResourceHUD, Observatory a Dead Data
+# Sjednocení Wealth systému — 4 pilíře
 
-## Rozsah
+## Současný stav (problémy)
 
-Čtyři propojené oblasti: (A) Recompute All tlačítko, (B) ResourceHUD fix, (C) Dev Tab reorganizace, (D) Observatory kompletní přepis, (E) Dead Data akční plán.
+1. **Magic blend**: `combinedWealth = wealthFromLayers + wealthFromNodes * 0.3 * legacyBlend` (řádek 717 process-turn) — neprůhledný koeficient
+2. **Bug**: process-turn zapisuje `tax_pop` ale sloupec se jmenuje `tax_population` → data se nezapisují
+3. **Žádný route commerce**: province_routes mají `capacity_value`, `economic_relevance`, `damage_level`, `controlled_by` — ale nikdy negenerují wealth
+4. **Existující sloupce v realm_resources**: `tax_market`, `tax_transit`, `tax_extraction`, `tax_population`, `commercial_capture`, `commercial_retention`, `goods_wealth_fiscal`, `total_wealth`
 
----
-
-## A. Recompute All — okamžitá rekalkulace
-
-**Nová Edge Function `recompute-all`** která spustí celý pipeline sekvečně:
-1. `compute-province-routes` → routes
-2. `compute-hex-flows` (force_all) → hex paths
-3. `compute-economy-flow` → node-level metriky
-4. `compute-trade-flows` → goods pipeline
-5. `process-turn` (jen economy fáze, bez advance turn) → realm_resources update
-
-Vrátí JSON s výsledky každého kroku (success/error, počty rows).
-
-**UI**: Výrazné tlačítko "⚡ Recompute All" v DevTab headeru vedle "Next Turn", s loading spinner a toast s výsledky. Po dokončení zavolá `onRefetch()` → ResourceHUD se automaticky aktualizuje přes realtime subscription.
-
-**Důležité**: `process-turn` bude potřebovat flag `recalcOnly: true` aby nepřepočítávala populaci/hladomor/events, jen ekonomické agregáty.
-
----
-
-## B. ResourceHUD opravy
-
-### Zásoby formát
-Aktuálně: `20/500` s optionálním suffixem `(+X/k)`.  
-Cíl: Sjednotit na stejný formát jako Produkce a Bohatství → `20 (+5/k)` kde 20 = grain_reserve, +5 = last_turn_grain_net.  
-Odebrat `/500` (granary_capacity) z hlavního chipu — přesunout do tooltipu.
-
-### Ověření dat
-- Tooltip pro Zásoby: ukázat `Kapacita sýpek: X | Bilance: produkce − spotřeba − armáda`
-- Ověřit, že `last_turn_grain_net` se skutečně zapisuje v process-turn (již existuje)
-
----
-
-## C. Dev Tab reorganizace
-
-### Současný stav: 15 tabů v ploché řadě
-Mnoho je zastaralých nebo redundantních:
-- **Lokální simulace**: Generuje fake events do DB, nespouští engine → zastaralé po RealSimulationSection
-- **Event Engine**: Čistě statický přehled šablon → jen dokumentační
-- **Quick Seed**: Generuje fake data client-side → překryto SeedSection a world-generate-init
-
-### Nová struktura: 4 sekce (accordion/collapsible groups)
+## Architektura po změně
 
 ```text
-┌─ ⚡ ENGINE ──────────────────────────────────────┐
-│  [Recompute All] [Next Turn]                     │
-│  • Simulace (RealSimulationSection)              │
-│  • Hydratace (HydrationSection + backfill-tags)  │
-│  • Integrita (WorldIntegritySection)             │
-└──────────────────────────────────────────────────┘
-
-┌─ 🗃️ DATA & SEEDING ─────────────────────────────┐
-│  • Seed (SeedSection)                            │
-│  • Seed Map (SeedMapManager)                     │
-│  • Econ QA (EconomyQASection)                    │
-│  • QA (QATestSection)                            │
-└──────────────────────────────────────────────────┘
-
-┌─ ✏️ EDITORS ─────────────────────────────────────┐
-│  • Node Spawner (DevNodeSpawner)                 │
-│  • Node Editor (DevNodeEditor)                   │
-│  • Player Editor (DevPlayerEditor)               │
-│  • Formula Tuner (FormulaTunerPanel)             │
-└──────────────────────────────────────────────────┘
-
-┌─ 🔭 OBSERVATORY ────────────────────────────────┐
-│  (celý Observatory panel)                        │
-└──────────────────────────────────────────────────┘
+WEALTH INCOME (4 pilíře)
+├─ 1. Population Tax (wealth_pop_tax)
+│   = pop × 0.002 × polis_bonus × taxMult
+│   Přejmenovano z totalCityWealth → population_tax_base
+│
+├─ 2. Domestic Market (wealth_domestic_market)  
+│   = total_wealth (z compute-economy-flow) × DOMESTIC_MARKET_REALIZATION
+│   DOMESTIC_MARKET_REALIZATION = pojmenovaný tuning knob (0.5 start)
+│
+├─ 3. Goods Fiscal (wealth_goods_fiscal) — existující sloupec
+│   = tax_market + tax_transit + tax_extraction + capture
+│   Bez změny logiky, jen se přestane blendovat
+│
+├─ 4. Route Commerce (wealth_route_commerce) — NOVÉ
+│   = Σ route: capacity × (1-damage×0.1) × controlFactor × econ_relevance × RATE
+│   Monetizace průtoku, ne daň. Služby, sklady, karavany.
+│
+├─ + Prestige bonus, trade gold, strategic mult
+├─ - Army upkeep, tolls, sport funding
+└─ = net → gold_reserve
 ```
 
-**Odstraněné/sloučené**:
-- `Lokální simulace` → **ODSTRANIT** (redundantní s RealSimulation)
-- `Event Engine` → **PŘESUNOUT** do Observatory jako sub-tab (referenční dokumentace)
-- `Quick Seed` → **SLOUČIT** do Seed sekce jako rychlý režim
+## Konkrétní změny
 
----
+### 1. DB migrace
+Přidat 3 nové sloupce (reuse existující `goods_wealth_fiscal`):
+```sql
+ALTER TABLE realm_resources 
+  ADD COLUMN IF NOT EXISTS wealth_pop_tax numeric DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS wealth_domestic_market numeric DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS wealth_route_commerce numeric DEFAULT 0;
+```
 
-## D. Observatory — kompletní přepis System Graphu
+### 2. process-turn (edge function)
+- **Fix bug**: `tax_pop` → `tax_population` 
+- **Nahradit blend** (řádky 710-718): Explicitní 4 pilíře s pojmenovanými konstantami
+- **Přidat route commerce výpočet**: Iterace přes `province_routes` kontrolované hráčem, výpočet `effectiveCapacity × economic_relevance × ROUTE_COMMERCE_RATE`
+- `DOMESTIC_MARKET_REALIZATION = 0.5` jako pojmenovaný tuning knob
+- `ROUTE_COMMERCE_RATE = 0.05` jako pojmenovaný tuning knob
+- Route commerce zahrnuje `controlFactor` (owned=1, contested=0.25, other=0) a `damagePenalty`
+- Zapsat všechny 4 pilíře do DB: `wealth_pop_tax`, `wealth_domestic_market`, `goods_wealth_fiscal` (update), `wealth_route_commerce`
+- Jasně oddělit income vs expenses vs gold_reserve
 
-### Problémy současného stavu
-1. Chybí uzly pro goods pipeline (node_inventory, demand_baskets, trade_flows, recipes, deposits)
-2. Chybí uzly pro nově integrované systémy (legitimacy drift, migration engine, labor modifiers)
-3. Statický layout (6 sloupců) — nepřehledné při 30+ uzlech
-4. Žádné vrstvy/filtry pro oddělení domén
-5. Detail drawer ukazuje jen statická metadata — žádná live data
+### 3. Utility: `getWealthBreakdown()` 
+Nová funkce v `src/lib/economyFlow.ts`:
+```typescript
+export function getWealthBreakdown(realm: any) {
+  return {
+    popTax: Number(realm.wealth_pop_tax ?? realm.tax_population ?? 0),
+    domesticMarket: Number(realm.wealth_domestic_market ?? 0),
+    goodsFiscal: Number(realm.goods_wealth_fiscal ?? 0),
+    routeCommerce: Number(realm.wealth_route_commerce ?? 0),
+  };
+}
+```
+Jednotný selektor — UI neřeší fallbacky a legacy názvy.
 
-### Nový design
+### 4. FiscalSubTab — přepis
+Nový layout s 4 pilíři + výdaje + pokladna:
+- PŘÍJMY: Pop daň, Domácí trh, Goods fiskál (s rozbaleným sub-detail), Koridorový obchod
+- VÝDAJE: Army upkeep, Mýtné, Sport funding
+- ČISTÝ PŘÍRŮSTEK + stav POKLADNY
+- Používá `getWealthBreakdown()` pro data
 
-**Vrstvy (filtrační tlačítka)**:
-- 🏛️ **Core** — 6 pilířů + populace + stabilita + vliv + tenze
-- ⚒️ **Economy v4.1** — deposits → capability_tags → recipes → node_inventory → demand_baskets → trade_flows → city_market → realm_resources
-- ⚔️ **Military** — mobilizace → workforce → upkeep → morale → garrison → bitvy
-- 📜 **Narrative** — kronika → wiki → zvěsti → diplomatická paměť
-- 🔧 **Infrastructure** — isolation → node_score → dev_level → routes → hex_flows
-- 👥 **Social** — legitimacy → frakce → migrace → labor allocation
+### 5. ResourceHUD tooltip
+Wealth tooltip zobrazí:
+```
+👥 Pop daň: X | 🏪 Trh: X | 📦 Goods: X | 🛤️ Trasy: X
+Příjem: +X | Výdaje: -Y | Čistě: +Z/kolo
+Pokladna: N
+```
 
-**Nové uzly** (přidat do observatoryData.ts):
-- `resource_deposits` — hex-level suroviny, source pro goods
-- `capability_tags` — node tags matching recipes
-- `production_recipes` — 45 receptů, transformace tags → goods
-- `node_inventory` — výstup receptů per node
-- `demand_baskets` — poptávkové koše per city
-- `trade_flows` — meziměstské toky zboží
-- `city_market_summary` — tržní souhrn per city
-- `goods_macro_aggregation` — projekce goods → realm_resources
-- `irrigation` — target pro canal labor mod (chybí jako node)
-- `rebellion` — target pro legitimacy threshold (chybí jako node)
-
-**Vylepšení detail draweru**:
-- Pokud je dostupné `sessionId`, fetchnout **live data** pro vybraný uzel (např. kliknu na `node_inventory` → ukáže aktuální počet záznamů, top 5 goods)
-- Zobrazit **skutečný SQL** nebo edge function, která zapisuje/čte daný uzel
-
-**Layout**: Automatický force-directed layout místo manuálních pozic → škáluje s novými uzly.
-
-### Ostatní Observatory taby
-- **Data Flow Audit** — aktualizovat `dataFlowAuditData.ts` pro nové sloupce a tabulky (node_inventory, demand_baskets, trade_flows atd.)
-- **Debug Tools (Dead Data)** — viz sekce E
-- **Live Data** — ověřit, že čte správné sloupce po Phase 3 blendingu
-- **Node Graph** — ověřit, že capability_tags a production_role se zobrazují
-
----
-
-## E. Dead Data — audit + akční plán
-
-### Problém
-`dataFlowAuditData.ts` neobsahuje mnoho nově integrovaných sloupců → DeadDataDetector hlásí stovky false positives.
-
-### Kroky
-1. **Aktualizovat `dataFlowAuditData.ts`**:
-   - Přidat entries pro capability_tags, production_role, guild_level na province_nodes
-   - Přidat entries pro goods_production_value, goods_supply_volume, goods_wealth_fiscal, economy_version na realm_resources
-   - Přidat entries pro tabulky node_inventory, demand_baskets, trade_flows, city_market_summary
-   - Přidat entries pro legitimacy-related sloupce (legitimacy na cities)
-   - Přidat entries pro migration sloupce (last_migration_in, last_migration_out, migration_pressure)
-
-2. **Rozšířit DeadDataDetector UI**:
-   - U každého "dead" sloupce přidat akční badge: `🗑️ Remove` / `🔧 Implement` / `📌 Reserved`
-   - Přidat filtr: "Show only truly dead" (exclude FK-only, exclude reserved)
-   - Barevné rozlišení: FK-only (šedá), unused ale plánované (žlutá), skutečně mrtvé (červená)
-
----
-
-## Soubory k úpravě
-
-| Soubor | Změna |
-|--------|-------|
-| `supabase/functions/recompute-all/index.ts` | NOVÝ — orchestrace pipeline |
-| `supabase/functions/process-turn/index.ts` | Přidat `recalcOnly` flag |
-| `src/pages/game/DevTab.tsx` | Reorganizace do 4 skupin, Recompute All tlačítko |
-| `src/components/DevModePanel.tsx` | Zjednodušit — odebrat flat tabs, přejít na collapsible groups |
-| `src/components/layout/ResourceHUD.tsx` | Fix formátu Zásob |
-| `src/components/dev/observatory/observatoryData.ts` | Přidat ~10 nových uzlů, nové edges, layer metadata |
-| `src/components/dev/observatory/SystemGraphPanel.tsx` | Layer filtry, force layout, live data v detail draweru |
-| `src/components/dev/observatory/dataFlowAuditData.ts` | Přidat desítky nových entries |
-| `src/components/dev/observatory/DebugToolsPanel.tsx` | Akční plán badges v DeadDataDetector |
-| ODSTRANIT: `src/components/dev/LocalSimulationSection.tsx` | Nahrazeno RealSimulationSection |
+### 6. Deploy + build ověření
 
 ## Pořadí implementace
 
-```text
-1. recompute-all Edge Function + process-turn recalcOnly flag
-2. DevTab reorganizace + Recompute All UI
-3. ResourceHUD fix (zásoby formát)
-4. Observatory observatoryData.ts rozšíření (nové uzly/edges)
-5. SystemGraphPanel přepis (vrstvy, layout, live data)
-6. dataFlowAuditData.ts aktualizace
-7. DebugToolsPanel akční plán UI
-```
+1. DB migrace (3 nové sloupce)
+2. process-turn: oprava bugu + 4 pilíře + route commerce
+3. `getWealthBreakdown()` utility
+4. FiscalSubTab přepis
+5. ResourceHUD tooltip
+6. Deploy process-turn + build check
+
+## Soubory
+
+| Soubor | Změna |
+|--------|-------|
+| DB migrace | 3 nové sloupce |
+| `supabase/functions/process-turn/index.ts` | Fix bug, 4 pilíře, route commerce |
+| `src/lib/economyFlow.ts` | `getWealthBreakdown()` |
+| `src/components/economy/FiscalSubTab.tsx` | Přepis UI |
+| `src/components/layout/ResourceHUD.tsx` | Tooltip update |
 
