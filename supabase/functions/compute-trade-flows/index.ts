@@ -516,10 +516,31 @@ Deno.serve(async (req) => {
       }
     }
 
-    // ── Update realm_resources with goods economy data ──
+    // ── Compute goods-derived macro values per player ──
+    // Production value = Σ(goods quantity × base_price) across all player's nodes
+    // Supply volume = Σ(storable goods quantity)
+    // Wealth fiscal = tax_market + tax_transit + tax_extraction + capture
     for (const [player, agg] of playerAggregates) {
       const cityCount = cities.filter(c => c.owner_player === player).length;
       const avgRetention = cityCount > 0 ? agg.commercial_retention / cityCount : 0;
+
+      // Compute goods production value (quantity × base_price for all inventories belonging to this player)
+      let playerGoodsProductionValue = 0;
+      let playerGoodsSupplyVolume = 0;
+      const playerCityIds = cities.filter(c => c.owner_player === player).map(c => c.id);
+      const playerNodeIds = new Set<string>();
+      for (const [nodeId, cityId] of nodeToCityMap) {
+        if (playerCityIds.includes(cityId)) playerNodeIds.add(nodeId);
+      }
+      for (const inv of dedupedInventories) {
+        if (!playerNodeIds.has(inv.node_id)) continue;
+        const good = goodsMap.get(inv.good_key);
+        const basePrice = good?.base_price_numeric || 1;
+        playerGoodsProductionValue += inv.quantity * basePrice;
+        if (good?.storable) playerGoodsSupplyVolume += inv.quantity;
+      }
+
+      const goodsWealthFiscal = agg.tax_market + agg.tax_transit + agg.tax_extraction + agg.commercial_capture;
 
       await sb.from("realm_resources").update({
         tax_market: Math.round(agg.tax_market * 10) / 10,
@@ -527,6 +548,9 @@ Deno.serve(async (req) => {
         tax_extraction: Math.round(agg.tax_extraction * 10) / 10,
         commercial_retention: Math.round(avgRetention * 1000) / 1000,
         commercial_capture: Math.round(agg.commercial_capture * 10) / 10,
+        goods_production_value: Math.round(playerGoodsProductionValue * 10) / 10,
+        goods_supply_volume: Math.round(playerGoodsSupplyVolume * 10) / 10,
+        goods_wealth_fiscal: Math.round(goodsWealthFiscal * 10) / 10,
       }).eq("session_id", session_id).eq("player_name", player);
     }
 
