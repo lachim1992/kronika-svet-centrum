@@ -31,9 +31,14 @@
 - Přidány tabulky: node_inventory, demand_baskets, trade_flows, city_market_summary
 - Writer type rozšířen o `backfill-economy-tags`
 
-### ⬜ Fáze 3: Sjednocení vrstev — TODO
-- Přesunout makro agregaci do goods vrstvy
-- process-turn: číst výsledky goods vrstvy místo duplicitního počítání
+### ✅ Fáze 3: Sjednocení vrstev — HOTOVO
+- compute-trade-flows zapisuje `goods_production_value`, `goods_supply_volume`, `goods_wealth_fiscal` do realm_resources
+- process-turn používá blending systém: `economy_version >= 4` → 70% goods / 30% legacy
+- Když goods data existují (i v economy_version=3), automaticky blenduje 30% goods / 70% legacy
+- Per-city produkce a bohatství blendují goods hodnoty distribuované dle populace/tržní úrovně
+- Grain reserve obohacen o goods supply volume (storable goods)
+- Odstraněno double-counting: goods fiscal bonus škáluje dle legacyBlend
+- DB migrace: přidány sloupce `goods_production_value`, `goods_supply_volume`, `goods_wealth_fiscal`, `economy_version`
 
 ### ⬜ Fáze 4: Dead metriky — TODO
 ### ⬜ Fáze 6: UI integrace — TODO

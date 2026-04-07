@@ -7363,11 +7363,15 @@ export type Database = {
           created_at: string
           cultural_prestige: number
           economic_prestige: number
+          economy_version: number | null
           faith: number | null
           faith_growth: number | null
           famine_city_count: number
           geopolitical_prestige: number
           gold_reserve: number
+          goods_production_value: number | null
+          goods_supply_volume: number | null
+          goods_wealth_fiscal: number | null
           grain_reserve: number
           granary_capacity: number
           horses_reserve: number
@@ -7441,11 +7445,15 @@ export type Database = {
           created_at?: string
           cultural_prestige?: number
           economic_prestige?: number
+          economy_version?: number | null
           faith?: number | null
           faith_growth?: number | null
           famine_city_count?: number
           geopolitical_prestige?: number
           gold_reserve?: number
+          goods_production_value?: number | null
+          goods_supply_volume?: number | null
+          goods_wealth_fiscal?: number | null
           grain_reserve?: number
           granary_capacity?: number
           horses_reserve?: number
@@ -7519,11 +7527,15 @@ export type Database = {
           created_at?: string
           cultural_prestige?: number
           economic_prestige?: number
+          economy_version?: number | null
           faith?: number | null
           faith_growth?: number | null
           famine_city_count?: number
           geopolitical_prestige?: number
           gold_reserve?: number
+          goods_production_value?: number | null
+          goods_supply_volume?: number | null
+          goods_wealth_fiscal?: number | null
           grain_reserve?: number
           granary_capacity?: number
           horses_reserve?: number

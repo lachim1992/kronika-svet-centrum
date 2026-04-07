@@ -200,7 +200,20 @@ Deno.serve(async (req) => {
     const totalWealth = realm.total_wealth || 0;
     const totalCapacity = realm.total_capacity || 0;
     const totalImportance = realm.total_importance || 0;
+
+    // ── GOODS ECONOMY LAYER (from compute-trade-flows v4.1) ──
+    const goodsProductionValue = realm.goods_production_value || 0;
+    const goodsSupplyVolume = realm.goods_supply_volume || 0;
+    const goodsWealthFiscal = realm.goods_wealth_fiscal || 0;
+    const economyVersion = realm.economy_version || 3;
+    // Blending factor: economy_version 4+ uses goods layer primarily
+    const goodsBlend = economyVersion >= 4 ? 0.7 : (goodsProductionValue > 0 ? 0.3 : 0);
+    const legacyBlend = 1 - goodsBlend;
+
     logEntries.push(`⚒️ Produkce: ${totalProduction.toFixed(1)} | 💰 Bohatství: ${totalWealth.toFixed(1)} | 🏛️ Kapacita: ${totalCapacity.toFixed(1)}`);
+    if (goodsProductionValue > 0) {
+      logEntries.push(`📦 Goods vrstva: produkce=${goodsProductionValue.toFixed(1)} zásoby=${goodsSupplyVolume.toFixed(1)} fiskál=${goodsWealthFiscal.toFixed(1)} (blend ${Math.round(goodsBlend * 100)}%)`);
+    }
 
     // ── Load cities ──
     const { data: cities } = await supabase.from("cities").select("*")
@@ -561,12 +574,20 @@ Deno.serve(async (req) => {
         nodeProduction = totalProduction * cityShare;
       }
 
-      // Combined city production = node production + population layer production
-      // Apply labor allocation and strategic resource modifiers
-      const cityProduction = (nodeProduction + layers.production) * laborGrainMult;
+      // Combined city production = blend of (node + population) and goods layer
+      const legacyCityProduction = (nodeProduction + layers.production) * laborGrainMult;
+      // Goods layer production: player's goods_production_value distributed by city population share
+      const cityPopShare = totalPopulation > 0 ? (city.population_total || 0) / totalPopulation : 1 / Math.max(1, myCities.length);
+      const goodsCityProduction = goodsProductionValue * cityPopShare;
+      const cityProduction = legacyCityProduction * legacyBlend + goodsCityProduction * goodsBlend;
 
       // Apply labor + strategic multipliers to wealth and capacity
-      const cityWealth = layers.wealth * laborWealthMult * strategicBonuses.wealth_mult * prestigeEffects.tradeMultiplier;
+      // Goods layer wealth: fiscal income distributed by city market level share
+      const totalMarketLevelAll = myCities.reduce((s, c) => s + (c.market_level || 1), 0) || 1;
+      const cityMarketShare = (city.market_level || 1) / totalMarketLevelAll;
+      const legacyCityWealth = layers.wealth * laborWealthMult * strategicBonuses.wealth_mult * prestigeEffects.tradeMultiplier;
+      const goodsCityWealth = goodsWealthFiscal * cityMarketShare;
+      const cityWealth = legacyCityWealth * legacyBlend + goodsCityWealth * goodsBlend;
       const cityCapacity = layers.capacity * laborCapacityMult;
       const cityFaith = layers.faith + strategicBonuses.faith_bonus * 0.1; // Strategic faith distributed per-city
 
@@ -659,6 +680,12 @@ Deno.serve(async (req) => {
     totalCityProduction = Math.max(0, totalCityProduction - mobProductionPenalty);
     totalCityWealth = Math.max(0, totalCityWealth - mobWealthPenalty);
 
+    // Goods supply volume supplements grain reserve (storable goods = strategic supply)
+    if (goodsBlend > 0 && goodsSupplyVolume > 0) {
+      const goodsSupplyBonus = Math.round(goodsSupplyVolume * goodsBlend);
+      globalGrainReserve += goodsSupplyBonus;
+      logEntries.push(`📦 Goods zásoby: +${goodsSupplyBonus} (${goodsSupplyVolume.toFixed(0)} × ${Math.round(goodsBlend * 100)}%)`);
+    }
     // Small empire buffer
     if (myCities.length <= 3) globalGrainReserve += 10;
     // Strategic salt supply bonus
@@ -676,8 +703,9 @@ Deno.serve(async (req) => {
     const netProduction = totalCityProduction - totalDemand - armyProductionUpkeep;
 
     // ══════════════════════════════════════════════════════════════
-    // ▶ WEALTH: Layer-driven + Trade Routes + Graph Validation
-    // Wealth = city layers (burghers) + macro node wealth + trade
+    // ▶ WEALTH: Blended from layers + nodes + goods fiscal
+    // Legacy: city layers (burghers) + macro node wealth + trade
+    // Goods: fiscal flows already distributed per-city above
     // ══════════════════════════════════════════════════════════════
     const taxMult = 1 + (taxRateModifier / 100);
     // Strategic resource wealth multipliers
@@ -685,7 +713,8 @@ Deno.serve(async (req) => {
     const goldMult = STRATEGIC_TIER_BONUSES.gold[realm.strategic_gold_tier || 0]?.wealth_mult || 1.0;
     const wealthFromLayers = totalCityWealth * copperMult * goldMult;
     const wealthFromNodes = totalWealth; // From compute-economy-flow
-    const combinedWealth = wealthFromLayers + wealthFromNodes * 0.3; // Layers primary, nodes secondary
+    // Blend: in goods mode, per-city wealth already includes goods fiscal contribution
+    const combinedWealth = wealthFromLayers + wealthFromNodes * 0.3 * legacyBlend;
     const wealthIncome = Math.max(0, Math.round(combinedWealth * taxMult));
     const sportFundingPct = realm.sport_funding_pct || 0;
     let newGoldReserve = (realm.gold_reserve || 0) + wealthIncome - armyWealthUpkeep;
@@ -1145,18 +1174,20 @@ Deno.serve(async (req) => {
     const newProductionReserve = Math.max(0, (realm.production_reserve || 0) + productionIncome);
 
     // ── Goods economy: blend fiscal data from compute-trade-flows ──
+    // In goods-blend mode, fiscal income is already factored into per-city wealth calculations.
+    // Only add the fiscal bonus when NOT blending (legacy mode) to avoid double-counting.
     const goodsTaxMarket = realm.tax_market || 0;
     const goodsTaxTransit = realm.tax_transit || 0;
     const goodsTaxExtraction = realm.tax_extraction || 0;
     const goodsCapture = realm.commercial_capture || 0;
     const goodsRetention = realm.commercial_retention || 0;
 
-    // Full goods fiscal integration (replaces legacy for wealth component)
     const goodsFiscalTotal = goodsTaxMarket + goodsTaxTransit + goodsTaxExtraction + goodsCapture;
-    const goodsFiscalBonus = Math.round(goodsFiscalTotal);
+    // In legacy-only mode (goodsBlend=0), add full fiscal bonus. In blend mode, it's already in per-city wealth.
+    const goodsFiscalBonus = Math.round(goodsFiscalTotal * legacyBlend);
     newGoldReserve += goodsFiscalBonus;
-    if (goodsFiscalBonus > 0) {
-      logEntries.push(`📦 Goods ekonomika: +${goodsFiscalBonus} 💰 (trh ${Math.round(goodsTaxMarket)} + tranzit ${Math.round(goodsTaxTransit)} + těžba ${Math.round(goodsTaxExtraction)} + export ${Math.round(goodsCapture)})`);
+    if (goodsFiscalTotal > 0) {
+      logEntries.push(`📦 Goods ekonomika: fiskální celkem ${Math.round(goodsFiscalTotal)} (blend ${Math.round(legacyBlend * 100)}% → +${goodsFiscalBonus} 💰)`);
     }
 
     // ── Demand basket feedback → city stability & population ──
