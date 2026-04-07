@@ -123,6 +123,9 @@ const ResourceHUD = ({ sessionId, playerName, cities, currentTurn }: ResourceHUD
   const mods = realm.computed_modifiers || {};
   const ge = mods.goods_economy || {};
 
+  const grainNet = realm.last_turn_grain_net ?? 0;
+  const grainNetStr = grainNet > 0 ? `+${grainNet}` : `${grainNet}`;
+
   const chips: { icon: React.ReactNode; label: string; value: string; warning?: boolean; suffix?: string; derivation?: string }[] = [
     {
       icon: <span className="text-xs">{MACRO_LAYER_ICONS.production}</span>,
@@ -141,14 +144,9 @@ const ResourceHUD = ({ sessionId, playerName, cities, currentTurn }: ResourceHUD
     {
       icon: <span className="text-xs">🌾</span>,
       label: "Zásoby",
-      value: `${Math.round(grainReserve)}/${realm.granary_capacity ?? 0}`,
+      value: `${Math.round(grainReserve)} (${grainNetStr}/k)`,
       warning: grainReserve < 20,
-      suffix: (() => {
-        const net = realm.last_turn_grain_net ?? 0;
-        if (net === 0) return "";
-        return net > 0 ? ` (+${net}/k)` : ` (${net}/k)`;
-      })(),
-      derivation: `Skladovatelné goods (obilí, mouka, sůl, dřevo, železo…). Bilance: produkce − spotřeba − armáda`,
+      derivation: `Kapacita sýpek: ${realm.granary_capacity ?? 0} | Bilance: produkce(${realm.last_turn_grain_prod ?? 0}) − spotřeba(${realm.last_turn_grain_cons ?? 0}) − armáda`,
     },
     {
       icon: <span className="text-xs">{MACRO_LAYER_ICONS.capacity}</span>,
