@@ -60,7 +60,7 @@ const ObservatoryPanel = ({ sessionId }: Props) => {
         </TabsList>
 
         <TabsContent value="system-graph" className="mt-3">
-          <Suspense fallback={<Fallback />}><SystemGraphPanel /></Suspense>
+          <Suspense fallback={<Fallback />}><SystemGraphPanel sessionId={sessionId} /></Suspense>
         </TabsContent>
         <TabsContent value="agency-map" className="mt-3">
           <Suspense fallback={<Fallback />}><AgencyMapPanel /></Suspense>
