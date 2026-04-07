@@ -574,12 +574,20 @@ Deno.serve(async (req) => {
         nodeProduction = totalProduction * cityShare;
       }
 
-      // Combined city production = node production + population layer production
-      // Apply labor allocation and strategic resource modifiers
-      const cityProduction = (nodeProduction + layers.production) * laborGrainMult;
+      // Combined city production = blend of (node + population) and goods layer
+      const legacyCityProduction = (nodeProduction + layers.production) * laborGrainMult;
+      // Goods layer production: player's goods_production_value distributed by city population share
+      const cityPopShare = totalPopulation > 0 ? (city.population_total || 0) / totalPopulation : 1 / Math.max(1, myCities.length);
+      const goodsCityProduction = goodsProductionValue * cityPopShare;
+      const cityProduction = legacyCityProduction * legacyBlend + goodsCityProduction * goodsBlend;
 
       // Apply labor + strategic multipliers to wealth and capacity
-      const cityWealth = layers.wealth * laborWealthMult * strategicBonuses.wealth_mult * prestigeEffects.tradeMultiplier;
+      // Goods layer wealth: fiscal income distributed by city market level share
+      const totalMarketLevelAll = myCities.reduce((s, c) => s + (c.market_level || 1), 0) || 1;
+      const cityMarketShare = (city.market_level || 1) / totalMarketLevelAll;
+      const legacyCityWealth = layers.wealth * laborWealthMult * strategicBonuses.wealth_mult * prestigeEffects.tradeMultiplier;
+      const goodsCityWealth = goodsWealthFiscal * cityMarketShare;
+      const cityWealth = legacyCityWealth * legacyBlend + goodsCityWealth * goodsBlend;
       const cityCapacity = layers.capacity * laborCapacityMult;
       const cityFaith = layers.faith + strategicBonuses.faith_bonus * 0.1; // Strategic faith distributed per-city
 
