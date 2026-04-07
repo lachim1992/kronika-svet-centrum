@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { Zap, Database, Settings2, Telescope, ChevronDown } from "lucide-react";
+import { Zap, Database, Settings2, Telescope, ChevronDown, Package, Network, Activity, Cpu } from "lucide-react";
 import HydrationSection from "@/components/dev/HydrationSection";
 import RealSimulationSection from "@/components/dev/RealSimulationSection";
 import WorldIntegritySection from "@/components/dev/WorldIntegritySection";
@@ -14,11 +14,16 @@ import DevNodeSpawner from "@/components/dev/DevNodeSpawner";
 import DevNodeEditor from "@/components/dev/DevNodeEditor";
 import DevPlayerEditor from "@/components/dev/DevPlayerEditor";
 import FormulaTunerPanel from "@/components/dev/FormulaTunerPanel";
+import GoodsEconomyDebugPanel from "@/components/dev/GoodsEconomyDebugPanel";
+import DevConsolePanel from "@/components/dev/DevConsolePanel";
+import ProvinceGraphPanel from "@/components/dev/ProvinceGraphPanel";
+import HexNodeMechanicsPanel from "@/components/dev/HexNodeMechanicsPanel";
 import { getPermissions } from "@/lib/permissions";
 
 interface DevModePanelProps {
   sessionId: string;
   currentPlayerName: string;
+  currentTurn?: number;
   myRole?: string;
   onRefetch?: () => void;
   citiesCount: number;
@@ -54,7 +59,7 @@ function DevSection({ icon, title, badge, defaultOpen = false, children }: Secti
 }
 
 const DevModePanel = ({
-  sessionId, currentPlayerName, myRole = "player", onRefetch,
+  sessionId, currentPlayerName, currentTurn = 1, myRole = "player", onRefetch,
   citiesCount, eventsCount, wondersCount, memoriesCount, playersCount,
 }: DevModePanelProps) => {
   const perms = getPermissions(myRole);
@@ -87,6 +92,9 @@ const DevModePanel = ({
             </div>
             <div className="border-t border-border/50 pt-3">
               <WorldIntegritySection sessionId={sessionId} onRefetch={onRefetch} />
+            </div>
+            <div className="border-t border-border/50 pt-3">
+              <DevConsolePanel sessionId={sessionId} currentTurn={currentTurn} />
             </div>
           </div>
         </DevSection>
@@ -122,6 +130,21 @@ const DevModePanel = ({
           </div>
           <div className="border-t border-border/50 pt-3">
             <FormulaTunerPanel sessionId={sessionId} />
+          </div>
+        </div>
+      </DevSection>
+
+      {/* ECONOMY */}
+      <DevSection icon={<Package className="h-4 w-4" />} title="Economy" badge="Goods v4.1">
+        <GoodsEconomyDebugPanel sessionId={sessionId} />
+      </DevSection>
+
+      {/* INFRASTRUCTURE */}
+      <DevSection icon={<Network className="h-4 w-4" />} title="Infrastructure" badge="Province Graph, Hex Mechanics">
+        <div className="space-y-4">
+          <ProvinceGraphPanel sessionId={sessionId} />
+          <div className="border-t border-border/50 pt-3">
+            <HexNodeMechanicsPanel sessionId={sessionId} />
           </div>
         </div>
       </DevSection>

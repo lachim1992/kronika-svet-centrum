@@ -67,9 +67,9 @@ const CAUSAL_LINKS: CausalLink[] = [
   { from: "micro.strategicResourcePool", to: "resource spawn", effect: "rollStrategicResource with spawnChance", status: "active", where: "nodeTypes.ts + generate-hex" },
   { from: "node.maxUpgrade", to: "upgrade cap", effect: "Major=5, Minor=5, Micro=2-3 — enforced in UI", status: "partial", where: "UI only — no server validation" },
   // GOODS ECONOMY v4.1 — new causal links
-  { from: "resource_deposits", to: "source_node_output", effect: "Hex resource yield × quality → raw goods extraction", status: "planned", where: "goodsCatalog.ts + compute-economy-flow (planned)" },
-  { from: "capability_tags", to: "recipe_eligibility", effect: "Node tags must match recipe required_tags", status: "planned", where: "goodsCatalog.ts + compute-economy-flow (planned)" },
-  { from: "production_role", to: "goods_chain_position", effect: "source→processing→urban→guild pipeline", status: "planned", where: "goodsCatalog.ts" },
+  { from: "resource_deposits", to: "source_node_output", effect: "Hex resource yield × quality → raw goods extraction", status: "active", where: "compute-province-nodes + compute-economy-flow" },
+  { from: "capability_tags", to: "recipe_eligibility", effect: "Node tags auto-assigned from subtype+biome, match recipe required_tags", status: "active", where: "compute-province-nodes (auto) + compute-economy-flow" },
+  { from: "production_role", to: "goods_chain_position", effect: "source→processing→urban→guild pipeline", status: "active", where: "compute-province-nodes (auto)" },
   { from: "guild_level", to: "branch_unlock + quality", effect: "Lv.3+ unlocks luxury/famous tier recipes", status: "planned", where: "goodsCatalog.ts" },
   { from: "specialization_scores", to: "famous_good_chance", effect: "Cumulative branch mastery → variant unlock probability", status: "planned", where: "province_nodes.specialization_scores" },
   { from: "demand_basket_satisfaction", to: "city_stability", effect: "Unfulfilled tier 1-2 baskets → stability penalty", status: "planned", where: "demand_baskets table" },
