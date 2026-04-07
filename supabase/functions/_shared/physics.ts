@@ -2125,3 +2125,160 @@ export function computeFlowPath(
     path_length: result.pathLength,
   };
 }
+
+// ═══════════════════════════════════════════
+// LEGITIMACY DRIFT
+// ═══════════════════════════════════════════
+
+export interface LegitimacyInput {
+  currentLegitimacy: number;
+  famine_consecutive_turns: number;
+  temple_level: number;
+  demand_satisfaction: number; // 0-1 from goods system
+  was_conquered_recently: boolean; // devastated_round close to turnNumber
+  policy_legitimacy_sum: number; // sum of legitimacy_effect from active policies
+}
+
+export interface LegitimacyResult {
+  drift: number;
+  newLegitimacy: number;
+  stabilityEffect: number; // applied to city_stability
+  rebellionThresholdShift: number; // negative = easier rebellion
+}
+
+export function computeLegitimacyDrift(input: LegitimacyInput): LegitimacyResult {
+  let drift = 0;
+
+  // Well-supplied city
+  if (input.demand_satisfaction > 0.7) drift += 1;
+  else if (input.demand_satisfaction < 0.3) drift -= 1;
+
+  // Famine
+  if (input.famine_consecutive_turns > 0) drift -= 3;
+
+  // Temple effect
+  drift += input.temple_level * 0.5;
+
+  // Conquest penalty
+  if (input.was_conquered_recently) drift -= 5;
+
+  // Active policies
+  drift += input.policy_legitimacy_sum;
+
+  // Natural drift toward 50
+  if (input.currentLegitimacy > 60) drift -= 0.5;
+  else if (input.currentLegitimacy < 40) drift += 0.5;
+
+  const newLegitimacy = Math.max(0, Math.min(100, input.currentLegitimacy + drift));
+
+  // Downstream: stability effect
+  const stabilityEffect = (newLegitimacy - 50) * 0.05;
+
+  // Rebellion threshold shift: low legitimacy makes rebellion easier
+  const rebellionThresholdShift = newLegitimacy < 25 ? -10 : 0;
+
+  return {
+    drift: Math.round(drift * 10) / 10,
+    newLegitimacy: Math.round(newLegitimacy * 10) / 10,
+    stabilityEffect: Math.round(stabilityEffect * 100) / 100,
+    rebellionThresholdShift,
+  };
+}
+
+// ═══════════════════════════════════════════
+// MIGRATION PRESSURE
+// ═══════════════════════════════════════════
+
+export interface MigrationPressureInput {
+  famine_severity: number;
+  overcrowding_ratio: number;
+  city_stability: number;
+  epidemic_active: boolean;
+  market_level: number;
+  housing_capacity: number;
+  population_total: number;
+}
+
+export interface MigrationPressureResult {
+  push_factors: number;
+  pull_factors: number;
+  pressure: number; // >0 = emigration, <0 = immigration
+}
+
+export function computeMigrationPressure(input: MigrationPressureInput): MigrationPressureResult {
+  const push =
+    input.famine_severity * 10 +
+    Math.max(0, input.overcrowding_ratio - 1.0) * 20 +
+    (input.city_stability < 30 ? 30 - input.city_stability : 0) +
+    (input.epidemic_active ? 15 : 0);
+
+  const pull =
+    (input.city_stability > 70 ? (input.city_stability - 70) * 0.5 : 0) +
+    input.market_level * 3 +
+    (input.housing_capacity - input.population_total > 100 ? 5 : 0);
+
+  return {
+    push_factors: Math.round(push * 10) / 10,
+    pull_factors: Math.round(pull * 10) / 10,
+    pressure: Math.round((push - pull) * 10) / 10,
+  };
+}
+
+export interface MigrationResolution {
+  from_city_id: string;
+  to_city_id: string;
+  from_city_name: string;
+  to_city_name: string;
+  migrants: number;
+}
+
+/**
+ * Resolve actual migration flows between cities of the same player
+ * using pre-computed migration_pressure values.
+ */
+export function resolveMigration(
+  cities: Array<{
+    id: string; name: string; owner_player: string;
+    population_total: number; population_peasants: number;
+    migration_pressure: number; housing_capacity: number;
+  }>,
+): MigrationResolution[] {
+  const flows: MigrationResolution[] = [];
+
+  const byOwner: Record<string, typeof cities> = {};
+  for (const c of cities) {
+    (byOwner[c.owner_player] = byOwner[c.owner_player] || []).push(c);
+  }
+
+  for (const ownerCities of Object.values(byOwner)) {
+    if (ownerCities.length < 2) continue;
+
+    const pushCities = ownerCities.filter(c => c.migration_pressure > 15);
+    const pullCities = ownerCities.filter(c => c.migration_pressure < -5);
+    if (pushCities.length === 0 || pullCities.length === 0) continue;
+
+    for (const src of pushCities) {
+      const rate = Math.min(0.03, src.migration_pressure * 0.001);
+      const totalMigrants = Math.max(1, Math.round(src.population_peasants * rate));
+
+      const totalPull = pullCities.reduce((s, c) => s + Math.abs(c.migration_pressure), 0);
+      if (totalPull <= 0) continue;
+
+      for (const dst of pullCities) {
+        const share = Math.abs(dst.migration_pressure) / totalPull;
+        const migrants = Math.max(1, Math.round(totalMigrants * share));
+        const roomLeft = Math.max(0, dst.housing_capacity - dst.population_total);
+        const actual = Math.min(migrants, roomLeft);
+        if (actual > 0) {
+          flows.push({
+            from_city_id: src.id, to_city_id: dst.id,
+            from_city_name: src.name, to_city_name: dst.name,
+            migrants: actual,
+          });
+        }
+      }
+    }
+  }
+
+  return flows;
+}
