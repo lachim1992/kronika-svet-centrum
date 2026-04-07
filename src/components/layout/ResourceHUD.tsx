@@ -122,6 +122,8 @@ const ResourceHUD = ({ sessionId, playerName, cities, currentTurn }: ResourceHUD
   // Goods economy derivation data
   const mods = realm.computed_modifiers || {};
   const ge = mods.goods_economy || {};
+  const goodsProd = realm.goods_production_value ?? 0;
+  const goodsWealth = realm.goods_wealth_fiscal ?? 0;
 
   const grainNet = realm.last_turn_grain_net ?? 0;
   const grainNetStr = grainNet > 0 ? `+${grainNet}` : `${grainNet}`;
@@ -131,15 +133,13 @@ const ResourceHUD = ({ sessionId, playerName, cities, currentTurn }: ResourceHUD
       icon: <span className="text-xs">{MACRO_LAYER_ICONS.production}</span>,
       label: "Produkce",
       value: `${Math.round(prodReserve)} (+${totalProd.toFixed(0)}/k)`,
-      derivation: `Agregát produkčních chainů (source→processing→urban→guild). Workforce ratio: ${(wf.effectiveWorkforceRatio * 100).toFixed(0)}%`,
+      derivation: `🏗️ Infra (uzly): ${totalProd.toFixed(1)} | 📦 Goods: ${goodsProd.toFixed(1)} | Workforce: ${(wf.effectiveWorkforceRatio * 100).toFixed(0)}%`,
     },
     {
       icon: <span className="text-xs">{MACRO_LAYER_ICONS.wealth}</span>,
       label: "Bohatství",
       value: `${Math.round(wealthReserve)} (+${totalWealth.toFixed(0)}/k)`,
-      derivation: ge.fiscal_bonus > 0
-        ? `Pop daň: ${ge.tax_pop || 0} | Tržní: ${ge.tax_market || 0} | Tranzit: ${ge.tax_transit || 0} | Těžba: ${ge.tax_extraction || 0} | Export: ${ge.capture || 0} | Retenční index: ${((ge.retention || 0) * 100).toFixed(0)}%`
-        : `Tržní aktivita + daně + obchod`,
+      derivation: `🏗️ Infra: ${totalWealth.toFixed(1)} | 📦 Goods fiskál: ${goodsWealth.toFixed(1)} | Pop: ${realm.tax_population ?? 0} Trh: ${realm.tax_market ?? 0} Tranzit: ${realm.tax_transit ?? 0} Těžba: ${realm.tax_extraction ?? 0} Export: ${realm.commercial_capture ?? 0}`,
     },
     {
       icon: <span className="text-xs">🌾</span>,
