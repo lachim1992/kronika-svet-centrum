@@ -173,12 +173,12 @@ export const SYSTEM_NODES: SystemNode[] = [
   // ══════════════ SOCIAL DRIVERS ══════════════
 
   {
-    id: "legitimacy", label: "👑 Legitimita", type: "social_driver", status: "readonly",
-    playerFacing: true, usedByAI: false, readOnly: true, agency: "none",
-    upstreamCount: 2, downstreamCount: 0, playerInfluenceScore: 0, aiDependencyScore: 1, uiSurfacingLevel: 4,
-    gaps: ["Dead metric", "No player agency", "No downstream"],
-    formula: "base + policy_effects + stability_drift",
-    description: "Zobrazuje se v UI, ale nemá žádný mechanický dopad. Kandidát na propojení se stabilitou.",
+    id: "legitimacy", label: "👑 Legitimita", type: "social_driver", status: "full",
+    playerFacing: true, usedByAI: true, readOnly: false, agency: "indirect",
+    upstreamCount: 5, downstreamCount: 3, playerInfluenceScore: 4, aiDependencyScore: 3, uiSurfacingLevel: 6,
+    gaps: [],
+    formula: "drift = demand_satisfaction(>0.7→+1) − famine(−3) + temple(×0.5) − conquest(−5) + policies. Downstream: stabilita += (leg−50)×0.05, rebelie práh −10 pod 25.",
+    description: "Drift per kolo dle zásobování, hladomoru, chrámů, dobytí a politik. Ovlivňuje stabilitu a práh rebelie.",
   },
   {
     id: "renown", label: "🏅 Věhlas", type: "social_driver", status: "partial",
@@ -254,12 +254,12 @@ export const SYSTEM_NODES: SystemNode[] = [
     description: "Penalizace produkce izolovaných uzlů. <15% mírná, 15-35% částečná, 35-55% těžká, >55% odříznuto.",
   },
   {
-    id: "labor_allocation", label: "👷 Alokace práce", type: "economic_driver", status: "dead",
+    id: "labor_allocation", label: "👷 Alokace práce", type: "economic_driver", status: "full",
     playerFacing: true, usedByAI: false, readOnly: false, agency: "direct",
-    upstreamCount: 1, downstreamCount: 0, playerInfluenceScore: 2, aiDependencyScore: 0, uiSurfacingLevel: 6,
-    gaps: ["Dead metric", "No downstream"],
-    formula: "player_set_priorities → cities.labor_allocation (IGNORED by process-turn)",
-    description: "Hráč může měnit, ale engine priority ignoruje. FAKE MECHANIKA.",
+    upstreamCount: 1, downstreamCount: 4, playerInfluenceScore: 7, aiDependencyScore: 0, uiSurfacingLevel: 6,
+    gaps: [],
+    formula: "farming→food_mod(1+Δ×0.005), crafting→prod_mod(1+Δ×0.008), canal→irrigation(+0.01/%), scribes→social_mobility",
+    description: "Hráčem nastavené priority práce. Engine čte v world-tick: ovlivňuje mobilitu, produkci a zavlažování.",
   },
   {
     id: "ration_policy", label: "🍽️ Příděly", type: "economic_driver", status: "full",
@@ -321,12 +321,12 @@ export const SYSTEM_NODES: SystemNode[] = [
     description: "Ovlivňuje urbanizační milníky. Nyní vizualizován v PopulationPanel s progress bary.",
   },
   {
-    id: "migration_pressure", label: "🚶 Migration Pressure", type: "hidden_engine_stat", status: "auto",
-    playerFacing: false, usedByAI: false, readOnly: true, agency: "none",
-    upstreamCount: 3, downstreamCount: 1, playerInfluenceScore: 0, aiDependencyScore: 2, uiSurfacingLevel: 1,
-    gaps: ["UI hidden", "No player agency"],
-    formula: "overcrowding × famine_severity × (1 - stability)",
-    description: "Automaticky počítaný tlak na migraci. Hráč nevidí ani neovlivní.",
+    id: "migration_pressure", label: "🚶 Migration Pressure", type: "hidden_engine_stat", status: "full",
+    playerFacing: true, usedByAI: false, readOnly: true, agency: "indirect",
+    upstreamCount: 4, downstreamCount: 2, playerInfluenceScore: 3, aiDependencyScore: 2, uiSurfacingLevel: 4,
+    gaps: [],
+    formula: "push(famine×10 + overcrowding×20 + instability + epidemic×15) − pull(stability×0.5 + market×3 + housing_room). >15 → emigrace 1-3%.",
+    description: "Tlak na migraci mezi městy. Nad 15 spouští reálné přesuny obyvatel k městům s pull faktory.",
   },
   {
     id: "disease_level", label: "🦠 Disease Level", type: "hidden_engine_stat", status: "auto",
@@ -438,9 +438,20 @@ export const SYSTEM_EDGES: SystemEdge[] = [
   { source: "rumors", target: "chronicles", linkType: "causal", label: "source material" },
   { source: "diplomatic_memory", target: "tension", linkType: "modifier", label: "grievance" },
 
-  // ── Dead ends (explicit) ──
-  { source: "labor_allocation", target: "labor_allocation", linkType: "projection", label: "IGNORED" },
-  { source: "legitimacy", target: "legitimacy", linkType: "projection", label: "NO OUTPUT" },
+  // ── Legitimacy downstream (Phase 4) ──
+  { source: "legitimacy", target: "stability", linkType: "modifier", label: "(leg−50)×0.05" },
+  { source: "legitimacy", target: "rebellion", linkType: "threshold", label: "leg<25 → práh −10" },
+  { source: "legitimacy", target: "faction_power", linkType: "modifier", label: "loyalty drift" },
+
+  // ── Labor allocation downstream (Phase 4) ──
+  { source: "labor_allocation", target: "grain", linkType: "modifier", label: "farming_mod" },
+  { source: "labor_allocation", target: "production", linkType: "modifier", label: "crafting_mod" },
+  { source: "labor_allocation", target: "population", linkType: "causal", label: "social mobility" },
+  { source: "labor_allocation", target: "irrigation", linkType: "modifier", label: "canal_mod" },
+
+  // ── Migration pressure downstream (Phase 4) ──
+  { source: "migration_pressure", target: "population", linkType: "causal", label: "emigrace/imigrace" },
+  { source: "stability", target: "migration_pressure", linkType: "modifier", label: "push/pull" },
 ];
 
 // ─── STATUS COLORS ────────────────────────────────────────
