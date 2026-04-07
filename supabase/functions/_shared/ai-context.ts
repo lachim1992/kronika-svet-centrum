@@ -484,6 +484,13 @@ async function buildStrategicMapContext(client: SupabaseClient, sessionId: strin
     for (const c of cities) {
       parts.push(`  ${c.name} (${c.owner_player}) na (${c.province_q},${c.province_r}) [${c.settlement_level}]`);
     }
+
+    // Legitimacy context for AI
+    const avgLeg = cities.reduce((s: number, c: any) => s + (c.legitimacy ?? 50), 0) / cities.length;
+    const lowLegCities = cities.filter((c: any) => (c.legitimacy ?? 50) < 30);
+    if (lowLegCities.length > 0) {
+      parts.push(`\nLEGITIMITA: Průměr ${Math.round(avgLeg)}. Kriticky nízká v: ${lowLegCities.map((c: any) => `${c.name}(${c.legitimacy ?? 50})`).join(", ")}`);
+    }
   }
 
   // ── NODE GRAPH TOPOLOGY ──
