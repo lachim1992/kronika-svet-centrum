@@ -287,6 +287,8 @@ Deno.serve(async (req) => {
     // ════════════════════════════════════════════
     const demandBasketRows: any[] = [];
     for (const [cityId, demands] of cityDemands) {
+      const cityNodeId = cityToNodeId.get(cityId);
+      if (!cityNodeId) continue; // Skip cities without a matching province_node
       const citySupply = cityGoodSupply.get(cityId) || new Map();
       
       for (const [basketKey, demandQty] of demands) {
@@ -302,7 +304,7 @@ Deno.serve(async (req) => {
 
         demandBasketRows.push({
           session_id,
-          city_id: cityId,
+          city_id: cityNodeId,
           basket_key: basketKey,
           tier: DEMAND_BASKETS[basketKey]?.tier || 1,
           quantity_needed: Math.round(demandQty * 10) / 10,
@@ -396,8 +398,8 @@ Deno.serve(async (req) => {
 
           tradeFlows.push({
             session_id,
-            source_city_id: neighborId,
-            target_city_id: cityId,
+            source_city_id: cityToNodeId.get(neighborId) || neighborId,
+            target_city_id: cityToNodeId.get(cityId) || cityId,
             source_player: neighborCity.owner_player || "",
             target_player: city.owner_player || "",
             good_key: bestGoodKey,
