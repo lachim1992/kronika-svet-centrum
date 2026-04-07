@@ -1,67 +1,125 @@
 
-# Economy v4.1 — Integrační plán
 
-## Stav implementace
+# Fáze 4: Propojení Dead Metrik — Implementační plán
 
-### ✅ Fáze 1: Data Hydratace — HOTOVO
-- Edge function `backfill-economy-tags` vytvořena a nasazena
-- Hydratuje `capability_tags` + `production_role` z NODE_CAPABILITY_MAP
-- Auto-seed `resource_deposits` na hexech dle biomu
-- Testováno: 23/35 uzlů aktualizováno (source/processing/urban)
-- Tlačítko "Hydratace" přidáno do HexDevTools Quick Actions
+## Audit: Co je mrtvé a proč
 
-### ✅ Fáze 2: Oprava compute-trade-flows — HOTOVO
-- Opraveny column references: `required_role`, `output_good_key`, `output_quantity`, `quality_output_bonus`
-- Opraveny column names pro `demand_baskets` (`basket_key`, `quantity_needed`, `satisfaction_score`)
-- Opraveny column names pro `trade_flows` (`source_city_id`, `target_city_id`, `volume_per_turn`, etc.)
-- Opravena agregace duplicitních inventářů (node_id + good_key)
-- Testováno: 19 inventory rows, 4 hráči aktualizováni
+| Metrika | Stav | Kdo zapisuje | Kdo čte | Problém |
+|---------|------|-------------|---------|---------|
+| `legitimacy` | DEAD | `command-dispatch` (dobytí -30), `games-announce` (+5/+10) | UI only (`RealmIndicators`, `CityGovernancePanel`) | Žádný downstream efekt na engine |
+| `migration_pressure` | DEAD | Nikdo (sloupec existuje, ale žádná funkce jej nezapisuje!) | Nikdo | Kompletně mrtvé — ani se nepočítá |
+| `labor_allocation` | PARTIALLY DEAD | UI (`CityGovernancePanel`) | `computeSocialMobility()` v `demographics.ts` — ale ta funkce se nikde nevolá | Funkce existuje, ale není zapojena do world-tick ani process-turn |
 
-### ✅ Fáze 2b: FK opravy + chybějící sloupce — HOTOVO
-- **demand_baskets**: FK `city_id` referencuje `province_nodes(id)`, ne `cities(id)` — opraveno mapováním `cityToNodeId`
-- **demand_baskets**: Přidány chybějící NOT NULL sloupce: `fulfillment_type`, `min_quality`, `preferred_quality`
-- **trade_flows**: FK `source_city_id`/`target_city_id` referencují `province_nodes(id)` — opraveno
-- **trade_flows**: Přidány chybějící NOT NULL sloupce: `flow_type`, `quality_band`, `friction_score`, `maturity`
-- **Parent chain**: Implementován rekurzivní `resolveCityId()` pro mapování non-city uzlů na města přes `parent_node_id`
-- Přidáno error logging pro všechny inserty
-- **Výsledky**: 80 demand_baskets, 10 city_market_summary, 4 trade_flows, 55 node_inventory — vše funkční
+## Plán integrace — 3 metriky
 
-### ✅ Fáze 5: Observatory aktualizace — HOTOVO
-- `dataFlowAuditData.ts` rozšířen o: capability_tags, production_role, guild_level, specialization_scores
-- Přidány tabulky: node_inventory, demand_baskets, trade_flows, city_market_summary
-- Writer type rozšířen o `backfill-economy-tags`
+### 1. Legitimacy → Stabilita + Frakce + AI kontext
 
-### ✅ Fáze 3: Sjednocení vrstev — HOTOVO
-- compute-trade-flows zapisuje `goods_production_value`, `goods_supply_volume`, `goods_wealth_fiscal` do realm_resources
-- process-turn používá blending systém: `economy_version >= 4` → 70% goods / 30% legacy
-- Když goods data existují (i v economy_version=3), automaticky blenduje 30% goods / 70% legacy
-- Per-city produkce a bohatství blendují goods hodnoty distribuované dle populace/tržní úrovně
-- Grain reserve obohacen o goods supply volume (storable goods)
-- Odstraněno double-counting: goods fiscal bonus škáluje dle legacyBlend
-- DB migrace: přidány sloupce `goods_production_value`, `goods_supply_volume`, `goods_wealth_fiscal`, `economy_version`
+**Kde se bude počítat**: `world-tick` (per-city, jednou za kolo)
 
-### ⬜ Fáze 4: Dead metriky — TODO
-### ⬜ Fáze 6: UI integrace — TODO
-
-## Aktuální data pipeline stav
-
+**Formule**:
+```text
+legitimacy_drift =
+  + (demand_satisfaction > 0.7 ? +1 : 0)     // dobře zásobené město
+  - (famine_consecutive_turns > 0 ? -3 : 0)   // hladomor
+  + (temple_level * 0.5)                       // chrámový efekt
+  - (was_conquered_recently ? -5 : 0)          // efekt z dobytí
+  + (policy legitimacy_effect sum)             // politiky s legitimacy_effect
+  
+new_legitimacy = clamp(0, 100, legitimacy + drift)
 ```
-province_hexes.resource_deposits
-        │
-        ▼
-province_nodes (capability_tags + production_role)     ✅ Hydratováno
-        │
-        ▼ [production_recipes match]
-node_inventory (good_key, quantity, quality)             ✅ 55 záznamů
-        │
-        ├──► city_market_summary (supply per city)       ✅ 10 záznamů
-        │
-        ▼
-demand_baskets (satisfaction per basket per city)         ✅ 80 záznamů
-        │
-        ▼ [deficit → trade pressure]
-trade_flows (from_node → to_node, good_key, volume)      ✅ 4 záznamů
-        │
-        ▼
-realm_resources (fiskální agregáty)                       ✅ 4 hráči aktualizováni
+
+**Downstream efekty**:
+- **Stabilita**: `city_stability += (legitimacy - 50) * 0.05` — nízká legitimita táhne stabilitu dolů
+- **Frakce**: `city_factions.loyalty` bonus/malus dle legitimity (nobles reagují silněji)
+- **Rebelie práh**: legitimacy < 25 → práh rebelie snížen o 10 bodů
+- **AI kontext**: Přidat do `ai-context.ts` pro AI frakce a kronikáře
+
+**Změny v souborech**:
+- `supabase/functions/world-tick/index.ts` — přidat legitimacy drift výpočet do city loop
+- `supabase/functions/_shared/physics.ts` — přidat `computeLegitimacyDrift()` funkci
+- `supabase/functions/_shared/ai-context.ts` — přidat legitimacy do kontextu
+
+### 2. Migration Pressure → Přesuny populace
+
+**Kde se bude počítat**: `world-tick` (per-city, jednou za kolo)
+
+**Formule**:
+```text
+push_factors =
+  + (famine_severity * 10)
+  + max(0, overcrowding_ratio - 1.0) * 20
+  + (city_stability < 30 ? (30 - city_stability) : 0)
+  + (epidemic_active ? 15 : 0)
+
+pull_factors =
+  + (city_stability > 70 ? (city_stability - 70) * 0.5 : 0)
+  + (market_level * 3)
+  + (housing_capacity - population_total > 100 ? 5 : 0)
+
+migration_pressure = push_factors - pull_factors  // >0 = emigrace, <0 = imigrace
 ```
+
+**Downstream efekty**:
+- **Populační přesuny**: Pokud `migration_pressure > 15`, město ztrácí 1-3% populace (zapisuje se do `last_migration_out`)
+- **Cílové město**: Nejbližší město se `migration_pressure < -5` stejného hráče získá emigranty (zapisuje se do `last_migration_in`)
+- **Event generace**: Migration event do `world_events` při výrazné migraci (>50 lidí)
+
+**Změny v souborech**:
+- `supabase/functions/world-tick/index.ts` — přidat migration výpočet po stability loop
+- `supabase/functions/_shared/physics.ts` — přidat `computeMigrationPressure()` a `resolveMigration()`
+
+### 3. Labor Allocation → Social Mobility + Production Modifiers
+
+**Stav**: Funkce `computeSocialMobility()` již existuje v `demographics.ts` a správně čte `labor_allocation.scribes`. Jen nikdy není volána.
+
+**Integrace**:
+1. **Zapojit do `world-tick`**: V city loop zavolat `computeSocialMobility()` s daty města
+2. **Rozšířit na produkční modifikátory**: `labor_allocation.farming` → modifier na `food_value` uzlů, `labor_allocation.crafting` → modifier na `production_output`
+3. **Kanál (canal)**: `labor_allocation.canal` → modifier na `irrigation_level`, který ovlivňuje výnosy
+
+**Formule rozšíření**:
+```text
+farming_mod = 1.0 + (labor.farming - 50) * 0.005   // 60% farming → +5% food
+crafting_mod = 1.0 + (labor.crafting - 20) * 0.008  // 30% crafting → +8% prod
+canal_mod = labor.canal * 0.01                       // 10% canal → irrigation +0.1
+```
+
+**Změny v souborech**:
+- `supabase/functions/world-tick/index.ts` — zavolat `computeSocialMobility()`, aplikovat labor modifikátory
+- `supabase/functions/_shared/demographics.ts` — přidat labor production modifiers export
+
+## Observatory aktualizace
+
+- `observatoryData.ts`: Změnit status `labor_allocation` z `dead` → `active`, `legitimacy` downstream z 0 → 3+, `migration_pressure` status z `auto` → `active` s downstream
+- `dataFlowAuditData.ts`: Aktualizovat readers pro všechny tři metriky
+- `SystemGraphPanel.ts`: Přidat nové edge vazby (legitimacy→stability, migration→population)
+
+## UI doplňky (minimální)
+
+- `RealmIndicators.tsx` — tooltip na legitimitu s vysvětlením driftu
+- `CityGovernancePanel.tsx` — tooltip na labor allocation s reálnými efekty
+- Migration pressure indikátor v city detailu (šipka ↗️ emigrace / ↙️ imigrace)
+
+## Pořadí implementace
+
+```text
+1. physics.ts — nové funkce (computeLegitimacyDrift, computeMigrationPressure)
+2. demographics.ts — labor production modifiers
+3. world-tick — zapojit všechny tři metriky do city loop
+4. observatoryData.ts + dataFlowAuditData.ts — dokumentace
+5. UI tooltips (RealmIndicators, CityGovernancePanel)
+```
+
+## Souhrnné změny souborů
+
+| Soubor | Typ změny |
+|--------|-----------|
+| `supabase/functions/_shared/physics.ts` | Přidat 2 nové funkce |
+| `supabase/functions/_shared/demographics.ts` | Přidat labor modifiers export |
+| `supabase/functions/world-tick/index.ts` | Zapojit 3 metriky do city loop |
+| `supabase/functions/_shared/ai-context.ts` | Přidat legitimacy |
+| `src/components/dev/observatory/observatoryData.ts` | Aktualizovat statusy a vazby |
+| `src/components/dev/observatory/dataFlowAuditData.ts` | Aktualizovat readers |
+| `src/components/realm/RealmIndicators.tsx` | Tooltip legitimita |
+| `src/components/city/CityGovernancePanel.tsx` | Tooltip labor, migration badge |
+
