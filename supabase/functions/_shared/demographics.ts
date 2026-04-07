@@ -142,15 +142,6 @@ export interface MigrationCity {
   housing_capacity: number;
   demo_policy?: string; // active demographic policy key
 }
-  name: string;
-  owner_player: string;
-  population_total: number;
-  population_peasants: number;
-  city_stability: number;
-  famine_turn: boolean;
-  overcrowding_ratio: number;
-  housing_capacity: number;
-}
 
 export interface MigrationFlow {
   from_city_id: string;
