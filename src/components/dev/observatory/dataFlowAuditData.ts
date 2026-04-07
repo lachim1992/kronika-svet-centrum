@@ -1,12 +1,11 @@
 /**
  * Static audit: who writes/reads each key DB column.
- * UPDATED 2026-04: Full v4.1 goods pipeline, Phase 4 social metrics,
- * migration, legitimacy, labor allocation.
+ * UPDATED 2026-04: Full v4.1 goods pipeline, Phase 4 social metrics.
  */
 
 export type Writer = "process-turn" | "world-tick" | "commit-turn" | "command-dispatch" | "UI" | "generate-civ-start" | "process-tick" | "city-seed" | "ai-faction-turn" | "council-session" | "collapse-chain" | "world-generate-init" | "declaration-effects" | "resolve-battle" | "compute-economy-flow" | "compute-province-nodes" | "check-victory" | "law-process" | "chronicle" | "wiki-generate" | "rumor-engine" | "backfill-wiki" | "academy-tick" | "games-resolve" | "explore-hex" | "backfill-economy-tags" | "compute-trade-flows" | "compute-hex-flows" | "compute-province-routes" | "recompute-all";
 
-export type Reader = "process-turn" | "world-tick" | "commit-turn" | "UI" | "AI context" | "ai-faction-turn" | "council-session" | "check-victory" | "chronicle" | "compute-economy-flow" | "compute-province-nodes" | "cityprofile" | "resolve-battle" | "EconomyTab" | "compute-trade-flows";
+export type Reader = "process-turn" | "world-tick" | "commit-turn" | "UI" | "AI context" | "ai-faction-turn" | "council-session" | "check-victory" | "chronicle" | "compute-economy-flow" | "compute-province-nodes" | "cityprofile" | "resolve-battle" | "EconomyTab" | "compute-trade-flows" | "compute-province-routes" | "compute-hex-flows";
 
 export interface DataFlowEntry {
   table: string;
