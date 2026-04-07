@@ -17,15 +17,19 @@
 - Opravena agregace duplicitních inventářů (node_id + good_key)
 - Testováno: 19 inventory rows, 4 hráči aktualizováni
 
+### ✅ Fáze 2b: FK opravy + chybějící sloupce — HOTOVO
+- **demand_baskets**: FK `city_id` referencuje `province_nodes(id)`, ne `cities(id)` — opraveno mapováním `cityToNodeId`
+- **demand_baskets**: Přidány chybějící NOT NULL sloupce: `fulfillment_type`, `min_quality`, `preferred_quality`
+- **trade_flows**: FK `source_city_id`/`target_city_id` referencují `province_nodes(id)` — opraveno
+- **trade_flows**: Přidány chybějící NOT NULL sloupce: `flow_type`, `quality_band`, `friction_score`, `maturity`
+- **Parent chain**: Implementován rekurzivní `resolveCityId()` pro mapování non-city uzlů na města přes `parent_node_id`
+- Přidáno error logging pro všechny inserty
+- **Výsledky**: 80 demand_baskets, 10 city_market_summary, 4 trade_flows, 55 node_inventory — vše funkční
+
 ### ✅ Fáze 5: Observatory aktualizace — HOTOVO
 - `dataFlowAuditData.ts` rozšířen o: capability_tags, production_role, guild_level, specialization_scores
 - Přidány tabulky: node_inventory, demand_baskets, trade_flows, city_market_summary
 - Writer type rozšířen o `backfill-economy-tags`
-
-### 🔧 Zbývající problémy (Fáze 2b)
-- `demand_baskets` insert selhává tiše — potřeba debuggovat
-- `city_market_summary` = 0 — source nodes nemají city_id, potřeba parent-chain lookup
-- `trade_flows` = 0 — závisí na funkčních demand baskets
 
 ### ⬜ Fáze 3: Sjednocení vrstev — TODO
 - Přesunout makro agregaci do goods vrstvy
@@ -33,3 +37,26 @@
 
 ### ⬜ Fáze 4: Dead metriky — TODO
 ### ⬜ Fáze 6: UI integrace — TODO
+
+## Aktuální data pipeline stav
+
+```
+province_hexes.resource_deposits
+        │
+        ▼
+province_nodes (capability_tags + production_role)     ✅ Hydratováno
+        │
+        ▼ [production_recipes match]
+node_inventory (good_key, quantity, quality)             ✅ 55 záznamů
+        │
+        ├──► city_market_summary (supply per city)       ✅ 10 záznamů
+        │
+        ▼
+demand_baskets (satisfaction per basket per city)         ✅ 80 záznamů
+        │
+        ▼ [deficit → trade pressure]
+trade_flows (from_node → to_node, good_key, volume)      ✅ 4 záznamů
+        │
+        ▼
+realm_resources (fiskální agregáty)                       ✅ 4 hráči aktualizováni
+```
