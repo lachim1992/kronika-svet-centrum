@@ -425,7 +425,8 @@ Deno.serve(async (req) => {
       await sb.from("trade_flows").delete().eq("session_id", session_id);
 
       for (let i = 0; i < tradeFlows.length; i += 50) {
-        await sb.from("trade_flows").insert(tradeFlows.slice(i, i + 50));
+        const { error: tfErr } = await sb.from("trade_flows").insert(tradeFlows.slice(i, i + 50));
+        if (tfErr) console.error("trade_flows insert error:", JSON.stringify(tfErr));
       }
     }
 
