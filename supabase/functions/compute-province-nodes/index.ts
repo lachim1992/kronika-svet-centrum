@@ -19,6 +19,60 @@ function seededRandom(seed: string): number {
   return (Math.abs(h) % 10000) / 10000;
 }
 
+// ═══════════════════════════════════════
+// CAPABILITY TAGS — node_subtype → tags + role
+// Mirrors NODE_CAPABILITY_MAP from goodsCatalog.ts
+// ═══════════════════════════════════════
+const NODE_CAPABILITY_MAP: Record<string, { role: string; tags: string[] }> = {
+  field: { role: "source", tags: ["farming"] },
+  vineyard: { role: "source", tags: ["farming", "viticulture"] },
+  hunting_ground: { role: "source", tags: ["herding", "gathering"] },
+  pastoral_camp: { role: "source", tags: ["herding"] },
+  fishery: { role: "source", tags: ["fishing"] },
+  fishing_village: { role: "source", tags: ["fishing"] },
+  mine: { role: "source", tags: ["mining"] },
+  mining_camp: { role: "source", tags: ["mining"] },
+  quarry: { role: "source", tags: ["quarrying"] },
+  sawmill: { role: "source", tags: ["logging", "sawing"] },
+  lumber_camp: { role: "source", tags: ["logging"] },
+  herbalist: { role: "source", tags: ["gathering"] },
+  salt_pan: { role: "source", tags: ["mining"] },
+  village: { role: "source", tags: ["farming", "herding"] },
+  smithy: { role: "processing", tags: ["smelting", "smithing"] },
+  trade_hub: { role: "urban", tags: ["construction"] },
+  trade_post: { role: "urban", tags: [] },
+  shrine: { role: "source", tags: ["ritual_craft"] },
+  watchtower: { role: "source", tags: [] },
+};
+
+// Biome → extra bonus capability tags
+const BIOME_BONUS_TAGS: Record<string, string[]> = {
+  forest: ["logging", "gathering"],
+  taiga: ["logging"],
+  hills: ["mining", "quarrying"],
+  mountain: ["mining", "quarrying"],
+  highland: ["mining"],
+  coastal: ["fishing"],
+  lake: ["fishing"],
+  river: ["fishing"],
+  plains: ["farming", "herding"],
+  grassland: ["farming", "herding"],
+  steppe: ["herding"],
+  savanna: ["herding"],
+  temperate: ["farming"],
+  desert: ["mining"],
+  marsh: ["gathering"],
+  jungle: ["gathering"],
+};
+
+function resolveCapabilityTags(subtype: string, biome: string): { role: string; tags: string[] } {
+  const base = NODE_CAPABILITY_MAP[subtype] || { role: "source", tags: [] };
+  const biomeTags = BIOME_BONUS_TAGS[biome?.toLowerCase()] || [];
+  // Merge unique tags
+  const allTags = [...new Set([...base.tags, ...biomeTags])];
+  return { role: base.role, tags: allTags };
+}
+
 // Strategic resource spawn table
 const STRATEGIC_SPAWN_TABLE = [
   { type: "iron", chance: 0.15, biomes: ["hills", "mountain"], label: "Železo" },
@@ -62,7 +116,6 @@ const MICRO_SUBTYPES: Record<string, { biomes: string[]; prod: Record<string, nu
 
 function pickMinorSubtype(biome: string, seed: string): string {
   const b = biome?.toLowerCase() || "";
-  // Find best match
   const matches = Object.entries(MINOR_SUBTYPES)
     .filter(([, def]) => def.biomes.some(pb => b.includes(pb)))
     .map(([key]) => key);
@@ -84,7 +137,7 @@ function pickMicroSubtype(biome: string, seed: string): string {
 function rollStrategicResource(biome: string, seed: string): { type: string; label: string } | null {
   const b = biome?.toLowerCase() || "";
   const roll = seededRandom(seed + "_strat");
-  if (roll > 0.30) return null; // max 30% chance
+  if (roll > 0.30) return null;
   let cumulative = 0;
   for (const sr of STRATEGIC_SPAWN_TABLE) {
     const biomeBonus = sr.biomes.some(sb => b.includes(sb)) ? 1.5 : 0.5;
@@ -107,16 +160,29 @@ Deno.serve(async (req) => {
 
     const sb = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 
-    // Load provinces, hexes, cities
-    const [provRes, hexRes, cityRes] = await Promise.all([
+    // Load provinces, hexes, cities, AND existing nodes
+    const [provRes, hexRes, cityRes, existingNodesRes] = await Promise.all([
       sb.from("provinces").select("id, name, owner_player, center_q, center_r").eq("session_id", session_id),
       sb.from("province_hexes").select("id, q, r, province_id, biome_family, coastal, mean_height, is_passable, movement_cost").eq("session_id", session_id).limit(10000),
       sb.from("cities").select("id, name, province_id, province_q, province_r, is_capital, settlement_level, population_total, owner_player").eq("session_id", session_id),
+      sb.from("province_nodes").select("id, hex_q, hex_r, node_tier, node_subtype, city_id").eq("session_id", session_id),
     ]);
 
     const provinces = provRes.data || [];
     const allHexes = hexRes.data || [];
     const cities = cityRes.data || [];
+    const existingNodes = existingNodesRes.data || [];
+
+    // Build occupied hex set — ADDITIVE: skip hexes that already have a node
+    const occupiedHexes = new Set<string>();
+    for (const n of existingNodes) {
+      occupiedHexes.add(hexKey(n.hex_q, n.hex_r));
+    }
+    // Also track which cities already have a node
+    const citiesWithNode = new Set<string>();
+    for (const n of existingNodes) {
+      if (n.city_id) citiesWithNode.add(n.city_id);
+    }
 
     // Index hexes
     const hexByProv: Record<string, typeof allHexes> = {};
@@ -143,13 +209,12 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Delete old nodes
-    await sb.from("province_nodes").delete().eq("session_id", session_id);
-
-    const allNodes: any[] = [];
-    // Track indices for parent assignment
+    const allNewNodes: any[] = [];
     const majorIndices: Array<{ idx: number; provId: string; hex_q: number; hex_r: number }> = [];
     const minorIndices: Array<{ idx: number; provId: string; hex_q: number; hex_r: number }> = [];
+
+    // Also include existing major nodes for parent assignment
+    const existingMajors = existingNodes.filter(n => n.node_tier === "major");
 
     for (const prov of provinces) {
       const pHexes = hexByProv[prov.id] || [];
@@ -158,14 +223,15 @@ Deno.serve(async (req) => {
 
       // ═══════════════════════════════════════
       // TIER 1: MAJOR NODES (cities, ports, fortresses)
+      // Only add for cities that don't already have a node
       // ═══════════════════════════════════════
       const provCities = cities.filter(c => c.province_id === prov.id);
       
-      // Primary city → major hub
       const mainCity = provCities.sort((a, b) => (b.population_total || 0) - (a.population_total || 0))[0];
-      if (mainCity) {
-        const idx = allNodes.length;
-        allNodes.push({
+      if (mainCity && !citiesWithNode.has(mainCity.id) && !occupiedHexes.has(hexKey(mainCity.province_q, mainCity.province_r))) {
+        const capTags = resolveCapabilityTags("city", mainCity.settlement_level || "village");
+        const idx = allNewNodes.length;
+        allNewNodes.push({
           session_id, province_id: prov.id, node_type: "primary_city",
           node_tier: "major", node_subtype: "city", node_class: "major",
           name: mainCity.name, hex_q: mainCity.province_q, hex_r: mainCity.province_r,
@@ -174,17 +240,21 @@ Deno.serve(async (req) => {
           mobility_relevance: 7, supply_relevance: 9,
           population: mainCity.population_total || 0,
           is_major: true, flow_role: "hub",
+          production_role: "urban",
+          capability_tags: ["farming", "herding", "construction", "baking", "crafting"],
           throughput_military: 1.0, toll_rate: 0,
           resource_output: {},
           metadata: { settlement_level: mainCity.settlement_level, population: mainCity.population_total },
         });
+        occupiedHexes.add(hexKey(mainCity.province_q, mainCity.province_r));
         majorIndices.push({ idx, provId: prov.id, hex_q: mainCity.province_q, hex_r: mainCity.province_r });
       }
 
-      // Secondary cities → major hub
+      // Secondary cities
       for (const sc of provCities.filter(c => c.id !== mainCity?.id)) {
-        const idx = allNodes.length;
-        allNodes.push({
+        if (citiesWithNode.has(sc.id) || occupiedHexes.has(hexKey(sc.province_q, sc.province_r))) continue;
+        const idx = allNewNodes.length;
+        allNewNodes.push({
           session_id, province_id: prov.id, node_type: "secondary_city",
           node_tier: "major", node_subtype: "city", node_class: "major",
           name: sc.name, hex_q: sc.province_q, hex_r: sc.province_r,
@@ -193,42 +263,54 @@ Deno.serve(async (req) => {
           mobility_relevance: 6, supply_relevance: 7,
           population: sc.population_total || 0,
           is_major: true, flow_role: "hub",
+          production_role: "urban",
+          capability_tags: ["farming", "herding", "construction"],
           throughput_military: 1.0, toll_rate: 0,
           resource_output: {},
           metadata: { settlement_level: sc.settlement_level, population: sc.population_total },
         });
+        occupiedHexes.add(hexKey(sc.province_q, sc.province_r));
         majorIndices.push({ idx, provId: prov.id, hex_q: sc.province_q, hex_r: sc.province_r });
       }
 
-      // Port → major hub (if coastal province)
+      // Port (if coastal province, skip if hex occupied)
       const coastalHexes = pHexes.filter(h => h.coastal && h.is_passable);
       if (coastalHexes.length > 0) {
-        const portHex = coastalHexes.sort((a, b) =>
-          axialDist(a.q, a.r, prov.center_q || 0, prov.center_r || 0) -
-          axialDist(b.q, b.r, prov.center_q || 0, prov.center_r || 0)
-        )[0];
-        const idx = allNodes.length;
-        allNodes.push({
-          session_id, province_id: prov.id, node_type: "port",
-          node_tier: "major", node_subtype: "trade_hub", node_class: "major",
-          name: `Přístav ${prov.name}`, hex_q: portHex.q, hex_r: portHex.r,
-          controlled_by: owner,
-          strategic_value: 6, economic_value: 7, defense_value: 3,
-          mobility_relevance: 9, supply_relevance: 8,
-          is_major: true, flow_role: "hub",
-          throughput_military: 1.0, toll_rate: 0.05,
-          resource_output: { wealth: 2 },
-          metadata: { biome: portHex.biome_family },
-        });
-        majorIndices.push({ idx, provId: prov.id, hex_q: portHex.q, hex_r: portHex.r });
+        const portHex = coastalHexes
+          .filter(h => !occupiedHexes.has(hexKey(h.q, h.r)))
+          .sort((a, b) =>
+            axialDist(a.q, a.r, prov.center_q || 0, prov.center_r || 0) -
+            axialDist(b.q, b.r, prov.center_q || 0, prov.center_r || 0)
+          )[0];
+        if (portHex) {
+          const capTags = resolveCapabilityTags("trade_hub", portHex.biome_family || "coastal");
+          const idx = allNewNodes.length;
+          allNewNodes.push({
+            session_id, province_id: prov.id, node_type: "port",
+            node_tier: "major", node_subtype: "trade_hub", node_class: "major",
+            name: `Přístav ${prov.name}`, hex_q: portHex.q, hex_r: portHex.r,
+            controlled_by: owner,
+            strategic_value: 6, economic_value: 7, defense_value: 3,
+            mobility_relevance: 9, supply_relevance: 8,
+            is_major: true, flow_role: "hub",
+            production_role: capTags.role,
+            capability_tags: capTags.tags,
+            throughput_military: 1.0, toll_rate: 0.05,
+            resource_output: { wealth: 2 },
+            metadata: { biome: portHex.biome_family },
+          });
+          occupiedHexes.add(hexKey(portHex.q, portHex.r));
+          majorIndices.push({ idx, provId: prov.id, hex_q: portHex.q, hex_r: portHex.r });
+        }
       }
 
-      // Fortress → major gateway (if hills/mountain border)
-      const hillBorder = pBorder.filter(h => h.biome_family === "hills" || h.mean_height > 55);
+      // Fortress (if hills/mountain border, skip occupied)
+      const hillBorder = pBorder.filter(h => (h.biome_family === "hills" || h.mean_height > 55) && !occupiedHexes.has(hexKey(h.q, h.r)));
       if (hillBorder.length > 0) {
         const fortHex = hillBorder.sort((a, b) => b.mean_height - a.mean_height)[0];
-        const idx = allNodes.length;
-        allNodes.push({
+        const capTags = resolveCapabilityTags("watchtower", fortHex.biome_family || "hills");
+        const idx = allNewNodes.length;
+        allNewNodes.push({
           session_id, province_id: prov.id, node_type: "fortress",
           node_tier: "major", node_subtype: "fortress", node_class: "major",
           name: `Pevnost ${prov.name}`, hex_q: fortHex.q, hex_r: fortHex.r,
@@ -236,11 +318,14 @@ Deno.serve(async (req) => {
           strategic_value: 8, economic_value: 1, defense_value: 10,
           mobility_relevance: 3, supply_relevance: 4,
           is_major: true, flow_role: "gateway",
+          production_role: "source",
+          capability_tags: capTags.tags,
           throughput_military: 0.8, toll_rate: 0.1,
           fortification_level: 1,
           resource_output: {},
           metadata: { elevation: fortHex.mean_height, biome: fortHex.biome_family },
         });
+        occupiedHexes.add(hexKey(fortHex.q, fortHex.r));
         majorIndices.push({ idx, provId: prov.id, hex_q: fortHex.q, hex_r: fortHex.r });
       }
 
@@ -259,15 +344,15 @@ Deno.serve(async (req) => {
       if (hills.length >= 3) clusters.push({ hexes: hills, biome: "hills", name: `Lom ${prov.name}` });
       if (coastal.length >= 2 && coastalHexes.length === 0) clusters.push({ hexes: coastal, biome: "coastal", name: `Pobřeží ${prov.name}` });
       if (other.length >= 3) clusters.push({ hexes: other, biome: other[0]?.biome_family || "plains", name: `Sídliště ${prov.name}` });
-      // Ensure at least 1 minor per province
       if (clusters.length === 0 && pHexes.length > 0) {
         clusters.push({ hexes: pHexes.filter(h => h.is_passable), biome: pHexes[0]?.biome_family || "plains", name: `Osada ${prov.name}` });
       }
 
-      // Trade hub at border crossing (minor gateway)
+      // Trade hub at border crossing (minor gateway) — skip if hex occupied
       if (pBorder.length > 0) {
         const hexProvCount: Record<string, Set<string>> = {};
         for (const h of pBorder) {
+          if (occupiedHexes.has(hexKey(h.q, h.r))) continue;
           const key = hexKey(h.q, h.r);
           if (!hexProvCount[key]) hexProvCount[key] = new Set();
           for (const [dq, dr] of NEIGHBORS) {
@@ -278,8 +363,10 @@ Deno.serve(async (req) => {
         const best = Object.entries(hexProvCount).sort((a, b) => b[1].size - a[1].size)[0];
         if (best && best[1].size > 0) {
           const [bq, br] = best[0].split(",").map(Number);
-          const idx = allNodes.length;
-          allNodes.push({
+          const biome = hexByCoord[hexKey(bq, br)]?.biome_family || "plains";
+          const capTags = resolveCapabilityTags("trade_post", biome);
+          const idx = allNewNodes.length;
+          allNewNodes.push({
             session_id, province_id: prov.id, node_type: "trade_hub",
             node_tier: "minor", node_subtype: "trade_post", node_class: "minor",
             name: `Tržiště ${prov.name}`, hex_q: bq, hex_r: br,
@@ -287,10 +374,13 @@ Deno.serve(async (req) => {
             strategic_value: 4, economic_value: 9, defense_value: 2,
             mobility_relevance: 8, supply_relevance: 7,
             is_major: false, flow_role: "gateway",
+            production_role: capTags.role,
+            capability_tags: capTags.tags,
             throughput_military: 1.0, toll_rate: 0.05,
             resource_output: { wealth: 3 },
             metadata: { adjacent_provinces: best[1].size },
           });
+          occupiedHexes.add(hexKey(bq, br));
           minorIndices.push({ idx, provId: prov.id, hex_q: bq, hex_r: br });
         }
       }
@@ -299,19 +389,22 @@ Deno.serve(async (req) => {
       for (const cluster of clusters) {
         const avgQ = Math.round(cluster.hexes.reduce((s, h) => s + h.q, 0) / cluster.hexes.length);
         const avgR = Math.round(cluster.hexes.reduce((s, h) => s + h.r, 0) / cluster.hexes.length);
-        const centerHex = cluster.hexes.sort((a, b) =>
-          axialDist(a.q, a.r, avgQ, avgR) - axialDist(b.q, b.r, avgQ, avgR)
-        )[0];
+        // Pick center hex that is NOT occupied
+        const sortedHexes = cluster.hexes
+          .filter(h => !occupiedHexes.has(hexKey(h.q, h.r)))
+          .sort((a, b) => axialDist(a.q, a.r, avgQ, avgR) - axialDist(b.q, b.r, avgQ, avgR));
+        
+        if (sortedHexes.length === 0) continue; // all hexes occupied, skip
+        const centerHex = sortedHexes[0];
 
         const seed = `${session_id}-${prov.id}-${centerHex.q}-${centerHex.r}`;
         const subtype = pickMinorSubtype(cluster.biome, seed);
         const subtypeDef = MINOR_SUBTYPES[subtype] || MINOR_SUBTYPES.village;
-
-        // Roll strategic resource on minor node
         const strat = rollStrategicResource(cluster.biome, seed);
+        const capTags = resolveCapabilityTags(subtype, cluster.biome);
 
-        const idx = allNodes.length;
-        allNodes.push({
+        const idx = allNewNodes.length;
+        allNewNodes.push({
           session_id, province_id: prov.id,
           node_type: "resource_node",
           node_tier: "minor", node_subtype: subtype, node_class: "minor",
@@ -321,6 +414,8 @@ Deno.serve(async (req) => {
           strategic_value: strat ? 5 : 2, economic_value: 6, defense_value: 1,
           mobility_relevance: 4, supply_relevance: 6,
           is_major: false, flow_role: "producer",
+          production_role: capTags.role,
+          capability_tags: capTags.tags,
           throughput_military: 1.0, toll_rate: 0,
           resource_output: { ...subtypeDef.prod },
           production_base: Object.values(subtypeDef.prod).reduce((a, b) => a + b, 0),
@@ -336,31 +431,29 @@ Deno.serve(async (req) => {
             ...(strat ? { strategic_resource: strat.type, strategic_resource_label: strat.label } : {}),
           },
         });
+        occupiedHexes.add(hexKey(centerHex.q, centerHex.r));
         minorIndices.push({ idx, provId: prov.id, hex_q: centerHex.q, hex_r: centerHex.r });
 
         // ═══════════════════════════════════════
         // TIER 3: MICRO NODES (1-2 per minor, production units)
         // ═══════════════════════════════════════
         const microCount = cluster.hexes.length >= 5 ? 2 : 1;
-        const usedHexes = new Set([hexKey(centerHex.q, centerHex.r)]);
 
         for (let mi = 0; mi < microCount; mi++) {
-          // Pick a hex near the minor node but not the same
-          const candidates = cluster.hexes.filter(h => !usedHexes.has(hexKey(h.q, h.r)));
+          const candidates = cluster.hexes.filter(h => !occupiedHexes.has(hexKey(h.q, h.r)));
           if (candidates.length === 0) break;
           const microHex = candidates.sort((a, b) =>
             axialDist(a.q, a.r, centerHex.q, centerHex.r) - axialDist(b.q, b.r, centerHex.q, centerHex.r)
           )[0];
-          usedHexes.add(hexKey(microHex.q, microHex.r));
+          occupiedHexes.add(hexKey(microHex.q, microHex.r));
 
           const microSeed = `${seed}-micro-${mi}`;
           const microSubtype = pickMicroSubtype(microHex.biome_family || cluster.biome, microSeed);
           const microDef = MICRO_SUBTYPES[microSubtype] || MICRO_SUBTYPES.field;
-
-          // Roll strategic resource on micro node
           const microStrat = rollStrategicResource(microHex.biome_family || cluster.biome, microSeed);
+          const microCapTags = resolveCapabilityTags(microSubtype, microHex.biome_family || cluster.biome);
 
-          allNodes.push({
+          allNewNodes.push({
             session_id, province_id: prov.id,
             node_type: "resource_node",
             node_tier: "micro", node_subtype: microSubtype, node_class: "transit",
@@ -370,6 +463,8 @@ Deno.serve(async (req) => {
             strategic_value: microStrat ? 3 : 1, economic_value: 4, defense_value: 0,
             mobility_relevance: 2, supply_relevance: 4,
             is_major: false, flow_role: "producer",
+            production_role: microCapTags.role,
+            capability_tags: microCapTags.tags,
             throughput_military: 1.0, toll_rate: 0,
             resource_output: { ...microDef.prod },
             production_base: Object.values(microDef.prod).reduce((a, b) => a + b, 0),
@@ -379,7 +474,6 @@ Deno.serve(async (req) => {
             biome_at_build: microHex.biome_family || cluster.biome,
             upgrade_level: 1,
             max_upgrade_level: 3,
-            // _parentMinorIdx will be resolved after insert
             _parentMinorIdx: idx,
             metadata: {
               biome: microHex.biome_family || cluster.biome,
@@ -392,27 +486,49 @@ Deno.serve(async (req) => {
     }
 
     // ═══════════════════════════════════════
-    // PARENT ASSIGNMENT: minor → nearest major in same province
+    // PARENT ASSIGNMENT: minor → nearest major (including existing majors)
     // ═══════════════════════════════════════
+    // Build combined major list: new majors + existing majors
+    const allMajorPoints = [
+      ...majorIndices.map(m => ({ provId: m.provId, hex_q: m.hex_q, hex_r: m.hex_r, newIdx: m.idx, existingId: null as string | null })),
+      ...existingMajors.map(m => {
+        // Find province for existing major
+        const prov = provinces.find(p => p.id === (m as any).province_id);
+        return { provId: (m as any).province_id || "", hex_q: m.hex_q, hex_r: m.hex_r, newIdx: -1, existingId: m.id };
+      }),
+    ];
+
     for (const mi of minorIndices) {
-      const provMajors = majorIndices.filter(m => m.provId === mi.provId);
+      const provMajors = allMajorPoints.filter(m => m.provId === mi.provId);
       if (provMajors.length === 0) continue;
-      let bestDist = Infinity, bestIdx = provMajors[0].idx;
+      let bestDist = Infinity, bestMajor = provMajors[0];
       for (const mj of provMajors) {
         const d = axialDist(mi.hex_q, mi.hex_r, mj.hex_q, mj.hex_r);
-        if (d < bestDist) { bestDist = d; bestIdx = mj.idx; }
+        if (d < bestDist) { bestDist = d; bestMajor = mj; }
       }
-      allNodes[mi.idx]._parentMajorIdx = bestIdx;
+      if (bestMajor.newIdx >= 0) {
+        allNewNodes[mi.idx]._parentMajorIdx = bestMajor.newIdx;
+      } else if (bestMajor.existingId) {
+        allNewNodes[mi.idx]._parentExistingId = bestMajor.existingId;
+      }
     }
 
     // ═══════════════════════════════════════
     // BATCH INSERT
     // ═══════════════════════════════════════
+    if (allNewNodes.length === 0) {
+      return new Response(JSON.stringify({
+        ok: true,
+        nodes_created: 0,
+        message: "No new nodes to add — all positions occupied",
+      }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
     const insertedIds: string[] = [];
     const BATCH = 50;
-    for (let i = 0; i < allNodes.length; i += BATCH) {
-      const batch = allNodes.slice(i, i + BATCH).map((n) => {
-        const { _parentMajorIdx, _parentMinorIdx, ...rest } = n;
+    for (let i = 0; i < allNewNodes.length; i += BATCH) {
+      const batch = allNewNodes.slice(i, i + BATCH).map((n) => {
+        const { _parentMajorIdx, _parentMinorIdx, _parentExistingId, ...rest } = n;
         return {
           ...rest,
           fortification_level: rest.fortification_level ?? 0,
@@ -429,6 +545,8 @@ Deno.serve(async (req) => {
           resource_output: rest.resource_output ?? {},
           upgrade_level: rest.upgrade_level ?? 1,
           max_upgrade_level: rest.max_upgrade_level ?? (rest.node_tier === "major" ? 5 : 3),
+          capability_tags: rest.capability_tags ?? [],
+          production_role: rest.production_role ?? "source",
         };
       });
       const { data: inserted, error: insertErr } = await sb.from("province_nodes").insert(batch).select("id");
@@ -443,10 +561,13 @@ Deno.serve(async (req) => {
     // RESOLVE PARENT LINKS (minor→major, micro→minor)
     // ═══════════════════════════════════════
     const parentUpdates: Array<{ id: string; parent_node_id: string }> = [];
-    for (let i = 0; i < allNodes.length; i++) {
-      const n = allNodes[i];
-      if (n._parentMajorIdx !== undefined && insertedIds[i] && insertedIds[n._parentMajorIdx]) {
+    for (let i = 0; i < allNewNodes.length; i++) {
+      const n = allNewNodes[i];
+      if (n._parentMajorIdx !== undefined && n._parentMajorIdx >= 0 && insertedIds[i] && insertedIds[n._parentMajorIdx]) {
         parentUpdates.push({ id: insertedIds[i], parent_node_id: insertedIds[n._parentMajorIdx] });
+      }
+      if (n._parentExistingId && insertedIds[i]) {
+        parentUpdates.push({ id: insertedIds[i], parent_node_id: n._parentExistingId });
       }
       if (n._parentMinorIdx !== undefined && insertedIds[i] && insertedIds[n._parentMinorIdx]) {
         parentUpdates.push({ id: insertedIds[i], parent_node_id: insertedIds[n._parentMinorIdx] });
@@ -458,9 +579,9 @@ Deno.serve(async (req) => {
     }
 
     // Stats
-    const byTier = allNodes.reduce((acc, n) => { acc[n.node_tier || "unknown"] = (acc[n.node_tier || "unknown"] || 0) + 1; return acc; }, {} as Record<string, number>);
-    const byType = allNodes.reduce((acc, n) => { acc[n.node_type] = (acc[n.node_type] || 0) + 1; return acc; }, {} as Record<string, number>);
-    const strategicCount = allNodes.filter(n => n.strategic_resource_type).length;
+    const byTier = allNewNodes.reduce((acc, n) => { acc[n.node_tier || "unknown"] = (acc[n.node_tier || "unknown"] || 0) + 1; return acc; }, {} as Record<string, number>);
+    const byType = allNewNodes.reduce((acc, n) => { acc[n.node_type] = (acc[n.node_type] || 0) + 1; return acc; }, {} as Record<string, number>);
+    const strategicCount = allNewNodes.filter(n => n.strategic_resource_type).length;
 
     // Chain: compute routes → hex flows after node generation
     let chainResults: Record<string, any> = {};
@@ -480,7 +601,8 @@ Deno.serve(async (req) => {
 
     return new Response(JSON.stringify({
       ok: true,
-      nodes_created: allNodes.length,
+      nodes_created: allNewNodes.length,
+      existing_nodes: existingNodes.length,
       parent_links: parentUpdates.length,
       by_tier: byTier,
       by_type: byType,
