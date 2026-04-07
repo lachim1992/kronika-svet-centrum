@@ -1,16 +1,14 @@
+import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Bug, Droplets, Play, Shield, Sprout, FlaskConical, BarChart3, Compass, Info, Map, Zap, Telescope, MapPinPlus, Settings2, Users, SlidersHorizontal } from "lucide-react";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Zap, Database, Settings2, Telescope, ChevronDown } from "lucide-react";
 import HydrationSection from "@/components/dev/HydrationSection";
-import SimulationSection from "@/components/dev/SimulationSection";
 import RealSimulationSection from "@/components/dev/RealSimulationSection";
 import WorldIntegritySection from "@/components/dev/WorldIntegritySection";
 import SeedSection from "@/components/dev/SeedSection";
+import SeedMapManager from "@/components/dev/SeedMapManager";
 import QATestSection from "@/components/dev/QATestSection";
 import EconomyQASection from "@/components/dev/EconomyQASection";
-import LocalSimulationSection from "@/components/dev/LocalSimulationSection";
-import EventEngineSection from "@/components/dev/EventEngineSection";
-import SeedMapManager from "@/components/dev/SeedMapManager";
 import ObservatoryPanel from "@/components/dev/observatory/ObservatoryPanel";
 import DevNodeSpawner from "@/components/dev/DevNodeSpawner";
 import DevNodeEditor from "@/components/dev/DevNodeEditor";
@@ -30,6 +28,31 @@ interface DevModePanelProps {
   playersCount: number;
 }
 
+interface SectionProps {
+  icon: React.ReactNode;
+  title: string;
+  badge?: string;
+  defaultOpen?: boolean;
+  children: React.ReactNode;
+}
+
+function DevSection({ icon, title, badge, defaultOpen = false, children }: SectionProps) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <Collapsible open={open} onOpenChange={setOpen} className="border rounded-lg bg-card/50">
+      <CollapsibleTrigger className="flex items-center gap-2 w-full px-3 py-2.5 text-left hover:bg-muted/20 transition-colors rounded-lg">
+        <span className="text-primary">{icon}</span>
+        <span className="font-display font-semibold text-sm flex-1">{title}</span>
+        {badge && <Badge variant="outline" className="text-[9px]">{badge}</Badge>}
+        <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${open ? "rotate-180" : ""}`} />
+      </CollapsibleTrigger>
+      <CollapsibleContent className="px-3 pb-3 pt-1 space-y-3">
+        {children}
+      </CollapsibleContent>
+    </Collapsible>
+  );
+}
+
 const DevModePanel = ({
   sessionId, currentPlayerName, myRole = "player", onRefetch,
   citiesCount, eventsCount, wondersCount, memoriesCount, playersCount,
@@ -37,18 +60,8 @@ const DevModePanel = ({
   const perms = getPermissions(myRole);
 
   return (
-    <div className="space-y-4">
-      {/* Header + Stats */}
-      <div className="flex items-center justify-between">
-        <h1 className="text-xl font-display font-bold flex items-center gap-2">
-          <Bug className="h-5 w-5 text-primary" />
-          Dev Mode
-        </h1>
-        <Badge variant="outline" className="font-mono text-xs">
-          session: {sessionId.slice(0, 8)}…
-        </Badge>
-      </div>
-
+    <div className="space-y-3">
+      {/* Stats */}
       <div className="grid grid-cols-5 gap-2">
         {[
           { label: "Města", count: citiesCount },
@@ -64,117 +77,59 @@ const DevModePanel = ({
         ))}
       </div>
 
-      {/* Tabs */}
-      <Tabs defaultValue={perms.canRunServerDevTools ? "hydration" : "local-sim"} className="w-full">
-        <TabsList className="flex flex-wrap w-full h-auto gap-0.5">
-          {perms.canRunServerDevTools && (
-            <>
-              <TabsTrigger value="hydration" className="text-xs gap-1 py-2">
-                <Droplets className="h-3 w-3" /> Hydratace
-              </TabsTrigger>
-              <TabsTrigger value="real-sim" className="text-xs gap-1 py-2">
-                <Zap className="h-3 w-3" /> Simulace
-              </TabsTrigger>
-              <TabsTrigger value="simulation" className="text-xs gap-1 py-2">
-                <Play className="h-3 w-3" /> Quick Seed
-              </TabsTrigger>
-              <TabsTrigger value="integrity" className="text-xs gap-1 py-2">
-                <Shield className="h-3 w-3" /> Integrita
-              </TabsTrigger>
-              <TabsTrigger value="seed" className="text-xs gap-1 py-2">
-                <Sprout className="h-3 w-3" /> Seed
-              </TabsTrigger>
-              <TabsTrigger value="seed-map" className="text-xs gap-1 py-2">
-                <Map className="h-3 w-3" /> Seed Map
-              </TabsTrigger>
-              <TabsTrigger value="qa" className="text-xs gap-1 py-2">
-                <FlaskConical className="h-3 w-3" /> QA
-              </TabsTrigger>
-              <TabsTrigger value="economy-qa" className="text-xs gap-1 py-2">
-                <BarChart3 className="h-3 w-3" /> Econ QA
-              </TabsTrigger>
-            </>
-          )}
-          <TabsTrigger value="local-sim" className="text-xs gap-1 py-2">
-            <Compass className="h-3 w-3" /> Lokální simulace
-          </TabsTrigger>
-          <TabsTrigger value="event-engine" className="text-xs gap-1 py-2">
-            <Info className="h-3 w-3" /> Event Engine
-          </TabsTrigger>
-          <TabsTrigger value="observatory" className="text-xs gap-1 py-2">
-            <Telescope className="h-3 w-3" /> Observatory
-          </TabsTrigger>
-          <TabsTrigger value="node-spawner" className="text-xs gap-1 py-2">
-            <MapPinPlus className="h-3 w-3" /> Node Spawner
-          </TabsTrigger>
-          <TabsTrigger value="node-editor" className="text-xs gap-1 py-2">
-            <Settings2 className="h-3 w-3" /> Node Editor
-          </TabsTrigger>
-          <TabsTrigger value="player-editor" className="text-xs gap-1 py-2">
-            <Users className="h-3 w-3" /> Player Editor
-          </TabsTrigger>
-          <TabsTrigger value="formula-tuner" className="text-xs gap-1 py-2">
-            <SlidersHorizontal className="h-3 w-3" /> Formula Tuner
-          </TabsTrigger>
-        </TabsList>
-
-        {perms.canRunServerDevTools && (
-          <>
-            <TabsContent value="hydration" className="mt-3">
+      {/* ENGINE */}
+      {perms.canRunServerDevTools && (
+        <DevSection icon={<Zap className="h-4 w-4" />} title="Engine" badge="Simulace & Integrita" defaultOpen>
+          <div className="space-y-4">
+            <RealSimulationSection sessionId={sessionId} currentPlayerName={currentPlayerName} onRefetch={onRefetch} />
+            <div className="border-t border-border/50 pt-3">
               <HydrationSection sessionId={sessionId} onRefetch={onRefetch} />
-            </TabsContent>
-            <TabsContent value="real-sim" className="mt-3">
-              <RealSimulationSection sessionId={sessionId} currentPlayerName={currentPlayerName} onRefetch={onRefetch} />
-            </TabsContent>
-            <TabsContent value="simulation" className="mt-3">
-              <SimulationSection sessionId={sessionId} onRefetch={onRefetch} />
-            </TabsContent>
-            <TabsContent value="integrity" className="mt-3">
+            </div>
+            <div className="border-t border-border/50 pt-3">
               <WorldIntegritySection sessionId={sessionId} onRefetch={onRefetch} />
-            </TabsContent>
-            <TabsContent value="seed" className="mt-3">
-              <SeedSection sessionId={sessionId} onRefetch={onRefetch} />
-            </TabsContent>
-            <TabsContent value="qa" className="mt-3">
-              <QATestSection sessionId={sessionId} onRefetch={onRefetch} />
-            </TabsContent>
-            <TabsContent value="economy-qa" className="mt-3">
-              <EconomyQASection sessionId={sessionId} onRefetch={onRefetch} />
-            </TabsContent>
-            <TabsContent value="seed-map" className="mt-3">
+            </div>
+          </div>
+        </DevSection>
+      )}
+
+      {/* DATA & SEEDING */}
+      {perms.canRunServerDevTools && (
+        <DevSection icon={<Database className="h-4 w-4" />} title="Data & Seeding" badge="Seed, QA, Economy">
+          <div className="space-y-4">
+            <SeedSection sessionId={sessionId} onRefetch={onRefetch} />
+            <div className="border-t border-border/50 pt-3">
               <SeedMapManager sessionId={sessionId} onRefetch={onRefetch} />
-            </TabsContent>
-          </>
-        )}
+            </div>
+            <div className="border-t border-border/50 pt-3">
+              <EconomyQASection sessionId={sessionId} onRefetch={onRefetch} />
+            </div>
+            <div className="border-t border-border/50 pt-3">
+              <QATestSection sessionId={sessionId} onRefetch={onRefetch} />
+            </div>
+          </div>
+        </DevSection>
+      )}
 
-        <TabsContent value="local-sim" className="mt-3">
-          <LocalSimulationSection sessionId={sessionId} currentPlayerName={currentPlayerName} onRefetch={onRefetch} />
-        </TabsContent>
-
-        <TabsContent value="event-engine" className="mt-3">
-          <EventEngineSection />
-        </TabsContent>
-
-        <TabsContent value="observatory" className="mt-3">
-          <ObservatoryPanel sessionId={sessionId} />
-        </TabsContent>
-
-        <TabsContent value="node-spawner" className="mt-3">
+      {/* EDITORS */}
+      <DevSection icon={<Settings2 className="h-4 w-4" />} title="Editors" badge="Nodes, Players, Formulas">
+        <div className="space-y-4">
           <DevNodeSpawner sessionId={sessionId} onRefetch={onRefetch} />
-        </TabsContent>
+          <div className="border-t border-border/50 pt-3">
+            <DevNodeEditor sessionId={sessionId} onRefetch={onRefetch} />
+          </div>
+          <div className="border-t border-border/50 pt-3">
+            <DevPlayerEditor sessionId={sessionId} onRefetch={onRefetch} />
+          </div>
+          <div className="border-t border-border/50 pt-3">
+            <FormulaTunerPanel sessionId={sessionId} />
+          </div>
+        </div>
+      </DevSection>
 
-        <TabsContent value="node-editor" className="mt-3">
-          <DevNodeEditor sessionId={sessionId} onRefetch={onRefetch} />
-        </TabsContent>
-
-        <TabsContent value="player-editor" className="mt-3">
-          <DevPlayerEditor sessionId={sessionId} onRefetch={onRefetch} />
-        </TabsContent>
-
-        <TabsContent value="formula-tuner" className="mt-3">
-          <FormulaTunerPanel sessionId={sessionId} />
-        </TabsContent>
-      </Tabs>
+      {/* OBSERVATORY */}
+      <DevSection icon={<Telescope className="h-4 w-4" />} title="Observatory" badge="System MRI" defaultOpen={false}>
+        <ObservatoryPanel sessionId={sessionId} />
+      </DevSection>
     </div>
   );
 };

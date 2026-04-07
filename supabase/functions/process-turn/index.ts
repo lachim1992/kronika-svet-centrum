@@ -161,7 +161,7 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const { sessionId, playerName } = await req.json();
+    const { sessionId, playerName, recalcOnly } = await req.json();
     if (!sessionId || !playerName) throw new Error("Missing sessionId or playerName");
 
     const supabase = createClient(
@@ -184,8 +184,8 @@ Deno.serve(async (req) => {
     const { data: session } = await supabase.from("game_sessions").select("current_turn").eq("id", sessionId).single();
     const currentTurn = session?.current_turn || 1;
 
-    // Idempotency
-    if (realm.last_processed_turn >= currentTurn) {
+    // Idempotency — skip for recalcOnly (always recompute)
+    if (!recalcOnly && realm.last_processed_turn >= currentTurn) {
       return new Response(JSON.stringify({
         ok: true, skipped: true,
         message: `Turn ${currentTurn} already processed for ${playerName}`,
