@@ -169,26 +169,30 @@ Deno.serve(async (req) => {
     // ════════════════════════════════════════════
     // PHASE 2: Aggregate into city_market_summary
     // ════════════════════════════════════════════
-    // Build city → nodes map
-    const cityNodes = new Map<string, string[]>();
-    for (const n of nodes) {
-      if (!n.city_id) continue;
-      const arr = cityNodes.get(n.city_id) || [];
-      arr.push(n.id);
-      cityNodes.set(n.city_id, arr);
+    // Build node → city mapping via city_id or parent chain
+    const nodeToCityMap = new Map<string, string>();
+    const nodeById = new Map(nodes.map(n => [n.id, n]));
+
+    function resolveCityId(nodeId: string, depth = 0): string | null {
+      if (depth > 5) return null;
+      const node = nodeById.get(nodeId);
+      if (!node) return null;
+      if (node.city_id) return node.city_id;
+      if (node.parent_node_id) return resolveCityId(node.parent_node_id, depth + 1);
+      return null;
     }
-    // Also include child nodes (nodes whose parent is a city node)
-    const cityNodeIds = new Set(nodes.filter(n => n.city_id).map(n => n.id));
+
     for (const n of nodes) {
-      if (n.city_id) continue; // already handled
-      // Find if this node's parent chain leads to a city node
-      // Simple: just check direct parent
-      const parent = nodes.find(p => p.id === (n as any).parent_node_id);
-      if (parent?.city_id) {
-        const arr = cityNodes.get(parent.city_id) || [];
-        arr.push(n.id);
-        cityNodes.set(parent.city_id, arr);
-      }
+      const cityId = resolveCityId(n.id);
+      if (cityId) nodeToCityMap.set(n.id, cityId);
+    }
+
+    // Build city → nodes map from resolved mapping
+    const cityNodes = new Map<string, string[]>();
+    for (const [nodeId, cityId] of nodeToCityMap) {
+      const arr = cityNodes.get(cityId) || [];
+      arr.push(nodeId);
+      cityNodes.set(cityId, arr);
     }
 
     // Group inventory by city+good
