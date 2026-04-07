@@ -48,6 +48,7 @@ import {
 import TradePanel from "@/components/TradePanel";
 import SupplyChainPanel from "@/components/SupplyChainPanel";
 import EconomyDependencyMap from "@/components/economy/EconomyDependencyMap";
+import NodeFlowBreakdown from "@/components/economy/NodeFlowBreakdown";
 import PrestigeBreakdown from "@/components/economy/PrestigeBreakdown";
 import StrategicResourcesDetail from "@/components/economy/StrategicResourcesDetail";
 import FaithPanel from "@/components/economy/FaithPanel";
