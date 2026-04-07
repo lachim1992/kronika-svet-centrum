@@ -48,6 +48,7 @@ import {
 import TradePanel from "@/components/TradePanel";
 import SupplyChainPanel from "@/components/SupplyChainPanel";
 import EconomyDependencyMap from "@/components/economy/EconomyDependencyMap";
+import NodeFlowBreakdown from "@/components/economy/NodeFlowBreakdown";
 import PrestigeBreakdown from "@/components/economy/PrestigeBreakdown";
 import StrategicResourcesDetail from "@/components/economy/StrategicResourcesDetail";
 import FaithPanel from "@/components/economy/FaithPanel";
@@ -509,71 +510,7 @@ const HomeTab = ({
       </div>
 
       {/* ═══ SECTION 2: NODE FLOW BREAKDOWN ═══ */}
-      <Collapsible>
-        <div className="game-card p-5 space-y-3">
-          <div className="flex items-center gap-2">
-            <Network className="h-5 w-5 text-primary" />
-            <h3 className="font-display font-semibold text-base">Tok dle typu uzlu</h3>
-            <InfoTip side="right">Jak jednotlivé typy uzlů přispívají k celkové produkci, bohatství a kapacitě.</InfoTip>
-            <CollapsibleTrigger asChild>
-              <button className="ml-auto flex items-center gap-1 text-xs text-primary hover:text-primary/80">
-                <ChevronDown className="h-3 w-3" /> Rozbalit
-              </button>
-            </CollapsibleTrigger>
-          </div>
-
-          <div className="grid grid-cols-4 gap-2 text-xs">
-            <div className="font-semibold text-muted-foreground">Role</div>
-            <div className="text-center font-semibold text-muted-foreground">{MACRO_LAYER_ICONS.production} Produkce</div>
-            <div className="text-center font-semibold text-muted-foreground">{MACRO_LAYER_ICONS.wealth} Bohatství</div>
-            <div className="text-center font-semibold text-muted-foreground">{MACRO_LAYER_ICONS.capacity} Kapacita</div>
-          </div>
-          {Object.entries(nodesByRole).map(([role, data]) => (
-            <div key={role} className="grid grid-cols-4 gap-2 text-xs border-t border-border/30 pt-1">
-              <div className="font-semibold">{ROLE_LABELS[role] || role} <span className="text-muted-foreground">({data.count})</span></div>
-              <div className="text-center font-bold">{data.production.toFixed(1)}</div>
-              <div className="text-center font-bold">{data.wealth.toFixed(1)}</div>
-              <div className="text-center font-bold">{data.capacity.toFixed(1)}</div>
-            </div>
-          ))}
-
-          <CollapsibleContent>
-            <div className="border-t border-border pt-3 mt-3 space-y-2">
-              <h4 className="text-xs font-semibold text-muted-foreground">Top 5 uzlů dle důležitosti</h4>
-              {topNodes.map(n => {
-                const impLabel = getImportanceLabel(n.importance_score ?? 0);
-                const impColor = getImportanceColor(n.importance_score ?? 0);
-                return (
-                  <div key={n.id} className="flex items-center justify-between text-xs border-b border-border/20 pb-1">
-                    <span className="font-semibold">{n.name}</span>
-                    <div className="flex items-center gap-2">
-                      <span className="text-muted-foreground">{MACRO_LAYER_ICONS.production}{(n.production_output ?? 0).toFixed(1)}</span>
-                      <span className="text-muted-foreground">{MACRO_LAYER_ICONS.wealth}{(n.wealth_output ?? 0).toFixed(1)}</span>
-                      <Badge className={`text-[8px] ${impColor}`}>{impLabel} ({(n.importance_score ?? 0).toFixed(1)})</Badge>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-            {isolatedNodes.length > 0 && (
-              <div className="border-t border-border pt-3 mt-3 space-y-2">
-                <h4 className="text-xs font-semibold text-destructive flex items-center gap-1">
-                  <AlertTriangle className="h-3 w-3" /> Izolované uzly ({isolatedNodes.length})
-                </h4>
-                {isolatedNodes.map(n => {
-                  const sev = getIsolationSeverity(n.isolation_penalty ?? 0);
-                  return (
-                    <div key={n.id} className="flex items-center justify-between text-xs">
-                      <span>{n.name}</span>
-                      <span className="text-destructive">{ISOLATION_PENALTY_LABELS[sev]} (-{Math.round((n.isolation_penalty ?? 0) * 100)}%)</span>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </CollapsibleContent>
-        </div>
-      </Collapsible>
+      <NodeFlowBreakdown sessionId={sessionId} playerName={currentPlayerName} realm={realm} />
 
       {/* ═══ SECTION 3: MACRO ECONOMY ═══ */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
