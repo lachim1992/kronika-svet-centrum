@@ -53,7 +53,7 @@ Deno.serve(async (req) => {
     const [goodsRes, recipesRes, nodesRes, citiesRes, routesRes, hexesRes] = await Promise.all([
       sb.from("goods").select("key, category, production_stage, market_tier, base_price_numeric, demand_basket, substitution_map, storable"),
       sb.from("production_recipes").select("*"),
-      sb.from("province_nodes").select("id, session_id, node_type, node_tier, node_subtype, production_role, capability_tags, guild_level, city_id, controlled_by, production_output, hex_q, hex_r, upgrade_level, specialization_scores").eq("session_id", session_id),
+      sb.from("province_nodes").select("id, session_id, node_type, node_tier, node_subtype, production_role, capability_tags, guild_level, city_id, controlled_by, production_output, hex_q, hex_r, upgrade_level, specialization_scores, parent_node_id").eq("session_id", session_id),
       sb.from("cities").select("id, name, owner_player, population_total, population_peasants, population_burghers, population_clerics, population_warriors, market_level, settlement_level").eq("session_id", session_id),
       sb.from("province_routes").select("id, node_a, node_b, capacity_value, control_state").eq("session_id", session_id),
       sb.from("province_hexes").select("q, r, resource_deposits").eq("session_id", session_id).not("resource_deposits", "is", null),
@@ -68,6 +68,13 @@ Deno.serve(async (req) => {
 
     const goodsMap = new Map(goods.map(g => [g.key, g]));
     const cityMap = new Map(cities.map(c => [c.id, c]));
+    // Map cities.id → province_nodes.id (for FK references in demand_baskets, trade_flows)
+    const cityToNodeId = new Map<string, string>();
+    for (const n of nodes) {
+      if (n.city_id && !cityToNodeId.has(n.city_id)) {
+        cityToNodeId.set(n.city_id, n.id);
+      }
+    }
 
     // Build hex deposit lookup
     const depositMap = new Map<string, any[]>();
@@ -169,26 +176,30 @@ Deno.serve(async (req) => {
     // ════════════════════════════════════════════
     // PHASE 2: Aggregate into city_market_summary
     // ════════════════════════════════════════════
-    // Build city → nodes map
-    const cityNodes = new Map<string, string[]>();
-    for (const n of nodes) {
-      if (!n.city_id) continue;
-      const arr = cityNodes.get(n.city_id) || [];
-      arr.push(n.id);
-      cityNodes.set(n.city_id, arr);
+    // Build node → city mapping via city_id or parent chain
+    const nodeToCityMap = new Map<string, string>();
+    const nodeById = new Map(nodes.map(n => [n.id, n]));
+
+    function resolveCityId(nodeId: string, depth = 0): string | null {
+      if (depth > 5) return null;
+      const node = nodeById.get(nodeId);
+      if (!node) return null;
+      if (node.city_id) return node.city_id;
+      if (node.parent_node_id) return resolveCityId(node.parent_node_id, depth + 1);
+      return null;
     }
-    // Also include child nodes (nodes whose parent is a city node)
-    const cityNodeIds = new Set(nodes.filter(n => n.city_id).map(n => n.id));
+
     for (const n of nodes) {
-      if (n.city_id) continue; // already handled
-      // Find if this node's parent chain leads to a city node
-      // Simple: just check direct parent
-      const parent = nodes.find(p => p.id === (n as any).parent_node_id);
-      if (parent?.city_id) {
-        const arr = cityNodes.get(parent.city_id) || [];
-        arr.push(n.id);
-        cityNodes.set(parent.city_id, arr);
-      }
+      const cityId = resolveCityId(n.id);
+      if (cityId) nodeToCityMap.set(n.id, cityId);
+    }
+
+    // Build city → nodes map from resolved mapping
+    const cityNodes = new Map<string, string[]>();
+    for (const [nodeId, cityId] of nodeToCityMap) {
+      const arr = cityNodes.get(cityId) || [];
+      arr.push(nodeId);
+      cityNodes.set(cityId, arr);
     }
 
     // Group inventory by city+good
@@ -276,6 +287,8 @@ Deno.serve(async (req) => {
     // ════════════════════════════════════════════
     const demandBasketRows: any[] = [];
     for (const [cityId, demands] of cityDemands) {
+      const cityNodeId = cityToNodeId.get(cityId);
+      if (!cityNodeId) continue; // Skip cities without a matching province_node
       const citySupply = cityGoodSupply.get(cityId) || new Map();
       
       for (const [basketKey, demandQty] of demands) {
@@ -291,11 +304,14 @@ Deno.serve(async (req) => {
 
         demandBasketRows.push({
           session_id,
-          city_id: cityId,
+          city_id: cityNodeId,
           basket_key: basketKey,
           tier: DEMAND_BASKETS[basketKey]?.tier || 1,
           quantity_needed: Math.round(demandQty * 10) / 10,
           quantity_fulfilled: Math.round(domesticSatisfaction * 10) / 10,
+          fulfillment_type: satisfaction >= 0.8 ? "full" : satisfaction >= 0.3 ? "partial" : "deficit",
+          min_quality: 0,
+          preferred_quality: DEMAND_BASKETS[basketKey]?.tier >= 3 ? 2 : 1,
           satisfaction_score: Math.round(satisfaction * 1000) / 1000,
           turn_number: turn_number || 1,
         });
@@ -305,7 +321,8 @@ Deno.serve(async (req) => {
     if (demandBasketRows.length > 0) {
       await sb.from("demand_baskets").delete().eq("session_id", session_id);
       for (let i = 0; i < demandBasketRows.length; i += 50) {
-        await sb.from("demand_baskets").insert(demandBasketRows.slice(i, i + 50));
+        const { error: dbErr } = await sb.from("demand_baskets").insert(demandBasketRows.slice(i, i + 50));
+        if (dbErr) console.error("demand_baskets insert error:", JSON.stringify(dbErr));
       }
     }
 
@@ -382,15 +399,19 @@ Deno.serve(async (req) => {
 
           tradeFlows.push({
             session_id,
-            source_city_id: neighborId,
-            target_city_id: cityId,
+            source_city_id: cityToNodeId.get(neighborId) || neighborId,
+            target_city_id: cityToNodeId.get(cityId) || cityId,
             source_player: neighborCity.owner_player || "",
             target_player: city.owner_player || "",
             good_key: bestGoodKey,
+            flow_type: "demand_pull",
             volume_per_turn: Math.round(flowVolume * 10) / 10,
+            quality_band: 0,
             trade_pressure: Math.round(pressure * 100) / 100,
             effective_price: goodsMap.get(bestGoodKey)?.base_price_numeric || 1,
             price_band: goodsMap.get(bestGoodKey)?.base_price_numeric > 5 ? 1 : 0,
+            friction_score: 0,
+            maturity: 0,
             status: pressure > 0.5 ? "active" : "trial",
             turn_created: turn_number || 1,
           });
@@ -404,7 +425,8 @@ Deno.serve(async (req) => {
       await sb.from("trade_flows").delete().eq("session_id", session_id);
 
       for (let i = 0; i < tradeFlows.length; i += 50) {
-        await sb.from("trade_flows").insert(tradeFlows.slice(i, i + 50));
+        const { error: tfErr } = await sb.from("trade_flows").insert(tradeFlows.slice(i, i + 50));
+        if (tfErr) console.error("trade_flows insert error:", JSON.stringify(tfErr));
       }
     }
 
