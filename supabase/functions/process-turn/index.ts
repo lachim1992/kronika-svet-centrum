@@ -200,7 +200,20 @@ Deno.serve(async (req) => {
     const totalWealth = realm.total_wealth || 0;
     const totalCapacity = realm.total_capacity || 0;
     const totalImportance = realm.total_importance || 0;
+
+    // ── GOODS ECONOMY LAYER (from compute-trade-flows v4.1) ──
+    const goodsProductionValue = realm.goods_production_value || 0;
+    const goodsSupplyVolume = realm.goods_supply_volume || 0;
+    const goodsWealthFiscal = realm.goods_wealth_fiscal || 0;
+    const economyVersion = realm.economy_version || 3;
+    // Blending factor: economy_version 4+ uses goods layer primarily
+    const goodsBlend = economyVersion >= 4 ? 0.7 : (goodsProductionValue > 0 ? 0.3 : 0);
+    const legacyBlend = 1 - goodsBlend;
+
     logEntries.push(`⚒️ Produkce: ${totalProduction.toFixed(1)} | 💰 Bohatství: ${totalWealth.toFixed(1)} | 🏛️ Kapacita: ${totalCapacity.toFixed(1)}`);
+    if (goodsProductionValue > 0) {
+      logEntries.push(`📦 Goods vrstva: produkce=${goodsProductionValue.toFixed(1)} zásoby=${goodsSupplyVolume.toFixed(1)} fiskál=${goodsWealthFiscal.toFixed(1)} (blend ${Math.round(goodsBlend * 100)}%)`);
+    }
 
     // ── Load cities ──
     const { data: cities } = await supabase.from("cities").select("*")
