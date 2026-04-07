@@ -2,31 +2,34 @@ import { useState, useMemo } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Skull, Zap, Shield, GitBranch } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Skull, Zap, Shield, GitBranch, Filter } from "lucide-react";
 import { DB_TABLES, DB_TABLE_COLUMNS, DB_RELATIONS } from "./dbSchemaData";
 import { DATA_FLOW_AUDIT } from "./dataFlowAuditData";
 
-/* ── 1. Dead Data Detector ── */
-// Columns that exist in the DB but are never referenced in code read/write audit
+/* ── 1. Dead Data Detector with Action Plan ── */
 function DeadDataDetector() {
+  const [filter, setFilter] = useState<"all" | "dead" | "fk" | "planned">("all");
+
   const deadData = useMemo(() => {
-    // Gather all columns mentioned in data flow audit
     const referencedCols = new Set<string>();
     for (const entry of DATA_FLOW_AUDIT) {
       referencedCols.add(`${entry.table}.${entry.column}`);
     }
 
-    const results: { table: string; column: string; reason: string }[] = [];
+    const results: { table: string; column: string; reason: string; category: "dead" | "fk" | "planned" }[] = [];
     for (const [tableName, cols] of Object.entries(DB_TABLE_COLUMNS)) {
       for (const col of cols) {
         const key = `${tableName}.${col}`;
         if (!referencedCols.has(key) && col !== "id" && col !== "created_at" && col !== "updated_at" && col !== "session_id") {
-          // Check if it's an FK column
           const isFK = DB_RELATIONS.some(r => r.from === tableName && r.fromCol === col);
+          // Check if it's a known future-use column
+          const isPlanned = ["custom_layers", "flavor_prompt", "ruins_note", "tags", "province"].some(p => col === p);
           results.push({
             table: tableName,
             column: col,
-            reason: isFK ? "FK only — no direct read/write in code" : "No read/write detected in code",
+            reason: isFK ? "FK only — no direct read/write in code" : isPlanned ? "Planned for future use" : "No read/write detected",
+            category: isFK ? "fk" : isPlanned ? "planned" : "dead",
           });
         }
       }
@@ -34,32 +37,78 @@ function DeadDataDetector() {
     return results;
   }, []);
 
+  const filtered = useMemo(() => {
+    if (filter === "all") return deadData;
+    return deadData.filter(d => d.category === filter);
+  }, [deadData, filter]);
+
   const byTable = useMemo(() => {
-    const map: Record<string, typeof deadData> = {};
-    for (const d of deadData) {
+    const map: Record<string, typeof filtered> = {};
+    for (const d of filtered) {
       (map[d.table] = map[d.table] || []).push(d);
     }
     return Object.entries(map).sort((a, b) => b[1].length - a[1].length);
-  }, [deadData]);
+  }, [filtered]);
+
+  const counts = useMemo(() => ({
+    all: deadData.length,
+    dead: deadData.filter(d => d.category === "dead").length,
+    fk: deadData.filter(d => d.category === "fk").length,
+    planned: deadData.filter(d => d.category === "planned").length,
+  }), [deadData]);
+
+  const categoryColors: Record<string, string> = {
+    dead: "bg-destructive/20 text-destructive border-destructive/30",
+    fk: "bg-muted/50 text-muted-foreground border-border",
+    planned: "bg-yellow-500/20 text-yellow-600 border-yellow-500/30",
+  };
+
+  const categoryIcons: Record<string, string> = {
+    dead: "🗑️",
+    fk: "🔗",
+    planned: "📌",
+  };
 
   return (
     <div className="space-y-3">
+      <div className="flex items-center gap-2 flex-wrap">
+        <Filter className="h-3 w-3 text-muted-foreground" />
+        <Button size="sm" variant={filter === "all" ? "default" : "outline"} className="h-6 text-[10px] px-2" onClick={() => setFilter("all")}>
+          Vše ({counts.all})
+        </Button>
+        <Button size="sm" variant={filter === "dead" ? "default" : "outline"} className="h-6 text-[10px] px-2 gap-1" onClick={() => setFilter("dead")}>
+          🗑️ Dead ({counts.dead})
+        </Button>
+        <Button size="sm" variant={filter === "fk" ? "default" : "outline"} className="h-6 text-[10px] px-2 gap-1" onClick={() => setFilter("fk")}>
+          🔗 FK only ({counts.fk})
+        </Button>
+        <Button size="sm" variant={filter === "planned" ? "default" : "outline"} className="h-6 text-[10px] px-2 gap-1" onClick={() => setFilter("planned")}>
+          📌 Planned ({counts.planned})
+        </Button>
+      </div>
+
       <p className="text-xs text-muted-foreground">
-        Sloupce bez detekovaného čtení/zápisu v kódu — {deadData.length} potenciálně mrtvých polí v {byTable.length} tabulkách.
+        {filtered.length} sloupců v {byTable.length} tabulkách
       </p>
+
       <ScrollArea className="h-[500px]">
         <div className="space-y-3">
           {byTable.map(([table, cols]) => (
             <div key={table} className="border rounded-lg p-2">
               <div className="flex items-center gap-2 mb-1">
                 <span className="font-mono text-xs font-bold">{table}</span>
-                <Badge variant="destructive" className="text-[9px]">{cols.length} dead</Badge>
+                <Badge variant="destructive" className="text-[9px]">{cols.length} unreferenced</Badge>
                 <Badge variant="outline" className="text-[9px]">{DB_TABLE_COLUMNS[table]?.length || 0} total</Badge>
               </div>
               <div className="flex flex-wrap gap-1">
                 {cols.map(c => (
-                  <Badge key={c.column} variant="outline" className="text-[9px] font-mono" title={c.reason}>
-                    {c.column}
+                  <Badge
+                    key={c.column}
+                    variant="outline"
+                    className={`text-[9px] font-mono gap-1 ${categoryColors[c.category] || ""}`}
+                    title={c.reason}
+                  >
+                    {categoryIcons[c.category]} {c.column}
                   </Badge>
                 ))}
               </div>
@@ -103,7 +152,7 @@ function TriggerFunctionMap() {
   return (
     <div className="space-y-4">
       <div>
-        <p className="text-xs text-muted-foreground mb-2">Triggery — automatické reakce na databázové operace ({DB_TRIGGERS.length})</p>
+        <p className="text-xs text-muted-foreground mb-2">Triggery ({DB_TRIGGERS.length})</p>
         <ScrollArea className="h-[200px] border rounded-lg">
           <div className="p-2 space-y-1">
             {DB_TRIGGERS.map(t => (
@@ -141,9 +190,11 @@ function TriggerFunctionMap() {
 const EDGE_FUNCTIONS = [
   { name: "world-tick", tables: ["cities", "hex_tiles", "province_nodes", "game_events"], category: "simulation" },
   { name: "process-tick", tables: ["action_queue", "travel_orders"], category: "simulation" },
-  { name: "process-turn", tables: ["cities", "game_players", "game_events"], category: "economy" },
+  { name: "process-turn", tables: ["cities", "game_players", "game_events", "realm_resources"], category: "economy" },
   { name: "commit-turn", tables: ["game_sessions", "game_players"], category: "turn" },
-  { name: "compute-economy-flow", tables: ["province_nodes", "flow_paths", "cities"], category: "economy" },
+  { name: "recompute-all", tables: ["(orchestrates routes→flows→economy→trade→turn)"], category: "economy" },
+  { name: "compute-economy-flow", tables: ["province_nodes", "flow_paths", "cities", "node_inventory", "demand_baskets", "city_market_summary"], category: "economy" },
+  { name: "compute-trade-flows", tables: ["trade_flows", "node_inventory", "demand_baskets"], category: "economy" },
   { name: "compute-province-graph", tables: ["province_nodes", "province_routes"], category: "spatial" },
   { name: "compute-province-nodes", tables: ["hex_tiles", "province_nodes", "cities"], category: "spatial" },
   { name: "compute-province-routes", tables: ["province_nodes", "province_routes", "hex_tiles"], category: "spatial" },
@@ -157,7 +208,7 @@ const EDGE_FUNCTIONS = [
   { name: "council-session", tables: ["council_sessions", "council_votes"], category: "social" },
   { name: "law-process", tables: ["laws", "cities"], category: "social" },
   { name: "explore-hex", tables: ["hex_tiles", "discoveries"], category: "exploration" },
-  { name: "world-generate-init", tables: ["hex_tiles", "cities", "game_sessions"], category: "setup" },
+  { name: "world-generate-init", tables: ["hex_tiles", "cities", "game_sessions", "goods", "production_recipes"], category: "setup" },
   { name: "check-victory", tables: ["game_sessions", "cities", "wonders"], category: "meta" },
   { name: "declaration-effects", tables: ["declarations", "diplomacy_relations"], category: "diplomacy" },
   { name: "diplomacy-reply", tables: ["diplomacy_messages", "diplomacy_relations"], category: "diplomacy" },
@@ -168,7 +219,7 @@ const EDGE_FUNCTIONS = [
   { name: "world-crisis", tables: ["world_events", "cities"], category: "events" },
   { name: "generate-building", tables: ["city_buildings", "building_templates"], category: "construction" },
   { name: "expand-province", tables: ["provinces", "hex_tiles"], category: "spatial" },
-  { name: "trade", tables: ["trade_routes", "province_nodes"], category: "economy" },
+  { name: "backfill-economy-tags", tables: ["province_nodes"], category: "economy" },
 ];
 
 function EdgeFunctionMonitor() {
@@ -182,9 +233,7 @@ function EdgeFunctionMonitor() {
 
   return (
     <div className="space-y-3">
-      <p className="text-xs text-muted-foreground">
-        {EDGE_FUNCTIONS.length} edge funkcí — závislosti na tabulkách, kategorizace
-      </p>
+      <p className="text-xs text-muted-foreground">{EDGE_FUNCTIONS.length} edge funkcí</p>
       <ScrollArea className="h-[450px]">
         <div className="space-y-3">
           {categories.map(([cat, fns]) => (
@@ -227,9 +276,8 @@ function RLSPolicyAudit() {
   return (
     <div className="space-y-4">
       <p className="text-xs text-muted-foreground">
-        {audit.withRLS.length} tabulek s RLS, {audit.withoutRLS.length} bez RLS ochrany.
+        {audit.withRLS.length} tabulek s RLS, {audit.withoutRLS.length} bez RLS.
       </p>
-
       {audit.withoutRLS.length > 0 && (
         <div>
           <p className="text-xs font-medium text-destructive mb-1">⚠️ Bez RLS ({audit.withoutRLS.length})</p>
@@ -240,7 +288,6 @@ function RLSPolicyAudit() {
           </div>
         </div>
       )}
-
       <div>
         <p className="text-xs font-medium text-green-500 mb-1">✅ S RLS ({audit.withRLS.length})</p>
         <ScrollArea className="h-[350px] border rounded-lg">
