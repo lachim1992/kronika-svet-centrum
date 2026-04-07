@@ -65,3 +65,16 @@ trade_flows (from_node → to_node, good_key, volume)      ✅ 4 záznamů
         ▼
 realm_resources (fiskální agregáty)                       ✅ 4 hráči aktualizováni
 ```
+
+### ✅ Fáze 4: Dead metriky — HOTOVO
+- **Legitimacy**: `computeLegitimacyDrift()` v physics.ts. Drift dle demand_satisfaction, famine, temple, conquest, policies. Downstream: stabilita += (leg−50)×0.05, rebelie práh −10 pod 25. Zapojen do world-tick step 8b.
+- **Migration Pressure**: `computeMigrationPressure()` + `resolveMigration()` v physics.ts. Push/pull faktory, reálné přesuny populace mezi městy. Zapojen do world-tick step 8c.
+- **Labor Allocation**: `computeLaborModifiers()` v demographics.ts + `computeSocialMobility()` zapojena do world-tick step 8d. farming→food_mod, crafting→prod_mod, canal→irrigation, scribes→mobilita.
+- AI kontext: legitimacy přidán do ai-context.ts (buildStrategicMapContext).
+- Observatory: Všechny 3 metriky změněny z dead/readonly → full. Nové edge vazby přidány.
+- DataFlowAudit: labor_allocation, legitimacy, migration_pressure aktualizovány na liveUsed=true s novými readers.
+- UI: RealmIndicators legitimita tooltip s vysvětlením driftu a barevným kódováním.
+- Fix: Odstraněn duplicitní MigrationCity interface v demographics.ts.
+
+## Zbývá
+- Fáze 6: UI integrace goods economy
