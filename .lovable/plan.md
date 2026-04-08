@@ -1,107 +1,86 @@
 
+# Přestavba záložky Ekonomika — 5 sub-záložek
 
-# Sjednocení Wealth systému — 4 pilíře
+## Současný stav
+Záložka Ekonomika má 4 sub-taby: Přehled (mix všeho), Goods (GoodsDemandSubTab + TradePanel + SupplyChain), Fiskál, Sídla. Problém: poptávka, mezery a supply chain jsou rozházené, žádná gap analýza, žádné doporučení.
 
-## Současný stav (problémy)
+## Nová struktura (5 sub-záložek)
 
-1. **Magic blend**: `combinedWealth = wealthFromLayers + wealthFromNodes * 0.3 * legacyBlend` (řádek 717 process-turn) — neprůhledný koeficient
-2. **Bug**: process-turn zapisuje `tax_pop` ale sloupec se jmenuje `tax_population` → data se nezapisují
-3. **Žádný route commerce**: province_routes mají `capacity_value`, `economic_relevance`, `damage_level`, `controlled_by` — ale nikdy negenerují wealth
-4. **Existující sloupce v realm_resources**: `tax_market`, `tax_transit`, `tax_extraction`, `tax_population`, `commercial_capture`, `commercial_retention`, `goods_wealth_fiscal`, `total_wealth`
+### 1. 📊 Přehled (zachovat, zjednodušit)
+- Macro summary row (produkce, wealth, zásoby, kapacita)
+- Alerts (hladomor, izolace, mobilizace)
+- Workforce panel
+- Grain reserve + Treasury (existující)
+- Tok dle rolí (node flow breakdown — zkrácený)
 
-## Architektura po změně
+### 2. 📦 Poptávka & Nasycení (NOVÉ — přesun + rozšíření)
+Hlavní panel říšní poptávky:
+- **Pyramida nasycení**: 3 vrstvy (NEED / UPGRADE / PRESTIGE) s celkovým % nasycení
+- **Seznam zboží**: každé zboží v demand_baskets — supply vs demand, % satisfaction, které město potřebuje
+- **Goods katalog**: existující GoodsDemandSubTab (tabulka goods by tier, recepty) — zachovat jako collapsible sub-sekci
+- Data: `demand_baskets`, `city_market_summary`, `goods` tabulky (už se načítají v GoodsDemandSubTab)
 
-```text
-WEALTH INCOME (4 pilíře)
-├─ 1. Population Tax (wealth_pop_tax)
-│   = pop × 0.002 × polis_bonus × taxMult
-│   Přejmenovano z totalCityWealth → population_tax_base
-│
-├─ 2. Domestic Market (wealth_domestic_market)  
-│   = total_wealth (z compute-economy-flow) × DOMESTIC_MARKET_REALIZATION
-│   DOMESTIC_MARKET_REALIZATION = pojmenovaný tuning knob (0.5 start)
-│
-├─ 3. Goods Fiscal (wealth_goods_fiscal) — existující sloupec
-│   = tax_market + tax_transit + tax_extraction + capture
-│   Bez změny logiky, jen se přestane blendovat
-│
-├─ 4. Route Commerce (wealth_route_commerce) — NOVÉ
-│   = Σ route: capacity × (1-damage×0.1) × controlFactor × econ_relevance × RATE
-│   Monetizace průtoku, ne daň. Služby, sklady, karavany.
-│
-├─ + Prestige bonus, trade gold, strategic mult
-├─ - Army upkeep, tolls, sport funding
-└─ = net → gold_reserve
-```
+### 3. 🔗 Supply Chain (přesun + rozšíření)
+Plný supply chain od hex po finální produkt:
+- **SupplyChainPanel** (existující) — zásobování, izolované uzly, trasy
+- **NodeFlowBreakdown** (existující) — rozpad dle uzlů s trasami
+- **Produkční řetězce**: recepty aktivní v říši — co vyrábíš, kde, kolik, bottlenecky (z `production_recipes` + `city_market_summary`)
+- **Nevyužité kapacity**: uzly s capability_tags ale bez aktivního receptu
 
-## Konkrétní změny
+### 4. 🎯 Mezery & Poradce (NOVÉ)
+Gap analýza + AI doporučení:
+- **Top chybějící zboží**: seřazeno dle urgence (demand - supply), s dopadem na stabilitu
+  - Červená: NEED vrstva nesaturovaná → destabilizace
+  - Žlutá: UPGRADE chybí → stagnace růstu
+  - Modrá: PRESTIGE chybí → ztráta prestiže
+- **AI Advisor**: tlačítko "Zeptej se poradce" → volá edge function `economy-advisor` (nová)
+  - Vstup: demand_baskets, city_market_summary, production_recipes, province_nodes (capability_tags), cities
+  - Výstup: 3-5 konkrétních doporučení ("Postav mlýn v městě X — pokryješ 80% poptávky po mouce")
+  - Zobrazí se jako karty s ikonou, popisem a odkazem na město/budovu
+- **Obchodní příležitosti**: zboží které exportuješ vs. co importuješ — identifikace obchodních výhod
 
-### 1. DB migrace
-Přidat 3 nové sloupce (reuse existující `goods_wealth_fiscal`):
-```sql
-ALTER TABLE realm_resources 
-  ADD COLUMN IF NOT EXISTS wealth_pop_tax numeric DEFAULT 0,
-  ADD COLUMN IF NOT EXISTS wealth_domestic_market numeric DEFAULT 0,
-  ADD COLUMN IF NOT EXISTS wealth_route_commerce numeric DEFAULT 0;
-```
+### 5. 🏛️ Fiskál (existující — beze změny)
+FiscalSubTab + Trade ideology — zachovat jak je.
 
-### 2. process-turn (edge function)
-- **Fix bug**: `tax_pop` → `tax_population` 
-- **Nahradit blend** (řádky 710-718): Explicitní 4 pilíře s pojmenovanými konstantami
-- **Přidat route commerce výpočet**: Iterace přes `province_routes` kontrolované hráčem, výpočet `effectiveCapacity × economic_relevance × ROUTE_COMMERCE_RATE`
-- `DOMESTIC_MARKET_REALIZATION = 0.5` jako pojmenovaný tuning knob
-- `ROUTE_COMMERCE_RATE = 0.05` jako pojmenovaný tuning knob
-- Route commerce zahrnuje `controlFactor` (owned=1, contested=0.25, other=0) a `damagePenalty`
-- Zapsat všechny 4 pilíře do DB: `wealth_pop_tax`, `wealth_domestic_market`, `goods_wealth_fiscal` (update), `wealth_route_commerce`
-- Jasně oddělit income vs expenses vs gold_reserve
+### 6. 🏙️ Sídla (existující — beze změny)
+Tabulka měst — zachovat jak je.
 
-### 3. Utility: `getWealthBreakdown()` 
-Nová funkce v `src/lib/economyFlow.ts`:
-```typescript
-export function getWealthBreakdown(realm: any) {
-  return {
-    popTax: Number(realm.wealth_pop_tax ?? realm.tax_population ?? 0),
-    domesticMarket: Number(realm.wealth_domestic_market ?? 0),
-    goodsFiscal: Number(realm.goods_wealth_fiscal ?? 0),
-    routeCommerce: Number(realm.wealth_route_commerce ?? 0),
-  };
-}
-```
-Jednotný selektor — UI neřeší fallbacky a legacy názvy.
+## Implementace
 
-### 4. FiscalSubTab — přepis
-Nový layout s 4 pilíři + výdaje + pokladna:
-- PŘÍJMY: Pop daň, Domácí trh, Goods fiskál (s rozbaleným sub-detail), Koridorový obchod
-- VÝDAJE: Army upkeep, Mýtné, Sport funding
-- ČISTÝ PŘÍRŮSTEK + stav POKLADNY
-- Používá `getWealthBreakdown()` pro data
+### A. Nová edge function: `economy-advisor`
+- Načte demand_baskets, city_market_summary, goods, production_recipes, province_nodes, cities pro danou session+player
+- Zavolá Lovable AI (gemini-3-flash-preview) se strukturovaným promptem
+- Vrátí JSON s doporučeními (tool calling pro structured output)
+- Žádná DB migrace potřeba — jen čtení existujících dat
 
-### 5. ResourceHUD tooltip
-Wealth tooltip zobrazí:
-```
-👥 Pop daň: X | 🏪 Trh: X | 📦 Goods: X | 🛤️ Trasy: X
-Příjem: +X | Výdaje: -Y | Čistě: +Z/kolo
-Pokladna: N
-```
+### B. Nový komponent: `DemandFulfillmentPanel.tsx`
+- Pyramida nasycení (NEED/UPGRADE/PRESTIGE) z demand_baskets
+- Seznam zboží s satisfaction bars
+- Integruje existující GoodsDemandSubTab jako sub-sekci
 
-### 6. Deploy + build ověření
+### C. Nový komponent: `GapAdvisorPanel.tsx`
+- Gap analýza z demand_baskets + city_market_summary
+- AI advisor button + výsledky
+- Obchodní příležitosti
 
-## Pořadí implementace
-
-1. DB migrace (3 nové sloupce)
-2. process-turn: oprava bugu + 4 pilíře + route commerce
-3. `getWealthBreakdown()` utility
-4. FiscalSubTab přepis
-5. ResourceHUD tooltip
-6. Deploy process-turn + build check
+### D. Refaktor EconomyTab.tsx
+- Rozšířit TabsList na 5 záložek (responsive: scroll na mobilu)
+- Přesunout komponenty do správných záložek
+- Přehled: zjednodušit (odebrat PrestigeBreakdown, StrategicResources, FormulasReference → ty patří do Supply Chain nebo jinam)
 
 ## Soubory
 
 | Soubor | Změna |
 |--------|-------|
-| DB migrace | 3 nové sloupce |
-| `supabase/functions/process-turn/index.ts` | Fix bug, 4 pilíře, route commerce |
-| `src/lib/economyFlow.ts` | `getWealthBreakdown()` |
-| `src/components/economy/FiscalSubTab.tsx` | Přepis UI |
-| `src/components/layout/ResourceHUD.tsx` | Tooltip update |
+| `src/pages/game/EconomyTab.tsx` | Refaktor na 5 záložek |
+| `src/components/economy/DemandFulfillmentPanel.tsx` | NOVÝ — pyramida + seznam |
+| `src/components/economy/GapAdvisorPanel.tsx` | NOVÝ — mezery + AI |
+| `supabase/functions/economy-advisor/index.ts` | NOVÝ — AI doporučení |
+| `src/components/economy/GoodsDemandSubTab.tsx` | Zachovat, použít jako sub-komponentu |
 
+## Pořadí
+1. DemandFulfillmentPanel
+2. Edge function economy-advisor
+3. GapAdvisorPanel
+4. Refaktor EconomyTab (5 záložek)
+5. Build check
