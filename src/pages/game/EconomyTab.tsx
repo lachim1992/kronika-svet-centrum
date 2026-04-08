@@ -21,6 +21,7 @@ import {
   Tooltip, TooltipContent, TooltipTrigger, TooltipProvider,
 } from "@/components/ui/tooltip";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import { ensureRealmResources } from "@/lib/turnEngine";
 import {
   SETTLEMENT_LABELS,
@@ -44,8 +45,10 @@ import PopulationPanel from "@/components/economy/PopulationPanel";
 import CapacityPanel from "@/components/economy/CapacityPanel";
 import MilitaryUpkeepPanel from "@/components/economy/MilitaryUpkeepPanel";
 import FormulasReferencePanel from "@/components/economy/FormulasReferencePanel";
-import GoodsDemandSubTab from "@/components/economy/GoodsDemandSubTab";
+import NodeFlowBreakdown from "@/components/economy/NodeFlowBreakdown";
 import FiscalSubTab from "@/components/economy/FiscalSubTab";
+import DemandFulfillmentPanel from "@/components/economy/DemandFulfillmentPanel";
+import GapAdvisorPanel from "@/components/economy/GapAdvisorPanel";
 
 interface Props {
   sessionId: string;
@@ -100,14 +103,10 @@ const EconomyTab = ({ sessionId, currentPlayerName, currentTurn, cities, resourc
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
-  // Macro layer totals from realm
   const totalProduction = realm?.total_production ?? 0;
   const totalWealth = realm?.total_wealth ?? 0;
   const totalCapacity = realm?.total_capacity ?? 0;
-  const totalImportance = realm?.total_importance ?? 0;
-  const maxMacro = Math.max(totalProduction, totalWealth, totalCapacity, 1);
 
-  // Node breakdown by role
   const nodesByRole = useMemo(() => {
     const roles: Record<string, { count: number; production: number; wealth: number; capacity: number }> = {};
     for (const n of nodeStats) {
@@ -120,10 +119,6 @@ const EconomyTab = ({ sessionId, currentPlayerName, currentTurn, cities, resourc
     }
     return roles;
   }, [nodeStats]);
-
-  const topNodes = useMemo(() =>
-    [...nodeStats].sort((a, b) => (b.importance_score ?? 0) - (a.importance_score ?? 0)).slice(0, 5),
-  [nodeStats]);
 
   const isolatedNodes = useMemo(() =>
     nodeStats.filter(n => (n.isolation_penalty ?? 0) > 0),
@@ -154,7 +149,6 @@ const EconomyTab = ({ sessionId, currentPlayerName, currentTurn, cities, resourc
   const wf = computeWorkforceBreakdown(myCities, mobRate);
   const currentMob = Math.round(mobRate * 100);
 
-  // Alerts
   const alerts: { text: string; severity: "error" | "warning" }[] = [];
   const famineCities = myCities.filter(c => c.famine_turn);
   if (famineCities.length > 0) alerts.push({ text: `${famineCities.length} sídel trpí hladomorem!`, severity: "error" });
@@ -258,22 +252,31 @@ const EconomyTab = ({ sessionId, currentPlayerName, currentTurn, cities, resourc
         ))}
       </div>
 
-      {/* ═══ TABBED CONTENT ═══ */}
+      {/* ═══ TABBED CONTENT — 5 tabs ═══ */}
       <Tabs defaultValue="overview" className="space-y-4">
-        <TabsList className="w-full grid grid-cols-4 h-10 bg-muted/30 rounded-xl p-1">
-          <TabsTrigger value="overview" className="text-xs font-display rounded-lg data-[state=active]:bg-card data-[state=active]:shadow-sm">
-            📊 Přehled
-          </TabsTrigger>
-          <TabsTrigger value="goods" className="text-xs font-display rounded-lg data-[state=active]:bg-card data-[state=active]:shadow-sm">
-            📦 Goods
-          </TabsTrigger>
-          <TabsTrigger value="fiscal" className="text-xs font-display rounded-lg data-[state=active]:bg-card data-[state=active]:shadow-sm">
-            🏛️ Fiskál
-          </TabsTrigger>
-          <TabsTrigger value="cities" className="text-xs font-display rounded-lg data-[state=active]:bg-card data-[state=active]:shadow-sm">
-            🏙️ Sídla
-          </TabsTrigger>
-        </TabsList>
+        <ScrollArea className="w-full">
+          <TabsList className="inline-flex w-auto min-w-full h-10 bg-muted/30 rounded-xl p-1 gap-1">
+            <TabsTrigger value="overview" className="text-xs font-display rounded-lg data-[state=active]:bg-card data-[state=active]:shadow-sm whitespace-nowrap px-3">
+              📊 Přehled
+            </TabsTrigger>
+            <TabsTrigger value="demand" className="text-xs font-display rounded-lg data-[state=active]:bg-card data-[state=active]:shadow-sm whitespace-nowrap px-3">
+              📦 Poptávka
+            </TabsTrigger>
+            <TabsTrigger value="supply" className="text-xs font-display rounded-lg data-[state=active]:bg-card data-[state=active]:shadow-sm whitespace-nowrap px-3">
+              🔗 Supply Chain
+            </TabsTrigger>
+            <TabsTrigger value="gaps" className="text-xs font-display rounded-lg data-[state=active]:bg-card data-[state=active]:shadow-sm whitespace-nowrap px-3">
+              🎯 Mezery
+            </TabsTrigger>
+            <TabsTrigger value="fiscal" className="text-xs font-display rounded-lg data-[state=active]:bg-card data-[state=active]:shadow-sm whitespace-nowrap px-3">
+              🏛️ Fiskál
+            </TabsTrigger>
+            <TabsTrigger value="cities" className="text-xs font-display rounded-lg data-[state=active]:bg-card data-[state=active]:shadow-sm whitespace-nowrap px-3">
+              🏙️ Sídla
+            </TabsTrigger>
+          </TabsList>
+          <ScrollBar orientation="horizontal" />
+        </ScrollArea>
 
         {/* ═══ OVERVIEW TAB ═══ */}
         <TabsContent value="overview" className="space-y-5 animate-fade-in">
@@ -341,7 +344,7 @@ const EconomyTab = ({ sessionId, currentPlayerName, currentTurn, cities, resourc
             </div>
           )}
 
-          {/* Node flow breakdown */}
+          {/* Node flow summary */}
           <Collapsible>
             <div className="rounded-xl border border-border/40 bg-card/50 p-5 space-y-3">
               <div className="flex items-center gap-2">
@@ -371,23 +374,6 @@ const EconomyTab = ({ sessionId, currentPlayerName, currentTurn, cities, resourc
               ))}
 
               <CollapsibleContent className="space-y-4 pt-3">
-                {/* Top nodes */}
-                <div className="border-t border-border/30 pt-3 space-y-2">
-                  <h4 className="text-xs font-semibold text-muted-foreground">Top 5 uzlů</h4>
-                  {topNodes.map(n => (
-                    <div key={n.id} className="flex items-center justify-between text-xs border-b border-border/10 pb-1">
-                      <span className="font-semibold">{n.name}</span>
-                      <div className="flex items-center gap-2">
-                        <span className="text-muted-foreground">⚒️{(n.production_output ?? 0).toFixed(1)}</span>
-                        <span className="text-muted-foreground">💰{(n.wealth_output ?? 0).toFixed(1)}</span>
-                        <Badge className={`text-[8px] ${getImportanceColor(n.importance_score ?? 0)}`}>
-                          {getImportanceLabel(n.importance_score ?? 0)} ({(n.importance_score ?? 0).toFixed(1)})
-                        </Badge>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-
                 {isolatedNodes.length > 0 && (
                   <div className="border-t border-border/30 pt-3 space-y-2">
                     <h4 className="text-xs font-semibold text-destructive flex items-center gap-1">
@@ -405,24 +391,30 @@ const EconomyTab = ({ sessionId, currentPlayerName, currentTurn, cities, resourc
             </div>
           </Collapsible>
 
-          {/* Sub-panels */}
           {realm && <FaithPanel realm={realm} cities={myCities} />}
-          {realm && <CapacityPanel realm={realm} cities={myCities} nodeStats={nodeStats} />}
           <PopulationPanel cities={myCities} realm={realm} />
           {realm && <MilitaryUpkeepPanel armies={armies} realm={realm} />}
+        </TabsContent>
+
+        {/* ═══ DEMAND TAB ═══ */}
+        <TabsContent value="demand" className="space-y-5 animate-fade-in">
+          <DemandFulfillmentPanel sessionId={sessionId} playerName={currentPlayerName} cities={cities} />
+        </TabsContent>
+
+        {/* ═══ SUPPLY CHAIN TAB ═══ */}
+        <TabsContent value="supply" className="space-y-5 animate-fade-in">
+          <SupplyChainPanel sessionId={sessionId} playerName={currentPlayerName} currentTurn={currentTurn} />
+          {realm && <NodeFlowBreakdown sessionId={sessionId} playerName={currentPlayerName} realm={realm} />}
+          {realm && <CapacityPanel realm={realm} cities={myCities} nodeStats={nodeStats} />}
           {realm && <PrestigeBreakdown realm={realm} />}
           {realm && <StrategicResourcesDetail realm={realm} />}
-
-          {/* Dependency Map */}
           <EconomyDependencyMap realm={realm} cities={myCities} armies={armies} sessionId={sessionId} playerName={currentPlayerName} />
-
-          {/* Formulas */}
           <FormulasReferencePanel />
         </TabsContent>
 
-        {/* ═══ GOODS TAB ═══ */}
-        <TabsContent value="goods" className="space-y-5 animate-fade-in">
-          <GoodsDemandSubTab sessionId={sessionId} playerName={currentPlayerName} />
+        {/* ═══ GAPS & ADVISOR TAB ═══ */}
+        <TabsContent value="gaps" className="space-y-5 animate-fade-in">
+          <GapAdvisorPanel sessionId={sessionId} playerName={currentPlayerName} cities={cities} />
 
           <TradePanel
             sessionId={sessionId}
@@ -433,8 +425,6 @@ const EconomyTab = ({ sessionId, currentPlayerName, currentTurn, cities, resourc
             realm={realm}
             onRefetch={onRefetch}
           />
-
-          <SupplyChainPanel sessionId={sessionId} playerName={currentPlayerName} currentTurn={currentTurn} />
         </TabsContent>
 
         {/* ═══ FISCAL TAB ═══ */}
