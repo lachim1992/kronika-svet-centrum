@@ -1,86 +1,84 @@
 
-# Přestavba záložky Ekonomika — 5 sub-záložek
 
-## Současný stav
-Záložka Ekonomika má 4 sub-taby: Přehled (mix všeho), Goods (GoodsDemandSubTab + TradePanel + SupplyChain), Fiskál, Sídla. Problém: poptávka, mezery a supply chain jsou rozházené, žádná gap analýza, žádné doporučení.
+# Economy v4.2 — Final Corrections Integration
 
-## Nová struktura (5 sub-záložek)
+## 3 changes to lock before implementation
 
-### 1. 📊 Přehled (zachovat, zjednodušit)
-- Macro summary row (produkce, wealth, zásoby, kapacita)
-- Alerts (hladomor, izolace, mobilizace)
-- Workforce panel
-- Grain reserve + Treasury (existující)
-- Tok dle rolí (node flow breakdown — zkrácený)
+### 1. City export share — explicit formula
 
-### 2. 📦 Poptávka & Nasycení (NOVÉ — přesun + rozšíření)
-Hlavní panel říšní poptávky:
-- **Pyramida nasycení**: 3 vrstvy (NEED / UPGRADE / PRESTIGE) s celkovým % nasycení
-- **Seznam zboží**: každé zboží v demand_baskets — supply vs demand, % satisfaction, které město potřebuje
-- **Goods katalog**: existující GoodsDemandSubTab (tabulka goods by tier, recepty) — zachovat jako collapsible sub-sekci
-- Data: `demand_baskets`, `city_market_summary`, `goods` tabulky (už se načítají v GoodsDemandSubTab)
+**Current issue**: `city_basket_wealth = BASKET_VALUE × city_export_share × market_fill × city_monetization` is ambiguous.
 
-### 3. 🔗 Supply Chain (přesun + rozšíření)
-Plný supply chain od hex po finální produkt:
-- **SupplyChainPanel** (existující) — zásobování, izolované uzly, trasy
-- **NodeFlowBreakdown** (existující) — rozpad dle uzlů s trasami
-- **Produkční řetězce**: recepty aktivní v říši — co vyrábíš, kde, kolik, bottlenecky (z `production_recipes` + `city_market_summary`)
-- **Nevyužité kapacity**: uzly s capability_tags ale bez aktivního receptu
+**Locked definition**:
+```text
+// Step A: Player gets wealth from global market
+player_market_basket_wealth = BASKET_VALUE × player_market_share × market_fill
 
-### 4. 🎯 Mezery & Poradce (NOVÉ)
-Gap analýza + AI doporučení:
-- **Top chybějící zboží**: seřazeno dle urgence (demand - supply), s dopadem na stabilitu
-  - Červená: NEED vrstva nesaturovaná → destabilizace
-  - Žlutá: UPGRADE chybí → stagnace růstu
-  - Modrá: PRESTIGE chybí → ztráta prestiže
-- **AI Advisor**: tlačítko "Zeptej se poradce" → volá edge function `economy-advisor` (nová)
-  - Vstup: demand_baskets, city_market_summary, production_recipes, province_nodes (capability_tags), cities
-  - Výstup: 3-5 konkrétních doporučení ("Postav mlýn v městě X — pokryješ 80% poptávky po mouce")
-  - Zobrazí se jako karty s ikonou, popisem a odkazem na město/budovu
-- **Obchodní příležitosti**: zboží které exportuješ vs. co importuješ — identifikace obchodních výhod
+// Step B: Distribute that wealth among player's cities
+city_export_share = city_effective_export / max(1, player_effective_export_total)
+city_basket_wealth = player_market_basket_wealth × city_export_share × city_monetization
+```
 
-### 5. 🏛️ Fiskál (existující — beze změny)
-FiscalSubTab + Trade ideology — zachovat jak je.
+This cleanly separates: player share determines total wealth, city share distributes it.
 
-### 6. 🏙️ Sídla (existující — beze změny)
-Tabulka měst — zachovat jak je.
+### 2. Naming — new columns instead of overwriting `wealth_domestic_market`
 
-## Implementace
+**Current DB columns**: `wealth_domestic_market`, `wealth_pop_tax`, `wealth_route_commerce`, `goods_wealth_fiscal`, `total_wealth`
 
-### A. Nová edge function: `economy-advisor`
-- Načte demand_baskets, city_market_summary, goods, production_recipes, province_nodes, cities pro danou session+player
-- Zavolá Lovable AI (gemini-3-flash-preview) se strukturovaným promptem
-- Vrátí JSON s doporučeními (tool calling pro structured output)
-- Žádná DB migrace potřeba — jen čtení existujících dat
+**Change**: Do NOT repurpose `wealth_domestic_market`. Instead add two new columns:
+```sql
+ALTER TABLE realm_resources ADD COLUMN IF NOT EXISTS wealth_domestic_component numeric DEFAULT 0;
+ALTER TABLE realm_resources ADD COLUMN IF NOT EXISTS wealth_market_share numeric DEFAULT 0;
+```
 
-### B. Nový komponent: `DemandFulfillmentPanel.tsx`
-- Pyramida nasycení (NEED/UPGRADE/PRESTIGE) z demand_baskets
-- Seznam zboží s satisfaction bars
-- Integruje existující GoodsDemandSubTab jako sub-sekci
+Pillar 2 in UI = `wealth_domestic_component * 0.4 + wealth_market_share * 0.6` — computed at read time in `economyFlow.ts`. Old `wealth_domestic_market` stays as legacy (not used in new flow).
 
-### C. Nový komponent: `GapAdvisorPanel.tsx`
-- Gap analýza z demand_baskets + city_market_summary
-- AI advisor button + výsledky
-- Obchodní příležitosti
+### 3. Goods basket audit — confirmed issues from live data
 
-### D. Refaktor EconomyTab.tsx
-- Rozšířit TabsList na 5 záložek (responsive: scroll na mobilu)
-- Přesunout komponenty do správných záložek
-- Přehled: zjednodušit (odebrat PrestigeBreakdown, StrategicResources, FormulasReference → ty patří do Supply Chain nebo jinam)
+**Current state**:
+- `goods.demand_basket`: 4 NULL keys (`raw_fiber`, `raw_hide`, `raw_ore`, `yarn`)
+- `goods.demand_basket`: Already uses `variety` (correct) and `prestige` (correct) — no legacy `variety_food` or `luxury` in goods table
+- `demand_baskets.basket_key`: Still has `variety_food` and `luxury` — these MUST be fixed to `variety` and `prestige`
 
-## Soubory
+**Data updates needed**:
+```sql
+-- Fix NULL goods
+UPDATE goods SET demand_basket = 'basic_material' WHERE key IN ('raw_ore', 'raw_hide');
+UPDATE goods SET demand_basket = 'textile' WHERE key IN ('raw_fiber', 'yarn');
 
-| Soubor | Změna |
-|--------|-------|
-| `src/pages/game/EconomyTab.tsx` | Refaktor na 5 záložek |
-| `src/components/economy/DemandFulfillmentPanel.tsx` | NOVÝ — pyramida + seznam |
-| `src/components/economy/GapAdvisorPanel.tsx` | NOVÝ — mezery + AI |
-| `supabase/functions/economy-advisor/index.ts` | NOVÝ — AI doporučení |
-| `src/components/economy/GoodsDemandSubTab.tsx` | Zachovat, použít jako sub-komponentu |
+-- Fix demand_baskets naming
+UPDATE demand_baskets SET basket_key = 'variety' WHERE basket_key = 'variety_food';
+UPDATE demand_baskets SET basket_key = 'prestige' WHERE basket_key = 'luxury';
+```
 
-## Pořadí
-1. DemandFulfillmentPanel
-2. Edge function economy-advisor
-3. GapAdvisorPanel
-4. Refaktor EconomyTab (5 záložek)
-5. Build check
+**Post-update audit queries** (run after data fix):
+```sql
+SELECT key, demand_basket FROM goods ORDER BY demand_basket NULLS FIRST;
+SELECT demand_basket, count(*) FROM goods GROUP BY demand_basket;
+SELECT DISTINCT basket_key FROM demand_baskets ORDER BY basket_key;
+```
+
+Expected: 0 NULLs in goods, 10 canonical baskets, no `variety_food` or `luxury` anywhere.
+
+## Updated implementation plan summary
+
+All three corrections are integrated into the existing plan. The only structural changes:
+- Migration adds `wealth_domestic_component` + `wealth_market_share` (not repurposing old column)
+- `compute-trade-flows` Phase 4b uses the two-step city export share formula
+- `economyFlow.ts` computes Pillar 2 from the two new columns with 0.4/0.6 weights
+- Data fix includes demand_baskets rename + post-fix audit
+
+Everything else from the previous plan remains locked and unchanged.
+
+## Implementation order (unchanged)
+
+1. DB migration (`market_shares` + `city_market_baskets` + two new `realm_resources` columns)
+2. Data fix (goods NULL baskets + demand_baskets naming) + audit
+3. `goodsCatalog.ts` — BASKET_CONFIG
+4. `compute-trade-flows` — auto-production + market share with city export share formula
+5. Dev verification (SQL)
+6. `process-turn` — legacy blend removal + Pillar 2 from new columns + grain_reserve fix
+7. `economyFlow.ts` — Pillar 2 = `domestic * 0.4 + market_share * 0.6`
+8. UI components (MarketSharePanel, DemandFulfillmentPanel rewrite)
+9. FiscalSubTab + ResourceHUD update
+10. Deploy + test
+
