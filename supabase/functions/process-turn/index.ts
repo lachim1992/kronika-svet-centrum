@@ -201,18 +201,17 @@ Deno.serve(async (req) => {
     const totalCapacity = realm.total_capacity || 0;
     const totalImportance = realm.total_importance || 0;
 
-    // ── GOODS ECONOMY LAYER (from compute-trade-flows v4.1) ──
+    // ── GOODS ECONOMY LAYER (from compute-trade-flows v4.2) ──
     const goodsProductionValue = realm.goods_production_value || 0;
     const goodsSupplyVolume = realm.goods_supply_volume || 0;
     const goodsWealthFiscal = realm.goods_wealth_fiscal || 0;
-    const economyVersion = realm.economy_version || 3;
-    // Blending factor: economy_version 4+ uses goods layer primarily
-    const goodsBlend = economyVersion >= 4 ? 0.7 : (goodsProductionValue > 0 ? 0.3 : 0);
-    const legacyBlend = 1 - goodsBlend;
+    // v4.2: Market share economy — no more legacy blend
+    const wealthDomesticComponent = realm.wealth_domestic_component || 0;
+    const wealthMarketShare = realm.wealth_market_share || 0;
 
     logEntries.push(`⚒️ Produkce: ${totalProduction.toFixed(1)} | 💰 Bohatství: ${totalWealth.toFixed(1)} | 🏛️ Kapacita: ${totalCapacity.toFixed(1)}`);
     if (goodsProductionValue > 0) {
-      logEntries.push(`📦 Goods vrstva: produkce=${goodsProductionValue.toFixed(1)} zásoby=${goodsSupplyVolume.toFixed(1)} fiskál=${goodsWealthFiscal.toFixed(1)} (blend ${Math.round(goodsBlend * 100)}%)`);
+      logEntries.push(`📦 Goods v4.2: produkce=${goodsProductionValue.toFixed(1)} zásoby=${goodsSupplyVolume.toFixed(1)} fiskál=${goodsWealthFiscal.toFixed(1)} domestic=${wealthDomesticComponent.toFixed(1)} market=${wealthMarketShare.toFixed(1)}`);
     }
 
     // ── Load cities ──
@@ -574,20 +573,15 @@ Deno.serve(async (req) => {
         nodeProduction = totalProduction * cityShare;
       }
 
-      // Combined city production = blend of (node + population) and goods layer
-      const legacyCityProduction = (nodeProduction + layers.production) * laborGrainMult;
-      // Goods layer production: player's goods_production_value distributed by city population share
+      // v4.2: No more legacy/goods blend — production uses node layers + goods production directly
       const cityPopShare = totalPopulation > 0 ? (city.population_total || 0) / totalPopulation : 1 / Math.max(1, myCities.length);
       const goodsCityProduction = goodsProductionValue * cityPopShare;
-      const cityProduction = legacyCityProduction * legacyBlend + goodsCityProduction * goodsBlend;
+      const cityProduction = (nodeProduction + layers.production) * laborGrainMult + goodsCityProduction;
 
-      // Apply labor + strategic multipliers to wealth and capacity
-      // Goods layer wealth: fiscal income distributed by city market level share
+      // v4.2: City wealth comes from Pillar 2 (domestic + market share), distributed by market level
       const totalMarketLevelAll = myCities.reduce((s, c) => s + (c.market_level || 1), 0) || 1;
       const cityMarketShare = (city.market_level || 1) / totalMarketLevelAll;
-      const legacyCityWealth = layers.wealth * laborWealthMult * strategicBonuses.wealth_mult * prestigeEffects.tradeMultiplier;
-      const goodsCityWealth = goodsWealthFiscal * cityMarketShare;
-      const cityWealth = legacyCityWealth * legacyBlend + goodsCityWealth * goodsBlend;
+      const cityWealth = layers.wealth * laborWealthMult * strategicBonuses.wealth_mult * prestigeEffects.tradeMultiplier;
       const cityCapacity = layers.capacity * laborCapacityMult;
       const cityFaith = layers.faith + strategicBonuses.faith_bonus * 0.1; // Strategic faith distributed per-city
 
@@ -680,11 +674,11 @@ Deno.serve(async (req) => {
     totalCityProduction = Math.max(0, totalCityProduction - mobProductionPenalty);
     totalCityWealth = Math.max(0, totalCityWealth - mobWealthPenalty);
 
-    // Goods supply volume supplements grain reserve (storable goods = strategic supply)
-    if (goodsBlend > 0 && goodsSupplyVolume > 0) {
-      const goodsSupplyBonus = Math.round(goodsSupplyVolume * goodsBlend);
+    // v4.2: Goods supply supplements grain reserve directly (no blend)
+    if (goodsSupplyVolume > 0) {
+      const goodsSupplyBonus = Math.round(goodsSupplyVolume);
       globalGrainReserve += goodsSupplyBonus;
-      logEntries.push(`📦 Goods zásoby: +${goodsSupplyBonus} (${goodsSupplyVolume.toFixed(0)} × ${Math.round(goodsBlend * 100)}%)`);
+      logEntries.push(`📦 Goods zásoby: +${goodsSupplyBonus}`);
     }
     // Small empire buffer
     if (myCities.length <= 3) globalGrainReserve += 10;
@@ -709,7 +703,6 @@ Deno.serve(async (req) => {
     //   3. Goods Fiscal      — tax_market + tax_transit + tax_extraction + capture
     //   4. Route Commerce    — secondary wealth from trade corridor volume
     // ══════════════════════════════════════════════════════════════
-    const DOMESTIC_MARKET_REALIZATION = 0.5; // Tuning knob: how much of node-flow wealth is realized
     const ROUTE_COMMERCE_RATE = 0.05;        // Tuning knob: wealth per unit of effective route capacity
 
     const taxMult = 1 + (taxRateModifier / 100);
@@ -721,9 +714,13 @@ Deno.serve(async (req) => {
     const populationTaxBase = totalCityWealth * copperMult * goldMult;
     const pillarPopTax = Math.round(populationTaxBase * taxMult * 10) / 10;
 
-    // ── Pillar 2: Domestic Market (capital market mechanism) ──
-    const domesticMarketGross = totalWealth; // From compute-economy-flow
-    const pillarDomesticMarket = Math.round(domesticMarketGross * DOMESTIC_MARKET_REALIZATION * 10) / 10;
+    // ── Pillar 2: Trade & Market (v4.2 — from compute-trade-flows) ──
+    // domestic_component * 0.4 + market_share * 0.6
+    const PILLAR2_DOMESTIC_WEIGHT = 0.4;
+    const PILLAR2_MARKET_WEIGHT = 0.6;
+    const pillarDomesticMarket = Math.round(
+      (wealthDomesticComponent * PILLAR2_DOMESTIC_WEIGHT + wealthMarketShare * PILLAR2_MARKET_WEIGHT) * 10
+    ) / 10;
 
     // ── Pillar 3: Goods Fiscal (already computed by compute-trade-flows) ──
     const goodsTaxMarketPillar = realm.tax_market || 0;
@@ -1351,7 +1348,7 @@ Deno.serve(async (req) => {
     const goodsPopTax = Math.round(totalPopulation * 0.002 * (1 + myCities.filter(c => c.settlement_level === "polis" || c.settlement_level === "metropolis").length * 0.1));
 
     await supabase.from("realm_resources").update({
-      grain_reserve: globalGrainReserve,
+      grain_reserve: Math.round(globalGrainReserve),
       granary_capacity: adjustedGranary,
       manpower_pool: manpowerPool,
       logistic_capacity: logisticCapacity,

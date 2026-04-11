@@ -61,9 +61,13 @@ const FiscalSubTab = ({ realm, sessionId, playerName, onRefetch }: Props) => {
       color: "bg-emerald-500",
     },
     {
-      icon: "🏪", label: "Domácí trh", value: wb.domesticMarket,
-      desc: "Wealth realizovaný z centralizovaného produkčního toku (capital market mechanism × realization rate)",
+      icon: "🏪", label: "Obchod a trh", value: wb.domesticMarket,
+      desc: `Domácí prosperita (${Math.round(wb.domesticComponent)}×0.4) + exportní dominance (${Math.round(wb.marketShare)}×0.6)`,
       color: "bg-blue-500",
+      subDetail: [
+        { label: "Domácí prosperita", value: wb.domesticComponent },
+        { label: "Market share", value: wb.marketShare },
+      ],
     },
     {
       icon: "📦", label: "Goods fiskál", value: wb.goodsFiscal,

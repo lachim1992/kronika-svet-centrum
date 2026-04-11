@@ -416,12 +416,14 @@ export function getImportanceColor(score: number): string {
 }
 
 // ═══════════════════════════════════════════
-// WEALTH BREAKDOWN — 4-Pillar unified selector
+// WEALTH BREAKDOWN — 4-Pillar unified selector (v4.2)
 // ═══════════════════════════════════════════
 
 export interface WealthBreakdown {
   popTax: number;
-  domesticMarket: number;
+  domesticMarket: number; // Pillar 2 combined (domestic*0.4 + market_share*0.6)
+  domesticComponent: number; // Raw domestic satisfaction wealth
+  marketShare: number; // Raw market share wealth
   goodsFiscal: number;
   routeCommerce: number;
   totalIncome: number;
@@ -433,10 +435,16 @@ export interface WealthBreakdown {
   netChange: number;
 }
 
+const PILLAR2_DOMESTIC_WEIGHT = 0.4;
+const PILLAR2_MARKET_SHARE_WEIGHT = 0.6;
+
 /** Unified wealth breakdown from realm_resources — single source of truth for all UI */
 export function getWealthBreakdown(realm: any): WealthBreakdown {
   const popTax = Number(realm?.wealth_pop_tax ?? 0);
-  const domesticMarket = Number(realm?.wealth_domestic_market ?? 0);
+  // v4.2: Pillar 2 = domestic_component * 0.4 + market_share * 0.6
+  const domesticComponent = Number(realm?.wealth_domestic_component ?? 0);
+  const marketShare = Number(realm?.wealth_market_share ?? 0);
+  const domesticMarket = domesticComponent * PILLAR2_DOMESTIC_WEIGHT + marketShare * PILLAR2_MARKET_SHARE_WEIGHT;
   const goodsFiscal = Number(realm?.goods_wealth_fiscal ?? 0);
   const routeCommerce = Number(realm?.wealth_route_commerce ?? 0);
   const totalIncome = popTax + domesticMarket + goodsFiscal + routeCommerce;
@@ -449,7 +457,8 @@ export function getWealthBreakdown(realm: any): WealthBreakdown {
   const totalExpenses = armyUpkeep + tolls + sportFunding;
 
   return {
-    popTax, domesticMarket, goodsFiscal, routeCommerce,
+    popTax, domesticMarket, domesticComponent, marketShare,
+    goodsFiscal, routeCommerce,
     totalIncome,
     armyUpkeep, tolls, sportFunding,
     totalExpenses,

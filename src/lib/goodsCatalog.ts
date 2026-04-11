@@ -1,8 +1,10 @@
 /**
- * Chronicle Economy v4.1 — Client-side Goods Catalog
+ * Chronicle Economy v4.2 — Client-side Goods Catalog
  * 
  * Mirrors DB data for UI previews, recipe browsing, demand basket logic.
  * Source of truth is the DB; this is a convenience mirror.
+ * 
+ * v4.2: Added BASKET_CONFIG for auto-production + market share system.
  */
 
 // ═══════════════════════════════════════════
@@ -109,13 +111,15 @@ export interface DemandBasketDef {
 
 export const DEMAND_BASKETS: DemandBasketDef[] = [
   { key: "staple_food", label: "Základní potraviny", icon: "🍞", tier: 1, description: "Chléb, obilí, maso — přežití", socialWeights: { peasants: 1.0, burghers: 0.6, clerics: 0.3, warriors: 0.8 } },
+  { key: "basic_material", label: "Základní materiály", icon: "🪨", tier: 1, description: "Ruda, kůže — surové stavební kameny ekonomiky", socialWeights: { peasants: 0.5, burghers: 0.7, clerics: 0.2, warriors: 0.4 } },
   { key: "tools", label: "Nástroje & nářadí", icon: "🔧", tier: 1, description: "Kovové nástroje, kožené výrobky", socialWeights: { peasants: 0.7, burghers: 0.5, clerics: 0.2, warriors: 0.4 } },
   { key: "construction", label: "Stavební materiály", icon: "🧱", tier: 2, description: "Dřevo, kámen, stavební bloky", socialWeights: { peasants: 0.3, burghers: 0.6, clerics: 0.4, warriors: 0.3 } },
+  { key: "textile", label: "Textil", icon: "🧵", tier: 2, description: "Vlákna, příze, tkaniny", socialWeights: { peasants: 0.4, burghers: 0.7, clerics: 0.5, warriors: 0.3 } },
   { key: "military_supply", label: "Vojenské zásoby", icon: "⚔️", tier: 2, description: "Zbraně, výzbroj, munice", socialWeights: { peasants: 0.1, burghers: 0.2, clerics: 0.1, warriors: 1.0 } },
   { key: "variety", label: "Rozmanitost", icon: "🎭", tier: 3, description: "Keramika, textil, víno — komfort", socialWeights: { peasants: 0.3, burghers: 0.8, clerics: 0.5, warriors: 0.3 } },
+  { key: "ritual", label: "Rituální potřeby", icon: "🕯️", tier: 3, description: "Kadidlo, oleje, svíce, posvátné materiály", socialWeights: { peasants: 0.2, burghers: 0.3, clerics: 1.0, warriors: 0.2 } },
   { key: "feast", label: "Slavnostní pochutiny", icon: "🥂", tier: 4, description: "Lahůdky, kvalitní víno, sladkosti", socialWeights: { peasants: 0.1, burghers: 0.6, clerics: 0.4, warriors: 0.4 } },
   { key: "prestige", label: "Prestiž", icon: "👑", tier: 4, description: "Šperky, luxusní zbraně, jemné textilie", socialWeights: { peasants: 0.05, burghers: 0.5, clerics: 0.3, warriors: 0.6 } },
-  { key: "ritual", label: "Rituální potřeby", icon: "🕯️", tier: 5, description: "Kadidlo, oleje, svíce, posvátné materiály", socialWeights: { peasants: 0.2, burghers: 0.3, clerics: 1.0, warriors: 0.2 } },
 ];
 
 // ═══════════════════════════════════════════
@@ -265,3 +269,125 @@ export const TRADE_FLOW_STATUSES = [
   { key: "dominant", label: "Dominantní", color: "text-primary", description: "Hlavní obchodní tepna" },
   { key: "blocked", label: "Blokovaný", color: "text-destructive", description: "Přerušený embargo nebo válkou" },
 ];
+
+// ═══════════════════════════════════════════
+// BASKET CONFIG — v4.2 auto-production + market share
+// ═══════════════════════════════════════════
+
+export type BasketCategory = "universal" | "conditional" | "premium";
+
+export interface BasketConfig {
+  /** Base production rate per effective workforce unit */
+  baseRate: number;
+  /** Wealth value of this basket for market share calculation */
+  basketValue: number;
+  /** universal = always auto-produced, conditional = gated, premium = manual only */
+  category: BasketCategory;
+  /** Population weights for demand calculation */
+  popWeights: { peasants: number; burghers: number; clerics: number; warriors: number };
+  /** Tier for UI sorting */
+  tier: number;
+  /** Condition gate for conditional baskets (evaluated at city level) */
+  condition?: (city: { market_level?: number; temple_level?: number; population_warriors?: number; population_total?: number; resource_deposits?: string[] }) => boolean;
+}
+
+export const SETTLEMENT_MULT: Record<string, number> = {
+  HAMLET: 0.5,
+  TOWNSHIP: 0.8,
+  CASTLE: 0.9,
+  CITY: 1.0,
+  POLIS: 1.3,
+};
+
+export const BASKET_CONFIG: Record<string, BasketConfig> = {
+  staple_food: {
+    baseRate: 0.012,
+    basketValue: 8,
+    category: "universal",
+    tier: 1,
+    popWeights: { peasants: 1.0, burghers: 0.6, clerics: 0.3, warriors: 0.8 },
+  },
+  basic_material: {
+    baseRate: 0.008,
+    basketValue: 6,
+    category: "universal",
+    tier: 1,
+    popWeights: { peasants: 0.5, burghers: 0.7, clerics: 0.2, warriors: 0.4 },
+  },
+  tools: {
+    baseRate: 0.006,
+    basketValue: 10,
+    category: "universal",
+    tier: 1,
+    popWeights: { peasants: 0.7, burghers: 0.5, clerics: 0.2, warriors: 0.4 },
+  },
+  construction: {
+    baseRate: 0.005,
+    basketValue: 12,
+    category: "universal",
+    tier: 2,
+    popWeights: { peasants: 0.3, burghers: 0.6, clerics: 0.4, warriors: 0.3 },
+  },
+  textile: {
+    baseRate: 0.004,
+    basketValue: 10,
+    category: "conditional",
+    tier: 2,
+    popWeights: { peasants: 0.4, burghers: 0.7, clerics: 0.5, warriors: 0.3 },
+    condition: (city) => {
+      const deps = city.resource_deposits || [];
+      return deps.some(d => ["fiber", "livestock", "wool", "flax", "cotton"].includes(d));
+    },
+  },
+  military_supply: {
+    baseRate: 0.003,
+    basketValue: 15,
+    category: "conditional",
+    tier: 2,
+    popWeights: { peasants: 0.1, burghers: 0.2, clerics: 0.1, warriors: 1.0 },
+    condition: (city) => {
+      const warriors = city.population_warriors || 0;
+      const total = city.population_total || 1;
+      return (warriors / total) > 0.05;
+    },
+  },
+  variety: {
+    baseRate: 0.003,
+    basketValue: 14,
+    category: "conditional",
+    tier: 3,
+    popWeights: { peasants: 0.3, burghers: 0.8, clerics: 0.5, warriors: 0.3 },
+    condition: (city) => (city.market_level ?? 0) >= 1,
+  },
+  ritual: {
+    baseRate: 0.002,
+    basketValue: 16,
+    category: "conditional",
+    tier: 3,
+    popWeights: { peasants: 0.2, burghers: 0.3, clerics: 1.0, warriors: 0.2 },
+    condition: (city) => (city.temple_level ?? 0) >= 1,
+  },
+  feast: {
+    baseRate: 0,
+    basketValue: 20,
+    category: "premium",
+    tier: 4,
+    popWeights: { peasants: 0.1, burghers: 0.6, clerics: 0.4, warriors: 0.4 },
+  },
+  prestige: {
+    baseRate: 0,
+    basketValue: 25,
+    category: "premium",
+    tier: 4,
+    popWeights: { peasants: 0.05, burghers: 0.5, clerics: 0.3, warriors: 0.6 },
+  },
+};
+
+/** Helper: get canonical basket keys in tier order */
+export const CANONICAL_BASKET_KEYS = Object.entries(BASKET_CONFIG)
+  .sort((a, b) => a[1].tier - b[1].tier)
+  .map(([k]) => k);
+
+/** Pillar 2 weight constants */
+export const PILLAR2_DOMESTIC_WEIGHT = 0.4;
+export const PILLAR2_MARKET_SHARE_WEIGHT = 0.6;
