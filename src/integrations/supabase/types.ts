@@ -1371,6 +1371,75 @@ export type Database = {
           },
         ]
       }
+      city_market_baskets: {
+        Row: {
+          auto_supply: number | null
+          basket_key: string
+          bonus_supply: number | null
+          city_id: string
+          domestic_satisfaction: number | null
+          export_surplus: number | null
+          id: string
+          local_demand: number | null
+          local_supply: number | null
+          market_access: number | null
+          monetization: number | null
+          player_name: string
+          quality_weight: number | null
+          session_id: string
+          turn_number: number | null
+        }
+        Insert: {
+          auto_supply?: number | null
+          basket_key: string
+          bonus_supply?: number | null
+          city_id: string
+          domestic_satisfaction?: number | null
+          export_surplus?: number | null
+          id?: string
+          local_demand?: number | null
+          local_supply?: number | null
+          market_access?: number | null
+          monetization?: number | null
+          player_name: string
+          quality_weight?: number | null
+          session_id: string
+          turn_number?: number | null
+        }
+        Update: {
+          auto_supply?: number | null
+          basket_key?: string
+          bonus_supply?: number | null
+          city_id?: string
+          domestic_satisfaction?: number | null
+          export_surplus?: number | null
+          id?: string
+          local_demand?: number | null
+          local_supply?: number | null
+          market_access?: number | null
+          monetization?: number | null
+          player_name?: string
+          quality_weight?: number | null
+          session_id?: string
+          turn_number?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "city_market_baskets_city_id_fkey"
+            columns: ["city_id"]
+            isOneToOne: false
+            referencedRelation: "cities"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "city_market_baskets_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       city_market_summary: {
         Row: {
           avg_quality: number
@@ -5706,6 +5775,68 @@ export type Database = {
         }
         Relationships: []
       }
+      market_shares: {
+        Row: {
+          auto_production: number | null
+          basket_key: string
+          bonus_production: number | null
+          created_at: string | null
+          domestic_satisfaction: number | null
+          effective_export: number | null
+          global_demand: number | null
+          global_export: number | null
+          id: string
+          market_share: number | null
+          player_name: string
+          quality_weight: number | null
+          session_id: string
+          turn_number: number | null
+          wealth_generated: number | null
+        }
+        Insert: {
+          auto_production?: number | null
+          basket_key: string
+          bonus_production?: number | null
+          created_at?: string | null
+          domestic_satisfaction?: number | null
+          effective_export?: number | null
+          global_demand?: number | null
+          global_export?: number | null
+          id?: string
+          market_share?: number | null
+          player_name: string
+          quality_weight?: number | null
+          session_id: string
+          turn_number?: number | null
+          wealth_generated?: number | null
+        }
+        Update: {
+          auto_production?: number | null
+          basket_key?: string
+          bonus_production?: number | null
+          created_at?: string | null
+          domestic_satisfaction?: number | null
+          effective_export?: number | null
+          global_demand?: number | null
+          global_export?: number | null
+          id?: string
+          market_share?: number | null
+          player_name?: string
+          quality_weight?: number | null
+          session_id?: string
+          turn_number?: number | null
+          wealth_generated?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "market_shares_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       military_capacity: {
         Row: {
           army_name: string
@@ -7432,7 +7563,9 @@ export type Database = {
           trade_ideology: string | null
           updated_at: string
           warrior_ratio: number | null
+          wealth_domestic_component: number | null
           wealth_domestic_market: number | null
+          wealth_market_share: number | null
           wealth_pop_tax: number | null
           wealth_route_commerce: number | null
           wood_reserve: number
@@ -7517,7 +7650,9 @@ export type Database = {
           trade_ideology?: string | null
           updated_at?: string
           warrior_ratio?: number | null
+          wealth_domestic_component?: number | null
           wealth_domestic_market?: number | null
+          wealth_market_share?: number | null
           wealth_pop_tax?: number | null
           wealth_route_commerce?: number | null
           wood_reserve?: number
@@ -7602,7 +7737,9 @@ export type Database = {
           trade_ideology?: string | null
           updated_at?: string
           warrior_ratio?: number | null
+          wealth_domestic_component?: number | null
           wealth_domestic_market?: number | null
+          wealth_market_share?: number | null
           wealth_pop_tax?: number | null
           wealth_route_commerce?: number | null
           wood_reserve?: number
