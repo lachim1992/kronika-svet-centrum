@@ -111,13 +111,15 @@ export interface DemandBasketDef {
 
 export const DEMAND_BASKETS: DemandBasketDef[] = [
   { key: "staple_food", label: "Základní potraviny", icon: "🍞", tier: 1, description: "Chléb, obilí, maso — přežití", socialWeights: { peasants: 1.0, burghers: 0.6, clerics: 0.3, warriors: 0.8 } },
+  { key: "basic_material", label: "Základní materiály", icon: "🪨", tier: 1, description: "Ruda, kůže — surové stavební kameny ekonomiky", socialWeights: { peasants: 0.5, burghers: 0.7, clerics: 0.2, warriors: 0.4 } },
   { key: "tools", label: "Nástroje & nářadí", icon: "🔧", tier: 1, description: "Kovové nástroje, kožené výrobky", socialWeights: { peasants: 0.7, burghers: 0.5, clerics: 0.2, warriors: 0.4 } },
   { key: "construction", label: "Stavební materiály", icon: "🧱", tier: 2, description: "Dřevo, kámen, stavební bloky", socialWeights: { peasants: 0.3, burghers: 0.6, clerics: 0.4, warriors: 0.3 } },
+  { key: "textile", label: "Textil", icon: "🧵", tier: 2, description: "Vlákna, příze, tkaniny", socialWeights: { peasants: 0.4, burghers: 0.7, clerics: 0.5, warriors: 0.3 } },
   { key: "military_supply", label: "Vojenské zásoby", icon: "⚔️", tier: 2, description: "Zbraně, výzbroj, munice", socialWeights: { peasants: 0.1, burghers: 0.2, clerics: 0.1, warriors: 1.0 } },
   { key: "variety", label: "Rozmanitost", icon: "🎭", tier: 3, description: "Keramika, textil, víno — komfort", socialWeights: { peasants: 0.3, burghers: 0.8, clerics: 0.5, warriors: 0.3 } },
+  { key: "ritual", label: "Rituální potřeby", icon: "🕯️", tier: 3, description: "Kadidlo, oleje, svíce, posvátné materiály", socialWeights: { peasants: 0.2, burghers: 0.3, clerics: 1.0, warriors: 0.2 } },
   { key: "feast", label: "Slavnostní pochutiny", icon: "🥂", tier: 4, description: "Lahůdky, kvalitní víno, sladkosti", socialWeights: { peasants: 0.1, burghers: 0.6, clerics: 0.4, warriors: 0.4 } },
   { key: "prestige", label: "Prestiž", icon: "👑", tier: 4, description: "Šperky, luxusní zbraně, jemné textilie", socialWeights: { peasants: 0.05, burghers: 0.5, clerics: 0.3, warriors: 0.6 } },
-  { key: "ritual", label: "Rituální potřeby", icon: "🕯️", tier: 5, description: "Kadidlo, oleje, svíce, posvátné materiály", socialWeights: { peasants: 0.2, burghers: 0.3, clerics: 1.0, warriors: 0.2 } },
 ];
 
 // ═══════════════════════════════════════════
