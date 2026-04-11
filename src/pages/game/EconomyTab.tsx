@@ -48,6 +48,7 @@ import FormulasReferencePanel from "@/components/economy/FormulasReferencePanel"
 import NodeFlowBreakdown from "@/components/economy/NodeFlowBreakdown";
 import FiscalSubTab from "@/components/economy/FiscalSubTab";
 import DemandFulfillmentPanel from "@/components/economy/DemandFulfillmentPanel";
+import MarketSharePanel from "@/components/economy/MarketSharePanel";
 import GapAdvisorPanel from "@/components/economy/GapAdvisorPanel";
 
 interface Props {
@@ -399,6 +400,7 @@ const EconomyTab = ({ sessionId, currentPlayerName, currentTurn, cities, resourc
         {/* ═══ DEMAND TAB ═══ */}
         <TabsContent value="demand" className="space-y-5 animate-fade-in">
           <DemandFulfillmentPanel sessionId={sessionId} playerName={currentPlayerName} cities={cities} />
+          <MarketSharePanel sessionId={sessionId} playerName={currentPlayerName} />
         </TabsContent>
 
         {/* ═══ SUPPLY CHAIN TAB ═══ */}
