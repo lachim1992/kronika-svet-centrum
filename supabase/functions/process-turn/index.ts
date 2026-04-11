@@ -703,7 +703,6 @@ Deno.serve(async (req) => {
     //   3. Goods Fiscal      — tax_market + tax_transit + tax_extraction + capture
     //   4. Route Commerce    — secondary wealth from trade corridor volume
     // ══════════════════════════════════════════════════════════════
-    const DOMESTIC_MARKET_REALIZATION = 0.5; // Tuning knob: how much of node-flow wealth is realized
     const ROUTE_COMMERCE_RATE = 0.05;        // Tuning knob: wealth per unit of effective route capacity
 
     const taxMult = 1 + (taxRateModifier / 100);
