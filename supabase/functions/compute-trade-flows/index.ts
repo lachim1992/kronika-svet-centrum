@@ -7,33 +7,43 @@ const corsHeaders = {
 };
 
 /**
- * compute-trade-flows: Goods-aware city-to-city trade flow resolution
+ * compute-trade-flows v4.2: Auto-production + Market Share economy
  *
- * Phase 9 of Chronicle Economy v4.1
- *
- * 1. Load goods catalog, recipes, demand baskets
- * 2. For each city node with production_role, run eligible recipes → populate node_inventory
- * 3. Aggregate node_inventory into city_market_summary (projection)
- * 4. Compute demand basket satisfaction per city
- * 5. Compute trade pressure between cities with unmet demand
- * 6. Create/update trade_flows records
+ * Phase 1a: Run recipes on nodes → node_inventory (bonus production)
+ * Phase 1b: Auto-production per city per basket (NEW)
+ * Phase 2:  Aggregate into city_market_summary (per good)
+ * Phase 2b: Persist demand_baskets + city_market_baskets (per basket)
+ * Phase 3:  Trade pressure & trade_flows
+ * Phase 4:  Per-player goods fiscal aggregates
+ * Phase 4b: Market share computation (NEW) → market_shares + realm_resources
  */
 
-// ── Demand basket definitions (mirrors goodsCatalog.ts) ──
-const DEMAND_BASKETS: Record<string, { tier: number; social_weights: Record<string, number> }> = {
-  staple_food:     { tier: 1, social_weights: { peasants: 1.0, burghers: 0.8, clerics: 0.7, warriors: 1.0 } },
-  basic_material:  { tier: 1, social_weights: { peasants: 0.5, burghers: 0.8, clerics: 0.3, warriors: 0.6 } },
-  variety_food:    { tier: 2, social_weights: { peasants: 0.3, burghers: 0.8, clerics: 0.5, warriors: 0.4 } },
-  textile:         { tier: 2, social_weights: { peasants: 0.4, burghers: 0.9, clerics: 0.6, warriors: 0.5 } },
-  tools:           { tier: 2, social_weights: { peasants: 0.8, burghers: 0.6, clerics: 0.3, warriors: 0.4 } },
-  construction:    { tier: 2, social_weights: { peasants: 0.2, burghers: 0.5, clerics: 0.4, warriors: 0.3 } },
-  military_supply: { tier: 2, social_weights: { peasants: 0.1, burghers: 0.2, clerics: 0.1, warriors: 1.0 } },
-  ritual:          { tier: 3, social_weights: { peasants: 0.3, burghers: 0.4, clerics: 1.0, warriors: 0.2 } },
-  luxury:          { tier: 4, social_weights: { peasants: 0.1, burghers: 0.6, clerics: 0.3, warriors: 0.2 } },
-  feast:           { tier: 5, social_weights: { peasants: 0.1, burghers: 0.5, clerics: 0.4, warriors: 0.3 } },
+// ── Canonical basket config (mirrors goodsCatalog.ts BASKET_CONFIG) ──
+interface BasketDef {
+  tier: number;
+  baseRate: number;
+  basketValue: number;
+  category: "universal" | "conditional" | "premium";
+  popWeights: Record<string, number>;
+}
+
+const BASKET_CONFIG: Record<string, BasketDef> = {
+  staple_food:     { tier: 1, baseRate: 0.012, basketValue: 8,  category: "universal",    popWeights: { peasants: 1.0, burghers: 0.6, clerics: 0.3, warriors: 0.8 } },
+  basic_material:  { tier: 1, baseRate: 0.008, basketValue: 6,  category: "universal",    popWeights: { peasants: 0.5, burghers: 0.7, clerics: 0.2, warriors: 0.4 } },
+  tools:           { tier: 1, baseRate: 0.006, basketValue: 10, category: "universal",    popWeights: { peasants: 0.7, burghers: 0.5, clerics: 0.2, warriors: 0.4 } },
+  construction:    { tier: 2, baseRate: 0.005, basketValue: 12, category: "universal",    popWeights: { peasants: 0.3, burghers: 0.6, clerics: 0.4, warriors: 0.3 } },
+  textile:         { tier: 2, baseRate: 0.004, basketValue: 10, category: "conditional",  popWeights: { peasants: 0.4, burghers: 0.7, clerics: 0.5, warriors: 0.3 } },
+  military_supply: { tier: 2, baseRate: 0.003, basketValue: 15, category: "conditional",  popWeights: { peasants: 0.1, burghers: 0.2, clerics: 0.1, warriors: 1.0 } },
+  variety:         { tier: 3, baseRate: 0.003, basketValue: 14, category: "conditional",  popWeights: { peasants: 0.3, burghers: 0.8, clerics: 0.5, warriors: 0.3 } },
+  ritual:          { tier: 3, baseRate: 0.002, basketValue: 16, category: "conditional",  popWeights: { peasants: 0.2, burghers: 0.3, clerics: 1.0, warriors: 0.2 } },
+  feast:           { tier: 4, baseRate: 0,     basketValue: 20, category: "premium",      popWeights: { peasants: 0.1, burghers: 0.6, clerics: 0.4, warriors: 0.4 } },
+  prestige:        { tier: 4, baseRate: 0,     basketValue: 25, category: "premium",      popWeights: { peasants: 0.05, burghers: 0.5, clerics: 0.3, warriors: 0.6 } },
 };
 
-// Trade pressure weights
+const SETTLEMENT_MULT: Record<string, number> = {
+  HAMLET: 0.5, TOWNSHIP: 0.8, CASTLE: 0.9, CITY: 1.0, POLIS: 1.3,
+};
+
 const PRESSURE_WEIGHTS = { need: 1.0, upgrade: 0.6, variety: 0.4, prestige: 0.3, ritual: 0.5 };
 
 Deno.serve(async (req) => {
@@ -48,13 +58,14 @@ Deno.serve(async (req) => {
     }
 
     const sb = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+    const tn = turn_number || 1;
 
     // ── LOAD DATA ──
     const [goodsRes, recipesRes, nodesRes, citiesRes, routesRes, hexesRes] = await Promise.all([
       sb.from("goods").select("key, category, production_stage, market_tier, base_price_numeric, demand_basket, substitution_map, storable"),
       sb.from("production_recipes").select("*"),
-      sb.from("province_nodes").select("id, session_id, node_type, node_tier, node_subtype, production_role, capability_tags, guild_level, city_id, controlled_by, production_output, hex_q, hex_r, upgrade_level, specialization_scores, parent_node_id").eq("session_id", session_id),
-      sb.from("cities").select("id, name, owner_player, population_total, population_peasants, population_burghers, population_clerics, population_warriors, market_level, settlement_level").eq("session_id", session_id),
+      sb.from("province_nodes").select("id, session_id, node_type, node_tier, node_subtype, production_role, capability_tags, guild_level, city_id, controlled_by, production_output, hex_q, hex_r, upgrade_level, specialization_scores, parent_node_id, route_access_factor").eq("session_id", session_id),
+      sb.from("cities").select("id, name, owner_player, population_total, population_peasants, population_burghers, population_clerics, population_warriors, market_level, settlement_level, temple_level, city_stability, labor_allocation").eq("session_id", session_id),
       sb.from("province_routes").select("id, node_a, node_b, capacity_value, control_state").eq("session_id", session_id),
       sb.from("province_hexes").select("q, r, resource_deposits").eq("session_id", session_id).not("resource_deposits", "is", null),
     ]);
@@ -68,7 +79,6 @@ Deno.serve(async (req) => {
 
     const goodsMap = new Map(goods.map(g => [g.key, g]));
     const cityMap = new Map(cities.map(c => [c.id, c]));
-    // Map cities.id → province_nodes.id (for FK references in demand_baskets, trade_flows)
     const cityToNodeId = new Map<string, string>();
     for (const n of nodes) {
       if (n.city_id && !cityToNodeId.has(n.city_id)) {
@@ -85,7 +95,7 @@ Deno.serve(async (req) => {
     }
 
     // ════════════════════════════════════════════
-    // PHASE 1: Run recipes on nodes → compute node_inventory
+    // PHASE 1a: Run recipes on nodes → node_inventory (bonus production)
     // ════════════════════════════════════════════
     const nodeInventories: Array<{ node_id: string; good_key: string; quantity: number; quality_band: number }> = [];
 
@@ -94,7 +104,6 @@ Deno.serve(async (req) => {
       const tags: string[] = node.capability_tags || [];
       if (!role || tags.length === 0) continue;
 
-      // Find eligible recipes for this node
       const eligibleRecipes = recipes.filter(r => {
         if (r.required_role !== role) return false;
         const reqTags: string[] = r.required_tags || [];
@@ -102,18 +111,15 @@ Deno.serve(async (req) => {
       });
 
       for (const recipe of eligibleRecipes) {
-        // Base output from recipe (correct column: output_quantity)
         const baseOutput = recipe.output_quantity || 1;
         const guildBonus = 1 + (node.guild_level || 0) * 0.15;
         const upgradeMult = 1 + ((node.upgrade_level || 1) - 1) * 0.2;
-        const nodeProductionFactor = Math.max(0.1, (node.production_output || 1) / 5); // normalize
+        const nodeProductionFactor = Math.max(0.1, (node.production_output || 1) / 5);
 
-        // For source nodes, check hex deposits
         let resourceYield = 1.0;
         if (role === "source") {
           const hexKey = `${node.hex_q},${node.hex_r}`;
           const deposits = depositMap.get(hexKey) || [];
-          // Check if this recipe's output matches any deposit (correct column: output_good_key)
           const outputKey = recipe.output_good_key;
           const matchingDeposit = deposits.find((d: any) =>
             d.resource_type_key === outputKey || d.resource_type_key?.includes(outputKey?.split("_")[0])
@@ -133,20 +139,11 @@ Deno.serve(async (req) => {
             quantity,
             quality_band: Math.min(qualityBand, recipe.quality_output_bonus || 2),
           });
-
-          // Track specialization
-          if (node.specialization_scores && recipe.output_good_key) {
-            const scores = node.specialization_scores as Record<string, number>;
-            const branch = recipe.output_good_key.split("_")[0];
-            scores[branch] = (scores[branch] || 0) + 1;
-            // Will batch update later
-          }
         }
       }
     }
 
-    // ── Persist node_inventory ──
-    // Aggregate duplicates (same node_id + good_key from multiple recipes)
+    // Aggregate duplicates
     const invAgg = new Map<string, { node_id: string; good_key: string; quantity: number; quality_band: number; count: number }>();
     for (const ni of nodeInventories) {
       const key = `${ni.node_id}|${ni.good_key}`;
@@ -164,20 +161,16 @@ Deno.serve(async (req) => {
     if (dedupedInventories.length > 0) {
       const nodeIds = [...new Set(dedupedInventories.map(ni => ni.node_id))];
       for (let i = 0; i < nodeIds.length; i += 50) {
-        const { error: delErr } = await sb.from("node_inventory").delete().in("node_id", nodeIds.slice(i, i + 50));
-        if (delErr) console.error("node_inventory delete error:", JSON.stringify(delErr));
+        await sb.from("node_inventory").delete().in("node_id", nodeIds.slice(i, i + 50));
       }
       for (let i = 0; i < dedupedInventories.length; i += 50) {
-        const { error: insErr } = await sb.from("node_inventory").insert(dedupedInventories.slice(i, i + 50));
-        if (insErr) console.error("node_inventory insert error:", JSON.stringify(insErr));
+        await sb.from("node_inventory").insert(dedupedInventories.slice(i, i + 50));
       }
     }
 
     // ════════════════════════════════════════════
-    // PHASE 2: Aggregate into city_market_summary
+    // Build node→city and city→nodes mappings
     // ════════════════════════════════════════════
-    // Build node → city mapping via city_id or parent chain
-    const nodeToCityMap = new Map<string, string>();
     const nodeById = new Map(nodes.map(n => [n.id, n]));
 
     function resolveCityId(nodeId: string, depth = 0): string | null {
@@ -189,27 +182,23 @@ Deno.serve(async (req) => {
       return null;
     }
 
+    const nodeToCityMap = new Map<string, string>();
     for (const n of nodes) {
       const cityId = resolveCityId(n.id);
       if (cityId) nodeToCityMap.set(n.id, cityId);
     }
 
-    // Build city → nodes map from resolved mapping
-    const cityNodes = new Map<string, string[]>();
+    const cityNodeIds = new Map<string, string[]>();
     for (const [nodeId, cityId] of nodeToCityMap) {
-      const arr = cityNodes.get(cityId) || [];
+      const arr = cityNodeIds.get(cityId) || [];
       arr.push(nodeId);
-      cityNodes.set(cityId, arr);
+      cityNodeIds.set(cityId, arr);
     }
 
-    // Group inventory by city+good
+    // Group inventory by city+good (bonus supply from recipes)
     const cityGoodSupply = new Map<string, Map<string, { quantity: number; quality_sum: number; count: number }>>();
     for (const inv of nodeInventories) {
-      // Find which city this node belongs to
-      let cityId: string | null = null;
-      for (const [cid, nids] of cityNodes) {
-        if (nids.includes(inv.node_id)) { cityId = cid; break; }
-      }
+      const cityId = nodeToCityMap.get(inv.node_id);
       if (!cityId) continue;
 
       if (!cityGoodSupply.has(cityId)) cityGoodSupply.set(cityId, new Map());
@@ -221,34 +210,136 @@ Deno.serve(async (req) => {
       cityGoods.set(inv.good_key, existing);
     }
 
-    // Compute demand per city
-    const cityDemands = new Map<string, Map<string, number>>();
+    // ════════════════════════════════════════════
+    // PHASE 1b: Auto-production per city per basket (v4.2)
+    // ════════════════════════════════════════════
+
+    // Collect all hex resource deposits near each city for conditional gates
+    const cityResourceDeposits = new Map<string, Set<string>>();
+    for (const [nodeId, cityId] of nodeToCityMap) {
+      const node = nodeById.get(nodeId);
+      if (!node) continue;
+      const hexKey = `${node.hex_q},${node.hex_r}`;
+      const deposits = depositMap.get(hexKey) || [];
+      if (!cityResourceDeposits.has(cityId)) cityResourceDeposits.set(cityId, new Set());
+      const set = cityResourceDeposits.get(cityId)!;
+      for (const d of deposits) {
+        if (d.resource_type_key) set.add(d.resource_type_key);
+      }
+    }
+
+    // Auto-production results: city → basket → auto_supply
+    const cityAutoSupply = new Map<string, Map<string, number>>();
+
     for (const city of cities) {
       const pop = city.population_total || 100;
-      const demands = new Map<string, number>();
+      const weightedPopMap = new Map<string, number>();
 
-      for (const [basketKey, basket] of Object.entries(DEMAND_BASKETS)) {
-        const sw = basket.social_weights;
+      for (const [bk, bc] of Object.entries(BASKET_CONFIG)) {
+        const pw = bc.popWeights;
         const weightedPop =
-          (city.population_peasants || 0) * (sw.peasants || 0) +
-          (city.population_burghers || 0) * (sw.burghers || 0) +
-          (city.population_clerics || 0) * (sw.clerics || 0) +
-          (city.population_warriors || 0) * (sw.warriors || 0);
+          (city.population_peasants || 0) * (pw.peasants || 0) +
+          (city.population_burghers || 0) * (pw.burghers || 0) +
+          (city.population_clerics || 0) * (pw.clerics || 0) +
+          (city.population_warriors || 0) * (pw.warriors || 0);
+        weightedPopMap.set(bk, weightedPop);
+      }
 
-        // Demand scales with weighted population and tier (higher tiers = less base demand)
-        const tierMult = 1 / basket.tier;
+      // Workforce participation from labor_allocation, fallback 0.7
+      let workforceParticipation = 0.7;
+      if (city.labor_allocation && typeof city.labor_allocation === "object") {
+        const la = city.labor_allocation as Record<string, number>;
+        const productiveSectors = ["farming", "mining", "crafting", "military", "trade", "construction"];
+        const totalAllocated = productiveSectors.reduce((s, k) => s + (la[k] || 0), 0);
+        if (totalAllocated > 0) workforceParticipation = Math.min(1, totalAllocated);
+      }
+
+      const stabilityFactor = Math.max(0.1, (city.city_stability || 50) / 100);
+      const settlementMult = SETTLEMENT_MULT[city.settlement_level || "HAMLET"] || 0.5;
+
+      const deposits = cityResourceDeposits.get(city.id) || new Set();
+
+      const autoMap = new Map<string, number>();
+
+      for (const [bk, bc] of Object.entries(BASKET_CONFIG)) {
+        // Premium: never auto
+        if (bc.category === "premium") {
+          autoMap.set(bk, 0);
+          continue;
+        }
+
+        // Conditional gates
+        if (bc.category === "conditional") {
+          let gateOpen = false;
+          if (bk === "textile") {
+            gateOpen = ["fiber", "livestock", "wool", "flax", "cotton", "raw_fiber", "raw_hide"].some(d => deposits.has(d));
+          } else if (bk === "military_supply") {
+            const warriors = city.population_warriors || 0;
+            gateOpen = (warriors / Math.max(1, pop)) > 0.05;
+          } else if (bk === "variety") {
+            gateOpen = (city.market_level || 0) >= 1;
+          } else if (bk === "ritual") {
+            gateOpen = (city.temple_level || 0) >= 1;
+          }
+          if (!gateOpen) {
+            autoMap.set(bk, 0);
+            continue;
+          }
+        }
+
+        const weightedPop = weightedPopMap.get(bk) || 0;
+        const autoSupply = weightedPop * bc.baseRate * workforceParticipation * stabilityFactor * settlementMult;
+        autoMap.set(bk, Math.round(autoSupply * 100) / 100);
+      }
+
+      cityAutoSupply.set(city.id, autoMap);
+    }
+
+    // ════════════════════════════════════════════
+    // Compute demand per city per basket
+    // ════════════════════════════════════════════
+    const cityDemands = new Map<string, Map<string, number>>();
+    for (const city of cities) {
+      const demands = new Map<string, number>();
+      for (const [bk, bc] of Object.entries(BASKET_CONFIG)) {
+        const pw = bc.popWeights;
+        const weightedPop =
+          (city.population_peasants || 0) * (pw.peasants || 0) +
+          (city.population_burghers || 0) * (pw.burghers || 0) +
+          (city.population_clerics || 0) * (pw.clerics || 0) +
+          (city.population_warriors || 0) * (pw.warriors || 0);
+        const tierMult = 1 / bc.tier;
         const demand = Math.round(weightedPop * 0.01 * tierMult * 10) / 10;
-        if (demand > 0) demands.set(basketKey, demand);
+        if (demand > 0) demands.set(bk, demand);
       }
       cityDemands.set(city.id, demands);
     }
 
-    // Write city_market_summary
+    // ════════════════════════════════════════════
+    // Aggregate bonus_supply per city per basket (from recipe node_inventory)
+    // ════════════════════════════════════════════
+    const cityBonusPerBasket = new Map<string, Map<string, { quantity: number; qualitySum: number; count: number }>>();
+    for (const [cityId, goodsSupply] of cityGoodSupply) {
+      const basketAgg = new Map<string, { quantity: number; qualitySum: number; count: number }>();
+      for (const [gk, sv] of goodsSupply) {
+        const good = goodsMap.get(gk);
+        const bk = good?.demand_basket || "basic_material";
+        const existing = basketAgg.get(bk) || { quantity: 0, qualitySum: 0, count: 0 };
+        existing.quantity += sv.quantity;
+        existing.qualitySum += sv.quality_sum;
+        existing.count += sv.count;
+        basketAgg.set(bk, existing);
+      }
+      cityBonusPerBasket.set(cityId, basketAgg);
+    }
+
+    // ════════════════════════════════════════════
+    // PHASE 2: Write city_market_summary (per good, unchanged)
+    // ════════════════════════════════════════════
     const summaryRows: any[] = [];
     for (const [cityId, goodsSupply] of cityGoodSupply) {
       const cityNodeId = nodes.find(n => n.city_id === cityId)?.id;
       if (!cityNodeId) continue;
-
       const demands = cityDemands.get(cityId) || new Map();
 
       for (const [goodKey, supply] of goodsSupply) {
@@ -265,59 +356,95 @@ Deno.serve(async (req) => {
           avg_quality: supply.count > 0 ? Math.round(supply.quality_sum / supply.count) : 0,
           price_band: good?.base_price_numeric ? (good.base_price_numeric > 10 ? 2 : good.base_price_numeric > 3 ? 1 : 0) : 0,
           price_numeric: good?.base_price_numeric || 1,
-          domestic_share: 1.0, // Initially all domestic
+          domestic_share: 1.0,
           import_share: 0.0,
-          turn_number: turn_number || 1,
+          turn_number: tn,
         });
       }
     }
 
-    // Upsert city_market_summary
     if (summaryRows.length > 0) {
-      await sb.from("city_market_summary").delete()
-        .eq("session_id", session_id)
-        .eq("turn_number", turn_number || 1);
+      await sb.from("city_market_summary").delete().eq("session_id", session_id).eq("turn_number", tn);
       for (let i = 0; i < summaryRows.length; i += 50) {
         await sb.from("city_market_summary").insert(summaryRows.slice(i, i + 50));
       }
     }
 
     // ════════════════════════════════════════════
-    // PHASE 2b: Persist demand_baskets with satisfaction
+    // PHASE 2b: Persist demand_baskets + city_market_baskets (per basket)
     // ════════════════════════════════════════════
     const demandBasketRows: any[] = [];
-    for (const [cityId, demands] of cityDemands) {
-      const cityNodeId = cityToNodeId.get(cityId);
-      if (!cityNodeId) continue; // Skip cities without a matching province_node
-      const citySupply = cityGoodSupply.get(cityId) || new Map();
-      
-      for (const [basketKey, demandQty] of demands) {
-        // Calculate satisfaction: how much of this basket's demand is met
-        const relevantGoods = goods.filter(g => g.demand_basket === basketKey);
-        let domesticSatisfaction = 0;
-        for (const g of relevantGoods) {
-          const supply = citySupply.get(g.key);
-          if (supply) domesticSatisfaction += supply.quantity;
-        }
-        const satisfaction = demandQty > 0 ? Math.min(1.0, domesticSatisfaction / demandQty) : 1.0;
-        const deficit = Math.max(0, demandQty - domesticSatisfaction);
+    const cityBasketRows: any[] = [];
 
+    for (const city of cities) {
+      const cityNodeId = cityToNodeId.get(city.id);
+      if (!cityNodeId) continue;
+      const demands = cityDemands.get(city.id) || new Map();
+      const autoMap = cityAutoSupply.get(city.id) || new Map();
+      const bonusMap = cityBonusPerBasket.get(city.id) || new Map();
+
+      // Compute city market_access from its nodes' route_access_factor
+      const nids = cityNodeIds.get(city.id) || [];
+      let sumAccess = 0;
+      let accessCount = 0;
+      for (const nid of nids) {
+        const n = nodeById.get(nid);
+        if (n && n.route_access_factor != null) {
+          sumAccess += n.route_access_factor;
+          accessCount++;
+        }
+      }
+      const avgRouteAccess = accessCount > 0 ? sumAccess / accessCount : 0.5;
+      const cityMarketAccess = avgRouteAccess * (0.8 + (city.market_level || 0) * 0.1);
+      const cityMonetization = (1 + (city.market_level || 0) * 0.1) * Math.max(0.1, (city.city_stability || 50) / 100);
+
+      for (const [bk, bc] of Object.entries(BASKET_CONFIG)) {
+        const demandQty = demands.get(bk) || 0;
+        const autoSupply = autoMap.get(bk) || 0;
+        const bonus = bonusMap.get(bk);
+        const bonusSupply = bonus?.quantity || 0;
+        const localSupply = autoSupply + bonusSupply;
+        const domesticSatisfaction = demandQty > 0 ? Math.min(1.0, localSupply / demandQty) : 1.0;
+        const exportSurplus = Math.max(0, localSupply - demandQty);
+        const guildLevel = bonus?.count ? Math.round(bonus.qualitySum / bonus.count) : 0;
+        const qualityWeight = Math.min(2.0, Math.max(1.0, 1 + guildLevel * 0.15));
+
+        // demand_baskets row
         demandBasketRows.push({
           session_id,
           city_id: cityNodeId,
-          basket_key: basketKey,
-          tier: DEMAND_BASKETS[basketKey]?.tier || 1,
+          basket_key: bk,
+          tier: bc.tier,
           quantity_needed: Math.round(demandQty * 10) / 10,
-          quantity_fulfilled: Math.round(domesticSatisfaction * 10) / 10,
-          fulfillment_type: satisfaction >= 0.8 ? "full" : satisfaction >= 0.3 ? "partial" : "deficit",
+          quantity_fulfilled: Math.round(localSupply * 10) / 10,
+          fulfillment_type: domesticSatisfaction >= 0.8 ? "full" : domesticSatisfaction >= 0.3 ? "partial" : "deficit",
           min_quality: 0,
-          preferred_quality: DEMAND_BASKETS[basketKey]?.tier >= 3 ? 2 : 1,
-          satisfaction_score: Math.round(satisfaction * 1000) / 1000,
-          turn_number: turn_number || 1,
+          preferred_quality: bc.tier >= 3 ? 2 : 1,
+          satisfaction_score: Math.round(domesticSatisfaction * 1000) / 1000,
+          turn_number: tn,
+        });
+
+        // city_market_baskets row (v4.2)
+        cityBasketRows.push({
+          session_id,
+          city_id: city.id,
+          player_name: city.owner_player || "",
+          basket_key: bk,
+          auto_supply: autoSupply,
+          bonus_supply: bonusSupply,
+          local_demand: demandQty,
+          local_supply: localSupply,
+          domestic_satisfaction: Math.round(domesticSatisfaction * 1000) / 1000,
+          export_surplus: Math.round(exportSurplus * 100) / 100,
+          quality_weight: qualityWeight,
+          market_access: Math.round(cityMarketAccess * 1000) / 1000,
+          monetization: Math.round(cityMonetization * 1000) / 1000,
+          turn_number: tn,
         });
       }
     }
 
+    // Persist demand_baskets
     if (demandBasketRows.length > 0) {
       await sb.from("demand_baskets").delete().eq("session_id", session_id);
       for (let i = 0; i < demandBasketRows.length; i += 50) {
@@ -326,15 +453,23 @@ Deno.serve(async (req) => {
       }
     }
 
+    // Persist city_market_baskets
+    if (cityBasketRows.length > 0) {
+      await sb.from("city_market_baskets").delete().eq("session_id", session_id).eq("turn_number", tn);
+      for (let i = 0; i < cityBasketRows.length; i += 50) {
+        const { error } = await sb.from("city_market_baskets").insert(cityBasketRows.slice(i, i + 50));
+        if (error) console.error("city_market_baskets insert error:", JSON.stringify(error));
+      }
+    }
+
     // ════════════════════════════════════════════
-    // PHASE 3: Compute trade pressure & create trade_flows
+    // PHASE 3: Trade pressure & trade_flows
     // ════════════════════════════════════════════
-    // Build adjacency for city-level connectivity
     const cityAdjacency = new Map<string, Set<string>>();
     for (const route of routes) {
       if (route.control_state === "blocked") continue;
-      const nodeA = nodes.find(n => n.id === route.node_a);
-      const nodeB = nodes.find(n => n.id === route.node_b);
+      const nodeA = nodeById.get(route.node_a);
+      const nodeB = nodeById.get(route.node_b);
       if (!nodeA?.city_id || !nodeB?.city_id) continue;
       if (nodeA.city_id === nodeB.city_id) continue;
 
@@ -345,27 +480,26 @@ Deno.serve(async (req) => {
     }
 
     const tradeFlows: any[] = [];
-
     for (const [cityId, demands] of cityDemands) {
       const citySupply = cityGoodSupply.get(cityId) || new Map();
       const city = cityMap.get(cityId);
       if (!city) continue;
-
       const neighbors = cityAdjacency.get(cityId) || new Set();
 
       for (const [basketKey, demandQty] of demands) {
-        // Calculate current satisfaction from domestic supply
         const relevantGoods = goods.filter(g => g.demand_basket === basketKey);
         let domesticSatisfaction = 0;
         for (const g of relevantGoods) {
           const supply = citySupply.get(g.key);
           if (supply) domesticSatisfaction += supply.quantity;
         }
+        // Also add auto-supply
+        const autoForBasket = cityAutoSupply.get(cityId)?.get(basketKey) || 0;
+        domesticSatisfaction += autoForBasket;
 
         const gap = demandQty - domesticSatisfaction;
-        if (gap <= 0) continue; // Demand met domestically
+        if (gap <= 0) continue;
 
-        // Look for supply in neighboring cities
         for (const neighborId of neighbors) {
           const neighborSupply = cityGoodSupply.get(neighborId) || new Map();
           const neighborCity = cityMap.get(neighborId);
@@ -387,15 +521,13 @@ Deno.serve(async (req) => {
 
           if (availableSurplus <= 0 || !bestGoodKey) continue;
 
-          // Compute trade pressure
-          const basket = DEMAND_BASKETS[basketKey];
+          const basket = BASKET_CONFIG[basketKey];
           const needPressure = gap / Math.max(1, demandQty);
           const tierPressure = basket ? (basket.tier >= 3 ? PRESSURE_WEIGHTS.prestige : PRESSURE_WEIGHTS.upgrade) : 0;
           const pressure = PRESSURE_WEIGHTS.need * needPressure + tierPressure * 0.5;
-
           if (pressure < 0.1) continue;
 
-          const flowVolume = Math.min(gap, availableSurplus * 0.5); // Max 50% of surplus flows
+          const flowVolume = Math.min(gap, availableSurplus * 0.5);
 
           tradeFlows.push({
             session_id,
@@ -409,21 +541,18 @@ Deno.serve(async (req) => {
             quality_band: 0,
             trade_pressure: Math.round(pressure * 100) / 100,
             effective_price: goodsMap.get(bestGoodKey)?.base_price_numeric || 1,
-            price_band: goodsMap.get(bestGoodKey)?.base_price_numeric > 5 ? 1 : 0,
+            price_band: (goodsMap.get(bestGoodKey)?.base_price_numeric || 0) > 5 ? 1 : 0,
             friction_score: 0,
             maturity: 0,
             status: pressure > 0.5 ? "active" : "trial",
-            turn_created: turn_number || 1,
+            turn_created: tn,
           });
         }
       }
     }
 
-    // Persist trade_flows
     if (tradeFlows.length > 0) {
-      // Remove old flows for this session (they're recomputed each turn)
       await sb.from("trade_flows").delete().eq("session_id", session_id);
-
       for (let i = 0; i < tradeFlows.length; i += 50) {
         const { error: tfErr } = await sb.from("trade_flows").insert(tradeFlows.slice(i, i + 50));
         if (tfErr) console.error("trade_flows insert error:", JSON.stringify(tfErr));
@@ -431,16 +560,12 @@ Deno.serve(async (req) => {
     }
 
     // ════════════════════════════════════════════
-    // PHASE 4: Compute per-player goods economy aggregates
+    // PHASE 4: Per-player goods fiscal aggregates
     // ════════════════════════════════════════════
     const playerAggregates = new Map<string, {
-      tax_market: number;
-      tax_transit: number;
-      tax_extraction: number;
-      commercial_retention: number;
-      commercial_capture: number;
-      goods_production_total: number;
-      goods_supply_total: number;
+      tax_market: number; tax_transit: number; tax_extraction: number;
+      commercial_retention: number; commercial_capture: number;
+      goods_production_total: number; goods_supply_total: number;
     }>();
 
     for (const city of cities) {
@@ -464,26 +589,21 @@ Deno.serve(async (req) => {
           totalSupply += sv.quantity;
           const good = goodsMap.get(gk);
           if (good?.storable) storableSupply += sv.quantity;
-          // Extraction tax from raw goods
           if (good?.production_stage === "raw") {
             agg.tax_extraction += sv.quantity * (good.base_price_numeric || 1) * 0.05;
           }
         }
         agg.goods_production_total += totalSupply;
         agg.goods_supply_total += storableSupply;
-
-        // Market tax = domestic trade value * market_level factor
         const marketFactor = 1 + (city.market_level || 0) * 0.1;
         agg.tax_market += totalSupply * 0.08 * marketFactor;
       }
 
-      // Capture = export flows from this player's cities
       const exportFlows = tradeFlows.filter(f => f.source_city_id === city.id);
       for (const ef of exportFlows) {
         agg.commercial_capture += ef.volume_per_turn * (ef.effective_price || 1) * 0.1;
       }
 
-      // Retention = fraction of demand met domestically
       const demands = cityDemands.get(city.id);
       if (demands && supply) {
         let totalDemand = 0;
@@ -496,15 +616,11 @@ Deno.serve(async (req) => {
             if (s) totalDomestic += Math.min(s.quantity, dq);
           }
         }
-        if (totalDemand > 0) {
-          agg.commercial_retention += totalDomestic / totalDemand;
-        }
+        if (totalDemand > 0) agg.commercial_retention += totalDomestic / totalDemand;
       }
     }
 
-    // Transit tax from trade flows passing through player's nodes
     for (const flow of tradeFlows) {
-      // Simple: if flow passes between two different owners, intermediate nodes get transit tax
       const fromCity = cityMap.get(flow.source_city_id);
       const toCity = cityMap.get(flow.target_city_id);
       if (fromCity && toCity && fromCity.owner_player !== toCity.owner_player) {
@@ -516,15 +632,122 @@ Deno.serve(async (req) => {
       }
     }
 
-    // ── Compute goods-derived macro values per player ──
-    // Production value = Σ(goods quantity × base_price) across all player's nodes
-    // Supply volume = Σ(storable goods quantity)
-    // Wealth fiscal = tax_market + tax_transit + tax_extraction + capture
+    // ════════════════════════════════════════════
+    // PHASE 4b: Market share computation (v4.2)
+    // ════════════════════════════════════════════
+
+    // Per player per basket: aggregate city basket data
+    const playerBasketData = new Map<string, Map<string, {
+      localSupply: number; localDemand: number;
+      effectiveExport: number; domesticSatisfaction: number;
+      autoProduction: number; bonusProduction: number;
+      qualityWeight: number;
+    }>>();
+
+    for (const row of cityBasketRows) {
+      const player = row.player_name;
+      if (!player) continue;
+      if (!playerBasketData.has(player)) playerBasketData.set(player, new Map());
+      const pMap = playerBasketData.get(player)!;
+
+      const existing = pMap.get(row.basket_key) || {
+        localSupply: 0, localDemand: 0, effectiveExport: 0,
+        domesticSatisfaction: 0, autoProduction: 0, bonusProduction: 0,
+        qualityWeight: 1,
+      };
+
+      existing.localSupply += row.local_supply;
+      existing.localDemand += row.local_demand;
+      existing.autoProduction += row.auto_supply;
+      existing.bonusProduction += row.bonus_supply;
+      // effective_export = surplus × quality × market_access
+      const effectiveExport = row.export_surplus * row.quality_weight * row.market_access;
+      existing.effectiveExport += effectiveExport;
+      existing.qualityWeight = Math.max(existing.qualityWeight, row.quality_weight);
+
+      pMap.set(row.basket_key, existing);
+    }
+
+    // Compute domestic satisfaction per player per basket (weighted aggregate)
+    for (const [player, baskets] of playerBasketData) {
+      for (const [bk, data] of baskets) {
+        data.domesticSatisfaction = data.localDemand > 0
+          ? Math.min(1, data.localSupply / data.localDemand)
+          : 1;
+      }
+    }
+
+    // Global aggregates per basket
+    const globalPerBasket = new Map<string, { totalExport: number; totalDemand: number; totalSupply: number }>();
+    for (const [_player, baskets] of playerBasketData) {
+      for (const [bk, data] of baskets) {
+        const g = globalPerBasket.get(bk) || { totalExport: 0, totalDemand: 0, totalSupply: 0 };
+        g.totalExport += data.effectiveExport;
+        g.totalDemand += data.localDemand;
+        g.totalSupply += data.localSupply;
+        globalPerBasket.set(bk, g);
+      }
+    }
+
+    // Compute market_shares rows + player wealth
+    const marketShareRows: any[] = [];
+    const playerMarketWealth = new Map<string, number>();
+    const playerDomesticWealth = new Map<string, number>();
+
+    for (const [player, baskets] of playerBasketData) {
+      let totalMW = 0;
+      let totalDW = 0;
+
+      for (const [bk, data] of baskets) {
+        const bc = BASKET_CONFIG[bk];
+        if (!bc) continue;
+        const global = globalPerBasket.get(bk) || { totalExport: 0, totalDemand: 0, totalSupply: 0 };
+        const marketShare = global.totalExport > 0 ? data.effectiveExport / global.totalExport : 0;
+        const marketFill = global.totalDemand > 0 ? Math.min(1, global.totalSupply / global.totalDemand) : 1;
+
+        // Player market basket wealth
+        const playerMarketBasketWealth = bc.basketValue * marketShare * marketFill;
+        totalMW += playerMarketBasketWealth;
+
+        // Domestic wealth component
+        const domesticWealth = data.localDemand * data.domesticSatisfaction * bc.basketValue;
+        totalDW += domesticWealth;
+
+        marketShareRows.push({
+          session_id,
+          player_name: player,
+          basket_key: bk,
+          auto_production: data.autoProduction,
+          bonus_production: data.bonusProduction,
+          quality_weight: data.qualityWeight,
+          effective_export: Math.round(data.effectiveExport * 100) / 100,
+          global_export: Math.round(global.totalExport * 100) / 100,
+          global_demand: Math.round(global.totalDemand * 100) / 100,
+          market_share: Math.round(marketShare * 10000) / 10000,
+          domestic_satisfaction: Math.round(data.domesticSatisfaction * 1000) / 1000,
+          wealth_generated: Math.round(playerMarketBasketWealth * 100) / 100,
+          turn_number: tn,
+        });
+      }
+
+      playerMarketWealth.set(player, totalMW);
+      playerDomesticWealth.set(player, totalDW);
+    }
+
+    // Persist market_shares
+    if (marketShareRows.length > 0) {
+      await sb.from("market_shares").delete().eq("session_id", session_id).eq("turn_number", tn);
+      for (let i = 0; i < marketShareRows.length; i += 50) {
+        const { error } = await sb.from("market_shares").insert(marketShareRows.slice(i, i + 50));
+        if (error) console.error("market_shares insert error:", JSON.stringify(error));
+      }
+    }
+
+    // ── Persist fiscal + market share to realm_resources ──
     for (const [player, agg] of playerAggregates) {
       const cityCount = cities.filter(c => c.owner_player === player).length;
       const avgRetention = cityCount > 0 ? agg.commercial_retention / cityCount : 0;
 
-      // Compute goods production value (quantity × base_price for all inventories belonging to this player)
       let playerGoodsProductionValue = 0;
       let playerGoodsSupplyVolume = 0;
       const playerCityIds = cities.filter(c => c.owner_player === player).map(c => c.id);
@@ -551,13 +774,18 @@ Deno.serve(async (req) => {
         goods_production_value: Math.round(playerGoodsProductionValue * 10) / 10,
         goods_supply_volume: Math.round(playerGoodsSupplyVolume * 10) / 10,
         goods_wealth_fiscal: Math.round(goodsWealthFiscal * 10) / 10,
+        wealth_domestic_component: Math.round((playerDomesticWealth.get(player) || 0) * 100) / 100,
+        wealth_market_share: Math.round((playerMarketWealth.get(player) || 0) * 100) / 100,
       }).eq("session_id", session_id).eq("player_name", player);
     }
 
     return new Response(JSON.stringify({
       ok: true,
       inventories_computed: nodeInventories.length,
+      auto_production_cities: cityAutoSupply.size,
       market_summaries: summaryRows.length,
+      city_basket_rows: cityBasketRows.length,
+      market_share_rows: marketShareRows.length,
       trade_flows_created: tradeFlows.length,
       players_updated: playerAggregates.size,
     }), {
