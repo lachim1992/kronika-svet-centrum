@@ -1,8 +1,10 @@
 /**
- * Chronicle Economy v4.1 — Client-side Goods Catalog
+ * Chronicle Economy v4.2 — Client-side Goods Catalog
  * 
  * Mirrors DB data for UI previews, recipe browsing, demand basket logic.
  * Source of truth is the DB; this is a convenience mirror.
+ * 
+ * v4.2: Added BASKET_CONFIG for auto-production + market share system.
  */
 
 // ═══════════════════════════════════════════
