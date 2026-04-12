@@ -52,6 +52,7 @@ import FiscalSubTab from "@/components/economy/FiscalSubTab";
 import DemandFulfillmentPanel from "@/components/economy/DemandFulfillmentPanel";
 import MarketSharePanel from "@/components/economy/MarketSharePanel";
 import GapAdvisorPanel from "@/components/economy/GapAdvisorPanel";
+import MarketPerformancePanel from "@/components/economy/MarketPerformancePanel";
 
 interface Props {
   sessionId: string;
@@ -272,17 +273,14 @@ const EconomyTab = ({ sessionId, currentPlayerName, currentTurn, cities, armies,
             <TabsTrigger value="overview" className="text-xs font-display rounded-lg data-[state=active]:bg-card data-[state=active]:shadow-sm whitespace-nowrap px-3">
               📊 Přehled
             </TabsTrigger>
-            <TabsTrigger value="demand" className="text-xs font-display rounded-lg data-[state=active]:bg-card data-[state=active]:shadow-sm whitespace-nowrap px-3">
-              📦 Poptávka
+            <TabsTrigger value="markets" className="text-xs font-display rounded-lg data-[state=active]:bg-card data-[state=active]:shadow-sm whitespace-nowrap px-3">
+              📈 Trhy
             </TabsTrigger>
             <TabsTrigger value="supply" className="text-xs font-display rounded-lg data-[state=active]:bg-card data-[state=active]:shadow-sm whitespace-nowrap px-3">
               🔗 Supply Chain
             </TabsTrigger>
-            <TabsTrigger value="gaps" className="text-xs font-display rounded-lg data-[state=active]:bg-card data-[state=active]:shadow-sm whitespace-nowrap px-3">
-              🎯 Mezery
-            </TabsTrigger>
             <TabsTrigger value="fiscal" className="text-xs font-display rounded-lg data-[state=active]:bg-card data-[state=active]:shadow-sm whitespace-nowrap px-3">
-              🏛️ Fiskál
+              🏛️ Příjmy státu
             </TabsTrigger>
             <TabsTrigger value="cities" className="text-xs font-display rounded-lg data-[state=active]:bg-card data-[state=active]:shadow-sm whitespace-nowrap px-3">
               🏙️ Sídla
@@ -362,27 +360,11 @@ const EconomyTab = ({ sessionId, currentPlayerName, currentTurn, cities, armies,
           {realm && <MilitaryUpkeepPanel armies={armies} realm={realm} />}
         </TabsContent>
 
-        {/* ═══ DEMAND TAB ═══ */}
-        <TabsContent value="demand" className="space-y-5 animate-fade-in">
+        {/* ═══ MARKETS TAB ═══ */}
+        <TabsContent value="markets" className="space-y-5 animate-fade-in">
+          {realm && <MarketPerformancePanel realm={realm} />}
           <DemandFulfillmentPanel sessionId={sessionId} playerName={currentPlayerName} cities={cities} />
           <MarketSharePanel sessionId={sessionId} playerName={currentPlayerName} />
-        </TabsContent>
-
-        {/* ═══ SUPPLY CHAIN TAB ═══ */}
-        <TabsContent value="supply" className="space-y-5 animate-fade-in">
-          <SupplyChainPanel sessionId={sessionId} playerName={currentPlayerName} currentTurn={currentTurn} />
-          {realm && <NodeFlowBreakdown sessionId={sessionId} playerName={currentPlayerName} realm={realm} />}
-          {devMode && realm && <CapacityPanel realm={realm} cities={myCities} nodeStats={nodeStats} />}
-          {realm && <PrestigeBreakdown realm={realm} />}
-          {realm && <StrategicResourcesDetail realm={realm} />}
-          {devMode && <EconomyDependencyMap realm={realm} cities={myCities} armies={armies} sessionId={sessionId} playerName={currentPlayerName} />}
-          {devMode && <FormulasReferencePanel />}
-        </TabsContent>
-
-        {/* ═══ GAPS & ADVISOR TAB ═══ */}
-        <TabsContent value="gaps" className="space-y-5 animate-fade-in">
-          {devMode && <GapAdvisorPanel sessionId={sessionId} playerName={currentPlayerName} cities={cities} />}
-
           <TradePanel
             sessionId={sessionId}
             currentPlayerName={currentPlayerName}
@@ -392,6 +374,7 @@ const EconomyTab = ({ sessionId, currentPlayerName, currentTurn, cities, armies,
             realm={realm}
             onRefetch={onRefetch}
           />
+          {devMode && <GapAdvisorPanel sessionId={sessionId} playerName={currentPlayerName} cities={cities} />}
         </TabsContent>
 
         {/* ═══ FISCAL TAB ═══ */}
