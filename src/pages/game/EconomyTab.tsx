@@ -57,7 +57,6 @@ interface Props {
   currentPlayerName: string;
   currentTurn: number;
   cities: any[];
-  resources: any[];
   armies: any[];
   myRole?: string;
   onEntityClick?: (type: string, id: string) => void;
@@ -67,7 +66,7 @@ interface Props {
 
 type CitySortKey = "name" | "population" | "settlement" | "vulnerability" | "balance";
 
-const EconomyTab = ({ sessionId, currentPlayerName, currentTurn, cities, resources, armies, myRole, onEntityClick, onRefetch, onTabChange }: Props) => {
+const EconomyTab = ({ sessionId, currentPlayerName, currentTurn, cities, armies, myRole, onEntityClick, onRefetch, onTabChange }: Props) => {
   const [realm, setRealm] = useState<any>(null);
   const [nodeStats, setNodeStats] = useState<any[]>([]);
   const [citySortKey, setCitySortKey] = useState<CitySortKey>("population");

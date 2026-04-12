@@ -75,7 +75,6 @@ interface Props {
   memories: any[];
   players: any[];
   cities: any[];
-  resources: any[];
   armies: any[];
   wonders: any[];
   chronicles: any[];
@@ -94,7 +93,7 @@ interface Props {
 type CitySortKey = "name" | "population" | "settlement" | "vulnerability" | "balance";
 
 const HomeTab = ({
-  sessionId, session, cities, players, resources, armies, currentPlayerName, currentTurn, myRole,
+  sessionId, session, cities, players, armies, currentPlayerName, currentTurn, myRole,
   onEntityClick, onRefetch, onFoundCity, onTabChange,
 }: Props) => {
   const isMobile = useIsMobile();
