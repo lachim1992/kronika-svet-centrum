@@ -1,9 +1,19 @@
 /**
- * EconomyFlowOverlay — v4.2 goods-based trade visualization.
- * Replaces legacy StrategicMapOverlay, RouteCorridorsOverlay, TradeNetworkOverlay.
- * Shows: trade flows color-coded by goods category, route utilization, city satisfaction badges.
+ * EconomyFlowOverlay — v4.2 dual-mode economy visualization.
+ * 
+ * Two view modes:
+ *   - "goods": Trade flows color-coded by goods category (food/raw/luxury/manufactured)
+ *   - "macro": Aggregate pillars (Produkce/Bohatství/Zásoby) derived from v4.2 data
+ * 
+ * Features:
+ *   - Animated particles along trade routes
+ *   - Static polylines as base layer
+ *   - Auto-production pulsating halos around cities
+ *   - Export arrows from cities with surplus
+ *   - City satisfaction badges
+ *   - Route control state visualization (open/contested/blocked/embargoed)
  */
-import { useState, useEffect, useCallback, useMemo, memo } from "react";
+import { useState, useEffect, useCallback, useMemo, memo, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 
 const HEX_SIZE = 38;
@@ -20,12 +30,20 @@ const CATEGORY_COLORS: Record<string, string> = {
   manufactured: "hsl(210, 60%, 55%)",
 };
 
+/* ── Macro pillar colors ── */
+const MACRO_COLORS: Record<string, string> = {
+  production: "hsl(120, 60%, 50%)",
+  wealth:     "hsl(45, 85%, 55%)",
+  supply:     "hsl(210, 65%, 55%)",
+  export:     "hsl(280, 55%, 55%)",
+};
+
 /* Map good_key → category */
 const GOOD_CATEGORY: Record<string, string> = {
   wheat: "food", grain: "food", fish: "food", game: "food", bread: "food",
   baked_staples: "food", preserved_food: "food", feast_food: "food",
   iron: "raw", stone: "raw", timber: "raw", copper: "raw", salt: "raw",
-  herbs: "raw", resin: "raw", marble: "raw",
+  herbs: "raw", resin: "raw", marble: "raw", raw_ore: "raw", raw_stone: "raw",
   gold: "luxury", silk: "luxury", spices: "luxury", wine: "luxury",
   dye: "luxury", incense: "luxury", gems: "luxury", jewelry: "luxury",
   tools: "manufactured", weapons: "manufactured", armor: "manufactured",
@@ -71,6 +89,8 @@ interface CityBasket {
   local_supply: number | null;
   local_demand: number | null;
   domestic_satisfaction: number | null;
+  auto_supply: number | null;
+  export_surplus: number | null;
 }
 
 interface CityPos {
@@ -90,20 +110,38 @@ interface RouteInfo {
   control_state: string;
 }
 
+/* ── Particle state ── */
+interface Particle {
+  pathPoints: Array<{ x: number; y: number }>;
+  progress: number;  // 0..1
+  speed: number;
+  color: string;
+  size: number;
+}
+
+export type ViewMode = "goods" | "macro";
+
 interface Props {
   sessionId: string;
   offsetX: number;
   offsetY: number;
   visible: boolean;
-  categories?: Set<string>; // filter: which categories to show
+  categories?: Set<string>;
+  viewMode?: ViewMode;
 }
 
-const EconomyFlowOverlay = memo(({ sessionId, offsetX, offsetY, visible, categories }: Props) => {
+const EconomyFlowOverlay = memo(({ sessionId, offsetX, offsetY, visible, categories, viewMode = "goods" }: Props) => {
   const [flows, setFlows] = useState<TradeFlow[]>([]);
   const [baskets, setBaskets] = useState<CityBasket[]>([]);
   const [cityPositions, setCityPositions] = useState<Map<string, CityPos>>(new Map());
   const [flowPaths, setFlowPaths] = useState<FlowPathHex[]>([]);
   const [routeMap, setRouteMap] = useState<Map<string, RouteInfo>>(new Map());
+
+  // Animation
+  const [particles, setParticles] = useState<Particle[]>([]);
+  const rafRef = useRef<number>(0);
+  const lastTimeRef = useRef<number>(0);
+  const [haloPhase, setHaloPhase] = useState(0);
 
   const loadData = useCallback(async () => {
     if (!visible) return;
@@ -112,7 +150,7 @@ const EconomyFlowOverlay = memo(({ sessionId, offsetX, offsetY, visible, categor
         .select("id, good_key, source_city_id, target_city_id, volume_per_turn, route_path_id, status")
         .eq("session_id", sessionId).eq("status", "active"),
       supabase.from("city_market_baskets")
-        .select("city_id, basket_key, local_supply, local_demand, domestic_satisfaction")
+        .select("city_id, basket_key, local_supply, local_demand, domestic_satisfaction, auto_supply, export_surplus")
         .eq("session_id", sessionId),
       supabase.from("cities")
         .select("id, name, province_q, province_r")
@@ -177,6 +215,185 @@ const EconomyFlowOverlay = memo(({ sessionId, offsetX, offsetY, visible, categor
     return result;
   }, [baskets]);
 
+  // City auto-production aggregation (for halo)
+  const cityAutoProduction = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const b of baskets) {
+      m.set(b.city_id, (m.get(b.city_id) || 0) + (b.auto_supply || 0));
+    }
+    return m;
+  }, [baskets]);
+
+  // City export surplus aggregation
+  const cityExportSurplus = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const b of baskets) {
+      const surplus = b.export_surplus || 0;
+      if (surplus > 0) {
+        m.set(b.city_id, (m.get(b.city_id) || 0) + surplus);
+      }
+    }
+    return m;
+  }, [baskets]);
+
+  const maxAutoProduction = useMemo(() => {
+    let max = 1;
+    for (const v of cityAutoProduction.values()) if (v > max) max = v;
+    return max;
+  }, [cityAutoProduction]);
+
+  const maxExportSurplus = useMemo(() => {
+    let max = 1;
+    for (const v of cityExportSurplus.values()) if (v > max) max = v;
+    return max;
+  }, [cityExportSurplus]);
+
+  // Filter flows by category
+  const visibleFlows = useMemo(() => {
+    if (!categories || categories.size === 0) return flows;
+    return flows.filter(f => categories.has(getGoodCategory(f.good_key)));
+  }, [flows, categories]);
+
+  // Aggregate flows by source-target pair for line rendering
+  const aggregatedFlows = useMemo(() => {
+    const m = new Map<string, { category: string; totalVolume: number; routePathId: string | null; sourceId: string; targetId: string }>();
+    for (const f of visibleFlows) {
+      const cat = viewMode === "goods" ? getGoodCategory(f.good_key) : "supply";
+      const key = `${f.source_city_id}-${f.target_city_id}-${cat}`;
+      const cur = m.get(key);
+      if (cur) {
+        cur.totalVolume += f.volume_per_turn;
+        if (!cur.routePathId && f.route_path_id) cur.routePathId = f.route_path_id;
+      } else {
+        m.set(key, { category: cat, totalVolume: f.volume_per_turn, routePathId: f.route_path_id, sourceId: f.source_city_id, targetId: f.target_city_id });
+      }
+    }
+    return Array.from(m.values());
+  }, [visibleFlows, viewMode]);
+
+  // Build pixel paths for flows (for both lines and particles)
+  const flowPixelPaths = useMemo(() => {
+    return aggregatedFlows.map(flow => {
+      const src = cityPositions.get(flow.sourceId);
+      const tgt = cityPositions.get(flow.targetId);
+      if (!src || !tgt) return null;
+
+      let pixelPath: Array<{ x: number; y: number }> = [];
+      let controlState = "open";
+
+      if (flow.routePathId) {
+        const hexPath = routeHexPathMap.get(flow.routePathId);
+        const route = routeMap.get(flow.routePathId);
+        if (hexPath && hexPath.length >= 2) {
+          pixelPath = hexPath.map(h => {
+            const p = hexToPixel(h.q, h.r);
+            return { x: p.x + offsetX, y: p.y + offsetY };
+          });
+        }
+        if (route) controlState = route.control_state;
+      }
+
+      if (pixelPath.length < 2) {
+        const pS = hexToPixel(src.q, src.r);
+        const pT = hexToPixel(tgt.q, tgt.r);
+        pixelPath = [
+          { x: pS.x + offsetX, y: pS.y + offsetY },
+          { x: pT.x + offsetX, y: pT.y + offsetY },
+        ];
+      }
+
+      const colors = viewMode === "goods" ? CATEGORY_COLORS : MACRO_COLORS;
+      const color = CONTROL_COLOR_OVERRIDE[controlState] || colors[flow.category] || colors.supply;
+      const width = Math.max(1.5, Math.min(5, 1 + flow.totalVolume / 3));
+      const dash = CONTROL_DASH[controlState];
+
+      return { ...flow, pixelPath, color, width, dash, controlState };
+    }).filter(Boolean) as Array<{
+      category: string; totalVolume: number; routePathId: string | null;
+      sourceId: string; targetId: string;
+      pixelPath: Array<{ x: number; y: number }>; color: string; width: number;
+      dash: string | undefined; controlState: string;
+    }>;
+  }, [aggregatedFlows, cityPositions, routeHexPathMap, routeMap, offsetX, offsetY, viewMode]);
+
+  // Generate particles from pixel paths
+  useEffect(() => {
+    if (!visible || flowPixelPaths.length === 0) {
+      setParticles([]);
+      return;
+    }
+
+    const newParticles: Particle[] = [];
+    for (const fp of flowPixelPaths) {
+      // Number of particles proportional to volume
+      const count = Math.max(1, Math.min(4, Math.round(fp.totalVolume / 2)));
+      for (let i = 0; i < count; i++) {
+        newParticles.push({
+          pathPoints: fp.pixelPath,
+          progress: (i / count), // spread evenly
+          speed: 0.08 + Math.random() * 0.04, // progress per second
+          color: fp.color,
+          size: Math.max(2, Math.min(4, 1.5 + fp.totalVolume / 5)),
+        });
+      }
+    }
+    setParticles(newParticles);
+  }, [flowPixelPaths, visible]);
+
+  // Animate particles + halo
+  useEffect(() => {
+    if (!visible) return;
+
+    const animate = (time: number) => {
+      if (lastTimeRef.current === 0) lastTimeRef.current = time;
+      const dt = (time - lastTimeRef.current) / 1000;
+      lastTimeRef.current = time;
+
+      setParticles(prev => prev.map(p => ({
+        ...p,
+        progress: (p.progress + p.speed * dt) % 1,
+      })));
+
+      setHaloPhase(prev => (prev + dt * 1.5) % (Math.PI * 2));
+
+      rafRef.current = requestAnimationFrame(animate);
+    };
+
+    rafRef.current = requestAnimationFrame(animate);
+    return () => cancelAnimationFrame(rafRef.current);
+  }, [visible]);
+
+  // Helper: get position along a polyline path at progress t (0..1)
+  function getPointOnPath(path: Array<{ x: number; y: number }>, t: number): { x: number; y: number } {
+    if (path.length < 2) return path[0] || { x: 0, y: 0 };
+
+    // Calculate total length
+    let totalLen = 0;
+    const segLens: number[] = [];
+    for (let i = 1; i < path.length; i++) {
+      const dx = path[i].x - path[i - 1].x;
+      const dy = path[i].y - path[i - 1].y;
+      const len = Math.sqrt(dx * dx + dy * dy);
+      segLens.push(len);
+      totalLen += len;
+    }
+    if (totalLen === 0) return path[0];
+
+    let target = t * totalLen;
+    let accumulated = 0;
+    for (let i = 0; i < segLens.length; i++) {
+      if (accumulated + segLens[i] >= target) {
+        const localT = (target - accumulated) / segLens[i];
+        return {
+          x: path[i].x + (path[i + 1].x - path[i].x) * localT,
+          y: path[i].y + (path[i + 1].y - path[i].y) * localT,
+        };
+      }
+      accumulated += segLens[i];
+    }
+    return path[path.length - 1];
+  }
+
   // Route utilization from trade flows
   const routeUtilization = useMemo(() => {
     const m = new Map<string, number>();
@@ -194,118 +411,20 @@ const EconomyFlowOverlay = memo(({ sessionId, offsetX, offsetY, visible, categor
     return max;
   }, [routeUtilization]);
 
-  // Filter flows by category
-  const visibleFlows = useMemo(() => {
-    if (!categories || categories.size === 0) return flows;
-    return flows.filter(f => categories.has(getGoodCategory(f.good_key)));
-  }, [flows, categories]);
-
-  // Aggregate flows by source-target pair for line rendering
-  const aggregatedFlows = useMemo(() => {
-    const m = new Map<string, { category: string; totalVolume: number; routePathId: string | null; sourceId: string; targetId: string }>();
-    for (const f of visibleFlows) {
-      const cat = getGoodCategory(f.good_key);
-      const key = `${f.source_city_id}-${f.target_city_id}-${cat}`;
-      const cur = m.get(key);
-      if (cur) {
-        cur.totalVolume += f.volume_per_turn;
-        if (!cur.routePathId && f.route_path_id) cur.routePathId = f.route_path_id;
-      } else {
-        m.set(key, { category: cat, totalVolume: f.volume_per_turn, routePathId: f.route_path_id, sourceId: f.source_city_id, targetId: f.target_city_id });
-      }
-    }
-    return Array.from(m.values());
-  }, [visibleFlows]);
-
   if (!visible) return null;
+
+  const haloScale = 0.5 + 0.5 * Math.sin(haloPhase);
+  const haloOpacity = 0.15 + 0.1 * Math.sin(haloPhase);
 
   return (
     <g className="economy-flow-overlay">
-      {/* Trade flow lines */}
-      {aggregatedFlows.map((flow, i) => {
-        const src = cityPositions.get(flow.sourceId);
-        const tgt = cityPositions.get(flow.targetId);
-        if (!src || !tgt) return null;
-
-        const color = CATEGORY_COLORS[flow.category] || CATEGORY_COLORS.raw;
-        const width = Math.max(1.5, Math.min(5, 1 + flow.totalVolume / 3));
-
-        // Try hex path via route
-        let points: string | null = null;
-        let controlDash: string | undefined;
-        if (flow.routePathId) {
-          const hexPath = routeHexPathMap.get(flow.routePathId);
-          const route = routeMap.get(flow.routePathId);
-          if (hexPath && hexPath.length >= 2) {
-            points = hexPath.map(h => {
-              const p = hexToPixel(h.q, h.r);
-              return `${p.x + offsetX},${p.y + offsetY}`;
-            }).join(" ");
-          }
-          if (route) {
-            controlDash = CONTROL_DASH[route.control_state];
-          }
-        }
-
-        // Fallback: direct line
-        if (!points) {
-          const pS = hexToPixel(src.q, src.r);
-          const pT = hexToPixel(tgt.q, tgt.r);
-          points = `${pS.x + offsetX},${pS.y + offsetY} ${pT.x + offsetX},${pT.y + offsetY}`;
-        }
-
-        // Arrow marker id
-        const markerId = `arrow-${flow.category}`;
-
-        return (
-          <g key={`flow-${i}`}>
-            <polyline
-              points={points}
-              fill="none"
-              stroke={CONTROL_COLOR_OVERRIDE[routeMap.get(flow.routePathId || "")?.control_state || ""] || color}
-              strokeWidth={width}
-              strokeOpacity={0.7}
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeDasharray={controlDash}
-              style={{ pointerEvents: "none" }}
-            />
-            {/* Direction indicator: small circle at 70% of path */}
-            {(() => {
-              const pS = hexToPixel(src.q, src.r);
-              const pT = hexToPixel(tgt.q, tgt.r);
-              const t = 0.7;
-              const mx = pS.x + (pT.x - pS.x) * t + offsetX;
-              const my = pS.y + (pT.y - pS.y) * t + offsetY;
-              return (
-                <circle cx={mx} cy={my} r={3} fill={color} fillOpacity={0.9} style={{ pointerEvents: "none" }} />
-              );
-            })()}
-          </g>
-        );
-      })}
-
-      {/* City satisfaction badges */}
-      {Array.from(cityPositions.values()).map(city => {
-        const sat = citySatisfaction.get(city.id);
-        if (sat == null) return null;
-        const pos = hexToPixel(city.q, city.r);
-        const cx = pos.x + offsetX;
-        const cy = pos.y + offsetY - 20; // above the city
-        const pct = Math.round(sat * 100);
-        const fill = satColor(sat);
-
-        return (
-          <g key={`sat-${city.id}`} style={{ pointerEvents: "none" }}>
-            <rect x={cx - 12} y={cy - 5} width={24} height={10} rx={4}
-              fill="hsl(0, 0%, 8%)" fillOpacity={0.85} />
-            <text x={cx} y={cy + 1} textAnchor="middle" dominantBaseline="middle"
-              fill={fill} fontSize="7" fontWeight="700">
-              {pct}%
-            </text>
-          </g>
-        );
-      })}
+      {/* Defs for glow filters */}
+      <defs>
+        <filter id="glow-production" x="-50%" y="-50%" width="200%" height="200%">
+          <feGaussianBlur stdDeviation="4" result="blur" />
+          <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
+        </filter>
+      </defs>
 
       {/* Route utilization glow on road paths */}
       {flowPaths.map(fp => {
@@ -333,10 +452,172 @@ const EconomyFlowOverlay = memo(({ sessionId, offsetX, offsetY, visible, categor
           />
         );
       })}
+
+      {/* Auto-production halos around cities */}
+      {Array.from(cityPositions.values()).map(city => {
+        const autoProd = cityAutoProduction.get(city.id) || 0;
+        if (autoProd <= 0) return null;
+        const pos = hexToPixel(city.q, city.r);
+        const cx = pos.x + offsetX;
+        const cy = pos.y + offsetY;
+        const normalizedProd = Math.min(1, autoProd / maxAutoProduction);
+        const baseRadius = 12 + normalizedProd * 16;
+        const radius = baseRadius + haloScale * 4;
+        const color = viewMode === "goods" ? CATEGORY_COLORS.food : MACRO_COLORS.production;
+
+        return (
+          <g key={`halo-${city.id}`} style={{ pointerEvents: "none" }}>
+            <circle
+              cx={cx} cy={cy} r={radius}
+              fill="none"
+              stroke={color}
+              strokeWidth={1.5 + normalizedProd * 2}
+              strokeOpacity={haloOpacity}
+              filter="url(#glow-production)"
+            />
+            <circle
+              cx={cx} cy={cy} r={radius * 0.7}
+              fill={color}
+              fillOpacity={haloOpacity * 0.3}
+            />
+          </g>
+        );
+      })}
+
+      {/* Trade flow static lines */}
+      {flowPixelPaths.map((flow, i) => {
+        const points = flow.pixelPath.map(p => `${p.x},${p.y}`).join(" ");
+
+        return (
+          <polyline
+            key={`flow-line-${i}`}
+            points={points}
+            fill="none"
+            stroke={flow.color}
+            strokeWidth={flow.width}
+            strokeOpacity={0.5}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeDasharray={flow.dash}
+            style={{ pointerEvents: "none" }}
+          />
+        );
+      })}
+
+      {/* Animated particles */}
+      {particles.map((p, i) => {
+        const pos = getPointOnPath(p.pathPoints, p.progress);
+        return (
+          <circle
+            key={`particle-${i}`}
+            cx={pos.x} cy={pos.y}
+            r={p.size}
+            fill={p.color}
+            fillOpacity={0.9}
+            style={{ pointerEvents: "none" }}
+          />
+        );
+      })}
+
+      {/* Direction arrows on flows (at 70% of path) */}
+      {flowPixelPaths.map((flow, i) => {
+        if (flow.pixelPath.length < 2) return null;
+        const pos70 = getPointOnPath(flow.pixelPath, 0.7);
+        const pos72 = getPointOnPath(flow.pixelPath, 0.72);
+        const angle = Math.atan2(pos72.y - pos70.y, pos72.x - pos70.x);
+        const arrowSize = 4 + flow.width;
+
+        return (
+          <polygon
+            key={`arrow-${i}`}
+            points={`0,${-arrowSize / 2} ${arrowSize},0 0,${arrowSize / 2}`}
+            fill={flow.color}
+            fillOpacity={0.8}
+            transform={`translate(${pos70.x},${pos70.y}) rotate(${angle * 180 / Math.PI})`}
+            style={{ pointerEvents: "none" }}
+          />
+        );
+      })}
+
+      {/* Export arrows from cities with surplus */}
+      {Array.from(cityPositions.values()).map(city => {
+        const surplus = cityExportSurplus.get(city.id) || 0;
+        if (surplus <= 0) return null;
+        const pos = hexToPixel(city.q, city.r);
+        const cx = pos.x + offsetX;
+        const cy = pos.y + offsetY;
+        const normalizedSurplus = Math.min(1, surplus / maxExportSurplus);
+        const arrowLen = 12 + normalizedSurplus * 14;
+        const color = viewMode === "goods" ? "hsl(280, 55%, 55%)" : MACRO_COLORS.export;
+
+        // Radial arrows pointing outward (3 directions: NE, E, SE)
+        const angles = [-60, 0, 60];
+        return (
+          <g key={`export-${city.id}`} style={{ pointerEvents: "none" }}>
+            {angles.map((deg, j) => {
+              const rad = (deg * Math.PI) / 180;
+              const startR = 14;
+              const x1 = cx + Math.cos(rad) * startR;
+              const y1 = cy + Math.sin(rad) * startR;
+              const x2 = cx + Math.cos(rad) * (startR + arrowLen);
+              const y2 = cy + Math.sin(rad) * (startR + arrowLen);
+              const tipSize = 3 + normalizedSurplus * 2;
+
+              return (
+                <g key={j}>
+                  <line
+                    x1={x1} y1={y1} x2={x2} y2={y2}
+                    stroke={color}
+                    strokeWidth={1 + normalizedSurplus * 1.5}
+                    strokeOpacity={0.6 + haloScale * 0.2}
+                    strokeLinecap="round"
+                  />
+                  <polygon
+                    points={`0,${-tipSize / 2} ${tipSize},0 0,${tipSize / 2}`}
+                    fill={color}
+                    fillOpacity={0.7}
+                    transform={`translate(${x2},${y2}) rotate(${deg})`}
+                  />
+                </g>
+              );
+            })}
+            {/* Surplus badge */}
+            <rect x={cx + 10} y={cy - 25} width={28} height={10} rx={3}
+              fill="hsl(280, 40%, 15%)" fillOpacity={0.85} />
+            <text x={cx + 24} y={cy - 19} textAnchor="middle" dominantBaseline="middle"
+              fill={color} fontSize="7" fontWeight="700">
+              +{surplus.toFixed(1)}
+            </text>
+          </g>
+        );
+      })}
+
+      {/* City satisfaction badges */}
+      {Array.from(cityPositions.values()).map(city => {
+        const sat = citySatisfaction.get(city.id);
+        if (sat == null) return null;
+        const pos = hexToPixel(city.q, city.r);
+        const cx = pos.x + offsetX;
+        const cy = pos.y + offsetY - 20;
+        const pct = Math.round(sat * 100);
+        const fill = satColor(sat);
+
+        return (
+          <g key={`sat-${city.id}`} style={{ pointerEvents: "none" }}>
+            <rect x={cx - 12} y={cy - 5} width={24} height={10} rx={4}
+              fill="hsl(0, 0%, 8%)" fillOpacity={0.85} />
+            <text x={cx} y={cy + 1} textAnchor="middle" dominantBaseline="middle"
+              fill={fill} fontSize="7" fontWeight="700">
+              {pct}%
+            </text>
+          </g>
+        );
+      })}
     </g>
   );
 });
 
 EconomyFlowOverlay.displayName = "EconomyFlowOverlay";
 export default EconomyFlowOverlay;
-export { CATEGORY_COLORS, getGoodCategory };
+export { CATEGORY_COLORS, MACRO_COLORS, getGoodCategory };
+export type { ViewMode as EconomyViewMode };
