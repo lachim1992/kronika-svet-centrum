@@ -1,84 +1,98 @@
 
 
-# Economy v4.2 — Final Corrections Integration
+# Economy v4.2 Stabilization — Final Implementation Plan
 
-## 3 changes to lock before implementation
+## Critical bug confirmed
 
-### 1. City export share — explicit formula
+**`recompute-all` is broken.** It sends `{ sessionId }` (camelCase) but all 4 sub-functions destructure `{ session_id }` (snake_case):
+- `compute-province-routes` line 86: `const { session_id } = await req.json()`
+- `compute-hex-flows` line 30: `const { session_id, force_all, player_name } = await req.json()`
+- `compute-economy-flow` line 306: `const { session_id, turn_number, save_history } = await req.json()`
+- `compute-trade-flows` line 53: `const { session_id, turn_number } = await req.json()`
 
-**Current issue**: `city_basket_wealth = BASKET_VALUE × city_export_share × market_fill × city_monetization` is ambiguous.
+Every step has been silently returning 400 errors.
 
-**Locked definition**:
-```text
-// Step A: Player gets wealth from global market
-player_market_basket_wealth = BASKET_VALUE × player_market_share × market_fill
+## Military upkeep mismatch confirmed
 
-// Step B: Distribute that wealth among player's cities
-city_export_share = city_effective_export / max(1, player_effective_export_total)
-city_basket_wealth = player_market_basket_wealth × city_export_share × city_monetization
-```
+- **Backend** (`process-turn` lines 415-422): `unit_count * 0.004` (grain), `unit_count * 0.003` (wealth)
+- **Frontend** (`economyConstants.ts`): `ceil(manpower / 100)` for gold, `ceil(manpower / 500)` for food — reads `military_stack_composition[].manpower`
 
-This cleanly separates: player share determines total wealth, city share distributes it.
+Two different models, two different data sources.
 
-### 2. Naming — new columns instead of overwriting `wealth_domestic_market`
+---
 
-**Current DB columns**: `wealth_domestic_market`, `wealth_pop_tax`, `wealth_route_commerce`, `goods_wealth_fiscal`, `total_wealth`
+## 7 changes in order
 
-**Change**: Do NOT repurpose `wealth_domestic_market`. Instead add two new columns:
-```sql
-ALTER TABLE realm_resources ADD COLUMN IF NOT EXISTS wealth_domestic_component numeric DEFAULT 0;
-ALTER TABLE realm_resources ADD COLUMN IF NOT EXISTS wealth_market_share numeric DEFAULT 0;
-```
+### 1. Create `supabase/functions/refresh-economy/index.ts`
 
-Pillar 2 in UI = `wealth_domestic_component * 0.4 + wealth_market_share * 0.6` — computed at read time in `economyFlow.ts`. Old `wealth_domestic_market` stays as legacy (not used in new flow).
+Safe 4-step orchestrator (same `invokeStep` pattern as `recompute-all`):
+1. `compute-province-routes` → `{ session_id }`
+2. `compute-hex-flows` → `{ session_id, force_all: true }`
+3. `compute-economy-flow` → `{ session_id }`
+4. `compute-trade-flows` → `{ session_id }`
 
-### 3. Goods basket audit — confirmed issues from live data
+No `process-turn`. Best-effort in-memory per-session guard (returns 409 if already running). `ok: true` only if all 4 steps pass. Returns `{ ok, session_id, totalMs, refreshed_domains, steps[], warnings[] }`.
 
-**Current state**:
-- `goods.demand_basket`: 4 NULL keys (`raw_fiber`, `raw_hide`, `raw_ore`, `yarn`)
-- `goods.demand_basket`: Already uses `variety` (correct) and `prestige` (correct) — no legacy `variety_food` or `luxury` in goods table
-- `demand_baskets.basket_key`: Still has `variety_food` and `luxury` — these MUST be fixed to `variety` and `prestige`
+### 2. Fix `recompute-all/index.ts` payload keys
 
-**Data updates needed**:
-```sql
--- Fix NULL goods
-UPDATE goods SET demand_basket = 'basic_material' WHERE key IN ('raw_ore', 'raw_hide');
-UPDATE goods SET demand_basket = 'textile' WHERE key IN ('raw_fiber', 'yarn');
+Lines 70-73: Change `{ sessionId }` → `{ session_id: sessionId }` and `{ sessionId, force_all: true }` → `{ session_id: sessionId, force_all: true }` for all steps including the process-turn step (`{ session_id: sessionId, playerName, recalcOnly: true }` stays as-is since process-turn reads `playerName` directly).
 
--- Fix demand_baskets naming
-UPDATE demand_baskets SET basket_key = 'variety' WHERE basket_key = 'variety_food';
-UPDATE demand_baskets SET basket_key = 'prestige' WHERE basket_key = 'luxury';
-```
+### 3. Update `HomeTab.tsx` recompute handler (lines 249-264)
 
-**Post-update audit queries** (run after data fix):
-```sql
-SELECT key, demand_basket FROM goods ORDER BY demand_basket NULLS FIRST;
-SELECT demand_basket, count(*) FROM goods GROUP BY demand_basket;
-SELECT DISTINCT basket_key FROM demand_baskets ORDER BY basket_key;
-```
+Replace `compute-economy-flow` invocation with `refresh-economy`. Pass `{ session_id: sessionId }`. Toast logic:
+- Success: "Ekonomika přepočítána — 4 kroky, {totalMs}ms"
+- Partial fail: "Přepočet selhal ve kroku {name}. Stav nemusí být konzistentní."
+- 409: "Přepočet již probíhá" (info toast, not error)
 
-Expected: 0 NULLs in goods, 10 canonical baskets, no `variety_food` or `luxury` anywhere.
+Remove deficit node alert from alerts array (line 247).
 
-## Updated implementation plan summary
+### 4. Update `EconomyTab.tsx` recompute handler (lines 180-195)
 
-All three corrections are integrated into the existing plan. The only structural changes:
-- Migration adds `wealth_domestic_component` + `wealth_market_share` (not repurposing old column)
-- `compute-trade-flows` Phase 4b uses the two-step city export share formula
-- `economyFlow.ts` computes Pillar 2 from the two new columns with 0.4/0.6 weights
-- Data fix includes demand_baskets rename + post-fix audit
+Same change as HomeTab.
 
-Everything else from the previous plan remains locked and unchanged.
+### 5. Align military upkeep (`economyConstants.ts` + `MilitaryUpkeepPanel.tsx`)
 
-## Implementation order (unchanged)
+- `computeArmyGoldUpkeep`: read `stack.unit_count`, multiply by `0.003`. Fallback to composition sum if missing.
+- `computeArmyFoodUpkeep`: read `stack.unit_count`, multiply by `0.004`. Same fallback.
+- `MilitaryUpkeepPanel`: display `unit_count` per stack, update formula text to match backend multipliers.
 
-1. DB migration (`market_shares` + `city_market_baskets` + two new `realm_resources` columns)
-2. Data fix (goods NULL baskets + demand_baskets naming) + audit
-3. `goodsCatalog.ts` — BASKET_CONFIG
-4. `compute-trade-flows` — auto-production + market share with city export share formula
-5. Dev verification (SQL)
-6. `process-turn` — legacy blend removal + Pillar 2 from new columns + grain_reserve fix
-7. `economyFlow.ts` — Pillar 2 = `domestic * 0.4 + market_share * 0.6`
-8. UI components (MarketSharePanel, DemandFulfillmentPanel rewrite)
-9. FiscalSubTab + ResourceHUD update
-10. Deploy + test
+### 6. Remove v3 sections from `HomeTab.tsx`
+
+- Lines 481-497: deficit/surplus node count summary
+- Line 513: `<NodeFlowBreakdown>` component
+- Lines 516-536: macro economy 3-col grid (production/wealth/capacity bars)
+- Lines 538-547: "Celková důležitost" section
+
+### 7. Minimal `EconomyTab.tsx` cleanup
+
+- Remove lines 348-393: "Tok dle rolí" collapsible (v3 role-flow)
+- Hide "Produkce" card from macro summary row (line 241) — keep only Bohatství, Zásoby, Kapacita
+- Add empty state to `DemandFulfillmentPanel` and `MarketSharePanel`: when 0 data rows, show "Tržní data nejsou k dispozici — klikněte na Přepočítat ekonomiku."
+- Add small "Ekonomika v4.2" badge at bottom of EconomyTab
+
+## Files changed
+
+| File | Change |
+|------|--------|
+| `supabase/functions/refresh-economy/index.ts` | **New** |
+| `supabase/functions/recompute-all/index.ts` | Fix payload keys |
+| `src/pages/game/HomeTab.tsx` | Recompute → refresh-economy; remove v3 sections |
+| `src/pages/game/EconomyTab.tsx` | Recompute → refresh-economy; remove role flow; hide Produkce |
+| `src/lib/economyConstants.ts` | Military upkeep → unit_count × 0.003/0.004 |
+| `src/components/economy/MilitaryUpkeepPanel.tsx` | Update formulas + data source |
+| `src/components/economy/DemandFulfillmentPanel.tsx` | Empty state banner |
+| `src/components/economy/MarketSharePanel.tsx` | Empty state banner |
+
+## Acceptance criteria
+
+1. HomeTab "Přepočítat" calls `refresh-economy` with `session_id`
+2. EconomyTab "Přepočítat" calls same function
+3. Success toast only on 4/4 steps passing
+4. Partial fail toast names the failed step
+5. 409 response shows info toast, no success
+6. Military upkeep numbers match backend (`unit_count × 0.003/0.004`)
+7. No v3 role-flow, surplus/deficit counts, or macro production bars in UI
+8. MarketShare and Demand panels show data or explicit empty state
+9. All 4 invoked edge functions receive correct `session_id` payload key
+10. `recompute-all` no longer produces 400s from sub-functions due to key mismatch
 
