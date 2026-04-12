@@ -17,12 +17,11 @@ import { useHexMap, AXIAL_NEIGHBORS, type HexData } from "@/hooks/useHexMap";
 import CityMarkerBadge from "@/components/CityMarkerBadge";
 import FoundSettlementDialog from "@/components/FoundSettlementDialog";
 import BuildNodeDialog from "@/components/BuildNodeDialog";
-import StrategicMapOverlay from "@/components/map/StrategicMapOverlay";
-import RouteCorridorsOverlay from "@/components/map/RouteCorridorsOverlay";
 import RoadNetworkOverlay, { ROAD_STYLES } from "@/components/map/RoadNetworkOverlay";
+import EconomyFlowOverlay, { CATEGORY_COLORS } from "@/components/map/EconomyFlowOverlay";
+import MapMinimap from "@/components/map/MapMinimap";
 import { MINOR_NODE_TYPES, MICRO_NODE_TYPES, MAJOR_NODE_TYPES } from "@/lib/nodeTypes";
 import HexDevTools from "@/components/map/HexDevTools";
-import TradeNetworkOverlay from "@/components/map/TradeNetworkOverlay";
 
 /* ───── Config ───── */
 const HEX_SIZE = 38;
@@ -431,9 +430,9 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
   const [showLegend, setShowLegend] = useState(false);
   const [showFoundDialog, setShowFoundDialog] = useState(false);
   const [showProvinceLayer, setShowProvinceLayer] = useState(true);
-  const [showStrategicLayer, setShowStrategicLayer] = useState(false);
   const [showRoadLayer, setShowRoadLayer] = useState(true);
-  const [showTradeLayer, setShowTradeLayer] = useState(false);
+  const [showEconomyLayer, setShowEconomyLayer] = useState(false);
+  const [economyCategories, setEconomyCategories] = useState<Set<string>>(new Set(["food", "raw", "luxury", "manufactured"]));
   const [expandingProvince, setExpandingProvince] = useState(false);
   const [showBuildNodeDialog, setShowBuildNodeDialog] = useState(false);
   const [buildNodeTier, setBuildNodeTier] = useState<"minor" | "micro" | undefined>(undefined);
@@ -453,7 +452,8 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
 
   // Pan state
   const [pan, setPan] = useState({ x: 0, y: 0 });
-  const dragRef = useRef<{ startX: number; startY: number; panX: number; panY: number; moved: boolean } | null>(null);
+  const dragRef = useRef<{ startX: number; startY: number; panX: number; panY: number; moved: boolean; lastX: number; lastY: number; lastTime: number; velX: number; velY: number } | null>(null);
+  const inertiaRef = useRef<number | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
   const { hexes, getHex, isLoading, fetchHex, loadHexesByIds, loadAllGenerated } = useHexMap(sessionId);
@@ -760,11 +760,12 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, []);
 
-  /* ── Pan handlers (mouse drag) ── */
+  /* ── Pan handlers (mouse drag) with inertia ── */
   const onPointerDown = useCallback((e: React.PointerEvent) => {
     if (e.button !== 0) return;
     (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
-    dragRef.current = { startX: e.clientX, startY: e.clientY, panX: pan.x, panY: pan.y, moved: false };
+    if (inertiaRef.current) { cancelAnimationFrame(inertiaRef.current); inertiaRef.current = null; }
+    dragRef.current = { startX: e.clientX, startY: e.clientY, panX: pan.x, panY: pan.y, moved: false, lastX: e.clientX, lastY: e.clientY, lastTime: performance.now(), velX: 0, velY: 0 };
   }, [pan]);
   const onPointerMove = useCallback((e: React.PointerEvent) => {
     if (!dragRef.current) return;
@@ -772,8 +773,38 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
     const dy = e.clientY - dragRef.current.startY;
     if (Math.abs(dx) > 3 || Math.abs(dy) > 3) dragRef.current.moved = true;
     setPan({ x: dragRef.current.panX + dx, y: dragRef.current.panY + dy });
+    // Track velocity
+    const now = performance.now();
+    const dt = now - dragRef.current.lastTime;
+    if (dt > 0) {
+      const vx = (e.clientX - dragRef.current.lastX) / dt * 16; // normalize to ~frame
+      const vy = (e.clientY - dragRef.current.lastY) / dt * 16;
+      dragRef.current.velX = vx * 0.4 + dragRef.current.velX * 0.6; // smooth
+      dragRef.current.velY = vy * 0.4 + dragRef.current.velY * 0.6;
+    }
+    dragRef.current.lastX = e.clientX;
+    dragRef.current.lastY = e.clientY;
+    dragRef.current.lastTime = now;
   }, []);
-  const onPointerUp = useCallback(() => { dragRef.current = null; }, []);
+  const onPointerUp = useCallback(() => {
+    if (!dragRef.current) return;
+    const velX = dragRef.current.velX;
+    const velY = dragRef.current.velY;
+    dragRef.current = null;
+    // Inertia animation
+    if (Math.abs(velX) > 0.5 || Math.abs(velY) > 0.5) {
+      let vx = velX, vy = velY;
+      const decay = 0.92;
+      const tick = () => {
+        vx *= decay;
+        vy *= decay;
+        if (Math.abs(vx) < 0.3 && Math.abs(vy) < 0.3) { inertiaRef.current = null; return; }
+        setPan(p => ({ x: p.x + vx, y: p.y + vy }));
+        inertiaRef.current = requestAnimationFrame(tick);
+      };
+      inertiaRef.current = requestAnimationFrame(tick);
+    }
+  }, []);
 
   /* ── Pinch-to-zoom for touch ── */
   const lastTouchDist = useRef<number | null>(null);
@@ -818,7 +849,23 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
   const onWheelRef = useRef<(e: WheelEvent) => void>();
   onWheelRef.current = (e: WheelEvent) => {
     e.preventDefault();
-    setZoom(z => Math.max(0.3, Math.min(3, z - e.deltaY * 0.001)));
+    const container = containerRef.current;
+    if (!container) { setZoom(z => Math.max(0.3, Math.min(3, z - e.deltaY * 0.001))); return; }
+    const rect = container.getBoundingClientRect();
+    const cursorX = e.clientX - rect.left;
+    const cursorY = e.clientY - rect.top;
+    const oldZoom = zoom;
+    const newZoom = Math.max(0.3, Math.min(3, oldZoom - e.deltaY * 0.001));
+    // Adjust pan so cursor stays at the same world position
+    const worldXBefore = (cursorX - pan.x) / oldZoom;
+    const worldYBefore = (cursorY - pan.y) / oldZoom;
+    const worldXAfter = (cursorX - pan.x) / newZoom;
+    const worldYAfter = (cursorY - pan.y) / newZoom;
+    setPan(p => ({
+      x: p.x + (worldXAfter - worldXBefore) * newZoom,
+      y: p.y + (worldYAfter - worldYBefore) * newZoom,
+    }));
+    setZoom(newZoom);
   };
   useEffect(() => {
     const el = containerRef.current;
@@ -1174,24 +1221,13 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
             );
           })}
           {/* Route corridors — only visible when road layer is on */}
-          {showRoadLayer && <RouteCorridorsOverlay key={routeRefreshKey} sessionId={sessionId} offsetX={offsetX} offsetY={offsetY} />}
-          {/* Strategic node/route overlay */}
-          <StrategicMapOverlay
+          {/* Economy v4.2 overlay */}
+          <EconomyFlowOverlay
             sessionId={sessionId}
             offsetX={offsetX}
             offsetY={offsetY}
-            visible={showStrategicLayer}
-            onNodeClick={(node) => {
-              setCurrentPos({ q: node.hex_q, r: node.hex_r });
-            }}
-          />
-          {/* Trade network overlay */}
-          <TradeNetworkOverlay
-            sessionId={sessionId}
-            offsetX={offsetX}
-            offsetY={offsetY}
-            visible={showTradeLayer}
-            refreshKey={routeRefreshKey}
+            visible={showEconomyLayer}
+            categories={economyCategories}
           />
         </g>
       </svg>
@@ -1246,9 +1282,18 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
                 Přepočítat
               </Button>
               <Button size="sm" variant="outline" className="h-7 text-[10px] gap-1 bg-card/70 backdrop-blur-sm"
-                onClick={handleRecomputeRoads} disabled={recomputingRoads}>
-                {recomputingRoads ? <Loader2 className="h-3 w-3 animate-spin" /> : <MapIcon className="h-3 w-3" />}
-                Cesty
+                onClick={async () => {
+                  setRecomputingRoads(true);
+                  try {
+                    const { error } = await supabase.functions.invoke("refresh-economy", { body: { session_id: sessionId } });
+                    if (error) throw error;
+                    setRouteRefreshKey(k => k + 1);
+                    toast.success("Ekonomika přepočtena");
+                  } catch (e: any) { toast.error("Chyba: " + (e.message || "neznámá")); }
+                  finally { setRecomputingRoads(false); }
+                }} disabled={recomputingRoads}>
+                {recomputingRoads ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
+                ♻️ Ekonomika
               </Button>
             </>
           )}
@@ -1318,43 +1363,43 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
                 </div>
               )}
             </div>
-            {/* Strategic layer toggle */}
+            {/* Economy v4.2 overlay toggle */}
             <div className="mb-2 pb-2 border-b border-border">
               <div className="flex items-center justify-between mb-1">
-                <p className="text-[10px] font-display font-semibold text-foreground flex items-center gap-1">🗺️ Strategická síť</p>
+                <p className="text-[10px] font-display font-semibold text-foreground flex items-center gap-1">📈 Ekonomika v4.2</p>
                 <label className="flex items-center gap-1 text-[9px] text-muted-foreground cursor-pointer">
-                  <input type="checkbox" checked={showStrategicLayer} onChange={e => setShowStrategicLayer(e.target.checked)} className="w-3 h-3" />
+                  <input type="checkbox" checked={showEconomyLayer} onChange={e => setShowEconomyLayer(e.target.checked)} className="w-3 h-3" />
                   Zobrazit
                 </label>
               </div>
-              {showStrategicLayer && (
-                <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[9px]">
-                  <span className="flex items-center gap-1 text-muted-foreground"><span className="w-2 h-2 rounded-full bg-primary inline-block" /> Major uzel</span>
-                  <span className="flex items-center gap-1 text-muted-foreground"><span className="w-1.5 h-1.5 rounded-full bg-muted-foreground inline-block" /> Minor uzel</span>
-                  <span className="flex items-center gap-1 text-muted-foreground"><span className="w-3 h-0.5 bg-[hsl(45,60%,55%)] inline-block" /> Cesta</span>
-                  <span className="flex items-center gap-1 text-muted-foreground"><span className="w-3 h-0.5 bg-[hsl(200,70%,55%)] inline-block" /> Řeka</span>
-                </div>
-              )}
-            </div>
-            {/* Trade network toggle */}
-            <div className="mb-2 pb-2 border-b border-border">
-              <div className="flex items-center justify-between mb-1">
-                <p className="text-[10px] font-display font-semibold text-foreground flex items-center gap-1">🔄 Obchodní síť</p>
-                <label className="flex items-center gap-1 text-[9px] text-muted-foreground cursor-pointer">
-                  <input type="checkbox" checked={showTradeLayer} onChange={e => setShowTradeLayer(e.target.checked)} className="w-3 h-3" />
-                  Zobrazit
-                </label>
-              </div>
-              {showTradeLayer && (
-                <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[9px]">
-                  <span className="flex items-center gap-1 text-muted-foreground"><span className="w-3 h-0.5 inline-block" style={{ backgroundColor: "hsl(45, 65%, 55%)" }} /> Pozemní</span>
-                  <span className="flex items-center gap-1 text-muted-foreground"><span className="w-3 h-0.5 inline-block border-t border-dashed" style={{ borderColor: "hsl(200, 70%, 55%)" }} /> Říční</span>
-                  <span className="flex items-center gap-1 text-muted-foreground"><span className="w-3 h-0.5 inline-block border-t border-dashed" style={{ borderColor: "hsl(210, 80%, 55%)" }} /> Námořní</span>
-                  <span className="flex items-center gap-1 text-muted-foreground"><span className="w-3 h-0.5 inline-block border-t border-dotted" style={{ borderColor: "hsl(35, 75%, 50%)" }} /> Karavana</span>
-                  <span className="flex items-center gap-1 text-muted-foreground"><span className="w-2 h-2 rounded-full inline-block" style={{ backgroundColor: "hsl(25, 85%, 55%)" }} /> ⚒️ Produkce</span>
-                  <span className="flex items-center gap-1 text-muted-foreground"><span className="w-2 h-2 rounded-full inline-block" style={{ backgroundColor: "hsl(140, 60%, 45%)" }} /> 🌾 Zásoby</span>
-                  <span className="flex items-center gap-1 text-muted-foreground"><span className="w-2 h-2 rounded-full inline-block" style={{ backgroundColor: "hsl(48, 90%, 60%)" }} /> 💰 Bohatství</span>
-                  <span className="flex items-center gap-1 text-muted-foreground">💹 Objem obchodu</span>
+              {showEconomyLayer && (
+                <div className="space-y-1">
+                  <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[9px]">
+                    {[
+                      { key: "food", icon: "🌾", label: "Potraviny" },
+                      { key: "raw", icon: "⛏️", label: "Suroviny" },
+                      { key: "luxury", icon: "✨", label: "Luxus" },
+                      { key: "manufactured", icon: "🔨", label: "Výrobky" },
+                    ].map(cat => (
+                      <label key={cat.key} className="flex items-center gap-1 text-muted-foreground cursor-pointer">
+                        <input type="checkbox" className="w-3 h-3"
+                          checked={economyCategories.has(cat.key)}
+                          onChange={e => {
+                            const next = new Set(economyCategories);
+                            if (e.target.checked) next.add(cat.key); else next.delete(cat.key);
+                            setEconomyCategories(next);
+                          }} />
+                        <span className="w-2 h-2 rounded-full inline-block" style={{ backgroundColor: CATEGORY_COLORS[cat.key] }} />
+                        {cat.icon} {cat.label}
+                      </label>
+                    ))}
+                  </div>
+                  <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[9px] mt-1">
+                    <span className="flex items-center gap-1 text-muted-foreground"><span className="w-3 h-0.5 inline-block" style={{ backgroundColor: "hsl(45, 90%, 60%)" }} /> Využití trasy</span>
+                    <span className="flex items-center gap-1 text-muted-foreground">🟢🟡🔴 Nasycení města</span>
+                    <span className="flex items-center gap-1 text-muted-foreground"><span className="w-3 h-0 inline-block border-t-[2px] border-dashed" style={{ borderColor: "hsl(45, 80%, 55%)" }} /> Sporná</span>
+                    <span className="flex items-center gap-1 text-muted-foreground"><span className="w-3 h-0 inline-block border-t-[2px] border-dashed" style={{ borderColor: "hsl(0, 70%, 50%)" }} /> Blokovaná</span>
+                  </div>
                 </div>
               )}
             </div>
@@ -1397,7 +1442,22 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
         </div>
       )}
 
-      {/* Bottom-right: selected unit panel */}
+      {/* Minimap */}
+      {!selectedStack && (
+        <MapMinimap
+          hexCoords={renderCoords.map(c => ({ q: c.q, r: c.r }))}
+          viewportCenter={cameraCenter}
+          zoom={zoom}
+          containerWidth={containerRef.current?.clientWidth || 800}
+          containerHeight={containerRef.current?.clientHeight || 600}
+          onJump={(wx, wy) => {
+            setCurrentPos(null);
+            const newPan = { x: -(wx - (containerRef.current?.clientWidth || 800) / 2), y: -(wy - (containerRef.current?.clientHeight || 600) / 2) };
+            setPan(newPan);
+          }}
+        />
+      )}
+
       {selectedStack && (
         <div className="absolute bottom-3 right-3 z-20 p-3 rounded-lg border border-primary/40 bg-card/90 backdrop-blur-md max-w-[220px] shadow-xl">
           <div className="flex items-center justify-between mb-1.5">

@@ -504,9 +504,14 @@ const QuickActionsSection = ({ sessionId, onRouteRefresh }: { sessionId: string;
   return (
     <div className="flex flex-wrap gap-1">
       <Button size="sm" variant="outline" className="h-7 text-[10px] gap-1 flex-1" disabled={!!running}
-        onClick={() => run("backfill-economy-tags", "Hydratace tagů")}>
-        {running === "backfill-economy-tags" ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
-        Hydratace
+        onClick={() => run("refresh-economy", "Ekonomika v4.2")}>
+        {running === "refresh-economy" ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
+        ♻️ Ekonomika
+      </Button>
+      <Button size="sm" variant="outline" className="h-7 text-[10px] gap-1 flex-1" disabled={!!running}
+        onClick={() => run("compute-trade-flows", "Trade flows")}>
+        {running === "compute-trade-flows" ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
+        Trade flows
       </Button>
       <Button size="sm" variant="outline" className="h-7 text-[10px] gap-1 flex-1" disabled={!!running}
         onClick={() => run("compute-hex-flows", "Hex toky")}>
@@ -517,11 +522,6 @@ const QuickActionsSection = ({ sessionId, onRouteRefresh }: { sessionId: string;
         onClick={() => run("compute-province-graph", "Province graf")}>
         {running === "compute-province-graph" ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
         Prov. graf
-      </Button>
-      <Button size="sm" variant="outline" className="h-7 text-[10px] gap-1 flex-1" disabled={!!running}
-        onClick={() => run("compute-trade-flows", "Trade flows")}>
-        {running === "compute-trade-flows" ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
-        Trade flows
       </Button>
     </div>
   );
