@@ -27,7 +27,7 @@ import { InfoTip } from "@/components/ui/info-tip";
 import type { EntityIndex } from "@/hooks/useEntityIndex";
 import ProvinceOnboardingWizard from "@/components/ProvinceOnboardingWizard";
 import { toast } from "sonner";
-import { toast as hookToast } from "@/hooks/use-toast";
+
 import { useDevMode } from "@/hooks/useDevMode";
 import ExplainDrawer from "@/components/dev/ExplainDrawer";
 import RealmLawsDecrees from "@/components/realm/RealmLawsDecrees";

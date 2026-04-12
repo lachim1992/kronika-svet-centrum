@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { InfoTip } from "@/components/ui/info-tip";
 import { Button } from "@/components/ui/button";
+import { toast as sonnerToast } from "sonner";
 import { toast } from "@/hooks/use-toast";
 import {
   Table, TableHeader, TableBody, TableRow, TableHead, TableCell,
