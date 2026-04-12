@@ -11,6 +11,7 @@ type EventResponse = Tables<"event_responses">;
 type GamePlayer = Tables<"game_players">;
 type City = Tables<"cities">;
 type PlayerResource = Tables<"player_resources">;
+// Note: `armies` in the UI maps to the `military_capacity` table (legacy naming)
 type MilitaryCapacity = Tables<"military_capacity">;
 type TradeLog = Tables<"trade_log">;
 
@@ -30,17 +31,24 @@ interface EntityTrait {
 type Wonder = Tables<"wonders">;
 
 export function useGameSession(sessionId: string | null) {
+  // ── Core state ──
   const [session, setSession] = useState<GameSession | null>(null);
+  const [players, setPlayers] = useState<GamePlayer[]>([]);
+  const [cities, setCities] = useState<City[]>([]);
+
+  // ── Legacy operational support (not true core — see DEPRECATION.md) ──
+  // player_resources: legacy per-resource breakdown; canonical source is realm_resources
+  // military_capacity: legacy army capacity; UI refers to this as "armies"
+  const [resources, setResources] = useState<PlayerResource[]>([]);
+  const [armies, setArmies] = useState<MilitaryCapacity[]>([]);
+  const [trades, setTrades] = useState<TradeLog[]>([]);
+
+  // ── Content / narrative state ──
   const [events, setEvents] = useState<GameEvent[]>([]);
   const [memories, setMemories] = useState<WorldMemory[]>([]);
   const [chronicles, setChronicles] = useState<ChronicleEntry[]>([]);
   const [cityStates, setCityStates] = useState<CityState[]>([]);
   const [responses, setResponses] = useState<EventResponse[]>([]);
-  const [players, setPlayers] = useState<GamePlayer[]>([]);
-  const [cities, setCities] = useState<City[]>([]);
-  const [resources, setResources] = useState<PlayerResource[]>([]);
-  const [armies, setArmies] = useState<MilitaryCapacity[]>([]);
-  const [trades, setTrades] = useState<TradeLog[]>([]);
   const [wonders, setWonders] = useState<Wonder[]>([]);
   const [entityTraits, setEntityTraits] = useState<EntityTrait[]>([]);
   const [civilizations, setCivilizations] = useState<any[]>([]);
@@ -48,27 +56,45 @@ export function useGameSession(sessionId: string | null) {
   const [declarations, setDeclarations] = useState<any[]>([]);
   const [worldCrises, setWorldCrises] = useState<any[]>([]);
   const [secretObjectives, setSecretObjectives] = useState<any[]>([]);
+
   const [loading, setLoading] = useState(true);
-
   const initialLoadDone = useRef(false);
-  const fetchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const coreTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const contentTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const fetchAll = useCallback(async () => {
+  // ── Fetch: Core + Legacy operational ──
+  const fetchCoreAndLegacy = useCallback(async () => {
     if (!sessionId) return;
     if (!initialLoadDone.current) setLoading(true);
 
-    const [sessRes, evtRes, memRes, chrRes, csRes, plRes, citRes, resRes, armRes, trdRes, wndRes, trtRes,
-      civRes, gpRes, declRes, crisisRes, objRes] = await Promise.all([
+    const [sessRes, plRes, citRes, resRes, armRes, trdRes] = await Promise.all([
       supabase.from("game_sessions").select("*").eq("id", sessionId).single(),
+      supabase.from("game_players").select("*").eq("session_id", sessionId).order("player_number", { ascending: true }),
+      supabase.from("cities").select("*").eq("session_id", sessionId).order("created_at", { ascending: true }),
+      // Legacy operational — kept for EmpireOverview, LeaderboardsPanel, EmpireManagement
+      supabase.from("player_resources").select("*").eq("session_id", sessionId).order("player_name", { ascending: true }),
+      supabase.from("military_capacity").select("*").eq("session_id", sessionId).order("created_at", { ascending: true }),
+      supabase.from("trade_log").select("*").eq("session_id", sessionId).order("created_at", { ascending: true }),
+    ]);
+
+    if (sessRes.data) setSession(sessRes.data);
+    if (plRes.data) setPlayers(plRes.data);
+    if (citRes.data) setCities(citRes.data);
+    if (resRes.data) setResources(resRes.data);
+    if (armRes.data) setArmies(armRes.data);
+    if (trdRes.data) setTrades(trdRes.data);
+  }, [sessionId]);
+
+  // ── Fetch: Content / narrative ──
+  const fetchContent = useCallback(async () => {
+    if (!sessionId) return;
+
+    const [evtRes, memRes, chrRes, csRes, wndRes, trtRes,
+      civRes, gpRes, declRes, crisisRes, objRes] = await Promise.all([
       supabase.from("game_events").select("*").eq("session_id", sessionId).order("created_at", { ascending: true }),
       supabase.from("world_memories").select("*").eq("session_id", sessionId).order("created_at", { ascending: true }),
       supabase.from("chronicle_entries").select("*").eq("session_id", sessionId).order("created_at", { ascending: true }),
       supabase.from("city_states").select("*").eq("session_id", sessionId).order("created_at", { ascending: true }),
-      supabase.from("game_players").select("*").eq("session_id", sessionId).order("player_number", { ascending: true }),
-      supabase.from("cities").select("*").eq("session_id", sessionId).order("created_at", { ascending: true }),
-      supabase.from("player_resources").select("*").eq("session_id", sessionId).order("player_name", { ascending: true }),
-      supabase.from("military_capacity").select("*").eq("session_id", sessionId).order("created_at", { ascending: true }),
-      supabase.from("trade_log").select("*").eq("session_id", sessionId).order("created_at", { ascending: true }),
       supabase.from("wonders").select("*").eq("session_id", sessionId).order("created_at", { ascending: true }),
       supabase.from("entity_traits").select("*").eq("session_id", sessionId).order("created_at", { ascending: true }),
       supabase.from("civilizations").select("*").eq("session_id", sessionId),
@@ -78,7 +104,6 @@ export function useGameSession(sessionId: string | null) {
       supabase.from("secret_objectives").select("*").eq("session_id", sessionId),
     ]);
 
-    if (sessRes.data) setSession(sessRes.data);
     if (evtRes.data) {
       setEvents(evtRes.data);
       const eventIds = evtRes.data.map(e => e.id);
@@ -90,11 +115,6 @@ export function useGameSession(sessionId: string | null) {
     if (memRes.data) setMemories(memRes.data);
     if (chrRes.data) setChronicles(chrRes.data);
     if (csRes.data) setCityStates(csRes.data);
-    if (plRes.data) setPlayers(plRes.data);
-    if (citRes.data) setCities(citRes.data);
-    if (resRes.data) setResources(resRes.data);
-    if (armRes.data) setArmies(armRes.data);
-    if (trdRes.data) setTrades(trdRes.data);
     if (wndRes.data) setWonders(wndRes.data);
     if (trtRes.data) setEntityTraits(trtRes.data as EntityTrait[]);
     if (civRes.data) setCivilizations(civRes.data);
@@ -102,45 +122,71 @@ export function useGameSession(sessionId: string | null) {
     if (declRes.data) setDeclarations(declRes.data);
     if (crisisRes.data) setWorldCrises(crisisRes.data);
     if (objRes.data) setSecretObjectives(objRes.data);
-    setLoading(false);
-    initialLoadDone.current = true;
   }, [sessionId]);
 
-  // Debounced refetch for realtime events
-  const debouncedRefetch = useCallback(() => {
-    if (fetchTimer.current) clearTimeout(fetchTimer.current);
-    fetchTimer.current = setTimeout(() => fetchAll(), 800);
-  }, [fetchAll]);
+  // ── Combined initial fetch ──
+  const fetchAll = useCallback(async () => {
+    if (!sessionId) return;
+    if (!initialLoadDone.current) setLoading(true);
+    await Promise.all([fetchCoreAndLegacy(), fetchContent()]);
+    setLoading(false);
+    initialLoadDone.current = true;
+  }, [sessionId, fetchCoreAndLegacy, fetchContent]);
 
+  // Debounced refetchers — core and content are independent
+  const debouncedRefetchCore = useCallback(() => {
+    if (coreTimer.current) clearTimeout(coreTimer.current);
+    coreTimer.current = setTimeout(() => fetchCoreAndLegacy(), 800);
+  }, [fetchCoreAndLegacy]);
+
+  const debouncedRefetchContent = useCallback(() => {
+    if (contentTimer.current) clearTimeout(contentTimer.current);
+    contentTimer.current = setTimeout(() => fetchContent(), 800);
+  }, [fetchContent]);
+
+  // Initial load
   useEffect(() => { fetchAll(); }, [fetchAll]);
 
+  // ── Realtime: 2 channels ──
   useEffect(() => {
     if (!sessionId) return;
-    const channel = supabase
-      .channel(`session-${sessionId}`)
-      .on("postgres_changes", { event: "*", schema: "public", table: "game_events", filter: `session_id=eq.${sessionId}` }, () => debouncedRefetch())
-      .on("postgres_changes", { event: "*", schema: "public", table: "world_memories", filter: `session_id=eq.${sessionId}` }, () => debouncedRefetch())
-      .on("postgres_changes", { event: "*", schema: "public", table: "chronicle_entries", filter: `session_id=eq.${sessionId}` }, () => debouncedRefetch())
-      .on("postgres_changes", { event: "*", schema: "public", table: "city_states", filter: `session_id=eq.${sessionId}` }, () => debouncedRefetch())
-      .on("postgres_changes", { event: "*", schema: "public", table: "game_sessions", filter: `id=eq.${sessionId}` }, () => debouncedRefetch())
-      .on("postgres_changes", { event: "*", schema: "public", table: "game_players", filter: `session_id=eq.${sessionId}` }, () => debouncedRefetch())
-      .on("postgres_changes", { event: "*", schema: "public", table: "cities", filter: `session_id=eq.${sessionId}` }, () => debouncedRefetch())
-      .on("postgres_changes", { event: "*", schema: "public", table: "player_resources", filter: `session_id=eq.${sessionId}` }, () => debouncedRefetch())
-      .on("postgres_changes", { event: "*", schema: "public", table: "military_capacity", filter: `session_id=eq.${sessionId}` }, () => debouncedRefetch())
-      .on("postgres_changes", { event: "*", schema: "public", table: "trade_log", filter: `session_id=eq.${sessionId}` }, () => debouncedRefetch())
-      .on("postgres_changes", { event: "*", schema: "public", table: "wonders", filter: `session_id=eq.${sessionId}` }, () => debouncedRefetch())
-      .on("postgres_changes", { event: "*", schema: "public", table: "entity_traits", filter: `session_id=eq.${sessionId}` }, () => debouncedRefetch())
-      .on("postgres_changes", { event: "*", schema: "public", table: "civilizations", filter: `session_id=eq.${sessionId}` }, () => debouncedRefetch())
-      .on("postgres_changes", { event: "*", schema: "public", table: "great_persons", filter: `session_id=eq.${sessionId}` }, () => debouncedRefetch())
-      .on("postgres_changes", { event: "*", schema: "public", table: "declarations", filter: `session_id=eq.${sessionId}` }, () => debouncedRefetch())
-      .on("postgres_changes", { event: "*", schema: "public", table: "world_crises", filter: `session_id=eq.${sessionId}` }, () => debouncedRefetch())
-      .on("postgres_changes", { event: "*", schema: "public", table: "secret_objectives", filter: `session_id=eq.${sessionId}` }, () => debouncedRefetch())
-      .on("postgres_changes", { event: "*", schema: "public", table: "turn_summaries", filter: `session_id=eq.${sessionId}` }, () => debouncedRefetch())
-      .on("postgres_changes", { event: "*", schema: "public", table: "world_feed_items", filter: `session_id=eq.${sessionId}` }, () => debouncedRefetch())
-      .on("postgres_changes", { event: "*", schema: "public", table: "world_action_log", filter: `session_id=eq.${sessionId}` }, () => debouncedRefetch())
+
+    // Channel 1: Core structure — triggers fetchCoreAndLegacy only
+    const coreChannel = supabase
+      .channel(`core-${sessionId}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "game_sessions", filter: `id=eq.${sessionId}` }, () => debouncedRefetchCore())
+      .on("postgres_changes", { event: "*", schema: "public", table: "game_players", filter: `session_id=eq.${sessionId}` }, () => debouncedRefetchCore())
+      .on("postgres_changes", { event: "*", schema: "public", table: "cities", filter: `session_id=eq.${sessionId}` }, () => debouncedRefetchCore())
       .subscribe();
-    return () => { supabase.removeChannel(channel); };
-  }, [sessionId, debouncedRefetch]);
+
+    // Channel 2: Content / narrative — triggers fetchContent only
+    const contentChannel = supabase
+      .channel(`content-${sessionId}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "game_events", filter: `session_id=eq.${sessionId}` }, () => debouncedRefetchContent())
+      .on("postgres_changes", { event: "*", schema: "public", table: "world_memories", filter: `session_id=eq.${sessionId}` }, () => debouncedRefetchContent())
+      .on("postgres_changes", { event: "*", schema: "public", table: "chronicle_entries", filter: `session_id=eq.${sessionId}` }, () => debouncedRefetchContent())
+      .on("postgres_changes", { event: "*", schema: "public", table: "declarations", filter: `session_id=eq.${sessionId}` }, () => debouncedRefetchContent())
+      .on("postgres_changes", { event: "*", schema: "public", table: "world_crises", filter: `session_id=eq.${sessionId}` }, () => debouncedRefetchContent())
+      .on("postgres_changes", { event: "*", schema: "public", table: "wonders", filter: `session_id=eq.${sessionId}` }, () => debouncedRefetchContent())
+      .on("postgres_changes", { event: "*", schema: "public", table: "entity_traits", filter: `session_id=eq.${sessionId}` }, () => debouncedRefetchContent())
+      .on("postgres_changes", { event: "*", schema: "public", table: "civilizations", filter: `session_id=eq.${sessionId}` }, () => debouncedRefetchContent())
+      .on("postgres_changes", { event: "*", schema: "public", table: "great_persons", filter: `session_id=eq.${sessionId}` }, () => debouncedRefetchContent())
+      .subscribe();
+
+    // Removed from realtime (were subscribed but never fetched — phantom subscriptions):
+    // - turn_summaries
+    // - world_feed_items
+    // - world_action_log
+    //
+    // Removed from realtime (fetch-only, no interactive editing flow):
+    // - player_resources, military_capacity, trade_log
+    // - city_states, secret_objectives
+
+    return () => {
+      supabase.removeChannel(coreChannel);
+      supabase.removeChannel(contentChannel);
+    };
+  }, [sessionId, debouncedRefetchCore, debouncedRefetchContent]);
 
   return {
     session, events, memories, chronicles, cityStates, responses, players, cities,
