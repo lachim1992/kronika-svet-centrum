@@ -416,18 +416,73 @@ export function getImportanceColor(score: number): string {
 }
 
 // ═══════════════════════════════════════════
-// WEALTH BREAKDOWN — 4-Pillar unified selector (v4.2)
+// METRIC ROLES — Ontological layer separation
+// ═══════════════════════════════════════════
+// activity: wealth_domestic_component, commercial_retention
+// position: wealth_market_share
+// fiscal: wealth_pop_tax, tax_market, tax_transit, tax_extraction, commercial_capture, wealth_route_commerce
+// control: route_access_factor, isolation_penalty (future)
+
+export type MetricRole = 'activity' | 'position' | 'fiscal' | 'control';
+
+/** ACTIVITY — world economic vitality, NOT state income */
+export function getEconomicActivity(realm: any) {
+  return {
+    domesticActivity: Number(realm?.wealth_domestic_component ?? 0),
+    internalRetentionPct: Number(realm?.commercial_retention ?? 0),
+  };
+}
+
+/** POSITION — trade competitiveness, NOT state income */
+export function getMarketPosition(realm: any) {
+  return {
+    exportPosition: Number(realm?.wealth_market_share ?? 0),
+  };
+}
+
+/** FISCAL — actual treasury intake */
+export function getFiscalIncome(realm: any) {
+  const popTax = Number(realm?.wealth_pop_tax ?? 0);
+  const marketTax = Number(realm?.tax_market ?? 0);
+  const transitTax = Number(realm?.tax_transit ?? 0);
+  const extractionTax = Number(realm?.tax_extraction ?? 0);
+  const exportCapture = Number(realm?.commercial_capture ?? 0);
+  const corridorTolls = Number(realm?.wealth_route_commerce ?? 0);
+
+  // Derived aggregate — legacy compat only, NOT a separate income line
+  const goodsFiscalAggregate = Number(realm?.goods_wealth_fiscal ?? 0);
+
+  const tradeTaxes = marketTax + transitTax + extractionTax;
+  const externalTradeIncome = exportCapture + corridorTolls;
+  const totalIncome = popTax + tradeTaxes + externalTradeIncome;
+
+  const wb = realm?.computed_modifiers?.wealth_breakdown || {};
+  const armyUpkeep = Number(wb.army_upkeep ?? 0);
+  const tolls = Number(wb.tolls ?? 0);
+  const sportFunding = Number(wb.sport_funding ?? 0);
+  const totalExpenses = armyUpkeep + tolls + sportFunding;
+
+  return {
+    popTax, marketTax, transitTax, extractionTax, exportCapture,
+    corridorTolls, goodsFiscalAggregate, totalIncome,
+    tradeTaxes, externalTradeIncome,
+    armyUpkeep, tolls, sportFunding, totalExpenses,
+    netChange: totalIncome - totalExpenses,
+  };
+}
+
+// ═══════════════════════════════════════════
+// WEALTH BREAKDOWN — Legacy 4-Pillar (DEPRECATED)
 // ═══════════════════════════════════════════
 
 export interface WealthBreakdown {
   popTax: number;
-  domesticMarket: number; // Pillar 2 combined (domestic*0.4 + market_share*0.6)
-  domesticComponent: number; // Raw domestic satisfaction wealth
-  marketShare: number; // Raw market share wealth
+  domesticMarket: number;
+  domesticComponent: number;
+  marketShare: number;
   goodsFiscal: number;
   routeCommerce: number;
   totalIncome: number;
-  // Expenses
   armyUpkeep: number;
   tolls: number;
   sportFunding: number;
@@ -438,10 +493,12 @@ export interface WealthBreakdown {
 const PILLAR2_DOMESTIC_WEIGHT = 0.4;
 const PILLAR2_MARKET_SHARE_WEIGHT = 0.6;
 
-/** Unified wealth breakdown from realm_resources — single source of truth for all UI */
+/**
+ * @deprecated Use getFiscalIncome(), getEconomicActivity(), getMarketPosition() instead.
+ * This function blends economic activity with fiscal income, which is ontologically incorrect.
+ */
 export function getWealthBreakdown(realm: any): WealthBreakdown {
   const popTax = Number(realm?.wealth_pop_tax ?? 0);
-  // v4.2: Pillar 2 = domestic_component * 0.4 + market_share * 0.6
   const domesticComponent = Number(realm?.wealth_domestic_component ?? 0);
   const marketShare = Number(realm?.wealth_market_share ?? 0);
   const domesticMarket = domesticComponent * PILLAR2_DOMESTIC_WEIGHT + marketShare * PILLAR2_MARKET_SHARE_WEIGHT;
@@ -449,7 +506,6 @@ export function getWealthBreakdown(realm: any): WealthBreakdown {
   const routeCommerce = Number(realm?.wealth_route_commerce ?? 0);
   const totalIncome = popTax + domesticMarket + goodsFiscal + routeCommerce;
 
-  // Expenses from computed_modifiers
   const wb = realm?.computed_modifiers?.wealth_breakdown || {};
   const armyUpkeep = Number(wb.army_upkeep ?? 0);
   const tolls = Number(wb.tolls ?? 0);
