@@ -495,6 +495,19 @@ const HomeTab = ({
                 {isolatedNodes.length} izolovaných uzlů
               </div>
             )}
+          </div>
+        ) : (
+          <div className="text-center py-6">
+            <Castle className="h-10 w-10 text-muted-foreground mx-auto mb-3 opacity-40" />
+            <p className="text-sm text-muted-foreground mb-3">Zatím neovládáte žádná sídla.</p>
+            {myRole === "admin" ? (
+              <Button size="sm" className="font-display" onClick={() => onFoundCity?.()}>Založit první město</Button>
+            ) : (
+              <Button size="sm" className="font-display" onClick={() => setShowOnboarding(true)}>Založit provincii a osadu</Button>
+            )}
+          </div>
+        )}
+      </div>
 
       {/* ═══ WORKFORCE ═══ */}
       <div className="game-card p-5 space-y-3">
