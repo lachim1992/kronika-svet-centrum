@@ -452,7 +452,8 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
 
   // Pan state
   const [pan, setPan] = useState({ x: 0, y: 0 });
-  const dragRef = useRef<{ startX: number; startY: number; panX: number; panY: number; moved: boolean } | null>(null);
+  const dragRef = useRef<{ startX: number; startY: number; panX: number; panY: number; moved: boolean; lastX: number; lastY: number; lastTime: number; velX: number; velY: number } | null>(null);
+  const inertiaRef = useRef<number | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
   const { hexes, getHex, isLoading, fetchHex, loadHexesByIds, loadAllGenerated } = useHexMap(sessionId);
@@ -759,11 +760,12 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, []);
 
-  /* ── Pan handlers (mouse drag) ── */
+  /* ── Pan handlers (mouse drag) with inertia ── */
   const onPointerDown = useCallback((e: React.PointerEvent) => {
     if (e.button !== 0) return;
     (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
-    dragRef.current = { startX: e.clientX, startY: e.clientY, panX: pan.x, panY: pan.y, moved: false };
+    if (inertiaRef.current) { cancelAnimationFrame(inertiaRef.current); inertiaRef.current = null; }
+    dragRef.current = { startX: e.clientX, startY: e.clientY, panX: pan.x, panY: pan.y, moved: false, lastX: e.clientX, lastY: e.clientY, lastTime: performance.now(), velX: 0, velY: 0 };
   }, [pan]);
   const onPointerMove = useCallback((e: React.PointerEvent) => {
     if (!dragRef.current) return;
@@ -771,8 +773,38 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
     const dy = e.clientY - dragRef.current.startY;
     if (Math.abs(dx) > 3 || Math.abs(dy) > 3) dragRef.current.moved = true;
     setPan({ x: dragRef.current.panX + dx, y: dragRef.current.panY + dy });
+    // Track velocity
+    const now = performance.now();
+    const dt = now - dragRef.current.lastTime;
+    if (dt > 0) {
+      const vx = (e.clientX - dragRef.current.lastX) / dt * 16; // normalize to ~frame
+      const vy = (e.clientY - dragRef.current.lastY) / dt * 16;
+      dragRef.current.velX = vx * 0.4 + dragRef.current.velX * 0.6; // smooth
+      dragRef.current.velY = vy * 0.4 + dragRef.current.velY * 0.6;
+    }
+    dragRef.current.lastX = e.clientX;
+    dragRef.current.lastY = e.clientY;
+    dragRef.current.lastTime = now;
   }, []);
-  const onPointerUp = useCallback(() => { dragRef.current = null; }, []);
+  const onPointerUp = useCallback(() => {
+    if (!dragRef.current) return;
+    const velX = dragRef.current.velX;
+    const velY = dragRef.current.velY;
+    dragRef.current = null;
+    // Inertia animation
+    if (Math.abs(velX) > 0.5 || Math.abs(velY) > 0.5) {
+      let vx = velX, vy = velY;
+      const decay = 0.92;
+      const tick = () => {
+        vx *= decay;
+        vy *= decay;
+        if (Math.abs(vx) < 0.3 && Math.abs(vy) < 0.3) { inertiaRef.current = null; return; }
+        setPan(p => ({ x: p.x + vx, y: p.y + vy }));
+        inertiaRef.current = requestAnimationFrame(tick);
+      };
+      inertiaRef.current = requestAnimationFrame(tick);
+    }
+  }, []);
 
   /* ── Pinch-to-zoom for touch ── */
   const lastTouchDist = useRef<number | null>(null);
