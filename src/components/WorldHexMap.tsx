@@ -1282,9 +1282,18 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
                 Přepočítat
               </Button>
               <Button size="sm" variant="outline" className="h-7 text-[10px] gap-1 bg-card/70 backdrop-blur-sm"
-                onClick={handleRecomputeRoads} disabled={recomputingRoads}>
-                {recomputingRoads ? <Loader2 className="h-3 w-3 animate-spin" /> : <MapIcon className="h-3 w-3" />}
-                Cesty
+                onClick={async () => {
+                  setRecomputingRoads(true);
+                  try {
+                    const { error } = await supabase.functions.invoke("refresh-economy", { body: { session_id: sessionId } });
+                    if (error) throw error;
+                    setRouteRefreshKey(k => k + 1);
+                    toast.success("Ekonomika přepočtena");
+                  } catch (e: any) { toast.error("Chyba: " + (e.message || "neznámá")); }
+                  finally { setRecomputingRoads(false); }
+                }} disabled={recomputingRoads}>
+                {recomputingRoads ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
+                ♻️ Ekonomika
               </Button>
             </>
           )}
