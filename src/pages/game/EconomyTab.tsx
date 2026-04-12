@@ -248,9 +248,8 @@ const EconomyTab = ({ sessionId, currentPlayerName, currentTurn, cities, resourc
       )}
 
       {/* ═══ MACRO SUMMARY ROW ═══ */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 animate-fade-in">
+      <div className="grid grid-cols-3 gap-3 animate-fade-in">
         {[
-          { icon: "⚒️", label: "Produkce", value: totalProduction.toFixed(1), sub: "tok/kolo" },
           { icon: "💰", label: "Bohatství", value: Math.round(realm?.gold_reserve ?? 0).toString(), sub: `+${totalWealth.toFixed(1)}/k` },
           { icon: "🌾", label: "Zásoby", value: `${Math.round(realm?.grain_reserve ?? 0)}`, sub: `/${Math.round(realm?.granary_capacity ?? 0)}` },
           { icon: "🏛️", label: "Kapacita", value: totalCapacity.toFixed(1), sub: "celkem" },
