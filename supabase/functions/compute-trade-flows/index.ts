@@ -408,20 +408,22 @@ Deno.serve(async (req) => {
         const guildLevel = bonus?.count ? Math.round(bonus.qualitySum / bonus.count) : 0;
         const qualityWeight = Math.min(2.0, Math.max(1.0, 1 + guildLevel * 0.15));
 
-        // demand_baskets row
-        demandBasketRows.push({
-          session_id,
-          city_id: cityNodeId,
-          basket_key: bk,
-          tier: bc.tier,
-          quantity_needed: Math.round(demandQty * 10) / 10,
-          quantity_fulfilled: Math.round(localSupply * 10) / 10,
-          fulfillment_type: domesticSatisfaction >= 0.8 ? "full" : domesticSatisfaction >= 0.3 ? "partial" : "deficit",
-          min_quality: 0,
-          preferred_quality: bc.tier >= 3 ? 2 : 1,
-          satisfaction_score: Math.round(domesticSatisfaction * 1000) / 1000,
-          turn_number: tn,
-        });
+        // demand_baskets row (needs cityNodeId)
+        if (cityNodeId) {
+          demandBasketRows.push({
+            session_id,
+            city_id: cityNodeId,
+            basket_key: bk,
+            tier: bc.tier,
+            quantity_needed: Math.round(demandQty * 10) / 10,
+            quantity_fulfilled: Math.round(localSupply * 10) / 10,
+            fulfillment_type: domesticSatisfaction >= 0.8 ? "full" : domesticSatisfaction >= 0.3 ? "partial" : "deficit",
+            min_quality: 0,
+            preferred_quality: bc.tier >= 3 ? 2 : 1,
+            satisfaction_score: Math.round(domesticSatisfaction * 1000) / 1000,
+            turn_number: tn,
+          });
+        }
 
         // city_market_baskets row (v4.2)
         cityBasketRows.push({
