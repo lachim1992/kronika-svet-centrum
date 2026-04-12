@@ -372,16 +372,16 @@ const EconomyTab = ({ sessionId, currentPlayerName, currentTurn, cities, armies,
         <TabsContent value="supply" className="space-y-5 animate-fade-in">
           <SupplyChainPanel sessionId={sessionId} playerName={currentPlayerName} currentTurn={currentTurn} />
           {realm && <NodeFlowBreakdown sessionId={sessionId} playerName={currentPlayerName} realm={realm} />}
-          {realm && <CapacityPanel realm={realm} cities={myCities} nodeStats={nodeStats} />}
+          {devMode && realm && <CapacityPanel realm={realm} cities={myCities} nodeStats={nodeStats} />}
           {realm && <PrestigeBreakdown realm={realm} />}
           {realm && <StrategicResourcesDetail realm={realm} />}
-          <EconomyDependencyMap realm={realm} cities={myCities} armies={armies} sessionId={sessionId} playerName={currentPlayerName} />
-          <FormulasReferencePanel />
+          {devMode && <EconomyDependencyMap realm={realm} cities={myCities} armies={armies} sessionId={sessionId} playerName={currentPlayerName} />}
+          {devMode && <FormulasReferencePanel />}
         </TabsContent>
 
         {/* ═══ GAPS & ADVISOR TAB ═══ */}
         <TabsContent value="gaps" className="space-y-5 animate-fade-in">
-          <GapAdvisorPanel sessionId={sessionId} playerName={currentPlayerName} cities={cities} />
+          {devMode && <GapAdvisorPanel sessionId={sessionId} playerName={currentPlayerName} cities={cities} />}
 
           <TradePanel
             sessionId={sessionId}
