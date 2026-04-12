@@ -180,15 +180,26 @@ const EconomyTab = ({ sessionId, currentPlayerName, currentTurn, cities, resourc
   const handleRecompute = useCallback(async () => {
     setRecomputing(true);
     try {
-      const { data, error } = await supabase.functions.invoke("compute-economy-flow", {
+      const { data, error } = await supabase.functions.invoke("refresh-economy", {
         body: { session_id: sessionId },
       });
-      if (error) throw error;
-      toast({ title: "Ekonomika přepočítána", description: `${data?.nodes_computed || 0} uzlů vyhodnoceno` });
+      if (error) {
+        if (error.message?.includes("already_in_progress") || (error as any)?.status === 409) {
+          sonnerToast.info("Přepočet již probíhá");
+          return;
+        }
+        throw error;
+      }
+      if (data?.ok) {
+        sonnerToast.success(`Ekonomika přepočítána — 4 kroky, ${data.totalMs}ms`);
+      } else {
+        const failedStep = data?.steps?.find((s: any) => !s.ok);
+        sonnerToast.warning(`Přepočet selhal ve kroku ${failedStep?.name || "neznámý"}. Stav nemusí být konzistentní.`);
+      }
       await fetchData();
       onRefetch?.();
     } catch (e: any) {
-      toast({ title: "Chyba přepočtu", description: e.message, variant: "destructive" });
+      sonnerToast.error(`Chyba přepočtu: ${e.message}`);
     } finally {
       setRecomputing(false);
     }

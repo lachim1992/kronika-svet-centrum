@@ -244,20 +244,31 @@ const HomeTab = ({
   if (famineCities.length > 0) alerts.push({ text: `${famineCities.length} sídel trpí hladomorem!`, severity: "error" });
   if (isolatedNodes.length > 0) alerts.push({ text: `${isolatedNodes.length} uzlů je izolováno od hlavního města`, severity: "warning" });
   if (currentMob > 20) alerts.push({ text: `Vysoká mobilizace (${currentMob}%)`, severity: "warning" });
-  if (deficitNodes.length > 0) alerts.push({ text: `${deficitNodes.length} uzlů v deficitu — dotováno z hlavního města`, severity: "warning" });
 
   const handleRecompute = useCallback(async () => {
     setRecomputing(true);
     try {
-      const { data, error } = await supabase.functions.invoke("compute-economy-flow", {
+      const { data, error } = await supabase.functions.invoke("refresh-economy", {
         body: { session_id: sessionId },
       });
-      if (error) throw error;
-      hookToast({ title: "Ekonomika přepočítána", description: `${data?.nodes_computed || 0} uzlů vyhodnoceno` });
+      if (error) {
+        // Check for 409 already_in_progress
+        if (error.message?.includes("already_in_progress") || (error as any)?.status === 409) {
+          toast.info("Přepočet již probíhá");
+          return;
+        }
+        throw error;
+      }
+      if (data?.ok) {
+        toast.success(`Ekonomika přepočítána — 4 kroky, ${data.totalMs}ms`);
+      } else {
+        const failedStep = data?.steps?.find((s: any) => !s.ok);
+        toast.warning(`Přepočet selhal ve kroku ${failedStep?.name || "neznámý"}. Stav nemusí být konzistentní.`);
+      }
       await fetchData();
       onRefetch?.();
     } catch (e: any) {
-      hookToast({ title: "Chyba přepočtu", description: e.message, variant: "destructive" });
+      toast.error(`Chyba přepočtu: ${e.message}`);
     } finally {
       setRecomputing(false);
     }

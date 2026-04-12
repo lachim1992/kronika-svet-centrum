@@ -138,24 +138,28 @@ export function computeWealthIncome(cities: any[]): number {
   return total;
 }
 
-/** Compute military wealth upkeep: 1 gold per 100 troops */
+/** Get effective unit count for a stack — prefers unit_count, falls back to composition sum */
+export function getStackUnitCount(stack: any): number {
+  if (typeof stack.unit_count === "number" && stack.unit_count > 0) return stack.unit_count;
+  // Fallback: sum military_stack_composition manpower
+  return (stack.military_stack_composition || [])
+    .reduce((sum: number, c: any) => sum + (c.manpower ?? 0), 0);
+}
+
+/** Compute military wealth upkeep: unit_count × 0.003 per stack (matches process-turn backend) */
 export function computeArmyGoldUpkeep(stacks: any[]): number {
   let total = 0;
   for (const stack of stacks) {
-    const manpower = (stack.military_stack_composition || [])
-      .reduce((sum: number, c: any) => sum + (c.manpower ?? 0), 0);
-    total += Math.ceil(manpower / 100);
+    total += Math.ceil(getStackUnitCount(stack) * 0.003);
   }
   return total;
 }
 
-/** Compute military food upkeep: 1 food per 500 troops */
+/** Compute military food/grain upkeep: unit_count × 0.004 per stack (matches process-turn backend) */
 export function computeArmyFoodUpkeep(stacks: any[]): number {
   let total = 0;
   for (const stack of stacks) {
-    const manpower = (stack.military_stack_composition || [])
-      .reduce((sum: number, c: any) => sum + (c.manpower ?? 0), 0);
-    total += Math.ceil(manpower / 500);
+    total += Math.ceil(getStackUnitCount(stack) * 0.004);
   }
   return total;
 }
