@@ -1376,30 +1376,70 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
                 </label>
               </div>
               {showEconomyLayer && (
-                <div className="space-y-1">
-                  <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[9px]">
-                    {[
-                      { key: "food", icon: "🌾", label: "Potraviny" },
-                      { key: "raw", icon: "⛏️", label: "Suroviny" },
-                      { key: "luxury", icon: "✨", label: "Luxus" },
-                      { key: "manufactured", icon: "🔨", label: "Výrobky" },
-                    ].map(cat => (
-                      <label key={cat.key} className="flex items-center gap-1 text-muted-foreground cursor-pointer">
-                        <input type="checkbox" className="w-3 h-3"
-                          checked={economyCategories.has(cat.key)}
-                          onChange={e => {
-                            const next = new Set(economyCategories);
-                            if (e.target.checked) next.add(cat.key); else next.delete(cat.key);
-                            setEconomyCategories(next);
-                          }} />
-                        <span className="w-2 h-2 rounded-full inline-block" style={{ backgroundColor: CATEGORY_COLORS[cat.key] }} />
-                        {cat.icon} {cat.label}
-                      </label>
-                    ))}
+                <div className="space-y-1.5">
+                  {/* View mode toggle */}
+                  <div className="flex gap-1 mb-1">
+                    <button
+                      onClick={() => setEconomyViewMode("goods")}
+                      className={`text-[8px] px-2 py-0.5 rounded-full border transition-colors ${economyViewMode === "goods" ? "bg-primary/20 border-primary text-primary" : "border-border text-muted-foreground hover:text-foreground"}`}
+                    >
+                      🏷️ Komodity
+                    </button>
+                    <button
+                      onClick={() => setEconomyViewMode("macro")}
+                      className={`text-[8px] px-2 py-0.5 rounded-full border transition-colors ${economyViewMode === "macro" ? "bg-primary/20 border-primary text-primary" : "border-border text-muted-foreground hover:text-foreground"}`}
+                    >
+                      📊 Makro
+                    </button>
                   </div>
+
+                  {/* Goods category filters (only in goods mode) */}
+                  {economyViewMode === "goods" && (
+                    <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[9px]">
+                      {[
+                        { key: "food", icon: "🌾", label: "Potraviny" },
+                        { key: "raw", icon: "⛏️", label: "Suroviny" },
+                        { key: "luxury", icon: "✨", label: "Luxus" },
+                        { key: "manufactured", icon: "🔨", label: "Výrobky" },
+                      ].map(cat => (
+                        <label key={cat.key} className="flex items-center gap-1 text-muted-foreground cursor-pointer">
+                          <input type="checkbox" className="w-3 h-3"
+                            checked={economyCategories.has(cat.key)}
+                            onChange={e => {
+                              const next = new Set(economyCategories);
+                              if (e.target.checked) next.add(cat.key); else next.delete(cat.key);
+                              setEconomyCategories(next);
+                            }} />
+                          <span className="w-2 h-2 rounded-full inline-block" style={{ backgroundColor: CATEGORY_COLORS[cat.key] }} />
+                          {cat.icon} {cat.label}
+                        </label>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Macro legend (only in macro mode) */}
+                  {economyViewMode === "macro" && (
+                    <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[9px]">
+                      {[
+                        { key: "production", icon: "🏭", label: "Produkce" },
+                        { key: "supply", icon: "📦", label: "Zásoby" },
+                        { key: "wealth", icon: "💰", label: "Bohatství" },
+                        { key: "export", icon: "🚢", label: "Export" },
+                      ].map(cat => (
+                        <span key={cat.key} className="flex items-center gap-1 text-muted-foreground">
+                          <span className="w-2 h-2 rounded-full inline-block" style={{ backgroundColor: MACRO_COLORS[cat.key] }} />
+                          {cat.icon} {cat.label}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Common indicators */}
                   <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[9px] mt-1">
-                    <span className="flex items-center gap-1 text-muted-foreground"><span className="w-3 h-0.5 inline-block" style={{ backgroundColor: "hsl(45, 90%, 60%)" }} /> Využití trasy</span>
+                    <span className="flex items-center gap-1 text-muted-foreground">💫 Auto-produkce halo</span>
                     <span className="flex items-center gap-1 text-muted-foreground">🟢🟡🔴 Nasycení města</span>
+                    <span className="flex items-center gap-1 text-muted-foreground">➡️ Exportní šipky</span>
+                    <span className="flex items-center gap-1 text-muted-foreground">● Animované částice</span>
                     <span className="flex items-center gap-1 text-muted-foreground"><span className="w-3 h-0 inline-block border-t-[2px] border-dashed" style={{ borderColor: "hsl(45, 80%, 55%)" }} /> Sporná</span>
                     <span className="flex items-center gap-1 text-muted-foreground"><span className="w-3 h-0 inline-block border-t-[2px] border-dashed" style={{ borderColor: "hsl(0, 70%, 50%)" }} /> Blokovaná</span>
                   </div>
