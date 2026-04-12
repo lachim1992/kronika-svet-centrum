@@ -357,53 +357,6 @@ const EconomyTab = ({ sessionId, currentPlayerName, currentTurn, cities, resourc
             </div>
           )}
 
-          {/* Node flow summary */}
-          <Collapsible>
-            <div className="rounded-xl border border-border/40 bg-card/50 p-5 space-y-3">
-              <div className="flex items-center gap-2">
-                <Network className="h-4 w-4 text-primary" />
-                <h3 className="font-display font-semibold text-sm">Tok dle rolí</h3>
-                <span className="ml-auto text-xs text-muted-foreground">{nodeStats.length} uzlů</span>
-                <CollapsibleTrigger asChild>
-                  <button className="flex items-center gap-1 text-xs text-primary hover:text-primary/80">
-                    <ChevronDown className="h-3 w-3" /> Detail
-                  </button>
-                </CollapsibleTrigger>
-              </div>
-
-              <div className="grid grid-cols-4 gap-2 text-xs">
-                <div className="font-semibold text-muted-foreground">Role</div>
-                <div className="text-center font-semibold text-muted-foreground">⚒️</div>
-                <div className="text-center font-semibold text-muted-foreground">💰</div>
-                <div className="text-center font-semibold text-muted-foreground">🏛️</div>
-              </div>
-              {Object.entries(nodesByRole).map(([role, data]) => (
-                <div key={role} className="grid grid-cols-4 gap-2 text-xs border-t border-border/20 pt-1">
-                  <div className="font-semibold">{ROLE_LABELS[role] || role} <span className="text-muted-foreground">({data.count})</span></div>
-                  <div className="text-center font-mono">{data.production.toFixed(1)}</div>
-                  <div className="text-center font-mono">{data.wealth.toFixed(1)}</div>
-                  <div className="text-center font-mono">{data.capacity.toFixed(1)}</div>
-                </div>
-              ))}
-
-              <CollapsibleContent className="space-y-4 pt-3">
-                {isolatedNodes.length > 0 && (
-                  <div className="border-t border-border/30 pt-3 space-y-2">
-                    <h4 className="text-xs font-semibold text-destructive flex items-center gap-1">
-                      <AlertTriangle className="h-3 w-3" /> Izolované uzly ({isolatedNodes.length})
-                    </h4>
-                    {isolatedNodes.map(n => (
-                      <div key={n.id} className="flex items-center justify-between text-xs">
-                        <span>{n.name}</span>
-                        <span className="text-destructive">-{Math.round((n.isolation_penalty ?? 0) * 100)}%</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </CollapsibleContent>
-            </div>
-          </Collapsible>
-
           {realm && <FaithPanel realm={realm} cities={myCities} />}
           <PopulationPanel cities={myCities} realm={realm} />
           {realm && <MilitaryUpkeepPanel armies={armies} realm={realm} />}

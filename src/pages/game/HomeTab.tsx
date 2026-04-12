@@ -489,73 +489,12 @@ const HomeTab = ({
               </div>
             </div>
 
-            {/* Deficit/surplus summary */}
-            <div className="flex items-center gap-4 text-xs">
-              <span className="flex items-center gap-1 text-accent">
-                <TrendingUp className="h-3 w-3" />
-                {surplusNodes.length} uzlů v přebytku
-              </span>
-              <span className="flex items-center gap-1 text-destructive">
-                <TrendingDown className="h-3 w-3" />
-                {deficitNodes.length} uzlů v deficitu
-              </span>
-              {isolatedNodes.length > 0 && (
-                <span className="flex items-center gap-1 text-amber-500">
-                  <AlertTriangle className="h-3 w-3" />
-                  {isolatedNodes.length} izolovaných
-                </span>
-              )}
-            </div>
-          </div>
-        ) : (
-          <div className="text-center py-6">
-            <Castle className="h-10 w-10 text-muted-foreground mx-auto mb-3 opacity-40" />
-            <p className="text-sm text-muted-foreground mb-3">Zatím neovládáte žádná sídla.</p>
-            {myRole === "admin" ? (
-              <Button size="sm" className="font-display" onClick={() => onFoundCity?.()}>Založit první město</Button>
-            ) : (
-              <Button size="sm" className="font-display" onClick={() => setShowOnboarding(true)}>Založit provincii a osadu</Button>
-            )}
-          </div>
-        )}
-      </div>
-
-      {/* ═══ SECTION 2: NODE FLOW BREAKDOWN ═══ */}
-      <NodeFlowBreakdown sessionId={sessionId} playerName={currentPlayerName} realm={realm} />
-
-      {/* ═══ SECTION 3: MACRO ECONOMY ═══ */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
-        {(["production", "wealth", "capacity"] as const).map(layer => {
-          const val = layer === "production" ? totalProduction : layer === "wealth" ? totalWealth : totalCapacity;
-          const icon = MACRO_LAYER_ICONS[layer];
-          const label = MACRO_LAYER_LABELS[layer];
-          const desc = MACRO_LAYER_DESCRIPTIONS[layer];
-          return (
-            <div key={layer} className="game-card p-3 sm:p-5 space-y-2 sm:space-y-3">
-              <div className="flex items-center gap-2 sm:gap-3">
-                <div className="h-8 w-8 sm:h-10 sm:w-10 rounded-xl bg-primary/10 flex items-center justify-center text-base sm:text-xl">{icon}</div>
-                <div className="min-w-0">
-                  <h3 className="font-display font-bold text-sm sm:text-lg truncate">{label}</h3>
-                  <span className="text-[10px] text-muted-foreground hidden sm:block">{desc}</span>
-                </div>
+            {isolatedNodes.length > 0 && (
+              <div className="flex items-center gap-2 text-xs text-amber-500">
+                <AlertTriangle className="h-3 w-3" />
+                {isolatedNodes.length} izolovaných uzlů
               </div>
-              <div className="text-2xl sm:text-3xl font-bold font-display text-primary">{val.toFixed(1)}</div>
-              <Progress value={Math.min(100, (val / maxMacro) * 100)} className="h-1.5 sm:h-2" />
-            </div>
-          );
-        })}
-      </div>
-
-      {/* ═══ IMPORTANCE ═══ */}
-      <div className="game-card p-5 space-y-3">
-        <div className="flex items-center gap-2">
-          <Network className="h-5 w-5 text-primary" />
-          <h3 className="font-display font-semibold text-base">Celková důležitost</h3>
-          <InfoTip side="right">Suma importance skóre všech kontrolovaných uzlů.</InfoTip>
-          <span className="ml-auto text-2xl font-mono font-bold text-primary">{totalImportance.toFixed(1)}</span>
-        </div>
-        <div className="text-xs text-muted-foreground">{nodeStats.length} kontrolovaných uzlů</div>
-      </div>
+            )}
 
       {/* ═══ WORKFORCE ═══ */}
       <div className="game-card p-5 space-y-3">
