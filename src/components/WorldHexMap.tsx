@@ -1419,27 +1419,47 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
 
                   {/* Macro legend (only in macro mode) */}
                   {economyViewMode === "macro" && (
-                    <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[9px]">
-                      {[
-                        { key: "production", icon: "🏭", label: "Produkce" },
-                        { key: "supply", icon: "📦", label: "Zásoby" },
-                        { key: "wealth", icon: "💰", label: "Bohatství" },
-                        { key: "export", icon: "🚢", label: "Export" },
-                      ].map(cat => (
-                        <span key={cat.key} className="flex items-center gap-1 text-muted-foreground">
-                          <span className="w-2 h-2 rounded-full inline-block" style={{ backgroundColor: MACRO_COLORS[cat.key] }} />
-                          {cat.icon} {cat.label}
+                    <div className="space-y-1">
+                      <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[9px]">
+                        {[
+                          { key: "production", icon: "🏭", label: "Produkce" },
+                          { key: "supply", icon: "📦", label: "Zásoby" },
+                          { key: "wealth", icon: "💰", label: "Bohatství" },
+                          { key: "trade", icon: "🔀", label: "Obchod" },
+                          { key: "export", icon: "🚢", label: "Export" },
+                        ].map(cat => (
+                          <label key={cat.key} className="flex items-center gap-1 text-muted-foreground cursor-pointer">
+                            <input type="checkbox" className="w-3 h-3"
+                              checked={economyCategories.has(cat.key)}
+                              onChange={e => {
+                                const next = new Set(economyCategories);
+                                if (e.target.checked) next.add(cat.key); else next.delete(cat.key);
+                                setEconomyCategories(next);
+                              }} />
+                            <span className="w-2 h-2 rounded-full inline-block" style={{ backgroundColor: MACRO_COLORS[cat.key] }} />
+                            {cat.icon} {cat.label}
+                          </label>
+                        ))}
+                      </div>
+                      <div className="border-t border-border pt-1 mt-1 grid grid-cols-1 gap-y-0.5 text-[8px]">
+                        <span className="flex items-center gap-1 text-muted-foreground">
+                          <span className="w-2 h-2 rounded-full inline-block" style={{ backgroundColor: FLOW_LAYER_COLORS.local_logistics }} />
+                          ⛏→🏙 Lokální logistika
                         </span>
-                      ))}
+                        <span className="flex items-center gap-1 text-muted-foreground">
+                          <span className="w-2 h-2 rounded-full inline-block" style={{ backgroundColor: FLOW_LAYER_COLORS.caravan }} />
+                          🐫 Karavany
+                        </span>
+                      </div>
                     </div>
                   )}
 
                   {/* Common indicators */}
                   <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[9px] mt-1">
-                    <span className="flex items-center gap-1 text-muted-foreground">💫 Auto-produkce halo</span>
-                    <span className="flex items-center gap-1 text-muted-foreground">🟢🟡🔴 Nasycení města</span>
-                    <span className="flex items-center gap-1 text-muted-foreground">➡️ Exportní šipky</span>
-                    <span className="flex items-center gap-1 text-muted-foreground">● Animované částice</span>
+                    <span className="flex items-center gap-1 text-muted-foreground">💫 Auto-produkce</span>
+                    <span className="flex items-center gap-1 text-muted-foreground">🟢🟡🔴 Nasycení</span>
+                    <span className="flex items-center gap-1 text-muted-foreground">➡️ Export šipky</span>
+                    <span className="flex items-center gap-1 text-muted-foreground">● Částice</span>
                     <span className="flex items-center gap-1 text-muted-foreground"><span className="w-3 h-0 inline-block border-t-[2px] border-dashed" style={{ borderColor: "hsl(45, 80%, 55%)" }} /> Sporná</span>
                     <span className="flex items-center gap-1 text-muted-foreground"><span className="w-3 h-0 inline-block border-t-[2px] border-dashed" style={{ borderColor: "hsl(0, 70%, 50%)" }} /> Blokovaná</span>
                   </div>
