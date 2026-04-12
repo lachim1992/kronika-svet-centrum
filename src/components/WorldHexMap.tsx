@@ -1173,24 +1173,13 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
             );
           })}
           {/* Route corridors — only visible when road layer is on */}
-          {showRoadLayer && <RouteCorridorsOverlay key={routeRefreshKey} sessionId={sessionId} offsetX={offsetX} offsetY={offsetY} />}
-          {/* Strategic node/route overlay */}
-          <StrategicMapOverlay
+          {/* Economy v4.2 overlay */}
+          <EconomyFlowOverlay
             sessionId={sessionId}
             offsetX={offsetX}
             offsetY={offsetY}
-            visible={showStrategicLayer}
-            onNodeClick={(node) => {
-              setCurrentPos({ q: node.hex_q, r: node.hex_r });
-            }}
-          />
-          {/* Trade network overlay */}
-          <TradeNetworkOverlay
-            sessionId={sessionId}
-            offsetX={offsetX}
-            offsetY={offsetY}
-            visible={showTradeLayer}
-            refreshKey={routeRefreshKey}
+            visible={showEconomyLayer}
+            categories={economyCategories}
           />
         </g>
       </svg>
