@@ -10,7 +10,7 @@ import {
   ChevronDown, Skull, TrendingUp, Network, Zap, Church
 } from "lucide-react";
 import { computeWorkforceBreakdown } from "@/lib/economyConstants";
-import { MACRO_LAYER_ICONS, STRATEGIC_RESOURCE_ICONS, STRATEGIC_TIER_LABELS, getStrategicTiers, computeTotalPrestige, getPrestigeTier, PRESTIGE_TIER_LABELS, PRESTIGE_META, PRESTIGE_COMPONENTS, type StrategicResource, type PrestigeComponent, getWealthBreakdown } from "@/lib/economyFlow";
+import { MACRO_LAYER_ICONS, STRATEGIC_RESOURCE_ICONS, STRATEGIC_TIER_LABELS, getStrategicTiers, computeTotalPrestige, getPrestigeTier, PRESTIGE_TIER_LABELS, PRESTIGE_META, PRESTIGE_COMPONENTS, type StrategicResource, type PrestigeComponent, getFiscalIncome } from "@/lib/economyFlow";
 import DemobilizeDialog from "@/components/DemobilizeDialog";
 
 interface ResourceHUDProps {
@@ -123,7 +123,7 @@ const ResourceHUD = ({ sessionId, playerName, cities, currentTurn }: ResourceHUD
   const mods = realm.computed_modifiers || {};
   const ge = mods.goods_economy || {};
   const goodsProd = realm.goods_production_value ?? 0;
-  const wb = getWealthBreakdown(realm);
+  const fi = getFiscalIncome(realm);
 
   const grainNet = realm.last_turn_grain_net ?? 0;
   const grainNetStr = grainNet > 0 ? `+${grainNet}` : `${grainNet}`;
@@ -138,8 +138,8 @@ const ResourceHUD = ({ sessionId, playerName, cities, currentTurn }: ResourceHUD
     {
       icon: <span className="text-xs">{MACRO_LAYER_ICONS.wealth}</span>,
       label: "Bohatství",
-      value: `${Math.round(wealthReserve)} (${wb.netChange >= 0 ? "+" : ""}${wb.netChange.toFixed(0)}/k)`,
-      derivation: `👥 Pop: ${wb.popTax.toFixed(1)} | 🏪 Trh: ${wb.domesticMarket.toFixed(1)} | 📦 Goods: ${wb.goodsFiscal.toFixed(1)} | 🛤️ Trasy: ${wb.routeCommerce.toFixed(1)}\nPříjem: +${wb.totalIncome.toFixed(1)} | Výdaje: -${wb.totalExpenses.toFixed(1)} | Čistě: ${wb.netChange >= 0 ? "+" : ""}${wb.netChange.toFixed(1)}/kolo`,
+      value: `${Math.round(wealthReserve)} (${fi.netChange >= 0 ? "+" : ""}${fi.netChange.toFixed(0)}/k)`,
+      derivation: `Příjmy: +${fi.totalIncome.toFixed(1)}/kolo (pop: ${fi.popTax.toFixed(1)}, daně: ${fi.tradeTaxes.toFixed(1)}, trasy: ${fi.externalTradeIncome.toFixed(1)})\nVýdaje: -${fi.totalExpenses.toFixed(1)}/kolo\nČistě: ${fi.netChange >= 0 ? "+" : ""}${fi.netChange.toFixed(1)}/kolo`,
     },
     {
       icon: <span className="text-xs">🌾</span>,
