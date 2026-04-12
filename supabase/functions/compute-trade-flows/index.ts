@@ -378,7 +378,6 @@ Deno.serve(async (req) => {
 
     for (const city of cities) {
       const cityNodeId = cityToNodeId.get(city.id);
-      if (!cityNodeId) continue;
       const demands = cityDemands.get(city.id) || new Map();
       const autoMap = cityAutoSupply.get(city.id) || new Map();
       const bonusMap = cityBonusPerBasket.get(city.id) || new Map();
