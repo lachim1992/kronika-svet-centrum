@@ -1442,7 +1442,22 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
         </div>
       )}
 
-      {/* Bottom-right: selected unit panel */}
+      {/* Minimap */}
+      {!selectedStack && (
+        <MapMinimap
+          hexCoords={renderCoords.map(c => ({ q: c.q, r: c.r }))}
+          viewportCenter={cameraCenter}
+          zoom={zoom}
+          containerWidth={containerRef.current?.clientWidth || 800}
+          containerHeight={containerRef.current?.clientHeight || 600}
+          onJump={(wx, wy) => {
+            setCurrentPos(null);
+            const newPan = { x: -(wx - (containerRef.current?.clientWidth || 800) / 2), y: -(wy - (containerRef.current?.clientHeight || 600) / 2) };
+            setPan(newPan);
+          }}
+        />
+      )}
+
       {selectedStack && (
         <div className="absolute bottom-3 right-3 z-20 p-3 rounded-lg border border-primary/40 bg-card/90 backdrop-blur-md max-w-[220px] shadow-xl">
           <div className="flex items-center justify-between mb-1.5">
