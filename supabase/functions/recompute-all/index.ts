@@ -67,10 +67,10 @@ Deno.serve(async (req) => {
     const results: StepResult[] = [];
 
     const steps: { name: string; fn: string; body: Record<string, unknown> }[] = [
-      { name: "compute-province-routes", fn: "compute-province-routes", body: { sessionId } },
-      { name: "compute-hex-flows", fn: "compute-hex-flows", body: { sessionId, force_all: true } },
-      { name: "compute-economy-flow", fn: "compute-economy-flow", body: { sessionId } },
-      { name: "compute-trade-flows", fn: "compute-trade-flows", body: { sessionId } },
+      { name: "compute-province-routes", fn: "compute-province-routes", body: { session_id: sessionId } },
+      { name: "compute-hex-flows", fn: "compute-hex-flows", body: { session_id: sessionId, force_all: true } },
+      { name: "compute-economy-flow", fn: "compute-economy-flow", body: { session_id: sessionId } },
+      { name: "compute-trade-flows", fn: "compute-trade-flows", body: { session_id: sessionId } },
     ];
 
     // If playerName provided, also run process-turn in recalcOnly mode
@@ -78,7 +78,7 @@ Deno.serve(async (req) => {
       steps.push({
         name: "process-turn (recalcOnly)",
         fn: "process-turn",
-        body: { sessionId, playerName, recalcOnly: true },
+        body: { session_id: sessionId, playerName, recalcOnly: true },
       });
     }
 

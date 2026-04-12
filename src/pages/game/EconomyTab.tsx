@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { InfoTip } from "@/components/ui/info-tip";
 import { Button } from "@/components/ui/button";
+import { toast as sonnerToast } from "sonner";
 import { toast } from "@/hooks/use-toast";
 import {
   Table, TableHeader, TableBody, TableRow, TableHead, TableCell,
@@ -180,15 +181,26 @@ const EconomyTab = ({ sessionId, currentPlayerName, currentTurn, cities, resourc
   const handleRecompute = useCallback(async () => {
     setRecomputing(true);
     try {
-      const { data, error } = await supabase.functions.invoke("compute-economy-flow", {
+      const { data, error } = await supabase.functions.invoke("refresh-economy", {
         body: { session_id: sessionId },
       });
-      if (error) throw error;
-      toast({ title: "Ekonomika přepočítána", description: `${data?.nodes_computed || 0} uzlů vyhodnoceno` });
+      if (error) {
+        if (error.message?.includes("already_in_progress") || (error as any)?.status === 409) {
+          sonnerToast.info("Přepočet již probíhá");
+          return;
+        }
+        throw error;
+      }
+      if (data?.ok) {
+        sonnerToast.success(`Ekonomika přepočítána — 4 kroky, ${data.totalMs}ms`);
+      } else {
+        const failedStep = data?.steps?.find((s: any) => !s.ok);
+        sonnerToast.warning(`Přepočet selhal ve kroku ${failedStep?.name || "neznámý"}. Stav nemusí být konzistentní.`);
+      }
       await fetchData();
       onRefetch?.();
     } catch (e: any) {
-      toast({ title: "Chyba přepočtu", description: e.message, variant: "destructive" });
+      sonnerToast.error(`Chyba přepočtu: ${e.message}`);
     } finally {
       setRecomputing(false);
     }
@@ -236,9 +248,8 @@ const EconomyTab = ({ sessionId, currentPlayerName, currentTurn, cities, resourc
       )}
 
       {/* ═══ MACRO SUMMARY ROW ═══ */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 animate-fade-in">
+      <div className="grid grid-cols-3 gap-3 animate-fade-in">
         {[
-          { icon: "⚒️", label: "Produkce", value: totalProduction.toFixed(1), sub: "tok/kolo" },
           { icon: "💰", label: "Bohatství", value: Math.round(realm?.gold_reserve ?? 0).toString(), sub: `+${totalWealth.toFixed(1)}/k` },
           { icon: "🌾", label: "Zásoby", value: `${Math.round(realm?.grain_reserve ?? 0)}`, sub: `/${Math.round(realm?.granary_capacity ?? 0)}` },
           { icon: "🏛️", label: "Kapacita", value: totalCapacity.toFixed(1), sub: "celkem" },
@@ -344,53 +355,6 @@ const EconomyTab = ({ sessionId, currentPlayerName, currentTurn, cities, resourc
               </div>
             </div>
           )}
-
-          {/* Node flow summary */}
-          <Collapsible>
-            <div className="rounded-xl border border-border/40 bg-card/50 p-5 space-y-3">
-              <div className="flex items-center gap-2">
-                <Network className="h-4 w-4 text-primary" />
-                <h3 className="font-display font-semibold text-sm">Tok dle rolí</h3>
-                <span className="ml-auto text-xs text-muted-foreground">{nodeStats.length} uzlů</span>
-                <CollapsibleTrigger asChild>
-                  <button className="flex items-center gap-1 text-xs text-primary hover:text-primary/80">
-                    <ChevronDown className="h-3 w-3" /> Detail
-                  </button>
-                </CollapsibleTrigger>
-              </div>
-
-              <div className="grid grid-cols-4 gap-2 text-xs">
-                <div className="font-semibold text-muted-foreground">Role</div>
-                <div className="text-center font-semibold text-muted-foreground">⚒️</div>
-                <div className="text-center font-semibold text-muted-foreground">💰</div>
-                <div className="text-center font-semibold text-muted-foreground">🏛️</div>
-              </div>
-              {Object.entries(nodesByRole).map(([role, data]) => (
-                <div key={role} className="grid grid-cols-4 gap-2 text-xs border-t border-border/20 pt-1">
-                  <div className="font-semibold">{ROLE_LABELS[role] || role} <span className="text-muted-foreground">({data.count})</span></div>
-                  <div className="text-center font-mono">{data.production.toFixed(1)}</div>
-                  <div className="text-center font-mono">{data.wealth.toFixed(1)}</div>
-                  <div className="text-center font-mono">{data.capacity.toFixed(1)}</div>
-                </div>
-              ))}
-
-              <CollapsibleContent className="space-y-4 pt-3">
-                {isolatedNodes.length > 0 && (
-                  <div className="border-t border-border/30 pt-3 space-y-2">
-                    <h4 className="text-xs font-semibold text-destructive flex items-center gap-1">
-                      <AlertTriangle className="h-3 w-3" /> Izolované uzly ({isolatedNodes.length})
-                    </h4>
-                    {isolatedNodes.map(n => (
-                      <div key={n.id} className="flex items-center justify-between text-xs">
-                        <span>{n.name}</span>
-                        <span className="text-destructive">-{Math.round((n.isolation_penalty ?? 0) * 100)}%</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </CollapsibleContent>
-            </div>
-          </Collapsible>
 
           {realm && <FaithPanel realm={realm} cities={myCities} />}
           <PopulationPanel cities={myCities} realm={realm} />
@@ -522,6 +486,13 @@ const EconomyTab = ({ sessionId, currentPlayerName, currentTurn, cities, resourc
           )}
         </div>
       )}
+
+      {/* v4.2 badge */}
+      <div className="flex justify-center pt-2 pb-4">
+        <Badge variant="outline" className="text-[9px] text-muted-foreground border-border/30">
+          Ekonomika v4.2 — sjednocený přepočet
+        </Badge>
+      </div>
     </div>
   );
 };

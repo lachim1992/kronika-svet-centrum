@@ -124,8 +124,10 @@ const DemandFulfillmentPanel = ({ sessionId, playerName, cities }: Props) => {
   if (baskets.length === 0) {
     return (
       <Card>
-        <CardContent className="p-6 text-center text-sm text-muted-foreground">
-          Žádná data o poptávce — spusťte výpočet obchodních toků (compute-trade-flows).
+        <CardContent className="p-6 text-center space-y-2">
+          <div className="text-lg">📦</div>
+          <p className="text-sm font-semibold text-foreground">Tržní data nejsou k dispozici</p>
+          <p className="text-xs text-muted-foreground">Klikněte na „Přepočítat ekonomiku" pro vygenerování dat o poptávce a nabídce.</p>
         </CardContent>
       </Card>
     );

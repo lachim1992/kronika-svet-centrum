@@ -27,7 +27,7 @@ import { InfoTip } from "@/components/ui/info-tip";
 import type { EntityIndex } from "@/hooks/useEntityIndex";
 import ProvinceOnboardingWizard from "@/components/ProvinceOnboardingWizard";
 import { toast } from "sonner";
-import { toast as hookToast } from "@/hooks/use-toast";
+
 import { useDevMode } from "@/hooks/useDevMode";
 import ExplainDrawer from "@/components/dev/ExplainDrawer";
 import RealmLawsDecrees from "@/components/realm/RealmLawsDecrees";
@@ -244,20 +244,31 @@ const HomeTab = ({
   if (famineCities.length > 0) alerts.push({ text: `${famineCities.length} sídel trpí hladomorem!`, severity: "error" });
   if (isolatedNodes.length > 0) alerts.push({ text: `${isolatedNodes.length} uzlů je izolováno od hlavního města`, severity: "warning" });
   if (currentMob > 20) alerts.push({ text: `Vysoká mobilizace (${currentMob}%)`, severity: "warning" });
-  if (deficitNodes.length > 0) alerts.push({ text: `${deficitNodes.length} uzlů v deficitu — dotováno z hlavního města`, severity: "warning" });
 
   const handleRecompute = useCallback(async () => {
     setRecomputing(true);
     try {
-      const { data, error } = await supabase.functions.invoke("compute-economy-flow", {
+      const { data, error } = await supabase.functions.invoke("refresh-economy", {
         body: { session_id: sessionId },
       });
-      if (error) throw error;
-      hookToast({ title: "Ekonomika přepočítána", description: `${data?.nodes_computed || 0} uzlů vyhodnoceno` });
+      if (error) {
+        // Check for 409 already_in_progress
+        if (error.message?.includes("already_in_progress") || (error as any)?.status === 409) {
+          toast.info("Přepočet již probíhá");
+          return;
+        }
+        throw error;
+      }
+      if (data?.ok) {
+        toast.success(`Ekonomika přepočítána — 4 kroky, ${data.totalMs}ms`);
+      } else {
+        const failedStep = data?.steps?.find((s: any) => !s.ok);
+        toast.warning(`Přepočet selhal ve kroku ${failedStep?.name || "neznámý"}. Stav nemusí být konzistentní.`);
+      }
       await fetchData();
       onRefetch?.();
     } catch (e: any) {
-      hookToast({ title: "Chyba přepočtu", description: e.message, variant: "destructive" });
+      toast.error(`Chyba přepočtu: ${e.message}`);
     } finally {
       setRecomputing(false);
     }
@@ -478,23 +489,12 @@ const HomeTab = ({
               </div>
             </div>
 
-            {/* Deficit/surplus summary */}
-            <div className="flex items-center gap-4 text-xs">
-              <span className="flex items-center gap-1 text-accent">
-                <TrendingUp className="h-3 w-3" />
-                {surplusNodes.length} uzlů v přebytku
-              </span>
-              <span className="flex items-center gap-1 text-destructive">
-                <TrendingDown className="h-3 w-3" />
-                {deficitNodes.length} uzlů v deficitu
-              </span>
-              {isolatedNodes.length > 0 && (
-                <span className="flex items-center gap-1 text-amber-500">
-                  <AlertTriangle className="h-3 w-3" />
-                  {isolatedNodes.length} izolovaných
-                </span>
-              )}
-            </div>
+            {isolatedNodes.length > 0 && (
+              <div className="flex items-center gap-2 text-xs text-amber-500">
+                <AlertTriangle className="h-3 w-3" />
+                {isolatedNodes.length} izolovaných uzlů
+              </div>
+            )}
           </div>
         ) : (
           <div className="text-center py-6">
@@ -507,43 +507,6 @@ const HomeTab = ({
             )}
           </div>
         )}
-      </div>
-
-      {/* ═══ SECTION 2: NODE FLOW BREAKDOWN ═══ */}
-      <NodeFlowBreakdown sessionId={sessionId} playerName={currentPlayerName} realm={realm} />
-
-      {/* ═══ SECTION 3: MACRO ECONOMY ═══ */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
-        {(["production", "wealth", "capacity"] as const).map(layer => {
-          const val = layer === "production" ? totalProduction : layer === "wealth" ? totalWealth : totalCapacity;
-          const icon = MACRO_LAYER_ICONS[layer];
-          const label = MACRO_LAYER_LABELS[layer];
-          const desc = MACRO_LAYER_DESCRIPTIONS[layer];
-          return (
-            <div key={layer} className="game-card p-3 sm:p-5 space-y-2 sm:space-y-3">
-              <div className="flex items-center gap-2 sm:gap-3">
-                <div className="h-8 w-8 sm:h-10 sm:w-10 rounded-xl bg-primary/10 flex items-center justify-center text-base sm:text-xl">{icon}</div>
-                <div className="min-w-0">
-                  <h3 className="font-display font-bold text-sm sm:text-lg truncate">{label}</h3>
-                  <span className="text-[10px] text-muted-foreground hidden sm:block">{desc}</span>
-                </div>
-              </div>
-              <div className="text-2xl sm:text-3xl font-bold font-display text-primary">{val.toFixed(1)}</div>
-              <Progress value={Math.min(100, (val / maxMacro) * 100)} className="h-1.5 sm:h-2" />
-            </div>
-          );
-        })}
-      </div>
-
-      {/* ═══ IMPORTANCE ═══ */}
-      <div className="game-card p-5 space-y-3">
-        <div className="flex items-center gap-2">
-          <Network className="h-5 w-5 text-primary" />
-          <h3 className="font-display font-semibold text-base">Celková důležitost</h3>
-          <InfoTip side="right">Suma importance skóre všech kontrolovaných uzlů.</InfoTip>
-          <span className="ml-auto text-2xl font-mono font-bold text-primary">{totalImportance.toFixed(1)}</span>
-        </div>
-        <div className="text-xs text-muted-foreground">{nodeStats.length} kontrolovaných uzlů</div>
       </div>
 
       {/* ═══ WORKFORCE ═══ */}
