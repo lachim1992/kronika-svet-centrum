@@ -471,7 +471,6 @@ const Dashboard = () => {
           currentPlayerName={myPlayerName}
           currentTurn={currentTurn}
           cities={cities}
-          resources={resources}
           armies={armies}
           myRole={myRole}
           onEntityClick={handleEntityClick}

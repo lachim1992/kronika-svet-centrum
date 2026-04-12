@@ -75,7 +75,6 @@ interface Props {
   memories: any[];
   players: any[];
   cities: any[];
-  resources: any[];
   armies: any[];
   wonders: any[];
   chronicles: any[];
@@ -94,7 +93,7 @@ interface Props {
 type CitySortKey = "name" | "population" | "settlement" | "vulnerability" | "balance";
 
 const HomeTab = ({
-  sessionId, session, cities, players, resources, armies, currentPlayerName, currentTurn, myRole,
+  sessionId, session, cities, players, armies, currentPlayerName, currentTurn, myRole,
   onEntityClick, onRefetch, onFoundCity, onTabChange,
 }: Props) => {
   const isMobile = useIsMobile();
@@ -583,7 +582,7 @@ const HomeTab = ({
       {realm && <FaithPanel realm={realm} cities={myCities} />}
 
       {/* ═══ CAPACITY ═══ */}
-      {realm && <CapacityPanel realm={realm} cities={myCities} nodeStats={nodeStats} />}
+      {devMode && realm && <CapacityPanel realm={realm} cities={myCities} nodeStats={nodeStats} />}
 
       {/* ═══ POPULATION & DEMOGRAPHICS ═══ */}
       <PopulationPanel cities={myCities} realm={realm} />
@@ -728,9 +727,9 @@ const HomeTab = ({
               </button>
             </CollapsibleTrigger>
           </div>
-          <CollapsibleContent>
+           <CollapsibleContent>
             <div className="mt-3 space-y-4">
-              <EconomyDependencyMap realm={realm} cities={myCities} armies={armies} />
+              {devMode && <EconomyDependencyMap realm={realm} cities={myCities} armies={armies} />}
               <TradePanel
                 sessionId={sessionId}
                 currentPlayerName={currentPlayerName}
@@ -741,9 +740,9 @@ const HomeTab = ({
                 onRefetch={onRefetch}
               />
               <SupplyChainPanel sessionId={sessionId} playerName={currentPlayerName} currentTurn={currentTurn} />
-              <FormulasReferencePanel />
+              {devMode && <FormulasReferencePanel />}
             </div>
-          </CollapsibleContent>
+           </CollapsibleContent>
         </div>
       </Collapsible>
 
