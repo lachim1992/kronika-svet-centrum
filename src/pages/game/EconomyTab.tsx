@@ -486,6 +486,13 @@ const EconomyTab = ({ sessionId, currentPlayerName, currentTurn, cities, resourc
           )}
         </div>
       )}
+
+      {/* v4.2 badge */}
+      <div className="flex justify-center pt-2 pb-4">
+        <Badge variant="outline" className="text-[9px] text-muted-foreground border-border/30">
+          Ekonomika v4.2 — sjednocený přepočet
+        </Badge>
+      </div>
     </div>
   );
 };
