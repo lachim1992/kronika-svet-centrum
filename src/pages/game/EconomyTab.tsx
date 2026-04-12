@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
+import { useDevMode } from "@/hooks/useDevMode";
 import { supabase } from "@/integrations/supabase/client";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
@@ -67,6 +68,7 @@ interface Props {
 type CitySortKey = "name" | "population" | "settlement" | "vulnerability" | "balance";
 
 const EconomyTab = ({ sessionId, currentPlayerName, currentTurn, cities, armies, myRole, onEntityClick, onRefetch, onTabChange }: Props) => {
+  const { devMode } = useDevMode();
   const [realm, setRealm] = useState<any>(null);
   const [nodeStats, setNodeStats] = useState<any[]>([]);
   const [citySortKey, setCitySortKey] = useState<CitySortKey>("population");
