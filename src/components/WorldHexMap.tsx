@@ -849,7 +849,23 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
   const onWheelRef = useRef<(e: WheelEvent) => void>();
   onWheelRef.current = (e: WheelEvent) => {
     e.preventDefault();
-    setZoom(z => Math.max(0.3, Math.min(3, z - e.deltaY * 0.001)));
+    const container = containerRef.current;
+    if (!container) { setZoom(z => Math.max(0.3, Math.min(3, z - e.deltaY * 0.001))); return; }
+    const rect = container.getBoundingClientRect();
+    const cursorX = e.clientX - rect.left;
+    const cursorY = e.clientY - rect.top;
+    const oldZoom = zoom;
+    const newZoom = Math.max(0.3, Math.min(3, oldZoom - e.deltaY * 0.001));
+    // Adjust pan so cursor stays at the same world position
+    const worldXBefore = (cursorX - pan.x) / oldZoom;
+    const worldYBefore = (cursorY - pan.y) / oldZoom;
+    const worldXAfter = (cursorX - pan.x) / newZoom;
+    const worldYAfter = (cursorY - pan.y) / newZoom;
+    setPan(p => ({
+      x: p.x + (worldXAfter - worldXBefore) * newZoom,
+      y: p.y + (worldYAfter - worldYBefore) * newZoom,
+    }));
+    setZoom(newZoom);
   };
   useEffect(() => {
     const el = containerRef.current;
