@@ -1306,43 +1306,43 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
                 </div>
               )}
             </div>
-            {/* Strategic layer toggle */}
+            {/* Economy v4.2 overlay toggle */}
             <div className="mb-2 pb-2 border-b border-border">
               <div className="flex items-center justify-between mb-1">
-                <p className="text-[10px] font-display font-semibold text-foreground flex items-center gap-1">🗺️ Strategická síť</p>
+                <p className="text-[10px] font-display font-semibold text-foreground flex items-center gap-1">📈 Ekonomika v4.2</p>
                 <label className="flex items-center gap-1 text-[9px] text-muted-foreground cursor-pointer">
-                  <input type="checkbox" checked={showStrategicLayer} onChange={e => setShowStrategicLayer(e.target.checked)} className="w-3 h-3" />
+                  <input type="checkbox" checked={showEconomyLayer} onChange={e => setShowEconomyLayer(e.target.checked)} className="w-3 h-3" />
                   Zobrazit
                 </label>
               </div>
-              {showStrategicLayer && (
-                <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[9px]">
-                  <span className="flex items-center gap-1 text-muted-foreground"><span className="w-2 h-2 rounded-full bg-primary inline-block" /> Major uzel</span>
-                  <span className="flex items-center gap-1 text-muted-foreground"><span className="w-1.5 h-1.5 rounded-full bg-muted-foreground inline-block" /> Minor uzel</span>
-                  <span className="flex items-center gap-1 text-muted-foreground"><span className="w-3 h-0.5 bg-[hsl(45,60%,55%)] inline-block" /> Cesta</span>
-                  <span className="flex items-center gap-1 text-muted-foreground"><span className="w-3 h-0.5 bg-[hsl(200,70%,55%)] inline-block" /> Řeka</span>
-                </div>
-              )}
-            </div>
-            {/* Trade network toggle */}
-            <div className="mb-2 pb-2 border-b border-border">
-              <div className="flex items-center justify-between mb-1">
-                <p className="text-[10px] font-display font-semibold text-foreground flex items-center gap-1">🔄 Obchodní síť</p>
-                <label className="flex items-center gap-1 text-[9px] text-muted-foreground cursor-pointer">
-                  <input type="checkbox" checked={showTradeLayer} onChange={e => setShowTradeLayer(e.target.checked)} className="w-3 h-3" />
-                  Zobrazit
-                </label>
-              </div>
-              {showTradeLayer && (
-                <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[9px]">
-                  <span className="flex items-center gap-1 text-muted-foreground"><span className="w-3 h-0.5 inline-block" style={{ backgroundColor: "hsl(45, 65%, 55%)" }} /> Pozemní</span>
-                  <span className="flex items-center gap-1 text-muted-foreground"><span className="w-3 h-0.5 inline-block border-t border-dashed" style={{ borderColor: "hsl(200, 70%, 55%)" }} /> Říční</span>
-                  <span className="flex items-center gap-1 text-muted-foreground"><span className="w-3 h-0.5 inline-block border-t border-dashed" style={{ borderColor: "hsl(210, 80%, 55%)" }} /> Námořní</span>
-                  <span className="flex items-center gap-1 text-muted-foreground"><span className="w-3 h-0.5 inline-block border-t border-dotted" style={{ borderColor: "hsl(35, 75%, 50%)" }} /> Karavana</span>
-                  <span className="flex items-center gap-1 text-muted-foreground"><span className="w-2 h-2 rounded-full inline-block" style={{ backgroundColor: "hsl(25, 85%, 55%)" }} /> ⚒️ Produkce</span>
-                  <span className="flex items-center gap-1 text-muted-foreground"><span className="w-2 h-2 rounded-full inline-block" style={{ backgroundColor: "hsl(140, 60%, 45%)" }} /> 🌾 Zásoby</span>
-                  <span className="flex items-center gap-1 text-muted-foreground"><span className="w-2 h-2 rounded-full inline-block" style={{ backgroundColor: "hsl(48, 90%, 60%)" }} /> 💰 Bohatství</span>
-                  <span className="flex items-center gap-1 text-muted-foreground">💹 Objem obchodu</span>
+              {showEconomyLayer && (
+                <div className="space-y-1">
+                  <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[9px]">
+                    {[
+                      { key: "food", icon: "🌾", label: "Potraviny" },
+                      { key: "raw", icon: "⛏️", label: "Suroviny" },
+                      { key: "luxury", icon: "✨", label: "Luxus" },
+                      { key: "manufactured", icon: "🔨", label: "Výrobky" },
+                    ].map(cat => (
+                      <label key={cat.key} className="flex items-center gap-1 text-muted-foreground cursor-pointer">
+                        <input type="checkbox" className="w-3 h-3"
+                          checked={economyCategories.has(cat.key)}
+                          onChange={e => {
+                            const next = new Set(economyCategories);
+                            if (e.target.checked) next.add(cat.key); else next.delete(cat.key);
+                            setEconomyCategories(next);
+                          }} />
+                        <span className="w-2 h-2 rounded-full inline-block" style={{ backgroundColor: CATEGORY_COLORS[cat.key] }} />
+                        {cat.icon} {cat.label}
+                      </label>
+                    ))}
+                  </div>
+                  <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[9px] mt-1">
+                    <span className="flex items-center gap-1 text-muted-foreground"><span className="w-3 h-0.5 inline-block" style={{ backgroundColor: "hsl(45, 90%, 60%)" }} /> Využití trasy</span>
+                    <span className="flex items-center gap-1 text-muted-foreground">🟢🟡🔴 Nasycení města</span>
+                    <span className="flex items-center gap-1 text-muted-foreground"><span className="w-3 h-0 inline-block border-t-[2px] border-dashed" style={{ borderColor: "hsl(45, 80%, 55%)" }} /> Sporná</span>
+                    <span className="flex items-center gap-1 text-muted-foreground"><span className="w-3 h-0 inline-block border-t-[2px] border-dashed" style={{ borderColor: "hsl(0, 70%, 50%)" }} /> Blokovaná</span>
+                  </div>
                 </div>
               )}
             </div>
