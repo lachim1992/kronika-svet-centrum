@@ -1230,6 +1230,7 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
             offsetY={offsetY}
             visible={showEconomyLayer}
             categories={economyCategories}
+            viewMode={economyViewMode}
           />
         </g>
       </svg>
