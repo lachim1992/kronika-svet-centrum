@@ -17,12 +17,11 @@ import { useHexMap, AXIAL_NEIGHBORS, type HexData } from "@/hooks/useHexMap";
 import CityMarkerBadge from "@/components/CityMarkerBadge";
 import FoundSettlementDialog from "@/components/FoundSettlementDialog";
 import BuildNodeDialog from "@/components/BuildNodeDialog";
-import StrategicMapOverlay from "@/components/map/StrategicMapOverlay";
-import RouteCorridorsOverlay from "@/components/map/RouteCorridorsOverlay";
 import RoadNetworkOverlay, { ROAD_STYLES } from "@/components/map/RoadNetworkOverlay";
+import EconomyFlowOverlay, { CATEGORY_COLORS } from "@/components/map/EconomyFlowOverlay";
+import MapMinimap from "@/components/map/MapMinimap";
 import { MINOR_NODE_TYPES, MICRO_NODE_TYPES, MAJOR_NODE_TYPES } from "@/lib/nodeTypes";
 import HexDevTools from "@/components/map/HexDevTools";
-import TradeNetworkOverlay from "@/components/map/TradeNetworkOverlay";
 
 /* ───── Config ───── */
 const HEX_SIZE = 38;
@@ -431,9 +430,9 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
   const [showLegend, setShowLegend] = useState(false);
   const [showFoundDialog, setShowFoundDialog] = useState(false);
   const [showProvinceLayer, setShowProvinceLayer] = useState(true);
-  const [showStrategicLayer, setShowStrategicLayer] = useState(false);
   const [showRoadLayer, setShowRoadLayer] = useState(true);
-  const [showTradeLayer, setShowTradeLayer] = useState(false);
+  const [showEconomyLayer, setShowEconomyLayer] = useState(false);
+  const [economyCategories, setEconomyCategories] = useState<Set<string>>(new Set(["food", "raw", "luxury", "manufactured"]));
   const [expandingProvince, setExpandingProvince] = useState(false);
   const [showBuildNodeDialog, setShowBuildNodeDialog] = useState(false);
   const [buildNodeTier, setBuildNodeTier] = useState<"minor" | "micro" | undefined>(undefined);
