@@ -1,104 +1,158 @@
 
 
-# Post-Stabilization Audit — Implementation Plan
+# Economic Layer Separation — Implementation Plan
 
-## Execution order (per user directive)
+## Summary
 
-### Step 1: Remove dead `resources` prop threading
+Split the monolithic `getWealthBreakdown()` into 3 ontologically clean helpers, rewrite FiscalSubTab to show only actual state revenue, create a new MarketPerformancePanel for economic vitality metrics, restructure EconomyTab tabs, and update ResourceHUD tooltip.
 
-Remove `resources` from HomeTab and EconomyTab Props interfaces and destructuring. Stop passing `resources` to these two tabs from Dashboard.
+## Step 1: Add 3 typed helpers to `src/lib/economyFlow.ts`
 
-**Files**: `src/pages/game/HomeTab.tsx`, `src/pages/game/EconomyTab.tsx`, `src/pages/Dashboard.tsx`
+After the existing `getWealthBreakdown()` function (which stays with `@deprecated` tag), add:
 
-### Step 2: Remove 3 phantom realtime subscriptions
+```typescript
+// ═══ METRIC ROLES ═══
+// activity: wealth_domestic_component, commercial_retention
+// position: wealth_market_share
+// fiscal: wealth_pop_tax, tax_market, tax_transit, tax_extraction, commercial_capture, wealth_route_commerce
+// control: route_access_factor, isolation_penalty (future)
+export type MetricRole = 'activity' | 'position' | 'fiscal' | 'control';
 
-Remove `turn_summaries`, `world_feed_items`, `world_action_log` from the realtime channel in useGameSession. These are subscribed but never fetched — pure noise triggering global refetches.
+/** ACTIVITY — world economic vitality, NOT state income */
+export function getEconomicActivity(realm: any) {
+  return {
+    domesticActivity: Number(realm?.wealth_domestic_component ?? 0),
+    internalRetentionPct: Number(realm?.commercial_retention ?? 0),
+  };
+}
 
-**File**: `src/hooks/useGameSession.ts`
+/** POSITION — trade competitiveness, NOT state income */
+export function getMarketPosition(realm: any) {
+  return {
+    exportPosition: Number(realm?.wealth_market_share ?? 0),
+  };
+}
 
-### Step 3: Split useGameSession into core+legacy and content pipelines
+/** FISCAL — actual treasury intake */
+export function getFiscalIncome(realm: any) {
+  const popTax = Number(realm?.wealth_pop_tax ?? 0);
+  const marketTax = Number(realm?.tax_market ?? 0);
+  const transitTax = Number(realm?.tax_transit ?? 0);
+  const extractionTax = Number(realm?.tax_extraction ?? 0);
+  const exportCapture = Number(realm?.commercial_capture ?? 0);
+  const corridorTolls = Number(realm?.wealth_route_commerce ?? 0);
 
-Split the single `fetchAll` into two functions with two separate realtime channels:
+  // Derived aggregate — legacy compat only, NOT a separate income line
+  const goodsFiscalAggregate = Number(realm?.goods_wealth_fiscal ?? 0);
 
-```text
-fetchCoreAndLegacy():
-  core: game_sessions, game_players, cities
-  legacy support: player_resources, military_capacity, trade_log
-  → sets: session, players, cities, resources, armies, trades
+  const tradeTaxes = marketTax + transitTax + extractionTax;
+  const externalTradeIncome = exportCapture + corridorTolls;
+  const totalIncome = popTax + tradeTaxes + externalTradeIncome;
 
-  Channel "core-{sessionId}" subscribes to:
-    game_sessions, game_players, cities
-    → triggers fetchCoreAndLegacy()
+  const wb = realm?.computed_modifiers?.wealth_breakdown || {};
+  const armyUpkeep = Number(wb.army_upkeep ?? 0);
+  const tolls = Number(wb.tolls ?? 0);
+  const sportFunding = Number(wb.sport_funding ?? 0);
+  const totalExpenses = armyUpkeep + tolls + sportFunding;
 
-fetchContent():
-  game_events + event_responses, world_memories,
-  chronicle_entries, city_states, wonders, entity_traits,
-  civilizations, great_persons, declarations,
-  world_crises, secret_objectives
-  → sets: events, responses, memories, chronicles, cityStates,
-     wonders, entityTraits, civilizations, greatPersons,
-     declarations, worldCrises, secretObjectives
-
-  Channel "content-{sessionId}" subscribes to:
-    game_events, chronicle_entries, world_memories,
-    declarations, world_crises, wonders, entity_traits,
-    civilizations, great_persons
-    → triggers fetchContent()
-
-No realtime (fetch-only):
-  player_resources, military_capacity, trade_log,
-  city_states, secret_objectives
+  return {
+    popTax, marketTax, transitTax, extractionTax, exportCapture,
+    corridorTolls, goodsFiscalAggregate, totalIncome,
+    tradeTaxes, externalTradeIncome,
+    armyUpkeep, tolls, sportFunding, totalExpenses,
+    netChange: totalIncome - totalExpenses,
+  };
+}
 ```
 
-Named honestly: "core refetch also refreshes legacy support bundle for compatibility" — not a clean bounded context, but a meaningful reduction in cross-contamination.
+Mark existing `getWealthBreakdown` with `@deprecated` JSDoc tag.
 
-Code comments will note that `armies` maps to `military_capacity` table and that `player_resources` + `military_capacity` are legacy operational, not true core.
+## Step 2: Rewrite `FiscalSubTab.tsx` — fiscal only
 
-**File**: `src/hooks/useGameSession.ts`
+Replace the current 4-pillar layout with a clean fiscal-only view using `getFiscalIncome()`:
 
-### Step 4: Gate debug panels behind useDevMode
+**Section 1: "Příjmy státu"** — 6 fiscal lines with progress bars:
+- 👥 Populační daň (`popTax`)
+- 🏪 Tržní daň (`marketTax`)
+- 🚚 Tranzitní daň (`transitTax`)
+- ⛏️ Extrakční daň (`extractionTax`)
+- 🎯 Export capture (`exportCapture`)
+- 🛤️ Koridorové mýto (`corridorTolls`)
 
-Wrap in `{devMode && ...}` in both HomeTab and EconomyTab:
-- `FormulasReferencePanel` — HomeTab + EconomyTab
-- `CapacityPanel` — HomeTab + EconomyTab
-- `EconomyDependencyMap` — HomeTab + EconomyTab
-- `GapAdvisorPanel` — EconomyTab only
+**Section 2: Expenses** (unchanged structure — army, tolls, sport)
 
-This is first containment, not full isolation — other render paths may exist but these are the confirmed ones.
+**Section 3: Net + Treasury** (unchanged)
 
-**Files**: `src/pages/game/HomeTab.tsx`, `src/pages/game/EconomyTab.tsx`
+**Remove entirely:** "Obchod a trh" blended pillar, Retention/Capture metric cards (those move to MarketPerformancePanel)
 
-### Step 5: Create DEPRECATION.md
+**Keep:** Trade ideology switcher at bottom
 
-Contents: consumer map, canonical replacement target (`realm_resources` breakdown columns), blockers (EmpireOverview, LeaderboardsPanel, EmpireManagement, AdminMonitorPanel), impact if `player_resources` removed today, migration path. Includes note on `armies`/`military_capacity` naming inconsistency.
+## Step 3: Create `src/components/economy/MarketPerformancePanel.tsx`
 
-**File**: `DEPRECATION.md` (new)
+New component showing economic vitality (not income):
 
----
+- 🏠 **Domácí ekonomická aktivita** — `getEconomicActivity().domesticActivity` with progress bar
+  - Tooltip: "Velikost interně uspokojené poptávky. Není to příjem pokladny."
+- 📈 **Exportní tržní pozice** — `getMarketPosition().exportPosition` with progress bar
+  - Tooltip: "Obchodní síla na globálním trhu. Determinuje budoucí exportní příjmy."
+- 🏠 **Internal Retention** — `getEconomicActivity().internalRetentionPct` as percentage with status text
+  - Tooltip: "Podíl domácí ekonomické aktivity, který zůstává interně pokrytý místo odtékání ven."
+
+Small disclaimer text under header: "Tyto ukazatele neznamenají příjem pokladny. Popisují sílu a vitalitu trhu."
+
+Props: `{ realm: any }`
+
+## Step 4: Restructure EconomyTab tabs
+
+Current 6 tabs → 5 tabs:
+
+| Current | New | Change |
+|---------|-----|--------|
+| 📊 Přehled | 📊 Přehled | Unchanged |
+| 📦 Poptávka | 📈 Trhy | Rename + add MarketPerformancePanel at top, keep DemandFulfillmentPanel + MarketSharePanel + move TradePanel here |
+| 🔗 Supply Chain | 🔗 Supply Chain | Unchanged |
+| 🎯 Mezery | *(removed)* | GapAdvisorPanel already dev-gated; TradePanel moves to Trhy |
+| 🏛️ Fiskál | 🏛️ Příjmy státu | Rename, uses cleaned FiscalSubTab |
+| 🏙️ Sídla | 🏙️ Sídla | Unchanged |
+
+## Step 5: Update ResourceHUD wealth tooltip
+
+Change the wealth chip derivation (line 142) from blended pillars to fiscal-only using `getFiscalIncome()`:
+
+```
+Příjmy: +X/kolo (pop: Y, daně: Z, trasy: W)
+Výdaje: -X/kolo
+Čistě: +/-X/kolo
+```
+
+The three buckets in the tooltip correspond to the three fiscal pillars: population existence, trade taxes, external trade + corridors.
+
+Import `getFiscalIncome` instead of `getWealthBreakdown`.
 
 ## Files changed
 
-| File | Steps |
-|------|-------|
-| `src/pages/game/HomeTab.tsx` | 1, 4 |
-| `src/pages/game/EconomyTab.tsx` | 1, 4 |
-| `src/pages/Dashboard.tsx` | 1 |
-| `src/hooks/useGameSession.ts` | 2, 3 |
-| `DEPRECATION.md` | 5 |
+| File | Change |
+|------|--------|
+| `src/lib/economyFlow.ts` | Add 3 helpers + MetricRole, deprecate `getWealthBreakdown` |
+| `src/components/economy/FiscalSubTab.tsx` | Rewrite to fiscal-only |
+| `src/components/economy/MarketPerformancePanel.tsx` | **New** |
+| `src/pages/game/EconomyTab.tsx` | Restructure tabs (6→5), add MarketPerformancePanel to Trhy |
+| `src/components/layout/ResourceHUD.tsx` | Update wealth tooltip to use `getFiscalIncome` |
 
-## What this does NOT do
+## What does NOT change
 
-- Does not remove `player_resources` table or backend writes
-- Does not change any edge functions
-- Does not redesign UI panels
-- Does not claim to be a clean domain separation
+- No database or edge function changes
+- `getWealthBreakdown()` stays as deprecated (no unknown consumers)
+- Backend columns keep their names
+- `commercial_capture` is strictly **fiscal** — appears only in FiscalSubTab, not in MarketPerformancePanel
 
-## Verification
+## Key decisions per user feedback
 
-1. TypeScript build passes
-2. HomeTab/EconomyTab render without `resources` prop
-3. Debug panels visible only in dev mode
-4. City rename does NOT trigger events/chronicles refetch
-5. New chronicle does NOT trigger cities/players refetch
-6. EmpireOverview, LeaderboardsPanel, EmpireManagement still receive and display `resources`
+- `goodsFiscal` renamed to `goodsFiscalAggregate` internally, never shown as separate UI line
+- `commercial_retention` → `internalRetentionPct` (not "satisfaction")
+- `commercial_capture` is fiscal only — no dual role
+- `totalIncome` structured as `popTax + tradeTaxes + externalTradeIncome` for clarity
+- MarketPerformancePanel includes explicit "this is not income" disclaimer
+- No top export baskets summary yet (data reliability unconfirmed)
+- Přehled tab left unchanged for now (separate future audit)
 
