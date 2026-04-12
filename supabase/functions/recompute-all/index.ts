@@ -78,7 +78,7 @@ Deno.serve(async (req) => {
       steps.push({
         name: "process-turn (recalcOnly)",
         fn: "process-turn",
-        body: { session_id: sessionId, playerName, recalcOnly: true },
+        body: { sessionId, playerName, recalcOnly: true },
       });
     }
 
