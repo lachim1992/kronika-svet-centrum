@@ -7,20 +7,29 @@ const corsHeaders = {
 };
 
 /**
- * compute-trade-flows v4.2: Auto-production + Market Share economy
+ * compute-trade-flows v4.3: 12-basket civilizational hierarchy
  *
  * Phase 1a: Run recipes on nodes → node_inventory (bonus production)
- * Phase 1b: Auto-production per city per basket (NEW)
+ * Phase 1b: Auto-production per city per basket (12 baskets, soft gates)
  * Phase 2:  Aggregate into city_market_summary (per good)
  * Phase 2b: Persist demand_baskets + city_market_baskets (per basket)
  * Phase 3:  Trade pressure & trade_flows
  * Phase 4:  Per-player goods fiscal aggregates
- * Phase 4b: Market share computation (NEW) → market_shares + realm_resources
+ * Phase 4b: Market share computation → market_shares + realm_resources
+ *
+ * CONSTRAINTS:
+ * - stateEffect: inactive metadata only — NOT applied here
+ * - routeEffect: inactive metadata only — NOT applied here
+ * - uniqueProductSlots: inactive metadata only
+ * - prestige tier class: reserved for Phase 2
  */
 
-// ── Canonical basket config (mirrors goodsCatalog.ts BASKET_CONFIG) ──
+// ── Canonical basket config (mirrors goodsCatalog.ts BASKET_CONFIG v4.3) ──
+type BasketTierClass = "need" | "civic" | "upgrade" | "military" | "prestige" | "luxury";
+
 interface BasketDef {
   tier: number;
+  tierClass: BasketTierClass;
   baseRate: number;
   basketValue: number;
   category: "universal" | "conditional" | "premium";
@@ -28,23 +37,52 @@ interface BasketDef {
 }
 
 const BASKET_CONFIG: Record<string, BasketDef> = {
-  staple_food:     { tier: 1, baseRate: 0.012, basketValue: 8,  category: "universal",    popWeights: { peasants: 1.0, burghers: 0.6, clerics: 0.3, warriors: 0.8 } },
-  basic_material:  { tier: 1, baseRate: 0.008, basketValue: 6,  category: "universal",    popWeights: { peasants: 0.5, burghers: 0.7, clerics: 0.2, warriors: 0.4 } },
-  tools:           { tier: 1, baseRate: 0.006, basketValue: 10, category: "universal",    popWeights: { peasants: 0.7, burghers: 0.5, clerics: 0.2, warriors: 0.4 } },
-  construction:    { tier: 2, baseRate: 0.005, basketValue: 12, category: "universal",    popWeights: { peasants: 0.3, burghers: 0.6, clerics: 0.4, warriors: 0.3 } },
-  textile:         { tier: 2, baseRate: 0.004, basketValue: 10, category: "conditional",  popWeights: { peasants: 0.4, burghers: 0.7, clerics: 0.5, warriors: 0.3 } },
-  military_supply: { tier: 2, baseRate: 0.003, basketValue: 15, category: "conditional",  popWeights: { peasants: 0.1, burghers: 0.2, clerics: 0.1, warriors: 1.0 } },
-  variety:         { tier: 3, baseRate: 0.003, basketValue: 14, category: "conditional",  popWeights: { peasants: 0.3, burghers: 0.8, clerics: 0.5, warriors: 0.3 } },
-  ritual:          { tier: 3, baseRate: 0.002, basketValue: 16, category: "conditional",  popWeights: { peasants: 0.2, burghers: 0.3, clerics: 1.0, warriors: 0.2 } },
-  feast:           { tier: 4, baseRate: 0,     basketValue: 20, category: "premium",      popWeights: { peasants: 0.1, burghers: 0.6, clerics: 0.4, warriors: 0.4 } },
-  prestige:        { tier: 4, baseRate: 0,     basketValue: 25, category: "premium",      popWeights: { peasants: 0.05, burghers: 0.5, clerics: 0.3, warriors: 0.6 } },
+  // NEED tier (1)
+  staple_food:     { tier: 1, tierClass: "need",     baseRate: 0.012, basketValue: 8,  category: "universal",    popWeights: { peasants: 1.0, burghers: 0.6, clerics: 0.3, warriors: 0.8 } },
+  basic_clothing:  { tier: 1, tierClass: "need",     baseRate: 0.004, basketValue: 10, category: "universal",    popWeights: { peasants: 0.4, burghers: 0.7, clerics: 0.5, warriors: 0.3 } },
+  tools:           { tier: 1, tierClass: "need",     baseRate: 0.006, basketValue: 10, category: "universal",    popWeights: { peasants: 0.7, burghers: 0.5, clerics: 0.2, warriors: 0.4 } },
+  fuel:            { tier: 1, tierClass: "need",     baseRate: 0.004, basketValue: 6,  category: "universal",    popWeights: { peasants: 0.6, burghers: 0.5, clerics: 0.3, warriors: 0.4 } },
+  // CIVIC tier (2)
+  drinking_water:  { tier: 2, tierClass: "civic",    baseRate: 0.003, basketValue: 5,  category: "conditional",  popWeights: { peasants: 0.8, burghers: 0.7, clerics: 0.5, warriors: 0.6 } },
+  storage_logistics:{ tier: 2, tierClass: "civic",   baseRate: 0.003, basketValue: 14, category: "conditional",  popWeights: { peasants: 0.2, burghers: 0.8, clerics: 0.3, warriors: 0.3 } },
+  admin_supplies:  { tier: 2, tierClass: "civic",    baseRate: 0.002, basketValue: 12, category: "conditional",  popWeights: { peasants: 0.1, burghers: 0.4, clerics: 0.7, warriors: 0.2 } },
+  // UPGRADE tier (3)
+  construction:    { tier: 3, tierClass: "upgrade",  baseRate: 0.005, basketValue: 12, category: "universal",    popWeights: { peasants: 0.3, burghers: 0.6, clerics: 0.4, warriors: 0.3 } },
+  metalwork:       { tier: 3, tierClass: "upgrade",  baseRate: 0.008, basketValue: 6,  category: "conditional",  popWeights: { peasants: 0.5, burghers: 0.7, clerics: 0.2, warriors: 0.4 } },
+  // MILITARY tier (4)
+  military_supply: { tier: 4, tierClass: "military", baseRate: 0.003, basketValue: 15, category: "conditional",  popWeights: { peasants: 0.1, burghers: 0.2, clerics: 0.1, warriors: 1.0 } },
+  // LUXURY tier (6) — tier 5 (prestige) reserved for Phase 2
+  luxury_clothing: { tier: 6, tierClass: "luxury",   baseRate: 0,     basketValue: 25, category: "premium",      popWeights: { peasants: 0.05, burghers: 0.5, clerics: 0.3, warriors: 0.6 } },
+  feast:           { tier: 6, tierClass: "luxury",   baseRate: 0,     basketValue: 20, category: "premium",      popWeights: { peasants: 0.1, burghers: 0.6, clerics: 0.4, warriors: 0.4 } },
 };
 
 const SETTLEMENT_MULT: Record<string, number> = {
   HAMLET: 0.5, TOWNSHIP: 0.8, CASTLE: 0.9, CITY: 1.0, POLIS: 1.3,
 };
 
-const PRESSURE_WEIGHTS = { need: 1.0, upgrade: 0.6, variety: 0.4, prestige: 0.3, ritual: 0.5 };
+const PRESSURE_WEIGHTS: Record<string, number> = {
+  need: 1.0, civic: 0.7, upgrade: 0.6, military: 0.5, luxury: 0.3,
+};
+
+// ── Legacy basket remap — temporary bridge for old DB keys ──
+const LEGACY_BASKET_MAP: Record<string, string> = {
+  basic_material: "metalwork",
+  textile: "basic_clothing",
+  variety: "feast",
+  ritual: "luxury_clothing",
+  prestige: "luxury_clothing",
+};
+
+function resolveBasketKey(raw: string, warnings: string[]): string {
+  if (BASKET_CONFIG[raw]) return raw;
+  const mapped = LEGACY_BASKET_MAP[raw];
+  if (mapped) {
+    warnings.push(`Legacy remap: ${raw} → ${mapped}`);
+    return mapped;
+  }
+  warnings.push(`Unknown basket_key: ${raw}, fallback to staple_food`);
+  return "staple_food";
+}
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
