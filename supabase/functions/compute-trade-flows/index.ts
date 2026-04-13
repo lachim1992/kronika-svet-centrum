@@ -586,7 +586,7 @@ Deno.serve(async (req) => {
 
           const basket = BASKET_CONFIG[basketKey];
           const needPressure = gap / Math.max(1, demandQty);
-          const tierPressure = basket ? (basket.tier >= 3 ? PRESSURE_WEIGHTS.prestige : PRESSURE_WEIGHTS.upgrade) : 0;
+          const tierPressure = basket ? (PRESSURE_WEIGHTS[basket.tierClass] || 0.3) : 0;
           const pressure = PRESSURE_WEIGHTS.need * needPressure + tierPressure * 0.5;
           if (pressure < 0.1) continue;
 
