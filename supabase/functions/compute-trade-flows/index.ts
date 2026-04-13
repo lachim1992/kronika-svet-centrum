@@ -95,7 +95,7 @@ Deno.serve(async (req) => {
       });
     }
 
-    const sb = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+    const warnings: string[] = [];
     const tn = turn_number || 1;
 
     // ── LOAD DATA ──
@@ -384,8 +384,8 @@ Deno.serve(async (req) => {
       const basketAgg = new Map<string, { quantity: number; qualitySum: number; count: number }>();
       for (const [gk, sv] of goodsSupply) {
         const good = goodsMap.get(gk);
-        const bk = good?.demand_basket || "basic_material";
-        const existing = basketAgg.get(bk) || { quantity: 0, qualitySum: 0, count: 0 };
+        const rawBk = good?.demand_basket || "staple_food";
+        const bk = resolveBasketKey(rawBk, warnings);
         existing.quantity += sv.quantity;
         existing.qualitySum += sv.quality_sum;
         existing.count += sv.count;
