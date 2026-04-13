@@ -550,7 +550,8 @@ Deno.serve(async (req) => {
       const neighbors = cityAdjacency.get(cityId) || new Set();
 
       for (const [basketKey, demandQty] of demands) {
-        const relevantGoods = goods.filter(g => g.demand_basket === basketKey);
+        // Match goods whose demand_basket resolves to this basketKey
+        const relevantGoods = goods.filter(g => resolveBasketKey(g.demand_basket || "staple_food", warnings) === basketKey);
         let domesticSatisfaction = 0;
         for (const g of relevantGoods) {
           const supply = citySupply.get(g.key);
@@ -842,8 +843,11 @@ Deno.serve(async (req) => {
       }).eq("session_id", session_id).eq("player_name", player);
     }
 
+    const uniqueWarnings = [...new Set(warnings)];
     return new Response(JSON.stringify({
       ok: true,
+      version: "v4.3",
+      baskets_count: Object.keys(BASKET_CONFIG).length,
       inventories_computed: nodeInventories.length,
       auto_production_cities: cityAutoSupply.size,
       market_summaries: summaryRows.length,
@@ -851,6 +855,8 @@ Deno.serve(async (req) => {
       market_share_rows: marketShareRows.length,
       trade_flows_created: tradeFlows.length,
       players_updated: playerAggregates.size,
+      legacy_remap_warnings: uniqueWarnings.length,
+      warnings: uniqueWarnings.slice(0, 50),
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
