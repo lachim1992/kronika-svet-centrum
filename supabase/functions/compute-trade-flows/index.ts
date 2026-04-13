@@ -674,7 +674,7 @@ Deno.serve(async (req) => {
         let totalDomestic = 0;
         for (const [bk, dq] of demands) {
           totalDemand += dq;
-          const relevantGoods = goods.filter(g => g.demand_basket === bk);
+          const relevantGoods = goods.filter(g => resolveBasketKey(g.demand_basket || "staple_food", warnings) === bk);
           for (const g of relevantGoods) {
             const s = supply.get(g.key);
             if (s) totalDomestic += Math.min(s.quantity, dq);
