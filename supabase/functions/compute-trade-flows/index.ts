@@ -405,7 +405,8 @@ Deno.serve(async (req) => {
 
       for (const [goodKey, supply] of goodsSupply) {
         const good = goodsMap.get(goodKey);
-        const basketKey = good?.demand_basket || "basic_material";
+        const rawBasketKey = good?.demand_basket || "staple_food";
+        const basketKey = resolveBasketKey(rawBasketKey, warnings);
         const demandForBasket = demands.get(basketKey) || 0;
 
         summaryRows.push({
