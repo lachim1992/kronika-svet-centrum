@@ -1,100 +1,133 @@
 
 
-# World Map Upgrade — Economy v4.2 Alignment
+# Economy v4.3 — 12 Civilizational Baskets (Corrected Legacy Remap)
 
-## Problem
+## Summary
 
-The world map has 4 separate overlay layers (Province, Roads, Strategic Network, Trade Network) with legacy flow types (`production`, `supply`, `wealth`, `faith`, `military`, `migration`, `food`, `culture`) that don't correspond to the economy v4.2 model. The v4.2 data lives in `trade_flows`, `city_market_baskets`, and `market_shares` tables with goods-level granularity (wheat, iron, etc.), but the map visualizes abstract flow categories from v3.
+Replace 10-basket flat model with 12-basket, 6-tier hierarchy. Fix legacy remap semantics per user feedback. Add unmapped basket warnings. Update all UI in same batch.
 
-Additionally, the UX has friction: SVG-based pan/zoom feels jittery, the legend is cramped, and there's no smooth inertia scrolling.
+## Corrected Legacy Remap
 
-## What changes
+Previous (problematic):
+- `variety → storage_logistics` (variety = consumer diversity, not logistics)
+- `ritual → admin_supplies` (ritual = cult/prestige, not administration)
 
-### A. UX improvements to WorldHexMap
+**Fixed**:
+```text
+basic_material → metalwork        (semantically close: raw materials → metal processing)
+textile        → basic_clothing   (direct match)
+variety        → feast            (consumer variety → celebratory consumption)
+ritual         → luxury_clothing  (cult/prestige goods → luxury tier)
+prestige       → luxury_clothing  (merge into same luxury bucket)
+```
 
-1. **Smooth inertia scrolling**: Add velocity tracking to pointer drag — on release, continue panning with deceleration (requestAnimationFrame loop). Currently pan stops instantly on pointer up.
+This keeps legacy goods flowing into semantically closer baskets rather than forcing cult goods into civic administration.
 
-2. **Zoom to cursor**: When scrolling mouse wheel, zoom toward the cursor position instead of the center. Currently `setZoom` changes scale uniformly regardless of mouse position.
+## 12 Baskets (unchanged from approved plan)
 
-3. **Minimap**: Add a small fixed minimap (bottom-right, ~120x80px) showing all discovered hexes as dots with a viewport rectangle indicator. Click on minimap to jump to position.
+```text
+#  Key                Tier  TierClass   Category
+1  staple_food        1     need        universal
+2  basic_clothing     1     need        universal
+3  tools              1     need        universal
+4  fuel               1     need        universal       (NEW, 70% baseline)
+5  drinking_water     2     civic       conditional     (NEW, 80% baseline)
+6  storage_logistics  2     civic       conditional     (NEW, market_level≥1)
+7  admin_supplies     2     civic       conditional     (NEW, pop≥300)
+8  construction       3     upgrade     universal
+9  metalwork          3     upgrade     conditional     (soft gate: ore local=full, import=50%, none=0)
+10 military_supply    4     military    conditional     (warriors/total>0.05)
+11 luxury_clothing    6     luxury      premium
+12 feast              6     luxury      premium
+```
 
-4. **Double-click to zoom**: Double-click on hex zooms in by 0.5 and centers on that hex (in addition to opening detail on second double-click).
+## Unmapped Basket Warning
 
-5. **Mobile: momentum scrolling**: Apply same inertia to touch drag for smoother mobile experience.
+Both solver and client will include:
+```typescript
+const LEGACY_BASKET_MAP: Record<string, string> = {
+  basic_material: "metalwork",
+  textile: "basic_clothing",
+  variety: "feast",
+  ritual: "luxury_clothing",
+  prestige: "luxury_clothing",
+};
 
-6. **Legend redesign**: Replace the cramped inline legend with a collapsible sidebar-style panel (left side, 200px). Sections for: Provinces, Biomes, Economy Overlay. Each section collapses independently.
+function resolveBasketKey(raw: string, warnings?: string[]): string {
+  if (BASKET_CONFIG[raw]) return raw;
+  const mapped = LEGACY_BASKET_MAP[raw];
+  if (mapped) {
+    if (warnings) warnings.push(`Legacy remap: ${raw} → ${mapped}`);
+    return mapped;
+  }
+  if (warnings) warnings.push(`Unknown basket_key: ${raw}, fallback to staple_food`);
+  return "staple_food";
+}
+```
 
-### B. Economy v4.2 overlay — replace all legacy overlays
+Solver returns `warnings[]` in response JSON. Client logs unknown keys to console.
 
-**Remove**: `StrategicMapOverlay`, `RouteCorridorsOverlay`, `TradeNetworkOverlay` as separate components.
+## Files Changed
 
-**Replace with**: Single `EconomyFlowOverlay` component that visualizes economy v4.2 data:
+### 1. `src/lib/goodsCatalog.ts`
+- Add `BasketTierClass` type: `"need"|"civic"|"upgrade"|"military"|"prestige"|"luxury"`
+- Add `phaseActive` field to `BasketConfig` (flags for which mechanics are active)
+- Replace 10-entry `BASKET_CONFIG` with 12 entries using new tier classes + metadata fields (`resourceDependencies`, `productionInputs`, `stateEffect`, `marketability`, `uniqueProductSlots`, `routeEffect` — all metadata-only, marked inactive via `phaseActive`)
+- Replace 10-entry `DEMAND_BASKETS` with 12 entries
+- Add `LEGACY_BASKET_MAP` + `resolveBasketKey` helper
+- Update `TRADE_PRESSURE_WEIGHTS` keys: `{ need: 1.0, civic: 0.7, upgrade: 0.6, military: 0.5, luxury: 0.3 }`
+- Update `MACRO_DERIVATION` sources to reference new basket keys
+- Comment: `// prestige tier class reserved for Phase 2 — no baskets use it yet`
 
-1. **Trade flows between cities**: Lines from `trade_flows` table showing actual goods movement between cities. Color-coded by goods category (food=green, raw materials=brown, luxury=gold, manufactured=blue). Line thickness = `volume_per_turn`. Arrow direction shows source→target.
+### 2. `supabase/functions/compute-trade-flows/index.ts`
+- Replace 10-basket `BASKET_CONFIG` with 12-basket version (same keys/rates as client)
+- Add `LEGACY_BASKET_MAP` + `resolveBasketKey` with warnings collection
+- Update conditional gates: soft gates for `metalwork` (ore deposit check with 50% import fallback), `drinking_water` (80% min), `fuel` (70% min), `storage_logistics` (market≥1), `admin_supplies` (pop≥300)
+- Update `PRESSURE_WEIGHTS` to tier-class-based
+- All `good?.demand_basket` references go through `resolveBasketKey`
+- Replace hardcoded fallback `"basic_material"` with `resolveBasketKey(good?.demand_basket || "staple_food", warnings)`
+- Return `warnings` array and `unmapped_count` in response JSON
+- **No stateEffect/routeEffect application** — pure solver
 
-2. **Route corridors**: Keep `flow_paths` hex-traced paths from `RoadNetworkOverlay` (these are correct infrastructure paths). But color them by economic utilization — routes carrying more trade volume glow brighter.
+### 3. `src/components/economy/DemandFulfillmentPanel.tsx`
+- Replace `LAYER_META` (3 layers) with 5 layers:
+  - **NEED** 🔴: `staple_food`, `basic_clothing`, `tools`, `fuel`
+  - **CIVIC** 🟢: `drinking_water`, `storage_logistics`, `admin_supplies`
+  - **UPGRADE** 🟡: `construction`, `metalwork`
+  - **MILITARY** ⚔️: `military_supply`
+  - **LUXURY** 🔵: `luxury_clothing`, `feast`
+- Update iteration from `["need","upgrade","prestige"]` to `["need","civic","upgrade","military","luxury"]`
+- Import `resolveBasketKey` and apply to `basket_key` from DB rows
 
-3. **City market indicators**: At each city position, show a small radial chart or badge showing `domestic_satisfaction` from `city_market_baskets`. Green = well-supplied, red = deficit.
+### 4. `src/components/economy/GoodsDemandSubTab.tsx`
+- Update `TIER_LABELS`: `{ 1: "Need", 2: "Civic", 3: "Upgrade", 4: "Military", 5: "Prestige (reserved)", 6: "Luxury" }`
+- Update `TIER_COLORS` to match
 
-4. **Market share flows**: Optional sub-layer showing export corridors — which cities export what baskets, following route paths.
+### 5. `src/components/map/EconomyFlowOverlay.tsx`
+- Update macro category colors/labels to include `civic` and `military`
+- Apply `resolveBasketKey` when reading `basket_key` from DB data
 
-**Legend entries for the new overlay**:
-- 🌾 Potraviny (food goods flow)
-- ⛏️ Suroviny (raw materials flow)  
-- ✨ Luxus (luxury goods flow)
-- 🔨 Výrobky (manufactured goods flow)
-- Route utilization (low→high color ramp)
-- City satisfaction indicator (green/yellow/red)
+### 6. `src/components/WorldHexMap.tsx`
+- Update legend entries for 5 active tier classes
 
-### C. Dev mode tools — update for v4.2
+### 7. Dev panels
+- `GoodsEconomyDebugPanel.tsx`, `DevNodeEditor.tsx` — import updated `DEMAND_BASKETS` (automatic via import)
 
-**In HexDevTools**, update the "Trade Routes" section:
+## Execution Order
 
-1. Replace legacy flow type selectors with v4.2 goods-based route creation
-2. Add "Simulate trade flow" button that creates a `trade_flows` entry between two nodes
-3. Show per-route trade volume and goods breakdown
-4. Add "Recompute trade flows" quick action that calls `compute-trade-flows`
+1. `goodsCatalog.ts` — new 12-basket model + legacy remap helper
+2. `compute-trade-flows/index.ts` — mirror baskets, soft gates, legacy remap with warnings
+3. `DemandFulfillmentPanel.tsx` — 5 layers
+4. `GoodsDemandSubTab.tsx` — tier labels
+5. `EconomyFlowOverlay.tsx` + `WorldHexMap.tsx` — legend
+6. Dev panels (if needed)
 
-**In map dev controls** (top-right):
-- Replace "Cesty" button with "♻️ Přepočítat ekonomiku" that calls `refresh-economy`
-- Add toggle for economy overlay sub-layers (goods categories)
+## Constraints (explicit in code)
 
-### D. Corridor control visualization
-
-When economy overlay is active:
-- Routes owned/controlled by the player show a subtle colored border matching player's province color
-- Chokepoints (hexes where multiple routes converge) get a special indicator
-- `control_state` from `province_routes` shown as route style: `open`=solid, `contested`=dashed, `blocked`=red dashed, `embargoed`=dotted
-
-## Files changed
-
-| File | Change |
-|------|--------|
-| `src/components/WorldHexMap.tsx` | Add inertia scrolling, zoom-to-cursor, minimap, replace 3 overlay toggles with single economy overlay toggle, update legend |
-| `src/components/map/EconomyFlowOverlay.tsx` | **New** — v4.2 goods-based trade visualization |
-| `src/components/map/StrategicMapOverlay.tsx` | **Delete** — replaced by EconomyFlowOverlay |
-| `src/components/map/RouteCorridorsOverlay.tsx` | **Delete** — merged into EconomyFlowOverlay |
-| `src/components/map/TradeNetworkOverlay.tsx` | **Delete** — replaced by EconomyFlowOverlay |
-| `src/components/map/RoadNetworkOverlay.tsx` | **Keep** — infrastructure layer stays, enhanced with utilization coloring |
-| `src/components/map/HexDevTools.tsx` | Update trade route section for v4.2 goods flows |
-| `src/components/map/MapMinimap.tsx` | **New** — minimap component |
-
-## Execution order
-
-1. UX improvements (inertia, zoom-to-cursor) in WorldHexMap
-2. Create EconomyFlowOverlay reading from `trade_flows` + `city_market_baskets`
-3. Replace legend with economy v4.2 entries
-4. Delete StrategicMapOverlay, RouteCorridorsOverlay, TradeNetworkOverlay
-5. Update RoadNetworkOverlay with utilization coloring
-6. Update HexDevTools for v4.2
-7. Add minimap
-
-## What does NOT change
-
-- No database schema changes
-- No edge function changes
-- `RoadNetworkOverlay` infrastructure paths stay (they read from `flow_paths` which is correct)
-- Province overlay stays unchanged
-- Hex tile rendering stays unchanged
-- Military/battle mechanics stay unchanged
+- `stateEffect`: inactive metadata only
+- `routeEffect`: inactive metadata only
+- `uniqueProductSlots`: inactive metadata only
+- `prestige` tier class: reserved for Phase 2
+- `drinking_water`/`fuel`: simplified baseline, not environmental simulation
+- Legacy remap is **temporary bridge**, not final semantics (marked in comments)
 
