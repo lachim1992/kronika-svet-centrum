@@ -13,8 +13,22 @@ interface Props {
   playerName: string;
 }
 
-const TIER_LABELS: Record<number, string> = { 1: "Staple", 2: "Variety", 3: "Upgrade", 4: "Prestige", 5: "Luxury" };
-const TIER_COLORS: Record<number, string> = { 1: "bg-emerald-500", 2: "bg-blue-500", 3: "bg-amber-500", 4: "bg-purple-500", 5: "bg-yellow-500" };
+const TIER_LABELS: Record<number, string> = {
+  1: "Need",
+  2: "Civic",
+  3: "Upgrade",
+  4: "Military",
+  5: "Prestige (reserved)",
+  6: "Luxury",
+};
+const TIER_COLORS: Record<number, string> = {
+  1: "bg-red-500",
+  2: "bg-emerald-500",
+  3: "bg-amber-500",
+  4: "bg-red-700",
+  5: "bg-purple-500",
+  6: "bg-blue-500",
+};
 
 const GoodsDemandSubTab = ({ sessionId, playerName }: Props) => {
   const [goods, setGoods] = useState<any[]>([]);

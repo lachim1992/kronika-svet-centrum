@@ -1,10 +1,12 @@
 /**
- * Chronicle Economy v4.2 — Client-side Goods Catalog
+ * Chronicle Economy v4.3 — Client-side Goods Catalog
  * 
- * Mirrors DB data for UI previews, recipe browsing, demand basket logic.
+ * 12-basket civilizational hierarchy with 6 tier classes.
  * Source of truth is the DB; this is a convenience mirror.
  * 
- * v4.2: Added BASKET_CONFIG for auto-production + market share system.
+ * v4.3: Expanded from 10 to 12 baskets. Added tierClass, phaseActive flags,
+ *        metadata fields (stateEffect, routeEffect, etc.) — inactive in Phase 1.
+ *        Legacy basket remap for backward compatibility.
  */
 
 // ═══════════════════════════════════════════
@@ -97,7 +99,7 @@ export const NODE_CAPABILITY_MAP: Record<string, { role: ProductionRole; tags: s
 };
 
 // ═══════════════════════════════════════════
-// DEMAND BASKETS — aggregation layer
+// DEMAND BASKETS — v4.3 12-basket hierarchy
 // ═══════════════════════════════════════════
 
 export interface DemandBasketDef {
@@ -110,17 +112,57 @@ export interface DemandBasketDef {
 }
 
 export const DEMAND_BASKETS: DemandBasketDef[] = [
+  // NEED tier (1)
   { key: "staple_food", label: "Základní potraviny", icon: "🍞", tier: 1, description: "Chléb, obilí, maso — přežití", socialWeights: { peasants: 1.0, burghers: 0.6, clerics: 0.3, warriors: 0.8 } },
-  { key: "basic_material", label: "Základní materiály", icon: "🪨", tier: 1, description: "Ruda, kůže — surové stavební kameny ekonomiky", socialWeights: { peasants: 0.5, burghers: 0.7, clerics: 0.2, warriors: 0.4 } },
+  { key: "basic_clothing", label: "Základní oděv", icon: "👕", tier: 1, description: "Tkaniny, kůže, základní oblečení", socialWeights: { peasants: 0.4, burghers: 0.7, clerics: 0.5, warriors: 0.3 } },
   { key: "tools", label: "Nástroje & nářadí", icon: "🔧", tier: 1, description: "Kovové nástroje, kožené výrobky", socialWeights: { peasants: 0.7, burghers: 0.5, clerics: 0.2, warriors: 0.4 } },
-  { key: "construction", label: "Stavební materiály", icon: "🧱", tier: 2, description: "Dřevo, kámen, stavební bloky", socialWeights: { peasants: 0.3, burghers: 0.6, clerics: 0.4, warriors: 0.3 } },
-  { key: "textile", label: "Textil", icon: "🧵", tier: 2, description: "Vlákna, příze, tkaniny", socialWeights: { peasants: 0.4, burghers: 0.7, clerics: 0.5, warriors: 0.3 } },
-  { key: "military_supply", label: "Vojenské zásoby", icon: "⚔️", tier: 2, description: "Zbraně, výzbroj, munice", socialWeights: { peasants: 0.1, burghers: 0.2, clerics: 0.1, warriors: 1.0 } },
-  { key: "variety", label: "Rozmanitost", icon: "🎭", tier: 3, description: "Keramika, textil, víno — komfort", socialWeights: { peasants: 0.3, burghers: 0.8, clerics: 0.5, warriors: 0.3 } },
-  { key: "ritual", label: "Rituální potřeby", icon: "🕯️", tier: 3, description: "Kadidlo, oleje, svíce, posvátné materiály", socialWeights: { peasants: 0.2, burghers: 0.3, clerics: 1.0, warriors: 0.2 } },
-  { key: "feast", label: "Slavnostní pochutiny", icon: "🥂", tier: 4, description: "Lahůdky, kvalitní víno, sladkosti", socialWeights: { peasants: 0.1, burghers: 0.6, clerics: 0.4, warriors: 0.4 } },
-  { key: "prestige", label: "Prestiž", icon: "👑", tier: 4, description: "Šperky, luxusní zbraně, jemné textilie", socialWeights: { peasants: 0.05, burghers: 0.5, clerics: 0.3, warriors: 0.6 } },
+  { key: "fuel", label: "Palivo a teplo", icon: "🔥", tier: 1, description: "Dřevo, uhlí — topení, výroba", socialWeights: { peasants: 0.6, burghers: 0.5, clerics: 0.3, warriors: 0.4 } },
+  // CIVIC tier (2)
+  { key: "drinking_water", label: "Pitná voda", icon: "💧", tier: 2, description: "Studny, cisterny, akvadukty", socialWeights: { peasants: 0.8, burghers: 0.7, clerics: 0.5, warriors: 0.6 } },
+  { key: "storage_logistics", label: "Skladování a logistika", icon: "📦", tier: 2, description: "Sklady, distribuce, řetězce zásobování", socialWeights: { peasants: 0.2, burghers: 0.8, clerics: 0.3, warriors: 0.3 } },
+  { key: "admin_supplies", label: "Správní potřeby", icon: "📜", tier: 2, description: "Pergamen, inkoust, správní aparát", socialWeights: { peasants: 0.1, burghers: 0.4, clerics: 0.7, warriors: 0.2 } },
+  // UPGRADE tier (3)
+  { key: "construction", label: "Stavební materiály", icon: "🧱", tier: 3, description: "Dřevo, kámen, stavební bloky", socialWeights: { peasants: 0.3, burghers: 0.6, clerics: 0.4, warriors: 0.3 } },
+  { key: "metalwork", label: "Kovovýroba", icon: "⚒️", tier: 3, description: "Ingoty, kované díly, kovové výrobky", socialWeights: { peasants: 0.5, burghers: 0.7, clerics: 0.2, warriors: 0.4 } },
+  // MILITARY tier (4)
+  { key: "military_supply", label: "Vojenské zásoby", icon: "⚔️", tier: 4, description: "Zbraně, výzbroj, munice", socialWeights: { peasants: 0.1, burghers: 0.2, clerics: 0.1, warriors: 1.0 } },
+  // LUXURY tier (6) — tier 5 (prestige) reserved for Phase 2
+  { key: "luxury_clothing", label: "Luxusní oděvy", icon: "👑", tier: 6, description: "Hedvábí, brokát, jemné textilie", socialWeights: { peasants: 0.05, burghers: 0.5, clerics: 0.3, warriors: 0.6 } },
+  { key: "feast", label: "Slavnostní hostiny", icon: "🥂", tier: 6, description: "Lahůdky, kvalitní víno, slavnosti", socialWeights: { peasants: 0.1, burghers: 0.6, clerics: 0.4, warriors: 0.4 } },
 ];
+
+// ═══════════════════════════════════════════
+// LEGACY BASKET REMAP — temporary bridge for old DB keys
+// ═══════════════════════════════════════════
+
+/**
+ * Maps old v4.2 basket keys to new v4.3 keys.
+ * This is a TEMPORARY bridge, not final semantics.
+ * Legacy goods in DB still reference these old keys in demand_basket column.
+ */
+export const LEGACY_BASKET_MAP: Record<string, string> = {
+  basic_material: "metalwork",
+  textile: "basic_clothing",
+  variety: "feast",
+  ritual: "luxury_clothing",
+  prestige: "luxury_clothing",
+};
+
+/**
+ * Resolves a basket key, remapping legacy keys if needed.
+ * Logs warnings for unknown/remapped keys.
+ */
+export function resolveBasketKey(raw: string, warnings?: string[]): string {
+  if (BASKET_CONFIG[raw]) return raw;
+  const mapped = LEGACY_BASKET_MAP[raw];
+  if (mapped) {
+    if (warnings) warnings.push(`Legacy remap: ${raw} → ${mapped}`);
+    return mapped;
+  }
+  if (warnings) warnings.push(`Unknown basket_key: ${raw}, fallback to staple_food`);
+  console.warn(`[goodsCatalog] Unknown basket_key: "${raw}", falling back to staple_food`);
+  return "staple_food";
+}
 
 // ═══════════════════════════════════════════
 // TRADE IDEOLOGY — mechanical binding
@@ -169,7 +211,7 @@ export const GUILD_PROGRESSION: GuildLevelEffect[] = [
 ];
 
 // ═══════════════════════════════════════════
-// MACRO INTEGRATION — how goods feed top-bar
+// MACRO INTEGRATION — how goods feed top-bar (v4.3 updated)
 // ═══════════════════════════════════════════
 
 export const MACRO_DERIVATION: Record<string, { label: string; icon: string; sources: string[] }> = {
@@ -193,7 +235,7 @@ export const MACRO_DERIVATION: Record<string, { label: string; icon: string; sou
       "Tržní daň: domácí objem × market_level",
       "Tranzitní daň: průtok × toll_rate",
       "Extrakční daň: korunní doly, monopoly",
-      "Capture bonus: export × cizí poptávka",
+      "Capture bonus: export × cizí poptávka (metalwork, luxury_clothing)",
       "Leakage penalizace: import závislost",
     ],
   },
@@ -204,37 +246,36 @@ export const MACRO_DERIVATION: Record<string, { label: string; icon: string; sou
       "Goods s tagem storable=true",
       "Obilí, mouka, konzervované jídlo, sůl",
       "Dřevo, ingoty, olej, základní textil",
-      "Storage infrastruktura ovlivňuje kapacitu",
+      "Storage infrastruktura (storage_logistics basket)",
     ],
   },
   capacity: {
     label: "🏛️ Kapacita",
     icon: "🏛️",
     sources: [
-      "Materiální: stavební goods (kámen, dřevo, bloky, železo)",
-      "Institucionální: guild level + urbanizace + admin nodes",
-      "Logistická: access_score + hustota uzlů + kvalita tras",
+      "Materiální: stavební goods (construction basket)",
+      "Institucionální: guild level + urbanizace + admin_supplies basket",
+      "Logistická: access_score + hustota uzlů + storage_logistics",
     ],
   },
   faith: {
     label: "⛪ Víra",
     icon: "⛪",
     sources: [
-      "Ritual basket fulfillment (víno, kadidlo, oleje, textil)",
       "Temple/shrine node output",
       "Cleric satisfaction score",
       "Chrámové stavební goods",
+      "Luxury_clothing basket partial (cult component)",
     ],
   },
   prestige: {
     label: "⭐ Prestiž",
     icon: "⭐",
     sources: [
-      "Luxury goods produkce (objem + kvalita)",
+      "Luxury goods produkce (luxury_clothing + feast)",
       "Famous goods (guild tradice)",
       "Export high-tier goods (capture prestige)",
       "Monumentální výstavba",
-      "Kulturní a rituální rozmanitost",
     ],
   },
   population: {
@@ -242,8 +283,8 @@ export const MACRO_DERIVATION: Record<string, { label: string; icon: string; sou
     icon: "👥",
     sources: [
       "Staple food basket → růst/úbytek",
-      "Stability basket → retence",
-      "Urban comfort + variety → urban pull",
+      "Drinking_water basket → health/growth support",
+      "Urban comfort + feast → urban pull",
       "Zaměstnanost v produkčních chainech",
       "Import dependency šoky → krizové riziko",
     ],
@@ -251,15 +292,16 @@ export const MACRO_DERIVATION: Record<string, { label: string; icon: string; sou
 };
 
 // ═══════════════════════════════════════════
-// TRADE PRESSURE FORMULA (reference)
+// TRADE PRESSURE FORMULA — v4.3 tier-class based
 // ═══════════════════════════════════════════
 
-export const TRADE_PRESSURE_WEIGHTS = {
+export const TRADE_PRESSURE_WEIGHTS: Record<string, number> = {
   need: 1.0,
+  civic: 0.7,
   upgrade: 0.6,
-  variety: 0.4,
-  prestige: 0.3,
-  ritual: 0.5,
+  military: 0.5,
+  luxury: 0.3,
+  // prestige tier class reserved for Phase 2 — no baskets use it yet
 };
 
 export const TRADE_FLOW_STATUSES = [
@@ -271,10 +313,24 @@ export const TRADE_FLOW_STATUSES = [
 ];
 
 // ═══════════════════════════════════════════
-// BASKET CONFIG — v4.2 auto-production + market share
+// BASKET CONFIG — v4.3 civilizational 12-basket model
 // ═══════════════════════════════════════════
 
 export type BasketCategory = "universal" | "conditional" | "premium";
+
+/** 6 tier classes. prestige is reserved for Phase 2 — no baskets use it yet. */
+export type BasketTierClass = "need" | "civic" | "upgrade" | "military" | "prestige" | "luxury";
+
+/** Which mechanics are active in Phase 1 */
+export interface PhaseActiveFlags {
+  basketFulfillment: boolean;
+  marketability: boolean;
+  uniqueSlots: boolean;
+  /** stateEffect is inactive metadata only — NOT applied in any solver */
+  stateEffect: boolean;
+  /** routeEffect is inactive metadata only — NOT applied in any solver */
+  routeEffect: boolean;
+}
 
 export interface BasketConfig {
   /** Base production rate per effective workforce unit */
@@ -287,8 +343,27 @@ export interface BasketConfig {
   popWeights: { peasants: number; burghers: number; clerics: number; warriors: number };
   /** Tier for UI sorting */
   tier: number;
+  /** Civilizational tier class */
+  tierClass: BasketTierClass;
   /** Condition gate for conditional baskets (evaluated at city level) */
   condition?: (city: { market_level?: number; temple_level?: number; population_warriors?: number; population_total?: number; resource_deposits?: string[] }) => boolean;
+  // ── Phase 1 metadata fields (informational only, NOT mechanically enforced) ──
+  /** Resource dependencies — what raw resources feed this basket */
+  resourceDependencies: string[];
+  /** What production inputs are needed */
+  productionInputs: string[];
+  /** What drives demand for this basket */
+  demandDrivers: string[];
+  /** State effects — INACTIVE METADATA ONLY. Not applied in compute-trade-flows. */
+  stateEffect: Record<string, number>;
+  /** 0-1 exportability/tradability of this basket */
+  marketability: number;
+  /** How many unique product slots this basket supports (Phase 2) */
+  uniqueProductSlots: number;
+  /** Route/corridor effects — INACTIVE METADATA ONLY. */
+  routeEffect?: Record<string, number>;
+  /** Phase activation flags */
+  phaseActive: PhaseActiveFlags;
 }
 
 export const SETTLEMENT_MULT: Record<string, number> = {
@@ -300,86 +375,154 @@ export const SETTLEMENT_MULT: Record<string, number> = {
 };
 
 export const BASKET_CONFIG: Record<string, BasketConfig> = {
+  // ── NEED tier (1) ──
   staple_food: {
-    baseRate: 0.012,
-    basketValue: 8,
-    category: "universal",
-    tier: 1,
+    baseRate: 0.012, basketValue: 8, category: "universal", tier: 1, tierClass: "need",
     popWeights: { peasants: 1.0, burghers: 0.6, clerics: 0.3, warriors: 0.8 },
+    resourceDependencies: ["grain", "livestock", "fish"],
+    productionInputs: ["farming", "herding", "fishing"],
+    demandDrivers: ["population_total", "military_garrison"],
+    stateEffect: { stability: 0.15, growth: 0.10 },
+    marketability: 0.3, uniqueProductSlots: 0,
+    phaseActive: { basketFulfillment: true, marketability: true, uniqueSlots: false, stateEffect: false, routeEffect: false },
   },
-  basic_material: {
-    baseRate: 0.008,
-    basketValue: 6,
-    category: "universal",
-    tier: 1,
-    popWeights: { peasants: 0.5, burghers: 0.7, clerics: 0.2, warriors: 0.4 },
-  },
-  tools: {
-    baseRate: 0.006,
-    basketValue: 10,
-    category: "universal",
-    tier: 1,
-    popWeights: { peasants: 0.7, burghers: 0.5, clerics: 0.2, warriors: 0.4 },
-  },
-  construction: {
-    baseRate: 0.005,
-    basketValue: 12,
-    category: "universal",
-    tier: 2,
-    popWeights: { peasants: 0.3, burghers: 0.6, clerics: 0.4, warriors: 0.3 },
-  },
-  textile: {
-    baseRate: 0.004,
-    basketValue: 10,
-    category: "conditional",
-    tier: 2,
+  basic_clothing: {
+    baseRate: 0.004, basketValue: 10, category: "universal", tier: 1, tierClass: "need",
     popWeights: { peasants: 0.4, burghers: 0.7, clerics: 0.5, warriors: 0.3 },
+    resourceDependencies: ["fiber", "wool", "flax", "cotton", "raw_hide"],
+    productionInputs: ["spinning", "weaving", "tanning"],
+    demandDrivers: ["population_total", "climate"],
+    stateEffect: { stability: 0.05 },
+    marketability: 0.5, uniqueProductSlots: 0,
+    phaseActive: { basketFulfillment: true, marketability: true, uniqueSlots: false, stateEffect: false, routeEffect: false },
     condition: (city) => {
       const deps = city.resource_deposits || [];
-      return deps.some(d => ["fiber", "livestock", "wool", "flax", "cotton"].includes(d));
+      return deps.some(d => ["fiber", "livestock", "wool", "flax", "cotton", "raw_fiber", "raw_hide"].includes(d));
     },
   },
+  tools: {
+    baseRate: 0.006, basketValue: 10, category: "universal", tier: 1, tierClass: "need",
+    popWeights: { peasants: 0.7, burghers: 0.5, clerics: 0.2, warriors: 0.4 },
+    resourceDependencies: ["iron", "wood"],
+    productionInputs: ["smithing", "crafting"],
+    demandDrivers: ["population_total", "production_activity"],
+    stateEffect: { production_efficiency: 0.05 },
+    marketability: 0.5, uniqueProductSlots: 0,
+    phaseActive: { basketFulfillment: true, marketability: true, uniqueSlots: false, stateEffect: false, routeEffect: false },
+  },
+  fuel: {
+    baseRate: 0.004, basketValue: 6, category: "universal", tier: 1, tierClass: "need",
+    popWeights: { peasants: 0.6, burghers: 0.5, clerics: 0.3, warriors: 0.4 },
+    resourceDependencies: ["wood", "coal", "peat"],
+    productionInputs: ["logging"],
+    demandDrivers: ["population_total", "climate", "production_activity"],
+    stateEffect: { stability: 0.03, production_efficiency: 0.02 },
+    marketability: 0.2, uniqueProductSlots: 0,
+    phaseActive: { basketFulfillment: true, marketability: true, uniqueSlots: false, stateEffect: false, routeEffect: false },
+    // Soft gate: 70% baseline even without local fuel sources
+  },
+
+  // ── CIVIC tier (2) ──
+  drinking_water: {
+    baseRate: 0.003, basketValue: 5, category: "conditional", tier: 2, tierClass: "civic",
+    popWeights: { peasants: 0.8, burghers: 0.7, clerics: 0.5, warriors: 0.6 },
+    resourceDependencies: ["river", "well", "aquifer"],
+    productionInputs: [],
+    demandDrivers: ["population_total", "climate"],
+    stateEffect: { health: 0.10, growth: 0.05 },
+    marketability: 0.0, uniqueProductSlots: 0,
+    phaseActive: { basketFulfillment: true, marketability: false, uniqueSlots: false, stateEffect: false, routeEffect: false },
+    // Soft gate: always 80% minimum, full with water sources nearby
+    condition: () => true, // Always active — soft gate applied at rate level
+  },
+  storage_logistics: {
+    baseRate: 0.003, basketValue: 14, category: "conditional", tier: 2, tierClass: "civic",
+    popWeights: { peasants: 0.2, burghers: 0.8, clerics: 0.3, warriors: 0.3 },
+    resourceDependencies: [],
+    productionInputs: ["construction"],
+    demandDrivers: ["market_level", "trade_volume"],
+    stateEffect: {},
+    marketability: 0.3, uniqueProductSlots: 0,
+    routeEffect: { capacity: 0.15, loss_reduction: 0.1 },
+    phaseActive: { basketFulfillment: true, marketability: true, uniqueSlots: false, stateEffect: false, routeEffect: false },
+    condition: (city) => (city.market_level ?? 0) >= 1,
+  },
+  admin_supplies: {
+    baseRate: 0.002, basketValue: 12, category: "conditional", tier: 2, tierClass: "civic",
+    popWeights: { peasants: 0.1, burghers: 0.4, clerics: 0.7, warriors: 0.2 },
+    resourceDependencies: [],
+    productionInputs: ["crafting"],
+    demandDrivers: ["population_total", "settlement_level"],
+    stateEffect: { tax_efficiency: 0.05, legitimacy: 0.03 },
+    marketability: 0.2, uniqueProductSlots: 0,
+    phaseActive: { basketFulfillment: true, marketability: true, uniqueSlots: false, stateEffect: false, routeEffect: false },
+    condition: (city) => (city.population_total ?? 0) >= 300,
+  },
+
+  // ── UPGRADE tier (3) ──
+  construction: {
+    baseRate: 0.005, basketValue: 12, category: "universal", tier: 3, tierClass: "upgrade",
+    popWeights: { peasants: 0.3, burghers: 0.6, clerics: 0.4, warriors: 0.3 },
+    resourceDependencies: ["stone", "wood", "iron"],
+    productionInputs: ["quarrying", "logging", "construction"],
+    demandDrivers: ["building_activity", "population_growth"],
+    stateEffect: { capacity: 0.10 },
+    marketability: 0.4, uniqueProductSlots: 0,
+    phaseActive: { basketFulfillment: true, marketability: true, uniqueSlots: false, stateEffect: false, routeEffect: false },
+  },
+  metalwork: {
+    baseRate: 0.008, basketValue: 6, category: "conditional", tier: 3, tierClass: "upgrade",
+    popWeights: { peasants: 0.5, burghers: 0.7, clerics: 0.2, warriors: 0.4 },
+    resourceDependencies: ["iron", "copper", "tin", "raw_ore"],
+    productionInputs: ["mining", "smelting", "smithing"],
+    demandDrivers: ["population_total", "military_size", "construction"],
+    stateEffect: { production_efficiency: 0.05, military_quality: 0.03 },
+    marketability: 0.6, uniqueProductSlots: 1,
+    phaseActive: { basketFulfillment: true, marketability: true, uniqueSlots: false, stateEffect: false, routeEffect: false },
+    // Soft gate: local ore=full, import=50%, none=0
+    condition: (city) => {
+      const deps = city.resource_deposits || [];
+      return deps.some(d => ["iron", "copper", "tin", "raw_ore", "ore", "metal"].includes(d));
+    },
+  },
+
+  // ── MILITARY tier (4) ──
   military_supply: {
-    baseRate: 0.003,
-    basketValue: 15,
-    category: "conditional",
-    tier: 2,
+    baseRate: 0.003, basketValue: 15, category: "conditional", tier: 4, tierClass: "military",
     popWeights: { peasants: 0.1, burghers: 0.2, clerics: 0.1, warriors: 1.0 },
+    resourceDependencies: ["iron", "leather", "wood"],
+    productionInputs: ["smithing", "armoring", "tanning"],
+    demandDrivers: ["military_size", "war_status"],
+    stateEffect: { military_readiness: 0.10 },
+    marketability: 0.4, uniqueProductSlots: 1,
+    phaseActive: { basketFulfillment: true, marketability: true, uniqueSlots: false, stateEffect: false, routeEffect: false },
     condition: (city) => {
       const warriors = city.population_warriors || 0;
       const total = city.population_total || 1;
       return (warriors / total) > 0.05;
     },
   },
-  variety: {
-    baseRate: 0.003,
-    basketValue: 14,
-    category: "conditional",
-    tier: 3,
-    popWeights: { peasants: 0.3, burghers: 0.8, clerics: 0.5, warriors: 0.3 },
-    condition: (city) => (city.market_level ?? 0) >= 1,
-  },
-  ritual: {
-    baseRate: 0.002,
-    basketValue: 16,
-    category: "conditional",
-    tier: 3,
-    popWeights: { peasants: 0.2, burghers: 0.3, clerics: 1.0, warriors: 0.2 },
-    condition: (city) => (city.temple_level ?? 0) >= 1,
+
+  // ── LUXURY tier (6) ── (tier 5 = prestige, reserved for Phase 2)
+  luxury_clothing: {
+    baseRate: 0, basketValue: 25, category: "premium", tier: 6, tierClass: "luxury",
+    popWeights: { peasants: 0.05, burghers: 0.5, clerics: 0.3, warriors: 0.6 },
+    resourceDependencies: ["silk", "dye", "gold"],
+    productionInputs: ["weaving", "crafting", "master_craft"],
+    demandDrivers: ["elite_population", "cultural_prestige"],
+    stateEffect: { prestige: 0.10, legitimacy: 0.05 },
+    marketability: 0.9, uniqueProductSlots: 2,
+    phaseActive: { basketFulfillment: true, marketability: true, uniqueSlots: false, stateEffect: false, routeEffect: false },
   },
   feast: {
-    baseRate: 0,
-    basketValue: 20,
-    category: "premium",
-    tier: 4,
+    baseRate: 0, basketValue: 20, category: "premium", tier: 6, tierClass: "luxury",
     popWeights: { peasants: 0.1, burghers: 0.6, clerics: 0.4, warriors: 0.4 },
-  },
-  prestige: {
-    baseRate: 0,
-    basketValue: 25,
-    category: "premium",
-    tier: 4,
-    popWeights: { peasants: 0.05, burghers: 0.5, clerics: 0.3, warriors: 0.6 },
+    resourceDependencies: ["wine", "spices", "fish", "grain"],
+    productionInputs: ["fermenting", "baking", "preserving"],
+    demandDrivers: ["elite_population", "festivals", "diplomatic_events"],
+    stateEffect: { stability: 0.05, prestige: 0.05 },
+    marketability: 0.7, uniqueProductSlots: 1,
+    phaseActive: { basketFulfillment: true, marketability: true, uniqueSlots: false, stateEffect: false, routeEffect: false },
   },
 };
 

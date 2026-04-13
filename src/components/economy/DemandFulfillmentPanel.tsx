@@ -7,7 +7,7 @@ import { InfoTip } from "@/components/ui/info-tip";
 import { Loader2, ChevronDown } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import GoodsDemandSubTab from "./GoodsDemandSubTab";
-import { DEMAND_BASKETS } from "@/lib/goodsCatalog";
+import { DEMAND_BASKETS, resolveBasketKey } from "@/lib/goodsCatalog";
 
 interface Props {
   sessionId: string;
@@ -31,23 +31,36 @@ const LAYER_META: Record<string, { label: string; icon: string; color: string; d
   need: {
     label: "NEED — Přežití", icon: "🔴", color: "bg-destructive",
     desc: "Základní potřeby. Nesaturace → destabilizace a hladomor.",
-    keys: ["staple_food", "basic_material", "tools"],
+    keys: ["staple_food", "basic_clothing", "tools", "fuel"],
+  },
+  civic: {
+    label: "CIVIC — Organizace", icon: "🟢", color: "bg-emerald-500",
+    desc: "Městské služby. Nesaturace → neschopnost organizace.",
+    keys: ["drinking_water", "storage_logistics", "admin_supplies"],
   },
   upgrade: {
     label: "UPGRADE — Růst", icon: "🟡", color: "bg-amber-500",
     desc: "Civilizační růst. Nesaturace → stagnace rozvoje.",
-    keys: ["construction", "textile", "military_supply"],
+    keys: ["construction", "metalwork"],
   },
-  prestige: {
-    label: "PRESTIGE — Luxus", icon: "🔵", color: "bg-blue-500",
+  military: {
+    label: "MILITARY — Obrana", icon: "⚔️", color: "bg-red-700",
+    desc: "Vojenské potřeby. Nesaturace → slabá obrana.",
+    keys: ["military_supply"],
+  },
+  luxury: {
+    label: "LUXURY — Luxus", icon: "🔵", color: "bg-blue-500",
     desc: "Kulturní síla. Nesaturace → ztráta prestiže.",
-    keys: ["variety", "ritual", "feast", "prestige"],
+    keys: ["luxury_clothing", "feast"],
   },
 };
 
+const LAYER_ORDER = ["need", "civic", "upgrade", "military", "luxury"];
+
 function getLayerForBasket(bk: string): string {
+  const resolved = resolveBasketKey(bk);
   for (const [layer, meta] of Object.entries(LAYER_META)) {
-    if (meta.keys.includes(bk)) return layer;
+    if (meta.keys.includes(resolved)) return layer;
   }
   return "need";
 }
@@ -82,17 +95,18 @@ const DemandFulfillmentPanel = ({ sessionId, playerName, cities }: Props) => {
     return map;
   }, []);
 
-  // Aggregate by basket across all cities
+  // Aggregate by basket across all cities (resolve legacy keys)
   const byBasket = useMemo(() => {
     const map: Record<string, { demand: number; supply: number; auto: number; bonus: number; surplus: number; count: number }> = {};
     for (const b of baskets) {
-      if (!map[b.basket_key]) map[b.basket_key] = { demand: 0, supply: 0, auto: 0, bonus: 0, surplus: 0, count: 0 };
-      map[b.basket_key].demand += b.local_demand;
-      map[b.basket_key].supply += b.local_supply;
-      map[b.basket_key].auto += b.auto_supply;
-      map[b.basket_key].bonus += b.bonus_supply;
-      map[b.basket_key].surplus += b.export_surplus;
-      map[b.basket_key].count++;
+      const key = resolveBasketKey(b.basket_key);
+      if (!map[key]) map[key] = { demand: 0, supply: 0, auto: 0, bonus: 0, surplus: 0, count: 0 };
+      map[key].demand += b.local_demand;
+      map[key].supply += b.local_supply;
+      map[key].auto += b.auto_supply;
+      map[key].bonus += b.bonus_supply;
+      map[key].surplus += b.export_surplus;
+      map[key].count++;
     }
     return map;
   }, [baskets]);
@@ -157,9 +171,9 @@ const DemandFulfillmentPanel = ({ sessionId, playerName, cities }: Props) => {
         </CardContent>
       </Card>
 
-      {/* Pyramid — NEED / UPGRADE / PRESTIGE */}
+      {/* Pyramid — 5 layers */}
       <div className="space-y-3">
-        {["need", "upgrade", "prestige"].map(layerKey => {
+        {LAYER_ORDER.map(layerKey => {
           const layer = layers[layerKey];
           const meta = LAYER_META[layerKey];
           if (!layer) return (
@@ -220,7 +234,14 @@ const DemandFulfillmentPanel = ({ sessionId, playerName, cities }: Props) => {
             const satPct = g.sat * 100;
             const meta = basketMeta.get(g.key);
             const layerKey = getLayerForBasket(g.key);
-            const ftColor = layerKey === "need" ? "text-destructive" : layerKey === "upgrade" ? "text-amber-500" : "text-blue-500";
+            const layerColors: Record<string, string> = {
+              need: "text-destructive",
+              civic: "text-emerald-500",
+              upgrade: "text-amber-500",
+              military: "text-red-700",
+              luxury: "text-blue-500",
+            };
+            const ftColor = layerColors[layerKey] || "text-muted-foreground";
             return (
               <div key={g.key} className="space-y-0.5">
                 <div className="flex items-center justify-between text-xs">
