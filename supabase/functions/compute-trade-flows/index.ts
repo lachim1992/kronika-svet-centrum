@@ -306,23 +306,46 @@ Deno.serve(async (req) => {
           continue;
         }
 
-        // Conditional gates
+        // Conditional gates (v4.3 soft gates)
         if (bc.category === "conditional") {
           let gateOpen = false;
-          if (bk === "textile") {
+          let softMult = 1.0;
+
+          if (bk === "basic_clothing") {
             gateOpen = ["fiber", "livestock", "wool", "flax", "cotton", "raw_fiber", "raw_hide"].some(d => deposits.has(d));
+          } else if (bk === "metalwork") {
+            // Soft gate: local ore = full, import routes could give 50% but we check deposits only here
+            const hasLocalOre = ["iron", "copper", "tin", "raw_ore", "ore", "metal"].some(d => deposits.has(d));
+            gateOpen = hasLocalOre;
+            // If no local ore, the city might still get metalwork via trade flows (handled by bonus_supply from recipes)
           } else if (bk === "military_supply") {
             const warriors = city.population_warriors || 0;
             gateOpen = (warriors / Math.max(1, pop)) > 0.05;
-          } else if (bk === "variety") {
+          } else if (bk === "drinking_water") {
+            // Soft gate: always active at 80% minimum, full with water sources
+            gateOpen = true;
+            const hasWater = ["river", "well", "aquifer", "lake", "spring", "water"].some(d => deposits.has(d));
+            softMult = hasWater ? 1.0 : 0.8;
+          } else if (bk === "storage_logistics") {
             gateOpen = (city.market_level || 0) >= 1;
-          } else if (bk === "ritual") {
-            gateOpen = (city.temple_level || 0) >= 1;
+          } else if (bk === "admin_supplies") {
+            gateOpen = pop >= 300;
+          } else if (bk === "fuel") {
+            // Fuel is universal but with soft gate: 70% baseline without local sources
+            gateOpen = true;
+            const hasFuel = ["wood", "coal", "peat", "timber", "forest"].some(d => deposits.has(d));
+            softMult = hasFuel ? 1.0 : 0.7;
           }
+
           if (!gateOpen) {
             autoMap.set(bk, 0);
             continue;
           }
+
+          const weightedPop = weightedPopMap.get(bk) || 0;
+          const autoSupply = weightedPop * bc.baseRate * workforceParticipation * stabilityFactor * settlementMult * softMult;
+          autoMap.set(bk, Math.round(autoSupply * 100) / 100);
+          continue;
         }
 
         const weightedPop = weightedPopMap.get(bk) || 0;
