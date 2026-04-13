@@ -1369,7 +1369,7 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
             {/* Economy v4.2 overlay toggle */}
             <div className="mb-2 pb-2 border-b border-border">
               <div className="flex items-center justify-between mb-1">
-                <p className="text-[10px] font-display font-semibold text-foreground flex items-center gap-1">📈 Ekonomika v4.2</p>
+                <p className="text-[10px] font-display font-semibold text-foreground flex items-center gap-1">📈 Ekonomika v4.3</p>
                 <label className="flex items-center gap-1 text-[9px] text-muted-foreground cursor-pointer">
                   <input type="checkbox" checked={showEconomyLayer} onChange={e => setShowEconomyLayer(e.target.checked)} className="w-3 h-3" />
                   Zobrazit
