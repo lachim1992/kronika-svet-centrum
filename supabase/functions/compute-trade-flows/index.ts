@@ -73,13 +73,19 @@ const LEGACY_BASKET_MAP: Record<string, string> = {
   prestige: "luxury_clothing",
 };
 
+/** Remap counters — tracked independently from warning text */
+const remapCounters = { unmapped: 0, legacy: 0 };
+
 function resolveBasketKey(raw: string, warnings: string[]): string {
   if (BASKET_CONFIG[raw]) return raw;
   const mapped = LEGACY_BASKET_MAP[raw];
   if (mapped) {
+    remapCounters.legacy++;
     warnings.push(`Legacy remap: ${raw} → ${mapped}`);
     return mapped;
   }
+  remapCounters.unmapped++;
+  // Keep existing fallback behavior unless required for fix
   warnings.push(`Unknown basket_key: ${raw}, fallback to staple_food`);
   return "staple_food";
 }
@@ -95,7 +101,15 @@ Deno.serve(async (req) => {
       });
     }
 
+    const sb = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+    );
+
     const warnings: string[] = [];
+    // Reset counters per invocation
+    remapCounters.unmapped = 0;
+    remapCounters.legacy = 0;
     const tn = turn_number || 1;
 
     // ── LOAD DATA ──
@@ -386,6 +400,7 @@ Deno.serve(async (req) => {
         const good = goodsMap.get(gk);
         const rawBk = good?.demand_basket || "staple_food";
         const bk = resolveBasketKey(rawBk, warnings);
+        const existing = basketAgg.get(bk) || { quantity: 0, qualitySum: 0, count: 0 };
         existing.quantity += sv.quantity;
         existing.qualitySum += sv.quality_sum;
         existing.count += sv.count;
@@ -855,7 +870,8 @@ Deno.serve(async (req) => {
       market_share_rows: marketShareRows.length,
       trade_flows_created: tradeFlows.length,
       players_updated: playerAggregates.size,
-      legacy_remap_warnings: uniqueWarnings.length,
+      unmapped_count: remapCounters.unmapped,
+      legacy_remap_count: remapCounters.legacy,
       warnings: uniqueWarnings.slice(0, 50),
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
