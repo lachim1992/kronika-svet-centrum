@@ -85,6 +85,26 @@ const DevTab = ({
         });
       }
 
+      // Surface trade solver basket diagnostics from compute-trade-flows step
+      const tradeStep = steps.find((s: any) => s.step === "compute-trade-flows");
+      if (tradeStep?.ok && tradeStep.detail) {
+        try {
+          const tradeData = JSON.parse(tradeStep.detail);
+          const unmapped = tradeData.unmapped_count ?? 0;
+          const legacy = tradeData.legacy_remap_count ?? 0;
+
+          if (unmapped > 0) {
+            toast.warning(`⚠️ ${unmapped} neznámých basket keys`, {
+              description: `Legacy remap: ${legacy} | Zkontrolujte goods tabulku pro chybějící demand_basket.`,
+            });
+          } else if (legacy > 0) {
+            toast.info(`🔄 ${legacy} legacy basket remapů aktivních`, {
+              description: "Staré basket keys byly přemapovány na nový 12-basket model.",
+            });
+          }
+        } catch { /* detail wasn't valid JSON, skip */ }
+      }
+
       onRefetch();
     } catch (err: any) {
       toast.error("Recompute selhala: " + (err.message || "Neznámá chyba"));
