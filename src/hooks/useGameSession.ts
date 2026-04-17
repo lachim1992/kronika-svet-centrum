@@ -154,16 +154,19 @@ export function useGameSession(sessionId: string | null) {
   const fetchSessionData = useCallback(async () => {
     if (!sessionId) return;
     if (!initialLoadDone.current) setLoading(true);
-    await Promise.all([fetchCoreAndLegacy(), fetchContent()]);
+    await Promise.all([fetchCore(), fetchLegacyCompat(), fetchContent()]);
     setLoading(false);
     initialLoadDone.current = true;
-  }, [sessionId, fetchCoreAndLegacy, fetchContent]);
+  }, [sessionId, fetchCore, fetchLegacyCompat, fetchContent]);
 
   // Debounced refetchers — core and content are independent
   const debouncedRefetchCore = useCallback(() => {
     if (coreTimer.current) clearTimeout(coreTimer.current);
-    coreTimer.current = setTimeout(() => fetchCoreAndLegacy(), 800);
-  }, [fetchCoreAndLegacy]);
+    coreTimer.current = setTimeout(() => {
+      fetchCore();
+      fetchLegacyCompat();
+    }, 800);
+  }, [fetchCore, fetchLegacyCompat]);
 
   const debouncedRefetchContent = useCallback(() => {
     if (contentTimer.current) clearTimeout(contentTimer.current);
