@@ -1,5 +1,8 @@
 # Deprecation Roadmap: `player_resources` → `realm_resources`
 
+> **Faktická evidence writerů a readerů žije v `docs/architecture/legacy-writer-audit.md`.**
+> Tento dokument je **exekuční plán** odstranění legacy vrstvy. Nemíchat role.
+
 ## Status
 
 `player_resources` is **legacy operational support**. The canonical economic ledger is `realm_resources`.
@@ -11,14 +14,15 @@ The UI state variable `armies` maps to `military_capacity` (legacy naming). The 
 
 ---
 
-## Consumer & Writer Map (5 categories)
+## Consumer & Writer Map (6 categories)
 
 The following categories are **disjoint** and ordered by migration risk.
 Do not collapse them back into a generic "writers/readers" section.
+Counts and sites below must stay in sync with `legacy-writer-audit.md`.
 
 ### 1. Seed paths (bootstrap-time inserts)
 
-Run only at session create/join. Lowest cardinality, easiest to retire once `realm_resources` seeding is in place.
+Run at session create/join or world (re)generation. Spread across both client hooks and edge functions.
 
 | Site | Symbol / call |
 |---|---|
@@ -26,14 +30,19 @@ Run only at session create/join. Lowest cardinality, easiest to retire once `rea
 | `src/components/WorldSetupWizard.tsx` | direct `insert` into `player_resources` |
 | `src/pages/MyGames.tsx` | direct `insert` at create/join |
 | `src/components/dev/SeedSection.tsx` | dev seeding tooling |
+| `supabase/functions/world-generate-init/index.ts` | world init seed (incl. AI factions) |
+| `supabase/functions/mp-world-generate/index.ts` | multiplayer world generation seed (human + AI) |
+| `supabase/functions/repair-world/index.ts` | world repair tool re-seeds missing rows |
+| `supabase/functions/generate-promo-world/index.ts` | promo world generator seed |
 
 ### 2. Runtime writers (turn-time, actively perpetuate the legacy ontology)
 
-Highest blocker for table removal. These run on every tick / every turn.
+Highest blocker for table removal. These run on every tick / every turn / every command.
 
 | Site | Notes |
 |---|---|
-| `supabase/functions/process-turn/index.ts` | back-compat write to `player_resources` |
+| `supabase/functions/process-turn/index.ts` | back-compat write to `player_resources` (verified ~lines 1445–1475) |
+| `supabase/functions/command-dispatch/index.ts` | wealth stockpile sync after command application |
 | `src/components/dev/EconomyQASection.tsx` | runtime QA mutations |
 
 ### 3. Editor APIs (interactive mutation)
