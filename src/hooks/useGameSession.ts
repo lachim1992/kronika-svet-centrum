@@ -180,7 +180,7 @@ export function useGameSession(sessionId: string | null) {
   useEffect(() => {
     if (!sessionId) return;
 
-    // Channel 1: Core structure — triggers fetchCoreAndLegacy only
+    // Channel 1: Core structure — refetches core + legacy compat
     const coreChannel = supabase
       .channel(`core-${sessionId}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "game_sessions", filter: `id=eq.${sessionId}` }, () => debouncedRefetchCore())
