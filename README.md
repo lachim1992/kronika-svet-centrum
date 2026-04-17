@@ -1,73 +1,44 @@
-# Welcome to your Lovable project
+# Chronicle
 
-## Project info
+A narrative civilization engine with two play modes: turn-based with an AI
+oracle, and a persistent real-time world driven by minute-scale ticks. The
+engine is the source of truth for state; AI narrates the state but never
+invents it.
 
-**URL**: https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID
+## Stack
 
-## How can I edit this code?
+React 18 + Vite 5 + TypeScript 5, Tailwind CSS v3, shadcn/ui. Backend on
+Lovable Cloud (Supabase Postgres + Edge Functions on Deno). Realtime via
+Supabase channels. AI via Lovable AI Gateway (Gemini / GPT models, no
+per-user API keys).
 
-There are several ways of editing your application.
+## Architecture entry points
 
-**Use Lovable**
+Read these before changing engine, schema, or orchestration code.
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and start prompting.
+- [`docs/architecture/ontology.md`](docs/architecture/ontology.md) —
+  Canonical state, legacy surfaces, target model. Source-of-truth map.
+- [`docs/architecture/feature-freeze.md`](docs/architecture/feature-freeze.md) —
+  What is in active development vs. frozen for the consolidation window.
+- [`DEPRECATION.md`](DEPRECATION.md) —
+  Legacy `player_resources` / `military_capacity` / `trade_log` dismantling
+  checklist by category and order.
+- [`docs/economy-v4.3-architecture.md`](docs/economy-v4.3-architecture.md) —
+  Economy v4.3 model: 6 civilizational classes × 5 baskets, solver design,
+  basket aggregation.
 
-Changes made via Lovable will be committed automatically to this repo.
+## Where to start reading code
 
-**Use your preferred IDE**
+- `src/hooks/useGameSession.ts` — session-scoped data hook (core + legacy
+  compat + content channels).
+- `supabase/functions/refresh-economy/index.ts` — canonical economy
+  recompute orchestrator.
+- `supabase/functions/process-turn/index.ts` — turn resolution.
+- `supabase/functions/commit-turn/index.ts` — write-path turn commit.
+- `src/lib/turnEngine.ts` — client-side turn helpers.
 
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
+## Development workflow
 
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
-
-Follow these steps:
-
-```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
-
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
-
-# Step 3: Install the necessary dependencies.
-npm i
-
-# Step 4: Start the development server with auto-reloading and an instant preview.
-npm run dev
-```
-
-**Edit a file directly in GitHub**
-
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
-
-**Use GitHub Codespaces**
-
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
-
-## What technologies are used for this project?
-
-This project is built with:
-
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
-
-## How can I deploy this project?
-
-Simply open [Lovable](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and click on Share -> Publish.
-
-## Can I connect a custom domain to my Lovable project?
-
-Yes, you can!
-
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
-
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
+This repo is edited primarily through [Lovable](https://lovable.dev).
+Changes made in Lovable are committed to this repo. Local development with
+Vite (`npm i && npm run dev`) is supported but not the primary workflow.
