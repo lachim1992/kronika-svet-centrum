@@ -110,12 +110,6 @@ export function useGameSession(sessionId: string | null) {
     if (trdRes.data) setTrades(trdRes.data);
   }, [sessionId]);
 
-  // Combined core + legacy compat (preserves prior fetchCoreAndLegacy semantics)
-  const fetchCoreAndLegacy = useCallback(async () => {
-    if (!sessionId) return;
-    if (!initialLoadDone.current) setLoading(true);
-    await Promise.all([fetchCore(), fetchLegacyCompat()]);
-  }, [sessionId, fetchCore, fetchLegacyCompat]);
 
   // ── Fetch: Content / narrative ──
   const fetchContent = useCallback(async () => {
