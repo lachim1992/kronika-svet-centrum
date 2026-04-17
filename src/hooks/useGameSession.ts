@@ -1,3 +1,20 @@
+// ============================================================================
+// useGameSession — session-scoped data hook.
+//
+// Internal split:
+//   - fetchCore()         → canonical state: game_sessions, game_players, cities
+//   - fetchLegacyCompat() → LEGACY: player_resources, military_capacity, trade_log
+//   - fetchContent()      → narrative/projection state
+//   - fetchSessionData()  → orchestrator (was `fetchAll`)
+//
+// TODO (consolidation, see DEPRECATION.md):
+//   - remove legacy reads after LeaderboardsPanel migration
+//   - remove initPlayerResources after seed flow migration
+//   - remove `resources` from public hook API last
+//
+// Public API of this hook is intentionally unchanged in this commit.
+// ============================================================================
+
 import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import type { Tables } from "@/integrations/supabase/types";
@@ -62,28 +79,43 @@ export function useGameSession(sessionId: string | null) {
   const coreTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const contentTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // ── Fetch: Core + Legacy operational ──
-  const fetchCoreAndLegacy = useCallback(async () => {
+  // ── Fetch: Core canonical state ──
+  const fetchCore = useCallback(async () => {
     if (!sessionId) return;
-    if (!initialLoadDone.current) setLoading(true);
-
-    const [sessRes, plRes, citRes, resRes, armRes, trdRes] = await Promise.all([
+    const [sessRes, plRes, citRes] = await Promise.all([
       supabase.from("game_sessions").select("*").eq("id", sessionId).single(),
       supabase.from("game_players").select("*").eq("session_id", sessionId).order("player_number", { ascending: true }),
       supabase.from("cities").select("*").eq("session_id", sessionId).order("created_at", { ascending: true }),
-      // Legacy operational — kept for EmpireOverview, LeaderboardsPanel, EmpireManagement
+    ]);
+    if (sessRes.data) setSession(sessRes.data);
+    if (plRes.data) setPlayers(plRes.data);
+    if (citRes.data) setCities(citRes.data);
+  }, [sessionId]);
+
+  // ============================================================
+  // LEGACY COMPAT — see DEPRECATION.md
+  // Tables: player_resources, military_capacity, trade_log
+  // Realtime subscriptions removed; fetch-only.
+  // Do not extend. Migrate consumers to realm_resources.
+  // ============================================================
+  const fetchLegacyCompat = useCallback(async () => {
+    if (!sessionId) return;
+    const [resRes, armRes, trdRes] = await Promise.all([
       supabase.from("player_resources").select("*").eq("session_id", sessionId).order("player_name", { ascending: true }),
       supabase.from("military_capacity").select("*").eq("session_id", sessionId).order("created_at", { ascending: true }),
       supabase.from("trade_log").select("*").eq("session_id", sessionId).order("created_at", { ascending: true }),
     ]);
-
-    if (sessRes.data) setSession(sessRes.data);
-    if (plRes.data) setPlayers(plRes.data);
-    if (citRes.data) setCities(citRes.data);
     if (resRes.data) setResources(resRes.data);
     if (armRes.data) setArmies(armRes.data);
     if (trdRes.data) setTrades(trdRes.data);
   }, [sessionId]);
+
+  // Combined core + legacy compat (preserves prior fetchCoreAndLegacy semantics)
+  const fetchCoreAndLegacy = useCallback(async () => {
+    if (!sessionId) return;
+    if (!initialLoadDone.current) setLoading(true);
+    await Promise.all([fetchCore(), fetchLegacyCompat()]);
+  }, [sessionId, fetchCore, fetchLegacyCompat]);
 
   // ── Fetch: Content / narrative ──
   const fetchContent = useCallback(async () => {
@@ -124,8 +156,8 @@ export function useGameSession(sessionId: string | null) {
     if (objRes.data) setSecretObjectives(objRes.data);
   }, [sessionId]);
 
-  // ── Combined initial fetch ──
-  const fetchAll = useCallback(async () => {
+  // ── Combined initial fetch (was `fetchAll`) ──
+  const fetchSessionData = useCallback(async () => {
     if (!sessionId) return;
     if (!initialLoadDone.current) setLoading(true);
     await Promise.all([fetchCoreAndLegacy(), fetchContent()]);
@@ -145,7 +177,7 @@ export function useGameSession(sessionId: string | null) {
   }, [fetchContent]);
 
   // Initial load
-  useEffect(() => { fetchAll(); }, [fetchAll]);
+  useEffect(() => { fetchSessionData(); }, [fetchSessionData]);
 
   // ── Realtime: 2 channels ──
   useEffect(() => {
@@ -192,7 +224,7 @@ export function useGameSession(sessionId: string | null) {
     session, events, memories, chronicles, cityStates, responses, players, cities,
     resources, armies, trades, wonders, entityTraits,
     civilizations, greatPersons, declarations, worldCrises, secretObjectives,
-    loading, refetch: fetchAll,
+    loading, refetch: fetchSessionData,
   };
 }
 
@@ -242,7 +274,15 @@ export async function joinGameSession(roomCode: string, playerName: string): Pro
   return session;
 }
 
+/**
+ * @deprecated COMPAT-ONLY. Seeds the legacy `player_resources` ledger for
+ * EmpireOverview, EmpireManagement, LeaderboardsPanel, AdminMonitorPanel.
+ * The canonical economic ledger is `realm_resources`.
+ * Do not call from new code. See DEPRECATION.md → "Seed paths".
+ * Name preserved intentionally to avoid a half-finished rename across writers.
+ */
 async function initPlayerResources(sessionId: string, playerName: string) {
+  // COMPAT-ONLY: seeds legacy ledger; remove after seed flow migration.
   const resourceTypes = ["food", "wood", "stone", "iron", "wealth"];
   const defaults: Record<string, { income: number; upkeep: number; stockpile: number }> = {
     food: { income: 4, upkeep: 2, stockpile: 10 },
@@ -388,6 +428,11 @@ export async function deleteCity(id: string) {
 
 // ---- Resources ----
 
+/**
+ * @deprecated Editor API for the legacy `player_resources` table.
+ * Canonical ledger is `realm_resources`. Do not extend.
+ * See DEPRECATION.md → "Editor APIs".
+ */
 export async function updateResource(id: string, updates: { income?: number; upkeep?: number; stockpile?: number }) {
   const { error } = await supabase.from("player_resources").update({ ...updates, updated_at: new Date().toISOString() }).eq("id", id);
   if (error) console.error(error);

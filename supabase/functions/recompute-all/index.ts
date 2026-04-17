@@ -1,55 +1,65 @@
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+// ============================================================================
+// recompute-all — BACK-COMPAT ADAPTER (NOT canonical orchestrator).
+//
+// Purpose:
+//   Preserve the legacy DevTab contract `{ ok, totalMs, steps: [{ step, ok,
+//   durationMs, detail }] }` while delegating all real work to the canonical
+//   orchestrator `refresh-economy`. Optionally appends a `process-turn`
+//   (recalcOnly) step when a `playerName` is provided.
+//
+// Discipline (do not violate):
+//   - Boundary layer only: delegate → adapt response → optional process-turn.
+//   - NO business logic, NO custom step list, NO recomputation here.
+//   - Top-level `ok` derives ONLY from real steps (refresh + process-turn).
+//     The synthetic "warnings" step MUST NOT mask a failure of a real step.
+//
+// Canonical entrypoint for new callers: `refresh-economy`
+//   (snake_case `session_id`, returns `{ ok, session_id, totalMs,
+//    refreshed_domains, steps: [{ name, ... }], warnings }`).
+// ============================================================================
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-/**
- * recompute-all: Full pipeline recalculation without advancing the turn.
- * 
- * Sequence:
- * 1. compute-province-routes (rebuild routes)
- * 2. compute-hex-flows (force_all: true)
- * 3. compute-economy-flow (node-level metrics)
- * 4. compute-trade-flows (goods pipeline)
- * 5. process-turn (recalcOnly: true — economy aggregates only)
- */
-
-interface StepResult {
+interface AdaptedStep {
   step: string;
   ok: boolean;
   durationMs: number;
   detail?: string;
 }
 
-async function invokeStep(
+function safeStringify(v: unknown): string {
+  if (v == null) return "";
+  if (typeof v === "string") return v;
+  try { return JSON.stringify(v); } catch { return String(v); }
+}
+
+async function invokeFn(
   supabaseUrl: string,
   anonKey: string,
   serviceKey: string,
-  functionName: string,
+  fn: string,
   body: Record<string, unknown>,
-): Promise<{ ok: boolean; data?: any; error?: string }> {
-  const url = `${supabaseUrl}/functions/v1/${functionName}`;
+): Promise<{ ok: boolean; status: number; data: any }> {
+  const url = `${supabaseUrl}/functions/v1/${fn}`;
   try {
     const res = await fetch(url, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "Authorization": `Bearer ${serviceKey}`,
-        "apikey": anonKey,
+        Authorization: `Bearer ${serviceKey}`,
+        apikey: anonKey,
       },
       body: JSON.stringify(body),
     });
     const text = await res.text();
     let data: any;
     try { data = JSON.parse(text); } catch { data = { raw: text }; }
-    if (!res.ok) {
-      return { ok: false, error: data?.error || `HTTP ${res.status}: ${text.slice(0, 200)}` };
-    }
-    return { ok: true, data };
+    return { ok: res.ok, status: res.status, data };
   } catch (e: any) {
-    return { ok: false, error: e.message || "Network error" };
+    return { ok: false, status: 0, data: { error: e?.message || "Network error" } };
   }
 }
 
@@ -64,57 +74,92 @@ Deno.serve(async (req) => {
     const anonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
     const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
-    const results: StepResult[] = [];
+    // ── 1. Delegate to canonical orchestrator ──
+    const refreshRes = await invokeFn(
+      supabaseUrl, anonKey, serviceKey,
+      "refresh-economy",
+      { session_id: sessionId },
+    );
 
-    const steps: { name: string; fn: string; body: Record<string, unknown> }[] = [
-      { name: "compute-province-routes", fn: "compute-province-routes", body: { session_id: sessionId } },
-      { name: "compute-hex-flows", fn: "compute-hex-flows", body: { session_id: sessionId, force_all: true } },
-      { name: "compute-economy-flow", fn: "compute-economy-flow", body: { session_id: sessionId } },
-      { name: "compute-trade-flows", fn: "compute-trade-flows", body: { session_id: sessionId } },
-    ];
-
-    // If playerName provided, also run process-turn in recalcOnly mode
-    if (playerName) {
-      steps.push({
-        name: "process-turn (recalcOnly)",
-        fn: "process-turn",
-        body: { sessionId, playerName, recalcOnly: true },
-      });
-    }
-
-    for (const step of steps) {
-      const t0 = Date.now();
-      const res = await invokeStep(supabaseUrl, anonKey, serviceKey, step.fn, step.body);
-      const durationMs = Date.now() - t0;
-      results.push({
-        step: step.name,
-        ok: res.ok,
-        durationMs,
-        detail: res.ok ? JSON.stringify(res.data).slice(0, 300) : res.error,
-      });
-
-      // If a step fails, continue but log the error
-      if (!res.ok) {
-        console.error(`Step ${step.name} failed:`, res.error);
+    // ── 2. Defensive adaptation: { name, ... } → { step, ... } ──
+    const refreshSteps: AdaptedStep[] = [];
+    const rawSteps = refreshRes.data?.steps;
+    if (Array.isArray(rawSteps)) {
+      for (const s of rawSteps) {
+        refreshSteps.push({
+          step: typeof s?.name === "string" ? s.name : "(unnamed step)",
+          ok: Boolean(s?.ok),
+          durationMs: Number.isFinite(s?.durationMs) ? Number(s.durationMs) : 0,
+          detail: safeStringify(s?.detail),
+        });
       }
+    } else {
+      // refresh-economy returned no steps → treat whole call as a single failed step
+      refreshSteps.push({
+        step: "refresh-economy (no steps in response)",
+        ok: false,
+        durationMs: 0,
+        detail: safeStringify(refreshRes.data),
+      });
     }
 
-    const allOk = results.every(r => r.ok);
-    const totalMs = results.reduce((s, r) => s + r.durationMs, 0);
+    // Track real-step pass/fail BEFORE appending synthetic warnings step
+    const refreshOk = refreshRes.ok && refreshSteps.every((s) => s.ok);
 
-    return new Response(JSON.stringify({
-      ok: allOk,
-      totalMs,
-      steps: results,
-    }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-      status: allOk ? 200 : 207,
-    });
+    const adaptedSteps: AdaptedStep[] = [...refreshSteps];
 
+    // ── 3. Synthetic warnings step (does NOT influence top-level ok) ──
+    const warnings = refreshRes.data?.warnings;
+    if (Array.isArray(warnings) && warnings.length > 0) {
+      adaptedSteps.push({
+        step: "refresh-economy warnings",
+        ok: true,
+        durationMs: 0,
+        detail: warnings.map(safeStringify).join("\n"),
+      });
+    }
+
+    // ── 4. Optional process-turn (recalcOnly) — real step ──
+    let processTurnOk: boolean | null = null;
+    if (playerName) {
+      const t0 = Date.now();
+      const ptRes = await invokeFn(
+        supabaseUrl, anonKey, serviceKey,
+        "process-turn",
+        { sessionId, playerName, recalcOnly: true },
+      );
+      const dur = Date.now() - t0;
+      processTurnOk = ptRes.ok;
+      adaptedSteps.push({
+        step: "process-turn (recalcOnly)",
+        ok: ptRes.ok,
+        durationMs: dur,
+        detail: ptRes.ok ? safeStringify(ptRes.data).slice(0, 300) : safeStringify(ptRes.data?.error ?? ptRes.data),
+      });
+    }
+
+    // ── 5. Top-level ok: ONLY real steps. Warnings step is ignored. ──
+    const ok = refreshOk && (processTurnOk ?? true);
+
+    // totalMs: prefer upstream value, fallback to sum of step durations
+    const upstreamTotal = refreshRes.data?.totalMs;
+    const totalMs = Number.isFinite(upstreamTotal)
+      ? Number(upstreamTotal) + adaptedSteps
+          .filter((s) => s.step === "process-turn (recalcOnly)")
+          .reduce((a, s) => a + s.durationMs, 0)
+      : adaptedSteps.reduce((a, s) => a + s.durationMs, 0);
+
+    return new Response(
+      JSON.stringify({ ok, totalMs, steps: adaptedSteps }),
+      {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: ok ? 200 : 207,
+      },
+    );
   } catch (e: any) {
-    return new Response(JSON.stringify({ error: e.message }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-      status: 400,
-    });
+    return new Response(
+      JSON.stringify({ error: e?.message ?? "Unknown error" }),
+      { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 400 },
+    );
   }
 });
