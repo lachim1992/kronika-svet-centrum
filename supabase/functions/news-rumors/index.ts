@@ -1,4 +1,5 @@
-import { createAIContext, invokeAI, corsHeaders, jsonResponse, errorResponse } from "../_shared/ai-context.ts";
+import { createAIContext, invokeAI, corsHeaders, jsonResponse, errorResponse, getServiceClient } from "../_shared/ai-context.ts";
+import { buildBasketSnapshot } from "../_shared/basket-context.ts";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
@@ -23,12 +24,20 @@ Deno.serve(async (req) => {
       `${m.sender} → ${m.recipient || "?"}: "${m.message_text}" [${m.secrecy}]`
     ).join("\n");
 
+    // World-wide basket snapshot — top 5 worst
+    let basketSnapshot = "";
+    try {
+      const sb = getServiceClient();
+      basketSnapshot = await buildBasketSnapshot(sb, { sessionId, limit: 5 });
+    } catch { /* non-fatal */ }
+
     const systemPrompt = `Jsi síť zvědů, obchodníků a poutníků ve starověkém světě. Generuješ ZVĚSTI A ZPRÁVY na konci každého roku.
 
-PRAVIDLA:
+${basketSnapshot ? basketSnapshot + "\n\n" : ""}PRAVIDLA:
 - Vygeneruj 3-5 zvěstí/zpráv odvozených PŘÍMO z dodaných dat.
 - Typy: "rumor" (zkreslená informace), "verified" (ověřená zpráva), "propaganda" (úmyslně zabarvená).
 - Zvěsti NESMÍ být náhodné — musí vycházet z reálných událostí.
+- Pokud světová ekonomika ukazuje deficity, fámy to mohou narativně zmiňovat (bez vymýšlení čísel).
 - Výstup v češtině.
 - Odpověz POUZE voláním funkce generate_rumors.`;
 

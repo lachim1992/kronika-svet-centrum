@@ -4,6 +4,7 @@
  */
 
 import { createAIContext, invokeAI, getServiceClient, corsHeaders, jsonResponse as json, errorResponse } from "../_shared/ai-context.ts";
+import { buildBasketSnapshot } from "../_shared/basket-context.ts";
 
 // ═══════════════════════════════════════════
 // HEX MATH
@@ -337,6 +338,9 @@ Deno.serve(async (req) => {
     // ── Load unified AI context (premise, lore, constraints) ──
     const aiCtx = await createAIContext(sessionId, turn, supabase, factionName);
 
+    // ── Basket snapshot for this faction (player scope) ──
+    const basketSnapshot = await buildBasketSnapshot(supabase, { sessionId, playerName: factionName });
+
     const systemPrompt = `Jsi AI řídící frakci "${factionName}" v civilizační strategické hře.
 
 OSOBNOST: ${personality}
@@ -345,6 +349,7 @@ KULTURNÍ ZVLÁŠTNOST: ${civ?.cultural_quirk || "žádná"}
 CÍLE: ${JSON.stringify(goals)}
 POSTOJ K OSTATNÍM: ${JSON.stringify(faction.disposition)}
 
+${basketSnapshot ? basketSnapshot + "\n" : ""}
 PRAVIDLA ROZHODOVÁNÍ:
 1. EKONOMIE: Rozhoduj na základě aktuálních zdrojů. Nestavěj/neverbuj bez zdrojů.
 2. DIPLOMACIE: Vyhrožuj, nabízej smír, komunikuj — vše skrze diplomatické zprávy.

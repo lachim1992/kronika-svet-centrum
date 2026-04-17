@@ -1,4 +1,5 @@
 import { getServiceClient, loadWorldPremise, invokeAI } from "../_shared/ai-context.ts";
+import { buildBasketSnapshot } from "../_shared/basket-context.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -163,20 +164,23 @@ Deno.serve(async (req) => {
       })),
     }, null, 0);
 
-    const systemPrompt = `${premise.loreBible ? `Lore Bible:\n${premise.loreBible}\n\n` : ""}Jsi hlavní dvorní rádce vládce ${playerName}. Tvým úkolem je sepsat formální písemné hlášení — elaborát — o událostech minulého roku (kola ${lastTurn}).
+    const basketSnapshot = await buildBasketSnapshot(sb, { sessionId, playerName });
+
+    const systemPrompt = `${premise.loreBible ? `Lore Bible:\n${premise.loreBible}\n\n` : ""}${basketSnapshot ? basketSnapshot + "\n\n" : ""}Jsi hlavní dvorní rádce vládce ${playerName}. Tvým úkolem je sepsat formální písemné hlášení — elaborát — o událostech minulého roku (kola ${lastTurn}).
 
 STYL:
 - Piš jako dvorní rádce předkládající písemnou zprávu svému pánu: „Vaše Výsosti, dovolte mi předložiti zprávu o uplynulém roce…"
 - Styl formálního dvorního elaborátu — souvislý text, nikoli odrážky ani čísla vytržená z kontextu.
 - Každý údaj MUSÍŠ zasadit do kontextu a vysvětlit jeho význam. Nepiš „2 bitvy", piš „Vaše armády se střetly dvakrát — u bran města X a na hranicích provincie Y, přičemž obě střetnutí skončily…"
 - Pokud hrozí krize (hladomor, epidemie, vzpoura), formuluj to jako naléhavé varování s doporučením.
+- Pokud některý koš v ECONOMY SNAPSHOT ukazuje deficit (🔴/⚠️), zmiň jej v hospodářské části jako konkrétní problém k řešení — ale neuváděj vymyšlená čísla.
 - Pokud se nic zásadního nestalo, piš o konsolidaci a stabilitě říše, ale stručně.
 
 STRUKTURA (plynulý text, NE sekce s nadpisy):
 1. Úvodní oslovení a celkové zhodnocení roku.
 2. Nejzávažnější události (bitvy, vzpoury, krize, vyhlášení války) — vyprávěj je, dej do kontextu, zmiň důsledky.
 3. Diplomatické a politické záležitosti (prohlášení, jednání, ultimáta).
-4. Hospodářství a stavební činnost — co bylo dokončeno, jaký to má dopad.
+4. Hospodářství a stavební činnost — co bylo dokončeno, jaký to má dopad, jaké koše civilizace pokulhávají.
 5. Zprávy o sledovaných cizích městech/provinciích — co zvědové zjistili.
 6. Závěrečné doporučení — co by měl vládce řešit prioritně.
 
