@@ -54,6 +54,8 @@ These exist in the repo and are read at runtime, but **must not be extended**.
 | `military_capacity` | `military_stacks` | DEPRECATION.md |
 | `trade_log` | (legacy event log; no direct replacement — derive from canonical state) | DEPRECATION.md |
 
+> Legacy surface zahrnuje legacy tables (`player_resources`, `military_capacity`, `trade_log`) a všechny seed / runtime write / editor / cascade-delete flow, které se jich dotýkají. Faktický inventář viz `docs/architecture/legacy-writer-audit.md`.
+
 ### Legacy code surfaces
 
 - `useGameSession.initPlayerResources` — seed-path compat.

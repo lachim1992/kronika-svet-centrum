@@ -70,7 +70,15 @@ Read AND mutate via `updateResource()`. Cannot be migrated until both `realm_res
 |---|
 | `EmpireManagement` (CitiesTab) |
 
-### 6. Prop-threading only (no real dependency)
+### 6. Cascade deleters
+
+Delete `player_resources` rows alongside other player-owned state. **Independent blocker for table drop** — even after every writer is gone, the table cannot be removed while a delete cascade still targets it.
+
+| Site | Notes |
+|---|---|
+| `src/components/AdminMonitorPanel.tsx` | "remove player" flow deletes `player_resources` together with cities, provinces, discoveries, etc. |
+
+### 7. Prop-threading only (no real dependency)
 
 Receive `resources` in props for context but do not read fields. Trivial to detach.
 
@@ -89,15 +97,23 @@ Receive `resources` in props for context but do not read fields. Trivial to deta
 
 ---
 
-## Order of dismantling
+## Order of dismantling (TENTATIVE — re-decide after inventory repair)
+
+> The order below predates the 2026-04-17 inventory repair, which uncovered
+> additional runtime writers (`command-dispatch`), four edge-function seeders,
+> and a cascade-delete blocker (`AdminMonitorPanel`). "Read-only-first" is
+> **not automatically correct** anymore: a newly discovered writer or seed
+> path may represent a lower-risk first cut. Re-evaluate before the next real
+> code change.
 
 1. **Prop-threading only** — drop `resources` from props that don't read fields.
 2. **Read-only UI consumers** — `LeaderboardsPanel`, `AdminMonitorPanel`, then `EmpireOverview`.
 3. **Editor APIs** — replace `updateResource()` and `DevPlayerEditor.saveResource()` with `realm_resources` equivalents.
 4. **Write-path UI consumers** — migrate `EmpireManagement`.
-5. **Seed paths** — remove `initPlayerResources` and direct seed inserts.
-6. **Runtime writers** — drop back-compat write from `process-turn`, retire `EconomyQASection` legacy mutations.
-7. **Drop table** `player_resources`.
+5. **Seed paths** — remove `initPlayerResources`, direct seed inserts, and the four edge-function seeders.
+6. **Runtime writers** — drop back-compat write from `process-turn`, retire `command-dispatch` stockpile sync, retire `EconomyQASection` legacy mutations.
+7. **Cascade deleters** — detach `AdminMonitorPanel` delete cascade.
+8. **Drop table** `player_resources`.
 
 The same staged path applies to `military_capacity` (read-only consumers first → editor APIs → seed paths → table drop) and to `trade_log` (consumer audit → write-site removal → table drop).
 
