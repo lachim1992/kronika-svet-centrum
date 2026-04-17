@@ -87,9 +87,11 @@ serve(async (req) => {
     const cityNames = new Map((cities || []).map((c: any) => [c.id, c.name]));
     const nodeToCity = new Map((nodes || []).map((n: any) => [n.id, n.city_id]));
 
+    const basketSnapshot = await buildBasketSnapshot(supabase, { sessionId, playerName });
+
     const prompt = `Jsi ekonomický poradce středověké říše. Analyzuj poptávku a produkci a dej 3-5 konkrétních doporučení.
 
-MĚSTA HRÁČE:
+${basketSnapshot ? basketSnapshot + "\n\n" : ""}MĚSTA HRÁČE:
 ${(cities || []).map((c: any) => `- ${c.name} (pop: ${c.population_total}, level: ${c.settlement_level}, stabilita: ${c.city_stability}%)`).join("\n")}
 
 CHYBĚJÍCÍ ZBOŽÍ (seřazeno dle urgence):

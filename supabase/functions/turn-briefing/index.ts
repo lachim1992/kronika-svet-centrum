@@ -1,4 +1,5 @@
 import { getServiceClient, loadWorldPremise, invokeAI } from "../_shared/ai-context.ts";
+import { buildBasketSnapshot } from "../_shared/basket-context.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",

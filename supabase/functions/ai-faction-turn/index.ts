@@ -4,6 +4,7 @@
  */
 
 import { createAIContext, invokeAI, getServiceClient, corsHeaders, jsonResponse as json, errorResponse } from "../_shared/ai-context.ts";
+import { buildBasketSnapshot } from "../_shared/basket-context.ts";
 
 // ═══════════════════════════════════════════
 // HEX MATH
