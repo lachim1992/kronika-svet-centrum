@@ -110,12 +110,6 @@ export function useGameSession(sessionId: string | null) {
     if (trdRes.data) setTrades(trdRes.data);
   }, [sessionId]);
 
-  // Combined core + legacy compat (preserves prior fetchCoreAndLegacy semantics)
-  const fetchCoreAndLegacy = useCallback(async () => {
-    if (!sessionId) return;
-    if (!initialLoadDone.current) setLoading(true);
-    await Promise.all([fetchCore(), fetchLegacyCompat()]);
-  }, [sessionId, fetchCore, fetchLegacyCompat]);
 
   // ── Fetch: Content / narrative ──
   const fetchContent = useCallback(async () => {
@@ -160,16 +154,19 @@ export function useGameSession(sessionId: string | null) {
   const fetchSessionData = useCallback(async () => {
     if (!sessionId) return;
     if (!initialLoadDone.current) setLoading(true);
-    await Promise.all([fetchCoreAndLegacy(), fetchContent()]);
+    await Promise.all([fetchCore(), fetchLegacyCompat(), fetchContent()]);
     setLoading(false);
     initialLoadDone.current = true;
-  }, [sessionId, fetchCoreAndLegacy, fetchContent]);
+  }, [sessionId, fetchCore, fetchLegacyCompat, fetchContent]);
 
   // Debounced refetchers — core and content are independent
   const debouncedRefetchCore = useCallback(() => {
     if (coreTimer.current) clearTimeout(coreTimer.current);
-    coreTimer.current = setTimeout(() => fetchCoreAndLegacy(), 800);
-  }, [fetchCoreAndLegacy]);
+    coreTimer.current = setTimeout(() => {
+      fetchCore();
+      fetchLegacyCompat();
+    }, 800);
+  }, [fetchCore, fetchLegacyCompat]);
 
   const debouncedRefetchContent = useCallback(() => {
     if (contentTimer.current) clearTimeout(contentTimer.current);
@@ -183,7 +180,7 @@ export function useGameSession(sessionId: string | null) {
   useEffect(() => {
     if (!sessionId) return;
 
-    // Channel 1: Core structure — triggers fetchCoreAndLegacy only
+    // Channel 1: Core structure — refetches core + legacy compat
     const coreChannel = supabase
       .channel(`core-${sessionId}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "game_sessions", filter: `id=eq.${sessionId}` }, () => debouncedRefetchCore())
