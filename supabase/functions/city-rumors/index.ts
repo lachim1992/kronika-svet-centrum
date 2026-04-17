@@ -21,12 +21,28 @@ Deno.serve(async (req) => {
     const leakableText = (leakableNotes || []).map((n: any) => `${n.author}: "${n.note_text}"`).join("\n");
     const memoriesText = (memories || []).join("\n");
 
+    // Resolve city_id for basket snapshot (city-scoped)
+    let basketSnapshot = "";
+    try {
+      const sb = getServiceClient();
+      const { data: cityRow } = await sb
+        .from("cities")
+        .select("id")
+        .eq("session_id", sessionId)
+        .eq("name", cityName)
+        .maybeSingle();
+      if (cityRow?.id) {
+        basketSnapshot = await buildBasketSnapshot(sb, { sessionId, cityId: cityRow.id, limit: 6 });
+      }
+    } catch { /* non-fatal */ }
+
     const systemPrompt = `Jsi síť šeptandů, obchodníků a obyvatel města ${cityName} (vládce: ${ownerPlayer}).
 Generuješ LOKÁLNÍ ZVĚSTI A DRBY z perspektivy běžných obyvatel.
 
-PRAVIDLA:
+${basketSnapshot ? basketSnapshot + "\n\n" : ""}PRAVIDLA:
 - Vygeneruj 3-5 zvěstí z pohledu lidí žijících v ${cityName}.
 - Zvěsti MUSÍ vycházet z dodaných událostí, poznámek a tradic.
+- Pokud je některý koš v deficitu (🔴 nebo ⚠️), zvěsti to mohou narativně reflektovat (stížnosti, fámy o nedostatku) — bez vymýšlení čísel.
 - Typy: "gossip", "news", "propaganda".
 - Zmiňuj konkrétní jména.
 - Výstup v češtině.
