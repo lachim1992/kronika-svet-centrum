@@ -49,6 +49,7 @@ const Dashboard = () => {
   const {
     session, events, memories, chronicles, cityStates, responses,
     players, cities, resources, armies, trades, wonders, entityTraits,
+    realmResources, militaryStacks,
     civilizations, greatPersons, declarations, worldCrises, secretObjectives,
     loading, refetch,
   } = useGameSession(sessionId || null);
@@ -286,6 +287,7 @@ const Dashboard = () => {
     session,
     events, memories, chronicles, cityStates, responses, players, cities,
     resources, armies, trades, wonders, entityTraits, civilizations,
+    realmResources, militaryStacks,
     greatPersons, declarations, worldCrises, secretObjectives,
     currentPlayerName: myPlayerName,
     currentTurn,
