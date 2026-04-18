@@ -11,8 +11,8 @@
 //
 // Hard rules:
 //   1. Missing data is returned as `undefined`. Never `0`. Never silent fallback.
-//   2. Schema gaps (no per-resource income/upkeep on realm_resources today) are
-//      surfaced as `undefined` so EmpireOverview renders "—".
+//   2. Schema gaps (e.g. no per-resource upkeep ledger) are surfaced as
+//      `undefined` so EmpireOverview renders "—".
 //   3. The smoke harness asserts that `undefined` here is OK, but `NaN` fails.
 // ============================================================================
 
@@ -22,90 +22,86 @@ type RealmResource = Tables<"realm_resources">;
 type MilitaryStack = Tables<"military_stacks">;
 
 export interface EmpireResourceRow {
-  /** Stable key for React lists */
   id: string;
-  /** Legacy resource type label expected by RESOURCE_ICONS / RESOURCE_LABELS */
   resource_type: string;
-  /** Canonical reserve value from realm_resources */
   stockpile: number;
-  /**
-   * Per-resource income.
-   * TODO: schema gap — `realm_resources` does not store per-resource income.
-   * Returning `undefined` so the UI renders "—" instead of a fake "+0".
-   */
+  /** `undefined` when canonical state has no income column for this resource. */
   income: number | undefined;
-  /**
-   * Per-resource upkeep.
-   * TODO: schema gap — `realm_resources` does not store per-resource upkeep.
-   */
+  /** `undefined` when no upkeep ledger exists for this resource. */
   upkeep: number | undefined;
 }
 
 export interface EmpireMilitaryAggregate {
-  /** Number of stacks marked as actively deployed/operational */
   active: number;
-  /** Total stack count (any status) */
   total: number;
-  /**
-   * Unit-level breakdown.
-   * TODO: schema gap — no per-unit-type breakdown migrated to military_stacks
-   * surface yet. Aggregate count substitutes for now.
-   */
+  /** TODO: schema gap — no per-unit-type breakdown surfaced yet. */
   unitBreakdown: undefined;
 }
 
-/**
- * Map a single canonical realm_resources row to the legacy resource-row shape
- * EmpireOverview expects. Returns `null` if no row was provided (e.g. realm
- * not yet initialised — caller decides whether that is itself a failure).
- */
 export function adaptRealmResourceToRows(
   realm: RealmResource | null | undefined
 ): EmpireResourceRow[] {
   if (!realm) return [];
 
-  // Beta mapping. Per docs/BETA_SCOPE.md this is UI convenience, not ontology.
-  const mapping: Array<{ key: keyof RealmResource; type: string }> = [
+  // `incomeKey` points to last-turn production columns when available; if no
+  // matching column exists on realm_resources today, income stays `undefined`
+  // (rendered as "—") rather than fabricated as 0.
+  const mapping: Array<{
+    key: keyof RealmResource;
+    type: string;
+    incomeKey?: keyof RealmResource;
+  }> = [
     { key: "gold_reserve",   type: "gold"   },
-    { key: "grain_reserve",  type: "food"   },
-    { key: "wood_reserve",   type: "wood"   },
-    { key: "stone_reserve",  type: "stone"  },
-    { key: "iron_reserve",   type: "iron"   },
+    { key: "grain_reserve",  type: "food",  incomeKey: "last_turn_grain_prod" },
+    { key: "wood_reserve",   type: "wood",  incomeKey: "last_turn_wood_prod"  },
+    { key: "stone_reserve",  type: "stone", incomeKey: "last_turn_stone_prod" },
+    { key: "iron_reserve",   type: "iron",  incomeKey: "last_turn_iron_prod"  },
     { key: "horses_reserve", type: "horses" },
     { key: "labor_reserve",  type: "labor"  },
   ];
 
-  return mapping.map(({ key, type }) => {
-    const raw = (realm as any)[key];
-    const stockpile = typeof raw === "number" ? raw : 0;
+  return mapping.map(({ key, type, incomeKey }) => {
+    const rawStockpile = (realm as any)[key];
+    const stockpile = typeof rawStockpile === "number" ? rawStockpile : 0;
+
+    let income: number | undefined = undefined;
+    if (incomeKey) {
+      const rawIncome = (realm as any)[incomeKey];
+      if (typeof rawIncome === "number") income = rawIncome;
+    }
+
+    // Per-resource upkeep ledger does not exist on realm_resources today.
+    // Grain consumption is the one column we can wire; everything else stays
+    // `undefined` per the no-fake-zero rule.
+    // TODO: schema gap — when a generic upkeep ledger lands, wire it here.
+    const upkeep: number | undefined =
+      type === "food" && typeof (realm as any).last_turn_grain_cons === "number"
+        ? (realm as any).last_turn_grain_cons
+        : undefined;
+
     return {
       id: `${realm.id}:${type}`,
       resource_type: type,
       stockpile,
-      income: undefined,   // schema gap — see header
-      upkeep: undefined,   // schema gap — see header
+      income,
+      upkeep,
     };
   });
 }
 
 /**
- * Aggregate military_stacks for a single player into a small view-model.
- * Returns zeroed counts (true zeros, not gaps) when the player simply has no
- * stacks; that is a valid canonical state, not missing data.
+ * Aggregate military_stacks for a single player. Zero counts are valid
+ * canonical state (player has no army), not missing data.
  */
 export function adaptMilitaryStacks(
   stacks: MilitaryStack[],
   playerName: string
 ): EmpireMilitaryAggregate {
   const mine = stacks.filter(s => (s as any).player_name === playerName);
-  const active = mine.filter(s => {
-    const status = (s as any).status;
-    // Treat any non-disbanded/destroyed stack as "active" for the overview.
-    return status !== "disbanded" && status !== "destroyed";
-  }).length;
+  const active = mine.filter(s => (s as any).is_active === true).length;
   return {
     active,
     total: mine.length,
-    unitBreakdown: undefined, // schema gap — see header
+    unitBreakdown: undefined,
   };
 }
