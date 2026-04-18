@@ -141,6 +141,7 @@ const DevTab = ({
           Next Turn
         </Button>
       </div>
+      <BetaSmokeHarness sessionId={sessionId} currentPlayerName={currentPlayerName} />
       <DevModePanel
         sessionId={sessionId}
         currentPlayerName={currentPlayerName}
