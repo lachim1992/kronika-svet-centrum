@@ -16,6 +16,8 @@ per-user API keys).
 
 Read these before changing engine, schema, or orchestration code.
 
+- [`docs/BETA_SCOPE.md`](docs/BETA_SCOPE.md) —
+  Beta playability contract: canonical loop, in/out of scope, hard rules for adapters.
 - [`docs/architecture/ontology.md`](docs/architecture/ontology.md) —
   Canonical state, legacy surfaces, target model. Source-of-truth map.
 - [`docs/architecture/feature-freeze.md`](docs/architecture/feature-freeze.md) —
