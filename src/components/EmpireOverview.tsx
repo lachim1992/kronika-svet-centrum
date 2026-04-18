@@ -3,26 +3,39 @@ import { Badge } from "@/components/ui/badge";
 import {
   Crown, Castle, Coins,
   Swords, Landmark, AlertTriangle, Shield, Flame, MapPin, Scroll, BookOpen,
-  Users, HeartPulse, Home, ArrowRightLeft,
+  Users, HeartPulse, Wheat, TreePine, Mountain, Hammer, Leaf, Hand,
 } from "lucide-react";
-import { InfoTip } from "@/components/ui/info-tip";
-import { RESOURCE_ICONS, RESOURCE_LABELS } from "@/lib/economyConstants";
+import { adaptRealmResourceToRows, adaptMilitaryStacks } from "@/lib/empireOverviewAdapter";
 
-type GamePlayer = Tables<"game_players">;
 type City = Tables<"cities">;
-type PlayerResource = Tables<"player_resources">;
-type MilitaryCapacity = Tables<"military_capacity">;
 type Wonder = Tables<"wonders">;
 type GameEvent = Tables<"game_events">;
 type ChronicleEntry = Tables<"chronicle_entries">;
+type RealmResource = Tables<"realm_resources">;
+type MilitaryStack = Tables<"military_stacks">;
+type GamePlayer = Tables<"game_players">;
 
 const LEVEL_ORDER = ["Polis", "Město", "Městečko", "Osada"];
+
+// Local label/icon map covering the canonical reserve set (incl. wood/stone/
+// iron/horses/labor which are absent from the legacy economy constants).
+const RES_META: Record<string, { label: string; icon: React.ReactNode }> = {
+  food:   { label: "Obilí",      icon: <Wheat    className="h-4 w-4" /> },
+  gold:   { label: "Zlato",      icon: <Coins    className="h-4 w-4" /> },
+  wood:   { label: "Dřevo",      icon: <TreePine className="h-4 w-4" /> },
+  stone:  { label: "Kámen",      icon: <Mountain className="h-4 w-4" /> },
+  iron:   { label: "Železo",     icon: <Hammer   className="h-4 w-4" /> },
+  horses: { label: "Koně",       icon: <Leaf     className="h-4 w-4" /> },
+  labor:  { label: "Pracovní s.", icon: <Hand    className="h-4 w-4" /> },
+};
 
 interface EmpireOverviewProps {
   players: GamePlayer[];
   cities: City[];
-  resources: PlayerResource[];
-  armies: MilitaryCapacity[];
+  /** Canonical realm row for the current player. `null` = realm not initialised. */
+  realmResource: RealmResource | null;
+  /** Canonical stacks (full session); we filter by player inside. */
+  militaryStacks: MilitaryStack[];
   wonders: Wonder[];
   events: GameEvent[];
   currentPlayerName: string;
@@ -30,27 +43,35 @@ interface EmpireOverviewProps {
   chronicles?: ChronicleEntry[];
 }
 
+/** Format a possibly-undefined number. `undefined` → "—" (truth over polish). */
+function fmtSigned(v: number | undefined): string {
+  if (v === undefined) return "—";
+  return v >= 0 ? `+${v}` : `${v}`;
+}
+function fmtPlain(v: number | undefined): string {
+  if (v === undefined) return "—";
+  return String(v);
+}
+
 const EmpireOverview = ({
-  players, cities, resources, armies, wonders, events,
+  players, cities, realmResource, militaryStacks, wonders, events,
   currentPlayerName, currentTurn, chronicles = [],
 }: EmpireOverviewProps) => {
   const myCities = cities.filter(c => c.owner_player === currentPlayerName);
-  const myResources = resources.filter(r => r.player_name === currentPlayerName);
-  const myArmies = armies.filter(a => a.player_name === currentPlayerName);
   const myWonders = wonders.filter(w => w.owner_player === currentPlayerName);
-  const activeArmies = myArmies.filter(a => a.status === "Aktivní");
   const completedWonders = myWonders.filter(w => w.status === "completed");
 
-  // Group cities by level
+  // Canonical adapters
+  const myResources = adaptRealmResourceToRows(realmResource);
+  const military = adaptMilitaryStacks(militaryStacks, currentPlayerName);
+
   const cityByLevel = LEVEL_ORDER.map(level => ({
     level,
     count: myCities.filter(c => c.level === level).length,
   })).filter(g => g.count > 0);
 
-  // Provinces
   const provinces = [...new Set(myCities.map(c => c.province).filter(Boolean))];
 
-  // Threats
   const devastatedCities = myCities.filter(c => c.status === "devastated" || c.status === "besieged");
   const recentThreats = events.filter(
     e => e.turn_number === currentTurn &&
@@ -58,7 +79,6 @@ const EmpireOverview = ({
       myCities.some(c => c.id === e.city_id || c.id === e.secondary_city_id)
   );
 
-  // Recent news (last turn events)
   const recentEvents = events
     .filter(e => e.turn_number >= currentTurn - 1 && e.confirmed)
     .slice(-8);
@@ -115,30 +135,55 @@ const EmpireOverview = ({
           </div>
         </div>
 
-        {/* Resources */}
+        {/* Resources — canonical realm_resources via adapter */}
         <div className="manuscript-card p-4">
           <div className="flex items-center gap-2 mb-3">
             <Coins className="h-5 w-5 text-illuminated" />
             <h3 className="font-display font-semibold text-sm">Zdroje</h3>
           </div>
           <div className="space-y-1.5">
-            {myResources.map(r => {
-              const surplus = r.income - r.upkeep;
-              return (
-                <div key={r.id} className="flex items-center gap-2 text-sm">
-                  {RESOURCE_ICONS[r.resource_type]}
-                  <span className="flex-1 text-xs">{RESOURCE_LABELS[r.resource_type]}</span>
-                  <span className={`text-xs font-bold ${surplus >= 0 ? "text-forest-green" : "text-seal-red"}`}>
-                    {surplus >= 0 ? `+${surplus}` : surplus}
-                  </span>
-                  <span className="text-xs text-muted-foreground">📦{r.stockpile}</span>
-                </div>
-              );
-            })}
+            {realmResource === null ? (
+              <p className="text-xs text-muted-foreground italic">
+                Říše ještě nemá inicializovaný kanonický stav (realm_resources).
+              </p>
+            ) : myResources.length === 0 ? (
+              <p className="text-xs text-muted-foreground italic">Žádná data</p>
+            ) : (
+              myResources.map(r => {
+                const surplus =
+                  r.income !== undefined && r.upkeep !== undefined
+                    ? r.income - r.upkeep
+                    : r.income;
+                const meta = RES_META[r.resource_type] ?? { label: r.resource_type, icon: null };
+                return (
+                  <div key={r.id} className="flex items-center gap-2 text-sm">
+                    {meta.icon}
+                    <span className="flex-1 text-xs">{meta.label}</span>
+                    <span
+                      className={`text-xs font-bold ${
+                        surplus === undefined
+                          ? "text-muted-foreground"
+                          : surplus >= 0
+                          ? "text-forest-green"
+                          : "text-seal-red"
+                      }`}
+                      title={
+                        r.income === undefined
+                          ? "Income not tracked in canonical state yet"
+                          : undefined
+                      }
+                    >
+                      {fmtSigned(surplus)}
+                    </span>
+                    <span className="text-xs text-muted-foreground">📦{r.stockpile}</span>
+                  </div>
+                );
+              })
+            )}
           </div>
         </div>
 
-        {/* Military */}
+        {/* Military — military_stacks aggregate */}
         <div className="manuscript-card p-4">
           <div className="flex items-center gap-2 mb-3">
             <Swords className="h-5 w-5 text-illuminated" />
@@ -146,13 +191,16 @@ const EmpireOverview = ({
           </div>
           <div className="space-y-1">
             <div className="flex justify-between text-sm">
-              <span>Aktivní legie</span>
-              <Badge variant="secondary" className="text-xs">{activeArmies.length}</Badge>
+              <span>Aktivní stacky</span>
+              <Badge variant="secondary" className="text-xs">{military.active}</Badge>
             </div>
             <div className="flex justify-between text-sm">
-              <span>Celkem jednotek</span>
-              <Badge variant="outline" className="text-xs">{myArmies.length}</Badge>
+              <span>Celkem stacků</span>
+              <Badge variant="outline" className="text-xs">{military.total}</Badge>
             </div>
+            <p className="text-[10px] text-muted-foreground italic mt-1">
+              Per-jednotkový rozpis — schema gap, viz BETA_SCOPE.
+            </p>
           </div>
         </div>
 
@@ -183,7 +231,6 @@ const EmpireOverview = ({
         const totalPeasants = myCities.reduce((s, c) => s + (c.population_peasants || 0), 0);
         const totalBurghers = myCities.reduce((s, c) => s + (c.population_burghers || 0), 0);
         const totalClerics = myCities.reduce((s, c) => s + (c.population_clerics || 0), 0);
-        const totalHousing = myCities.reduce((s, c) => s + ((c as any).housing_capacity || 500), 0);
         const avgStab = Math.round(myCities.reduce((s, c) => s + c.city_stability, 0) / myCities.length);
         const urbanRatio = totalPop > 0 ? ((totalBurghers + totalClerics) / totalPop * 100).toFixed(0) : "0";
         const overcrowded = myCities.filter(c => (c.population_total || 0) > ((c as any).housing_capacity || 500)).length;
@@ -212,7 +259,6 @@ const EmpireOverview = ({
                 <p className="text-[10px] text-muted-foreground">Přelidněná města</p>
               </div>
             </div>
-            {/* Population bar */}
             <div className="mt-3 space-y-1">
               <div className="flex h-2 rounded-full overflow-hidden bg-muted">
                 <div className="bg-primary/60" style={{ width: `${totalPop > 0 ? totalPeasants / totalPop * 100 : 0}%` }} />

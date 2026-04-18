@@ -31,6 +31,8 @@ type PlayerResource = Tables<"player_resources">;
 // Note: `armies` in the UI maps to the `military_capacity` table (legacy naming)
 type MilitaryCapacity = Tables<"military_capacity">;
 type TradeLog = Tables<"trade_log">;
+type RealmResource = Tables<"realm_resources">;
+type MilitaryStack = Tables<"military_stacks">;
 
 interface EntityTrait {
   id: string;
@@ -52,6 +54,9 @@ export function useGameSession(sessionId: string | null) {
   const [session, setSession] = useState<GameSession | null>(null);
   const [players, setPlayers] = useState<GamePlayer[]>([]);
   const [cities, setCities] = useState<City[]>([]);
+  // Canonical economic + military state (added for beta player loop)
+  const [realmResources, setRealmResources] = useState<RealmResource[]>([]);
+  const [militaryStacks, setMilitaryStacks] = useState<MilitaryStack[]>([]);
 
   // ── Legacy operational support (not true core — see DEPRECATION.md) ──
   // player_resources: legacy per-resource breakdown; canonical source is realm_resources
@@ -82,14 +87,19 @@ export function useGameSession(sessionId: string | null) {
   // ── Fetch: Core canonical state ──
   const fetchCore = useCallback(async () => {
     if (!sessionId) return;
-    const [sessRes, plRes, citRes] = await Promise.all([
+    const [sessRes, plRes, citRes, rrRes, msRes] = await Promise.all([
       supabase.from("game_sessions").select("*").eq("id", sessionId).single(),
       supabase.from("game_players").select("*").eq("session_id", sessionId).order("player_number", { ascending: true }),
       supabase.from("cities").select("*").eq("session_id", sessionId).order("created_at", { ascending: true }),
+      // Canonical state — beta player loop reads from these.
+      supabase.from("realm_resources").select("*").eq("session_id", sessionId),
+      supabase.from("military_stacks").select("*").eq("session_id", sessionId),
     ]);
     if (sessRes.data) setSession(sessRes.data);
     if (plRes.data) setPlayers(plRes.data);
     if (citRes.data) setCities(citRes.data);
+    if (rrRes.data) setRealmResources(rrRes.data);
+    if (msRes.data) setMilitaryStacks(msRes.data);
   }, [sessionId]);
 
   // ============================================================
@@ -219,6 +229,9 @@ export function useGameSession(sessionId: string | null) {
 
   return {
     session, events, memories, chronicles, cityStates, responses, players, cities,
+    // Canonical economic + military state
+    realmResources, militaryStacks,
+    // Legacy compat (do not use in new code)
     resources, armies, trades, wonders, entityTraits,
     civilizations, greatPersons, declarations, worldCrises, secretObjectives,
     loading, refetch: fetchSessionData,

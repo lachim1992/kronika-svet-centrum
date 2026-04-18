@@ -18,8 +18,14 @@ interface Props {
   cities: any[];
   wonders: any[];
   greatPersons: any[];
-  resources: any[];
-  armies: any[];
+  /** Legacy ledger — accepted for back-compat with sharedProps spread, not used here. */
+  resources?: any[];
+  /** Legacy military_capacity — accepted for back-compat, not used here. */
+  armies?: any[];
+  /** Canonical economic state. */
+  realmResources: any[];
+  /** Canonical military stacks. */
+  militaryStacks: any[];
   chronicles: any[];
   cityStates: any[];
   currentPlayerName: string;
@@ -42,7 +48,7 @@ const BIOME_LABELS: Record<string, string> = {
 
 const WorldTab = ({
   sessionId, session, events, memories, players, cities, wonders, greatPersons,
-  resources, armies, chronicles,
+  realmResources, militaryStacks, chronicles,
   cityStates, currentPlayerName, currentTurn, myRole, worldFoundation, entityIndex,
   onRefetch, onEventClick, onEntityClick,
   worldEntityTarget, onClearWorldEntityTarget,
@@ -248,8 +254,10 @@ const WorldTab = ({
               <EmpireOverview
                 players={players}
                 cities={cities}
-                resources={resources}
-                armies={armies}
+                realmResource={
+                  (realmResources || []).find((r: any) => r.player_name === currentPlayerName) ?? null
+                }
+                militaryStacks={militaryStacks || []}
                 wonders={wonders}
                 events={events}
                 currentPlayerName={currentPlayerName}
