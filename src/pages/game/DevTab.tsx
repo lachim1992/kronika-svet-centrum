@@ -1,5 +1,6 @@
 import { useState } from "react";
 import DevModePanel from "@/components/DevModePanel";
+import BetaSmokeHarness from "@/components/dev/BetaSmokeHarness";
 import { Wrench, SkipForward, Loader2, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";

@@ -1,3 +1,9 @@
+/**
+ * @deprecated Legacy editor surface. Not part of the beta player loop.
+ * Mounted only when `useDevMode` is enabled (see CitiesTab.tsx).
+ * Reads/writes legacy `player_resources` / `military_capacity` / `trade_log`.
+ * Do NOT extend. See docs/BETA_SCOPE.md and DEPRECATION.md.
+ */
 import { useState, useEffect } from "react";
 import type { Tables } from "@/integrations/supabase/types";
 import { addCity, updateCity, deleteCity, updateResource, addArmy, updateArmy, addTrade } from "@/hooks/useGameSession";
