@@ -3,6 +3,7 @@ import EmpireManagement from "@/components/EmpireManagement";
 import GreatPersonsPanel from "@/components/GreatPersonsPanel";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { MapPin, Castle, Star } from "lucide-react";
+import { useDevMode } from "@/hooks/useDevMode";
 
 interface Props {
   sessionId: string;
@@ -24,6 +25,7 @@ const CitiesTab = ({
   sessionId, events, memories, players, cities, wonders, resources, armies, trades,
   greatPersons, currentPlayerName, currentTurn, onRefetch,
 }: Props) => {
+  const { devMode } = useDevMode();
   return (
     <div className="space-y-4 pb-20">
       <Accordion type="multiple" defaultValue={["mycities"]} className="space-y-2">
@@ -40,17 +42,24 @@ const CitiesTab = ({
           </AccordionContent>
         </AccordionItem>
 
-        <AccordionItem value="economy" className="manuscript-card">
-          <AccordionTrigger className="px-4 py-3 font-display text-sm">
-            <span className="flex items-center gap-2"><Castle className="h-4 w-4 text-primary" />Správa říše</span>
-          </AccordionTrigger>
-          <AccordionContent className="px-4 pb-4">
-            <EmpireManagement
-              sessionId={sessionId} players={players} cities={cities} resources={resources}
-              armies={armies} trades={trades} currentPlayerName={currentPlayerName} currentTurn={currentTurn}
-            />
-          </AccordionContent>
-        </AccordionItem>
+        {/* Legacy editor surface — dev-only. See docs/BETA_SCOPE.md. */}
+        {devMode && (
+          <AccordionItem value="economy" className="manuscript-card border-dashed">
+            <AccordionTrigger className="px-4 py-3 font-display text-sm">
+              <span className="flex items-center gap-2">
+                <Castle className="h-4 w-4 text-muted-foreground" />
+                Správa říše
+                <span className="text-[10px] text-muted-foreground italic">(legacy / dev-only)</span>
+              </span>
+            </AccordionTrigger>
+            <AccordionContent className="px-4 pb-4">
+              <EmpireManagement
+                sessionId={sessionId} players={players} cities={cities} resources={resources}
+                armies={armies} trades={trades} currentPlayerName={currentPlayerName} currentTurn={currentTurn}
+              />
+            </AccordionContent>
+          </AccordionItem>
+        )}
 
         <AccordionItem value="persons" className="manuscript-card">
           <AccordionTrigger className="px-4 py-3 font-display text-sm">
