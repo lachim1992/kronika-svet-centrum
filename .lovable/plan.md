@@ -1,46 +1,64 @@
 
 
-User má pravdu. Soubor na main už obsahuje split (`fetchCore`, `fetchLegacyCompat`, `fetchSessionData`), `LEGACY COMPAT` blok i `@deprecated` markery. Zbývá pouze odstranit vestigial `fetchCoreAndLegacy` wrapper.
+User schválil plán, přidal jedno zpřesnění smoke harness reportu (uložit failure context: turn#, player, session id, realm_resources row id/count). Integruji a finalizuji.
 
-Toto je shodný patch scope, který jsem navrhl o dvě kola dříve (a user ho tehdy korektně odmítl jako nepodložený, protože jsem se díval na nesprávný snapshot). Teď je doložený přímo z raw main souboru.
+# Beta Stabilization Update — final lock
 
-# Vestigial wrapper removal — `useGameSession.ts`
+## Pořadí
+1. **A** — `docs/BETA_SCOPE.md` + README pointer
+2. **C** — Demote EmpireManagement za `useDevMode`
+3. **B** — EmpireOverview adapter + rewire na kanonický model
+4. **D** — 30-turn smoke harness
 
-## Disciplinární podmínky
+## Stream A
+- `docs/BETA_SCOPE.md` (1 strana): in scope (1 session, 1 realm, 30 turns, kanonický loop), out of scope (persistent tick, ligy/sport, lore-heavy, admin/editor jako player UI, MP>2), kanonický tah, source-of-truth pointers.
+- `README.md`: 1-line link na BETA_SCOPE.
 
-1. **Žádná fiktivní práce.** Split, `LEGACY COMPAT` blok i `@deprecated` markery už existují. Nepřepisovat.
-2. **Veřejné API hooku se nemění.** `refetch: fetchSessionData` zůstává.
-3. **Žádné odstranění legacy writerů.** `initPlayerResources`, `updateResource` zůstávají funkční.
-4. **Žádný zásah mimo `useGameSession.ts`.**
+## Stream C
+- `CitiesTab.tsx`: AccordionItem "Správa říše" obalit `{devMode && ...}`.
+- `EmpireManagement.tsx`: JSDoc `@deprecated Legacy editor surface. Not part of beta player loop.`
+- `updateResource` zůstává funkční. Žádný rewrite.
 
-## Patch scope (4 změny)
+## Stream B
+- **`src/lib/empireOverviewAdapter.ts`** (nový) s headerem: `// Beta view-model adapter — NOT a canonical ontology mapping.`
+  - Mapping: `gold_reserve→gold`, `grain_reserve→food`, wood/stone/iron/horses/labor analogicky.
+  - **Hard rule**: chybějící income/upkeep vrací `undefined`, NIKDY 0.
+  - Armády: agregát z `military_stacks`, ne `MilitaryCapacity[]`.
+  - Schema gaps explicitní v `// TODO:` komentářích.
+- **`EmpireOverview.tsx`**: props `realmResource: RealmResource | null` + `militaryStacks: MilitaryStack[]`. Render: `value !== undefined ? format(value) : "—"`. Žádný `value || 0`.
+- **`WorldTab.tsx`**: pass canonical inputs.
+- **`useGameSession.ts`**: verify/expose `realmResources` + `military_stacks` v `fetchCore` (jen pokud chybí).
 
-1. **Smazat `fetchCoreAndLegacy`** (jediný účel: `Promise.all([fetchCore(), fetchLegacyCompat()])`).
-2. **`fetchSessionData`** — nahradit volání wrapperu přímým `Promise.all([fetchCore(), fetchLegacyCompat(), fetchContent()])`.
-3. **`debouncedRefetchCore`** — nahradit wrapper přímým `fetchCore(); fetchLegacyCompat();`. Aktualizovat dependency array.
-4. **Komentář realtime core channelu** — z `"triggers fetchCoreAndLegacy only"` na `"refetches core + legacy compat"`.
+## Stream D
+- **`src/components/dev/BetaSmokeHarness.tsx`** (nový), gated `useDevMode`, mount v `DevTab`.
+- Tlačítko "Run 30-turn smoke". Per turn: snapshot → `commit-turn` → `refresh-economy` → re-fetch → invariants.
+- **Invariants:**
+  - session loads, commit-turn ok, refresh-economy ok all 4 steps
+  - adapter validní view-model (NaN = fail; undefined v income/upkeep = OK)
+  - chronicle count monotonic non-decreasing
+  - `fetchLegacyCompat` nehází
+  - **unique** `realm_resources` row pro hráče
+  - **reserve sanity**: gold/grain/wood/stone/iron/horses/labor `>= 0` (záporné = warning, ne fail)
+  - **turn monotonicity**: `current_turn_after === current_turn_before + 1`
+- **Failure report (per user)**: při prvním failu uložit `{ turn_number, player_name, session_id, realm_resources_row_id, realm_resources_row_count, stack }` aby šel bug reprodukovat bez znovuhrání 30 tahů.
 
-## Implementační postup v default módu
+## Soubory
+| Stream | Soubor | Akce |
+|---|---|---|
+| A | `docs/BETA_SCOPE.md` | New |
+| A | `README.md` | 1-line pointer |
+| C | `src/pages/game/CitiesTab.tsx` | Gate accordion |
+| C | `src/components/EmpireManagement.tsx` | JSDoc demotion |
+| B | `src/lib/empireOverviewAdapter.ts` | New |
+| B | `src/components/EmpireOverview.tsx` | Rewire props, `—` pro undefined |
+| B | `src/pages/game/WorldTab.tsx` | Canonical inputs |
+| B | `src/hooks/useGameSession.ts` | Expose realm_resources/military_stacks (jen pokud chybí) |
+| D | `src/components/dev/BetaSmokeHarness.tsx` | New |
+| D | `src/pages/game/DevTab.tsx` | Mount harness |
 
-1. `code--view src/hooks/useGameSession.ts` — celý soubor, ověřit aktuální podobu wrapperu, jeho callsites a komentář.
-2. Aplikovat 4 změny v jediném patch sweepu (build by neměl prasknout mezikrokem).
-3. Grep verifikace: `fetchCoreAndLegacy` v souboru zmizel; `fetchCore`, `fetchLegacyCompat`, `fetchSessionData`, `LEGACY COMPAT`, `@deprecated` přítomny.
+## NEDĚLÁ
+❌ Schema migrace · ❌ LeaderboardsPanel · ❌ EmpireManagement rewrite · ❌ Removal `player_resources`/`initPlayerResources`/`updateResource` · ❌ Process-turn změny · ❌ Mapa/AI/onboarding · ❌ CI
 
-## Co commit NEDĚLÁ
-
-- ❌ Nemění veřejnou signaturu hooku.
-- ❌ Nepřidává nové markery — ty už existují.
-- ❌ Neodstraňuje legacy writery.
-- ❌ Nesahá na ontology.md, DEPRECATION.md, legacy-writer-audit.md.
-
-## Soubory v commitu
-
-| Soubor | Akce |
-|---|---|
-| `src/hooks/useGameSession.ts` | Smazat `fetchCoreAndLegacy`, inline na 2 callsites, opravit 1 komentář |
-
-## Co následuje (NE součást)
-
-1. Sladit `ontology.md` / `DEPRECATION.md` s reálným stavem souboru — krátký doc commit. Po tomto cleanup už dokumentace skutečně odpovídá kódu.
-2. Otevřené: první reálné zúžení legacy surface (read-only consumer migration vs. nejsnazší seed/editor writer removal).
+## Po tomto updatu
+Vyhodnotit smoke report → rozhodnout LeaderboardsPanel migraci → removal decision.
 
