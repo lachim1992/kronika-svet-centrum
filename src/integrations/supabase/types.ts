@@ -9686,6 +9686,8 @@ export type Database = {
       }
       world_foundations: {
         Row: {
+          bootstrap_error: string | null
+          bootstrap_status: string | null
           created_at: string
           created_by: string | null
           id: string
@@ -9699,8 +9701,12 @@ export type Database = {
           tone: string
           victory_style: string
           world_name: string
+          worldgen_spec: Json | null
+          worldgen_version: number | null
         }
         Insert: {
+          bootstrap_error?: string | null
+          bootstrap_status?: string | null
           created_at?: string
           created_by?: string | null
           id?: string
@@ -9714,8 +9720,12 @@ export type Database = {
           tone?: string
           victory_style?: string
           world_name: string
+          worldgen_spec?: Json | null
+          worldgen_version?: number | null
         }
         Update: {
+          bootstrap_error?: string | null
+          bootstrap_status?: string | null
           created_at?: string
           created_by?: string | null
           id?: string
@@ -9729,6 +9739,8 @@ export type Database = {
           tone?: string
           victory_style?: string
           world_name?: string
+          worldgen_spec?: Json | null
+          worldgen_version?: number | null
         }
         Relationships: [
           {
