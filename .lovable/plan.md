@@ -1,130 +1,124 @@
 
 
-User schválil směr Inkrementu 2 a přidal 4 hard refinements. Zapracuji je do finálního locku, plán nechávám stručný — design už je kompletně dohodnutý.
+# Inkrement 3 — Premise-First (FINAL LOCK v2)
 
-# Playable World Creation — Inkrement 2 (final lock)
+User má pravdu ve všech 3 bodech. Doplním D1-D3 + A (advanced unlock semantics) + B (warning codes).
 
-## Volby (potvrzené)
-- Hybrid preview (schematic default + full preview tlačítko)
-- 3 presety MVP
-- Premise povinný (min 20 znaků)
-- Rebuild in place ve `WorldSetupWizard.tsx`
+## Δ proti předchozímu locku
 
-## 4 refinements (hard requirements)
+### D1: Create gating (tvrdé)
+```ts
+createDisabled = !resolved || isSuggestionStale || isBlueprintStale
+```
+Žádný implicit resync v create flow. Hráč musí kliknout "Regenerovat blueprint" než smí Create.
 
-### R1: Advanced override = explicitní toggle
-- Otevření Advanced panelu **nemění** resolved spec
-- Uvnitř Advanced: switch `"Použít vlastní parametry mapy"` → teprve ten zapne `advancedOverride.enabled = true`
-- Width/height/seed inputy disabled dokud switch není zapnutý
+**Acceptance #14 update:** Create button disabled pokud `resolved===null || isSuggestionStale || isBlueprintStale`.
 
-### R2: Preset dirty-state logika
-- Každé preset-driven pole (style, victory, premise, terrain knobs) má `dirty` flag
-- První edit pole → `dirty = true`
-- Při přepnutí presetu: dirty pole se **nepřepíše**, čistá ano
-- Tlačítko `"Reset podle presetu"` (zviditelněné jen když existuje aspoň 1 dirty pole) → vyčistí všechny dirty flagy + aplikuje preset
-
-### R3: Canonical payload composer
-- Jeden zdroj pravdy v `src/lib/worldBootstrapPayload.ts`:
-  ```ts
-  composeBootstrapPayload(state) → CreateWorldBootstrapRequest
-  composePreviewPayload(state) → PreviewWorldMapRequest  // subset stejného base
-  ```
-- Preview payload je **derivát** bootstrap payloadu, ne paralelní struktura
-- Test: stejný wizard state → identický `{size, terrain, seed}` v obou requestech
-
-### R4: Submit progress = real steps z bootstrap response
-- Ne generické spinnery
-- Loading panel renderuje 8 kroků: `validate-normalize → world-foundations → server-config → persist-worldgen-spec → generate-world-map → placement-artifacts → mode-specific-seeding → finalize-world-ready`
-- Každý step: pending / running / done / failed s durationMs
-- Při `failed`: zobrazit `bootstrap_error` z DB
-
-## Dodatečné refinementy
-
-### Preview labeling (R5)
-- Schematic: badge `"Rychlý náhled (přibližný)"`
-- Full: badge `"Plný náhled (skutečný engine)"`
-- Vizuálně odlišný rámeček (např. dashed vs solid border)
-
-### Preview response shape (R6)
-`preview-world-map` vrací nejen hex grid, ale i:
+### D2: Blueprint regeneration = full translate s hard non-blueprint lock
+Tlačítko "Regenerovat blueprint" volá `translate-premise-to-spec` s tímto payloadem, sestaveným klientem:
 ```ts
 {
-  hexes: [...],
-  mapWidth, mapHeight,
-  seed,
-  estimatedStartPositions: number,
-  landRatioResolved: number,
+  premise,
+  userOverrides: pickNonBlueprintFields(state.resolved), 
+    // worldName, size, tone, victoryStyle, style, factionCount, terrain.*
+  lockedPaths: ALL_NON_BLUEPRINT_LEAF_PATHS, 
+    // konstanta v worldgenSpecPaths.ts
+  regenerationNonce: state.regenerationNonce + 1,
 }
 ```
-Summary panel zobrazí tyto **resolved** hodnoty po full preview (před tím = client-side odhady).
+Server respektuje locks v promptu + **vždy hard-merge** override po AI návratu (M4). Výsledek: změní se prakticky jen `geographyBlueprint` (+ deterministicky se posune seed).
 
-## Struktura wizardu (potvrzená)
+Helper `composeBlueprintRegenRequest(state)` v `worldBootstrapPayload.ts`.
 
-### Vrstva A — Simple
-1. Preset karty (3): Doporučený / Souostroví / Velký kontinent
-2. Název světa (povinný)
-3. Premise textarea (povinný, min 20 znaků, placeholder z presetu)
-4. Velikost (Malý 21×21 / Střední 31×31 / Velký 41×41)
-5. Styl světa
-6. Herní zaměření
-7. Počet AI frakcí (0–6)
+**Nové acceptance #18:** Blueprint regeneration nemění non-blueprint fields (test: snapshot resolved před/po, diff jen v `geographyBlueprint` a `seed`).
 
-### Vrstva B — Preview panel
-- Schematic mini-mapa (canvas, client-side, instant)
-- Tlačítko "🔄 Nový seed"
-- Tlačítko "🗺️ Vygenerovat plný náhled"
-- Summary box (resolved hodnoty po full preview, jinak client estimates)
+### D3: Lock canonicalization (leaf-only)
+- `lockedPaths: string[]` v state (serializace, equality)
+- runtime `lockedPathSet = useMemo(() => new Set(state.lockedPaths), [state.lockedPaths])` pro lookup
+- **Lockable paths whitelist** (konstanta `LOCKABLE_LEAF_PATHS`):
+  - `worldName`
+  - `size`
+  - `tone`
+  - `victoryStyle`
+  - `style`
+  - `factionCount`
+  - `terrain.targetLandRatio`
+  - `terrain.mountainDensity`
+  - `terrain.continentShape`
+  - `terrain.continentCount`
+- Žádné parent paths (`terrain`, `geographyBlueprint`) — reducer odmítne lock mimo whitelist
+- Žádné duplicity — reducer dedupliuje při insertu
 
-### Vrstva C — Advanced (Collapsible)
-- Switch `"Použít vlastní parametry mapy"` (R1)
-- Width / height / seed (disabled bez switche)
-- Land ratio / mountain density / continent shape / continent count
+**Nové acceptance #19:** Lock akce mimo `LOCKABLE_LEAF_PATHS` jsou no-op; `lockedPaths` neobsahuje duplicity ani parent paths.
 
-### Submit
-- Tlačítko "✨ Vytvořit svět"
-- Progress panel s 8 reálnými kroky (R4)
-- Error handling z `bootstrap_error`
+### A: Advanced override unlock = jen managed fields
+Advanced panel má vlastní konstantu `ADVANCED_MANAGED_PATHS`:
+- `size`, `style`, `victoryStyle`, `factionCount`, `terrain.targetLandRatio`, `terrain.mountainDensity`, `terrain.continentShape`, `terrain.continentCount`
 
-## Soubory
+Switch ON: lockne všechny `ADVANCED_MANAGED_PATHS` na aktuální values (bulk lock).
+Switch OFF: unlockne **jen ty paths, které byly locknuty advancem**. Ručně locknuté pole (přes inline editor) zůstávají.
+
+Implementace: reducer drží `lockedBy: Map<path, "user" | "advanced">` jako interní detail (nebo separátní set `advancedLockedPaths`). Persistence: jen `lockedPaths`, attribution se ztrácí mezi sessions (akceptovatelné pro MVP).
+
+**Nové acceptance #20:** Advanced switch OFF nezruší user-locknutá pole; switch ON nepřepíše hodnoty pole, které už user lockl.
+
+### B: Warning codes (lehká strukturovanost)
+```ts
+type TranslateWarning = {
+  code: "GENERIC_PREMISE" | "FACTIONS_INFERRED_CONSERVATIVELY" 
+      | "BIOME_WEIGHTS_NORMALIZED" | "RANGE_CLAMPED" | "OVERRIDE_APPLIED";
+  message: string;
+  field?: string;
+};
+```
+UI v Inkrementu 3 jen vypíše `message`, code je připraven pro budoucí targeting.
+
+## Doplněné soubory
 
 | Soubor | Akce |
 |---|---|
-| `src/components/WorldSetupWizard.tsx` | Rebuild in place |
-| `src/components/world-setup/PresetCards.tsx` | NEW |
-| `src/components/world-setup/SchematicMapPreview.tsx` | NEW (canvas hex render) |
-| `src/components/world-setup/AdvancedTerrainPanel.tsx` | NEW (s explicit toggle) |
-| `src/components/world-setup/WorldSummaryPanel.tsx` | NEW |
-| `src/components/world-setup/BootstrapProgressPanel.tsx` | NEW (8 steps render) |
-| `src/lib/worldPresets.ts` | NEW (3 presety) |
-| `src/lib/worldBootstrapPayload.ts` | NEW (canonical composer) |
-| `src/hooks/useWizardDirtyState.ts` | NEW (dirty flag tracking) |
-| `supabase/functions/preview-world-map/index.ts` | NEW (no DB writes) |
-| `supabase/config.toml` | +1 block |
+| `src/lib/worldgenSpecPaths.ts` | + `LOCKABLE_LEAF_PATHS`, `ADVANCED_MANAGED_PATHS`, `ALL_NON_BLUEPRINT_LEAF_PATHS`, `pickNonBlueprintFields(spec)`, `canonicalizeLocks(paths)` |
+| `src/lib/worldBootstrapPayload.ts` | + `composeBlueprintRegenRequest(state)` |
+| `src/hooks/useWorldSetupWizardState.ts` | reducer drží `advancedLockedPaths: string[]` separátně; akce `LOCK_FIELD` validuje proti whitelist; `ADVANCED_TOGGLE` bulk lock/unlock jen managed paths |
+| `src/components/world-setup/BlueprintStaleWarning.tsx` | tlačítko volá `composeBlueprintRegenRequest` |
 
-## Acceptance criteria
+Ostatní soubory beze změny vůči předchozímu locku.
 
-**UI základ (1–9):**
-1. Wizard má 3 oddělené vrstvy
-2. 3 presety klikatelné, každý přednastaví defaulty
-3. Schematic preview <500ms po změně
-4. "Nový seed" regeneruje schematic okamžitě
-5. "Vygenerovat plný náhled" volá `preview-world-map` <15s
-6. Submit volá `create-world-bootstrap`, loading ukazuje step progress
-7. Premise validace: min 20 znaků
-8. Mobile (271px): vrstvy stackují vertikálně
-9. Schematic vs Full preview vizuálně rozlišené (R5)
+## Acceptance criteria — finální set (1-20)
 
-**Refinements (10–13):**
-10. **Preset dirty-state**: ručně změněná pole se přepnutím presetu nepřepíší; "Reset podle presetu" tlačítko viditelné jen když existují dirty pole
-11. **Payload parity**: stejný wizard state → identické `{size, terrain, seed}` v preview i create requestech (test)
-12. **Advanced explicitnost**: otevření Advanced panelu nezmění resolved spec; spec se mění až po zapnutí switche
-13. **Preview response**: `preview-world-map` vrací `{hexes, mapWidth, mapHeight, seed, estimatedStartPositions, landRatioResolved}`; summary panel je zobrazí po full preview
+**UX základ (1-6):** beze změny
+
+**Lock & merge (7-10):** beze změny
+
+**Stale & konzistence (11-14):** #14 update viz D1
+
+**Bezpečnost & determinismus (15-17):** beze změny
+
+**Doplněné (18-20):**
+- 18: Blueprint regen mění jen `geographyBlueprint` + `seed`; non-blueprint fields zůstávají
+- 19: Lock akce mimo whitelist = no-op; `lockedPaths` canonicalized (no dup, no parent)
+- 20: Advanced switch OFF nezruší user-locknutá pole; switch ON nepřepíše už locknuté hodnoty
+
+## Implementační pořadí (uzamčené)
+
+1. Typy + paths infra (`worldgenSpecPaths.ts` vč. whitelistů a `pickNonBlueprintFields`)
+2. Backend `translate-premise-to-spec` + shared validation
+3. State reducer (`useWorldSetupWizardState`) vč. `advancedLockedPaths`
+4. Inspirace karty + PremiseAnalyzer (premise + Analyzovat)
+5. SpecReviewSummary + SpecFieldEditor (top-level + terrain leaf editors)
+6. BlueprintStaleWarning + regen wiring
+7. Preview wiring (čte `resolved`, blokované při stale)
+8. Create wiring (D1 gating)
+9. AdvancedTerrainPanel refactor (managed paths, A semantics)
+10. Cleanup: delete PresetCards, worldPresets, useWizardDirtyState
 
 ## NEDĚLÁ
-❌ Prompt → bias translator (Inkrement 3) · ❌ 3D/icon hex render v preview · ❌ Server-side preview cache · ❌ Removal V1 wizard logiky (rebuild in place, ne čistka) · ❌ Změna create-world-bootstrap contractu · ❌ Více než 3 presety
+❌ Inline edit blueprint nested polí · ❌ Auto-analyze · ❌ Removal `generate-geo-blueprint` (deprecate only) · ❌ Změna `create-world-bootstrap` API · ❌ Persistence `lockedBy` attribution · ❌ Captcha · ❌ Localizace warning messages · ❌ Separátní endpoint pro blueprint regen (re-use translate-premise-to-spec přes D2)
 
-## Po Inkrementu 2
-- Hráč má použitelný wizard s preview, presety, dirty-state safety
-- Backend Inkrementu 1 je volaný z UI s reálným step-by-step progressem
-- Canonical payload composer připraven pro Inkrement 3 (premise → terrain bias)
+## Tím je locked
+- D1 ✓ create gating tvrdé
+- D2 ✓ blueprint regen kontraktně definovaný
+- D3 ✓ lockedPaths leaf-only, canonicalized, string[] s memoized Set
+- A ✓ advanced unlock respektuje user-lockované pole
+- B ✓ warnings mají code
 
