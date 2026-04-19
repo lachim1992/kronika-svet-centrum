@@ -1,64 +1,104 @@
 
 
-User schválil plán, přidal jedno zpřesnění smoke harness reportu (uložit failure context: turn#, player, session id, realm_resources row id/count). Integruji a finalizuji.
+# NO-GO → GO Beta Gate Fix v3 (locked, with semantic safeguards)
 
-# Beta Stabilization Update — final lock
+User akceptoval v2 jako rozumný minimální gate fix se třemi zpřesněními. Integruji:
+1. Acceptance criteria rozdělit na **patch correctness** vs **runtime stability** (3 vrstvy: instrumentace / flow / důkaz)
+2. WarRoomPanel: **semantic audit před mechanickým přepisem typů**
+3. Závěr přeformulovat: výsledkem updatu je validní kandidát na GO, ne GO samotné
 
 ## Pořadí
-1. **A** — `docs/BETA_SCOPE.md` + README pointer
-2. **C** — Demote EmpireManagement za `useDevMode`
-3. **B** — EmpireOverview adapter + rewire na kanonický model
-4. **D** — 30-turn smoke harness
 
-## Stream A
-- `docs/BETA_SCOPE.md` (1 strana): in scope (1 session, 1 realm, 30 turns, kanonický loop), out of scope (persistent tick, ligy/sport, lore-heavy, admin/editor jako player UI, MP>2), kanonický tah, source-of-truth pointers.
-- `README.md`: 1-line link na BETA_SCOPE.
+1. **Fix A** — Smoke harness payload (instrumentace)
+2. **Fix B** — Canonical loop v useNextTurn (flow)
+3. **Fix D** — RealmDashboard process-turn gate (flow, blocker)
+4. **Fix C** — WarRoomPanel off legacy (player-path leak, s semantickým auditem)
 
-## Stream C
-- `CitiesTab.tsx`: AccordionItem "Správa říše" obalit `{devMode && ...}`.
-- `EmpireManagement.tsx`: JSDoc `@deprecated Legacy editor surface. Not part of beta player loop.`
-- `updateResource` zůstává funkční. Žádný rewrite.
+## Fix A — Smoke harness payload
 
-## Stream B
-- **`src/lib/empireOverviewAdapter.ts`** (nový) s headerem: `// Beta view-model adapter — NOT a canonical ontology mapping.`
-  - Mapping: `gold_reserve→gold`, `grain_reserve→food`, wood/stone/iron/horses/labor analogicky.
-  - **Hard rule**: chybějící income/upkeep vrací `undefined`, NIKDY 0.
-  - Armády: agregát z `military_stacks`, ne `MilitaryCapacity[]`.
-  - Schema gaps explicitní v `// TODO:` komentářích.
-- **`EmpireOverview.tsx`**: props `realmResource: RealmResource | null` + `militaryStacks: MilitaryStack[]`. Render: `value !== undefined ? format(value) : "—"`. Žádný `value || 0`.
-- **`WorldTab.tsx`**: pass canonical inputs.
-- **`useGameSession.ts`**: verify/expose `realmResources` + `military_stacks` v `fetchCore` (jen pokud chybí).
+`src/components/dev/BetaSmokeHarness.tsx`, line 101:
+- `body: { sessionId }` → `body: { session_id: sessionId }`
 
-## Stream D
-- **`src/components/dev/BetaSmokeHarness.tsx`** (nový), gated `useDevMode`, mount v `DevTab`.
-- Tlačítko "Run 30-turn smoke". Per turn: snapshot → `commit-turn` → `refresh-economy` → re-fetch → invariants.
-- **Invariants:**
-  - session loads, commit-turn ok, refresh-economy ok all 4 steps
-  - adapter validní view-model (NaN = fail; undefined v income/upkeep = OK)
-  - chronicle count monotonic non-decreasing
-  - `fetchLegacyCompat` nehází
-  - **unique** `realm_resources` row pro hráče
-  - **reserve sanity**: gold/grain/wood/stone/iron/horses/labor `>= 0` (záporné = warning, ne fail)
-  - **turn monotonicity**: `current_turn_after === current_turn_before + 1`
-- **Failure report (per user)**: při prvním failu uložit `{ turn_number, player_name, session_id, realm_resources_row_id, realm_resources_row_count, stack }` aby šel bug reprodukovat bez znovuhrání 30 tahů.
+1 řádek. Nic víc.
+
+## Fix B — Canonical loop v useNextTurn (non-fatal)
+
+`src/hooks/useNextTurn.ts`: po úspěšném `commit-turn` přidat:
+```ts
+try {
+  const { error: refreshErr } = await supabase.functions.invoke("refresh-economy", {
+    body: { session_id: sessionId },
+  });
+  if (refreshErr) toast.warning("Ekonomika nebyla plně přepočtena.");
+} catch (e) {
+  console.warn("refresh-economy threw:", e);
+}
+```
+Non-fatal: tah už je commitnutý, refresh je následná konsolidace.
+
+## Fix D — RealmDashboard: zrušit player-visible bypass
+
+`src/components/RealmDashboard.tsx`:
+- Tlačítko "Zpracovat kolo" + `handleProcessTurn` gate za `(myRole === "admin" || myRole === "moderator")`
+- Stejný pattern jako "Migrovat starý vojenský systém" hned vedle
+- Žádný rewrite logiky; `process-turn` zůstane dostupné dev/admin pro debug
+
+## Fix C — WarRoomPanel off legacy (s semantickým auditem)
+
+**Krok 1: Audit před přepisem.** V `WarRoomPanel.tsx` zjistit, co panel z `armies` skutečně čte:
+- Pokud jen `armies.filter(a => a.player_name === p.player_name && a.status === "Aktivní").length` (počet aktivních legií per hráč) → **bezpečný mechanický přepis** na `militaryStacks.filter(s => s.owner_player === ...)`.
+- Pokud panel čte capacity/strength/upkeep specifické pro `military_capacity` schema → **ne přepisovat slepě**. Buď:
+  - degradovat na jednodušší canonical read (jen count + owner),
+  - nebo dotčenou sekci panelu schovat za `useDevMode`.
+
+**Krok 2: Mapping (po auditu).**
+- `WarRoomPanel.tsx`: prop `armies: MilitaryCapacity[]` → `militaryStacks: MilitaryStack[]`
+- Použít `Tables<"military_stacks">` typ
+- Agregace: `s.owner_player` místo `a.player_name`; status field zkontrolovat (existuje v `military_stacks`?)
+
+**Krok 3: Konzument.**
+- `RealmTab.tsx`: `armies={armies}` → `militaryStacks={militaryStacks}` (už dostupné z useGameSession via Dashboard sharedProps)
+
+**Žádné změny:**
+- `WorldTab.tsx` — legacy props deklarované, nečtené (verifikováno) → ponechat
+- `CitiesTab.tsx` — legacy v EmpireManagement je dev-gated → ponechat
+- `useGameSession` public API — ponechat, legacy fields exponované pro dev/admin surfaces
 
 ## Soubory
-| Stream | Soubor | Akce |
+
+| Fix | Soubor | Změna |
 |---|---|---|
-| A | `docs/BETA_SCOPE.md` | New |
-| A | `README.md` | 1-line pointer |
-| C | `src/pages/game/CitiesTab.tsx` | Gate accordion |
-| C | `src/components/EmpireManagement.tsx` | JSDoc demotion |
-| B | `src/lib/empireOverviewAdapter.ts` | New |
-| B | `src/components/EmpireOverview.tsx` | Rewire props, `—` pro undefined |
-| B | `src/pages/game/WorldTab.tsx` | Canonical inputs |
-| B | `src/hooks/useGameSession.ts` | Expose realm_resources/military_stacks (jen pokud chybí) |
-| D | `src/components/dev/BetaSmokeHarness.tsx` | New |
-| D | `src/pages/game/DevTab.tsx` | Mount harness |
+| A | `src/components/dev/BetaSmokeHarness.tsx` | 1 řádek payload key |
+| B | `src/hooks/useNextTurn.ts` | +10 řádků refresh-economy non-fatal |
+| D | `src/components/RealmDashboard.tsx` | Gate "Zpracovat kolo" za admin/moderator |
+| C | `src/components/WarRoomPanel.tsx` | Audit-driven retype + agregace na canonical |
+| C | `src/pages/game/RealmTab.tsx` | Prop rewire armies → militaryStacks |
+
+## Acceptance criteria (ve 3 vrstvách)
+
+**Vrstva 1 — Instrumentace (statická):**
+1. BetaSmokeHarness skutečně volá `refresh-economy` s payloadem `{ session_id }`. Verifikováno grep + code review.
+2. WarRoomPanel typově přijímá `MilitaryStack[]`, ne `MilitaryCapacity[]`. Verifikováno TypeScript compiler.
+
+**Vrstva 2 — Flow (statická + Network tab):**
+3. useNextTurn po každém commit-turn invokuje refresh-economy. Verifikováno Network tab: 2 volání/tah.
+4. RealmDashboard "Zpracovat kolo" tlačítko **není v DOM** pro role `player`. Verifikováno UI + code review.
+5. WarRoomPanel rendered jako player nepoužívá legacy ledger. Verifikováno code review (žádný import `military_capacity`).
+
+**Vrstva 3 — Stabilita (runtime, mimo tento update):**
+6. Smoke 30 turns 2× po sobě zelené. **Toto je důkaz GO, ne acceptance tohoto patche.**
 
 ## NEDĚLÁ
-❌ Schema migrace · ❌ LeaderboardsPanel · ❌ EmpireManagement rewrite · ❌ Removal `player_resources`/`initPlayerResources`/`updateResource` · ❌ Process-turn změny · ❌ Mapa/AI/onboarding · ❌ CI
+
+❌ Audit ostatních tabů nad rámec WarRoomPanel · ❌ useGameSession public API change · ❌ Removal legacy ledgerů (`player_resources`, `military_capacity`, `trade_log`) · ❌ Schema migrace · ❌ process-turn rewrite · ❌ LeaderboardsPanel migrace
 
 ## Po tomto updatu
-Vyhodnotit smoke report → rozhodnout LeaderboardsPanel migraci → removal decision.
+
+Výsledkem **není** automatické GO. Výsledkem je **validní kandidát na GO**:
+- release gate už nebude architektonicky děravá
+- smoke harness konečně měří to, co má
+- player nemá bypass canonical loopu
+- player-path neteče přes legacy military ledger
+
+Teprve potom má smysl spustit smoke 2× jako reálné GO / NO-GO rozhodnutí. Pokud 2× zelené → GO interní beta playtest. Pokud cokoli červené → failure context (turn#, player, session id, realm_resources row id/count) ukáže přesný bug bez znovuhrání 30 tahů.
 
