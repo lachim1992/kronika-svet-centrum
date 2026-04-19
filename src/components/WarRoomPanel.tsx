@@ -4,7 +4,7 @@ import { Shield, Flame, Swords, MapPin, AlertTriangle, Castle } from "lucide-rea
 import WarDeclarationPanel from "@/components/WarDeclarationPanel";
 
 type City = Tables<"cities">;
-type MilitaryCapacity = Tables<"military_capacity">;
+type MilitaryStack = Tables<"military_stacks">;
 type GameEvent = Tables<"game_events">;
 type GamePlayer = Tables<"game_players">;
 
@@ -14,14 +14,15 @@ interface WarRoomPanelProps {
   currentTurn: number;
   gameMode?: string;
   cities: City[];
-  armies: MilitaryCapacity[];
+  /** Canonical military read — replaces legacy military_capacity. */
+  militaryStacks: MilitaryStack[];
   events: GameEvent[];
   players: GamePlayer[];
   worldCrises: any[];
   onRefetch: () => void;
 }
 
-const WarRoomPanel = ({ sessionId, currentPlayerName, currentTurn, gameMode, cities, armies, events, players, worldCrises, onRefetch }: WarRoomPanelProps) => {
+const WarRoomPanel = ({ sessionId, currentPlayerName, currentTurn, gameMode, cities, militaryStacks, events, players, worldCrises, onRefetch }: WarRoomPanelProps) => {
   const provinces = [...new Set(cities.map(c => c.province).filter(Boolean))];
   const devastatedCities = cities.filter(c => c.status === "devastated" || c.status === "besieged");
   const recentBattles = events.filter(e => e.turn_number >= currentTurn - 2 && (e.event_type === "battle" || e.event_type === "raid") && e.confirmed);
@@ -122,7 +123,7 @@ const WarRoomPanel = ({ sessionId, currentPlayerName, currentTurn, gameMode, cit
           <Swords className="h-4 w-4 text-illuminated" /> Vojenská síla
         </h3>
         {players.map(p => {
-          const pArmies = armies.filter(a => a.player_name === p.player_name && a.status === "Aktivní");
+          const pArmies = militaryStacks.filter(s => s.owner_player === p.player_name && s.status === "active");
           const pCities = cities.filter(c => c.owner_player === p.player_name);
           return (
             <div key={p.id} className="flex items-center gap-3 text-sm">
