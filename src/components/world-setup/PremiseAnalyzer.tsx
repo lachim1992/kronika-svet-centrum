@@ -65,8 +65,8 @@ export const PremiseAnalyzer = ({
       </div>
 
       {isSuggestionStale && hasSuggestion && (
-        <div className="flex items-start gap-2 text-xs bg-amber-500/10 border border-amber-500/30 rounded-md p-2">
-          <AlertCircle className="h-3.5 w-3.5 text-amber-500 shrink-0 mt-0.5" />
+        <div className="flex items-start gap-2 text-xs bg-warning/10 border border-warning/30 rounded-md p-2">
+          <AlertCircle className="h-3.5 w-3.5 text-warning shrink-0 mt-0.5" />
           <span className="text-foreground/90">
             Premisa byla od poslední analýzy upravena. Spusťte analýzu znovu.
           </span>
