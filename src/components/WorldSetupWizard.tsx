@@ -343,10 +343,23 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
             size: worldSize as "small" | "medium" | "large",
           },
           map: {
-            advancedOverride: useAdvancedMap
-              ? { enabled: true, width: sizeConfig.mapW, height: sizeConfig.mapH }
-              : undefined,
-            terrain: terrainParams,
+            advancedOverride:
+              mapWidth !== sizeConfig.mapW || mapHeight !== sizeConfig.mapH
+                ? { enabled: true, width: mapWidth, height: mapHeight }
+                : undefined,
+            terrain: {
+              targetLandRatio: landRatio / 100,
+              continentShape,
+              continentCount:
+                continentShape === "pangaea" ? 1
+                : continentShape === "two_continents" ? 2
+                : continentShape === "archipelago" ? 5
+                : 2,
+              mountainDensity: mountainDensity / 100,
+              biomeWeights: Object.fromEntries(
+                Object.entries(biomeWeights).map(([k, v]) => [k, (v as number) / 100]),
+              ),
+            },
           },
           identity: {
             settlementName: settlementName.trim() || undefined,
