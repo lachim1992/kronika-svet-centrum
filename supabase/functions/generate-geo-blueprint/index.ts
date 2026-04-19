@@ -8,6 +8,12 @@ const corsHeaders = {
 
 /**
  * generate-geo-blueprint
+ *
+ * @deprecated since Inkrement 3 — replaced by `translate-premise-to-spec`
+ * which produces the full WorldgenSpecV1 (incl. derived geographyBlueprint)
+ * from a single premise input. Kept for back-compat with legacy world setup
+ * paths; new flows MUST NOT call this endpoint.
+ *
  * Reads the world_premise lore_bible and generates a geography_blueprint
  * using AI, then saves it to world_premise.
  */
