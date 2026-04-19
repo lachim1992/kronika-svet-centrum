@@ -104,3 +104,87 @@ export interface CreateWorldBootstrapResponse {
 // Default OFF: legacy multi-call flow remains in effect.
 export const USE_UNIFIED_BOOTSTRAP =
   import.meta.env.VITE_USE_UNIFIED_BOOTSTRAP === "true";
+
+// ─── Inkrement 3: WorldgenSpecV1 + translate-premise-to-spec contract ────────
+
+export interface GeographyRidge {
+  id: string;
+  startQ: number;
+  startR: number;
+  endQ: number;
+  endR: number;
+  strength: number;
+}
+
+export interface GeographyBiomeZone {
+  id: string;
+  biome: string;
+  centerQ: number;
+  centerR: number;
+  radius: number;
+  intensity: number;
+}
+
+export interface GeographyBlueprint {
+  ridges: GeographyRidge[];
+  biomeZones: GeographyBiomeZone[];
+  climateGradient: "north_warm" | "south_warm" | "equator" | "uniform";
+  oceanPattern: "surrounding" | "inland_sea" | "channels" | "minimal";
+}
+
+export interface WorldgenSpecV1 {
+  version: 1;
+  seed: string;
+  factionCount: number;
+  userIntent: {
+    worldName: string;
+    premise: string;
+    tone: string;
+    victoryStyle: string;
+    style: string;
+    size: WorldSize;
+  };
+  terrain: {
+    targetLandRatio: number;
+    continentShape: string;
+    continentCount: number;
+    mountainDensity: number;
+    biomeWeights: Record<string, number>;
+  };
+  geographyBlueprint: GeographyBlueprint;
+}
+
+export type TranslateWarningCode =
+  | "GENERIC_PREMISE"
+  | "FACTIONS_INFERRED_CONSERVATIVELY"
+  | "BIOME_WEIGHTS_NORMALIZED"
+  | "RANGE_CLAMPED"
+  | "OVERRIDE_APPLIED";
+
+export interface TranslateWarning {
+  code: TranslateWarningCode;
+  message: string;
+  field?: string;
+}
+
+// DeepPartial helper for request payloads (matches client lib).
+export type DeepPartial<T> = T extends Array<infer U>
+  ? Array<DeepPartial<U>>
+  : T extends object
+  ? { [K in keyof T]?: DeepPartial<T[K]> }
+  : T;
+
+export interface TranslatePremiseRequest {
+  premise: string;
+  userOverrides?: DeepPartial<WorldgenSpecV1>;
+  lockedPaths?: string[];
+  regenerationNonce?: number;
+}
+
+export interface TranslatePremiseResponse {
+  ok: boolean;
+  spec?: WorldgenSpecV1;
+  normalizedPremise?: string;
+  warnings?: TranslateWarning[];
+  error?: string;
+}
