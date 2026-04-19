@@ -158,3 +158,6 @@ verify_jwt = false
 
 [functions.create-world-bootstrap]
 verify_jwt = false
+
+[functions.preview-world-map]
+verify_jwt = false
