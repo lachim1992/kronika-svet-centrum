@@ -155,3 +155,6 @@ verify_jwt = false
 
 [functions.seedmap-patch]
 verify_jwt = false
+
+[functions.create-world-bootstrap]
+verify_jwt = false
