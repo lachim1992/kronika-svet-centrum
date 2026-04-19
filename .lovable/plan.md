@@ -1,118 +1,130 @@
 
 
-User schválil v3 a přidal 4 hard requirements: idempotency, bootstrap status, seed determinism, parity check. Zapracuji je do finálního locku. Žádná inspekce nepotřebná — celý design už je odsouhlasený, jen doplňuji safeguards.
+User schválil směr Inkrementu 2 a přidal 4 hard refinements. Zapracuji je do finálního locku, plán nechávám stručný — design už je kompletně dohodnutý.
 
-# Unified World Bootstrap v1 — final lock (s 4 safeguards)
+# Playable World Creation — Inkrement 2 (final lock)
 
-## Pre-requisite
-BETA Gate v3 v mainu + smoke 2× zelený.
+## Volby (potvrzené)
+- Hybrid preview (schematic default + full preview tlačítko)
+- 3 presety MVP
+- Premise povinný (min 20 znaků)
+- Rebuild in place ve `WorldSetupWizard.tsx`
 
-## Implementační kroky (nezměněno + 4 doplňky)
+## 4 refinements (hard requirements)
 
-### Krok 1: DB migrace
-`world_foundations` doplnit:
-- `worldgen_spec jsonb`
-- `worldgen_version integer DEFAULT 1`
-- `bootstrap_status text DEFAULT 'pending'` — enum-like: `pending | bootstrapping | ready | failed`
-- `bootstrap_error text` — diagnostic message při `failed`
-- GIN index na `worldgen_spec`
-- CHECK constraint na `bootstrap_status` hodnoty
+### R1: Advanced override = explicitní toggle
+- Otevření Advanced panelu **nemění** resolved spec
+- Uvnitř Advanced: switch `"Použít vlastní parametry mapy"` → teprve ten zapne `advancedOverride.enabled = true`
+- Width/height/seed inputy disabled dokud switch není zapnutý
 
-### Krok 2: Sdílené typy
-`_shared/world-bootstrap-types.ts` + `_shared/world-sizes.ts` dle v3. `BootstrapStatus` přidat do typu.
+### R2: Preset dirty-state logika
+- Každé preset-driven pole (style, victory, premise, terrain knobs) má `dirty` flag
+- První edit pole → `dirty = true`
+- Při přepnutí presetu: dirty pole se **nepřepíše**, čistá ano
+- Tlačítko `"Reset podle presetu"` (zviditelněné jen když existuje aspoň 1 dirty pole) → vyčistí všechny dirty flagy + aplikuje preset
 
-### Krok 3: Edge function `create-world-bootstrap`
+### R3: Canonical payload composer
+- Jeden zdroj pravdy v `src/lib/worldBootstrapPayload.ts`:
+  ```ts
+  composeBootstrapPayload(state) → CreateWorldBootstrapRequest
+  composePreviewPayload(state) → PreviewWorldMapRequest  // subset stejného base
+  ```
+- Preview payload je **derivát** bootstrap payloadu, ne paralelní struktura
+- Test: stejný wizard state → identický `{size, terrain, seed}` v obou requestech
 
-**Idempotency guard (krok 0, před vším):**
+### R4: Submit progress = real steps z bootstrap response
+- Ne generické spinnery
+- Loading panel renderuje 8 kroků: `validate-normalize → world-foundations → server-config → persist-worldgen-spec → generate-world-map → placement-artifacts → mode-specific-seeding → finalize-world-ready`
+- Každý step: pending / running / done / failed s durationMs
+- Při `failed`: zobrazit `bootstrap_error` z DB
+
+## Dodatečné refinementy
+
+### Preview labeling (R5)
+- Schematic: badge `"Rychlý náhled (přibližný)"`
+- Full: badge `"Plný náhled (skutečný engine)"`
+- Vizuálně odlišný rámeček (např. dashed vs solid border)
+
+### Preview response shape (R6)
+`preview-world-map` vrací nejen hex grid, ale i:
 ```ts
-const existing = await sb
-  .from("world_foundations")
-  .select("id, bootstrap_status, worldgen_spec")
-  .eq("session_id", payload.sessionId)
-  .maybeSingle();
-
-if (existing?.bootstrap_status === "ready") {
-  return Response.json({
-    ok: true,
-    alreadyBootstrapped: true,
-    sessionId: payload.sessionId,
-    worldgen: { /* z existing.worldgen_spec */ },
-  });
-}
-if (existing?.bootstrap_status === "bootstrapping") {
-  return Response.json({ ok: false, error: "Bootstrap already in progress" }, { status: 409 });
+{
+  hexes: [...],
+  mapWidth, mapHeight,
+  seed,
+  estimatedStartPositions: number,
+  landRatioResolved: number,
 }
 ```
+Summary panel zobrazí tyto **resolved** hodnoty po full preview (před tím = client-side odhady).
 
-**Status transitions:**
-- Step 0: nastavit `bootstrap_status = 'bootstrapping'` (atomicky s upsert world_foundations)
-- Step 8: nastavit `bootstrap_status = 'ready'`
-- Catch: nastavit `bootstrap_status = 'failed'` + `bootstrap_error = String(err)`
+## Struktura wizardu (potvrzená)
 
-**Seed determinism v `normalizeBootstrapRequest()`:**
-```ts
-const seed = payload.world.seed?.trim() || crypto.randomUUID();
-// Seed se propaguje do spec.seed a všech downstream volání (generate-world-map)
-```
+### Vrstva A — Simple
+1. Preset karty (3): Doporučený / Souostroví / Velký kontinent
+2. Název světa (povinný)
+3. Premise textarea (povinný, min 20 znaků, placeholder z presetu)
+4. Velikost (Malý 21×21 / Střední 31×31 / Velký 41×41)
+5. Styl světa
+6. Herní zaměření
+7. Počet AI frakcí (0–6)
 
-**Parity check po map generation (step 5):**
-```ts
-if (mapResp.mapWidth !== spec.resolvedSize.width || mapResp.mapHeight !== spec.resolvedSize.height) {
-  throw new Error(`Size parity violation: spec=${spec.resolvedSize.width}x${spec.resolvedSize.height}, map=${mapResp.mapWidth}x${mapResp.mapHeight}`);
-}
-// Při upsert world_foundations: map_width/height = spec.resolvedSize.{width,height}
-```
+### Vrstva B — Preview panel
+- Schematic mini-mapa (canvas, client-side, instant)
+- Tlačítko "🔄 Nový seed"
+- Tlačítko "🗺️ Vygenerovat plný náhled"
+- Summary box (resolved hodnoty po full preview, jinak client estimates)
 
-`config.toml`: `[functions.create-world-bootstrap]` `verify_jwt = false`.
+### Vrstva C — Advanced (Collapsible)
+- Switch `"Použít vlastní parametry mapy"` (R1)
+- Width / height / seed (disabled bez switche)
+- Land ratio / mountain density / continent shape / continent count
 
-### Krok 4: Demote `world-generate-init`
-Refactor: jen AI seeding (volaný ze `runModeSpecificSeeding('tb_single_ai')`).
-**Legacy guard:** `world-generate-init` v legacy flow **nesmí** zapisovat `worldgen_spec` ani `bootstrap_status`. Zůstává plně beze změny chování pro flag OFF path.
-
-### Krok 5: Klient feature flag
-`WorldSetupWizard.tsx`:
-- `VITE_USE_UNIFIED_BOOTSTRAP` env flag (default OFF)
-- ON: jeden submit `create-world-bootstrap`
-- OFF: legacy větvení beze změny
-- UI cleanup až Inkrement 3
+### Submit
+- Tlačítko "✨ Vytvořit svět"
+- Progress panel s 8 reálnými kroky (R4)
+- Error handling z `bootstrap_error`
 
 ## Soubory
 
-| Krok | Soubor | Akce |
-|---|---|---|
-| 1 | `supabase/migrations/<ts>_worldgen_bootstrap.sql` | NEW |
-| 2 | `supabase/functions/_shared/world-bootstrap-types.ts` | NEW |
-| 2 | `supabase/functions/_shared/world-sizes.ts` | NEW |
-| 3 | `supabase/functions/create-world-bootstrap/index.ts` | NEW |
-| 3 | `supabase/config.toml` | +1 block |
-| 4 | `supabase/functions/world-generate-init/index.ts` | Refactor: AI seeding only |
-| 5 | `src/types/worldBootstrap.ts` | NEW (re-export) |
-| 5 | `src/components/WorldSetupWizard.tsx` | +flag, alternativní path |
+| Soubor | Akce |
+|---|---|
+| `src/components/WorldSetupWizard.tsx` | Rebuild in place |
+| `src/components/world-setup/PresetCards.tsx` | NEW |
+| `src/components/world-setup/SchematicMapPreview.tsx` | NEW (canvas hex render) |
+| `src/components/world-setup/AdvancedTerrainPanel.tsx` | NEW (s explicit toggle) |
+| `src/components/world-setup/WorldSummaryPanel.tsx` | NEW |
+| `src/components/world-setup/BootstrapProgressPanel.tsx` | NEW (8 steps render) |
+| `src/lib/worldPresets.ts` | NEW (3 presety) |
+| `src/lib/worldBootstrapPayload.ts` | NEW (canonical composer) |
+| `src/hooks/useWizardDirtyState.ts` | NEW (dirty flag tracking) |
+| `supabase/functions/preview-world-map/index.ts` | NEW (no DB writes) |
+| `supabase/config.toml` | +1 block |
 
 ## Acceptance criteria
 
-**Statické (1–4):**
-1. Nová hra s flag ON = 1 backend call do `create-world-bootstrap`
-2. `world_foundations.worldgen_spec` validní `WorldgenSpecV1` pro každou bootstrapnutou hru
-3. `world.size` deterministicky určí mapW/mapH; `advancedOverride.enabled=true` přepíše
-4. Stejný seed + stejný payload → identický `worldgen_spec` (a identická mapa, je-li engine deterministic)
+**UI základ (1–9):**
+1. Wizard má 3 oddělené vrstvy
+2. 3 presety klikatelné, každý přednastaví defaulty
+3. Schematic preview <500ms po změně
+4. "Nový seed" regeneruje schematic okamžitě
+5. "Vygenerovat plný náhled" volá `preview-world-map` <15s
+6. Submit volá `create-world-bootstrap`, loading ukazuje step progress
+7. Premise validace: min 20 znaků
+8. Mobile (271px): vrstvy stackují vertikálně
+9. Schematic vs Full preview vizuálně rozlišené (R5)
 
-**Runtime (5–7):**
-5. 4 nové hry (po jedné v každém `mode`) → všechny `bootstrap_status='ready'`, žádný step `ok: false`
-6. Legacy flow (flag OFF) beze změny chování; nezapisuje `worldgen_spec` ani `bootstrap_status`
-7. Smoke harness 30 turns na bootstrapnuté hře = zelený
-
-**Safeguards (8–10) — nově:**
-8. **Idempotency:** druhý call `create-world-bootstrap` na `bootstrap_status='ready'` session → vrátí `alreadyBootstrapped: true`, žádné duplikáty. Call na `bootstrapping` → 409.
-9. **Status transition:** každý run zanechá `bootstrap_status` v `{ready, failed}`; `bootstrapping` nesmí přežít konec requestu.
-10. **Parity:** `world_foundations.map_width = worldgen_spec.resolvedSize.width` (a height). Mismatch = throw.
+**Refinements (10–13):**
+10. **Preset dirty-state**: ručně změněná pole se přepnutím presetu nepřepíší; "Reset podle presetu" tlačítko viditelné jen když existují dirty pole
+11. **Payload parity**: stejný wizard state → identické `{size, terrain, seed}` v preview i create requestech (test)
+12. **Advanced explicitnost**: otevření Advanced panelu nezmění resolved spec; spec se mění až po zapnutí switche
+13. **Preview response**: `preview-world-map` vrací `{hexes, mapWidth, mapHeight, seed, estimatedStartPositions, landRatioResolved}`; summary panel je zobrazí po full preview
 
 ## NEDĚLÁ
-❌ Prompt → bias translator · ❌ Změna `terrain.ts` · ❌ Map preview · ❌ Persistent-tick refactor · ❌ Tabulka `worldgen_runs` · ❌ Removal starých funkcí · ❌ UI cleanup ve Wizardu · ❌ Migrace existujících her · ❌ Změna canonical turn loop
+❌ Prompt → bias translator (Inkrement 3) · ❌ 3D/icon hex render v preview · ❌ Server-side preview cache · ❌ Removal V1 wizard logiky (rebuild in place, ne čistka) · ❌ Změna create-world-bootstrap contractu · ❌ Více než 3 presety
 
-## Po Inkrementu 1
-- Jeden kanonický bootstrap entrypoint za feature flagem
-- Strukturovaný + idempotent + status-tracked worldgen
-- worldSize deterministic master input s parity guarantee
-- Připraveno na Inkrement 2 (translator) a 3 (UI flip + legacy removal)
+## Po Inkrementu 2
+- Hráč má použitelný wizard s preview, presety, dirty-state safety
+- Backend Inkrementu 1 je volaný z UI s reálným step-by-step progressem
+- Canonical payload composer připraven pro Inkrement 3 (premise → terrain bias)
 
