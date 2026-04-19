@@ -155,12 +155,11 @@ export function deepMerge<T>(base: T, override: DeepPartial<T> | undefined | nul
 export function pickNonBlueprintFields(
   spec: WorldgenSpecV1,
 ): DeepPartial<WorldgenSpecV1> {
-  const out: DeepPartial<WorldgenSpecV1> = {};
+  let out: DeepPartial<WorldgenSpecV1> = {};
   for (const path of ALL_NON_BLUEPRINT_LEAF_PATHS) {
     const v = getByPath(spec, path);
     if (v !== undefined) {
-      // setByPath on an empty {} accumulator
-      (out as any) = setByPath(out as any, path, v);
+      out = setByPath(out as any, path, v) as DeepPartial<WorldgenSpecV1>;
     }
   }
   return out;
