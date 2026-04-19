@@ -44,6 +44,9 @@
     --info: 43 40% 45%;
     --info-foreground: 43 20% 92%;
 
+    --warning: 38 92% 50%;
+    --warning-foreground: 38 20% 12%;
+
     /* Border: gold tint */
     --border: 43 30% 18%;
     --input: 43 30% 18%;
@@ -104,6 +107,8 @@
     --accent-foreground: 42 30% 97%;
     --destructive: 0 50% 36%;
     --destructive-foreground: 0 0% 98%;
+    --warning: 38 92% 45%;
+    --warning-foreground: 38 20% 98%;
     --border: 40 20% 82%;
     --input: 40 20% 82%;
     --ring: 43 64% 42%;
