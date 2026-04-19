@@ -1,124 +1,97 @@
 
+# Inkrement 3 — Final lock v9
 
-# Inkrement 3 — Premise-First (FINAL LOCK v2)
+Po auditu kódu je důležité upřesnění: většina V8 je zatím stále jen ve specifikaci, ne v implementaci. `WorldSetupWizard.tsx` pořád běží na legacy local state, `useWorldSetupWizardState` ještě neexistuje a `worldgenSpecPaths.ts` stále obsahuje staré `ALL_NON_BLUEPRINT_LEAF_PATHS` včetně `seed`. Takže další krok je stále správně specifikačně uzamknout a pak to implementovat atomicky.
 
-User má pravdu ve všech 3 bodech. Doplním D1-D3 + A (advanced unlock semantics) + B (warning codes).
+## Poslední blocker
 
-## Δ proti předchozímu locku
+### G5: Freeze editoru při `isBusy=true`
+User má pravdu. `requestId` guard řeší jen outdated response, ne edit stejného request snapshotu během letu.
 
-### D1: Create gating (tvrdé)
+**Tvrdé pravidlo:**
+Když běží analyze nebo blueprint regen, editor je read-only.
+
 ```ts
-createDisabled = !resolved || isSuggestionStale || isBlueprintStale
+const isAnalyzing = state.activeAnalyzeRequestId !== null;
+const isRegeneratingBlueprint = state.activeBlueprintRegenRequestId !== null;
+const isBusy = isAnalyzing || isRegeneratingBlueprint;
 ```
-Žádný implicit resync v create flow. Hráč musí kliknout "Regenerovat blueprint" než smí Create.
 
-**Acceptance #14 update:** Create button disabled pokud `resolved===null || isSuggestionStale || isBlueprintStale`.
+**Disabled při `isBusy`:**
+- premise textarea
+- inspiration cards
+- inline field editory
+- lock/unlock akce
+- advanced override controls
+- analyze button
+- regen button
+- create button
 
-### D2: Blueprint regeneration = full translate s hard non-blueprint lock
-Tlačítko "Regenerovat blueprint" volá `translate-premise-to-spec` s tímto payloadem, sestaveným klientem:
-```ts
-{
-  premise,
-  userOverrides: pickNonBlueprintFields(state.resolved), 
-    // worldName, size, tone, victoryStyle, style, factionCount, terrain.*
-  lockedPaths: ALL_NON_BLUEPRINT_LEAF_PATHS, 
-    // konstanta v worldgenSpecPaths.ts
-  regenerationNonce: state.regenerationNonce + 1,
-}
-```
-Server respektuje locks v promptu + **vždy hard-merge** override po AI návratu (M4). Výsledek: změní se prakticky jen `geographyBlueprint` (+ deterministicky se posune seed).
+Tím odpadá potřeba `editorRevision` pro MVP a každá úspěšná odpověď vždy odpovídá stále platnému snapshotu editoru.
 
-Helper `composeBlueprintRegenRequest(state)` v `worldBootstrapPayload.ts`.
+### Nové acceptance #26
+Během aktivního analyze nebo blueprint regen requestu nelze měnit premise ani overrides; všechny editory a lock controls jsou disabled. Úspěšná odpověď tedy vždy odpovídá stabilnímu snapshotu stavu.
 
-**Nové acceptance #18:** Blueprint regeneration nemění non-blueprint fields (test: snapshot resolved před/po, diff jen v `geographyBlueprint` a `seed`).
+## Finální lock v9
 
-### D3: Lock canonicalization (leaf-only)
-- `lockedPaths: string[]` v state (serializace, equality)
-- runtime `lockedPathSet = useMemo(() => new Set(state.lockedPaths), [state.lockedPaths])` pro lookup
-- **Lockable paths whitelist** (konstanta `LOCKABLE_LEAF_PATHS`):
-  - `worldName`
-  - `size`
-  - `tone`
-  - `victoryStyle`
-  - `style`
-  - `factionCount`
-  - `terrain.targetLandRatio`
-  - `terrain.mountainDensity`
-  - `terrain.continentShape`
-  - `terrain.continentCount`
-- Žádné parent paths (`terrain`, `geographyBlueprint`) — reducer odmítne lock mimo whitelist
-- Žádné duplicity — reducer dedupliuje při insertu
+### Zůstává
+- kanonický namespace `userIntent.*`
+- leaf-only lock paths
+- `seed` mimo blueprint regen lock set
+- `terrain.biomeWeights.*` uvnitř regen lock setu
+- `resolved` mimo reducer
+- `isBusy` derived z request IDs
+- `REGENERATE_BLUEPRINT_FAIL`
+- discard outdated responses přes `requestId`
+- create disabled při `!resolved || isSuggestionStale || isBlueprintStale || isBusy`
+- regen disabled při `!resolved || isSuggestionStale || isBusy`
 
-**Nové acceptance #19:** Lock akce mimo `LOCKABLE_LEAF_PATHS` jsou no-op; `lockedPaths` neobsahuje duplicity ani parent paths.
+### Přesné soubory k implementaci
+1. `src/lib/worldgenSpecPaths.ts`
+   - `ALL_NON_BLUEPRINT_LEAF_PATHS` → `BLUEPRINT_REGEN_LOCK_PATHS`
+   - `pickNonBlueprintFields` → `pickBlueprintRegenLockedFields`
+   - přidat `terrain.biomeWeights.*`
+   - vyhodit `seed`
+   - přidat invariant komentář
+2. `src/lib/worldBootstrapPayload.ts`
+   - `composeBlueprintRegenRequest` na nový whitelist/helper
+3. `src/hooks/useWorldSetupWizardState.ts`
+   - nový reducer hook
+   - bez `resolved` a bez `analyzing`
+   - request IDs + stale flags + `analyzeError` + `blueprintRegenError`
+4. `src/components/WorldSetupWizard.tsx`
+   - přepojit z legacy local state na nový hook
+   - **freeze všech editorů při `isBusy`**
+5. `src/components/world-setup/AdvancedTerrainPanel.tsx`
+   - přijímat `disabled`
+   - respektovat managed-path semantics
+6. nové UI části
+   - `PremiseAnalyzer`
+   - `SpecReviewSummary`
+   - `SpecFieldEditor`
+   - `SpecLockBadges`
+   - `BlueprintStaleWarning`
+7. backend kontrola
+   - `supabase/functions/translate-premise-to-spec/index.ts`
+   - `supabase/functions/_shared/worldgen-spec-validation.ts`
+   - `supabase/functions/create-world-bootstrap/index.ts`
+   - ověřit autoritativní použití dodaného `geographyBlueprint`
 
-### A: Advanced override unlock = jen managed fields
-Advanced panel má vlastní konstantu `ADVANCED_MANAGED_PATHS`:
-- `size`, `style`, `victoryStyle`, `factionCount`, `terrain.targetLandRatio`, `terrain.mountainDensity`, `terrain.continentShape`, `terrain.continentCount`
+## Implementační pořadí
+1. Path infra + rename + biome lock paths
+2. Reducer hook + request lifecycle + derived busy state
+3. Analyze / regen orchestrace s `requestId`
+4. UI freeze při `isBusy`
+5. Summary/editory/locky
+6. Preview wiring z `resolved`
+7. Create wiring + bootstrap kontrakt
+8. Cleanup legacy preset/dirty-state flow
 
-Switch ON: lockne všechny `ADVANCED_MANAGED_PATHS` na aktuální values (bulk lock).
-Switch OFF: unlockne **jen ty paths, které byly locknuty advancem**. Ručně locknuté pole (přes inline editor) zůstávají.
-
-Implementace: reducer drží `lockedBy: Map<path, "user" | "advanced">` jako interní detail (nebo separátní set `advancedLockedPaths`). Persistence: jen `lockedPaths`, attribution se ztrácí mezi sessions (akceptovatelné pro MVP).
-
-**Nové acceptance #20:** Advanced switch OFF nezruší user-locknutá pole; switch ON nepřepíše hodnoty pole, které už user lockl.
-
-### B: Warning codes (lehká strukturovanost)
-```ts
-type TranslateWarning = {
-  code: "GENERIC_PREMISE" | "FACTIONS_INFERRED_CONSERVATIVELY" 
-      | "BIOME_WEIGHTS_NORMALIZED" | "RANGE_CLAMPED" | "OVERRIDE_APPLIED";
-  message: string;
-  field?: string;
-};
-```
-UI v Inkrementu 3 jen vypíše `message`, code je připraven pro budoucí targeting.
-
-## Doplněné soubory
-
-| Soubor | Akce |
-|---|---|
-| `src/lib/worldgenSpecPaths.ts` | + `LOCKABLE_LEAF_PATHS`, `ADVANCED_MANAGED_PATHS`, `ALL_NON_BLUEPRINT_LEAF_PATHS`, `pickNonBlueprintFields(spec)`, `canonicalizeLocks(paths)` |
-| `src/lib/worldBootstrapPayload.ts` | + `composeBlueprintRegenRequest(state)` |
-| `src/hooks/useWorldSetupWizardState.ts` | reducer drží `advancedLockedPaths: string[]` separátně; akce `LOCK_FIELD` validuje proti whitelist; `ADVANCED_TOGGLE` bulk lock/unlock jen managed paths |
-| `src/components/world-setup/BlueprintStaleWarning.tsx` | tlačítko volá `composeBlueprintRegenRequest` |
-
-Ostatní soubory beze změny vůči předchozímu locku.
-
-## Acceptance criteria — finální set (1-20)
-
-**UX základ (1-6):** beze změny
-
-**Lock & merge (7-10):** beze změny
-
-**Stale & konzistence (11-14):** #14 update viz D1
-
-**Bezpečnost & determinismus (15-17):** beze změny
-
-**Doplněné (18-20):**
-- 18: Blueprint regen mění jen `geographyBlueprint` + `seed`; non-blueprint fields zůstávají
-- 19: Lock akce mimo whitelist = no-op; `lockedPaths` canonicalized (no dup, no parent)
-- 20: Advanced switch OFF nezruší user-locknutá pole; switch ON nepřepíše už locknuté hodnoty
-
-## Implementační pořadí (uzamčené)
-
-1. Typy + paths infra (`worldgenSpecPaths.ts` vč. whitelistů a `pickNonBlueprintFields`)
-2. Backend `translate-premise-to-spec` + shared validation
-3. State reducer (`useWorldSetupWizardState`) vč. `advancedLockedPaths`
-4. Inspirace karty + PremiseAnalyzer (premise + Analyzovat)
-5. SpecReviewSummary + SpecFieldEditor (top-level + terrain leaf editors)
-6. BlueprintStaleWarning + regen wiring
-7. Preview wiring (čte `resolved`, blokované při stale)
-8. Create wiring (D1 gating)
-9. AdvancedTerrainPanel refactor (managed paths, A semantics)
-10. Cleanup: delete PresetCards, worldPresets, useWizardDirtyState
-
-## NEDĚLÁ
-❌ Inline edit blueprint nested polí · ❌ Auto-analyze · ❌ Removal `generate-geo-blueprint` (deprecate only) · ❌ Změna `create-world-bootstrap` API · ❌ Persistence `lockedBy` attribution · ❌ Captcha · ❌ Localizace warning messages · ❌ Separátní endpoint pro blueprint regen (re-use translate-premise-to-spec přes D2)
+## Acceptance finální set
+- 1–25: beze změny
+- **26 nové:** editor freeze při `isBusy`
 
 ## Tím je locked
-- D1 ✓ create gating tvrdé
-- D2 ✓ blueprint regen kontraktně definovaný
-- D3 ✓ lockedPaths leaf-only, canonicalized, string[] s memoized Set
-- A ✓ advanced unlock respektuje user-lockované pole
-- B ✓ warnings mají code
+- G5 ✓ in-flight edits už nemohou zneplatnit přijatou odpověď
+- MVP zůstává jednoduché: žádný `editorRevision`, žádné částečné aplikace odpovědí
 
