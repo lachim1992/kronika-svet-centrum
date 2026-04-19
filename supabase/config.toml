@@ -161,3 +161,6 @@ verify_jwt = false
 
 [functions.preview-world-map]
 verify_jwt = false
+
+[functions.translate-premise-to-spec]
+verify_jwt = true
