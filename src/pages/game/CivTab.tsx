@@ -21,6 +21,7 @@ interface Props {
   cities: any[];
   wonders: any[];
   armies: any[];
+  militaryStacks: any[];
   entityTraits: any[];
   civilizations: any[];
   declarations: any[];
@@ -36,7 +37,7 @@ interface Props {
 }
 
 const CivTab = ({
-  sessionId, session, events, memories, players, cities, wonders, armies, entityTraits,
+  sessionId, session, events, memories, players, cities, wonders, armies, militaryStacks, entityTraits,
   civilizations, declarations, worldCrises, secretObjectives, cityStates, resources, chronicles,
   currentPlayerName, currentTurn, myRole, onRefetch,
 }: Props) => {
