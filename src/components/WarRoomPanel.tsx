@@ -123,7 +123,7 @@ const WarRoomPanel = ({ sessionId, currentPlayerName, currentTurn, gameMode, cit
           <Swords className="h-4 w-4 text-illuminated" /> Vojenská síla
         </h3>
         {players.map(p => {
-          const pArmies = militaryStacks.filter(s => s.owner_player === p.player_name && s.status === "active");
+          const pArmies = militaryStacks.filter(s => s.player_name === p.player_name && s.is_active);
           const pCities = cities.filter(c => c.owner_player === p.player_name);
           return (
             <div key={p.id} className="flex items-center gap-3 text-sm">
