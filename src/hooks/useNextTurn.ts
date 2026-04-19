@@ -60,6 +60,20 @@ export function useNextTurn({ sessionId, currentTurn, playerName, gameMode, onCo
         toast.info("📦 Ekonomika všech hráčů zpracována.");
       }
 
+      // Canonical loop step (per BETA_SCOPE.md): refresh-economy after commit-turn.
+      // Non-fatal: turn is already committed server-side; refresh is downstream consolidation.
+      try {
+        const { error: refreshErr } = await supabase.functions.invoke("refresh-economy", {
+          body: { session_id: sessionId },
+        });
+        if (refreshErr) {
+          console.warn("refresh-economy non-fatal:", refreshErr.message);
+          toast.warning("Ekonomika nebyla plně přepočtena, hra pokračuje.");
+        }
+      } catch (e) {
+        console.warn("refresh-economy threw:", e);
+      }
+
       // Background tasks are now scheduled asynchronously via EdgeRuntime.waitUntil
       // They will complete in the background — no need to wait for them
       if (result?.backgroundScheduled) {

@@ -18,6 +18,7 @@ interface Props {
   cities: any[];
   wonders: any[];
   armies: any[];
+  militaryStacks: any[];
   resources: any[];
   trades: any[];
   entityTraits: any[];
@@ -34,7 +35,7 @@ interface Props {
 }
 
 const RealmTab = ({
-  sessionId, session, events, memories, players, cities, wonders, armies,
+  sessionId, session, events, memories, players, cities, wonders, armies, militaryStacks,
   resources, trades, entityTraits, civilizations, declarations, worldCrises,
   secretObjectives, cityStates, chronicles, currentPlayerName, currentTurn,
   myRole, onRefetch,
@@ -96,7 +97,7 @@ const RealmTab = ({
             currentTurn={currentTurn}
             gameMode={session?.game_mode}
             cities={cities}
-            armies={armies}
+            militaryStacks={militaryStacks}
             events={events}
             players={players}
             worldCrises={worldCrises}

@@ -77,16 +77,18 @@ const RealmDashboard = ({ sessionId, currentPlayerName, currentTurn, myRole, cit
 
   return (
     <div className="space-y-4">
-      {/* Header + Process Turn */}
+      {/* Header + Process Turn (admin/moderator only — players use canonical commit-turn flow) */}
       <div className="flex items-center justify-between">
         <h3 className="text-sm font-display font-semibold flex items-center gap-2">
           <Crown className="h-4 w-4 text-illuminated" />
           Přehled říše
         </h3>
-        <Button onClick={handleProcessTurn} disabled={processing} size="sm" className="font-display">
-          {processing ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <Play className="h-3 w-3 mr-1" />}
-          Zpracovat kolo
-        </Button>
+        {(myRole === "admin" || myRole === "moderator") && (
+          <Button onClick={handleProcessTurn} disabled={processing} size="sm" variant="outline" className="font-display text-xs">
+            {processing ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <Play className="h-3 w-3 mr-1" />}
+            Zpracovat kolo (dev)
+          </Button>
+        )}
       </div>
 
       {/* Key Indicators */}

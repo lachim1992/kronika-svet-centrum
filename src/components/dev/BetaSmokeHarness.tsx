@@ -98,7 +98,7 @@ const BetaSmokeHarness = ({ sessionId, currentPlayerName }: Props) => {
     if (commitOk) {
       try {
         const { data, error } = await supabase.functions.invoke("refresh-economy", {
-          body: { sessionId },
+          body: { session_id: sessionId },
         });
         if (error) throw new Error(error.message || "refresh-economy failed");
         refreshSteps = (data as any)?.steps ?? [];

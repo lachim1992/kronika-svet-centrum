@@ -21,6 +21,7 @@ interface Props {
   cities: any[];
   wonders: any[];
   armies: any[];
+  militaryStacks: any[];
   entityTraits: any[];
   civilizations: any[];
   declarations: any[];
@@ -36,7 +37,7 @@ interface Props {
 }
 
 const CivTab = ({
-  sessionId, session, events, memories, players, cities, wonders, armies, entityTraits,
+  sessionId, session, events, memories, players, cities, wonders, armies, militaryStacks, entityTraits,
   civilizations, declarations, worldCrises, secretObjectives, cityStates, resources, chronicles,
   currentPlayerName, currentTurn, myRole, onRefetch,
 }: Props) => {
@@ -125,7 +126,7 @@ const CivTab = ({
             <span className="flex items-center gap-2"><Swords className="h-4 w-4 text-primary" />Válečná mapa</span>
           </AccordionTrigger>
           <AccordionContent className="px-4 pb-4">
-            <WarRoomPanel sessionId={sessionId} currentPlayerName={currentPlayerName} currentTurn={currentTurn} gameMode={session?.game_mode} cities={cities} armies={armies} events={events} players={players} worldCrises={worldCrises} onRefetch={onRefetch} />
+            <WarRoomPanel sessionId={sessionId} currentPlayerName={currentPlayerName} currentTurn={currentTurn} gameMode={session?.game_mode} cities={cities} militaryStacks={militaryStacks} events={events} players={players} worldCrises={worldCrises} onRefetch={onRefetch} />
           </AccordionContent>
         </AccordionItem>
 
