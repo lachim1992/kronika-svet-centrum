@@ -21,6 +21,7 @@ import {
   normalizeSpec,
   TranslateRequestSchema,
 } from "../_shared/worldgen-spec-validation.ts";
+import { BIOME_KEY_SET } from "../_shared/biome-keys.ts";
 import type {
   TranslatePremiseResponse,
   TranslateWarning,
@@ -252,6 +253,19 @@ Deno.serve(async (req) => {
     // Heuristic warning for very short premise
     if (premise.trim().length < 80) {
       warnings.push({ code: "GENERIC_PREMISE", message: "Premisa je krátká — AI návrh je obecnější." });
+    }
+
+    // Biome drift audit (mirror list — see _shared/biome-keys.ts).
+    // We log instead of failing — the spec is still useful even with extra biome keys.
+    const driftedBiomes: string[] = [];
+    for (const b of Object.keys(spec.terrain.biomeWeights ?? {})) {
+      if (!BIOME_KEY_SET.has(b)) driftedBiomes.push(b);
+    }
+    if (driftedBiomes.length > 0) {
+      console.warn(
+        "[translate-premise-to-spec] BIOME_DRIFT — spec contains biomes outside canonical mirror list:",
+        driftedBiomes,
+      );
     }
 
     const resp: TranslatePremiseResponse = {
