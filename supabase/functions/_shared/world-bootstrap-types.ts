@@ -85,22 +85,45 @@ export interface CreateWorldBootstrapRequest {
 }
 
 // ── Persisted spec artifact (stored in world_foundations.worldgen_spec) ──
+// NOTE: Inkrement 3 expanded shape — add geographyBlueprint, factionCount, style.
+//       Legacy producers may omit these; consumers should treat them optional.
+
+export interface GeographyRidge {
+  id: string;
+  startQ: number;
+  startR: number;
+  endQ: number;
+  endR: number;
+  strength: number;
+}
+
+export interface GeographyBiomeZone {
+  id: string;
+  biome: string;
+  centerQ: number;
+  centerR: number;
+  radius: number;
+  intensity: number;
+}
+
+export interface GeographyBlueprint {
+  ridges: GeographyRidge[];
+  biomeZones: GeographyBiomeZone[];
+  climateGradient: "north_warm" | "south_warm" | "equator" | "uniform";
+  oceanPattern: "surrounding" | "inland_sea" | "channels" | "minimal";
+}
 
 export interface WorldgenSpecV1 {
   version: 1;
   seed: string;
-  mode: GameMode;
+  factionCount: number;
   userIntent: {
     worldName: string;
     premise: string;
     tone: string;
     victoryStyle: string;
+    style: string;
     size: WorldSize;
-  };
-  resolvedSize: {
-    width: number;
-    height: number;
-    source: "size_profile" | "advanced_override";
   };
   terrain: {
     targetLandRatio: number;
@@ -109,10 +132,58 @@ export interface WorldgenSpecV1 {
     mountainDensity: number;
     biomeWeights: Record<string, number>;
   };
+  geographyBlueprint: GeographyBlueprint;
+}
+
+// Backwards-compat: legacy mode field on persisted spec may exist; new producers
+// derive mode from CreateWorldBootstrapRequest separately.
+export interface LegacyWorldgenSpecFields {
+  mode?: GameMode;
+  resolvedSize?: {
+    width: number;
+    height: number;
+    source: "size_profile" | "advanced_override";
+  };
   notes?: {
     usedAdvancedOverride?: boolean;
-    promptBiasApplied?: false; // v1 explicitly false; Increment 2 will flip
+    promptBiasApplied?: boolean;
   };
+}
+
+// ── Translate-premise-to-spec contract (Inkrement 3) ──
+
+export type TranslateWarningCode =
+  | "GENERIC_PREMISE"
+  | "FACTIONS_INFERRED_CONSERVATIVELY"
+  | "BIOME_WEIGHTS_NORMALIZED"
+  | "RANGE_CLAMPED"
+  | "OVERRIDE_APPLIED";
+
+export interface TranslateWarning {
+  code: TranslateWarningCode;
+  message: string;
+  field?: string;
+}
+
+export type DeepPartial<T> = T extends Array<infer U>
+  ? Array<DeepPartial<U>>
+  : T extends object
+  ? { [K in keyof T]?: DeepPartial<T[K]> }
+  : T;
+
+export interface TranslatePremiseRequest {
+  premise: string;
+  userOverrides?: DeepPartial<WorldgenSpecV1>;
+  lockedPaths?: string[];
+  regenerationNonce?: number;
+}
+
+export interface TranslatePremiseResponse {
+  ok: boolean;
+  spec?: WorldgenSpecV1;
+  normalizedPremise?: string;
+  warnings?: TranslateWarning[];
+  error?: string;
 }
 
 // ── Response ──

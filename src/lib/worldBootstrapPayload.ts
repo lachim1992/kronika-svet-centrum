@@ -1,22 +1,28 @@
-// Canonical payload composer (R3).
+// Canonical payload composer.
 //
-// Single source of truth for translating the wizard state into both:
-//   • create-world-bootstrap request
-//   • preview-world-map request (a derived subset of the same base)
-//
-// This guarantees payload parity: identical wizard state produces identical
-// {size, terrain, seed} in both requests.
+// Inkrement 3 update: composer now derives bootstrap & preview payloads from
+// the resolved WorldgenSpecV1 (output of translate-premise-to-spec + user
+// overrides). The legacy "WizardCanonicalState" interface is preserved for
+// back-compat with the still-current bootstrap flow, but new code should
+// prefer `composeBootstrapFromSpec`.
 
-import type {
-  CreateWorldBootstrapRequest,
-  FactionSeedInput,
-  GameMode,
-  WorldSize,
+import {
+  type CreateWorldBootstrapRequest,
+  type DeepPartial,
+  type FactionSeedInput,
+  type GameMode,
+  type TranslatePremiseRequest,
+  type WorldgenSpecV1,
+  type WorldSize,
 } from "@/types/worldBootstrap";
+import {
+  ALL_NON_BLUEPRINT_LEAF_PATHS,
+  pickNonBlueprintFields,
+} from "@/lib/worldgenSpecPaths";
 
+// ─── Legacy canonical state (kept for back-compat) ───────────────────────────
 export interface WizardCanonicalState {
-  // World identity
-  sessionId: string; // empty string for preview (no session yet)
+  sessionId: string;
   playerName: string;
   mode: GameMode;
   worldName: string;
@@ -25,20 +31,14 @@ export interface WizardCanonicalState {
   victoryStyle: string;
   size: WorldSize;
   seed: string | null;
-
-  // Map
   advancedOverrideEnabled: boolean;
   customWidth?: number;
   customHeight?: number;
-
-  // Terrain
-  targetLandRatio: number; // 0..1
+  targetLandRatio: number;
   continentShape: string;
   continentCount: number;
-  mountainDensity: number; // 0..1
+  mountainDensity: number;
   biomeWeights?: Record<string, number>;
-
-  // Optional identity / factions (only used for bootstrap)
   identity?: {
     settlementName?: string;
     cultureName?: string;
@@ -144,8 +144,6 @@ export function composePreviewPayload(
   };
 }
 
-// Test helper — verifies that bootstrap and preview payloads agree on the
-// canonical map/terrain inputs. Used by acceptance criterion 11.
 export function assertPayloadParity(s: WizardCanonicalState): boolean {
   const boot = composeBootstrapPayload(s);
   const prev = composePreviewPayload(s);
@@ -157,4 +155,93 @@ export function assertPayloadParity(s: WizardCanonicalState): boolean {
   const sameTerrain =
     JSON.stringify(boot.map.terrain) === JSON.stringify(prev.terrain);
   return sameSize && sameSeed && sameAdv && sameTerrain;
+}
+
+// ─── Inkrement 3: spec-driven composers ──────────────────────────────────────
+
+/** Build the request to translate-premise-to-spec from current wizard state. */
+export function composeAnalyzeRequest(args: {
+  premise: string;
+  userOverrides?: DeepPartial<WorldgenSpecV1>;
+  lockedPaths?: string[];
+  regenerationNonce?: number;
+}): TranslatePremiseRequest {
+  return {
+    premise: args.premise,
+    userOverrides: args.userOverrides,
+    lockedPaths: args.lockedPaths,
+    regenerationNonce: args.regenerationNonce ?? 0,
+  };
+}
+
+/**
+ * D2: Build a translate request that regenerates ONLY the geographyBlueprint
+ * by hard-locking every non-blueprint editable leaf to the current resolved
+ * spec values. Server respects locks in prompt + always hard-merges overrides
+ * after AI returns.
+ */
+export function composeBlueprintRegenRequest(args: {
+  spec: WorldgenSpecV1;
+  regenerationNonce: number;
+}): TranslatePremiseRequest {
+  return {
+    premise: args.spec.userIntent.premise,
+    userOverrides: pickNonBlueprintFields(args.spec),
+    lockedPaths: [...ALL_NON_BLUEPRINT_LEAF_PATHS],
+    regenerationNonce: args.regenerationNonce,
+  };
+}
+
+/**
+ * Compose CreateWorldBootstrapRequest from a fully resolved WorldgenSpecV1
+ * (Inkrement 3 path). Back-compat: existing create-world-bootstrap accepts
+ * the same wire shape, so we just project spec → request.
+ */
+export function composeBootstrapFromSpec(args: {
+  sessionId: string;
+  playerName: string;
+  mode: GameMode;
+  spec: WorldgenSpecV1;
+  identity?: WizardCanonicalState["identity"];
+  factions?: FactionSeedInput[];
+}): CreateWorldBootstrapRequest {
+  const { spec } = args;
+  return {
+    sessionId: args.sessionId,
+    playerName: args.playerName,
+    mode: args.mode,
+    world: {
+      name: spec.userIntent.worldName,
+      premise: spec.userIntent.premise,
+      tone: spec.userIntent.tone,
+      victoryStyle: spec.userIntent.victoryStyle,
+      size: spec.userIntent.size,
+      seed: spec.seed,
+    },
+    map: {
+      terrain: {
+        targetLandRatio: spec.terrain.targetLandRatio,
+        continentShape: spec.terrain.continentShape,
+        continentCount: spec.terrain.continentCount,
+        mountainDensity: spec.terrain.mountainDensity,
+        biomeWeights: spec.terrain.biomeWeights,
+      },
+    },
+    identity: args.identity,
+    factions: args.factions,
+  };
+}
+
+export function composePreviewFromSpec(spec: WorldgenSpecV1): PreviewWorldMapRequest {
+  return {
+    size: spec.userIntent.size,
+    seed: spec.seed,
+    terrain: {
+      targetLandRatio: spec.terrain.targetLandRatio,
+      continentShape: spec.terrain.continentShape,
+      continentCount: spec.terrain.continentCount,
+      mountainDensity: spec.terrain.mountainDensity,
+      biomeWeights: spec.terrain.biomeWeights,
+    },
+  };
 }
