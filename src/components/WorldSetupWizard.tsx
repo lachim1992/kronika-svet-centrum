@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { USE_UNIFIED_BOOTSTRAP, type CreateWorldBootstrapRequest } from "@/types/worldBootstrap";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -305,6 +306,91 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
     if (!worldName.trim() || !premise.trim()) { toast.error("Vyplňte název a premisu světa"); return; }
     if (!isMultiMode && !playerName.trim()) { toast.error("Zadejte jméno hráče"); return; }
     if (!isMultiMode && !settlementName.trim()) { toast.error("Zadejte název startovního sídla"); return; }
+
+    // ─── UNIFIED WORLD BOOTSTRAP v1 (feature-flagged) ────────────────────
+    // When VITE_USE_UNIFIED_BOOTSTRAP=true, route ALL modes through the
+    // single canonical orchestrator. Legacy multi-call flow below is the
+    // fallback (default).
+    if (USE_UNIFIED_BOOTSTRAP) {
+      setCreating(true);
+      try {
+        const roomCode = Math.random().toString(36).substring(2, 8).toUpperCase();
+        const { data: session, error: sessErr } = await supabase
+          .from("game_sessions")
+          .insert({
+            room_code: roomCode,
+            player1_name: playerName.trim() || "Host",
+            max_players: isMultiMode ? 10 : 1,
+            created_by: userId,
+            game_mode: gameMode,
+            tier: "premium",
+            init_status: isMultiMode ? "lobby" : "initializing",
+          } as any)
+          .select()
+          .single();
+        if (sessErr || !session) throw sessErr || new Error("Session creation failed");
+
+        const sizeConfig = WORLD_SIZES.find(s => s.value === worldSize) || WORLD_SIZES[0];
+        const payload: CreateWorldBootstrapRequest = {
+          sessionId: session.id,
+          playerName: playerName.trim() || "Host",
+          mode: gameMode as CreateWorldBootstrapRequest["mode"],
+          world: {
+            name: worldName.trim(),
+            premise: premise.trim(),
+            tone,
+            victoryStyle,
+            size: worldSize as "small" | "medium" | "large",
+          },
+          map: {
+            advancedOverride:
+              mapWidth !== sizeConfig.mapW || mapHeight !== sizeConfig.mapH
+                ? { enabled: true, width: mapWidth, height: mapHeight }
+                : undefined,
+            terrain: {
+              targetLandRatio: landRatio / 100,
+              continentShape,
+              continentCount:
+                continentShape === "pangaea" ? 1
+                : continentShape === "two_continents" ? 2
+                : continentShape === "archipelago" ? 5
+                : 2,
+              mountainDensity: mountainDensity / 100,
+              biomeWeights: Object.fromEntries(
+                Object.entries(biomeWeights).map(([k, v]) => [k, (v as number) / 100]),
+              ),
+            },
+          },
+          identity: {
+            settlementName: settlementName.trim() || undefined,
+            cultureName: (cultureName || "").trim() || undefined,
+            languageName: (languageName || "").trim() || undefined,
+            realmName: (realmName || "").trim() || undefined,
+          },
+          factions: factionConfigs?.length ? factionConfigs : undefined,
+        };
+
+        const { data: bootstrapData, error: bootstrapErr } = await supabase.functions.invoke(
+          "create-world-bootstrap",
+          { body: payload },
+        );
+        if (bootstrapErr) throw bootstrapErr;
+        if (!bootstrapData?.ok) {
+          throw new Error(bootstrapData?.error || "Bootstrap failed");
+        }
+
+        toast.success(bootstrapData.alreadyBootstrapped ? "Svět již existoval" : "Svět vytvořen");
+        onCreated?.(session.id);
+        return;
+      } catch (e: any) {
+        console.error("[unified-bootstrap] failed:", e);
+        toast.error(e?.message || "Vytvoření světa selhalo");
+        return;
+      } finally {
+        setCreating(false);
+      }
+    }
+    // ─── END UNIFIED WORLD BOOTSTRAP v1 ──────────────────────────────────
 
     // ── MULTIPLAYER LOBBY MODE ──
     // For tb_multi, create only world settings + session, host configures civ in lobby like everyone else
