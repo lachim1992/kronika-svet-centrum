@@ -18,7 +18,14 @@ reflect the result of that grep at the date of last verification.
 
 ## Last verified
 
-2026-04-17
+2026-04-20 (Sprint 1 Krok 0)
+
+## Sprint 1 status
+
+- **Runtime writers**: `process-turn` player_resources write CUT (Krok 1). `command-dispatch` stockpile sync CUT (Krok 1).
+- **Seed paths**: `initPlayerResources()` in `createGameSession`/`joinGameSession` CUT (Krok 2). `MyGames.tsx` direct insert CUT (Krok 2).
+- **FE allowlist**: see `docs/architecture/legacy-allowlist.md`
+- **BE inventory**: see `docs/architecture/legacy-backend-inventory.txt` (Sprint 2)
 
 ---
 

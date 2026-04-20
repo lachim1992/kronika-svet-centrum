@@ -5,8 +5,18 @@
 
 ## Status
 
+Last verified: 2026-04-20 (Sprint 1 Krok 0)
+
 `player_resources` is **legacy operational support**. The canonical economic ledger is `realm_resources`.
 Do not build new features against `player_resources`.
+
+### Sprint 1 cuts (2026-04-20)
+- ✅ `process-turn` runtime write to `player_resources` — REMOVED
+- ✅ `command-dispatch` wealth stockpile sync — REMOVED
+- ✅ `initPlayerResources()` from `createGameSession`/`joinGameSession` — REMOVED
+- ✅ `MyGames.tsx` direct insert — REMOVED
+- ✅ `fetchLegacyCompat()` removed from initial load and refetch paths
+- ✅ Legacy data available only via opt-in `useGameSessionLegacy()` hook
 
 The UI state variable `armies` maps to `military_capacity` (legacy naming). The canonical military data source is `military_stacks`. `military_capacity` is also legacy operational support.
 
