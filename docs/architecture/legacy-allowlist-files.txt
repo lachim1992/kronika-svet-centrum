@@ -1,0 +1,5 @@
+src/hooks/useGameSession.ts
+src/components/EmpireManagement.tsx
+src/components/LeaderboardsPanel.tsx
+src/components/AdminMonitorPanel.tsx
+src/lib/empireOverviewAdapter.ts
