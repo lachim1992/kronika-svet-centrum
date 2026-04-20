@@ -1046,8 +1046,8 @@ async function executeRecruitStack(
     grain_reserve: newGrain,
   }).eq("id", realm.id);
 
-  await safeInsert(supabase.from("player_resources").update({ stockpile: newGold })
-    .eq("session_id", sessionId).eq("player_name", playerName).eq("resource_type", "wealth"));
+  // player_resources stockpile sync REMOVED (Sprint 1, Krok 1)
+  // Canonical gold_reserve is already updated in realm_resources above.
 
   // ── 4. Chronicle ──
   const chronicleText = `${playerName} zřídil armádu **${stackName.trim()}** (${preset.label}). Síla: ${totalManpower} mužů, náklady: ${totalGold} zlata + ${Math.round(totalProdCost)} produkce. Morálka: ${finalMorale}.`;
