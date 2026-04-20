@@ -476,7 +476,7 @@ const Dashboard = () => {
           currentPlayerName={myPlayerName}
           currentTurn={currentTurn}
           cities={cities}
-          armies={armies}
+          realm={(realmResources || []).find((r: any) => r.player_name === myPlayerName) ?? null}
           myRole={myRole}
           onEntityClick={handleEntityClick}
           onRefetch={refetch}
