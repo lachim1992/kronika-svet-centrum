@@ -148,16 +148,7 @@ const MyGames = () => {
       role: "player",
     });
 
-    for (const rt of ["food", "wood", "stone", "iron", "wealth"]) {
-      await supabase.from("player_resources").insert({
-        session_id: session.id,
-        player_name: playerName.trim(),
-        resource_type: rt,
-        income: rt === "food" ? 4 : rt === "wood" ? 3 : rt === "stone" ? 2 : rt === "iron" ? 1 : 2,
-        upkeep: rt === "food" ? 2 : rt === "wood" ? 1 : rt === "wealth" ? 1 : 0,
-        stockpile: rt === "food" ? 10 : rt === "wood" ? 5 : rt === "stone" ? 3 : rt === "iron" ? 2 : 5,
-      });
-    }
+    // player_resources seed REMOVED (Sprint 1, Krok 2) — canonical state is realm_resources
 
     toast.success("Připojeno ke hře!");
     navigate(`/game/${session.id}`);

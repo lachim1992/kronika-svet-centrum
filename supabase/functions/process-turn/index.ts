@@ -1444,36 +1444,10 @@ Deno.serve(async (req) => {
     }).eq("id", realm.id);
 
     // ══════════════════════════════════════════
-    // UPDATE PLAYER_RESOURCES (backward compat)
+    // PLAYER_RESOURCES back-compat write REMOVED (Sprint 1, Krok 1)
+    // Canonical state is in realm_resources (updated above).
+    // See DEPRECATION.md + docs/architecture/legacy-writer-audit.md
     // ══════════════════════════════════════════
-    const resourceUpdates = [
-      { type: "food", income: Math.round(totalCityProduction), upkeep: totalDemand + armyProductionUpkeep },
-      { type: "wealth", income: wealthIncome, upkeep: armyWealthUpkeep + sportFundingExpense + totalTollsPaid },
-    ];
-    for (const ru of resourceUpdates) {
-      const { data: existing } = await supabase.from("player_resources")
-        .update({ income: ru.income, upkeep: ru.upkeep, updated_at: new Date().toISOString() })
-        .eq("session_id", sessionId).eq("player_name", playerName).eq("resource_type", ru.type)
-        .select("id, stockpile, last_applied_turn");
-      if (!existing || existing.length === 0) {
-        await supabase.from("player_resources").insert({
-          session_id: sessionId, player_name: playerName,
-          resource_type: ru.type, income: ru.income, upkeep: ru.upkeep, stockpile: 0, last_applied_turn: 0,
-        });
-      }
-    }
-
-    const { data: allResources } = await supabase.from("player_resources").select("*")
-      .eq("session_id", sessionId).eq("player_name", playerName);
-    for (const res of (allResources || [])) {
-      if (res.last_applied_turn >= currentTurn) continue;
-      let newStockpile: number;
-      if (res.resource_type === "wealth") newStockpile = newGoldReserve;
-      else newStockpile = Math.max(0, (res.stockpile || 0) + (res.income || 0) - (res.upkeep || 0));
-      await supabase.from("player_resources").update({
-        stockpile: newStockpile, last_applied_turn: currentTurn, updated_at: new Date().toISOString(),
-      }).eq("id", res.id);
-    }
 
     // ══════════════════════════════════════════
     // LOG

@@ -1,0 +1,6 @@
+supabase/functions/command-dispatch/index.ts
+supabase/functions/generate-promo-world/index.ts
+supabase/functions/mp-world-generate/index.ts
+supabase/functions/process-turn/index.ts
+supabase/functions/repair-world/index.ts
+supabase/functions/world-generate-init/index.ts

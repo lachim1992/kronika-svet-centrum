@@ -161,22 +161,24 @@ export function useGameSession(sessionId: string | null) {
   }, [sessionId]);
 
   // ── Combined initial fetch (was `fetchAll`) ──
+  // Sprint 1: fetchLegacyCompat REMOVED from canonical player loop.
+  // Legacy data is available only via useGameSessionLegacy() opt-in hook.
   const fetchSessionData = useCallback(async () => {
     if (!sessionId) return;
     if (!initialLoadDone.current) setLoading(true);
-    await Promise.all([fetchCore(), fetchLegacyCompat(), fetchContent()]);
+    await Promise.all([fetchCore(), fetchContent()]);
     setLoading(false);
     initialLoadDone.current = true;
-  }, [sessionId, fetchCore, fetchLegacyCompat, fetchContent]);
+  }, [sessionId, fetchCore, fetchContent]);
 
   // Debounced refetchers — core and content are independent
   const debouncedRefetchCore = useCallback(() => {
     if (coreTimer.current) clearTimeout(coreTimer.current);
     coreTimer.current = setTimeout(() => {
       fetchCore();
-      fetchLegacyCompat();
+      // fetchLegacyCompat REMOVED from refetch (Sprint 1, Krok 3)
     }, 800);
-  }, [fetchCore, fetchLegacyCompat]);
+  }, [fetchCore]);
 
   const debouncedRefetchContent = useCallback(() => {
     if (contentTimer.current) clearTimeout(contentTimer.current);
@@ -231,11 +233,40 @@ export function useGameSession(sessionId: string | null) {
     session, events, memories, chronicles, cityStates, responses, players, cities,
     // Canonical economic + military state
     realmResources, militaryStacks,
-    // Legacy compat (do not use in new code)
-    resources, armies, trades, wonders, entityTraits,
+    /**
+     * @deprecated Legacy compat — use useGameSessionLegacy() for explicit opt-in.
+     * Do not destructure or use in new code. See DEPRECATION.md.
+     */
+    resources,
+    /** @deprecated See resources above. */
+    armies,
+    /** @deprecated See resources above. */
+    trades,
+    wonders, entityTraits,
     civilizations, greatPersons, declarations, worldCrises, secretObjectives,
     loading, refetch: fetchSessionData,
+    // Exposed for opt-in legacy hook only — do not call directly
+    _fetchLegacyCompat: fetchLegacyCompat,
   };
+}
+
+// ============================================================================
+// useGameSessionLegacy — opt-in hook for legacy data.
+//
+// Sprint 1: Legacy tables (player_resources, military_capacity, trade_log)
+// are NO LONGER fetched automatically. Components on the FE allowlist
+// that still need this data must explicitly call this hook.
+//
+// Allowed importers: see docs/architecture/legacy-allowlist-files.txt
+// ============================================================================
+export function useGameSessionLegacy(gameSession: ReturnType<typeof useGameSession>) {
+  const { _fetchLegacyCompat, resources, armies, trades } = gameSession;
+
+  useEffect(() => {
+    _fetchLegacyCompat();
+  }, [_fetchLegacyCompat]);
+
+  return { resources, armies, trades, refetchLegacy: _fetchLegacyCompat };
 }
 
 // ---- Session Management ----
@@ -255,7 +286,7 @@ export async function createGameSession(playerName: string): Promise<GameSession
     player_number: 1,
   });
 
-  await initPlayerResources(data.id, playerName);
+  // initPlayerResources REMOVED (Sprint 1, Krok 2) — canonical state is realm_resources
   return data;
 }
 
@@ -280,7 +311,7 @@ export async function joinGameSession(roomCode: string, playerName: string): Pro
     await supabase.from("game_sessions").update({ player2_name: playerName }).eq("id", session.id);
   }
 
-  await initPlayerResources(session.id, playerName);
+  // initPlayerResources REMOVED (Sprint 1, Krok 2) — canonical state is realm_resources
   return session;
 }
 

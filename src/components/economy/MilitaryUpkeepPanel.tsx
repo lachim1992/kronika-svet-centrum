@@ -3,11 +3,11 @@ import { InfoTip } from "@/components/ui/info-tip";
 import { computeArmyGoldUpkeep, computeArmyFoodUpkeep, getStackUnitCount } from "@/lib/economyConstants";
 
 interface Props {
-  armies: any[];
+  armies?: any[];
   realm: any;
 }
 
-const MilitaryUpkeepPanel = ({ armies, realm }: Props) => {
+const MilitaryUpkeepPanel = ({ armies = [], realm }: Props) => {
   const goldUpkeep = computeArmyGoldUpkeep(armies);
   const foodUpkeep = computeArmyFoodUpkeep(armies);
   const totalUnits = armies.reduce((s, stack) => s + getStackUnitCount(stack), 0);

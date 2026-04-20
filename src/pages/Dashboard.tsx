@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import ErrorBoundary from "@/components/ErrorBoundary";
 import { useParams, useNavigate } from "react-router-dom";
-import { useGameSession } from "@/hooks/useGameSession";
+import { useGameSession, useGameSessionLegacy } from "@/hooks/useGameSession";
 import { useAuth } from "@/hooks/useAuth";
 import { useEntityIndex } from "@/hooks/useEntityIndex";
 import { supabase } from "@/integrations/supabase/client";
@@ -46,13 +46,16 @@ const Dashboard = () => {
   const { sessionId } = useParams<{ sessionId: string }>();
   const navigate = useNavigate();
   const { user } = useAuth();
+  const gameSession = useGameSession(sessionId || null);
   const {
     session, events, memories, chronicles, cityStates, responses,
-    players, cities, resources, armies, trades, wonders, entityTraits,
+    players, cities, wonders, entityTraits,
     realmResources, militaryStacks,
     civilizations, greatPersons, declarations, worldCrises, secretObjectives,
     loading, refetch,
-  } = useGameSession(sessionId || null);
+  } = gameSession;
+  // Legacy data — opt-in for allowlisted consumers (GameHubFAB, CouncilTab, PersistentTab)
+  const { resources, armies, trades } = useGameSessionLegacy(gameSession);
 
   const entityIndex = useEntityIndex(sessionId);
 
@@ -473,7 +476,7 @@ const Dashboard = () => {
           currentPlayerName={myPlayerName}
           currentTurn={currentTurn}
           cities={cities}
-          armies={armies}
+          realm={(realmResources || []).find((r: any) => r.player_name === myPlayerName) ?? null}
           myRole={myRole}
           onEntityClick={handleEntityClick}
           onRefetch={refetch}

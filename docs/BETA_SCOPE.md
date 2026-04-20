@@ -56,7 +56,7 @@
 - session loads, `commit-turn` ok, `refresh-economy` 4 steps ok
 - adapter view-model is valid (NaN = fail; `undefined` for income/upkeep is expected and OK)
 - chronicle count monotonic non-decreasing
-- `fetchLegacyCompat` does not throw
+- `useGameSessionLegacy()` (opt-in) does not throw when called explicitly
 - exactly **one** `realm_resources` row per player per session
 - reserve sanity: `gold/grain/wood/stone/iron/horses/labor_reserve >= 0` (negative = warning, not fail)
 - turn monotonicity: `current_turn_after === current_turn_before + 1`
