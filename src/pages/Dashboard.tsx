@@ -46,13 +46,16 @@ const Dashboard = () => {
   const { sessionId } = useParams<{ sessionId: string }>();
   const navigate = useNavigate();
   const { user } = useAuth();
+  const gameSession = useGameSession(sessionId || null);
   const {
     session, events, memories, chronicles, cityStates, responses,
-    players, cities, resources, armies, trades, wonders, entityTraits,
+    players, cities, wonders, entityTraits,
     realmResources, militaryStacks,
     civilizations, greatPersons, declarations, worldCrises, secretObjectives,
     loading, refetch,
-  } = useGameSession(sessionId || null);
+  } = gameSession;
+  // Legacy data — opt-in for allowlisted consumers (GameHubFAB, CouncilTab, PersistentTab)
+  const { resources, armies, trades } = useGameSessionLegacy(gameSession);
 
   const entityIndex = useEntityIndex(sessionId);
 
