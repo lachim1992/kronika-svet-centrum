@@ -51,19 +51,14 @@ const EconomyTabDevPanels = ({ sessionId, currentPlayerName, cities, realm }: Pr
     return map;
   }, [myCities, cityNodeMap]);
 
-  const ROLE_LABELS: Record<string, string> = {
-    hub: "Centra", producer: "Producenti", regulator: "Regulátory", gateway: "Brány", neutral: "Neutrální",
-  };
-
   return (
     <div className="space-y-5">
       {realm && <CapacityPanel realm={realm} cities={myCities} nodeStats={nodeStats} />}
       
       <NodeFlowBreakdown
-        nodesByRole={nodesByRole}
-        isolatedNodes={isolatedNodes}
-        nodeStats={nodeStats}
-        roleLabels={ROLE_LABELS}
+        sessionId={sessionId}
+        playerName={currentPlayerName}
+        realm={realm}
       />
       
       <EconomyDependencyMap realm={realm} cities={myCities} armies={[]} />
