@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import ErrorBoundary from "@/components/ErrorBoundary";
 import { useParams, useNavigate } from "react-router-dom";
-import { useGameSession } from "@/hooks/useGameSession";
+import { useGameSession, useGameSessionLegacy } from "@/hooks/useGameSession";
 import { useAuth } from "@/hooks/useAuth";
 import { useEntityIndex } from "@/hooks/useEntityIndex";
 import { supabase } from "@/integrations/supabase/client";
