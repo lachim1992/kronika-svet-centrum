@@ -161,22 +161,24 @@ export function useGameSession(sessionId: string | null) {
   }, [sessionId]);
 
   // ── Combined initial fetch (was `fetchAll`) ──
+  // Sprint 1: fetchLegacyCompat REMOVED from canonical player loop.
+  // Legacy data is available only via useGameSessionLegacy() opt-in hook.
   const fetchSessionData = useCallback(async () => {
     if (!sessionId) return;
     if (!initialLoadDone.current) setLoading(true);
-    await Promise.all([fetchCore(), fetchLegacyCompat(), fetchContent()]);
+    await Promise.all([fetchCore(), fetchContent()]);
     setLoading(false);
     initialLoadDone.current = true;
-  }, [sessionId, fetchCore, fetchLegacyCompat, fetchContent]);
+  }, [sessionId, fetchCore, fetchContent]);
 
   // Debounced refetchers — core and content are independent
   const debouncedRefetchCore = useCallback(() => {
     if (coreTimer.current) clearTimeout(coreTimer.current);
     coreTimer.current = setTimeout(() => {
       fetchCore();
-      fetchLegacyCompat();
+      // fetchLegacyCompat REMOVED from refetch (Sprint 1, Krok 3)
     }, 800);
-  }, [fetchCore, fetchLegacyCompat]);
+  }, [fetchCore]);
 
   const debouncedRefetchContent = useCallback(() => {
     if (contentTimer.current) clearTimeout(contentTimer.current);
