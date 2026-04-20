@@ -233,11 +233,40 @@ export function useGameSession(sessionId: string | null) {
     session, events, memories, chronicles, cityStates, responses, players, cities,
     // Canonical economic + military state
     realmResources, militaryStacks,
-    // Legacy compat (do not use in new code)
-    resources, armies, trades, wonders, entityTraits,
+    /**
+     * @deprecated Legacy compat — use useGameSessionLegacy() for explicit opt-in.
+     * Do not destructure or use in new code. See DEPRECATION.md.
+     */
+    resources,
+    /** @deprecated See resources above. */
+    armies,
+    /** @deprecated See resources above. */
+    trades,
+    wonders, entityTraits,
     civilizations, greatPersons, declarations, worldCrises, secretObjectives,
     loading, refetch: fetchSessionData,
+    // Exposed for opt-in legacy hook only — do not call directly
+    _fetchLegacyCompat: fetchLegacyCompat,
   };
+}
+
+// ============================================================================
+// useGameSessionLegacy — opt-in hook for legacy data.
+//
+// Sprint 1: Legacy tables (player_resources, military_capacity, trade_log)
+// are NO LONGER fetched automatically. Components on the FE allowlist
+// that still need this data must explicitly call this hook.
+//
+// Allowed importers: see docs/architecture/legacy-allowlist-files.txt
+// ============================================================================
+export function useGameSessionLegacy(gameSession: ReturnType<typeof useGameSession>) {
+  const { _fetchLegacyCompat, resources, armies, trades } = gameSession;
+
+  useEffect(() => {
+    _fetchLegacyCompat();
+  }, [_fetchLegacyCompat]);
+
+  return { resources, armies, trades, refetchLegacy: _fetchLegacyCompat };
 }
 
 // ---- Session Management ----
