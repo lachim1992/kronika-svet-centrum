@@ -255,7 +255,7 @@ export async function createGameSession(playerName: string): Promise<GameSession
     player_number: 1,
   });
 
-  await initPlayerResources(data.id, playerName);
+  // initPlayerResources REMOVED (Sprint 1, Krok 2) — canonical state is realm_resources
   return data;
 }
 
@@ -280,7 +280,7 @@ export async function joinGameSession(roomCode: string, playerName: string): Pro
     await supabase.from("game_sessions").update({ player2_name: playerName }).eq("id", session.id);
   }
 
-  await initPlayerResources(session.id, playerName);
+  // initPlayerResources REMOVED (Sprint 1, Krok 2) — canonical state is realm_resources
   return session;
 }
 
