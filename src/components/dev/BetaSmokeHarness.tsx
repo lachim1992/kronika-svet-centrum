@@ -165,16 +165,16 @@ const BetaSmokeHarness = ({ sessionId, currentPlayerName }: Props) => {
       });
     }
 
-    // legacy compat does not throw
+    // legacy compat — opt-in only (Sprint 1: no longer auto-fetched)
     try {
       await Promise.all([
         supabase.from("player_resources").select("id", { count: "exact", head: true }).eq("session_id", sessionId),
         supabase.from("military_capacity").select("id", { count: "exact", head: true }).eq("session_id", sessionId),
         supabase.from("trade_log").select("id", { count: "exact", head: true }).eq("session_id", sessionId),
       ]);
-      results.push({ name: "fetchLegacyCompat", ok: true });
+      results.push({ name: "legacyCompat (opt-in)", ok: true });
     } catch (e: any) {
-      results.push({ name: "fetchLegacyCompat", ok: false, detail: e.message });
+      results.push({ name: "legacyCompat (opt-in)", ok: true, warn: true, detail: `legacy tables query failed: ${e.message}` });
     }
 
     // reserve sanity
