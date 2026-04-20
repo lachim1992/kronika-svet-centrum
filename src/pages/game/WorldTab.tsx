@@ -18,10 +18,6 @@ interface Props {
   cities: any[];
   wonders: any[];
   greatPersons: any[];
-  /** Legacy ledger — accepted for back-compat with sharedProps spread, not used here. */
-  resources?: any[];
-  /** Legacy military_capacity — accepted for back-compat, not used here. */
-  armies?: any[];
   /** Canonical economic state. */
   realmResources: any[];
   /** Canonical military stacks. */
