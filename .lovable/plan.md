@@ -1,159 +1,74 @@
 
 
-# Beta Hardening — Sprint 1 (v9 — final locked)
+# System Audit — Decision Pack (v3 final)
 
-## Změny proti v8
-1. Destructuring gate: multiline-safe `rg -U -P` místo jednořádkového `grep -E`
-2. Runtime acceptance: rozšířena o existing session open + reload + tab switch
+## Changes vs. v2
+1. **Evidence header** added to every document (scope, date, sources, confidence, blind spots)
+2. **Stop conditions + escalation paths** added to each remediation phase
+3. **decision-conflicts.md** elevated to authoritative resolution layer, not appendix
+4. **cross-surface-consistency-matrix.md**: added `runtime test required?` column
+5. **command-surface-inventory.md**: added `Sprint 1 fixable?` column
+6. **beta-closure-checklist.md**: split into Ship blockers / Honesty blockers / Deferred debt
+7. Package renamed from "6+1 decision documents" to "System Audit — Decision Pack"
 
-Vše ostatní z v8 beze změny.
+## Documents to generate (all `/mnt/documents/`)
 
-## Krok 0 — Verify + doc sync
-- Grep FE (SQL + symbols) + BE (writers/seeders) odděleně
-- Schema check `realm_resources` (STOP pokud chybí pole)
-- 3 allowlist artefakty: `legacy-allowlist.md`, `legacy-allowlist-files.txt` (FE), `legacy-backend-inventory.txt` (BE Sprint 2)
-- Doc sync `legacy-writer-audit.md` + `DEPRECATION.md` s `Last verified` HNED
-
-## Krok 1 — Backend runtime writes cut
-- `process-turn/index.ts` ~1445–1475: drop `player_resources` write
-- `command-dispatch/index.ts`: drop wealth stockpile sync
-
-## Krok 2 — Seed paths cut (verified subset)
-- `useGameSession.ts::createGameSession`/`joinGameSession`: drop `initPlayerResources()`
-- `MyGames.tsx` + `WorldSetupWizard.tsx`: jen pokud Krok 0a potvrdí
-
-## Krok 3 — `useGameSession` core/legacy split
-- `fetchLegacyCompat()` mimo initial load AND refetch
-- Initial = `fetchCore()` + `fetchContent()`
-- Legacy přes nový opt-in `useGameSessionLegacy()`
-- `resources`/`armies`/`trades` v public API: `@deprecated` JSDoc
-
-## Krok 4 — WorldTab + EmpireOverview smoke-check
-- WorldTab: drop `resources?`/`armies?` props
-- EmpireOverview: verify-only, adapter polish
-
-## Krok 5 — HomeTab redukce
-- Max 5–6 player signal karet
-- Drop `province_nodes`, `nodeStats`, `cityNodeMap`
-- Shared data z `useGameSession`
-
-## Krok 6 — EconomyTab split (separátní dev modul)
-- Drop `armies` prop
-- Vyextrahovat `EconomyTabDevPanels.tsx` + `useEconomyTabDevData.ts`
-- `realm_resources` z `useGameSession`, ne lokální fetch
-- Dev panely lazy, žádný top-level import
-
-## Krok 7 — Smoke + scope sync
-- `BETA_SCOPE.md`: `fetchLegacyCompat does not throw` → `useGameSessionLegacy() (opt-in) does not throw`
-- `BetaSmokeHarness.tsx`: legacy compat assertion přepojit na opt-in hook
-- Final doc sync
-
-## Search-based acceptance
-
+### Every document gets this header:
 ```
-# 1. SQL legacy mimo allowlist (FE)
-grep -rln "from('player_resources')\|from('military_capacity')\|from('trade_log')" src/ \
-  | grep -v -f docs/architecture/legacy-allowlist-files.txt \
-  | grep -v "src/components/dev/"
-# Expected: 0
-
-# 2. Symbol legacy mimo allowlist
-grep -rln "\bPlayerResource\b\|\bMilitaryCapacity\b\|\binitPlayerResources\b" src/ \
-  | grep -v -f docs/architecture/legacy-allowlist-files.txt
-# Expected: 0
-
-# 3. useGameSessionLegacy import gate
-grep -rln "useGameSessionLegacy" src/ \
-  | grep -v -f docs/architecture/legacy-allowlist-files.txt \
-  | grep -v "src/hooks/"
-# Expected: 0
-
-# 4a. Deprecated dot-notation
-grep -rln "useGameSession()" src/ | while read f; do
-  grep -l "\.resources\b\|\.armies\b\|\.trades\b" "$f"
-done | grep -v -f docs/architecture/legacy-allowlist-files.txt
-# Expected: 0
-
-# 4b. Deprecated destructuring — MULTILINE SAFE (v9 oprava)
-rg -l -U -P "const\s*\{[\s\S]*?\b(resources|armies|trades)\b[\s\S]*?\}\s*=\s*useGameSession\s*\(" src/ \
-  | grep -v -f docs/architecture/legacy-allowlist-files.txt
-# Expected: 0
-# Fallback pokud rg není k dispozici:
-# grep -rlzP "const\s*\{[^}]*\b(resources|armies|trades)\b[^}]*\}\s*=\s*useGameSession\s*\(" src/
-
-# 5. HomeTab
-grep -nE "province_nodes|nodeStats|cityNodeMap|from\('realm_resources'\)|from\('military_stacks'\)" src/pages/game/HomeTab.tsx
-# Expected: 0
-
-# 6a. EconomyTab
-grep -nE "from\('province_nodes'\)|from\('realm_resources'\)" src/pages/game/EconomyTab.tsx
-# Expected: 0
-grep -nE "^import.*\b(NodeFlowBreakdown|FormulasReferencePanel|GapAdvisorPanel|EconomyDependencyMap|CapacityPanel)\b" src/pages/game/EconomyTab.tsx
-# Expected: 0
-
-# 6b. Dev module import gate
-grep -rln "EconomyTabDevPanels\|useEconomyTabDevData" src/ \
-  | grep -vE "src/pages/game/EconomyTab\.tsx|src/components/economy/EconomyTabDevPanels\.tsx|src/hooks/useEconomyTabDevData\.ts|src/components/dev/"
-# Expected: 0
+## Evidence header
+- Repo snapshot: main @ generation date
+- Audit date: 2026-04-21
+- Static sources: grep/rg across src/, supabase/functions/, file reads
+- Runtime evidence: none (static analysis only)
+- Confidence: per-claim FACT / INFERENCE / UNKNOWN
+- Known blind spots: no runtime profiling, no network trace, no DB row inspection
 ```
 
-**Backend (inventář, Sprint 2):**
-```
-grep -rln "from('player_resources')\|initPlayerResources" supabase/functions/ | sort > /tmp/be-actual.txt
-diff /tmp/be-actual.txt docs/architecture/legacy-backend-inventory.txt
-# Expected: žádné nové soubory
-```
+### 1. `remediation-roadmap.md`
+4-phase ordered repair sequence. Each phase includes:
+- Steps with file lists and commit boundaries
+- **Preconditions** (what must be verified before starting)
+- **Done-when** (grep-based completion test)
+- **Stop conditions** (when to halt and escalate)
+- **Escalation path** (what to do if stopped)
 
-## Runtime acceptance (v9 rozšíření)
+Phase 1 (Foundation): kill ensureRealmResources, centralize ResourceHUD. Stop if: bootstrap doesn't guarantee realm row existence.
+Phase 2 (Write gate): 13+ command types, rewire client bypasses. Stop if: command-dispatch event contract can't accommodate new types without schema migration.
+Phase 3 (Read consolidation): all tabs read from useGameSession props. Stop if: smoke shows cross-surface metric drift after Phase 2.
+Phase 4 (Smoke + cleanup): remove dead code, verify beta-closure-checklist.
 
-**Scénář A — new session:**
-1. Create new session
-2. 3 turns
-3. Network panel: 0 GET na `player_resources`/`military_capacity`/`trade_log`
+### 2. `system-invariants.md`
+7 invariants as PR-reviewable contract. Corrected INV-1 and INV-7 per v2. Each with: statement, current violation count, affected files, CI grep test, stop condition if invariant proves unenforceable.
 
-**Scénář B — existing session + reload + tab switch (nový):**
-1. Otevřít existující session (initial load path)
-2. Reload stránky (ověřit, že initial `fetchSessionData` nevolá legacy)
-3. 1–2 turns (refetch path)
-4. Přepnout Home → World → Economy → zpět
-5. Network panel: 0 GET na `player_resources`/`military_capacity`/`trade_log` v celém průběhu
+### 3. `command-surface-inventory.md`
+15 player actions mapped to: UI trigger, command type, target tables, current path (BYPASS/PARTIAL/OK), expected event, **Sprint 1 fixable? (yes/no)**. Actions split into immediate remediation vs later redesign.
 
-**Smoke:** `BetaSmokeHarness` projde s upraveným kontraktem.
+### 4. `cross-surface-consistency-matrix.md`
+12 metrics × 6 surfaces. Columns: metric, canonical source, ResourceHUD, HomeTab, EconomyTab, ArmyTab, CouncilTab, expected equality, divergence risk, **runtime test required?**
 
-## Component-level acceptance
-1. `process-turn` + `command-dispatch` nezapisují do `player_resources`
-2. Create/join nezakládá `player_resources` rows
-3. `useGameSession` initial load AND refetch nevolají `fetchLegacyCompat()`
-4. `useGameSessionLegacy()` importovaný JEN allowlist
-5. `resources`/`armies`/`trades` z default `useGameSession` mimo allowlist = 0 (dot + multiline destructuring)
-6. WorldTab props bez `resources`/`armies`
-7. EmpireOverview smoke-check pass
-8. HomeTab: max 6 karet, 0 `province_nodes`, 0 lokální canonical fetch, 0 top-level dev imports
-9. EconomyTab: bez `armies`, dev modul vyextrahován, 0 lokální canonical/node fetch, 0 top-level dev imports
-10. `EconomyTabDevPanels` + `useEconomyTabDevData` importované JEN z povolených surfaces
-11. `BETA_SCOPE.md` + `BetaSmokeHarness` sladěné s opt-in legacy
-12. Existující sessions fungují
-13. 3 allowlist artefakty existují a odpovídají mainu
+### 5. `unknowns-register.md`
+8 claims requiring runtime verification. Corrected U-3 to post-remediation unknown. Each with: claim, why unknown, how to verify, owner, deadline.
 
-## Mimo Sprint 1
-| Sprint | Scope |
-|---|---|
-| 2 | BE seedery cut + AI faction registration audit |
-| 2 | City Stress Vector v `process-turn` |
-| 3 | 4-cluster UI reorg |
-| 3 | `EmpireManagement` + `LeaderboardsPanel` + `AdminMonitorPanel` migrace |
-| 4 | Cascade deleter → DROP TABLE `player_resources` |
-| 4 | Observatory badging |
-| 5+ | `military_capacity` → `military_stacks` only |
+### 6. `beta-closure-checklist.md`
+Three sections (not two):
+- **Ship blockers**: no client-side canonical writes, single fetch source, dispatchCommand gate
+- **Honesty blockers**: blind mechanics not presented as working systems, cross-surface equality verified
+- **Deferred debt**: legacy prop threading, table drops, governance panel rewiring
 
-## Tvrdá pravidla
-- ❌ Žádný nový sloupec v `realm_resources`
-- ❌ Žádné nové mechaniky
-- ❌ Žádné cuty mimo allowlist bez grep důkazu
-- ✅ Doc sync nejdřív (Krok 0), kód potom
-- ✅ EmpireOverview = smoke-check
-- ✅ EconomyTab dev modul separátní s import-gate
-- ✅ Deprecated API gate pokrývá dot + multiline destructuring
-- ✅ FE a BE acceptance oddělené
-- ✅ Runtime acceptance pokrývá create, open, reload i tab switch
+Each item classified Surface to player / Dev-only / Internal only (not "must be hidden").
+
+### 7. `decision-conflicts.md` *(authoritative layer)*
+Resolves contradictions between other 6 documents. Pre-populated conflicts:
+- city_market_baskets: gap-map vs closure-checklist vs mechanics-coupling
+- trade_flows: internal vs player summary
+- prestige: derived vs player mechanic
+- demand_baskets: solver internal vs simplified player bands
+- ResourceHUD: convenience vs SoT hazard
+
+Format per conflict: Topic, Documents in conflict, FACTS, INFERENCES, Decision, Rationale, Beta implication.
+
+This document is referenced by all others as the final arbiter when classifications conflict.
+
+## Implementation
+7 Python scripts writing to `/mnt/documents/`. All evidence from static grep/file reads already gathered. ~150-400 lines per document. Total generation: single exec session.
 
