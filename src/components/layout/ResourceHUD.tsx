@@ -99,13 +99,13 @@ const ResourceHUD = ({ sessionId, playerName, cities, currentTurn, realm: realmP
     }
     const rate = requestedPct / 100;
     await supabase.from("realm_resources").update({ mobilization_rate: rate }).eq("id", realm.id);
-    setRealm((r: any) => ({ ...r, mobilization_rate: rate }));
+    setLocalRealm((r: any) => r ? ({ ...r, mobilization_rate: rate }) : r);
   };
 
   const handleDemobilizeDone = async () => {
     if (pendingMobRate !== null) {
       await supabase.from("realm_resources").update({ mobilization_rate: pendingMobRate }).eq("id", realm.id);
-      setRealm((r: any) => ({ ...r, mobilization_rate: pendingMobRate }));
+      setLocalRealm((r: any) => r ? ({ ...r, mobilization_rate: pendingMobRate }) : r);
       setPendingMobRate(null);
     }
     fetchData();
