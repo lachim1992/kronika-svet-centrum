@@ -1,74 +1,45 @@
 
+# War Plan v16 — Normative Foundation
 
-# System Audit — Decision Pack (v3 final)
+## Authority Precedence
 
-## Changes vs. v2
-1. **Evidence header** added to every document (scope, date, sources, confidence, blind spots)
-2. **Stop conditions + escalation paths** added to each remediation phase
-3. **decision-conflicts.md** elevated to authoritative resolution layer, not appendix
-4. **cross-surface-consistency-matrix.md**: added `runtime test required?` column
-5. **command-surface-inventory.md**: added `Sprint 1 fixable?` column
-6. **beta-closure-checklist.md**: split into Ship blockers / Honesty blockers / Deferred debt
-7. Package renamed from "6+1 decision documents" to "System Audit — Decision Pack"
+1. `docs/architecture/ledger-semantics.md` — field-level mutation rules
+2. `docs/architecture/command-proof-matrix.md` — command execution contract
+3. `docs/architecture/read-model-contract.md` — single projector rule
+4. This file (`.lovable/plan.md`) — implementation roadmap
 
-## Documents to generate (all `/mnt/documents/`)
+On conflict, normative documents (1-3) override this plan.
 
-### Every document gets this header:
-```
-## Evidence header
-- Repo snapshot: main @ generation date
-- Audit date: 2026-04-21
-- Static sources: grep/rg across src/, supabase/functions/, file reads
-- Runtime evidence: none (static analysis only)
-- Confidence: per-claim FACT / INFERENCE / UNKNOWN
-- Known blind spots: no runtime profiling, no network trace, no DB row inspection
-```
+## Current Status
 
-### 1. `remediation-roadmap.md`
-4-phase ordered repair sequence. Each phase includes:
-- Steps with file lists and commit boundaries
-- **Preconditions** (what must be verified before starting)
-- **Done-when** (grep-based completion test)
-- **Stop conditions** (when to halt and escalate)
-- **Escalation path** (what to do if stopped)
+### Sprint A — Foundation (IN PROGRESS)
 
-Phase 1 (Foundation): kill ensureRealmResources, centralize ResourceHUD. Stop if: bootstrap doesn't guarantee realm row existence.
-Phase 2 (Write gate): 13+ command types, rewire client bypasses. Stop if: command-dispatch event contract can't accommodate new types without schema migration.
-Phase 3 (Read consolidation): all tabs read from useGameSession props. Stop if: smoke shows cross-surface metric drift after Phase 2.
-Phase 4 (Smoke + cleanup): remove dead code, verify beta-closure-checklist.
+1. ✅ Normative documentation created (7 files)
+2. ✅ Idempotency best-effort pre-check in command-dispatch
+3. ✅ `realm_resources` added to useGameSession realtime channel
+4. ✅ Dashboard single projector + prop threading
+5. ✅ Independent realm fetches removed from ResourceHUD, HomeTab, ArmyTab, RealmDashboard
+6. ✅ `ensureRealmResources` and `recomputeManpowerPool` killed
+7. ✅ ArmyTab handlers rewired to dispatchCommand (server-side mutations)
+8. ✅ DemobilizeDialog rewired to dispatchCommand
 
-### 2. `system-invariants.md`
-7 invariants as PR-reviewable contract. Corrected INV-1 and INV-7 per v2. Each with: statement, current violation count, affected files, CI grep test, stop condition if invariant proves unenforceable.
+### Sprint A — Write-Side Discipline
 
-### 3. `command-surface-inventory.md`
-15 player actions mapped to: UI trigger, command type, target tables, current path (BYPASS/PARTIAL/OK), expected event, **Sprint 1 fixable? (yes/no)**. Actions split into immediate remediation vs later redesign.
+Commands with server-side mutations in command-dispatch:
+- REMOBILIZE_STACK, DISBAND_STACK, UPGRADE_FORMATION, ASSIGN_GENERAL, REINFORCE_STACK, DEMOBILIZE, SET_MOBILIZATION
 
-### 4. `cross-surface-consistency-matrix.md`
-12 metrics × 6 surfaces. Columns: metric, canonical source, ResourceHUD, HomeTab, EconomyTab, ArmyTab, CouncilTab, expected equality, divergence risk, **runtime test required?**
+### Deferred (Sprint B)
 
-### 5. `unknowns-register.md`
-8 claims requiring runtime verification. Corrected U-3 to post-remediation unknown. Each with: claim, why unknown, how to verify, owner, deadline.
+- Typed PL/pgSQL RPC functions for all 13 commands (transactional idempotency)
+- CityManagement/SettlementUpgradePanel/CouncilTab write rewiring
+- DeployBattlePanel/WorldHexMap movement command cleanup
+- unified_audit_log table + triggers
+- Dead code removal (player_resources, military_capacity legacy)
 
-### 6. `beta-closure-checklist.md`
-Three sections (not two):
-- **Ship blockers**: no client-side canonical writes, single fetch source, dispatchCommand gate
-- **Honesty blockers**: blind mechanics not presented as working systems, cross-surface equality verified
-- **Deferred debt**: legacy prop threading, table drops, governance panel rewiring
+## Key Invariants
 
-Each item classified Surface to player / Dev-only / Internal only (not "must be hidden").
-
-### 7. `decision-conflicts.md` *(authoritative layer)*
-Resolves contradictions between other 6 documents. Pre-populated conflicts:
-- city_market_baskets: gap-map vs closure-checklist vs mechanics-coupling
-- trade_flows: internal vs player summary
-- prestige: derived vs player mechanic
-- demand_baskets: solver internal vs simplified player bands
-- ResourceHUD: convenience vs SoT hazard
-
-Format per conflict: Topic, Documents in conflict, FACTS, INFERENCES, Decision, Rationale, Beta implication.
-
-This document is referenced by all others as the final arbiter when classifications conflict.
-
-## Implementation
-7 Python scripts writing to `/mnt/documents/`. All evidence from static grep/file reads already gathered. ~150-400 lines per document. Total generation: single exec session.
-
+1. **Single read truth**: All realm data flows Dashboard → props. No independent fetches.
+2. **No client-side canonical writes**: All mutations to realm_resources, military_stacks, military_stack_composition, city_buildings go through command-dispatch.
+3. **Idempotency**: Sprint A = best-effort pre-check. Sprint B = transactional gate inside RPC.
+4. **Delta-only ledgers**: gold_reserve, grain_reserve, production_reserve, manpower_committed are delta-applied. No absolute overwrites.
+5. **Typed RPC mandatory**: All 13 Sprint-A commands target typed DB functions (Sprint B deliverable).
