@@ -226,6 +226,9 @@ async function executeCommand(
     case "BUILD_DISTRICT":
       return await executeBuildDistrict(supabase, base, actor, payload, commandId, sessionId, turnNumber);
 
+    case "UPGRADE_INFRASTRUCTURE":
+      return await executeUpgradeInfrastructure(supabase, base, actor, payload, commandId, sessionId, turnNumber);
+
     case "UPGRADE_SETTLEMENT":
       return await executeUpgradeSettlement(supabase, base, actor, payload, commandId, sessionId, turnNumber);
 
