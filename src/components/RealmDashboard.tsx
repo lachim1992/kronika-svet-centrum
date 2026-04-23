@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { ensureRealmResources, migrateLegacyMilitary } from "@/lib/turnEngine";
+import { migrateLegacyMilitary } from "@/lib/turnEngine";
 import { Button } from "@/components/ui/button";
 import { Loader2, Play, Crown, Code } from "lucide-react";
 import { toast } from "sonner";
@@ -13,30 +13,15 @@ interface Props {
   currentTurn: number;
   myRole: string;
   cities: any[];
+  realm?: any;
   onRefetch: () => void;
 }
 
-const RealmDashboard = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, onRefetch }: Props) => {
-  const [realm, setRealm] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
+const RealmDashboard = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, realm, onRefetch }: Props) => {
   const [processing, setProcessing] = useState(false);
   const [showDebug, setShowDebug] = useState(false);
 
   const myCities = cities.filter(c => c.owner_player === currentPlayerName);
-
-  const fetchData = useCallback(async () => {
-    setLoading(true);
-    const { data } = await supabase.from("realm_resources").select("*")
-      .eq("session_id", sessionId).eq("player_name", currentPlayerName).maybeSingle();
-    if (data) setRealm(data);
-    else {
-      const r = await ensureRealmResources(sessionId, currentPlayerName);
-      setRealm(r);
-    }
-    setLoading(false);
-  }, [sessionId, currentPlayerName]);
-
-  useEffect(() => { fetchData(); }, [fetchData]);
 
   const handleProcessTurn = async () => {
     setProcessing(true);
