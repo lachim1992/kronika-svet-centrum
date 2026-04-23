@@ -153,40 +153,25 @@ async function executeCommand(
       return await executeRecruitStack(supabase, base, actor, payload);
 
     case "REINFORCE_STACK":
-      return insertEventsWithChronicle(supabase, commandId, sessionId, turnNumber, [{
-        ...base,
-        event_type: "military",
-        note: payload.note || `${actor.name} posílil armádu.`,
-        importance: "normal",
-        reference: payload,
-      }], payload.chronicleText);
+      return await executeReinforceStack(supabase, base, actor, payload, commandId, sessionId, turnNumber);
 
     case "UPGRADE_FORMATION":
-      return insertEventsWithChronicle(supabase, commandId, sessionId, turnNumber, [{
-        ...base,
-        event_type: "military",
-        note: payload.note || `${actor.name} povýšil formaci.`,
-        importance: "normal",
-        reference: payload,
-      }], payload.chronicleText);
+      return await executeUpgradeFormation(supabase, base, actor, payload, commandId, sessionId, turnNumber);
 
     case "ASSIGN_GENERAL":
-      return insertEventsWithChronicle(supabase, commandId, sessionId, turnNumber, [{
-        ...base,
-        event_type: "military",
-        note: payload.note || `${actor.name} jmenoval velitele.`,
-        importance: "normal",
-        reference: payload,
-      }], payload.chronicleText);
+      return await executeAssignGeneral(supabase, base, actor, payload, commandId, sessionId, turnNumber);
 
     case "DISBAND_STACK":
-      return insertEventsWithChronicle(supabase, commandId, sessionId, turnNumber, [{
-        ...base,
-        event_type: "military",
-        note: payload.note || `${actor.name} rozpustil armádu.`,
-        importance: "normal",
-        reference: payload,
-      }], payload.chronicleText);
+      return await executeDisbandStack(supabase, base, actor, payload, commandId, sessionId, turnNumber);
+
+    case "REMOBILIZE_STACK":
+      return await executeRemobilizeStack(supabase, base, actor, payload, commandId, sessionId, turnNumber);
+
+    case "DEMOBILIZE_STACK":
+      return await executeDemobilizeStack(supabase, base, actor, payload, commandId, sessionId, turnNumber);
+
+    case "SET_MOBILIZATION":
+      return await executeSetMobilization(supabase, base, actor, payload, commandId, sessionId, turnNumber);
 
     case "RECRUIT_GENERAL":
       return insertEventsWithChronicle(supabase, commandId, sessionId, turnNumber, [{
@@ -1873,4 +1858,223 @@ async function executeCancelProject(
     ...base, event_type: "construction", note: `${actor.name} zrušil projekt: ${project.name}.`, importance: "normal",
     reference: { projectId, action: "cancel" },
   }], payload.chronicleText);
+}
+
+// ═══════════════════════════════════════════
+// MILITARY MUTATIONS — Sprint A best-effort transactional path
+// (Sprint B will move these into typed PL/pgSQL RPCs.)
+// ═══════════════════════════════════════════
+
+const LEGION_GOLD_COST = 200;
+const ARMY_GOLD_COST = 500;
+const UNIT_GOLD_FACTOR: Record<string, number> = { MILITIA: 0.8, PROFESSIONAL: 2 };
+
+async function getRealm(supabase: any, sessionId: string, playerName: string) {
+  const { data } = await supabase.from("realm_resources")
+    .select("id, manpower_committed, gold_reserve, mobilization_rate")
+    .eq("session_id", sessionId).eq("player_name", playerName).maybeSingle();
+  return data;
+}
+
+async function executeRemobilizeStack(
+  supabase: any, base: any, actor: Actor, payload: any,
+  commandId: string, sessionId: string, turnNumber: number,
+): Promise<CommandResult> {
+  const { stackId, stackName, manpower } = payload;
+  if (!stackId || !manpower) return { events: [], error: "Missing stackId or manpower" };
+
+  const realm = await getRealm(supabase, sessionId, actor.name);
+  if (!realm) return { events: [], error: "Realm not found" };
+
+  await supabase.from("military_stacks").update({
+    is_active: true,
+    demobilized_turn: null,
+    remobilize_ready_turn: null,
+    morale: 30,
+  }).eq("id", stackId).eq("player_name", actor.name);
+
+  await supabase.from("realm_resources").update({
+    manpower_committed: (realm.manpower_committed || 0) + manpower,
+  }).eq("id", realm.id);
+
+  return insertEventsWithChronicle(supabase, commandId, sessionId, turnNumber, [{
+    ...base, event_type: "military",
+    note: payload.note || `${actor.name} reaktivoval ${stackName}.`,
+    importance: "normal", reference: payload,
+  }], payload.chronicleText);
+}
+
+async function executeDisbandStack(
+  supabase: any, base: any, actor: Actor, payload: any,
+  commandId: string, sessionId: string, turnNumber: number,
+): Promise<CommandResult> {
+  const { stackId, stackName, returnedManpower } = payload;
+  if (!stackId) return { events: [], error: "Missing stackId" };
+
+  const realm = await getRealm(supabase, sessionId, actor.name);
+  if (!realm) return { events: [], error: "Realm not found" };
+
+  await supabase.from("military_stacks").update({ is_active: false })
+    .eq("id", stackId).eq("player_name", actor.name);
+
+  await supabase.from("realm_resources").update({
+    manpower_committed: Math.max(0, (realm.manpower_committed || 0) - (returnedManpower || 0)),
+  }).eq("id", realm.id);
+
+  return insertEventsWithChronicle(supabase, commandId, sessionId, turnNumber, [{
+    ...base, event_type: "military",
+    note: payload.note || `${actor.name} rozpustil ${stackName}.`,
+    importance: "normal", reference: payload,
+  }], payload.chronicleText);
+}
+
+async function executeUpgradeFormation(
+  supabase: any, base: any, actor: Actor, payload: any,
+  commandId: string, sessionId: string, turnNumber: number,
+): Promise<CommandResult> {
+  const { stackId, stackName, target } = payload;
+  if (!stackId || !target) return { events: [], error: "Missing stackId or target" };
+
+  const cost = target === "LEGION" ? LEGION_GOLD_COST : target === "ARMY" ? ARMY_GOLD_COST : 0;
+  const realm = await getRealm(supabase, sessionId, actor.name);
+  if (!realm) return { events: [], error: "Realm not found" };
+  if ((realm.gold_reserve || 0) < cost) {
+    return { events: [], error: `Nedostatek zlata (potřeba ${cost})` };
+  }
+
+  await supabase.from("military_stacks").update({ formation_type: target })
+    .eq("id", stackId).eq("player_name", actor.name);
+
+  if (cost > 0) {
+    await supabase.from("realm_resources").update({
+      gold_reserve: (realm.gold_reserve || 0) - cost,
+    }).eq("id", realm.id);
+  }
+
+  return insertEventsWithChronicle(supabase, commandId, sessionId, turnNumber, [{
+    ...base, event_type: "military",
+    note: payload.note || `${actor.name} povýšil ${stackName} na ${target}.`,
+    importance: "normal", reference: { ...payload, cost },
+  }], payload.chronicleText);
+}
+
+async function executeAssignGeneral(
+  supabase: any, base: any, actor: Actor, payload: any,
+  commandId: string, sessionId: string, turnNumber: number,
+): Promise<CommandResult> {
+  const { stackId, stackName, generalId, generalName } = payload;
+  if (!stackId || !generalId) return { events: [], error: "Missing stackId or generalId" };
+
+  // Unassign general from any other stack first
+  await supabase.from("military_stacks").update({ general_id: null })
+    .eq("general_id", generalId).eq("session_id", sessionId);
+
+  await supabase.from("military_stacks").update({ general_id: generalId })
+    .eq("id", stackId).eq("player_name", actor.name);
+
+  return insertEventsWithChronicle(supabase, commandId, sessionId, turnNumber, [{
+    ...base, event_type: "military",
+    note: payload.note || `${actor.name} jmenoval ${generalName} velitelem ${stackName}.`,
+    importance: "normal", reference: payload,
+  }], payload.chronicleText);
+}
+
+async function executeReinforceStack(
+  supabase: any, base: any, actor: Actor, payload: any,
+  commandId: string, sessionId: string, turnNumber: number,
+): Promise<CommandResult> {
+  const { stackId, stackName, reinforcements, addedManpower, addedGold } = payload;
+  if (!stackId) return { events: [], error: "Missing stackId" };
+
+  const realm = await getRealm(supabase, sessionId, actor.name);
+  if (!realm) return { events: [], error: "Realm not found" };
+  if ((realm.gold_reserve || 0) < (addedGold || 0)) {
+    return { events: [], error: "Nedostatek zlata" };
+  }
+
+  // reinforcements: { unit_type: amount, ... }
+  if (reinforcements && typeof reinforcements === "object") {
+    const { data: existingComps } = await supabase
+      .from("military_stack_composition")
+      .select("id, unit_type, manpower")
+      .eq("stack_id", stackId);
+    const compMap = new Map((existingComps || []).map((c: any) => [c.unit_type, c]));
+
+    for (const [unitType, amount] of Object.entries(reinforcements)) {
+      const amt = Number(amount);
+      if (amt <= 0) continue;
+      const existing = compMap.get(unitType) as any;
+      if (existing) {
+        await supabase.from("military_stack_composition")
+          .update({ manpower: existing.manpower + amt })
+          .eq("id", existing.id);
+      } else {
+        await supabase.from("military_stack_composition")
+          .insert({ stack_id: stackId, unit_type: unitType, manpower: amt });
+      }
+    }
+  }
+
+  await supabase.from("realm_resources").update({
+    manpower_committed: (realm.manpower_committed || 0) + (addedManpower || 0),
+    gold_reserve: (realm.gold_reserve || 0) - (addedGold || 0),
+  }).eq("id", realm.id);
+
+  return insertEventsWithChronicle(supabase, commandId, sessionId, turnNumber, [{
+    ...base, event_type: "military",
+    note: payload.note || `${actor.name} posílil ${stackName}.`,
+    importance: "normal", reference: payload,
+  }], payload.chronicleText);
+}
+
+async function executeDemobilizeStack(
+  supabase: any, base: any, actor: Actor, payload: any,
+  commandId: string, sessionId: string, turnNumber: number,
+): Promise<CommandResult> {
+  const { stackIds, returnedManpower, readyTurn } = payload;
+  if (!stackIds || !Array.isArray(stackIds) || stackIds.length === 0) {
+    return { events: [], error: "Missing stackIds" };
+  }
+
+  const realm = await getRealm(supabase, sessionId, actor.name);
+  if (!realm) return { events: [], error: "Realm not found" };
+
+  await supabase.from("military_stacks").update({
+    is_active: false,
+    demobilized_turn: turnNumber,
+    remobilize_ready_turn: readyTurn || (turnNumber + 3),
+  }).in("id", stackIds).eq("player_name", actor.name);
+
+  await supabase.from("realm_resources").update({
+    manpower_committed: Math.max(0, (realm.manpower_committed || 0) - (returnedManpower || 0)),
+  }).eq("id", realm.id);
+
+  return insertEventsWithChronicle(supabase, commandId, sessionId, turnNumber, [{
+    ...base, event_type: "military",
+    note: payload.note || `${actor.name} demobilizoval ${stackIds.length} jednotek.`,
+    importance: "normal", reference: payload,
+  }], payload.chronicleText);
+}
+
+async function executeSetMobilization(
+  supabase: any, base: any, actor: Actor, payload: any,
+  commandId: string, sessionId: string, turnNumber: number,
+): Promise<CommandResult> {
+  const { rate, manpowerPool } = payload;
+  if (typeof rate !== "number" || rate < 0 || rate > 0.5) {
+    return { events: [], error: "Invalid mobilization rate (0–0.5)" };
+  }
+
+  const realm = await getRealm(supabase, sessionId, actor.name);
+  if (!realm) return { events: [], error: "Realm not found" };
+
+  const update: any = { mobilization_rate: rate };
+  if (typeof manpowerPool === "number") update.manpower_pool = manpowerPool;
+  await supabase.from("realm_resources").update(update).eq("id", realm.id);
+
+  return insertEvents(supabase, commandId, [{
+    ...base, event_type: "policy",
+    note: payload.note || `${actor.name} nastavil mobilizaci na ${Math.round(rate * 100)}%.`,
+    importance: "normal", reference: payload,
+  }]);
 }

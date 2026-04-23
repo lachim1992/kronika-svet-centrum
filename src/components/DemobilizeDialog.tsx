@@ -63,24 +63,10 @@ const DemobilizeDialog = ({
 
     setSaving(true);
     try {
-      let totalReturned = 0;
-      for (const stack of toDisband) {
-        await supabase.from("military_stacks").update({
-          is_active: false,
-          demobilized_turn: currentTurn,
-          remobilize_ready_turn: currentTurn + 3,
-        } as any).eq("id", stack.id);
-        totalReturned += stack.totalManpower;
-      }
-
-      // Return manpower to pool
-      await supabase.from("realm_resources").update({
-        manpower_committed: Math.max(0, manpowerCommitted - totalReturned),
-      }).eq("id", realmId);
-
-      // Log command
+      const totalReturned = toDisband.reduce((sum, s) => sum + s.totalManpower, 0);
       const names = toDisband.map(s => s.name).join(", ");
-      await dispatchCommand({
+
+      const res = await dispatchCommand({
         sessionId,
         actor: { name: playerName },
         commandType: "DEMOBILIZE_STACK",
@@ -92,6 +78,7 @@ const DemobilizeDialog = ({
           chronicleText: `${playerName} demobilizoval **${names}** (${totalReturned} mužů). Jednotky budou připraveny k reaktivaci za 3 kola.`,
         },
       });
+      if (!res.ok) { toast.error(res.error || "Demobilizace selhala"); setSaving(false); return; }
 
       toast.success(`Demobilizováno ${toDisband.length} jednotek — ${totalReturned} mužů vráceno`);
       setSelectedIds(new Set());

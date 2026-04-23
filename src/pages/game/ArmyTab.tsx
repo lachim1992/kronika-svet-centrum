@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, lazy, Suspense } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { dispatchCommand } from "@/lib/commands";
-import { ensureRealmResources, recomputeManpowerPool, UNIT_TYPE_LABELS, UNIT_GOLD_FACTOR, FORMATION_PRESETS } from "@/lib/turnEngine";
+import { UNIT_TYPE_LABELS, UNIT_GOLD_FACTOR, FORMATION_PRESETS } from "@/lib/turnEngine";
 import { computeWorkforceBreakdown, DEFAULT_MAX_MOBILIZATION } from "@/lib/economyConstants";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -124,7 +124,9 @@ interface CivIdentityNames {
 const ArmyTab = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, realm: realmProp, onRefetch }: Props) => {
   const [stacks, setStacks] = useState<Stack[]>([]);
   const [generals, setGenerals] = useState<General[]>([]);
-  const [realm, setRealm] = useState<RealmRes | null>(null);
+  const realm = (realmProp as RealmRes | null) || null;
+  // Local setter retained for optimistic mobilization slider preview only.
+  const setRealm = (_next: any) => { /* no-op: realm is canonical via prop */ };
   const [loading, setLoading] = useState(true);
   const [selectedStack, setSelectedStack] = useState<Stack | null>(null);
   const [showRecruit, setShowRecruit] = useState(false);
@@ -165,9 +167,6 @@ const ArmyTab = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, re
     setStacks(enriched);
     setGenerals((generalsRes.data || []) as General[]);
     setUnitVisuals((visualsRes.data || []) as UnitTypeVisual[]);
-
-    const realmData = await ensureRealmResources(sessionId, currentPlayerName);
-    if (realmData) setRealm(realmData as RealmRes);
 
     setLoading(false);
   }, [sessionId, currentPlayerName]);
@@ -232,18 +231,7 @@ const ArmyTab = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, re
 
     setRemobilizing(stack.id);
     try {
-      await supabase.from("military_stacks").update({
-        is_active: true,
-        demobilized_turn: null,
-        remobilize_ready_turn: null,
-        morale: 30, // Start with low morale
-      } as any).eq("id", stack.id);
-
-      await supabase.from("realm_resources").update({
-        manpower_committed: (realm?.manpower_committed || 0) + totalManpower,
-      }).eq("id", realm?.id || "");
-
-      await dispatchCommand({
+      const res = await dispatchCommand({
         sessionId,
         actor: { name: currentPlayerName },
         commandType: "REMOBILIZE_STACK",
@@ -254,6 +242,7 @@ const ArmyTab = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, re
           chronicleText: `${currentPlayerName} reaktivoval **${stack.name}** (${totalManpower} mužů). Jednotka nastupuje s nízkou morálkou.`,
         },
       });
+      if (!res.ok) { toast.error(res.error || "Reaktivace selhala"); return; }
 
       toast.success(`${stack.name} reaktivována — morálka 30 (normalizace za 2 kola)`);
       fetchMilitary();
@@ -354,7 +343,14 @@ const ArmyTab = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, re
               setRealm({ ...realm, mobilization_rate: mobRate, manpower_pool: wf.effectiveActivePop });
               return;
             }
-            await supabase.from("realm_resources").update({ mobilization_rate: rate, manpower_pool: newWf.effectiveActivePop }).eq("id", realm.id);
+            const res = await dispatchCommand({
+              sessionId,
+              actor: { name: currentPlayerName },
+              commandType: "SET_MOBILIZATION",
+              commandPayload: { rate, manpowerPool: newWf.effectiveActivePop },
+            });
+            if (!res.ok) { toast.error(res.error || "Změna mobilizace selhala"); return; }
+            fetchMilitary();
           }}
           className="w-full"
         />
@@ -819,26 +815,16 @@ function StackDetailDialog({
     if (addedGold > (realm?.gold_reserve || 0)) { toast.error("Nedostatek zlata"); return; }
     setSaving(true);
 
-    for (const [unitType, amount] of Object.entries(reinforcements)) {
-      if (amount <= 0) continue;
-      const existing = stack.compositions.find(c => c.unit_type === unitType);
-      if (existing) {
-        await supabase.from("military_stack_composition").update({ manpower: existing.manpower + amount }).eq("id", existing.id);
-      } else {
-        await supabase.from("military_stack_composition").insert({ stack_id: stack.id, unit_type: unitType, manpower: amount });
-      }
-    }
-
-    await supabase.from("realm_resources").update({
-      manpower_committed: (realm?.manpower_committed || 0) + addedManpower,
-      gold_reserve: (realm?.gold_reserve || 0) - addedGold,
-    }).eq("id", realm?.id || "");
-
-    await dispatchCommand({
+    const res = await dispatchCommand({
       sessionId, actor: { name: currentPlayerName }, commandType: "REINFORCE_STACK",
-      commandPayload: { stackId: stack.id, stackName: stack.name, addedManpower, addedGold: Math.round(addedGold),
-        chronicleText: `${currentPlayerName} posílil **${stack.name}** o ${addedManpower} mužů (náklady: ${Math.round(addedGold)} zlata).` },
+      commandPayload: {
+        stackId: stack.id, stackName: stack.name,
+        reinforcements,
+        addedManpower, addedGold: Math.round(addedGold),
+        chronicleText: `${currentPlayerName} posílil **${stack.name}** o ${addedManpower} mužů (náklady: ${Math.round(addedGold)} zlata).`,
+      },
     });
+    if (!res.ok) { toast.error(res.error || "Posily selhaly"); setSaving(false); return; }
 
     setReinforcements({});
     toast.success("Posily přidány");
@@ -852,16 +838,14 @@ function StackDetailDialog({
     if ((realm?.gold_reserve || 0) < cost) { toast.error(`Nedostatek zlata (potřeba ${cost})`); return; }
     setSaving(true);
 
-    await supabase.from("military_stacks").update({ formation_type: target }).eq("id", stack.id);
-    await supabase.from("realm_resources").update({
-      gold_reserve: (realm?.gold_reserve || 0) - cost,
-    }).eq("id", realm?.id || "");
-
-    await dispatchCommand({
+    const res = await dispatchCommand({
       sessionId, actor: { name: currentPlayerName }, commandType: "UPGRADE_FORMATION",
-      commandPayload: { stackId: stack.id, stackName: stack.name, target, cost,
-        chronicleText: `${currentPlayerName} povýšil **${stack.name}** na ${FORMATION_LABELS[target]}. Náklady: ${cost} zlata.` },
+      commandPayload: {
+        stackId: stack.id, stackName: stack.name, target, cost,
+        chronicleText: `${currentPlayerName} povýšil **${stack.name}** na ${FORMATION_LABELS[target]}. Náklady: ${cost} zlata.`,
+      },
     });
+    if (!res.ok) { toast.error(res.error || "Povýšení selhalo"); setSaving(false); return; }
 
     toast.success(`Povýšeno na ${FORMATION_LABELS[target]}`);
     setSaving(false);
@@ -871,16 +855,15 @@ function StackDetailDialog({
 
   const handleAssignGeneral = async (generalId: string) => {
     setSaving(true);
-    // Unassign from other stack
-    await supabase.from("military_stacks").update({ general_id: null }).eq("general_id", generalId).eq("session_id", sessionId);
-    await supabase.from("military_stacks").update({ general_id: generalId }).eq("id", stack.id);
-
     const gen = generals.find(g => g.id === generalId);
-    await dispatchCommand({
+    const res = await dispatchCommand({
       sessionId, actor: { name: currentPlayerName }, commandType: "ASSIGN_GENERAL",
-      commandPayload: { stackId: stack.id, stackName: stack.name, generalId, generalName: gen?.name,
-        chronicleText: `${currentPlayerName} jmenoval **${gen?.name || "generála"}** velitelem **${stack.name}**.` },
+      commandPayload: {
+        stackId: stack.id, stackName: stack.name, generalId, generalName: gen?.name,
+        chronicleText: `${currentPlayerName} jmenoval **${gen?.name || "generála"}** velitelem **${stack.name}**.`,
+      },
     });
+    if (!res.ok) { toast.error(res.error || "Přiřazení selhalo"); setSaving(false); return; }
 
     toast.success("Generál přiřazen");
     setSaving(false);
@@ -890,17 +873,15 @@ function StackDetailDialog({
 
   const handleDisband = async () => {
     setSaving(true);
-    await supabase.from("military_stacks").update({ is_active: false }).eq("id", stack.id);
     const returnedManpower = totalManpower;
-    await supabase.from("realm_resources").update({
-      manpower_committed: Math.max(0, (realm?.manpower_committed || 0) - returnedManpower),
-    }).eq("id", realm?.id || "");
-
-    await dispatchCommand({
+    const res = await dispatchCommand({
       sessionId, actor: { name: currentPlayerName }, commandType: "DISBAND_STACK",
-      commandPayload: { stackId: stack.id, stackName: stack.name, returnedManpower,
-        chronicleText: `${currentPlayerName} rozpustil **${stack.name}**. ${returnedManpower} mužů se vrátilo do manpower pool.` },
+      commandPayload: {
+        stackId: stack.id, stackName: stack.name, returnedManpower,
+        chronicleText: `${currentPlayerName} rozpustil **${stack.name}**. ${returnedManpower} mužů se vrátilo do manpower pool.`,
+      },
     });
+    if (!res.ok) { toast.error(res.error || "Rozpuštění selhalo"); setSaving(false); return; }
 
     toast.success("Jednotka rozpuštěna");
     setSaving(false);

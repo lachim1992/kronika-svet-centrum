@@ -27,7 +27,7 @@ import { toast } from "sonner";
 import { useDevMode } from "@/hooks/useDevMode";
 import ExplainDrawer from "@/components/dev/ExplainDrawer";
 import RealmLawsDecrees from "@/components/realm/RealmLawsDecrees";
-import { ensureRealmResources } from "@/lib/turnEngine";
+// ensureRealmResources removed — realm now flows from Dashboard prop (canonical source)
 import {
   SETTLEMENT_LABELS as ECON_SETTLEMENT_LABELS,
   computeWorkforceBreakdown,
@@ -104,10 +104,8 @@ const HomeTab = ({
 
     if (realmRes.data) {
       setLocalRealm(realmRes.data);
-    } else {
-      const r = await ensureRealmResources(sessionId, currentPlayerName);
-      setLocalRealm(r);
     }
+    // No fallback insert: realm_resources rows are bootstrapped server-side.
     setStacks(stacksRes.data || []);
     const provs = provRes.data || [];
     setProvinces(provs);
