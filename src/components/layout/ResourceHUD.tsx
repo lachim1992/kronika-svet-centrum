@@ -18,33 +18,30 @@ interface ResourceHUDProps {
   playerName: string;
   cities: any[];
   currentTurn: number;
+  realm?: any;
 }
 
-const ResourceHUD = ({ sessionId, playerName, cities, currentTurn }: ResourceHUDProps) => {
-  const [realm, setRealm] = useState<any>(null);
+const ResourceHUD = ({ sessionId, playerName, cities, currentTurn, realm: realmProp }: ResourceHUDProps) => {
+  const [localRealm, setLocalRealm] = useState<any>(null);
   const [showDemobilize, setShowDemobilize] = useState(false);
   const [activeStacks, setActiveStacks] = useState<any[]>([]);
   const [pendingMobRate, setPendingMobRate] = useState<number | null>(null);
 
+  // Use prop if available (single projector), fallback to local fetch for backward compat
+  const realm = realmProp || localRealm;
+
   const fetchData = useCallback(async () => {
+    if (realmProp) return; // Skip independent fetch when prop is provided
     const { data } = await supabase
       .from("realm_resources")
       .select("*")
       .eq("session_id", sessionId)
       .eq("player_name", playerName)
       .maybeSingle();
-    if (data) setRealm(data);
-  }, [sessionId, playerName]);
+    if (data) setLocalRealm(data);
+  }, [sessionId, playerName, realmProp]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
-
-  useEffect(() => {
-    const ch = supabase
-      .channel(`hud-${sessionId}-${playerName}`)
-      .on("postgres_changes", { event: "*", schema: "public", table: "realm_resources", filter: `session_id=eq.${sessionId}` }, () => fetchData())
-      .subscribe();
-    return () => { supabase.removeChannel(ch); };
-  }, [sessionId, playerName, fetchData]);
 
   const fetchStacks = useCallback(async () => {
     const { data } = await supabase
@@ -102,13 +99,13 @@ const ResourceHUD = ({ sessionId, playerName, cities, currentTurn }: ResourceHUD
     }
     const rate = requestedPct / 100;
     await supabase.from("realm_resources").update({ mobilization_rate: rate }).eq("id", realm.id);
-    setRealm((r: any) => ({ ...r, mobilization_rate: rate }));
+    setLocalRealm((r: any) => r ? ({ ...r, mobilization_rate: rate }) : r);
   };
 
   const handleDemobilizeDone = async () => {
     if (pendingMobRate !== null) {
       await supabase.from("realm_resources").update({ mobilization_rate: pendingMobRate }).eq("id", realm.id);
-      setRealm((r: any) => ({ ...r, mobilization_rate: pendingMobRate }));
+      setLocalRealm((r: any) => r ? ({ ...r, mobilization_rate: pendingMobRate }) : r);
       setPendingMobRate(null);
     }
     fetchData();

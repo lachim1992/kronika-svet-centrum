@@ -1,0 +1,5 @@
+# Surfaces with independent realm reads — deferred to Sprint B
+# These still fetch realm_resources independently; will be rewired when
+# they receive realm as prop from a parent that has it.
+src/components/CityManagement.tsx
+src/components/SettlementUpgradePanel.tsx

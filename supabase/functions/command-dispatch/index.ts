@@ -122,6 +122,19 @@ async function executeCommand(
   payload: any,
   commandId: string,
 ): Promise<CommandResult> {
+  // ── Idempotency pre-check (best-effort, not transactional) ──
+  // Sprint A mitigation: if an event with this command_id already exists,
+  // return it without re-mutating. Does NOT prevent TOCTOU race —
+  // full transactional idempotency requires Sprint B typed RPCs.
+  const { data: existingEvents } = await supabase
+    .from("game_events")
+    .select("id, event_type, command_id")
+    .eq("command_id", commandId);
+
+  if (existingEvents && existingEvents.length > 0) {
+    return { events: existingEvents, idempotent: true };
+  }
+
   const base = {
     session_id: sessionId,
     turn_number: turnNumber,

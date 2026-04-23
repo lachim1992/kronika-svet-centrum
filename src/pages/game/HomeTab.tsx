@@ -56,6 +56,7 @@ interface Props {
   currentPlayerName: string;
   currentTurn: number;
   myRole: string;
+  realm?: any;
   entityIndex?: EntityIndex;
   onEventClick?: (eventId: string) => void;
   onEntityClick?: (type: string, id: string) => void;
@@ -68,11 +69,11 @@ type CitySortKey = "name" | "population" | "settlement" | "vulnerability";
 
 const HomeTab = ({
   sessionId, session, cities, players, currentPlayerName, currentTurn, myRole,
-  onEntityClick, onRefetch, onFoundCity, onTabChange,
+  realm: realmProp, onEntityClick, onRefetch, onFoundCity, onTabChange,
 }: Props) => {
   const isMobile = useIsMobile();
   const isMultiplayer = session?.game_mode === "tb_multi";
-  const [realm, setRealm] = useState<any>(null);
+  const [localRealm, setLocalRealm] = useState<any>(null);
   const [stacks, setStacks] = useState<any[]>([]);
   const [managingCityId, setManagingCityId] = useState<string | null>(null);
   const [hasProvince, setHasProvince] = useState<boolean | null>(null);

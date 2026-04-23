@@ -1,0 +1,11 @@
+# Files exempt from client-side write gates
+# Dev tools (always exempt)
+src/components/dev/DevPlayerEditor.tsx
+src/components/AdminMonitorPanel.tsx
+# Deferred to Sprint B (movement/deployment commands)
+src/components/military/DeployBattlePanel.tsx
+src/components/WorldHexMap.tsx
+# Legacy migration (admin-only, deferred cleanup)
+src/lib/turnEngine.ts
+# CityManagement — deferred read surface (independent realm fetch)
+src/components/CityManagement.tsx
