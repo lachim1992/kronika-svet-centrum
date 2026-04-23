@@ -28,6 +28,7 @@ interface Props {
   secretObjectives: any[];
   cityStates: any[];
   chronicles: any[];
+  realm?: any;
   currentPlayerName: string;
   currentTurn: number;
   myRole: string;
@@ -37,7 +38,7 @@ interface Props {
 const RealmTab = ({
   sessionId, session, events, memories, players, cities, wonders, armies, militaryStacks,
   resources, trades, entityTraits, civilizations, declarations, worldCrises,
-  secretObjectives, cityStates, chronicles, currentPlayerName, currentTurn,
+  secretObjectives, cityStates, chronicles, realm, currentPlayerName, currentTurn,
   myRole, onRefetch,
 }: Props) => {
   return (
@@ -75,7 +76,7 @@ const RealmTab = ({
         <TabsContent value="overview" className="mt-3">
           <RealmDashboard
             sessionId={sessionId} currentPlayerName={currentPlayerName}
-            currentTurn={currentTurn} myRole={myRole} cities={cities} onRefetch={onRefetch}
+            currentTurn={currentTurn} myRole={myRole} cities={cities} realm={realm} onRefetch={onRefetch}
           />
         </TabsContent>
 
