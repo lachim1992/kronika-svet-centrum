@@ -153,40 +153,25 @@ async function executeCommand(
       return await executeRecruitStack(supabase, base, actor, payload);
 
     case "REINFORCE_STACK":
-      return insertEventsWithChronicle(supabase, commandId, sessionId, turnNumber, [{
-        ...base,
-        event_type: "military",
-        note: payload.note || `${actor.name} posílil armádu.`,
-        importance: "normal",
-        reference: payload,
-      }], payload.chronicleText);
+      return await executeReinforceStack(supabase, base, actor, payload, commandId, sessionId, turnNumber);
 
     case "UPGRADE_FORMATION":
-      return insertEventsWithChronicle(supabase, commandId, sessionId, turnNumber, [{
-        ...base,
-        event_type: "military",
-        note: payload.note || `${actor.name} povýšil formaci.`,
-        importance: "normal",
-        reference: payload,
-      }], payload.chronicleText);
+      return await executeUpgradeFormation(supabase, base, actor, payload, commandId, sessionId, turnNumber);
 
     case "ASSIGN_GENERAL":
-      return insertEventsWithChronicle(supabase, commandId, sessionId, turnNumber, [{
-        ...base,
-        event_type: "military",
-        note: payload.note || `${actor.name} jmenoval velitele.`,
-        importance: "normal",
-        reference: payload,
-      }], payload.chronicleText);
+      return await executeAssignGeneral(supabase, base, actor, payload, commandId, sessionId, turnNumber);
 
     case "DISBAND_STACK":
-      return insertEventsWithChronicle(supabase, commandId, sessionId, turnNumber, [{
-        ...base,
-        event_type: "military",
-        note: payload.note || `${actor.name} rozpustil armádu.`,
-        importance: "normal",
-        reference: payload,
-      }], payload.chronicleText);
+      return await executeDisbandStack(supabase, base, actor, payload, commandId, sessionId, turnNumber);
+
+    case "REMOBILIZE_STACK":
+      return await executeRemobilizeStack(supabase, base, actor, payload, commandId, sessionId, turnNumber);
+
+    case "DEMOBILIZE_STACK":
+      return await executeDemobilizeStack(supabase, base, actor, payload, commandId, sessionId, turnNumber);
+
+    case "SET_MOBILIZATION":
+      return await executeSetMobilization(supabase, base, actor, payload, commandId, sessionId, turnNumber);
 
     case "RECRUIT_GENERAL":
       return insertEventsWithChronicle(supabase, commandId, sessionId, turnNumber, [{
