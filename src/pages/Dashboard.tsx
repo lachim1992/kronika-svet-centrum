@@ -78,6 +78,12 @@ const Dashboard = () => {
 
   const currentTurn = session?.current_turn ?? 0;
 
+  // ── Single projector: project current player's realm from session-scoped array ──
+  const myRealm = useMemo(
+    () => (realmResources || []).find((r: any) => r.player_name === myPlayerName) || null,
+    [realmResources, myPlayerName]
+  );
+
   const isMultiplayer = session?.game_mode === "tb_multi";
 
   const { processing: turnProcessing, processNextTurn } = useNextTurn({
@@ -284,12 +290,6 @@ const Dashboard = () => {
     setWikiEntityTarget({ type: "city", id: cityId });
     setActiveTab("wiki");
   };
-
-  // ── Single projector: project current player's realm from session-scoped array ──
-  const myRealm = useMemo(
-    () => (realmResources || []).find((r: any) => r.player_name === myPlayerName) || null,
-    [realmResources, myPlayerName]
-  );
 
   const sharedProps = {
     sessionId: session.id,

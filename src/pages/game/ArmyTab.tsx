@@ -110,6 +110,7 @@ interface Props {
   currentTurn: number;
   myRole: string;
   cities: any[];
+  realm?: any;
   onRefetch: () => void;
 }
 
@@ -120,7 +121,7 @@ interface CivIdentityNames {
   professional_unit_desc?: string;
 }
 
-const ArmyTab = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, onRefetch }: Props) => {
+const ArmyTab = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, realm: realmProp, onRefetch }: Props) => {
   const [stacks, setStacks] = useState<Stack[]>([]);
   const [generals, setGenerals] = useState<General[]>([]);
   const [realm, setRealm] = useState<RealmRes | null>(null);
