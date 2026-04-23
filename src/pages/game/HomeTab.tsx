@@ -103,10 +103,10 @@ const HomeTab = ({
     ]);
 
     if (realmRes.data) {
-      setRealm(realmRes.data);
+      setLocalRealm(realmRes.data);
     } else {
       const r = await ensureRealmResources(sessionId, currentPlayerName);
-      setRealm(r);
+      setLocalRealm(r);
     }
     setStacks(stacksRes.data || []);
     const provs = provRes.data || [];
