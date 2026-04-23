@@ -198,6 +198,8 @@ export function useGameSession(sessionId: string | null) {
       .on("postgres_changes", { event: "*", schema: "public", table: "game_sessions", filter: `id=eq.${sessionId}` }, () => debouncedRefetchCore())
       .on("postgres_changes", { event: "*", schema: "public", table: "game_players", filter: `session_id=eq.${sessionId}` }, () => debouncedRefetchCore())
       .on("postgres_changes", { event: "*", schema: "public", table: "cities", filter: `session_id=eq.${sessionId}` }, () => debouncedRefetchCore())
+      .on("postgres_changes", { event: "*", schema: "public", table: "realm_resources", filter: `session_id=eq.${sessionId}` }, () => debouncedRefetchCore())
+      .on("postgres_changes", { event: "*", schema: "public", table: "military_stacks", filter: `session_id=eq.${sessionId}` }, () => debouncedRefetchCore())
       .subscribe();
 
     // Channel 2: Content / narrative — triggers fetchContent only
