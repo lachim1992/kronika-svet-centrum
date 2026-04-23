@@ -74,6 +74,7 @@ const HomeTab = ({
   const isMobile = useIsMobile();
   const isMultiplayer = session?.game_mode === "tb_multi";
   const [localRealm, setLocalRealm] = useState<any>(null);
+  const realm = realmProp ?? localRealm;
   const [stacks, setStacks] = useState<any[]>([]);
   const [managingCityId, setManagingCityId] = useState<string | null>(null);
   const [hasProvince, setHasProvince] = useState<boolean | null>(null);
@@ -102,10 +103,10 @@ const HomeTab = ({
     ]);
 
     if (realmRes.data) {
-      setRealm(realmRes.data);
+      setLocalRealm(realmRes.data);
     } else {
       const r = await ensureRealmResources(sessionId, currentPlayerName);
-      setRealm(r);
+      setLocalRealm(r);
     }
     setStacks(stacksRes.data || []);
     const provs = provRes.data || [];
