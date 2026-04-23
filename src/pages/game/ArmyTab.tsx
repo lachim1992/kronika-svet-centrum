@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, lazy, Suspense } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { dispatchCommand } from "@/lib/commands";
-import { ensureRealmResources, recomputeManpowerPool, UNIT_TYPE_LABELS, UNIT_GOLD_FACTOR, FORMATION_PRESETS } from "@/lib/turnEngine";
+import { UNIT_TYPE_LABELS, UNIT_GOLD_FACTOR, FORMATION_PRESETS } from "@/lib/turnEngine";
 import { computeWorkforceBreakdown, DEFAULT_MAX_MOBILIZATION } from "@/lib/economyConstants";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -124,7 +124,9 @@ interface CivIdentityNames {
 const ArmyTab = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, realm: realmProp, onRefetch }: Props) => {
   const [stacks, setStacks] = useState<Stack[]>([]);
   const [generals, setGenerals] = useState<General[]>([]);
-  const [realm, setRealm] = useState<RealmRes | null>(null);
+  const realm = (realmProp as RealmRes | null) || null;
+  // Local setter retained for optimistic mobilization slider preview only.
+  const setRealm = (_next: any) => { /* no-op: realm is canonical via prop */ };
   const [loading, setLoading] = useState(true);
   const [selectedStack, setSelectedStack] = useState<Stack | null>(null);
   const [showRecruit, setShowRecruit] = useState(false);
@@ -165,9 +167,6 @@ const ArmyTab = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, re
     setStacks(enriched);
     setGenerals((generalsRes.data || []) as General[]);
     setUnitVisuals((visualsRes.data || []) as UnitTypeVisual[]);
-
-    const realmData = await ensureRealmResources(sessionId, currentPlayerName);
-    if (realmData) setRealm(realmData as RealmRes);
 
     setLoading(false);
   }, [sessionId, currentPlayerName]);
