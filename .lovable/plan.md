@@ -32,14 +32,25 @@ Server-side mutations now live inside command-dispatch for:
 Client surfaces no longer write directly to `military_stacks`,
 `military_stack_composition`, or `realm_resources` for these flows.
 
-### Deferred (Sprint B)
+### Sprint B — City/Council/Fiscal Rewiring (COMPLETE)
 
-- Typed PL/pgSQL RPC functions for all 13 commands (transactional idempotency)
-- CityManagement / CityBuildingsPanel / CityGovernancePanel write rewiring
-- SettlementUpgradePanel rewiring
-- CouncilTab decree execution rewiring
-- FiscalSubTab `trade_ideology` write rewiring
-- AcademyPanel `sport_funding_pct` write rewiring
+Server-side executors added to command-dispatch:
+- BUILD_BUILDING, UPGRADE_BUILDING, BUILD_DISTRICT, UPGRADE_INFRASTRUCTURE,
+  UPGRADE_SETTLEMENT, APPLY_DECREE_EFFECTS, SET_TRADE_IDEOLOGY,
+  SET_SPORT_FUNDING, WONDER_COMPLETED
+
+Client surfaces rewired to dispatchCommand:
+- CityManagement (build, AI build)
+- CityBuildingsPanel (upgrade, build, AI generate, civ-building)
+- CityGovernancePanel (buildDistrict, infrastructure upgrade)
+- SettlementUpgradePanel (upgrade)
+- FiscalSubTab (trade ideology)
+- AcademyPanel (sport funding)
+- CouncilTab (applyImmediateEffects)
+
+### Deferred (Sprint C)
+
+- Typed PL/pgSQL RPC functions for all commands (transactional idempotency)
 - DeployBattlePanel / WorldHexMap movement command cleanup
 - unified_audit_log table + triggers
 - Dead code removal (player_resources, military_capacity legacy)
