@@ -113,10 +113,17 @@ const AcademyPanel = ({ sessionId, currentPlayerName, currentTurn }: Props) => {
   const handleFundingChange = async (val: number[]) => {
     const pct = val[0];
     setSaving(true);
-    const { error } = await supabase.from("realm_resources").update({ sport_funding_pct: pct }).eq("session_id", sessionId).eq("player_name", currentPlayerName);
+    const { dispatchCommand } = await import("@/lib/commands");
+    const res = await dispatchCommand({
+      sessionId,
+      turnNumber: currentTurn,
+      actor: { name: currentPlayerName, type: "player" },
+      commandType: "SET_SPORT_FUNDING",
+      commandPayload: { pct },
+    });
     setSaving(false);
-    if (error) {
-      toast.error("Nepodařilo se uložit financování");
+    if (!res.ok) {
+      toast.error(res.error || "Nepodařilo se uložit financování");
       return;
     }
     toast.success(`Financování sportu: ${pct}%`);

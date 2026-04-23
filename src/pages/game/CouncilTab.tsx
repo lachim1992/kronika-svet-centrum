@@ -105,38 +105,16 @@ const CouncilTab = ({
     const immediate = effects.filter(e => IMMEDIATE_EFFECT_TYPES.has(e.type));
     if (immediate.length === 0) return;
 
-    // Load current realm resources
-    const { data: realm } = await supabase.from("realm_resources").select("*")
-      .eq("session_id", sessionId).eq("player_name", currentPlayerName).maybeSingle();
-    if (!realm) return;
-
-    const realmUpdates: Record<string, number> = {};
-    let stabilityDelta = 0;
-
-    for (const eff of immediate) {
-      if (eff.type === "stability") {
-        stabilityDelta += eff.value;
-      } else {
-        const field = RESOURCE_FIELD_MAP[eff.type];
-        if (field) {
-          const current = (realm as any)[field] || 0;
-          realmUpdates[field] = Math.max(0, current + eff.value);
-        }
-      }
-    }
-
-    // Update realm resources
-    if (Object.keys(realmUpdates).length > 0) {
-      await supabase.from("realm_resources").update(realmUpdates)
-        .eq("session_id", sessionId).eq("player_name", currentPlayerName);
-    }
-
-    // Apply stability to all player cities
-    if (stabilityDelta !== 0) {
-      for (const city of myCities) {
-        const newStab = Math.max(0, Math.min(100, (city.city_stability || 50) + stabilityDelta));
-        await supabase.from("cities").update({ city_stability: newStab }).eq("id", city.id);
-      }
+    const { dispatchCommand } = await import("@/lib/commands");
+    const res = await dispatchCommand({
+      sessionId,
+      turnNumber: currentTurn,
+      actor: { name: currentPlayerName, type: "player" },
+      commandType: "APPLY_DECREE_EFFECTS",
+      commandPayload: { effects: immediate },
+    });
+    if (!res.ok) {
+      toast.error(res.error || "Nepodařilo se aplikovat dopady dekretu");
     }
   };
 
