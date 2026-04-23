@@ -2099,3 +2099,363 @@ async function executeSetMobilization(
     importance: "normal", reference: payload,
   }]);
 }
+
+// ═══════════════════════════════════════════
+// SPRINT B — City / Council / Fiscal commands
+// ═══════════════════════════════════════════
+
+async function getRealmFull(supabase: any, sessionId: string, playerName: string) {
+  const { data } = await supabase.from("realm_resources")
+    .select("*")
+    .eq("session_id", sessionId).eq("player_name", playerName).maybeSingle();
+  return data;
+}
+
+/**
+ * BUILD_BUILDING — full server-side: deduct resources, insert city_buildings row, emit event.
+ * Payload: { cityId, cityName, template?, ai? (full building data), chronicleText? }
+ */
+async function executeBuildBuilding(
+  supabase: any, base: any, actor: Actor, payload: any,
+  commandId: string, sessionId: string, turnNumber: number,
+): Promise<CommandResult> {
+  const { cityId, cityName, building, isAiGenerated, chronicleText } = payload;
+  if (!cityId || !building) return { events: [], error: "Missing cityId or building" };
+
+  const realm = await getRealmFull(supabase, sessionId, actor.name);
+  if (!realm) return { events: [], error: "Realm not found" };
+
+  const costGold = building.cost_wealth || 0;
+  const prodCost = (building.cost_wood || 0) + (building.cost_stone || 0) + (building.cost_iron || 0);
+
+  if ((realm.gold_reserve || 0) < costGold) return { events: [], error: `Nedostatek zlata (potřeba ${costGold})` };
+  if ((realm.production_reserve || 0) < prodCost) return { events: [], error: `Nedostatek produkce (potřeba ${prodCost})` };
+
+  // Deduct
+  await supabase.from("realm_resources").update({
+    gold_reserve: (realm.gold_reserve || 0) - costGold,
+    production_reserve: Math.max(0, (realm.production_reserve || 0) - prodCost),
+  }).eq("id", realm.id);
+
+  // Insert building
+  const buildDuration = building.build_duration || building.build_turns || 1;
+  const { data: inserted, error: insertErr } = await supabase.from("city_buildings").insert({
+    session_id: sessionId,
+    city_id: cityId,
+    template_id: building.template_id || null,
+    name: building.name,
+    description: building.description || "",
+    category: building.category || "economic",
+    cost_wealth: costGold,
+    cost_wood: building.cost_wood || 0,
+    cost_stone: building.cost_stone || 0,
+    cost_iron: building.cost_iron || 0,
+    build_duration: buildDuration,
+    build_started_turn: turnNumber,
+    effects: building.effects || {},
+    flavor_text: building.flavor_text || null,
+    founding_myth: building.founding_myth || null,
+    image_prompt: building.image_prompt || null,
+    image_url: building.image_url || null,
+    is_ai_generated: !!isAiGenerated,
+    is_arena: building.is_arena || false,
+    building_tags: building.building_tags || null,
+    status: buildDuration <= 1 ? "completed" : "building",
+    completed_turn: buildDuration <= 1 ? turnNumber : null,
+    current_level: 1,
+    max_level: building.max_level || (isAiGenerated ? 5 : 3),
+    level_data: building.level_data || [],
+  }).select("id").single();
+
+  if (insertErr) return { events: [], error: `Insert failed: ${insertErr.message}` };
+
+  return insertEventsWithChronicle(supabase, commandId, sessionId, turnNumber, [{
+    ...base,
+    event_type: "construction",
+    city_id: cityId,
+    note: payload.note || `Stavba ${building.name} v ${cityName}.`,
+    importance: "normal",
+    reference: { buildingId: inserted.id, buildingName: building.name, cityId, cityName },
+  }], chronicleText, { buildingId: inserted.id });
+}
+
+/**
+ * UPGRADE_BUILDING — deduct resources, update city_buildings level/effects.
+ * Payload: { cityId, cityName, buildingId, newLevel, newName, newEffects, costs, isWonderConversion?, wonderData? }
+ */
+async function executeUpgradeBuilding(
+  supabase: any, base: any, actor: Actor, payload: any,
+  commandId: string, sessionId: string, turnNumber: number,
+): Promise<CommandResult> {
+  const { cityId, cityName, buildingId, newLevel, newName, newEffects, costs, isWonderConversion, chronicleText } = payload;
+  if (!buildingId || !newLevel) return { events: [], error: "Missing buildingId or newLevel" };
+
+  const realm = await getRealmFull(supabase, sessionId, actor.name);
+  if (!realm) return { events: [], error: "Realm not found" };
+
+  const costGold = costs?.cost_wealth || 0;
+  const prodCost = (costs?.cost_wood || 0) + (costs?.cost_stone || 0) + (costs?.cost_iron || 0);
+
+  if ((realm.gold_reserve || 0) < costGold) return { events: [], error: "Nedostatek zlata" };
+  if ((realm.production_reserve || 0) < prodCost) return { events: [], error: "Nedostatek produkce" };
+
+  await supabase.from("realm_resources").update({
+    gold_reserve: Math.max(0, (realm.gold_reserve || 0) - costGold),
+    production_reserve: Math.max(0, (realm.production_reserve || 0) - prodCost),
+  }).eq("id", realm.id);
+
+  const updateData: any = { current_level: newLevel };
+  if (newName) updateData.name = newName;
+  if (newEffects) updateData.effects = newEffects;
+
+  let wonderId: string | null = null;
+  if (isWonderConversion) {
+    updateData.is_wonder = true;
+    const { data: existingBuilding } = await supabase.from("city_buildings")
+      .select("description, image_url, image_prompt").eq("id", buildingId).maybeSingle();
+    const { data: wonder } = await supabase.from("wonders").insert({
+      session_id: sessionId,
+      name: newName,
+      description: existingBuilding?.description || "",
+      owner_player: actor.name,
+      city_id: cityId,
+      era: "current",
+      status: "completed",
+      effects: { ...(newEffects || {}), global_influence: 10, diplomatic_prestige: 15 },
+      completed_turn: turnNumber,
+      image_url: existingBuilding?.image_url,
+      image_prompt: existingBuilding?.image_prompt,
+    }).select("id").single();
+    if (wonder) {
+      wonderId = wonder.id;
+      updateData.wonder_id = wonder.id;
+    }
+  }
+
+  await supabase.from("city_buildings").update(updateData).eq("id", buildingId);
+
+  return insertEventsWithChronicle(supabase, commandId, sessionId, turnNumber, [{
+    ...base,
+    event_type: isWonderConversion ? "wonder" : "construction",
+    city_id: cityId,
+    note: `${actor.name} vylepšil ${newName} v ${cityName} na úroveň ${newLevel}.`,
+    importance: isWonderConversion ? "critical" : "normal",
+    reference: { buildingId, newLevel, newName, cityId, cityName, isWonderConversion },
+  }], chronicleText, { buildingId, wonderId });
+}
+
+/**
+ * BUILD_DISTRICT — deduct, insert city_districts.
+ * Payload: { cityId, cityName, district (full template + values), chronicleText? }
+ */
+async function executeBuildDistrict(
+  supabase: any, base: any, actor: Actor, payload: any,
+  commandId: string, sessionId: string, turnNumber: number,
+): Promise<CommandResult> {
+  const { cityId, cityName, district, chronicleText } = payload;
+  if (!cityId || !district) return { events: [], error: "Missing cityId or district" };
+
+  const realm = await getRealmFull(supabase, sessionId, actor.name);
+  if (!realm) return { events: [], error: "Realm not found" };
+
+  const costGold = district.build_cost_wealth || 0;
+  const prodCost = (district.build_cost_wood || 0) + (district.build_cost_stone || 0);
+
+  if ((realm.gold_reserve || 0) < costGold) return { events: [], error: "Nedostatek zlata" };
+  if ((realm.production_reserve || 0) < prodCost) return { events: [], error: "Nedostatek produkce" };
+
+  await supabase.from("realm_resources").update({
+    gold_reserve: (realm.gold_reserve || 0) - costGold,
+    production_reserve: Math.max(0, (realm.production_reserve || 0) - prodCost),
+  }).eq("id", realm.id);
+
+  const buildTurns = district.build_turns || 1;
+  const { data: inserted, error: dErr } = await supabase.from("city_districts").insert({
+    session_id: sessionId, city_id: cityId,
+    district_type: district.district_type, name: district.name,
+    population_capacity: district.population_capacity || 0,
+    grain_modifier: district.grain_modifier || 0,
+    wealth_modifier: district.wealth_modifier || 0,
+    production_modifier: district.production_modifier || 0,
+    stability_modifier: district.stability_modifier || 0,
+    influence_modifier: district.influence_modifier || 0,
+    peasant_attraction: district.peasant_attraction || 0,
+    burgher_attraction: district.burgher_attraction || 0,
+    cleric_attraction: district.cleric_attraction || 0,
+    military_attraction: district.military_attraction || 0,
+    build_cost_wealth: costGold,
+    build_cost_wood: district.build_cost_wood || 0,
+    build_cost_stone: district.build_cost_stone || 0,
+    build_turns: buildTurns,
+    build_started_turn: turnNumber,
+    status: buildTurns <= 1 ? "completed" : "building",
+    completed_turn: buildTurns <= 1 ? turnNumber : null,
+    description: district.description || null,
+  }).select("id").single();
+
+  if (dErr) return { events: [], error: `District insert failed: ${dErr.message}` };
+
+  return insertEventsWithChronicle(supabase, commandId, sessionId, turnNumber, [{
+    ...base,
+    event_type: "construction",
+    city_id: cityId,
+    note: `${actor.name} založil čtvrť ${district.name} v ${cityName}.`,
+    importance: "normal",
+    reference: { districtId: inserted.id, districtName: district.name, cityId },
+  }], chronicleText, { districtId: inserted.id });
+}
+
+/**
+ * UPGRADE_SETTLEMENT — deduct consumable resources, update city level.
+ * Payload: { cityId, cityName, nextLevel, nextSettlement, costs: Record<string, number> }
+ */
+async function executeUpgradeSettlement(
+  supabase: any, base: any, actor: Actor, payload: any,
+  commandId: string, sessionId: string, turnNumber: number,
+): Promise<CommandResult> {
+  const { cityId, cityName, nextLevel, nextSettlement, costs } = payload;
+  if (!cityId || !nextSettlement) return { events: [], error: "Missing cityId or nextSettlement" };
+
+  const realm = await getRealmFull(supabase, sessionId, actor.name);
+  if (!realm) return { events: [], error: "Realm not found" };
+
+  // Validate funds
+  if (costs?.production_reserve && (realm.production_reserve || 0) < costs.production_reserve) {
+    return { events: [], error: "Nedostatek produkce" };
+  }
+  if (costs?.gold_reserve && (realm.gold_reserve || 0) < costs.gold_reserve) {
+    return { events: [], error: "Nedostatek zlata" };
+  }
+
+  await supabase.from("cities").update({
+    settlement_level: nextSettlement,
+    level: nextLevel,
+  }).eq("id", cityId);
+
+  if (costs && Object.keys(costs).length > 0) {
+    const update: any = {};
+    for (const [field, amount] of Object.entries(costs)) {
+      update[field] = Math.max(0, ((realm as any)[field] || 0) - (amount as number));
+    }
+    await supabase.from("realm_resources").update(update).eq("id", realm.id);
+  }
+
+  return insertEventsWithChronicle(supabase, commandId, sessionId, turnNumber, [{
+    ...base,
+    event_type: "settlement_upgrade",
+    city_id: cityId,
+    note: `${cityName} povýšeno na ${nextLevel}.`,
+    importance: "critical",
+    reference: { cityId, cityName, nextLevel, nextSettlement },
+  }], payload.chronicleText);
+}
+
+/**
+ * APPLY_DECREE_EFFECTS — apply immediate one-time effects from decree to realm + cities.
+ * Payload: { effects: [{ type, value }], chronicleText? }
+ */
+async function executeApplyDecreeEffects(
+  supabase: any, base: any, actor: Actor, payload: any,
+  commandId: string, sessionId: string, turnNumber: number,
+): Promise<CommandResult> {
+  const { effects } = payload;
+  if (!Array.isArray(effects)) return { events: [], error: "Missing effects array" };
+
+  const RESOURCE_FIELD_MAP: Record<string, string> = {
+    gold: "gold_reserve", wealth: "gold_reserve",
+    grain: "grain_reserve", supplies: "grain_reserve",
+    production: "production_reserve", manpower: "manpower_pool",
+  };
+  const IMMEDIATE = new Set(["gold", "wealth", "grain", "supplies", "production", "manpower", "stability"]);
+  const immediate = effects.filter((e: any) => IMMEDIATE.has(e.type));
+
+  const realm = await getRealmFull(supabase, sessionId, actor.name);
+  if (!realm) return { events: [], error: "Realm not found" };
+
+  const realmUpdates: Record<string, number> = {};
+  let stabilityDelta = 0;
+  for (const eff of immediate) {
+    if (eff.type === "stability") {
+      stabilityDelta += eff.value;
+    } else {
+      const field = RESOURCE_FIELD_MAP[eff.type];
+      if (field) {
+        const current = (realm as any)[field] || 0;
+        realmUpdates[field] = Math.max(0, current + eff.value);
+      }
+    }
+  }
+
+  if (Object.keys(realmUpdates).length > 0) {
+    await supabase.from("realm_resources").update(realmUpdates).eq("id", realm.id);
+  }
+
+  if (stabilityDelta !== 0) {
+    const { data: cities } = await supabase.from("cities")
+      .select("id, city_stability").eq("session_id", sessionId).eq("owner_player", actor.name);
+    for (const c of (cities || [])) {
+      const newStab = Math.max(0, Math.min(100, (c.city_stability || 50) + stabilityDelta));
+      await supabase.from("cities").update({ city_stability: newStab }).eq("id", c.id);
+    }
+  }
+
+  return insertEventsWithChronicle(supabase, commandId, sessionId, turnNumber, [{
+    ...base,
+    event_type: "decree",
+    note: payload.note || `${actor.name} aplikoval okamžité dopady dekretu.`,
+    importance: "normal",
+    reference: { effects: immediate },
+  }], payload.chronicleText);
+}
+
+/**
+ * SET_TRADE_IDEOLOGY — update realm.trade_ideology.
+ * Payload: { ideology }
+ */
+async function executeSetTradeIdeology(
+  supabase: any, base: any, actor: Actor, payload: any,
+  commandId: string, sessionId: string, turnNumber: number,
+): Promise<CommandResult> {
+  const { ideology } = payload;
+  if (!ideology || typeof ideology !== "string") return { events: [], error: "Missing ideology" };
+
+  const realm = await getRealmFull(supabase, sessionId, actor.name);
+  if (!realm) return { events: [], error: "Realm not found" };
+
+  await supabase.from("realm_resources").update({ trade_ideology: ideology }).eq("id", realm.id);
+
+  return insertEvents(supabase, commandId, [{
+    ...base,
+    event_type: "policy",
+    note: payload.note || `${actor.name} změnil obchodní ideologii na ${ideology}.`,
+    importance: "normal",
+    reference: payload,
+  }]);
+}
+
+/**
+ * SET_SPORT_FUNDING — update realm.sport_funding_pct.
+ * Payload: { pct }
+ */
+async function executeSetSportFunding(
+  supabase: any, base: any, actor: Actor, payload: any,
+  commandId: string, sessionId: string, turnNumber: number,
+): Promise<CommandResult> {
+  const { pct } = payload;
+  if (typeof pct !== "number" || pct < 0 || pct > 100) {
+    return { events: [], error: "Invalid pct (0–100)" };
+  }
+
+  const realm = await getRealmFull(supabase, sessionId, actor.name);
+  if (!realm) return { events: [], error: "Realm not found" };
+
+  await supabase.from("realm_resources").update({ sport_funding_pct: pct }).eq("id", realm.id);
+
+  return insertEvents(supabase, commandId, [{
+    ...base,
+    event_type: "policy",
+    note: payload.note || `${actor.name} nastavil sportovní financování na ${pct}%.`,
+    importance: "normal",
+    reference: payload,
+  }]);
+}
