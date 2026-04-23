@@ -218,13 +218,34 @@ async function executeCommand(
       }]);
 
     case "BUILD_BUILDING":
+      return await executeBuildBuilding(supabase, base, actor, payload, commandId, sessionId, turnNumber);
+
+    case "UPGRADE_BUILDING":
+      return await executeUpgradeBuilding(supabase, base, actor, payload, commandId, sessionId, turnNumber);
+
+    case "BUILD_DISTRICT":
+      return await executeBuildDistrict(supabase, base, actor, payload, commandId, sessionId, turnNumber);
+
+    case "UPGRADE_SETTLEMENT":
+      return await executeUpgradeSettlement(supabase, base, actor, payload, commandId, sessionId, turnNumber);
+
+    case "APPLY_DECREE_EFFECTS":
+      return await executeApplyDecreeEffects(supabase, base, actor, payload, commandId, sessionId, turnNumber);
+
+    case "SET_TRADE_IDEOLOGY":
+      return await executeSetTradeIdeology(supabase, base, actor, payload, commandId, sessionId, turnNumber);
+
+    case "SET_SPORT_FUNDING":
+      return await executeSetSportFunding(supabase, base, actor, payload, commandId, sessionId, turnNumber);
+
+    case "WONDER_COMPLETED":
       return insertEventsWithChronicle(supabase, commandId, sessionId, turnNumber, [{
         ...base,
-        event_type: "construction",
+        event_type: "wonder",
         city_id: payload.cityId,
-        note: payload.note || `Stavba ${payload.buildingName} v ${payload.cityName}.`,
-        importance: "normal",
-        reference: { buildingId: payload.buildingId, buildingName: payload.buildingName, ...payload },
+        note: payload.note || `Div světa: ${payload.wonderName}.`,
+        importance: "critical",
+        reference: payload,
       }], payload.chronicleText);
 
     case "CREATE_TRADE_OFFER":
