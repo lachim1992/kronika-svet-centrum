@@ -244,32 +244,26 @@ const CityManagement = ({ sessionId, cityId, currentPlayerName, currentTurn, onB
     if (!canAfford(aiPreview)) { toast.error("Nedostatek surovin!"); return; }
     setBuilding(true);
     try {
-      const aiProdCost = (aiPreview.cost_wood || 0) + (aiPreview.cost_stone || 0) + (aiPreview.cost_iron || 0);
-      await supabase.from("realm_resources").update({
-        production_reserve: Math.max(0, (realm.production_reserve || 0) - aiProdCost),
-        gold_reserve: (realm.gold_reserve || 0) - aiPreview.cost_wealth,
-      } as any).eq("id", realm.id);
-
-      await supabase.from("city_buildings").insert({
-        session_id: sessionId,
-        city_id: cityId,
-        name: aiPreview.name,
-        category: aiPreview.category,
-        description: aiPreview.description,
-        flavor_text: aiPreview.flavor_text,
-        founding_myth: aiPreview.founding_myth,
-        cost_wood: aiPreview.cost_wood,
-        cost_stone: aiPreview.cost_stone,
-        cost_iron: aiPreview.cost_iron,
-        cost_wealth: aiPreview.cost_wealth,
-        effects: aiPreview.effects,
-        is_ai_generated: true,
-        image_prompt: aiPreview.image_prompt,
-        status: aiPreview.build_duration <= 1 ? "completed" : "building",
-        build_started_turn: currentTurn,
-        build_duration: aiPreview.build_duration,
-        completed_turn: aiPreview.build_duration <= 1 ? currentTurn : null,
-      } as any);
+      const result = await dispatchCommand({
+        sessionId, turnNumber: currentTurn,
+        actor: { name: currentPlayerName, type: "player" },
+        commandType: "BUILD_BUILDING",
+        commandPayload: {
+          cityId, cityName: city?.name,
+          building: {
+            name: aiPreview.name, category: aiPreview.category,
+            description: aiPreview.description, flavor_text: aiPreview.flavor_text,
+            founding_myth: aiPreview.founding_myth,
+            cost_wood: aiPreview.cost_wood, cost_stone: aiPreview.cost_stone,
+            cost_iron: aiPreview.cost_iron, cost_wealth: aiPreview.cost_wealth,
+            effects: aiPreview.effects, image_prompt: aiPreview.image_prompt,
+            build_duration: aiPreview.build_duration, max_level: 5,
+          },
+          isAiGenerated: true,
+          chronicleText: `V městě **${city?.name}** vzniká unikátní stavba: **${aiPreview.name}**. ${aiPreview.founding_myth || aiPreview.description || ""}`,
+        },
+      });
+      if (!result.ok) { toast.error("Chyba: " + result.error); return; }
 
       toast.success(`🏗️ "${aiPreview.name}" zahájena!`);
       setAiPreview(null);
