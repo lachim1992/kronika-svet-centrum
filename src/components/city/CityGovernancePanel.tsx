@@ -139,35 +139,43 @@ const CityGovernancePanel = ({ sessionId, city, realm, currentPlayerName, curren
       return;
     }
     setSaving(true);
-    // Deduct (new economy: production_reserve + gold_reserve)
-    await supabase.from("realm_resources").update({
-      gold_reserve: (realm.gold_reserve || 0) - tmpl.build_cost_wealth,
-      production_reserve: Math.max(0, (realm.production_reserve || 0) - districtProdCost),
-    } as any).eq("id", realm.id);
-    // Insert district
-    await supabase.from("city_districts").insert({
-      session_id: sessionId, city_id: city.id,
-      district_type: typeKey, name: tmpl.label,
-      population_capacity: tmpl.population_capacity,
-      grain_modifier: tmpl.grain_modifier, wealth_modifier: tmpl.wealth_modifier,
-      production_modifier: tmpl.production_modifier, stability_modifier: tmpl.stability_modifier,
-      influence_modifier: tmpl.influence_modifier,
-      peasant_attraction: tmpl.peasant_attraction, burgher_attraction: tmpl.burgher_attraction,
-      cleric_attraction: tmpl.cleric_attraction, military_attraction: tmpl.military_attraction,
-      build_cost_wealth: tmpl.build_cost_wealth, build_cost_wood: tmpl.build_cost_wood,
-      build_cost_stone: tmpl.build_cost_stone, build_turns: tmpl.build_turns,
-      build_started_turn: currentTurn,
-      status: tmpl.build_turns <= 1 ? "completed" : "building",
-      completed_turn: tmpl.build_turns <= 1 ? currentTurn : null,
-      description: tmpl.description,
+    const { dispatchCommand } = await import("@/lib/commands");
+    const res = await dispatchCommand({
+      sessionId,
+      turnNumber: currentTurn,
+      actor: { name: currentPlayerName, type: "player" },
+      commandType: "BUILD_DISTRICT",
+      commandPayload: {
+        cityId: city.id,
+        cityName: city.name,
+        district: {
+          district_type: typeKey,
+          name: tmpl.label,
+          population_capacity: tmpl.population_capacity,
+          grain_modifier: tmpl.grain_modifier,
+          wealth_modifier: tmpl.wealth_modifier,
+          production_modifier: tmpl.production_modifier,
+          stability_modifier: tmpl.stability_modifier,
+          influence_modifier: tmpl.influence_modifier,
+          peasant_attraction: tmpl.peasant_attraction,
+          burgher_attraction: tmpl.burgher_attraction,
+          cleric_attraction: tmpl.cleric_attraction,
+          military_attraction: tmpl.military_attraction,
+          build_cost_wealth: tmpl.build_cost_wealth,
+          build_cost_wood: tmpl.build_cost_wood,
+          build_cost_stone: tmpl.build_cost_stone,
+          build_turns: tmpl.build_turns,
+          description: tmpl.description,
+        },
+        chronicleText: `V městě **${city.name}** byla zahájena výstavba nové čtvrti: **${tmpl.label}**. ${tmpl.description}`,
+      },
     });
-    // Chronicle
-    await supabase.from("chronicle_entries").insert({
-      session_id: sessionId,
-      text: `V městě **${city.name}** byla zahájena výstavba nové čtvrti: **${tmpl.label}**. ${tmpl.description}`,
-    });
-    toast.success(`🏗️ Výstavba "${tmpl.label}" zahájena!`);
     setSaving(false);
+    if (!res.ok) {
+      toast.error(res.error || "Nepodařilo se založit čtvrť");
+      return;
+    }
+    toast.success(`🏗️ Výstavba "${tmpl.label}" zahájena!`);
     onRefetch?.();
     fetchData();
   };
@@ -470,19 +478,29 @@ const CityGovernancePanel = ({ sessionId, city, realm, currentPlayerName, curren
                       disabled={saving || !canAfford}
                       onClick={async () => {
                         setSaving(true);
-                        await supabase.from("realm_resources").update({
-                          gold_reserve: (realm.gold_reserve || 0) - cost.wealth,
-                          production_reserve: Math.max(0, (realm.production_reserve || 0) - (cost.wood + cost.stone)),
-                        } as any).eq("id", realm.id);
-                        await supabase.from("cities").update({
-                          [infra.field]: currentLevel + 1,
-                        } as any).eq("id", city.id);
-                        await supabase.from("chronicle_entries").insert({
-                          session_id: sessionId,
-                          text: `V městě **${city.name}** byla vylepšena infrastruktura: **${infra.label}** na úroveň ${currentLevel + 1}.`,
+                        const { dispatchCommand } = await import("@/lib/commands");
+                        const res = await dispatchCommand({
+                          sessionId,
+                          turnNumber: currentTurn,
+                          actor: { name: currentPlayerName, type: "player" },
+                          commandType: "UPGRADE_INFRASTRUCTURE",
+                          commandPayload: {
+                            cityId: city.id,
+                            cityName: city.name,
+                            field: infra.field,
+                            nextLevel: currentLevel + 1,
+                            costGold: cost.wealth,
+                            costProduction: cost.wood + cost.stone,
+                            label: infra.label,
+                            chronicleText: `V městě **${city.name}** byla vylepšena infrastruktura: **${infra.label}** na úroveň ${currentLevel + 1}.`,
+                          },
                         });
-                        toast.success(`${infra.icon} ${infra.label} vylepšena na úroveň ${currentLevel + 1}!`);
                         setSaving(false);
+                        if (!res.ok) {
+                          toast.error(res.error || "Nepodařilo se vylepšit infrastrukturu");
+                          return;
+                        }
+                        toast.success(`${infra.icon} ${infra.label} vylepšena na úroveň ${currentLevel + 1}!`);
                         onRefetch?.();
                       }}
                     >
