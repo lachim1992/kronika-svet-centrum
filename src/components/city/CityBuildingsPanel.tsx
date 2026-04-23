@@ -218,42 +218,27 @@ const CityBuildingsPanel = ({
     if (template.is_unique && alreadyBuilt.has(template.id)) { toast.error("Tato stavba je unikátní a již stojí."); return; }
     setSaving(true);
 
-    const prodCostBuild = (template.cost_wood || 0) + (template.cost_stone || 0) + (template.cost_iron || 0);
-    await supabase.from("realm_resources").update({
-      gold_reserve: (realm.gold_reserve || 0) - template.cost_wealth,
-      production_reserve: Math.max(0, (realm.production_reserve || 0) - prodCostBuild),
-    } as any).eq("id", realm.id);
-
-    await supabase.from("city_buildings").insert({
-      session_id: sessionId,
-      city_id: cityId,
-      template_id: template.id,
-      name: template.name,
-      description: template.description,
-      category: template.category,
-      cost_wealth: template.cost_wealth,
-      cost_wood: template.cost_wood,
-      cost_stone: template.cost_stone,
-      cost_iron: template.cost_iron,
-      build_duration: template.build_turns,
-      build_started_turn: currentTurn,
-      effects: template.effects,
-      flavor_text: template.flavor_text,
-      status: template.build_turns <= 1 ? "completed" : "building",
-      completed_turn: template.build_turns <= 1 ? currentTurn : null,
-      current_level: 1,
-      max_level: template.max_level || 3,
-      level_data: template.level_data || [],
-    } as any);
-
     const chronicleText = `V městě **${cityName}** byla zahájena výstavba: **${template.name}**. ${template.flavor_text || template.description}`;
-    await dispatchCommand({
+    const result = await dispatchCommand({
       sessionId, turnNumber: currentTurn,
       actor: { name: currentPlayerName, type: "player" },
       commandType: "BUILD_BUILDING",
-      commandPayload: { cityId, cityName, buildingName: template.name, chronicleText },
+      commandPayload: {
+        cityId, cityName,
+        building: {
+          template_id: template.id, name: template.name, category: template.category,
+          description: template.description, flavor_text: template.flavor_text,
+          cost_wealth: template.cost_wealth, cost_wood: template.cost_wood,
+          cost_stone: template.cost_stone, cost_iron: template.cost_iron,
+          build_duration: template.build_turns, effects: template.effects,
+          max_level: template.max_level || 3, level_data: template.level_data || [],
+        },
+        isAiGenerated: false,
+        chronicleText,
+      },
     });
 
+    if (!result.ok) { toast.error("Stavba selhala: " + result.error); setSaving(false); return; }
     toast.success(`🏗️ Stavba "${template.name}" zahájena!`);
     setSaving(false);
     onRefetch?.();
@@ -275,49 +260,39 @@ const CityBuildingsPanel = ({
       if (error) throw error;
       if (data?.error) { toast.error(data.error); return; }
 
-      if (realm) {
-        const aiProdCost = (data.cost_wood || 0) + (data.cost_stone || 0) + (data.cost_iron || 0);
-        await supabase.from("realm_resources").update({
-          gold_reserve: Math.max(0, (realm.gold_reserve || 0) - (data.cost_wealth || 0)),
-          production_reserve: Math.max(0, (realm.production_reserve || 0) - aiProdCost),
-        } as any).eq("id", realm.id);
-      }
-
       const buildDuration = data.build_duration || 1;
-      await supabase.from("city_buildings").insert({
-        session_id: sessionId, city_id: cityId,
-        name: data.name || "Nová stavba",
-        description: data.description || "",
-        category: data.category || "economic",
-        cost_wealth: data.cost_wealth || 0,
-        cost_wood: data.cost_wood || 0,
-        cost_stone: data.cost_stone || 0,
-        cost_iron: data.cost_iron || 0,
-        build_duration: buildDuration,
-        build_started_turn: currentTurn,
-        effects: data.effects || {},
-        flavor_text: data.flavor_text || null,
-        founding_myth: data.founding_myth || null,
-        image_prompt: data.image_prompt || null,
-        image_url: data.image_url || null,
-        is_ai_generated: true,
-        is_arena: data.is_arena || false,
-        building_tags: data.building_tags || [],
-        status: buildDuration <= 1 ? "completed" : "building",
-        completed_turn: buildDuration <= 1 ? currentTurn : null,
-        current_level: 1,
-        max_level: 5,
-        level_data: data.level_data || [],
-      } as any);
-
       const chronicleText = `V městě **${cityName}** vzniká unikátní stavba: **${data.name}**. ${data.founding_myth || data.description || ""}`;
-      await dispatchCommand({
+      const result = await dispatchCommand({
         sessionId, turnNumber: currentTurn,
         actor: { name: currentPlayerName, type: "player" },
         commandType: "BUILD_BUILDING",
-        commandPayload: { cityId, cityName, buildingName: data.name, chronicleText, isAiGenerated: true },
+        commandPayload: {
+          cityId, cityName,
+          building: {
+            name: data.name || "Nová stavba",
+            description: data.description || "",
+            category: data.category || "economic",
+            cost_wealth: data.cost_wealth || 0,
+            cost_wood: data.cost_wood || 0,
+            cost_stone: data.cost_stone || 0,
+            cost_iron: data.cost_iron || 0,
+            build_duration: buildDuration,
+            effects: data.effects || {},
+            flavor_text: data.flavor_text || null,
+            founding_myth: data.founding_myth || null,
+            image_prompt: data.image_prompt || null,
+            image_url: data.image_url || null,
+            is_arena: data.is_arena || false,
+            building_tags: data.building_tags || [],
+            max_level: 5,
+            level_data: data.level_data || [],
+          },
+          isAiGenerated: true,
+          chronicleText,
+        },
       });
 
+      if (!result.ok) { toast.error("AI stavba selhala: " + result.error); return; }
       toast.success(`✨ AI stavba "${data.name}" vytvořena! (5 úrovní, Lvl5 = Div světa)`);
       setAiPrompt(""); setAiMyth(""); setAiVisual("");
       setShowAI(false);
