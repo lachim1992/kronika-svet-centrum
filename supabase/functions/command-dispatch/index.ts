@@ -2462,3 +2462,41 @@ async function executeSetSportFunding(
     reference: payload,
   }]);
 }
+
+/**
+ * UPGRADE_INFRASTRUCTURE — deduct realm resources, increment city infra field.
+ * Payload: { cityId, cityName, field, nextLevel, costGold, costProduction, label?, icon?, chronicleText? }
+ */
+async function executeUpgradeInfrastructure(
+  supabase: any, base: any, actor: Actor, payload: any,
+  commandId: string, sessionId: string, turnNumber: number,
+): Promise<CommandResult> {
+  const { cityId, cityName, field, nextLevel, costGold = 0, costProduction = 0, label, chronicleText } = payload;
+  if (!cityId || !field || typeof nextLevel !== "number") {
+    return { events: [], error: "Missing cityId, field or nextLevel" };
+  }
+  const ALLOWED = new Set(["irrigation_level", "market_level", "temple_level", "development_level"]);
+  if (!ALLOWED.has(field)) return { events: [], error: `Field ${field} not allowed` };
+
+  const realm = await getRealmFull(supabase, sessionId, actor.name);
+  if (!realm) return { events: [], error: "Realm not found" };
+
+  if ((realm.gold_reserve || 0) < costGold) return { events: [], error: "Nedostatek zlata" };
+  if ((realm.production_reserve || 0) < costProduction) return { events: [], error: "Nedostatek produkce" };
+
+  await supabase.from("realm_resources").update({
+    gold_reserve: (realm.gold_reserve || 0) - costGold,
+    production_reserve: Math.max(0, (realm.production_reserve || 0) - costProduction),
+  }).eq("id", realm.id);
+
+  await supabase.from("cities").update({ [field]: nextLevel }).eq("id", cityId);
+
+  return insertEventsWithChronicle(supabase, commandId, sessionId, turnNumber, [{
+    ...base,
+    event_type: "construction",
+    city_id: cityId,
+    note: `${actor.name} vylepšil ${label || field} v ${cityName} na úroveň ${nextLevel}.`,
+    importance: "normal",
+    reference: { cityId, field, nextLevel },
+  }], chronicleText);
+}
