@@ -43,13 +43,18 @@ const FiscalSubTab = ({ realm, sessionId, playerName, onRefetch }: Props) => {
     if (!sessionId || !playerName || newIdeology === ideology) return;
     setSwitching(true);
     try {
-      await supabase.from("realm_resources").update({
-        trade_ideology: newIdeology,
-      }).eq("session_id", sessionId).eq("player_name", playerName);
+      const { dispatchCommand } = await import("@/lib/commands");
+      const result = await dispatchCommand({
+        sessionId,
+        actor: { name: playerName, type: "player" },
+        commandType: "SET_TRADE_IDEOLOGY",
+        commandPayload: { ideology: newIdeology },
+      });
+      if (!result.ok) throw new Error(result.error || "Unknown");
       toast.success(`Obchodní ideologie změněna na "${TRADE_IDEOLOGIES.find(t => t.key === newIdeology)?.label}"`);
       onRefetch?.();
     } catch (e: any) {
-      toast.error("Chyba při změně ideologie");
+      toast.error("Chyba při změně ideologie: " + e.message);
     } finally {
       setSwitching(false);
     }

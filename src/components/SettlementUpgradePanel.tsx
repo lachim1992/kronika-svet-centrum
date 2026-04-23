@@ -2,7 +2,9 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Check, X, ArrowUp } from "lucide-react";
 import { toast } from "sonner";
-import { supabase } from "@/integrations/supabase/client";
+import { dispatchCommand } from "@/lib/commands";
+
+interface Props2 { sessionId?: string; currentPlayerName?: string; currentTurn?: number; }
 
 interface UpgradeRequirement {
   label: string;
@@ -14,6 +16,9 @@ interface UpgradeRequirement {
 interface Props {
   city: any;
   realm: any;
+  sessionId?: string;
+  currentPlayerName?: string;
+  currentTurn?: number;
   onRefetch?: () => void;
 }
 
@@ -69,7 +74,7 @@ const COST_MAP: Record<string, string> = {
 
 const SETTLEMENT_LABELS: Record<string, string> = { HAMLET: "Osada", TOWNSHIP: "Městečko", CITY: "Město", POLIS: "Polis" };
 
-const SettlementUpgradePanel = ({ city, realm, onRefetch }: Props) => {
+const SettlementUpgradePanel = ({ city, realm, sessionId, currentPlayerName, currentTurn, onRefetch }: Props) => {
   const upgrade = UPGRADE_PATH[city.settlement_level];
   if (!upgrade) return null;
 
@@ -78,28 +83,34 @@ const SettlementUpgradePanel = ({ city, realm, onRefetch }: Props) => {
 
   const handleUpgrade = async () => {
     if (!allMet) return;
-    const { error } = await supabase.from("cities").update({
-      settlement_level: upgrade.nextSettlement,
-      level: upgrade.next,
-    }).eq("id", city.id);
-
-    if (error) {
-      toast.error("Upgrade selhal");
+    if (!sessionId || !currentPlayerName) {
+      toast.error("Chybí kontext sezení.");
       return;
     }
 
-    // Deduct consumable resources (production + wealth, not capacity)
-    if (realm) {
-      const costs: Record<string, number> = {};
-      for (const req of requirements) {
-        const field = COST_MAP[req.label];
-        if (field) {
-          costs[field] = Math.max(0, (realm[field] || 0) - parseInt(req.required.replace(/\s/g, "")));
-        }
+    const costs: Record<string, number> = {};
+    for (const req of requirements) {
+      const field = COST_MAP[req.label];
+      if (field) {
+        costs[field] = parseInt(req.required.replace(/\s/g, ""), 10) || 0;
       }
-      if (Object.keys(costs).length > 0) {
-        await supabase.from("realm_resources").update(costs).eq("id", realm.id);
-      }
+    }
+
+    const result = await dispatchCommand({
+      sessionId, turnNumber: currentTurn,
+      actor: { name: currentPlayerName, type: "player" },
+      commandType: "UPGRADE_SETTLEMENT",
+      commandPayload: {
+        cityId: city.id, cityName: city.name,
+        nextLevel: upgrade.next, nextSettlement: upgrade.nextSettlement,
+        costs,
+        chronicleText: `Sídlo **${city.name}** bylo povýšeno na **${upgrade.next}**.`,
+      },
+    });
+
+    if (!result.ok) {
+      toast.error("Upgrade selhal: " + result.error);
+      return;
     }
 
     toast.success(`${city.name} povýšeno na ${upgrade.next}!`);
