@@ -1,74 +1,197 @@
 
 
-# System Audit — Decision Pack (v3 final)
+# War Plan v16 — Full Implementation
 
-## Changes vs. v2
-1. **Evidence header** added to every document (scope, date, sources, confidence, blind spots)
-2. **Stop conditions + escalation paths** added to each remediation phase
-3. **decision-conflicts.md** elevated to authoritative resolution layer, not appendix
-4. **cross-surface-consistency-matrix.md**: added `runtime test required?` column
-5. **command-surface-inventory.md**: added `Sprint 1 fixable?` column
-6. **beta-closure-checklist.md**: split into Ship blockers / Honesty blockers / Deferred debt
-7. Package renamed from "6+1 decision documents" to "System Audit — Decision Pack"
+Integrates all corrections from v1–v16 into executable changes. Three categories: normative documentation, read-side centralization, and write-side discipline.
 
-## Documents to generate (all `/mnt/documents/`)
+---
 
-### Every document gets this header:
+## Part 1: Normative Documentation (7 files)
+
+### 1.1 Create `docs/architecture/ledger-semantics.md`
+Full field-level contract for `realm_resources`: 8 fields with mutation semantics, reconciliation modes, cost pool disambiguation, forbidden patterns (no absolute SET for `city_stability`), `CANCEL_BUILDING` refund policy (50% production, 0% gold — design decision), `ENACT_DECREE` delta source (lookup catalog — design decision), `UNIQUE(session_id, player_name)` reference, manpower invariant precondition on `military_stack_composition`.
+
+### 1.2 Create `docs/architecture/command-proof-matrix.md`
+13 Sprint-A commands with: executor (typed RPC — mandatory for all 13), tables mutated, cost source fields, 3-tier audit footprint (exact/minimum/forbidden), forbidden client writes. Sprint A idempotency labeled as "best-effort pre-check" only. Sprint B transactional gate via `INSERT ... ON CONFLICT DO NOTHING` inside RPC.
+
+Canonical vs cosmetic field boundary for `military_stacks`:
+- **Canonical** (must go through command path): `is_active`, `formation_type`, `general_id`, `morale`, `power`, `demobilized_turn`, `remobilize_ready_turn`, `hex_q`, `hex_r`, `moved_this_turn`, `is_deployed`
+- **Cosmetic/exempt**: `image_url`, `image_prompt`, `image_confirmed`, `sigil_url`, `sigil_confirmed`, `army_sigil_url`, `army_sigil_confirmed`
+
+### 1.3 Create `docs/architecture/read-model-contract.md`
+Single projector rule: Dashboard does one `.find(r => r.player_name === myPlayerName)` on session-scoped `realmResources[]`, passes result as prop. Schema-backed by `UNIQUE(session_id, player_name)`. Acceptance grep gates for realm, military, and building tables. Helper/selector drift prohibition.
+
+### 1.4 Create `docs/architecture/direct-write-deferred-files.txt`
+Files exempt from write gates (dev tools, deferred Sprint B):
+- `src/components/dev/DevPlayerEditor.tsx`
+- `src/components/AdminMonitorPanel.tsx`
+- `src/components/military/DeployBattlePanel.tsx` (deferred)
+- `src/components/WorldHexMap.tsx` (deferred — movement commands)
+- `src/lib/turnEngine.ts` (legacy migration only)
+
+### 1.5 Create `docs/architecture/deferred-read-surfaces.txt` and `deferred-command-surfaces.md`
+
+### 1.6 Update `.lovable/plan.md`
+Replace stale v3 Decision Pack with War Plan v16 content. Authority precedence: normative documents override plan prose.
+
+---
+
+## Part 2: Sprint A — Foundation (read-side + idempotency)
+
+Correct implementation order (stabilize reads before rewiring writes):
+
+### Step 1: Idempotency pre-check in command-dispatch
+**File**: `supabase/functions/command-dispatch/index.ts`
+
+Add at top of `executeCommand` (before the `switch`):
+```typescript
+const { data: existingEvents } = await supabase
+  .from("game_events")
+  .select("id, event_type, command_id")
+  .eq("command_id", commandId);
+if (existingEvents && existingEvents.length > 0) {
+  return { events: existingEvents, idempotent: true };
+}
 ```
-## Evidence header
-- Repo snapshot: main @ generation date
-- Audit date: 2026-04-21
-- Static sources: grep/rg across src/, supabase/functions/, file reads
-- Runtime evidence: none (static analysis only)
-- Confidence: per-claim FACT / INFERENCE / UNKNOWN
-- Known blind spots: no runtime profiling, no network trace, no DB row inspection
+This is explicitly a **best-effort mitigation**, not transactional idempotency (that requires Sprint B RPCs).
+
+### Step 2: Add `realm_resources` to useGameSession realtime channel
+**File**: `src/hooks/useGameSession.ts`
+
+Add to core channel (line ~200):
+```typescript
+.on("postgres_changes", { event: "*", schema: "public", table: "realm_resources", filter: `session_id=eq.${sessionId}` }, () => debouncedRefetchCore())
 ```
 
-### 1. `remediation-roadmap.md`
-4-phase ordered repair sequence. Each phase includes:
-- Steps with file lists and commit boundaries
-- **Preconditions** (what must be verified before starting)
-- **Done-when** (grep-based completion test)
-- **Stop conditions** (when to halt and escalate)
-- **Escalation path** (what to do if stopped)
+### Step 3: Dashboard single projector + prop threading
+**File**: `src/pages/Dashboard.tsx`
 
-Phase 1 (Foundation): kill ensureRealmResources, centralize ResourceHUD. Stop if: bootstrap doesn't guarantee realm row existence.
-Phase 2 (Write gate): 13+ command types, rewire client bypasses. Stop if: command-dispatch event contract can't accommodate new types without schema migration.
-Phase 3 (Read consolidation): all tabs read from useGameSession props. Stop if: smoke shows cross-surface metric drift after Phase 2.
-Phase 4 (Smoke + cleanup): remove dead code, verify beta-closure-checklist.
+Add `useMemo` to project current player's realm:
+```typescript
+const myRealm = useMemo(
+  () => realmResources.find(r => r.player_name === myPlayerName) || null,
+  [realmResources, myPlayerName]
+);
+```
 
-### 2. `system-invariants.md`
-7 invariants as PR-reviewable contract. Corrected INV-1 and INV-7 per v2. Each with: statement, current violation count, affected files, CI grep test, stop condition if invariant proves unenforceable.
+Add `realm` to `sharedProps` and pass to ResourceHUD, HomeTab, ArmyTab, CouncilTab, RealmDashboard, CityManagement.
 
-### 3. `command-surface-inventory.md`
-15 player actions mapped to: UI trigger, command type, target tables, current path (BYPASS/PARTIAL/OK), expected event, **Sprint 1 fixable? (yes/no)**. Actions split into immediate remediation vs later redesign.
+### Step 4: Remove independent realm fetches from surfaces
 
-### 4. `cross-surface-consistency-matrix.md`
-12 metrics × 6 surfaces. Columns: metric, canonical source, ResourceHUD, HomeTab, EconomyTab, ArmyTab, CouncilTab, expected equality, divergence risk, **runtime test required?**
+**ResourceHUD** (`src/components/layout/ResourceHUD.tsx`):
+- Add `realm` prop to interface
+- Remove independent `.select("realm_resources")` fetch (lines 29-37)
+- Remove independent `.channel()` subscription (lines 41-47)
+- Use `realm` prop instead of local state
 
-### 5. `unknowns-register.md`
-8 claims requiring runtime verification. Corrected U-3 to post-remediation unknown. Each with: claim, why unknown, how to verify, owner, deadline.
+**HomeTab** (`src/pages/game/HomeTab.tsx`):
+- Add `realm` to Props interface
+- Remove local `realm` state and `ensureRealmResources` call (lines 93-108)
+- Use `realm` prop directly
+- Remove `import { ensureRealmResources }` 
 
-### 6. `beta-closure-checklist.md`
-Three sections (not two):
-- **Ship blockers**: no client-side canonical writes, single fetch source, dispatchCommand gate
-- **Honesty blockers**: blind mechanics not presented as working systems, cross-surface equality verified
-- **Deferred debt**: legacy prop threading, table drops, governance panel rewiring
+**ArmyTab** (`src/pages/game/ArmyTab.tsx`):
+- Add `realm` to Props interface (alongside existing sessionId etc.)
+- Remove local `realm` state
+- Remove `ensureRealmResources` call in `fetchMilitary` (line 168)
+- Use `realm` prop for display; keep local `setRealm` only for optimistic updates pending refetch
 
-Each item classified Surface to player / Dev-only / Internal only (not "must be hidden").
+**RealmDashboard** (`src/components/RealmDashboard.tsx`):
+- Add `realm` prop
+- Remove `fetchData` with `ensureRealmResources` (lines 27-36)
+- Use `realm` prop
 
-### 7. `decision-conflicts.md` *(authoritative layer)*
-Resolves contradictions between other 6 documents. Pre-populated conflicts:
-- city_market_baskets: gap-map vs closure-checklist vs mechanics-coupling
-- trade_flows: internal vs player summary
-- prestige: derived vs player mechanic
-- demand_baskets: solver internal vs simplified player bands
-- ResourceHUD: convenience vs SoT hazard
+**CouncilTab** (`src/pages/game/CouncilTab.tsx`):
+- Receives `realm` via `sharedProps` already; verify no independent fetch
 
-Format per conflict: Topic, Documents in conflict, FACTS, INFERENCES, Decision, Rationale, Beta implication.
+### Step 5: Kill `ensureRealmResources` and `recomputeManpowerPool`
+**File**: `src/lib/turnEngine.ts`
+- Remove `ensureRealmResources` function (lines 63-85)
+- Remove `recomputeManpowerPool` function (lines 91-116)
+- Keep exports for `SETTLEMENT_TEMPLATES`, `UNIT_TYPE_LABELS`, `UNIT_GOLD_FACTOR`, `FORMATION_PRESETS`, `migrateLegacyMilitary`
 
-This document is referenced by all others as the final arbiter when classifications conflict.
+---
 
-## Implementation
-7 Python scripts writing to `/mnt/documents/`. All evidence from static grep/file reads already gathered. ~150-400 lines per document. Total generation: single exec session.
+## Part 3: Sprint A — Write-side discipline
+
+### Step 6: Rewire ArmyTab handlers to use `dispatchCommand`
+
+Current pattern (example — `handleRemobilize`):
+```typescript
+// BEFORE: direct write + then dispatchCommand as log
+await supabase.from("military_stacks").update({...}).eq("id", stack.id);
+await supabase.from("realm_resources").update({...}).eq("id", realm?.id);
+await dispatchCommand({...commandType: "REMOBILIZE_STACK"...});
+```
+
+Target pattern:
+```typescript
+// AFTER: dispatchCommand only — server does all mutations
+const result = await dispatchCommand({
+  sessionId,
+  actor: { name: currentPlayerName },
+  commandType: "REMOBILIZE_STACK",
+  commandPayload: { stackId: stack.id, stackName: stack.name, manpower: totalManpower },
+});
+if (!result.ok) { toast.error(result.error); return; }
+```
+
+**Handlers to rewire** (all in ArmyTab):
+1. `handleRemobilize` — remove direct `.update("military_stacks")` and `.update("realm_resources")`
+2. `handleDisband` — remove direct `.update("military_stacks")` and `.update("realm_resources")`
+3. `handleUpgrade` (formation) — remove direct `.update("military_stacks")` and `.update("realm_resources")`
+4. `handleAssignGeneral` — remove direct `.update("military_stacks")` x2
+5. `handleReinforce` — remove direct `.update/.insert("military_stack_composition")` and `.update("realm_resources")`
+6. Mobilization slider `onValueCommit` — remove direct `.update("realm_resources")`
+
+### Step 7: Rewire DemobilizeDialog
+**File**: `src/components/DemobilizeDialog.tsx`
+- Remove direct `.update("military_stacks")` loop (lines 68-73)
+- Remove direct `.update("realm_resources")` (lines 77-79)
+- Move mutation logic to `command-dispatch` DEMOBILIZE command; client only calls `dispatchCommand`
+
+### Step 8: Add server-side mutation logic to command-dispatch
+**File**: `supabase/functions/command-dispatch/index.ts`
+
+For commands that currently only insert events but don't mutate state (REMOBILIZE_STACK, DISBAND_STACK, UPGRADE_FORMATION, ASSIGN_GENERAL, REINFORCE_STACK, DEMOBILIZE, SET_MOBILIZATION):
+
+Add `execute*` functions similar to existing `executeRecruitStack`. Each function:
+1. Validates preconditions (enough manpower/gold)
+2. Performs mutations on canonical tables
+3. Inserts `game_events` row
+4. Returns result
+
+Example for REMOBILIZE_STACK:
+```typescript
+async function executeRemobilizeStack(supabase, base, actor, payload, commandId, sessionId, turnNumber) {
+  const { stackId } = payload;
+  // Fetch stack + composition + realm
+  // Validate available manpower
+  // Update military_stacks (is_active=true, demobilized_turn=null)
+  // Update realm_resources (manpower_committed += totalManpower)
+  // Insert event
+  return insertEvents(supabase, commandId, [...], { stackId });
+}
+```
+
+### Step 9: Rewire CityManagement and SettlementUpgradePanel
+**File**: `src/components/CityManagement.tsx`
+- `buildFromTemplate` and `confirmAIBuild`: Replace direct `.update("realm_resources")` + `.insert("city_buildings")` with `dispatchCommand({ commandType: "BUILD_BUILDING", ... })`
+- Add server-side `executeBuildBuilding` in command-dispatch that handles resource deduction + building insertion
+
+**File**: `src/components/SettlementUpgradePanel.tsx`
+- Replace direct `.update("realm_resources")` with `dispatchCommand({ commandType: "UPGRADE_SETTLEMENT", ... })`
+
+### Step 10: Rewire CouncilTab decree execution
+**File**: `src/pages/game/CouncilTab.tsx` (line ~128-141)
+- Replace direct `.update("realm_resources")` and `.update("cities")` with `dispatchCommand({ commandType: "ENACT_DECREE", ... })`
+
+---
+
+## Estimated scope
+
+- **Part 1**: 7 doc files created/updated
+- **Part 2**: ~6 source files modified (useGameSession, Dashboard, ResourceHUD, HomeTab, ArmyTab, RealmDashboard, turnEngine)
+- **Part 3**: ~5 source files modified (ArmyTab, DemobilizeDialog, CityManagement, SettlementUpgradePanel, CouncilTab) + 1 edge function significantly expanded (command-dispatch)
+- **Total**: ~12 source files + 7 doc files
 
