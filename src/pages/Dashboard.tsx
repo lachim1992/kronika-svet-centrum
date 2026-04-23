@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import ErrorBoundary from "@/components/ErrorBoundary";
 import { useParams, useNavigate } from "react-router-dom";
 import { useGameSession, useGameSessionLegacy } from "@/hooks/useGameSession";
@@ -285,12 +285,19 @@ const Dashboard = () => {
     setActiveTab("wiki");
   };
 
+  // ── Single projector: project current player's realm from session-scoped array ──
+  const myRealm = useMemo(
+    () => (realmResources || []).find((r: any) => r.player_name === myPlayerName) || null,
+    [realmResources, myPlayerName]
+  );
+
   const sharedProps = {
     sessionId: session.id,
     session,
     events, memories, chronicles, cityStates, responses, players, cities,
     resources, armies, trades, wonders, entityTraits, civilizations,
     realmResources, militaryStacks,
+    realm: myRealm,
     greatPersons, declarations, worldCrises, secretObjectives,
     currentPlayerName: myPlayerName,
     currentTurn,
@@ -343,7 +350,7 @@ const Dashboard = () => {
       }
       resourceHud={
         <>
-          <ResourceHUD sessionId={session.id} playerName={myPlayerName} cities={cities} currentTurn={currentTurn} />
+          <ResourceHUD sessionId={session.id} playerName={myPlayerName} cities={cities} currentTurn={currentTurn} realm={myRealm} />
           <DevHUD sessionId={session.id} currentTurn={currentTurn} playerName={myPlayerName} />
         </>
       }
@@ -467,6 +474,7 @@ const Dashboard = () => {
           currentTurn={currentTurn}
           myRole={myRole}
           cities={cities}
+          realm={myRealm}
           onRefetch={refetch}
         />
       )}
