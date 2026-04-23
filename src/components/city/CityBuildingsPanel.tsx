@@ -173,79 +173,40 @@ const CityBuildingsPanel = ({
     const maxLevel = b.max_level || (b.is_ai_generated ? 5 : 3);
     const isWonderConversion = b.is_ai_generated && newLevel === 5;
 
-    // Deduct resources (new economy: production_reserve + gold_reserve)
-    const prodCost = getProductionCost(costs);
-    await supabase.from("realm_resources").update({
-      gold_reserve: Math.max(0, (realm.gold_reserve || 0) - (costs.cost_wealth || 0)),
-      production_reserve: Math.max(0, (realm.production_reserve || 0) - prodCost),
-    } as any).eq("id", realm.id);
-
-    // Update building
     const newName = nextLevelInfo.name || b.name;
     const newEffects = nextLevelInfo.effects || b.effects;
 
-    const updateData: any = {
-      current_level: newLevel,
-      name: newName,
-      effects: newEffects,
-    };
+    const chronicleText = isWonderConversion
+      ? `🏛️ V městě **${cityName}** se stavba **${b.name}** transformovala v **Div světa: ${newName}**! Tato legendární stavba nyní vyzařuje vliv po celém světě.`
+      : `Ve městě **${cityName}** byla budova **${b.name}** vylepšena na **${newName}** (úroveň ${newLevel}).${nextLevelInfo.unlock ? ` Nový bonus: ${nextLevelInfo.unlock}` : ""}`;
+
+    const result = await dispatchCommand({
+      sessionId, turnNumber: currentTurn,
+      actor: { name: currentPlayerName, type: "player" },
+      commandType: "UPGRADE_BUILDING",
+      commandPayload: {
+        cityId, cityName,
+        buildingId: b.id, newLevel, newName, newEffects, costs,
+        isWonderConversion, chronicleText,
+      },
+    });
+
+    if (!result.ok) {
+      toast.error("Vylepšení selhalo: " + result.error);
+      setUpgradingId(null);
+      return;
+    }
 
     if (isWonderConversion) {
-      updateData.is_wonder = true;
-      // Create a wonder entry
-      const { data: wonder } = await supabase.from("wonders").insert({
-        session_id: sessionId,
-        name: newName,
-        description: b.description || "",
-        owner_player: currentPlayerName,
-        city_id: cityId,
-        era: "current",
-        status: "completed",
-        effects: {
-          ...newEffects,
-          global_influence: 10,
-          diplomatic_prestige: 15,
-        },
-        completed_turn: currentTurn,
-        image_url: b.image_url,
-        image_prompt: b.image_prompt,
-      }).select("id").single();
-
-      if (wonder) {
-        updateData.wonder_id = wonder.id;
-      }
-
-      // Create chronicle event
-      await dispatchCommand({
-        sessionId, turnNumber: currentTurn,
-        actor: { name: currentPlayerName, type: "player" },
-        commandType: "WONDER_COMPLETED",
-        commandPayload: {
-          cityId, cityName,
-          wonderName: newName,
-          chronicleText: `🏛️ V městě **${cityName}** se stavba **${b.name}** transformovala v **Div světa: ${newName}**! Tato legendární stavba nyní vyzařuje vliv po celém světě.`,
-        },
-      });
-
       toast.success(`🏛️ ${newName} se stal Divem světa!`, {
         description: "Stavba byla přepsána do divů světa s globálními bonusy.",
         duration: 6000,
       });
     } else {
-      const chronicleText = `Ve městě **${cityName}** byla budova **${b.name}** vylepšena na **${newName}** (úroveň ${newLevel}).${nextLevelInfo.unlock ? ` Nový bonus: ${nextLevelInfo.unlock}` : ""}`;
-      await dispatchCommand({
-        sessionId, turnNumber: currentTurn,
-        actor: { name: currentPlayerName, type: "player" },
-        commandType: "UPGRADE_BUILDING",
-        commandPayload: { cityId, cityName, buildingName: newName, level: newLevel, chronicleText },
-      });
-
       toast.success(`⬆️ ${newName} — úroveň ${newLevel}!`, {
         description: nextLevelInfo.unlock || undefined,
       });
     }
-
-    await supabase.from("city_buildings").update(updateData).eq("id", b.id);
 
     setUpgradingId(null);
     onRefetch?.();
