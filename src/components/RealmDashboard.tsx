@@ -41,7 +41,6 @@ const RealmDashboard = ({ sessionId, currentPlayerName, currentTurn, myRole, cit
           description: `⚒️ ${s?.totalProduction?.toFixed(0) || 0} | 💰 ${s?.totalWealth?.toFixed(0) || 0} | 🏛️ ${s?.totalCapacity?.toFixed(0) || 0} | Rezerva: ${s?.grainReserve || 0}/${s?.granaryCapacity || 0}${famineNote}${tollNote}${evtNote}`,
         });
       }
-      await fetchData();
       onRefetch();
     } catch (e: any) {
       toast.error("Chyba zpracování kola", { description: e.message });
@@ -53,10 +52,10 @@ const RealmDashboard = ({ sessionId, currentPlayerName, currentTurn, myRole, cit
   const handleMigrateLegacy = async () => {
     const res = await migrateLegacyMilitary(sessionId);
     toast.success(`Migrace dokončena: ${res.migrated} jednotek`);
-    await fetchData();
+    onRefetch();
   };
 
-  if (loading) {
+  if (!realm) {
     return <div className="flex items-center justify-center py-12"><Loader2 className="h-6 w-6 animate-spin" /></div>;
   }
 
