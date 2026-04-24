@@ -157,7 +157,9 @@ export type TranslateWarningCode =
   | "FACTIONS_INFERRED_CONSERVATIVELY"
   | "BIOME_WEIGHTS_NORMALIZED"
   | "RANGE_CLAMPED"
-  | "OVERRIDE_APPLIED";
+  | "OVERRIDE_APPLIED"
+  | "ANCIENT_LAYER_FALLBACK"
+  | "ANCIENT_LAYER_INVALID_AI";
 
 export interface TranslateWarning {
   code: TranslateWarningCode;
@@ -184,6 +186,13 @@ export interface TranslatePremiseResponse {
   normalizedPremise?: string;
   warnings?: TranslateWarning[];
   error?: string;
+  /**
+   * Track 1 (T1-PR2): Ancient Layer artifact derived from the same premise.
+   * Validated against AncientLayerSchema on the server before being returned.
+   * May be a deterministic fallback if the AI call fails — never absent on
+   * a successful response (warnings[] flags fallback usage).
+   */
+  ancientLayer?: import("./ancient-layer-types.ts").AncientLayerSpec;
 }
 
 // ── Response ──

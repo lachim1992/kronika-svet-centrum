@@ -159,7 +159,9 @@ export type TranslateWarningCode =
   | "FACTIONS_INFERRED_CONSERVATIVELY"
   | "BIOME_WEIGHTS_NORMALIZED"
   | "RANGE_CLAMPED"
-  | "OVERRIDE_APPLIED";
+  | "OVERRIDE_APPLIED"
+  | "ANCIENT_LAYER_FALLBACK"
+  | "ANCIENT_LAYER_INVALID_AI";
 
 export interface TranslateWarning {
   code: TranslateWarningCode;
@@ -181,10 +183,20 @@ export interface TranslatePremiseRequest {
   regenerationNonce?: number;
 }
 
+// AncientLayer client mirror (see src/types/ancientLayer.ts for the closed
+// shape; re-imported here so consumers of TranslatePremiseResponse don't
+// need a separate import).
+import type { AncientLayerSpec } from "./ancientLayer";
+
 export interface TranslatePremiseResponse {
   ok: boolean;
   spec?: WorldgenSpecV1;
   normalizedPremise?: string;
   warnings?: TranslateWarning[];
   error?: string;
+  /** T1-PR2: Ancient layer artifact (deterministic; fallback flagged via warnings). */
+  ancientLayer?: AncientLayerSpec;
 }
+
+export type { AncientLayerSpec, LineageProposal, MythicSeed, ResetEvent } from "./ancientLayer";
+
