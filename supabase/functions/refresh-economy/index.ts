@@ -134,7 +134,7 @@ Deno.serve(async (req) => {
     } catch { /* ignore */ }
 
     return new Response(
-      JSON.stringify({ error: e.message }),
+      JSON.stringify({ error: (e as Error).message }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 400 },
     );
   }

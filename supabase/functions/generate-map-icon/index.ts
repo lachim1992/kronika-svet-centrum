@@ -277,7 +277,7 @@ Deno.serve(async (req) => {
   } catch (e) {
     console.error("generate-map-icon error:", e);
     return new Response(
-      JSON.stringify({ error: e.message }),
+      JSON.stringify({ error: (e as Error).message }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
