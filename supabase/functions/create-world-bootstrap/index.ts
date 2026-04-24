@@ -298,13 +298,16 @@ Deno.serve(async (req) => {
     });
 
     // ── Step 7: mode-specific seeding ─────────────────────────────────────
+    // Important: do not synchronously await AI-heavy seeding here.
+    // `world-generate-init` can take well over 100s, which pushes the whole
+    // orchestrator beyond the 150s edge timeout. We only dispatch it and return.
     const t7 = performance.now();
     const seeding = await runModeSpecificSeeding(sb, normalized, spec);
     steps.push({
       step: "mode-specific-seeding",
       ok: seeding.ok,
       durationMs: performance.now() - t7,
-      detail: seeding.detail,
+        detail: seeding.detail,
     });
     if (!seeding.ok && seeding.warning) warnings.push(seeding.warning);
 
@@ -512,67 +515,60 @@ async function runModeSpecificSeeding(
 ): Promise<SeedingResult> {
   switch (req.mode) {
     case "tb_single_ai": {
-      // Delegate AI-specific seeding to existing world-generate-init.
-      // Increment 3 will demote that function to AI-only and inline this.
+      // Delegate AI-specific seeding to existing world-generate-init,
+      // but DO NOT await it here. This function must stay safely below the
+      // edge timeout budget, so AI generation is detached.
       try {
         const url = `${SUPABASE_URL}/functions/v1/world-generate-init`;
-        // Hard timeout: keep whole orchestrator under 150s edge limit.
-        const ac = new AbortController();
-        const timeoutId = setTimeout(() => ac.abort(), 110_000);
-        let resp: Response;
-        try {
-          resp = await fetch(url, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
-            },
-            body: JSON.stringify({
-              sessionId: req.sessionId,
-              playerName: req.playerName,
-              worldName: req.world.name,
-              premise: req.world.premise,
-              tone: req.world.tone,
-              victoryStyle: req.world.victoryStyle,
-              worldSize: req.world.size,
-              settlementName: req.identity?.settlementName,
-              cultureName: req.identity?.cultureName,
-              languageName: req.identity?.languageName,
-              realmName: req.identity?.realmName,
-              factionConfigs: req.factions,
-              terrainParams: req.resolvedTerrain,
-              mapWidth: undefined,
-              mapHeight: undefined,
-            }),
-            signal: ac.signal,
+        fetch(url, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+          },
+          body: JSON.stringify({
+            sessionId: req.sessionId,
+            playerName: req.playerName,
+            worldName: req.world.name,
+            premise: req.world.premise,
+            tone: req.world.tone,
+            victoryStyle: req.world.victoryStyle,
+            worldSize: req.world.size,
+            settlementName: req.identity?.settlementName,
+            cultureName: req.identity?.cultureName,
+            languageName: req.identity?.languageName,
+            realmName: req.identity?.realmName,
+            factionConfigs: req.factions,
+            terrainParams: req.resolvedTerrain,
+            mapWidth: undefined,
+            mapHeight: undefined,
+          }),
+        })
+          .then(async (resp) => {
+            if (!resp.ok) {
+              const text = await resp.text();
+              console.warn(
+                `world-generate-init detached failure (${resp.status}): ${text.slice(0, 300)}`,
+              );
+              return;
+            }
+            await resp.text();
+          })
+          .catch((e) => {
+            console.warn("world-generate-init detached error:", e);
           });
-        } finally {
-          clearTimeout(timeoutId);
-        }
-        if (!resp.ok) {
-          const text = await resp.text();
-          return {
-            ok: false,
-            detail: `world-generate-init non-fatal failure (${resp.status})`,
-            warning: `AI seeding failed: ${text.slice(0, 200)}`,
-          };
-        }
-        const data = await resp.json();
+
         return {
           ok: true,
-          factionsSeeded: data?.factionsCreated ?? data?.factions?.length,
-          provincesSeeded: data?.regionsCreated ?? data?.regions?.length,
-          detail: "delegated to world-generate-init",
+          detail: "dispatched to world-generate-init (background)",
+          warning: "AI seed běží na pozadí; svět se doplní postupně.",
         };
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
-        const aborted = msg.includes("aborted") || msg.includes("AbortError");
         return {
           ok: false,
-          warning: aborted
-            ? "AI seeding timed out after 110s (non-fatal, world is usable)"
-            : `AI seeding threw: ${msg}`,
-          detail: aborted ? "ai-seed-timeout" : "ai-seed-error",
+          warning: `AI seeding dispatch threw: ${msg}`,
+          detail: "ai-seed-dispatch-error",
         };
       }
     }
