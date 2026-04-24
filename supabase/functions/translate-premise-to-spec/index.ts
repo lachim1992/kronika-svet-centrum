@@ -13,7 +13,10 @@
 //
 // Auth: verify_jwt = true (configured via supabase/config.toml).
 
-import { corsHeaders } from "https://esm.sh/@supabase/supabase-js@2.95.0/dist/module/lib/cors.js";
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+};
 import {
   applyHardOverrides,
   deriveSeed,
