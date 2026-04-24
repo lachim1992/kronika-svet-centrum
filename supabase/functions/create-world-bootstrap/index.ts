@@ -516,30 +516,39 @@ async function runModeSpecificSeeding(
       // Increment 3 will demote that function to AI-only and inline this.
       try {
         const url = `${SUPABASE_URL}/functions/v1/world-generate-init`;
-        const resp = await fetch(url, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
-          },
-          body: JSON.stringify({
-            sessionId: req.sessionId,
-            playerName: req.playerName,
-            worldName: req.world.name,
-            premise: req.world.premise,
-            tone: req.world.tone,
-            victoryStyle: req.world.victoryStyle,
-            worldSize: req.world.size,
-            settlementName: req.identity?.settlementName,
-            cultureName: req.identity?.cultureName,
-            languageName: req.identity?.languageName,
-            realmName: req.identity?.realmName,
-            factionConfigs: req.factions,
-            terrainParams: req.resolvedTerrain,
-            mapWidth: undefined, // already generated; downstream skips map gen
-            mapHeight: undefined,
-          }),
-        });
+        // Hard timeout: keep whole orchestrator under 150s edge limit.
+        const ac = new AbortController();
+        const timeoutId = setTimeout(() => ac.abort(), 110_000);
+        let resp: Response;
+        try {
+          resp = await fetch(url, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+            },
+            body: JSON.stringify({
+              sessionId: req.sessionId,
+              playerName: req.playerName,
+              worldName: req.world.name,
+              premise: req.world.premise,
+              tone: req.world.tone,
+              victoryStyle: req.world.victoryStyle,
+              worldSize: req.world.size,
+              settlementName: req.identity?.settlementName,
+              cultureName: req.identity?.cultureName,
+              languageName: req.identity?.languageName,
+              realmName: req.identity?.realmName,
+              factionConfigs: req.factions,
+              terrainParams: req.resolvedTerrain,
+              mapWidth: undefined,
+              mapHeight: undefined,
+            }),
+            signal: ac.signal,
+          });
+        } finally {
+          clearTimeout(timeoutId);
+        }
         if (!resp.ok) {
           const text = await resp.text();
           return {
@@ -556,10 +565,14 @@ async function runModeSpecificSeeding(
           detail: "delegated to world-generate-init",
         };
       } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        const aborted = msg.includes("aborted") || msg.includes("AbortError");
         return {
           ok: false,
-          warning: `AI seeding threw: ${e instanceof Error ? e.message : String(e)}`,
-          detail: "ai-seed-error",
+          warning: aborted
+            ? "AI seeding timed out after 110s (non-fatal, world is usable)"
+            : `AI seeding threw: ${msg}`,
+          detail: aborted ? "ai-seed-timeout" : "ai-seed-error",
         };
       }
     }
