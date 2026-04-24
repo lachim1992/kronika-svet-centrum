@@ -56,12 +56,15 @@ export interface WizardIdentityInput {
 /** Build the request to translate-premise-to-spec from current wizard state. */
 export function composeAnalyzeRequest(args: {
   premise: string;
+  /** Volitelná premisa Pradávna (svět před Zlomem). */
+  preWorldPremise?: string;
   userOverrides?: DeepPartial<WorldgenSpecV1>;
   lockedPaths?: string[];
   regenerationNonce?: number;
 }): TranslatePremiseRequest {
   return {
     premise: args.premise,
+    preWorldPremise: args.preWorldPremise,
     userOverrides: args.userOverrides,
     lockedPaths: args.lockedPaths,
     regenerationNonce: args.regenerationNonce ?? 0,
