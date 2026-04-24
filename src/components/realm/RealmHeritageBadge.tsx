@@ -36,7 +36,7 @@ export const RealmHeritageBadge = ({ sessionId, playerName, className }: Props) 
         .eq("session_id", sessionId)
         .eq("player_name", playerName);
       if (!cancelled) {
-        setRows((data ?? []) as HeritageRow[]);
+        setRows(((data ?? []) as unknown) as HeritageRow[]);
         setLoading(false);
       }
     })();
