@@ -339,6 +339,12 @@ export function useWorldSetupWizardState(seed?: Partial<WizardState>) {
     [],
   );
 
+  const setPreWorldPremise = useCallback(
+    (preWorldPremise: string, suggested = false) =>
+      dispatch({ type: "SET_PRE_WORLD", preWorldPremise, suggested }),
+    [],
+  );
+
   const useInspiration = useCallback(
     (premise: string, label: string) =>
       dispatch({ type: "USE_INSPIRATION", premise, label }),
