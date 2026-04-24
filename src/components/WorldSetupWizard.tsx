@@ -28,10 +28,12 @@ import { SpecFieldEditor } from "./world-setup/SpecFieldEditor";
 import { BlueprintStaleWarning } from "./world-setup/BlueprintStaleWarning";
 import { AdvancedTerrainPanel } from "./world-setup/AdvancedTerrainPanel";
 import { SchematicMapPreview, type PreviewHex } from "./world-setup/SchematicMapPreview";
+import { LineageSelector } from "./world-setup/LineageSelector";
 import {
   BootstrapProgressPanel,
   CANONICAL_BOOTSTRAP_STEPS,
 } from "./world-setup/BootstrapProgressPanel";
+import type { AncientLayerSpec } from "@/types/ancientLayer";
 
 import { useWorldSetupWizardState } from "@/hooks/useWorldSetupWizardState";
 import {
@@ -74,6 +76,10 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
 
   const [mode, setMode] = useState<GameMode>("tb_single_ai");
   const [playerName, setPlayerName] = useState(defaultPlayerName);
+
+  // Ancient layer (v9.1) — held outside reducer; arrives with analyze response.
+  const [ancientLayer, setAncientLayer] = useState<AncientLayerSpec | null>(null);
+  const [selectedLineages, setSelectedLineages] = useState<string[]>([]);
 
   // Bootstrap progress
   const [creating, setCreating] = useState(false);
@@ -126,6 +132,14 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
         spec: resp.spec,
         warnings: resp.warnings ?? [],
       });
+      // Capture ancient layer (v9.1) — outside reducer.
+      if (resp.ancientLayer) {
+        setAncientLayer(resp.ancientLayer);
+        // Default selection: first 3 candidates.
+        setSelectedLineages(
+          resp.ancientLayer.lineage_candidates.slice(0, 3).map((l) => l.id),
+        );
+      }
       toast.success("Návrh světa připraven");
     } catch (e: any) {
       wizard.dispatch({ type: "ANALYZE_FAIL", requestId, error: e?.message ?? "Chyba" });
@@ -238,11 +252,20 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
           }))
         : undefined;
 
+      // v9.1: inject ancient_layer with user-selected lineages into spec
+      // before bootstrap. world-layer-bootstrap reads it from worldgen_spec.
+      const specWithAncient = ancientLayer
+        ? {
+            ...resolved,
+            ancient_layer: { ...ancientLayer, selected_lineages: selectedLineages },
+          }
+        : resolved;
+
       const payload = composeBootstrapFromSpec({
         sessionId: session.id,
         playerName: playerName.trim(),
         mode,
-        spec: resolved,
+        spec: specWithAncient as typeof resolved,
         factions: factionsArr,
       });
 
@@ -379,6 +402,16 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
                   <Card className="p-3 sm:p-4 space-y-3">
                     <SpecReviewSummary resolved={resolved} warnings={state.warnings} />
                   </Card>
+
+                  {ancientLayer && (
+                    <Card className="p-3 sm:p-4">
+                      <LineageSelector
+                        ancientLayer={ancientLayer}
+                        selected={selectedLineages}
+                        onChange={setSelectedLineages}
+                      />
+                    </Card>
+                  )}
 
                   {state.isBlueprintStale && (
                     <BlueprintStaleWarning

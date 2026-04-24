@@ -308,6 +308,38 @@ Deno.serve(async (req) => {
     });
     if (!seeding.ok && seeding.warning) warnings.push(seeding.warning);
 
+    // ── Step 7b: world-layer projection (v9.1 ancient_layer → live world) ──
+    const t7b = performance.now();
+    try {
+      const wlUrl = `${SUPABASE_URL}/functions/v1/world-layer-bootstrap`;
+      const wlResp = await fetch(wlUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+        },
+        body: JSON.stringify({ sessionId: normalized.sessionId }),
+      });
+      const wlData = wlResp.ok ? await wlResp.json() : { ok: false };
+      steps.push({
+        step: "world-layer-projection",
+        ok: wlResp.ok,
+        durationMs: performance.now() - t7b,
+        detail: wlResp.ok
+          ? `mythic=${JSON.stringify(wlData.mythic ?? {})} heritage=${JSON.stringify(wlData.heritage ?? {})}`
+          : `non-fatal: ${wlResp.status}`,
+      });
+      if (!wlResp.ok) warnings.push(`world-layer-bootstrap failed: ${wlResp.status}`);
+    } catch (e) {
+      warnings.push(`world-layer-bootstrap threw: ${e instanceof Error ? e.message : String(e)}`);
+      steps.push({
+        step: "world-layer-projection",
+        ok: false,
+        durationMs: performance.now() - t7b,
+        detail: "threw, non-fatal",
+      });
+    }
+
     // ── Step 8: finalize ──────────────────────────────────────────────────
     const t8 = performance.now();
     await sb

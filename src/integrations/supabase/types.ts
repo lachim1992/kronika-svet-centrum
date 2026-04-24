@@ -6938,9 +6938,11 @@ export type Database = {
           flow_target_node_id: string | null
           food_value: number
           fortification_level: number
+          founding_era: string
           garrison_strength: number | null
           growth_rate: number
           guild_level: number | null
+          heritage_lineage_id: string | null
           hex_q: number
           hex_r: number
           hinterland_level: number
@@ -6954,6 +6956,7 @@ export type Database = {
           max_upgrade_level: number
           metadata: Json | null
           mobility_relevance: number
+          mythic_tag: string | null
           name: string
           net_balance: number | null
           node_class: string
@@ -7013,9 +7016,11 @@ export type Database = {
           flow_target_node_id?: string | null
           food_value?: number
           fortification_level?: number
+          founding_era?: string
           garrison_strength?: number | null
           growth_rate?: number
           guild_level?: number | null
+          heritage_lineage_id?: string | null
           hex_q?: number
           hex_r?: number
           hinterland_level?: number
@@ -7029,6 +7034,7 @@ export type Database = {
           max_upgrade_level?: number
           metadata?: Json | null
           mobility_relevance?: number
+          mythic_tag?: string | null
           name?: string
           net_balance?: number | null
           node_class?: string
@@ -7088,9 +7094,11 @@ export type Database = {
           flow_target_node_id?: string | null
           food_value?: number
           fortification_level?: number
+          founding_era?: string
           garrison_strength?: number | null
           growth_rate?: number
           guild_level?: number | null
+          heritage_lineage_id?: string | null
           hex_q?: number
           hex_r?: number
           hinterland_level?: number
@@ -7104,6 +7112,7 @@ export type Database = {
           max_upgrade_level?: number
           metadata?: Json | null
           mobility_relevance?: number
+          mythic_tag?: string | null
           name?: string
           net_balance?: number | null
           node_class?: string
@@ -7428,6 +7437,47 @@ export type Database = {
           },
           {
             foreignKeyName: "provinces_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      realm_heritage: {
+        Row: {
+          created_at: string
+          cultural_anchor: string | null
+          description: string | null
+          id: string
+          lineage_id: string
+          lineage_name: string
+          player_name: string
+          session_id: string
+        }
+        Insert: {
+          created_at?: string
+          cultural_anchor?: string | null
+          description?: string | null
+          id?: string
+          lineage_id: string
+          lineage_name: string
+          player_name: string
+          session_id: string
+        }
+        Update: {
+          created_at?: string
+          cultural_anchor?: string | null
+          description?: string | null
+          id?: string
+          lineage_id?: string
+          lineage_name?: string
+          player_name?: string
+          session_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "realm_heritage_session_id_fkey"
             columns: ["session_id"]
             isOneToOne: false
             referencedRelation: "game_sessions"
@@ -7870,6 +7920,54 @@ export type Database = {
           strategic_weight?: string
         }
         Relationships: []
+      }
+      route_state: {
+        Row: {
+          last_maintained_turn: number
+          lifecycle_state: string
+          maintenance_level: number
+          quality_level: number
+          route_id: string
+          session_id: string
+          updated_at: string
+          upkeep_cost: number
+        }
+        Insert: {
+          last_maintained_turn?: number
+          lifecycle_state?: string
+          maintenance_level?: number
+          quality_level?: number
+          route_id: string
+          session_id: string
+          updated_at?: string
+          upkeep_cost?: number
+        }
+        Update: {
+          last_maintained_turn?: number
+          lifecycle_state?: string
+          maintenance_level?: number
+          quality_level?: number
+          route_id?: string
+          session_id?: string
+          updated_at?: string
+          upkeep_cost?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "route_state_route_id_fkey"
+            columns: ["route_id"]
+            isOneToOne: true
+            referencedRelation: "province_routes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "route_state_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       rumor_generation_log: {
         Row: {
@@ -10074,6 +10172,10 @@ export type Database = {
       }
     }
     Functions: {
+      cleanup_route_events: {
+        Args: { p_current_turn: number; p_session_id: string }
+        Returns: undefined
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]

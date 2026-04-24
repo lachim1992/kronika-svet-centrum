@@ -6,6 +6,7 @@ import { Loader2, Play, Crown, Code } from "lucide-react";
 import { toast } from "sonner";
 import RealmIndicators from "@/components/realm/RealmIndicators";
 import RealmLawsDecrees from "@/components/realm/RealmLawsDecrees";
+import { RealmHeritageBadge } from "@/components/realm/RealmHeritageBadge";
 
 interface Props {
   sessionId: string;
@@ -74,6 +75,9 @@ const RealmDashboard = ({ sessionId, currentPlayerName, currentTurn, myRole, cit
           </Button>
         )}
       </div>
+
+      {/* Pradávný odkaz (v9.1) */}
+      <RealmHeritageBadge sessionId={sessionId} playerName={currentPlayerName} />
 
       {/* Key Indicators */}
       <RealmIndicators realm={realm} cities={myCities} currentTurn={currentTurn} />
