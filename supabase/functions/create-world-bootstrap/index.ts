@@ -19,6 +19,7 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.4";
 import { resolveMapSize, type WorldSize } from "../_shared/world-sizes.ts";
+import { seedRealmSkeleton } from "../_shared/seed-realm-skeleton.ts";
 import type {
   BootstrapStepRecord,
   CreateWorldBootstrapRequest,
