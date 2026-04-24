@@ -28,10 +28,12 @@ import { SpecFieldEditor } from "./world-setup/SpecFieldEditor";
 import { BlueprintStaleWarning } from "./world-setup/BlueprintStaleWarning";
 import { AdvancedTerrainPanel } from "./world-setup/AdvancedTerrainPanel";
 import { SchematicMapPreview, type PreviewHex } from "./world-setup/SchematicMapPreview";
+import { LineageSelector } from "./world-setup/LineageSelector";
 import {
   BootstrapProgressPanel,
   CANONICAL_BOOTSTRAP_STEPS,
 } from "./world-setup/BootstrapProgressPanel";
+import type { AncientLayerSpec } from "@/types/ancientLayer";
 
 import { useWorldSetupWizardState } from "@/hooks/useWorldSetupWizardState";
 import {
