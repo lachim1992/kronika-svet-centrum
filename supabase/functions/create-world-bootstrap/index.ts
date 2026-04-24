@@ -188,7 +188,9 @@ Deno.serve(async (req) => {
       if (normalized.mode !== "tb_multi") {
         await sb
           .from("game_sessions")
-          .update({ init_status: "ready", current_turn: 1, init_step: "done" } as any)
+          .update(
+            { init_status: "ready", current_turn: 1, init_step: "done" } as any,
+          )
           .eq("id", normalized.sessionId);
       }
       return jsonResponse({
