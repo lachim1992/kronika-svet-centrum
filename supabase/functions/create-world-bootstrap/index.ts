@@ -18,17 +18,14 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.4";
-import {
-  resolveMapSize,
-  type WorldSize,
-} from "../_shared/world-sizes.ts";
+import { resolveMapSize, type WorldSize } from "../_shared/world-sizes.ts";
 import type {
   BootstrapStepRecord,
   CreateWorldBootstrapRequest,
   CreateWorldBootstrapResponse,
   GameMode,
-  WorldgenSpecV1,
   LegacyWorldgenSpecFields,
+  WorldgenSpecV1,
 } from "../_shared/world-bootstrap-types.ts";
 
 type LegacySpec = WorldgenSpecV1 & LegacyWorldgenSpecFields;
@@ -45,13 +42,17 @@ const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 // ── Validation ───────────────────────────────────────────────────────────────
 
 function validateRequest(body: unknown): CreateWorldBootstrapRequest {
-  if (!body || typeof body !== "object") throw new Error("Body must be an object");
+  if (!body || typeof body !== "object") {
+    throw new Error("Body must be an object");
+  }
   const b = body as Record<string, unknown>;
 
-  if (typeof b.sessionId !== "string" || !b.sessionId)
+  if (typeof b.sessionId !== "string" || !b.sessionId) {
     throw new Error("sessionId required");
-  if (typeof b.playerName !== "string" || !b.playerName)
+  }
+  if (typeof b.playerName !== "string" || !b.playerName) {
     throw new Error("playerName required");
+  }
 
   const allowedModes: GameMode[] = [
     "tb_single_ai",
@@ -59,20 +60,25 @@ function validateRequest(body: unknown): CreateWorldBootstrapRequest {
     "tb_multi",
     "time_persistent",
   ];
-  if (!allowedModes.includes(b.mode as GameMode))
+  if (!allowedModes.includes(b.mode as GameMode)) {
     throw new Error(`mode must be one of ${allowedModes.join(", ")}`);
+  }
 
   const world = b.world as Record<string, unknown> | undefined;
   if (!world) throw new Error("world required");
-  if (typeof world.name !== "string" || !world.name)
+  if (typeof world.name !== "string" || !world.name) {
     throw new Error("world.name required");
-  if (typeof world.premise !== "string")
+  }
+  if (typeof world.premise !== "string") {
     throw new Error("world.premise required");
+  }
   if (typeof world.tone !== "string") throw new Error("world.tone required");
-  if (typeof world.victoryStyle !== "string")
+  if (typeof world.victoryStyle !== "string") {
     throw new Error("world.victoryStyle required");
-  if (!["small", "medium", "large"].includes(world.size as string))
+  }
+  if (!["small", "medium", "large"].includes(world.size as string)) {
     throw new Error("world.size must be small | medium | large");
+  }
 
   return body as CreateWorldBootstrapRequest;
 }
@@ -90,17 +96,23 @@ interface NormalizedRequest extends CreateWorldBootstrapRequest {
   }>;
 }
 
-function normalizeBootstrapRequest(req: CreateWorldBootstrapRequest): NormalizedRequest {
+function normalizeBootstrapRequest(
+  req: CreateWorldBootstrapRequest,
+): NormalizedRequest {
   const seed = req.world.seed?.trim() || crypto.randomUUID();
   const t = req.map?.terrain ?? {};
   return {
     ...req,
     resolvedSeed: seed,
     resolvedTerrain: {
-      targetLandRatio: typeof t.targetLandRatio === "number" ? t.targetLandRatio : 0.55,
+      targetLandRatio: typeof t.targetLandRatio === "number"
+        ? t.targetLandRatio
+        : 0.55,
       continentShape: t.continentShape ?? "mixed",
       continentCount: t.continentCount ?? 2,
-      mountainDensity: typeof t.mountainDensity === "number" ? t.mountainDensity : 0.3,
+      mountainDensity: typeof t.mountainDensity === "number"
+        ? t.mountainDensity
+        : 0.3,
       biomeWeights: t.biomeWeights ?? {},
     },
   };
@@ -157,7 +169,11 @@ Deno.serve(async (req) => {
     const raw = await req.json();
     const validated = validateRequest(raw);
     normalized = normalizeBootstrapRequest(validated);
-    steps.push({ step: "validate-normalize", ok: true, durationMs: performance.now() - t0 });
+    steps.push({
+      step: "validate-normalize",
+      ok: true,
+      durationMs: performance.now() - t0,
+    });
 
     // ── Step 0b: idempotency guard ────────────────────────────────────────
     const tIdem = performance.now();
@@ -176,12 +192,12 @@ Deno.serve(async (req) => {
         alreadyBootstrapped: true,
         worldgen: spec && spec.resolvedSize
           ? {
-              seed: spec.seed,
-              size: spec.userIntent.size,
-              mapWidth: spec.resolvedSize.width,
-              mapHeight: spec.resolvedSize.height,
-              mode: spec.mode!,
-            }
+            seed: spec.seed,
+            size: spec.userIntent.size,
+            mapWidth: spec.resolvedSize.width,
+            mapHeight: spec.resolvedSize.height,
+            mode: spec.mode!,
+          }
           : undefined,
         steps: [
           ...steps,
@@ -210,7 +226,9 @@ Deno.serve(async (req) => {
       step: "idempotency-check",
       ok: true,
       durationMs: performance.now() - tIdem,
-      detail: existing ? `prior status=${existing.bootstrap_status}` : "no prior",
+      detail: existing
+        ? `prior status=${existing.bootstrap_status}`
+        : "no prior",
     });
 
     // ── Build spec early (needed for all downstream steps) ────────────────
@@ -236,7 +254,9 @@ Deno.serve(async (req) => {
       .upsert(wfPayload, { onConflict: "session_id" })
       .select("id")
       .single();
-    if (wfErr) throw new Error(`world_foundations upsert failed: ${wfErr.message}`);
+    if (wfErr) {
+      throw new Error(`world_foundations upsert failed: ${wfErr.message}`);
+    }
     steps.push({
       step: "world-foundations",
       ok: true,
@@ -270,7 +290,9 @@ Deno.serve(async (req) => {
       step: "generate-world-map",
       ok: true,
       durationMs: performance.now() - t4,
-      detail: `hexCount=${mapResp.hexCount ?? 0} startPositions=${mapResp.startPositions?.length ?? 0}`,
+      detail: `hexCount=${mapResp.hexCount ?? 0} startPositions=${
+        mapResp.startPositions?.length ?? 0
+      }`,
     });
 
     // ── Step 5: parity check ──────────────────────────────────────────────
@@ -281,7 +303,9 @@ Deno.serve(async (req) => {
         mapResp.mapHeight !== spec.resolvedSize!.height)
     ) {
       throw new Error(
-        `Size parity violation: spec=${spec.resolvedSize!.width}x${spec.resolvedSize!.height}, map=${mapResp.mapWidth}x${mapResp.mapHeight}`,
+        `Size parity violation: spec=${spec.resolvedSize!.width}x${
+          spec.resolvedSize!.height
+        }, map=${mapResp.mapWidth}x${mapResp.mapHeight}`,
       );
     }
     steps.push({ step: "parity-check", ok: true, durationMs: 0 });
@@ -307,7 +331,7 @@ Deno.serve(async (req) => {
       step: "mode-specific-seeding",
       ok: seeding.ok,
       durationMs: performance.now() - t7,
-        detail: seeding.detail,
+      detail: seeding.detail,
     });
     if (!seeding.ok && seeding.warning) warnings.push(seeding.warning);
 
@@ -335,7 +359,11 @@ Deno.serve(async (req) => {
         detail: "dispatched (fire-and-forget)",
       });
     } catch (e) {
-      warnings.push(`world-layer-bootstrap dispatch threw: ${e instanceof Error ? e.message : String(e)}`);
+      warnings.push(
+        `world-layer-bootstrap dispatch threw: ${
+          e instanceof Error ? e.message : String(e)
+        }`,
+      );
     }
 
     // ── Step 8: finalize ──────────────────────────────────────────────────
@@ -343,7 +371,9 @@ Deno.serve(async (req) => {
     if (normalized.mode !== "tb_multi") {
       await sb
         .from("game_sessions")
-        .update({ init_status: "ready", current_turn: 1, init_step: "done" } as any)
+        .update(
+          { init_status: "ready", current_turn: 1, init_step: "done" } as any,
+        )
         .eq("id", normalized.sessionId);
     }
     await sb
@@ -410,7 +440,11 @@ Deno.serve(async (req) => {
       500,
     );
   } finally {
-    console.log(`create-world-bootstrap total ${(performance.now() - startedAt).toFixed(0)}ms`);
+    console.log(
+      `create-world-bootstrap total ${
+        (performance.now() - startedAt).toFixed(0)
+      }ms`,
+    );
   }
 });
 
@@ -459,8 +493,9 @@ async function ensureServerConfig(
     session_id: req.sessionId,
     economic_params: defaultEconomic,
   };
-  if (req.server?.tickIntervalSeconds)
+  if (req.server?.tickIntervalSeconds) {
     insertPayload.tick_interval_seconds = req.server.tickIntervalSeconds;
+  }
   if (req.server?.timeScale) insertPayload.time_scale = req.server.timeScale;
   if (req.server?.maxPlayers) insertPayload.max_players = req.server.maxPlayers;
 
@@ -501,7 +536,9 @@ async function invokeGenerateWorldMap(
   });
   if (!resp.ok) {
     const text = await resp.text();
-    throw new Error(`generate-world-map failed (${resp.status}): ${text.slice(0, 500)}`);
+    throw new Error(
+      `generate-world-map failed (${resp.status}): ${text.slice(0, 500)}`,
+    );
   }
   return (await resp.json()) as MapGenResp;
 }
@@ -554,7 +591,9 @@ async function runModeSpecificSeeding(
             if (!resp.ok) {
               const text = await resp.text();
               console.warn(
-                `world-generate-init detached failure (${resp.status}): ${text.slice(0, 300)}`,
+                `world-generate-init detached failure (${resp.status}): ${
+                  text.slice(0, 300)
+                }`,
               );
               return;
             }
