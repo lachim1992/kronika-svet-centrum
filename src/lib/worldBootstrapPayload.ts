@@ -118,7 +118,9 @@ export function composeBootstrapFromSpec(args: {
         continentCount: spec.terrain.continentCount,
         mountainDensity: spec.terrain.mountainDensity,
         biomeWeights: spec.terrain.biomeWeights,
-      },
+        // v9: pass full blueprint so generate-world-map can place ridges + biome zones.
+        geographyBlueprint: spec.geographyBlueprint as any,
+      } as any,
     },
     identity: args.identity,
     factions: args.factions,
