@@ -178,6 +178,8 @@ export type DeepPartial<T> = T extends Array<infer U>
 
 export interface TranslatePremiseRequest {
   premise: string;
+  /** Premisa Pradávna (svět před Zlomem). Volitelné — když chybí, AI ji odvodí. */
+  preWorldPremise?: string;
   userOverrides?: DeepPartial<WorldgenSpecV1>;
   lockedPaths?: string[];
   regenerationNonce?: number;
