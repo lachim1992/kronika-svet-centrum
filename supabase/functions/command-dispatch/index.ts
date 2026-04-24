@@ -1839,10 +1839,10 @@ async function executeStartProject(
     target_node_id: targetNodeId || null,
     initiated_by: actor.name,
     name: customName || template.name,
-    cost_gold: template.costGold,
-    cost_wood: template.costWood,
-    cost_stone: template.costStone,
-    cost_iron: template.costIron,
+    cost_gold: template.costWealth,
+    cost_wood: 0,
+    cost_stone: 0,
+    cost_iron: 0,
     total_turns: template.totalTurns,
     created_turn: turnNumber,
     status: "active",
@@ -1891,7 +1891,6 @@ async function executeCancelProject(
 
 const LEGION_GOLD_COST = 200;
 const ARMY_GOLD_COST = 500;
-const UNIT_GOLD_FACTOR: Record<string, number> = { MILITIA: 0.8, PROFESSIONAL: 2 };
 
 async function getRealm(supabase: any, sessionId: string, playerName: string) {
   const { data } = await supabase.from("realm_resources")
