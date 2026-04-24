@@ -403,7 +403,7 @@ Deno.serve(async (req) => {
     }
 
     // ═══ COMPUTE CHAMPION ═══
-    let championId = null;
+    let championId: string | null = null;
     let maxPoints = -1;
     const sortedTally = Object.values(medalTally).sort((a, b) => {
       const pA = a.gold * 5 + a.silver * 3 + a.bronze * 1;
