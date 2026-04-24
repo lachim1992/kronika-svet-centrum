@@ -396,6 +396,8 @@ async function buildAncientLayer(
   return generateFallbackAncientLayer(seedHash);
 }
 
+// ─── Handler ─────────────────────────────────────────────────────────────────
+Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
@@ -431,19 +433,28 @@ async function buildAncientLayer(
     const normalizedPremise = normalizePremise(premise);
     const seed = await deriveSeed(premise, regenerationNonce ?? 0);
 
-    // ── AI call ──
-    const { raw: aiRaw, warnings: aiWarnings } = await callAI(
-      premise,
-      lockedPaths ?? [],
-      userOverrides,
-    );
+    // ── Parallel AI calls (worldgen spec + ancient layer) ──
+    const [worldgenResult, ancientResult] = await Promise.all([
+      callAI(premise, lockedPaths ?? [], userOverrides),
+      callAncientAI(premise),
+    ]);
 
     // ── Server-side normalize ──
-    const warnings: TranslateWarning[] = [...aiWarnings];
-    let spec: WorldgenSpecV1 = normalizeSpec(aiRaw, { premise, seed, warnings });
+    const warnings: TranslateWarning[] = [...worldgenResult.warnings];
+    if (ancientResult.warning) warnings.push(ancientResult.warning);
+
+    let spec: WorldgenSpecV1 = normalizeSpec(worldgenResult.raw, { premise, seed, warnings });
 
     // ── Hard merge overrides (AI cannot escape locks) ──
     spec = applyHardOverrides(spec, userOverrides, warnings);
+
+    // ── Build deterministic-or-AI ancient layer ──
+    const ancientLayer = await buildAncientLayer(
+      normalizedPremise,
+      regenerationNonce ?? 0,
+      ancientResult.raw,
+      warnings,
+    );
 
     // Heuristic warning for very short premise
     if (premise.trim().length < 80) {
@@ -451,7 +462,6 @@ async function buildAncientLayer(
     }
 
     // Biome drift audit (mirror list — see _shared/biome-keys.ts).
-    // We log instead of failing — the spec is still useful even with extra biome keys.
     const driftedBiomes: string[] = [];
     for (const b of Object.keys(spec.terrain.biomeWeights ?? {})) {
       if (!BIOME_KEY_SET.has(b)) driftedBiomes.push(b);
@@ -468,6 +478,7 @@ async function buildAncientLayer(
       spec,
       normalizedPremise,
       warnings,
+      ancientLayer,
     };
     return new Response(JSON.stringify(resp), {
       status: 200,
