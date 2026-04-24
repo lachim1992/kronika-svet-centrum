@@ -252,11 +252,20 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
           }))
         : undefined;
 
+      // v9.1: inject ancient_layer with user-selected lineages into spec
+      // before bootstrap. world-layer-bootstrap reads it from worldgen_spec.
+      const specWithAncient = ancientLayer
+        ? {
+            ...resolved,
+            ancient_layer: { ...ancientLayer, selected_lineages: selectedLineages },
+          }
+        : resolved;
+
       const payload = composeBootstrapFromSpec({
         sessionId: session.id,
         playerName: playerName.trim(),
         mode,
-        spec: resolved,
+        spec: specWithAncient as typeof resolved,
         factions: factionsArr,
       });
 
