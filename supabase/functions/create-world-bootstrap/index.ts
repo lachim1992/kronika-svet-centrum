@@ -332,49 +332,106 @@ Deno.serve(async (req) => {
       detail: `start_positions=${startPositionsCount}`,
     });
 
-    // ── Step 7: mode-specific seeding ─────────────────────────────────────
-    // Important: do not synchronously await AI-heavy seeding here.
-    // `world-generate-init` can take well over 100s, which pushes the whole
-    // orchestrator beyond the 150s edge timeout. We only dispatch it and return.
+    // ── Step 7: SYNCHRONOUS physical world (skeleton + nodes + routes) ───
+    // This must be done before init_status=ready so the player never sees
+    // an empty realm. AI naratíva (persons/wonders/chronicle) is dispatched
+    // detached afterwards in Step 7c.
     const t7 = performance.now();
-    const seeding = await runModeSpecificSeeding(sb, normalized, spec);
-    steps.push({
-      step: "mode-specific-seeding",
-      ok: seeding.ok,
-      durationMs: performance.now() - t7,
-      detail: seeding.detail,
-    });
-    if (!seeding.ok && seeding.warning) warnings.push(seeding.warning);
-
-    // ── Step 7b: world-layer projection (v9.1 ancient_layer → live world) ──
-    // Fire-and-forget: this projection is non-fatal and can run ~5-10s on its
-    // own. We do NOT await it to keep the orchestrator under the 150s budget.
-    const t7b = performance.now();
+    let skeleton: Awaited<ReturnType<typeof seedRealmSkeleton>> | null = null;
     try {
-      const wlUrl = `${SUPABASE_URL}/functions/v1/world-layer-bootstrap`;
-      // Detached invocation — intentionally not awaited.
-      fetch(wlUrl, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
-        },
-        body: JSON.stringify({ sessionId: normalized.sessionId }),
-      }).then((r) => r.text()).catch((e) => {
-        console.warn("world-layer-bootstrap (detached) error:", e);
+      skeleton = await seedRealmSkeleton({
+        sb,
+        sessionId: normalized.sessionId,
+        playerName: normalized.playerName,
+        worldName: normalized.world.name,
+        premise: normalized.world.premise,
+        realmName: normalized.identity?.realmName,
+        cultureName: normalized.identity?.cultureName,
+        settlementName: normalized.identity?.settlementName,
+        factions: normalized.factions,
+        startPositions: mapResp.startPositions ?? [],
       });
       steps.push({
-        step: "world-layer-projection",
+        step: "seed-realm-skeleton",
         ok: true,
-        durationMs: performance.now() - t7b,
-        detail: "dispatched (fire-and-forget)",
+        durationMs: performance.now() - t7,
+        detail: `factions=${skeleton.factionsSeeded} cities=${skeleton.citiesSeeded}`,
       });
     } catch (e) {
-      warnings.push(
-        `world-layer-bootstrap dispatch threw: ${
-          e instanceof Error ? e.message : String(e)
-        }`,
-      );
+      const msg = e instanceof Error ? e.message : String(e);
+      steps.push({ step: "seed-realm-skeleton", ok: false, durationMs: performance.now() - t7, detail: msg });
+      warnings.push(`seed-realm-skeleton: ${msg}`);
+    }
+
+    // Step 7a: compute province nodes (synchronous, ~3-5s)
+    const t7a = performance.now();
+    try {
+      const r = await fetch(`${SUPABASE_URL}/functions/v1/compute-province-nodes`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}` },
+        body: JSON.stringify({ session_id: normalized.sessionId }),
+      });
+      steps.push({ step: "compute-province-nodes", ok: r.ok, durationMs: performance.now() - t7a, detail: r.ok ? "ok" : `status=${r.status}` });
+    } catch (e) {
+      warnings.push(`compute-province-nodes: ${e instanceof Error ? e.message : String(e)}`);
+      steps.push({ step: "compute-province-nodes", ok: false, durationMs: performance.now() - t7a });
+    }
+
+    // Step 7b: compute province routes (synchronous)
+    const t7b2 = performance.now();
+    try {
+      const r = await fetch(`${SUPABASE_URL}/functions/v1/compute-province-routes`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}` },
+        body: JSON.stringify({ session_id: normalized.sessionId }),
+      });
+      steps.push({ step: "compute-province-routes", ok: r.ok, durationMs: performance.now() - t7b2, detail: r.ok ? "ok" : `status=${r.status}` });
+    } catch (e) {
+      warnings.push(`compute-province-routes: ${e instanceof Error ? e.message : String(e)}`);
+      steps.push({ step: "compute-province-routes", ok: false, durationMs: performance.now() - t7b2 });
+    }
+
+    // Step 7c: world-layer-bootstrap (now SYNCHRONOUS — graph exists)
+    const t7c = performance.now();
+    try {
+      const r = await fetch(`${SUPABASE_URL}/functions/v1/world-layer-bootstrap`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}` },
+        body: JSON.stringify({ sessionId: normalized.sessionId }),
+      });
+      steps.push({ step: "world-layer-projection", ok: r.ok, durationMs: performance.now() - t7c, detail: r.ok ? "ok" : `status=${r.status}` });
+    } catch (e) {
+      warnings.push(`world-layer-bootstrap: ${e instanceof Error ? e.message : String(e)}`);
+    }
+
+    // Step 7d: detached AI narrative (persons, wonders, chronicle, wiki images)
+    // Runs in background; world is already playable without it.
+    if (normalized.mode === "tb_single_ai") {
+      try {
+        fetch(`${SUPABASE_URL}/functions/v1/world-generate-init`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}` },
+          body: JSON.stringify({
+            sessionId: normalized.sessionId,
+            playerName: normalized.playerName,
+            worldName: normalized.world.name,
+            premise: normalized.world.premise,
+            tone: normalized.world.tone,
+            victoryStyle: normalized.world.victoryStyle,
+            worldSize: normalized.world.size,
+            settlementName: normalized.identity?.settlementName,
+            cultureName: normalized.identity?.cultureName,
+            languageName: normalized.identity?.languageName,
+            realmName: normalized.identity?.realmName,
+            factionConfigs: normalized.factions,
+            terrainParams: normalized.resolvedTerrain,
+            skipPhysicalWorld: true, // honored by world-generate-init when present
+          }),
+        }).catch((e) => console.warn("world-generate-init detached:", e));
+        steps.push({ step: "narrative-dispatch", ok: true, durationMs: 0, detail: "detached" });
+      } catch (e) {
+        warnings.push(`narrative dispatch: ${e instanceof Error ? e.message : String(e)}`);
+      }
     }
 
     // ── Step 8: finalize ──────────────────────────────────────────────────
