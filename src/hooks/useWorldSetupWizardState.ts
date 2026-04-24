@@ -32,6 +32,10 @@ import type { DeepPartial, WorldgenSpecV1 } from "@/types/worldBootstrap";
 export interface WizardState {
   // Input
   premise: string;
+  /** Premisa Pradávna — svět PŘED Zlomem. Volitelné; když prázdné, AI ji navrhne. */
+  preWorldPremise: string;
+  /** Návrh Pradávna od AI, dokud ho hráč nezedituje/nepotvrdí. */
+  preWorldSuggested: boolean;
   inspirationUsed: string | null;
 
   // AI návrh + user vrstva
@@ -60,6 +64,8 @@ export interface WizardState {
 
 const initialState: WizardState = {
   premise: "",
+  preWorldPremise: "",
+  preWorldSuggested: false,
   inspirationUsed: null,
   aiSuggestion: null,
   userOverrides: {},
