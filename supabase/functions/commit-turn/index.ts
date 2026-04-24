@@ -1056,8 +1056,8 @@ Deno.serve(async (req) => {
 
     // Schedule background work — function returns immediately
     // @ts-ignore: EdgeRuntime is available in Supabase Edge Functions
-    if (typeof EdgeRuntime !== "undefined" && EdgeRuntime.waitUntil) {
-      EdgeRuntime.waitUntil(backgroundWork());
+    if (typeof (globalThis as any).EdgeRuntime !== "undefined" && (globalThis as any).EdgeRuntime.waitUntil) {
+      (globalThis as any).EdgeRuntime.waitUntil(backgroundWork());
     } else {
       // Fallback: run inline (for testing/older runtime)
       try { await backgroundWork(); } catch (e) { console.error("Background work error:", e); }
