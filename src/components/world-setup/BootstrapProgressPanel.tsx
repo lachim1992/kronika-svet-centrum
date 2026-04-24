@@ -62,7 +62,18 @@ export const BootstrapProgressPanel = ({
   const hasError = !!bootstrapError;
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-4">
+      <ChroniclerStatusCard
+        receivedSteps={receivedSteps}
+        activeIndex={activeIndex}
+        bootstrapError={bootstrapError}
+        narrativeStreaming={
+          !bootstrapError &&
+          (activeIndex === undefined || activeIndex >= CANONICAL_BOOTSTRAP_STEPS.length) &&
+          (receivedSteps?.length ?? 0) >= CANONICAL_BOOTSTRAP_STEPS.length
+        }
+      />
+
       <h4 className="text-sm font-semibold">Postup vytváření světa</h4>
       <ol className="space-y-1.5">
         {CANONICAL_BOOTSTRAP_STEPS.map((step, idx) => {
