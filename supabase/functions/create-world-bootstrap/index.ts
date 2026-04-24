@@ -340,6 +340,12 @@ Deno.serve(async (req) => {
 
     // ── Step 8: finalize ──────────────────────────────────────────────────
     const t8 = performance.now();
+    if (normalized.mode !== "tb_multi") {
+      await sb
+        .from("game_sessions")
+        .update({ init_status: "ready", current_turn: 1, init_step: "done" } as any)
+        .eq("id", normalized.sessionId);
+    }
     await sb
       .from("world_foundations")
       .update({ bootstrap_status: "ready", bootstrap_error: null })
