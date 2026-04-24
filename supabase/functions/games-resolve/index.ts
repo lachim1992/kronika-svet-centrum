@@ -403,7 +403,7 @@ Deno.serve(async (req) => {
     }
 
     // ═══ COMPUTE CHAMPION ═══
-    let championId = null;
+    let championId: string | null = null;
     let maxPoints = -1;
     const sortedTally = Object.values(medalTally).sort((a, b) => {
       const pA = a.gold * 5 + a.silver * 3 + a.bronze * 1;
@@ -457,7 +457,7 @@ Deno.serve(async (req) => {
 
   } catch (e: any) {
     console.error("games-resolve error:", e);
-    return new Response(JSON.stringify({ error: e.message }), {
+    return new Response(JSON.stringify({ error: (e as Error).message }), {
       status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }

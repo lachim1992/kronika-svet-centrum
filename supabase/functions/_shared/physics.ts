@@ -130,7 +130,7 @@ export function computeSettlementGrowth(
   // Growth rate: base + stability factor + war/famine factor
   const stabilityFactor = (stability - 50) / 200;
   const famineFactor = city.famine_turn ? -0.02 : 0;
-  const warFactor = (city.status === "besieged" || city.status === "devastated") ? -0.02 : 0;
+  const warFactor = 0; // status is narrowed to "ok" after early return above
   const tradeFactor = opts.hasTrade ? 0.005 : 0;
   const openBordersBirthBonus = opts.openBordersBonuses?.birth_rate_bonus || 0;
   const openBordersMigrationBonus = opts.openBordersBonuses?.migration_bonus || 0;

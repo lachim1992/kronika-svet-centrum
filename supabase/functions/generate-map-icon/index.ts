@@ -1,5 +1,5 @@
-import { createClient } from "npm:@supabase/supabase-js@2";
-import { PNG } from "npm:pngjs@7.0.0";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.4";
+import { PNG } from "https://esm.sh/pngjs@7.0.0";
 import { Buffer } from "node:buffer";
 
 const corsHeaders = {
@@ -277,7 +277,7 @@ Deno.serve(async (req) => {
   } catch (e) {
     console.error("generate-map-icon error:", e);
     return new Response(
-      JSON.stringify({ error: e.message }),
+      JSON.stringify({ error: (e as Error).message }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }

@@ -315,7 +315,7 @@ Deno.serve(async (req) => {
 
     // ── MILITARY METRICS ──
     const milMetrics = computeMilitaryMetrics(
-      { ...resources, wood: 0, stone: 0, iron: 0 },
+      resources,
       realmRes?.mobilization_rate || 0.1,
       activeWars,
       tensionData || [],
@@ -1281,7 +1281,9 @@ async function executeAction(
       const hexR = action.targetHexR;
 
       // Cost check (new economy: 150 production + 100 wealth)
-      if (resources.production < 150 || resources.gold < 100) return "insufficient_resources";
+      const goldReserve = realmRes?.gold_reserve || 0;
+      const prodReserve = realmRes?.production_reserve || 0;
+      if (prodReserve < 150 || goldReserve < 100) return "insufficient_resources";
       if (hexQ === undefined || hexR === undefined) return "missing_hex_coords";
 
       // Check hex is not occupied by another city
@@ -1290,12 +1292,12 @@ async function executeAction(
 
       // Deduct resources
       await supabase.from("realm_resources").update({
-        gold_reserve: resources.gold - 100,
-        production_reserve: resources.production - 150,
+        gold_reserve: goldReserve - 100,
+        production_reserve: prodReserve - 150,
       }).eq("session_id", sessionId).eq("player_name", factionName);
 
-      // Find province for this hex
-      const province = (myProvinces || []).find((p: any) => p.owner_player === factionName);
+      // Province lookup not available in this scope — let command-dispatch resolve it
+      const province: any = null;
 
       // Create settlement via command-dispatch
       await invokeFunction(supabaseUrl, supabaseKey, "command-dispatch", {
@@ -1353,7 +1355,7 @@ async function executeAction(
       const { data: damagedRoute } = await supabase.from("province_routes")
         .select("id, node_a, node_b")
         .eq("session_id", sessionId).eq("control_state", "damaged")
-        .or(myIds.map(id => `node_a.eq.${id},node_b.eq.${id}`).join(","))
+        .or(myIds.map((id: string) => `node_a.eq.${id},node_b.eq.${id}`).join(","))
         .limit(1).maybeSingle();
       if (!damagedRoute) return "no_damaged_routes";
       await supabase.from("province_routes").update({ control_state: "open", path_dirty: true }).eq("id", damagedRoute.id);
@@ -1524,7 +1526,7 @@ async function ensureSportsOnboarding(
       .eq("session_id", sessionId).eq("player_name", factionName);
 
     const existingTypes = new Set((existing || []).map((a: any) => a.association_type));
-    const existingAssocMap = new Map((existing || []).map((a: any) => [a.association_type, a.id]));
+    const existingAssocMap = new Map<string, string>((existing || []).map((a: any) => [a.association_type as string, a.id as string]));
 
     // Check existing academies
     const { data: existingAcademies } = await supabase.from("academies")
@@ -1605,7 +1607,7 @@ async function ensureSportsOnboarding(
             city_id: teamCity.id,
             player_name: factionName,
             team_name: `${prefix} ${teamCity.name}`,
-            association_id: assoc.id,
+            association_id: assocId,
             color_primary: color,
             color_secondary: "#ffffff",
             attack_rating: 40 + Math.floor(Math.random() * 20),

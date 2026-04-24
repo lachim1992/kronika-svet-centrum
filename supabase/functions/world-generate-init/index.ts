@@ -531,6 +531,7 @@ DŮLEŽITÉ: affected_players/faction MUSÍ používat přesná jména frakcí. 
         counters.wiki++;
       }
     }
+    const countryInfo = (countriesList[0] || { name: worldName }) as { name: string; description?: string; image_prompt?: string; factionName?: string };
 
     // ═══ STEP B: Civilizations + AI Factions + Resources ═══
     // Phase 1: Create civilizations, AI factions, and extract civ_identity for AI
@@ -564,7 +565,7 @@ DŮLEŽITÉ: affected_players/faction MUSÍ používat přesná jména frakcí. 
         await supabase.from("game_players").insert({
           session_id: sessionId, player_name: factionPlayerName,
           player_number: factionIndex + 1,
-        }).catch(() => {}); // Ignore duplicate
+        });
 
         // Extract civ_identity for AI factions (generates unit names + modifiers from personality/description)
         try {
@@ -988,7 +989,7 @@ DŮLEŽITÉ: affected_players/faction MUSÍ používat přesná jména frakcí. 
             level_data: [{ level: 1, name: "Závodiště", effects: { influence: 3, stability: 2 }, cost_mult: 1, unlock: "Ligový tým" }],
             flavor_text: "Písek arény pamatuje první zápasy zakladatelů.",
           }).select("id").single();
-          counters.buildings = (counters.buildings || 0) + 1;
+          (counters as any).buildings = ((counters as any).buildings || 0) + 1;
 
           // Generate 3 teams with 11 players each
           if (stadiumRow) {

@@ -1627,7 +1627,7 @@ DŮLEŽITÉ: Hráčské frakce MUSÍ mít isPlayer=true a playerName musí přes
     }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
   } catch (e: any) {
     console.error("mp-world-generate error:", e);
-    return new Response(JSON.stringify({ error: e.message }), {
+    return new Response(JSON.stringify({ error: (e as Error).message }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });

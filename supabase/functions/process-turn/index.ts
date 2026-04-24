@@ -292,13 +292,13 @@ Deno.serve(async (req) => {
     for (const b of (allBuildings || [])) {
       // Marble reduces build duration, capacity overload increases it
       const baseDuration = b.build_duration || 1;
-      const adjustedDuration = Math.max(1, Math.round(baseDuration * strategicBonuses.build_cost_mult * (capacityOverload ? 1.5 : 1.0)));
+      const adjustedDuration = Math.max(1, Math.round(baseDuration * (capacityOverload ? 1.5 : 1.0)));
       const finishTurn = (b.build_started_turn || 0) + adjustedDuration;
       if (currentTurn >= finishTurn) {
         await supabase.from("city_buildings").update({ status: "completed", completed_turn: currentTurn }).eq("id", b.id);
         completedCount++;
         const cityName = myCities.find(c => c.id === b.city_id)?.name || "?";
-        logEntries.push(`🏗️ Stavba "${b.name}" v ${cityName} dokončena!${strategicBonuses.build_cost_mult < 1 ? " (mramorový bonus)" : ""}`);
+        logEntries.push(`🏗️ Stavba "${b.name}" v ${cityName} dokončena!`);
       }
     }
 

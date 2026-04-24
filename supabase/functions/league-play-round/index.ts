@@ -128,7 +128,7 @@ Styl: dramatický, kronikářský, krvavý. ${isPlayoff ? "Zdůrazni váhu vyřa
     }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
   } catch (e: any) {
     console.error("league-play-round error:", e);
-    return new Response(JSON.stringify({ error: e.message }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    return new Response(JSON.stringify({ error: (e as Error).message }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
 });
 
