@@ -542,7 +542,10 @@ async function invokeGenerateWorldMap(
       session_id: sessionId,
       width: spec.resolvedSize!.width,
       height: spec.resolvedSize!.height,
-      terrain_params: spec.terrain,
+      terrain_params: {
+        ...spec.terrain,
+        geographyBlueprint: spec.geographyBlueprint,
+      },
     }),
   });
   if (!resp.ok) {
