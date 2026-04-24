@@ -178,12 +178,22 @@ export interface TranslatePremiseRequest {
   regenerationNonce?: number;
 }
 
+// AncientLayer types live in ./ancient-layer-types.ts (closed interface, L2).
+import type { AncientLayerSpec } from "./ancient-layer-types.ts";
+
 export interface TranslatePremiseResponse {
   ok: boolean;
   spec?: WorldgenSpecV1;
   normalizedPremise?: string;
   warnings?: TranslateWarning[];
   error?: string;
+  /**
+   * Track 1 (T1-PR2): optional Ancient Layer artifact derived from the
+   * same premise. Always validated against AncientLayerSchema on the
+   * server before being returned. May be a deterministic fallback if
+   * the AI call fails — never absent on a successful response.
+   */
+  ancientLayer?: AncientLayerSpec;
 }
 
 // ── Response ──
