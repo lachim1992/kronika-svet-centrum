@@ -77,6 +77,10 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
   const [mode, setMode] = useState<GameMode>("tb_single_ai");
   const [playerName, setPlayerName] = useState(defaultPlayerName);
 
+  // Ancient layer (v9.1) — held outside reducer; arrives with analyze response.
+  const [ancientLayer, setAncientLayer] = useState<AncientLayerSpec | null>(null);
+  const [selectedLineages, setSelectedLineages] = useState<string[]>([]);
+
   // Bootstrap progress
   const [creating, setCreating] = useState(false);
   const [activeStepIndex, setActiveStepIndex] = useState<number | undefined>(undefined);
@@ -128,6 +132,14 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
         spec: resp.spec,
         warnings: resp.warnings ?? [],
       });
+      // Capture ancient layer (v9.1) — outside reducer.
+      if (resp.ancientLayer) {
+        setAncientLayer(resp.ancientLayer);
+        // Default selection: first 3 candidates.
+        setSelectedLineages(
+          resp.ancientLayer.lineage_candidates.slice(0, 3).map((l) => l.id),
+        );
+      }
       toast.success("Návrh světa připraven");
     } catch (e: any) {
       wizard.dispatch({ type: "ANALYZE_FAIL", requestId, error: e?.message ?? "Chyba" });
