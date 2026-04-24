@@ -30,6 +30,13 @@ import type {
   TranslateWarning,
   WorldgenSpecV1,
 } from "../_shared/world-bootstrap-types.ts";
+import { AncientLayerSchema } from "../_shared/ancient-layer-schema.ts";
+import {
+  ANCIENT_PROMPT_VERSION,
+  computeSeedHash,
+  generateFallbackAncientLayer,
+} from "../_shared/ancient-layer-generator.ts";
+import type { AncientLayerSpec } from "../_shared/ancient-layer-types.ts";
 
 const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY")!;
 const AI_MODEL = "google/gemini-2.5-pro";
