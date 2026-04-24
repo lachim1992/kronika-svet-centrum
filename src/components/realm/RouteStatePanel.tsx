@@ -59,7 +59,7 @@ export const RouteStatePanel = ({ sessionId, playerName, currentTurn }: Props) =
       console.error(error);
       toast.error("Chyba při načítání tras");
     } else {
-      setRows((data ?? []) as RouteRow[]);
+      setRows(((data ?? []) as unknown) as RouteRow[]);
     }
     setLoading(false);
   };
