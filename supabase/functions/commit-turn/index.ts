@@ -608,6 +608,21 @@ Deno.serve(async (req) => {
     }
 
     // ═══════════════════════════════════════════
+    // 5c. WORLD LAYER TICK (v9.1 — Phase 4 + Phase 9)
+    // Route maintenance lifecycle + retention cleanup.
+    // ═══════════════════════════════════════════
+    try {
+      const { data: wlRes, error: wlErr } = await supabase.functions.invoke("world-layer-tick", {
+        body: { sessionId, turnNumber: turnNumber + 1 },
+      });
+      if (wlErr) console.warn("world-layer-tick warning:", wlErr.message);
+      results.worldLayer = wlRes || { error: wlErr?.message };
+    } catch (e) {
+      console.warn("world-layer-tick error (non-fatal):", (e as Error).message);
+      results.worldLayer = { error: (e as Error).message };
+    }
+
+    // ═══════════════════════════════════════════
     // 6. NON-CRITICAL BACKGROUND TASKS
     // Use EdgeRuntime.waitUntil to avoid CPU timeout.
     // Turn is already advanced, economy processed — these are best-effort.
