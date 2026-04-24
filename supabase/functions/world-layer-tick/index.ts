@@ -147,6 +147,7 @@ Deno.serve(async (req) => {
         // Decay
         let nextMaint = Math.max(0, s.maintenance_level - 5);
         let lastMaintTurn = s.last_maintained_turn;
+        let nextUnpaid = (s as any).turns_unpaid ?? 0;
 
         // Pay upkeep if affordable
         if (goldAvail >= s.upkeep_cost && nextMaint < 100) {
@@ -154,10 +155,15 @@ Deno.serve(async (req) => {
           goldSpent += s.upkeep_cost;
           nextMaint = Math.min(100, nextMaint + 15);
           lastMaintTurn = turnNumber;
+          nextUnpaid = 0;
+        } else if (s.upkeep_cost > 0) {
+          nextUnpaid += 1;
         }
 
         const prevLifecycle = s.lifecycle_state;
-        const nextLifecycle = deriveLifecycle(nextMaint, prevLifecycle);
+        let nextLifecycle = deriveLifecycle(nextMaint, prevLifecycle);
+        // Hard transition: 3+ turns unpaid + degraded → blocked
+        if (nextUnpaid >= 3 && nextLifecycle === "degraded") nextLifecycle = "blocked";
 
         stateUpdates.push({
           route_id: s.route_id,
@@ -167,16 +173,15 @@ Deno.serve(async (req) => {
           quality_level: s.quality_level,
           last_maintained_turn: lastMaintTurn,
           upkeep_cost: s.upkeep_cost,
+          turns_unpaid: nextUnpaid,
           updated_at: new Date().toISOString(),
         });
 
-        // Cache sync (K1)
         cacheUpdates.push({
           id: s.route_id,
           control: lifecycleToCacheControl(nextLifecycle),
         });
 
-        // Lifecycle transition events
         if (prevLifecycle !== nextLifecycle) {
           if (nextLifecycle === "blocked") {
             blocked++;
@@ -186,8 +191,8 @@ Deno.serve(async (req) => {
               event_type: "route_blocked",
               severity: "warning",
               title: "Trasa zablokována",
-              description: `Trasa ${s.route_id.slice(0, 8)} zkolabovala kvůli zanedbané údržbě.`,
-              metadata: { route_id: s.route_id, owner, maintenance: nextMaint },
+              description: `Trasa ${s.route_id.slice(0, 8)} zkolabovala kvůli zanedbané údržbě (${nextUnpaid} tahů bez platby).`,
+              metadata: { route_id: s.route_id, owner, maintenance: nextMaint, turns_unpaid: nextUnpaid },
             });
           } else if (nextLifecycle === "degraded") {
             degraded++;
@@ -206,7 +211,6 @@ Deno.serve(async (req) => {
         }
       }
 
-      // Persist gold change for owner
       if (goldSpent > 0 && rr) {
         await sb
           .from("realm_resources")
