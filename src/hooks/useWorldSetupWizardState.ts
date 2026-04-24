@@ -86,6 +86,7 @@ const initialState: WizardState = {
 
 export type WizardAction =
   | { type: "SET_PREMISE"; premise: string }
+  | { type: "SET_PRE_WORLD"; preWorldPremise: string; suggested?: boolean }
   | { type: "USE_INSPIRATION"; premise: string; label: string }
   | { type: "EDIT_FIELD"; path: string; value: unknown }
   | { type: "RESET_FIELD"; path: string }
