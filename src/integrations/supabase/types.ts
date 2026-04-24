@@ -3369,6 +3369,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "flow_paths_route_id_fkey"
+            columns: ["route_id"]
+            isOneToOne: false
+            referencedRelation: "v_route_with_state"
+            referencedColumns: ["route_id"]
+          },
+          {
             foreignKeyName: "flow_paths_session_id_fkey"
             columns: ["session_id"]
             isOneToOne: false
@@ -4913,6 +4920,45 @@ export type Database = {
           },
         ]
       }
+      heritage_effects: {
+        Row: {
+          created_at: string
+          description: string | null
+          effect_target: string | null
+          effect_type: string
+          effect_value: number
+          id: string
+          lineage_id: string
+          lineage_label: string
+          player_name: string
+          session_id: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          effect_target?: string | null
+          effect_type: string
+          effect_value: number
+          id?: string
+          lineage_id: string
+          lineage_label: string
+          player_name: string
+          session_id: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          effect_target?: string | null
+          effect_type?: string
+          effect_value?: number
+          id?: string
+          lineage_id?: string
+          lineage_label?: string
+          player_name?: string
+          session_id?: string
+        }
+        Relationships: []
+      }
       import_sources: {
         Row: {
           created_at: string
@@ -6031,6 +6077,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "military_stacks_blockading_route_id_fkey"
+            columns: ["blockading_route_id"]
+            isOneToOne: false
+            referencedRelation: "v_route_with_state"
+            referencedColumns: ["route_id"]
+          },
+          {
             foreignKeyName: "military_stacks_current_node_id_fkey"
             columns: ["current_node_id"]
             isOneToOne: false
@@ -6064,6 +6117,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "province_routes"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "military_stacks_travel_route_id_fkey"
+            columns: ["travel_route_id"]
+            isOneToOne: false
+            referencedRelation: "v_route_with_state"
+            referencedColumns: ["route_id"]
           },
           {
             foreignKeyName: "military_stacks_travel_target_node_id_fkey"
@@ -6257,6 +6317,42 @@ export type Database = {
           },
         ]
       }
+      node_migrations: {
+        Row: {
+          created_at: string
+          from_node: string | null
+          id: string
+          population_delta: number
+          reason: string
+          route_id: string | null
+          session_id: string
+          to_node: string
+          turn_number: number
+        }
+        Insert: {
+          created_at?: string
+          from_node?: string | null
+          id?: string
+          population_delta: number
+          reason: string
+          route_id?: string | null
+          session_id: string
+          to_node: string
+          turn_number: number
+        }
+        Update: {
+          created_at?: string
+          from_node?: string | null
+          id?: string
+          population_delta?: number
+          reason?: string
+          route_id?: string | null
+          session_id?: string
+          to_node?: string
+          turn_number?: number
+        }
+        Relationships: []
+      }
       node_projects: {
         Row: {
           completed_turn: number | null
@@ -6351,6 +6447,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "province_routes"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "node_projects_route_id_fkey"
+            columns: ["route_id"]
+            isOneToOne: false
+            referencedRelation: "v_route_with_state"
+            referencedColumns: ["route_id"]
           },
           {
             foreignKeyName: "node_projects_session_id_fkey"
@@ -7926,9 +8029,11 @@ export type Database = {
           last_maintained_turn: number
           lifecycle_state: string
           maintenance_level: number
+          player_invested_gold: number
           quality_level: number
           route_id: string
           session_id: string
+          turns_unpaid: number
           updated_at: string
           upkeep_cost: number
         }
@@ -7936,9 +8041,11 @@ export type Database = {
           last_maintained_turn?: number
           lifecycle_state?: string
           maintenance_level?: number
+          player_invested_gold?: number
           quality_level?: number
           route_id: string
           session_id: string
+          turns_unpaid?: number
           updated_at?: string
           upkeep_cost?: number
         }
@@ -7946,9 +8053,11 @@ export type Database = {
           last_maintained_turn?: number
           lifecycle_state?: string
           maintenance_level?: number
+          player_invested_gold?: number
           quality_level?: number
           route_id?: string
           session_id?: string
+          turns_unpaid?: number
           updated_at?: string
           upkeep_cost?: number
         }
@@ -7959,6 +8068,13 @@ export type Database = {
             isOneToOne: true
             referencedRelation: "province_routes"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "route_state_route_id_fkey"
+            columns: ["route_id"]
+            isOneToOne: true
+            referencedRelation: "v_route_with_state"
+            referencedColumns: ["route_id"]
           },
           {
             foreignKeyName: "route_state_session_id_fkey"
@@ -10169,6 +10285,45 @@ export type Database = {
           turn_number: number | null
         }
         Relationships: []
+      }
+      v_route_with_state: {
+        Row: {
+          last_maintained_turn: number | null
+          lifecycle_state: string | null
+          maintenance_level: number | null
+          node_a: string | null
+          node_b: string | null
+          player_invested_gold: number | null
+          route_control_cache: string | null
+          route_id: string | null
+          route_type: string | null
+          session_id: string | null
+          turns_unpaid: number | null
+          upkeep_cost: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "province_routes_node_a_fkey"
+            columns: ["node_a"]
+            isOneToOne: false
+            referencedRelation: "province_nodes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "province_routes_node_b_fkey"
+            columns: ["node_b"]
+            isOneToOne: false
+            referencedRelation: "province_nodes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "province_routes_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
       }
     }
     Functions: {

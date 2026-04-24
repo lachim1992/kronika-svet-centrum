@@ -182,6 +182,68 @@ Deno.serve(async (req) => {
 
     result.heritage = { inserted: heritageInserted };
 
+    // ── 2b. Seed heritage_effects per lineage_kind (PR-F) ────────────────
+    // Hardcoded effect templates by cultural anchor / lineage name pattern.
+    let effectsInserted = 0;
+    if (heritageInserted > 0) {
+      const { data: heritageRows } = await sb
+        .from("realm_heritage")
+        .select("id, session_id, player_name, lineage_id, lineage_name, cultural_anchor")
+        .eq("session_id", sessionId);
+
+      const effectsBatch: Array<Record<string, unknown>> = [];
+
+      for (const h of heritageRows ?? []) {
+        const anchor = String(h.cultural_anchor ?? "").toLowerCase();
+        const name = String(h.lineage_name ?? "").toLowerCase();
+        const blob = `${anchor} ${name}`;
+        const effects: Array<{ type: string; value: number; target: string; desc: string }> = [];
+
+        if (/(námoř|sea|moře|přístav|harbor|loď|ship)/.test(blob)) {
+          effects.push({ type: "route_maintenance_discount", value: 0.15, target: "trade_route", desc: "Námořnické dědictví: -15 % údržbových nákladů obchodních tras." });
+          effects.push({ type: "prestige_per_turn", value: 1, target: "all_cities", desc: "Sláva námořních předků: +1 prestiž/tah." });
+        } else if (/(hor|hill|mountain|skál|kov|metal|kov)/.test(blob)) {
+          effects.push({ type: "production_bonus", value: 0.10, target: "hill_node", desc: "Horalské dědictví: +10 % produkce v kopcovitých uzlech." });
+          effects.push({ type: "prestige_per_turn", value: 1, target: "all_cities", desc: "Železná pamět hor: +1 prestiž/tah." });
+        } else if (/(pást|paste|step|nomád|nomad|jezdec|rider|kůň|horse)/.test(blob)) {
+          effects.push({ type: "movement_bonus", value: 0.20, target: "armies", desc: "Pastevecké dědictví: +20 % pohybu armád." });
+          effects.push({ type: "prestige_per_turn", value: 1, target: "all_cities", desc: "Volné pláně: +1 prestiž/tah." });
+        } else if (/(kněz|priest|chrám|temple|víra|faith|mág|mage)/.test(blob)) {
+          effects.push({ type: "faith_bonus", value: 0.15, target: "all_cities", desc: "Sakrální dědictví: +15 % víry." });
+          effects.push({ type: "prestige_per_turn", value: 2, target: "all_cities", desc: "Posvátné kořeny: +2 prestiž/tah." });
+        } else if (/(kupec|merchant|trh|market|obchod|trade)/.test(blob)) {
+          effects.push({ type: "trade_income_bonus", value: 0.10, target: "trade_route", desc: "Kupecké dědictví: +10 % příjmu z obchodu." });
+          effects.push({ type: "prestige_per_turn", value: 1, target: "all_cities", desc: "Bohatá tradice obchodu: +1 prestiž/tah." });
+        } else {
+          // Generic fallback
+          effects.push({ type: "stability_bonus", value: 2, target: "all_cities", desc: `Dědictví ${h.lineage_name}: +2 stabilita.` });
+          effects.push({ type: "prestige_per_turn", value: 1, target: "all_cities", desc: `Pradávný odkaz ${h.lineage_name}: +1 prestiž/tah.` });
+        }
+
+        for (const e of effects) {
+          effectsBatch.push({
+            session_id: h.session_id,
+            player_name: h.player_name,
+            lineage_id: h.lineage_id,
+            lineage_label: h.lineage_name,
+            effect_type: e.type,
+            effect_value: e.value,
+            effect_target: e.target,
+            description: e.desc,
+          });
+        }
+      }
+
+      if (effectsBatch.length > 0) {
+        const { error: effErr, count } = await sb
+          .from("heritage_effects")
+          .insert(effectsBatch, { count: "exact" });
+        if (effErr) console.warn("heritage_effects insert:", effErr.message);
+        effectsInserted = count ?? effectsBatch.length;
+      }
+    }
+    result.heritageEffects = { inserted: effectsInserted };
+
     // ── 3. reset_event → founding chronicle entry ────────────────────────
     let chronicleCreated = false;
 
