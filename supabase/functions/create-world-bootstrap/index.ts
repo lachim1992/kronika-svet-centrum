@@ -168,19 +168,19 @@ Deno.serve(async (req) => {
       .maybeSingle();
 
     if (existing?.bootstrap_status === "ready") {
-      const spec = existing.worldgen_spec as WorldgenSpecV1 | null;
+      const spec = existing.worldgen_spec as LegacySpec | null;
       return jsonResponse({
         ok: true,
         sessionId: normalized.sessionId,
         worldReady: true,
         alreadyBootstrapped: true,
-        worldgen: spec
+        worldgen: spec && spec.resolvedSize
           ? {
               seed: spec.seed,
               size: spec.userIntent.size,
               mapWidth: spec.resolvedSize.width,
               mapHeight: spec.resolvedSize.height,
-              mode: spec.mode,
+              mode: spec.mode!,
             }
           : undefined,
         steps: [
@@ -224,8 +224,8 @@ Deno.serve(async (req) => {
       premise: normalized.world.premise,
       tone: normalized.world.tone,
       victory_style: normalized.world.victoryStyle,
-      map_width: spec.resolvedSize.width,
-      map_height: spec.resolvedSize.height,
+      map_width: spec.resolvedSize!.width,
+      map_height: spec.resolvedSize!.height,
       worldgen_spec: spec,
       worldgen_version: 1,
       bootstrap_status: "bootstrapping" as const,
@@ -277,11 +277,11 @@ Deno.serve(async (req) => {
     if (
       typeof mapResp.mapWidth === "number" &&
       typeof mapResp.mapHeight === "number" &&
-      (mapResp.mapWidth !== spec.resolvedSize.width ||
-        mapResp.mapHeight !== spec.resolvedSize.height)
+      (mapResp.mapWidth !== spec.resolvedSize!.width ||
+        mapResp.mapHeight !== spec.resolvedSize!.height)
     ) {
       throw new Error(
-        `Size parity violation: spec=${spec.resolvedSize.width}x${spec.resolvedSize.height}, map=${mapResp.mapWidth}x${mapResp.mapHeight}`,
+        `Size parity violation: spec=${spec.resolvedSize!.width}x${spec.resolvedSize!.height}, map=${mapResp.mapWidth}x${mapResp.mapHeight}`,
       );
     }
     steps.push({ step: "parity-check", ok: true, durationMs: 0 });
@@ -327,8 +327,8 @@ Deno.serve(async (req) => {
       worldgen: {
         seed: spec.seed,
         size: normalized.world.size,
-        mapWidth: spec.resolvedSize.width,
-        mapHeight: spec.resolvedSize.height,
+        mapWidth: spec.resolvedSize!.width,
+        mapHeight: spec.resolvedSize!.height,
         mode: normalized.mode,
       },
       artifacts: {
@@ -391,7 +391,7 @@ function jsonResponse(
 }
 
 async function ensureServerConfig(
-  sb: ReturnType<typeof createClient>,
+  sb: any,
   req: NormalizedRequest,
 ): Promise<{ id: string }> {
   const { data: existing } = await sb
@@ -415,7 +415,7 @@ async function ensureServerConfig(
     await sb
       .from("server_config")
       .update({ economic_params: merged })
-      .eq("id", existing.id);
+      .eq("id", existing.id as string);
     return { id: existing.id as string };
   }
 
@@ -446,7 +446,7 @@ interface MapGenResp {
 
 async function invokeGenerateWorldMap(
   sessionId: string,
-  spec: WorldgenSpecV1,
+  spec: LegacySpec,
 ): Promise<MapGenResp> {
   // Direct internal call to generate-world-map.
   const url = `${SUPABASE_URL}/functions/v1/generate-world-map`;
@@ -458,8 +458,8 @@ async function invokeGenerateWorldMap(
     },
     body: JSON.stringify({
       session_id: sessionId,
-      width: spec.resolvedSize.width,
-      height: spec.resolvedSize.height,
+      width: spec.resolvedSize!.width,
+      height: spec.resolvedSize!.height,
       terrain_params: spec.terrain,
     }),
   });
@@ -479,9 +479,9 @@ interface SeedingResult {
 }
 
 async function runModeSpecificSeeding(
-  _sb: ReturnType<typeof createClient>,
+  _sb: any,
   req: NormalizedRequest,
-  _spec: WorldgenSpecV1,
+  _spec: LegacySpec,
 ): Promise<SeedingResult> {
   switch (req.mode) {
     case "tb_single_ai": {
