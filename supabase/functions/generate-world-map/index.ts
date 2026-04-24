@@ -78,7 +78,36 @@ Deno.serve(async (req) => {
     }
 
     // ── Generate terrain using shared module ──
-    const tParams: TerrainParams = terrain_params || {};
+    // Accept v9 geographyBlueprint embedded in terrain_params and translate
+    // to the legacy {ridges:{x1,y1,x2,y2,width}} shape consumed by terrain.ts.
+    const tParams: TerrainParams = { ...(terrain_params || {}) };
+    const v9bp = (terrain_params || {}).geographyBlueprint;
+    if (v9bp && Array.isArray(v9bp.ridges) && v9bp.ridges.length > 0) {
+      const legacyRidges = v9bp.ridges.map((r: any) => ({
+        name: r.id || "Pohoří",
+        x1: r.startQ ?? r.x1 ?? 0,
+        y1: r.startR ?? r.y1 ?? 0,
+        x2: r.endQ ?? r.x2 ?? 0,
+        y2: r.endR ?? r.y2 ?? 0,
+        width: r.width ?? 3,
+        strength: r.strength ?? 0.7,
+      }));
+      const legacyZones = (v9bp.biomeZones || []).map((z: any) => ({
+        biome: z.biome,
+        centerQ: z.centerQ ?? z.center_q ?? 0,
+        centerR: z.centerR ?? z.center_r ?? 0,
+        radius: z.radius ?? 4,
+        intensity: z.intensity ?? 0.6,
+      }));
+      (tParams as any).geoBlueprint = {
+        ridges: legacyRidges,
+        rivers: v9bp.rivers || [],
+        biomeZones: legacyZones,
+        continentShape: v9bp.continentShape,
+        climateGradient: v9bp.climateGradient,
+        oceanPattern: v9bp.oceanPattern,
+      };
+    }
     console.log(`Generating ${mapW}x${mapH} map with seed: ${worldSeed}, params:`, JSON.stringify(tParams));
     const map = generateWorldTerrain(worldSeed, mapW, mapH, tParams);
     console.log(`Generated ${map.hexes.length} hexes, land ratio: ${(map.stats.landRatio * 100).toFixed(1)}%`);

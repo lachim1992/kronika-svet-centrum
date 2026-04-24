@@ -1,0 +1,257 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// seed-realm-skeleton — synchronous physical-world seeder
+//
+// Creates the minimum playable realm right after generate-world-map:
+//   • 1 country + 1 region + 1 province + 1 capital city per faction (player + AI)
+//   • realm_resources + player_resources rows for each player
+//   • Hex assignment from mapStartPositions filtered by terrain
+//
+// Stays narrative-free: the AI naratíva (persons, wonders, prehistory, etc.)
+// runs in `world-generate-init` afterwards and only enriches existing entities.
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface StartPos { q: number; r: number; }
+interface FactionConfig { name?: string; personality?: string; description?: string; }
+
+interface SeedRealmInput {
+  sb: any;
+  sessionId: string;
+  playerName: string;
+  worldName: string;
+  premise: string;
+  realmName?: string;
+  cultureName?: string;
+  settlementName?: string;
+  factions?: FactionConfig[];
+  startPositions: StartPos[];
+}
+
+export interface SeedRealmResult {
+  factionsSeeded: number;
+  regionsSeeded: number;
+  provincesSeeded: number;
+  citiesSeeded: number;
+  factionPlayerMap: Record<string, string>;
+  cityIds: string[];
+}
+
+const NEIGHBOR_DIRS = [[1, 0], [0, 1], [-1, 1], [-1, 0], [0, -1], [1, -1]];
+const CITY_BIOMES = new Set(["plains", "hills", "forest", "coastal", "grassland", "temperate", "savanna"]);
+
+function hexRing(cq: number, cr: number, radius: number): StartPos[] {
+  if (radius === 0) return [{ q: cq, r: cr }];
+  const out: StartPos[] = [];
+  let q = cq + NEIGHBOR_DIRS[4][0] * radius;
+  let r = cr + NEIGHBOR_DIRS[4][1] * radius;
+  for (let d = 0; d < 6; d++) {
+    for (let s = 0; s < radius; s++) {
+      out.push({ q, r });
+      q += NEIGHBOR_DIRS[d][0]; r += NEIGHBOR_DIRS[d][1];
+    }
+  }
+  return out;
+}
+
+export async function seedRealmSkeleton(input: SeedRealmInput): Promise<SeedRealmResult> {
+  const { sb, sessionId, playerName, worldName, premise, realmName, cultureName, settlementName, factions = [], startPositions } = input;
+
+  // Build the participant list: player first, then AI factions.
+  const participants: Array<{ playerName: string; factionName: string; isPlayer: boolean; personality?: string }> = [
+    {
+      playerName,
+      factionName: realmName || cultureName || `${playerName}ova říše`,
+      isPlayer: true,
+    },
+    ...factions.map((f, i) => ({
+      playerName: f.name || `AI Frakce ${i + 1}`,
+      factionName: f.name || `AI Frakce ${i + 1}`,
+      isPlayer: false,
+      personality: f.personality,
+    })),
+  ];
+
+  // Load terrain for placement.
+  const { data: hexes } = await sb
+    .from("province_hexes")
+    .select("q, r, biome_family, is_passable, has_river")
+    .eq("session_id", sessionId)
+    .limit(8000);
+  const terrainMap = new Map<string, { biome: string; passable: boolean; river: boolean }>();
+  for (const h of hexes || []) {
+    terrainMap.set(`${h.q},${h.r}`, {
+      biome: String(h.biome_family || "plains"),
+      passable: h.is_passable !== false,
+      river: h.has_river === true,
+    });
+  }
+
+  // Spread players across startPositions; if not enough, use radial fallback.
+  const positions: StartPos[] = startPositions.length >= participants.length
+    ? startPositions.slice(0, participants.length)
+    : (() => {
+        const out = [...startPositions];
+        const step = 6;
+        let i = 0;
+        while (out.length < participants.length) {
+          out.push({ q: Math.cos(i) * step * (1 + Math.floor(i / 6)) | 0, r: Math.sin(i) * step * (1 + Math.floor(i / 6)) | 0 });
+          i++;
+        }
+        return out;
+      })();
+
+  const factionPlayerMap: Record<string, string> = {};
+  const cityIds: string[] = [];
+  let regionsSeeded = 0;
+  let provincesSeeded = 0;
+  let citiesSeeded = 0;
+
+  for (let idx = 0; idx < participants.length; idx++) {
+    const p = participants[idx];
+    const center = positions[idx];
+    factionPlayerMap[p.factionName] = p.playerName;
+
+    // Country
+    const { data: country } = await sb.from("countries").insert({
+      session_id: sessionId,
+      name: p.factionName,
+      ruler_player: p.playerName,
+      description: p.isPlayer
+        ? `Říše hráče ${p.playerName}: ${premise.slice(0, 240)}`
+        : `${p.factionName} — AI frakce ve světě ${worldName}.`,
+      motto: p.isPlayer ? "Za slávu a kroniku" : "Vlastní cestou",
+    }).select("id").single();
+
+    // Region
+    const regionName = p.isPlayer
+      ? `Země ${realmName || playerName}`
+      : `Země ${p.factionName}`;
+    const { data: region } = await sb.from("regions").insert({
+      session_id: sessionId,
+      name: regionName,
+      description: `Domovský region ${p.factionName}.`,
+      biome: terrainMap.get(`${center.q},${center.r}`)?.biome || "plains",
+      owner_player: p.playerName,
+      is_homeland: true,
+      discovered_turn: 1,
+      discovered_by: p.playerName,
+      country_id: country?.id ?? null,
+    }).select("id").single();
+    if (region) regionsSeeded++;
+
+    // Province
+    const provinceName = `${regionName} – Centrální`;
+    const { data: province } = await sb.from("provinces").insert({
+      session_id: sessionId,
+      name: provinceName,
+      description: `Hlavní provincie regionu ${regionName}.`,
+      region_id: region?.id ?? null,
+      owner_player: p.playerName,
+      center_q: center.q,
+      center_r: center.r,
+      color_index: idx,
+      is_neutral: false,
+    }).select("id").single();
+    if (province) provincesSeeded++;
+
+    // Assign hexes (center + 2 rings, only land + passable + no river).
+    const candidates = [center, ...hexRing(center.q, center.r, 1), ...hexRing(center.q, center.r, 2), ...hexRing(center.q, center.r, 3)];
+    const valid = candidates.filter(c => {
+      const t = terrainMap.get(`${c.q},${c.r}`);
+      return t && t.passable && !t.river;
+    }).slice(0, 19);
+    if (province?.id && valid.length > 0) {
+      for (const h of valid) {
+        await sb.from("province_hexes")
+          .update({ province_id: province.id, owner_player: p.playerName })
+          .eq("session_id", sessionId).eq("q", h.q).eq("r", h.r);
+      }
+    }
+
+    // Find a city-suitable hex.
+    let cityHex = center;
+    for (const c of valid) {
+      const t = terrainMap.get(`${c.q},${c.r}`);
+      if (t && CITY_BIOMES.has(t.biome)) { cityHex = c; break; }
+    }
+
+    const cityName = p.isPlayer && settlementName ? settlementName : (p.isPlayer ? `${playerName}grad` : `${p.factionName} – Hlavní`);
+    const { data: city } = await sb.from("cities").insert({
+      session_id: sessionId,
+      name: cityName,
+      owner_player: p.playerName,
+      level: "Osada",
+      tags: ["capital", "starting"],
+      province: provinceName,
+      province_id: province?.id ?? null,
+      city_description_cached: `Hlavní osada ${p.factionName}.`,
+      flavor_prompt: `Hlavní osada ${p.factionName} ve světě ${worldName}.`,
+      founded_round: 1,
+      province_q: cityHex.q,
+      province_r: cityHex.r,
+      city_stability: 65,
+      population_total: 380,
+      population_peasants: 304,
+      population_burghers: 57,
+      population_clerics: 19,
+      settlement_level: "HAMLET",
+    }).select("id").single();
+    if (city) { cityIds.push(city.id); citiesSeeded++; }
+
+    // Seed realm_resources (idempotent: skip if exists)
+    const { data: existingRR } = await sb.from("realm_resources")
+      .select("id").eq("session_id", sessionId).eq("player_name", p.playerName).maybeSingle();
+    if (!existingRR) {
+      await sb.from("realm_resources").insert({
+        session_id: sessionId,
+        player_name: p.playerName,
+        grain_reserve: 30,
+        wood_reserve: 10,
+        stone_reserve: 5,
+        iron_reserve: 2,
+        production_reserve: 50,
+        gold_reserve: 100,
+        stability: 70,
+        granary_capacity: 500,
+        mobilization_rate: 0.1,
+      });
+    }
+
+    // Seed legacy player_resources (food/wood/stone/iron/wealth)
+    const baseIncome: Record<string, number> = { food: 6, wood: 4, stone: 3, iron: 2, wealth: 3 };
+    const baseUpkeep: Record<string, number> = { food: 3, wood: 1, stone: 0, iron: 0, wealth: 1 };
+    const baseStock:  Record<string, number> = { food: 20, wood: 10, stone: 5, iron: 3, wealth: 10 };
+    for (const rt of ["food", "wood", "stone", "iron", "wealth"]) {
+      const { data: existing } = await sb.from("player_resources")
+        .select("id").eq("session_id", sessionId).eq("player_name", p.playerName).eq("resource_type", rt).maybeSingle();
+      if (!existing) {
+        await sb.from("player_resources").insert({
+          session_id: sessionId, player_name: p.playerName, resource_type: rt,
+          income: baseIncome[rt], upkeep: baseUpkeep[rt], stockpile: baseStock[rt],
+        });
+      }
+    }
+
+    // Ensure game_players row for AI factions.
+    if (!p.isPlayer) {
+      const { data: existingGP } = await sb.from("game_players")
+        .select("id").eq("session_id", sessionId).eq("player_name", p.playerName).maybeSingle();
+      if (!existingGP) {
+        await sb.from("game_players").insert({
+          session_id: sessionId,
+          player_name: p.playerName,
+          player_number: idx + 1,
+          is_ai: true,
+        });
+      }
+    }
+  }
+
+  return {
+    factionsSeeded: participants.length,
+    regionsSeeded,
+    provincesSeeded,
+    citiesSeeded,
+    factionPlayerMap,
+    cityIds,
+  };
+}
