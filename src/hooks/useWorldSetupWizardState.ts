@@ -398,6 +398,7 @@ export function useWorldSetupWizardState(seed?: Partial<WizardState>) {
     isBusy,
     // Actions
     setPremise,
+    setPreWorldPremise,
     useInspiration,
     editField,
     resetField,
