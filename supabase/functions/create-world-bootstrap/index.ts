@@ -18,17 +18,14 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.4";
-import {
-  resolveMapSize,
-  type WorldSize,
-} from "../_shared/world-sizes.ts";
+import { resolveMapSize, type WorldSize } from "../_shared/world-sizes.ts";
 import type {
   BootstrapStepRecord,
   CreateWorldBootstrapRequest,
   CreateWorldBootstrapResponse,
   GameMode,
-  WorldgenSpecV1,
   LegacyWorldgenSpecFields,
+  WorldgenSpecV1,
 } from "../_shared/world-bootstrap-types.ts";
 
 type LegacySpec = WorldgenSpecV1 & LegacyWorldgenSpecFields;
@@ -45,13 +42,17 @@ const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 // ── Validation ───────────────────────────────────────────────────────────────
 
 function validateRequest(body: unknown): CreateWorldBootstrapRequest {
-  if (!body || typeof body !== "object") throw new Error("Body must be an object");
+  if (!body || typeof body !== "object") {
+    throw new Error("Body must be an object");
+  }
   const b = body as Record<string, unknown>;
 
-  if (typeof b.sessionId !== "string" || !b.sessionId)
+  if (typeof b.sessionId !== "string" || !b.sessionId) {
     throw new Error("sessionId required");
-  if (typeof b.playerName !== "string" || !b.playerName)
+  }
+  if (typeof b.playerName !== "string" || !b.playerName) {
     throw new Error("playerName required");
+  }
 
   const allowedModes: GameMode[] = [
     "tb_single_ai",
@@ -59,20 +60,25 @@ function validateRequest(body: unknown): CreateWorldBootstrapRequest {
     "tb_multi",
     "time_persistent",
   ];
-  if (!allowedModes.includes(b.mode as GameMode))
+  if (!allowedModes.includes(b.mode as GameMode)) {
     throw new Error(`mode must be one of ${allowedModes.join(", ")}`);
+  }
 
   const world = b.world as Record<string, unknown> | undefined;
   if (!world) throw new Error("world required");
-  if (typeof world.name !== "string" || !world.name)
+  if (typeof world.name !== "string" || !world.name) {
     throw new Error("world.name required");
-  if (typeof world.premise !== "string")
+  }
+  if (typeof world.premise !== "string") {
     throw new Error("world.premise required");
+  }
   if (typeof world.tone !== "string") throw new Error("world.tone required");
-  if (typeof world.victoryStyle !== "string")
+  if (typeof world.victoryStyle !== "string") {
     throw new Error("world.victoryStyle required");
-  if (!["small", "medium", "large"].includes(world.size as string))
+  }
+  if (!["small", "medium", "large"].includes(world.size as string)) {
     throw new Error("world.size must be small | medium | large");
+  }
 
   return body as CreateWorldBootstrapRequest;
 }
@@ -90,17 +96,23 @@ interface NormalizedRequest extends CreateWorldBootstrapRequest {
   }>;
 }
 
-function normalizeBootstrapRequest(req: CreateWorldBootstrapRequest): NormalizedRequest {
+function normalizeBootstrapRequest(
+  req: CreateWorldBootstrapRequest,
+): NormalizedRequest {
   const seed = req.world.seed?.trim() || crypto.randomUUID();
   const t = req.map?.terrain ?? {};
   return {
     ...req,
     resolvedSeed: seed,
     resolvedTerrain: {
-      targetLandRatio: typeof t.targetLandRatio === "number" ? t.targetLandRatio : 0.55,
+      targetLandRatio: typeof t.targetLandRatio === "number"
+        ? t.targetLandRatio
+        : 0.55,
       continentShape: t.continentShape ?? "mixed",
       continentCount: t.continentCount ?? 2,
-      mountainDensity: typeof t.mountainDensity === "number" ? t.mountainDensity : 0.3,
+      mountainDensity: typeof t.mountainDensity === "number"
+        ? t.mountainDensity
+        : 0.3,
       biomeWeights: t.biomeWeights ?? {},
     },
   };
@@ -157,7 +169,11 @@ Deno.serve(async (req) => {
     const raw = await req.json();
     const validated = validateRequest(raw);
     normalized = normalizeBootstrapRequest(validated);
-    steps.push({ step: "validate-normalize", ok: true, durationMs: performance.now() - t0 });
+    steps.push({
+      step: "validate-normalize",
+      ok: true,
+      durationMs: performance.now() - t0,
+    });
 
     // ── Step 0b: idempotency guard ────────────────────────────────────────
     const tIdem = performance.now();
@@ -169,6 +185,14 @@ Deno.serve(async (req) => {
 
     if (existing?.bootstrap_status === "ready") {
       const spec = existing.worldgen_spec as LegacySpec | null;
+      if (normalized.mode !== "tb_multi") {
+        await sb
+          .from("game_sessions")
+          .update(
+            { init_status: "ready", current_turn: 1, init_step: "done" } as any,
+          )
+          .eq("id", normalized.sessionId);
+      }
       return jsonResponse({
         ok: true,
         sessionId: normalized.sessionId,
@@ -176,12 +200,12 @@ Deno.serve(async (req) => {
         alreadyBootstrapped: true,
         worldgen: spec && spec.resolvedSize
           ? {
-              seed: spec.seed,
-              size: spec.userIntent.size,
-              mapWidth: spec.resolvedSize.width,
-              mapHeight: spec.resolvedSize.height,
-              mode: spec.mode!,
-            }
+            seed: spec.seed,
+            size: spec.userIntent.size,
+            mapWidth: spec.resolvedSize.width,
+            mapHeight: spec.resolvedSize.height,
+            mode: spec.mode!,
+          }
           : undefined,
         steps: [
           ...steps,
@@ -210,7 +234,9 @@ Deno.serve(async (req) => {
       step: "idempotency-check",
       ok: true,
       durationMs: performance.now() - tIdem,
-      detail: existing ? `prior status=${existing.bootstrap_status}` : "no prior",
+      detail: existing
+        ? `prior status=${existing.bootstrap_status}`
+        : "no prior",
     });
 
     // ── Build spec early (needed for all downstream steps) ────────────────
@@ -236,7 +262,9 @@ Deno.serve(async (req) => {
       .upsert(wfPayload, { onConflict: "session_id" })
       .select("id")
       .single();
-    if (wfErr) throw new Error(`world_foundations upsert failed: ${wfErr.message}`);
+    if (wfErr) {
+      throw new Error(`world_foundations upsert failed: ${wfErr.message}`);
+    }
     steps.push({
       step: "world-foundations",
       ok: true,
@@ -270,7 +298,9 @@ Deno.serve(async (req) => {
       step: "generate-world-map",
       ok: true,
       durationMs: performance.now() - t4,
-      detail: `hexCount=${mapResp.hexCount ?? 0} startPositions=${mapResp.startPositions?.length ?? 0}`,
+      detail: `hexCount=${mapResp.hexCount ?? 0} startPositions=${
+        mapResp.startPositions?.length ?? 0
+      }`,
     });
 
     // ── Step 5: parity check ──────────────────────────────────────────────
@@ -281,7 +311,9 @@ Deno.serve(async (req) => {
         mapResp.mapHeight !== spec.resolvedSize!.height)
     ) {
       throw new Error(
-        `Size parity violation: spec=${spec.resolvedSize!.width}x${spec.resolvedSize!.height}, map=${mapResp.mapWidth}x${mapResp.mapHeight}`,
+        `Size parity violation: spec=${spec.resolvedSize!.width}x${
+          spec.resolvedSize!.height
+        }, map=${mapResp.mapWidth}x${mapResp.mapHeight}`,
       );
     }
     steps.push({ step: "parity-check", ok: true, durationMs: 0 });
@@ -298,6 +330,9 @@ Deno.serve(async (req) => {
     });
 
     // ── Step 7: mode-specific seeding ─────────────────────────────────────
+    // Important: do not synchronously await AI-heavy seeding here.
+    // `world-generate-init` can take well over 100s, which pushes the whole
+    // orchestrator beyond the 150s edge timeout. We only dispatch it and return.
     const t7 = performance.now();
     const seeding = await runModeSpecificSeeding(sb, normalized, spec);
     steps.push({
@@ -332,11 +367,23 @@ Deno.serve(async (req) => {
         detail: "dispatched (fire-and-forget)",
       });
     } catch (e) {
-      warnings.push(`world-layer-bootstrap dispatch threw: ${e instanceof Error ? e.message : String(e)}`);
+      warnings.push(
+        `world-layer-bootstrap dispatch threw: ${
+          e instanceof Error ? e.message : String(e)
+        }`,
+      );
     }
 
     // ── Step 8: finalize ──────────────────────────────────────────────────
     const t8 = performance.now();
+    if (normalized.mode !== "tb_multi") {
+      await sb
+        .from("game_sessions")
+        .update(
+          { init_status: "ready", current_turn: 1, init_step: "done" } as any,
+        )
+        .eq("id", normalized.sessionId);
+    }
     await sb
       .from("world_foundations")
       .update({ bootstrap_status: "ready", bootstrap_error: null })
@@ -401,7 +448,11 @@ Deno.serve(async (req) => {
       500,
     );
   } finally {
-    console.log(`create-world-bootstrap total ${(performance.now() - startedAt).toFixed(0)}ms`);
+    console.log(
+      `create-world-bootstrap total ${
+        (performance.now() - startedAt).toFixed(0)
+      }ms`,
+    );
   }
 });
 
@@ -450,8 +501,9 @@ async function ensureServerConfig(
     session_id: req.sessionId,
     economic_params: defaultEconomic,
   };
-  if (req.server?.tickIntervalSeconds)
+  if (req.server?.tickIntervalSeconds) {
     insertPayload.tick_interval_seconds = req.server.tickIntervalSeconds;
+  }
   if (req.server?.timeScale) insertPayload.time_scale = req.server.timeScale;
   if (req.server?.maxPlayers) insertPayload.max_players = req.server.maxPlayers;
 
@@ -492,7 +544,9 @@ async function invokeGenerateWorldMap(
   });
   if (!resp.ok) {
     const text = await resp.text();
-    throw new Error(`generate-world-map failed (${resp.status}): ${text.slice(0, 500)}`);
+    throw new Error(
+      `generate-world-map failed (${resp.status}): ${text.slice(0, 500)}`,
+    );
   }
   return (await resp.json()) as MapGenResp;
 }
@@ -512,67 +566,62 @@ async function runModeSpecificSeeding(
 ): Promise<SeedingResult> {
   switch (req.mode) {
     case "tb_single_ai": {
-      // Delegate AI-specific seeding to existing world-generate-init.
-      // Increment 3 will demote that function to AI-only and inline this.
+      // Delegate AI-specific seeding to existing world-generate-init,
+      // but DO NOT await it here. This function must stay safely below the
+      // edge timeout budget, so AI generation is detached.
       try {
         const url = `${SUPABASE_URL}/functions/v1/world-generate-init`;
-        // Hard timeout: keep whole orchestrator under 150s edge limit.
-        const ac = new AbortController();
-        const timeoutId = setTimeout(() => ac.abort(), 110_000);
-        let resp: Response;
-        try {
-          resp = await fetch(url, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
-            },
-            body: JSON.stringify({
-              sessionId: req.sessionId,
-              playerName: req.playerName,
-              worldName: req.world.name,
-              premise: req.world.premise,
-              tone: req.world.tone,
-              victoryStyle: req.world.victoryStyle,
-              worldSize: req.world.size,
-              settlementName: req.identity?.settlementName,
-              cultureName: req.identity?.cultureName,
-              languageName: req.identity?.languageName,
-              realmName: req.identity?.realmName,
-              factionConfigs: req.factions,
-              terrainParams: req.resolvedTerrain,
-              mapWidth: undefined,
-              mapHeight: undefined,
-            }),
-            signal: ac.signal,
+        fetch(url, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+          },
+          body: JSON.stringify({
+            sessionId: req.sessionId,
+            playerName: req.playerName,
+            worldName: req.world.name,
+            premise: req.world.premise,
+            tone: req.world.tone,
+            victoryStyle: req.world.victoryStyle,
+            worldSize: req.world.size,
+            settlementName: req.identity?.settlementName,
+            cultureName: req.identity?.cultureName,
+            languageName: req.identity?.languageName,
+            realmName: req.identity?.realmName,
+            factionConfigs: req.factions,
+            terrainParams: req.resolvedTerrain,
+            mapWidth: undefined,
+            mapHeight: undefined,
+          }),
+        })
+          .then(async (resp) => {
+            if (!resp.ok) {
+              const text = await resp.text();
+              console.warn(
+                `world-generate-init detached failure (${resp.status}): ${
+                  text.slice(0, 300)
+                }`,
+              );
+              return;
+            }
+            await resp.text();
+          })
+          .catch((e) => {
+            console.warn("world-generate-init detached error:", e);
           });
-        } finally {
-          clearTimeout(timeoutId);
-        }
-        if (!resp.ok) {
-          const text = await resp.text();
-          return {
-            ok: false,
-            detail: `world-generate-init non-fatal failure (${resp.status})`,
-            warning: `AI seeding failed: ${text.slice(0, 200)}`,
-          };
-        }
-        const data = await resp.json();
+
         return {
           ok: true,
-          factionsSeeded: data?.factionsCreated ?? data?.factions?.length,
-          provincesSeeded: data?.regionsCreated ?? data?.regions?.length,
-          detail: "delegated to world-generate-init",
+          detail: "dispatched to world-generate-init (background)",
+          warning: "AI seed běží na pozadí; svět se doplní postupně.",
         };
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
-        const aborted = msg.includes("aborted") || msg.includes("AbortError");
         return {
           ok: false,
-          warning: aborted
-            ? "AI seeding timed out after 110s (non-fatal, world is usable)"
-            : `AI seeding threw: ${msg}`,
-          detail: aborted ? "ai-seed-timeout" : "ai-seed-error",
+          warning: `AI seeding dispatch threw: ${msg}`,
+          detail: "ai-seed-dispatch-error",
         };
       }
     }
