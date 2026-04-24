@@ -185,6 +185,12 @@ Deno.serve(async (req) => {
 
     if (existing?.bootstrap_status === "ready") {
       const spec = existing.worldgen_spec as LegacySpec | null;
+      if (normalized.mode !== "tb_multi") {
+        await sb
+          .from("game_sessions")
+          .update({ init_status: "ready", current_turn: 1, init_step: "done" } as any)
+          .eq("id", normalized.sessionId);
+      }
       return jsonResponse({
         ok: true,
         sessionId: normalized.sessionId,
