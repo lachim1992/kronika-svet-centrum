@@ -309,35 +309,30 @@ Deno.serve(async (req) => {
     if (!seeding.ok && seeding.warning) warnings.push(seeding.warning);
 
     // ── Step 7b: world-layer projection (v9.1 ancient_layer → live world) ──
+    // Fire-and-forget: this projection is non-fatal and can run ~5-10s on its
+    // own. We do NOT await it to keep the orchestrator under the 150s budget.
     const t7b = performance.now();
     try {
       const wlUrl = `${SUPABASE_URL}/functions/v1/world-layer-bootstrap`;
-      const wlResp = await fetch(wlUrl, {
+      // Detached invocation — intentionally not awaited.
+      fetch(wlUrl, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
         },
         body: JSON.stringify({ sessionId: normalized.sessionId }),
+      }).then((r) => r.text()).catch((e) => {
+        console.warn("world-layer-bootstrap (detached) error:", e);
       });
-      const wlData = wlResp.ok ? await wlResp.json() : { ok: false };
       steps.push({
         step: "world-layer-projection",
-        ok: wlResp.ok,
+        ok: true,
         durationMs: performance.now() - t7b,
-        detail: wlResp.ok
-          ? `mythic=${JSON.stringify(wlData.mythic ?? {})} heritage=${JSON.stringify(wlData.heritage ?? {})}`
-          : `non-fatal: ${wlResp.status}`,
+        detail: "dispatched (fire-and-forget)",
       });
-      if (!wlResp.ok) warnings.push(`world-layer-bootstrap failed: ${wlResp.status}`);
     } catch (e) {
-      warnings.push(`world-layer-bootstrap threw: ${e instanceof Error ? e.message : String(e)}`);
-      steps.push({
-        step: "world-layer-projection",
-        ok: false,
-        durationMs: performance.now() - t7b,
-        detail: "threw, non-fatal",
-      });
+      warnings.push(`world-layer-bootstrap dispatch threw: ${e instanceof Error ? e.message : String(e)}`);
     }
 
     // ── Step 8: finalize ──────────────────────────────────────────────────
@@ -521,30 +516,39 @@ async function runModeSpecificSeeding(
       // Increment 3 will demote that function to AI-only and inline this.
       try {
         const url = `${SUPABASE_URL}/functions/v1/world-generate-init`;
-        const resp = await fetch(url, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
-          },
-          body: JSON.stringify({
-            sessionId: req.sessionId,
-            playerName: req.playerName,
-            worldName: req.world.name,
-            premise: req.world.premise,
-            tone: req.world.tone,
-            victoryStyle: req.world.victoryStyle,
-            worldSize: req.world.size,
-            settlementName: req.identity?.settlementName,
-            cultureName: req.identity?.cultureName,
-            languageName: req.identity?.languageName,
-            realmName: req.identity?.realmName,
-            factionConfigs: req.factions,
-            terrainParams: req.resolvedTerrain,
-            mapWidth: undefined, // already generated; downstream skips map gen
-            mapHeight: undefined,
-          }),
-        });
+        // Hard timeout: keep whole orchestrator under 150s edge limit.
+        const ac = new AbortController();
+        const timeoutId = setTimeout(() => ac.abort(), 110_000);
+        let resp: Response;
+        try {
+          resp = await fetch(url, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+            },
+            body: JSON.stringify({
+              sessionId: req.sessionId,
+              playerName: req.playerName,
+              worldName: req.world.name,
+              premise: req.world.premise,
+              tone: req.world.tone,
+              victoryStyle: req.world.victoryStyle,
+              worldSize: req.world.size,
+              settlementName: req.identity?.settlementName,
+              cultureName: req.identity?.cultureName,
+              languageName: req.identity?.languageName,
+              realmName: req.identity?.realmName,
+              factionConfigs: req.factions,
+              terrainParams: req.resolvedTerrain,
+              mapWidth: undefined,
+              mapHeight: undefined,
+            }),
+            signal: ac.signal,
+          });
+        } finally {
+          clearTimeout(timeoutId);
+        }
         if (!resp.ok) {
           const text = await resp.text();
           return {
@@ -561,10 +565,14 @@ async function runModeSpecificSeeding(
           detail: "delegated to world-generate-init",
         };
       } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        const aborted = msg.includes("aborted") || msg.includes("AbortError");
         return {
           ok: false,
-          warning: `AI seeding threw: ${e instanceof Error ? e.message : String(e)}`,
-          detail: "ai-seed-error",
+          warning: aborted
+            ? "AI seeding timed out after 110s (non-fatal, world is usable)"
+            : `AI seeding threw: ${msg}`,
+          detail: aborted ? "ai-seed-timeout" : "ai-seed-error",
         };
       }
     }
