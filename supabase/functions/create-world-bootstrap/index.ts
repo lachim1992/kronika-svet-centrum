@@ -121,6 +121,8 @@ function normalizeBootstrapRequest(
 
 function buildWorldgenSpecV1(req: NormalizedRequest): LegacySpec {
   const resolved = resolveMapSize(req.world.size, req.map?.advancedOverride);
+  // The wizard now passes the full v9 geographyBlueprint inside terrain.
+  const incomingBlueprint = (req.map?.terrain as any)?.geographyBlueprint;
   return {
     version: 1,
     seed: req.resolvedSeed,
@@ -136,7 +138,7 @@ function buildWorldgenSpecV1(req: NormalizedRequest): LegacySpec {
     },
     resolvedSize: resolved,
     terrain: req.resolvedTerrain,
-    geographyBlueprint: {
+    geographyBlueprint: incomingBlueprint || {
       ridges: [],
       biomeZones: [],
       climateGradient: "uniform",
