@@ -1,6 +1,7 @@
 import { Check, Loader2, X, Circle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { BootstrapStepRecord } from "@/types/worldBootstrap";
+import { ChroniclerStatusCard } from "./ChroniclerStatusCard";
 
 // Canonical 8 steps in the order create-world-bootstrap emits them.
 // Mirrors supabase/functions/create-world-bootstrap/index.ts.
