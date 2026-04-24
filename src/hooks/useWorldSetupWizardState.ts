@@ -126,6 +126,16 @@ function reducer(state: WizardState, action: WizardAction): WizardState {
       };
     }
 
+    case "SET_PRE_WORLD": {
+      return {
+        ...state,
+        preWorldPremise: action.preWorldPremise,
+        preWorldSuggested: action.suggested ?? false,
+        // Změna Pradávna invaliduje ancient layer → spec je nutné přegenerovat.
+        isSuggestionStale: state.lastAnalyzedPremise !== null ? true : state.isSuggestionStale,
+      };
+    }
+
     case "USE_INSPIRATION": {
       const stale = state.lastAnalyzedPremise !== null && action.premise !== state.lastAnalyzedPremise;
       return {
