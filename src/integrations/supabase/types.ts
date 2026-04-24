@@ -9910,7 +9910,9 @@ export type Database = {
           map_width: number | null
           npc_count: number | null
           npc_placement: string | null
+          pre_world_premise: string | null
           premise: string
+          present_premise: string | null
           session_id: string
           tone: string
           victory_style: string
@@ -9929,7 +9931,9 @@ export type Database = {
           map_width?: number | null
           npc_count?: number | null
           npc_placement?: string | null
+          pre_world_premise?: string | null
           premise: string
+          present_premise?: string | null
           session_id: string
           tone?: string
           victory_style?: string
@@ -9948,7 +9952,9 @@ export type Database = {
           map_width?: number | null
           npc_count?: number | null
           npc_placement?: string | null
+          pre_world_premise?: string | null
           premise?: string
+          present_premise?: string | null
           session_id?: string
           tone?: string
           victory_style?: string
