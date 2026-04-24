@@ -55,3 +55,33 @@ grep -rEn 'from\(.realm_resources.\)\.select' \
   | grep -v -f docs/architecture/direct-write-deferred-files.txt
 # Expected: 0
 ```
+
+## World-Layer Reads (per `world-layer-contract.md` §9)
+
+The single-projector rule extends to all world-layer state.
+
+**Track 1:** read-path is unchanged. World-layer flavor data
+(`worldgen_spec.ancient_layer`) is read only by:
+
+1. The wizard step ("Founding Lineages"), via the existing `world_foundations`
+   fetch in `useWorldSetupWizardState` / bootstrap helpers. **No new fetch.**
+2. The mythic prequel UI (`WorldCreationOverlay`), via the same already-fetched
+   `worldgen_spec`. **No new fetch.**
+3. The dev-only `WorldLayerInspector` in `DevTab`, gated behind `useDevMode`.
+
+No Track 1 component may add a new `.from("world_foundations")` fetch.
+
+**Track 2:** new world-layer state views (`node_control_relations`,
+`route_state`, `node_turn_state`) MUST be added as extensions of the
+`useGameSession` Core channel — Core fetch + Core realtime subscription.
+
+**Forbidden in Track 2:**
+
+- Component-level `.from("node_control_relations").select(...)` (shadow fetch).
+- Component-level `.channel(...)` for any world-layer table.
+- Helper hooks that wrap a direct fetch and bypass `useGameSession`.
+
+This preserves the same discipline that `realm_resources` was rewired to in
+Sprint A. New world-layer reads MUST follow the same Dashboard-as-projector
+pattern (props down, no shadow fetches).
+
