@@ -28,7 +28,10 @@ import type {
   CreateWorldBootstrapResponse,
   GameMode,
   WorldgenSpecV1,
+  LegacyWorldgenSpecFields,
 } from "../_shared/world-bootstrap-types.ts";
+
+type LegacySpec = WorldgenSpecV1 & LegacyWorldgenSpecFields;
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -103,21 +106,29 @@ function normalizeBootstrapRequest(req: CreateWorldBootstrapRequest): Normalized
   };
 }
 
-function buildWorldgenSpecV1(req: NormalizedRequest): WorldgenSpecV1 {
+function buildWorldgenSpecV1(req: NormalizedRequest): LegacySpec {
   const resolved = resolveMapSize(req.world.size, req.map?.advancedOverride);
   return {
     version: 1,
     seed: req.resolvedSeed,
+    factionCount: 0,
     mode: req.mode,
     userIntent: {
       worldName: req.world.name,
       premise: req.world.premise,
       tone: req.world.tone,
       victoryStyle: req.world.victoryStyle,
+      style: "default",
       size: req.world.size,
     },
     resolvedSize: resolved,
     terrain: req.resolvedTerrain,
+    geographyBlueprint: {
+      ridges: [],
+      biomeZones: [],
+      climateGradient: "uniform",
+      oceanPattern: "minimal",
+    },
     notes: {
       usedAdvancedOverride: resolved.source === "advanced_override",
       promptBiasApplied: false,
