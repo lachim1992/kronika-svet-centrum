@@ -7,6 +7,8 @@ import { toast } from "sonner";
 import RealmIndicators from "@/components/realm/RealmIndicators";
 import RealmLawsDecrees from "@/components/realm/RealmLawsDecrees";
 import { RealmHeritageBadge } from "@/components/realm/RealmHeritageBadge";
+import { HeritageEffectsPanel } from "@/components/realm/HeritageEffectsPanel";
+import { RouteStatePanel } from "@/components/realm/RouteStatePanel";
 
 interface Props {
   sessionId: string;
@@ -78,9 +80,13 @@ const RealmDashboard = ({ sessionId, currentPlayerName, currentTurn, myRole, cit
 
       {/* Pradávný odkaz (v9.1) */}
       <RealmHeritageBadge sessionId={sessionId} playerName={currentPlayerName} />
+      <HeritageEffectsPanel sessionId={sessionId} playerName={currentPlayerName} />
 
       {/* Key Indicators */}
       <RealmIndicators realm={realm} cities={myCities} currentTurn={currentTurn} />
+
+      {/* Stav obchodních tras (v9.1 PR-D) */}
+      <RouteStatePanel sessionId={sessionId} playerName={currentPlayerName} currentTurn={currentTurn} />
 
       {/* Laws & Decrees */}
       <RealmLawsDecrees sessionId={sessionId} currentPlayerName={currentPlayerName} currentTurn={currentTurn} />
