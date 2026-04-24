@@ -403,6 +403,16 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
                     <SpecReviewSummary resolved={resolved} warnings={state.warnings} />
                   </Card>
 
+                  {ancientLayer && (
+                    <Card className="p-3 sm:p-4">
+                      <LineageSelector
+                        ancientLayer={ancientLayer}
+                        selected={selectedLineages}
+                        onChange={setSelectedLineages}
+                      />
+                    </Card>
+                  )}
+
                   {state.isBlueprintStale && (
                     <BlueprintStaleWarning
                       isSuggestionStale={state.isSuggestionStale}
