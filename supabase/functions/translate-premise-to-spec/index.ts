@@ -209,8 +209,193 @@ async function callAI(premise: string, lockedPaths: string[], userOverrides: any
   return { raw: parsed, warnings };
 }
 
-// ─── Handler ─────────────────────────────────────────────────────────────────
-Deno.serve(async (req) => {
+// ─── Ancient Layer AI tool schema (Track 1, T1-PR2) ──────────────────────────
+//
+// This emits ONLY the AI-derivable fields. version, generated_with_prompt_version,
+// seed_hash, and selected_lineages are filled server-side (K3 determinism).
+
+const ANCIENT_TOOL_SCHEMA = {
+  type: "function",
+  function: {
+    name: "emit_ancient_layer",
+    description:
+      "Emit the mythic prequel layer for the world: the great rupture event, " +
+      "5–8 founding lineages players can claim, and 4–6 mythic seed locations.",
+    parameters: {
+      type: "object",
+      additionalProperties: false,
+      required: ["reset_event", "lineage_candidates", "mythic_seeds"],
+      properties: {
+        reset_event: {
+          type: "object",
+          additionalProperties: false,
+          required: ["type", "description", "turn_offset"],
+          properties: {
+            type: {
+              type: "string",
+              description: "Short slug, e.g. great_silence, skyfall, drowning, ash_winter, godwound.",
+            },
+            description: {
+              type: "string",
+              description: "1–3 sentences describing the rupture event in tone-appropriate language.",
+            },
+            turn_offset: {
+              type: "integer",
+              description: "Negative offset in turns from the rupture to turn 1 (e.g. -500).",
+            },
+          },
+        },
+        lineage_candidates: {
+          type: "array",
+          minItems: 5,
+          maxItems: 8,
+          items: {
+            type: "object",
+            additionalProperties: false,
+            required: ["id", "name", "description"],
+            properties: {
+              id: { type: "string", description: "Stable id like l1, l2, l3..." },
+              name: { type: "string" },
+              description: { type: "string" },
+              cultural_anchor: { type: "string", description: "Optional short slug." },
+            },
+          },
+        },
+        mythic_seeds: {
+          type: "array",
+          minItems: 4,
+          maxItems: 6,
+          items: {
+            type: "object",
+            additionalProperties: false,
+            required: ["id", "hex_q", "hex_r", "tag"],
+            properties: {
+              id: { type: "string" },
+              hex_q: { type: "integer" },
+              hex_r: { type: "integer" },
+              tag: {
+                type: "string",
+                description: "Lowercase slug, e.g. ruin, altar, leyline_node, drowned_gate.",
+              },
+            },
+          },
+        },
+      },
+    },
+  },
+};
+
+function buildAncientSystemPrompt(): string {
+  return `Jsi mytický architekt světa. Z premise hráče vytvoříš PRADÁVNOU VRSTVU světa:
+1) reset_event — velký zlom, který oddělil starý svět od věku hráčů.
+2) lineage_candidates — 5–8 zakládajících linií (rodů, kultů, řemeslnických cechů), ze kterých si hráč později vybere.
+3) mythic_seeds — 4–6 hexových souřadnic (q, r) v rozsahu zhruba -30..30 / -20..20, kde leží relikty starého řádu.
+
+Pravidla:
+- Vrátíš PRÁVĚ JEDNO volání tool 'emit_ancient_layer'.
+- ID: l1..l8 pro linie, m1..m6 pro mythic seeds.
+- Tag mythic_seed je vždy lowercase slug (např. ruin, altar, leyline_node).
+- Linie musí být tematicky kompatibilní s tonalitou premise.
+- Reset event musí být vážný geopolitický/mytický zlom, ne kosmetický.`;
+}
+
+async function callAncientAI(
+  premise: string,
+): Promise<{ raw: unknown | null; warning?: TranslateWarning }> {
+  try {
+    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${LOVABLE_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: AI_MODEL,
+        messages: [
+          { role: "system", content: buildAncientSystemPrompt() },
+          { role: "user", content: `Premise: """${premise}"""` },
+        ],
+        tools: [ANCIENT_TOOL_SCHEMA],
+        tool_choice: { type: "function", function: { name: "emit_ancient_layer" } },
+      }),
+      signal: AbortSignal.timeout(30_000),
+    });
+
+    if (!response.ok) {
+      // Soft-fail: bootstrap continues with deterministic fallback (K4).
+      return {
+        raw: null,
+        warning: {
+          code: "ANCIENT_LAYER_FALLBACK",
+          message: `AI ancient_layer call returned ${response.status}; using deterministic fallback.`,
+        },
+      };
+    }
+
+    const data = await response.json();
+    const toolCall = data?.choices?.[0]?.message?.tool_calls?.[0];
+    if (!toolCall || toolCall.function?.name !== "emit_ancient_layer") {
+      return {
+        raw: null,
+        warning: {
+          code: "ANCIENT_LAYER_FALLBACK",
+          message: "AI did not return ancient_layer tool call; using deterministic fallback.",
+        },
+      };
+    }
+
+    const parsed = typeof toolCall.function.arguments === "string"
+      ? JSON.parse(toolCall.function.arguments)
+      : toolCall.function.arguments;
+    return { raw: parsed };
+  } catch (err) {
+    return {
+      raw: null,
+      warning: {
+        code: "ANCIENT_LAYER_FALLBACK",
+        message: `AI ancient_layer call threw: ${err instanceof Error ? err.message : "unknown"}; using deterministic fallback.`,
+      },
+    };
+  }
+}
+
+/**
+ * Builds an AncientLayerSpec by combining server-side deterministic fields
+ * with optional AI-supplied creative fields. Always validated by Zod.
+ *
+ * If AI output is missing or invalid, falls back to a fully deterministic
+ * generator (K3: same seed_hash → same fallback).
+ */
+async function buildAncientLayer(
+  normalizedPremise: string,
+  nonce: number,
+  aiRaw: unknown | null,
+  warnings: TranslateWarning[],
+): Promise<AncientLayerSpec> {
+  const seedHash = await computeSeedHash(normalizedPremise, nonce);
+
+  if (aiRaw && typeof aiRaw === "object") {
+    // Try to combine AI creative fields with server-controlled deterministic fields.
+    const candidate = {
+      ...(aiRaw as Record<string, unknown>),
+      version: 1 as const,
+      generated_with_prompt_version: ANCIENT_PROMPT_VERSION,
+      seed_hash: seedHash,
+      selected_lineages: [] as string[],
+    };
+    const parseResult = AncientLayerSchema.safeParse(candidate);
+    if (parseResult.success) {
+      return parseResult.data;
+    }
+    warnings.push({
+      code: "ANCIENT_LAYER_INVALID_AI",
+      message: `AI ancient_layer failed schema validation: ${parseResult.error.errors[0]?.message ?? "unknown"}; using fallback.`,
+    });
+  }
+
+  return generateFallbackAncientLayer(seedHash);
+}
+
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
