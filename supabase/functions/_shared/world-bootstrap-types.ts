@@ -159,7 +159,9 @@ export type TranslateWarningCode =
   | "RANGE_CLAMPED"
   | "OVERRIDE_APPLIED"
   | "ANCIENT_LAYER_FALLBACK"
-  | "ANCIENT_LAYER_INVALID_AI";
+  | "ANCIENT_LAYER_INVALID_AI"
+  | "ANCIENT_LAYER_RETRY"
+  | "PRE_WORLD_AUTO_SUGGESTED";
 
 export interface TranslateWarning {
   code: TranslateWarningCode;
