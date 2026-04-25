@@ -198,8 +198,12 @@ export interface TranslatePremiseResponse {
   normalizedPremise?: string;
   warnings?: TranslateWarning[];
   error?: string;
-  /** T1-PR2: Ancient layer artifact (deterministic; fallback flagged via warnings). */
+  /** Ancient layer (rody, reset, mythic seeds). Při selhání 502 pole chybí. */
   ancientLayer?: AncientLayerSpec;
+  /** Premisa Pradávna použitá pro generování. */
+  resolvedPreWorldPremise?: string;
+  /** Pokud Pradávno navrhla AI, klient ho zobrazí k editaci. */
+  suggestedPreWorldPremise?: string;
 }
 
 export type { AncientLayerSpec, LineageProposal, MythicSeed, ResetEvent } from "./ancientLayer";
