@@ -555,12 +555,21 @@ Deno.serve(async (req) => {
       );
     }
 
+    if (suggestedPreWorld) {
+      warnings.push({
+        code: "PRE_WORLD_AUTO_SUGGESTED",
+        message: "Pradávno bylo navrženo AI ze současné premisy — uprav ho ve wizardu, pokud chceš jiný směr.",
+      });
+    }
+
     const resp: TranslatePremiseResponse = {
       ok: true,
       spec,
       normalizedPremise,
       warnings,
       ancientLayer,
+      resolvedPreWorldPremise: resolvedPreWorld,
+      suggestedPreWorldPremise: suggestedPreWorld ?? undefined,
     };
     return new Response(JSON.stringify(resp), {
       status: 200,
