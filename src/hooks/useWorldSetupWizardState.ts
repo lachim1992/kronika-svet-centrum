@@ -32,6 +32,10 @@ import type { DeepPartial, WorldgenSpecV1 } from "@/types/worldBootstrap";
 export interface WizardState {
   // Input
   premise: string;
+  /** Premisa Pradávna — svět PŘED Zlomem. Volitelné; když prázdné, AI ji navrhne. */
+  preWorldPremise: string;
+  /** Návrh Pradávna od AI, dokud ho hráč nezedituje/nepotvrdí. */
+  preWorldSuggested: boolean;
   inspirationUsed: string | null;
 
   // AI návrh + user vrstva
@@ -60,6 +64,8 @@ export interface WizardState {
 
 const initialState: WizardState = {
   premise: "",
+  preWorldPremise: "",
+  preWorldSuggested: false,
   inspirationUsed: null,
   aiSuggestion: null,
   userOverrides: {},
@@ -80,6 +86,7 @@ const initialState: WizardState = {
 
 export type WizardAction =
   | { type: "SET_PREMISE"; premise: string }
+  | { type: "SET_PRE_WORLD"; preWorldPremise: string; suggested?: boolean }
   | { type: "USE_INSPIRATION"; premise: string; label: string }
   | { type: "EDIT_FIELD"; path: string; value: unknown }
   | { type: "RESET_FIELD"; path: string }
@@ -116,6 +123,16 @@ function reducer(state: WizardState, action: WizardAction): WizardState {
         ...state,
         premise,
         isSuggestionStale: stale ? true : state.isSuggestionStale,
+      };
+    }
+
+    case "SET_PRE_WORLD": {
+      return {
+        ...state,
+        preWorldPremise: action.preWorldPremise,
+        preWorldSuggested: action.suggested ?? false,
+        // Změna Pradávna invaliduje ancient layer → spec je nutné přegenerovat.
+        isSuggestionStale: state.lastAnalyzedPremise !== null ? true : state.isSuggestionStale,
       };
     }
 
@@ -322,6 +339,12 @@ export function useWorldSetupWizardState(seed?: Partial<WizardState>) {
     [],
   );
 
+  const setPreWorldPremise = useCallback(
+    (preWorldPremise: string, suggested = false) =>
+      dispatch({ type: "SET_PRE_WORLD", preWorldPremise, suggested }),
+    [],
+  );
+
   const useInspiration = useCallback(
     (premise: string, label: string) =>
       dispatch({ type: "USE_INSPIRATION", premise, label }),
@@ -375,6 +398,7 @@ export function useWorldSetupWizardState(seed?: Partial<WizardState>) {
     isBusy,
     // Actions
     setPremise,
+    setPreWorldPremise,
     useInspiration,
     editField,
     resetField,

@@ -272,6 +272,7 @@ export function applyHardOverrides(
 // ─── Request validation schema ───────────────────────────────────────────────
 export const TranslateRequestSchema = z.object({
   premise: z.string().min(30, "Premisa musí mít alespoň 30 znaků").max(2000, "Premisa max 2000 znaků"),
+  preWorldPremise: z.string().max(2000).optional(),
   userOverrides: z.any().optional(),
   lockedPaths: z.array(z.string()).max(50).optional(),
   regenerationNonce: z.number().int().min(0).max(9999).optional(),

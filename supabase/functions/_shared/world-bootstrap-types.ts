@@ -159,7 +159,9 @@ export type TranslateWarningCode =
   | "RANGE_CLAMPED"
   | "OVERRIDE_APPLIED"
   | "ANCIENT_LAYER_FALLBACK"
-  | "ANCIENT_LAYER_INVALID_AI";
+  | "ANCIENT_LAYER_INVALID_AI"
+  | "ANCIENT_LAYER_RETRY"
+  | "PRE_WORLD_AUTO_SUGGESTED";
 
 export interface TranslateWarning {
   code: TranslateWarningCode;
@@ -175,6 +177,8 @@ export type DeepPartial<T> = T extends Array<infer U>
 
 export interface TranslatePremiseRequest {
   premise: string;
+  /** Premisa Pradávna (svět před Zlomem). Volitelné — když chybí, AI ji odvodí. */
+  preWorldPremise?: string;
   userOverrides?: DeepPartial<WorldgenSpecV1>;
   lockedPaths?: string[];
   regenerationNonce?: number;
@@ -189,10 +193,13 @@ export interface TranslatePremiseResponse {
   /**
    * Track 1 (T1-PR2): Ancient Layer artifact derived from the same premise.
    * Validated against AncientLayerSchema on the server before being returned.
-   * May be a deterministic fallback if the AI call fails — never absent on
-   * a successful response (warnings[] flags fallback usage).
+   * Pokud generování selže, server vrací 502 — pole je pak undefined.
    */
   ancientLayer?: import("./ancient-layer-types.ts").AncientLayerSpec;
+  /** Premisa Pradávna použitá pro generování (ručně zadaná nebo AI-suggested). */
+  resolvedPreWorldPremise?: string;
+  /** Pokud bylo Pradávno odvozeno AI ze současné premisy, klient ho zobrazí k editaci. */
+  suggestedPreWorldPremise?: string;
 }
 
 // ── Response ──
