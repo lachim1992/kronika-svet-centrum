@@ -193,10 +193,13 @@ export interface TranslatePremiseResponse {
   /**
    * Track 1 (T1-PR2): Ancient Layer artifact derived from the same premise.
    * Validated against AncientLayerSchema on the server before being returned.
-   * May be a deterministic fallback if the AI call fails — never absent on
-   * a successful response (warnings[] flags fallback usage).
+   * Pokud generování selže, server vrací 502 — pole je pak undefined.
    */
   ancientLayer?: import("./ancient-layer-types.ts").AncientLayerSpec;
+  /** Premisa Pradávna použitá pro generování (ručně zadaná nebo AI-suggested). */
+  resolvedPreWorldPremise?: string;
+  /** Pokud bylo Pradávno odvozeno AI ze současné premisy, klient ho zobrazí k editaci. */
+  suggestedPreWorldPremise?: string;
 }
 
 // ── Response ──
