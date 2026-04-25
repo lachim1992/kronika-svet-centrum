@@ -458,32 +458,85 @@ Deno.serve(async (req) => {
       });
     }
 
-    const { premise, userOverrides, lockedPaths, regenerationNonce } = parsed.data;
+    const { premise, preWorldPremise, userOverrides, lockedPaths, regenerationNonce } = parsed.data;
     const normalizedPremise = normalizePremise(premise);
     const seed = await deriveSeed(premise, regenerationNonce ?? 0);
 
-    // ── Parallel AI calls (worldgen spec + ancient layer) ──
-    const [worldgenResult, ancientResult] = await Promise.all([
+    // ── Resolve / suggest Pradávno (svět před Zlomem) ──
+    let resolvedPreWorld = (preWorldPremise ?? "").trim();
+    let suggestedPreWorld: string | null = null;
+    if (resolvedPreWorld.length < 30) {
+      // Krátké/prázdné Pradávno → AI návrh.
+      suggestedPreWorld = await suggestPreWorldPremise(premise);
+      if (!suggestedPreWorld) {
+        return new Response(
+          JSON.stringify({
+            ok: false,
+            error: "Nepodařilo se navrhnout Pradávno. Vyplň ho prosím ručně a zkus znovu.",
+            code: "PRE_WORLD_SUGGEST_FAILED",
+          }),
+          { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+      resolvedPreWorld = suggestedPreWorld;
+    }
+
+    // ── Worldgen spec (paralelně s ancient layer) ──
+    const [worldgenResult, ancientFirstTry] = await Promise.all([
       callAI(premise, lockedPaths ?? [], userOverrides),
-      callAncientAI(premise),
+      callAncientAI(premise, resolvedPreWorld),
     ]);
 
-    // ── Server-side normalize ──
     const warnings: TranslateWarning[] = [...worldgenResult.warnings];
-    if (ancientResult.warning) warnings.push(ancientResult.warning);
 
+    // ── Ancient layer s retry: žádný generický fallback ──
+    let ancientRaw = ancientFirstTry.raw;
+    if (!ancientRaw) {
+      console.warn("[ancient] first attempt failed:", ancientFirstTry.errorReason, "→ retry s pro modelem");
+      const retry = await callAncientAI(premise, resolvedPreWorld, "google/gemini-3.1-pro-preview");
+      if (retry.raw) {
+        ancientRaw = retry.raw;
+        warnings.push({
+          code: "ANCIENT_LAYER_RETRY",
+          message: "Pradávno bylo vygenerováno až na druhý pokus.",
+        });
+      } else {
+        return new Response(
+          JSON.stringify({
+            ok: false,
+            error:
+              "Mytologii Pradávna se nepodařilo utkat ani na druhý pokus. Zkus znovu, případně uprav premisu.",
+            code: "ANCIENT_LAYER_FAILED",
+            detail: retry.errorReason ?? ancientFirstTry.errorReason,
+            suggestedPreWorldPremise: suggestedPreWorld ?? undefined,
+          }),
+          { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+    }
+
+    // ── Server-side normalize ──
     let spec: WorldgenSpecV1 = normalizeSpec(worldgenResult.raw, { premise, seed, warnings });
 
     // ── Hard merge overrides (AI cannot escape locks) ──
     spec = applyHardOverrides(spec, userOverrides, warnings);
 
-    // ── Build deterministic-or-AI ancient layer ──
-    const ancientLayer = await buildAncientLayer(
-      normalizedPremise,
-      regenerationNonce ?? 0,
-      ancientResult.raw,
-      warnings,
-    );
+    // ── Build ancient layer (throws on failure) ──
+    let ancientLayer: AncientLayerSpec;
+    try {
+      ancientLayer = await buildAncientLayer(normalizedPremise, regenerationNonce ?? 0, ancientRaw);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "unknown";
+      return new Response(
+        JSON.stringify({
+          ok: false,
+          error: `Pradávno se vygenerovalo, ale nesedí na schéma: ${msg}. Zkus znovu.`,
+          code: "ANCIENT_LAYER_INVALID",
+          suggestedPreWorldPremise: suggestedPreWorld ?? undefined,
+        }),
+        { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
 
     // Heuristic warning for very short premise
     if (premise.trim().length < 80) {
