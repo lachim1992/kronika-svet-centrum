@@ -286,23 +286,41 @@ const ANCIENT_TOOL_SCHEMA = {
 };
 
 function buildAncientSystemPrompt(): string {
-  return `Jsi mytický architekt světa. Z premise hráče vytvoříš PRADÁVNOU VRSTVU světa:
-1) reset_event — velký zlom, který oddělil starý svět od věku hráčů.
-2) lineage_candidates — 5–8 zakládajících linií (rodů, kultů, řemeslnických cechů), ze kterých si hráč později vybere.
-3) mythic_seeds — 4–6 hexových souřadnic (q, r) v rozsahu zhruba -30..30 / -20..20, kde leží relikty starého řádu.
+  return `Jsi mytický architekt světa. Z DVOU premis hráče utkáš PRADÁVNOU VRSTVU.
 
-Pravidla:
+DOSTANEŠ:
+- "PRADÁVNO" — jaký byl svět PŘED Zlomem (kultura, technologie, mocnosti, kosmologie).
+- "SOUČASNOST" — svět PO Zlomu, ve kterém začíná hra.
+
+ÚKOL:
+1) reset_event — geopolitický/mytický ZLOM, který logicky převedl Pradávno → Současnost. Musí explicitně reflektovat motivy Pradávna (např. když Pradávno byla magokratická říše, Zlom může být Pád magie; když to byla biotechnická kultura, Zlom může být Probuzení strojů). NE generické "skyfall" pokud to neplyne z premisy.
+2) lineage_candidates — 5–8 zakládajících linií (rodů, kultů, řemeslnických cechů), které jsou PŘÍMÝMI POTOMKY entit z Pradávna. Každá linie musí slovně odkazovat na konkrétní prvek Pradávna (např. "Cech Stínotkanců — potomci tkaní stínu z Pradávna" pokud Pradávno mluvilo o stínových tkadlecích). NE generické "Železní Synové", "Strážci Utopené Síně" pokud Pradávno nehovoří o železu nebo o utonutí.
+3) mythic_seeds — 4–6 hexových souřadnic (q, r) v rozsahu zhruba -30..30 / -20..20 — fyzické pozůstatky Pradávna (relikty, oltáře, leylinové uzly, hroby, brány). Každý dostane tag (lowercase slug) odpovídající typu pozůstatku v Pradávnu.
+
+POVINNÁ PRAVIDLA:
 - Vrátíš PRÁVĚ JEDNO volání tool 'emit_ancient_layer'.
 - ID: l1..l8 pro linie, m1..m6 pro mythic seeds.
-- Tag mythic_seed je vždy lowercase slug (např. ruin, altar, leyline_node).
-- Linie musí být tematicky kompatibilní s tonalitou premise.
-- Reset event musí být vážný geopolitický/mytický zlom, ne kosmetický.`;
+- Každá linie i reset_event MUSÍ slovně citovat alespoň jeden konkrétní pojem z premisy Pradávna nebo Současnosti.
+- Pokud premisa Pradávna mlčí o nějakém motivu (železo, voda, oheň, magie...), NESMÍŠ ho zavádět.
+- Tone musí ladit s tonalitou Současnosti (mytický × realistický × dark...).`;
+}
+
+interface AncientCallResult {
+  raw: unknown | null;
+  errorReason?: string;
 }
 
 async function callAncientAI(
   premise: string,
-): Promise<{ raw: unknown | null; warning?: TranslateWarning }> {
+  preWorldPremise: string,
+  modelOverride?: string,
+): Promise<AncientCallResult> {
+  const model = modelOverride ?? AI_MODEL;
   try {
+    const userMsg =
+      `PRADÁVNO (svět před Zlomem):\n"""${preWorldPremise}"""\n\n` +
+      `SOUČASNOST (svět po Zlomu, kde začíná hra):\n"""${premise}"""`;
+
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -310,38 +328,26 @@ async function callAncientAI(
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: AI_MODEL,
+        model,
         messages: [
           { role: "system", content: buildAncientSystemPrompt() },
-          { role: "user", content: `Premise: """${premise}"""` },
+          { role: "user", content: userMsg },
         ],
         tools: [ANCIENT_TOOL_SCHEMA],
         tool_choice: { type: "function", function: { name: "emit_ancient_layer" } },
       }),
-      signal: AbortSignal.timeout(30_000),
+      signal: AbortSignal.timeout(45_000),
     });
 
     if (!response.ok) {
-      // Soft-fail: bootstrap continues with deterministic fallback (K4).
-      return {
-        raw: null,
-        warning: {
-          code: "ANCIENT_LAYER_FALLBACK",
-          message: `AI ancient_layer call returned ${response.status}; using deterministic fallback.`,
-        },
-      };
+      const body = await response.text().catch(() => "");
+      return { raw: null, errorReason: `HTTP ${response.status}: ${body.slice(0, 200)}` };
     }
 
     const data = await response.json();
     const toolCall = data?.choices?.[0]?.message?.tool_calls?.[0];
     if (!toolCall || toolCall.function?.name !== "emit_ancient_layer") {
-      return {
-        raw: null,
-        warning: {
-          code: "ANCIENT_LAYER_FALLBACK",
-          message: "AI did not return ancient_layer tool call; using deterministic fallback.",
-        },
-      };
+      return { raw: null, errorReason: "AI did not return emit_ancient_layer tool call" };
     }
 
     const parsed = typeof toolCall.function.arguments === "string"
@@ -351,49 +357,72 @@ async function callAncientAI(
   } catch (err) {
     return {
       raw: null,
-      warning: {
-        code: "ANCIENT_LAYER_FALLBACK",
-        message: `AI ancient_layer call threw: ${err instanceof Error ? err.message : "unknown"}; using deterministic fallback.`,
-      },
+      errorReason: err instanceof Error ? err.message : "unknown",
     };
   }
 }
 
 /**
- * Builds an AncientLayerSpec by combining server-side deterministic fields
- * with optional AI-supplied creative fields. Always validated by Zod.
- *
- * If AI output is missing or invalid, falls back to a fully deterministic
- * generator (K3: same seed_hash → same fallback).
+ * Vygeneruje návrh premisy Pradávna z hlavní premisy. Krátký AI call,
+ * vrací 1–2 odstavce. Failure-safe: vrací null, klient zobrazí chybu.
+ */
+async function suggestPreWorldPremise(premise: string): Promise<string | null> {
+  try {
+    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${LOVABLE_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "google/gemini-2.5-flash",
+        messages: [
+          {
+            role: "system",
+            content:
+              "Jsi mytický kronikář. Z premisy SOUČASNÉHO světa odvodíš krátkou premisu PRADÁVNA — co tomuto světu předcházelo, jaká kultura/civilizace existovala před Zlomem. 2–4 věty, česky, konkrétní (jména, motivy, technologie/magie). Žádné fráze typu 'starý svět padl', buď konkrétní.",
+          },
+          { role: "user", content: `Premisa současnosti:\n"""${premise}"""\n\nNapiš premisu Pradávna:` },
+        ],
+      }),
+      signal: AbortSignal.timeout(20_000),
+    });
+    if (!response.ok) return null;
+    const data = await response.json();
+    const text = data?.choices?.[0]?.message?.content;
+    return typeof text === "string" && text.trim().length > 30 ? text.trim() : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Skládá AncientLayerSpec z AI výstupu. NEPOUŽÍVÁ deterministický fallback —
+ * pokud AI selže, vyhazuje chybu (handler pak vrací 502).
  */
 async function buildAncientLayer(
   normalizedPremise: string,
   nonce: number,
-  aiRaw: unknown | null,
-  warnings: TranslateWarning[],
+  aiRaw: unknown,
 ): Promise<AncientLayerSpec> {
   const seedHash = await computeSeedHash(normalizedPremise, nonce);
-
-  if (aiRaw && typeof aiRaw === "object") {
-    // Try to combine AI creative fields with server-controlled deterministic fields.
-    const candidate = {
-      ...(aiRaw as Record<string, unknown>),
-      version: 1 as const,
-      generated_with_prompt_version: ANCIENT_PROMPT_VERSION,
-      seed_hash: seedHash,
-      selected_lineages: [] as string[],
-    };
-    const parseResult = AncientLayerSchema.safeParse(candidate);
-    if (parseResult.success) {
-      return parseResult.data;
-    }
-    warnings.push({
-      code: "ANCIENT_LAYER_INVALID_AI",
-      message: `AI ancient_layer failed schema validation: ${parseResult.error.errors[0]?.message ?? "unknown"}; using fallback.`,
-    });
+  if (!aiRaw || typeof aiRaw !== "object") {
+    throw new Error("ANCIENT_LAYER_FAILED: AI returned no usable data");
   }
-
-  return generateFallbackAncientLayer(seedHash);
+  const candidate = {
+    ...(aiRaw as Record<string, unknown>),
+    version: 1 as const,
+    generated_with_prompt_version: ANCIENT_PROMPT_VERSION,
+    seed_hash: seedHash,
+    selected_lineages: [] as string[],
+  };
+  const parseResult = AncientLayerSchema.safeParse(candidate);
+  if (!parseResult.success) {
+    throw new Error(
+      `ANCIENT_LAYER_INVALID: ${parseResult.error.errors[0]?.message ?? "schema mismatch"}`,
+    );
+  }
+  return parseResult.data;
 }
 
 // ─── Handler ─────────────────────────────────────────────────────────────────
