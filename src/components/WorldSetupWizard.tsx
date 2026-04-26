@@ -95,6 +95,9 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
   });
   const isMPMode = mode === "tb_multi";
 
+  // AI opponent configurations (SP/manual modes only).
+  const [aiFactions, setAiFactions] = useState<FactionSeedInput[]>([]);
+
   // Pre-fill rulerName z playerName, dokud ho hráč sám nepřepíše.
   useEffect(() => {
     setIdentity((prev) => {
