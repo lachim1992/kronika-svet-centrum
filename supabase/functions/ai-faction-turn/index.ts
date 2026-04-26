@@ -623,6 +623,28 @@ ${(() => {
   return recommendations.join("\n") || "Žádná zvláštní doporučení";
 })()}
 
+═══ NEUTRÁLNÍ UZLY (objevené, vliv & anexe) ═══
+${(() => {
+  const ANNEX_THRESHOLD = 100; // matches _shared/nodeInfluence default
+  const known = (strategicNodes || []).filter((n: any) => n.is_neutral && n.discovered);
+  if (known.length === 0) return "žádné objevené neutrální uzly (zkus EXPLORE)";
+  return known.slice(0, 12).map((n: any) => {
+    const inf = influenceByNode.get(n.id) || { economic_influence: 0, political_influence: 0, military_pressure: 0, resistance: 0, integration_progress: 0 };
+    const link = linkByNode.get(n.id);
+    const pressure = (inf.economic_influence + inf.political_influence + inf.military_pressure) - inf.resistance;
+    const threshold = ANNEX_THRESHOLD + (n.autonomy_score ?? 80) * 0.5;
+    const ready = pressure >= threshold ? " ✅ANNEX_READY" : ` (pressure ${pressure.toFixed(0)}/${threshold.toFixed(0)})`;
+    return `  ${n.name} hex(${n.hex_q},${n.hex_r}) kult=${n.culture_key || "?"} prof=${n.profile_key || "?"} aut=${n.autonomy_score} | econ=${inf.economic_influence} pol=${inf.political_influence} mil=${inf.military_pressure} res=${inf.resistance}${link ? ` link=${link.link_status}` : ""}${ready}`;
+  }).join("\n");
+})()}
+
+NEUTRÁLNÍ STRATEGIE:
+- open_trade_with_node — otevírá obchod, zvyšuje economic_influence a generuje wealth.
+- send_envoy_to_node — diplomatická mise, zvyšuje political_influence (kulturně vhodné kultury preferuj).
+- apply_military_pressure — vojenský tlak, zvyšuje military_pressure ale i resistance.
+- annex_node — anexe (jen když ANNEX_READY). Permanentně získává uzel + jeho zdroje.
+- Strategie podle profilu uzlu: trade hub → trade, kulturně podobný → envoy, slabě bráněný → pressure.
+
 ═══ ZAKLÁDÁNÍ OSAD ═══
 Můžeš založit novou osadu na volném hexu ve vlastní provincii. Stojí: 150 produkce + 100 bohatství.
 DŮLEŽITÉ: Zakládej osady na UZLECH s vysokým node_score! Preferuj: trade hub pozice, food basin, resource node, chokepoint.
