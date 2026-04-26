@@ -60,32 +60,31 @@ serve(async (req) => {
     const BATCH = 3;
     const MAX_RETRIES = 2;
 
+    // Delegated to wiki-orchestrator (Track B): one gateway for all wiki generation.
     for (let i = 0; i < needsGen.length; i += BATCH) {
       const batch = needsGen.slice(i, i + BATCH);
       const results = await Promise.allSettled(
         batch.map(async (city) => {
           for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
             try {
-              const res = await fetch(`${supabaseUrl}/functions/v1/wiki-generate`, {
+              const res = await fetch(`${supabaseUrl}/functions/v1/wiki-orchestrator`, {
                 method: "POST",
                 headers: {
                   Authorization: `Bearer ${supabaseKey}`,
                   "Content-Type": "application/json",
                 },
                 body: JSON.stringify({
-                  entityType: "city",
-                  entityName: city.name,
-                  entityId: city.id,
-                  sessionId,
-                  ownerPlayer: city.owner_player,
-                  context: { regionName: city.province },
+                  action: "ensure",
+                  session_id: sessionId,
+                  entity_type: "city",
+                  entity_id: city.id,
+                  entity_name: city.name,
+                  owner_player: city.owner_player,
                 }),
               });
               if (res.ok) {
                 const data = await res.json();
-                if (data.aiDescription && data.aiDescription.trim().length > 20) {
-                  return data;
-                }
+                if (data?.ok) return data;
               }
             } catch (e) {
               console.error(`Backfill attempt ${attempt + 1} failed for ${city.name}:`, e);
