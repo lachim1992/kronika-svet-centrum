@@ -484,13 +484,13 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
                   : !playerName.trim()
                   ? "Zadejte své jméno hráče v poli výše."
                   : !resolved
-                  ? "Nejprve klikněte na „Analyzovat premisu" a počkejte, než se vygeneruje návrh světa."
+                  ? 'Nejprve klikněte na "Analyzovat premisu" a počkejte, než se vygeneruje návrh světa.'
                   : isBusy
                   ? "Probíhá analýza nebo regenerace blueprintu — počkejte na dokončení."
                   : state.isSuggestionStale
-                  ? "Premisa byla změněna — klikněte znovu na „Analyzovat premisu" pro aktualizaci návrhu."
+                  ? 'Premisa byla změněna — klikněte znovu na "Analyzovat premisu" pro aktualizaci návrhu.'
                   : state.isBlueprintStale
-                  ? "Blueprint je zastaralý — klikněte na „Regenerovat blueprint" v žluté výstraze výše."
+                  ? 'Blueprint je zastaralý — klikněte na "Regenerovat blueprint" v žluté výstraze výše.'
                   : null;
                 return (
                   <div className="sticky bottom-0 bg-background/95 backdrop-blur py-3 -mx-3 px-3 border-t border-border lg:static lg:border-0 lg:bg-transparent lg:mx-0 lg:px-0 space-y-2">
