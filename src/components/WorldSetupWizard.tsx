@@ -305,11 +305,16 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
         setup_status: mode === "tb_multi" ? "pending" : "ready",
       } as any);
 
+      const PERSONALITIES = ["aggressive", "diplomatic", "mercantile", "isolationist", "expansionist"];
       const factionsArr = resolved.factionCount > 0 && mode !== "tb_multi"
-        ? Array.from({ length: resolved.factionCount }).map((_, i) => ({
-            name: `AI Frakce ${i + 1}`,
-            personality: ["aggressive", "diplomatic", "mercantile", "isolationist", "expansionist"][i % 5],
-          }))
+        ? Array.from({ length: resolved.factionCount }).map((_, i) => {
+            const custom = aiFactions[i] || {};
+            return {
+              name: (custom.name && custom.name.trim()) || `AI Frakce ${i + 1}`,
+              personality: custom.personality || PERSONALITIES[i % PERSONALITIES.length],
+              description: (custom.description && custom.description.trim()) || undefined,
+            };
+          })
         : undefined;
 
       // v9.1: inject ancient_layer with user-selected lineages into spec
