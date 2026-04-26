@@ -427,6 +427,7 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
                     disabled={isBusy}
                   />
                 </div>
+              </Card>
 
               {/* Spec review + editor — visible only after first analyze */}
               {resolved && (
