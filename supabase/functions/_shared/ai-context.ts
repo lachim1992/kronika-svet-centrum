@@ -42,15 +42,46 @@ export interface WorldPremise {
   ancientResetEvent: { type: string; description: string } | null;
 }
 
+/**
+ * Per-player civilizational context.
+ * Built ONCE in createAIContext() and embedded into premisePrompt as P0b.
+ */
+export interface CivContext {
+  playerName: string;
+  civName?: string;
+  /**
+   * Hráčova "premisa národa" — popis národa, který hráč zadal.
+   * Pro tuto iteraci čteno z civilizations.core_myth.
+   * TODO: až přibude civilizations.civ_premise, prefer ten.
+   */
+  civDescription?: string;
+  culturalQuirk?: string;
+  architecturalStyle?: string;
+  /** Pradávné rody, které tento konkrétní národ adoptoval (filtrované per-player). */
+  claimedLineages: Array<{
+    name: string;
+    description: string;
+    culturalAnchor?: string;
+  }>;
+  /** Pravda o tom, jestli claimedLineages pochází z per-player heritage nebo world fallbacku. */
+  lineagesSource: "per_player_heritage" | "world_fallback" | "none";
+  // Strukturovaná identita (z civ_identity, pokud existuje)
+  cultureTags?: string[];
+  urbanStyle?: string;
+  societyStructure?: string;
+  militaryDoctrine?: string;
+  economicFocus?: string;
+}
+
 export interface AIRequestContext {
   sessionId: string;
   requestId: string;
   turnNumber?: number;
   premise: WorldPremise;
-  /** Pre-built system prompt prefix containing premise instructions */
+  /** Pre-built system prompt prefix containing premise instructions (P0 + P0b + P1+...) */
   premisePrompt: string;
-  /** Optional: loaded civ DNA for the relevant player */
-  civContext?: { culturalQuirk?: string; architecturalStyle?: string; civName?: string };
+  /** Loaded civ context for the relevant player (undefined when called without playerName) */
+  civContext?: CivContext;
 }
 
 export interface AIInvokeOptions {
@@ -60,6 +91,11 @@ export interface AIInvokeOptions {
   tools?: any[];
   toolChoice?: any;
   maxTokens?: number;
+  /**
+   * Function name for telemetry (ai_invocation_log).
+   * Strongly recommended; will be "unknown" if omitted.
+   */
+  functionName?: string;
 }
 
 export interface AIInvokeResult {
@@ -73,6 +109,9 @@ export interface AIInvokeResult {
     premiseVersion: number;
     sessionId: string;
     turnNumber?: number;
+    functionName?: string;
+    playerContextUsed: boolean;
+    lineageNamesAvailable: string[];
   };
 }
 
