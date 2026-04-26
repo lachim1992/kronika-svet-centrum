@@ -1,6 +1,6 @@
 # Discovery, Neutral Nodes & Influence Loop
 
-> Status: Patch 0 ✅ · Patch 1 ✅ · Patch 2 ✅ · Patch 3 ✅ · Patch 4 ✅ · Patch 5 ✅ · Patch 6 ✅ · Patch 7 ✅ · Patch 8 ✅ (NeutralNodePanel + WorldHexMap integrace; EconomyTab sekce zatím odložena)
+> Status: Patch 0–8 ✅ · Patch 9a–9e ✅ (narrative integration) · Patch 10 ✅ (WikiPanel: neutral_node + annexed_node entity types) · Patch 11 ✅ (influence decay ve world-tick: econ −2 bez trade, pol −3, mil −5 bez pressure, resistance +1)
 
 ## Verdikt po analýze repa
 
