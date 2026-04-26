@@ -382,7 +382,61 @@ Deno.serve(async (req) => {
       warnings.push(`seed-realm-skeleton: ${msg}`);
     }
 
-    // Step 7a: compute province nodes (synchronous, ~3-5s)
+    // Step 7-bis: persist host's player_civ_configs row (parity with MP lobby).
+    // Single-player + manual už mají civilizaci uloženou v civ_identity přes
+    // seedRealmSkeleton; player_civ_configs je hlavně pro MP lobby flow, ale
+    // pro konzistenci ho zapíšeme ve všech módech, pokud máme identity.
+    if (normalized.identity) {
+      try {
+        const id = normalized.identity;
+        // Najdeme user_id hosta podle session created_by (přesnější než přes player_name).
+        const { data: sess } = await sb
+          .from("game_sessions")
+          .select("created_by")
+          .eq("id", normalized.sessionId)
+          .maybeSingle();
+        const hostUserId = (sess as any)?.created_by ?? null;
+        if (hostUserId) {
+          await sb.from("player_civ_configs").upsert(
+            {
+              session_id: normalized.sessionId,
+              user_id: hostUserId,
+              player_name: normalized.playerName,
+              realm_name: id.realmName ?? "",
+              settlement_name: id.settlementName ?? "",
+              people_name: id.peopleName ?? "",
+              culture_name: id.cultureName ?? "",
+              language_name: id.languageName ?? "",
+              civ_description: id.civDescription ?? "",
+              homeland_name: id.homelandName ?? "",
+              homeland_biome: id.homelandBiome ?? "plains",
+              homeland_desc: id.homelandDesc ?? "",
+              ruler_name: id.rulerName ?? null,
+              ruler_title: id.rulerTitle ?? null,
+              ruler_archetype: id.rulerArchetype ?? null,
+              ruler_bio: id.rulerBio ?? null,
+              government_form: id.governmentForm ?? null,
+              trade_ideology: id.tradeIdeology ?? null,
+              dominant_faith: id.dominantFaith ?? null,
+              faith_attitude: id.faithAttitude ?? null,
+              spawn_preference: id.spawnPreference ?? null,
+              secret_objective_archetype: id.secretObjectiveArchetype ?? null,
+              heraldry: id.heraldry ?? {},
+              founding_legend: id.foundingLegend ?? null,
+            } as any,
+            { onConflict: "session_id,user_id" },
+          );
+          steps.push({ step: "persist-host-civ-config", ok: true, durationMs: 0, detail: "upserted" });
+        } else {
+          steps.push({ step: "persist-host-civ-config", ok: false, durationMs: 0, detail: "no created_by on session" });
+        }
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        warnings.push(`persist-host-civ-config: ${msg}`);
+        steps.push({ step: "persist-host-civ-config", ok: false, durationMs: 0, detail: msg });
+      }
+    }
+
     const t7a = performance.now();
     try {
       const r = await fetch(`${SUPABASE_URL}/functions/v1/compute-province-nodes`, {
