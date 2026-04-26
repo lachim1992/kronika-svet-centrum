@@ -1237,6 +1237,14 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
             categories={economyCategories}
             viewMode={economyViewMode}
           />
+          {/* Node influence — neutral / annexed nodes pressure */}
+          <NodeInfluenceOverlay
+            sessionId={sessionId}
+            currentTurn={currentTurn || 1}
+            offsetX={offsetX}
+            offsetY={offsetY}
+            visible={showInfluenceLayer}
+          />
         </g>
       </svg>
 
