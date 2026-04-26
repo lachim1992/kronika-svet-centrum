@@ -137,6 +137,10 @@ export interface CreateWorldBootstrapRequest {
     terrain?: TerrainKnobs;
   };
   identity?: WorldIdentityInput;
+  /** Mechanical identity extracted by AI in the wizard (modifiers, jednotky). */
+  identityModifiers?: ExtractedCivIdentity;
+  /** Lineage IDs selected by the player from ancientLayer.lineage_candidates. */
+  lineageIds?: string[];
   factions?: FactionSeedInput[];
   server?: ServerBootstrapInput;
 }
