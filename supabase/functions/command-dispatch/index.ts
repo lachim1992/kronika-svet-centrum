@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { computeAnnexCheck, DEFAULT_INFLUENCE } from "../_shared/nodeInfluence.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
