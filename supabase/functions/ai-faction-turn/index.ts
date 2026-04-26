@@ -269,9 +269,9 @@ Deno.serve(async (req) => {
         .order("turn_number", { ascending: false }).limit(30),
       supabase.from("faction_intents").select("*")
         .eq("session_id", sessionId).eq("faction_name", factionName).eq("status", "active"),
-      // Strategic nodes with scores
+      // Strategic nodes with scores (incl. neutral metadata for Patch 9c)
       supabase.from("province_nodes")
-        .select("id, name, node_type, hex_q, hex_r, strategic_value, economic_value, defense_value, is_major, city_id, controlled_by, fortification_level, infrastructure_level, production_output, wealth_output, capacity_score, cumulative_trade_flow")
+        .select("id, name, node_type, hex_q, hex_r, strategic_value, economic_value, defense_value, is_major, city_id, controlled_by, fortification_level, infrastructure_level, production_output, wealth_output, capacity_score, cumulative_trade_flow, is_neutral, discovered, culture_key, profile_key, autonomy_score")
         .eq("session_id", sessionId).eq("is_active", true),
       // Routes with flow data
       supabase.from("province_routes")
