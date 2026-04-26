@@ -125,8 +125,38 @@ PRAVIDLA:
       return jsonResponse({ narrativeText: "Kronikář selhal...", keyQuotes: [], debug: result.debug });
     }
 
+    const narrativeText = result.data?.narrativeText || "Kronikář selhal...";
+
+    // Patch 9e: persist flavor narrative into the node's wiki entry
+    if (targetNodeIds.length > 0 && narrativeText && narrativeText !== "Kronikář selhal...") {
+      try {
+        const sb = getServiceClient();
+        for (const nid of targetNodeIds) {
+          const { data: entry } = await sb.from("wiki_entries")
+            .select("id, body_md")
+            .eq("session_id", sessionId)
+            .eq("entity_id", nid)
+            .in("entity_type", ["neutral_node", "annexed_node"])
+            .maybeSingle();
+          if (entry) {
+            const stamp = `\n\n---\n*Rok ${event.turn_number} — ${event.event_type}:*\n${narrativeText}`;
+            const next = (entry.body_md || "").length < 6000
+              ? (entry.body_md || "") + stamp
+              : entry.body_md;
+            await sb.from("wiki_entries").update({
+              body_md: next,
+              last_enriched_turn: event.turn_number,
+              updated_at: new Date().toISOString(),
+            }).eq("id", entry.id);
+          }
+        }
+      } catch (e) {
+        console.warn("event-narrative wiki body_md update failed:", e);
+      }
+    }
+
     return jsonResponse({
-      narrativeText: result.data?.narrativeText || "Kronikář selhal...",
+      narrativeText,
       keyQuotes: result.data?.keyQuotes || [],
       debug: result.debug,
     });
