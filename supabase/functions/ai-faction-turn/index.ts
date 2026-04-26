@@ -269,9 +269,9 @@ Deno.serve(async (req) => {
         .order("turn_number", { ascending: false }).limit(30),
       supabase.from("faction_intents").select("*")
         .eq("session_id", sessionId).eq("faction_name", factionName).eq("status", "active"),
-      // Strategic nodes with scores
+      // Strategic nodes with scores (incl. neutral metadata for Patch 9c)
       supabase.from("province_nodes")
-        .select("id, name, node_type, hex_q, hex_r, strategic_value, economic_value, defense_value, is_major, city_id, controlled_by, fortification_level, infrastructure_level, production_output, wealth_output, capacity_score, cumulative_trade_flow")
+        .select("id, name, node_type, hex_q, hex_r, strategic_value, economic_value, defense_value, is_major, city_id, controlled_by, fortification_level, infrastructure_level, production_output, wealth_output, capacity_score, cumulative_trade_flow, is_neutral, discovered, culture_key, profile_key, autonomy_score")
         .eq("session_id", sessionId).eq("is_active", true),
       // Routes with flow data
       supabase.from("province_routes")
@@ -283,6 +283,20 @@ Deno.serve(async (req) => {
         .eq("session_id", sessionId)
         .order("turn_number", { ascending: false }),
     ]);
+
+    // ── Patch 9c: faction's influence + trade links on neutral nodes ──
+    const [{ data: nodeInfluenceRows }, { data: nodeTradeLinks }] = await Promise.all([
+      supabase.from("node_influence")
+        .select("node_id, economic_influence, political_influence, military_pressure, resistance, integration_progress")
+        .eq("session_id", sessionId).eq("player_name", factionName),
+      supabase.from("node_trade_links")
+        .select("node_id, link_status, trade_level, route_safety")
+        .eq("session_id", sessionId).eq("player_name", factionName),
+    ]);
+    const influenceByNode = new Map<string, any>();
+    for (const r of (nodeInfluenceRows || [])) influenceByNode.set(r.node_id, r);
+    const linkByNode = new Map<string, any>();
+    for (const l of (nodeTradeLinks || [])) linkByNode.set(l.node_id, l);
 
     // Fetch recent diplomacy messages for all rooms involving this faction
     const roomIds = (diplomacyRooms || []).map((r: any) => r.id);
@@ -609,6 +623,28 @@ ${(() => {
   return recommendations.join("\n") || "Žádná zvláštní doporučení";
 })()}
 
+═══ NEUTRÁLNÍ UZLY (objevené, vliv & anexe) ═══
+${(() => {
+  const ANNEX_THRESHOLD = 100; // matches _shared/nodeInfluence default
+  const known = (strategicNodes || []).filter((n: any) => n.is_neutral && n.discovered);
+  if (known.length === 0) return "žádné objevené neutrální uzly (zkus EXPLORE)";
+  return known.slice(0, 12).map((n: any) => {
+    const inf = influenceByNode.get(n.id) || { economic_influence: 0, political_influence: 0, military_pressure: 0, resistance: 0, integration_progress: 0 };
+    const link = linkByNode.get(n.id);
+    const pressure = (inf.economic_influence + inf.political_influence + inf.military_pressure) - inf.resistance;
+    const threshold = ANNEX_THRESHOLD + (n.autonomy_score ?? 80) * 0.5;
+    const ready = pressure >= threshold ? " ✅ANNEX_READY" : ` (pressure ${pressure.toFixed(0)}/${threshold.toFixed(0)})`;
+    return `  ${n.name} hex(${n.hex_q},${n.hex_r}) kult=${n.culture_key || "?"} prof=${n.profile_key || "?"} aut=${n.autonomy_score} | econ=${inf.economic_influence} pol=${inf.political_influence} mil=${inf.military_pressure} res=${inf.resistance}${link ? ` link=${link.link_status}` : ""}${ready}`;
+  }).join("\n");
+})()}
+
+NEUTRÁLNÍ STRATEGIE:
+- open_trade_with_node — otevírá obchod, zvyšuje economic_influence a generuje wealth.
+- send_envoy_to_node — diplomatická mise, zvyšuje political_influence (kulturně vhodné kultury preferuj).
+- apply_military_pressure — vojenský tlak, zvyšuje military_pressure ale i resistance.
+- annex_node — anexe (jen když ANNEX_READY). Permanentně získává uzel + jeho zdroje.
+- Strategie podle profilu uzlu: trade hub → trade, kulturně podobný → envoy, slabě bráněný → pressure.
+
 ═══ ZAKLÁDÁNÍ OSAD ═══
 Můžeš založit novou osadu na volném hexu ve vlastní provincii. Stojí: 150 produkce + 100 bohatství.
 DŮLEŽITÉ: Zakládej osady na UZLECH s vysokým node_score! Preferuj: trade hub pozice, food basin, resource node, chokepoint.
@@ -644,6 +680,8 @@ Rozhodni, co frakce udělá v tomto kole. ${milMetrics.warState === "war" ? "JST
                         "issue_declaration", "propose_trade_pact", "propose_alliance_pact",
                         "found_settlement", "trade", "explore",
                         "fortify_node", "repair_route", "blockade_route",
+                        "open_trade_with_node", "send_envoy_to_node",
+                        "apply_military_pressure", "annex_node",
                       ],
                     },
                     description: { type: "string", description: "Stručný popis akce" },
@@ -658,7 +696,7 @@ Rozhodni, co frakce udělá v tomto kole. ${milMetrics.warState === "war" ? "JST
                     targetHexQ: { type: "number" },
                     targetHexR: { type: "number" },
                     settlementName: { type: "string" },
-                    targetNodeName: { type: "string", description: "Name of strategic node (for fortify_node, blockade_route)" },
+                    targetNodeName: { type: "string", description: "Name of strategic or neutral node (for fortify_node, blockade_route, open_trade_with_node, send_envoy_to_node, apply_military_pressure, annex_node)" },
                     mobilizationRate: { type: "number" },
                     messageText: { type: "string" },
                     peaceConditions: {
@@ -1386,6 +1424,36 @@ async function executeAction(
         player: factionName, turn_number: turn, confirmed: true,
         note: `${factionName} blokuje trasu k ${enemyNode.name}`,
         location: enemyNode.name, importance: 7, actor_type: "ai_faction",
+      });
+      return "ok";
+    }
+
+    // ─── PATCH 9c: NEUTRAL NODE INFLUENCE & ANNEXATION ───
+    case "open_trade_with_node":
+    case "send_envoy_to_node":
+    case "apply_military_pressure":
+    case "annex_node": {
+      if (!action.targetNodeName) return "missing_params";
+      const { data: node } = await supabase.from("province_nodes")
+        .select("id, name, is_neutral, discovered, controlled_by")
+        .eq("session_id", sessionId)
+        .ilike("name", action.targetNodeName).limit(1).maybeSingle();
+      if (!node) return "node_not_found";
+      if (!node.is_neutral || node.controlled_by) return "node_not_neutral";
+      if (!node.discovered) return "node_not_discovered";
+
+      const cmdMap: Record<string, string> = {
+        open_trade_with_node: "OPEN_TRADE_WITH_NODE",
+        send_envoy_to_node: "SEND_ENVOY_TO_NODE",
+        apply_military_pressure: "APPLY_MILITARY_PRESSURE",
+        annex_node: "ANNEX_NODE",
+      };
+      await invokeFunction(supabaseUrl, supabaseKey, "command-dispatch", {
+        sessionId, turnNumber: turn,
+        actor: { name: factionName, type: "ai_faction" },
+        commandType: cmdMap[action.actionType],
+        commandPayload: { node_id: node.id, note: action.description },
+        commandId,
       });
       return "ok";
     }

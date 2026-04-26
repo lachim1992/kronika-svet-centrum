@@ -48,13 +48,41 @@ Deno.serve(async (req) => {
       ? `\nFakta o světě:\n${worldFacts.map((f: any) => `- ${f}`).join("\n")}`
       : "";
 
+    // Patch 9e: enrich node-related events with cultural/geographic context
+    const NODE_EVENT_TYPES = new Set([
+      "exploration", "trade_link_opened", "envoy_sent",
+      "military_pressure_applied", "node_annexed",
+    ]);
+    let nodeFlavor = "";
+    let targetNodeIds: string[] = [];
+    if (NODE_EVENT_TYPES.has(event.event_type)) {
+      const ref = event.reference || {};
+      const sb = getServiceClient();
+      const ids: string[] = [];
+      if (ref.node_id) ids.push(ref.node_id);
+      if (Array.isArray(ref.discovered_node_ids)) ids.push(...ref.discovered_node_ids);
+      targetNodeIds = [...new Set(ids)];
+      if (targetNodeIds.length > 0) {
+        const { data: nodes } = await sb.from("province_nodes")
+          .select("id, name, hex_q, hex_r, culture_key, profile_key, autonomy_score, node_type")
+          .in("id", targetNodeIds);
+        const nodeLines = (nodes || []).map((n: any) =>
+          `  • ${n.name} [${n.node_type}] hex(${n.hex_q},${n.hex_r}) kultura=${n.culture_key || "?"} profil=${n.profile_key || "?"} autonomie=${n.autonomy_score ?? "?"}`
+        ).join("\n");
+        if (nodeLines) {
+          nodeFlavor = `\nDotčené uzly:\n${nodeLines}\n\nPokyn: Vykresli atmosféru místa s ohledem na jeho kulturu a profil — místní zvyky, krajinu, hlasy obyvatel, reakci na příchod hráče "${event.player}".`;
+        }
+      }
+    }
+
     const eventDesc = `Typ: ${event.event_type}, Hráč: ${event.player}, Kolo: ${event.turn_number}` +
       (event.location ? `, Místo: ${event.location}` : "") +
       (event.note ? `, Poznámka: ${event.note}` : "") +
       (event.result ? `, Výsledek: ${event.result}` : "") +
       (event.casualties ? `, Ztráty: ${event.casualties}` : "") +
       (event.treaty_type ? `, Typ smlouvy: ${event.treaty_type}` : "") +
-      (event.terms_summary ? `, Podmínky: ${event.terms_summary}` : "");
+      (event.terms_summary ? `, Podmínky: ${event.terms_summary}` : "") +
+      nodeFlavor;
 
     const systemPrompt = `Jsi kronikář starověkého světa.
 
@@ -97,8 +125,38 @@ PRAVIDLA:
       return jsonResponse({ narrativeText: "Kronikář selhal...", keyQuotes: [], debug: result.debug });
     }
 
+    const narrativeText = result.data?.narrativeText || "Kronikář selhal...";
+
+    // Patch 9e: persist flavor narrative into the node's wiki entry
+    if (targetNodeIds.length > 0 && narrativeText && narrativeText !== "Kronikář selhal...") {
+      try {
+        const sb = getServiceClient();
+        for (const nid of targetNodeIds) {
+          const { data: entry } = await sb.from("wiki_entries")
+            .select("id, body_md")
+            .eq("session_id", sessionId)
+            .eq("entity_id", nid)
+            .in("entity_type", ["neutral_node", "annexed_node"])
+            .maybeSingle();
+          if (entry) {
+            const stamp = `\n\n---\n*Rok ${event.turn_number} — ${event.event_type}:*\n${narrativeText}`;
+            const next = (entry.body_md || "").length < 6000
+              ? (entry.body_md || "") + stamp
+              : entry.body_md;
+            await sb.from("wiki_entries").update({
+              body_md: next,
+              last_enriched_turn: event.turn_number,
+              updated_at: new Date().toISOString(),
+            }).eq("id", entry.id);
+          }
+        }
+      } catch (e) {
+        console.warn("event-narrative wiki body_md update failed:", e);
+      }
+    }
+
     return jsonResponse({
-      narrativeText: result.data?.narrativeText || "Kronikář selhal...",
+      narrativeText,
       keyQuotes: result.data?.keyQuotes || [],
       debug: result.debug,
     });
