@@ -22,6 +22,24 @@ interface SeedRealmInput {
   realmName?: string;
   cultureName?: string;
   settlementName?: string;
+  // ── extended identity (single + manual modes) ──
+  peopleName?: string;
+  languageName?: string;
+  civDescription?: string;
+  homelandName?: string;
+  homelandBiome?: string;
+  homelandDesc?: string;
+  rulerName?: string;
+  rulerTitle?: string;
+  rulerArchetype?: string;
+  rulerBio?: string;
+  governmentForm?: string;
+  tradeIdeology?: string;
+  dominantFaith?: string;
+  faithAttitude?: string;
+  heraldry?: { primary: string; secondary: string; symbol: string };
+  secretObjectiveArchetype?: string;
+  foundingLegend?: string;
   factions?: FactionConfig[];
   startPositions: StartPos[];
 }
@@ -33,6 +51,8 @@ export interface SeedRealmResult {
   citiesSeeded: number;
   factionPlayerMap: Record<string, string>;
   cityIds: string[];
+  /** ID seeded country pro hráče (pro downstream pipeline). */
+  playerCountryId?: string;
 }
 
 const NEIGHBOR_DIRS = [[1, 0], [0, 1], [-1, 1], [-1, 0], [0, -1], [1, -1]];
