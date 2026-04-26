@@ -85,13 +85,24 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
   const [ancientLayer, setAncientLayer] = useState<AncientLayerSpec | null>(null);
   const [selectedLineages, setSelectedLineages] = useState<string[]>([]);
 
-  // Civ identity (host's own civilization). MP režim si toto řeší v lobby per hráč.
+  // Civ identity (hostova vlastní civilizace). Zobrazujeme ve všech módech;
+  // v MP slouží jako přednastavení host řádku, které pak lobby umí editovat.
   const [identity, setIdentity] = useState<WorldIdentityInput>({
     heraldry: { primary: "#2563eb", secondary: "#fef08a", symbol: "circle" },
     spawnPreference: "any",
     faithAttitude: "tolerant",
   });
   const isMPMode = mode === "tb_multi";
+
+  // Pre-fill rulerName z playerName, dokud ho hráč sám nepřepíše.
+  useEffect(() => {
+    setIdentity((prev) => {
+      if (prev.rulerName && prev.rulerName.trim().length > 0) return prev;
+      const name = playerName.trim();
+      if (!name) return prev;
+      return { ...prev, rulerName: name };
+    });
+  }, [playerName]);
 
   // Bootstrap progress
   const [creating, setCreating] = useState(false);
@@ -228,9 +239,9 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
   }
 
   // ── Submit (Create) ──
-  // Civ identity je vyžadována pro single + manual módy. V MP módu se identita
-  // řeší v lobby per hráč (přes player_civ_configs).
-  const civValid = isMPMode || (
+  // Civ identity je vyžadována ve všech módech. V MP slouží jako host přednastavení;
+  // ostatní hráči si svoje identity doplní v lobby (přes player_civ_configs).
+  const civValid = (
     !!identity.realmName?.trim() &&
     !!identity.settlementName?.trim() &&
     !!identity.rulerName?.trim() &&
@@ -313,7 +324,7 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
         spec: specWithAncient as typeof resolved,
         preWorldPremise: state.preWorldPremise.trim() || undefined,
         factions: factionsArr,
-        identity: isMPMode ? undefined : identity,
+        identity,
       });
 
       const tickInterval = setInterval(() => {
@@ -451,7 +462,17 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
                 </div>
               </Card>
 
-              {/* Spec review + editor — visible only after first analyze */}
+              {/* Tvá civilizace — VŽDY viditelné, paralelně s premisou.
+                  V MP slouží jako host přednastavení (lobby umí později editovat). */}
+              <Card className="p-3 sm:p-4">
+                <CivSetupStep
+                  value={identity}
+                  onChange={setIdentity}
+                  premise={state.premise}
+                  disabled={isBusy}
+                />
+              </Card>
+
               {resolved && (
                 <>
                   <Card className="p-3 sm:p-4 space-y-3">
@@ -496,15 +517,6 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
                     />
                   </Card>
 
-                  {/* Civ identity (single + manual). MP řeší v lobby. */}
-                  {!isMPMode && (
-                    <CivSetupStep
-                      value={identity}
-                      onChange={setIdentity}
-                      premise={state.premise}
-                      disabled={isBusy}
-                    />
-                  )}
                 </>
               )}
 

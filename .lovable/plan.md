@@ -1,100 +1,61 @@
-## Co se právě děje při zakládání hry
+## Diagnóza — proč to "tam pořád není"
 
-Tvůj svět **D3WVST** je `tb_single_ai` — single-player s AI. Současný `WorldSetupWizard` má bohaté nastavení **světa** (premisa, Pradávno, ancient layer, terén, lineage, faction count), ale identita **hráčovy civilizace** je tam absurdně chudá:
+Podle screenshotu jsi v módu **👥 Multiplayer** a scrolluješ úvodním wizardem (`WorldSetupWizard`). V kódu je `CivSetupStep` schovaný hned ze dvou důvodů:
 
-- ✅ máš: jméno hráče, premisa, tón, vítězství, pradávno, lineage, terén
-- ❌ chybí: jméno říše, jméno startovního sídla, kultura/jazyk, popis civilizace, **vládce** (jméno, titul, archetyp, bio), forma vlády, obchodní ideologie, dominantní víra, **heraldika**, **tajný cíl** (secret objective), **zakladatelská legenda** (founding myth)
+1. **Renderuje se jen pro non-MP módy** — `{!isMPMode && <CivSetupStep ... />}`. V MP byl plán, že identitu řeší až `MultiplayerLobby` po vytvoření hry. Jenže ty jsi chtěl flavor **při zakládání**, takže to schovávání je špatně.
+2. **Renderuje se až po analýze premisy** — celý blok je uvnitř `{resolved && (…)}`. Dokud nestiskneš "Analyzovat premisu", nevidíš ani identitu, vládce, heraldiku, legendu — vůbec nic. Tvůj screenshot je přesně ten stav: premisa prázdná → nikde nic.
+3. **V MP wizardu není vůbec předán** — i kdyby se zobrazil, MP větev v `handleSubmit` payload identity neposílá do `mp-world-generate`.
 
-Tohle všechno už **existuje pro multiplayer** (`MultiplayerLobby` má 7-krokový civ wizard + komponenty `RulerStep`, `GovernmentFaithStep`, `SecretObjectiveStep`, `HeraldryPicker`, `SpawnPreferencePicker`, `FactionDesigner`, `CivIdentityPreview`). Single-player ten samý flavor postrádá → AI si všechno vymyslí a hráč nemá pocit vlastnictví své civilizace.
+## Plán opravy
 
-## Plán
+### 1. Civ sekce viditelná **vždy**, nezávisle na analýze
+Přesunout `<CivSetupStep>` ven z `{resolved && …}` bloku. Identita (jméno říše, vládce, heraldika, legenda, tajný cíl) je o **hráči**, ne o blueprintu — nemusí čekat na AI návrh světa. Hráč ji může vyplňovat paralelně s tím, co píše premisu.
 
-### 1. Sjednotit civ-setup mezi SP a MP
+Nové uspořádání:
 
-Vytvořit sdílený krok **„Tvá civilizace"** který se vloží do `WorldSetupWizard` (single + manual módy) **mezi „Pradávno/Lineage"** a **„Vytvořit svět"**. V multiplayeru se stejné komponenty používají dál v `MultiplayerLobby` beze změny.
-
-**Nový soubor `src/components/world-setup/CivSetupStep.tsx`** — kompozice existujících sub-komponent + extrakce z dnešního MP wizardu:
-
-```
-┌─ Identita říše ────────────────────────────┐
-│ • realm_name, settlement_name              │
-│ • people_name, culture_name, language_name │
-│ • civ_description (textarea, AI hint)      │
-│ • HeraldryPicker (barvy + symbol)          │
-├─ Vládce ───────────────────────────────────┤
-│ RulerStep: name, title, archetype, bio     │
-├─ Domovina (jen SP) ────────────────────────┤
-│ • homeland_name, homeland_biome            │
-│ • homeland_desc                            │
-│ • SpawnPreferencePicker                    │
-├─ Vláda & víra ─────────────────────────────┤
-│ GovernmentFaithStep                        │
-├─ Zakladatelská legenda (NOVÉ) ─────────────┤
-│ founding_legend (textarea 800 znaků):      │
-│ "Jak vznikla naše říše? Kdo byl první     │
-│ vládce? Jaký skutek založil tradici?"     │
-│ → s tlačítkem „✨ Vygeneruj z premisy"     │
-├─ Tajný cíl ────────────────────────────────┤
-│ SecretObjectiveStep                        │
-└────────────────────────────────────────────┘
+```text
+Herní režim
+Vaše jméno
+Inspirace (volitelné)
+Premisa světa  + [Analyzovat]
+Premisa Pradávna
+─────────────── (po analýze) ───────────────
+[Spec review / SchematicMap / SpecFieldEditor / AdvancedTerrain]
+─────────────── (vždy, hned pod premisou) ──
+🏰 Tvá civilizace  ← CivSetupStep (vždy zobrazené)
+   • Identita říše + heraldika
+   • Vládce
+   • Domovina + spawn (jen single/manual)
+   • Vláda & víra
+   • Zakladatelská legenda + ✨ Vygeneruj z premisy
+   • Tajný cíl
+─────────────────────────────────────────────
+[Vytvořit svět]
 ```
 
-Kolapsibilní subsekce, takže to nezahltí. Validace: `realm_name`, `settlement_name`, `ruler_name`, `secret_objective_archetype` jsou povinné.
+### 2. Zobrazit `CivSetupStep` i v Multiplayer módu
+Odstranit guard `!isMPMode`. V MP je tohle host nastavení vlastní civilizace; ostatní hráči si stejnou sekci doplní v `MultiplayerLobby` (ten zůstává, jen místo prázdného hostova řádku už bude předvyplněný).
 
-### 2. Rozšířit DB & payload
+### 3. Předat identity do MP bootstrap pipeline
+V `handleSubmit` MP větve (`mp-world-generate` invocation v `WorldSetupWizard`) přibalit `identity` payload jako "host civ config" — uložit do `player_civ_configs` pro hosta při zakládání session, aby AI generátor a lobby měli odkud číst.
 
-**Migrace** — přidat sloupec do `player_civ_configs`:
-- `founding_legend text` (nullable, 800 znaků limit přes triggér)
+### 4. Validace bez blueprintu
+Dnes "Vytvořit svět" potřebuje `resolved` (blueprint po analýze) → to je správně, blueprint pořád musí existovat. Civ pole zůstávají povinná (`civValid`) jako dnes — jen už nejsou schovaná, takže hráč je opravdu vyplní.
 
-**`src/lib/worldBootstrapPayload.ts`** — rozšířit `WizardIdentityInput`:
-```ts
-realmName, settlementName, peopleName, cultureName, languageName, civDescription,
-homelandName, homelandBiome, homelandDesc,
-rulerName, rulerTitle, rulerArchetype, rulerBio,
-governmentForm, tradeIdeology, dominantFaith, faithAttitude,
-spawnPreference, heraldry, secretObjectiveArchetype, foundingLegend
-```
+### 5. Drobnost: pre-fill vládce z `playerName`
+Když hráč napíše svoje jméno nahoře a zatím nezadal `rulerName`, defaultně ho použít jako návrh (přepisovatelný). Zlepšuje UX, dnes to nutí psát jméno dvakrát.
 
-**`create-world-bootstrap`** edge funkce:
-- v `seedRealmSkeleton` ukládat realm_name, ruler_*, government_form do `civilizations` + `civ_identity` (řádek 350-354 už čte realmName/cultureName/settlementName, jen rozšířit)
-- pro single-player navíc: zapsat řádek do `player_civ_configs` aby `mp-world-generate`-style flavor data byla taky pro SP konzistentní (tabulka už existuje, jen ji SP nepoužívá)
-- vytvořit prázdný `civ_identity` řádek se source_description=civDescription, aby `extract-civ-identity` měl odkud startovat
+## Soubory k úpravě
 
-### 3. AI extrakce identity inline ve wizardu
+- `src/components/WorldSetupWizard.tsx` — přesun `<CivSetupStep>`, odstranění `!isMPMode` guardu, předání `identity` do MP větve `handleSubmit`, default `rulerName` z `playerName`.
+- `supabase/functions/mp-world-generate/index.ts` — přijmout volitelný `hostIdentity` payload a zapsat řádek do `player_civ_configs` pro hostitele (stejnou cestou jako lobby zápisy).
+- `src/types/worldBootstrap.ts` — pokud `mp-world-generate` request type neobsahuje `hostIdentity`, doplnit.
 
-V kroku „Tvá civilizace" tlačítko **„✨ Vygeneruj modifikátory frakce"** zavolá existující `extract-civ-identity` edge funkci (stejně jako MP/CivilizationDNA), zobrazí výsledek v `CivIdentityPreview`. Nepovinné — jen pro hráče co chtějí vidět co AI nasimuluje.
+## Co tím dostaneš
 
-### 4. Propsat founding_legend do narrative pipeline
+- Civ-flavor sekce viditelná **okamžitě po otevření wizardu**, ve všech módech (AI Svět, Ruční, Multiplayer).
+- Hráč může vyplňovat premisu i identitu paralelně, nemusí čekat na analýzu.
+- V MP je hostova civilizace uložená rovnou při zakládání hry, ne až v lobby.
+- Žluté varování "doplň jméno říše, vládce, tajný cíl" se objeví hned, takže je jasné, co chybí.
 
-V `world-generate-init` (single-player AI generátor) předat `foundingLegend` do prompt builderu:
-- chronicle zero & pre-history musí na founding_legend navázat (vládce v legendě = jedna z `legendary_persons` v generated_world)
-- ruler_name z wizardu se zapíše jako první vládce v `civilizations.first_ruler_name`
-
-### 5. Přepoužití komponent (žádná duplikace)
-
-| Komponenta | Současné použití | Po refaktoru |
-|---|---|---|
-| `RulerStep` | MP lobby | MP lobby + SP wizard |
-| `GovernmentFaithStep` | MP lobby | MP lobby + SP wizard |
-| `SecretObjectiveStep` | MP lobby | MP lobby + SP wizard |
-| `HeraldryPicker` | MP lobby | MP lobby + SP wizard |
-| `SpawnPreferencePicker` | MP lobby | MP lobby + SP wizard |
-| `CivIdentityPreview` | MP lobby + CivilizationDNA | beze změny + SP wizard |
-| **`CivSetupStep` (nové)** | — | SP wizard (kompozice výše) |
-
-MP `MultiplayerLobby` zůstává funkčně beze změny (jen volitelně může později používat `CivSetupStep` jako celek místo vlastního stepperu — mimo scope této iterace).
-
-## Co tímhle dostaneš
-
-- V single-playeru pojmenuješ říši, vládce, zvolíš heraldiku a tajný cíl **před** generováním světa
-- Napíšeš zakladatelskou legendu, která se promítne do prehistorie a Chronicle Zero
-- AI extrakce frakčních modifikátorů (bonusy k surovinám, vojsku) je dostupná i v SP
-- Identita je konzistentně uložená v `player_civ_configs` + `civ_identity` + `civilizations` pro oba módy
-
-## Mimo scope této iterace
-
-- Přepis MP wizardu na sdílený `CivSetupStep` (funguje, později sjednotit)
-- Backfill existujících světů (D3WVST) — pro nový svět od příštího založení
-- Per-frakční heraldika pro AI frakce (zatím jen hráč)
-
-Po schválení rovnou implementuji.
+Po schválení implementuji.
