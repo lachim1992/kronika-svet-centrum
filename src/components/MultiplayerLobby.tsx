@@ -868,8 +868,7 @@ const MultiplayerLobby = ({ sessionId, roomCode, worldName, maxPlayers, isHost, 
             </div>
           </div>
         )}
-          </div>
-        )}
+
 
         {/* Host: Start generation button */}
         {isHost && (
