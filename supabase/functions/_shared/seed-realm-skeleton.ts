@@ -356,18 +356,54 @@ export async function seedRealmSkeleton(input: SeedRealmInput): Promise<SeedReal
       foundingLegend ? `Zakladatelská legenda: ${foundingLegend}` : "",
     ].filter(Boolean).join(" ").trim();
 
-    if (civDescForExtract.length > 0 || realmName) {
-      await sb.from("civ_identity").upsert({
+    if (civDescForExtract.length > 0 || realmName || identityModifiers) {
+      const im = identityModifiers || {};
+      const civIdentityRow: Record<string, any> = {
         session_id: sessionId,
         player_name: playerName,
-        display_name: realmName || `${playerName}ova říše`,
-        flavor_summary: civDescription || foundingLegend?.slice(0, 200) || "",
-        source_description: civDescForExtract,
-        culture_tags: cultureName ? [cultureName] : [],
-      } as any, { onConflict: "session_id,player_name" });
+        display_name: im.display_name || realmName || `${playerName}ova říše`,
+        flavor_summary: im.flavor_summary || civDescription || foundingLegend?.slice(0, 200) || "",
+        source_description: im.source_description || civDescForExtract,
+        culture_tags: im.culture_tags?.length ? im.culture_tags : (cultureName ? [cultureName] : []),
+      };
+      // Mechanické modifikátory (jen pokud byly extrahovány)
+      const numericFields = [
+        "grain_modifier","wood_modifier","stone_modifier","iron_modifier","wealth_modifier",
+        "pop_growth_modifier","initial_burgher_ratio","initial_cleric_ratio","production_modifier",
+        "morale_modifier","mobilization_speed","cavalry_bonus","fortification_bonus",
+        "stability_modifier","trade_modifier","diplomacy_modifier","research_modifier",
+      ] as const;
+      for (const f of numericFields) {
+        if (typeof (im as any)[f] === "number") civIdentityRow[f] = (im as any)[f];
+      }
+      const stringFields = [
+        "urban_style","society_structure","military_doctrine","economic_focus",
+        "militia_unit_name","militia_unit_desc","professional_unit_name","professional_unit_desc",
+      ] as const;
+      for (const f of stringFields) {
+        if ((im as any)[f]) civIdentityRow[f] = (im as any)[f];
+      }
+      if (im.building_tags?.length) civIdentityRow.building_tags = im.building_tags.slice(0, 3);
+
+      await sb.from("civ_identity").upsert(civIdentityRow as any, { onConflict: "session_id,player_name" });
     }
   } catch (e) {
     console.warn("[seed-realm-skeleton] civ_identity upsert failed:", e);
+  }
+
+  // ── Lineage selection (ancient layer) ──
+  // Persist player-selected lineage IDs to player_civ_configs.selected_lineages
+  // (downstream Chronicle Zero generator reads from there). Best-effort.
+  if (lineageIds && lineageIds.length > 0) {
+    try {
+      await sb.from("player_civ_configs").upsert({
+        session_id: sessionId,
+        player_name: playerName,
+        selected_lineages: lineageIds,
+      } as any, { onConflict: "session_id,player_name" });
+    } catch (e) {
+      console.warn("[seed-realm-skeleton] selected_lineages upsert failed:", e);
+    }
   }
 
   // civilizations row — narrative metadata for the player's faction.
