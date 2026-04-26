@@ -1,6 +1,6 @@
 # Discovery, Neutral Nodes & Influence Loop
 
-> Status: Patch 0 ✅ · Patch 1 ✅ · Patch 2 ✅ · Patch 3 ✅ · Patch 4 ✅ (data init; render reuses legacy frontier) · Patch 5 ✅ · Patch 6 ✅ · Patch 7–8 pending
+> Status: Patch 0 ✅ · Patch 1 ✅ · Patch 2 ✅ · Patch 3 ✅ · Patch 4 ✅ · Patch 5 ✅ · Patch 6 ✅ · Patch 7 ✅ · Patch 8 ✅ (NeutralNodePanel + WorldHexMap integrace; EconomyTab sekce zatím odložena)
 
 ## Verdikt po analýze repa
 
