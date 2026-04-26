@@ -68,6 +68,9 @@ Deno.serve(async (req) => {
       case "cultural":
         victoryResult = await checkCultural(sb, sessionId, humanPlayers);
         break;
+      case "annexation":
+        victoryResult = await checkAnnexation(sb, sessionId, humanPlayers);
+        break;
       case "story":
         victoryResult = { won: false };
         break;
