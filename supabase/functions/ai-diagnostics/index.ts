@@ -155,11 +155,19 @@ serve(async (req) => {
     let aiDiplomacy: any[] = [];
     let aiTensions: any[] = [];
     if (aiPlayerNames.length > 0) {
-      const [pactsRes, tensionsRes] = await Promise.all([
+      // Avoid .or() with user-supplied names (special chars break PostgREST parser).
+      // Run two .in() queries in parallel and merge/dedupe in JS.
+      const [pactsARes, pactsBRes, tensionsRes] = await Promise.all([
         sb.from("diplomatic_pacts")
           .select("*")
           .eq("session_id", sessionId)
-          .or(aiPlayerNames.map((n: string) => `party_a.eq.${n},party_b.eq.${n}`).join(","))
+          .in("party_a", aiPlayerNames)
+          .order("created_at", { ascending: false })
+          .limit(30),
+        sb.from("diplomatic_pacts")
+          .select("*")
+          .eq("session_id", sessionId)
+          .in("party_b", aiPlayerNames)
           .order("created_at", { ascending: false })
           .limit(30),
         sb.from("civ_tensions")
@@ -168,7 +176,10 @@ serve(async (req) => {
           .order("turn_number", { ascending: false })
           .limit(30),
       ]);
-      aiDiplomacy = pactsRes.data || [];
+      const seen = new Set<string>();
+      for (const row of [...(pactsARes.data || []), ...(pactsBRes.data || [])]) {
+        if (row?.id && !seen.has(row.id)) { seen.add(row.id); aiDiplomacy.push(row); }
+      }
       aiTensions = (tensionsRes.data || []).filter((t: any) =>
         aiPlayerNames.includes(t.player_a) || aiPlayerNames.includes(t.player_b)
       );
