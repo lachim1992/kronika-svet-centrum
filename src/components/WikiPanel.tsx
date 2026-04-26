@@ -102,6 +102,7 @@ const WikiPanel = ({
   const [eventLinks, setEventLinks] = useState<EventEntityLink[]>([]);
   const [entityImages, setEntityImages] = useState<EncImage[]>([]);
   const [worldMemories, setWorldMemories] = useState<string[]>([]);
+  const [nodes, setNodes] = useState<any[]>([]);
 
   const isAdmin = myRole === "admin" || myRole === "moderator" || !myRole;
 
