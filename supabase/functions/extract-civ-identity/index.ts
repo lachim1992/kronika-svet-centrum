@@ -240,9 +240,7 @@ KATEGORIE MODIFIKÁTORŮ:
     let prodSum = (ex.grain_modifier || 0) + (ex.wood_modifier || 0) + (ex.stone_modifier || 0) + (ex.iron_modifier || 0) + (ex.wealth_modifier || 0);
     const prodScale = prodSum > 0.3 ? 0.3 / prodSum : 1;
 
-    const row = {
-      session_id: sessionId,
-      player_name: playerName,
+    const row: Record<string, any> = {
       display_name: (ex.display_name || "").slice(0, 30) || null,
       flavor_summary: (ex.flavor_summary || "").slice(0, 100) || null,
       culture_tags: ex.culture_tags || [],
@@ -260,7 +258,6 @@ KATEGORIE MODIFIKÁTORŮ:
       pop_growth_modifier: clamp(ex.pop_growth_modifier, -0.01, 0.02),
       initial_burgher_ratio: clamp(ex.initial_burgher_ratio, -0.15, 0.20),
       initial_cleric_ratio: clamp(ex.initial_cleric_ratio, -0.10, 0.15),
-      // Repurpose existing production_modifier as combined wood+stone for backwards compat
       production_modifier: clamp(((ex.wood_modifier || 0) + (ex.stone_modifier || 0)) / 2, -0.15, 0.25),
       // Military
       morale_modifier: clamp(ex.morale_modifier, -5, 10),
@@ -279,15 +276,31 @@ KATEGORIE MODIFIKÁTORŮ:
       militia_unit_desc: (ex.militia_unit_desc || "").slice(0, 120),
       professional_unit_name: (ex.professional_unit_name || "Profesionálové").slice(0, 60),
       professional_unit_desc: (ex.professional_unit_desc || "").slice(0, 120),
+      // Narrative flavor (kept on response so caller can persist into civilizations later)
+      core_myth: (ex.core_myth || "").slice(0, 500) || null,
+      cultural_quirk: (ex.cultural_quirk || "").slice(0, 300) || null,
+      architectural_style: (ex.architectural_style || "").slice(0, 100) || null,
       // Meta
       source_description: fullText,
       extraction_model: "gemini-3-flash-preview",
       extracted_at: new Date().toISOString(),
     };
 
+    if (isPreviewMode) {
+      // Return extraction without persisting. Caller (wizard) ships this to
+      // the bootstrap orchestrator as identityModifiers.
+      return jsonResponse({ ...row, _preview: true });
+    }
+
+    const persistRow = { ...row, session_id: sessionId, player_name: playerName };
+    // Strip narrative-only fields not in civ_identity table
+    delete persistRow.core_myth;
+    delete persistRow.cultural_quirk;
+    delete persistRow.architectural_style;
+
     const { data, error } = await sb
       .from("civ_identity")
-      .upsert(row, { onConflict: "session_id,player_name" })
+      .upsert(persistRow, { onConflict: "session_id,player_name" })
       .select()
       .single();
 
@@ -299,9 +312,9 @@ KATEGORIE MODIFIKÁTORŮ:
     // Sync display_name + narrative flavor to civilizations table
     const civUpdate: Record<string, any> = {};
     if (row.display_name) civUpdate.civ_name = row.display_name;
-    if (ex.core_myth) civUpdate.core_myth = (ex.core_myth || "").slice(0, 500);
-    if (ex.cultural_quirk) civUpdate.cultural_quirk = (ex.cultural_quirk || "").slice(0, 300);
-    if (ex.architectural_style) civUpdate.architectural_style = (ex.architectural_style || "").slice(0, 100);
+    if (row.core_myth) civUpdate.core_myth = row.core_myth;
+    if (row.cultural_quirk) civUpdate.cultural_quirk = row.cultural_quirk;
+    if (row.architectural_style) civUpdate.architectural_style = row.architectural_style;
     if (Object.keys(civUpdate).length > 0) {
       await sb.from("civilizations").update(civUpdate)
         .eq("session_id", sessionId).eq("player_name", playerName);
