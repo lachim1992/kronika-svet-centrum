@@ -408,13 +408,14 @@ export async function seedRealmSkeleton(input: SeedRealmInput): Promise<SeedReal
 
   // civilizations row — narrative metadata for the player's faction.
   try {
-    if (realmName || rulerName || foundingLegend) {
+    if (realmName || rulerName || foundingLegend || identityModifiers) {
       await sb.from("civilizations").upsert({
         session_id: sessionId,
         player_name: playerName,
-        civ_name: realmName || `${playerName}ova říše`,
-        core_myth: foundingLegend || null,
-        cultural_quirk: cultureName || null,
+        civ_name: identityModifiers?.display_name || realmName || `${playerName}ova říše`,
+        core_myth: identityModifiers?.core_myth || foundingLegend || null,
+        cultural_quirk: identityModifiers?.cultural_quirk || cultureName || null,
+        architectural_style: identityModifiers?.architectural_style || null,
         is_ai: false,
       } as any, { onConflict: "session_id,player_name" });
     }
