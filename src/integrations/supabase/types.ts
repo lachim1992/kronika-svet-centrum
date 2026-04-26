@@ -6765,16 +6765,28 @@ export type Database = {
           civ_description: string
           created_at: string
           culture_name: string
+          dominant_faith: string | null
+          faith_attitude: string | null
+          government_form: string | null
+          heraldry: Json | null
           homeland_biome: string
           homeland_desc: string
           homeland_name: string
           id: string
           language_name: string
+          lineage_ids: string[] | null
           people_name: string
           player_name: string
           realm_name: string
+          ruler_archetype: string | null
+          ruler_bio: string | null
+          ruler_name: string | null
+          ruler_title: string | null
+          secret_objective_archetype: string | null
           session_id: string
           settlement_name: string
+          spawn_preference: string | null
+          trade_ideology: string | null
           updated_at: string
           user_id: string
         }
@@ -6782,16 +6794,28 @@ export type Database = {
           civ_description?: string
           created_at?: string
           culture_name?: string
+          dominant_faith?: string | null
+          faith_attitude?: string | null
+          government_form?: string | null
+          heraldry?: Json | null
           homeland_biome?: string
           homeland_desc?: string
           homeland_name?: string
           id?: string
           language_name?: string
+          lineage_ids?: string[] | null
           people_name?: string
           player_name: string
           realm_name?: string
+          ruler_archetype?: string | null
+          ruler_bio?: string | null
+          ruler_name?: string | null
+          ruler_title?: string | null
+          secret_objective_archetype?: string | null
           session_id: string
           settlement_name?: string
+          spawn_preference?: string | null
+          trade_ideology?: string | null
           updated_at?: string
           user_id: string
         }
@@ -6799,16 +6823,28 @@ export type Database = {
           civ_description?: string
           created_at?: string
           culture_name?: string
+          dominant_faith?: string | null
+          faith_attitude?: string | null
+          government_form?: string | null
+          heraldry?: Json | null
           homeland_biome?: string
           homeland_desc?: string
           homeland_name?: string
           id?: string
           language_name?: string
+          lineage_ids?: string[] | null
           people_name?: string
           player_name?: string
           realm_name?: string
+          ruler_archetype?: string | null
+          ruler_bio?: string | null
+          ruler_name?: string | null
+          ruler_title?: string | null
+          secret_objective_archetype?: string | null
           session_id?: string
           settlement_name?: string
+          spawn_preference?: string | null
+          trade_ideology?: string | null
           updated_at?: string
           user_id?: string
         }

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
@@ -16,6 +16,13 @@ import ChronicleHubLogo from "./ChronicleHubLogo";
 import FactionDesigner from "./FactionDesigner";
 import CivIdentityPreview from "./CivIdentityPreview";
 import WorldCreationOverlay from "./WorldCreationOverlay";
+import RulerStep, { type RulerData } from "./multiplayer-lobby/RulerStep";
+import GovernmentFaithStep, { type GovernmentFaithData } from "./multiplayer-lobby/GovernmentFaithStep";
+import SecretObjectiveStep, { type SecretObjectiveData } from "./multiplayer-lobby/SecretObjectiveStep";
+import HeraldryPicker, { type HeraldryData } from "./multiplayer-lobby/HeraldryPicker";
+import SpawnPreferencePicker from "./multiplayer-lobby/SpawnPreferencePicker";
+import { LineageSelector } from "./world-setup/LineageSelector";
+import type { AncientLayerSpec } from "@/types/ancientLayer";
 
 const BIOMES = [
   { value: "plains", label: "🌾 Pláně", icon: Sun },
@@ -46,7 +53,22 @@ interface CivConfig {
   homeland_biome: string;
   homeland_name: string;
   homeland_desc: string;
+  // — extended (v5) —
+  ruler_name: string;
+  ruler_title: string;
+  ruler_archetype: string;
+  ruler_bio: string;
+  government_form: string;
+  trade_ideology: string;
+  dominant_faith: string;
+  faith_attitude: string;
+  spawn_preference: string;
+  lineage_ids: string[];
+  secret_objective_archetype: string;
+  heraldry: HeraldryData;
 }
+
+const DEFAULT_HERALDRY: HeraldryData = { primary: "#2563eb", secondary: "#fef3c7", symbol: "circle" };
 
 interface Props {
   sessionId: string;
@@ -58,11 +80,23 @@ interface Props {
   onGameStart: () => void;
 }
 
+// Wizard step keys (in order). 'lineage' is conditionally hidden if no ancient_layer.
+type WizardStepKey = "identity" | "ruler" | "homeland" | "government" | "lineage" | "faction" | "objective";
+const STEP_LABELS: Record<WizardStepKey, string> = {
+  identity: "Identita",
+  ruler: "Vládce",
+  homeland: "Domovina",
+  government: "Vláda & víra",
+  lineage: "Pradávno",
+  faction: "Frakce",
+  objective: "Tajný cíl",
+};
+
 const MultiplayerLobby = ({ sessionId, roomCode, worldName, maxPlayers, isHost, myPlayerName, onGameStart }: Props) => {
   const { user } = useAuth();
   const [players, setPlayers] = useState<LobbyPlayer[]>([]);
   const [showCivWizard, setShowCivWizard] = useState(false);
-  const [wizardStep, setWizardStep] = useState(0); // 0=identity, 1=homeland, 2=faction
+  const [wizardStepIdx, setWizardStepIdx] = useState(0);
   const [mySetupStatus, setMySetupStatus] = useState("pending");
   const [generating, setGenerating] = useState(false);
   const [civConfig, setCivConfig] = useState<CivConfig>({
@@ -75,6 +109,18 @@ const MultiplayerLobby = ({ sessionId, roomCode, worldName, maxPlayers, isHost, 
     homeland_biome: "plains",
     homeland_name: "",
     homeland_desc: "",
+    ruler_name: "",
+    ruler_title: "",
+    ruler_archetype: "warrior",
+    ruler_bio: "",
+    government_form: "monarchy",
+    trade_ideology: "free_market",
+    dominant_faith: "",
+    faith_attitude: "tolerant",
+    spawn_preference: "any",
+    lineage_ids: [],
+    secret_objective_archetype: "",
+    heraldry: DEFAULT_HERALDRY,
   });
   const [savingConfig, setSavingConfig] = useState(false);
   const [showWorldSettings, setShowWorldSettings] = useState(false);
@@ -115,16 +161,31 @@ const MultiplayerLobby = ({ sessionId, roomCode, worldName, maxPlayers, isHost, 
       .eq("user_id", user.id)
       .maybeSingle();
     if (data) {
+      const d = data as any;
       setCivConfig({
-        realm_name: data.realm_name || "",
-        settlement_name: data.settlement_name || "",
-        people_name: data.people_name || "",
-        culture_name: data.culture_name || "",
-        language_name: data.language_name || "",
-        civ_description: data.civ_description || "",
-        homeland_biome: data.homeland_biome || "plains",
-        homeland_name: (data as any).homeland_name || "",
-        homeland_desc: (data as any).homeland_desc || "",
+        realm_name: d.realm_name || "",
+        settlement_name: d.settlement_name || "",
+        people_name: d.people_name || "",
+        culture_name: d.culture_name || "",
+        language_name: d.language_name || "",
+        civ_description: d.civ_description || "",
+        homeland_biome: d.homeland_biome || "plains",
+        homeland_name: d.homeland_name || "",
+        homeland_desc: d.homeland_desc || "",
+        ruler_name: d.ruler_name || "",
+        ruler_title: d.ruler_title || "",
+        ruler_archetype: d.ruler_archetype || "warrior",
+        ruler_bio: d.ruler_bio || "",
+        government_form: d.government_form || "monarchy",
+        trade_ideology: d.trade_ideology || "free_market",
+        dominant_faith: d.dominant_faith || "",
+        faith_attitude: d.faith_attitude || "tolerant",
+        spawn_preference: d.spawn_preference || "any",
+        lineage_ids: Array.isArray(d.lineage_ids) ? d.lineage_ids : [],
+        secret_objective_archetype: d.secret_objective_archetype || "",
+        heraldry: (d.heraldry && typeof d.heraldry === "object" && d.heraldry.primary)
+          ? d.heraldry as HeraldryData
+          : DEFAULT_HERALDRY,
       });
     }
 
@@ -211,28 +272,76 @@ const MultiplayerLobby = ({ sessionId, roomCode, worldName, maxPlayers, isHost, 
     toast.success("Kód zkopírován!");
   };
 
-  // Save civ config (step 0+1) and proceed to faction designer
-  const handleSaveCivConfig = async () => {
-    if (!user) return;
-    if (!civConfig.settlement_name.trim()) { toast.error("Zadejte název startovního sídla"); return; }
-    if (!civConfig.realm_name.trim()) { toast.error("Zadejte název říše"); return; }
-    if (!civConfig.homeland_name.trim()) { toast.error("Zadejte název domovské provincie"); return; }
+  // Compute active steps (lineage hidden when no ancient_layer)
+  const ancientLayer: AncientLayerSpec | null = useMemo(() => {
+    const al = (worldFoundation?.worldgen_spec as any)?.ancient_layer;
+    if (al && Array.isArray(al.lineage_candidates) && al.lineage_candidates.length > 0) return al;
+    return null;
+  }, [worldFoundation]);
 
-    setSavingConfig(true);
+  const activeSteps: WizardStepKey[] = useMemo(() => {
+    const base: WizardStepKey[] = ["identity", "ruler", "homeland", "government"];
+    if (ancientLayer) base.push("lineage");
+    base.push("faction", "objective");
+    return base;
+  }, [ancientLayer]);
+
+  const currentStepKey = activeSteps[wizardStepIdx] ?? "identity";
+
+  // Persist civ config (full payload — runs on each step transition)
+  const persistCivConfig = async (extra: Partial<CivConfig> = {}): Promise<boolean> => {
+    if (!user) return false;
     try {
-      await supabase.from("player_civ_configs").upsert({
+      const payload = { ...civConfig, ...extra };
+      const { error } = await supabase.from("player_civ_configs").upsert({
         session_id: sessionId,
         user_id: user.id,
         player_name: myPlayerName,
-        ...civConfig,
-      }, { onConflict: "session_id,user_id" });
-
-      toast.success("Civilizace uložena! Nyní nastavte frakci.");
-      setWizardStep(2); // proceed to faction designer
+        ...payload,
+        heraldry: payload.heraldry as any,
+      } as any, { onConflict: "session_id,user_id" });
+      if (error) throw error;
+      return true;
     } catch (e: any) {
       toast.error("Chyba při ukládání: " + e.message);
+      return false;
     }
+  };
+
+  // Validation per step
+  const canAdvance = (): boolean => {
+    switch (currentStepKey) {
+      case "identity":
+        if (!civConfig.realm_name.trim()) { toast.error("Zadejte název říše"); return false; }
+        if (!civConfig.settlement_name.trim()) { toast.error("Zadejte název startovního sídla"); return false; }
+        return true;
+      case "ruler":
+        if (!civConfig.ruler_name.trim()) { toast.error("Zadejte jméno vládce"); return false; }
+        return true;
+      case "homeland":
+        if (!civConfig.homeland_name.trim()) { toast.error("Zadejte název domovské provincie"); return false; }
+        return true;
+      case "objective":
+        if (!civConfig.secret_objective_archetype) { toast.error("Vyberte archetyp tajného cíle"); return false; }
+        return true;
+      default:
+        return true;
+    }
+  };
+
+  const goNext = async () => {
+    if (!canAdvance()) return;
+    setSavingConfig(true);
+    const ok = await persistCivConfig();
     setSavingConfig(false);
+    if (!ok) return;
+    if (wizardStepIdx < activeSteps.length - 1) {
+      setWizardStepIdx(wizardStepIdx + 1);
+    }
+  };
+
+  const goBack = () => {
+    if (wizardStepIdx > 0) setWizardStepIdx(wizardStepIdx - 1);
   };
 
   // Called when FactionDesigner completes
@@ -249,7 +358,28 @@ const MultiplayerLobby = ({ sessionId, roomCode, worldName, maxPlayers, isHost, 
       .maybeSingle();
     if (identity) setMyIdentity(identity);
 
-    // Verify civ config exists before marking ready
+    // Move to objective step (last step) — frakce just generated, identity preview shown
+    const objectiveIdx = activeSteps.indexOf("objective");
+    if (objectiveIdx >= 0 && wizardStepIdx < objectiveIdx) {
+      setWizardStepIdx(objectiveIdx);
+      toast.success("Frakce vygenerována. Vyberte tajný cíl.");
+      return;
+    }
+  };
+
+  // Final commit — called from objective step after secret objective chosen
+  const handleFinalCommit = async () => {
+    if (!user) return;
+    if (!civConfig.secret_objective_archetype) {
+      toast.error("Vyberte archetyp tajného cíle");
+      return;
+    }
+    setSavingConfig(true);
+    const ok = await persistCivConfig();
+    setSavingConfig(false);
+    if (!ok) return;
+
+    // Verify civ config exists
     const { data: existingConfig } = await supabase
       .from("player_civ_configs")
       .select("id")
@@ -258,12 +388,12 @@ const MultiplayerLobby = ({ sessionId, roomCode, worldName, maxPlayers, isHost, 
       .maybeSingle();
 
     if (!existingConfig) {
-      toast.error("Chyba: konfigurace civilizace nebyla uložena. Zkuste znovu projít nastavení.");
-      setWizardStep(0);
+      toast.error("Chyba: konfigurace civilizace nebyla uložena.");
+      setWizardStepIdx(0);
       return;
     }
 
-    // Now mark player as ready
+    // Mark player ready
     await supabase.from("game_memberships")
       .update({ setup_status: "ready" })
       .eq("session_id", sessionId)
@@ -271,8 +401,8 @@ const MultiplayerLobby = ({ sessionId, roomCode, worldName, maxPlayers, isHost, 
 
     setMySetupStatus("ready");
     setShowCivWizard(false);
-    setWizardStep(0);
-    toast.success("Civilizace a frakce připraveny!");
+    setWizardStepIdx(0);
+    toast.success("Civilizace připravena!");
     await fetchPlayers();
   };
 
@@ -440,7 +570,7 @@ const MultiplayerLobby = ({ sessionId, roomCode, worldName, maxPlayers, isHost, 
         {/* My civilization setup */}
         {mySetupStatus !== "ready" && !showCivWizard && (
           <Button
-            onClick={() => { setShowCivWizard(true); setWizardStep(0); }}
+            onClick={() => { setShowCivWizard(true); setWizardStepIdx(0); }}
             className="w-full h-14 text-lg font-display gap-2"
             size="lg"
           >
@@ -456,7 +586,6 @@ const MultiplayerLobby = ({ sessionId, roomCode, worldName, maxPlayers, isHost, 
               <p className="font-display font-semibold text-green-600 text-sm">Vaše civilizace je připravena</p>
             </div>
 
-            {/* Identity modifiers summary — full preview */}
             {myIdentity && (
               <CivIdentityPreview
                 sessionId={sessionId}
@@ -473,7 +602,7 @@ const MultiplayerLobby = ({ sessionId, roomCode, worldName, maxPlayers, isHost, 
             )}
 
             <div className="text-center">
-              <Button variant="ghost" size="sm" className="text-xs" onClick={() => { setShowCivWizard(true); setWizardStep(0); setMySetupStatus("configuring"); }}>
+              <Button variant="ghost" size="sm" className="text-xs" onClick={() => { setShowCivWizard(true); setWizardStepIdx(0); setMySetupStatus("configuring"); }}>
                 Upravit
               </Button>
             </div>
@@ -483,29 +612,31 @@ const MultiplayerLobby = ({ sessionId, roomCode, worldName, maxPlayers, isHost, 
         {/* ═══ MULTI-STEP CIV WIZARD ═══ */}
         {showCivWizard && (
           <div className="bg-card border border-border rounded-lg p-5 space-y-4">
-            {/* Progress indicator */}
-            <div className="flex items-center gap-2 mb-2">
-              {["Identita", "Provincie", "Frakce"].map((label, i) => (
-                <div key={label} className="flex items-center gap-1 flex-1">
+            {/* Progress indicator (dynamic) */}
+            <div className="flex items-center gap-1 mb-2 overflow-x-auto pb-1">
+              {activeSteps.map((key, i) => (
+                <div key={key} className="flex items-center gap-1 shrink-0">
                   <div className={`h-6 w-6 rounded-full flex items-center justify-center text-[10px] font-bold transition-colors ${
-                    wizardStep === i ? "bg-primary text-primary-foreground" :
-                    wizardStep > i ? "bg-green-500 text-white" :
+                    wizardStepIdx === i ? "bg-primary text-primary-foreground" :
+                    wizardStepIdx > i ? "bg-green-500 text-white" :
                     "bg-muted text-muted-foreground"
                   }`}>
-                    {wizardStep > i ? <Check className="h-3 w-3" /> : i + 1}
+                    {wizardStepIdx > i ? <Check className="h-3 w-3" /> : i + 1}
                   </div>
-                  <span className={`text-[10px] font-display ${wizardStep === i ? "text-foreground font-semibold" : "text-muted-foreground"}`}>{label}</span>
-                  {i < 2 && <div className="flex-1 h-px bg-border" />}
+                  <span className={`text-[10px] font-display ${wizardStepIdx === i ? "text-foreground font-semibold" : "text-muted-foreground"}`}>
+                    {STEP_LABELS[key]}
+                  </span>
+                  {i < activeSteps.length - 1 && <div className="w-2 h-px bg-border" />}
                 </div>
               ))}
             </div>
 
-            {/* Step 0: Identity */}
-            {wizardStep === 0 && (
+            {/* Step: Identity */}
+            {currentStepKey === "identity" && (
               <div className="space-y-3">
                 <h3 className="font-display font-semibold text-lg flex items-center gap-2">
                   <Swords className="h-5 w-5 text-primary" />
-                  Vaše civilizace
+                  Identita říše
                 </h3>
 
                 <div className="space-y-1.5">
@@ -543,27 +674,34 @@ const MultiplayerLobby = ({ sessionId, roomCode, worldName, maxPlayers, isHost, 
                     value={civConfig.civ_description}
                     onChange={e => setCivConfig({ ...civConfig, civ_description: e.target.value })}
                     placeholder="Popište, čím je váš národ výjimečný — bojovníci, obchodníci, námořníci? AI z toho vygeneruje frakční modifikátory..."
-                    rows={4}
+                    rows={3}
                     maxLength={1000}
                   />
                   <p className="text-[10px] text-muted-foreground">{civConfig.civ_description.length}/1000</p>
                 </div>
 
-                <div className="flex gap-2">
-                  <Button variant="outline" onClick={() => setShowCivWizard(false)}>Zrušit</Button>
-                  <Button
-                    onClick={() => setWizardStep(1)}
-                    disabled={!civConfig.realm_name.trim() || !civConfig.settlement_name.trim()}
-                    className="flex-1 font-display gap-1"
-                  >
-                    Další <ArrowRight className="h-4 w-4" />
-                  </Button>
-                </div>
+                <HeraldryPicker
+                  value={civConfig.heraldry}
+                  onChange={(h) => setCivConfig({ ...civConfig, heraldry: h })}
+                />
               </div>
             )}
 
-            {/* Step 1: Homeland / Province */}
-            {wizardStep === 1 && (
+            {/* Step: Ruler */}
+            {currentStepKey === "ruler" && (
+              <RulerStep
+                value={{
+                  ruler_name: civConfig.ruler_name,
+                  ruler_title: civConfig.ruler_title,
+                  ruler_archetype: civConfig.ruler_archetype,
+                  ruler_bio: civConfig.ruler_bio,
+                }}
+                onChange={(r: RulerData) => setCivConfig({ ...civConfig, ...r })}
+              />
+            )}
+
+            {/* Step: Homeland */}
+            {currentStepKey === "homeland" && (
               <div className="space-y-3">
                 <h3 className="font-display font-semibold text-lg flex items-center gap-2">
                   <Mountain className="h-5 w-5 text-primary" />
@@ -581,6 +719,7 @@ const MultiplayerLobby = ({ sessionId, roomCode, worldName, maxPlayers, isHost, 
                     {BIOMES.map(b => (
                       <button
                         key={b.value}
+                        type="button"
                         onClick={() => setCivConfig({ ...civConfig, homeland_biome: b.value })}
                         className={`p-2 rounded border text-xs text-center transition-colors ${civConfig.homeland_biome === b.value ? "border-primary bg-primary/10 text-foreground" : "border-border hover:border-primary/30 text-muted-foreground"}`}
                       >
@@ -600,23 +739,53 @@ const MultiplayerLobby = ({ sessionId, roomCode, worldName, maxPlayers, isHost, 
                   />
                 </div>
 
-                <div className="flex gap-2">
-                  <Button variant="outline" onClick={() => setWizardStep(0)} className="gap-1">
-                    <ArrowLeft className="h-4 w-4" /> Zpět
-                  </Button>
-                  <Button
-                    onClick={handleSaveCivConfig}
-                    disabled={savingConfig || !canProceedToFaction}
-                    className="flex-1 font-display gap-1"
-                  >
-                    {savingConfig ? <><Loader2 className="h-4 w-4 animate-spin" /> Ukládám...</> : <>Další <ArrowRight className="h-4 w-4" /></>}
-                  </Button>
-                </div>
+                <SpawnPreferencePicker
+                  value={civConfig.spawn_preference}
+                  onChange={(v) => setCivConfig({ ...civConfig, spawn_preference: v })}
+                />
               </div>
             )}
 
-            {/* Step 2: Faction Designer */}
-            {wizardStep === 2 && (
+            {/* Step: Government & Faith */}
+            {currentStepKey === "government" && (
+              <div className="space-y-3">
+                <h3 className="font-display font-semibold text-lg flex items-center gap-2">
+                  <Shield className="h-5 w-5 text-primary" />
+                  Vláda & víra
+                </h3>
+                <GovernmentFaithStep
+                  value={{
+                    government_form: civConfig.government_form,
+                    trade_ideology: civConfig.trade_ideology,
+                    dominant_faith: civConfig.dominant_faith,
+                    faith_attitude: civConfig.faith_attitude,
+                  }}
+                  onChange={(g: GovernmentFaithData) => setCivConfig({ ...civConfig, ...g })}
+                />
+              </div>
+            )}
+
+            {/* Step: Lineage (conditional) */}
+            {currentStepKey === "lineage" && ancientLayer && (
+              <div className="space-y-3">
+                <h3 className="font-display font-semibold text-lg flex items-center gap-2">
+                  <Sparkles className="h-5 w-5 text-primary" />
+                  Pradávné dědictví
+                </h3>
+                <p className="text-xs text-muted-foreground">
+                  Vyberte, ke kterým pradávným rodům se vaše civilizace hlásí (max 3).
+                </p>
+                <LineageSelector
+                  ancientLayer={ancientLayer}
+                  selected={civConfig.lineage_ids}
+                  onChange={(ids) => setCivConfig({ ...civConfig, lineage_ids: ids })}
+                  maxSelectable={3}
+                />
+              </div>
+            )}
+
+            {/* Step: Faction Designer */}
+            {currentStepKey === "faction" && (
               <div className="space-y-3">
                 <h3 className="font-display font-semibold text-lg flex items-center gap-2">
                   <Crown className="h-5 w-5 text-primary" />
@@ -633,13 +802,73 @@ const MultiplayerLobby = ({ sessionId, roomCode, worldName, maxPlayers, isHost, 
                   wizardMode
                 />
 
-                <Button variant="outline" onClick={() => setWizardStep(1)} className="gap-1">
-                  <ArrowLeft className="h-4 w-4" /> Zpět na provincii
-                </Button>
+                {myIdentity && (
+                  <div className="border-t border-border pt-3 mt-3">
+                    <p className="text-xs font-display font-semibold mb-2">Náhled identity</p>
+                    <CivIdentityPreview
+                      sessionId={sessionId}
+                      playerName={myPlayerName}
+                      civDescription={myIdentity.source_description || civConfig.civ_description || ""}
+                      identityData={myIdentity}
+                      loading={false}
+                      error={null}
+                      onExtract={() => {}}
+                      onBack={() => {}}
+                      onConfirm={() => {}}
+                      readOnly
+                    />
+                  </div>
+                )}
               </div>
             )}
+
+            {/* Step: Secret Objective */}
+            {currentStepKey === "objective" && (
+              <SecretObjectiveStep
+                value={{ secret_objective_archetype: civConfig.secret_objective_archetype }}
+                onChange={(o: SecretObjectiveData) => setCivConfig({ ...civConfig, ...o })}
+              />
+            )}
+
+            {/* Navigation footer */}
+            <div className="flex gap-2 pt-2 border-t border-border">
+              {wizardStepIdx === 0 ? (
+                <Button variant="outline" onClick={() => setShowCivWizard(false)}>Zrušit</Button>
+              ) : (
+                <Button variant="outline" onClick={goBack} className="gap-1" disabled={savingConfig}>
+                  <ArrowLeft className="h-4 w-4" /> Zpět
+                </Button>
+              )}
+
+              {currentStepKey === "objective" ? (
+                <Button
+                  onClick={handleFinalCommit}
+                  disabled={savingConfig || !civConfig.secret_objective_archetype}
+                  className="flex-1 font-display gap-1"
+                >
+                  {savingConfig ? <><Loader2 className="h-4 w-4 animate-spin" /> Ukládám...</> : <><Check className="h-4 w-4" /> Dokončit a být připraven</>}
+                </Button>
+              ) : currentStepKey === "faction" ? (
+                <Button
+                  onClick={() => setWizardStepIdx(wizardStepIdx + 1)}
+                  disabled={!factionSaved && !myIdentity}
+                  className="flex-1 font-display gap-1"
+                >
+                  Další: Tajný cíl <ArrowRight className="h-4 w-4" />
+                </Button>
+              ) : (
+                <Button
+                  onClick={goNext}
+                  disabled={savingConfig}
+                  className="flex-1 font-display gap-1"
+                >
+                  {savingConfig ? <><Loader2 className="h-4 w-4 animate-spin" /> Ukládám...</> : <>Další <ArrowRight className="h-4 w-4" /></>}
+                </Button>
+              )}
+            </div>
           </div>
         )}
+
 
         {/* Host: Start generation button */}
         {isHost && (
