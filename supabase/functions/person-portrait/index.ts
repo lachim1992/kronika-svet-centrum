@@ -1,10 +1,22 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
+/**
+ * person-portrait — Generates a great-person bio + portrait image.
+ *
+ * Bio generation migrated to unified AI pipeline (createAIContext + invokeAI)
+ * so that the biography always cites both:
+ *   - P0  (World Premise: Pradávno + Současnost + Zlom + Pradávné rody)
+ *   - P0b (Player Premise: civilization identity + claimed lineages)
+ *
+ * Image generation continues to use the dedicated image model directly,
+ * with the AI-produced imagePrompt enriched by lineage anchors.
+ */
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
-};
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.4";
+import {
+  corsHeaders,
+  createAIContext,
+  invokeAI,
+} from "../_shared/ai-context.ts";
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response(null, { headers: corsHeaders });
@@ -25,124 +37,92 @@ serve(async (req) => {
 
     const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-    // Fetch rich context from DB
-    let worldContext = "";
-    let playerContext = "";
-    let historyContext = "";
+    // Build unified context (P0 world + P0b player) for the bio.
+    const ctx = await createAIContext(sessionId, undefined, supabaseAdmin, playerName);
+    const cc = ctx.civContext;
 
+    // Pull supplementary data: recent player events + entity traits (history layer).
+    let historyContext = "";
+    let traitContext = "";
     if (sessionId) {
-      const [styleRes, civRes, eventsRes, citiesRes, traitsRes] = await Promise.all([
-        supabaseAdmin.from("game_style_settings").select("lore_bible, prompt_rules").eq("session_id", sessionId).maybeSingle(),
-        supabaseAdmin.from("civilizations").select("civ_name, core_myth, cultural_quirk, architectural_style").eq("session_id", sessionId).eq("player_name", playerName).maybeSingle(),
+      const [eventsRes, traitsRes] = await Promise.all([
         supabaseAdmin.from("game_events").select("event_type, note, turn_number").eq("session_id", sessionId).eq("player", playerName).eq("confirmed", true).order("turn_number", { ascending: false }).limit(10),
-        supabaseAdmin.from("cities").select("name, level, settlement_level, province, tags, flavor_prompt").eq("session_id", sessionId).eq("owner_player", playerName).limit(10),
         supabaseAdmin.from("entity_traits").select("trait_text, trait_category, intensity").eq("session_id", sessionId).eq("entity_name", personName).limit(10),
       ]);
-
-      if (styleRes.data) {
-        const s = styleRes.data as any;
-        if (s.lore_bible) worldContext += `Lore Bible světa: ${s.lore_bible}\n`;
-        if (s.prompt_rules) worldContext += `Pravidla narativu: ${s.prompt_rules}\n`;
-      }
-
-      if (civRes.data) {
-        const c = civRes.data as any;
-        playerContext += `Civilizace: ${c.civ_name || "Neznámá"}`;
-        if (c.core_myth) playerContext += `, Zakladatelský mýtus: ${c.core_myth}`;
-        if (c.cultural_quirk) playerContext += `, Kulturní zvláštnost: ${c.cultural_quirk}`;
-        if (c.architectural_style) playerContext += `, Architektonický styl: ${c.architectural_style}`;
-        playerContext += "\n";
-      }
-
       if (eventsRes.data && eventsRes.data.length > 0) {
-        historyContext += "Nedávné události hráče:\n";
-        for (const ev of eventsRes.data) {
-          historyContext += `- [Rok ${ev.turn_number}] ${ev.event_type}: ${ev.note || "bez poznámky"}\n`;
-        }
+        historyContext = "Nedávné události hráče:\n" + eventsRes.data.map(
+          (ev: any) => `- [Rok ${ev.turn_number}] ${ev.event_type}: ${ev.note || "bez poznámky"}`,
+        ).join("\n");
       }
-
-      if (citiesRes.data && citiesRes.data.length > 0) {
-        playerContext += "Města hráče: " + citiesRes.data.map((c: any) => `${c.name} (${c.settlement_level || c.level})`).join(", ") + "\n";
-      }
-
       if (traitsRes.data && traitsRes.data.length > 0) {
-        playerContext += "Vlastnosti osobnosti: " + traitsRes.data.map((t: any) => `${t.trait_text} (${t.trait_category}, intenzita ${t.intensity})`).join(", ") + "\n";
+        traitContext = "Vlastnosti osobnosti: " + traitsRes.data.map(
+          (t: any) => `${t.trait_text} (${t.trait_category}, intenzita ${t.intensity})`,
+        ).join(", ");
       }
     }
 
-    const fullContext = [
-      worldContext ? `== SVĚT ==\n${worldContext}` : "",
-      playerContext ? `== HRÁČ: ${playerName} ==\n${playerContext}` : "",
-      historyContext ? `== HISTORIE ==\n${historyContext}` : "",
-      exceptionalPrompt ? `== HRÁČŮV POPIS VÝJIMEČNOSTI ==\n${exceptionalPrompt}` : "",
-    ].filter(Boolean).join("\n\n");
+    const systemPrompt = `Jsi kronikář civilizační hry. Napiš epický životopis osobnosti (4-8 vět, česky, středověkým stylem).
+ŽIVOTOPIS MUSÍ:
+  - doslova navazovat na premisu světa (P0 — Pradávno, Současnost, Zlom, Pradávné rody)
+  - reflektovat premisu národa hráče (P0b — civilizace, adoptované Pradávné rody, kulturní zvláštnost)
+  - zmínit alespoň jedno Pradávné dědictví národa (pokud nějaké existuje)
+Také vytvoř anglický prompt pro generování portrétu v illuminated manuscript stylu;
+prompt MUSÍ obsahovat odkaz na architectural_style národa nebo na cultural_anchor adoptovaného Pradávného rodu.
 
-    // Step 1: Generate bio
-    const bioResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-3-flash-preview",
-        messages: [
-          {
-            role: "system",
-            content: `Jsi kronikář civilizační hry. Napiš epický životopis osobnosti (4-8 vět, česky, středověkým stylem). Životopis musí být zasazen do kontextu světa a civilizace hráče. Pokud hráč poskytl popis výjimečnosti, použij ho jako hlavní zdroj inspirace. Také vytvoř anglický prompt pro generování portrétu v illuminated manuscript stylu.\n\nKONTEXT SVĚTA A HRÁČE:\n${fullContext}`
+DOPLŇUJÍCÍ KONTEXT (historie + traits, NEsmí přebít P0/P0b):
+${historyContext}
+${traitContext}
+${exceptionalPrompt ? `\nVÝJIMEČNOST OD HRÁČE (hlavní zdroj inspirace pro postavu):\n${exceptionalPrompt}` : ""}`;
+
+    const userPrompt = `Jméno: ${personName}
+Typ: ${personType}
+Přezdívka/Rys: ${flavorTrait || "neznámý"}
+Město: ${cityName || "neznámé"}
+Hráč: ${playerName}`;
+
+    const bioResult = await invokeAI(ctx, {
+      model: "google/gemini-3-flash-preview",
+      systemPrompt,
+      userPrompt,
+      functionName: "person-portrait",
+      tools: [{
+        type: "function",
+        function: {
+          name: "create_person_profile",
+          description: "Create person bio and image prompt",
+          parameters: {
+            type: "object",
+            properties: {
+              bio: { type: "string", description: "Epic biography in Czech, 4-8 sentences, grounded in world lore (P0) and player civilization (P0b)" },
+              imagePrompt: { type: "string", description: "English portrait prompt, illuminated manuscript style, must reference architectural style or ancient lineage anchor" },
+            },
+            required: ["bio", "imagePrompt"],
+            additionalProperties: false,
           },
-          {
-            role: "user",
-            content: `Jméno: ${personName}\nTyp: ${personType}\nPřezdívka/Rys: ${flavorTrait || "neznámý"}\nMěsto: ${cityName || "neznámé"}\nHráč: ${playerName}${exceptionalPrompt ? `\nVýjimečnost (od hráče): ${exceptionalPrompt}` : ""}`
-          }
-        ],
-        tools: [{
-          type: "function",
-          function: {
-            name: "create_person_profile",
-            description: "Create person bio and image prompt",
-            parameters: {
-              type: "object",
-              properties: {
-                bio: { type: "string", description: "Epic biography in Czech, 4-8 sentences, grounded in world lore and player civilization" },
-                imagePrompt: { type: "string", description: "English portrait prompt, illuminated manuscript style, medieval portrait, incorporating world style and character traits" },
-              },
-              required: ["bio", "imagePrompt"],
-              additionalProperties: false
-            }
-          }
-        }],
-        tool_choice: { type: "function", function: { name: "create_person_profile" } },
-      }),
+        },
+      }],
+      toolChoice: { type: "function", function: { name: "create_person_profile" } },
     });
 
-    if (!bioResponse.ok) {
-      if (bioResponse.status === 429) {
-        return new Response(JSON.stringify({ error: "Příliš mnoho požadavků." }), {
-          status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" }
-        });
-      }
-      if (bioResponse.status === 402) {
-        return new Response(JSON.stringify({ error: "Nedostatek kreditů." }), {
-          status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" }
-        });
-      }
-      const errText = await bioResponse.text();
-      console.error("Bio gen error:", bioResponse.status, errText);
-      return new Response(JSON.stringify({ bio: "Kronikář selhal...", imageUrl: null }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" }
+    if (!bioResult.ok) {
+      const status = bioResult.status ?? 500;
+      return new Response(JSON.stringify({ error: bioResult.error || "Bio gen failed", debug: bioResult.debug }), {
+        status,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    const bioData = await bioResponse.json();
-    const toolCall = bioData.choices?.[0]?.message?.tool_calls?.[0];
-    let bio = `${personName} je legendární ${personType}.`;
-    let imagePrompt = `A medieval portrait of a ${personType} named ${personName}, illuminated manuscript style, parchment colors, golden details`;
+    let bio: string = bioResult.data?.bio || `${personName} je legendární ${personType}.`;
+    let imagePrompt: string = bioResult.data?.imagePrompt || `A medieval portrait of a ${personType} named ${personName}, illuminated manuscript style, parchment colors, golden details`;
 
-    if (toolCall?.function?.arguments) {
-      const parsed = JSON.parse(toolCall.function.arguments);
-      bio = parsed.bio || bio;
-      imagePrompt = parsed.imagePrompt || imagePrompt;
+    // Enrich image prompt with lineage anchor if AI omitted it.
+    const lineageAnchors = (cc?.claimedLineages ?? [])
+      .map((l) => l.culturalAnchor || l.name)
+      .filter(Boolean)
+      .slice(0, 1)
+      .join(", ");
+    if (lineageAnchors && !imagePrompt.toLowerCase().includes(lineageAnchors.toLowerCase())) {
+      imagePrompt = `${imagePrompt}. Heritage motifs: ${lineageAnchors}.`;
     }
 
     // Step 2: Generate portrait image
@@ -179,7 +159,6 @@ serve(async (req) => {
             imageUrl = urlData.publicUrl;
           }
 
-          // Update the person record
           if (personId) {
             await supabaseAdmin.from("great_persons").update({
               bio, image_url: imageUrl, image_prompt: imagePrompt,
@@ -193,7 +172,7 @@ serve(async (req) => {
 
     return new Response(JSON.stringify({
       bio, imageUrl, imagePrompt,
-      debug: { provider: "lovable-ai", contextLength: fullContext.length }
+      debug: bioResult.debug,
     }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
   } catch (e) {
