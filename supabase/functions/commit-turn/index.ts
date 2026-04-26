@@ -589,8 +589,12 @@ Deno.serve(async (req) => {
         }),
       );
       const econProcessed = settled.filter((s) => s.status === "fulfilled" && (s.value as any).ok).length;
-      results.economy = { processed: econProcessed, entities: allEconEntities.size };
-      console.log(`[commit-turn] phase-5 process-turn parallel: ${Date.now() - t5}ms (${econProcessed}/${allEconEntities.size})`);
+      const econFailures = settled
+        .map((s) => s.status === "fulfilled" ? s.value as any : { ok: false, name: "unknown", error: String((s as any).reason) })
+        .filter((v: any) => !v.ok)
+        .map((v: any) => ({ name: v.name, error: v.error }));
+      results.economy = { processed: econProcessed, entities: allEconEntities.size, failures: econFailures, durationMs: Date.now() - t5 };
+      console.log(`[commit-turn] phase-5 process-turn parallel: ${Date.now() - t5}ms (${econProcessed}/${allEconEntities.size}), failures=${econFailures.length}`);
     } catch (e) {
       console.error("Process turn error:", e);
       results.economy = { error: (e as Error).message };
