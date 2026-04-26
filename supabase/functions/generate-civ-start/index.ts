@@ -51,8 +51,7 @@ Na základě hráčovy premisy národa (viz P0b výše) vytvoř vyvážené a vl
 PRAVIDLA:
 - Zdroje musí být vyvážené. Součet (grain + wood + stone + iron + horses + gold) v rozmezí 60-120.
 - Militaristický národ: více iron/horses, méně food. Obchodní národ: více gold, méně armády.
-- Populace startovní osady: 800-1500.
-- Populační třídy: peasants 60-80%, burghers 10-25%, clerics 5-15%.
+- KRITICKÉ: Hráč VŽDY začíná s nejmenší možnou osadou (HAMLET) o přesně 100 obyvatelích — všichni jsou rolníci (peasants). Žádní burghers ani clerics na startu. Tato čísla jsou PEVNÁ a engine je stejně přepíše — neuváděj jiná.
 - Stabilita 55-80.
 - Special resource: jeden z "IRON", "STONE", "HORSES", "NONE" — odvoď z popisu národa.
 - core_myth (1-2 věty, ČESKY) MUSÍ navazovat na hráčovu premisu národa (P0b) i na premisu světa (P0 — Pradávno, Současnost, Zlom, Pradávné rody).
@@ -80,10 +79,6 @@ Vygeneruj startovní podmínky jako JSON:
     "stables_capacity": <int 50-200>
   },
   "settlement": {
-    "population_total": <int 800-1500>,
-    "population_peasants": <int>,
-    "population_burghers": <int>,
-    "population_clerics": <int>,
     "city_stability": <int 55-80>,
     "special_resource_type": "<IRON|STONE|HORSES|NONE>",
     "settlement_flavor": "<krátký český popis charakteru osady, MUSÍ odkazovat na pradávné dědictví světa nebo Zlom>"
@@ -116,6 +111,13 @@ Vygeneruj startovní podmínky jako JSON:
   }
 });
 
+// === ENGINE CONSTANTS — never overridable by AI ===
+const STARTING_POPULATION_TOTAL = 100;
+const STARTING_POPULATION_PEASANTS = 100;
+const STARTING_POPULATION_BURGHERS = 0;
+const STARTING_POPULATION_CLERICS = 0;
+const STARTING_SETTLEMENT_LEVEL = "hamlet";
+
 function getDefaults() {
   return {
     realm_resources: {
@@ -124,7 +126,11 @@ function getDefaults() {
       stability: 70, granary_capacity: 500, stables_capacity: 100,
     },
     settlement: {
-      population_total: 1000, population_peasants: 800, population_burghers: 150, population_clerics: 50,
+      population_total: STARTING_POPULATION_TOTAL,
+      population_peasants: STARTING_POPULATION_PEASANTS,
+      population_burghers: STARTING_POPULATION_BURGHERS,
+      population_clerics: STARTING_POPULATION_CLERICS,
+      settlement_level: STARTING_SETTLEMENT_LEVEL,
       city_stability: 70, special_resource_type: "NONE", settlement_flavor: "",
     },
     civilization: {
@@ -142,11 +148,6 @@ function validateAndClamp(parsed: any) {
   const st = parsed.settlement || {};
   const cv = parsed.civilization || {};
 
-  const popTotal = clamp(st.population_total || 1000, 800, 1500);
-  const peasants = clamp(st.population_peasants || Math.round(popTotal * 0.75), Math.round(popTotal * 0.5), Math.round(popTotal * 0.85));
-  const clerics = clamp(st.population_clerics || Math.round(popTotal * 0.05), Math.round(popTotal * 0.03), Math.round(popTotal * 0.15));
-  const burghers = popTotal - peasants - clerics;
-
   return {
     realm_resources: {
       grain_reserve: clamp(rr.grain_reserve, 10, 40),
@@ -158,11 +159,14 @@ function validateAndClamp(parsed: any) {
       granary_capacity: clamp(rr.granary_capacity, 300, 800),
       stables_capacity: clamp(rr.stables_capacity, 50, 200),
     },
+    // ENGINE OVERRIDE — these values are ALWAYS forced regardless of AI output.
+    // Hráč začíná vždy s 100 rolníky v hamletu. Žádný clamp, žádná tolerance.
     settlement: {
-      population_total: popTotal,
-      population_peasants: peasants,
-      population_burghers: burghers,
-      population_clerics: clerics,
+      population_total: STARTING_POPULATION_TOTAL,
+      population_peasants: STARTING_POPULATION_PEASANTS,
+      population_burghers: STARTING_POPULATION_BURGHERS,
+      population_clerics: STARTING_POPULATION_CLERICS,
+      settlement_level: STARTING_SETTLEMENT_LEVEL,
       city_stability: clamp(st.city_stability, 55, 80),
       special_resource_type: ["IRON", "STONE", "HORSES", "NONE"].includes(st.special_resource_type) ? st.special_resource_type : "NONE",
       settlement_flavor: (st.settlement_flavor || "").slice(0, 500),

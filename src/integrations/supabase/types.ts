@@ -5863,6 +5863,39 @@ export type Database = {
         }
         Relationships: []
       }
+      map_visibility: {
+        Row: {
+          discovered_by: string | null
+          first_seen_at: string | null
+          last_seen_at: string | null
+          player_name: string
+          session_id: string
+          tile_q: number
+          tile_r: number
+          visibility: string
+        }
+        Insert: {
+          discovered_by?: string | null
+          first_seen_at?: string | null
+          last_seen_at?: string | null
+          player_name: string
+          session_id: string
+          tile_q: number
+          tile_r: number
+          visibility?: string
+        }
+        Update: {
+          discovered_by?: string | null
+          first_seen_at?: string | null
+          last_seen_at?: string | null
+          player_name?: string
+          session_id?: string
+          tile_q?: number
+          tile_r?: number
+          visibility?: string
+        }
+        Relationships: []
+      }
       market_shares: {
         Row: {
           auto_production: number | null
@@ -6320,6 +6353,50 @@ export type Database = {
           },
         ]
       }
+      node_influence: {
+        Row: {
+          economic_influence: number
+          integration_progress: number
+          military_pressure: number
+          node_id: string
+          player_name: string
+          political_influence: number
+          resistance: number
+          session_id: string
+          updated_at: string
+        }
+        Insert: {
+          economic_influence?: number
+          integration_progress?: number
+          military_pressure?: number
+          node_id: string
+          player_name: string
+          political_influence?: number
+          resistance?: number
+          session_id: string
+          updated_at?: string
+        }
+        Update: {
+          economic_influence?: number
+          integration_progress?: number
+          military_pressure?: number
+          node_id?: string
+          player_name?: string
+          political_influence?: number
+          resistance?: number
+          session_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "node_influence_node_id_fkey"
+            columns: ["node_id"]
+            isOneToOne: false
+            referencedRelation: "province_nodes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       node_inventory: {
         Row: {
           good_key: string
@@ -6507,6 +6584,50 @@ export type Database = {
           {
             foreignKeyName: "node_projects_target_node_id_fkey"
             columns: ["target_node_id"]
+            isOneToOne: false
+            referencedRelation: "province_nodes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      node_trade_links: {
+        Row: {
+          export_access: number | null
+          link_status: string
+          node_id: string
+          player_name: string
+          route_distance: number | null
+          route_safety: number
+          session_id: string
+          trade_level: number
+          updated_at: string
+        }
+        Insert: {
+          export_access?: number | null
+          link_status?: string
+          node_id: string
+          player_name: string
+          route_distance?: number | null
+          route_safety?: number
+          session_id: string
+          trade_level?: number
+          updated_at?: string
+        }
+        Update: {
+          export_access?: number | null
+          link_status?: string
+          node_id?: string
+          player_name?: string
+          route_distance?: number | null
+          route_safety?: number
+          session_id?: string
+          trade_level?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "node_trade_links_node_id_fkey"
+            columns: ["node_id"]
             isOneToOne: false
             referencedRelation: "province_nodes"
             referencedColumns: ["id"]
@@ -7061,6 +7182,7 @@ export type Database = {
       province_nodes: {
         Row: {
           active_recipes: Json | null
+          autonomy_score: number | null
           besieged_by: string | null
           besieging_stack_id: string | null
           biome_at_build: string | null
@@ -7073,9 +7195,13 @@ export type Database = {
           connectivity_score: number
           controlled_by: string | null
           created_at: string
+          culture_key: string | null
           cumulative_trade_flow: number
           defense_value: number
           development_level: number
+          discovered: boolean
+          discovered_at: string | null
+          discovered_by: string | null
           economic_value: number
           faith_output: number
           faith_pressure: number
@@ -7097,6 +7223,7 @@ export type Database = {
           infrastructure_level: number
           is_active: boolean
           is_major: boolean
+          is_neutral: boolean
           isolation_penalty: number
           max_upgrade_level: number
           metadata: Json | null
@@ -7114,6 +7241,7 @@ export type Database = {
           production_base: number
           production_output: number
           production_role: string | null
+          profile_key: string | null
           province_id: string
           resource_output: Json
           route_access_factor: number
@@ -7139,6 +7267,7 @@ export type Database = {
         }
         Insert: {
           active_recipes?: Json | null
+          autonomy_score?: number | null
           besieged_by?: string | null
           besieging_stack_id?: string | null
           biome_at_build?: string | null
@@ -7151,9 +7280,13 @@ export type Database = {
           connectivity_score?: number
           controlled_by?: string | null
           created_at?: string
+          culture_key?: string | null
           cumulative_trade_flow?: number
           defense_value?: number
           development_level?: number
+          discovered?: boolean
+          discovered_at?: string | null
+          discovered_by?: string | null
           economic_value?: number
           faith_output?: number
           faith_pressure?: number
@@ -7175,6 +7308,7 @@ export type Database = {
           infrastructure_level?: number
           is_active?: boolean
           is_major?: boolean
+          is_neutral?: boolean
           isolation_penalty?: number
           max_upgrade_level?: number
           metadata?: Json | null
@@ -7192,6 +7326,7 @@ export type Database = {
           production_base?: number
           production_output?: number
           production_role?: string | null
+          profile_key?: string | null
           province_id: string
           resource_output?: Json
           route_access_factor?: number
@@ -7217,6 +7352,7 @@ export type Database = {
         }
         Update: {
           active_recipes?: Json | null
+          autonomy_score?: number | null
           besieged_by?: string | null
           besieging_stack_id?: string | null
           biome_at_build?: string | null
@@ -7229,9 +7365,13 @@ export type Database = {
           connectivity_score?: number
           controlled_by?: string | null
           created_at?: string
+          culture_key?: string | null
           cumulative_trade_flow?: number
           defense_value?: number
           development_level?: number
+          discovered?: boolean
+          discovered_at?: string | null
+          discovered_by?: string | null
           economic_value?: number
           faith_output?: number
           faith_pressure?: number
@@ -7253,6 +7393,7 @@ export type Database = {
           infrastructure_level?: number
           is_active?: boolean
           is_major?: boolean
+          is_neutral?: boolean
           isolation_penalty?: number
           max_upgrade_level?: number
           metadata?: Json | null
@@ -7270,6 +7411,7 @@ export type Database = {
           production_base?: number
           production_output?: number
           production_role?: string | null
+          profile_key?: string | null
           province_id?: string
           resource_output?: Json
           route_access_factor?: number
@@ -10112,6 +10254,50 @@ export type Database = {
             columns: ["session_id"]
             isOneToOne: false
             referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      world_node_outputs: {
+        Row: {
+          basket_key: string
+          created_at: string
+          exportable_ratio: number
+          good_key: string | null
+          id: string
+          node_id: string
+          quality: number
+          quantity: number
+          session_id: string
+        }
+        Insert: {
+          basket_key: string
+          created_at?: string
+          exportable_ratio?: number
+          good_key?: string | null
+          id?: string
+          node_id: string
+          quality?: number
+          quantity?: number
+          session_id: string
+        }
+        Update: {
+          basket_key?: string
+          created_at?: string
+          exportable_ratio?: number
+          good_key?: string | null
+          id?: string
+          node_id?: string
+          quality?: number
+          quantity?: number
+          session_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "world_node_outputs_node_id_fkey"
+            columns: ["node_id"]
+            isOneToOne: false
+            referencedRelation: "province_nodes"
             referencedColumns: ["id"]
           },
         ]
