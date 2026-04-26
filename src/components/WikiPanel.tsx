@@ -75,11 +75,14 @@ const ENTITY_ICONS: Record<string, React.ReactNode> = {
   event: <Swords className="h-4 w-4" />,
   province: <Castle className="h-4 w-4" />,
   region: <Mountain className="h-4 w-4" />,
+  neutral_node: <Globe className="h-4 w-4" />,
+  annexed_node: <Castle className="h-4 w-4" />,
 };
 
 const ENTITY_LABELS: Record<string, string> = {
   city: "Město", wonder: "Div", person: "Osobnost", event: "Událost",
   province: "Provincie", region: "Region",
+  neutral_node: "Neutrální uzel", annexed_node: "Anektovaný uzel",
 };
 
 const WikiPanel = ({
