@@ -251,6 +251,8 @@ Deno.serve(async (req) => {
       session_id: normalized.sessionId,
       world_name: normalized.world.name,
       premise: normalized.world.premise,
+      pre_world_premise: normalized.world.preWorldPremise ?? null,
+      present_premise: normalized.world.presentPremise ?? normalized.world.premise,
       tone: normalized.world.tone,
       victory_style: normalized.world.victoryStyle,
       map_width: spec.resolvedSize!.width,

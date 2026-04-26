@@ -98,6 +98,7 @@ export function composeBootstrapFromSpec(args: {
   playerName: string;
   mode: GameMode;
   spec: WorldgenSpecV1;
+  preWorldPremise?: string;
   identity?: WizardIdentityInput;
   factions?: FactionSeedInput[];
 }): CreateWorldBootstrapRequest {
@@ -109,6 +110,8 @@ export function composeBootstrapFromSpec(args: {
     world: {
       name: spec.userIntent.worldName,
       premise: spec.userIntent.premise,
+      presentPremise: spec.userIntent.premise,
+      preWorldPremise: args.preWorldPremise,
       tone: spec.userIntent.tone,
       victoryStyle: spec.userIntent.victoryStyle,
       size: spec.userIntent.size,
