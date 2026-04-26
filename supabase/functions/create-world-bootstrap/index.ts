@@ -379,6 +379,21 @@ Deno.serve(async (req) => {
       steps.push({ step: "compute-province-nodes", ok: false, durationMs: performance.now() - t7a });
     }
 
+    // Step 7a-bis: generate neutral nodes (deterministic, after owned nodes exist)
+    const t7aN = performance.now();
+    try {
+      const r = await fetch(`${SUPABASE_URL}/functions/v1/generate-neutral-nodes`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}` },
+        body: JSON.stringify({ session_id: normalized.sessionId }),
+      });
+      steps.push({ step: "generate-neutral-nodes", ok: r.ok, durationMs: performance.now() - t7aN, detail: r.ok ? "ok" : `status=${r.status}` });
+      if (!r.ok) warnings.push(`generate-neutral-nodes: status=${r.status}`);
+    } catch (e) {
+      warnings.push(`generate-neutral-nodes: ${e instanceof Error ? e.message : String(e)}`);
+      steps.push({ step: "generate-neutral-nodes", ok: false, durationMs: performance.now() - t7aN });
+    }
+
     // Step 7b: compute province routes (synchronous)
     const t7b2 = performance.now();
     try {
