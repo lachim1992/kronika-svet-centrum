@@ -735,3 +735,120 @@ async function runModeSpecificSeeding(
       return { ok: true, detail: "persistent mode — tick setup deferred" };
   }
 }
+
+// ────────────────────────────────────────────────────────────────────────────
+// Fog-of-war initialization (Patch 4)
+// For each player, mark their starting city tiles as `visible`, the ring
+// at distance 1 also as `visible`, and the ring at distance 2 as `seen`.
+// All other tiles remain implicit `unknown` (no row needed).
+// ────────────────────────────────────────────────────────────────────────────
+
+async function initializeFogOfWar(
+  sb: ReturnType<typeof createClient>,
+  sessionId: string
+): Promise<{ players: number; tilesWritten: number }> {
+  const { data: cities, error: cityErr } = await sb
+    .from("cities")
+    .select("owner_player, province_id")
+    .eq("session_id", sessionId);
+  if (cityErr) throw cityErr;
+  if (!cities || cities.length === 0) return { players: 0, tilesWritten: 0 };
+
+  const provIds = Array.from(
+    new Set(cities.map((c: any) => c.province_id).filter(Boolean))
+  ) as string[];
+  if (provIds.length === 0) return { players: 0, tilesWritten: 0 };
+
+  const { data: phexes, error: phErr } = await sb
+    .from("province_hexes")
+    .select("q, r, province_id")
+    .eq("session_id", sessionId)
+    .in("province_id", provIds);
+  if (phErr) throw phErr;
+
+  // province_id -> anchor (first hex)
+  const anchorByProv = new Map<string, { q: number; r: number }>();
+  for (const h of phexes || []) {
+    const pid = (h as any).province_id as string;
+    if (!anchorByProv.has(pid)) anchorByProv.set(pid, { q: (h as any).q, r: (h as any).r });
+  }
+
+  // Player -> set of anchor hexes
+  const anchorsByPlayer = new Map<string, Array<{ q: number; r: number }>>();
+  for (const c of cities as any[]) {
+    if (!c.owner_player || !c.province_id) continue;
+    const a = anchorByProv.get(c.province_id);
+    if (!a) continue;
+    if (!anchorsByPlayer.has(c.owner_player)) anchorsByPlayer.set(c.owner_player, []);
+    anchorsByPlayer.get(c.owner_player)!.push(a);
+  }
+
+  const now = new Date().toISOString();
+  const rows: Array<{
+    session_id: string;
+    player_name: string;
+    tile_q: number;
+    tile_r: number;
+    visibility: string;
+    first_seen_at: string;
+    last_seen_at: string;
+    discovered_by: string;
+  }> = [];
+
+  // Axial neighbour offsets
+  const RING1 = [
+    [1, 0], [-1, 0], [0, 1], [0, -1], [1, -1], [-1, 1],
+  ];
+  const ring = (cx: number, cy: number, radius: number): Array<[number, number]> => {
+    if (radius === 0) return [[cx, cy]];
+    const out: Array<[number, number]> = [];
+    // Walk along ring of given radius (axial coords)
+    let q = cx + RING1[4][0] * radius;
+    let r = cy + RING1[4][1] * radius;
+    for (let side = 0; side < 6; side++) {
+      for (let step = 0; step < radius; step++) {
+        out.push([q, r]);
+        q += RING1[side][0];
+        r += RING1[side][1];
+      }
+    }
+    return out;
+  };
+
+  for (const [player, anchors] of anchorsByPlayer) {
+    const visible = new Set<string>();
+    const seen = new Set<string>();
+    for (const a of anchors) {
+      visible.add(`${a.q},${a.r}`);
+      for (const [q, r] of ring(a.q, a.r, 1)) visible.add(`${q},${r}`);
+      for (const [q, r] of ring(a.q, a.r, 2)) seen.add(`${q},${r}`);
+    }
+    // visible wins over seen
+    for (const k of visible) seen.delete(k);
+
+    for (const k of visible) {
+      const [q, r] = k.split(",").map(Number);
+      rows.push({
+        session_id: sessionId, player_name: player, tile_q: q, tile_r: r,
+        visibility: "visible", first_seen_at: now, last_seen_at: now, discovered_by: player,
+      });
+    }
+    for (const k of seen) {
+      const [q, r] = k.split(",").map(Number);
+      rows.push({
+        session_id: sessionId, player_name: player, tile_q: q, tile_r: r,
+        visibility: "seen", first_seen_at: now, last_seen_at: now, discovered_by: player,
+      });
+    }
+  }
+
+  if (rows.length === 0) return { players: anchorsByPlayer.size, tilesWritten: 0 };
+
+  // Bulk upsert
+  const { error: upErr } = await sb.from("map_visibility").upsert(rows, {
+    onConflict: "session_id,player_name,tile_q,tile_r",
+  });
+  if (upErr) throw upErr;
+
+  return { players: anchorsByPlayer.size, tilesWritten: rows.length };
+}
