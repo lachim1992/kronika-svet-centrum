@@ -2610,9 +2610,33 @@ async function executeExploreTile(
     .select("id, name, profile_key, culture_key");
 
   const discoveredCount = discoveredNodes?.length || 0;
+
+  // Build culturally-aware summary
+  const describeNode = (n: any) => {
+    const parts: string[] = [n.name];
+    if (n.culture_key) parts.push(`(${n.culture_key})`);
+    if (n.profile_key) parts.push(`[${n.profile_key}]`);
+    return parts.join(" ");
+  };
   const discoveredSummary = discoveredCount > 0
-    ? `objevil ${discoveredCount === 1 ? `${discoveredNodes![0].name}` : `${discoveredCount} neutrálních uzlů`}`
+    ? `objevil ${discoveredCount === 1
+        ? describeNode(discoveredNodes![0])
+        : `${discoveredCount} neutrálních uzlů (${discoveredNodes!.map(describeNode).join(", ")})`}`
     : `prozkoumal hex (${tile_q}, ${tile_r})`;
+
+  // Persist node-discovery facts into world memory for narrative continuity
+  if (discoveredCount > 0) {
+    const memoryRows = discoveredNodes!.map((n: any) => ({
+      session_id: sessionId,
+      text: `${actor.name} objevil neutrální uzel "${n.name}"${n.culture_key ? ` kultury ${n.culture_key}` : ""}${n.profile_key ? ` (profil: ${n.profile_key})` : ""} v hexu (${tile_q}, ${tile_r}).`,
+      category: "discovery",
+      created_round: turnNumber,
+      approved: true,
+    }));
+    await supabase.from("world_memories").insert(memoryRows).then(() => {}, (e: any) => {
+      console.warn("EXPLORE_TILE world_memories insert error:", e?.message);
+    });
+  }
 
   // ── Per-player legacy 'discoveries' row for back-compat with frontier renderer ──
   await supabase.from("discoveries").insert({
