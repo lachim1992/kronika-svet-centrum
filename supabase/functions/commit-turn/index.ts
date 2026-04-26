@@ -38,6 +38,7 @@ async function safeInsert(query: any) {
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
+  const tCommit = Date.now();
   try {
     const { sessionId, playerName, skipNarrative } = await req.json();
     if (!sessionId || !playerName) {
@@ -184,10 +185,11 @@ Deno.serve(async (req) => {
     }
 
     // ═══════════════════════════════════════════
-    // 3. AI FACTIONS — SEQUENTIAL with reactions & battle resolution
-    // Each faction acts, then its queued battles are resolved immediately.
-    // Factions run in order so later factions see earlier factions' actions.
+    // 3. AI FACTIONS — PARALLEL across factions, sequential battles inside.
+    // Each faction acts independently (no shared turn-state mutation between AI),
+    // and its queued battles are resolved sequentially after its decision.
     // ═══════════════════════════════════════════
+    const t3 = Date.now();
     try {
       const { data: aiFactions } = await supabase.from("ai_factions")
         .select("faction_name")
@@ -195,19 +197,18 @@ Deno.serve(async (req) => {
         .eq("is_active", true);
 
       if (aiFactions && aiFactions.length > 0) {
-        let processed = 0;
         const factionResults: Record<string, any> = {};
 
-        for (const faction of aiFactions) {
+        const runFaction = async (faction: { faction_name: string }) => {
+          const fStart = Date.now();
           try {
             // 3a. AI faction makes decisions
             const { data: factionData } = await supabase.functions.invoke("ai-faction-turn", {
               body: { sessionId, factionName: faction.faction_name },
             });
             factionResults[faction.faction_name] = factionData;
-            processed++;
 
-            // 3b. Resolve any battles queued by this faction
+            // 3b. Resolve any battles queued by this faction (sequential within faction)
             const { data: pendingBattles } = await supabase.from("action_queue")
               .select("id, action_data")
               .eq("session_id", sessionId)
@@ -233,7 +234,6 @@ Deno.serve(async (req) => {
                     player_name: faction.faction_name,
                   },
                 });
-                // Mark battle as resolved
                 await supabase.from("action_queue")
                   .update({ status: "completed" })
                   .eq("id", battle.id);
@@ -244,11 +244,18 @@ Deno.serve(async (req) => {
                   .eq("id", battle.id);
               }
             }
+            console.log(`[commit-turn] ai-faction ${faction.faction_name}: ${Date.now() - fStart}ms`);
+            return { ok: true, name: faction.faction_name };
           } catch (e) {
             console.error(`AI faction ${faction.faction_name} error:`, e);
+            return { ok: false, name: faction.faction_name, error: (e as Error).message };
           }
-        }
-        results.aiFactions = { processed, details: factionResults };
+        };
+
+        const settled = await Promise.allSettled(aiFactions.map(runFaction));
+        const processed = settled.filter((s) => s.status === "fulfilled" && (s.value as any).ok).length;
+        results.aiFactions = { processed, total: aiFactions.length, details: factionResults };
+        console.log(`[commit-turn] phase-3 ai-factions parallel: ${Date.now() - t3}ms (${processed}/${aiFactions.length})`);
       } else {
         results.aiFactions = { skipped: true, reason: "no_active_factions" };
       }
@@ -509,6 +516,7 @@ Deno.serve(async (req) => {
     // 4b. RECOMPUTE ROUTES + HEX FLOWS + ECONOMY FLOW
     // Ensures new nodes built between turns get connected before economy runs.
     // ═══════════════════════════════════════════
+    const t4b = Date.now();
     try {
       // Always recompute routes to pick up any new nodes
       const { data: routesRes, error: routesErr } = await supabase.functions.invoke("compute-province-routes", {
@@ -545,10 +553,13 @@ Deno.serve(async (req) => {
       console.warn("Route/flow/economy chain warning:", (e as Error).message);
       results.economyFlow = { error: (e as Error).message };
     }
+    console.log(`[commit-turn] phase-4b routes/flows/economy/trade: ${Date.now() - t4b}ms`);
 
     // ═══════════════════════════════════════════
     // 5. PROCESS TURN (economy for all players + AI factions)
+    // PARALLEL — entities are isolated (each has own balance/resources).
     // ═══════════════════════════════════════════
+    const t5 = Date.now();
     try {
       const { data: allPlayers } = await supabase.from("game_players")
         .select("player_name").eq("session_id", sessionId);
@@ -561,15 +572,21 @@ Deno.serve(async (req) => {
       for (const p of (allPlayers || [])) allEconEntities.add(p.player_name);
       for (const name of aiFactionNames) allEconEntities.add(name);
 
-      let econProcessed = 0;
-      for (const name of allEconEntities) {
-        const { error: ptErr } = await supabase.functions.invoke("process-turn", {
-          body: { sessionId, playerName: name },
-        });
-        if (ptErr) console.warn(`process-turn for ${name}:`, ptErr.message);
-        else econProcessed++;
-      }
+      const settled = await Promise.allSettled(
+        Array.from(allEconEntities).map(async (name) => {
+          const { error: ptErr } = await supabase.functions.invoke("process-turn", {
+            body: { sessionId, playerName: name },
+          });
+          if (ptErr) {
+            console.warn(`process-turn for ${name}:`, ptErr.message);
+            return { ok: false, name, error: ptErr.message };
+          }
+          return { ok: true, name };
+        }),
+      );
+      const econProcessed = settled.filter((s) => s.status === "fulfilled" && (s.value as any).ok).length;
       results.economy = { processed: econProcessed, entities: allEconEntities.size };
+      console.log(`[commit-turn] phase-5 process-turn parallel: ${Date.now() - t5}ms (${econProcessed}/${allEconEntities.size})`);
     } catch (e) {
       console.error("Process turn error:", e);
       results.economy = { error: (e as Error).message };
@@ -1078,12 +1095,15 @@ Deno.serve(async (req) => {
       try { await backgroundWork(); } catch (e) { console.error("Background work error:", e); }
     }
 
+    const totalMs = Date.now() - tCommit;
+    console.log(`[commit-turn] DONE turn=${turnNumber} player=${playerName} critical=${totalMs}ms (background scheduled)`);
     return new Response(JSON.stringify({
       ok: true,
       turnClosed: turnNumber,
       newTurn: turnNumber + 1,
       results,
       backgroundScheduled: true,
+      criticalMs: totalMs,
     }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
   } catch (err) {
