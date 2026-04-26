@@ -32,6 +32,14 @@ export interface WorldPremise {
   chronicle0: string;
   /** AI-generated geography blueprint — ridges, rivers, biome zones */
   geographyBlueprint: Record<string, any> | null;
+  /** Premisa Současnosti (svět po Zlomu) — co hráč napsal jako hlavní setting. */
+  presentPremise: string;
+  /** Premisa Pradávna (svět před Zlomem) — kořeny rodů a fyzických pozůstatků. */
+  preWorldPremise: string;
+  /** Vybrané pradávné rody (lineage_name) — žijí v současnosti jako dědictví. */
+  ancientLineages: Array<{ name: string; description: string; culturalAnchor?: string }>;
+  /** Klíčový resetový event mezi Pradávnem a Současností (typ + popis). */
+  ancientResetEvent: { type: string; description: string } | null;
 }
 
 export interface AIRequestContext {
