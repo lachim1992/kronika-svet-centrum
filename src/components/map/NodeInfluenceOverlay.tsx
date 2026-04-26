@@ -81,9 +81,9 @@ const NodeInfluenceOverlay = memo(({ sessionId, currentTurn, offsetX, offsetY, v
           .eq("session_id", sessionId),
         supabase
           .from("node_blockades")
-          .select("node_id, expires_turn")
+          .select("node_id, blocked_until_turn")
           .eq("session_id", sessionId)
-          .gt("expires_turn", currentTurn),
+          .gt("blocked_until_turn", currentTurn),
       ]);
       if (cancelled) return;
       setNodes((nd || []) as Node[]);
