@@ -1,350 +1,121 @@
-# Discovery, Neutral Nodes & Influence Loop
+## Problém
 
-> Status: Patch 0–8 ✅ · Patch 9a–9e ✅ · Patch 10 ✅ · Patch 11 ✅ · Patch 12 ✅ · Patch 13 ✅ · Patch 14 ✅ · Patch 15 ✅ (victory style `annexation` — 5 plně integrovaných uzlů, leaderboard) · Patch 16 ✅ (NodeInfluenceOverlay na mapě s CONTESTED/BLOCKED badges)
+V MP lobby (`MultiplayerLobby.tsx`) hráč při zakládání civilizace nastavuje pouze **3 minimální kroky**:
 
-## Verdikt po analýze repa
+1. **Identita** — název říše, název sídla, lid, kultura, jazyk, popis civilizace
+2. **Provincie** — název domoviny, biom, popis krajiny
+3. **Frakce** — `FactionDesigner` (modifikátory z popisu)
 
-Reálný stav (ne jen dokumenty):
+To je výrazně **méně, než nabízí singleplayer wizard** (`WorldSetupWizard`) a než systém umí na úrovni civilizace plně použít. V důsledku toho hráč v MP nemá vliv na řadu věcí, které pak existují ve hře (tajné cíle, vyhlášení, traits, vítězný styl, lineage z Pradávna, vlajka/heraldika atd.) a které MP svět **stejně generuje**, ale bez vstupu hráče → vznikají náhodně, nebo nevznikají vůbec.
 
-- `province_nodes` už **existuje** s `node_tier (major/minor/micro)`, `node_subtype`, `population`, `controlled_by`, `production_base`, `faith_output`, `metadata`. Není třeba paralelní `world_nodes` tabulka — rozšíříme stávající.
-- `compute-province-nodes` ale **generuje uzly jen pro vlastněné provincie** (`prov.owner_player`). Neutrální nody nikdy nevzniknou.
-- Existuje `discoveries` tabulka, ale jen per-player pro `entity_type='province_hex'`. `HexMapView` **fog of war nepoužívá**.
-- `explore-hex` (tile-by-tile, adjacency check) **funguje** a píše do `discoveries`. Reusneme jeho logiku.
-- `command-dispatch` nemá `EXPLORE_TILE`, `OPEN_TRADE_WITH_NODE`, `SEND_ENVOY_TO_NODE`, `APPLY_MILITARY_PRESSURE`, `ANNEX_NODE`.
-- `generate-civ-start` **tvrdě generuje 800–1500 obyvatel** s peasants/burghers/clerics. Přímo proti zadání "100 rolníků". Validátor `validateAndClamp` to navíc clampuje na min 800 — i kdyby AI vrátila menší číslo, přepíše se zpět nahoru.
-- `compute-trade-flows` nečte žádný neutral-node output.
+## Co aktuálně chybí v MP lobby (audit existujících systémů)
 
-## Cíl této iterace
+Procházím dnešní entity, kterým hráč/civilizace má/může v `Default` modu vlastnit data, a porovnávám s tím, co MP lobby vystavuje:
 
-Postavit první funkční discovery + influence smyčku **bez AI rozhodování**. AI pouze pojmenovává a popisuje (post-fact narratives). Engine drží stav, produkci, vliv, anexi.
+| Oblast | SP wizard / engine ji řeší | MP lobby ji řeší | Status |
+|---|---|---|---|
+| Premise světa | ✅ premise + Pradávno + AI analyze | ❌ vidí jen čtení `world_foundations` | **chybí** (host už to nastavil mimo lobby přes WorldSetupWizard, ale spoluhráči to nevidí editovatelně) |
+| Tón / vítězný styl | ✅ ze SpecReviewSummary | ❌ pouze readonly v collapsible | OK (host, ostatní jen vidí) |
+| Identita říše (jména) | ✅ | ✅ | OK |
+| Provincie + biom | ✅ + `homeland_desc` | ✅ částečně | OK |
+| Faction modifikátory | ✅ via FactionDesigner | ✅ | OK |
+| **Vládce / vůdce** (jméno, titul, archetyp, krátký bio) | ❌ generováno AI | ❌ | **chybí** — vládce je pak generován náhodně v `mp-world-generate` |
+| **Vlajka / barvy / heraldika** | ❌ | ❌ | **chybí** — frakce v MP nemají vizuální identitu, jen iniciálu a primární barvu |
+| **Vládní forma / režim** (monarchie/republika/teokracie/oligarchie/kočovný kmen) | ⚠️ implicitně přes FactionDesigner traits | ❌ explicitně | **chybí** — ovlivňuje legitimitu, dekrety, dědictví |
+| **Civilizační identita / DNA** (Urbanismus, Společnost, Doktrína, Ekonomika dle `mem://features/civilization-identity/core-mechanics`) | ⚠️ odvozeno z popisu | ⚠️ odvozeno přes `civ_identity` extract | OK ale neviditelné — hráč nevidí preview *před* startem |
+| **Obchodní ideologie** (Volný trh / Cechy / Palác — `mem://features/economy/trade-ideology-mechanics`) | ❌ default | ❌ | **chybí** — má mechanické dopady |
+| **Startovní traits** (`entity_traits` u říše/města/vládce) | ⚠️ generuje engine | ❌ | **chybí** — hráč nemá kontrolu nad počátečním "DNA" |
+| **Lineage z Pradávna** (vazba civilizace na ancient layer — `LineageSelector`) | ✅ v SP | ❌ úplně chybí | **chybí** — MP svět generuje ancient_layer, ale hráč si k němu nepřiřadí lineage |
+| **Tajný cíl / secret objective** (`SecretObjectivesPanel`) | ⚠️ AI generuje on-start | ❌ | **chybí volba** — hráč nemůže vybrat archetyp cíle (dobyvatel/obchodník/věštec) |
+| **Náboženství / víra** (`mem://features/economy/faith-system-impact`) | ⚠️ implicitní | ❌ | **chybí** — pantheon, dominantní kult, postoj k cizím vírám |
+| **Startovní bonus / handicap** (premiové vs. challenge starty) | ❌ | ❌ | **chybí** — žádná možnost říct "začínám s Arénou" / "začínám v exilu" |
+| **Sousedství / preferovaná startovní oblast** (mód spawn) | ⚠️ engine | ❌ | **chybí** — hráč nevidí kde na mapě bude spawnovat ani nemůže preferovat region (sever/jih, pobřeží/vnitrozemí) |
 
-## Architektonická pravidla (závazná)
+## Plán implementace
 
-1. AI **nesmí** rozhodovat: produkci nodu, populaci, objevenost, vliv, anexi, startovní populační třídy.
-2. AI **smí**: po `discovered=true` napsat flavor text; po anexi napsat kroniku.
-3. Žádná paralelní entita „world_node" — rozšíříme `province_nodes`.
-4. Žádný shotgun katalog 1000 položek — **20 kultur × 30 profilů** stačí pro stovky variant.
-5. Všechny hráčské akce jdou přes `command-dispatch` (Command Gateway).
-6. **Engine override po AI** (ne jen prompt) — i kdyby AI vrátila špatná čísla, handler je tvrdě přepíše.
+Rozšířím MP lobby wizard ze **3 kroků na 6 kroků**, sjednotím s tím, co engine už umí, a propojím s existujícími tabulkami. Žádné nové simulační mechaniky — pouze **vystavuju to, co už existuje, hráči ve fázi setupu**.
 
----
+### Krok A — Rozšíření UI v `MultiplayerLobby.tsx`
 
-## Patch 0 — Fix startovní populace na 100 rolníků
-
-`generate-civ-start`:
-
-- Aktualizovat prompt (informativní, zarovnává AI rozumně).
-- Klíčové: **přepsat `validateAndClamp` na engine override**, ne clamp. I kdyby AI vrátila 1200, handler uloží:
-
-```ts
-settlement: {
-  population_total: 100,
-  population_peasants: 100,
-  population_burghers: 0,
-  population_clerics: 0,
-  settlement_level: "hamlet",
-  city_stability: clamp(st.city_stability, 55, 80),
-  special_resource_type: ...,    // může z AI
-  settlement_flavor: ...,        // může z AI
-}
-```
-
-AI smí pojmenovat osadu, navrhnout `special_resource_type`, napsat `settlement_flavor`, `core_myth`, `cultural_quirk`, `architectural_style`. Populační čísla a `settlement_level` jsou **konstanty z enginu**.
-
-Aktualizovat i `getDefaults()` na 100/100/0/0.
-
----
-
-## Patch 1 — Datový model
-
-Migrace (jeden balík):
-
-```sql
-ALTER TABLE province_nodes
-  ADD COLUMN is_neutral boolean NOT NULL DEFAULT false,
-  ADD COLUMN discovered boolean NOT NULL DEFAULT false,
-  ADD COLUMN culture_key text,
-  ADD COLUMN profile_key text,
-  ADD COLUMN autonomy_score int DEFAULT 80,
-  ADD COLUMN discovered_at timestamptz,
-  ADD COLUMN discovered_by text;
-
--- Owned nodes hráčových měst se považují za "objevené" pro vlastníka:
-UPDATE province_nodes SET discovered = true WHERE controlled_by IS NOT NULL;
-
-CREATE TABLE map_visibility (
-  session_id uuid NOT NULL,
-  player_name text NOT NULL,
-  tile_q int NOT NULL,
-  tile_r int NOT NULL,
-  visibility text NOT NULL DEFAULT 'unknown',  -- 'unknown'|'seen'|'visible'
-  first_seen_at timestamptz,
-  last_seen_at timestamptz,
-  discovered_by text,
-  PRIMARY KEY (session_id, player_name, tile_q, tile_r)
-);
-
-CREATE TABLE world_node_outputs (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  session_id uuid NOT NULL,
-  node_id uuid NOT NULL REFERENCES province_nodes(id) ON DELETE CASCADE,
-  basket_key text NOT NULL,
-  good_key text,
-  quantity numeric NOT NULL DEFAULT 1,
-  quality numeric NOT NULL DEFAULT 1,
-  exportable_ratio numeric NOT NULL DEFAULT 0.4
-);
-
-CREATE TABLE node_trade_links (
-  session_id uuid NOT NULL,
-  player_name text NOT NULL,
-  node_id uuid NOT NULL REFERENCES province_nodes(id) ON DELETE CASCADE,
-  link_status text NOT NULL DEFAULT 'none',
-  -- none|contacted|trade_open|protected|vassalized|annexed
-  trade_level int DEFAULT 0,
-  route_safety numeric DEFAULT 1,
-  route_distance numeric,
-  export_access numeric,
-  PRIMARY KEY (session_id, player_name, node_id)
-);
-
-CREATE TABLE node_influence (
-  session_id uuid NOT NULL,
-  player_name text NOT NULL,
-  node_id uuid NOT NULL REFERENCES province_nodes(id) ON DELETE CASCADE,
-  economic_influence numeric NOT NULL DEFAULT 0,
-  political_influence numeric NOT NULL DEFAULT 0,
-  military_pressure numeric NOT NULL DEFAULT 0,
-  resistance numeric NOT NULL DEFAULT 50,
-  integration_progress numeric NOT NULL DEFAULT 0,
-  PRIMARY KEY (session_id, player_name, node_id)
-);
-```
-
-RLS: SELECT pro members session, INSERT/UPDATE pouze service_role.
-
----
-
-## Patch 2 — Catalog (engine, žádné AI)
-
-Soubor `src/lib/worldNodeCatalog.ts` + zrcadlo `supabase/functions/_shared/worldNodeCatalog.ts`:
-
-- **20 kultur** (`river_clay_folk`, `highland_shepherds`, `salt_marsh_clans`, `forest_charcoal_burners`, `desert_caravan_kin`, …) — `terrainBias[]`, `worldToneBias[]`, `visualTags[]`, `socialTags[]`, `preferredBaskets[]`, `nameRoots[]`.
-- **30 profilů** (`grain_hamlet`, `fishing_village`, `salt_panner`, `iron_outpost`, `forest_shrine`, `roadside_camp`, `ruined_keep`, …) — `nodeType`, `settlementTier`, `populationRange`, `outputBaskets[]`, `terrainBias[]`, `defenseRange`, `prosperityRange`, `autonomyRange`, `defaultGoods{}`.
-
-Iterace 1 typy: `neutral_settlement`, `resource_outpost`, `shrine`, `ruin`.
-
-Generátor jména = deterministická kombinace `culture.nameRoots` + `seedHash(node_key)`.
-
-Test: shoda hashů obou kopií katalogu.
-
----
-
-## Patch 3 — `generate-neutral-nodes` edge funkce
-
-Vstup: `{ session_id, seed, count? }`.
-
-Pipeline (čistě deterministická, bez AI):
-1. Načíst `province_hexes` + `worldgen_spec` + premise tone.
-2. Vyloučit: tiles startovních měst + radius 2 kolem nich + neprůchozí biomy.
-3. Spočítat `count` podle map size (default `floor(hexCount / 8)`, clamp 8–20).
-4. Pro každý slot: seeded random tile → match `profile_key` na biom → match `culture_key` na terén+tone → vygenerovat `name`, `population`, `defense`, `prosperity`, `autonomy`.
-5. Insert do `province_nodes` (`is_neutral=true`, `discovered=false`, `controlled_by=null`, `is_active=true`).
-6. Insert do `world_node_outputs` (1 produkt pro hamlet/outpost/shrine, 0 pro ruin).
-
-**Pořadí v `create-world-bootstrap`** (oprava):
+Wizard kroky (nové pořadí):
 
 ```text
-1. generate-world-map
-2. založit startovní města + provincie hráče + AI
-3. compute-province-nodes  (jen owned provincie — beze změny)
-4. generate-neutral-nodes  (neowned tiles uprostřed mapy)
-5. world-generate-init     (kroniky / lore, background)
+1. Identita      (existuje — kosmetický cleanup)
+2. Vládce        (NOVÝ — jméno, titul, archetyp, krátký bio)
+3. Domovina      (existuje + spawn preference: sever/jih/východ/západ/pobřeží/vnitrozemí)
+4. Vláda & víra  (NOVÝ — vládní forma, obchodní ideologie, dominantní víra/pantheon)
+5. Lineage       (NOVÝ — výběr napojení na Pradávno; viditelné jen pokud session má ancient_layer)
+6. Frakce + DNA  (existuje — FactionDesigner + živý CivIdentityPreview okamžitě po Generate)
+7. Tajný cíl     (NOVÝ — výběr archetypu z 4-5 možností; finální cíl AI doplní text při startu)
 ```
 
-Failure non-fatal (warning v `steps[]`).
+Heraldika (vlajka/barvy) integruju **do kroku 1 (Identita)** — color picker pro primary/secondary + symbol z palety (kruh/kříž/zvíře/runa) → uloží se do `player_civ_configs.heraldry` (jsonb).
 
----
+### Krok B — Datový model
 
-## Patch 4 — Fog of war při bootstrapu + UI
+Rozšíření `player_civ_configs` o nové sloupce (jeden migration):
 
-Bootstrap: po vytvoření `cities` zapsat počáteční `map_visibility` per player:
-- Tile startovního města → `visible`.
-- Sousedi (radius 1) → `visible`.
-- Radius 2 → `seen`.
-
-`HexMapView`:
-- Načíst `map_visibility` pro `currentPlayerName`.
-- `unknown` → černá maska, žádné labely.
-- `seen` → ztlumeně (opacity 0.4), poslední známý stav.
-- `visible` → plně.
-- Neutral nody se kreslí jen pokud `discovered=true` AND tile aspoň `seen`.
-
----
-
-## Patch 5 — `EXPLORE_TILE` command
-
-Přidat do `command-dispatch`:
-
-```
-EXPLORE_TILE: { tile_q, tile_r, actor_city_id? }
+```sql
+ALTER TABLE player_civ_configs
+  ADD COLUMN IF NOT EXISTS ruler_name      text,
+  ADD COLUMN IF NOT EXISTS ruler_title     text,
+  ADD COLUMN IF NOT EXISTS ruler_archetype text,    -- 'warrior'|'sage'|'merchant'|'priest'|'tyrant'|'diplomat'
+  ADD COLUMN IF NOT EXISTS ruler_bio       text,
+  ADD COLUMN IF NOT EXISTS government_form text,    -- 'monarchy'|'republic'|'theocracy'|'oligarchy'|'tribal'|'magocracy'
+  ADD COLUMN IF NOT EXISTS trade_ideology  text,    -- 'free_market'|'guilds'|'palace_economy'
+  ADD COLUMN IF NOT EXISTS dominant_faith  text,    -- volný text (např. "Kult Slunce")
+  ADD COLUMN IF NOT EXISTS faith_attitude  text,    -- 'tolerant'|'syncretic'|'orthodox'|'militant'
+  ADD COLUMN IF NOT EXISTS spawn_preference text,   -- 'north'|'south'|'east'|'west'|'coast'|'inland'|'any'
+  ADD COLUMN IF NOT EXISTS lineage_ids     text[],  -- výběr z ancient_layer.lineage_candidates
+  ADD COLUMN IF NOT EXISTS secret_objective_archetype text, -- 'conqueror'|'merchant_prince'|'prophet'|'librarian'|'kingmaker'
+  ADD COLUMN IF NOT EXISTS heraldry        jsonb DEFAULT '{}'::jsonb; -- {primary,secondary,symbol}
 ```
 
-Validace: cílový tile musí být sousední k některému `visible` tile hráče.
+Vše idempotentní (`IF NOT EXISTS`) — v souladu s pojistkou A0 z aktuálního plánu Consolidation v4.
 
-Handler (`command-explore-tile` nebo inline):
-1. `map_visibility` pro tile → `visible`, sousedy → `seen` (pokud `unknown`).
-2. Pokud na tile `province_node WHERE is_neutral=true AND discovered=false` → set `discovered=true`, `discovered_by=playerName`, `discovered_at=now()`.
-3. Insert `discoveries` (per-player) + `world_memories` (geo-vázáno).
-4. Insert `world_action_log`.
-5. **Background** (`EdgeRuntime.waitUntil`): `event-narrative` pro flavor text — non-blocking.
+### Krok C — Napojení na `mp-world-generate`
 
----
+V `mp-world-generate/index.ts` (sekce kde se generují vládci, frakce, traits, secret objectives, ancient lineage mapping) **prefill-uju** hráčské volby místo náhodného AI generování:
 
-## Patch 6 — Trade & Influence commands
+- `ruler_*` → uloží se do `civ_identity.rulers` a do počátečního `entity_traits` rulera
+- `government_form` + `trade_ideology` → uloží se do `civ_identity.modifiers` jako trvalé modifiery
+- `dominant_faith` + `faith_attitude` → seed pro `realm_resources.faith` baseline a `entity_traits` na úrovni říše
+- `spawn_preference` → vstup pro spawn allocator (preference, ne hard constraint)
+- `lineage_ids` → namapováno na `ancient_layer.selected_lineages` per-player
+- `secret_objective_archetype` → vstup pro AI generátor `secret_objectives` (AI vygeneruje konkrétní text v rámci archetypu)
+- `heraldry` → uloží se do `civ_identity.visual` a používá se v UI místo iniciály
 
-Čtyři nové commands:
+### Krok D — Live preview
 
-```
-OPEN_TRADE_WITH_NODE       { node_id }
-SEND_ENVOY_TO_NODE         { node_id }
-APPLY_MILITARY_PRESSURE    { node_id, stack_id }
-ANNEX_NODE                 { node_id }
-```
+Po dokončení kroku 6 (FactionDesigner) zobrazím **`CivIdentityPreview` přímo v lobby** (už je tam pro readonly state — rozšířím o stav "configuring" s tlačítkem "Vygenerovat náhled identity") tak, aby hráč okamžitě viděl extrahované modifiery DNA před tím, než klikne "Připraven".
 
-| Command | Effect |
-|---|---|
-| OPEN_TRADE_WITH_NODE | `link_status='trade_open'`, `trade_level=1`; `economic_influence += 5/turn`; vyžaduje `discovered=true` |
-| SEND_ENVOY_TO_NODE | `political_influence += 8` (one-shot/turn); cost: wealth |
-| APPLY_MILITARY_PRESSURE | `military_pressure += 10`; `prosperity_score -= 1`; +unrest hráče |
-| ANNEX_NODE | povoleno **pouze** pokud `integrationPressure ≥ resistance + autonomy*0.5` |
+### Krok E — Validace „integrované, kurva"
 
-Formule (sdílená utilita `_shared/nodeInfluence.ts`):
+Ošetření že MP a SP používají **stejné kontrakty**:
 
-```ts
-integrationPressure = econ*0.45 + pol*0.35 + mil*0.20
-annexAllowed = integrationPressure >= resistance + autonomy*0.5
-```
+- Audit `mp-world-generate` vs. `create-world-bootstrap`: oba čtou stejné `world_foundations` + nově `player_civ_configs` rozšířené sloupce.
+- Sjednotit, že každá hráčská civilizace v MP projde stejným pipeline jako AI frakce v SP (`ai-faction-turn` kontrakt) — žádné zkratky.
+- Pokud hráč nevyplní nový krok, zachová se dnešní AI default (zpětná kompatibilita).
 
-Anexe:
-- `province_nodes`: `is_neutral=false`, `controlled_by=playerName`.
-- `node_trade_links.link_status='annexed'`.
-- Adapter `ownedNeutralNodesAsMinorEconomyInputs()` přičte produkci hráči — **bez** vytvoření `cities` row.
-- `world_chronicle` event (background).
+## Soubory ke změně
 
----
+**Nová migrace:**
+- `supabase/migrations/<ts>_extend_player_civ_configs.sql` — nové sloupce (idempotent)
 
-## Patch 7 — Economy integration
+**Frontend:**
+- `src/components/MultiplayerLobby.tsx` — rozšíření wizardu z 3 na 7 kroků, heraldika picker, spawn preference, lineage UI (podmíněně)
+- `src/components/MultiplayerLobby/RulerStep.tsx` (nový subkomponent)
+- `src/components/MultiplayerLobby/GovernmentFaithStep.tsx` (nový)
+- `src/components/MultiplayerLobby/LineageStep.tsx` (nový — re-use `LineageSelector` ze SP)
+- `src/components/MultiplayerLobby/SecretObjectiveStep.tsx` (nový)
+- `src/components/MultiplayerLobby/HeraldryPicker.tsx` (nový)
 
-`compute-trade-flows`:
-- Načíst `world_node_outputs` JOIN `node_trade_links WHERE link_status IN ('trade_open','protected','vassalized')` pro každého hráče.
-- Přičíst `quantity * exportable_ratio * route_safety` do supply hráče per basket.
-- **Annexed** nody přes adapter, plnou produkci, bez safety penalty.
+**Backend:**
+- `supabase/functions/mp-world-generate/index.ts` — čtení nových polí + jejich aplikace v sekcích: rulers, civ_identity, traits seed, ancient lineage mapping, secret objectives, realm_resources faith baseline, frakce visual
 
-`refresh-economy` beze změny logiky.
+## Důležité poznámky
 
----
-
-## Patch 8 — UI
-
-**Mapa** (`HexMapView`): fog vrstva (Patch 4).
-
-**`NeutralNodePanel.tsx`** (klik na discovered neutral node):
-- Název, kultura, profil, populace, autonomy, defense, prosperity.
-- **Produkce**: list `world_node_outputs`.
-- **Vliv hráče**: 3 progress bary (econ/pol/mil) + resistance + integration progress.
-- Tlačítka (disabled podle stavu): Otevřít obchod / Poslat vyslance / Vojenský tlak / Anektovat.
-- Pod Anektovat vždy zobrazit chybějící podmínku, pokud nepovoleno.
-
-**EconomyTab**: nová sekce „Příspěvek z neutrálních uzlů" — list aktivních trade links + množství.
-
----
-
-## Co NEděláme v této iteraci
-
-- Prehistoric / ancient remnant nody s lore mechanikou.
-- AI generování kultur za běhu.
-- Komplexní diplomacie s nody, války, contested influence.
-- Konverze anexovaného nodu → plnohodnotné `cities`.
-- Multiplayer paralelní vliv více hráčů na týž node.
-- Katalog 1000 kultur — později.
-- AI faction fog of war (AI vidí všechno, zjednodušení).
-
----
-
-## Pořadí patchů (commits)
-
-1. **Patch 0** — start populace 100 (engine override).
-2. **Patch 1** — migrace.
-3. **Patch 2** — catalog (frontend + shared, hash test).
-4. **Patch 3** — `generate-neutral-nodes` + zařazení **ZA** `compute-province-nodes`.
-5. **Patch 4** — fog of war (data + render).
-6. **Patch 5** — `EXPLORE_TILE` command + handler.
-7. **Patch 6** — Trade & Influence commands + handlers.
-8. **Patch 7** — `compute-trade-flows` integrace.
-9. **Patch 8** — UI panely.
-
-Každý patch musí jít zvlášť testovat.
-
----
-
-## Technical notes
-
-- Catalog je sdílen mezi frontend a edge funkcí — duplikát s test hash.
-- Seed pro generaci nodů: `${session_id}:${spec.seed}:neutral_nodes:v1` — deterministický, verzovaný.
-- `map_visibility` je per-player. AI frakce v iteraci 1 fog neřeší.
-- `world_node_outputs.basket_key` musí matchovat kanonické baskety (`staple_food`, `tools`, …) — viz `mem://features/economy/market-baskets-naming`.
-- AI flavor v `event-narrative` čerpá ze stavu **po** commitu — viz `mem://constraints/narrative-grounding`.
-- RLS na nových tabulkách: SELECT pro session members, INSERT/UPDATE jen service_role.
-
----
-
-# Konsolidace v4 — Wiki Orchestrator · Decree Engine · Free Cities · Terminologie
-
-> Status (2026-04-26): **Track B — Wiki Orchestrator: in progress.**
-> Pořadí: B → D → C1+C2 → A0 → A1 → A2 → [baseline snapshot] → A3 → A4.
-
-## Track B — Wiki Orchestrator (✅ partially shipped)
-
-- ✅ Migrace: `wiki_entries` rozšířena o `content_locked`, `image_locked`, `generation_status`, `image_generation_status`, `generation_version`, `last_generated_at` + index `(session_id, generation_status)`.
-- ✅ `supabase/functions/wiki-orchestrator/index.ts` — JEDINÁ gateway s akcemi `ensure | regenerate | lock | unlock` a per-entity `GENERATION_POLICY` (`law/chronicle/treaty/declaration` = text-only).
-- ⏳ Refactor existujících funkcí na delegátory (`wiki-generate`, `wiki-enrich`, `backfill-wiki`, `batch-regenerate-wiki`, `encyclopedia-generate`, `encyclopedia-image`).
-- ⏳ UI v `WikiPanel`: tlačítka „Regenerovat" + „Vygenerovat obrázek" (pro text-only entity), indikátor 🔒 / ⏳ / ⚠️.
-- 🔒 Pravidlo: žádný `lovable-ai-*` ani image call mimo `wiki-orchestrator/index.ts`.
-
-## Track D — Terminologie + Wiki root „Svět" (todo)
-
-- D1: V `mp-world-generate` zavolat `wiki-orchestrator ensure { entity_type:'world', entity_id:session_id }` z `world_premise`.
-- D2: UI rename `Stát → Země`, `Vládce státu → Vládce země`, `Státní bonusy → Bonusy země`. Fáze: Zakladatel města → Protektor provincie → Vládce země.
-- D3: ChroWiki taby `Svět`, `Svobodná města`, `Provincie`, `Země`, `Neutrální clustery`, `Zákony`, `Smlouvy`, `Dynastie`, `Náboženství`, `Obchodní sítě`, `Stavby`, `Války`, `Kronika`.
-
-## Track C1+C2 — Political schema + Free Cities seed (todo)
-
-- C1: `political_entities`, `political_entity_nodes`, rozšíření `province_nodes` o `political_status`, `political_entity_id`, `province_entity_id`, `legitimacy_score`, `integration_score`. RLS: members read, service_role write.
-- C2: V `mp-world-generate` / `create-world-bootstrap` pro každý unowned city node založit `free_city` political entity + `wiki-orchestrator ensure entity_type='free_city'`.
-
-## Track A — Decree Engine (rozděleno)
-
-- **A0** (todo): `CREATE TABLE IF NOT EXISTS law_effects` (`effect_mode: instant_delta|recurring_delta|temporary_modifier`, `effect_priority`, `stacking_rule`, `duration_turns`, `remaining_turns`); `CREATE TABLE IF NOT EXISTS realm_metrics`. `_shared/decreeEngine.ts` s `ALLOWED_EFFECT_TARGETS` (whitelist; `wealth → realm_resources.total_wealth`), `MODE_TARGET_RULES` (pipeline modifiery jen pro `temporary_modifier`), `validateAndClampPayload`, `resolveConflicts`. Init upsert `realm_metrics` v `mp-world-generate` a `join-game`.
-- **A1** (todo): `decree-interpret` — Lovable AI překlad NL → JSON payload, validace, preview.
-- **A2** (todo): `decree-enact` — `lifecycle_status='active'`, `expires_at_turn = current_turn + max(duration_turns)`, `INSERT law_effects` s `remaining_turns = duration_turns` pro ongoing, aplikuje POUZE `instant_delta`, `wiki-orchestrator ensure entity_type='law'`.
-- **GATE**: baseline snapshot ekonomiky před A3.
-- **A3** (gated): `aggregateActiveModifiers` čte `law_effects WHERE laws.lifecycle_status='active' AND effect_mode='temporary_modifier' AND remaining_turns > 0`. Hook do `compute-trade-flows` + `compute-economy-flow`. NIKDY nezapisuje do `realm_resources`.
-- **A4** (after A3): Tick `applyActiveDecrees` aplikuje `recurring_delta` (s filtrem `laws.lifecycle_status='active'`), decay `remaining_turns`, `expired` lifecycle, `administrative_pressure *= 0.9`. UI Council: preview modal s per-effect badges, sekce „Aktivní dekrety" s `Zrušit`.
-
-## Pojistky (závazné)
-
-1. `CREATE TABLE IF NOT EXISTS` — všechny migrace idempotentní.
-2. Filtr `laws.lifecycle_status = 'active'` ve VŠECH dotazech nad `law_effects` (`aggregateActiveModifiers`, `applyActiveDecrees`). Revoked/expired nesmí ožít.
-3. `wealth ↔ realm_resources.total_wealth` mapování v engine vrstvě, ne v UI.
-4. Wiki orchestrator policy: `law/chronicle/treaty/declaration` = text-only by default. Image jen přes `regenerate fields:['image']`.
-
-## Track B — completed steps (2026-04-26)
-
-- ✅ Migrace `wiki_entries` (locks + status fields + index).
-- ✅ `supabase/functions/wiki-orchestrator/index.ts` — actions `ensure | regenerate | lock | unlock` + `GENERATION_POLICY`.
-- ✅ Delegators: `backfill-wiki` a `batch-regenerate-wiki` volají orchestrator.
-- ✅ UI: `WikiPanel.handleGenerateText` + `handleGenerateImage` přepojeny na orchestrator.
-- ⏭️ Zbývá (volitelné, nelze rozbít): refactor `wiki-enrich`, `encyclopedia-generate`, `encyclopedia-image` na delegátory — odloženo, mají vlastní specifickou logiku a stále fungují přes `wiki-generate`.
-
-**Další krok:** Track D — wiki root „Svět" + UI rename Stát→Země + ChroWiki taby.
+- **Heraldika** = lehký SVG generátor (color × symbol), žádná AI generace obrázku ve fázi setupu. AI obrázek vlajky se případně vygeneruje až po startu světa přes `wiki-orchestrator` (regenerate fields:['image']) v souladu s policy z `mem://features/chrowiki/orchestrator-gateway`.
+- **Lineage krok** se zobrazí pouze pokud `world_foundations` má `ancient_layer` jsonb naplněný (host povolil Pradávno v SP wizardu). Jinak krok přeskočíme.
+- **Bez nových mechanik** — pouze vystavuju existující dimenze. Engine už umí government_form (přes traits), trade_ideology (mem://), faith (mem://), lineage (SP wizard), secret_objectives (panel), heraldry (frakce mají primary_color).
+- **Zpětná kompatibilita**: existující MP relace bez nových polí dál fungují (nové sloupce mají default nebo NULL → fallback na dnešní AI generování).
