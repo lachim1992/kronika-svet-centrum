@@ -24,9 +24,44 @@ Deno.serve(async (req) => {
     }
 
     // ── Serialize all data sources ──
-    const eventsText = (confirmedEvents || []).map((e: any) =>
-      `[${e.event_type}] ${e.player}${e.location ? ` @ ${e.location}` : ""}${e.note ? ` — "${e.note}"` : ""}${e.result ? ` → ${e.result}` : ""}${e.casualties ? ` (ztráty: ${e.casualties})` : ""}${e.importance === "major" ? " [DŮLEŽITÉ]" : ""}${e.treaty_type ? ` [Smlouva: ${e.treaty_type}]` : ""}${e.terms_summary ? ` Podmínky: ${e.terms_summary}` : ""}`
-    ).join("\n");
+    // Patch 9d: enrich node-related events with culture/profile/anex context
+    const NODE_EVENT_TYPES = new Set([
+      "exploration", "trade_link_opened", "envoy_sent",
+      "military_pressure_applied", "node_annexed",
+    ]);
+    const renderNodeEvent = (e: any): string | null => {
+      if (!NODE_EVENT_TYPES.has(e.event_type)) return null;
+      const ref = e.reference || {};
+      const culture = ref.culture ? ` kultury ${ref.culture}` : "";
+      const profile = ref.profile ? ` [${ref.profile}]` : "";
+      const nodeName = ref.node_name || "";
+      const nodes = Array.isArray(ref.discovered_nodes) ? ref.discovered_nodes : [];
+      switch (e.event_type) {
+        case "exploration":
+          if (nodes.length > 0) {
+            const list = nodes.map((n: any) =>
+              `${n.name}${n.culture ? ` (${n.culture})` : ""}${n.profile ? ` [${n.profile}]` : ""}`
+            ).join(", ");
+            return `[OBJEV] ${e.player} objevil neutrální uzly: ${list}.`;
+          }
+          return `[PRŮZKUM] ${e.player} prozkoumal hex ${e.location || ""}.`;
+        case "trade_link_opened":
+          return `[OBCHOD] ${e.player} otevřel obchodní spojení s uzlem ${nodeName}${culture}${profile}.`;
+        case "envoy_sent":
+          return `[DIPLOMACIE] ${e.player} vyslal vyslance k ${nodeName}${culture}${profile}.`;
+        case "military_pressure_applied":
+          return `[NÁTLAK] ${e.player} vyvíjí vojenský tlak na ${nodeName}${culture}${profile}.`;
+        case "node_annexed":
+          return `[ANEXE] ${e.player} pohltil uzel ${nodeName}${culture}${profile} a začlenil jej do své říše.`;
+      }
+      return null;
+    };
+
+    const eventsText = (confirmedEvents || []).map((e: any) => {
+      const enriched = renderNodeEvent(e);
+      if (enriched) return enriched + (e.importance === "major" ? " [DŮLEŽITÉ]" : "");
+      return `[${e.event_type}] ${e.player}${e.location ? ` @ ${e.location}` : ""}${e.note ? ` — "${e.note}"` : ""}${e.result ? ` → ${e.result}` : ""}${e.casualties ? ` (ztráty: ${e.casualties})` : ""}${e.importance === "major" ? " [DŮLEŽITÉ]" : ""}${e.treaty_type ? ` [Smlouva: ${e.treaty_type}]` : ""}${e.terms_summary ? ` Podmínky: ${e.terms_summary}` : ""}`;
+    }).join("\n");
 
     const annotationsText = (annotations || []).map((a: any) =>
       `${a.author} o [${a.event_type || "události"}]: "${a.note_text}" (${a.visibility})`
