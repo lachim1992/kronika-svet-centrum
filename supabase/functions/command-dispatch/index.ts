@@ -3012,6 +3012,7 @@ async function executeAnnexNode(
   // Patch 14 — Public rumor about annexation (visible to all players).
   await emitAnnexationRumor(supabase, sessionId, turnNumber, actor.name, node);
 
+  const ctxA = nodeContext(node);
   return await insertEvents(supabase, commandId, [{
     ...base, event_type: "node_annexed",
     note: `${actor.name} anektoval ${node.name}${ctxA.suffix}.`,
