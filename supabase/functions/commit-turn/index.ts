@@ -184,10 +184,11 @@ Deno.serve(async (req) => {
     }
 
     // ═══════════════════════════════════════════
-    // 3. AI FACTIONS — SEQUENTIAL with reactions & battle resolution
-    // Each faction acts, then its queued battles are resolved immediately.
-    // Factions run in order so later factions see earlier factions' actions.
+    // 3. AI FACTIONS — PARALLEL across factions, sequential battles inside.
+    // Each faction acts independently (no shared turn-state mutation between AI),
+    // and its queued battles are resolved sequentially after its decision.
     // ═══════════════════════════════════════════
+    const t3 = Date.now();
     try {
       const { data: aiFactions } = await supabase.from("ai_factions")
         .select("faction_name")
@@ -195,19 +196,18 @@ Deno.serve(async (req) => {
         .eq("is_active", true);
 
       if (aiFactions && aiFactions.length > 0) {
-        let processed = 0;
         const factionResults: Record<string, any> = {};
 
-        for (const faction of aiFactions) {
+        const runFaction = async (faction: { faction_name: string }) => {
+          const fStart = Date.now();
           try {
             // 3a. AI faction makes decisions
             const { data: factionData } = await supabase.functions.invoke("ai-faction-turn", {
               body: { sessionId, factionName: faction.faction_name },
             });
             factionResults[faction.faction_name] = factionData;
-            processed++;
 
-            // 3b. Resolve any battles queued by this faction
+            // 3b. Resolve any battles queued by this faction (sequential within faction)
             const { data: pendingBattles } = await supabase.from("action_queue")
               .select("id, action_data")
               .eq("session_id", sessionId)
@@ -233,7 +233,6 @@ Deno.serve(async (req) => {
                     player_name: faction.faction_name,
                   },
                 });
-                // Mark battle as resolved
                 await supabase.from("action_queue")
                   .update({ status: "completed" })
                   .eq("id", battle.id);
@@ -244,11 +243,18 @@ Deno.serve(async (req) => {
                   .eq("id", battle.id);
               }
             }
+            console.log(`[commit-turn] ai-faction ${faction.faction_name}: ${Date.now() - fStart}ms`);
+            return { ok: true, name: faction.faction_name };
           } catch (e) {
             console.error(`AI faction ${faction.faction_name} error:`, e);
+            return { ok: false, name: faction.faction_name, error: (e as Error).message };
           }
-        }
-        results.aiFactions = { processed, details: factionResults };
+        };
+
+        const settled = await Promise.allSettled(aiFactions.map(runFaction));
+        const processed = settled.filter((s) => s.status === "fulfilled" && (s.value as any).ok).length;
+        results.aiFactions = { processed, total: aiFactions.length, details: factionResults };
+        console.log(`[commit-turn] phase-3 ai-factions parallel: ${Date.now() - t3}ms (${processed}/${aiFactions.length})`);
       } else {
         results.aiFactions = { skipped: true, reason: "no_active_factions" };
       }
