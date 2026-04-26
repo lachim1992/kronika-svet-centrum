@@ -96,7 +96,7 @@ export function composeBootstrapFromSpec(args: {
   mode: GameMode;
   spec: WorldgenSpecV1;
   preWorldPremise?: string;
-  identity?: WizardIdentityInput;
+  identity?: WorldIdentityInput;
   factions?: FactionSeedInput[];
 }): CreateWorldBootstrapRequest {
   const { spec } = args;
