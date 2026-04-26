@@ -297,7 +297,7 @@ Deno.serve(async (req) => {
         .eq("session_id", sessionId).neq("player_name", factionName),
       supabase.from("node_blockades")
         .select("node_id, blocked_by_player, blocked_until_turn, reason")
-        .eq("session_id", sessionId).gte("blocked_until_turn", currentTurn),
+        .eq("session_id", sessionId).gte("blocked_until_turn", turn),
     ]);
     const influenceByNode = new Map<string, any>();
     for (const r of (nodeInfluenceRows || [])) influenceByNode.set(r.node_id, r);
