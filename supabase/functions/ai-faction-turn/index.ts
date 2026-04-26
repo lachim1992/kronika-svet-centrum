@@ -696,7 +696,7 @@ Rozhodni, co frakce udělá v tomto kole. ${milMetrics.warState === "war" ? "JST
                     targetHexQ: { type: "number" },
                     targetHexR: { type: "number" },
                     settlementName: { type: "string" },
-                    targetNodeName: { type: "string", description: "Name of strategic node (for fortify_node, blockade_route)" },
+                    targetNodeName: { type: "string", description: "Name of strategic or neutral node (for fortify_node, blockade_route, open_trade_with_node, send_envoy_to_node, apply_military_pressure, annex_node)" },
                     mobilizationRate: { type: "number" },
                     messageText: { type: "string" },
                     peaceConditions: {
