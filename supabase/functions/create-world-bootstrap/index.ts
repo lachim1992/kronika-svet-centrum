@@ -394,6 +394,21 @@ Deno.serve(async (req) => {
       steps.push({ step: "generate-neutral-nodes", ok: false, durationMs: performance.now() - t7aN });
     }
 
+    // Step 7a-ter: initialize fog of war (per-player visibility around starting cities)
+    const t7aF = performance.now();
+    try {
+      const initRes = await initializeFogOfWar(sb, normalized.sessionId);
+      steps.push({
+        step: "init-fog-of-war",
+        ok: true,
+        durationMs: performance.now() - t7aF,
+        detail: `players=${initRes.players} tiles=${initRes.tilesWritten}`,
+      });
+    } catch (e) {
+      warnings.push(`init-fog-of-war: ${e instanceof Error ? e.message : String(e)}`);
+      steps.push({ step: "init-fog-of-war", ok: false, durationMs: performance.now() - t7aF });
+    }
+
     // Step 7b: compute province routes (synchronous)
     const t7b2 = performance.now();
     try {
