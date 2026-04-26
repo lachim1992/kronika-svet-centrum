@@ -9609,16 +9609,22 @@ export type Database = {
         Row: {
           ai_description: string | null
           body_md: string | null
+          content_locked: boolean
           created_at: string
           entity_id: string | null
           entity_name: string
           entity_type: string
           generating_lock: string | null
+          generation_status: string
+          generation_version: number
           history_cache: Json | null
           id: string
+          image_generation_status: string
+          image_locked: boolean
           image_prompt: string | null
           image_url: string | null
           last_enriched_turn: number | null
+          last_generated_at: string | null
           owner_player: string
           references: Json | null
           saga_cache: Json | null
@@ -9631,16 +9637,22 @@ export type Database = {
         Insert: {
           ai_description?: string | null
           body_md?: string | null
+          content_locked?: boolean
           created_at?: string
           entity_id?: string | null
           entity_name: string
           entity_type?: string
           generating_lock?: string | null
+          generation_status?: string
+          generation_version?: number
           history_cache?: Json | null
           id?: string
+          image_generation_status?: string
+          image_locked?: boolean
           image_prompt?: string | null
           image_url?: string | null
           last_enriched_turn?: number | null
+          last_generated_at?: string | null
           owner_player: string
           references?: Json | null
           saga_cache?: Json | null
@@ -9653,16 +9665,22 @@ export type Database = {
         Update: {
           ai_description?: string | null
           body_md?: string | null
+          content_locked?: boolean
           created_at?: string
           entity_id?: string | null
           entity_name?: string
           entity_type?: string
           generating_lock?: string | null
+          generation_status?: string
+          generation_version?: number
           history_cache?: Json | null
           id?: string
+          image_generation_status?: string
+          image_locked?: boolean
           image_prompt?: string | null
           image_url?: string | null
           last_enriched_turn?: number | null
+          last_generated_at?: string | null
           owner_player?: string
           references?: Json | null
           saga_cache?: Json | null
