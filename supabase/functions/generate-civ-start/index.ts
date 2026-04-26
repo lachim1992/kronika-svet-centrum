@@ -79,10 +79,6 @@ Vygeneruj startovní podmínky jako JSON:
     "stables_capacity": <int 50-200>
   },
   "settlement": {
-    "population_total": <int 800-1500>,
-    "population_peasants": <int>,
-    "population_burghers": <int>,
-    "population_clerics": <int>,
     "city_stability": <int 55-80>,
     "special_resource_type": "<IRON|STONE|HORSES|NONE>",
     "settlement_flavor": "<krátký český popis charakteru osady, MUSÍ odkazovat na pradávné dědictví světa nebo Zlom>"
