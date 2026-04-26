@@ -1,5 +1,14 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { computeAnnexCheck, DEFAULT_INFLUENCE } from "../_shared/nodeInfluence.ts";
+import {
+  computeAnnexCheck,
+  DEFAULT_INFLUENCE,
+  computePressure,
+  computeContestation,
+  applyRivalryErosion,
+  scaleByCompetition,
+  type InfluenceState,
+  type RivalRow,
+} from "../_shared/nodeInfluence.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -360,6 +369,9 @@ async function executeCommand(
 
     case "ANNEX_NODE":
       return await executeAnnexNode(supabase, base, actor, payload, commandId, sessionId, turnNumber);
+
+    case "BLOCK_NODE_ANNEXATION":
+      return await executeBlockNodeAnnexation(supabase, base, actor, payload, commandId, sessionId, turnNumber);
 
     case "GENERIC":
       return insertEvents(supabase, commandId, [{
@@ -2733,6 +2745,74 @@ async function upsertInfluence(
   return next;
 }
 
+// ─── Patch 12 — Multiplayer contestation helpers ───
+
+async function loadRivalInfluences(
+  supabase: any, sessionId: string, nodeId: string, excludePlayer: string,
+): Promise<RivalRow[]> {
+  const { data } = await supabase
+    .from("node_influence")
+    .select("player_name, economic_influence, political_influence, military_pressure, resistance, integration_progress")
+    .eq("session_id", sessionId).eq("node_id", nodeId)
+    .neq("player_name", excludePlayer);
+  return ((data || []) as any[]).map((r) => {
+    const inf: InfluenceState = {
+      economic_influence: Number(r.economic_influence) || 0,
+      political_influence: Number(r.political_influence) || 0,
+      military_pressure: Number(r.military_pressure) || 0,
+      resistance: Number(r.resistance) || 0,
+      integration_progress: Number(r.integration_progress) || 0,
+    };
+    return { player_name: String(r.player_name), influence: inf, pressure: computePressure(inf) };
+  });
+}
+
+async function countActiveTradeRivals(
+  supabase: any, sessionId: string, nodeId: string, excludePlayer: string,
+): Promise<number> {
+  const { data } = await supabase
+    .from("node_trade_links")
+    .select("player_name, link_status")
+    .eq("session_id", sessionId).eq("node_id", nodeId)
+    .neq("player_name", excludePlayer)
+    .in("link_status", ["trade_open", "protected", "vassalized"]);
+  return (data || []).length;
+}
+
+async function applyRivalryErosionToAll(
+  supabase: any, sessionId: string, nodeId: string, actorName: string,
+  channel: "economic_influence" | "political_influence" | "military_pressure",
+  actorGain: number,
+): Promise<{ player_name: string; before: number; after: number }[]> {
+  const rivals = await loadRivalInfluences(supabase, sessionId, nodeId, actorName);
+  const log: { player_name: string; before: number; after: number }[] = [];
+  for (const r of rivals) {
+    const patch = applyRivalryErosion(r.influence, channel, actorGain);
+    const next = patch[channel];
+    if (next === undefined) continue;
+    if (next === r.influence[channel]) continue;
+    await supabase.from("node_influence").update({
+      [channel]: next, updated_at: new Date().toISOString(),
+    }).eq("session_id", sessionId).eq("node_id", nodeId).eq("player_name", r.player_name);
+    log.push({ player_name: r.player_name, before: r.influence[channel], after: next });
+  }
+  return log;
+}
+
+async function loadActiveBlockade(
+  supabase: any, sessionId: string, nodeId: string, currentTurn: number,
+): Promise<{ blocked_by_player: string; blocked_until_turn: number; reason: string | null } | null> {
+  const { data } = await supabase
+    .from("node_blockades")
+    .select("blocked_by_player, blocked_until_turn, reason")
+    .eq("session_id", sessionId).eq("node_id", nodeId)
+    .gte("blocked_until_turn", currentTurn)
+    .order("blocked_until_turn", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  return (data as any) || null;
+}
+
 async function upsertTradeLink(
   supabase: any, sessionId: string, playerName: string, nodeId: string,
   patch: { link_status?: string; trade_level?: number; route_safety?: number },
@@ -2766,20 +2846,35 @@ async function executeOpenTradeWithNode(
   if (r.error) return { events: [], error: r.error, status: r.status };
   const node = r.node!;
 
+  // Trade race: each existing rival shrinks the influence gain.
+  const rivalCount = await countActiveTradeRivals(supabase, sessionId, nodeId, actor.name);
+  const baseGain = 5;
+  const gain = scaleByCompetition(baseGain, rivalCount);
+
   const link = await upsertTradeLink(supabase, sessionId, actor.name, nodeId, {
     link_status: "trade_open", trade_level: 1,
   });
+  const current = await loadOrInitInfluence(supabase, sessionId, actor.name, nodeId);
   const inf = await upsertInfluence(supabase, sessionId, actor.name, nodeId, {
-    economic_influence: (await loadOrInitInfluence(supabase, sessionId, actor.name, nodeId)).economic_influence + 5,
+    economic_influence: current.economic_influence + gain,
   });
 
+  // Rivalry erosion: rivals lose a small amount of economic_influence.
+  const erosionLog = await applyRivalryErosionToAll(
+    supabase, sessionId, nodeId, actor.name, "economic_influence", gain,
+  );
+
   const ctx = nodeContext(node);
+  const competitionTag = rivalCount > 0 ? ` · konkurence: ${rivalCount}` : "";
   return await insertEvents(supabase, commandId, [{
     ...base, event_type: "trade_link_opened",
-    note: `${actor.name} otevřel obchod s ${node.name}${ctx.suffix}.`,
+    note: `${actor.name} otevřel obchod s ${node.name}${ctx.suffix} (+${gain.toFixed(1)} ekon.${competitionTag}).`,
     importance: "normal",
-    reference: { node_id: nodeId, node_name: node.name, culture: node.culture_key, profile: node.profile_key, link, influence: inf },
-  }], { link, influence: inf });
+    reference: {
+      node_id: nodeId, node_name: node.name, culture: node.culture_key, profile: node.profile_key,
+      link, influence: inf, gain, rival_count: rivalCount, rival_erosion: erosionLog,
+    },
+  }], { link, influence: inf, gain, rivalCount, erosionLog });
 }
 
 async function executeSendEnvoyToNode(
@@ -2793,18 +2888,23 @@ async function executeSendEnvoyToNode(
   if (r.error) return { events: [], error: r.error, status: r.status };
   const node = r.node!;
 
+  const gain = 8;
   const current = await loadOrInitInfluence(supabase, sessionId, actor.name, nodeId);
   const inf = await upsertInfluence(supabase, sessionId, actor.name, nodeId, {
-    political_influence: current.political_influence + 8,
+    political_influence: current.political_influence + gain,
   });
+
+  const erosionLog = await applyRivalryErosionToAll(
+    supabase, sessionId, nodeId, actor.name, "political_influence", gain,
+  );
 
   const ctxE = nodeContext(node);
   return await insertEvents(supabase, commandId, [{
     ...base, event_type: "envoy_sent",
     note: `${actor.name} vyslal vyslance k ${node.name}${ctxE.suffix}.`,
     importance: "normal",
-    reference: { node_id: nodeId, ...ctxE.tags, influence: inf },
-  }], { influence: inf });
+    reference: { node_id: nodeId, ...ctxE.tags, influence: inf, rival_erosion: erosionLog },
+  }], { influence: inf, erosionLog });
 }
 
 async function executeApplyMilitaryPressure(
@@ -2818,19 +2918,24 @@ async function executeApplyMilitaryPressure(
   if (r.error) return { events: [], error: r.error, status: r.status };
   const node = r.node!;
 
+  const gain = 10;
   const current = await loadOrInitInfluence(supabase, sessionId, actor.name, nodeId);
   const inf = await upsertInfluence(supabase, sessionId, actor.name, nodeId, {
-    military_pressure: current.military_pressure + 10,
+    military_pressure: current.military_pressure + gain,
     resistance: Math.min(100, current.resistance + 3), // pushback raises resistance slightly
   });
+
+  const erosionLog = await applyRivalryErosionToAll(
+    supabase, sessionId, nodeId, actor.name, "military_pressure", gain,
+  );
 
   const ctxP = nodeContext(node);
   return await insertEvents(supabase, commandId, [{
     ...base, event_type: "military_pressure_applied",
     note: `${actor.name} vyvíjí vojenský tlak na ${node.name}${ctxP.suffix}.`,
     importance: "high",
-    reference: { node_id: nodeId, ...ctxP.tags, influence: inf },
-  }], { influence: inf });
+    reference: { node_id: nodeId, ...ctxP.tags, influence: inf, rival_erosion: erosionLog },
+  }], { influence: inf, erosionLog });
 }
 
 async function executeAnnexNode(
@@ -2854,6 +2959,25 @@ async function executeAnnexNode(
     return {
       events: [], status: 409,
       error: `Anexe ${node.name} není povolena: tlak ${check.integrationPressure.toFixed(1)} / práh ${check.threshold.toFixed(1)} (chybí ${check.missing.toFixed(1)})`,
+    };
+  }
+
+  // Patch 12 — Diplomatic blockade lock
+  const blockade = await loadActiveBlockade(supabase, sessionId, nodeId, turnNumber);
+  if (blockade && blockade.blocked_by_player !== actor.name) {
+    return {
+      events: [], status: 409,
+      error: `Anexe ${node.name} je diplomaticky zablokována hráčem ${blockade.blocked_by_player} do tahu ${blockade.blocked_until_turn}.`,
+    };
+  }
+
+  // Patch 12 — Multiplayer contestation
+  const rivals = await loadRivalInfluences(supabase, sessionId, nodeId, actor.name);
+  const contest = computeContestation({ actorPressure: check.integrationPressure, rivals });
+  if (contest.contested) {
+    return {
+      events: [], status: 409,
+      error: `Anexe ${node.name} je kontestována (${contest.contestants}× rival, nejsilnější má tlak ${contest.topRivalPressure.toFixed(1)} vs. tvých ${check.integrationPressure.toFixed(1)}). Oslab konkurenci nebo zvyš svůj tlak.`,
     };
   }
 
@@ -2885,6 +3009,41 @@ async function executeAnnexNode(
     ...base, event_type: "node_annexed",
     note: `${actor.name} anektoval ${node.name}${ctxA.suffix}.`,
     importance: "high",
-    reference: { node_id: nodeId, ...ctxA.tags, check },
-  }], { node_id: nodeId, annex_check: check });
+    reference: { node_id: nodeId, ...ctxA.tags, check, contest },
+  }], { node_id: nodeId, annex_check: check, contest });
+}
+
+// Patch 12 — Diplomatic blockade against another player's annexation attempt.
+// Cost: dispatch-level (engine accepts; resource enforcement is left to upstream
+// validation, since this command is intended to be paired with prestige cost).
+async function executeBlockNodeAnnexation(
+  supabase: any, base: any, actor: Actor, payload: any,
+  commandId: string, sessionId: string, turnNumber: number,
+): Promise<CommandResult> {
+  const nodeId = String(payload?.node_id || "");
+  if (!nodeId) return { events: [], error: "node_id required", status: 400 };
+
+  const r = await loadNeutralNodeForActor(supabase, sessionId, nodeId, actor.name);
+  if (r.error) return { events: [], error: r.error, status: r.status };
+  const node = r.node!;
+
+  const durationTurns = Math.max(1, Math.min(10, Number(payload?.duration_turns ?? 3)));
+  const reason = String(payload?.reason || "Diplomatický blok").slice(0, 200);
+  const blockedUntil = turnNumber + durationTurns;
+
+  await supabase.from("node_blockades").insert({
+    session_id: sessionId,
+    node_id: nodeId,
+    blocked_by_player: actor.name,
+    blocked_until_turn: blockedUntil,
+    reason,
+  });
+
+  const ctxB = nodeContext(node);
+  return await insertEvents(supabase, commandId, [{
+    ...base, event_type: "node_annexation_blocked",
+    note: `${actor.name} diplomaticky zablokoval anexi ${node.name}${ctxB.suffix} do tahu ${blockedUntil}.`,
+    importance: "high",
+    reference: { node_id: nodeId, ...ctxB.tags, blocked_until_turn: blockedUntil, duration_turns: durationTurns, reason },
+  }], { node_id: nodeId, blocked_until_turn: blockedUntil, duration_turns: durationTurns });
 }

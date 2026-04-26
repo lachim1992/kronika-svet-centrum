@@ -6209,6 +6209,44 @@ export type Database = {
           },
         ]
       }
+      node_blockades: {
+        Row: {
+          blocked_by_player: string
+          blocked_until_turn: number
+          created_at: string
+          id: string
+          node_id: string
+          reason: string | null
+          session_id: string
+        }
+        Insert: {
+          blocked_by_player: string
+          blocked_until_turn: number
+          created_at?: string
+          id?: string
+          node_id: string
+          reason?: string | null
+          session_id: string
+        }
+        Update: {
+          blocked_by_player?: string
+          blocked_until_turn?: number
+          created_at?: string
+          id?: string
+          node_id?: string
+          reason?: string | null
+          session_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "node_blockades_node_id_fkey"
+            columns: ["node_id"]
+            isOneToOne: false
+            referencedRelation: "province_nodes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       node_economy_history: {
         Row: {
           capacity_score: number

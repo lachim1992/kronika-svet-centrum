@@ -1,6 +1,6 @@
 # Discovery, Neutral Nodes & Influence Loop
 
-> Status: Patch 0–8 ✅ · Patch 9a–9e ✅ (narrative integration) · Patch 10 ✅ (WikiPanel: neutral_node + annexed_node entity types) · Patch 11 ✅ (influence decay ve world-tick: econ −2 bez trade, pol −3, mil −5 bez pressure, resistance +1)
+> Status: Patch 0–8 ✅ · Patch 9a–9e ✅ (narrative integration) · Patch 10 ✅ (WikiPanel: neutral_node + annexed_node entity types) · Patch 11 ✅ (influence decay ve world-tick) · Patch 12 ✅ (multiplayer kontestace: rivalry erosion 15 %, trade race scaling, contestation lock ≥ 60 %, BLOCK_NODE_ANNEXATION + tabulka node_blockades, UI badge + rival list)
 
 ## Verdikt po analýze repa
 

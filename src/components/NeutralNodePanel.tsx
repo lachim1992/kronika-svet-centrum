@@ -1,13 +1,13 @@
 import { useEffect, useState, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
-import { Progress } from "@/components/ui/progress";
-import { Loader2, Coins, Crown, Swords, Flag } from "lucide-react";
+import { Loader2, Coins, Crown, Swords, Flag, Shield, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 
 interface NeutralNodePanelProps {
   sessionId: string;
   playerName: string;
+  currentTurn?: number;
   node: {
     id: string;
     name: string;
@@ -40,33 +40,52 @@ interface InfluenceRow {
   integration_progress: number;
 }
 
+interface RivalInfluenceRow extends InfluenceRow {
+  player_name: string;
+}
+
 interface TradeLink {
   link_status: string;
   trade_level: number | null;
 }
 
+interface BlockadeRow {
+  blocked_by_player: string;
+  blocked_until_turn: number;
+  reason: string | null;
+}
+
 const integrationPressure = (i: InfluenceRow) =>
   i.economic_influence * 0.45 + i.political_influence * 0.35 + i.military_pressure * 0.20;
 
-export default function NeutralNodePanel({ sessionId, playerName, node, onChanged }: NeutralNodePanelProps) {
+// Anonymize rival names so multiplayer espionage is fair.
+const anonRivalName = (idx: number) => `Rival ${String.fromCharCode(65 + idx)}`;
+
+export default function NeutralNodePanel({ sessionId, playerName, currentTurn, node, onChanged }: NeutralNodePanelProps) {
   const [outputs, setOutputs] = useState<NodeOutput[]>([]);
   const [influence, setInfluence] = useState<InfluenceRow>({
     economic_influence: 0, political_influence: 0, military_pressure: 0, resistance: 50, integration_progress: 0,
   });
   const [link, setLink] = useState<TradeLink | null>(null);
+  const [rivals, setRivals] = useState<RivalInfluenceRow[]>([]);
+  const [blockade, setBlockade] = useState<BlockadeRow | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
-    const [oRes, iRes, lRes] = await Promise.all([
+    const [oRes, iRes, lRes, rRes, bRes] = await Promise.all([
       supabase.from("world_node_outputs").select("basket_key, good_key, quantity, quality, exportable_ratio").eq("node_id", node.id),
       supabase.from("node_influence").select("economic_influence, political_influence, military_pressure, resistance, integration_progress").eq("session_id", sessionId).eq("player_name", playerName).eq("node_id", node.id).maybeSingle(),
       supabase.from("node_trade_links").select("link_status, trade_level").eq("session_id", sessionId).eq("player_name", playerName).eq("node_id", node.id).maybeSingle(),
+      supabase.from("node_influence").select("player_name, economic_influence, political_influence, military_pressure, resistance, integration_progress").eq("session_id", sessionId).eq("node_id", node.id).neq("player_name", playerName),
+      supabase.from("node_blockades").select("blocked_by_player, blocked_until_turn, reason").eq("session_id", sessionId).eq("node_id", node.id).order("blocked_until_turn", { ascending: false }).limit(1).maybeSingle(),
     ]);
     setOutputs((oRes.data || []) as NodeOutput[]);
     if (iRes.data) setInfluence(iRes.data as InfluenceRow);
     setLink((lRes.data as TradeLink) || null);
+    setRivals(((rRes.data as RivalInfluenceRow[]) || []).filter((r) => integrationPressure(r) > 0));
+    setBlockade((bRes.data as BlockadeRow) || null);
     setLoading(false);
   }, [node.id, sessionId, playerName]);
 
@@ -112,8 +131,39 @@ export default function NeutralNodePanel({ sessionId, playerName, node, onChange
   const annexAllowed = pressure >= threshold;
   const tradeOpen = link?.link_status === "trade_open" || link?.link_status === "protected" || link?.link_status === "vassalized";
 
+  // Patch 12 — contestation indicator (mirror of engine logic, contestThreshold=0.6)
+  const contestLimit = pressure * 0.6;
+  const contestants = rivals.filter((r) => integrationPressure(r) >= contestLimit && pressure > 0);
+  const contested = contestants.length > 0;
+  const topRivalPressure = rivals.reduce((mx, r) => Math.max(mx, integrationPressure(r)), 0);
+
+  // Active blockade?
+  const turn = currentTurn ?? 0;
+  const blockadeActive = blockade && blockade.blocked_until_turn >= turn;
+  const blockedByOther = blockadeActive && blockade.blocked_by_player !== playerName;
+  const blockedByMe = blockadeActive && blockade.blocked_by_player === playerName;
+
+  const annexBlocked = !annexAllowed || contested || blockedByOther;
+
   return (
     <div className="space-y-3">
+      {(contested || blockadeActive) && (
+        <div className={`p-2 rounded border text-xs flex items-start gap-2 ${blockedByOther ? "border-destructive/40 bg-destructive/5" : "border-amber-500/40 bg-amber-500/5"}`}>
+          <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+          <div className="space-y-0.5">
+            {blockedByOther && (
+              <p>Anexe je <strong>diplomaticky zablokována</strong> jiným hráčem do tahu {blockade!.blocked_until_turn}.</p>
+            )}
+            {blockedByMe && (
+              <p>Tvá blokáda anexe je aktivní do tahu {blockade!.blocked_until_turn}.</p>
+            )}
+            {contested && (
+              <p>Uzel je <strong>kontestován</strong>: {contestants.length}× rival má tlak ≥ 60 % tvého (nejsilnější: {topRivalPressure.toFixed(1)}).</p>
+            )}
+          </div>
+        </div>
+      )}
+
       <div className="grid grid-cols-2 gap-2 text-xs">
         <div className="p-2 rounded border border-border bg-muted/30">
           <p className="text-muted-foreground">Kultura</p>
@@ -164,6 +214,30 @@ export default function NeutralNodePanel({ sessionId, playerName, node, onChange
         </div>
       </div>
 
+      {rivals.length > 0 && (
+        <div className="p-3 rounded-lg border border-border bg-muted/20 space-y-2">
+          <p className="text-xs font-display font-semibold flex items-center gap-1.5">
+            <Swords className="h-3 w-3" /> Konkurence ({rivals.length})
+          </p>
+          <ul className="space-y-1.5">
+            {rivals
+              .map((r) => ({ ...r, p: integrationPressure(r) }))
+              .sort((a, b) => b.p - a.p)
+              .map((r, idx) => (
+                <li key={r.player_name} className="space-y-0.5">
+                  <div className="flex justify-between text-[10px]">
+                    <span className="text-muted-foreground">{anonRivalName(idx)}</span>
+                    <span className="font-mono">{r.p.toFixed(1)}</span>
+                  </div>
+                  <div className="h-1 rounded bg-muted overflow-hidden">
+                    <div className="h-full bg-violet-500" style={{ width: `${Math.min(100, r.p)}%` }} />
+                  </div>
+                </li>
+              ))}
+          </ul>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 gap-1.5">
         <Button size="sm" variant={tradeOpen ? "secondary" : "default"} className="text-xs gap-2" disabled={!!busy || tradeOpen} onClick={() => dispatch("OPEN_TRADE_WITH_NODE")}>
           {busy === "OPEN_TRADE_WITH_NODE" ? <Loader2 className="h-3 w-3 animate-spin" /> : <Coins className="h-3 w-3" />}
@@ -177,13 +251,27 @@ export default function NeutralNodePanel({ sessionId, playerName, node, onChange
           {busy === "APPLY_MILITARY_PRESSURE" ? <Loader2 className="h-3 w-3 animate-spin" /> : <Swords className="h-3 w-3" />}
           Vojenský tlak (+10 / +odpor)
         </Button>
-        <Button size="sm" variant="destructive" className="text-xs gap-2" disabled={!!busy || !annexAllowed} onClick={() => dispatch("ANNEX_NODE")}>
+        <Button
+          size="sm"
+          variant="outline"
+          className="text-xs gap-2"
+          disabled={!!busy || blockedByMe}
+          onClick={() => dispatch("BLOCK_NODE_ANNEXATION", { duration_turns: 3, reason: "Diplomatický blok" })}
+        >
+          {busy === "BLOCK_NODE_ANNEXATION" ? <Loader2 className="h-3 w-3 animate-spin" /> : <Shield className="h-3 w-3" />}
+          {blockedByMe ? `Blok aktivní do t. ${blockade!.blocked_until_turn}` : "Diplomaticky zablokovat anexi (3 tahy)"}
+        </Button>
+        <Button size="sm" variant="destructive" className="text-xs gap-2" disabled={!!busy || annexBlocked} onClick={() => dispatch("ANNEX_NODE")}>
           {busy === "ANNEX_NODE" ? <Loader2 className="h-3 w-3 animate-spin" /> : <Flag className="h-3 w-3" />}
           Anektovat
         </Button>
-        {!annexAllowed && (
+        {annexBlocked && (
           <p className="text-[10px] text-muted-foreground italic">
-            Anexe nedostupná: chybí {(threshold - pressure).toFixed(1)} bodů integračního tlaku.
+            {blockedByOther
+              ? `Anexe blokována do tahu ${blockade!.blocked_until_turn}.`
+              : contested
+              ? `Anexe kontestována (${contestants.length}× rival ≥ 60 % tvého tlaku).`
+              : `Chybí ${(threshold - pressure).toFixed(1)} bodů integračního tlaku.`}
           </p>
         )}
       </div>
