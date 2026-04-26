@@ -296,3 +296,45 @@ Každý patch musí jít zvlášť testovat.
 - `world_node_outputs.basket_key` musí matchovat kanonické baskety (`staple_food`, `tools`, …) — viz `mem://features/economy/market-baskets-naming`.
 - AI flavor v `event-narrative` čerpá ze stavu **po** commitu — viz `mem://constraints/narrative-grounding`.
 - RLS na nových tabulkách: SELECT pro session members, INSERT/UPDATE jen service_role.
+
+---
+
+# Konsolidace v4 — Wiki Orchestrator · Decree Engine · Free Cities · Terminologie
+
+> Status (2026-04-26): **Track B — Wiki Orchestrator: in progress.**
+> Pořadí: B → D → C1+C2 → A0 → A1 → A2 → [baseline snapshot] → A3 → A4.
+
+## Track B — Wiki Orchestrator (✅ partially shipped)
+
+- ✅ Migrace: `wiki_entries` rozšířena o `content_locked`, `image_locked`, `generation_status`, `image_generation_status`, `generation_version`, `last_generated_at` + index `(session_id, generation_status)`.
+- ✅ `supabase/functions/wiki-orchestrator/index.ts` — JEDINÁ gateway s akcemi `ensure | regenerate | lock | unlock` a per-entity `GENERATION_POLICY` (`law/chronicle/treaty/declaration` = text-only).
+- ⏳ Refactor existujících funkcí na delegátory (`wiki-generate`, `wiki-enrich`, `backfill-wiki`, `batch-regenerate-wiki`, `encyclopedia-generate`, `encyclopedia-image`).
+- ⏳ UI v `WikiPanel`: tlačítka „Regenerovat" + „Vygenerovat obrázek" (pro text-only entity), indikátor 🔒 / ⏳ / ⚠️.
+- 🔒 Pravidlo: žádný `lovable-ai-*` ani image call mimo `wiki-orchestrator/index.ts`.
+
+## Track D — Terminologie + Wiki root „Svět" (todo)
+
+- D1: V `mp-world-generate` zavolat `wiki-orchestrator ensure { entity_type:'world', entity_id:session_id }` z `world_premise`.
+- D2: UI rename `Stát → Země`, `Vládce státu → Vládce země`, `Státní bonusy → Bonusy země`. Fáze: Zakladatel města → Protektor provincie → Vládce země.
+- D3: ChroWiki taby `Svět`, `Svobodná města`, `Provincie`, `Země`, `Neutrální clustery`, `Zákony`, `Smlouvy`, `Dynastie`, `Náboženství`, `Obchodní sítě`, `Stavby`, `Války`, `Kronika`.
+
+## Track C1+C2 — Political schema + Free Cities seed (todo)
+
+- C1: `political_entities`, `political_entity_nodes`, rozšíření `province_nodes` o `political_status`, `political_entity_id`, `province_entity_id`, `legitimacy_score`, `integration_score`. RLS: members read, service_role write.
+- C2: V `mp-world-generate` / `create-world-bootstrap` pro každý unowned city node založit `free_city` political entity + `wiki-orchestrator ensure entity_type='free_city'`.
+
+## Track A — Decree Engine (rozděleno)
+
+- **A0** (todo): `CREATE TABLE IF NOT EXISTS law_effects` (`effect_mode: instant_delta|recurring_delta|temporary_modifier`, `effect_priority`, `stacking_rule`, `duration_turns`, `remaining_turns`); `CREATE TABLE IF NOT EXISTS realm_metrics`. `_shared/decreeEngine.ts` s `ALLOWED_EFFECT_TARGETS` (whitelist; `wealth → realm_resources.total_wealth`), `MODE_TARGET_RULES` (pipeline modifiery jen pro `temporary_modifier`), `validateAndClampPayload`, `resolveConflicts`. Init upsert `realm_metrics` v `mp-world-generate` a `join-game`.
+- **A1** (todo): `decree-interpret` — Lovable AI překlad NL → JSON payload, validace, preview.
+- **A2** (todo): `decree-enact` — `lifecycle_status='active'`, `expires_at_turn = current_turn + max(duration_turns)`, `INSERT law_effects` s `remaining_turns = duration_turns` pro ongoing, aplikuje POUZE `instant_delta`, `wiki-orchestrator ensure entity_type='law'`.
+- **GATE**: baseline snapshot ekonomiky před A3.
+- **A3** (gated): `aggregateActiveModifiers` čte `law_effects WHERE laws.lifecycle_status='active' AND effect_mode='temporary_modifier' AND remaining_turns > 0`. Hook do `compute-trade-flows` + `compute-economy-flow`. NIKDY nezapisuje do `realm_resources`.
+- **A4** (after A3): Tick `applyActiveDecrees` aplikuje `recurring_delta` (s filtrem `laws.lifecycle_status='active'`), decay `remaining_turns`, `expired` lifecycle, `administrative_pressure *= 0.9`. UI Council: preview modal s per-effect badges, sekce „Aktivní dekrety" s `Zrušit`.
+
+## Pojistky (závazné)
+
+1. `CREATE TABLE IF NOT EXISTS` — všechny migrace idempotentní.
+2. Filtr `laws.lifecycle_status = 'active'` ve VŠECH dotazech nad `law_effects` (`aggregateActiveModifiers`, `applyActiveDecrees`). Revoked/expired nesmí ožít.
+3. `wealth ↔ realm_resources.total_wealth` mapování v engine vrstvě, ne v UI.
+4. Wiki orchestrator policy: `law/chronicle/treaty/declaration` = text-only by default. Image jen přes `regenerate fields:['image']`.
