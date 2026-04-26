@@ -279,6 +279,7 @@ const EconomyTab = ({ sessionId, currentPlayerName, currentTurn, cities, realm, 
           {realm && <MarketPerformancePanel realm={realm} />}
           <DemandFulfillmentPanel sessionId={sessionId} playerName={currentPlayerName} cities={cities} />
           <MarketSharePanel sessionId={sessionId} playerName={currentPlayerName} />
+          <NeutralNodeContributionPanel sessionId={sessionId} playerName={currentPlayerName} />
           <TradePanel
             sessionId={sessionId}
             currentPlayerName={currentPlayerName}
