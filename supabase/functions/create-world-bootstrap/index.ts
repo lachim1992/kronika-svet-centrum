@@ -744,7 +744,7 @@ async function runModeSpecificSeeding(
 // ────────────────────────────────────────────────────────────────────────────
 
 async function initializeFogOfWar(
-  sb: ReturnType<typeof createClient>,
+  sb: any,
   sessionId: string
 ): Promise<{ players: number; tilesWritten: number }> {
   const { data: cities, error: cityErr } = await sb
