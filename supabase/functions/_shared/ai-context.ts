@@ -510,7 +510,86 @@ export function buildPremisePrompt(
 // ─── Unified AI Invocation ───
 
 /**
- * Create a full AI request context with premise loaded from DB.
+ * Load per-player civilizational context.
+ * Pulls civilization DNA, structured identity, and per-player adopted lineages.
+ *
+ * Lineage filtering:
+ *  1) Try realm_heritage filtered by player_name (per-player adoption).
+ *  2) If empty, fall back to first 2 world lineages (shared world dědictví).
+ *  3) Mark `lineagesSource` so prompt can label correctly.
+ */
+export async function loadCivContext(
+  sessionId: string,
+  playerName: string,
+  premise: WorldPremise,
+  sb?: SupabaseClient,
+): Promise<CivContext> {
+  const client = sb || getServiceClient();
+
+  const [civRes, identityRes, heritageRes] = await Promise.all([
+    client
+      .from("civilizations")
+      // TODO: až přibude civilizations.civ_premise, přidej ho a prefer ho před core_myth
+      .select("civ_name, core_myth, cultural_quirk, architectural_style")
+      .eq("session_id", sessionId)
+      .eq("player_name", playerName)
+      .maybeSingle(),
+    client
+      .from("civ_identity")
+      .select("culture_tags, urban_style, society_structure, military_doctrine, economic_focus")
+      .eq("session_id", sessionId)
+      .eq("player_name", playerName)
+      .maybeSingle(),
+    client
+      .from("realm_heritage")
+      .select("lineage_name, description, cultural_anchor, player_name")
+      .eq("session_id", sessionId)
+      .eq("player_name", playerName)
+      .limit(10),
+  ]);
+
+  const civ = civRes.data as any;
+  const identity = identityRes.data as any;
+  const heritage = (heritageRes.data ?? []) as any[];
+
+  let claimedLineages: CivContext["claimedLineages"] = [];
+  let lineagesSource: CivContext["lineagesSource"] = "none";
+
+  if (heritage.length > 0) {
+    claimedLineages = heritage.map((h) => ({
+      name: h.lineage_name,
+      description: h.description ?? "",
+      culturalAnchor: h.cultural_anchor ?? undefined,
+    }));
+    lineagesSource = "per_player_heritage";
+  } else if (premise.ancientLineages.length > 0) {
+    // Fallback: shared world heritage
+    claimedLineages = premise.ancientLineages.slice(0, 2);
+    lineagesSource = "world_fallback";
+    console.warn(
+      `[loadCivContext] session=${sessionId} player=${playerName}: per-player realm_heritage empty, using world fallback (${claimedLineages.length} lineages)`,
+    );
+  }
+
+  return {
+    playerName,
+    civName: civ?.civ_name || undefined,
+    civDescription: civ?.core_myth || undefined,
+    culturalQuirk: civ?.cultural_quirk || undefined,
+    architecturalStyle: civ?.architectural_style || undefined,
+    claimedLineages,
+    lineagesSource,
+    cultureTags: identity?.culture_tags || undefined,
+    urbanStyle: identity?.urban_style || undefined,
+    societyStructure: identity?.society_structure || undefined,
+    militaryDoctrine: identity?.military_doctrine || undefined,
+    economicFocus: identity?.economic_focus || undefined,
+  };
+}
+
+/**
+ * Create a full AI request context with premise + civContext loaded from DB.
+ * P0 (svět) and P0b (národ) are composed in a SINGLE pass via buildPremisePrompt.
  */
 export async function createAIContext(
   sessionId: string,
@@ -521,57 +600,14 @@ export async function createAIContext(
   const requestId = crypto.randomUUID();
   const client = sb || getServiceClient();
   const premise = await loadWorldPremise(sessionId, client);
-  let premisePrompt = buildPremisePrompt(premise);
 
-  // Load civilization DNA + structured identity for cultural context injection
-  let civContext: AIRequestContext["civContext"] = undefined;
-  if (playerName) {
-    const [civRes, identityRes] = await Promise.all([
-      client
-        .from("civilizations")
-        .select("cultural_quirk, architectural_style, civ_name")
-        .eq("session_id", sessionId)
-        .eq("player_name", playerName)
-        .maybeSingle(),
-      client
-        .from("civ_identity")
-        .select("culture_tags, urban_style, society_structure, military_doctrine, economic_focus")
-        .eq("session_id", sessionId)
-        .eq("player_name", playerName)
-        .maybeSingle(),
-    ]);
-    const civ = civRes.data;
-    const identity = identityRes.data;
+  const civContext = playerName
+    ? await loadCivContext(sessionId, playerName, premise, client)
+    : undefined;
 
-    if (civ) {
-      civContext = {
-        culturalQuirk: civ.cultural_quirk || undefined,
-        architecturalStyle: civ.architectural_style || undefined,
-        civName: civ.civ_name || undefined,
-      };
-      const civParts: string[] = [];
-      civParts.push("\n=== CIVILIZAČNÍ KONTEXT ===");
-      if (civ.civ_name) civParts.push(`Civilizace: ${civ.civ_name}`);
-      if (civ.cultural_quirk) civParts.push(`KULTURNÍ ZVLÁŠTNOST (MUSÍŠ reflektovat v textu — ovlivňuje chování, rituály, rozhodování): ${civ.cultural_quirk}`);
-      if (civ.architectural_style) civParts.push(`ARCHITEKTONICKÝ STYL (MUSÍŠ reflektovat v popisu budov, měst, vizuálů): ${civ.architectural_style}`);
+  let premisePrompt = buildPremisePrompt(premise, civContext);
 
-      // Inject structured identity tags
-      if (identity) {
-        civParts.push(`\nSTRUKTUROVANÁ IDENTITA CIVILIZACE:`);
-        if (identity.culture_tags?.length) civParts.push(`  Kulturní tagy: ${identity.culture_tags.join(", ")}`);
-        civParts.push(`  Urbanismus: ${identity.urban_style}`);
-        civParts.push(`  Společenská struktura: ${identity.society_structure}`);
-        civParts.push(`  Vojenská doktrína: ${identity.military_doctrine}`);
-        civParts.push(`  Ekonomické zaměření: ${identity.economic_focus}`);
-        civParts.push(`MUSÍŠ tyto tagy reflektovat ve veškerém generovaném obsahu — popisy měst, budov, strategické rady, kroniky.`);
-      }
-
-      civParts.push("=== KONEC CIV KONTEXTU ===");
-      premisePrompt += civParts.join("\n");
-    }
-  }
-
-  // ── STRATEGIC MAP CONTEXT ──
+  // ── STRATEGIC MAP CONTEXT (appended after premise stack) ──
   try {
     const mapContext = await buildStrategicMapContext(client, sessionId);
     if (mapContext) {
@@ -583,6 +619,7 @@ export async function createAIContext(
 
   return { sessionId, requestId, turnNumber, premise, premisePrompt, civContext };
 }
+
 
 /**
  * Build a compressed strategic map summary for AI.
