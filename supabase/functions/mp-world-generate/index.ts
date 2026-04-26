@@ -93,6 +93,10 @@ Deno.serve(async (req) => {
         if (c.dominant_faith) parts.push(`víra: ${c.dominant_faith} (${c.faith_attitude || "tolerant"})`);
         if (c.spawn_preference && c.spawn_preference !== "any") parts.push(`preferovaná oblast: ${c.spawn_preference}`);
         if (Array.isArray(c.lineage_ids) && c.lineage_ids.length) parts.push(`pradávné rody: ${c.lineage_ids.join(", ")}`);
+        if (c.secret_objective_archetype) parts.push(`tajný cíl (archetyp): ${c.secret_objective_archetype}`);
+        if (c.heraldry && typeof c.heraldry === "object" && (c.heraldry.primary || c.heraldry.symbol)) {
+          parts.push(`heraldika: ${c.heraldry.symbol || "?"} / ${c.heraldry.primary || "?"}${c.heraldry.secondary ? "+" + c.heraldry.secondary : ""}`);
+        }
         return parts.join(" | ");
       }).join("\n");
 
