@@ -2812,6 +2812,8 @@ async function loadActiveBlockade(
     .maybeSingle();
   return (data as any) || null;
 }
+
+async function upsertTradeLink(
   supabase: any, sessionId: string, playerName: string, nodeId: string,
   patch: { link_status?: string; trade_level?: number; route_safety?: number },
 ) {
