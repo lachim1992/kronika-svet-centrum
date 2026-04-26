@@ -136,7 +136,7 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
       if (!resp?.ok && resp?.code === "ANCIENT_LAYER_FAILED") {
         // Pokud AI navrhla preWorld, naplň pole, ať to hráč vidí a může editovat
         if (resp.suggestedPreWorldPremise && preWorldSnapshot.length < 30) {
-          setPreWorldPremise(resp.suggestedPreWorldPremise, true);
+          setPreWorldPremise(resp.suggestedPreWorldPremise, true, false);
         }
         throw new Error(
           "Mytologii Pradávna se nepodařilo utkat. Uprav premisu nebo vyplň Pradávno ručně a zkus znovu.",
@@ -152,10 +152,10 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
       });
       // AI doplnila Pradávno → ulož a označ jako návrh
       if (resp.suggestedPreWorldPremise && preWorldSnapshot.length < 30) {
-        setPreWorldPremise(resp.suggestedPreWorldPremise, true);
+        setPreWorldPremise(resp.suggestedPreWorldPremise, true, false);
       } else if (resp.resolvedPreWorldPremise && preWorldSnapshot.length >= 30) {
         // potvrzeno hráčovo vlastní
-        setPreWorldPremise(resp.resolvedPreWorldPremise, false);
+        setPreWorldPremise(resp.resolvedPreWorldPremise, false, false);
       }
       // Capture ancient layer (v9.1) — outside reducer.
       if (resp.ancientLayer) {

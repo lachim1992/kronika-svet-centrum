@@ -86,7 +86,7 @@ const initialState: WizardState = {
 
 export type WizardAction =
   | { type: "SET_PREMISE"; premise: string }
-  | { type: "SET_PRE_WORLD"; preWorldPremise: string; suggested?: boolean }
+  | { type: "SET_PRE_WORLD"; preWorldPremise: string; suggested?: boolean; markStale?: boolean }
   | { type: "USE_INSPIRATION"; premise: string; label: string }
   | { type: "EDIT_FIELD"; path: string; value: unknown }
   | { type: "RESET_FIELD"; path: string }
@@ -127,12 +127,14 @@ function reducer(state: WizardState, action: WizardAction): WizardState {
     }
 
     case "SET_PRE_WORLD": {
+      const shouldMarkStale = action.markStale ?? true;
       return {
         ...state,
         preWorldPremise: action.preWorldPremise,
         preWorldSuggested: action.suggested ?? false,
         // Změna Pradávna invaliduje ancient layer → spec je nutné přegenerovat.
-        isSuggestionStale: state.lastAnalyzedPremise !== null ? true : state.isSuggestionStale,
+        isSuggestionStale:
+          shouldMarkStale && state.lastAnalyzedPremise !== null ? true : state.isSuggestionStale,
       };
     }
 
@@ -340,8 +342,8 @@ export function useWorldSetupWizardState(seed?: Partial<WizardState>) {
   );
 
   const setPreWorldPremise = useCallback(
-    (preWorldPremise: string, suggested = false) =>
-      dispatch({ type: "SET_PRE_WORLD", preWorldPremise, suggested }),
+    (preWorldPremise: string, suggested = false, markStale = true) =>
+      dispatch({ type: "SET_PRE_WORLD", preWorldPremise, suggested, markStale }),
     [],
   );
 
