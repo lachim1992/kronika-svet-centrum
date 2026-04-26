@@ -141,7 +141,14 @@ const WikiPanel = ({
     ...wonders.map(w => ({ type: "wonder", name: w.name, id: w.id, owner: w.owner_player, context: { era: w.era, status: w.status, city: w.city_name, description: w.description } })),
     ...greatPersons.map(p => ({ type: "person", name: p.name, id: p.id, owner: p.player_name, context: { personType: p.person_type, flavor: p.flavor_trait, alive: p.is_alive, bio: p.bio } })),
     ...worldEvents.map(e => ({ type: "event", name: e.title, id: e.id, owner: e.created_by_type || "system", context: { date: e.date, summary: e.summary, description: e.description, tags: e.tags, status: e.status, participants: e.participants } })),
-  ], [cities, provinces, regions, wonders, greatPersons, worldEvents]);
+    ...nodes.map(n => ({
+      type: n.controlled_by ? "annexed_node" : "neutral_node",
+      name: n.name,
+      id: n.id,
+      owner: n.controlled_by || "",
+      context: { culture: n.culture_key, profile: n.profile_key, population: n.population, autonomy: n.autonomy_score, hex: `${n.hex_q},${n.hex_r}` },
+    })),
+  ], [cities, provinces, regions, wonders, greatPersons, worldEvents, nodes]);
 
   // Handle codexEntityTarget to auto-open entity
   useEffect(() => {
