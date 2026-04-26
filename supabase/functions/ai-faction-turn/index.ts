@@ -1428,6 +1428,36 @@ async function executeAction(
       return "ok";
     }
 
+    // ─── PATCH 9c: NEUTRAL NODE INFLUENCE & ANNEXATION ───
+    case "open_trade_with_node":
+    case "send_envoy_to_node":
+    case "apply_military_pressure":
+    case "annex_node": {
+      if (!action.targetNodeName) return "missing_params";
+      const { data: node } = await supabase.from("province_nodes")
+        .select("id, name, is_neutral, discovered, controlled_by")
+        .eq("session_id", sessionId)
+        .ilike("name", action.targetNodeName).limit(1).maybeSingle();
+      if (!node) return "node_not_found";
+      if (!node.is_neutral || node.controlled_by) return "node_not_neutral";
+      if (!node.discovered) return "node_not_discovered";
+
+      const cmdMap: Record<string, string> = {
+        open_trade_with_node: "OPEN_TRADE_WITH_NODE",
+        send_envoy_to_node: "SEND_ENVOY_TO_NODE",
+        apply_military_pressure: "APPLY_MILITARY_PRESSURE",
+        annex_node: "ANNEX_NODE",
+      };
+      await invokeFunction(supabaseUrl, supabaseKey, "command-dispatch", {
+        sessionId, turnNumber: turn,
+        actor: { name: factionName, type: "ai_faction" },
+        commandType: cmdMap[action.actionType],
+        commandPayload: { node_id: node.id, note: action.description },
+        commandId,
+      });
+      return "ok";
+    }
+
     case "trade":
     case "explore":
     default: {
