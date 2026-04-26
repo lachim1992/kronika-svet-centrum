@@ -20,7 +20,6 @@ import GovernmentFaithStep, { type GovernmentFaithData } from "@/components/mult
 import SecretObjectiveStep, { type SecretObjectiveData } from "@/components/multiplayer-lobby/SecretObjectiveStep";
 import HeraldryPicker, { type HeraldryData } from "@/components/multiplayer-lobby/HeraldryPicker";
 import SpawnPreferencePicker from "@/components/multiplayer-lobby/SpawnPreferencePicker";
-import CivIdentityPreview from "@/components/CivIdentityPreview";
 
 import type { WorldIdentityInput } from "@/types/worldBootstrap";
 
@@ -155,8 +154,15 @@ const CivSetupStep = ({ value, onChange, premise, disabled }: Props) => {
             </div>
           </div>
           {extracted && (
-            <div className="border border-primary/30 rounded p-2 bg-primary/5">
-              <CivIdentityPreview data={extracted} />
+            <div className="border border-primary/30 rounded p-2 bg-primary/5 space-y-1">
+              <p className="text-[11px] font-semibold text-primary">{extracted.display_name || "Frakce"}</p>
+              {extracted.flavor_summary && <p className="text-[10px] text-muted-foreground italic">{extracted.flavor_summary}</p>}
+              <div className="flex flex-wrap gap-1 pt-1">
+                {extracted.urban_style && <span className="text-[9px] px-1.5 py-0.5 rounded bg-muted">🏛️ {extracted.urban_style}</span>}
+                {extracted.society_structure && <span className="text-[9px] px-1.5 py-0.5 rounded bg-muted">👥 {extracted.society_structure}</span>}
+                {extracted.military_doctrine && <span className="text-[9px] px-1.5 py-0.5 rounded bg-muted">⚔️ {extracted.military_doctrine}</span>}
+                {extracted.economic_focus && <span className="text-[9px] px-1.5 py-0.5 rounded bg-muted">💰 {extracted.economic_focus}</span>}
+              </div>
             </div>
           )}
           <HeraldryPicker value={heraldry} onChange={(h) => update({ heraldry: h })} />
