@@ -13,19 +13,52 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const { sessionId, playerName, civDescription, coreMythText, culturalQuirkText, architecturalStyleText } = await req.json();
+    const body = await req.json();
+    const {
+      sessionId,
+      playerName,
+      civDescription,
+      // Optional alias used by the wizard pre-creation preview flow.
+      description,
+      coreMythText,
+      culturalQuirkText,
+      architecturalStyleText,
+      // Optional extra context (used by wizard preview to enrich AI extraction).
+      context,
+    } = body;
 
-    if (!sessionId || !playerName) return errorResponse("Missing sessionId or playerName", 400);
+    // PREVIEW MODE: when sessionId/playerName missing, we just extract and
+    // return the result WITHOUT persisting anything. Used by WorldSetupWizard
+    // before the session exists. Caller is then expected to ship the data
+    // along with the bootstrap request (identityModifiers payload).
+    const isPreviewMode = !sessionId || !playerName;
 
     const sb = getServiceClient();
 
     // Gather all text sources
-    let fullText = civDescription || "";
+    let fullText = (civDescription || description || "").toString();
     if (coreMythText) fullText += `\nZakládající mýtus: ${coreMythText}`;
     if (culturalQuirkText) fullText += `\nKulturní zvláštnost: ${culturalQuirkText}`;
     if (architecturalStyleText) fullText += `\nArchitektonický styl: ${architecturalStyleText}`;
+    if (context && typeof context === "object") {
+      const parts: string[] = [];
+      if (context.premise) parts.push(`Premisa světa: ${context.premise}`);
+      if (context.realm_name) parts.push(`Říše: ${context.realm_name}`);
+      if (context.ruler_name) parts.push(`Vládce: ${context.ruler_title || ""} ${context.ruler_name}`.trim());
+      if (context.ruler_archetype) parts.push(`Archetyp vládce: ${context.ruler_archetype}`);
+      if (context.ruler_bio) parts.push(`Životopis vládce: ${context.ruler_bio}`);
+      if (context.government_form) parts.push(`Forma vlády: ${context.government_form}`);
+      if (context.dominant_faith) parts.push(`Dominantní víra: ${context.dominant_faith}`);
+      if (context.culture_name) parts.push(`Kultura: ${context.culture_name}`);
+      if (context.homeland_desc) parts.push(`Domovina: ${context.homeland_desc}`);
+      if (context.founding_legend) parts.push(`Zakládající legenda: ${context.founding_legend}`);
+      if (parts.length > 0) fullText += "\n" + parts.join("\n");
+    }
 
     if (!fullText.trim()) {
+      if (isPreviewMode) {
+        return errorResponse("Missing description for preview extraction", 400);
+      }
       const { data } = await sb.from("civ_identity").upsert({
         session_id: sessionId,
         player_name: playerName,
@@ -35,7 +68,9 @@ Deno.serve(async (req) => {
       return jsonResponse(data);
     }
 
-    const ctx = await createAIContext(sessionId, undefined, sb, playerName);
+    const ctx = isPreviewMode
+      ? { sessionId: null, supabase: sb } as any
+      : await createAIContext(sessionId, undefined, sb, playerName);
 
     const result = await invokeAI(ctx, {
       model: "google/gemini-3-flash-preview",
