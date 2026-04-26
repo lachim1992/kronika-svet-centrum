@@ -392,17 +392,16 @@ export async function seedRealmSkeleton(input: SeedRealmInput): Promise<SeedReal
   }
 
   // ── Lineage selection (ancient layer) ──
-  // Persist player-selected lineage IDs to player_civ_configs.selected_lineages
-  // (downstream Chronicle Zero generator reads from there). Best-effort.
+  // Update player_civ_configs.lineage_ids if the row exists (created by
+  // create-world-bootstrap step 7-bis with the correct user_id). Best-effort.
   if (lineageIds && lineageIds.length > 0) {
     try {
-      await sb.from("player_civ_configs").upsert({
-        session_id: sessionId,
-        player_name: playerName,
-        selected_lineages: lineageIds,
-      } as any, { onConflict: "session_id,player_name" });
+      await sb.from("player_civ_configs")
+        .update({ lineage_ids: lineageIds })
+        .eq("session_id", sessionId)
+        .eq("player_name", playerName);
     } catch (e) {
-      console.warn("[seed-realm-skeleton] selected_lineages upsert failed:", e);
+      console.warn("[seed-realm-skeleton] lineage_ids update failed:", e);
     }
   }
 
