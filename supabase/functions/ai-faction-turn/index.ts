@@ -284,6 +284,20 @@ Deno.serve(async (req) => {
         .order("turn_number", { ascending: false }),
     ]);
 
+    // ── Patch 9c: faction's influence + trade links on neutral nodes ──
+    const [{ data: nodeInfluenceRows }, { data: nodeTradeLinks }] = await Promise.all([
+      supabase.from("node_influence")
+        .select("node_id, economic_influence, political_influence, military_pressure, resistance, integration_progress")
+        .eq("session_id", sessionId).eq("player_name", factionName),
+      supabase.from("node_trade_links")
+        .select("node_id, link_status, trade_level, route_safety")
+        .eq("session_id", sessionId).eq("player_name", factionName),
+    ]);
+    const influenceByNode = new Map<string, any>();
+    for (const r of (nodeInfluenceRows || [])) influenceByNode.set(r.node_id, r);
+    const linkByNode = new Map<string, any>();
+    for (const l of (nodeTradeLinks || [])) linkByNode.set(l.node_id, l);
+
     // Fetch recent diplomacy messages for all rooms involving this faction
     const roomIds = (diplomacyRooms || []).map((r: any) => r.id);
     let recentMessages: any[] = [];
