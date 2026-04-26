@@ -421,6 +421,8 @@ function buildVictoryChronicle(style: string, winner: string, turn: number): str
       return `**V roce ${turn} prokázal ${winner} nevídanou odolnost.** Tři velké krize otřásly základy civilizace, ale říše ${winner} přežila každou z nich. Kde jiní padli, on vytrvale budoval a bránil svůj lid.`;
     case "cultural":
       return `**V roce ${turn} dosáhl ${winner} kulturního triumfu.** Prestiž jeho říšea je nepřekonatelná — olympijské vítězství, slavné akademie a úchvatné festivaly proslavily jeho národ po celém známém světě. Kultura zvítězila nad mečem.`;
+    case "annexation":
+      return `**V roce ${turn} dovršil ${winner} integraci okolních zemí.** Pět neutrálních uzlů — kdysi svobodných obcí, klášterů a strážních věží — bylo plně začleněno pod jeho vládu. Mapa známého světa nese od dnešního dne jeho barvy.`;
     default:
       return `**V roce ${turn} uzavřel ${winner} kapitolu dějin svého světa.** Příběh jeho říše se stává legendou předávanou z generace na generaci.`;
   }
