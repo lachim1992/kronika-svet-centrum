@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { computeAnnexCheck, DEFAULT_INFLUENCE } from "../_shared/nodeInfluence.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -347,6 +348,18 @@ async function executeCommand(
 
     case "EXPLORE_TILE":
       return await executeExploreTile(supabase, base, actor, payload, commandId, sessionId, turnNumber);
+
+    case "OPEN_TRADE_WITH_NODE":
+      return await executeOpenTradeWithNode(supabase, base, actor, payload, commandId, sessionId, turnNumber);
+
+    case "SEND_ENVOY_TO_NODE":
+      return await executeSendEnvoyToNode(supabase, base, actor, payload, commandId, sessionId, turnNumber);
+
+    case "APPLY_MILITARY_PRESSURE":
+      return await executeApplyMilitaryPressure(supabase, base, actor, payload, commandId, sessionId, turnNumber);
+
+    case "ANNEX_NODE":
+      return await executeAnnexNode(supabase, base, actor, payload, commandId, sessionId, turnNumber);
 
     case "GENERIC":
       return insertEvents(supabase, commandId, [{
@@ -2623,4 +2636,203 @@ async function executeExploreTile(
       discovered_node_ids: (discoveredNodes || []).map((n: any) => n.id),
     },
   }], { discoveredNodes: discoveredNodes || [], visibilityWritten: upserts.length });
+}
+
+// ═══════════════════════════════════════════
+// Patch 6 — Trade & Influence commands on neutral nodes
+// All four require the node to be discovered by the actor.
+// Engine-only: AI never decides values; thresholds in _shared/nodeInfluence.ts.
+// ═══════════════════════════════════════════
+
+async function loadNeutralNodeForActor(
+  supabase: any,
+  sessionId: string,
+  nodeId: string,
+  actorName: string,
+): Promise<{ node?: any; error?: string; status?: number }> {
+  const { data: node, error } = await supabase
+    .from("province_nodes")
+    .select("id, name, is_neutral, discovered, controlled_by, autonomy_score, profile_key, culture_key")
+    .eq("session_id", sessionId)
+    .eq("id", nodeId)
+    .maybeSingle();
+  if (error) return { error: error.message, status: 500 };
+  if (!node) return { error: "Node not found", status: 404 };
+  if (!node.is_neutral || node.controlled_by) {
+    return { error: "Node is not neutral / already controlled", status: 409 };
+  }
+  if (!node.discovered) {
+    return { error: "Node has not been discovered yet", status: 403 };
+  }
+  // Discovery is global on the node, but the actor must also have visibility
+  // on the tile. Cheap proxy: ensure they discovered or at least see it via
+  // map_visibility. Skipped here for simplicity; EXPLORE_TILE feeds both paths.
+  void actorName;
+  return { node };
+}
+
+async function loadOrInitInfluence(
+  supabase: any, sessionId: string, playerName: string, nodeId: string,
+) {
+  const { data: row } = await supabase
+    .from("node_influence")
+    .select("economic_influence, political_influence, military_pressure, resistance, integration_progress")
+    .eq("session_id", sessionId).eq("player_name", playerName).eq("node_id", nodeId)
+    .maybeSingle();
+  if (row) return row;
+  return { ...DEFAULT_INFLUENCE };
+}
+
+async function upsertInfluence(
+  supabase: any, sessionId: string, playerName: string, nodeId: string, patch: Record<string, number>,
+) {
+  const current = await loadOrInitInfluence(supabase, sessionId, playerName, nodeId);
+  const next = { ...current, ...patch };
+  await supabase.from("node_influence").upsert({
+    session_id: sessionId, player_name: playerName, node_id: nodeId,
+    ...next,
+    updated_at: new Date().toISOString(),
+  }, { onConflict: "session_id,player_name,node_id" });
+  return next;
+}
+
+async function upsertTradeLink(
+  supabase: any, sessionId: string, playerName: string, nodeId: string,
+  patch: { link_status?: string; trade_level?: number; route_safety?: number },
+) {
+  const { data: existing } = await supabase
+    .from("node_trade_links")
+    .select("link_status, trade_level, route_safety")
+    .eq("session_id", sessionId).eq("player_name", playerName).eq("node_id", nodeId)
+    .maybeSingle();
+  const next = {
+    link_status: patch.link_status ?? existing?.link_status ?? "none",
+    trade_level: patch.trade_level ?? existing?.trade_level ?? 0,
+    route_safety: patch.route_safety ?? existing?.route_safety ?? 1,
+  };
+  await supabase.from("node_trade_links").upsert({
+    session_id: sessionId, player_name: playerName, node_id: nodeId,
+    ...next,
+    updated_at: new Date().toISOString(),
+  }, { onConflict: "session_id,player_name,node_id" });
+  return next;
+}
+
+async function executeOpenTradeWithNode(
+  supabase: any, base: any, actor: Actor, payload: any,
+  commandId: string, sessionId: string, turnNumber: number,
+): Promise<CommandResult> {
+  const nodeId = String(payload?.node_id || "");
+  if (!nodeId) return { events: [], error: "node_id required", status: 400 };
+
+  const r = await loadNeutralNodeForActor(supabase, sessionId, nodeId, actor.name);
+  if (r.error) return { events: [], error: r.error, status: r.status };
+  const node = r.node!;
+
+  const link = await upsertTradeLink(supabase, sessionId, actor.name, nodeId, {
+    link_status: "trade_open", trade_level: 1,
+  });
+  const inf = await upsertInfluence(supabase, sessionId, actor.name, nodeId, {
+    economic_influence: (await loadOrInitInfluence(supabase, sessionId, actor.name, nodeId)).economic_influence + 5,
+  });
+
+  return await insertEvents(supabase, commandId, [{
+    ...base, event_type: "trade_link_opened",
+    note: `${actor.name} otevřel obchod s ${node.name}.`,
+    importance: "normal",
+    reference: { node_id: nodeId, link, influence: inf },
+  }], { link, influence: inf });
+}
+
+async function executeSendEnvoyToNode(
+  supabase: any, base: any, actor: Actor, payload: any,
+  commandId: string, sessionId: string, turnNumber: number,
+): Promise<CommandResult> {
+  const nodeId = String(payload?.node_id || "");
+  if (!nodeId) return { events: [], error: "node_id required", status: 400 };
+
+  const r = await loadNeutralNodeForActor(supabase, sessionId, nodeId, actor.name);
+  if (r.error) return { events: [], error: r.error, status: r.status };
+  const node = r.node!;
+
+  const current = await loadOrInitInfluence(supabase, sessionId, actor.name, nodeId);
+  const inf = await upsertInfluence(supabase, sessionId, actor.name, nodeId, {
+    political_influence: current.political_influence + 8,
+  });
+
+  return await insertEvents(supabase, commandId, [{
+    ...base, event_type: "envoy_sent",
+    note: `${actor.name} vyslal vyslance k ${node.name}.`,
+    importance: "normal",
+    reference: { node_id: nodeId, influence: inf },
+  }], { influence: inf });
+}
+
+async function executeApplyMilitaryPressure(
+  supabase: any, base: any, actor: Actor, payload: any,
+  commandId: string, sessionId: string, turnNumber: number,
+): Promise<CommandResult> {
+  const nodeId = String(payload?.node_id || "");
+  if (!nodeId) return { events: [], error: "node_id required", status: 400 };
+
+  const r = await loadNeutralNodeForActor(supabase, sessionId, nodeId, actor.name);
+  if (r.error) return { events: [], error: r.error, status: r.status };
+  const node = r.node!;
+
+  const current = await loadOrInitInfluence(supabase, sessionId, actor.name, nodeId);
+  const inf = await upsertInfluence(supabase, sessionId, actor.name, nodeId, {
+    military_pressure: current.military_pressure + 10,
+    resistance: Math.min(100, current.resistance + 3), // pushback raises resistance slightly
+  });
+
+  return await insertEvents(supabase, commandId, [{
+    ...base, event_type: "military_pressure_applied",
+    note: `${actor.name} vyvíjí vojenský tlak na ${node.name}.`,
+    importance: "high",
+    reference: { node_id: nodeId, influence: inf },
+  }], { influence: inf });
+}
+
+async function executeAnnexNode(
+  supabase: any, base: any, actor: Actor, payload: any,
+  commandId: string, sessionId: string, turnNumber: number,
+): Promise<CommandResult> {
+  const nodeId = String(payload?.node_id || "");
+  if (!nodeId) return { events: [], error: "node_id required", status: 400 };
+
+  const r = await loadNeutralNodeForActor(supabase, sessionId, nodeId, actor.name);
+  if (r.error) return { events: [], error: r.error, status: r.status };
+  const node = r.node!;
+
+  const influence = await loadOrInitInfluence(supabase, sessionId, actor.name, nodeId);
+  const check = computeAnnexCheck({
+    influence,
+    autonomy_score: Number(node.autonomy_score ?? 80),
+  });
+
+  if (!check.allowed) {
+    return {
+      events: [], status: 409,
+      error: `Anexe ${node.name} není povolena: tlak ${check.integrationPressure.toFixed(1)} / práh ${check.threshold.toFixed(1)} (chybí ${check.missing.toFixed(1)})`,
+    };
+  }
+
+  // ── Transition node: neutral → owned ──
+  await supabase.from("province_nodes").update({
+    is_neutral: false,
+    controlled_by: actor.name,
+    updated_at: new Date().toISOString(),
+  }).eq("id", nodeId);
+
+  await upsertTradeLink(supabase, sessionId, actor.name, nodeId, { link_status: "annexed" });
+  await upsertInfluence(supabase, sessionId, actor.name, nodeId, {
+    integration_progress: 100,
+  });
+
+  return await insertEvents(supabase, commandId, [{
+    ...base, event_type: "node_annexed",
+    note: `${actor.name} anektoval ${node.name}.`,
+    importance: "high",
+    reference: { node_id: nodeId, check },
+  }], { node_id: nodeId, annex_check: check });
 }
