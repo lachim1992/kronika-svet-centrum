@@ -35,6 +35,8 @@ import {
   CANONICAL_BOOTSTRAP_STEPS,
 } from "./world-setup/BootstrapProgressPanel";
 import type { AncientLayerSpec } from "@/types/ancientLayer";
+import CivSetupStep from "./world-setup/CivSetupStep";
+import type { WorldIdentityInput } from "@/types/worldBootstrap";
 
 import { useWorldSetupWizardState } from "@/hooks/useWorldSetupWizardState";
 import {
@@ -82,6 +84,14 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
   // Ancient layer (v9.1) — held outside reducer; arrives with analyze response.
   const [ancientLayer, setAncientLayer] = useState<AncientLayerSpec | null>(null);
   const [selectedLineages, setSelectedLineages] = useState<string[]>([]);
+
+  // Civ identity (host's own civilization). MP režim si toto řeší v lobby per hráč.
+  const [identity, setIdentity] = useState<WorldIdentityInput>({
+    heraldry: { primary: "#2563eb", secondary: "#fef08a", symbol: "circle" },
+    spawnPreference: "any",
+    faithAttitude: "tolerant",
+  });
+  const isMPMode = mode === "tb_multi";
 
   // Bootstrap progress
   const [creating, setCreating] = useState(false);
@@ -218,13 +228,23 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
   }
 
   // ── Submit (Create) ──
+  // Civ identity je vyžadována pro single + manual módy. V MP módu se identita
+  // řeší v lobby per hráč (přes player_civ_configs).
+  const civValid = isMPMode || (
+    !!identity.realmName?.trim() &&
+    !!identity.settlementName?.trim() &&
+    !!identity.rulerName?.trim() &&
+    !!identity.secretObjectiveArchetype
+  );
+
   const canSubmit =
     !creating &&
     !!resolved &&
     !state.isSuggestionStale &&
     !state.isBlueprintStale &&
     !isBusy &&
-    playerName.trim().length > 0;
+    playerName.trim().length > 0 &&
+    civValid;
 
   async function handleSubmit() {
     if (!resolved) return;
@@ -293,6 +313,7 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
         spec: specWithAncient as typeof resolved,
         preWorldPremise: state.preWorldPremise.trim() || undefined,
         factions: factionsArr,
+        identity: isMPMode ? undefined : identity,
       });
 
       const tickInterval = setInterval(() => {
@@ -474,6 +495,16 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
                       disabled={isBusy}
                     />
                   </Card>
+
+                  {/* Civ identity (single + manual). MP řeší v lobby. */}
+                  {!isMPMode && (
+                    <CivSetupStep
+                      value={identity}
+                      onChange={setIdentity}
+                      premise={state.premise}
+                      disabled={isBusy}
+                    />
+                  )}
                 </>
               )}
 
@@ -491,6 +522,8 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
                   ? 'Premisa byla změněna — klikněte znovu na "Analyzovat premisu" pro aktualizaci návrhu.'
                   : state.isBlueprintStale
                   ? 'Blueprint je zastaralý — klikněte na "Regenerovat blueprint" v žluté výstraze výše.'
+                  : !civValid
+                  ? 'V sekci „Tvá civilizace“ doplň: jméno říše, hlavní sídlo, vládce a tajný cíl (* povinné).'
                   : null;
                 return (
                   <div className="sticky bottom-0 bg-background/95 backdrop-blur py-3 -mx-3 px-3 border-t border-border lg:static lg:border-0 lg:bg-transparent lg:mx-0 lg:px-0 space-y-2">

@@ -46,12 +46,9 @@ export interface PreviewWorldMapResponse {
 
 // ─── Inkrement 3: spec-driven composers ──────────────────────────────────────
 
-export interface WizardIdentityInput {
-  settlementName?: string;
-  cultureName?: string;
-  languageName?: string;
-  realmName?: string;
-}
+// Re-export the canonical identity type so wizard + composer share one shape.
+export type { WorldIdentityInput as WizardIdentityInput } from "@/types/worldBootstrap";
+import type { WorldIdentityInput } from "@/types/worldBootstrap";
 
 /** Build the request to translate-premise-to-spec from current wizard state. */
 export function composeAnalyzeRequest(args: {
@@ -99,7 +96,7 @@ export function composeBootstrapFromSpec(args: {
   mode: GameMode;
   spec: WorldgenSpecV1;
   preWorldPremise?: string;
-  identity?: WizardIdentityInput;
+  identity?: WorldIdentityInput;
   factions?: FactionSeedInput[];
 }): CreateWorldBootstrapRequest {
   const { spec } = args;

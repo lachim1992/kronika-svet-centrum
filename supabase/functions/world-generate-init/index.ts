@@ -16,7 +16,7 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const { sessionId, playerName, worldName, premise, tone, victoryStyle, worldSize, tier, settlementName, cultureName, languageName, realmName, factionConfigs, terrainParams: userTerrainParams, mapWidth: userMapWidth, mapHeight: userMapHeight } = await req.json();
+    const { sessionId, playerName, worldName, premise, tone, victoryStyle, worldSize, tier, settlementName, cultureName, languageName, realmName, rulerName, rulerTitle, rulerArchetype, rulerBio, foundingLegend, governmentForm, dominantFaith, secretObjectiveArchetype, factionConfigs, terrainParams: userTerrainParams, mapWidth: userMapWidth, mapHeight: userMapHeight } = await req.json();
 
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) {
@@ -141,6 +141,11 @@ HRÁČ: ${playerName}
 ${realmName ? `ŘÍŠE HRÁČE: ${realmName}` : ""}
 ${cultureName ? `KULTURA: ${cultureName}` : ""}
 ${languageName ? `JAZYK: ${languageName}` : ""}
+${rulerName ? `VLÁDCE HRÁČE: ${rulerTitle ? rulerTitle + " " : ""}${rulerName}${rulerArchetype ? ` (archetyp: ${rulerArchetype})` : ""}${rulerBio ? ` — ${rulerBio}` : ""}` : ""}
+${governmentForm ? `FORMA VLÁDY: ${governmentForm}` : ""}
+${dominantFaith ? `DOMINANTNÍ VÍRA HRÁČE: ${dominantFaith}` : ""}
+${secretObjectiveArchetype ? `TAJNÝ CÍL HRÁČE (archetyp): ${secretObjectiveArchetype}` : ""}
+${foundingLegend ? `ZAKLADATELSKÁ LEGENDA HRÁČE (PROPOJ S PREHISTORIÍ — ${rulerName || "hrdina legendy"} MUSÍ být jednou z legendárních osobností, klíčová bitva legendy MUSÍ být v pre_history_events):\n"""${foundingLegend}"""` : ""}
 ${factionInstructions}
 POŽADAVKY:
 - Každá frakce (${factionCount + 1} celkem) má VLASTNÍ stát (country) se jménem, popisem a image_prompt

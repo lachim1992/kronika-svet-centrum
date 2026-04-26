@@ -6767,6 +6767,7 @@ export type Database = {
           culture_name: string
           dominant_faith: string | null
           faith_attitude: string | null
+          founding_legend: string | null
           government_form: string | null
           heraldry: Json | null
           homeland_biome: string
@@ -6796,6 +6797,7 @@ export type Database = {
           culture_name?: string
           dominant_faith?: string | null
           faith_attitude?: string | null
+          founding_legend?: string | null
           government_form?: string | null
           heraldry?: Json | null
           homeland_biome?: string
@@ -6825,6 +6827,7 @@ export type Database = {
           culture_name?: string
           dominant_faith?: string | null
           faith_attitude?: string | null
+          founding_legend?: string | null
           government_form?: string | null
           heraldry?: Json | null
           homeland_biome?: string
