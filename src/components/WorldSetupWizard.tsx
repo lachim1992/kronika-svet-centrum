@@ -35,6 +35,8 @@ import {
   CANONICAL_BOOTSTRAP_STEPS,
 } from "./world-setup/BootstrapProgressPanel";
 import type { AncientLayerSpec } from "@/types/ancientLayer";
+import CivSetupStep from "./world-setup/CivSetupStep";
+import type { WorldIdentityInput } from "@/types/worldBootstrap";
 
 import { useWorldSetupWizardState } from "@/hooks/useWorldSetupWizardState";
 import {
@@ -82,6 +84,14 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
   // Ancient layer (v9.1) — held outside reducer; arrives with analyze response.
   const [ancientLayer, setAncientLayer] = useState<AncientLayerSpec | null>(null);
   const [selectedLineages, setSelectedLineages] = useState<string[]>([]);
+
+  // Civ identity (host's own civilization). MP režim si toto řeší v lobby per hráč.
+  const [identity, setIdentity] = useState<WorldIdentityInput>({
+    heraldry: { primary: "#2563eb", secondary: "#fef08a", symbol: "circle" },
+    spawnPreference: "any",
+    faithAttitude: "tolerant",
+  });
+  const isMPMode = mode === "tb_multi";
 
   // Bootstrap progress
   const [creating, setCreating] = useState(false);
