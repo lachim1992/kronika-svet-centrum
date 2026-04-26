@@ -113,7 +113,7 @@ const WikiPanel = ({
 
 
   const fetchAll = async () => {
-    const [entriesRes, provincesRes, regionsRes, worldEventsRes, linksRes, imagesRes, memoriesRes] = await Promise.all([
+    const [entriesRes, provincesRes, regionsRes, worldEventsRes, linksRes, imagesRes, memoriesRes, nodesRes] = await Promise.all([
       supabase.from("wiki_entries").select("*").eq("session_id", sessionId).order("entity_type").order("entity_name"),
       supabase.from("provinces").select("*").eq("session_id", sessionId),
       supabase.from("regions").select("*").eq("session_id", sessionId),
@@ -121,6 +121,7 @@ const WikiPanel = ({
       supabase.from("event_entity_links").select("*"),
       supabase.from("encyclopedia_images").select("*").eq("session_id", sessionId),
       supabase.from("world_memories").select("text").eq("session_id", sessionId).eq("approved", true),
+      supabase.from("province_nodes").select("id, name, culture_key, profile_key, population, autonomy_score, discovered, is_neutral, controlled_by, hex_q, hex_r").eq("session_id", sessionId).eq("discovered", true),
     ]);
     if (entriesRes.data) setEntries(entriesRes.data as WikiEntry[]);
     if (provincesRes.data) setProvinces(provincesRes.data);
@@ -129,6 +130,7 @@ const WikiPanel = ({
     if (linksRes.data) setEventLinks(linksRes.data as EventEntityLink[]);
     if (imagesRes.data) setEntityImages(imagesRes.data as EncImage[]);
     if (memoriesRes.data) setWorldMemories(memoriesRes.data.map((m: any) => m.text));
+    if (nodesRes.data) setNodes(nodesRes.data);
   };
 
   // Build all encyclopedia entities
