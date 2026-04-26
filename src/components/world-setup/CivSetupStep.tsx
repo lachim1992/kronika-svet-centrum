@@ -39,18 +39,23 @@ interface Props {
   /** Premise se použije jako fallback context pro AI extrakci. */
   premise: string;
   disabled?: boolean;
+  /** Vyextrahované mechanické modifikátory (units, building tags, modifiers). */
+  identityModifiers?: any | null;
+  onIdentityModifiersChange?: (next: any | null) => void;
 }
 
-const CivSetupStep = ({ value, onChange, premise, disabled }: Props) => {
+const CivSetupStep = ({ value, onChange, premise, disabled, identityModifiers, onIdentityModifiersChange }: Props) => {
   const [identityOpen, setIdentityOpen] = useState(true);
   const [rulerOpen, setRulerOpen] = useState(true);
   const [homelandOpen, setHomelandOpen] = useState(false);
   const [govOpen, setGovOpen] = useState(false);
   const [legendOpen, setLegendOpen] = useState(false);
   const [secretOpen, setSecretOpen] = useState(false);
+  const [unitsOpen, setUnitsOpen] = useState(false);
 
   const [extracting, setExtracting] = useState(false);
-  const [extracted, setExtracted] = useState<any | null>(null);
+  const extracted = identityModifiers ?? null;
+  const setExtracted = (v: any | null) => onIdentityModifiersChange?.(v);
 
   const heraldry: HeraldryData = value.heraldry || { primary: "#2563eb", secondary: "#fef08a", symbol: "circle" };
   const ruler: RulerData = {
@@ -70,6 +75,10 @@ const CivSetupStep = ({ value, onChange, premise, disabled }: Props) => {
   };
 
   const update = (patch: Partial<WorldIdentityInput>) => onChange({ ...value, ...patch });
+  const updateExtracted = (patch: Record<string, any>) => {
+    if (!extracted) return;
+    setExtracted({ ...extracted, ...patch });
+  };
 
   async function handleExtractIdentity() {
     const desc = (value.civDescription || "").trim();
@@ -87,7 +96,8 @@ const CivSetupStep = ({ value, onChange, premise, disabled }: Props) => {
       });
       if (error) throw error;
       setExtracted(data);
-      toast.success("Identita extrahována");
+      setUnitsOpen(true);
+      toast.success("Identita extrahována — zkontroluj jednotky a budovy níže.");
     } catch (e: any) {
       toast.error(e?.message || "Extrakce selhala");
     } finally {
