@@ -38,6 +38,7 @@ async function safeInsert(query: any) {
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
+  const tCommit = Date.now();
   try {
     const { sessionId, playerName, skipNarrative } = await req.json();
     if (!sessionId || !playerName) {
