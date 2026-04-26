@@ -2869,10 +2869,22 @@ async function executeAnnexNode(
     integration_progress: 100,
   });
 
+  // Persist the annexation as a permanent world memory
+  await supabase.from("world_memories").insert({
+    session_id: sessionId,
+    text: `${actor.name} anektoval uzel "${node.name}"${node.culture_key ? ` kultury ${node.culture_key}` : ""}${node.profile_key ? ` (profil: ${node.profile_key})` : ""} v roce ${turnNumber}.`,
+    category: "annexation",
+    created_round: turnNumber,
+    approved: true,
+  }).then(() => {}, (e: any) => {
+    console.warn("ANNEX_NODE world_memories insert error:", e?.message);
+  });
+
+  const ctxA = nodeContext(node);
   return await insertEvents(supabase, commandId, [{
     ...base, event_type: "node_annexed",
-    note: `${actor.name} anektoval ${node.name}.`,
+    note: `${actor.name} anektoval ${node.name}${ctxA.suffix}.`,
     importance: "high",
-    reference: { node_id: nodeId, check },
+    reference: { node_id: nodeId, ...ctxA.tags, check },
   }], { node_id: nodeId, annex_check: check });
 }
