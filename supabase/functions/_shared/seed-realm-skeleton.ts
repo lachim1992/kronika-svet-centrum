@@ -13,6 +13,30 @@
 interface StartPos { q: number; r: number; }
 interface FactionConfig { name?: string; personality?: string; description?: string; }
 
+interface ExtractedCivIdentityInput {
+  display_name?: string | null;
+  flavor_summary?: string | null;
+  culture_tags?: string[];
+  urban_style?: string;
+  society_structure?: string;
+  military_doctrine?: string;
+  economic_focus?: string;
+  grain_modifier?: number; wood_modifier?: number; stone_modifier?: number;
+  iron_modifier?: number; wealth_modifier?: number;
+  pop_growth_modifier?: number;
+  initial_burgher_ratio?: number; initial_cleric_ratio?: number;
+  production_modifier?: number;
+  morale_modifier?: number; mobilization_speed?: number;
+  cavalry_bonus?: number; fortification_bonus?: number;
+  stability_modifier?: number; trade_modifier?: number;
+  diplomacy_modifier?: number; research_modifier?: number;
+  building_tags?: string[];
+  militia_unit_name?: string; militia_unit_desc?: string;
+  professional_unit_name?: string; professional_unit_desc?: string;
+  core_myth?: string | null; cultural_quirk?: string | null; architectural_style?: string | null;
+  source_description?: string;
+}
+
 interface SeedRealmInput {
   sb: any;
   sessionId: string;
@@ -40,6 +64,8 @@ interface SeedRealmInput {
   heraldry?: { primary: string; secondary: string; symbol: string };
   secretObjectiveArchetype?: string;
   foundingLegend?: string;
+  identityModifiers?: ExtractedCivIdentityInput;
+  lineageIds?: string[];
   factions?: FactionConfig[];
   startPositions: StartPos[];
 }
@@ -81,6 +107,7 @@ export async function seedRealmSkeleton(input: SeedRealmInput): Promise<SeedReal
     rulerName, rulerTitle, rulerArchetype, rulerBio,
     governmentForm, tradeIdeology, dominantFaith, faithAttitude,
     heraldry, secretObjectiveArchetype, foundingLegend,
+    identityModifiers, lineageIds,
     factions = [], startPositions,
   } = input;
 
@@ -329,29 +356,65 @@ export async function seedRealmSkeleton(input: SeedRealmInput): Promise<SeedReal
       foundingLegend ? `Zakladatelská legenda: ${foundingLegend}` : "",
     ].filter(Boolean).join(" ").trim();
 
-    if (civDescForExtract.length > 0 || realmName) {
-      await sb.from("civ_identity").upsert({
+    if (civDescForExtract.length > 0 || realmName || identityModifiers) {
+      const im = identityModifiers || {};
+      const civIdentityRow: Record<string, any> = {
         session_id: sessionId,
         player_name: playerName,
-        display_name: realmName || `${playerName}ova říše`,
-        flavor_summary: civDescription || foundingLegend?.slice(0, 200) || "",
-        source_description: civDescForExtract,
-        culture_tags: cultureName ? [cultureName] : [],
-      } as any, { onConflict: "session_id,player_name" });
+        display_name: im.display_name || realmName || `${playerName}ova říše`,
+        flavor_summary: im.flavor_summary || civDescription || foundingLegend?.slice(0, 200) || "",
+        source_description: im.source_description || civDescForExtract,
+        culture_tags: im.culture_tags?.length ? im.culture_tags : (cultureName ? [cultureName] : []),
+      };
+      // Mechanické modifikátory (jen pokud byly extrahovány)
+      const numericFields = [
+        "grain_modifier","wood_modifier","stone_modifier","iron_modifier","wealth_modifier",
+        "pop_growth_modifier","initial_burgher_ratio","initial_cleric_ratio","production_modifier",
+        "morale_modifier","mobilization_speed","cavalry_bonus","fortification_bonus",
+        "stability_modifier","trade_modifier","diplomacy_modifier","research_modifier",
+      ] as const;
+      for (const f of numericFields) {
+        if (typeof (im as any)[f] === "number") civIdentityRow[f] = (im as any)[f];
+      }
+      const stringFields = [
+        "urban_style","society_structure","military_doctrine","economic_focus",
+        "militia_unit_name","militia_unit_desc","professional_unit_name","professional_unit_desc",
+      ] as const;
+      for (const f of stringFields) {
+        if ((im as any)[f]) civIdentityRow[f] = (im as any)[f];
+      }
+      if (im.building_tags?.length) civIdentityRow.building_tags = im.building_tags.slice(0, 3);
+
+      await sb.from("civ_identity").upsert(civIdentityRow as any, { onConflict: "session_id,player_name" });
     }
   } catch (e) {
     console.warn("[seed-realm-skeleton] civ_identity upsert failed:", e);
   }
 
+  // ── Lineage selection (ancient layer) ──
+  // Update player_civ_configs.lineage_ids if the row exists (created by
+  // create-world-bootstrap step 7-bis with the correct user_id). Best-effort.
+  if (lineageIds && lineageIds.length > 0) {
+    try {
+      await sb.from("player_civ_configs")
+        .update({ lineage_ids: lineageIds })
+        .eq("session_id", sessionId)
+        .eq("player_name", playerName);
+    } catch (e) {
+      console.warn("[seed-realm-skeleton] lineage_ids update failed:", e);
+    }
+  }
+
   // civilizations row — narrative metadata for the player's faction.
   try {
-    if (realmName || rulerName || foundingLegend) {
+    if (realmName || rulerName || foundingLegend || identityModifiers) {
       await sb.from("civilizations").upsert({
         session_id: sessionId,
         player_name: playerName,
-        civ_name: realmName || `${playerName}ova říše`,
-        core_myth: foundingLegend || null,
-        cultural_quirk: cultureName || null,
+        civ_name: identityModifiers?.display_name || realmName || `${playerName}ova říše`,
+        core_myth: identityModifiers?.core_myth || foundingLegend || null,
+        cultural_quirk: identityModifiers?.cultural_quirk || cultureName || null,
+        architectural_style: identityModifiers?.architectural_style || null,
         is_ai: false,
       } as any, { onConflict: "session_id,player_name" });
     }

@@ -11,7 +11,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { ChevronDown, ChevronRight, Crown, Castle, Landmark, Shield, BookOpen, Target, Compass, Sparkles, Loader2 } from "lucide-react";
+import { ChevronDown, ChevronRight, Crown, Castle, Landmark, Shield, BookOpen, Target, Compass, Sparkles, Loader2, Swords } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
@@ -39,18 +39,23 @@ interface Props {
   /** Premise se použije jako fallback context pro AI extrakci. */
   premise: string;
   disabled?: boolean;
+  /** Vyextrahované mechanické modifikátory (units, building tags, modifiers). */
+  identityModifiers?: any | null;
+  onIdentityModifiersChange?: (next: any | null) => void;
 }
 
-const CivSetupStep = ({ value, onChange, premise, disabled }: Props) => {
+const CivSetupStep = ({ value, onChange, premise, disabled, identityModifiers, onIdentityModifiersChange }: Props) => {
   const [identityOpen, setIdentityOpen] = useState(true);
   const [rulerOpen, setRulerOpen] = useState(true);
   const [homelandOpen, setHomelandOpen] = useState(false);
   const [govOpen, setGovOpen] = useState(false);
   const [legendOpen, setLegendOpen] = useState(false);
   const [secretOpen, setSecretOpen] = useState(false);
+  const [unitsOpen, setUnitsOpen] = useState(false);
 
   const [extracting, setExtracting] = useState(false);
-  const [extracted, setExtracted] = useState<any | null>(null);
+  const extracted = identityModifiers ?? null;
+  const setExtracted = (v: any | null) => onIdentityModifiersChange?.(v);
 
   const heraldry: HeraldryData = value.heraldry || { primary: "#2563eb", secondary: "#fef08a", symbol: "circle" };
   const ruler: RulerData = {
@@ -70,6 +75,10 @@ const CivSetupStep = ({ value, onChange, premise, disabled }: Props) => {
   };
 
   const update = (patch: Partial<WorldIdentityInput>) => onChange({ ...value, ...patch });
+  const updateExtracted = (patch: Record<string, any>) => {
+    if (!extracted) return;
+    setExtracted({ ...extracted, ...patch });
+  };
 
   async function handleExtractIdentity() {
     const desc = (value.civDescription || "").trim();
@@ -87,7 +96,8 @@ const CivSetupStep = ({ value, onChange, premise, disabled }: Props) => {
       });
       if (error) throw error;
       setExtracted(data);
-      toast.success("Identita extrahována");
+      setUnitsOpen(true);
+      toast.success("Identita extrahována — zkontroluj jednotky a budovy níže.");
     } catch (e: any) {
       toast.error(e?.message || "Extrakce selhala");
     } finally {
@@ -261,6 +271,105 @@ const CivSetupStep = ({ value, onChange, premise, disabled }: Props) => {
           <div><SecretObjectiveStep value={secret} onChange={(s) => update({ secretObjectiveArchetype: s.secret_objective_archetype })} /></div>
         </CollapsibleContent>
       </Collapsible>
+
+      {/* MECHANICKÁ IDENTITA & JEDNOTKY — viditelné pouze po extrakci */}
+      {extracted && (
+        <Collapsible open={unitsOpen} onOpenChange={setUnitsOpen}>
+          <CollapsibleTrigger className="flex items-center gap-2 w-full text-left p-2 rounded hover:bg-muted/50">
+            {unitsOpen ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+            <Swords className="h-3.5 w-3.5 text-primary" />
+            <span className="text-xs font-semibold flex-1">Mechanická identita, jednotky & budovy</span>
+            <span className="text-[10px] text-muted-foreground">{extracted.militia_unit_name || "—"}</span>
+          </CollapsibleTrigger>
+          <CollapsibleContent className="space-y-3 pt-2 pl-2">
+            <p className="text-[11px] text-muted-foreground">
+              Tyto hodnoty extrahovala AI z popisu tvé civilizace. Můžeš je upravit — uloží se do herních pravidel a vetkají se do Chronicle Zero.
+            </p>
+
+            {/* Jednotky */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 border border-primary/20 rounded p-2 bg-primary/5">
+              <div className="space-y-1">
+                <Label className="text-xs">⚔️ Milice — název</Label>
+                <Input
+                  value={extracted.militia_unit_name || ""}
+                  onChange={(e) => updateExtracted({ militia_unit_name: e.target.value })}
+                  placeholder="např. Lesní zálesáci"
+                  disabled={disabled}
+                  maxLength={60}
+                />
+                <Textarea
+                  value={extracted.militia_unit_desc || ""}
+                  onChange={(e) => updateExtracted({ militia_unit_desc: e.target.value })}
+                  placeholder="Krátký popis milice…"
+                  rows={2}
+                  maxLength={120}
+                  disabled={disabled}
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">🛡️ Profesionálové — název</Label>
+                <Input
+                  value={extracted.professional_unit_name || ""}
+                  onChange={(e) => updateExtracted({ professional_unit_name: e.target.value })}
+                  placeholder="např. Železní gardisté"
+                  disabled={disabled}
+                  maxLength={60}
+                />
+                <Textarea
+                  value={extracted.professional_unit_desc || ""}
+                  onChange={(e) => updateExtracted({ professional_unit_desc: e.target.value })}
+                  placeholder="Krátký popis elitní jednotky…"
+                  rows={2}
+                  maxLength={120}
+                  disabled={disabled}
+                />
+              </div>
+            </div>
+
+            {/* Speciální budovy */}
+            <div className="space-y-1">
+              <Label className="text-xs">🏛️ Speciální budovy (tagy oddělené čárkou, max 3)</Label>
+              <Input
+                value={(extracted.building_tags || []).join(", ")}
+                onChange={(e) => updateExtracted({
+                  building_tags: e.target.value.split(",").map((s: string) => s.trim()).filter(Boolean).slice(0, 3),
+                })}
+                placeholder="např. horse_stable, sacred_grove, iron_forge"
+                disabled={disabled}
+              />
+            </div>
+
+            {/* Mechanické modifikátory (read-only přehled) */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 text-[10px]">
+              {[
+                ["🌾 Obilí", extracted.grain_modifier],
+                ["🪵 Dřevo", extracted.wood_modifier],
+                ["🪨 Kámen", extracted.stone_modifier],
+                ["⚒️ Železo", extracted.iron_modifier],
+                ["💰 Bohatství", extracted.wealth_modifier],
+                ["🛡️ Morálka", extracted.morale_modifier],
+                ["🐎 Jezdectvo", extracted.cavalry_bonus],
+                ["🏰 Opevnění", extracted.fortification_bonus],
+                ["🤝 Diplomacie", extracted.diplomacy_modifier],
+                ["📚 Výzkum", extracted.research_modifier],
+                ["⚖️ Stabilita", extracted.stability_modifier],
+                ["📈 Obchod", extracted.trade_modifier],
+              ].map(([label, val]) => (
+                <div key={label as string} className="px-1.5 py-1 rounded bg-muted text-center">
+                  <div>{label}</div>
+                  <div className={`font-mono ${(val as number) > 0 ? "text-emerald-500" : (val as number) < 0 ? "text-red-500" : "text-muted-foreground"}`}>
+                    {(val as number) > 0 ? "+" : ""}{typeof val === "number" ? val.toFixed(2) : "—"}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <Button type="button" size="sm" variant="outline" onClick={handleExtractIdentity} disabled={disabled || extracting} className="h-7 text-[10px] w-full">
+              {extracting ? <><Loader2 className="h-3 w-3 mr-1 animate-spin" />Re-extrahuji…</> : "🔄 Re-extrahovat z popisu"}
+            </Button>
+          </CollapsibleContent>
+        </Collapsible>
+      )}
     </Card>
   );
 };

@@ -8,6 +8,7 @@
 import {
   type CreateWorldBootstrapRequest,
   type DeepPartial,
+  type ExtractedCivIdentity,
   type FactionSeedInput,
   type GameMode,
   type TranslatePremiseRequest,
@@ -97,6 +98,8 @@ export function composeBootstrapFromSpec(args: {
   spec: WorldgenSpecV1;
   preWorldPremise?: string;
   identity?: WorldIdentityInput;
+  identityModifiers?: ExtractedCivIdentity;
+  lineageIds?: string[];
   factions?: FactionSeedInput[];
 }): CreateWorldBootstrapRequest {
   const { spec } = args;
@@ -126,6 +129,8 @@ export function composeBootstrapFromSpec(args: {
       } as any,
     },
     identity: args.identity,
+    identityModifiers: args.identityModifiers,
+    lineageIds: args.lineageIds,
     factions: args.factions,
   };
 }
