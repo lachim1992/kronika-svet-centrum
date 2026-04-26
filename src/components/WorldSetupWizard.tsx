@@ -68,6 +68,7 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
     isRegeneratingBlueprint,
     isBusy,
     setPremise,
+    setPreWorldPremise,
     useInspiration,
     editField,
     lockField,
