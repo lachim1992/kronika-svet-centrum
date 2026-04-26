@@ -42,15 +42,46 @@ export interface WorldPremise {
   ancientResetEvent: { type: string; description: string } | null;
 }
 
+/**
+ * Per-player civilizational context.
+ * Built ONCE in createAIContext() and embedded into premisePrompt as P0b.
+ */
+export interface CivContext {
+  playerName: string;
+  civName?: string;
+  /**
+   * Hráčova "premisa národa" — popis národa, který hráč zadal.
+   * Pro tuto iteraci čteno z civilizations.core_myth.
+   * TODO: až přibude civilizations.civ_premise, prefer ten.
+   */
+  civDescription?: string;
+  culturalQuirk?: string;
+  architecturalStyle?: string;
+  /** Pradávné rody, které tento konkrétní národ adoptoval (filtrované per-player). */
+  claimedLineages: Array<{
+    name: string;
+    description: string;
+    culturalAnchor?: string;
+  }>;
+  /** Pravda o tom, jestli claimedLineages pochází z per-player heritage nebo world fallbacku. */
+  lineagesSource: "per_player_heritage" | "world_fallback" | "none";
+  // Strukturovaná identita (z civ_identity, pokud existuje)
+  cultureTags?: string[];
+  urbanStyle?: string;
+  societyStructure?: string;
+  militaryDoctrine?: string;
+  economicFocus?: string;
+}
+
 export interface AIRequestContext {
   sessionId: string;
   requestId: string;
   turnNumber?: number;
   premise: WorldPremise;
-  /** Pre-built system prompt prefix containing premise instructions */
+  /** Pre-built system prompt prefix containing premise instructions (P0 + P0b + P1+...) */
   premisePrompt: string;
-  /** Optional: loaded civ DNA for the relevant player */
-  civContext?: { culturalQuirk?: string; architecturalStyle?: string; civName?: string };
+  /** Loaded civ context for the relevant player (undefined when called without playerName) */
+  civContext?: CivContext;
 }
 
 export interface AIInvokeOptions {
@@ -60,6 +91,11 @@ export interface AIInvokeOptions {
   tools?: any[];
   toolChoice?: any;
   maxTokens?: number;
+  /**
+   * Function name for telemetry (ai_invocation_log).
+   * Strongly recommended; will be "unknown" if omitted.
+   */
+  functionName?: string;
 }
 
 export interface AIInvokeResult {
@@ -73,6 +109,9 @@ export interface AIInvokeResult {
     premiseVersion: number;
     sessionId: string;
     turnNumber?: number;
+    functionName?: string;
+    playerContextUsed: boolean;
+    lineageNamesAvailable: string[];
   };
 }
 
@@ -282,16 +321,28 @@ export async function loadWorldPremise(sessionId: string, sb?: SupabaseClient): 
 // ─── Build Premise Prompt ───
 
 /**
- * Build a standardized system prompt prefix from the world premise.
- * This MUST be prepended to every AI system prompt.
+ * Build a standardized system prompt prefix from the world premise (P0...P8).
+ * If `civContext` is provided, also injects [P0b — PREMISA NÁRODA HRÁČE] between P0 and P1.
+ *
+ * P0  = world setting (svět)
+ * P0b = player's civilization (národ hráče v rámci toho světa)
+ * P1+ = constraints, structure, lore, vibe...
+ *
+ * Priority rule: P0 (svět) > P0b (národ). Národ se musí přizpůsobit světu,
+ * ale jeho identita a odkazy na adoptované rody nesmí být potlačeny.
+ *
+ * MUST be prepended to every AI system prompt (handled by invokeAI).
  */
-export function buildPremisePrompt(premise: WorldPremise): string {
+export function buildPremisePrompt(
+  premise: WorldPremise,
+  civContext?: CivContext,
+): string {
   const parts: string[] = [];
 
   parts.push("=== PREMISA SVĚTA (povinný kontext — MUSÍŠ respektovat) ===");
-  parts.push("PRAVIDLO PRIORITY: Pokud dojde ke konfliktu mezi vrstvami, VŽDY platí vrstva s nižším číslem. P0 vítězí nad P1, P1 nad P2, atd.");
+  parts.push("PRAVIDLO PRIORITY: Pokud dojde ke konfliktu mezi vrstvami, VŽDY platí vrstva s nižším číslem. P0 vítězí nad P0b, P0b nad P1, P1 nad P2, atd.");
 
-  // ── P0 — DUÁLNÍ PREMISA (nejvyšší kanonická pravda — nesmí být překroucena) ──
+  // ── P0 — DUÁLNÍ PREMISA SVĚTA (nejvyšší kanonická pravda) ──
   const dualParts: string[] = [];
   if (premise.presentPremise) {
     dualParts.push(`PREMISA SOUČASNOSTI (svět, ve kterém se hraje):\n"""${premise.presentPremise.trim()}"""`);
@@ -306,12 +357,54 @@ export function buildPremisePrompt(premise: WorldPremise): string {
     const lin = premise.ancientLineages
       .map((l) => `• ${l.name}${l.culturalAnchor ? ` (kotva: ${l.culturalAnchor})` : ""}: ${l.description}`)
       .join("\n");
-    dualParts.push(`PRADÁVNÉ RODY (živé dědictví Pradávna v Současnosti — MUSÍŠ je citovat při generování postav, frakcí, kronik):\n${lin}`);
+    dualParts.push(`PRADÁVNÉ RODY SVĚTA (živé dědictví Pradávna v Současnosti — MUSÍŠ je citovat při generování postav, frakcí, kronik):\n${lin}`);
   }
   if (dualParts.length > 0) {
     parts.push(
       `[P0 — DUÁLNÍ PREMISA SVĚTA (kanonický setting — VŠE musí přímo navazovat na tyto texty; nepřidávej generická klišé typu "Skyfall", "Iron Sons" pokud nejsou explicitně uvedena)]\n${dualParts.join("\n\n")}`,
     );
+  }
+
+  // ── P0b — PREMISA NÁRODA HRÁČE (per-player identity layer) ──
+  if (civContext) {
+    const civParts: string[] = [];
+    if (civContext.civName) civParts.push(`NÁROD: ${civContext.civName}`);
+    if (civContext.civDescription) {
+      civParts.push(`POPIS NÁRODA (premisa hráče — MUSÍŠ doslova reflektovat ve všem, co tomuto národu patří — města, jednotky, postavy, budovy):\n"""${civContext.civDescription.trim()}"""`);
+    }
+    if (civContext.claimedLineages.length > 0) {
+      const sourceLabel = civContext.lineagesSource === "per_player_heritage"
+        ? "ADOPTOVANÉ PRADÁVNÉ RODY (tento konkrétní národ se k nim hlásí)"
+        : "DĚDICTVÍ PRADÁVNA SDÍLENÉ SE SVĚTEM (per-player adopce zatím nezadána)";
+      const lin = civContext.claimedLineages
+        .map((l) => `• ${l.name}${l.culturalAnchor ? ` (kotva: ${l.culturalAnchor})` : ""}: ${l.description}`)
+        .join("\n");
+      civParts.push(`${sourceLabel}:\n${lin}`);
+    }
+    if (civContext.culturalQuirk) {
+      civParts.push(`KULTURNÍ ZVLÁŠTNOST (musí se objevit v rituálech, rozhodování, popisech): ${civContext.culturalQuirk}`);
+    }
+    if (civContext.architecturalStyle) {
+      civParts.push(`ARCHITEKTONICKÝ STYL (musí se objevit v popisu budov a měst): ${civContext.architecturalStyle}`);
+    }
+    const idTagParts: string[] = [];
+    if (civContext.cultureTags?.length) idTagParts.push(`Kulturní tagy: ${civContext.cultureTags.join(", ")}`);
+    if (civContext.urbanStyle) idTagParts.push(`Urbanismus: ${civContext.urbanStyle}`);
+    if (civContext.societyStructure) idTagParts.push(`Společenská struktura: ${civContext.societyStructure}`);
+    if (civContext.militaryDoctrine) idTagParts.push(`Vojenská doktrína: ${civContext.militaryDoctrine}`);
+    if (civContext.economicFocus) idTagParts.push(`Ekonomické zaměření: ${civContext.economicFocus}`);
+    if (idTagParts.length > 0) {
+      civParts.push(`STRUKTUROVANÁ IDENTITA (musí být reflektována v generovaném obsahu):\n  ${idTagParts.join("\n  ")}`);
+    }
+
+    if (civParts.length > 0) {
+      civParts.push(
+        "PRAVIDLO P0 vs P0b: Svět (P0) určuje kosmologii, Zlom, fyziku a geografii. " +
+        "Národ (P0b) určuje identitu — co dělá tento konkrétní národ unikátním v rámci toho světa. " +
+        "Při konfliktu se národ přizpůsobí světu, ale jeho odkazy na adoptované rody a vlastní popis nesmí být potlačeny.",
+      );
+      parts.push(`[P0b — PREMISA NÁRODA HRÁČE "${civContext.playerName}"]\n${civParts.join("\n\n")}`);
+    }
   }
 
   // ── P1 — CONSTRAINTS (tvrdé zákazy, nepřekročitelné) ──
@@ -417,7 +510,86 @@ export function buildPremisePrompt(premise: WorldPremise): string {
 // ─── Unified AI Invocation ───
 
 /**
- * Create a full AI request context with premise loaded from DB.
+ * Load per-player civilizational context.
+ * Pulls civilization DNA, structured identity, and per-player adopted lineages.
+ *
+ * Lineage filtering:
+ *  1) Try realm_heritage filtered by player_name (per-player adoption).
+ *  2) If empty, fall back to first 2 world lineages (shared world dědictví).
+ *  3) Mark `lineagesSource` so prompt can label correctly.
+ */
+export async function loadCivContext(
+  sessionId: string,
+  playerName: string,
+  premise: WorldPremise,
+  sb?: SupabaseClient,
+): Promise<CivContext> {
+  const client = sb || getServiceClient();
+
+  const [civRes, identityRes, heritageRes] = await Promise.all([
+    client
+      .from("civilizations")
+      // TODO: až přibude civilizations.civ_premise, přidej ho a prefer ho před core_myth
+      .select("civ_name, core_myth, cultural_quirk, architectural_style")
+      .eq("session_id", sessionId)
+      .eq("player_name", playerName)
+      .maybeSingle(),
+    client
+      .from("civ_identity")
+      .select("culture_tags, urban_style, society_structure, military_doctrine, economic_focus")
+      .eq("session_id", sessionId)
+      .eq("player_name", playerName)
+      .maybeSingle(),
+    client
+      .from("realm_heritage")
+      .select("lineage_name, description, cultural_anchor, player_name")
+      .eq("session_id", sessionId)
+      .eq("player_name", playerName)
+      .limit(10),
+  ]);
+
+  const civ = civRes.data as any;
+  const identity = identityRes.data as any;
+  const heritage = (heritageRes.data ?? []) as any[];
+
+  let claimedLineages: CivContext["claimedLineages"] = [];
+  let lineagesSource: CivContext["lineagesSource"] = "none";
+
+  if (heritage.length > 0) {
+    claimedLineages = heritage.map((h) => ({
+      name: h.lineage_name,
+      description: h.description ?? "",
+      culturalAnchor: h.cultural_anchor ?? undefined,
+    }));
+    lineagesSource = "per_player_heritage";
+  } else if (premise.ancientLineages.length > 0) {
+    // Fallback: shared world heritage
+    claimedLineages = premise.ancientLineages.slice(0, 2);
+    lineagesSource = "world_fallback";
+    console.warn(
+      `[loadCivContext] session=${sessionId} player=${playerName}: per-player realm_heritage empty, using world fallback (${claimedLineages.length} lineages)`,
+    );
+  }
+
+  return {
+    playerName,
+    civName: civ?.civ_name || undefined,
+    civDescription: civ?.core_myth || undefined,
+    culturalQuirk: civ?.cultural_quirk || undefined,
+    architecturalStyle: civ?.architectural_style || undefined,
+    claimedLineages,
+    lineagesSource,
+    cultureTags: identity?.culture_tags || undefined,
+    urbanStyle: identity?.urban_style || undefined,
+    societyStructure: identity?.society_structure || undefined,
+    militaryDoctrine: identity?.military_doctrine || undefined,
+    economicFocus: identity?.economic_focus || undefined,
+  };
+}
+
+/**
+ * Create a full AI request context with premise + civContext loaded from DB.
+ * P0 (svět) and P0b (národ) are composed in a SINGLE pass via buildPremisePrompt.
  */
 export async function createAIContext(
   sessionId: string,
@@ -428,57 +600,14 @@ export async function createAIContext(
   const requestId = crypto.randomUUID();
   const client = sb || getServiceClient();
   const premise = await loadWorldPremise(sessionId, client);
-  let premisePrompt = buildPremisePrompt(premise);
 
-  // Load civilization DNA + structured identity for cultural context injection
-  let civContext: AIRequestContext["civContext"] = undefined;
-  if (playerName) {
-    const [civRes, identityRes] = await Promise.all([
-      client
-        .from("civilizations")
-        .select("cultural_quirk, architectural_style, civ_name")
-        .eq("session_id", sessionId)
-        .eq("player_name", playerName)
-        .maybeSingle(),
-      client
-        .from("civ_identity")
-        .select("culture_tags, urban_style, society_structure, military_doctrine, economic_focus")
-        .eq("session_id", sessionId)
-        .eq("player_name", playerName)
-        .maybeSingle(),
-    ]);
-    const civ = civRes.data;
-    const identity = identityRes.data;
+  const civContext = playerName
+    ? await loadCivContext(sessionId, playerName, premise, client)
+    : undefined;
 
-    if (civ) {
-      civContext = {
-        culturalQuirk: civ.cultural_quirk || undefined,
-        architecturalStyle: civ.architectural_style || undefined,
-        civName: civ.civ_name || undefined,
-      };
-      const civParts: string[] = [];
-      civParts.push("\n=== CIVILIZAČNÍ KONTEXT ===");
-      if (civ.civ_name) civParts.push(`Civilizace: ${civ.civ_name}`);
-      if (civ.cultural_quirk) civParts.push(`KULTURNÍ ZVLÁŠTNOST (MUSÍŠ reflektovat v textu — ovlivňuje chování, rituály, rozhodování): ${civ.cultural_quirk}`);
-      if (civ.architectural_style) civParts.push(`ARCHITEKTONICKÝ STYL (MUSÍŠ reflektovat v popisu budov, měst, vizuálů): ${civ.architectural_style}`);
+  let premisePrompt = buildPremisePrompt(premise, civContext);
 
-      // Inject structured identity tags
-      if (identity) {
-        civParts.push(`\nSTRUKTUROVANÁ IDENTITA CIVILIZACE:`);
-        if (identity.culture_tags?.length) civParts.push(`  Kulturní tagy: ${identity.culture_tags.join(", ")}`);
-        civParts.push(`  Urbanismus: ${identity.urban_style}`);
-        civParts.push(`  Společenská struktura: ${identity.society_structure}`);
-        civParts.push(`  Vojenská doktrína: ${identity.military_doctrine}`);
-        civParts.push(`  Ekonomické zaměření: ${identity.economic_focus}`);
-        civParts.push(`MUSÍŠ tyto tagy reflektovat ve veškerém generovaném obsahu — popisy měst, budov, strategické rady, kroniky.`);
-      }
-
-      civParts.push("=== KONEC CIV KONTEXTU ===");
-      premisePrompt += civParts.join("\n");
-    }
-  }
-
-  // ── STRATEGIC MAP CONTEXT ──
+  // ── STRATEGIC MAP CONTEXT (appended after premise stack) ──
   try {
     const mapContext = await buildStrategicMapContext(client, sessionId);
     if (mapContext) {
@@ -490,6 +619,7 @@ export async function createAIContext(
 
   return { sessionId, requestId, turnNumber, premise, premisePrompt, civContext };
 }
+
 
 /**
  * Build a compressed strategic map summary for AI.
@@ -704,21 +834,26 @@ export async function invokeAI(
   opts: AIInvokeOptions,
 ): Promise<AIInvokeResult> {
   const apiKey = Deno.env.get("LOVABLE_API_KEY");
-  if (!apiKey) {
-    return {
-      ok: false,
-      error: "LOVABLE_API_KEY not configured",
-      debug: {
-        requestId: ctx.requestId,
-        model: opts.model || "unknown",
-        premiseVersion: ctx.premise.version,
-        sessionId: ctx.sessionId,
-        turnNumber: ctx.turnNumber,
-      },
-    };
-  }
-
   const model = opts.model || "google/gemini-3-flash-preview";
+  const functionName = opts.functionName ?? "unknown";
+  const playerContextUsed = !!ctx.civContext;
+  const lineageNamesAvailable = (ctx.civContext?.claimedLineages ?? []).map((l) => l.name);
+
+  const debug = {
+    requestId: ctx.requestId,
+    model,
+    premiseVersion: ctx.premise.version,
+    sessionId: ctx.sessionId,
+    turnNumber: ctx.turnNumber,
+    functionName,
+    playerContextUsed,
+    lineageNamesAvailable,
+  };
+
+  if (!apiKey) {
+    void logAIInvocation(ctx, functionName, model, false);
+    return { ok: false, error: "LOVABLE_API_KEY not configured", debug };
+  }
 
   // Inject premise into system prompt
   const fullSystemPrompt = `${ctx.premisePrompt}\n\n${opts.systemPrompt}`;
@@ -735,14 +870,6 @@ export async function invokeAI(
   if (opts.toolChoice) body.tool_choice = opts.toolChoice;
   if (opts.maxTokens) body.max_tokens = opts.maxTokens;
 
-  const debug = {
-    requestId: ctx.requestId,
-    model,
-    premiseVersion: ctx.premise.version,
-    sessionId: ctx.sessionId,
-    turnNumber: ctx.turnNumber,
-  };
-
   try {
     const response = await fetch(AI_GATEWAY_URL, {
       method: "POST",
@@ -755,7 +882,8 @@ export async function invokeAI(
 
     if (!response.ok) {
       const errText = await response.text();
-      console.error(`[ai-context] ${ctx.requestId} AI error:`, response.status, errText);
+      console.error(`[ai-context] ${ctx.requestId} fn=${functionName} AI error:`, response.status, errText);
+      void logAIInvocation(ctx, functionName, model, false);
 
       if (response.status === 429) {
         return { ok: false, error: "Rate limit, zkuste to znovu za chvíli.", status: 429, debug };
@@ -773,6 +901,7 @@ export async function invokeAI(
     if (toolCall?.function?.arguments) {
       try {
         const parsed = JSON.parse(toolCall.function.arguments);
+        void logAIInvocation(ctx, functionName, model, true);
         return { ok: true, data: parsed, debug };
       } catch (parseErr) {
         console.error(`[ai-context] ${ctx.requestId} Tool call parse error:`, parseErr);
@@ -783,16 +912,50 @@ export async function invokeAI(
     const content = data.choices?.[0]?.message?.content || "";
     try {
       const parsed = JSON.parse(content);
+      void logAIInvocation(ctx, functionName, model, true);
       return { ok: true, data: parsed, debug };
     } catch {
       // Return raw content
+      void logAIInvocation(ctx, functionName, model, true);
       return { ok: true, data: { content }, debug };
     }
   } catch (e) {
-    console.error(`[ai-context] ${ctx.requestId} Invocation error:`, e);
+    console.error(`[ai-context] ${ctx.requestId} fn=${functionName} Invocation error:`, e);
+    void logAIInvocation(ctx, functionName, model, false);
     return { ok: false, error: e instanceof Error ? e.message : "Unknown error", debug };
   }
 }
+
+// ─── Telemetry ───
+
+/**
+ * Best-effort telemetry write to ai_invocation_log.
+ * NEVER throws — AI calls must not fail because of logging.
+ */
+async function logAIInvocation(
+  ctx: AIRequestContext,
+  functionName: string,
+  model: string,
+  success: boolean,
+): Promise<void> {
+  try {
+    const client = getServiceClient();
+    await client.from("ai_invocation_log").insert({
+      session_id: ctx.sessionId,
+      request_id: ctx.requestId,
+      function_name: functionName,
+      player_name: ctx.civContext?.playerName ?? null,
+      premise_version: ctx.premise.version,
+      player_context_used: !!ctx.civContext,
+      lineage_names_available: (ctx.civContext?.claimedLineages ?? []).map((l) => l.name),
+      model,
+      success,
+    });
+  } catch (e) {
+    console.warn(`[ai-context] telemetry log failed for ${functionName}:`, e);
+  }
+}
+
 
 // ─── CORS Helper ───
 

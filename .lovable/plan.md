@@ -1,136 +1,225 @@
+# Iterace 1: Premise Pipeline Consolidation (revize 2)
 
-## Co jsem zjistil — staré vs nové vrstvy se bijí
+Cíl: jeden čistý source of truth pro AI kontext + důvěryhodná telemetrie. Žádný gameplay, žádná mapa, žádný wizard refactor.
 
-### 1. Mapa se generuje DVAKRÁT s různými parametry
-- `create-world-bootstrap` (nová pipeline v9) zavolá `generate-world-map` s rozměrem z `resolveMapSize` (small=21, medium=31, large=41) a `terrain_params` ze specu hráče (`targetLandRatio`, `continentShape`, `biomeWeights`…).
-- Vzápětí (fire-and-forget) zavolá `world-generate-init`, který **má vlastní `sizeConfig.mapW/mapH` (21/31/41) a vlastní `shapeMap`** odvozený z AI `world.geography.continentShape` a **přepíše stejnou mapu znovu** voláním `generate-world-map`. Hráčem nastavené `biomeWeights`, `mountainDensity`, `targetLandRatio` jsou v tomto druhém průběhu **zahozeny**.
-- Výsledek: to, co hráč vidí v Preview a nastaví ve wizardu, **není to, co se reálně vygeneruje**.
+## Klíčová architektonická oprava (oproti revizi 1)
 
-### 2. Geography blueprint má dva nekompatibilní zdroje
-- Wizard/`translate-premise-to-spec` produkuje `geographyBlueprint` ve formátu **v9** (`ridges: {startQ,startR,endQ,endR,strength}`, `biomeZones: {centerQ,centerR,radius,intensity}`, `climateGradient`, `oceanPattern`).
-- `world-generate-init` ho ignoruje a místo toho čerpá `world.geography` z AI promptu v **starém formátu** (`ridges: {x1,y1,x2,y2,width}`, `rivers`, různá enum hodnota). Spec blueprint hráče nikdo nepoužije.
+**Problém v revizi 1:** P0b se mělo lepit do existujícího `premisePrompt` jako druhý průchod. To by zachovávalo původní bolest — premise stack by zase nebyl postaven jednou.
 
-### 3. Ancient layer (v9.1) běží odpojeně
-- `world-layer-bootstrap` projektuje `mythic_seeds` na `province_nodes`, ale **`province_nodes` v okamžiku jeho běhu neexistují** (graf se zatím nespočítal). Důsledek: 0 mythic tagged, 0 spawned, žádné heritage_effects nemají na co působit, dokud nevzniknou města.
-- Volání je navíc fire-and-forget paralelně s detached `world-generate-init` — pořadí je nedefinované.
+**Oprava:** `loadCivContext()` jako samostatný helper, `createAIContext` skládá P0+P0b v jednom průchodu, `invokeAI` přijímá `ctx` + metadata, log dostane konzistentní `request_id` / `session_id` / `premise_version` / `lineage_names_available`.
 
-### 4. Province nodes a routes se vůbec negenerují při startu
-- `compute-province-nodes`, `compute-province-graph` ani `compute-province-routes` **nikdo při bootstrapu nevolá**. Pouští se jen ručně z DEV panelu, z `commit-turn` (po prvním tahu) nebo z `BuildNodeDialog`.
-- Network log v aktuální relaci `5d09adbe…` to potvrzuje — `province_nodes`, `province_routes`, `flow_paths`, `cities`, `provinces`, `regions`, `realm_resources`, `military_stacks`, `expeditions` všechno vrací `[]`. Hra je prázdná protože AI seeding běžel detached, pravděpodobně padl v 504, a po něm už nikdo ontologickou/ekonomickou vrstvu nedopočítal.
+## Krok 1: Refaktor `_shared/ai-context.ts`
 
-### 5. Status race
-- `create-world-bootstrap` nastavuje `init_status: ready` ihned po vygenerování mapy (předtím než AI seeding doběhne). UI hráče přepne do hry, ale data ještě nejsou hotová → blank screen / prázdný realm.
+### 1.1 Nový helper `loadCivContext()`
 
-### 6. Dokumentace bez implementace
-- `docs/architecture/world-layer-contract.md` definuje fáze K1–K5, Track 1/Track 2, ale Track 2 (route lifecycle, control progression, migration↔economy contract, commit-turn fáze 4–9) je v kódu jen částečně. `route_state` se backfilluje, ale graf samotný neexistuje, takže není co projektovat.
-- `docs/economy-v4.3-architecture.md` (12 košů, civilizační vrstvy) — engine je v `commit-turn` přítomen, ale bez měst a uzlů nemá vstupy.
+```ts
+export interface CivContext {
+  civName?: string;
+  civDescription?: string;        // dnes z civilizations.core_myth (viz POZN.)
+  culturalQuirk?: string;
+  architecturalStyle?: string;
+  claimedLineages: Array<{
+    name: string;
+    description: string;
+    culturalAnchor?: string;
+  }>;
+  // identity bonusy (pokud jsou v civ_identity)
+  cultureTags?: string[];
+  urbanStyle?: string;
+  societyStructure?: string;
+  militaryDoctrine?: string;
+  economicFocus?: string;
+}
 
----
-
-## Plán implementace
-
-Cíl: **co hráč vidí a nastaví ve wizardu = co se vygeneruje**, a po dokončení wizardu existuje plně hratelný svět (mapa + provincie + města + uzly + trasy + ekonomika + ontologie).
-
-### A. Sjednotit pipeline na jeden synchronní orchestrátor
-
-Nahradit fire-and-forget detached `world-generate-init` za **strukturované, synchronní volání s rozpočtem**. Bootstrap musí doběhnout do 150 s a vrátit hratelný svět. Pokud AI naratíva (kroniky, persons, wonders) nestihne — pošle se na pozadí, ale **fyzický svět (mapa, provincie, města, uzly, trasy, ekonomika) musí být hotový synchronně**.
-
-Nová sekvence v `create-world-bootstrap`:
-
-```text
-0. validate + idempotency
-1. world_foundations upsert (status=bootstrapping)
-2. server_config ensure
-3. generate-world-map  (JEDINÉ volání, parametry ze specu)
-4. parity check (mapa ↔ spec.resolvedSize)
-5. seed-realm-skeleton  (NOVÁ inline funkce):
-   - vytvoř 1 region, 1 provincii, 1 město pro hráče
-   - pro každou AI frakci to samé
-   - umístění z mapStartPositions (terrain-aware)
-   - založ realm_resources, player_resources, civilizations row
-6. compute-province-nodes  (synchronně, z měst → uzly)
-7. compute-province-routes (synchronně, z uzlů → trasy)
-8. world-layer-bootstrap   (synchronně, mythic seeds → uzly, lineages → heritage_effects)
-9. refresh-economy         (synchronně, naplnit market baskets, prestige…)
-10. finalize: init_status=ready, current_turn=1
-11. dispatch-narrative-async (fire-and-forget): pošle do `world-generate-init` pouze
-    naratívní část (persons, wonders, prehistory, chronicle, rumors, wiki images).
-    Mapa ani uzly se v něm už NEgenerují.
+export async function loadCivContext(
+  sessionId: string,
+  playerName: string,
+  premise: WorldPremise,
+  sb?: SupabaseClient,
+): Promise<CivContext> { ... }
 ```
 
-### B. Refactor `world-generate-init` na čistě naratívní
+**POZN. ke `civDescription`:**
+- Pro tuto iteraci: `civDescription: civ.core_myth ?? undefined`
+- Pojmenováno v kódu jako `civDescription`, ne `coreMyth`, aby budoucí čistý sloupec `civilizations.civ_premise` byl drop-in nahrazení.
+- Komentář v kódu: `// TODO: až přibude civilizations.civ_premise, prefer ten`.
 
-- Vyřízne se: generování mapy (`generate-world-map` call), `sizeConfig.mapW/mapH`, `terrainParams`, blueprint mapping, `provinces/regions/cities` zakládání, `realm_resources` insert, `civ_identity` extract, `init_status: ready`.
-- Zůstane: AI prompt na `persons`, `wonders`, `preHistoryEvents`, `battles`, `historyEvents`, `preHistoryChronicle`, `rumors`, `loreBible`, `worldMemories`, `world_premise`, `game_style_settings`, `wiki-generate` images, diplomacy rooms.
-- Vstupem je **hotový svět** — funkce dohledává města/regiony/frakce z DB místo aby si je vytvářela.
-- Přejmenuje se na `narrate-world` (ponechán alias `world-generate-init` po nějakou dobu).
+**Filtrování `claimedLineages`:**
+- Primárně `realm_heritage` se `eq("session_id").eq("player_name", playerName)`.
+- Pokud tabulka vrátí 0 řádků (sloupec player_name prázdný / per-player adoption ještě neimplementovaný), fallback na první 2 rody z `premise.ancientLineages` jako "společné dědictví světa".
+- Logovat varování `console.warn("loadCivContext: per-player heritage empty, using world fallback")` aby bylo vidět, kdy se dlouhodobě řeší datová slepota.
 
-### C. Geography blueprint — jeden formát (v9)
+### 1.2 Změna signatury `buildPremisePrompt`
 
-`generate-world-map` rozšířit, aby konzumoval `terrain.geographyBlueprint` ve formátu v9 (`startQ/startR/endQ/endR`, `biomeZones.centerQ/centerR/radius/intensity`, `climateGradient`, `oceanPattern`). Mapování ze starého `x1/y1/x2/y2/width` smaže — wizard a translate-premise-to-spec už produkují jen v9.
+```ts
+export function buildPremisePrompt(
+  premise: WorldPremise,
+  civContext?: CivContext,
+): string
+```
 
-`composeBootstrapFromSpec` doplnit, aby do `map.terrain` posílal i `geographyBlueprint` (dnes posílá jen 5 skalárů).
+P0b sekce se vloží **uvnitř** funkce mezi P0 a P1, jen pokud je `civContext` předán. Žádné druhé skládání po faktu.
 
-### D. Synchronní seeding kostry říše (nový shared modul)
+### 1.3 Refaktor `createAIContext`
 
-Nový soubor `supabase/functions/_shared/seed-realm-skeleton.ts`:
-- vytvoří 1 country/region/provincii/město na hráče i na každou AI frakci
-- pozice měst z `mapStartPositions` filtrované přes `province_hexes.biome_family ∈ {plains,hills,forest,coast}` a `is_passable`
-- `realm_resources` (gold=100, stability=70, …), `player_resources` (food/wood/stone/iron/wealth income+upkeep+stockpile)
-- `civ_identity` minimální řádek (rozšíření AI v naratívní fázi)
-- vrací `{regionIds, provinceIds, cityIds, factionPlayerMap}` — předáno do navazujících kroků
+```ts
+export async function createAIContext(
+  sessionId: string,
+  turnNumber?: number,
+  sb?: SupabaseClient,
+  playerName?: string,
+): Promise<AIRequestContext> {
+  const requestId = crypto.randomUUID();
+  const client = sb || getServiceClient();
+  const premise = await loadWorldPremise(sessionId, client);
+  const civContext = playerName
+    ? await loadCivContext(sessionId, playerName, premise, client)
+    : undefined;
+  const premisePrompt = buildPremisePrompt(premise, civContext);
+  return { sessionId, requestId, turnNumber, premise, premisePrompt, civContext };
+}
+```
 
-### E. Ontologická vrstva po vzniku grafu
+Žádné dvoufázové skládání. Žádné string concat po faktu.
 
-Po `compute-province-nodes` a `compute-province-routes`:
-- `world-layer-bootstrap` (synchronně) má již existující uzly → mythic_seeds se reálně přiřadí; `selected_lineages` se zapíšou do `realm_heritage` se vstřikem `heritage_effects` per hráč.
-- Nově dopočítat `route_state` rovnou pro nově vzniklé routes (lifecycle_state=usable, maintenance=50, quality=50) — backfill blok ve `world-layer-bootstrap` už toto řeší, jen se konečně bude volat na neprázdný graf.
+### 1.4 Refaktor `invokeAI` — přijímá `ctx` + metadata
 
-### F. Status race fix
+**Nová signatura:**
+```ts
+export interface InvokeAIArgs {
+  ctx: AIRequestContext;
+  functionName: string;        // kdo volá (pro telemetrii)
+  systemPrompt: string;        // funkce-specifická část (premisePrompt se prependuje uvnitř)
+  userPrompt: string;
+  model?: string;
+  tools?: any[];
+  toolChoice?: any;
+  maxTokens?: number;
+}
 
-`init_status: ready` se nastaví jen v kroku 10 (po dokončení synchronní části). UI tak nepřepne do prázdného světa. Step `narrate-world` na pozadí jen doplní persons/wonders/wiki bez vlivu na hratelnost.
+export async function invokeAI(args: InvokeAIArgs): Promise<AIInvokeResult>
+```
 
-### G. UI: wizard ukazuje stejné, co bude v mapě
+Vnitřně:
+- System prompt = `args.ctx.premisePrompt + "\n\n---\n\n" + args.systemPrompt`.
+- Po response (úspěch i selhání) volat best-effort `logAIInvocation(args.ctx, args.functionName, model, success)`.
+- `debug` v `AIInvokeResult` rozšířit o `playerContextUsed`, `lineageNamesAvailable`, `functionName`.
 
-- `SchematicMapPreview` už dnes volá `preview-world-map` se stejným payloadem jako bootstrap → po sjednocení (C) bude reálně shodné.
-- `LineageSelector` vybrané lineages se opravdu propíší na hráčův realm (E).
-- `BootstrapProgressPanel` dostane nové kanonické kroky: validate → map → realm → nodes → routes → ontology → economy → ready (a pak optionálně narrative-pending tag).
+**Migrace existujících call-sites:** všechny `invokeAI(...)` v repu (saga-generate, chronicle, faction-turn, atd.) musí dostat `functionName`. Většinou stačí přidat 1 řádek — payload je z `ctx`.
 
-### H. Dokumentace → implementace
+### 1.5 Smoke testy `_shared/ai-context_test.ts`
 
-Implementuje se Track 2 minimum z `world-layer-contract.md`:
-- `route_state` lifecycle (usable/degraded/blocked) — engine už existuje v `world-layer-tick`, jen ho po prvním tahu reálně dostane co spravovat.
-- `heritage_effects` zapojit do `commit-turn` Phase 8 (pasivní bonusy) — již částečně přítomno, ověřit.
+- `buildPremisePrompt(premise)` neobsahuje "P0b".
+- `buildPremisePrompt(premise, civContext)` obsahuje "P0b" + doslovně `civDescription`.
+- `loadCivContext` s prázdným `realm_heritage` per-player vrátí fallback na world lineages.
+- `loadCivContext` s naplněným per-player heritage vrátí jen ty.
 
-Z `docs/economy-v4.3-architecture.md` zapojit:
-- 12 kanonických košů (`city_market_baskets`) — `refresh-economy` to už řeší, ale jen pokud existují města a recepty; po E to bude pravda od tahu 1.
+## Krok 2: DB migrace `ai_invocation_log`
 
----
+```sql
+CREATE TABLE public.ai_invocation_log (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  session_id uuid NOT NULL,
+  request_id uuid NOT NULL,
+  function_name text NOT NULL,
+  player_name text,
+  premise_version int,
+  player_context_used boolean NOT NULL DEFAULT false,
+  lineage_names_available text[] NOT NULL DEFAULT '{}',
+  model text,
+  success boolean NOT NULL DEFAULT true,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX ai_invocation_log_session_idx
+  ON public.ai_invocation_log (session_id, created_at DESC);
+CREATE INDEX ai_invocation_log_function_idx
+  ON public.ai_invocation_log (function_name, created_at DESC);
 
-## Technický rozsah úprav (pro hráče: co se reálně změní)
+ALTER TABLE public.ai_invocation_log ENABLE ROW LEVEL SECURITY;
 
-### Soubory
+CREATE POLICY "Admins/mods read ai_invocation_log"
+  ON public.ai_invocation_log FOR SELECT
+  TO authenticated
+  USING (public.has_role(auth.uid(), 'admin') OR public.has_role(auth.uid(), 'moderator'));
 
-**Edit:**
-- `supabase/functions/create-world-bootstrap/index.ts` — orchestrátor 11 kroků, synchronní seeding, nová detached větev jen pro narativu
-- `supabase/functions/world-generate-init/index.ts` — odstranit map/realm/cities/regions/provinces/civ_identity/init_status; ponechat AI naratívu nad existujícími entitami
-- `supabase/functions/generate-world-map/index.ts` — konzumovat `terrain.geographyBlueprint` ve formátu v9
-- `src/lib/worldBootstrapPayload.ts` — `composeBootstrapFromSpec` posílá i `geographyBlueprint`
-- `supabase/functions/world-layer-bootstrap/index.ts` — volat synchronně po `compute-province-nodes/routes` (bez vlastního změny logiky)
-- `src/components/world-setup/BootstrapProgressPanel.tsx` — nové kanonické kroky
+-- INSERT: jen service role (edge functions); žádná policy pro authenticated → není potřeba.
+```
 
-**Vytvořit:**
-- `supabase/functions/_shared/seed-realm-skeleton.ts` — sdílený seeder kostry (region+province+město+resources)
+`logAIInvocation` v `_shared/ai-context.ts` použije service client. Try/catch obalený, nikdy neshazuje AI volání.
 
-**Beze změny:**
-- `compute-province-nodes`, `compute-province-routes`, `refresh-economy`, `world-layer-tick`, `commit-turn` (jen je teď zavoláme ve správném pořadí).
+## Krok 3: Migrace bypass generátorů
 
-### Riziko
-- 150 s rozpočet: synchronní pořadí (mapa 5–10 s, seed 2 s, nodes 3–5 s, routes 3–5 s, layer 1 s, economy 5 s) ≈ 25 s. AI naratíva (~60–120 s) běží detached. Bezpečně do limitu.
-- Idempotence: každý krok kontroluje existenci (UPSERT/onConflict) — re-bootstrap stejné session vrátí ready bez opakování.
+### 3.1 `generate-civ-start` (NEJVYŠŠÍ PRIORITA)
 
-### Co tímto nedělám
-- Track 2 plný rozsah (control_progression, migration↔economy contract, integration_progress) — zůstává na další iteraci. Aktuální cíl je **mít hratelný svět od tahu 1**.
-- Rebalancovat ekonomiku v4.3 — engine zůstává, jen mu konečně dáme vstupy.
+```ts
+const ctx = await createAIContext(sessionId, undefined, sb, playerName);
 
-Po schválení provedu úpravy v jednom průchodu a otestuji na nové session.
+// Request civDescription PŘEPISUJE DB hodnotu (wizard posílá ještě před uložením)
+const effectiveCivContext: CivContext = {
+  ...(ctx.civContext ?? { claimedLineages: [] }),
+  civDescription, // z requestu
+};
+const premisePrompt = buildPremisePrompt(ctx.premise, effectiveCivContext);
+const ctxOverridden: AIRequestContext = { ...ctx, civContext: effectiveCivContext, premisePrompt };
+
+const result = await invokeAI({
+  ctx: ctxOverridden,
+  functionName: "generate-civ-start",
+  systemPrompt: GENERATE_CIV_START_RULES, // jen RULES, žádný World premise
+  userPrompt: `Tone: ${tone}\nBiome: ${biomeName}\nSettlement: ${settlementName}\nPlayer: ${playerName}\n\n${OUTPUT_JSON_SCHEMA}`,
+  model: "google/gemini-2.5-flash",
+  maxTokens: 1500,
+});
+```
+
+User prompt už **nikdy** neopakuje `World premise: "..."` — je v `premisePrompt`.
+
+### 3.2 `army-visualize`
+- `createAIContext(sessionId, undefined, sb, ownerPlayerName)`.
+- `invokeAI({ ctx, functionName: "army-visualize", systemPrompt, userPrompt })`.
+
+### 3.3 `generate-building`
+- `createAIContext(sessionId, undefined, sb, cityOwnerPlayerName)`.
+- Smazat lokální načítání `architectural_style/cultural_quirk` — je v `ctx.civContext`.
+- `invokeAI({ ctx, functionName: "generate-building", ... })`.
+
+### 3.4 `person-portrait`
+- Smazat lokální `fullContext` (game_style_settings + civilizations).
+- `createAIContext(sessionId, undefined, sb, personOwnerPlayerName)`.
+- `invokeAI({ ctx, functionName: "person-portrait", ... })`.
+
+**Mimo scope iterace 1:** `wonder`, `encyclopedia-generate`, `explore-hex`, `explore-region`. Migrují se s iterací 2 (Ancient Remnants).
+
+## Krok 4: Admin audit panel
+
+Sekce v `AIDiagnosticsPanel.tsx` (admin/moderator only):
+- Tabulka 100 nejnovějších záznamů z `ai_invocation_log` filtrovaná na current session.
+- Sloupce: čas, funkce, hráč, P0 verze, P0b ✓/✗, # rodů (count + tooltip s jmény), model, ✓/✗ úspěch.
+- Toggle "Skrýt funkce bez playerName" (chronicle, world-history…).
+- Žádné AI scoring, žádné keyword matching.
+
+## Atomické tasky (revidované pořadí)
+
+1. `loadCivContext()` helper v `_shared/ai-context.ts` (čistá funkce, žádné jiné změny).
+2. Změna signatury `buildPremisePrompt(premise, civContext?)` + P0b sekce uvnitř.
+3. Refaktor `createAIContext` → P0b se skládá v jednom průchodu.
+4. Refaktor `invokeAI({ ctx, functionName, ... })` + migrace všech existujících call-sites na nový signature.
+5. DB migrace `ai_invocation_log` + RLS.
+6. `logAIInvocation` v `invokeAI` (best-effort, service client).
+7. Migrace `generate-civ-start` na unified pipeline (s `civDescription` override).
+8. Migrace `army-visualize`, `generate-building`, `person-portrait`.
+9. Smoke testy `_shared/ai-context_test.ts`.
+10. Admin audit sekce v `AIDiagnosticsPanel.tsx`.
+
+## Mimo scope iterace 1 (vědomě)
+
+- Ancient Remnants jako nodes (iterace 2).
+- Wizard UI per-player Civ Premise krok (iterace 3).
+- Migrace `wonder`, `encyclopedia-generate`, `explore-*`.
+- Sloupec `civilizations.civ_premise` — pro teď používáme `core_myth` s opatrným pojmenováním v kódu.
+- AI-driven coherence scoring — nejdřív nech telemetrii promluvit.
+
+## Co je potřeba znovu ověřit po implementaci
+
+1. Skutečný stav sloupce `realm_heritage.player_name` — pokud chybí / je prázdný, fallback bude trvale aktivní (data slepota, ne bug pipeline). Vyřešit oddělenou data taskem.
+2. Měřit přes `ai_invocation_log` poměr `player_context_used = true` u hráčských funkcí. Pokud < 100%, pipeline má díru.

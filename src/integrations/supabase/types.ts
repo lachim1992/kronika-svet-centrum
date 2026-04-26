@@ -410,6 +410,48 @@ export type Database = {
           },
         ]
       }
+      ai_invocation_log: {
+        Row: {
+          created_at: string
+          function_name: string
+          id: string
+          lineage_names_available: string[]
+          model: string | null
+          player_context_used: boolean
+          player_name: string | null
+          premise_version: number | null
+          request_id: string
+          session_id: string
+          success: boolean
+        }
+        Insert: {
+          created_at?: string
+          function_name: string
+          id?: string
+          lineage_names_available?: string[]
+          model?: string | null
+          player_context_used?: boolean
+          player_name?: string | null
+          premise_version?: number | null
+          request_id: string
+          session_id: string
+          success?: boolean
+        }
+        Update: {
+          created_at?: string
+          function_name?: string
+          id?: string
+          lineage_names_available?: string[]
+          model?: string | null
+          player_context_used?: boolean
+          player_name?: string | null
+          premise_version?: number | null
+          request_id?: string
+          session_id?: string
+          success?: boolean
+        }
+        Relationships: []
+      }
       ai_world_summaries: {
         Row: {
           created_at: string
