@@ -516,6 +516,7 @@ Deno.serve(async (req) => {
     // 4b. RECOMPUTE ROUTES + HEX FLOWS + ECONOMY FLOW
     // Ensures new nodes built between turns get connected before economy runs.
     // ═══════════════════════════════════════════
+    const t4b = Date.now();
     try {
       // Always recompute routes to pick up any new nodes
       const { data: routesRes, error: routesErr } = await supabase.functions.invoke("compute-province-routes", {
