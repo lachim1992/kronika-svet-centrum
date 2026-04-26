@@ -1,225 +1,296 @@
-# Iterace 1: Premise Pipeline Consolidation (revize 2)
+# Discovery, Neutral Nodes & Influence Loop
 
-Cíl: jeden čistý source of truth pro AI kontext + důvěryhodná telemetrie. Žádný gameplay, žádná mapa, žádný wizard refactor.
+## Verdikt po analýze repa
 
-## Klíčová architektonická oprava (oproti revizi 1)
+Reálný stav (ne jen dokumenty):
 
-**Problém v revizi 1:** P0b se mělo lepit do existujícího `premisePrompt` jako druhý průchod. To by zachovávalo původní bolest — premise stack by zase nebyl postaven jednou.
+- `province_nodes` už **existuje** s `node_tier (major/minor/micro)`, `node_subtype`, `population`, `controlled_by`, `production_base`, `faith_output`, `metadata`. Není třeba paralelní `world_nodes` tabulka — rozšíříme stávající.
+- `compute-province-nodes` ale **generuje uzly jen pro vlastněné provincie** (`prov.owner_player`). Neutrální nody nikdy nevzniknou.
+- Existuje `discoveries` tabulka, ale jen per-player pro `entity_type='province_hex'`. `HexMapView` **fog of war nepoužívá**.
+- `explore-hex` (tile-by-tile, adjacency check) **funguje** a píše do `discoveries`. Reusneme jeho logiku.
+- `command-dispatch` nemá `EXPLORE_TILE`, `OPEN_TRADE_WITH_NODE`, `SEND_ENVOY_TO_NODE`, `APPLY_MILITARY_PRESSURE`, `ANNEX_NODE`.
+- `generate-civ-start` **tvrdě generuje 800–1500 obyvatel** s peasants/burghers/clerics. Přímo proti zadání "100 rolníků". Validátor `validateAndClamp` to navíc clampuje na min 800 — i kdyby AI vrátila menší číslo, přepíše se zpět nahoru.
+- `compute-trade-flows` nečte žádný neutral-node output.
 
-**Oprava:** `loadCivContext()` jako samostatný helper, `createAIContext` skládá P0+P0b v jednom průchodu, `invokeAI` přijímá `ctx` + metadata, log dostane konzistentní `request_id` / `session_id` / `premise_version` / `lineage_names_available`.
+## Cíl této iterace
 
-## Krok 1: Refaktor `_shared/ai-context.ts`
+Postavit první funkční discovery + influence smyčku **bez AI rozhodování**. AI pouze pojmenovává a popisuje (post-fact narratives). Engine drží stav, produkci, vliv, anexi.
 
-### 1.1 Nový helper `loadCivContext()`
+## Architektonická pravidla (závazná)
 
-```ts
-export interface CivContext {
-  civName?: string;
-  civDescription?: string;        // dnes z civilizations.core_myth (viz POZN.)
-  culturalQuirk?: string;
-  architecturalStyle?: string;
-  claimedLineages: Array<{
-    name: string;
-    description: string;
-    culturalAnchor?: string;
-  }>;
-  // identity bonusy (pokud jsou v civ_identity)
-  cultureTags?: string[];
-  urbanStyle?: string;
-  societyStructure?: string;
-  militaryDoctrine?: string;
-  economicFocus?: string;
-}
+1. AI **nesmí** rozhodovat: produkci nodu, populaci, objevenost, vliv, anexi, startovní populační třídy.
+2. AI **smí**: po `discovered=true` napsat flavor text; po anexi napsat kroniku.
+3. Žádná paralelní entita „world_node" — rozšíříme `province_nodes`.
+4. Žádný shotgun katalog 1000 položek — **20 kultur × 30 profilů** stačí pro stovky variant.
+5. Všechny hráčské akce jdou přes `command-dispatch` (Command Gateway).
+6. **Engine override po AI** (ne jen prompt) — i kdyby AI vrátila špatná čísla, handler je tvrdě přepíše.
 
-export async function loadCivContext(
-  sessionId: string,
-  playerName: string,
-  premise: WorldPremise,
-  sb?: SupabaseClient,
-): Promise<CivContext> { ... }
-```
+---
 
-**POZN. ke `civDescription`:**
-- Pro tuto iteraci: `civDescription: civ.core_myth ?? undefined`
-- Pojmenováno v kódu jako `civDescription`, ne `coreMyth`, aby budoucí čistý sloupec `civilizations.civ_premise` byl drop-in nahrazení.
-- Komentář v kódu: `// TODO: až přibude civilizations.civ_premise, prefer ten`.
+## Patch 0 — Fix startovní populace na 100 rolníků
 
-**Filtrování `claimedLineages`:**
-- Primárně `realm_heritage` se `eq("session_id").eq("player_name", playerName)`.
-- Pokud tabulka vrátí 0 řádků (sloupec player_name prázdný / per-player adoption ještě neimplementovaný), fallback na první 2 rody z `premise.ancientLineages` jako "společné dědictví světa".
-- Logovat varování `console.warn("loadCivContext: per-player heritage empty, using world fallback")` aby bylo vidět, kdy se dlouhodobě řeší datová slepota.
+`generate-civ-start`:
 
-### 1.2 Změna signatury `buildPremisePrompt`
+- Aktualizovat prompt (informativní, zarovnává AI rozumně).
+- Klíčové: **přepsat `validateAndClamp` na engine override**, ne clamp. I kdyby AI vrátila 1200, handler uloží:
 
 ```ts
-export function buildPremisePrompt(
-  premise: WorldPremise,
-  civContext?: CivContext,
-): string
-```
-
-P0b sekce se vloží **uvnitř** funkce mezi P0 a P1, jen pokud je `civContext` předán. Žádné druhé skládání po faktu.
-
-### 1.3 Refaktor `createAIContext`
-
-```ts
-export async function createAIContext(
-  sessionId: string,
-  turnNumber?: number,
-  sb?: SupabaseClient,
-  playerName?: string,
-): Promise<AIRequestContext> {
-  const requestId = crypto.randomUUID();
-  const client = sb || getServiceClient();
-  const premise = await loadWorldPremise(sessionId, client);
-  const civContext = playerName
-    ? await loadCivContext(sessionId, playerName, premise, client)
-    : undefined;
-  const premisePrompt = buildPremisePrompt(premise, civContext);
-  return { sessionId, requestId, turnNumber, premise, premisePrompt, civContext };
+settlement: {
+  population_total: 100,
+  population_peasants: 100,
+  population_burghers: 0,
+  population_clerics: 0,
+  settlement_level: "hamlet",
+  city_stability: clamp(st.city_stability, 55, 80),
+  special_resource_type: ...,    // může z AI
+  settlement_flavor: ...,        // může z AI
 }
 ```
 
-Žádné dvoufázové skládání. Žádné string concat po faktu.
+AI smí pojmenovat osadu, navrhnout `special_resource_type`, napsat `settlement_flavor`, `core_myth`, `cultural_quirk`, `architectural_style`. Populační čísla a `settlement_level` jsou **konstanty z enginu**.
 
-### 1.4 Refaktor `invokeAI` — přijímá `ctx` + metadata
+Aktualizovat i `getDefaults()` na 100/100/0/0.
 
-**Nová signatura:**
-```ts
-export interface InvokeAIArgs {
-  ctx: AIRequestContext;
-  functionName: string;        // kdo volá (pro telemetrii)
-  systemPrompt: string;        // funkce-specifická část (premisePrompt se prependuje uvnitř)
-  userPrompt: string;
-  model?: string;
-  tools?: any[];
-  toolChoice?: any;
-  maxTokens?: number;
-}
+---
 
-export async function invokeAI(args: InvokeAIArgs): Promise<AIInvokeResult>
-```
+## Patch 1 — Datový model
 
-Vnitřně:
-- System prompt = `args.ctx.premisePrompt + "\n\n---\n\n" + args.systemPrompt`.
-- Po response (úspěch i selhání) volat best-effort `logAIInvocation(args.ctx, args.functionName, model, success)`.
-- `debug` v `AIInvokeResult` rozšířit o `playerContextUsed`, `lineageNamesAvailable`, `functionName`.
-
-**Migrace existujících call-sites:** všechny `invokeAI(...)` v repu (saga-generate, chronicle, faction-turn, atd.) musí dostat `functionName`. Většinou stačí přidat 1 řádek — payload je z `ctx`.
-
-### 1.5 Smoke testy `_shared/ai-context_test.ts`
-
-- `buildPremisePrompt(premise)` neobsahuje "P0b".
-- `buildPremisePrompt(premise, civContext)` obsahuje "P0b" + doslovně `civDescription`.
-- `loadCivContext` s prázdným `realm_heritage` per-player vrátí fallback na world lineages.
-- `loadCivContext` s naplněným per-player heritage vrátí jen ty.
-
-## Krok 2: DB migrace `ai_invocation_log`
+Migrace (jeden balík):
 
 ```sql
-CREATE TABLE public.ai_invocation_log (
+ALTER TABLE province_nodes
+  ADD COLUMN is_neutral boolean NOT NULL DEFAULT false,
+  ADD COLUMN discovered boolean NOT NULL DEFAULT false,
+  ADD COLUMN culture_key text,
+  ADD COLUMN profile_key text,
+  ADD COLUMN autonomy_score int DEFAULT 80,
+  ADD COLUMN discovered_at timestamptz,
+  ADD COLUMN discovered_by text;
+
+-- Owned nodes hráčových měst se považují za "objevené" pro vlastníka:
+UPDATE province_nodes SET discovered = true WHERE controlled_by IS NOT NULL;
+
+CREATE TABLE map_visibility (
+  session_id uuid NOT NULL,
+  player_name text NOT NULL,
+  tile_q int NOT NULL,
+  tile_r int NOT NULL,
+  visibility text NOT NULL DEFAULT 'unknown',  -- 'unknown'|'seen'|'visible'
+  first_seen_at timestamptz,
+  last_seen_at timestamptz,
+  discovered_by text,
+  PRIMARY KEY (session_id, player_name, tile_q, tile_r)
+);
+
+CREATE TABLE world_node_outputs (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   session_id uuid NOT NULL,
-  request_id uuid NOT NULL,
-  function_name text NOT NULL,
-  player_name text,
-  premise_version int,
-  player_context_used boolean NOT NULL DEFAULT false,
-  lineage_names_available text[] NOT NULL DEFAULT '{}',
-  model text,
-  success boolean NOT NULL DEFAULT true,
-  created_at timestamptz NOT NULL DEFAULT now()
+  node_id uuid NOT NULL REFERENCES province_nodes(id) ON DELETE CASCADE,
+  basket_key text NOT NULL,
+  good_key text,
+  quantity numeric NOT NULL DEFAULT 1,
+  quality numeric NOT NULL DEFAULT 1,
+  exportable_ratio numeric NOT NULL DEFAULT 0.4
 );
-CREATE INDEX ai_invocation_log_session_idx
-  ON public.ai_invocation_log (session_id, created_at DESC);
-CREATE INDEX ai_invocation_log_function_idx
-  ON public.ai_invocation_log (function_name, created_at DESC);
 
-ALTER TABLE public.ai_invocation_log ENABLE ROW LEVEL SECURITY;
+CREATE TABLE node_trade_links (
+  session_id uuid NOT NULL,
+  player_name text NOT NULL,
+  node_id uuid NOT NULL REFERENCES province_nodes(id) ON DELETE CASCADE,
+  link_status text NOT NULL DEFAULT 'none',
+  -- none|contacted|trade_open|protected|vassalized|annexed
+  trade_level int DEFAULT 0,
+  route_safety numeric DEFAULT 1,
+  route_distance numeric,
+  export_access numeric,
+  PRIMARY KEY (session_id, player_name, node_id)
+);
 
-CREATE POLICY "Admins/mods read ai_invocation_log"
-  ON public.ai_invocation_log FOR SELECT
-  TO authenticated
-  USING (public.has_role(auth.uid(), 'admin') OR public.has_role(auth.uid(), 'moderator'));
-
--- INSERT: jen service role (edge functions); žádná policy pro authenticated → není potřeba.
+CREATE TABLE node_influence (
+  session_id uuid NOT NULL,
+  player_name text NOT NULL,
+  node_id uuid NOT NULL REFERENCES province_nodes(id) ON DELETE CASCADE,
+  economic_influence numeric NOT NULL DEFAULT 0,
+  political_influence numeric NOT NULL DEFAULT 0,
+  military_pressure numeric NOT NULL DEFAULT 0,
+  resistance numeric NOT NULL DEFAULT 50,
+  integration_progress numeric NOT NULL DEFAULT 0,
+  PRIMARY KEY (session_id, player_name, node_id)
+);
 ```
 
-`logAIInvocation` v `_shared/ai-context.ts` použije service client. Try/catch obalený, nikdy neshazuje AI volání.
+RLS: SELECT pro members session, INSERT/UPDATE pouze service_role.
 
-## Krok 3: Migrace bypass generátorů
+---
 
-### 3.1 `generate-civ-start` (NEJVYŠŠÍ PRIORITA)
+## Patch 2 — Catalog (engine, žádné AI)
+
+Soubor `src/lib/worldNodeCatalog.ts` + zrcadlo `supabase/functions/_shared/worldNodeCatalog.ts`:
+
+- **20 kultur** (`river_clay_folk`, `highland_shepherds`, `salt_marsh_clans`, `forest_charcoal_burners`, `desert_caravan_kin`, …) — `terrainBias[]`, `worldToneBias[]`, `visualTags[]`, `socialTags[]`, `preferredBaskets[]`, `nameRoots[]`.
+- **30 profilů** (`grain_hamlet`, `fishing_village`, `salt_panner`, `iron_outpost`, `forest_shrine`, `roadside_camp`, `ruined_keep`, …) — `nodeType`, `settlementTier`, `populationRange`, `outputBaskets[]`, `terrainBias[]`, `defenseRange`, `prosperityRange`, `autonomyRange`, `defaultGoods{}`.
+
+Iterace 1 typy: `neutral_settlement`, `resource_outpost`, `shrine`, `ruin`.
+
+Generátor jména = deterministická kombinace `culture.nameRoots` + `seedHash(node_key)`.
+
+Test: shoda hashů obou kopií katalogu.
+
+---
+
+## Patch 3 — `generate-neutral-nodes` edge funkce
+
+Vstup: `{ session_id, seed, count? }`.
+
+Pipeline (čistě deterministická, bez AI):
+1. Načíst `province_hexes` + `worldgen_spec` + premise tone.
+2. Vyloučit: tiles startovních měst + radius 2 kolem nich + neprůchozí biomy.
+3. Spočítat `count` podle map size (default `floor(hexCount / 8)`, clamp 8–20).
+4. Pro každý slot: seeded random tile → match `profile_key` na biom → match `culture_key` na terén+tone → vygenerovat `name`, `population`, `defense`, `prosperity`, `autonomy`.
+5. Insert do `province_nodes` (`is_neutral=true`, `discovered=false`, `controlled_by=null`, `is_active=true`).
+6. Insert do `world_node_outputs` (1 produkt pro hamlet/outpost/shrine, 0 pro ruin).
+
+**Pořadí v `create-world-bootstrap`** (oprava):
+
+```text
+1. generate-world-map
+2. založit startovní města + provincie hráče + AI
+3. compute-province-nodes  (jen owned provincie — beze změny)
+4. generate-neutral-nodes  (neowned tiles uprostřed mapy)
+5. world-generate-init     (kroniky / lore, background)
+```
+
+Failure non-fatal (warning v `steps[]`).
+
+---
+
+## Patch 4 — Fog of war při bootstrapu + UI
+
+Bootstrap: po vytvoření `cities` zapsat počáteční `map_visibility` per player:
+- Tile startovního města → `visible`.
+- Sousedi (radius 1) → `visible`.
+- Radius 2 → `seen`.
+
+`HexMapView`:
+- Načíst `map_visibility` pro `currentPlayerName`.
+- `unknown` → černá maska, žádné labely.
+- `seen` → ztlumeně (opacity 0.4), poslední známý stav.
+- `visible` → plně.
+- Neutral nody se kreslí jen pokud `discovered=true` AND tile aspoň `seen`.
+
+---
+
+## Patch 5 — `EXPLORE_TILE` command
+
+Přidat do `command-dispatch`:
+
+```
+EXPLORE_TILE: { tile_q, tile_r, actor_city_id? }
+```
+
+Validace: cílový tile musí být sousední k některému `visible` tile hráče.
+
+Handler (`command-explore-tile` nebo inline):
+1. `map_visibility` pro tile → `visible`, sousedy → `seen` (pokud `unknown`).
+2. Pokud na tile `province_node WHERE is_neutral=true AND discovered=false` → set `discovered=true`, `discovered_by=playerName`, `discovered_at=now()`.
+3. Insert `discoveries` (per-player) + `world_memories` (geo-vázáno).
+4. Insert `world_action_log`.
+5. **Background** (`EdgeRuntime.waitUntil`): `event-narrative` pro flavor text — non-blocking.
+
+---
+
+## Patch 6 — Trade & Influence commands
+
+Čtyři nové commands:
+
+```
+OPEN_TRADE_WITH_NODE       { node_id }
+SEND_ENVOY_TO_NODE         { node_id }
+APPLY_MILITARY_PRESSURE    { node_id, stack_id }
+ANNEX_NODE                 { node_id }
+```
+
+| Command | Effect |
+|---|---|
+| OPEN_TRADE_WITH_NODE | `link_status='trade_open'`, `trade_level=1`; `economic_influence += 5/turn`; vyžaduje `discovered=true` |
+| SEND_ENVOY_TO_NODE | `political_influence += 8` (one-shot/turn); cost: wealth |
+| APPLY_MILITARY_PRESSURE | `military_pressure += 10`; `prosperity_score -= 1`; +unrest hráče |
+| ANNEX_NODE | povoleno **pouze** pokud `integrationPressure ≥ resistance + autonomy*0.5` |
+
+Formule (sdílená utilita `_shared/nodeInfluence.ts`):
 
 ```ts
-const ctx = await createAIContext(sessionId, undefined, sb, playerName);
-
-// Request civDescription PŘEPISUJE DB hodnotu (wizard posílá ještě před uložením)
-const effectiveCivContext: CivContext = {
-  ...(ctx.civContext ?? { claimedLineages: [] }),
-  civDescription, // z requestu
-};
-const premisePrompt = buildPremisePrompt(ctx.premise, effectiveCivContext);
-const ctxOverridden: AIRequestContext = { ...ctx, civContext: effectiveCivContext, premisePrompt };
-
-const result = await invokeAI({
-  ctx: ctxOverridden,
-  functionName: "generate-civ-start",
-  systemPrompt: GENERATE_CIV_START_RULES, // jen RULES, žádný World premise
-  userPrompt: `Tone: ${tone}\nBiome: ${biomeName}\nSettlement: ${settlementName}\nPlayer: ${playerName}\n\n${OUTPUT_JSON_SCHEMA}`,
-  model: "google/gemini-2.5-flash",
-  maxTokens: 1500,
-});
+integrationPressure = econ*0.45 + pol*0.35 + mil*0.20
+annexAllowed = integrationPressure >= resistance + autonomy*0.5
 ```
 
-User prompt už **nikdy** neopakuje `World premise: "..."` — je v `premisePrompt`.
+Anexe:
+- `province_nodes`: `is_neutral=false`, `controlled_by=playerName`.
+- `node_trade_links.link_status='annexed'`.
+- Adapter `ownedNeutralNodesAsMinorEconomyInputs()` přičte produkci hráči — **bez** vytvoření `cities` row.
+- `world_chronicle` event (background).
 
-### 3.2 `army-visualize`
-- `createAIContext(sessionId, undefined, sb, ownerPlayerName)`.
-- `invokeAI({ ctx, functionName: "army-visualize", systemPrompt, userPrompt })`.
+---
 
-### 3.3 `generate-building`
-- `createAIContext(sessionId, undefined, sb, cityOwnerPlayerName)`.
-- Smazat lokální načítání `architectural_style/cultural_quirk` — je v `ctx.civContext`.
-- `invokeAI({ ctx, functionName: "generate-building", ... })`.
+## Patch 7 — Economy integration
 
-### 3.4 `person-portrait`
-- Smazat lokální `fullContext` (game_style_settings + civilizations).
-- `createAIContext(sessionId, undefined, sb, personOwnerPlayerName)`.
-- `invokeAI({ ctx, functionName: "person-portrait", ... })`.
+`compute-trade-flows`:
+- Načíst `world_node_outputs` JOIN `node_trade_links WHERE link_status IN ('trade_open','protected','vassalized')` pro každého hráče.
+- Přičíst `quantity * exportable_ratio * route_safety` do supply hráče per basket.
+- **Annexed** nody přes adapter, plnou produkci, bez safety penalty.
 
-**Mimo scope iterace 1:** `wonder`, `encyclopedia-generate`, `explore-hex`, `explore-region`. Migrují se s iterací 2 (Ancient Remnants).
+`refresh-economy` beze změny logiky.
 
-## Krok 4: Admin audit panel
+---
 
-Sekce v `AIDiagnosticsPanel.tsx` (admin/moderator only):
-- Tabulka 100 nejnovějších záznamů z `ai_invocation_log` filtrovaná na current session.
-- Sloupce: čas, funkce, hráč, P0 verze, P0b ✓/✗, # rodů (count + tooltip s jmény), model, ✓/✗ úspěch.
-- Toggle "Skrýt funkce bez playerName" (chronicle, world-history…).
-- Žádné AI scoring, žádné keyword matching.
+## Patch 8 — UI
 
-## Atomické tasky (revidované pořadí)
+**Mapa** (`HexMapView`): fog vrstva (Patch 4).
 
-1. `loadCivContext()` helper v `_shared/ai-context.ts` (čistá funkce, žádné jiné změny).
-2. Změna signatury `buildPremisePrompt(premise, civContext?)` + P0b sekce uvnitř.
-3. Refaktor `createAIContext` → P0b se skládá v jednom průchodu.
-4. Refaktor `invokeAI({ ctx, functionName, ... })` + migrace všech existujících call-sites na nový signature.
-5. DB migrace `ai_invocation_log` + RLS.
-6. `logAIInvocation` v `invokeAI` (best-effort, service client).
-7. Migrace `generate-civ-start` na unified pipeline (s `civDescription` override).
-8. Migrace `army-visualize`, `generate-building`, `person-portrait`.
-9. Smoke testy `_shared/ai-context_test.ts`.
-10. Admin audit sekce v `AIDiagnosticsPanel.tsx`.
+**`NeutralNodePanel.tsx`** (klik na discovered neutral node):
+- Název, kultura, profil, populace, autonomy, defense, prosperity.
+- **Produkce**: list `world_node_outputs`.
+- **Vliv hráče**: 3 progress bary (econ/pol/mil) + resistance + integration progress.
+- Tlačítka (disabled podle stavu): Otevřít obchod / Poslat vyslance / Vojenský tlak / Anektovat.
+- Pod Anektovat vždy zobrazit chybějící podmínku, pokud nepovoleno.
 
-## Mimo scope iterace 1 (vědomě)
+**EconomyTab**: nová sekce „Příspěvek z neutrálních uzlů" — list aktivních trade links + množství.
 
-- Ancient Remnants jako nodes (iterace 2).
-- Wizard UI per-player Civ Premise krok (iterace 3).
-- Migrace `wonder`, `encyclopedia-generate`, `explore-*`.
-- Sloupec `civilizations.civ_premise` — pro teď používáme `core_myth` s opatrným pojmenováním v kódu.
-- AI-driven coherence scoring — nejdřív nech telemetrii promluvit.
+---
 
-## Co je potřeba znovu ověřit po implementaci
+## Co NEděláme v této iteraci
 
-1. Skutečný stav sloupce `realm_heritage.player_name` — pokud chybí / je prázdný, fallback bude trvale aktivní (data slepota, ne bug pipeline). Vyřešit oddělenou data taskem.
-2. Měřit přes `ai_invocation_log` poměr `player_context_used = true` u hráčských funkcí. Pokud < 100%, pipeline má díru.
+- Prehistoric / ancient remnant nody s lore mechanikou.
+- AI generování kultur za běhu.
+- Komplexní diplomacie s nody, války, contested influence.
+- Konverze anexovaného nodu → plnohodnotné `cities`.
+- Multiplayer paralelní vliv více hráčů na týž node.
+- Katalog 1000 kultur — později.
+- AI faction fog of war (AI vidí všechno, zjednodušení).
+
+---
+
+## Pořadí patchů (commits)
+
+1. **Patch 0** — start populace 100 (engine override).
+2. **Patch 1** — migrace.
+3. **Patch 2** — catalog (frontend + shared, hash test).
+4. **Patch 3** — `generate-neutral-nodes` + zařazení **ZA** `compute-province-nodes`.
+5. **Patch 4** — fog of war (data + render).
+6. **Patch 5** — `EXPLORE_TILE` command + handler.
+7. **Patch 6** — Trade & Influence commands + handlers.
+8. **Patch 7** — `compute-trade-flows` integrace.
+9. **Patch 8** — UI panely.
+
+Každý patch musí jít zvlášť testovat.
+
+---
+
+## Technical notes
+
+- Catalog je sdílen mezi frontend a edge funkcí — duplikát s test hash.
+- Seed pro generaci nodů: `${session_id}:${spec.seed}:neutral_nodes:v1` — deterministický, verzovaný.
+- `map_visibility` je per-player. AI frakce v iteraci 1 fog neřeší.
+- `world_node_outputs.basket_key` musí matchovat kanonické baskety (`staple_food`, `tools`, …) — viz `mem://features/economy/market-baskets-naming`.
+- AI flavor v `event-narrative` čerpá ze stavu **po** commitu — viz `mem://constraints/narrative-grounding`.
+- RLS na nových tabulkách: SELECT pro session members, INSERT/UPDATE jen service_role.
