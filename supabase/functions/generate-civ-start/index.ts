@@ -51,8 +51,7 @@ Na základě hráčovy premisy národa (viz P0b výše) vytvoř vyvážené a vl
 PRAVIDLA:
 - Zdroje musí být vyvážené. Součet (grain + wood + stone + iron + horses + gold) v rozmezí 60-120.
 - Militaristický národ: více iron/horses, méně food. Obchodní národ: více gold, méně armády.
-- Populace startovní osady: 800-1500.
-- Populační třídy: peasants 60-80%, burghers 10-25%, clerics 5-15%.
+- KRITICKÉ: Hráč VŽDY začíná s nejmenší možnou osadou (HAMLET) o přesně 100 obyvatelích — všichni jsou rolníci (peasants). Žádní burghers ani clerics na startu. Tato čísla jsou PEVNÁ a engine je stejně přepíše — neuváděj jiná.
 - Stabilita 55-80.
 - Special resource: jeden z "IRON", "STONE", "HORSES", "NONE" — odvoď z popisu národa.
 - core_myth (1-2 věty, ČESKY) MUSÍ navazovat na hráčovu premisu národa (P0b) i na premisu světa (P0 — Pradávno, Současnost, Zlom, Pradávné rody).
