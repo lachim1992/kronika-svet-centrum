@@ -2763,11 +2763,12 @@ async function executeOpenTradeWithNode(
     economic_influence: (await loadOrInitInfluence(supabase, sessionId, actor.name, nodeId)).economic_influence + 5,
   });
 
+  const ctx = nodeContext(node);
   return await insertEvents(supabase, commandId, [{
     ...base, event_type: "trade_link_opened",
-    note: `${actor.name} otevřel obchod s ${node.name}.`,
+    note: `${actor.name} otevřel obchod s ${node.name}${ctx.suffix}.`,
     importance: "normal",
-    reference: { node_id: nodeId, link, influence: inf },
+    reference: { node_id: nodeId, node_name: node.name, culture: node.culture_key, profile: node.profile_key, link, influence: inf },
   }], { link, influence: inf });
 }
 
