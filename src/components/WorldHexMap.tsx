@@ -437,6 +437,7 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
   const [showProvinceLayer, setShowProvinceLayer] = useState(true);
   const [showRoadLayer, setShowRoadLayer] = useState(true);
   const [showEconomyLayer, setShowEconomyLayer] = useState(true);
+  const [showInfluenceLayer, setShowInfluenceLayer] = useState(false);
   const [economyCategories, setEconomyCategories] = useState<Set<string>>(new Set(["food", "raw", "luxury", "manufactured", "production", "supply", "wealth", "trade", "export"]));
   const [economyViewMode, setEconomyViewMode] = useState<EconomyViewMode>("goods");
   const [expandingProvince, setExpandingProvince] = useState(false);
