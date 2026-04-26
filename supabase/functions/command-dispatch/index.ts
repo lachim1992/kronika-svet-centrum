@@ -2502,3 +2502,125 @@ async function executeUpgradeInfrastructure(
     reference: { cityId, field, nextLevel },
   }], chronicleText);
 }
+
+// ═══════════════════════════════════════════
+// EXPLORE_TILE — Patch 5
+// Reveals a tile adjacent to the player's currently-visible area.
+// Updates map_visibility, discovers neutral nodes on the tile,
+// writes audit log, and emits a single "exploration" event.
+// ═══════════════════════════════════════════
+
+async function executeExploreTile(
+  supabase: any,
+  base: any,
+  actor: Actor,
+  payload: any,
+  commandId: string,
+  sessionId: string,
+  turnNumber: number,
+): Promise<CommandResult> {
+  const tile_q = Number(payload?.tile_q);
+  const tile_r = Number(payload?.tile_r);
+  if (!Number.isFinite(tile_q) || !Number.isFinite(tile_r)) {
+    return { events: [], error: "EXPLORE_TILE requires numeric tile_q and tile_r", status: 400 };
+  }
+
+  // ── Validate adjacency: target must be neighbour of a 'visible' tile owned by actor ──
+  const RING1: Array<[number, number]> = [
+    [1, 0], [-1, 0], [0, 1], [0, -1], [1, -1], [-1, 1],
+  ];
+  const neighbourKeys = RING1.map(([dq, dr]) => `${tile_q - dq},${tile_r - dr}`);
+
+  const { data: visTiles } = await supabase
+    .from("map_visibility")
+    .select("tile_q, tile_r, visibility")
+    .eq("session_id", sessionId)
+    .eq("player_name", actor.name)
+    .eq("visibility", "visible");
+
+  const visibleSet = new Set<string>((visTiles || []).map((v: any) => `${v.tile_q},${v.tile_r}`));
+  const isAdjacent = neighbourKeys.some(k => visibleSet.has(k));
+  const alreadyVisible = visibleSet.has(`${tile_q},${tile_r}`);
+
+  if (!isAdjacent && !alreadyVisible) {
+    return { events: [], error: "Target tile must be adjacent to a visible tile", status: 400 };
+  }
+
+  // ── Validate tile exists and is passable ──
+  const { data: hex } = await supabase
+    .from("province_hexes")
+    .select("q, r, biome_family, is_passable")
+    .eq("session_id", sessionId)
+    .eq("q", tile_q).eq("r", tile_r)
+    .maybeSingle();
+
+  if (!hex) {
+    return { events: [], error: "Tile not found", status: 404 };
+  }
+
+  const now = new Date().toISOString();
+
+  // ── Promote target to 'visible'; promote unknown neighbours to 'seen' ──
+  const upserts: any[] = [{
+    session_id: sessionId, player_name: actor.name,
+    tile_q, tile_r, visibility: "visible",
+    first_seen_at: now, last_seen_at: now, discovered_by: actor.name,
+  }];
+
+  for (const [dq, dr] of RING1) {
+    const nq = tile_q + dq;
+    const nr = tile_r + dr;
+    if (visibleSet.has(`${nq},${nr}`)) continue;
+    upserts.push({
+      session_id: sessionId, player_name: actor.name,
+      tile_q: nq, tile_r: nr, visibility: "seen",
+      first_seen_at: now, last_seen_at: now, discovered_by: actor.name,
+    });
+  }
+
+  const { error: visErr } = await supabase.from("map_visibility").upsert(upserts, {
+    onConflict: "session_id,player_name,tile_q,tile_r",
+    ignoreDuplicates: false,
+  });
+  if (visErr) {
+    console.warn("EXPLORE_TILE map_visibility upsert error:", visErr.message);
+  }
+
+  // ── Discover neutral nodes on the tile ──
+  const { data: discoveredNodes } = await supabase
+    .from("province_nodes")
+    .update({ discovered: true, discovered_by: actor.name, discovered_at: now })
+    .eq("session_id", sessionId)
+    .eq("hex_q", tile_q).eq("hex_r", tile_r)
+    .eq("is_neutral", true)
+    .eq("discovered", false)
+    .select("id, name, profile_key, culture_key");
+
+  const discoveredCount = discoveredNodes?.length || 0;
+  const discoveredSummary = discoveredCount > 0
+    ? `objevil ${discoveredCount === 1 ? `${discoveredNodes![0].name}` : `${discoveredCount} neutrálních uzlů`}`
+    : `prozkoumal hex (${tile_q}, ${tile_r})`;
+
+  // ── Per-player legacy 'discoveries' row for back-compat with frontier renderer ──
+  await supabase.from("discoveries").insert({
+    session_id: sessionId,
+    player_name: actor.name,
+    entity_type: "province_hex",
+    entity_id: `${tile_q}:${tile_r}`,
+    discovered_at: now,
+    turn_number: turnNumber,
+  }).then(() => {}, () => {});
+
+  return await insertEvents(supabase, commandId, [{
+    ...base,
+    event_type: "exploration",
+    note: `${actor.name} ${discoveredSummary}.`,
+    importance: discoveredCount > 0 ? "high" : "normal",
+    location: `${tile_q},${tile_r}`,
+    reference: {
+      tile_q, tile_r,
+      biome: hex.biome_family,
+      discovered_node_ids: (discoveredNodes || []).map((n: any) => n.id),
+    },
+  }], { discoveredNodes: discoveredNodes || [], visibilityWritten: upserts.length });
+}
