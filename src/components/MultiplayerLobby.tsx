@@ -53,7 +53,22 @@ interface CivConfig {
   homeland_biome: string;
   homeland_name: string;
   homeland_desc: string;
+  // — extended (v5) —
+  ruler_name: string;
+  ruler_title: string;
+  ruler_archetype: string;
+  ruler_bio: string;
+  government_form: string;
+  trade_ideology: string;
+  dominant_faith: string;
+  faith_attitude: string;
+  spawn_preference: string;
+  lineage_ids: string[];
+  secret_objective_archetype: string;
+  heraldry: HeraldryData;
 }
+
+const DEFAULT_HERALDRY: HeraldryData = { primary: "#2563eb", secondary: "#fef3c7", symbol: "circle" };
 
 interface Props {
   sessionId: string;
@@ -65,11 +80,23 @@ interface Props {
   onGameStart: () => void;
 }
 
+// Wizard step keys (in order). 'lineage' is conditionally hidden if no ancient_layer.
+type WizardStepKey = "identity" | "ruler" | "homeland" | "government" | "lineage" | "faction" | "objective";
+const STEP_LABELS: Record<WizardStepKey, string> = {
+  identity: "Identita",
+  ruler: "Vládce",
+  homeland: "Domovina",
+  government: "Vláda & víra",
+  lineage: "Pradávno",
+  faction: "Frakce",
+  objective: "Tajný cíl",
+};
+
 const MultiplayerLobby = ({ sessionId, roomCode, worldName, maxPlayers, isHost, myPlayerName, onGameStart }: Props) => {
   const { user } = useAuth();
   const [players, setPlayers] = useState<LobbyPlayer[]>([]);
   const [showCivWizard, setShowCivWizard] = useState(false);
-  const [wizardStep, setWizardStep] = useState(0); // 0=identity, 1=homeland, 2=faction
+  const [wizardStepIdx, setWizardStepIdx] = useState(0);
   const [mySetupStatus, setMySetupStatus] = useState("pending");
   const [generating, setGenerating] = useState(false);
   const [civConfig, setCivConfig] = useState<CivConfig>({
@@ -82,6 +109,18 @@ const MultiplayerLobby = ({ sessionId, roomCode, worldName, maxPlayers, isHost, 
     homeland_biome: "plains",
     homeland_name: "",
     homeland_desc: "",
+    ruler_name: "",
+    ruler_title: "",
+    ruler_archetype: "warrior",
+    ruler_bio: "",
+    government_form: "monarchy",
+    trade_ideology: "free_market",
+    dominant_faith: "",
+    faith_attitude: "tolerant",
+    spawn_preference: "any",
+    lineage_ids: [],
+    secret_objective_archetype: "",
+    heraldry: DEFAULT_HERALDRY,
   });
   const [savingConfig, setSavingConfig] = useState(false);
   const [showWorldSettings, setShowWorldSettings] = useState(false);
