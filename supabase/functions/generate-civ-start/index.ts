@@ -6,9 +6,9 @@
  *  - P0  (World Premise: Pradávno + Současnost + Zlom + Pradávné rody)
  *  - P0b (Player Premise: civDescription override + claimed lineages)
  *
- * The wizard passes `civDescription` (the player's own raw text). We use it
- * as a temporary CivContext override so the AI sees the player premise even
- * before civilizations.core_myth is persisted.
+ * The wizard passes `civDescription` (the player's own raw text). We feed it
+ * into createAIContext as a civContextOverride so the AI sees P0b even before
+ * civilizations.core_myth exists in DB.
  */
 
 import {
@@ -17,7 +17,6 @@ import {
   invokeAI,
   jsonResponse,
   errorResponse,
-  type CivContext,
 } from "../_shared/ai-context.ts";
 
 Deno.serve(async (req) => {
@@ -38,34 +37,13 @@ Deno.serve(async (req) => {
     }
 
     // Build context with player premise (civDescription override) so P0b is populated.
-    const ctx = await createAIContext(sessionId, undefined, undefined, playerName);
-
-    // Override the civDescription with the wizard input — the persisted civilizations.core_myth
-    // may not yet exist (this function generates it). The wizard is the source of truth here.
-    const overriddenCivContext: CivContext = ctx.civContext
-      ? { ...ctx.civContext, civDescription }
-      : {
-          playerName,
-          civDescription,
-          claimedLineages: ctx.premise.ancientLineages.slice(0, 2),
-          lineagesSource: "world_fallback",
-        };
-    // Rebuild the premise prompt with overridden civContext.
-    // Inline build (cheaper than full reload) — we just reuse the helper.
-    const { buildPremisePrompt } = await import("../_shared/ai-context.ts");
-    ctx.civContext = overriddenCivContext;
-    ctx.premisePrompt = buildPremisePrompt(ctx.premise, overriddenCivContext)
-      + (ctx.premisePrompt.includes("=== STRATEGICKÁ MAPA SVĚTA ===")
-        ? "\n\n" + ctx.premisePrompt.split("=== STRATEGICKÁ MAPA SVĚTA ===").slice(1).join("=== STRATEGICKÁ MAPA SVĚTA ===")
-        : "");
-    ctx.premisePrompt = "=== STRATEGICKÁ MAPA SVĚTA ===" === ctx.premisePrompt.trim()
-      ? buildPremisePrompt(ctx.premise, overriddenCivContext)
-      : ctx.premisePrompt.startsWith("=== STRATEGICKÁ")
-        ? buildPremisePrompt(ctx.premise, overriddenCivContext) + "\n\n" + ctx.premisePrompt
-        : buildPremisePrompt(ctx.premise, overriddenCivContext)
-          + (ctx.premisePrompt.includes("=== STRATEGICKÁ MAPA SVĚTA ===")
-            ? "\n\n=== STRATEGICKÁ MAPA SVĚTA ===" + ctx.premisePrompt.split("=== STRATEGICKÁ MAPA SVĚTA ===")[1]
-            : "");
+    const ctx = await createAIContext(
+      sessionId,
+      undefined,
+      undefined,
+      playerName,
+      { civDescription, playerName },
+    );
 
     const systemPrompt = `Jsi generátor počátečních podmínek civilizace pro středověkou/antickou strategickou hru.
 Na základě hráčovy premisy národa (viz P0b výše) vytvoř vyvážené a vlajkově unikátní startovní podmínky.
