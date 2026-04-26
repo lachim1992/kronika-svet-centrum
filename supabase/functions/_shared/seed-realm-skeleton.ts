@@ -290,8 +290,25 @@ export async function seedRealmSkeleton(input: SeedRealmInput): Promise<SeedReal
           session_id: sessionId,
           player_name: p.playerName,
           player_number: idx + 1,
-          is_ai: true,
         });
+      }
+
+      // Persist AI faction identity (name, personality, narrative flavor) to
+      // civilizations table so AI faction-turn pipelines and chronicle
+      // generators can read consistent flavor data.
+      const aiFaction = factions[idx - 1]; // idx 0 = player, idx 1+ = factions[0+]
+      try {
+        await sb.from("civilizations").upsert({
+          session_id: sessionId,
+          player_name: p.playerName,
+          civ_name: p.factionName,
+          is_ai: true,
+          ai_personality: p.personality || null,
+          core_myth: aiFaction?.description || null,
+          cultural_quirk: aiFaction?.personality || null,
+        } as any, { onConflict: "session_id,player_name" });
+      } catch (e) {
+        console.warn("[seed-realm-skeleton] AI civilizations upsert failed:", e);
       }
     }
   }
