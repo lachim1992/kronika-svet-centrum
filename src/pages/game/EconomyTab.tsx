@@ -35,6 +35,7 @@ import MilitaryUpkeepPanel from "@/components/economy/MilitaryUpkeepPanel";
 import FiscalSubTab from "@/components/economy/FiscalSubTab";
 import DemandFulfillmentPanel from "@/components/economy/DemandFulfillmentPanel";
 import MarketSharePanel from "@/components/economy/MarketSharePanel";
+import NeutralNodeContributionPanel from "@/components/economy/NeutralNodeContributionPanel";
 import MarketPerformancePanel from "@/components/economy/MarketPerformancePanel";
 
 // Dev panels lazy-loaded (Sprint 1 Krok 6 — import gate)
@@ -279,6 +280,7 @@ const EconomyTab = ({ sessionId, currentPlayerName, currentTurn, cities, realm, 
           {realm && <MarketPerformancePanel realm={realm} />}
           <DemandFulfillmentPanel sessionId={sessionId} playerName={currentPlayerName} cities={cities} />
           <MarketSharePanel sessionId={sessionId} playerName={currentPlayerName} />
+          <NeutralNodeContributionPanel sessionId={sessionId} playerName={currentPlayerName} />
           <TradePanel
             sessionId={sessionId}
             currentPlayerName={currentPlayerName}
