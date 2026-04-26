@@ -523,7 +523,7 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
                   : state.isBlueprintStale
                   ? 'Blueprint je zastaralý — klikněte na "Regenerovat blueprint" v žluté výstraze výše.'
                   : !civValid
-                  ? "V sekci „Tvá civilizace" doplň: jméno říše, hlavní sídlo, vládce a tajný cíl (* povinné)."
+                  ? 'V sekci „Tvá civilizace“ doplň: jméno říše, hlavní sídlo, vládce a tajný cíl (* povinné).'
                   : null;
                 return (
                   <div className="sticky bottom-0 bg-background/95 backdrop-blur py-3 -mx-3 px-3 border-t border-border lg:static lg:border-0 lg:bg-transparent lg:mx-0 lg:px-0 space-y-2">
