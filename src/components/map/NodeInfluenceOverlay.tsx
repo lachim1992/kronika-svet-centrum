@@ -39,7 +39,7 @@ interface InfluenceRow {
 }
 interface BlockadeRow {
   node_id: string;
-  expires_turn: number;
+  blocked_until_turn: number;
 }
 
 interface Props {
