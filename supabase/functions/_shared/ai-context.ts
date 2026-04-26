@@ -590,20 +590,35 @@ export async function loadCivContext(
 /**
  * Create a full AI request context with premise + civContext loaded from DB.
  * P0 (svět) and P0b (národ) are composed in a SINGLE pass via buildPremisePrompt.
+ *
+ * @param civContextOverride - Partial override merged on top of DB-loaded civContext.
+ *   Useful for the new-player wizard where civilizations.core_myth doesn't exist yet
+ *   and the wizard's raw civDescription must be used as the player premise.
  */
 export async function createAIContext(
   sessionId: string,
   turnNumber?: number,
   sb?: SupabaseClient,
   playerName?: string,
+  civContextOverride?: Partial<CivContext>,
 ): Promise<AIRequestContext> {
   const requestId = crypto.randomUUID();
   const client = sb || getServiceClient();
   const premise = await loadWorldPremise(sessionId, client);
 
-  const civContext = playerName
+  let civContext = playerName
     ? await loadCivContext(sessionId, playerName, premise, client)
     : undefined;
+
+  if (civContextOverride) {
+    civContext = {
+      playerName: playerName ?? civContextOverride.playerName ?? "unknown",
+      claimedLineages: premise.ancientLineages.slice(0, 2),
+      lineagesSource: "world_fallback",
+      ...(civContext ?? {}),
+      ...civContextOverride,
+    } as CivContext;
+  }
 
   let premisePrompt = buildPremisePrompt(premise, civContext);
 

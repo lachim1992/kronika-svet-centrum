@@ -1,48 +1,73 @@
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+/**
+ * generate-civ-start — Generates starting civilization conditions for a new player.
+ *
+ * Migrated to unified AI pipeline (createAIContext + invokeAI) so that the
+ * generated nation, settlement and core_myth always cite both:
+ *  - P0  (World Premise: Pradávno + Současnost + Zlom + Pradávné rody)
+ *  - P0b (Player Premise: civDescription override + claimed lineages)
+ *
+ * The wizard passes `civDescription` (the player's own raw text). We feed it
+ * into createAIContext as a civContextOverride so the AI sees P0b even before
+ * civilizations.core_myth exists in DB.
+ */
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
-};
+import {
+  corsHeaders,
+  createAIContext,
+  invokeAI,
+  jsonResponse,
+  errorResponse,
+} from "../_shared/ai-context.ts";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const { sessionId, playerName, civDescription, worldPremise, tone, biomeName, settlementName } = await req.json();
+    const {
+      sessionId,
+      playerName,
+      civDescription,
+      tone,
+      biomeName,
+      settlementName,
+    } = await req.json();
 
     if (!sessionId || !playerName || !civDescription) {
-      return new Response(JSON.stringify({ error: "Missing required fields" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      return errorResponse("Missing required fields (sessionId, playerName, civDescription)", 400);
     }
 
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) {
-      // Return balanced defaults when no AI key
-      return new Response(JSON.stringify(getDefaults()), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
-    }
+    // Build context with player premise (civDescription override) so P0b is populated.
+    const ctx = await createAIContext(
+      sessionId,
+      undefined,
+      undefined,
+      playerName,
+      { civDescription, playerName },
+    );
 
-    const systemPrompt = `You are a civilization start generator for a medieval/ancient strategy game. Based on the player's civilization description, generate balanced but flavorful starting conditions.
+    const systemPrompt = `Jsi generátor počátečních podmínek civilizace pro středověkou/antickou strategickou hru.
+Na základě hráčovy premisy národa (viz P0b výše) vytvoř vyvážené a vlajkově unikátní startovní podmínky.
 
-RULES:
-- Resources must be balanced. Total resource points (grain + wood + stone + iron + horses + gold) should be between 60-120.
-- A militaristic civ gets more iron/horses but less food. A trade civ gets more gold but less military.
-- Settlement population should be 800-1500 for a starting hamlet.
-- Population classes: peasants (60-80%), burghers (10-25%), clerics (5-15%).
-- Stability 55-80.
-- Special resource: one of "IRON", "STONE", "HORSES", or "NONE" based on the description.
-- Generate a core_myth (1-2 sentences, Czech language), cultural_quirk (1 sentence, Czech), architectural_style (1-2 words, Czech).
-- Resource income/upkeep must be sensible for turn-based economy.
+PRAVIDLA:
+- Zdroje musí být vyvážené. Součet (grain + wood + stone + iron + horses + gold) v rozmezí 60-120.
+- Militaristický národ: více iron/horses, méně food. Obchodní národ: více gold, méně armády.
+- Populace startovní osady: 800-1500.
+- Populační třídy: peasants 60-80%, burghers 10-25%, clerics 5-15%.
+- Stabilita 55-80.
+- Special resource: jeden z "IRON", "STONE", "HORSES", "NONE" — odvoď z popisu národa.
+- core_myth (1-2 věty, ČESKY) MUSÍ navazovat na hráčovu premisu národa (P0b) i na premisu světa (P0 — Pradávno, Současnost, Zlom, Pradávné rody).
+- cultural_quirk (1 věta, ČESKY) musí být specifická pro tento konkrétní národ.
+- architectural_style (1-2 slova, ČESKY) musí korespondovat s identitou národa.
+- settlement_flavor (krátký česky popis) musí odkazovat na biom A pradávné dědictví světa.
 
-Respond ONLY with valid JSON, no markdown.`;
+Odpověz POUZE validním JSON, žádný markdown.`;
 
-    const userPrompt = `Civilization description: "${civDescription}"
-World premise: "${worldPremise || "Medieval fantasy world"}"
-Tone: "${tone || "mythic"}"
-Biome: "${biomeName || "plains"}"
-Settlement name: "${settlementName || "Starting settlement"}"
-Player name: "${playerName}"
+    const userPrompt = `Hráč: "${playerName}"
+Biom: "${biomeName || "pláně"}"
+Název osady: "${settlementName || "Startovní osada"}"
+Tón: "${tone || "mythic"}"
 
-Generate starting conditions as JSON:
+Vygeneruj startovní podmínky jako JSON:
 {
   "realm_resources": {
     "grain_reserve": <int 10-40>,
@@ -61,57 +86,33 @@ Generate starting conditions as JSON:
     "population_clerics": <int>,
     "city_stability": <int 55-80>,
     "special_resource_type": "<IRON|STONE|HORSES|NONE>",
-    "settlement_flavor": "<short Czech description of the settlement character>"
+    "settlement_flavor": "<krátký český popis charakteru osady, MUSÍ odkazovat na pradávné dědictví světa nebo Zlom>"
   },
   "civilization": {
-    "core_myth": "<1-2 sentences in Czech>",
-    "cultural_quirk": "<1 sentence in Czech>",
-    "architectural_style": "<1-2 words in Czech>"
+    "core_myth": "<1-2 věty česky, MUSÍ doslova navazovat na hráčovu premisu národa i na premisu světa>",
+    "cultural_quirk": "<1 věta česky, specifická pro tento národ>",
+    "architectural_style": "<1-2 slova česky>"
   }
 }`;
 
-    const aiRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
-      },
-      body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userPrompt },
-        ],
-        temperature: 0.7,
-        max_tokens: 1500,
-      }),
+    const result = await invokeAI(ctx, {
+      model: "google/gemini-2.5-flash",
+      systemPrompt,
+      userPrompt,
+      maxTokens: 1500,
+      functionName: "generate-civ-start",
     });
 
-    if (!aiRes.ok) {
-      console.error("AI API error:", await aiRes.text());
-      return new Response(JSON.stringify(getDefaults()), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    if (!result.ok || !result.data) {
+      console.warn("[generate-civ-start] AI failed, returning defaults. err=", result.error);
+      return jsonResponse({ ...getDefaults(), debug: result.debug });
     }
 
-    const aiData = await aiRes.json();
-    const content = aiData.choices?.[0]?.message?.content || "";
-    
-    // Parse JSON from response (handle markdown wrapping)
-    let parsed;
-    try {
-      const jsonStr = content.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
-      parsed = JSON.parse(jsonStr);
-    } catch {
-      console.error("Failed to parse AI response:", content);
-      return new Response(JSON.stringify(getDefaults()), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
-    }
-
-    // Validate and clamp values
-    const result = validateAndClamp(parsed);
-
-    return new Response(JSON.stringify(result), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    const validated = validateAndClamp(result.data);
+    return jsonResponse({ ...validated, debug: result.debug });
   } catch (e) {
     console.error("generate-civ-start error:", e);
-    return new Response(JSON.stringify({ error: (e as Error).message }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    return errorResponse(e instanceof Error ? e.message : "Unknown error");
   }
 });
 
@@ -137,7 +138,6 @@ function clamp(val: number, min: number, max: number): number {
 }
 
 function validateAndClamp(parsed: any) {
-  const defaults = getDefaults();
   const rr = parsed.realm_resources || {};
   const st = parsed.settlement || {};
   const cv = parsed.civilization || {};
