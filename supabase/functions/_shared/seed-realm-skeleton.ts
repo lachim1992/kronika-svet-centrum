@@ -133,6 +133,18 @@ export async function seedRealmSkeleton(input: SeedRealmInput): Promise<SeedReal
   let regionsSeeded = 0;
   let provincesSeeded = 0;
   let citiesSeeded = 0;
+  let playerCountryId: string | undefined;
+
+  // Build a richer description for the player country if identity is provided.
+  const playerRulerLine = rulerName
+    ? `${rulerTitle ? rulerTitle + " " : ""}${rulerName}${rulerArchetype ? ` (${rulerArchetype})` : ""}`
+    : "";
+  const playerCountryDesc = [
+    civDescription || `Říše hráče ${playerName}: ${premise.slice(0, 240)}`,
+    rulerName ? `Vládce: ${playerRulerLine}.` : "",
+    governmentForm ? `Forma vlády: ${governmentForm}.` : "",
+    dominantFaith ? `Dominantní víra: ${dominantFaith} (${faithAttitude || "tolerant"}).` : "",
+  ].filter(Boolean).join(" ");
 
   for (let idx = 0; idx < participants.length; idx++) {
     const p = participants[idx];
@@ -145,10 +157,11 @@ export async function seedRealmSkeleton(input: SeedRealmInput): Promise<SeedReal
       name: p.factionName,
       ruler_player: p.playerName,
       description: p.isPlayer
-        ? `Říše hráče ${p.playerName}: ${premise.slice(0, 240)}`
+        ? playerCountryDesc
         : `${p.factionName} — AI frakce ve světě ${worldName}.`,
-      motto: p.isPlayer ? "Za slávu a kroniku" : "Vlastní cestou",
+      motto: p.isPlayer ? (foundingLegend ? foundingLegend.split(/[.!?]/)[0].slice(0, 80) : "Za slávu a kroniku") : "Vlastní cestou",
     }).select("id").single();
+    if (p.isPlayer && country?.id) playerCountryId = country.id;
 
     // Region
     const regionName = p.isPlayer
