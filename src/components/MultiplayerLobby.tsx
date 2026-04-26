@@ -16,6 +16,13 @@ import ChronicleHubLogo from "./ChronicleHubLogo";
 import FactionDesigner from "./FactionDesigner";
 import CivIdentityPreview from "./CivIdentityPreview";
 import WorldCreationOverlay from "./WorldCreationOverlay";
+import RulerStep, { type RulerData } from "./multiplayer-lobby/RulerStep";
+import GovernmentFaithStep, { type GovernmentFaithData } from "./multiplayer-lobby/GovernmentFaithStep";
+import SecretObjectiveStep, { type SecretObjectiveData } from "./multiplayer-lobby/SecretObjectiveStep";
+import HeraldryPicker, { type HeraldryData } from "./multiplayer-lobby/HeraldryPicker";
+import SpawnPreferencePicker from "./multiplayer-lobby/SpawnPreferencePicker";
+import { LineageSelector } from "./world-setup/LineageSelector";
+import type { AncientLayerSpec } from "@/types/ancientLayer";
 
 const BIOMES = [
   { value: "plains", label: "🌾 Pláně", icon: Sun },
