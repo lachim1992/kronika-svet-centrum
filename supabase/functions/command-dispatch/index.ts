@@ -2658,6 +2658,9 @@ async function executeExploreTile(
       tile_q, tile_r,
       biome: hex.biome_family,
       discovered_node_ids: (discoveredNodes || []).map((n: any) => n.id),
+      discovered_nodes: (discoveredNodes || []).map((n: any) => ({
+        id: n.id, name: n.name, culture: n.culture_key, profile: n.profile_key,
+      })),
     },
   }], { discoveredNodes: discoveredNodes || [], visibilityWritten: upserts.length });
 }
