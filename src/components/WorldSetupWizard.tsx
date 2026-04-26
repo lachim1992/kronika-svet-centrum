@@ -36,7 +36,8 @@ import {
 } from "./world-setup/BootstrapProgressPanel";
 import type { AncientLayerSpec } from "@/types/ancientLayer";
 import CivSetupStep from "./world-setup/CivSetupStep";
-import type { WorldIdentityInput } from "@/types/worldBootstrap";
+import AIOpponentsStep from "./world-setup/AIOpponentsStep";
+import type { WorldIdentityInput, FactionSeedInput } from "@/types/worldBootstrap";
 
 import { useWorldSetupWizardState } from "@/hooks/useWorldSetupWizardState";
 import {
