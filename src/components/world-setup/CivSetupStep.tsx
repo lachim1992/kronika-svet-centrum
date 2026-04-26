@@ -258,7 +258,7 @@ const CivSetupStep = ({ value, onChange, premise, disabled }: Props) => {
           {value.secretObjectiveArchetype && <span className="text-[10px] text-muted-foreground">{value.secretObjectiveArchetype}</span>}
         </CollapsibleTrigger>
         <CollapsibleContent className="pt-2 pl-2">
-          <SecretObjectiveStep value={secret} onChange={(s) => update({ secretObjectiveArchetype: s.secret_objective_archetype })} />
+          <div><SecretObjectiveStep value={secret} onChange={(s) => update({ secretObjectiveArchetype: s.secret_objective_archetype })} /></div>
         </CollapsibleContent>
       </Collapsible>
     </Card>
