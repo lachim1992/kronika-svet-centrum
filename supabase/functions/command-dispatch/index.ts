@@ -2610,9 +2610,33 @@ async function executeExploreTile(
     .select("id, name, profile_key, culture_key");
 
   const discoveredCount = discoveredNodes?.length || 0;
+
+  // Build culturally-aware summary
+  const describeNode = (n: any) => {
+    const parts: string[] = [n.name];
+    if (n.culture_key) parts.push(`(${n.culture_key})`);
+    if (n.profile_key) parts.push(`[${n.profile_key}]`);
+    return parts.join(" ");
+  };
   const discoveredSummary = discoveredCount > 0
-    ? `objevil ${discoveredCount === 1 ? `${discoveredNodes![0].name}` : `${discoveredCount} neutrálních uzlů`}`
+    ? `objevil ${discoveredCount === 1
+        ? describeNode(discoveredNodes![0])
+        : `${discoveredCount} neutrálních uzlů (${discoveredNodes!.map(describeNode).join(", ")})`}`
     : `prozkoumal hex (${tile_q}, ${tile_r})`;
+
+  // Persist node-discovery facts into world memory for narrative continuity
+  if (discoveredCount > 0) {
+    const memoryRows = discoveredNodes!.map((n: any) => ({
+      session_id: sessionId,
+      text: `${actor.name} objevil neutrální uzel "${n.name}"${n.culture_key ? ` kultury ${n.culture_key}` : ""}${n.profile_key ? ` (profil: ${n.profile_key})` : ""} v hexu (${tile_q}, ${tile_r}).`,
+      category: "discovery",
+      created_round: turnNumber,
+      approved: true,
+    }));
+    await supabase.from("world_memories").insert(memoryRows).then(() => {}, (e: any) => {
+      console.warn("EXPLORE_TILE world_memories insert error:", e?.message);
+    });
+  }
 
   // ── Per-player legacy 'discoveries' row for back-compat with frontier renderer ──
   await supabase.from("discoveries").insert({
@@ -2634,6 +2658,9 @@ async function executeExploreTile(
       tile_q, tile_r,
       biome: hex.biome_family,
       discovered_node_ids: (discoveredNodes || []).map((n: any) => n.id),
+      discovered_nodes: (discoveredNodes || []).map((n: any) => ({
+        id: n.id, name: n.name, culture: n.culture_key, profile: n.profile_key,
+      })),
     },
   }], { discoveredNodes: discoveredNodes || [], visibilityWritten: upserts.length });
 }
@@ -2643,6 +2670,16 @@ async function executeExploreTile(
 // All four require the node to be discovered by the actor.
 // Engine-only: AI never decides values; thresholds in _shared/nodeInfluence.ts.
 // ═══════════════════════════════════════════
+
+function nodeContext(node: any): { suffix: string; tags: Record<string, any> } {
+  const bits: string[] = [];
+  if (node?.culture_key) bits.push(`kultura ${node.culture_key}`);
+  if (node?.profile_key) bits.push(`profil ${node.profile_key}`);
+  return {
+    suffix: bits.length ? ` (${bits.join(", ")})` : "",
+    tags: { node_name: node?.name, culture: node?.culture_key, profile: node?.profile_key },
+  };
+}
 
 async function loadNeutralNodeForActor(
   supabase: any,
@@ -2736,11 +2773,12 @@ async function executeOpenTradeWithNode(
     economic_influence: (await loadOrInitInfluence(supabase, sessionId, actor.name, nodeId)).economic_influence + 5,
   });
 
+  const ctx = nodeContext(node);
   return await insertEvents(supabase, commandId, [{
     ...base, event_type: "trade_link_opened",
-    note: `${actor.name} otevřel obchod s ${node.name}.`,
+    note: `${actor.name} otevřel obchod s ${node.name}${ctx.suffix}.`,
     importance: "normal",
-    reference: { node_id: nodeId, link, influence: inf },
+    reference: { node_id: nodeId, node_name: node.name, culture: node.culture_key, profile: node.profile_key, link, influence: inf },
   }], { link, influence: inf });
 }
 
@@ -2760,11 +2798,12 @@ async function executeSendEnvoyToNode(
     political_influence: current.political_influence + 8,
   });
 
+  const ctxE = nodeContext(node);
   return await insertEvents(supabase, commandId, [{
     ...base, event_type: "envoy_sent",
-    note: `${actor.name} vyslal vyslance k ${node.name}.`,
+    note: `${actor.name} vyslal vyslance k ${node.name}${ctxE.suffix}.`,
     importance: "normal",
-    reference: { node_id: nodeId, influence: inf },
+    reference: { node_id: nodeId, ...ctxE.tags, influence: inf },
   }], { influence: inf });
 }
 
@@ -2785,11 +2824,12 @@ async function executeApplyMilitaryPressure(
     resistance: Math.min(100, current.resistance + 3), // pushback raises resistance slightly
   });
 
+  const ctxP = nodeContext(node);
   return await insertEvents(supabase, commandId, [{
     ...base, event_type: "military_pressure_applied",
-    note: `${actor.name} vyvíjí vojenský tlak na ${node.name}.`,
+    note: `${actor.name} vyvíjí vojenský tlak na ${node.name}${ctxP.suffix}.`,
     importance: "high",
-    reference: { node_id: nodeId, influence: inf },
+    reference: { node_id: nodeId, ...ctxP.tags, influence: inf },
   }], { influence: inf });
 }
 
@@ -2829,10 +2869,22 @@ async function executeAnnexNode(
     integration_progress: 100,
   });
 
+  // Persist the annexation as a permanent world memory
+  await supabase.from("world_memories").insert({
+    session_id: sessionId,
+    text: `${actor.name} anektoval uzel "${node.name}"${node.culture_key ? ` kultury ${node.culture_key}` : ""}${node.profile_key ? ` (profil: ${node.profile_key})` : ""} v roce ${turnNumber}.`,
+    category: "annexation",
+    created_round: turnNumber,
+    approved: true,
+  }).then(() => {}, (e: any) => {
+    console.warn("ANNEX_NODE world_memories insert error:", e?.message);
+  });
+
+  const ctxA = nodeContext(node);
   return await insertEvents(supabase, commandId, [{
     ...base, event_type: "node_annexed",
-    note: `${actor.name} anektoval ${node.name}.`,
+    note: `${actor.name} anektoval ${node.name}${ctxA.suffix}.`,
     importance: "high",
-    reference: { node_id: nodeId, check },
+    reference: { node_id: nodeId, ...ctxA.tags, check },
   }], { node_id: nodeId, annex_check: check });
 }
