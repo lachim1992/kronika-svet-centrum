@@ -437,6 +437,7 @@ Deno.serve(async (req) => {
       }
     }
 
+    // Step 7a: compute province nodes (synchronous, ~3-5s)
     const t7a = performance.now();
     try {
       const r = await fetch(`${SUPABASE_URL}/functions/v1/compute-province-nodes`, {
