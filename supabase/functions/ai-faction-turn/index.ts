@@ -1463,11 +1463,12 @@ async function executeAction(
       return "ok";
     }
 
-    // ─── PATCH 9c: NEUTRAL NODE INFLUENCE & ANNEXATION ───
+    // ─── PATCH 9c + 12: NEUTRAL NODE INFLUENCE, ANNEXATION & BLOCKADE ───
     case "open_trade_with_node":
     case "send_envoy_to_node":
     case "apply_military_pressure":
-    case "annex_node": {
+    case "annex_node":
+    case "block_node_annexation": {
       if (!action.targetNodeName) return "missing_params";
       const { data: node } = await supabase.from("province_nodes")
         .select("id, name, is_neutral, discovered, controlled_by")
@@ -1482,12 +1483,19 @@ async function executeAction(
         send_envoy_to_node: "SEND_ENVOY_TO_NODE",
         apply_military_pressure: "APPLY_MILITARY_PRESSURE",
         annex_node: "ANNEX_NODE",
+        block_node_annexation: "BLOCK_NODE_ANNEXATION",
       };
+      const extraPayload: Record<string, unknown> = { note: action.description };
+      if (action.actionType === "block_node_annexation") {
+        const dur = Number((action as any).blockDurationTurns ?? 3);
+        extraPayload.duration_turns = Math.max(1, Math.min(10, dur));
+        extraPayload.reason = (action as any).narrativeNote || `Diplomatický blok (${factionName})`;
+      }
       await invokeFunction(supabaseUrl, supabaseKey, "command-dispatch", {
         sessionId, turnNumber: turn,
         actor: { name: factionName, type: "ai_faction" },
         commandType: cmdMap[action.actionType],
-        commandPayload: { node_id: node.id, note: action.description },
+        commandPayload: { node_id: node.id, ...extraPayload },
         commandId,
       });
       return "ok";
