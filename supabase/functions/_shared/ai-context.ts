@@ -289,7 +289,30 @@ export function buildPremisePrompt(premise: WorldPremise): string {
   const parts: string[] = [];
 
   parts.push("=== PREMISA SVĚTA (povinný kontext — MUSÍŠ respektovat) ===");
-  parts.push("PRAVIDLO PRIORITY: Pokud dojde ke konfliktu mezi vrstvami, VŽDY platí vrstva s nižším číslem. P1 vítězí nad P2, P2 nad P3 atd.");
+  parts.push("PRAVIDLO PRIORITY: Pokud dojde ke konfliktu mezi vrstvami, VŽDY platí vrstva s nižším číslem. P0 vítězí nad P1, P1 nad P2, atd.");
+
+  // ── P0 — DUÁLNÍ PREMISA (nejvyšší kanonická pravda — nesmí být překroucena) ──
+  const dualParts: string[] = [];
+  if (premise.presentPremise) {
+    dualParts.push(`PREMISA SOUČASNOSTI (svět, ve kterém se hraje):\n"""${premise.presentPremise.trim()}"""`);
+  }
+  if (premise.preWorldPremise) {
+    dualParts.push(`PREMISA PRADÁVNA (svět PŘED Zlomem — kořeny rodů, mýtů a fyzických pozůstatků):\n"""${premise.preWorldPremise.trim()}"""`);
+  }
+  if (premise.ancientResetEvent) {
+    dualParts.push(`ZLOM (událost, která ukončila Pradávno a započala Současnost):\n${premise.ancientResetEvent.type} — ${premise.ancientResetEvent.description}`);
+  }
+  if (premise.ancientLineages.length > 0) {
+    const lin = premise.ancientLineages
+      .map((l) => `• ${l.name}${l.culturalAnchor ? ` (kotva: ${l.culturalAnchor})` : ""}: ${l.description}`)
+      .join("\n");
+    dualParts.push(`PRADÁVNÉ RODY (živé dědictví Pradávna v Současnosti — MUSÍŠ je citovat při generování postav, frakcí, kronik):\n${lin}`);
+  }
+  if (dualParts.length > 0) {
+    parts.push(
+      `[P0 — DUÁLNÍ PREMISA SVĚTA (kanonický setting — VŠE musí přímo navazovat na tyto texty; nepřidávej generická klišé typu "Skyfall", "Iron Sons" pokud nejsou explicitně uvedena)]\n${dualParts.join("\n\n")}`,
+    );
+  }
 
   // ── P1 — CONSTRAINTS (tvrdé zákazy, nepřekročitelné) ──
   if (premise.constraints) {
