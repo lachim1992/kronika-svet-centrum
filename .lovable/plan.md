@@ -1,5 +1,7 @@
 # Discovery, Neutral Nodes & Influence Loop
 
+> Status: Patch 0 ✅ · Patch 1 ✅ · Patch 2 ✅ · Patch 3 ✅ · Patch 4–8 pending
+
 ## Verdikt po analýze repa
 
 Reálný stav (ne jen dokumenty):

@@ -7242,7 +7242,7 @@ export type Database = {
           production_output: number
           production_role: string | null
           profile_key: string | null
-          province_id: string
+          province_id: string | null
           resource_output: Json
           route_access_factor: number
           sacred_influence: number
@@ -7327,7 +7327,7 @@ export type Database = {
           production_output?: number
           production_role?: string | null
           profile_key?: string | null
-          province_id: string
+          province_id?: string | null
           resource_output?: Json
           route_access_factor?: number
           sacred_influence?: number
@@ -7412,7 +7412,7 @@ export type Database = {
           production_output?: number
           production_role?: string | null
           profile_key?: string | null
-          province_id?: string
+          province_id?: string | null
           resource_output?: Json
           route_access_factor?: number
           sacred_influence?: number

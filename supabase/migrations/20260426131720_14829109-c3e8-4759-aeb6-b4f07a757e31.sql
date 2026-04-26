@@ -1,0 +1,1 @@
+ALTER TABLE public.province_nodes ALTER COLUMN province_id DROP NOT NULL;
