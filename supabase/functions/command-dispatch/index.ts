@@ -2650,6 +2650,11 @@ async function executeExploreTile(
     });
   }
 
+  // Patch 14 — Public rumors so other players see vague signals about discoveries.
+  if (discoveredCount > 0) {
+    await emitDiscoveryRumors(supabase, sessionId, turnNumber, actor.name, discoveredNodes!);
+  }
+
   // ── Per-player legacy 'discoveries' row for back-compat with frontier renderer ──
   await supabase.from("discoveries").insert({
     session_id: sessionId,
@@ -3004,6 +3009,9 @@ async function executeAnnexNode(
     console.warn("ANNEX_NODE world_memories insert error:", e?.message);
   });
 
+  // Patch 14 — Public rumor about annexation (visible to all players).
+  await emitAnnexationRumor(supabase, sessionId, turnNumber, actor.name, node);
+
   const ctxA = nodeContext(node);
   return await insertEvents(supabase, commandId, [{
     ...base, event_type: "node_annexed",
@@ -3046,4 +3054,58 @@ async function executeBlockNodeAnnexation(
     importance: "high",
     reference: { node_id: nodeId, ...ctxB.tags, blocked_until_turn: blockedUntil, duration_turns: durationTurns, reason },
   }], { node_id: nodeId, blocked_until_turn: blockedUntil, duration_turns: durationTurns });
+}
+
+// ─── Patch 14 — Public rumors about discoveries & annexations ───
+// Other players see vague signals so they can react (form rivalries, race for nodes).
+// Rumors live in the global `rumors` table; UNIQUE source_hash dedupes accidental retries.
+
+async function emitDiscoveryRumors(
+  supabase: any, sessionId: string, turnNumber: number, actorName: string, nodes: any[],
+) {
+  if (!nodes?.length) return;
+  const rows = nodes.map((n: any) => {
+    const cultureBit = n.culture_key ? ` lid kultury ${n.culture_key}` : "";
+    const profileBit = n.profile_key ? ` (${n.profile_key})` : "";
+    return {
+      session_id: sessionId,
+      turn_number: turnNumber,
+      category: "exploration",
+      scope: "regional",
+      confidence: 60,
+      bias: "merchant",
+      tone: "curious",
+      short_text: `Zvěsti o objevu uzlu „${n.name}"${profileBit} —${cultureBit}.`,
+      entity_refs: { node_id: n.id, discovered_by: actorName },
+      source_hash: `discovery:${n.id}:t${turnNumber}`,
+      is_reminder: false,
+    };
+  });
+  await supabase.from("rumors").upsert(rows, {
+    onConflict: "session_id,source_hash", ignoreDuplicates: true,
+  }).then(() => {}, (e: any) => {
+    console.warn("emitDiscoveryRumors error:", e?.message);
+  });
+}
+
+async function emitAnnexationRumor(
+  supabase: any, sessionId: string, turnNumber: number, actorName: string, node: any,
+) {
+  const cultureBit = node.culture_key ? ` (kultura ${node.culture_key})` : "";
+  await supabase.from("rumors").upsert([{
+    session_id: sessionId,
+    turn_number: turnNumber,
+    category: "diplomacy",
+    scope: "world",
+    confidence: 90,
+    bias: "court",
+    tone: "tense",
+    short_text: `${actorName} anektoval uzel „${node.name}"${cultureBit}. Mocenská rovnováha v regionu se mění.`,
+    entity_refs: { node_id: node.id, annexed_by: actorName },
+    source_hash: `annex:${node.id}`,
+    is_reminder: false,
+  }], { onConflict: "session_id,source_hash", ignoreDuplicates: true })
+    .then(() => {}, (e: any) => {
+      console.warn("emitAnnexationRumor error:", e?.message);
+    });
 }

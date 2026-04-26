@@ -284,19 +284,40 @@ Deno.serve(async (req) => {
         .order("turn_number", { ascending: false }),
     ]);
 
-    // ── Patch 9c: faction's influence + trade links on neutral nodes ──
-    const [{ data: nodeInfluenceRows }, { data: nodeTradeLinks }] = await Promise.all([
+    // ── Patch 9c + 12: faction's influence + trade links + RIVAL pressure + active blockades ──
+    const [{ data: nodeInfluenceRows }, { data: nodeTradeLinks }, { data: rivalInfluenceRows }, { data: blockadeRows }] = await Promise.all([
       supabase.from("node_influence")
         .select("node_id, economic_influence, political_influence, military_pressure, resistance, integration_progress")
         .eq("session_id", sessionId).eq("player_name", factionName),
       supabase.from("node_trade_links")
         .select("node_id, link_status, trade_level, route_safety")
         .eq("session_id", sessionId).eq("player_name", factionName),
+      supabase.from("node_influence")
+        .select("node_id, player_name, economic_influence, political_influence, military_pressure")
+        .eq("session_id", sessionId).neq("player_name", factionName),
+      supabase.from("node_blockades")
+        .select("node_id, blocked_by_player, blocked_until_turn, reason")
+        .eq("session_id", sessionId).gte("blocked_until_turn", turn),
     ]);
     const influenceByNode = new Map<string, any>();
     for (const r of (nodeInfluenceRows || [])) influenceByNode.set(r.node_id, r);
     const linkByNode = new Map<string, any>();
     for (const l of (nodeTradeLinks || [])) linkByNode.set(l.node_id, l);
+    // Aggregate rival pressure per node (anonymized; AI sees only counts + max)
+    const rivalsByNode = new Map<string, { count: number; topPressure: number; topPlayer: string | null; players: string[] }>();
+    for (const r of (rivalInfluenceRows || [])) {
+      const p = (Number(r.economic_influence) || 0) * 0.45
+              + (Number(r.political_influence) || 0) * 0.35
+              + (Number(r.military_pressure) || 0) * 0.20;
+      if (p <= 0) continue;
+      const cur = rivalsByNode.get(r.node_id) || { count: 0, topPressure: 0, topPlayer: null as string | null, players: [] as string[] };
+      cur.count += 1;
+      if (p > cur.topPressure) { cur.topPressure = p; cur.topPlayer = String(r.player_name); }
+      cur.players.push(String(r.player_name));
+      rivalsByNode.set(r.node_id, cur);
+    }
+    const blockadeByNode = new Map<string, any>();
+    for (const b of (blockadeRows || [])) blockadeByNode.set(b.node_id, b);
 
     // Fetch recent diplomacy messages for all rooms involving this faction
     const roomIds = (diplomacyRooms || []).map((r: any) => r.id);
@@ -625,24 +646,37 @@ ${(() => {
 
 ═══ NEUTRÁLNÍ UZLY (objevené, vliv & anexe) ═══
 ${(() => {
-  const ANNEX_THRESHOLD = 100; // matches _shared/nodeInfluence default
   const known = (strategicNodes || []).filter((n: any) => n.is_neutral && n.discovered);
   if (known.length === 0) return "žádné objevené neutrální uzly (zkus EXPLORE)";
   return known.slice(0, 12).map((n: any) => {
     const inf = influenceByNode.get(n.id) || { economic_influence: 0, political_influence: 0, military_pressure: 0, resistance: 0, integration_progress: 0 };
     const link = linkByNode.get(n.id);
-    const pressure = (inf.economic_influence + inf.political_influence + inf.military_pressure) - inf.resistance;
-    const threshold = ANNEX_THRESHOLD + (n.autonomy_score ?? 80) * 0.5;
-    const ready = pressure >= threshold ? " ✅ANNEX_READY" : ` (pressure ${pressure.toFixed(0)}/${threshold.toFixed(0)})`;
-    return `  ${n.name} hex(${n.hex_q},${n.hex_r}) kult=${n.culture_key || "?"} prof=${n.profile_key || "?"} aut=${n.autonomy_score} | econ=${inf.economic_influence} pol=${inf.political_influence} mil=${inf.military_pressure} res=${inf.resistance}${link ? ` link=${link.link_status}` : ""}${ready}`;
+    // Patch 12: real annex formula matches _shared/nodeInfluence
+    const myPressure = inf.economic_influence * 0.45 + inf.political_influence * 0.35 + inf.military_pressure * 0.20;
+    const threshold = inf.resistance + (n.autonomy_score ?? 80) * 0.5;
+    const rivals = rivalsByNode.get(n.id);
+    const blockade = blockadeByNode.get(n.id);
+    const contested = !!(rivals && myPressure > 0 && rivals.topPressure >= myPressure * 0.6);
+    const blocked = !!(blockade && blockade.blocked_by_player !== factionName);
+    const blockedByMe = !!(blockade && blockade.blocked_by_player === factionName);
+    let status: string;
+    if (blocked) status = ` 🚫BLOCKED_BY_${blockade.blocked_by_player}_until_t${blockade.blocked_until_turn}`;
+    else if (contested) status = ` ⚠️CONTESTED_by_${rivals!.count}_rival(s)_top=${rivals!.topPressure.toFixed(0)}`;
+    else if (myPressure >= threshold) status = " ✅ANNEX_READY";
+    else status = ` (pressure ${myPressure.toFixed(0)}/${threshold.toFixed(0)})`;
+    const rivalTag = rivals ? ` rivals=${rivals.count}(top=${rivals.topPressure.toFixed(0)})` : "";
+    const blockTag = blockedByMe ? ` 🛡️MY_BLOCK_until_t${blockade.blocked_until_turn}` : "";
+    return `  ${n.name} hex(${n.hex_q},${n.hex_r}) kult=${n.culture_key || "?"} prof=${n.profile_key || "?"} aut=${n.autonomy_score} | econ=${inf.economic_influence} pol=${inf.political_influence} mil=${inf.military_pressure} res=${inf.resistance}${link ? ` link=${link.link_status}` : ""}${rivalTag}${status}${blockTag}`;
   }).join("\n");
 })()}
 
 NEUTRÁLNÍ STRATEGIE:
-- open_trade_with_node — otevírá obchod, zvyšuje economic_influence a generuje wealth.
+- open_trade_with_node — otevírá obchod, zvyšuje economic_influence. Při více konkurentech klesá zisk → buď první!
 - send_envoy_to_node — diplomatická mise, zvyšuje political_influence (kulturně vhodné kultury preferuj).
 - apply_military_pressure — vojenský tlak, zvyšuje military_pressure ale i resistance.
-- annex_node — anexe (jen když ANNEX_READY). Permanentně získává uzel + jeho zdroje.
+- annex_node — anexe (jen když ✅ANNEX_READY a NE ⚠️CONTESTED a NE 🚫BLOCKED).
+- block_node_annexation — diplomaticky zablokuje anexi soupeři na 1–10 tahů. Použij když rival je blízko ANNEX_READY na uzlu, který chceš sám získat, nebo proti nepřátelské frakci. Parametr: blockDurationTurns (default 3).
+- KONTESTACE: Pokud má rival ≥ 60 % tvého tlaku, anexe je zamítnuta. Buď zlikviduj rivala (žádné společné akce, ekonomická eroze), nebo blokuj jeho anexi.
 - Strategie podle profilu uzlu: trade hub → trade, kulturně podobný → envoy, slabě bráněný → pressure.
 
 ═══ ZAKLÁDÁNÍ OSAD ═══
@@ -681,7 +715,7 @@ Rozhodni, co frakce udělá v tomto kole. ${milMetrics.warState === "war" ? "JST
                         "found_settlement", "trade", "explore",
                         "fortify_node", "repair_route", "blockade_route",
                         "open_trade_with_node", "send_envoy_to_node",
-                        "apply_military_pressure", "annex_node",
+                        "apply_military_pressure", "annex_node", "block_node_annexation",
                       ],
                     },
                     description: { type: "string", description: "Stručný popis akce" },
@@ -696,7 +730,8 @@ Rozhodni, co frakce udělá v tomto kole. ${milMetrics.warState === "war" ? "JST
                     targetHexQ: { type: "number" },
                     targetHexR: { type: "number" },
                     settlementName: { type: "string" },
-                    targetNodeName: { type: "string", description: "Name of strategic or neutral node (for fortify_node, blockade_route, open_trade_with_node, send_envoy_to_node, apply_military_pressure, annex_node)" },
+                    targetNodeName: { type: "string", description: "Name of strategic or neutral node (for fortify_node, blockade_route, open_trade_with_node, send_envoy_to_node, apply_military_pressure, annex_node, block_node_annexation)" },
+                    blockDurationTurns: { type: "number", description: "For block_node_annexation: 1-10 turns (default 3)" },
                     mobilizationRate: { type: "number" },
                     messageText: { type: "string" },
                     peaceConditions: {
@@ -1428,11 +1463,12 @@ async function executeAction(
       return "ok";
     }
 
-    // ─── PATCH 9c: NEUTRAL NODE INFLUENCE & ANNEXATION ───
+    // ─── PATCH 9c + 12: NEUTRAL NODE INFLUENCE, ANNEXATION & BLOCKADE ───
     case "open_trade_with_node":
     case "send_envoy_to_node":
     case "apply_military_pressure":
-    case "annex_node": {
+    case "annex_node":
+    case "block_node_annexation": {
       if (!action.targetNodeName) return "missing_params";
       const { data: node } = await supabase.from("province_nodes")
         .select("id, name, is_neutral, discovered, controlled_by")
@@ -1447,12 +1483,19 @@ async function executeAction(
         send_envoy_to_node: "SEND_ENVOY_TO_NODE",
         apply_military_pressure: "APPLY_MILITARY_PRESSURE",
         annex_node: "ANNEX_NODE",
+        block_node_annexation: "BLOCK_NODE_ANNEXATION",
       };
+      const extraPayload: Record<string, unknown> = { note: action.description };
+      if (action.actionType === "block_node_annexation") {
+        const dur = Number((action as any).blockDurationTurns ?? 3);
+        extraPayload.duration_turns = Math.max(1, Math.min(10, dur));
+        extraPayload.reason = (action as any).narrativeNote || `Diplomatický blok (${factionName})`;
+      }
       await invokeFunction(supabaseUrl, supabaseKey, "command-dispatch", {
         sessionId, turnNumber: turn,
         actor: { name: factionName, type: "ai_faction" },
         commandType: cmdMap[action.actionType],
-        commandPayload: { node_id: node.id, note: action.description },
+        commandPayload: { node_id: node.id, ...extraPayload },
         commandId,
       });
       return "ok";
