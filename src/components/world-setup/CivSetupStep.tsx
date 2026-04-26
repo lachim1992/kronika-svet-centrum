@@ -178,7 +178,7 @@ const CivSetupStep = ({ value, onChange, premise, disabled }: Props) => {
           {value.rulerName && <span className="text-[10px] text-muted-foreground truncate max-w-[40%]">{value.rulerTitle} {value.rulerName}</span>}
         </CollapsibleTrigger>
         <CollapsibleContent className="pt-2 pl-2">
-          <RulerStep value={ruler} onChange={(r) => update({ rulerName: r.ruler_name, rulerTitle: r.ruler_title, rulerArchetype: r.ruler_archetype, rulerBio: r.ruler_bio })} />
+          <div><RulerStep value={ruler} onChange={(r) => update({ rulerName: r.ruler_name, rulerTitle: r.ruler_title, rulerArchetype: r.ruler_archetype, rulerBio: r.ruler_bio })} /></div>
         </CollapsibleContent>
       </Collapsible>
 
