@@ -82,9 +82,19 @@ Deno.serve(async (req) => {
     const styleLabel = tone === "realistic" ? "politická kronika" : tone === "mythic" ? "epická sága" : "středověká kronika";
 
     if (LOVABLE_API_KEY) {
-      const playerDescs = civConfigs.map((c: any) =>
-        `${c.player_name} (${c.realm_name || "neznámá říše"}): ${c.civ_description || "neznámý národ"}, biom: ${c.homeland_biome}, sídlo: ${c.settlement_name}, domovská provincie: ${c.homeland_name || "neurčena"}`
-      ).join("\n");
+      const playerDescs = civConfigs.map((c: any) => {
+        const parts = [
+          `${c.player_name} (${c.realm_name || "neznámá říše"}): ${c.civ_description || "neznámý národ"}`,
+          `biom: ${c.homeland_biome}, sídlo: ${c.settlement_name}, domovská provincie: ${c.homeland_name || "neurčena"}`,
+        ];
+        if (c.ruler_name) parts.push(`vládce: ${c.ruler_title || ""} ${c.ruler_name} (${c.ruler_archetype || "?"})${c.ruler_bio ? " — " + c.ruler_bio : ""}`);
+        if (c.government_form) parts.push(`vláda: ${c.government_form}`);
+        if (c.trade_ideology) parts.push(`obchod: ${c.trade_ideology}`);
+        if (c.dominant_faith) parts.push(`víra: ${c.dominant_faith} (${c.faith_attitude || "tolerant"})`);
+        if (c.spawn_preference && c.spawn_preference !== "any") parts.push(`preferovaná oblast: ${c.spawn_preference}`);
+        if (Array.isArray(c.lineage_ids) && c.lineage_ids.length) parts.push(`pradávné rody: ${c.lineage_ids.join(", ")}`);
+        return parts.join(" | ");
+      }).join("\n");
 
       const systemPrompt = `Jsi generátor světa pro civilizační strategickou hru s ${playerCount} hráči. Tvým úkolem je vytvořit kompletní, tematicky koherentní svět S HLUBOKOU PREHISTORIÍ.
 
