@@ -375,6 +375,31 @@ async function computeProgress(sb: any, sessionId: string, victoryStyle: string,
       };
     }
 
+    case "annexation": {
+      const { data: nodes } = await sb
+        .from("province_nodes")
+        .select("controlled_by, autonomy_score")
+        .eq("session_id", sessionId)
+        .lte("autonomy_score", 20)
+        .not("controlled_by", "is", null);
+      const counts: Record<string, number> = {};
+      for (const n of nodes || []) {
+        if (humanPlayers.includes(n.controlled_by)) {
+          counts[n.controlled_by] = (counts[n.controlled_by] || 0) + 1;
+        }
+      }
+      const ranked = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+      const best = ranked[0]?.[1] || 0;
+      return {
+        type: "annexation",
+        label: `Anektuj ${ANNEXATION_TARGET} neutrálních uzlů`,
+        current: best,
+        target: ANNEXATION_TARGET,
+        pct: Math.round(Math.min(best / ANNEXATION_TARGET, 1) * 100),
+        details: { leaderboard: ranked.map(([p, c]) => ({ player: p, annexed: c })) },
+      };
+    }
+
     case "story":
     default:
       return {
@@ -386,8 +411,6 @@ async function computeProgress(sb: any, sessionId: string, victoryStyle: string,
         details: { note: "Ukončete hru kdykoli chcete." },
       };
   }
-
-  // (annexation handled below by adding a case before default)
 }
 
 function buildVictoryChronicle(style: string, winner: string, turn: number): string {
