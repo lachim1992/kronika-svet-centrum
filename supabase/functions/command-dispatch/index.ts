@@ -2650,6 +2650,11 @@ async function executeExploreTile(
     });
   }
 
+  // Patch 14 — Public rumors so other players see vague signals about discoveries.
+  if (discoveredCount > 0) {
+    await emitDiscoveryRumors(supabase, sessionId, turnNumber, actor.name, discoveredNodes!);
+  }
+
   // ── Per-player legacy 'discoveries' row for back-compat with frontier renderer ──
   await supabase.from("discoveries").insert({
     session_id: sessionId,
