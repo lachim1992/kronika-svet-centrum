@@ -1095,12 +1095,15 @@ Deno.serve(async (req) => {
       try { await backgroundWork(); } catch (e) { console.error("Background work error:", e); }
     }
 
+    const totalMs = Date.now() - tCommit;
+    console.log(`[commit-turn] DONE turn=${turnNumber} player=${playerName} critical=${totalMs}ms (background scheduled)`);
     return new Response(JSON.stringify({
       ok: true,
       turnClosed: turnNumber,
       newTurn: turnNumber + 1,
       results,
       backgroundScheduled: true,
+      criticalMs: totalMs,
     }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
   } catch (err) {
