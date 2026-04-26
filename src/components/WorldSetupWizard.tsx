@@ -462,7 +462,17 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
                 </div>
               </Card>
 
-              {/* Spec review + editor — visible only after first analyze */}
+              {/* Tvá civilizace — VŽDY viditelné, paralelně s premisou.
+                  V MP slouží jako host přednastavení (lobby umí později editovat). */}
+              <Card className="p-3 sm:p-4">
+                <CivSetupStep
+                  value={identity}
+                  onChange={setIdentity}
+                  premise={state.premise}
+                  disabled={isBusy}
+                />
+              </Card>
+
               {resolved && (
                 <>
                   <Card className="p-3 sm:p-4 space-y-3">
