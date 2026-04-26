@@ -33,48 +33,30 @@ Deno.serve(async (req) => {
       });
     }
 
-    // If deleteFirst, clear AI-generated fields (preserve body_md which is player-written)
-    if (deleteFirst) {
-      await sb
-        .from("wiki_entries")
-        .update({
-          ai_description: null,
-          summary: null,
-          image_prompt: null,
-          static_identity: {},
-          history_cache: null,
-          saga_cache: null,
-          last_enriched_turn: 0,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("session_id", sessionId);
-    }
-
-    // Regenerate each entry by calling wiki-generate
+    // Regenerate each entry via wiki-orchestrator (Track B): single gateway.
+    // The orchestrator handles deletion of stale fields when fields includes 'content'.
     const results: any[] = [];
-    const BATCH_SIZE = 3; // Process 3 at a time to avoid rate limits
+    const BATCH_SIZE = 3;
+    const fields = deleteFirst ? ["content", "image"] : ["content"];
 
     for (let i = 0; i < entries.length; i += BATCH_SIZE) {
       const batch = entries.slice(i, i + BATCH_SIZE);
       const promises = batch.map(async (entry) => {
         try {
-          const res = await fetch(`${SUPABASE_URL}/functions/v1/wiki-generate`, {
+          const res = await fetch(`${SUPABASE_URL}/functions/v1/wiki-orchestrator`, {
             method: "POST",
             headers: {
               Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
               "Content-Type": "application/json",
             },
             body: JSON.stringify({
-              entityType: entry.entity_type,
-              entityName: entry.entity_name,
-              entityId: entry.entity_id,
-              sessionId,
-              ownerPlayer: entry.owner_player,
-              context: {},
+              action: "regenerate",
+              entry_id: entry.id,
+              fields,
             }),
           });
           const data = await res.json();
-          return { entity: entry.entity_name, type: entry.entity_type, ok: res.ok, summary: data.summary };
+          return { entity: entry.entity_name, type: entry.entity_type, ok: res.ok && data?.ok, ...data };
         } catch (e) {
           return { entity: entry.entity_name, type: entry.entity_type, ok: false, error: String(e) };
         }
@@ -83,7 +65,6 @@ Deno.serve(async (req) => {
       const batchResults = await Promise.all(promises);
       results.push(...batchResults);
 
-      // Small delay between batches
       if (i + BATCH_SIZE < entries.length) {
         await new Promise(r => setTimeout(r, 1000));
       }
