@@ -335,10 +335,38 @@ export async function seedRealmSkeleton(input: SeedRealmInput): Promise<SeedReal
           is_ai: true,
           ai_personality: p.personality || null,
           core_myth: aiFaction?.description || null,
-          cultural_quirk: aiFaction?.personality || null,
         } as any, { onConflict: "session_id,player_name" });
       } catch (e) {
         console.warn("[seed-realm-skeleton] AI civilizations upsert failed:", e);
+      }
+
+      // Extract full civ_identity for AI faction (units, modifiers, flavor).
+      // Best-effort: failure must not break bootstrap.
+      try {
+        const aiCivDesc = [
+          aiFaction?.description || "",
+          aiFaction?.personality ? `Osobnost: ${aiFaction.personality}` : "",
+        ].filter(Boolean).join("\n");
+        if (aiCivDesc.trim().length > 0 || p.factionName) {
+          const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+          const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+          // Fire-and-forget to avoid blocking bootstrap latency.
+          fetch(`${supabaseUrl}/functions/v1/extract-civ-identity`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${serviceKey}`,
+            },
+            body: JSON.stringify({
+              sessionId,
+              playerName: p.playerName,
+              civDescription: aiCivDesc || `Frakce ${p.factionName} ve světě ${worldName}.`,
+              context: { realm_name: p.factionName, premise },
+            }),
+          }).catch((e) => console.warn(`[seed-realm-skeleton] AI extract for ${p.playerName} failed:`, e));
+        }
+      } catch (e) {
+        console.warn("[seed-realm-skeleton] AI extract dispatch failed:", e);
       }
     }
   }
