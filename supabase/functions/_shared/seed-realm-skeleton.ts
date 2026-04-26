@@ -13,6 +13,30 @@
 interface StartPos { q: number; r: number; }
 interface FactionConfig { name?: string; personality?: string; description?: string; }
 
+interface ExtractedCivIdentityInput {
+  display_name?: string | null;
+  flavor_summary?: string | null;
+  culture_tags?: string[];
+  urban_style?: string;
+  society_structure?: string;
+  military_doctrine?: string;
+  economic_focus?: string;
+  grain_modifier?: number; wood_modifier?: number; stone_modifier?: number;
+  iron_modifier?: number; wealth_modifier?: number;
+  pop_growth_modifier?: number;
+  initial_burgher_ratio?: number; initial_cleric_ratio?: number;
+  production_modifier?: number;
+  morale_modifier?: number; mobilization_speed?: number;
+  cavalry_bonus?: number; fortification_bonus?: number;
+  stability_modifier?: number; trade_modifier?: number;
+  diplomacy_modifier?: number; research_modifier?: number;
+  building_tags?: string[];
+  militia_unit_name?: string; militia_unit_desc?: string;
+  professional_unit_name?: string; professional_unit_desc?: string;
+  core_myth?: string | null; cultural_quirk?: string | null; architectural_style?: string | null;
+  source_description?: string;
+}
+
 interface SeedRealmInput {
   sb: any;
   sessionId: string;
@@ -40,6 +64,8 @@ interface SeedRealmInput {
   heraldry?: { primary: string; secondary: string; symbol: string };
   secretObjectiveArchetype?: string;
   foundingLegend?: string;
+  identityModifiers?: ExtractedCivIdentityInput;
+  lineageIds?: string[];
   factions?: FactionConfig[];
   startPositions: StartPos[];
 }
@@ -81,6 +107,7 @@ export async function seedRealmSkeleton(input: SeedRealmInput): Promise<SeedReal
     rulerName, rulerTitle, rulerArchetype, rulerBio,
     governmentForm, tradeIdeology, dominantFaith, faithAttitude,
     heraldry, secretObjectiveArchetype, foundingLegend,
+    identityModifiers, lineageIds,
     factions = [], startPositions,
   } = input;
 
