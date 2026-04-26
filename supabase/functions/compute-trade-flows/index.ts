@@ -747,6 +747,71 @@ Deno.serve(async (req) => {
       pMap.set(row.basket_key, existing);
     }
 
+    // ════════════════════════════════════════════
+    // PHASE 4a-bis: Neutral node contributions (Patch 7)
+    // Inject supply from world_node_outputs via node_trade_links and annexed nodes.
+    // ════════════════════════════════════════════
+    try {
+      const [outputsRes, linksRes, neutralNodesRes] = await Promise.all([
+        sb.from("world_node_outputs").select("node_id, basket_key, quantity, quality, exportable_ratio").eq("session_id", session_id),
+        sb.from("node_trade_links").select("node_id, player_name, link_status, route_safety").eq("session_id", session_id),
+        sb.from("province_nodes").select("id, is_neutral, controlled_by, discovered").eq("session_id", session_id),
+      ]);
+      const outputs = outputsRes.data || [];
+      const links = linksRes.data || [];
+      const nNodes = neutralNodesRes.data || [];
+
+      const outputsByNode = new Map<string, any[]>();
+      for (const o of outputs) {
+        if (!outputsByNode.has(o.node_id)) outputsByNode.set(o.node_id, []);
+        outputsByNode.get(o.node_id)!.push(o);
+      }
+      const nodeStateMap = new Map(nNodes.map(n => [n.id, n]));
+
+      const addToBasket = (player: string, bk: string, supplyAdd: number) => {
+        if (!playerBasketData.has(player)) playerBasketData.set(player, new Map());
+        const pMap = playerBasketData.get(player)!;
+        const existing = pMap.get(bk) || {
+          localSupply: 0, localDemand: 0, effectiveExport: 0,
+          domesticSatisfaction: 0, autoProduction: 0, bonusProduction: 0,
+          qualityWeight: 1,
+        };
+        existing.localSupply += supplyAdd;
+        existing.bonusProduction += supplyAdd;
+        // contributes to export pool with neutral safety penalty already applied
+        existing.effectiveExport += supplyAdd * 0.6;
+        pMap.set(bk, existing);
+      };
+
+      // 1) Trade-linked neutral nodes → partial supply with route_safety penalty
+      for (const link of links) {
+        if (!["trade_open", "protected", "vassalized"].includes(link.link_status)) continue;
+        const node = nodeStateMap.get(link.node_id);
+        if (!node || !node.discovered || !node.is_neutral) continue;
+        const outs = outputsByNode.get(link.node_id) || [];
+        const safety = Number(link.route_safety ?? 1);
+        for (const o of outs) {
+          const supplyAdd = Number(o.quantity || 0) * Number(o.exportable_ratio || 0.4) * safety;
+          if (supplyAdd <= 0) continue;
+          addToBasket(link.player_name, o.basket_key, supplyAdd);
+        }
+      }
+
+      // 2) Annexed nodes (controlled_by + !is_neutral) → full quantity to owner
+      for (const node of nNodes) {
+        if (node.is_neutral) continue;
+        if (!node.controlled_by) continue;
+        const outs = outputsByNode.get(node.id) || [];
+        for (const o of outs) {
+          const supplyAdd = Number(o.quantity || 0);
+          if (supplyAdd <= 0) continue;
+          addToBasket(node.controlled_by, o.basket_key, supplyAdd);
+        }
+      }
+    } catch (e) {
+      warnings.push(`Neutral node integration failed: ${(e as Error).message}`);
+    }
+
     // Compute domestic satisfaction per player per basket (weighted aggregate)
     for (const [player, baskets] of playerBasketData) {
       for (const [bk, data] of baskets) {

@@ -17,6 +17,7 @@ import { useHexMap, AXIAL_NEIGHBORS, type HexData } from "@/hooks/useHexMap";
 import CityMarkerBadge from "@/components/CityMarkerBadge";
 import FoundSettlementDialog from "@/components/FoundSettlementDialog";
 import BuildNodeDialog from "@/components/BuildNodeDialog";
+import NeutralNodePanel from "@/components/NeutralNodePanel";
 import RoadNetworkOverlay, { ROAD_STYLES } from "@/components/map/RoadNetworkOverlay";
 import EconomyFlowOverlay, { CATEGORY_COLORS, MACRO_COLORS, FLOW_LAYER_COLORS } from "@/components/map/EconomyFlowOverlay";
 import type { EconomyViewMode } from "@/components/map/EconomyFlowOverlay";
@@ -144,6 +145,8 @@ interface NodeOnHex {
   net_balance?: number;
   capability_tags?: string[]; guild_level?: number; flow_role?: string;
   spawned_strategic_resource?: string | null; city_id?: string | null;
+  is_neutral?: boolean | null; discovered?: boolean | null; culture_key?: string | null;
+  profile_key?: string | null; autonomy_score?: number | null; population?: number | null;
 }
 interface Props {
   sessionId: string; playerName: string; myRole: string;
@@ -564,7 +567,7 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
   /* ── Fetch nodes ── */
   const fetchNodes = useCallback(async () => {
     const { data } = await supabase.from("province_nodes")
-      .select("id, name, hex_q, hex_r, node_tier, node_type, node_subtype, controlled_by, upgrade_level, max_upgrade_level, parent_node_id, strategic_resource_type, production_output, wealth_output, net_balance, capability_tags, guild_level, flow_role, spawned_strategic_resource, city_id")
+      .select("id, name, hex_q, hex_r, node_tier, node_type, node_subtype, controlled_by, upgrade_level, max_upgrade_level, parent_node_id, strategic_resource_type, production_output, wealth_output, net_balance, capability_tags, guild_level, flow_role, spawned_strategic_resource, city_id, is_neutral, discovered, culture_key, profile_key, autonomy_score, population")
       .eq("session_id", sessionId)
       .eq("is_active", true);
     setAllNodes((data || []) as NodeOnHex[]);
@@ -2057,6 +2060,15 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
                       )}
                     </div>
                   </div>
+                )}
+
+                {(n.is_neutral || (n.controlled_by === playerName && n.discovered)) && (
+                  <NeutralNodePanel
+                    sessionId={sessionId}
+                    playerName={playerName || ""}
+                    node={n as any}
+                    onChanged={() => { fetchNodes(); }}
+                  />
                 )}
 
                 <div className="p-3 rounded-lg border border-border bg-muted/30 space-y-2">
