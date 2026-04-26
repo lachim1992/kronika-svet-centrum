@@ -113,10 +113,12 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
   async function handleAnalyze() {
     const requestId = crypto.randomUUID();
     const premiseSnapshot = state.premise;
+    const preWorldSnapshot = state.preWorldPremise.trim();
     wizard.dispatch({ type: "ANALYZE_START", requestId, premiseSnapshot });
     try {
       const payload = composeAnalyzeRequest({
         premise: premiseSnapshot,
+        preWorldPremise: preWorldSnapshot.length >= 30 ? preWorldSnapshot : undefined,
         userOverrides: state.userOverrides,
         lockedPaths: state.lockedPaths,
         regenerationNonce: state.regenerationNonce,
@@ -125,7 +127,21 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
         body: payload,
       });
       if (error) throw new Error(error.message || "Analýza selhala");
-      const resp = data as TranslatePremiseResponse;
+      const resp = data as TranslatePremiseResponse & {
+        code?: string;
+        suggestedPreWorldPremise?: string;
+        resolvedPreWorldPremise?: string;
+      };
+      // Specifická chyba: pradávno se nepodařilo utkat
+      if (!resp?.ok && resp?.code === "ANCIENT_LAYER_FAILED") {
+        // Pokud AI navrhla preWorld, naplň pole, ať to hráč vidí a může editovat
+        if (resp.suggestedPreWorldPremise && preWorldSnapshot.length < 30) {
+          setPreWorldPremise(resp.suggestedPreWorldPremise, true);
+        }
+        throw new Error(
+          "Mytologii Pradávna se nepodařilo utkat. Uprav premisu nebo vyplň Pradávno ručně a zkus znovu.",
+        );
+      }
       if (!resp?.ok || !resp.spec) throw new Error(resp?.error || "Analýza vrátila chybu");
       wizard.dispatch({
         type: "ANALYZE_SUCCESS",
@@ -134,6 +150,13 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
         spec: resp.spec,
         warnings: resp.warnings ?? [],
       });
+      // AI doplnila Pradávno → ulož a označ jako návrh
+      if (resp.suggestedPreWorldPremise && preWorldSnapshot.length < 30) {
+        setPreWorldPremise(resp.suggestedPreWorldPremise, true);
+      } else if (resp.resolvedPreWorldPremise && preWorldSnapshot.length >= 30) {
+        // potvrzeno hráčovo vlastní
+        setPreWorldPremise(resp.resolvedPreWorldPremise, false);
+      }
       // Capture ancient layer (v9.1) — outside reducer.
       if (resp.ancientLayer) {
         setAncientLayer(resp.ancientLayer);
