@@ -42,11 +42,35 @@ export interface TerrainKnobs {
   biomeWeights?: Record<string, number>;
 }
 
+export interface HeraldryInput {
+  primary: string;
+  secondary: string;
+  symbol: string;
+}
+
 export interface WorldIdentityInput {
+  realmName?: string;
   settlementName?: string;
+  peopleName?: string;
   cultureName?: string;
   languageName?: string;
-  realmName?: string;
+  civDescription?: string;
+  homelandName?: string;
+  homelandBiome?: string;
+  homelandDesc?: string;
+  spawnPreference?: string;
+  rulerName?: string;
+  rulerTitle?: string;
+  rulerArchetype?: string;
+  rulerBio?: string;
+  governmentForm?: string;
+  tradeIdeology?: string;
+  dominantFaith?: string;
+  faithAttitude?: string;
+  heraldry?: HeraldryInput;
+  secretObjectiveArchetype?: string;
+  /** Player-authored founding myth — woven into prehistory. */
+  foundingLegend?: string;
 }
 
 export interface FactionSeedInput {
