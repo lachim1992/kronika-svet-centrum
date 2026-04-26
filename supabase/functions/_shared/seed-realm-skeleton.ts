@@ -189,10 +189,12 @@ export async function seedRealmSkeleton(input: SeedRealmInput): Promise<SeedReal
       province_q: cityHex.q,
       province_r: cityHex.r,
       city_stability: 65,
-      population_total: 380,
-      population_peasants: 304,
-      population_burghers: 57,
-      population_clerics: 19,
+      // ENGINE OVERRIDE — startovní osada je VŽDY hamlet o 100 rolnících.
+      // Žádní burghers/clerics na startu. Růst probíhá až přes engine ticky.
+      population_total: 100,
+      population_peasants: 100,
+      population_burghers: 0,
+      population_clerics: 0,
       settlement_level: "HAMLET",
     }).select("id").single();
     if (city) { cityIds.push(city.id); citiesSeeded++; }
