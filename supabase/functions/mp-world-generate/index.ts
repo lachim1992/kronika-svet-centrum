@@ -1463,6 +1463,23 @@ DŮLEŽITÉ: Hráčské frakce MUSÍ mít isPlayer=true a playerName musí přes
       console.warn("Hex generation warning:", hexErr);
     }
 
+    // ═══ STEP N-bis: Spatial pipeline (nodes → neutral nodes → routes) ═══
+    try {
+      const authHdr = { Authorization: `Bearer ${serviceKey}`, "Content-Type": "application/json" };
+      const body = JSON.stringify({ session_id: sessionId });
+
+      const r1 = await fetch(`${supabaseUrl}/functions/v1/compute-province-nodes`, { method: "POST", headers: authHdr, body });
+      console.log(`compute-province-nodes: ${r1.status}`);
+
+      const r2 = await fetch(`${supabaseUrl}/functions/v1/generate-neutral-nodes`, { method: "POST", headers: authHdr, body });
+      console.log(`generate-neutral-nodes: ${r2.status}`);
+
+      const r3 = await fetch(`${supabaseUrl}/functions/v1/compute-province-routes`, { method: "POST", headers: authHdr, body });
+      console.log(`compute-province-routes: ${r3.status}`);
+    } catch (spatialErr) {
+      console.warn("Spatial pipeline warning:", spatialErr);
+    }
+
     await setStep("generating_media");
     // ═══ STEP O: Wiki profiles + entity images (best effort) ═══
     let wikiGenerated = 0;
