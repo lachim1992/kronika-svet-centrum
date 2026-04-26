@@ -324,7 +324,7 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
         spec: specWithAncient as typeof resolved,
         preWorldPremise: state.preWorldPremise.trim() || undefined,
         factions: factionsArr,
-        identity: isMPMode ? undefined : identity,
+        identity,
       });
 
       const tickInterval = setInterval(() => {
