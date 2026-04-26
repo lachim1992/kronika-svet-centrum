@@ -338,3 +338,13 @@ Každý patch musí jít zvlášť testovat.
 2. Filtr `laws.lifecycle_status = 'active'` ve VŠECH dotazech nad `law_effects` (`aggregateActiveModifiers`, `applyActiveDecrees`). Revoked/expired nesmí ožít.
 3. `wealth ↔ realm_resources.total_wealth` mapování v engine vrstvě, ne v UI.
 4. Wiki orchestrator policy: `law/chronicle/treaty/declaration` = text-only by default. Image jen přes `regenerate fields:['image']`.
+
+## Track B — completed steps (2026-04-26)
+
+- ✅ Migrace `wiki_entries` (locks + status fields + index).
+- ✅ `supabase/functions/wiki-orchestrator/index.ts` — actions `ensure | regenerate | lock | unlock` + `GENERATION_POLICY`.
+- ✅ Delegators: `backfill-wiki` a `batch-regenerate-wiki` volají orchestrator.
+- ✅ UI: `WikiPanel.handleGenerateText` + `handleGenerateImage` přepojeny na orchestrator.
+- ⏭️ Zbývá (volitelné, nelze rozbít): refactor `wiki-enrich`, `encyclopedia-generate`, `encyclopedia-image` na delegátory — odloženo, mají vlastní specifickou logiku a stále fungují přes `wiki-generate`.
+
+**Další krok:** Track D — wiki root „Svět" + UI rename Stát→Země + ChroWiki taby.
