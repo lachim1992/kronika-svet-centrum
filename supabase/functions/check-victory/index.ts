@@ -249,7 +249,39 @@ async function checkCultural(sb: any, sessionId: string, humanPlayers: string[])
   return { won: false };
 }
 
-// ── Progress computation for UI ──
+// ── Annexation: control the most annexed neutral nodes (threshold: 5) ──
+const ANNEXATION_TARGET = 5;
+async function checkAnnexation(sb: any, sessionId: string, humanPlayers: string[]) {
+  const { data: nodes } = await sb
+    .from("province_nodes")
+    .select("id, controlled_by, is_neutral, autonomy_score")
+    .eq("session_id", sessionId)
+    .lte("autonomy_score", 20) // fully integrated (annexed)
+    .not("controlled_by", "is", null);
+
+  const counts: Record<string, number> = {};
+  for (const n of nodes || []) {
+    if (humanPlayers.includes(n.controlled_by)) {
+      counts[n.controlled_by] = (counts[n.controlled_by] || 0) + 1;
+    }
+  }
+  const ranked = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+  if (ranked.length === 0) return { won: false };
+  const [winner, count] = ranked[0];
+  if (count >= ANNEXATION_TARGET) {
+    return {
+      won: true,
+      winner,
+      data: {
+        type: "annexation",
+        annexed_count: count,
+        target: ANNEXATION_TARGET,
+        leaderboard: ranked.map(([p, c]) => ({ player: p, annexed: c })),
+      },
+    };
+  }
+  return { won: false };
+}
 async function computeProgress(sb: any, sessionId: string, victoryStyle: string, humanPlayers: string[]) {
   switch (victoryStyle) {
     case "domination": {
