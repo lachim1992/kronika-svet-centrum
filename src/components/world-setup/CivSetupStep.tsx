@@ -165,7 +165,7 @@ const CivSetupStep = ({ value, onChange, premise, disabled }: Props) => {
               </div>
             </div>
           )}
-          <HeraldryPicker value={heraldry} onChange={(h) => update({ heraldry: h })} />
+          <div><HeraldryPicker value={heraldry} onChange={(h) => update({ heraldry: h })} /></div>
         </CollapsibleContent>
       </Collapsible>
 
