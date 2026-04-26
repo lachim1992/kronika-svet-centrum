@@ -291,6 +291,7 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
         playerName: playerName.trim(),
         mode,
         spec: specWithAncient as typeof resolved,
+        preWorldPremise: state.preWorldPremise.trim() || undefined,
         factions: factionsArr,
       });
 
