@@ -2671,6 +2671,16 @@ async function executeExploreTile(
 // Engine-only: AI never decides values; thresholds in _shared/nodeInfluence.ts.
 // ═══════════════════════════════════════════
 
+function nodeContext(node: any): { suffix: string; tags: Record<string, any> } {
+  const bits: string[] = [];
+  if (node?.culture_key) bits.push(`kultura ${node.culture_key}`);
+  if (node?.profile_key) bits.push(`profil ${node.profile_key}`);
+  return {
+    suffix: bits.length ? ` (${bits.join(", ")})` : "",
+    tags: { node_name: node?.name, culture: node?.culture_key, profile: node?.profile_key },
+  };
+}
+
 async function loadNeutralNodeForActor(
   supabase: any,
   sessionId: string,
