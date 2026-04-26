@@ -10,11 +10,25 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Brain, Swords, HandshakeIcon, Sparkles, RefreshCw, Loader2,
   ChevronDown, AlertTriangle, CheckCircle2, XCircle, Activity,
-  Building2, Shield, MapPin, Hammer, Crown, Users,
+  Building2, Shield, MapPin, Hammer, Crown, Users, ScrollText,
 } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 interface Props {
   sessionId: string;
+}
+
+interface AILogRow {
+  id: string;
+  created_at: string;
+  function_name: string;
+  player_name: string | null;
+  premise_version: number | null;
+  player_context_used: boolean;
+  lineage_names_available: string[] | null;
+  model: string | null;
+  success: boolean;
 }
 
 const AIDiagnosticsPanel = ({ sessionId }: Props) => {
@@ -223,6 +237,9 @@ const AIDiagnosticsPanel = ({ sessionId }: Props) => {
               </div>
             </CardContent>
           </Card>
+
+          <PremiseTelemetryCard sessionId={sessionId} />
+
           <Card className="bg-card/50">
             <CardHeader className="pb-2"><CardTitle className="text-sm">Zdroje kontextu pro AI</CardTitle></CardHeader>
             <CardContent className="space-y-2">
@@ -501,5 +518,147 @@ const ContextTags = ({ data }: { data: any }) => (
     )}
   </div>
 );
+
+/* ── Premise Telemetry (admin/moderator only — RLS controls visibility) ── */
+
+const PremiseTelemetryCard = ({ sessionId }: { sessionId: string }) => {
+  const [rows, setRows] = useState<AILogRow[] | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [hideSystem, setHideSystem] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const { data, error } = await supabase
+        .from("ai_invocation_log")
+        .select("id, created_at, function_name, player_name, premise_version, player_context_used, lineage_names_available, model, success")
+        .eq("session_id", sessionId)
+        .order("created_at", { ascending: false })
+        .limit(100);
+      if (error) {
+        if (error.code === "42501" || /permission|rls/i.test(error.message)) {
+          setRows([]);
+        } else {
+          setError(error.message);
+          setRows([]);
+        }
+        return;
+      }
+      setRows((data || []) as AILogRow[]);
+    } catch (e: any) {
+      setError(e?.message || "load failed");
+      setRows([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { load(); }, [sessionId]);
+
+  if (rows === null) {
+    return (
+      <Card className="bg-card/50">
+        <CardHeader className="pb-2"><CardTitle className="text-sm">Premise telemetrie</CardTitle></CardHeader>
+        <CardContent>
+          <div className="text-xs text-muted-foreground flex items-center gap-1.5">
+            <Loader2 className="h-3 w-3 animate-spin" /> Načítání…
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  // Skip whole card if RLS denies (non-admin) and no rows
+  if (rows.length === 0 && !error && !loading) {
+    return null;
+  }
+
+  const filtered = hideSystem ? rows.filter((r) => !!r.player_name) : rows;
+  const total = filtered.length;
+  const withCtx = filtered.filter((r) => r.player_context_used).length;
+  const withLineages = filtered.filter((r) => (r.lineage_names_available?.length || 0) > 0).length;
+  const failures = filtered.filter((r) => !r.success).length;
+  const ctxPct = total > 0 ? Math.round((withCtx / total) * 100) : 0;
+  const linPct = total > 0 ? Math.round((withLineages / total) * 100) : 0;
+
+  return (
+    <Card className="bg-card/50">
+      <CardHeader className="pb-2">
+        <CardTitle className="text-sm flex items-center gap-2">
+          <ScrollText className="h-3.5 w-3.5 text-primary" />
+          Premise telemetrie
+          <Badge variant="outline" className="text-[10px]">last 100</Badge>
+          <Button size="sm" variant="ghost" className="h-6 ml-auto" onClick={load} disabled={loading}>
+            {loading ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
+          </Button>
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-2">
+        <div className="grid grid-cols-4 gap-2 text-xs">
+          <StatBox label="Celkem" value={total} />
+          <StatBox label="P0b ✓" value={`${ctxPct}%`} warn={total > 0 && ctxPct < 100} />
+          <StatBox label="S rody" value={`${linPct}%`} warn={total > 0 && linPct < 80} />
+          <StatBox label="Selhání" value={failures} warn={failures > 0} />
+        </div>
+        <div className="flex items-center gap-2 text-[11px]">
+          <Switch checked={hideSystem} onCheckedChange={setHideSystem} id="hideSystem" />
+          <label htmlFor="hideSystem" className="text-muted-foreground cursor-pointer">
+            Skrýt funkce bez hráče (chronicle, world-history…)
+          </label>
+        </div>
+        {error && (
+          <div className="text-[11px] text-destructive flex items-center gap-1">
+            <XCircle className="h-3 w-3" /> {error}
+          </div>
+        )}
+        <ScrollArea className="max-h-72 border border-border/30 rounded">
+          <div className="divide-y divide-border/30">
+            {filtered.length === 0 && (
+              <div className="text-[11px] text-muted-foreground p-2">Žádné záznamy v tomto filtru.</div>
+            )}
+            <TooltipProvider>
+              {filtered.map((r) => {
+                const lineages = r.lineage_names_available || [];
+                const t = new Date(r.created_at);
+                const time = `${String(t.getHours()).padStart(2, "0")}:${String(t.getMinutes()).padStart(2, "0")}:${String(t.getSeconds()).padStart(2, "0")}`;
+                return (
+                  <div key={r.id} className="flex items-center gap-2 px-2 py-1 text-[11px] font-mono">
+                    <span className="text-muted-foreground shrink-0">{time}</span>
+                    <span className="truncate min-w-[120px]" title={r.function_name}>{r.function_name}</span>
+                    <span className="text-muted-foreground truncate min-w-[80px]">{r.player_name || "—"}</span>
+                    <Badge variant="outline" className="text-[9px]">v{r.premise_version ?? "?"}</Badge>
+                    {r.player_context_used ? (
+                      <Badge variant="default" className="text-[9px] gap-0.5"><CheckCircle2 className="h-2.5 w-2.5" />P0b</Badge>
+                    ) : (
+                      <Badge variant="secondary" className="text-[9px] gap-0.5 opacity-60"><XCircle className="h-2.5 w-2.5" />P0b</Badge>
+                    )}
+                    {lineages.length > 0 ? (
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Badge variant="outline" className="text-[9px] cursor-help">{lineages.length}× rod</Badge>
+                        </TooltipTrigger>
+                        <TooltipContent className="text-[11px]">{lineages.join(", ")}</TooltipContent>
+                      </Tooltip>
+                    ) : (
+                      <Badge variant="secondary" className="text-[9px] opacity-60">0 rodů</Badge>
+                    )}
+                    <span className="text-muted-foreground truncate ml-auto max-w-[140px]" title={r.model || ""}>{r.model || ""}</span>
+                    {r.success ? (
+                      <CheckCircle2 className="h-3 w-3 text-green-500 shrink-0" />
+                    ) : (
+                      <XCircle className="h-3 w-3 text-destructive shrink-0" />
+                    )}
+                  </div>
+                );
+              })}
+            </TooltipProvider>
+          </div>
+        </ScrollArea>
+      </CardContent>
+    </Card>
+  );
+};
 
 export default AIDiagnosticsPanel;
