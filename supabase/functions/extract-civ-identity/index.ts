@@ -69,7 +69,15 @@ Deno.serve(async (req) => {
     }
 
     const ctx = isPreviewMode
-      ? { sessionId: null, supabase: sb } as any
+      ? {
+          requestId: crypto.randomUUID(),
+          sessionId: null,
+          turnNumber: undefined,
+          supabase: sb,
+          premise: { version: 0, premise: "", tone: "", victoryStyle: "", ancientLineages: [] },
+          premisePrompt: "",
+          civContext: undefined,
+        } as any
       : await createAIContext(sessionId, undefined, sb, playerName);
 
     const result = await invokeAI(ctx, {
