@@ -73,6 +73,41 @@ export interface WorldIdentityInput {
   foundingLegend?: string;
 }
 
+export interface ExtractedCivIdentity {
+  display_name?: string | null;
+  flavor_summary?: string | null;
+  culture_tags?: string[];
+  urban_style?: string;
+  society_structure?: string;
+  military_doctrine?: string;
+  economic_focus?: string;
+  grain_modifier?: number;
+  wood_modifier?: number;
+  stone_modifier?: number;
+  iron_modifier?: number;
+  wealth_modifier?: number;
+  pop_growth_modifier?: number;
+  initial_burgher_ratio?: number;
+  initial_cleric_ratio?: number;
+  morale_modifier?: number;
+  mobilization_speed?: number;
+  cavalry_bonus?: number;
+  fortification_bonus?: number;
+  stability_modifier?: number;
+  trade_modifier?: number;
+  diplomacy_modifier?: number;
+  research_modifier?: number;
+  building_tags?: string[];
+  militia_unit_name?: string;
+  militia_unit_desc?: string;
+  professional_unit_name?: string;
+  professional_unit_desc?: string;
+  core_myth?: string | null;
+  cultural_quirk?: string | null;
+  architectural_style?: string | null;
+  source_description?: string;
+}
+
 export interface FactionSeedInput {
   name?: string;
   personality?: string;
@@ -108,6 +143,10 @@ export interface CreateWorldBootstrapRequest {
     terrain?: TerrainKnobs;
   };
   identity?: WorldIdentityInput;
+  /** Mechanical identity extracted by AI in the wizard. */
+  identityModifiers?: ExtractedCivIdentity;
+  /** Lineage IDs selected by the player. */
+  lineageIds?: string[];
   factions?: FactionSeedInput[];
   server?: ServerBootstrapInput;
 }

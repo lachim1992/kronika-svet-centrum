@@ -13,19 +13,52 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const { sessionId, playerName, civDescription, coreMythText, culturalQuirkText, architecturalStyleText } = await req.json();
+    const body = await req.json();
+    const {
+      sessionId,
+      playerName,
+      civDescription,
+      // Optional alias used by the wizard pre-creation preview flow.
+      description,
+      coreMythText,
+      culturalQuirkText,
+      architecturalStyleText,
+      // Optional extra context (used by wizard preview to enrich AI extraction).
+      context,
+    } = body;
 
-    if (!sessionId || !playerName) return errorResponse("Missing sessionId or playerName", 400);
+    // PREVIEW MODE: when sessionId/playerName missing, we just extract and
+    // return the result WITHOUT persisting anything. Used by WorldSetupWizard
+    // before the session exists. Caller is then expected to ship the data
+    // along with the bootstrap request (identityModifiers payload).
+    const isPreviewMode = !sessionId || !playerName;
 
     const sb = getServiceClient();
 
     // Gather all text sources
-    let fullText = civDescription || "";
+    let fullText = (civDescription || description || "").toString();
     if (coreMythText) fullText += `\nZakládající mýtus: ${coreMythText}`;
     if (culturalQuirkText) fullText += `\nKulturní zvláštnost: ${culturalQuirkText}`;
     if (architecturalStyleText) fullText += `\nArchitektonický styl: ${architecturalStyleText}`;
+    if (context && typeof context === "object") {
+      const parts: string[] = [];
+      if (context.premise) parts.push(`Premisa světa: ${context.premise}`);
+      if (context.realm_name) parts.push(`Říše: ${context.realm_name}`);
+      if (context.ruler_name) parts.push(`Vládce: ${context.ruler_title || ""} ${context.ruler_name}`.trim());
+      if (context.ruler_archetype) parts.push(`Archetyp vládce: ${context.ruler_archetype}`);
+      if (context.ruler_bio) parts.push(`Životopis vládce: ${context.ruler_bio}`);
+      if (context.government_form) parts.push(`Forma vlády: ${context.government_form}`);
+      if (context.dominant_faith) parts.push(`Dominantní víra: ${context.dominant_faith}`);
+      if (context.culture_name) parts.push(`Kultura: ${context.culture_name}`);
+      if (context.homeland_desc) parts.push(`Domovina: ${context.homeland_desc}`);
+      if (context.founding_legend) parts.push(`Zakládající legenda: ${context.founding_legend}`);
+      if (parts.length > 0) fullText += "\n" + parts.join("\n");
+    }
 
     if (!fullText.trim()) {
+      if (isPreviewMode) {
+        return errorResponse("Missing description for preview extraction", 400);
+      }
       const { data } = await sb.from("civ_identity").upsert({
         session_id: sessionId,
         player_name: playerName,
@@ -35,7 +68,9 @@ Deno.serve(async (req) => {
       return jsonResponse(data);
     }
 
-    const ctx = await createAIContext(sessionId, undefined, sb, playerName);
+    const ctx = isPreviewMode
+      ? { sessionId: null, supabase: sb } as any
+      : await createAIContext(sessionId, undefined, sb, playerName);
 
     const result = await invokeAI(ctx, {
       model: "google/gemini-3-flash-preview",
@@ -187,6 +222,9 @@ KATEGORIE MODIFIKÁTORŮ:
 
     if (!result.ok) {
       console.error("AI extraction failed:", result.error);
+      if (isPreviewMode) {
+        return errorResponse("AI extraction failed: " + (result.error || "unknown"));
+      }
       const { data } = await sb.from("civ_identity").upsert({
         session_id: sessionId,
         player_name: playerName,
@@ -202,9 +240,7 @@ KATEGORIE MODIFIKÁTORŮ:
     let prodSum = (ex.grain_modifier || 0) + (ex.wood_modifier || 0) + (ex.stone_modifier || 0) + (ex.iron_modifier || 0) + (ex.wealth_modifier || 0);
     const prodScale = prodSum > 0.3 ? 0.3 / prodSum : 1;
 
-    const row = {
-      session_id: sessionId,
-      player_name: playerName,
+    const row: Record<string, any> = {
       display_name: (ex.display_name || "").slice(0, 30) || null,
       flavor_summary: (ex.flavor_summary || "").slice(0, 100) || null,
       culture_tags: ex.culture_tags || [],
@@ -222,7 +258,6 @@ KATEGORIE MODIFIKÁTORŮ:
       pop_growth_modifier: clamp(ex.pop_growth_modifier, -0.01, 0.02),
       initial_burgher_ratio: clamp(ex.initial_burgher_ratio, -0.15, 0.20),
       initial_cleric_ratio: clamp(ex.initial_cleric_ratio, -0.10, 0.15),
-      // Repurpose existing production_modifier as combined wood+stone for backwards compat
       production_modifier: clamp(((ex.wood_modifier || 0) + (ex.stone_modifier || 0)) / 2, -0.15, 0.25),
       // Military
       morale_modifier: clamp(ex.morale_modifier, -5, 10),
@@ -241,15 +276,31 @@ KATEGORIE MODIFIKÁTORŮ:
       militia_unit_desc: (ex.militia_unit_desc || "").slice(0, 120),
       professional_unit_name: (ex.professional_unit_name || "Profesionálové").slice(0, 60),
       professional_unit_desc: (ex.professional_unit_desc || "").slice(0, 120),
+      // Narrative flavor (kept on response so caller can persist into civilizations later)
+      core_myth: (ex.core_myth || "").slice(0, 500) || null,
+      cultural_quirk: (ex.cultural_quirk || "").slice(0, 300) || null,
+      architectural_style: (ex.architectural_style || "").slice(0, 100) || null,
       // Meta
       source_description: fullText,
       extraction_model: "gemini-3-flash-preview",
       extracted_at: new Date().toISOString(),
     };
 
+    if (isPreviewMode) {
+      // Return extraction without persisting. Caller (wizard) ships this to
+      // the bootstrap orchestrator as identityModifiers.
+      return jsonResponse({ ...row, _preview: true });
+    }
+
+    const persistRow = { ...row, session_id: sessionId, player_name: playerName };
+    // Strip narrative-only fields not in civ_identity table
+    delete persistRow.core_myth;
+    delete persistRow.cultural_quirk;
+    delete persistRow.architectural_style;
+
     const { data, error } = await sb
       .from("civ_identity")
-      .upsert(row, { onConflict: "session_id,player_name" })
+      .upsert(persistRow, { onConflict: "session_id,player_name" })
       .select()
       .single();
 
@@ -261,9 +312,9 @@ KATEGORIE MODIFIKÁTORŮ:
     // Sync display_name + narrative flavor to civilizations table
     const civUpdate: Record<string, any> = {};
     if (row.display_name) civUpdate.civ_name = row.display_name;
-    if (ex.core_myth) civUpdate.core_myth = (ex.core_myth || "").slice(0, 500);
-    if (ex.cultural_quirk) civUpdate.cultural_quirk = (ex.cultural_quirk || "").slice(0, 300);
-    if (ex.architectural_style) civUpdate.architectural_style = (ex.architectural_style || "").slice(0, 100);
+    if (row.core_myth) civUpdate.core_myth = row.core_myth;
+    if (row.cultural_quirk) civUpdate.cultural_quirk = row.cultural_quirk;
+    if (row.architectural_style) civUpdate.architectural_style = row.architectural_style;
     if (Object.keys(civUpdate).length > 0) {
       await sb.from("civilizations").update(civUpdate)
         .eq("session_id", sessionId).eq("player_name", playerName);
