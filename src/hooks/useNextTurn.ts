@@ -42,10 +42,47 @@ export function useNextTurn({ sessionId, currentTurn, playerName, gameMode, onCo
         const msg = body?.error || error.message || "Neznámá chyba";
         console.error("commit-turn error:", msg);
         toast.error(`Chyba při uzavírání kola: ${msg}`);
+        saveCommitTurnReport({
+          ts: Date.now(),
+          turn: currentTurn,
+          sessionId,
+          ok: false,
+          topError: msg,
+          results: body?.results || {},
+          criticalMs: body?.criticalMs,
+        });
         return;
       }
 
       const result = data;
+
+      // Persist execution report (per-phase status + failures) for UI panel
+      const phaseEntries = Object.entries(result?.results || {});
+      const errorPhases = phaseEntries.filter(([, r]: any) => r?.error);
+      const failureCount = phaseEntries.reduce(
+        (s: number, [, r]: any) => s + (r?.failures?.length || 0),
+        0,
+      );
+      saveCommitTurnReport({
+        ts: Date.now(),
+        turn: currentTurn,
+        sessionId,
+        ok: errorPhases.length === 0,
+        results: result?.results || {},
+        criticalMs: result?.criticalMs,
+      });
+
+      if (errorPhases.length > 0) {
+        toast.error(
+          `${errorPhases.length} fází selhalo: ${errorPhases.map(([k]) => k).join(", ")}`,
+          { description: "Otevři 'Report posledního tahu' v přehledu říše.", duration: 8000 },
+        );
+      } else if (failureCount > 0) {
+        toast.warning(
+          `Tah dokončen s ${failureCount} dílčími chybami (AI frakce / ekonomika).`,
+          { description: "Detaily v 'Report posledního tahu'.", duration: 6000 },
+        );
+      }
       const growthCount = result?.results?.worldTick?.growthCount || 0;
       const eventsCount = result?.results?.worldTick?.emittedEventsCount || 0;
 
