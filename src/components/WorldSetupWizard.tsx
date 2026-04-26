@@ -507,15 +507,6 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
                     />
                   </Card>
 
-                  {/* Civ identity (single + manual). MP řeší v lobby. */}
-                  {!isMPMode && (
-                    <CivSetupStep
-                      value={identity}
-                      onChange={setIdentity}
-                      premise={state.premise}
-                      disabled={isBusy}
-                    />
-                  )}
                 </>
               )}
 
