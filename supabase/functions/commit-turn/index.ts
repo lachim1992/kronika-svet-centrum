@@ -554,7 +554,9 @@ Deno.serve(async (req) => {
 
     // ═══════════════════════════════════════════
     // 5. PROCESS TURN (economy for all players + AI factions)
+    // PARALLEL — entities are isolated (each has own balance/resources).
     // ═══════════════════════════════════════════
+    const t5 = Date.now();
     try {
       const { data: allPlayers } = await supabase.from("game_players")
         .select("player_name").eq("session_id", sessionId);
@@ -567,15 +569,21 @@ Deno.serve(async (req) => {
       for (const p of (allPlayers || [])) allEconEntities.add(p.player_name);
       for (const name of aiFactionNames) allEconEntities.add(name);
 
-      let econProcessed = 0;
-      for (const name of allEconEntities) {
-        const { error: ptErr } = await supabase.functions.invoke("process-turn", {
-          body: { sessionId, playerName: name },
-        });
-        if (ptErr) console.warn(`process-turn for ${name}:`, ptErr.message);
-        else econProcessed++;
-      }
+      const settled = await Promise.allSettled(
+        Array.from(allEconEntities).map(async (name) => {
+          const { error: ptErr } = await supabase.functions.invoke("process-turn", {
+            body: { sessionId, playerName: name },
+          });
+          if (ptErr) {
+            console.warn(`process-turn for ${name}:`, ptErr.message);
+            return { ok: false, name, error: ptErr.message };
+          }
+          return { ok: true, name };
+        }),
+      );
+      const econProcessed = settled.filter((s) => s.status === "fulfilled" && (s.value as any).ok).length;
       results.economy = { processed: econProcessed, entities: allEconEntities.size };
+      console.log(`[commit-turn] phase-5 process-turn parallel: ${Date.now() - t5}ms (${econProcessed}/${allEconEntities.size})`);
     } catch (e) {
       console.error("Process turn error:", e);
       results.economy = { error: (e as Error).message };
