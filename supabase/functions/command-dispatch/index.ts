@@ -2824,11 +2824,12 @@ async function executeApplyMilitaryPressure(
     resistance: Math.min(100, current.resistance + 3), // pushback raises resistance slightly
   });
 
+  const ctxP = nodeContext(node);
   return await insertEvents(supabase, commandId, [{
     ...base, event_type: "military_pressure_applied",
-    note: `${actor.name} vyvíjí vojenský tlak na ${node.name}.`,
+    note: `${actor.name} vyvíjí vojenský tlak na ${node.name}${ctxP.suffix}.`,
     importance: "high",
-    reference: { node_id: nodeId, influence: inf },
+    reference: { node_id: nodeId, ...ctxP.tags, influence: inf },
   }], { influence: inf });
 }
 
