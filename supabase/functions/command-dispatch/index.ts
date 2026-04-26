@@ -345,6 +345,9 @@ async function executeCommand(
     case "LIFT_EMBARGO":
       return await executeLiftEmbargo(supabase, base, actor, payload, commandId, sessionId, turnNumber);
 
+    case "EXPLORE_TILE":
+      return await executeExploreTile(supabase, base, actor, payload, commandId, sessionId, turnNumber);
+
     case "GENERIC":
       return insertEvents(supabase, commandId, [{
         ...base,
