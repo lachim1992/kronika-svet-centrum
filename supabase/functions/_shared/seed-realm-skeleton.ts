@@ -73,7 +73,16 @@ function hexRing(cq: number, cr: number, radius: number): StartPos[] {
 }
 
 export async function seedRealmSkeleton(input: SeedRealmInput): Promise<SeedRealmResult> {
-  const { sb, sessionId, playerName, worldName, premise, realmName, cultureName, settlementName, factions = [], startPositions } = input;
+  const {
+    sb, sessionId, playerName, worldName, premise,
+    realmName, cultureName, settlementName,
+    peopleName, languageName, civDescription,
+    homelandName, homelandBiome, homelandDesc,
+    rulerName, rulerTitle, rulerArchetype, rulerBio,
+    governmentForm, tradeIdeology, dominantFaith, faithAttitude,
+    heraldry, secretObjectiveArchetype, foundingLegend,
+    factions = [], startPositions,
+  } = input;
 
   // Build the participant list: player first, then AI factions.
   const participants: Array<{ playerName: string; factionName: string; isPlayer: boolean; personality?: string }> = [
