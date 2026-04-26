@@ -145,6 +145,8 @@ interface NodeOnHex {
   net_balance?: number;
   capability_tags?: string[]; guild_level?: number; flow_role?: string;
   spawned_strategic_resource?: string | null; city_id?: string | null;
+  is_neutral?: boolean | null; discovered?: boolean | null; culture_key?: string | null;
+  profile_key?: string | null; autonomy_score?: number | null; population?: number | null;
 }
 interface Props {
   sessionId: string; playerName: string; myRole: string;
