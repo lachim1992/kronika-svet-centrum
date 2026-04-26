@@ -348,6 +348,18 @@ async function executeCommand(
     case "EXPLORE_TILE":
       return await executeExploreTile(supabase, base, actor, payload, commandId, sessionId, turnNumber);
 
+    case "OPEN_TRADE_WITH_NODE":
+      return await executeOpenTradeWithNode(supabase, base, actor, payload, commandId, sessionId, turnNumber);
+
+    case "SEND_ENVOY_TO_NODE":
+      return await executeSendEnvoyToNode(supabase, base, actor, payload, commandId, sessionId, turnNumber);
+
+    case "APPLY_MILITARY_PRESSURE":
+      return await executeApplyMilitaryPressure(supabase, base, actor, payload, commandId, sessionId, turnNumber);
+
+    case "ANNEX_NODE":
+      return await executeAnnexNode(supabase, base, actor, payload, commandId, sessionId, turnNumber);
+
     case "GENERIC":
       return insertEvents(supabase, commandId, [{
         ...base,
