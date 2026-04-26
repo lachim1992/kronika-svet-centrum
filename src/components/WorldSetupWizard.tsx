@@ -478,18 +478,48 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
               )}
 
               {/* Submit */}
-              <div className="flex gap-2 sticky bottom-0 bg-background/95 backdrop-blur py-3 -mx-3 px-3 border-t border-border lg:static lg:border-0 lg:bg-transparent lg:mx-0 lg:px-0">
-                <Button variant="outline" onClick={onCancel} disabled={creating} className="flex-1 sm:flex-none">
-                  Zrušit
-                </Button>
-                <Button onClick={handleSubmit} disabled={!canSubmit} className="flex-1" size="lg">
-                  {creating ? (
-                    <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Vytvářím…</>
-                  ) : (
-                    <><Sparkles className="h-4 w-4 mr-2" />Vytvořit svět</>
-                  )}
-                </Button>
-              </div>
+              {(() => {
+                const blockReason = creating
+                  ? null
+                  : !playerName.trim()
+                  ? "Zadejte své jméno hráče v poli výše."
+                  : !resolved
+                  ? 'Nejprve klikněte na "Analyzovat premisu" a počkejte, než se vygeneruje návrh světa.'
+                  : isBusy
+                  ? "Probíhá analýza nebo regenerace blueprintu — počkejte na dokončení."
+                  : state.isSuggestionStale
+                  ? 'Premisa byla změněna — klikněte znovu na "Analyzovat premisu" pro aktualizaci návrhu.'
+                  : state.isBlueprintStale
+                  ? 'Blueprint je zastaralý — klikněte na "Regenerovat blueprint" v žluté výstraze výše.'
+                  : null;
+                return (
+                  <div className="sticky bottom-0 bg-background/95 backdrop-blur py-3 -mx-3 px-3 border-t border-border lg:static lg:border-0 lg:bg-transparent lg:mx-0 lg:px-0 space-y-2">
+                    {blockReason && (
+                      <div className="text-xs text-amber-500 bg-amber-500/10 border border-amber-500/30 rounded px-2 py-1.5">
+                        ⚠️ {blockReason}
+                      </div>
+                    )}
+                    <div className="flex gap-2">
+                      <Button variant="outline" onClick={onCancel} disabled={creating} className="flex-1 sm:flex-none">
+                        Zrušit
+                      </Button>
+                      <Button
+                        onClick={handleSubmit}
+                        disabled={!canSubmit}
+                        className="flex-1"
+                        size="lg"
+                        title={blockReason ?? undefined}
+                      >
+                        {creating ? (
+                          <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Vytvářím…</>
+                        ) : (
+                          <><Sparkles className="h-4 w-4 mr-2" />Vytvořit svět</>
+                        )}
+                      </Button>
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
 
             {/* Preview */}
