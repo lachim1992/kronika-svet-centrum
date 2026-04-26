@@ -553,6 +553,7 @@ Deno.serve(async (req) => {
       console.warn("Route/flow/economy chain warning:", (e as Error).message);
       results.economyFlow = { error: (e as Error).message };
     }
+    console.log(`[commit-turn] phase-4b routes/flows/economy/trade: ${Date.now() - t4b}ms`);
 
     // ═══════════════════════════════════════════
     // 5. PROCESS TURN (economy for all players + AI factions)
