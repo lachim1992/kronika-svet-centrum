@@ -32,6 +32,14 @@ export interface WorldPremise {
   chronicle0: string;
   /** AI-generated geography blueprint — ridges, rivers, biome zones */
   geographyBlueprint: Record<string, any> | null;
+  /** Premisa Současnosti (svět po Zlomu) — co hráč napsal jako hlavní setting. */
+  presentPremise: string;
+  /** Premisa Pradávna (svět před Zlomem) — kořeny rodů a fyzických pozůstatků. */
+  preWorldPremise: string;
+  /** Vybrané pradávné rody (lineage_name) — žijí v současnosti jako dědictví. */
+  ancientLineages: Array<{ name: string; description: string; culturalAnchor?: string }>;
+  /** Klíčový resetový event mezi Pradávnem a Současností (typ + popis). */
+  ancientResetEvent: { type: string; description: string } | null;
 }
 
 export interface AIRequestContext {
@@ -117,6 +125,64 @@ export async function loadWorldPremise(sessionId: string, sb?: SupabaseClient): 
     chronicle0Text = (c0 as any)?.text || "";
   } catch { /* ignore */ }
 
+  // 0b. Load dual premises + ancient layer from world_foundations
+  let presentPremise = "";
+  let preWorldPremise = "";
+  let ancientResetEvent: WorldPremise["ancientResetEvent"] = null;
+  let ancientLineages: WorldPremise["ancientLineages"] = [];
+  try {
+    const { data: wf } = await client
+      .from("world_foundations")
+      .select("premise, pre_world_premise, present_premise, worldgen_spec")
+      .eq("session_id", sessionId)
+      .maybeSingle();
+    if (wf) {
+      presentPremise = (wf as any).present_premise || (wf as any).premise || "";
+      preWorldPremise = (wf as any).pre_world_premise || "";
+      const spec = (wf as any).worldgen_spec || {};
+      const ancient = spec.ancient_layer;
+      if (ancient?.reset_event) {
+        ancientResetEvent = {
+          type: String(ancient.reset_event.type || "Zlom"),
+          description: String(ancient.reset_event.description || ""),
+        };
+      }
+      // Selected lineages from spec — fallback to candidate list
+      const selected = new Set<string>(ancient?.selected_lineages ?? []);
+      const candidates = ancient?.lineage_candidates ?? [];
+      ancientLineages = candidates
+        .filter((c: any) => selected.size === 0 || selected.has(c.id))
+        .slice(0, 5)
+        .map((c: any) => ({
+          name: c.name,
+          description: c.description,
+          culturalAnchor: c.cultural_anchor,
+        }));
+    }
+  } catch { /* ignore */ }
+
+  // 0c. Augment lineages from realm_heritage (post-bootstrap source of truth)
+  try {
+    const { data: heritage } = await client
+      .from("realm_heritage")
+      .select("lineage_name, description, cultural_anchor")
+      .eq("session_id", sessionId)
+      .limit(20);
+    if (heritage && heritage.length > 0) {
+      const seen = new Set(ancientLineages.map((l) => l.name.toLowerCase()));
+      for (const h of heritage as any[]) {
+        const key = String(h.lineage_name || "").toLowerCase();
+        if (!key || seen.has(key)) continue;
+        ancientLineages.push({
+          name: h.lineage_name,
+          description: h.description || "",
+          culturalAnchor: h.cultural_anchor || undefined,
+        });
+        seen.add(key);
+      }
+    }
+  } catch { /* ignore */ }
+
   // 1. Try canonical world_premise table
   const { data: premise } = await client
     .from("world_premise")
@@ -142,6 +208,10 @@ export async function loadWorldPremise(sessionId: string, sb?: SupabaseClient): 
       version: premise.version,
       chronicle0: chronicle0Text,
       geographyBlueprint: (premise as any).geography_blueprint || null,
+      presentPremise,
+      preWorldPremise,
+      ancientLineages,
+      ancientResetEvent,
     };
   }
 
@@ -177,6 +247,10 @@ export async function loadWorldPremise(sessionId: string, sb?: SupabaseClient): 
     version: 1,
     chronicle0: chronicle0Text,
     geographyBlueprint: null,
+    presentPremise,
+    preWorldPremise,
+    ancientLineages,
+    ancientResetEvent,
   };
 
   // 3. Persist as canonical world_premise (auto-migration)
@@ -215,7 +289,30 @@ export function buildPremisePrompt(premise: WorldPremise): string {
   const parts: string[] = [];
 
   parts.push("=== PREMISA SVĚTA (povinný kontext — MUSÍŠ respektovat) ===");
-  parts.push("PRAVIDLO PRIORITY: Pokud dojde ke konfliktu mezi vrstvami, VŽDY platí vrstva s nižším číslem. P1 vítězí nad P2, P2 nad P3 atd.");
+  parts.push("PRAVIDLO PRIORITY: Pokud dojde ke konfliktu mezi vrstvami, VŽDY platí vrstva s nižším číslem. P0 vítězí nad P1, P1 nad P2, atd.");
+
+  // ── P0 — DUÁLNÍ PREMISA (nejvyšší kanonická pravda — nesmí být překroucena) ──
+  const dualParts: string[] = [];
+  if (premise.presentPremise) {
+    dualParts.push(`PREMISA SOUČASNOSTI (svět, ve kterém se hraje):\n"""${premise.presentPremise.trim()}"""`);
+  }
+  if (premise.preWorldPremise) {
+    dualParts.push(`PREMISA PRADÁVNA (svět PŘED Zlomem — kořeny rodů, mýtů a fyzických pozůstatků):\n"""${premise.preWorldPremise.trim()}"""`);
+  }
+  if (premise.ancientResetEvent) {
+    dualParts.push(`ZLOM (událost, která ukončila Pradávno a započala Současnost):\n${premise.ancientResetEvent.type} — ${premise.ancientResetEvent.description}`);
+  }
+  if (premise.ancientLineages.length > 0) {
+    const lin = premise.ancientLineages
+      .map((l) => `• ${l.name}${l.culturalAnchor ? ` (kotva: ${l.culturalAnchor})` : ""}: ${l.description}`)
+      .join("\n");
+    dualParts.push(`PRADÁVNÉ RODY (živé dědictví Pradávna v Současnosti — MUSÍŠ je citovat při generování postav, frakcí, kronik):\n${lin}`);
+  }
+  if (dualParts.length > 0) {
+    parts.push(
+      `[P0 — DUÁLNÍ PREMISA SVĚTA (kanonický setting — VŠE musí přímo navazovat na tyto texty; nepřidávej generická klišé typu "Skyfall", "Iron Sons" pokud nejsou explicitně uvedena)]\n${dualParts.join("\n\n")}`,
+    );
+  }
 
   // ── P1 — CONSTRAINTS (tvrdé zákazy, nepřekročitelné) ──
   if (premise.constraints) {
