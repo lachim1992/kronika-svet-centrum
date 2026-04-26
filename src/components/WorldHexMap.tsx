@@ -21,6 +21,7 @@ import NeutralNodePanel from "@/components/NeutralNodePanel";
 import RoadNetworkOverlay, { ROAD_STYLES } from "@/components/map/RoadNetworkOverlay";
 import EconomyFlowOverlay, { CATEGORY_COLORS, MACRO_COLORS, FLOW_LAYER_COLORS } from "@/components/map/EconomyFlowOverlay";
 import type { EconomyViewMode } from "@/components/map/EconomyFlowOverlay";
+import NodeInfluenceOverlay from "@/components/map/NodeInfluenceOverlay";
 import MapMinimap from "@/components/map/MapMinimap";
 import { MINOR_NODE_TYPES, MICRO_NODE_TYPES, MAJOR_NODE_TYPES } from "@/lib/nodeTypes";
 import HexDevTools from "@/components/map/HexDevTools";
@@ -436,6 +437,7 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
   const [showProvinceLayer, setShowProvinceLayer] = useState(true);
   const [showRoadLayer, setShowRoadLayer] = useState(true);
   const [showEconomyLayer, setShowEconomyLayer] = useState(true);
+  const [showInfluenceLayer, setShowInfluenceLayer] = useState(false);
   const [economyCategories, setEconomyCategories] = useState<Set<string>>(new Set(["food", "raw", "luxury", "manufactured", "production", "supply", "wealth", "trade", "export"]));
   const [economyViewMode, setEconomyViewMode] = useState<EconomyViewMode>("goods");
   const [expandingProvince, setExpandingProvince] = useState(false);
@@ -1235,6 +1237,14 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
             categories={economyCategories}
             viewMode={economyViewMode}
           />
+          {/* Node influence — neutral / annexed nodes pressure */}
+          <NodeInfluenceOverlay
+            sessionId={sessionId}
+            currentTurn={currentTurn || 1}
+            offsetX={offsetX}
+            offsetY={offsetY}
+            visible={showInfluenceLayer}
+          />
         </g>
       </svg>
 
@@ -1367,6 +1377,21 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
                     </span>
                   ))}
                 </div>
+              )}
+            </div>
+            {/* Node influence overlay toggle */}
+            <div className="mb-2 pb-2 border-b border-border">
+              <div className="flex items-center justify-between">
+                <p className="text-[10px] font-display font-semibold text-foreground flex items-center gap-1">🌐 Vliv na uzly</p>
+                <label className="flex items-center gap-1 text-[9px] text-muted-foreground cursor-pointer">
+                  <input type="checkbox" checked={showInfluenceLayer} onChange={e => setShowInfluenceLayer(e.target.checked)} className="w-3 h-3" />
+                  Zobrazit
+                </label>
+              </div>
+              {showInfluenceLayer && (
+                <p className="text-[8px] text-muted-foreground mt-1 leading-tight">
+                  Kruh = velikost integračního tlaku · barva = vedoucí hráč · <span className="text-[hsl(0,80%,60%)] font-semibold">CONTESTED</span> = rival ≥60% · <span className="text-[hsl(45,90%,55%)] font-semibold">BLOCKED</span> = anexe blokována
+                </p>
               )}
             </div>
             {/* Economy v4.2 overlay toggle */}

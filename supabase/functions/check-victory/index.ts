@@ -68,6 +68,9 @@ Deno.serve(async (req) => {
       case "cultural":
         victoryResult = await checkCultural(sb, sessionId, humanPlayers);
         break;
+      case "annexation":
+        victoryResult = await checkAnnexation(sb, sessionId, humanPlayers);
+        break;
       case "story":
         victoryResult = { won: false };
         break;
@@ -246,7 +249,39 @@ async function checkCultural(sb: any, sessionId: string, humanPlayers: string[])
   return { won: false };
 }
 
-// ── Progress computation for UI ──
+// ── Annexation: control the most annexed neutral nodes (threshold: 5) ──
+const ANNEXATION_TARGET = 5;
+async function checkAnnexation(sb: any, sessionId: string, humanPlayers: string[]) {
+  const { data: nodes } = await sb
+    .from("province_nodes")
+    .select("id, controlled_by, is_neutral, autonomy_score")
+    .eq("session_id", sessionId)
+    .lte("autonomy_score", 20) // fully integrated (annexed)
+    .not("controlled_by", "is", null);
+
+  const counts: Record<string, number> = {};
+  for (const n of nodes || []) {
+    if (humanPlayers.includes(n.controlled_by)) {
+      counts[n.controlled_by] = (counts[n.controlled_by] || 0) + 1;
+    }
+  }
+  const ranked = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+  if (ranked.length === 0) return { won: false };
+  const [winner, count] = ranked[0];
+  if (count >= ANNEXATION_TARGET) {
+    return {
+      won: true,
+      winner,
+      data: {
+        type: "annexation",
+        annexed_count: count,
+        target: ANNEXATION_TARGET,
+        leaderboard: ranked.map(([p, c]) => ({ player: p, annexed: c })),
+      },
+    };
+  }
+  return { won: false };
+}
 async function computeProgress(sb: any, sessionId: string, victoryStyle: string, humanPlayers: string[]) {
   switch (victoryStyle) {
     case "domination": {
@@ -340,6 +375,31 @@ async function computeProgress(sb: any, sessionId: string, victoryStyle: string,
       };
     }
 
+    case "annexation": {
+      const { data: nodes } = await sb
+        .from("province_nodes")
+        .select("controlled_by, autonomy_score")
+        .eq("session_id", sessionId)
+        .lte("autonomy_score", 20)
+        .not("controlled_by", "is", null);
+      const counts: Record<string, number> = {};
+      for (const n of nodes || []) {
+        if (humanPlayers.includes(n.controlled_by)) {
+          counts[n.controlled_by] = (counts[n.controlled_by] || 0) + 1;
+        }
+      }
+      const ranked = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+      const best = ranked[0]?.[1] || 0;
+      return {
+        type: "annexation",
+        label: `Anektuj ${ANNEXATION_TARGET} neutrálních uzlů`,
+        current: best,
+        target: ANNEXATION_TARGET,
+        pct: Math.round(Math.min(best / ANNEXATION_TARGET, 1) * 100),
+        details: { leaderboard: ranked.map(([p, c]) => ({ player: p, annexed: c })) },
+      };
+    }
+
     case "story":
     default:
       return {
@@ -361,6 +421,8 @@ function buildVictoryChronicle(style: string, winner: string, turn: number): str
       return `**V roce ${turn} prokázal ${winner} nevídanou odolnost.** Tři velké krize otřásly základy civilizace, ale říše ${winner} přežila každou z nich. Kde jiní padli, on vytrvale budoval a bránil svůj lid.`;
     case "cultural":
       return `**V roce ${turn} dosáhl ${winner} kulturního triumfu.** Prestiž jeho říšea je nepřekonatelná — olympijské vítězství, slavné akademie a úchvatné festivaly proslavily jeho národ po celém známém světě. Kultura zvítězila nad mečem.`;
+    case "annexation":
+      return `**V roce ${turn} dovršil ${winner} integraci okolních zemí.** Pět neutrálních uzlů — kdysi svobodných obcí, klášterů a strážních věží — bylo plně začleněno pod jeho vládu. Mapa známého světa nese od dnešního dne jeho barvy.`;
     default:
       return `**V roce ${turn} uzavřel ${winner} kapitolu dějin svého světa.** Příběh jeho říše se stává legendou předávanou z generace na generaci.`;
   }

@@ -1,6 +1,6 @@
 # Discovery, Neutral Nodes & Influence Loop
 
-> Status: Patch 0–8 ✅ · Patch 9a–9e ✅ · Patch 10 ✅ · Patch 11 ✅ · Patch 12 ✅ (multiplayer kontestace) · Patch 13 ✅ (AI faction reaguje na rivaly + používá block_node_annexation) · Patch 14 ✅ (rumors o objevech a anexích v tabulce `rumors`, dedupe přes source_hash)
+> Status: Patch 0–8 ✅ · Patch 9a–9e ✅ · Patch 10 ✅ · Patch 11 ✅ · Patch 12 ✅ · Patch 13 ✅ · Patch 14 ✅ · Patch 15 ✅ (victory style `annexation` — 5 plně integrovaných uzlů, leaderboard) · Patch 16 ✅ (NodeInfluenceOverlay na mapě s CONTESTED/BLOCKED badges)
 
 ## Verdikt po analýze repa
 
