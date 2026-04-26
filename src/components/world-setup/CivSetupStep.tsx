@@ -208,7 +208,7 @@ const CivSetupStep = ({ value, onChange, premise, disabled }: Props) => {
             <Label className="text-xs">Popis domoviny</Label>
             <Textarea value={value.homelandDesc || ""} onChange={(e) => update({ homelandDesc: e.target.value })} placeholder="Krátký popis krajiny, klimatu a vzhledu domoviny..." rows={2} maxLength={400} disabled={disabled} />
           </div>
-          <SpawnPreferencePicker value={value.spawnPreference || "any"} onChange={(v) => update({ spawnPreference: v })} />
+          <div><SpawnPreferencePicker value={value.spawnPreference || "any"} onChange={(v) => update({ spawnPreference: v })} /></div>
         </CollapsibleContent>
       </Collapsible>
 
