@@ -1,61 +1,86 @@
-## Diagnóza — proč to "tam pořád není"
+## Diagnóza — chybí nastavení AI protivníků
 
-Podle screenshotu jsi v módu **👥 Multiplayer** a scrolluješ úvodním wizardem (`WorldSetupWizard`). V kódu je `CivSetupStep` schovaný hned ze dvou důvodů:
+V současné podobě wizardu hráč:
+- **Vidí** počet AI frakcí (`factionCount` slider v `SpecFieldEditor`),
+- ale **nevidí ani neupravuje jednotlivé AI protivníky** (jméno, archetyp osobnosti, popis/flavor).
 
-1. **Renderuje se jen pro non-MP módy** — `{!isMPMode && <CivSetupStep ... />}`. V MP byl plán, že identitu řeší až `MultiplayerLobby` po vytvoření hry. Jenže ty jsi chtěl flavor **při zakládání**, takže to schovávání je špatně.
-2. **Renderuje se až po analýze premisy** — celý blok je uvnitř `{resolved && (…)}`. Dokud nestiskneš "Analyzovat premisu", nevidíš ani identitu, vládce, heraldiku, legendu — vůbec nic. Tvůj screenshot je přesně ten stav: premisa prázdná → nikde nic.
-3. **V MP wizardu není vůbec předán** — i kdyby se zobrazil, MP větev v `handleSubmit` payload identity neposílá do `mp-world-generate`.
+V `WorldSetupWizard.tsx` (řádky 304–309) se AI frakce při bootstrap generují generickým loopem:
+
+```ts
+const factionsArr = resolved.factionCount > 0 && mode !== "tb_multi"
+  ? Array.from({ length: resolved.factionCount }).map((_, i) => ({
+      name: `AI Frakce ${i + 1}`,
+      personality: ["aggressive", "diplomatic", "mercantile", "isolationist", "expansionist"][i % 5],
+    }))
+  : undefined;
+```
+
+Hráč tedy nemá šanci nastavit, KDO jsou jeho protivníci. To je flavor díra, kterou ze starší verze hry znal.
+
+Druhý problém: v konzoli teče React warning *"Function components cannot be given refs"* z `SpawnPreferencePicker` a `GovernmentFaithStep`, protože je `Collapsible` (Radix) obaluje a posílá jim ref. Není to crash, ale stojí za opravu při téhle úpravě.
 
 ## Plán opravy
 
-### 1. Civ sekce viditelná **vždy**, nezávisle na analýze
-Přesunout `<CivSetupStep>` ven z `{resolved && …}` bloku. Identita (jméno říše, vládce, heraldika, legenda, tajný cíl) je o **hráči**, ne o blueprintu — nemusí čekat na AI návrh světa. Hráč ji může vyplňovat paralelně s tím, co píše premisu.
+### 1. Nový komponent `AIOpponentsStep`
 
-Nové uspořádání:
+`src/components/world-setup/AIOpponentsStep.tsx` — sekce ve wizardu pod `CivSetupStep`, která:
 
-```text
-Herní režim
-Vaše jméno
-Inspirace (volitelné)
-Premisa světa  + [Analyzovat]
-Premisa Pradávna
-─────────────── (po analýze) ───────────────
-[Spec review / SchematicMap / SpecFieldEditor / AdvancedTerrain]
-─────────────── (vždy, hned pod premisou) ──
-🏰 Tvá civilizace  ← CivSetupStep (vždy zobrazené)
-   • Identita říše + heraldika
-   • Vládce
-   • Domovina + spawn (jen single/manual)
-   • Vláda & víra
-   • Zakladatelská legenda + ✨ Vygeneruj z premisy
-   • Tajný cíl
-─────────────────────────────────────────────
-[Vytvořit svět]
+- Zobrazí seznam AI protivníků v délce `resolved.factionCount` (sleduje slider z `SpecFieldEditor`).
+- Pro každého nabídne:
+  - **Jméno frakce** (text input, default `AI Frakce N` → editovatelné)
+  - **Osobnost / archetyp** (select: aggressive, diplomatic, mercantile, isolationist, expansionist, scholarly, militarist, theocratic — s českými popisky a emoji)
+  - **Krátký popis / flavor** (textarea, max 300 znaků, volitelné — pošle se AI generátoru jako narativní hint)
+  - **Tlačítko ✨ "Vygeneruj AI"** (volitelně, využije existující edge function `extract-civ-identity` se zkráceným promptem, nebo Lovable AI gateway přes nový micro-edge `generate-faction-flavor` — viz sekce backend)
+- Tlačítko **"🎲 Náhodně vyplnit všechny"** — vygeneruje pestrý mix archetypů a fantasy jmen lokálně bez AI volání (rychlé).
+- Collapsible per-frakce řádky (default rozbalený první, ostatní složené), aby to neutopilo UI při 8 protivnících.
+
+State držený ve `WorldSetupWizard` jako:
+```ts
+const [aiFactions, setAiFactions] = useState<FactionSeedInput[]>([]);
 ```
 
-### 2. Zobrazit `CivSetupStep` i v Multiplayer módu
-Odstranit guard `!isMPMode`. V MP je tohle host nastavení vlastní civilizace; ostatní hráči si stejnou sekci doplní v `MultiplayerLobby` (ten zůstává, jen místo prázdného hostova řádku už bude předvyplněný).
+`useEffect` na změnu `resolved.factionCount` doplní/ořízne pole tak, aby si zachovalo už vyplněné záznamy.
 
-### 3. Předat identity do MP bootstrap pipeline
-V `handleSubmit` MP větve (`mp-world-generate` invocation v `WorldSetupWizard`) přibalit `identity` payload jako "host civ config" — uložit do `player_civ_configs` pro hosta při zakládání session, aby AI generátor a lobby měli odkud číst.
+### 2. Předat custom AI frakce do bootstrap
 
-### 4. Validace bez blueprintu
-Dnes "Vytvořit svět" potřebuje `resolved` (blueprint po analýze) → to je správně, blueprint pořád musí existovat. Civ pole zůstávají povinná (`civValid`) jako dnes — jen už nejsou schovaná, takže hráč je opravdu vyplní.
+V `handleSubmit` nahradit auto-generovaný `factionsArr` skutečným `aiFactions`. Pokud hráč některé políčko nechá prázdné, doplnit ho fallbackem (jméno / personalita) lokálně.
 
-### 5. Drobnost: pre-fill vládce z `playerName`
-Když hráč napíše svoje jméno nahoře a zatím nezadal `rulerName`, defaultně ho použít jako návrh (přepisovatelný). Zlepšuje UX, dnes to nutí psát jméno dvakrát.
+`FactionSeedInput` v `src/types/worldBootstrap.ts` už má `name`, `personality`, `description` — žádný typový rozšíření netřeba.
+
+### 3. Backend — využití custom dat
+
+`supabase/functions/_shared/seed-realm-skeleton.ts` (a `world-generate-init`) už `factions` přijímají. Ověřit, že:
+- Jméno se zapisuje do `countries.name` AI hráčů.
+- Personalita se zapisuje do `game_players.personality` (resp. odpovídajícího sloupce — dohledat v `seed-realm-skeleton`).
+- `description` se předá AI generátoru kronik a faction-turn promptu jako narativní context (vetká do prehistorie a Chronicle Zero podobně jako hráčova `foundingLegend`).
+
+Pokud `description` zatím nikam neteče, přidat jeden řádek do `world-generate-init` promptu typu *"Kontext AI frakcí: {name} — {personality} — {description}"*.
+
+### 4. Volitelný edge: `generate-faction-flavor`
+
+Mini edge-function pro tlačítko ✨ na řádku frakce: dostane `{ premise, archetype, name? }`, vrátí `{ name, description }` přes Lovable AI gateway (`google/gemini-3-flash-preview`, tool calling pro strukturovaný výstup). Cca 40 řádků kódu, využívá vzor z `extract-civ-identity`.
+
+### 5. Oprava React ref warningu
+
+V `SpawnPreferencePicker.tsx` a `GovernmentFaithStep.tsx` (a pro jistotu i `RulerStep`, `SecretObjectiveStep`, `HeraldryPicker`) obalit export do `React.forwardRef` nebo, jednodušeji, **v `CivSetupStep` přidat `<div>` wrapper kolem každého child uvnitř `CollapsibleContent`**, takže Radix bude předávat ref na ten div, ne na funkční komponentu. Levnější varianta — žádný refactor child komponent.
+
+### 6. Validace
+
+`canSubmit` zůstává jak je. Nepřidávat AI frakce do `civValid` — jsou opt-in (pokud hráč nic nevyplní, použije se rozumný default).
 
 ## Soubory k úpravě
 
-- `src/components/WorldSetupWizard.tsx` — přesun `<CivSetupStep>`, odstranění `!isMPMode` guardu, předání `identity` do MP větve `handleSubmit`, default `rulerName` z `playerName`.
-- `supabase/functions/mp-world-generate/index.ts` — přijmout volitelný `hostIdentity` payload a zapsat řádek do `player_civ_configs` pro hostitele (stejnou cestou jako lobby zápisy).
-- `src/types/worldBootstrap.ts` — pokud `mp-world-generate` request type neobsahuje `hostIdentity`, doplnit.
+- **Nový**: `src/components/world-setup/AIOpponentsStep.tsx`
+- **Nový (volitelný)**: `supabase/functions/generate-faction-flavor/index.ts`
+- **Edit**: `src/components/WorldSetupWizard.tsx` — `aiFactions` state, useEffect na `factionCount`, render `<AIOpponentsStep />` pod `<CivSetupStep />` (skrýt v MP módu, tam má každý hráč vlastní setup), předání do `handleSubmit`. Plus `<div>` wrapper fix kolem children v `CivSetupStep`.
+- **Edit**: `src/components/world-setup/CivSetupStep.tsx` — `<div>` wrapper kolem `<SpawnPreferencePicker>`, `<GovernmentFaithStep>`, `<RulerStep>`, `<SecretObjectiveStep>`, `<HeraldryPicker>` uvnitř `CollapsibleContent` (oprava ref warningu).
+- **Edit (backend)**: `supabase/functions/_shared/seed-realm-skeleton.ts` a `supabase/functions/world-generate-init/index.ts` — ověřit/doplnit zápis `description` AI frakcí do generátoru kronik.
 
 ## Co tím dostaneš
 
-- Civ-flavor sekce viditelná **okamžitě po otevření wizardu**, ve všech módech (AI Svět, Ruční, Multiplayer).
-- Hráč může vyplňovat premisu i identitu paralelně, nemusí čekat na analýzu.
-- V MP je hostova civilizace uložená rovnou při zakládání hry, ne až v lobby.
-- Žluté varování "doplň jméno říše, vládce, tajný cíl" se objeví hned, takže je jasné, co chybí.
+- V wizardu pod „Tvá civilizace" se objeví karta **„🤖 AI Protivníci"** s editovatelným seznamem podle slideru počtu frakcí.
+- Hráč může pojmenovat každého protivníka, zvolit archetyp, napsat krátký flavor — nebo si to nechat náhodně/AI-vygenerovat.
+- Custom data tečou do generátoru světa a AI frakce mají od začátku unikátní identitu (ne `AI Frakce 1`).
+- Zmizí React warning *"Function components cannot be given refs"* v konzoli.
 
 Po schválení implementuji.

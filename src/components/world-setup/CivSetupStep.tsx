@@ -165,7 +165,7 @@ const CivSetupStep = ({ value, onChange, premise, disabled }: Props) => {
               </div>
             </div>
           )}
-          <HeraldryPicker value={heraldry} onChange={(h) => update({ heraldry: h })} />
+          <div><HeraldryPicker value={heraldry} onChange={(h) => update({ heraldry: h })} /></div>
         </CollapsibleContent>
       </Collapsible>
 
@@ -178,7 +178,7 @@ const CivSetupStep = ({ value, onChange, premise, disabled }: Props) => {
           {value.rulerName && <span className="text-[10px] text-muted-foreground truncate max-w-[40%]">{value.rulerTitle} {value.rulerName}</span>}
         </CollapsibleTrigger>
         <CollapsibleContent className="pt-2 pl-2">
-          <RulerStep value={ruler} onChange={(r) => update({ rulerName: r.ruler_name, rulerTitle: r.ruler_title, rulerArchetype: r.ruler_archetype, rulerBio: r.ruler_bio })} />
+          <div><RulerStep value={ruler} onChange={(r) => update({ rulerName: r.ruler_name, rulerTitle: r.ruler_title, rulerArchetype: r.ruler_archetype, rulerBio: r.ruler_bio })} /></div>
         </CollapsibleContent>
       </Collapsible>
 
@@ -208,7 +208,7 @@ const CivSetupStep = ({ value, onChange, premise, disabled }: Props) => {
             <Label className="text-xs">Popis domoviny</Label>
             <Textarea value={value.homelandDesc || ""} onChange={(e) => update({ homelandDesc: e.target.value })} placeholder="Krátký popis krajiny, klimatu a vzhledu domoviny..." rows={2} maxLength={400} disabled={disabled} />
           </div>
-          <SpawnPreferencePicker value={value.spawnPreference || "any"} onChange={(v) => update({ spawnPreference: v })} />
+          <div><SpawnPreferencePicker value={value.spawnPreference || "any"} onChange={(v) => update({ spawnPreference: v })} /></div>
         </CollapsibleContent>
       </Collapsible>
 
@@ -221,7 +221,7 @@ const CivSetupStep = ({ value, onChange, premise, disabled }: Props) => {
           {value.governmentForm && <span className="text-[10px] text-muted-foreground">{value.governmentForm}</span>}
         </CollapsibleTrigger>
         <CollapsibleContent className="pt-2 pl-2">
-          <GovernmentFaithStep value={gov} onChange={(g) => update({ governmentForm: g.government_form, tradeIdeology: g.trade_ideology, dominantFaith: g.dominant_faith, faithAttitude: g.faith_attitude })} />
+          <div><GovernmentFaithStep value={gov} onChange={(g) => update({ governmentForm: g.government_form, tradeIdeology: g.trade_ideology, dominantFaith: g.dominant_faith, faithAttitude: g.faith_attitude })} /></div>
         </CollapsibleContent>
       </Collapsible>
 
@@ -258,7 +258,7 @@ const CivSetupStep = ({ value, onChange, premise, disabled }: Props) => {
           {value.secretObjectiveArchetype && <span className="text-[10px] text-muted-foreground">{value.secretObjectiveArchetype}</span>}
         </CollapsibleTrigger>
         <CollapsibleContent className="pt-2 pl-2">
-          <SecretObjectiveStep value={secret} onChange={(s) => update({ secretObjectiveArchetype: s.secret_objective_archetype })} />
+          <div><SecretObjectiveStep value={secret} onChange={(s) => update({ secretObjectiveArchetype: s.secret_objective_archetype })} /></div>
         </CollapsibleContent>
       </Collapsible>
     </Card>

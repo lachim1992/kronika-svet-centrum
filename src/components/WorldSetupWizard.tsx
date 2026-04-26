@@ -36,7 +36,8 @@ import {
 } from "./world-setup/BootstrapProgressPanel";
 import type { AncientLayerSpec } from "@/types/ancientLayer";
 import CivSetupStep from "./world-setup/CivSetupStep";
-import type { WorldIdentityInput } from "@/types/worldBootstrap";
+import AIOpponentsStep from "./world-setup/AIOpponentsStep";
+import type { WorldIdentityInput, FactionSeedInput } from "@/types/worldBootstrap";
 
 import { useWorldSetupWizardState } from "@/hooks/useWorldSetupWizardState";
 import {
@@ -93,6 +94,9 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
     faithAttitude: "tolerant",
   });
   const isMPMode = mode === "tb_multi";
+
+  // AI opponent configurations (SP/manual modes only).
+  const [aiFactions, setAiFactions] = useState<FactionSeedInput[]>([]);
 
   // Pre-fill rulerName z playerName, dokud ho hráč sám nepřepíše.
   useEffect(() => {
@@ -301,11 +305,16 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
         setup_status: mode === "tb_multi" ? "pending" : "ready",
       } as any);
 
+      const PERSONALITIES = ["aggressive", "diplomatic", "mercantile", "isolationist", "expansionist"];
       const factionsArr = resolved.factionCount > 0 && mode !== "tb_multi"
-        ? Array.from({ length: resolved.factionCount }).map((_, i) => ({
-            name: `AI Frakce ${i + 1}`,
-            personality: ["aggressive", "diplomatic", "mercantile", "isolationist", "expansionist"][i % 5],
-          }))
+        ? Array.from({ length: resolved.factionCount }).map((_, i) => {
+            const custom = aiFactions[i] || {};
+            return {
+              name: (custom.name && custom.name.trim()) || `AI Frakce ${i + 1}`,
+              personality: custom.personality || PERSONALITIES[i % PERSONALITIES.length],
+              description: (custom.description && custom.description.trim()) || undefined,
+            };
+          })
         : undefined;
 
       // v9.1: inject ancient_layer with user-selected lineages into spec
@@ -472,6 +481,17 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
                   disabled={isBusy}
                 />
               </Card>
+
+              {/* AI protivníci — jen v SP/manual módech (v MP řeší lobby per-hráč).
+                  Zobrazí se až po analýze (potřebujeme znát factionCount). */}
+              {!isMPMode && resolved && (
+                <AIOpponentsStep
+                  value={aiFactions}
+                  onChange={setAiFactions}
+                  count={resolved.factionCount}
+                  disabled={isBusy}
+                />
+              )}
 
               {resolved && (
                 <>
