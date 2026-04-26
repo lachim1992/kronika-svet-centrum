@@ -419,7 +419,14 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
                   hasSuggestion={!!resolved}
                   analyzeError={state.analyzeError}
                 />
-              </Card>
+                <div className="border-t border-border/60 pt-3">
+                  <PreWorldPremiseInput
+                    value={state.preWorldPremise}
+                    suggested={state.preWorldSuggested}
+                    onChange={(v, sugg) => setPreWorldPremise(v, sugg ?? false)}
+                    disabled={isBusy}
+                  />
+                </div>
 
               {/* Spec review + editor — visible only after first analyze */}
               {resolved && (
