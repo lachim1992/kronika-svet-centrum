@@ -239,9 +239,9 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
   }
 
   // ── Submit (Create) ──
-  // Civ identity je vyžadována pro single + manual módy. V MP módu se identita
-  // řeší v lobby per hráč (přes player_civ_configs).
-  const civValid = isMPMode || (
+  // Civ identity je vyžadována ve všech módech. V MP slouží jako host přednastavení;
+  // ostatní hráči si svoje identity doplní v lobby (přes player_civ_configs).
+  const civValid = (
     !!identity.realmName?.trim() &&
     !!identity.settlementName?.trim() &&
     !!identity.rulerName?.trim() &&
