@@ -237,6 +237,9 @@ const AIDiagnosticsPanel = ({ sessionId }: Props) => {
               </div>
             </CardContent>
           </Card>
+
+          <PremiseTelemetryCard sessionId={sessionId} />
+
           <Card className="bg-card/50">
             <CardHeader className="pb-2"><CardTitle className="text-sm">Zdroje kontextu pro AI</CardTitle></CardHeader>
             <CardContent className="space-y-2">
