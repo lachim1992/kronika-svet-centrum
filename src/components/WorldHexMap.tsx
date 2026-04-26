@@ -17,6 +17,7 @@ import { useHexMap, AXIAL_NEIGHBORS, type HexData } from "@/hooks/useHexMap";
 import CityMarkerBadge from "@/components/CityMarkerBadge";
 import FoundSettlementDialog from "@/components/FoundSettlementDialog";
 import BuildNodeDialog from "@/components/BuildNodeDialog";
+import NeutralNodePanel from "@/components/NeutralNodePanel";
 import RoadNetworkOverlay, { ROAD_STYLES } from "@/components/map/RoadNetworkOverlay";
 import EconomyFlowOverlay, { CATEGORY_COLORS, MACRO_COLORS, FLOW_LAYER_COLORS } from "@/components/map/EconomyFlowOverlay";
 import type { EconomyViewMode } from "@/components/map/EconomyFlowOverlay";
