@@ -321,16 +321,28 @@ export async function loadWorldPremise(sessionId: string, sb?: SupabaseClient): 
 // ─── Build Premise Prompt ───
 
 /**
- * Build a standardized system prompt prefix from the world premise.
- * This MUST be prepended to every AI system prompt.
+ * Build a standardized system prompt prefix from the world premise (P0...P8).
+ * If `civContext` is provided, also injects [P0b — PREMISA NÁRODA HRÁČE] between P0 and P1.
+ *
+ * P0  = world setting (svět)
+ * P0b = player's civilization (národ hráče v rámci toho světa)
+ * P1+ = constraints, structure, lore, vibe...
+ *
+ * Priority rule: P0 (svět) > P0b (národ). Národ se musí přizpůsobit světu,
+ * ale jeho identita a odkazy na adoptované rody nesmí být potlačeny.
+ *
+ * MUST be prepended to every AI system prompt (handled by invokeAI).
  */
-export function buildPremisePrompt(premise: WorldPremise): string {
+export function buildPremisePrompt(
+  premise: WorldPremise,
+  civContext?: CivContext,
+): string {
   const parts: string[] = [];
 
   parts.push("=== PREMISA SVĚTA (povinný kontext — MUSÍŠ respektovat) ===");
-  parts.push("PRAVIDLO PRIORITY: Pokud dojde ke konfliktu mezi vrstvami, VŽDY platí vrstva s nižším číslem. P0 vítězí nad P1, P1 nad P2, atd.");
+  parts.push("PRAVIDLO PRIORITY: Pokud dojde ke konfliktu mezi vrstvami, VŽDY platí vrstva s nižším číslem. P0 vítězí nad P0b, P0b nad P1, P1 nad P2, atd.");
 
-  // ── P0 — DUÁLNÍ PREMISA (nejvyšší kanonická pravda — nesmí být překroucena) ──
+  // ── P0 — DUÁLNÍ PREMISA SVĚTA (nejvyšší kanonická pravda) ──
   const dualParts: string[] = [];
   if (premise.presentPremise) {
     dualParts.push(`PREMISA SOUČASNOSTI (svět, ve kterém se hraje):\n"""${premise.presentPremise.trim()}"""`);
@@ -345,12 +357,54 @@ export function buildPremisePrompt(premise: WorldPremise): string {
     const lin = premise.ancientLineages
       .map((l) => `• ${l.name}${l.culturalAnchor ? ` (kotva: ${l.culturalAnchor})` : ""}: ${l.description}`)
       .join("\n");
-    dualParts.push(`PRADÁVNÉ RODY (živé dědictví Pradávna v Současnosti — MUSÍŠ je citovat při generování postav, frakcí, kronik):\n${lin}`);
+    dualParts.push(`PRADÁVNÉ RODY SVĚTA (živé dědictví Pradávna v Současnosti — MUSÍŠ je citovat při generování postav, frakcí, kronik):\n${lin}`);
   }
   if (dualParts.length > 0) {
     parts.push(
       `[P0 — DUÁLNÍ PREMISA SVĚTA (kanonický setting — VŠE musí přímo navazovat na tyto texty; nepřidávej generická klišé typu "Skyfall", "Iron Sons" pokud nejsou explicitně uvedena)]\n${dualParts.join("\n\n")}`,
     );
+  }
+
+  // ── P0b — PREMISA NÁRODA HRÁČE (per-player identity layer) ──
+  if (civContext) {
+    const civParts: string[] = [];
+    if (civContext.civName) civParts.push(`NÁROD: ${civContext.civName}`);
+    if (civContext.civDescription) {
+      civParts.push(`POPIS NÁRODA (premisa hráče — MUSÍŠ doslova reflektovat ve všem, co tomuto národu patří — města, jednotky, postavy, budovy):\n"""${civContext.civDescription.trim()}"""`);
+    }
+    if (civContext.claimedLineages.length > 0) {
+      const sourceLabel = civContext.lineagesSource === "per_player_heritage"
+        ? "ADOPTOVANÉ PRADÁVNÉ RODY (tento konkrétní národ se k nim hlásí)"
+        : "DĚDICTVÍ PRADÁVNA SDÍLENÉ SE SVĚTEM (per-player adopce zatím nezadána)";
+      const lin = civContext.claimedLineages
+        .map((l) => `• ${l.name}${l.culturalAnchor ? ` (kotva: ${l.culturalAnchor})` : ""}: ${l.description}`)
+        .join("\n");
+      civParts.push(`${sourceLabel}:\n${lin}`);
+    }
+    if (civContext.culturalQuirk) {
+      civParts.push(`KULTURNÍ ZVLÁŠTNOST (musí se objevit v rituálech, rozhodování, popisech): ${civContext.culturalQuirk}`);
+    }
+    if (civContext.architecturalStyle) {
+      civParts.push(`ARCHITEKTONICKÝ STYL (musí se objevit v popisu budov a měst): ${civContext.architecturalStyle}`);
+    }
+    const idTagParts: string[] = [];
+    if (civContext.cultureTags?.length) idTagParts.push(`Kulturní tagy: ${civContext.cultureTags.join(", ")}`);
+    if (civContext.urbanStyle) idTagParts.push(`Urbanismus: ${civContext.urbanStyle}`);
+    if (civContext.societyStructure) idTagParts.push(`Společenská struktura: ${civContext.societyStructure}`);
+    if (civContext.militaryDoctrine) idTagParts.push(`Vojenská doktrína: ${civContext.militaryDoctrine}`);
+    if (civContext.economicFocus) idTagParts.push(`Ekonomické zaměření: ${civContext.economicFocus}`);
+    if (idTagParts.length > 0) {
+      civParts.push(`STRUKTUROVANÁ IDENTITA (musí být reflektována v generovaném obsahu):\n  ${idTagParts.join("\n  ")}`);
+    }
+
+    if (civParts.length > 0) {
+      civParts.push(
+        "PRAVIDLO P0 vs P0b: Svět (P0) určuje kosmologii, Zlom, fyziku a geografii. " +
+        "Národ (P0b) určuje identitu — co dělá tento konkrétní národ unikátním v rámci toho světa. " +
+        "Při konfliktu se národ přizpůsobí světu, ale jeho odkazy na adoptované rody a vlastní popis nesmí být potlačeny.",
+      );
+      parts.push(`[P0b — PREMISA NÁRODA HRÁČE "${civContext.playerName}"]\n${civParts.join("\n\n")}`);
+    }
   }
 
   // ── P1 — CONSTRAINTS (tvrdé zákazy, nepřekročitelné) ──
