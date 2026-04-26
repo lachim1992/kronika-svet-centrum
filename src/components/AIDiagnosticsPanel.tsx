@@ -10,11 +10,25 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Brain, Swords, HandshakeIcon, Sparkles, RefreshCw, Loader2,
   ChevronDown, AlertTriangle, CheckCircle2, XCircle, Activity,
-  Building2, Shield, MapPin, Hammer, Crown, Users,
+  Building2, Shield, MapPin, Hammer, Crown, Users, ScrollText,
 } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 interface Props {
   sessionId: string;
+}
+
+interface AILogRow {
+  id: string;
+  created_at: string;
+  function_name: string;
+  player_name: string | null;
+  premise_version: number | null;
+  player_context_used: boolean;
+  lineage_names_available: string[] | null;
+  model: string | null;
+  success: boolean;
 }
 
 const AIDiagnosticsPanel = ({ sessionId }: Props) => {
