@@ -9,6 +9,7 @@ import RealmLawsDecrees from "@/components/realm/RealmLawsDecrees";
 import { RealmHeritageBadge } from "@/components/realm/RealmHeritageBadge";
 import { HeritageEffectsPanel } from "@/components/realm/HeritageEffectsPanel";
 import { RouteStatePanel } from "@/components/realm/RouteStatePanel";
+import TurnExecutionReport from "@/components/realm/TurnExecutionReport";
 
 interface Props {
   sessionId: string;
