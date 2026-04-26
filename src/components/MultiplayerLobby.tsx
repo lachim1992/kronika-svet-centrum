@@ -161,16 +161,31 @@ const MultiplayerLobby = ({ sessionId, roomCode, worldName, maxPlayers, isHost, 
       .eq("user_id", user.id)
       .maybeSingle();
     if (data) {
+      const d = data as any;
       setCivConfig({
-        realm_name: data.realm_name || "",
-        settlement_name: data.settlement_name || "",
-        people_name: data.people_name || "",
-        culture_name: data.culture_name || "",
-        language_name: data.language_name || "",
-        civ_description: data.civ_description || "",
-        homeland_biome: data.homeland_biome || "plains",
-        homeland_name: (data as any).homeland_name || "",
-        homeland_desc: (data as any).homeland_desc || "",
+        realm_name: d.realm_name || "",
+        settlement_name: d.settlement_name || "",
+        people_name: d.people_name || "",
+        culture_name: d.culture_name || "",
+        language_name: d.language_name || "",
+        civ_description: d.civ_description || "",
+        homeland_biome: d.homeland_biome || "plains",
+        homeland_name: d.homeland_name || "",
+        homeland_desc: d.homeland_desc || "",
+        ruler_name: d.ruler_name || "",
+        ruler_title: d.ruler_title || "",
+        ruler_archetype: d.ruler_archetype || "warrior",
+        ruler_bio: d.ruler_bio || "",
+        government_form: d.government_form || "monarchy",
+        trade_ideology: d.trade_ideology || "free_market",
+        dominant_faith: d.dominant_faith || "",
+        faith_attitude: d.faith_attitude || "tolerant",
+        spawn_preference: d.spawn_preference || "any",
+        lineage_ids: Array.isArray(d.lineage_ids) ? d.lineage_ids : [],
+        secret_objective_archetype: d.secret_objective_archetype || "",
+        heraldry: (d.heraldry && typeof d.heraldry === "object" && d.heraldry.primary)
+          ? d.heraldry as HeraldryData
+          : DEFAULT_HERALDRY,
       });
     }
 
