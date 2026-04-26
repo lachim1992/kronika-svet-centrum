@@ -165,13 +165,19 @@ export async function seedRealmSkeleton(input: SeedRealmInput): Promise<SeedReal
 
     // Region
     const regionName = p.isPlayer
-      ? `Země ${realmName || playerName}`
+      ? (homelandName?.trim() || `Země ${realmName || playerName}`)
       : `Země ${p.factionName}`;
+    const regionDesc = p.isPlayer && homelandDesc?.trim()
+      ? homelandDesc.trim()
+      : `Domovský region ${p.factionName}.`;
+    const regionBiome = p.isPlayer && homelandBiome
+      ? homelandBiome
+      : (terrainMap.get(`${center.q},${center.r}`)?.biome || "plains");
     const { data: region } = await sb.from("regions").insert({
       session_id: sessionId,
       name: regionName,
-      description: `Domovský region ${p.factionName}.`,
-      biome: terrainMap.get(`${center.q},${center.r}`)?.biome || "plains",
+      description: regionDesc,
+      biome: regionBiome,
       owner_player: p.playerName,
       is_homeland: true,
       discovered_turn: 1,
