@@ -70,6 +70,10 @@ export interface CreateWorldBootstrapRequest {
   world: {
     name: string;
     premise: string;
+    /** Premisa Pradávna (svět před Zlomem). */
+    preWorldPremise?: string;
+    /** Premisa Současnosti (svět po Zlomu) — alias premise. */
+    presentPremise?: string;
     tone: WorldTone;
     victoryStyle: VictoryStyle;
     size: WorldSize;
