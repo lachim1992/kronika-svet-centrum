@@ -48,13 +48,41 @@ Deno.serve(async (req) => {
       ? `\nFakta o světě:\n${worldFacts.map((f: any) => `- ${f}`).join("\n")}`
       : "";
 
+    // Patch 9e: enrich node-related events with cultural/geographic context
+    const NODE_EVENT_TYPES = new Set([
+      "exploration", "trade_link_opened", "envoy_sent",
+      "military_pressure_applied", "node_annexed",
+    ]);
+    let nodeFlavor = "";
+    let targetNodeIds: string[] = [];
+    if (NODE_EVENT_TYPES.has(event.event_type)) {
+      const ref = event.reference || {};
+      const sb = getServiceClient();
+      const ids: string[] = [];
+      if (ref.node_id) ids.push(ref.node_id);
+      if (Array.isArray(ref.discovered_node_ids)) ids.push(...ref.discovered_node_ids);
+      targetNodeIds = [...new Set(ids)];
+      if (targetNodeIds.length > 0) {
+        const { data: nodes } = await sb.from("province_nodes")
+          .select("id, name, hex_q, hex_r, culture_key, profile_key, autonomy_score, node_type")
+          .in("id", targetNodeIds);
+        const nodeLines = (nodes || []).map((n: any) =>
+          `  • ${n.name} [${n.node_type}] hex(${n.hex_q},${n.hex_r}) kultura=${n.culture_key || "?"} profil=${n.profile_key || "?"} autonomie=${n.autonomy_score ?? "?"}`
+        ).join("\n");
+        if (nodeLines) {
+          nodeFlavor = `\nDotčené uzly:\n${nodeLines}\n\nPokyn: Vykresli atmosféru místa s ohledem na jeho kulturu a profil — místní zvyky, krajinu, hlasy obyvatel, reakci na příchod hráče "${event.player}".`;
+        }
+      }
+    }
+
     const eventDesc = `Typ: ${event.event_type}, Hráč: ${event.player}, Kolo: ${event.turn_number}` +
       (event.location ? `, Místo: ${event.location}` : "") +
       (event.note ? `, Poznámka: ${event.note}` : "") +
       (event.result ? `, Výsledek: ${event.result}` : "") +
       (event.casualties ? `, Ztráty: ${event.casualties}` : "") +
       (event.treaty_type ? `, Typ smlouvy: ${event.treaty_type}` : "") +
-      (event.terms_summary ? `, Podmínky: ${event.terms_summary}` : "");
+      (event.terms_summary ? `, Podmínky: ${event.terms_summary}` : "") +
+      nodeFlavor;
 
     const systemPrompt = `Jsi kronikář starověkého světa.
 
