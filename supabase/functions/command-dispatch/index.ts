@@ -370,6 +370,9 @@ async function executeCommand(
     case "ANNEX_NODE":
       return await executeAnnexNode(supabase, base, actor, payload, commandId, sessionId, turnNumber);
 
+    case "BLOCK_NODE_ANNEXATION":
+      return await executeBlockNodeAnnexation(supabase, base, actor, payload, commandId, sessionId, turnNumber);
+
     case "GENERIC":
       return insertEvents(supabase, commandId, [{
         ...base,
