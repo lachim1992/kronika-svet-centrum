@@ -254,8 +254,12 @@ Deno.serve(async (req) => {
 
         const settled = await Promise.allSettled(aiFactions.map(runFaction));
         const processed = settled.filter((s) => s.status === "fulfilled" && (s.value as any).ok).length;
-        results.aiFactions = { processed, total: aiFactions.length, details: factionResults };
-        console.log(`[commit-turn] phase-3 ai-factions parallel: ${Date.now() - t3}ms (${processed}/${aiFactions.length})`);
+        const failures = settled
+          .map((s) => s.status === "fulfilled" ? s.value as any : { ok: false, name: "unknown", error: String((s as any).reason) })
+          .filter((v: any) => !v.ok)
+          .map((v: any) => ({ name: v.name, error: v.error }));
+        results.aiFactions = { processed, total: aiFactions.length, failures, details: factionResults, durationMs: Date.now() - t3 };
+        console.log(`[commit-turn] phase-3 ai-factions parallel: ${Date.now() - t3}ms (${processed}/${aiFactions.length}), failures=${failures.length}`);
       } else {
         results.aiFactions = { skipped: true, reason: "no_active_factions" };
       }
