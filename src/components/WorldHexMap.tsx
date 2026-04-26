@@ -564,7 +564,7 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
   /* ── Fetch nodes ── */
   const fetchNodes = useCallback(async () => {
     const { data } = await supabase.from("province_nodes")
-      .select("id, name, hex_q, hex_r, node_tier, node_type, node_subtype, controlled_by, upgrade_level, max_upgrade_level, parent_node_id, strategic_resource_type, production_output, wealth_output, net_balance, capability_tags, guild_level, flow_role, spawned_strategic_resource, city_id")
+      .select("id, name, hex_q, hex_r, node_tier, node_type, node_subtype, controlled_by, upgrade_level, max_upgrade_level, parent_node_id, strategic_resource_type, production_output, wealth_output, net_balance, capability_tags, guild_level, flow_role, spawned_strategic_resource, city_id, is_neutral, discovered, culture_key, profile_key, autonomy_score, population, defense_value, prosperity_score")
       .eq("session_id", sessionId)
       .eq("is_active", true);
     setAllNodes((data || []) as NodeOnHex[]);
