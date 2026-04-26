@@ -284,19 +284,40 @@ Deno.serve(async (req) => {
         .order("turn_number", { ascending: false }),
     ]);
 
-    // ── Patch 9c: faction's influence + trade links on neutral nodes ──
-    const [{ data: nodeInfluenceRows }, { data: nodeTradeLinks }] = await Promise.all([
+    // ── Patch 9c + 12: faction's influence + trade links + RIVAL pressure + active blockades ──
+    const [{ data: nodeInfluenceRows }, { data: nodeTradeLinks }, { data: rivalInfluenceRows }, { data: blockadeRows }] = await Promise.all([
       supabase.from("node_influence")
         .select("node_id, economic_influence, political_influence, military_pressure, resistance, integration_progress")
         .eq("session_id", sessionId).eq("player_name", factionName),
       supabase.from("node_trade_links")
         .select("node_id, link_status, trade_level, route_safety")
         .eq("session_id", sessionId).eq("player_name", factionName),
+      supabase.from("node_influence")
+        .select("node_id, player_name, economic_influence, political_influence, military_pressure")
+        .eq("session_id", sessionId).neq("player_name", factionName),
+      supabase.from("node_blockades")
+        .select("node_id, blocked_by_player, blocked_until_turn, reason")
+        .eq("session_id", sessionId).gte("blocked_until_turn", currentTurn),
     ]);
     const influenceByNode = new Map<string, any>();
     for (const r of (nodeInfluenceRows || [])) influenceByNode.set(r.node_id, r);
     const linkByNode = new Map<string, any>();
     for (const l of (nodeTradeLinks || [])) linkByNode.set(l.node_id, l);
+    // Aggregate rival pressure per node (anonymized; AI sees only counts + max)
+    const rivalsByNode = new Map<string, { count: number; topPressure: number; topPlayer: string | null; players: string[] }>();
+    for (const r of (rivalInfluenceRows || [])) {
+      const p = (Number(r.economic_influence) || 0) * 0.45
+              + (Number(r.political_influence) || 0) * 0.35
+              + (Number(r.military_pressure) || 0) * 0.20;
+      if (p <= 0) continue;
+      const cur = rivalsByNode.get(r.node_id) || { count: 0, topPressure: 0, topPlayer: null as string | null, players: [] as string[] };
+      cur.count += 1;
+      if (p > cur.topPressure) { cur.topPressure = p; cur.topPlayer = String(r.player_name); }
+      cur.players.push(String(r.player_name));
+      rivalsByNode.set(r.node_id, cur);
+    }
+    const blockadeByNode = new Map<string, any>();
+    for (const b of (blockadeRows || [])) blockadeByNode.set(b.node_id, b);
 
     // Fetch recent diplomacy messages for all rooms involving this faction
     const roomIds = (diplomacyRooms || []).map((r: any) => r.id);
