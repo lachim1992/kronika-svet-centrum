@@ -386,6 +386,8 @@ async function computeProgress(sb: any, sessionId: string, victoryStyle: string,
         details: { note: "Ukončete hru kdykoli chcete." },
       };
   }
+
+  // (annexation handled below by adding a case before default)
 }
 
 function buildVictoryChronicle(style: string, winner: string, turn: number): string {
