@@ -272,28 +272,76 @@ const MultiplayerLobby = ({ sessionId, roomCode, worldName, maxPlayers, isHost, 
     toast.success("Kód zkopírován!");
   };
 
-  // Save civ config (step 0+1) and proceed to faction designer
-  const handleSaveCivConfig = async () => {
-    if (!user) return;
-    if (!civConfig.settlement_name.trim()) { toast.error("Zadejte název startovního sídla"); return; }
-    if (!civConfig.realm_name.trim()) { toast.error("Zadejte název říše"); return; }
-    if (!civConfig.homeland_name.trim()) { toast.error("Zadejte název domovské provincie"); return; }
+  // Compute active steps (lineage hidden when no ancient_layer)
+  const ancientLayer: AncientLayerSpec | null = useMemo(() => {
+    const al = (worldFoundation?.worldgen_spec as any)?.ancient_layer;
+    if (al && Array.isArray(al.lineage_candidates) && al.lineage_candidates.length > 0) return al;
+    return null;
+  }, [worldFoundation]);
 
-    setSavingConfig(true);
+  const activeSteps: WizardStepKey[] = useMemo(() => {
+    const base: WizardStepKey[] = ["identity", "ruler", "homeland", "government"];
+    if (ancientLayer) base.push("lineage");
+    base.push("faction", "objective");
+    return base;
+  }, [ancientLayer]);
+
+  const currentStepKey = activeSteps[wizardStepIdx] ?? "identity";
+
+  // Persist civ config (full payload — runs on each step transition)
+  const persistCivConfig = async (extra: Partial<CivConfig> = {}): Promise<boolean> => {
+    if (!user) return false;
     try {
-      await supabase.from("player_civ_configs").upsert({
+      const payload = { ...civConfig, ...extra };
+      const { error } = await supabase.from("player_civ_configs").upsert({
         session_id: sessionId,
         user_id: user.id,
         player_name: myPlayerName,
-        ...civConfig,
-      }, { onConflict: "session_id,user_id" });
-
-      toast.success("Civilizace uložena! Nyní nastavte frakci.");
-      setWizardStep(2); // proceed to faction designer
+        ...payload,
+        heraldry: payload.heraldry as any,
+      } as any, { onConflict: "session_id,user_id" });
+      if (error) throw error;
+      return true;
     } catch (e: any) {
       toast.error("Chyba při ukládání: " + e.message);
+      return false;
     }
+  };
+
+  // Validation per step
+  const canAdvance = (): boolean => {
+    switch (currentStepKey) {
+      case "identity":
+        if (!civConfig.realm_name.trim()) { toast.error("Zadejte název říše"); return false; }
+        if (!civConfig.settlement_name.trim()) { toast.error("Zadejte název startovního sídla"); return false; }
+        return true;
+      case "ruler":
+        if (!civConfig.ruler_name.trim()) { toast.error("Zadejte jméno vládce"); return false; }
+        return true;
+      case "homeland":
+        if (!civConfig.homeland_name.trim()) { toast.error("Zadejte název domovské provincie"); return false; }
+        return true;
+      case "objective":
+        if (!civConfig.secret_objective_archetype) { toast.error("Vyberte archetyp tajného cíle"); return false; }
+        return true;
+      default:
+        return true;
+    }
+  };
+
+  const goNext = async () => {
+    if (!canAdvance()) return;
+    setSavingConfig(true);
+    const ok = await persistCivConfig();
     setSavingConfig(false);
+    if (!ok) return;
+    if (wizardStepIdx < activeSteps.length - 1) {
+      setWizardStepIdx(wizardStepIdx + 1);
+    }
+  };
+
+  const goBack = () => {
+    if (wizardStepIdx > 0) setWizardStepIdx(wizardStepIdx - 1);
   };
 
   // Called when FactionDesigner completes
@@ -310,7 +358,28 @@ const MultiplayerLobby = ({ sessionId, roomCode, worldName, maxPlayers, isHost, 
       .maybeSingle();
     if (identity) setMyIdentity(identity);
 
-    // Verify civ config exists before marking ready
+    // Move to objective step (last step) — frakce just generated, identity preview shown
+    const objectiveIdx = activeSteps.indexOf("objective");
+    if (objectiveIdx >= 0 && wizardStepIdx < objectiveIdx) {
+      setWizardStepIdx(objectiveIdx);
+      toast.success("Frakce vygenerována. Vyberte tajný cíl.");
+      return;
+    }
+  };
+
+  // Final commit — called from objective step after secret objective chosen
+  const handleFinalCommit = async () => {
+    if (!user) return;
+    if (!civConfig.secret_objective_archetype) {
+      toast.error("Vyberte archetyp tajného cíle");
+      return;
+    }
+    setSavingConfig(true);
+    const ok = await persistCivConfig();
+    setSavingConfig(false);
+    if (!ok) return;
+
+    // Verify civ config exists
     const { data: existingConfig } = await supabase
       .from("player_civ_configs")
       .select("id")
@@ -319,12 +388,12 @@ const MultiplayerLobby = ({ sessionId, roomCode, worldName, maxPlayers, isHost, 
       .maybeSingle();
 
     if (!existingConfig) {
-      toast.error("Chyba: konfigurace civilizace nebyla uložena. Zkuste znovu projít nastavení.");
-      setWizardStep(0);
+      toast.error("Chyba: konfigurace civilizace nebyla uložena.");
+      setWizardStepIdx(0);
       return;
     }
 
-    // Now mark player as ready
+    // Mark player ready
     await supabase.from("game_memberships")
       .update({ setup_status: "ready" })
       .eq("session_id", sessionId)
@@ -332,8 +401,8 @@ const MultiplayerLobby = ({ sessionId, roomCode, worldName, maxPlayers, isHost, 
 
     setMySetupStatus("ready");
     setShowCivWizard(false);
-    setWizardStep(0);
-    toast.success("Civilizace a frakce připraveny!");
+    setWizardStepIdx(0);
+    toast.success("Civilizace připravena!");
     await fetchPlayers();
   };
 
