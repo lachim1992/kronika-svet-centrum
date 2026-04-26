@@ -834,21 +834,26 @@ export async function invokeAI(
   opts: AIInvokeOptions,
 ): Promise<AIInvokeResult> {
   const apiKey = Deno.env.get("LOVABLE_API_KEY");
-  if (!apiKey) {
-    return {
-      ok: false,
-      error: "LOVABLE_API_KEY not configured",
-      debug: {
-        requestId: ctx.requestId,
-        model: opts.model || "unknown",
-        premiseVersion: ctx.premise.version,
-        sessionId: ctx.sessionId,
-        turnNumber: ctx.turnNumber,
-      },
-    };
-  }
-
   const model = opts.model || "google/gemini-3-flash-preview";
+  const functionName = opts.functionName ?? "unknown";
+  const playerContextUsed = !!ctx.civContext;
+  const lineageNamesAvailable = (ctx.civContext?.claimedLineages ?? []).map((l) => l.name);
+
+  const debug = {
+    requestId: ctx.requestId,
+    model,
+    premiseVersion: ctx.premise.version,
+    sessionId: ctx.sessionId,
+    turnNumber: ctx.turnNumber,
+    functionName,
+    playerContextUsed,
+    lineageNamesAvailable,
+  };
+
+  if (!apiKey) {
+    void logAIInvocation(ctx, functionName, model, false);
+    return { ok: false, error: "LOVABLE_API_KEY not configured", debug };
+  }
 
   // Inject premise into system prompt
   const fullSystemPrompt = `${ctx.premisePrompt}\n\n${opts.systemPrompt}`;
@@ -865,14 +870,6 @@ export async function invokeAI(
   if (opts.toolChoice) body.tool_choice = opts.toolChoice;
   if (opts.maxTokens) body.max_tokens = opts.maxTokens;
 
-  const debug = {
-    requestId: ctx.requestId,
-    model,
-    premiseVersion: ctx.premise.version,
-    sessionId: ctx.sessionId,
-    turnNumber: ctx.turnNumber,
-  };
-
   try {
     const response = await fetch(AI_GATEWAY_URL, {
       method: "POST",
@@ -885,7 +882,8 @@ export async function invokeAI(
 
     if (!response.ok) {
       const errText = await response.text();
-      console.error(`[ai-context] ${ctx.requestId} AI error:`, response.status, errText);
+      console.error(`[ai-context] ${ctx.requestId} fn=${functionName} AI error:`, response.status, errText);
+      void logAIInvocation(ctx, functionName, model, false);
 
       if (response.status === 429) {
         return { ok: false, error: "Rate limit, zkuste to znovu za chvíli.", status: 429, debug };
@@ -903,6 +901,7 @@ export async function invokeAI(
     if (toolCall?.function?.arguments) {
       try {
         const parsed = JSON.parse(toolCall.function.arguments);
+        void logAIInvocation(ctx, functionName, model, true);
         return { ok: true, data: parsed, debug };
       } catch (parseErr) {
         console.error(`[ai-context] ${ctx.requestId} Tool call parse error:`, parseErr);
@@ -913,16 +912,50 @@ export async function invokeAI(
     const content = data.choices?.[0]?.message?.content || "";
     try {
       const parsed = JSON.parse(content);
+      void logAIInvocation(ctx, functionName, model, true);
       return { ok: true, data: parsed, debug };
     } catch {
       // Return raw content
+      void logAIInvocation(ctx, functionName, model, true);
       return { ok: true, data: { content }, debug };
     }
   } catch (e) {
-    console.error(`[ai-context] ${ctx.requestId} Invocation error:`, e);
+    console.error(`[ai-context] ${ctx.requestId} fn=${functionName} Invocation error:`, e);
+    void logAIInvocation(ctx, functionName, model, false);
     return { ok: false, error: e instanceof Error ? e.message : "Unknown error", debug };
   }
 }
+
+// ─── Telemetry ───
+
+/**
+ * Best-effort telemetry write to ai_invocation_log.
+ * NEVER throws — AI calls must not fail because of logging.
+ */
+async function logAIInvocation(
+  ctx: AIRequestContext,
+  functionName: string,
+  model: string,
+  success: boolean,
+): Promise<void> {
+  try {
+    const client = getServiceClient();
+    await client.from("ai_invocation_log").insert({
+      session_id: ctx.sessionId,
+      request_id: ctx.requestId,
+      function_name: functionName,
+      player_name: ctx.civContext?.playerName ?? null,
+      premise_version: ctx.premise.version,
+      player_context_used: !!ctx.civContext,
+      lineage_names_available: (ctx.civContext?.claimedLineages ?? []).map((l) => l.name),
+      model,
+      success,
+    });
+  } catch (e) {
+    console.warn(`[ai-context] telemetry log failed for ${functionName}:`, e);
+  }
+}
+
 
 // ─── CORS Helper ───
 
