@@ -2798,11 +2798,12 @@ async function executeSendEnvoyToNode(
     political_influence: current.political_influence + 8,
   });
 
+  const ctxE = nodeContext(node);
   return await insertEvents(supabase, commandId, [{
     ...base, event_type: "envoy_sent",
-    note: `${actor.name} vyslal vyslance k ${node.name}.`,
+    note: `${actor.name} vyslal vyslance k ${node.name}${ctxE.suffix}.`,
     importance: "normal",
-    reference: { node_id: nodeId, influence: inf },
+    reference: { node_id: nodeId, ...ctxE.tags, influence: inf },
   }], { influence: inf });
 }
 
