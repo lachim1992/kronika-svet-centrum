@@ -193,45 +193,27 @@ const WikiPanel = ({
   const getEntityImages = (entityType: string, entityId: string) =>
     entityImages.filter(i => i.entity_type === entityType && i.entity_id === entityId);
 
-  // Generate encyclopedia text
+  // Generate encyclopedia text via wiki-orchestrator (Track B: single gateway)
   const handleGenerateText = async (entity: EncyclopediaEntity) => {
     const key = `text-${entity.id}`;
     setGeneratingId(key);
     try {
-      const relatedEvents = getEntityEvents(entity.type, entity.id);
-      const { data, error } = await supabase.functions.invoke("encyclopedia-generate", {
-        body: {
-          entityType: entity.type,
-          entityName: entity.name,
-          context: entity.context,
-          relatedEvents: relatedEvents.map(e => ({ title: e.title, date: e.date, summary: e.summary, description: e.description })),
-          worldMemories,
-          epochStyle: epochStyle || "kroniky",
-        },
-      });
-      if (error) throw error;
-      if (data.error) { toast.error(data.error); return; }
-
       const existing = getWikiEntry(entity.type, entity.id);
-      if (existing) {
-        await supabase.from("wiki_entries").update({
-          summary: data.summary,
-          ai_description: data.description,
-          image_prompt: data.imagePrompt,
-          updated_at: new Date().toISOString(),
-        }).eq("id", existing.id);
-      } else {
-        await supabase.from("wiki_entries").insert({
-          session_id: sessionId,
-          entity_type: entity.type,
-          entity_id: entity.id,
-          entity_name: entity.name,
-          owner_player: entity.owner,
-          summary: data.summary,
-          ai_description: data.description,
-          image_prompt: data.imagePrompt,
-        });
-      }
+      const body = existing
+        ? { action: "regenerate", entry_id: existing.id, fields: ["content"] }
+        : {
+            action: "ensure",
+            session_id: sessionId,
+            entity_type: entity.type,
+            entity_id: entity.id,
+            entity_name: entity.name,
+            owner_player: entity.owner,
+          };
+
+      const { data, error } = await supabase.functions.invoke("wiki-orchestrator", { body });
+      if (error) throw error;
+      if (data?.error) { toast.error(data.error); return; }
+
       await fetchAll();
       toast.success(`📖 Článek „${entity.name}" vygenerován!`);
     } catch (e) {
@@ -241,34 +223,29 @@ const WikiPanel = ({
     setGeneratingId(null);
   };
 
-  // Generate encyclopedia image
+  // Generate encyclopedia image via wiki-orchestrator (Track B: single gateway).
+  // For text-only entity types (law/chronicle/treaty/declaration) this is the only
+  // way to obtain an image — explicit user action.
   const handleGenerateImage = async (entity: EncyclopediaEntity) => {
     const key = `img-${entity.id}`;
     setGeneratingImage(key);
     try {
-      const wiki = getWikiEntry(entity.type, entity.id);
-      const { data, error } = await supabase.functions.invoke("generate-entity-media", {
-        body: {
-          sessionId,
-          entityType: entity.type,
-          entityName: entity.name,
-          entityId: entity.id,
-          kind: "cover",
-          imagePrompt: wiki?.image_prompt,
-          createdBy: isAdmin ? "admin" : currentPlayerName,
-        },
-      });
-      if (error) throw error;
-      if (data.error) { toast.error(data.error); return; }
-
-      // Update wiki entry with image
       const existing = getWikiEntry(entity.type, entity.id);
-      if (existing) {
-        await supabase.from("wiki_entries").update({
-          image_url: data.imageUrl,
-          updated_at: new Date().toISOString(),
-        }).eq("id", existing.id);
-      }
+      const body = existing
+        ? { action: "regenerate", entry_id: existing.id, fields: ["image"] }
+        : {
+            action: "ensure",
+            session_id: sessionId,
+            entity_type: entity.type,
+            entity_id: entity.id,
+            entity_name: entity.name,
+            owner_player: entity.owner,
+          };
+
+      const { data, error } = await supabase.functions.invoke("wiki-orchestrator", { body });
+      if (error) throw error;
+      if (data?.error) { toast.error(data.error); return; }
+
       await fetchAll();
       toast.success(`🖼️ Ilustrace „${entity.name}" vygenerována!`);
     } catch (e) {
