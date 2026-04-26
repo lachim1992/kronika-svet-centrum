@@ -152,13 +152,16 @@ export async function seedRealmSkeleton(input: SeedRealmInput): Promise<SeedReal
     factionPlayerMap[p.factionName] = p.playerName;
 
     // Country
+    const aiFlavor = !p.isPlayer ? factions[idx - 1]?.description : "";
     const { data: country } = await sb.from("countries").insert({
       session_id: sessionId,
       name: p.factionName,
       ruler_player: p.playerName,
       description: p.isPlayer
         ? playerCountryDesc
-        : `${p.factionName} — AI frakce ve světě ${worldName}.`,
+        : (aiFlavor && aiFlavor.trim().length > 0
+            ? `${p.factionName} — ${aiFlavor.trim()}`
+            : `${p.factionName} — AI frakce ve světě ${worldName}.`),
       motto: p.isPlayer ? (foundingLegend ? foundingLegend.split(/[.!?]/)[0].slice(0, 80) : "Za slávu a kroniku") : "Vlastní cestou",
     }).select("id").single();
     if (p.isPlayer && country?.id) playerCountryId = country.id;
