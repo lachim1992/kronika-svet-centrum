@@ -221,7 +221,7 @@ const CivSetupStep = ({ value, onChange, premise, disabled }: Props) => {
           {value.governmentForm && <span className="text-[10px] text-muted-foreground">{value.governmentForm}</span>}
         </CollapsibleTrigger>
         <CollapsibleContent className="pt-2 pl-2">
-          <GovernmentFaithStep value={gov} onChange={(g) => update({ governmentForm: g.government_form, tradeIdeology: g.trade_ideology, dominantFaith: g.dominant_faith, faithAttitude: g.faith_attitude })} />
+          <div><GovernmentFaithStep value={gov} onChange={(g) => update({ governmentForm: g.government_form, tradeIdeology: g.trade_ideology, dominantFaith: g.dominant_faith, faithAttitude: g.faith_attitude })} /></div>
         </CollapsibleContent>
       </Collapsible>
 
