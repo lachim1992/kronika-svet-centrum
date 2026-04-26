@@ -367,6 +367,8 @@ Deno.serve(async (req) => {
         heraldry: normalized.identity?.heraldry,
         secretObjectiveArchetype: normalized.identity?.secretObjectiveArchetype,
         foundingLegend: normalized.identity?.foundingLegend,
+        identityModifiers: normalized.identityModifiers,
+        lineageIds: normalized.lineageIds,
         factions: normalized.factions,
         startPositions: mapResp.startPositions ?? [],
       });
