@@ -296,6 +296,80 @@ export async function seedRealmSkeleton(input: SeedRealmInput): Promise<SeedReal
     }
   }
 
+  // ── Persist player identity to canonical tables (non-fatal) ──
+  // civ_identity row enables extract-civ-identity-style downstream usage; even
+  // empty bonuses are fine — the engine treats nulls as 0/baseline.
+  try {
+    const civDescForExtract = [
+      civDescription,
+      rulerName ? `Vládce: ${rulerTitle ? rulerTitle + " " : ""}${rulerName}${rulerArchetype ? ` (${rulerArchetype})` : ""}.` : "",
+      governmentForm ? `Forma vlády: ${governmentForm}.` : "",
+      tradeIdeology ? `Obchodní ideologie: ${tradeIdeology}.` : "",
+      dominantFaith ? `Víra: ${dominantFaith} (${faithAttitude || "tolerant"}).` : "",
+      foundingLegend ? `Zakladatelská legenda: ${foundingLegend}` : "",
+    ].filter(Boolean).join(" ").trim();
+
+    if (civDescForExtract.length > 0 || realmName) {
+      await sb.from("civ_identity").upsert({
+        session_id: sessionId,
+        player_name: playerName,
+        display_name: realmName || `${playerName}ova říše`,
+        flavor_summary: civDescription || foundingLegend?.slice(0, 200) || "",
+        source_description: civDescForExtract,
+        culture_tags: cultureName ? [cultureName] : [],
+      } as any, { onConflict: "session_id,player_name" });
+    }
+  } catch (e) {
+    console.warn("[seed-realm-skeleton] civ_identity upsert failed:", e);
+  }
+
+  // civilizations row — narrative metadata for the player's faction.
+  try {
+    if (realmName || rulerName || foundingLegend) {
+      await sb.from("civilizations").upsert({
+        session_id: sessionId,
+        player_name: playerName,
+        civ_name: realmName || `${playerName}ova říše`,
+        core_myth: foundingLegend || null,
+        cultural_quirk: cultureName || null,
+        is_ai: false,
+      } as any, { onConflict: "session_id,player_name" });
+    }
+  } catch (e) {
+    console.warn("[seed-realm-skeleton] civilizations upsert failed:", e);
+  }
+
+  // player_civ_configs — store full identity so downstream AI pipelines (incl.
+  // mp-style chronicles) can read consistent data for both SP and MP.
+  try {
+    await sb.from("player_civ_configs").upsert({
+      session_id: sessionId,
+      player_name: playerName,
+      realm_name: realmName || null,
+      settlement_name: settlementName || null,
+      people_name: peopleName || null,
+      culture_name: cultureName || null,
+      language_name: languageName || null,
+      civ_description: civDescription || null,
+      homeland_name: homelandName || null,
+      homeland_biome: homelandBiome || null,
+      homeland_desc: homelandDesc || null,
+      ruler_name: rulerName || null,
+      ruler_title: rulerTitle || null,
+      ruler_archetype: rulerArchetype || null,
+      ruler_bio: rulerBio || null,
+      government_form: governmentForm || null,
+      trade_ideology: tradeIdeology || null,
+      dominant_faith: dominantFaith || null,
+      faith_attitude: faithAttitude || null,
+      heraldry: heraldry || null,
+      secret_objective_archetype: secretObjectiveArchetype || null,
+      founding_legend: foundingLegend || null,
+    } as any, { onConflict: "session_id,player_name" });
+  } catch (e) {
+    console.warn("[seed-realm-skeleton] player_civ_configs upsert failed:", e);
+  }
+
   return {
     factionsSeeded: participants.length,
     regionsSeeded,
@@ -303,5 +377,6 @@ export async function seedRealmSkeleton(input: SeedRealmInput): Promise<SeedReal
     citiesSeeded,
     factionPlayerMap,
     cityIds,
+    playerCountryId,
   };
 }
