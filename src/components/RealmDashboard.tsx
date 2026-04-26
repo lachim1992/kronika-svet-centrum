@@ -79,6 +79,9 @@ const RealmDashboard = ({ sessionId, currentPlayerName, currentTurn, myRole, cit
         )}
       </div>
 
+      {/* Report posledního commit-turn (chyby AI frakcí, process-turn, fáze) */}
+      <TurnExecutionReport sessionId={sessionId} />
+
       {/* Pradávný odkaz (v9.1) */}
       <RealmHeritageBadge sessionId={sessionId} playerName={currentPlayerName} />
       <HeritageEffectsPanel sessionId={sessionId} playerName={currentPlayerName} />
