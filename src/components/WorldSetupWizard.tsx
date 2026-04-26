@@ -37,7 +37,7 @@ import {
 import type { AncientLayerSpec } from "@/types/ancientLayer";
 import CivSetupStep from "./world-setup/CivSetupStep";
 import AIOpponentsStep from "./world-setup/AIOpponentsStep";
-import type { WorldIdentityInput, FactionSeedInput } from "@/types/worldBootstrap";
+import type { WorldIdentityInput, FactionSeedInput, ExtractedCivIdentity } from "@/types/worldBootstrap";
 
 import { useWorldSetupWizardState } from "@/hooks/useWorldSetupWizardState";
 import {
@@ -97,6 +97,9 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
 
   // AI opponent configurations (SP/manual modes only).
   const [aiFactions, setAiFactions] = useState<FactionSeedInput[]>([]);
+
+  // Mechanické modifikátory hostovy civilizace (extrahované AI z popisu).
+  const [identityModifiers, setIdentityModifiers] = useState<ExtractedCivIdentity | null>(null);
 
   // Pre-fill rulerName z playerName, dokud ho hráč sám nepřepíše.
   useEffect(() => {
@@ -334,6 +337,8 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
         preWorldPremise: state.preWorldPremise.trim() || undefined,
         factions: factionsArr,
         identity,
+        identityModifiers: identityModifiers ?? undefined,
+        lineageIds: selectedLineages,
       });
 
       const tickInterval = setInterval(() => {
@@ -479,6 +484,8 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
                   onChange={setIdentity}
                   premise={state.premise}
                   disabled={isBusy}
+                  identityModifiers={identityModifiers}
+                  onIdentityModifiersChange={setIdentityModifiers}
                 />
               </Card>
 
