@@ -222,6 +222,9 @@ KATEGORIE MODIFIKÁTORŮ:
 
     if (!result.ok) {
       console.error("AI extraction failed:", result.error);
+      if (isPreviewMode) {
+        return errorResponse("AI extraction failed: " + (result.error || "unknown"));
+      }
       const { data } = await sb.from("civ_identity").upsert({
         session_id: sessionId,
         player_name: playerName,
