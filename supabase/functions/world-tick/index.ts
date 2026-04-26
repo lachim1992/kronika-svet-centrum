@@ -1383,6 +1383,67 @@ Deno.serve(async (req) => {
       results.province_control_error = (graphErr as Error).message;
     }
 
+    // ========== NODE INFLUENCE DECAY (Patch 11) ==========
+    try {
+      const { data: influences } = await supabase
+        .from("node_influence")
+        .select("session_id, player_name, node_id, economic_influence, political_influence, military_pressure, resistance")
+        .eq("session_id", sessionId);
+
+      const { data: tradeLinks } = await supabase
+        .from("node_trade_links")
+        .select("player_name, node_id, link_status")
+        .eq("session_id", sessionId);
+
+      const linkMap = new Map<string, string>();
+      (tradeLinks || []).forEach((l: any) => linkMap.set(`${l.player_name}:${l.node_id}`, l.link_status));
+
+      // Detect recent military pressure (this turn) via world_action_log
+      const { data: recentActions } = await supabase
+        .from("world_action_log")
+        .select("player_name, action_type, payload")
+        .eq("session_id", sessionId)
+        .gte("turn_number", turnNumber)
+        .in("action_type", ["APPLY_MILITARY_PRESSURE", "APPLY_PRESSURE"]);
+
+      const pressuredThisTurn = new Set<string>();
+      (recentActions || []).forEach((a: any) => {
+        const nid = a.payload?.node_id;
+        if (nid) pressuredThisTurn.add(`${a.player_name}:${nid}`);
+      });
+
+      let decayCount = 0;
+      for (const inf of (influences || [])) {
+        const key = `${inf.player_name}:${inf.node_id}`;
+        const link = linkMap.get(key) || "none";
+        const hasTrade = ["trade_open", "protected", "vassalized", "annexed"].includes(link);
+        const isAnnexed = link === "annexed";
+        if (isAnnexed) continue;
+
+        const econDecay = hasTrade ? 0 : 2;
+        const polDecay = 3;
+        const milDecay = pressuredThisTurn.has(key) ? 0 : 5;
+        const resistanceRegen = pressuredThisTurn.has(key) ? 0 : 1;
+
+        const newEcon = Math.max(0, Number(inf.economic_influence) - econDecay);
+        const newPol = Math.max(0, Number(inf.political_influence) - polDecay);
+        const newMil = Math.max(0, Number(inf.military_pressure) - milDecay);
+        const newRes = Math.min(100, Number(inf.resistance) + resistanceRegen);
+
+        await supabase.from("node_influence").update({
+          economic_influence: newEcon,
+          political_influence: newPol,
+          military_pressure: newMil,
+          resistance: newRes,
+        }).eq("session_id", sessionId).eq("player_name", inf.player_name).eq("node_id", inf.node_id);
+        decayCount++;
+      }
+      results.node_influence_decay = { processed: decayCount };
+    } catch (decayErr) {
+      console.warn("Node influence decay non-fatal:", decayErr);
+      results.node_influence_decay_error = (decayErr as Error).message;
+    }
+
     // ========== FINALIZE TICK ==========
     await supabase.from("world_tick_log").update({
       status: "completed",

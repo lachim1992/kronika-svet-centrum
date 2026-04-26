@@ -75,11 +75,14 @@ const ENTITY_ICONS: Record<string, React.ReactNode> = {
   event: <Swords className="h-4 w-4" />,
   province: <Castle className="h-4 w-4" />,
   region: <Mountain className="h-4 w-4" />,
+  neutral_node: <Globe className="h-4 w-4" />,
+  annexed_node: <Castle className="h-4 w-4" />,
 };
 
 const ENTITY_LABELS: Record<string, string> = {
   city: "Město", wonder: "Div", person: "Osobnost", event: "Událost",
   province: "Provincie", region: "Region",
+  neutral_node: "Neutrální uzel", annexed_node: "Anektovaný uzel",
 };
 
 const WikiPanel = ({
@@ -99,6 +102,7 @@ const WikiPanel = ({
   const [eventLinks, setEventLinks] = useState<EventEntityLink[]>([]);
   const [entityImages, setEntityImages] = useState<EncImage[]>([]);
   const [worldMemories, setWorldMemories] = useState<string[]>([]);
+  const [nodes, setNodes] = useState<any[]>([]);
 
   const isAdmin = myRole === "admin" || myRole === "moderator" || !myRole;
 
@@ -109,7 +113,7 @@ const WikiPanel = ({
 
 
   const fetchAll = async () => {
-    const [entriesRes, provincesRes, regionsRes, worldEventsRes, linksRes, imagesRes, memoriesRes] = await Promise.all([
+    const [entriesRes, provincesRes, regionsRes, worldEventsRes, linksRes, imagesRes, memoriesRes, nodesRes] = await Promise.all([
       supabase.from("wiki_entries").select("*").eq("session_id", sessionId).order("entity_type").order("entity_name"),
       supabase.from("provinces").select("*").eq("session_id", sessionId),
       supabase.from("regions").select("*").eq("session_id", sessionId),
@@ -117,6 +121,7 @@ const WikiPanel = ({
       supabase.from("event_entity_links").select("*"),
       supabase.from("encyclopedia_images").select("*").eq("session_id", sessionId),
       supabase.from("world_memories").select("text").eq("session_id", sessionId).eq("approved", true),
+      supabase.from("province_nodes").select("id, name, culture_key, profile_key, population, autonomy_score, discovered, is_neutral, controlled_by, hex_q, hex_r").eq("session_id", sessionId).eq("discovered", true),
     ]);
     if (entriesRes.data) setEntries(entriesRes.data as WikiEntry[]);
     if (provincesRes.data) setProvinces(provincesRes.data);
@@ -125,6 +130,7 @@ const WikiPanel = ({
     if (linksRes.data) setEventLinks(linksRes.data as EventEntityLink[]);
     if (imagesRes.data) setEntityImages(imagesRes.data as EncImage[]);
     if (memoriesRes.data) setWorldMemories(memoriesRes.data.map((m: any) => m.text));
+    if (nodesRes.data) setNodes(nodesRes.data);
   };
 
   // Build all encyclopedia entities
@@ -135,7 +141,14 @@ const WikiPanel = ({
     ...wonders.map(w => ({ type: "wonder", name: w.name, id: w.id, owner: w.owner_player, context: { era: w.era, status: w.status, city: w.city_name, description: w.description } })),
     ...greatPersons.map(p => ({ type: "person", name: p.name, id: p.id, owner: p.player_name, context: { personType: p.person_type, flavor: p.flavor_trait, alive: p.is_alive, bio: p.bio } })),
     ...worldEvents.map(e => ({ type: "event", name: e.title, id: e.id, owner: e.created_by_type || "system", context: { date: e.date, summary: e.summary, description: e.description, tags: e.tags, status: e.status, participants: e.participants } })),
-  ], [cities, provinces, regions, wonders, greatPersons, worldEvents]);
+    ...nodes.map(n => ({
+      type: n.controlled_by ? "annexed_node" : "neutral_node",
+      name: n.name,
+      id: n.id,
+      owner: n.controlled_by || "",
+      context: { culture: n.culture_key, profile: n.profile_key, population: n.population, autonomy: n.autonomy_score, hex: `${n.hex_q},${n.hex_r}` },
+    })),
+  ], [cities, provinces, regions, wonders, greatPersons, worldEvents, nodes]);
 
   // Handle codexEntityTarget to auto-open entity
   useEffect(() => {
