@@ -67,13 +67,33 @@ Deno.serve(async (req) => {
         .eq("session_id", sessionId).eq("player_name", playerName);
     }
 
-    // Load route_state
-    const { data: rs, error: rsErr } = await sb.from("route_state")
+    // Load route_state (lazy-init pokud chybí)
+    let { data: rs, error: rsErr } = await sb.from("route_state")
       .select("*").eq("route_id", routeId).maybeSingle();
-    if (rsErr || !rs) {
-      return new Response(JSON.stringify({ error: "route_state nenalezen" }), {
-        status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" },
+    if (rsErr) {
+      return new Response(JSON.stringify({ error: rsErr.message }), {
+        status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
+    }
+    if (!rs) {
+      // Ověř, že route existuje, a založ defaultní route_state
+      const { data: route, error: routeErr } = await sb.from("province_routes")
+        .select("id, session_id").eq("id", routeId).maybeSingle();
+      if (routeErr || !route) {
+        return new Response(JSON.stringify({ error: "route nenalezena" }), {
+          status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      const { data: created, error: insErr } = await sb.from("route_state").insert({
+        route_id: routeId,
+        session_id: route.session_id,
+      }).select("*").single();
+      if (insErr || !created) {
+        return new Response(JSON.stringify({ error: "Nelze založit route_state: " + (insErr?.message ?? "unknown") }), {
+          status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      rs = created;
     }
 
     let nextMaint = rs.maintenance_level;
