@@ -2745,7 +2745,73 @@ async function upsertInfluence(
   return next;
 }
 
-async function upsertTradeLink(
+// ─── Patch 12 — Multiplayer contestation helpers ───
+
+async function loadRivalInfluences(
+  supabase: any, sessionId: string, nodeId: string, excludePlayer: string,
+): Promise<RivalRow[]> {
+  const { data } = await supabase
+    .from("node_influence")
+    .select("player_name, economic_influence, political_influence, military_pressure, resistance, integration_progress")
+    .eq("session_id", sessionId).eq("node_id", nodeId)
+    .neq("player_name", excludePlayer);
+  return ((data || []) as any[]).map((r) => {
+    const inf: InfluenceState = {
+      economic_influence: Number(r.economic_influence) || 0,
+      political_influence: Number(r.political_influence) || 0,
+      military_pressure: Number(r.military_pressure) || 0,
+      resistance: Number(r.resistance) || 0,
+      integration_progress: Number(r.integration_progress) || 0,
+    };
+    return { player_name: String(r.player_name), influence: inf, pressure: computePressure(inf) };
+  });
+}
+
+async function countActiveTradeRivals(
+  supabase: any, sessionId: string, nodeId: string, excludePlayer: string,
+): Promise<number> {
+  const { data } = await supabase
+    .from("node_trade_links")
+    .select("player_name, link_status")
+    .eq("session_id", sessionId).eq("node_id", nodeId)
+    .neq("player_name", excludePlayer)
+    .in("link_status", ["trade_open", "protected", "vassalized"]);
+  return (data || []).length;
+}
+
+async function applyRivalryErosionToAll(
+  supabase: any, sessionId: string, nodeId: string, actorName: string,
+  channel: "economic_influence" | "political_influence" | "military_pressure",
+  actorGain: number,
+): Promise<{ player_name: string; before: number; after: number }[]> {
+  const rivals = await loadRivalInfluences(supabase, sessionId, nodeId, actorName);
+  const log: { player_name: string; before: number; after: number }[] = [];
+  for (const r of rivals) {
+    const patch = applyRivalryErosion(r.influence, channel, actorGain);
+    const next = patch[channel];
+    if (next === undefined) continue;
+    if (next === r.influence[channel]) continue;
+    await supabase.from("node_influence").update({
+      [channel]: next, updated_at: new Date().toISOString(),
+    }).eq("session_id", sessionId).eq("node_id", nodeId).eq("player_name", r.player_name);
+    log.push({ player_name: r.player_name, before: r.influence[channel], after: next });
+  }
+  return log;
+}
+
+async function loadActiveBlockade(
+  supabase: any, sessionId: string, nodeId: string, currentTurn: number,
+): Promise<{ blocked_by_player: string; blocked_until_turn: number; reason: string | null } | null> {
+  const { data } = await supabase
+    .from("node_blockades")
+    .select("blocked_by_player, blocked_until_turn, reason")
+    .eq("session_id", sessionId).eq("node_id", nodeId)
+    .gte("blocked_until_turn", currentTurn)
+    .order("blocked_until_turn", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  return (data as any) || null;
+}
   supabase: any, sessionId: string, playerName: string, nodeId: string,
   patch: { link_status?: string; trade_level?: number; route_safety?: number },
 ) {
