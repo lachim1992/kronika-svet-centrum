@@ -482,6 +482,17 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
                 />
               </Card>
 
+              {/* AI protivníci — jen v SP/manual módech (v MP řeší lobby per-hráč).
+                  Zobrazí se až po analýze (potřebujeme znát factionCount). */}
+              {!isMPMode && resolved && (
+                <AIOpponentsStep
+                  value={aiFactions}
+                  onChange={setAiFactions}
+                  count={resolved.factionCount}
+                  disabled={isBusy}
+                />
+              )}
+
               {resolved && (
                 <>
                   <Card className="p-3 sm:p-4 space-y-3">
