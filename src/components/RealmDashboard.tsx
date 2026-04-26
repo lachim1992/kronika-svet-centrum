@@ -9,6 +9,7 @@ import RealmLawsDecrees from "@/components/realm/RealmLawsDecrees";
 import { RealmHeritageBadge } from "@/components/realm/RealmHeritageBadge";
 import { HeritageEffectsPanel } from "@/components/realm/HeritageEffectsPanel";
 import { RouteStatePanel } from "@/components/realm/RouteStatePanel";
+import TurnExecutionReport from "@/components/realm/TurnExecutionReport";
 
 interface Props {
   sessionId: string;
@@ -77,6 +78,9 @@ const RealmDashboard = ({ sessionId, currentPlayerName, currentTurn, myRole, cit
           </Button>
         )}
       </div>
+
+      {/* Report posledního commit-turn (chyby AI frakcí, process-turn, fáze) */}
+      <TurnExecutionReport sessionId={sessionId} />
 
       {/* Pradávný odkaz (v9.1) */}
       <RealmHeritageBadge sessionId={sessionId} playerName={currentPlayerName} />
