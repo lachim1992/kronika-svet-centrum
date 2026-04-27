@@ -340,7 +340,7 @@ const DiplomacyPanel = ({ sessionId, players, cityStates, currentPlayerName, gam
                 <SelectContent>
                   <SelectItem value="player_player"><Users className="h-3 w-3 inline mr-1" />Hráč ↔ Hráč</SelectItem>
                   <SelectItem value="player_npc"><Building2 className="h-3 w-3 inline mr-1" />Hráč ↔ NPC</SelectItem>
-                  {isAIMode && aiFactions.length > 0 && (
+                  {isAIMode && aiPlayerNames.length > 0 && (
                     <SelectItem value="player_ai_faction"><Bot className="h-3 w-3 inline mr-1" />Hráč ↔ AI Frakce</SelectItem>
                   )}
                 </SelectContent>
@@ -351,7 +351,10 @@ const DiplomacyPanel = ({ sessionId, players, cityStates, currentPlayerName, gam
                   {createType === "player_player"
                     ? otherPlayers.map(p => <SelectItem key={p} value={p}>{p}</SelectItem>)
                     : createType === "player_ai_faction"
-                      ? aiFactions.map(f => <SelectItem key={f.id} value={f.faction_name}>{f.faction_name} ({f.personality})</SelectItem>)
+                      ? aiPlayerNames.map(name => {
+                          const f = aiFactions.find(af => af.faction_name === name);
+                          return <SelectItem key={name} value={name}>{name}{f ? ` (${f.personality})` : ""}</SelectItem>;
+                        })
                       : cityStates.map(cs => <SelectItem key={cs.id} value={cs.name}>{cs.name} ({cs.type})</SelectItem>)
                   }
                 </SelectContent>
