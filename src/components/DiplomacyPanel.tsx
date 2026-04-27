@@ -409,8 +409,10 @@ const DiplomacyPanel = ({ sessionId, players, cityStates, currentPlayerName, gam
     ? selectedRoom.participant_b : selectedRoom.participant_a;
   const isNpcRoom = selectedRoom.room_type === "player_npc";
   const isAiFactionRoom = selectedRoom.room_type === "player_ai_faction";
-  // Also detect AI faction rooms created as player_player by checking faction names
-  const isAiFactionByName = aiFactions.some(f => f.faction_name === otherParticipant);
+  // Detect AI faction rooms even if room_type is player_player by looking at
+  // ai_factions OR our derived AI player name set (covers broken bootstraps).
+  const isAiFactionByName = aiFactions.some(f => f.faction_name === otherParticipant)
+    || aiPlayerNames.includes(otherParticipant);
   const canRequestReply = isNpcRoom || isAiFactionRoom || isAiFactionByName;
 
   // Check if at war with this participant
