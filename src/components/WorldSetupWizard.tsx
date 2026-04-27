@@ -341,6 +341,18 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
         lineageIds: selectedLineages,
       });
 
+      // Diagnostika: vypiš co posíláme do bootstrapu (frakce, identita, lineages).
+      console.group("[WorldSetupWizard] → create-world-bootstrap payload");
+      console.log("playerName:", payload.playerName, "mode:", payload.mode);
+      console.log("identity (player):", payload.identity);
+      console.log("identityModifiers (player):", payload.identityModifiers);
+      console.log("lineageIds:", payload.lineageIds);
+      console.log("AI factions (count=" + (payload.factions?.length ?? 0) + "):", payload.factions);
+      (payload.factions || []).forEach((f, i) => {
+        console.log(`  #${i + 1} name="${f.name}" personality="${f.personality}" desc=`, f.description ? `"${f.description.slice(0, 80)}…"` : "(none)");
+      });
+      console.groupEnd();
+
       const tickInterval = setInterval(() => {
         setActiveStepIndex((p) => (p === undefined ? 0 : Math.min(p + 1, CANONICAL_BOOTSTRAP_STEPS.length - 1)));
       }, 800);
@@ -492,12 +504,39 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
               {/* AI protivníci — jen v SP/manual módech (v MP řeší lobby per-hráč).
                   Zobrazí se až po analýze (potřebujeme znát factionCount). */}
               {!isMPMode && resolved && (
-                <AIOpponentsStep
-                  value={aiFactions}
-                  onChange={setAiFactions}
-                  count={resolved.factionCount}
-                  disabled={isBusy}
-                />
+                <>
+                  <AIOpponentsStep
+                    value={aiFactions}
+                    onChange={setAiFactions}
+                    count={resolved.factionCount}
+                    disabled={isBusy}
+                  />
+                  {resolved.factionCount > 0 && (
+                    <Card className="p-3 sm:p-4 space-y-2 border-dashed">
+                      <h3 className="text-xs font-semibold text-muted-foreground">
+                        🔍 Náhled odesílaných AI frakcí ({resolved.factionCount})
+                      </h3>
+                      <ul className="text-[11px] space-y-1 font-mono">
+                        {Array.from({ length: resolved.factionCount }).map((_, i) => {
+                          const c = aiFactions[i] || {};
+                          const name = (c.name && c.name.trim()) || `AI Frakce ${i + 1}`;
+                          const personality = c.personality || "(auto)";
+                          const desc = (c.description && c.description.trim()) || "(žádný flavor)";
+                          return (
+                            <li key={i} className="border-l-2 border-primary/40 pl-2">
+                              <div><span className="text-muted-foreground">name:</span> <b>{name}</b></div>
+                              <div><span className="text-muted-foreground">personality:</span> {personality}</div>
+                              <div className="truncate"><span className="text-muted-foreground">flavor:</span> {desc}</div>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                      <p className="text-[10px] text-muted-foreground">
+                        Server pro každou AI frakci spustí extrakci identity (unikátní jednotky, modifikátory, stavby) — vidět v logu edge funkce <code>extract-civ-identity</code>.
+                      </p>
+                    </Card>
+                  )}
+                </>
               )}
 
               {resolved && (
