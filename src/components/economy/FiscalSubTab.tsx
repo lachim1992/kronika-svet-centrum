@@ -28,13 +28,17 @@ const FiscalSubTab = ({ realm, sessionId, playerName, onRefetch }: Props) => {
   const tariff_base = idData.tariffBase;
   const domestic_retention_bonus = ideology === "crown_mercantile" ? 0.15 : ideology === "guild_chartered" ? 0.10 : ideology === "palace_commanded" ? 0.20 : 0;
 
+  // 4-pillar wealth model — must mirror process-turn/index.ts.
+  // Pillar 2 (Domestic Market) was historically hidden in the UI, causing
+  // the "Příjmy státu" total to under-report by 50–80 %. Now exposed.
   const revenueLines = [
-    { icon: "👥", label: "Populační daň", value: fi.popTax, desc: "Flat odvod z populace a městské vrstvy" },
-    { icon: "🏪", label: "Tržní daň", value: fi.marketTax, desc: "Daň z domácího tržního obratu" },
-    { icon: "🚚", label: "Tranzitní daň", value: fi.transitTax, desc: "Daň z průchodu zboží přes vaše území" },
-    { icon: "⛏️", label: "Extrakční daň", value: fi.extractionTax, desc: "Daň z těžby a prvovýroby" },
+    { icon: "👥", label: "Populační daň", value: fi.popTax, desc: "Pilíř 1: Flat odvod z populace a městské vrstvy" },
+    { icon: "🏛️", label: "Domácí trh", value: fi.domesticMarket, desc: "Pilíř 2: Tržní mechanismus z domácí spotřeby a podílu na vlastním trhu" },
+    { icon: "🏪", label: "Tržní daň", value: fi.marketTax, desc: "Součást pilíře 3: Daň z domácího tržního obratu (zahrnuto v Goods Fiscal)" },
+    { icon: "🚚", label: "Tranzitní daň", value: fi.transitTax, desc: "Součást pilíře 3: Daň z průchodu zboží (zahrnuto v Goods Fiscal)" },
+    { icon: "⛏️", label: "Extrakční daň", value: fi.extractionTax, desc: "Součást pilíře 3: Daň z těžby (zahrnuto v Goods Fiscal)" },
     { icon: "🎯", label: "Export capture", value: fi.exportCapture, desc: "Státní podíl z realizovaného exportu" },
-    { icon: "🛤️", label: "Koridorové mýto", value: fi.corridorTolls, desc: "Příjem z kontrolovaných obchodních tras a koridorů" },
+    { icon: "🛤️", label: "Koridorové mýto", value: fi.corridorTolls, desc: "Pilíř 4: Příjem z kontrolovaných obchodních tras" },
   ];
 
   const maxRevenue = Math.max(...revenueLines.map(r => r.value), 1);
