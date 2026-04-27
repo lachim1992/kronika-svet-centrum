@@ -181,6 +181,13 @@ const TradePanel = ({ sessionId, currentPlayerName, currentTurn, myCities, allCi
     });
 
     toast.success("✅ Obchodní dohoda uzavřena!");
+    // Propagate the new route to flows / wealth immediately so the player sees
+    // the impact in HUD and economy panel without waiting for next turn.
+    try {
+      await supabase.functions.invoke("refresh-economy", { body: { session_id: sessionId } });
+    } catch (e) {
+      console.warn("refresh-economy after trade accept failed:", e);
+    }
     setSaving(false);
     onRefetch?.();
     fetchData();

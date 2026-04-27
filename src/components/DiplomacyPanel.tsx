@@ -69,11 +69,20 @@ const DiplomacyPanel = ({ sessionId, players, cityStates, currentPlayerName, gam
   const [createTarget, setCreateTarget] = useState("");
   const [loadingNpc, setLoadingNpc] = useState(false);
   const [aiFactions, setAiFactions] = useState<AIFaction[]>([]);
+  const [aiPlayerNames, setAiPlayerNames] = useState<string[]>([]);
   const [activeWars, setActiveWars] = useState<any[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const isAIMode = gameMode === "tb_single_ai";
-  const otherPlayers = players.filter(p => p.player_name !== currentPlayerName).map(p => p.player_name);
+  // Anyone in the session who is not me AND not a real human is a candidate AI partner.
+  const humanPlayerNameSet = new Set(
+    (players || [])
+      .filter((p: any) => p.user_id) // human seats have user_id
+      .map(p => p.player_name),
+  );
+  const otherPlayers = players
+    .filter(p => p.player_name !== currentPlayerName && p.user_id)
+    .map(p => p.player_name);
 
   // Fetch rooms + AI factions + active wars
   useEffect(() => {
@@ -88,6 +97,24 @@ const DiplomacyPanel = ({ sessionId, players, cityStates, currentPlayerName, gam
       .eq("session_id", sessionId)
       .eq("is_active", true);
     if (data) setAiFactions(data);
+
+    // Fallback: derive AI player names from civilizations.is_ai or
+    // game_players seats without user_id. Keeps the AI diplomacy UI alive
+    // even when ai_factions row is missing.
+    const [aiCivsRes, gpRes] = await Promise.all([
+      supabase.from("civilizations").select("player_name, is_ai").eq("session_id", sessionId).eq("is_ai", true),
+      supabase.from("game_players").select("player_name, user_id").eq("session_id", sessionId),
+    ]);
+    const names = new Set<string>();
+    for (const f of (data || [])) names.add(f.faction_name);
+    for (const c of (aiCivsRes.data || [])) if (c.player_name) names.add(c.player_name);
+    for (const g of (gpRes.data || [])) {
+      if (!g.user_id && g.player_name && g.player_name !== currentPlayerName && !humanPlayerNameSet.has(g.player_name)) {
+        names.add(g.player_name);
+      }
+    }
+    names.delete(currentPlayerName);
+    setAiPlayerNames(Array.from(names));
   };
 
   const fetchActiveWars = async () => {
@@ -197,7 +224,8 @@ const DiplomacyPanel = ({ sessionId, players, cityStates, currentPlayerName, gam
       const factionName = selectedRoom.participant_a === currentPlayerName
         ? selectedRoom.participant_b : selectedRoom.participant_a;
       const isAiFactionRoom = selectedRoom.room_type === "player_ai_faction"
-        || aiFactions.some(f => f.faction_name === factionName);
+        || aiFactions.some(f => f.faction_name === factionName)
+        || aiPlayerNames.includes(factionName);
 
       if (isAiFactionRoom) {
         // AI faction diplomacy reply
@@ -313,7 +341,7 @@ const DiplomacyPanel = ({ sessionId, players, cityStates, currentPlayerName, gam
                 <SelectContent>
                   <SelectItem value="player_player"><Users className="h-3 w-3 inline mr-1" />Hráč ↔ Hráč</SelectItem>
                   <SelectItem value="player_npc"><Building2 className="h-3 w-3 inline mr-1" />Hráč ↔ NPC</SelectItem>
-                  {isAIMode && aiFactions.length > 0 && (
+                  {isAIMode && aiPlayerNames.length > 0 && (
                     <SelectItem value="player_ai_faction"><Bot className="h-3 w-3 inline mr-1" />Hráč ↔ AI Frakce</SelectItem>
                   )}
                 </SelectContent>
@@ -324,7 +352,10 @@ const DiplomacyPanel = ({ sessionId, players, cityStates, currentPlayerName, gam
                   {createType === "player_player"
                     ? otherPlayers.map(p => <SelectItem key={p} value={p}>{p}</SelectItem>)
                     : createType === "player_ai_faction"
-                      ? aiFactions.map(f => <SelectItem key={f.id} value={f.faction_name}>{f.faction_name} ({f.personality})</SelectItem>)
+                      ? aiPlayerNames.map(name => {
+                          const f = aiFactions.find(af => af.faction_name === name);
+                          return <SelectItem key={name} value={name}>{name}{f ? ` (${f.personality})` : ""}</SelectItem>;
+                        })
                       : cityStates.map(cs => <SelectItem key={cs.id} value={cs.name}>{cs.name} ({cs.type})</SelectItem>)
                   }
                 </SelectContent>
@@ -379,8 +410,10 @@ const DiplomacyPanel = ({ sessionId, players, cityStates, currentPlayerName, gam
     ? selectedRoom.participant_b : selectedRoom.participant_a;
   const isNpcRoom = selectedRoom.room_type === "player_npc";
   const isAiFactionRoom = selectedRoom.room_type === "player_ai_faction";
-  // Also detect AI faction rooms created as player_player by checking faction names
-  const isAiFactionByName = aiFactions.some(f => f.faction_name === otherParticipant);
+  // Detect AI faction rooms even if room_type is player_player by looking at
+  // ai_factions OR our derived AI player name set (covers broken bootstraps).
+  const isAiFactionByName = aiFactions.some(f => f.faction_name === otherParticipant)
+    || aiPlayerNames.includes(otherParticipant);
   const canRequestReply = isNpcRoom || isAiFactionRoom || isAiFactionByName;
 
   // Check if at war with this participant

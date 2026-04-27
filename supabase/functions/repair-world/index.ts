@@ -162,62 +162,104 @@ Deno.serve(async (req) => {
     }
 
     // ═══ 5. AI Factions ═══
+    // Backfill ai_factions from any source we can find: existing AI civs,
+    // OR game_players rows that have no user_id (= AI seats).
     const existingAI = aiFactions || [];
-    if (existingAI.length === 0) {
-      const targetAICount = Math.max(2, humanCivs.length);
-      if (aiCivs.length > 0) {
-        push(`Creating ai_factions entries for ${aiCivs.length} existing AI civs...`);
-        for (const aiCiv of aiCivs) {
-          const disposition: Record<string, number> = {};
-          for (const hc of humanCivs) disposition[hc.player_name] = 0;
-          await sb.from("ai_factions").insert({
-            session_id: sessionId, faction_name: aiCiv.civ_name,
-            personality: aiCiv.ai_personality || "diplomatic",
-            disposition, goals: ["Přežití", "Obchod"], is_active: true,
-          });
-          push(`  → AI faction from civ: ${aiCiv.civ_name}`);
-        }
-      } else {
-        push(`Creating ${targetAICount} AI factions from scratch...`);
-        const aiNames = ["Stínová Liga", "Severní Klan", "Pouštní Nomádi", "Železná Gilda", "Mlžný Řád"];
-        const personalities = ["aggressive", "diplomatic", "mercantile", "isolationist", "expansionist"];
-        for (let i = 0; i < targetAICount && i < aiNames.length; i++) {
-          const disposition: Record<string, number> = {};
-          for (const hc of humanCivs) disposition[hc.player_name] = 0;
+    const existingAINames = new Set(existingAI.map((a: any) => a.faction_name));
 
-          await sb.from("civilizations").insert({
-            session_id: sessionId, player_name: aiNames[i],
-            civ_name: aiNames[i], is_ai: true,
-            ai_personality: personalities[i],
-          });
+    const { data: gamePlayers } = await sb.from("game_players")
+      .select("player_name, user_id").eq("session_id", sessionId);
+    const humanNames = new Set(humanCivs.map((c: any) => c.player_name));
+    const aiSeats = (gamePlayers || []).filter((gp: any) =>
+      !gp.user_id && !humanNames.has(gp.player_name) && !existingAINames.has(gp.player_name),
+    );
 
-          await sb.from("ai_factions").insert({
-            session_id: sessionId, faction_name: aiNames[i],
-            personality: personalities[i],
-            disposition, goals: ["Přežití", "Expanze"], is_active: true,
-          });
+    const personalitiesPool = ["aggressive", "diplomatic", "mercantile", "isolationist", "expansionist"];
 
-          for (const rt of ["food", "wood", "stone", "iron", "wealth"]) {
-            await sb.from("player_resources").insert({
-              session_id: sessionId, player_name: aiNames[i], resource_type: rt,
-              income: rt === "food" ? 6 : rt === "wood" ? 4 : rt === "stone" ? 3 : rt === "iron" ? 2 : 3,
-              upkeep: rt === "food" ? 3 : rt === "wood" ? 1 : rt === "wealth" ? 1 : 0,
-              stockpile: rt === "food" ? 20 : rt === "wood" ? 10 : rt === "stone" ? 5 : rt === "iron" ? 3 : 10,
-            });
-          }
+    // (a) From existing AI civilizations
+    for (const aiCiv of aiCivs) {
+      if (existingAINames.has(aiCiv.civ_name) || existingAINames.has(aiCiv.player_name)) continue;
+      const disposition: Record<string, number> = {};
+      for (const hc of humanCivs) disposition[hc.player_name] = 0;
+      await sb.from("ai_factions").insert({
+        session_id: sessionId,
+        faction_name: aiCiv.player_name || aiCiv.civ_name,
+        personality: aiCiv.ai_personality || "diplomatic",
+        disposition, goals: ["Přežití", "Růst"], is_active: true,
+      });
+      existingAINames.add(aiCiv.player_name || aiCiv.civ_name);
+      push(`  → AI faction from civ: ${aiCiv.player_name || aiCiv.civ_name}`);
+    }
 
-          await sb.from("realm_resources").insert({
-            session_id: sessionId, player_name: aiNames[i],
-            grain_reserve: 20, wood_reserve: 0, stone_reserve: 0, iron_reserve: 0,
-            production_reserve: 50,
-            gold_reserve: 100, stability: 70, granary_capacity: 500, mobilization_rate: 0.1,
-          });
-
-          push(`  → Created AI: ${aiNames[i]} (${personalities[i]})`);
-        }
+    // (b) From orphan AI seats in game_players
+    for (let i = 0; i < aiSeats.length; i++) {
+      const seat = aiSeats[i];
+      const personality = personalitiesPool[i % personalitiesPool.length];
+      const disposition: Record<string, number> = {};
+      for (const hc of humanCivs) disposition[hc.player_name] = 0;
+      await sb.from("ai_factions").insert({
+        session_id: sessionId,
+        faction_name: seat.player_name,
+        personality,
+        disposition, goals: ["Přežití", "Růst"], is_active: true,
+      });
+      // Ensure civilization row exists too so chronicle/AI pipelines find it.
+      const hasCiv = (civs || []).some((c: any) => c.player_name === seat.player_name);
+      if (!hasCiv) {
+        await sb.from("civilizations").insert({
+          session_id: sessionId, player_name: seat.player_name,
+          civ_name: seat.player_name, is_ai: true, ai_personality: personality,
+        });
       }
+      push(`  → AI faction from game_players seat: ${seat.player_name} (${personality})`);
+    }
+
+    if (existingAI.length === 0 && aiCivs.length === 0 && aiSeats.length === 0) {
+      push(`No AI civs and no orphan AI seats — skipping ai_factions creation.`);
+    }
+
+    // ═══ 6. Trigger narrative backfill (chronicle_zero, persons, wonders, wiki) ═══
+    // This is best-effort and runs detached so the repair endpoint stays fast.
+    const { data: foundationData } = await sb.from("world_foundations").select("*").eq("session_id", sessionId).maybeSingle();
+    const { data: chronZero } = await sb.from("chronicle_entries").select("id")
+      .eq("session_id", sessionId).eq("source_type", "chronicle_zero").limit(1);
+    const { data: gp } = await sb.from("great_persons").select("id").eq("session_id", sessionId).limit(1);
+    const { data: wn } = await sb.from("wonders").select("id").eq("session_id", sessionId).limit(1);
+    const needsNarrative = (chronZero || []).length === 0 || (gp || []).length === 0 || (wn || []).length === 0;
+    if (needsNarrative && foundationData) {
+      const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+      const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+      const hostPlayer = humanCivs[0]?.player_name || (gamePlayers || [])[0]?.player_name;
+      const narrativeWork = (async () => {
+        try {
+          const r = await fetch(`${supabaseUrl}/functions/v1/world-generate-init`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${serviceKey}` },
+            body: JSON.stringify({
+              sessionId,
+              playerName: hostPlayer,
+              worldName: foundationData.world_name,
+              premise: foundationData.premise,
+              tone: foundationData.tone,
+              victoryStyle: foundationData.victory_style,
+              worldSize: "medium",
+              skipPhysicalWorld: true,
+            }),
+          });
+          console.log(`[repair-world] world-generate-init returned ${r.status}`);
+        } catch (e) {
+          console.warn("[repair-world] world-generate-init failed:", e);
+        }
+      })();
+      try {
+        // @ts-ignore EdgeRuntime is available in Supabase Edge Functions
+        if (typeof (globalThis as any).EdgeRuntime !== "undefined" && (globalThis as any).EdgeRuntime.waitUntil) {
+          (globalThis as any).EdgeRuntime.waitUntil(narrativeWork);
+        }
+      } catch (_e) {/* ignore */}
+      push(`Dispatched world-generate-init for narrative backfill (chronicle_zero/persons/wonders).`);
     } else {
-      push(`AI factions exist: ${existingAI.length}`);
+      push(`Narrative content already present — skipping world-generate-init.`);
     }
 
     push(`Repair complete.`);
