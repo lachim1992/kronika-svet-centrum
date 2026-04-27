@@ -511,41 +511,54 @@ Deno.serve(async (req) => {
     }
 
     // Step 7d: detached AI narrative (persons, wonders, chronicle, wiki images)
-    // Runs in background; world is already playable without it.
+    // Runs in background via EdgeRuntime.waitUntil to ensure it survives the
+    // function's HTTP response. Without waitUntil the fetch is killed when the
+    // edge function returns, which is exactly why narrative bootstrap silently
+    // never runs on some sessions.
     if (normalized.mode === "tb_single_ai") {
+      const narrativePayload = {
+        sessionId: normalized.sessionId,
+        playerName: normalized.playerName,
+        worldName: normalized.world.name,
+        premise: normalized.world.premise,
+        tone: normalized.world.tone,
+        victoryStyle: normalized.world.victoryStyle,
+        worldSize: normalized.world.size,
+        settlementName: normalized.identity?.settlementName,
+        cultureName: normalized.identity?.cultureName,
+        languageName: normalized.identity?.languageName,
+        realmName: normalized.identity?.realmName,
+        rulerName: normalized.identity?.rulerName,
+        rulerTitle: normalized.identity?.rulerTitle,
+        rulerArchetype: normalized.identity?.rulerArchetype,
+        rulerBio: normalized.identity?.rulerBio,
+        foundingLegend: normalized.identity?.foundingLegend,
+        governmentForm: normalized.identity?.governmentForm,
+        dominantFaith: normalized.identity?.dominantFaith,
+        secretObjectiveArchetype: normalized.identity?.secretObjectiveArchetype,
+        factionConfigs: normalized.factions,
+        terrainParams: normalized.resolvedTerrain,
+        skipPhysicalWorld: true,
+      };
+      const narrativeWork = (async () => {
+        try {
+          const r = await fetch(`${SUPABASE_URL}/functions/v1/world-generate-init`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}` },
+            body: JSON.stringify(narrativePayload),
+          });
+          console.log(`[create-world-bootstrap] world-generate-init returned ${r.status}`);
+        } catch (e) {
+          console.warn("world-generate-init detached:", e);
+        }
+      })();
       try {
-        fetch(`${SUPABASE_URL}/functions/v1/world-generate-init`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}` },
-          body: JSON.stringify({
-            sessionId: normalized.sessionId,
-            playerName: normalized.playerName,
-            worldName: normalized.world.name,
-            premise: normalized.world.premise,
-            tone: normalized.world.tone,
-            victoryStyle: normalized.world.victoryStyle,
-            worldSize: normalized.world.size,
-            settlementName: normalized.identity?.settlementName,
-            cultureName: normalized.identity?.cultureName,
-            languageName: normalized.identity?.languageName,
-            realmName: normalized.identity?.realmName,
-            rulerName: normalized.identity?.rulerName,
-            rulerTitle: normalized.identity?.rulerTitle,
-            rulerArchetype: normalized.identity?.rulerArchetype,
-            rulerBio: normalized.identity?.rulerBio,
-            foundingLegend: normalized.identity?.foundingLegend,
-            governmentForm: normalized.identity?.governmentForm,
-            dominantFaith: normalized.identity?.dominantFaith,
-            secretObjectiveArchetype: normalized.identity?.secretObjectiveArchetype,
-            factionConfigs: normalized.factions,
-            terrainParams: normalized.resolvedTerrain,
-            skipPhysicalWorld: true,
-          }),
-        }).catch((e) => console.warn("world-generate-init detached:", e));
-        steps.push({ step: "narrative-dispatch", ok: true, durationMs: 0, detail: "detached" });
-      } catch (e) {
-        warnings.push(`narrative dispatch: ${e instanceof Error ? e.message : String(e)}`);
-      }
+        // @ts-ignore EdgeRuntime is available in Supabase Edge Functions
+        if (typeof (globalThis as any).EdgeRuntime !== "undefined" && (globalThis as any).EdgeRuntime.waitUntil) {
+          (globalThis as any).EdgeRuntime.waitUntil(narrativeWork);
+        }
+      } catch (_e) { /* fall back to fire-and-forget */ }
+      steps.push({ step: "narrative-dispatch", ok: true, durationMs: 0, detail: "waitUntil" });
     }
 
     // ── Step 8: finalize ──────────────────────────────────────────────────
