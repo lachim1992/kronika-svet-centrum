@@ -69,11 +69,20 @@ const DiplomacyPanel = ({ sessionId, players, cityStates, currentPlayerName, gam
   const [createTarget, setCreateTarget] = useState("");
   const [loadingNpc, setLoadingNpc] = useState(false);
   const [aiFactions, setAiFactions] = useState<AIFaction[]>([]);
+  const [aiPlayerNames, setAiPlayerNames] = useState<string[]>([]);
   const [activeWars, setActiveWars] = useState<any[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const isAIMode = gameMode === "tb_single_ai";
-  const otherPlayers = players.filter(p => p.player_name !== currentPlayerName).map(p => p.player_name);
+  // Anyone in the session who is not me AND not a real human is a candidate AI partner.
+  const humanPlayerNameSet = new Set(
+    (players || [])
+      .filter((p: any) => p.user_id) // human seats have user_id
+      .map(p => p.player_name),
+  );
+  const otherPlayers = players
+    .filter(p => p.player_name !== currentPlayerName && p.user_id)
+    .map(p => p.player_name);
 
   // Fetch rooms + AI factions + active wars
   useEffect(() => {
@@ -88,6 +97,24 @@ const DiplomacyPanel = ({ sessionId, players, cityStates, currentPlayerName, gam
       .eq("session_id", sessionId)
       .eq("is_active", true);
     if (data) setAiFactions(data);
+
+    // Fallback: derive AI player names from civilizations.is_ai or
+    // game_players seats without user_id. Keeps the AI diplomacy UI alive
+    // even when ai_factions row is missing.
+    const [aiCivsRes, gpRes] = await Promise.all([
+      supabase.from("civilizations").select("player_name, is_ai").eq("session_id", sessionId).eq("is_ai", true),
+      supabase.from("game_players").select("player_name, user_id").eq("session_id", sessionId),
+    ]);
+    const names = new Set<string>();
+    for (const f of (data || [])) names.add(f.faction_name);
+    for (const c of (aiCivsRes.data || [])) if (c.player_name) names.add(c.player_name);
+    for (const g of (gpRes.data || [])) {
+      if (!g.user_id && g.player_name && g.player_name !== currentPlayerName && !humanPlayerNameSet.has(g.player_name)) {
+        names.add(g.player_name);
+      }
+    }
+    names.delete(currentPlayerName);
+    setAiPlayerNames(Array.from(names));
   };
 
   const fetchActiveWars = async () => {
