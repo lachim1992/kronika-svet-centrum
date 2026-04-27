@@ -224,7 +224,8 @@ const DiplomacyPanel = ({ sessionId, players, cityStates, currentPlayerName, gam
       const factionName = selectedRoom.participant_a === currentPlayerName
         ? selectedRoom.participant_b : selectedRoom.participant_a;
       const isAiFactionRoom = selectedRoom.room_type === "player_ai_faction"
-        || aiFactions.some(f => f.faction_name === factionName);
+        || aiFactions.some(f => f.faction_name === factionName)
+        || aiPlayerNames.includes(factionName);
 
       if (isAiFactionRoom) {
         // AI faction diplomacy reply
