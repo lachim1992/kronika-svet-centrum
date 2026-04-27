@@ -341,6 +341,18 @@ const WorldSetupWizard = ({ userId, defaultPlayerName, onCreated, onCancel }: Pr
         lineageIds: selectedLineages,
       });
 
+      // Diagnostika: vypiš co posíláme do bootstrapu (frakce, identita, lineages).
+      console.group("[WorldSetupWizard] → create-world-bootstrap payload");
+      console.log("playerName:", payload.playerName, "mode:", payload.mode);
+      console.log("identity (player):", payload.identity);
+      console.log("identityModifiers (player):", payload.identityModifiers);
+      console.log("lineageIds:", payload.lineageIds);
+      console.log("AI factions (count=" + (payload.factions?.length ?? 0) + "):", payload.factions);
+      (payload.factions || []).forEach((f, i) => {
+        console.log(`  #${i + 1} name="${f.name}" personality="${f.personality}" desc=`, f.description ? `"${f.description.slice(0, 80)}…"` : "(none)");
+      });
+      console.groupEnd();
+
       const tickInterval = setInterval(() => {
         setActiveStepIndex((p) => (p === undefined ? 0 : Math.min(p + 1, CANONICAL_BOOTSTRAP_STEPS.length - 1)));
       }, 800);
