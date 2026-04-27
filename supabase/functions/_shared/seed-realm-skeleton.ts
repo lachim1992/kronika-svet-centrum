@@ -323,10 +323,31 @@ export async function seedRealmSkeleton(input: SeedRealmInput): Promise<SeedReal
         });
       }
 
+      // CANONICAL: register AI in ai_factions immediately. Without this row the
+      // AI is invisible to commit-turn, diplomacy-reply, council and UI. This
+      // must NEVER depend on the detached narrative bootstrap.
+      const aiFaction = factions[idx - 1]; // idx 0 = player, idx 1+ = factions[0+]
+      try {
+        const { data: existingAI } = await sb.from("ai_factions")
+          .select("id").eq("session_id", sessionId).eq("faction_name", p.factionName).maybeSingle();
+        if (!existingAI) {
+          const dispositionInit: Record<string, number> = { [playerName]: 0 };
+          await sb.from("ai_factions").insert({
+            session_id: sessionId,
+            faction_name: p.factionName,
+            personality: p.personality || aiFaction?.personality || "diplomatic",
+            disposition: dispositionInit,
+            goals: ["Přežití", "Růst"],
+            is_active: true,
+          });
+        }
+      } catch (e) {
+        console.warn(`[seed-realm-skeleton] ai_factions insert failed for ${p.factionName}:`, e);
+      }
+
       // Persist AI faction identity (name, personality, narrative flavor) to
       // civilizations table so AI faction-turn pipelines and chronicle
       // generators can read consistent flavor data.
-      const aiFaction = factions[idx - 1]; // idx 0 = player, idx 1+ = factions[0+]
       try {
         await sb.from("civilizations").upsert({
           session_id: sessionId,
