@@ -87,7 +87,7 @@ const FiscalSubTab = ({ realm, sessionId, playerName, onRefetch }: Props) => {
           </CardTitle>
         </CardHeader>
         <CardContent className="p-4 pt-1 space-y-3">
-          {revenueLines.map(r => (
+          {pillars.map(r => (
             <div key={r.label} className="space-y-1">
               <div className="flex items-center justify-between text-xs">
                 <span className="font-semibold flex items-center gap-1">
@@ -100,19 +100,39 @@ const FiscalSubTab = ({ realm, sessionId, playerName, onRefetch }: Props) => {
             </div>
           ))}
 
-          {/* Fiscal structure summary */}
-          <div className="pt-2 border-t border-border/30 grid grid-cols-3 gap-2 text-[10px] text-muted-foreground">
+          {/* Goods Fiscal breakdown — informational only, already counted in pillar 3 */}
+          {fi.goodsFiscal > 0 && (
+            <div className="pt-2 mt-2 border-t border-border/30 space-y-1">
+              <div className="text-[10px] uppercase tracking-wider text-muted-foreground flex items-center gap-1">
+                Rozklad pilíře „Daně ze zboží"
+                <InfoTip side="right">Tyto čtyři položky jsou již zahrnuty v pilíři Daně ze zboží — nesčítají se znovu.</InfoTip>
+              </div>
+              {goodsBreakdown.map(g => (
+                <div key={g.label} className="flex justify-between text-[11px] text-muted-foreground pl-3">
+                  <span>{g.icon} {g.label}</span>
+                  <span className="font-mono">{g.value.toFixed(1)}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Pillar summary footer */}
+          <div className="pt-2 border-t border-border/30 grid grid-cols-4 gap-2 text-[10px] text-muted-foreground">
             <div className="text-center">
               <div className="font-semibold text-foreground">{fi.popTax.toFixed(1)}</div>
               <div>Populace</div>
             </div>
             <div className="text-center">
-              <div className="font-semibold text-foreground">{fi.tradeTaxes.toFixed(1)}</div>
-              <div>Obchodní daně</div>
+              <div className="font-semibold text-foreground">{fi.domesticMarket.toFixed(1)}</div>
+              <div>Domácí trh</div>
             </div>
             <div className="text-center">
-              <div className="font-semibold text-foreground">{fi.externalTradeIncome.toFixed(1)}</div>
-              <div>Vnější obchod</div>
+              <div className="font-semibold text-foreground">{fi.goodsFiscal.toFixed(1)}</div>
+              <div>Goods fiscal</div>
+            </div>
+            <div className="text-center">
+              <div className="font-semibold text-foreground">{fi.corridorTolls.toFixed(1)}</div>
+              <div>Trasy</div>
             </div>
           </div>
         </CardContent>
