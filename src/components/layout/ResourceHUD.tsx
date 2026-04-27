@@ -136,7 +136,7 @@ const ResourceHUD = ({ sessionId, playerName, cities, currentTurn, realm: realmP
       icon: <span className="text-xs">{MACRO_LAYER_ICONS.wealth}</span>,
       label: "Bohatství",
       value: `${Math.round(wealthReserve)} (${fi.netChange >= 0 ? "+" : ""}${fi.netChange.toFixed(0)}/k)`,
-      derivation: `Příjmy: +${fi.totalIncome.toFixed(1)}/kolo (pop: ${fi.popTax.toFixed(1)}, daně: ${fi.tradeTaxes.toFixed(1)}, trasy: ${fi.externalTradeIncome.toFixed(1)})\nVýdaje: -${fi.totalExpenses.toFixed(1)}/kolo\nČistě: ${fi.netChange >= 0 ? "+" : ""}${fi.netChange.toFixed(1)}/kolo`,
+      derivation: `Příjmy: +${fi.totalIncome.toFixed(1)}/kolo\n  • Populační daň: ${fi.popTax.toFixed(1)}\n  • Domácí trh: ${fi.domesticMarket.toFixed(1)}\n  • Daně ze zboží: ${fi.goodsFiscal.toFixed(1)}\n  • Koridorové mýto: ${fi.corridorTolls.toFixed(1)}\nVýdaje: -${fi.totalExpenses.toFixed(1)}/kolo\nČistě: ${fi.netChange >= 0 ? "+" : ""}${fi.netChange.toFixed(1)}/kolo`,
     },
     {
       icon: <span className="text-xs">🌾</span>,

@@ -440,21 +440,38 @@ export function getMarketPosition(realm: any) {
   };
 }
 
-/** FISCAL — actual treasury intake */
+/**
+ * FISCAL — actual treasury intake per turn.
+ *
+ * SSOT contract: this MUST mirror the 4-pillar wealth model in
+ * `process-turn/index.ts` (lines ~700–760). Engine adds to gold_reserve:
+ *   wealthIncome = wealth_pop_tax + wealth_domestic_market
+ *                + goods_wealth_fiscal + wealth_route_commerce
+ *
+ * `tax_market`, `tax_transit`, `tax_extraction`, `commercial_capture` are
+ * the COMPONENTS that get summed into `goods_wealth_fiscal` upstream by
+ * `compute-trade-flows`. They are exposed here for breakdown display only —
+ * never added separately to totalIncome (that would double-count).
+ */
 export function getFiscalIncome(realm: any) {
+  // 4 canonical pillars (mirror process-turn)
   const popTax = Number(realm?.wealth_pop_tax ?? 0);
+  const domesticMarket = Number(realm?.wealth_domestic_market ?? 0);
+  const goodsFiscal = Number(realm?.goods_wealth_fiscal ?? 0);
+  const routeCommerce = Number(realm?.wealth_route_commerce ?? 0);
+
+  // Breakdown of goodsFiscal (display only — already inside goodsFiscal)
   const marketTax = Number(realm?.tax_market ?? 0);
   const transitTax = Number(realm?.tax_transit ?? 0);
   const extractionTax = Number(realm?.tax_extraction ?? 0);
   const exportCapture = Number(realm?.commercial_capture ?? 0);
-  const corridorTolls = Number(realm?.wealth_route_commerce ?? 0);
-
-  // Derived aggregate — legacy compat only, NOT a separate income line
-  const goodsFiscalAggregate = Number(realm?.goods_wealth_fiscal ?? 0);
+  const corridorTolls = routeCommerce; // alias for legacy call sites
 
   const tradeTaxes = marketTax + transitTax + extractionTax;
-  const externalTradeIncome = exportCapture + corridorTolls;
-  const totalIncome = popTax + tradeTaxes + externalTradeIncome;
+  const externalTradeIncome = exportCapture + routeCommerce;
+
+  // SSOT total — must equal what process-turn adds to gold_reserve
+  const totalIncome = popTax + domesticMarket + goodsFiscal + routeCommerce;
 
   const wb = realm?.computed_modifiers?.wealth_breakdown || {};
   const armyUpkeep = Number(wb.army_upkeep ?? 0);
@@ -463,9 +480,16 @@ export function getFiscalIncome(realm: any) {
   const totalExpenses = armyUpkeep + tolls + sportFunding;
 
   return {
-    popTax, marketTax, transitTax, extractionTax, exportCapture,
-    corridorTolls, goodsFiscalAggregate, totalIncome,
+    popTax,
+    domesticMarket,
+    goodsFiscal,
+    routeCommerce,
+    // Legacy/breakdown fields preserved for callers
+    marketTax, transitTax, extractionTax, exportCapture,
+    corridorTolls,
+    goodsFiscalAggregate: goodsFiscal,
     tradeTaxes, externalTradeIncome,
+    totalIncome,
     armyUpkeep, tolls, sportFunding, totalExpenses,
     netChange: totalIncome - totalExpenses,
   };

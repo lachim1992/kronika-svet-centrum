@@ -28,16 +28,25 @@ const FiscalSubTab = ({ realm, sessionId, playerName, onRefetch }: Props) => {
   const tariff_base = idData.tariffBase;
   const domestic_retention_bonus = ideology === "crown_mercantile" ? 0.15 : ideology === "guild_chartered" ? 0.10 : ideology === "palace_commanded" ? 0.20 : 0;
 
-  const revenueLines = [
-    { icon: "👥", label: "Populační daň", value: fi.popTax, desc: "Flat odvod z populace a městské vrstvy" },
-    { icon: "🏪", label: "Tržní daň", value: fi.marketTax, desc: "Daň z domácího tržního obratu" },
-    { icon: "🚚", label: "Tranzitní daň", value: fi.transitTax, desc: "Daň z průchodu zboží přes vaše území" },
-    { icon: "⛏️", label: "Extrakční daň", value: fi.extractionTax, desc: "Daň z těžby a prvovýroby" },
-    { icon: "🎯", label: "Export capture", value: fi.exportCapture, desc: "Státní podíl z realizovaného exportu" },
-    { icon: "🛤️", label: "Koridorové mýto", value: fi.corridorTolls, desc: "Příjem z kontrolovaných obchodních tras a koridorů" },
+  // 4-pillar wealth model — MUST mirror process-turn/index.ts.
+  // The engine adds: gold_reserve += popTax + domesticMarket + goodsFiscal + routeCommerce
+  // Each pillar is shown once; goodsFiscal sub-components are exposed as a breakdown
+  // (informational only) so they don't double-count toward the total.
+  const pillars = [
+    { icon: "👥", label: "Populační daň", value: fi.popTax,         desc: "Pilíř 1: Flat odvod z populace a městské vrstvy." },
+    { icon: "🏛️", label: "Domácí trh",    value: fi.domesticMarket, desc: "Pilíř 2: Tržní mechanismus z domácí spotřeby (domestic_component × 0,4 + market_share × 0,6)." },
+    { icon: "📦", label: "Daně ze zboží", value: fi.goodsFiscal,    desc: "Pilíř 3: Souhrn daní z obchodu — tržní + tranzitní + extrakční + export capture." },
+    { icon: "🛤️", label: "Koridorové mýto", value: fi.corridorTolls, desc: "Pilíř 4: Příjem z kontrolovaných obchodních tras (capacity × economic relevance × control)." },
   ];
 
-  const maxRevenue = Math.max(...revenueLines.map(r => r.value), 1);
+  const goodsBreakdown = [
+    { icon: "🏪", label: "Tržní daň",    value: fi.marketTax },
+    { icon: "🚚", label: "Tranzitní daň", value: fi.transitTax },
+    { icon: "⛏️", label: "Extrakční daň", value: fi.extractionTax },
+    { icon: "🎯", label: "Export capture", value: fi.exportCapture },
+  ];
+
+  const maxRevenue = Math.max(...pillars.map(r => r.value), 1);
 
   const handleIdeologySwitch = async (newIdeology: string) => {
     if (!sessionId || !playerName || newIdeology === ideology) return;
@@ -78,7 +87,7 @@ const FiscalSubTab = ({ realm, sessionId, playerName, onRefetch }: Props) => {
           </CardTitle>
         </CardHeader>
         <CardContent className="p-4 pt-1 space-y-3">
-          {revenueLines.map(r => (
+          {pillars.map(r => (
             <div key={r.label} className="space-y-1">
               <div className="flex items-center justify-between text-xs">
                 <span className="font-semibold flex items-center gap-1">
@@ -91,19 +100,39 @@ const FiscalSubTab = ({ realm, sessionId, playerName, onRefetch }: Props) => {
             </div>
           ))}
 
-          {/* Fiscal structure summary */}
-          <div className="pt-2 border-t border-border/30 grid grid-cols-3 gap-2 text-[10px] text-muted-foreground">
+          {/* Goods Fiscal breakdown — informational only, already counted in pillar 3 */}
+          {fi.goodsFiscal > 0 && (
+            <div className="pt-2 mt-2 border-t border-border/30 space-y-1">
+              <div className="text-[10px] uppercase tracking-wider text-muted-foreground flex items-center gap-1">
+                Rozklad pilíře „Daně ze zboží"
+                <InfoTip side="right">Tyto čtyři položky jsou již zahrnuty v pilíři Daně ze zboží — nesčítají se znovu.</InfoTip>
+              </div>
+              {goodsBreakdown.map(g => (
+                <div key={g.label} className="flex justify-between text-[11px] text-muted-foreground pl-3">
+                  <span>{g.icon} {g.label}</span>
+                  <span className="font-mono">{g.value.toFixed(1)}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Pillar summary footer */}
+          <div className="pt-2 border-t border-border/30 grid grid-cols-4 gap-2 text-[10px] text-muted-foreground">
             <div className="text-center">
               <div className="font-semibold text-foreground">{fi.popTax.toFixed(1)}</div>
               <div>Populace</div>
             </div>
             <div className="text-center">
-              <div className="font-semibold text-foreground">{fi.tradeTaxes.toFixed(1)}</div>
-              <div>Obchodní daně</div>
+              <div className="font-semibold text-foreground">{fi.domesticMarket.toFixed(1)}</div>
+              <div>Domácí trh</div>
             </div>
             <div className="text-center">
-              <div className="font-semibold text-foreground">{fi.externalTradeIncome.toFixed(1)}</div>
-              <div>Vnější obchod</div>
+              <div className="font-semibold text-foreground">{fi.goodsFiscal.toFixed(1)}</div>
+              <div>Goods fiscal</div>
+            </div>
+            <div className="text-center">
+              <div className="font-semibold text-foreground">{fi.corridorTolls.toFixed(1)}</div>
+              <div>Trasy</div>
             </div>
           </div>
         </CardContent>
