@@ -867,12 +867,51 @@ Deno.serve(async (req) => {
       if (stratRes === "incense") pt.incense++;
     }
 
+    // Phase A fix: read existing wealth components & logistic_capacity, fold them
+    // into the canonical totals. Without this, total_wealth and total_capacity
+    // collapse to ~0 even though the per-stream components are large.
+    const playerNames = Array.from(playerTotals.keys());
+    const { data: existingRows } = await sb.from("realm_resources")
+      .select("player_name, wealth_pop_tax, wealth_domestic_market, wealth_route_commerce, goods_wealth_fiscal, logistic_capacity")
+      .eq("session_id", session_id)
+      .in("player_name", playerNames);
+    const existingByPlayer = new Map<string, any>(
+      (existingRows || []).map((r: any) => [r.player_name, r])
+    );
+
+    // Aggregate logistic_capacity per player from province_nodes (canonical)
+    const playerLogistic = new Map<string, number>();
+    for (const node of nodes) {
+      const player = node.controlled_by;
+      if (!player) continue;
+      const lc = Number((node as any).logistic_capacity || 0);
+      playerLogistic.set(player, (playerLogistic.get(player) || 0) + lc);
+    }
+
     for (const [player, totals] of playerTotals) {
+      const ex = existingByPlayer.get(player) || {};
+      const wealthPopTax = Number(ex.wealth_pop_tax || 0);
+      const wealthDomestic = Number(ex.wealth_domestic_market || 0);
+      const wealthRoute = Number(ex.wealth_route_commerce || 0);
+      const goodsFiscal = Number(ex.goods_wealth_fiscal || 0);
+
+      // Canonical wealth = sum of all explicit revenue streams.
+      // Fallback to legacy per-node wealth_output only if all streams are zero
+      // (pre-v3 sessions that haven't been recomputed yet).
+      const streamWealth = wealthPopTax + wealthDomestic + wealthRoute + goodsFiscal;
+      const canonicalWealth = streamWealth > 0 ? streamWealth : totals.wealth;
+
+      // Canonical capacity = sum of node logistic_capacity (real units), not
+      // the 0–0.01 capacity_score fragments. Fall back to summed score only
+      // if logistic_capacity is missing entirely.
+      const summedLogistic = playerLogistic.get(player) || 0;
+      const canonicalCapacity = summedLogistic > 0 ? summedLogistic : totals.capacity;
+
       const update = {
         total_production: Math.round(totals.production * 100) / 100,
-        total_wealth: Math.round(totals.wealth * 100) / 100,
+        total_wealth: Math.round(canonicalWealth * 100) / 100,
         total_supplies: Math.round(totals.supplies * 100) / 100,
-        total_capacity: Math.round(totals.capacity * 100) / 100,
+        total_capacity: Math.round(canonicalCapacity * 100) / 100,
         total_importance: Math.round(totals.importance * 100) / 100,
         strategic_iron_tier: computeTier(totals.iron),
         strategic_horses_tier: computeTier(totals.horses),

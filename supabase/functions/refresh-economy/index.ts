@@ -80,11 +80,16 @@ Deno.serve(async (req) => {
     const anonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
     const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
+    // ORDER MATTERS (Phase A fix): compute-economy-flow performs the FINAL
+    // aggregation of total_wealth & total_capacity into realm_resources by
+    // reading wealth components produced by compute-trade-flows. It must run
+    // LAST so it sees the freshest pop_tax / domestic_market / route_commerce
+    // / fiscal-goods values; otherwise the canonical totals lag one cycle.
     const steps: { name: string; fn: string; body: Record<string, unknown> }[] = [
       { name: "compute-province-routes", fn: "compute-province-routes", body: { session_id } },
       { name: "compute-hex-flows", fn: "compute-hex-flows", body: { session_id, force_all: true } },
-      { name: "compute-economy-flow", fn: "compute-economy-flow", body: { session_id } },
       { name: "compute-trade-flows", fn: "compute-trade-flows", body: { session_id } },
+      { name: "compute-economy-flow", fn: "compute-economy-flow", body: { session_id } },
     ];
 
     const results: StepResult[] = [];
