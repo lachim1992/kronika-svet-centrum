@@ -191,6 +191,11 @@ Deno.serve(async (req) => {
       const prosperity = rangeFromSeed(profile.prosperityRange, nodeKey + ":pros");
       const autonomy = rangeFromSeed(profile.autonomyRange, nodeKey + ":aut");
 
+      // R2: assign capability_tags + production_role at insert time
+      const cap = NEUTRAL_NODE_CAPABILITY_MAP[profile.key]
+        ?? NEUTRAL_NODE_CAPABILITY_MAP[profile.nodeKind]
+        ?? { role: "source", tags: ["gathering"] };
+
       nodeInserts.push({
         session_id,
         province_id: null,
@@ -213,6 +218,8 @@ Deno.serve(async (req) => {
         defense_value: defense,
         economic_value: prosperity,
         strategic_value: prosperity,
+        capability_tags: cap.tags,
+        production_role: cap.role,
         resource_output: profile.outputBaskets.reduce((acc, b) => {
           const k = b.good || b.basket;
           acc[k] = (acc[k] || 0) + b.quantity;
