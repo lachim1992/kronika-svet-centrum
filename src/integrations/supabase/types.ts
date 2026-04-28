@@ -7679,6 +7679,7 @@ export type Database = {
           last_path_turn: number | null
           metadata: Json
           military_relevance: number
+          name: string | null
           node_a: string
           node_b: string
           path_dirty: boolean | null
@@ -7689,6 +7690,7 @@ export type Database = {
           speed_value: number
           upgrade_level: number
           vulnerability_score: number
+          waypoints: Json | null
         }
         Insert: {
           ambush_stack_id?: string | null
@@ -7710,6 +7712,7 @@ export type Database = {
           last_path_turn?: number | null
           metadata?: Json
           military_relevance?: number
+          name?: string | null
           node_a: string
           node_b: string
           path_dirty?: boolean | null
@@ -7720,6 +7723,7 @@ export type Database = {
           speed_value?: number
           upgrade_level?: number
           vulnerability_score?: number
+          waypoints?: Json | null
         }
         Update: {
           ambush_stack_id?: string | null
@@ -7741,6 +7745,7 @@ export type Database = {
           last_path_turn?: number | null
           metadata?: Json
           military_relevance?: number
+          name?: string | null
           node_a?: string
           node_b?: string
           path_dirty?: boolean | null
@@ -7751,6 +7756,7 @@ export type Database = {
           speed_value?: number
           upgrade_level?: number
           vulnerability_score?: number
+          waypoints?: Json | null
         }
         Relationships: [
           {
