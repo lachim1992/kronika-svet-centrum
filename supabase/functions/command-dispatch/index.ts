@@ -148,6 +148,78 @@ interface CommandResult {
   status?: number;
 }
 
+async function resolveCanonicalPlayerName(
+  supabase: any,
+  sessionId: string,
+  actor: Actor,
+): Promise<string> {
+  const requestedName = actor?.name?.trim();
+  if (!requestedName) return "";
+
+  const directRealm = await supabase
+    .from("realm_resources")
+    .select("player_name")
+    .eq("session_id", sessionId)
+    .eq("player_name", requestedName)
+    .maybeSingle();
+
+  if (directRealm.data?.player_name) return directRealm.data.player_name;
+
+  const directPlayer = await supabase
+    .from("game_players")
+    .select("player_name")
+    .eq("session_id", sessionId)
+    .eq("player_name", requestedName)
+    .maybeSingle();
+
+  if (directPlayer.data?.player_name) return directPlayer.data.player_name;
+
+  if (actor?.id) {
+    const byActorId = await supabase
+      .from("game_players")
+      .select("player_name")
+      .eq("session_id", sessionId)
+      .eq("user_id", actor.id)
+      .maybeSingle();
+
+    if (byActorId.data?.player_name) return byActorId.data.player_name;
+  }
+
+  const normalizedRequested = requestedName.toLocaleLowerCase("cs-CZ");
+  const { data: players } = await supabase
+    .from("game_players")
+    .select("player_name")
+    .eq("session_id", sessionId);
+
+  const fuzzy = (players || []).find((row: any) =>
+    String(row.player_name || "").trim().toLocaleLowerCase("cs-CZ") === normalizedRequested,
+  );
+
+  return fuzzy?.player_name || requestedName;
+}
+
+async function getRealmByActor(
+  supabase: any,
+  sessionId: string,
+  actor: Actor,
+  columns = "*",
+) {
+  const canonicalName = await resolveCanonicalPlayerName(supabase, sessionId, actor);
+  if (canonicalName && canonicalName !== actor.name) {
+    console.log(`[command-dispatch] Canonical realm fallback "${actor.name}" → "${canonicalName}"`);
+    actor.name = canonicalName;
+  }
+
+  const { data } = await supabase
+    .from("realm_resources")
+    .select(columns)
+    .eq("session_id", sessionId)
+    .eq("player_name", actor.name)
+    .maybeSingle();
+
+  return data;
+}
+
 // ═══════════════════════════════════════════
 // COMMAND EXECUTOR
 // ═══════════════════════════════════════════
