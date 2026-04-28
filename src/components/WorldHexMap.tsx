@@ -23,6 +23,7 @@ import EconomyFlowOverlay, { CATEGORY_COLORS, MACRO_COLORS, FLOW_LAYER_COLORS } 
 import type { EconomyViewMode } from "@/components/map/EconomyFlowOverlay";
 import NodeInfluenceOverlay from "@/components/map/NodeInfluenceOverlay";
 import UnderConstructionRoutesOverlay from "@/components/map/UnderConstructionRoutesOverlay";
+import { isBuildModeActive, emitHexClick } from "@/lib/worldMapBus";
 import TradeSystemsOverlay from "@/components/map/TradeSystemsOverlay";
 import MapMinimap from "@/components/map/MapMinimap";
 import { MINOR_NODE_TYPES, MICRO_NODE_TYPES, MAJOR_NODE_TYPES } from "@/lib/nodeTypes";
