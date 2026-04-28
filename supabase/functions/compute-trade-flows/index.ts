@@ -807,6 +807,9 @@ Deno.serve(async (req) => {
           if (supplyAdd <= 0) continue;
           addToBasket(node.controlled_by, o.basket_key, supplyAdd);
         }
+      }
+    } catch (e) {
+      warnings.push(`Neutral node integration failed: ${(e as Error).message}`);
     }
 
     // ════════════════════════════════════════════
