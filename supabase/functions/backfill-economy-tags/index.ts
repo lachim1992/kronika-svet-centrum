@@ -20,28 +20,30 @@ const corsHeaders = {
 // ── NODE_CAPABILITY_MAP (mirrors goodsCatalog.ts) ──
 type ProductionRole = "source" | "processing" | "urban" | "guild";
 
+// SSOT: tagy musí odpovídat `required_tags` v `production_recipes`.
+// Synced s compute-province-nodes/index.ts.
 const NODE_CAPABILITY_MAP: Record<string, { role: ProductionRole; tags: string[] }> = {
-  // Source (rozšířeno o craft tagy aby pokrylo všech 12 baskets)
-  field: { role: "source", tags: ["farming"] },
-  vineyard: { role: "source", tags: ["farming", "viticulture"] },
-  hunting_ground: { role: "source", tags: ["herding", "gathering", "leatherwork"] },
-  pastoral_camp: { role: "source", tags: ["herding", "leatherwork", "weaving"] },
-  fishery: { role: "source", tags: ["fishing", "salting"] },
-  fishing_village: { role: "source", tags: ["fishing", "salting"] },
+  // Source
+  field: { role: "source", tags: ["farming", "milling"] },
+  vineyard: { role: "source", tags: ["farming", "viticulture", "fermenting", "pressing"] },
+  hunting_ground: { role: "source", tags: ["herding", "gathering", "tanning", "preserving"] },
+  pastoral_camp: { role: "source", tags: ["herding", "tanning", "leatherwork", "spinning", "weaving"] },
+  fishery: { role: "source", tags: ["fishing", "salting", "preserving"] },
+  fishing_village: { role: "source", tags: ["fishing", "salting", "preserving"] },
   mine: { role: "source", tags: ["mining", "smelting"] },
-  mining_camp: { role: "source", tags: ["mining", "quarrying", "smelting"] },
-  quarry: { role: "source", tags: ["quarrying"] },
-  sawmill: { role: "source", tags: ["logging", "sawing", "carpentry"] },
-  lumber_camp: { role: "source", tags: ["logging", "carpentry"] },
-  herbalist: { role: "source", tags: ["gathering", "brewing"] },
+  mining_camp: { role: "source", tags: ["mining", "quarrying", "smelting", "stonecutting"] },
+  quarry: { role: "source", tags: ["quarrying", "stonecutting"] },
+  sawmill: { role: "source", tags: ["logging", "sawing"] },
+  lumber_camp: { role: "source", tags: ["logging", "sawing"] },
+  herbalist: { role: "source", tags: ["gathering", "brewing", "preserving"] },
   resin_collector: { role: "source", tags: ["logging", "gathering"] },
   salt_pan: { role: "source", tags: ["mining", "salting"] },
-  village: { role: "source", tags: ["farming", "herding", "baking", "brewing"] },
+  village: { role: "source", tags: ["farming", "herding", "baking", "brewing", "milling", "weaving", "crafting"] },
   shrine: { role: "source", tags: ["ritual_craft"] },
   watchtower: { role: "source", tags: [] },
   outpost: { role: "source", tags: [] },
-  // Processing
-  smithy: { role: "processing", tags: ["smelting", "smithing"] },
+  // Processing (legacy/manual subtypes; ponecháno pro back-compat)
+  smithy: { role: "processing", tags: ["smelting", "smithing", "armoring"] },
   mill: { role: "processing", tags: ["milling", "baking"] },
   press: { role: "processing", tags: ["pressing"] },
   tannery: { role: "processing", tags: ["tanning", "leatherwork"] },
@@ -50,15 +52,15 @@ const NODE_CAPABILITY_MAP: Record<string, { role: ProductionRole; tags: string[]
   smokehouse: { role: "processing", tags: ["preserving", "salting"] },
   smelter: { role: "processing", tags: ["smelting"] },
   // Urban
-  bakery: { role: "urban", tags: ["baking"] },
+  bakery: { role: "urban", tags: ["baking", "milling"] },
   forge: { role: "urban", tags: ["smithing", "armoring"] },
-  weaver: { role: "urban", tags: ["weaving"] },
-  winery: { role: "urban", tags: ["fermenting", "brewing"] },
-  pottery_workshop: { role: "urban", tags: ["crafting", "pottery"] },
+  weaver: { role: "urban", tags: ["weaving", "spinning"] },
+  winery: { role: "urban", tags: ["fermenting", "brewing", "pressing"] },
+  pottery_workshop: { role: "urban", tags: ["crafting"] },
   armory: { role: "urban", tags: ["smithing", "armoring"] },
-  builder_yard: { role: "urban", tags: ["construction"] },
-  trade_hub: { role: "urban", tags: ["construction", "pottery", "weaving"] },
-  trade_post: { role: "urban", tags: ["pottery"] },
+  builder_yard: { role: "urban", tags: ["construction", "stonecutting"] },
+  trade_hub: { role: "urban", tags: ["construction", "crafting", "weaving", "spinning", "baking", "master_craft"] },
+  trade_post: { role: "urban", tags: ["construction", "crafting"] },
   // Guild
   guild_workshop: { role: "guild", tags: ["master_craft"] },
   master_workshop: { role: "guild", tags: ["master_craft"] },
@@ -68,30 +70,31 @@ const NODE_CAPABILITY_MAP: Record<string, { role: ProductionRole; tags: string[]
 
 // Biome → bonus capability tags (synced s compute-province-nodes)
 const BIOME_BONUS_TAGS: Record<string, string[]> = {
-  forest: ["logging", "gathering", "carpentry"],
-  taiga: ["logging", "carpentry"],
-  hills: ["mining", "quarrying", "smelting"],
-  mountain: ["mining", "quarrying", "smelting"],
-  mountains: ["mining", "quarrying", "smelting"],
-  highland: ["mining", "quarrying"],
-  coastal: ["fishing", "salting"],
+  forest: ["logging", "sawing", "gathering"],
+  taiga: ["logging", "sawing"],
+  hills: ["mining", "quarrying", "smelting", "stonecutting"],
+  mountain: ["mining", "quarrying", "smelting", "stonecutting"],
+  mountains: ["mining", "quarrying", "smelting", "stonecutting"],
+  highland: ["mining", "quarrying", "stonecutting"],
+  coastal: ["fishing", "salting", "preserving"],
+  coast: ["fishing", "salting", "preserving"],
   lake: ["fishing", "salting"],
   river: ["fishing", "salting"],
-  plains: ["farming", "herding", "weaving"],
+  plains: ["farming", "herding", "weaving", "milling"],
   grassland: ["farming", "herding", "weaving"],
-  steppe: ["herding", "leatherwork"],
-  savanna: ["herding", "leatherwork"],
+  steppe: ["herding", "tanning", "leatherwork"],
+  savanna: ["herding", "tanning"],
   temperate: ["farming", "weaving"],
   desert: ["mining", "salting"],
-  marsh: ["gathering", "brewing"],
+  marsh: ["gathering", "brewing", "preserving"],
   jungle: ["gathering", "brewing"],
   volcanic: ["mining", "smelting"],
 };
 
-// City nodes get urban role with basic tags + crafting
+// Capital/major city node defaults (urban + processing crafts).
 const CITY_TAGS: { role: ProductionRole; tags: string[] } = {
   role: "urban",
-  tags: ["baking", "construction", "pottery", "weaving", "smithing"],
+  tags: ["baking", "construction", "crafting", "weaving", "spinning", "smithing", "milling", "master_craft"],
 };
 
 // ── BIOME → RESOURCE DEPOSITS ──
