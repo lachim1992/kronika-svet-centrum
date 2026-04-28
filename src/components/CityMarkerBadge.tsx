@@ -182,23 +182,25 @@ const CityMarkerBadge = memo(({
         </text>
       )}
 
-      {/* City name */}
-      <text
-        x={cx} y={cy + r - 1}
-        textAnchor="middle" dominantBaseline="hanging"
-        fill="white" fontSize={nameSize} fontWeight="700"
-        style={{ pointerEvents: "none", textShadow: "0 1px 2px rgba(0,0,0,0.8)" }}
-      >
-        {displayName}
-      </text>
+      {/* City name (multi-line) */}
+      {nameLines.map((ln, i) => (
+        <text key={i}
+          x={cx} y={cy + r - 1 + i * (nameSize + 1)}
+          textAnchor="middle" dominantBaseline="hanging"
+          fill="white" fontSize={nameSize} fontWeight="700"
+          style={{ pointerEvents: "none", textShadow: "0 1px 2px rgba(0,0,0,0.8)" }}
+        >
+          {ln}
+        </text>
+      ))}
 
       {/* Owner name */}
       <text
-        x={cx} y={cy + r + nameSize + 1}
+        x={cx} y={cy + r - 1 + nameLines.length * (nameSize + 1) + 1}
         textAnchor="middle" dominantBaseline="hanging"
         fill="hsl(var(--muted-foreground))"
-        fontSize={size === "sm" ? 4.5 : 5.5}
-        opacity={0.7}
+        fontSize={size === "sm" ? 7 : 8}
+        opacity={0.75}
         style={{ pointerEvents: "none" }}
       >
         {ownerPlayer}
