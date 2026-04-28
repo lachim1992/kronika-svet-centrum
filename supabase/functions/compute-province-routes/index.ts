@@ -288,6 +288,7 @@ Deno.serve(async (req) => {
     return new Response(JSON.stringify({
       ok: true,
       routes_created: routes.length,
+      protected_routes_preserved: protectedCount,
       by_type: byType,
       by_tier_link: byTierLink,
       max_degree: maxDegree,
