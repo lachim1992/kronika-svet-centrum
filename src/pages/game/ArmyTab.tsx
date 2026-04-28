@@ -1169,36 +1169,51 @@ function RecruitDialog({
           </div>
 
           {/* Free-form manpower selector */}
-          <div className="space-y-2">
-            <div className="flex items-center justify-between text-xs">
-              <span className="font-display font-semibold text-muted-foreground">Počet mužů</span>
-              <span className="font-mono">{manpowerCount.toLocaleString()} / {truePool.toLocaleString()}</span>
-            </div>
-            <Input
-              type="number"
-              min={1}
-              max={truePool || undefined}
-              step={50}
-              value={manpowerCount}
-              onChange={e => setManpowerCount(Math.max(1, Math.min(truePool || 9_999_999, Math.floor(Number(e.target.value) || 0))))}
-              className="h-9 font-mono"
-            />
-            <input
-              type="range"
-              min={1}
-              max={Math.max(1, truePool)}
-              step={Math.max(10, Math.round((truePool || 1000) / 100))}
-              value={Math.min(manpowerCount, Math.max(1, truePool))}
-              onChange={e => setManpowerCount(Math.floor(Number(e.target.value)))}
-              className="w-full accent-primary"
-            />
-            {selectedPreset && (
-              <div className="text-[11px] text-muted-foreground flex items-center gap-3">
-                <span className="flex items-center gap-0.5"><Coins className="h-3 w-3" />{scaledGold} zlata</span>
-                <span>~{scaledProd} produkce</span>
+          {(() => {
+            // Slider must always be usable. If pool is 0, allow choosing intent up to a sensible cap.
+            const sliderMax = Math.max(truePool, 5000);
+            const overPool = manpowerCount > truePool;
+            const stepSize = Math.max(10, Math.round(sliderMax / 100));
+            return (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="font-display font-semibold text-muted-foreground">Počet mužů</span>
+                  <span className={`font-mono ${overPool ? "text-destructive" : ""}`}>
+                    {manpowerCount.toLocaleString()} / {truePool.toLocaleString()}
+                  </span>
+                </div>
+                <Input
+                  type="number"
+                  min={1}
+                  max={sliderMax}
+                  step={50}
+                  value={manpowerCount}
+                  onChange={e => setManpowerCount(Math.max(1, Math.min(sliderMax, Math.floor(Number(e.target.value) || 0))))}
+                  className="h-9 font-mono"
+                />
+                <input
+                  type="range"
+                  min={1}
+                  max={sliderMax}
+                  step={stepSize}
+                  value={Math.min(manpowerCount, sliderMax)}
+                  onChange={e => setManpowerCount(Math.floor(Number(e.target.value)))}
+                  className="w-full accent-primary"
+                />
+                {selectedPreset && (
+                  <div className="text-[11px] text-muted-foreground flex items-center gap-3">
+                    <span className="flex items-center gap-0.5"><Coins className="h-3 w-3" />{scaledGold} zlata</span>
+                    <span>~{scaledProd} produkce</span>
+                  </div>
+                )}
+                {overPool && (
+                  <div className="text-[11px] text-destructive">
+                    Nedostatek mužů v poolu ({truePool.toLocaleString()}). Zvyš mobilizaci.
+                  </div>
+                )}
               </div>
-            )}
-          </div>
+            );
+          })()}
 
           <div className="text-xs text-muted-foreground">
             Manpower pool: {truePool.toLocaleString()} · Zlato: {realm?.gold_reserve || 0}
