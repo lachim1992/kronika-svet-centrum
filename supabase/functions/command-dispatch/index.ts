@@ -2073,7 +2073,7 @@ const ARMY_GOLD_COST = 500;
 
 async function getRealm(supabase: any, sessionId: string, playerName: string) {
   const { data } = await supabase.from("realm_resources")
-    .select("id, manpower_committed, gold_reserve, mobilization_rate")
+    .select("id, manpower_committed, gold_reserve, mobilization_rate, player_name")
     .eq("session_id", sessionId).eq("player_name", playerName).maybeSingle();
   return data;
 }
