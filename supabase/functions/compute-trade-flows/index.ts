@@ -1121,6 +1121,7 @@ Deno.serve(async (req) => {
       market_share_rows: marketShareRows.length,
       trade_flows_created: tradeFlows.length,
       players_updated: playerAggregates.size,
+      sys_supply_injected_count: sysSupplyInjectedCount,
       unmapped_count: remapCounters.unmapped,
       legacy_remap_count: remapCounters.legacy,
       warnings: uniqueWarnings.slice(0, 50),
