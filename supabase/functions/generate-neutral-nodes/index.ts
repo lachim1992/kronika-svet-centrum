@@ -121,8 +121,17 @@ Deno.serve(async (req) => {
       [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
     }
 
-    const targetCount = requestedCount ?? Math.max(8, Math.min(20, Math.floor(hexes.length / 8)));
+    // Density preset by map size (Node-Trade v1):
+    //   small  (<400 hexes):   6% of hexes
+    //   medium (400–1200):     5%
+    //   large  (>1200):        4%
+    // Floor at 12 nodes so even tiny worlds have a meaningful neutral fabric.
+    const totalHexes = hexes.length;
+    const density = totalHexes < 400 ? 0.06 : totalHexes <= 1200 ? 0.05 : 0.04;
+    const computedCount = Math.max(12, Math.round(totalHexes * density));
+    const targetCount = requestedCount ?? computedCount;
     const slots = shuffled.slice(0, Math.min(targetCount, shuffled.length));
+    console.log(`[neutral-nodes] hexes=${totalHexes} density=${density} target=${targetCount} candidates=${candidates.length}`);
 
     // Build inserts
     const nodeInserts: any[] = [];
