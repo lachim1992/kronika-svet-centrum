@@ -78,6 +78,14 @@ const Dashboard = () => {
 
   const currentTurn = session?.current_turn ?? 0;
 
+  useEffect(() => {
+    if (!user?.id || players.length === 0) return;
+    const linkedPlayer = players.find((player: any) => player.user_id === user.id);
+    if (linkedPlayer?.player_name && linkedPlayer.player_name !== myPlayerName) {
+      setMyPlayerName(linkedPlayer.player_name);
+    }
+  }, [players, user?.id, myPlayerName]);
+
   // ── Single projector: project current player's realm from session-scoped array ──
   const myRealm = useMemo(
     () => (realmResources || []).find((r: any) => r.player_name === myPlayerName) || null,
