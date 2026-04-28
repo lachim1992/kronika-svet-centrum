@@ -1249,6 +1249,8 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
             offsetY={offsetY}
             visible={showInfluenceLayer}
           />
+          <UnderConstructionRoutesOverlay sessionId={sessionId} offsetX={offsetX} offsetY={offsetY} visible={showUnderConstructionLayer} />
+          <TradeSystemsOverlay sessionId={sessionId} offsetX={offsetX} offsetY={offsetY} visible={showTradeSystemsLayer} />
         </g>
       </svg>
 
