@@ -10,6 +10,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { dispatchCommand } from "@/lib/commands";
+import { computeWorkforceBreakdown } from "@/lib/economyConstants";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Hammer, Plus, X, HardHat, ChevronDown, ChevronUp, Trash2, Users } from "lucide-react";
@@ -76,7 +77,7 @@ export default function WorldMapBuildPanel({ sessionId, playerName, currentTurn 
   const [submitting, setSubmitting] = useState(false);
 
   const refresh = async () => {
-    const [nRes, rRes, sRes, realmRes] = await Promise.all([
+    const [nRes, rRes, sRes, realmRes, citiesRes] = await Promise.all([
       supabase.from("province_nodes")
         .select("id, name, hex_q, hex_r, controlled_by, node_tier")
         .eq("session_id", sessionId).eq("is_active", true),
@@ -89,13 +90,18 @@ export default function WorldMapBuildPanel({ sessionId, playerName, currentTurn 
         .eq("player_name", playerName)
         .eq("is_active", true),
       supabase.from("realm_resources")
-        .select("labor_reserve")
+        .select("mobilization_rate")
         .eq("session_id", sessionId).eq("player_name", playerName).maybeSingle(),
+      supabase.from("cities")
+        .select("status, owner_player, population_peasants, population_burghers, population_clerics")
+        .eq("session_id", sessionId).eq("owner_player", playerName),
     ]);
     setNodes((nRes.data || []) as NodeRow[]);
     setRoutes((rRes.data || []) as RouteRow[]);
     setStacks((sRes.data || []) as StackRow[]);
-    setLaborAvailable(Number((realmRes.data as any)?.labor_reserve || 0));
+    const mobRate = Number((realmRes.data as any)?.mobilization_rate || 0.1);
+    const wf = computeWorkforceBreakdown((citiesRes.data || []) as any[], mobRate);
+    setLaborAvailable(wf.workforce);
   };
 
   useEffect(() => {
