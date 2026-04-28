@@ -98,15 +98,17 @@ const DemandFulfillmentPanel = ({ sessionId, playerName, cities }: Props) => {
 
   // Aggregate by basket across all cities (resolve legacy keys)
   const byBasket = useMemo(() => {
-    const map: Record<string, { demand: number; supply: number; auto: number; bonus: number; surplus: number; count: number }> = {};
+    const map: Record<string, { demand: number; supply: number; auto: number; bonus: number; surplus: number; unmet: number; count: number }> = {};
     for (const b of baskets) {
       const key = resolveBasketKey(b.basket_key);
-      if (!map[key]) map[key] = { demand: 0, supply: 0, auto: 0, bonus: 0, surplus: 0, count: 0 };
+      if (!map[key]) map[key] = { demand: 0, supply: 0, auto: 0, bonus: 0, surplus: 0, unmet: 0, count: 0 };
       map[key].demand += b.local_demand;
       map[key].supply += b.local_supply;
       map[key].auto += b.auto_supply;
       map[key].bonus += b.bonus_supply;
       map[key].surplus += b.export_surplus;
+      // Preferuj persistovaný unmet_demand z DB; fallback na demand-supply
+      map[key].unmet += b.unmet_demand ?? Math.max(0, b.local_demand - b.local_supply);
       map[key].count++;
     }
     return map;
