@@ -64,6 +64,19 @@ const NODE_CAPABILITY_MAP: Record<string, { role: string; tags: string[] }> = {
   ruined_keep: { role: "source", tags: ["stonecutting", "gathering"] },
   fallen_temple: { role: "source", tags: ["stonecutting", "ritual_craft"] },
   old_road_marker: { role: "source", tags: ["gathering"] },
+  burned_village: { role: "source", tags: ["gathering", "stonecutting"] },
+  trapper_camp: { role: "source", tags: ["herding", "gathering", "tanning", "preserving"] },
+  river_ford_post: { role: "urban", tags: ["crafting", "fishing", "preserving"] },
+  marsh_oracle: { role: "source", tags: ["ritual_craft", "gathering", "brewing"] },
+  forest_shrine: { role: "source", tags: ["ritual_craft", "gathering"] },
+};
+
+// Fallback by node_type when subtype is unmapped (R2)
+const NODE_TYPE_FALLBACK: Record<string, { role: string; tags: string[] }> = {
+  shrine: { role: "source", tags: ["ritual_craft", "gathering"] },
+  ruin: { role: "source", tags: ["stonecutting", "gathering"] },
+  resource_outpost: { role: "source", tags: ["gathering", "mining"] },
+  neutral_settlement: { role: "source", tags: ["farming", "herding", "crafting"] },
 };
 
 // Biome → extra bonus capability tags (každý hex má 3-5 tagů → pokryje 12 baskets)
@@ -89,8 +102,10 @@ const BIOME_BONUS_TAGS: Record<string, string[]> = {
   volcanic: ["mining", "smelting"],
 };
 
-function resolveCapabilityTags(subtype: string, biome: string): { role: string; tags: string[] } {
-  const base = NODE_CAPABILITY_MAP[subtype] || { role: "source", tags: [] };
+function resolveCapabilityTags(subtype: string, biome: string, nodeType?: string): { role: string; tags: string[] } {
+  let base = NODE_CAPABILITY_MAP[subtype];
+  if (!base && nodeType) base = NODE_TYPE_FALLBACK[nodeType];
+  if (!base) base = { role: "source", tags: [] };
   const biomeTags = BIOME_BONUS_TAGS[biome?.toLowerCase()] || [];
   // Merge unique tags
   const allTags = [...new Set([...base.tags, ...biomeTags])];

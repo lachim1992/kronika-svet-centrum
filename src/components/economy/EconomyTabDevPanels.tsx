@@ -16,6 +16,7 @@ import FormulasReferencePanel from "@/components/economy/FormulasReferencePanel"
 import GapAdvisorPanel from "@/components/economy/GapAdvisorPanel";
 import EconomyDependencyMap from "@/components/economy/EconomyDependencyMap";
 import CapacityPanel from "@/components/economy/CapacityPanel";
+import TradeSystemSupplyPanel from "@/components/economy/TradeSystemSupplyPanel";
 
 interface Props {
   sessionId: string;
@@ -60,6 +61,8 @@ const EconomyTabDevPanels = ({ sessionId, currentPlayerName, cities, realm }: Pr
         playerName={currentPlayerName}
         realm={realm}
       />
+
+      <TradeSystemSupplyPanel sessionId={sessionId} />
       
       <EconomyDependencyMap realm={realm} cities={myCities} armies={[]} />
       
