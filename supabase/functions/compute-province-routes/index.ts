@@ -42,6 +42,8 @@ interface Route {
   build_cost: number;
   upgrade_level: number;
   metadata: Record<string, any>;
+  route_origin: string;        // Etapa 2: 'generated' for this function
+  construction_state: string;  // Etapa 2: 'complete' (generated routes are always usable)
 }
 
 function inferRouteType(a: Node, b: Node): string {
@@ -113,6 +115,20 @@ Deno.serve(async (req) => {
       });
     }
 
+    // ── PROTECTED ROUTES (Etapa 2): load existing non-generated routes
+    // (player_built, treaty, event) — these are IMMUTABLE: we never delete or
+    // modify them, and we skip generating duplicates between the same node pair.
+    const { data: protectedRows } = await sb.from("province_routes")
+      .select("id, node_a, node_b, route_origin")
+      .eq("session_id", session_id)
+      .neq("route_origin", "generated");
+    const protectedPairs = new Set<string>();
+    for (const r of protectedRows || []) {
+      const a = r.node_a as string, b = r.node_b as string;
+      protectedPairs.add(a < b ? `${a}|${b}` : `${b}|${a}`);
+    }
+    const protectedCount = protectedRows?.length ?? 0;
+
     // Index
     const nodeById = new Map(nodes.map(n => [n.id, n]));
     const nodesByProv: Record<string, Node[]> = {};
@@ -122,12 +138,12 @@ Deno.serve(async (req) => {
     }
 
     const routeKey = (a: string, b: string) => a < b ? `${a}|${b}` : `${b}|${a}`;
-    const routeSet = new Set<string>();
+    const routeSet = new Set<string>(protectedPairs); // pre-seed so we don't duplicate
     const routes: Route[] = [];
 
     const addRoute = (a: Node, b: Node, meta?: Record<string, any>) => {
       const key = routeKey(a.id, b.id);
-      if (routeSet.has(key)) return;
+      if (routeSet.has(key)) return; // also blocks duplicates of protected pairs
       routeSet.add(key);
       const dist = axialDist(a.hex_q, a.hex_r, b.hex_q, b.hex_r);
       const routeType = inferRouteType(a, b);
@@ -146,6 +162,8 @@ Deno.serve(async (req) => {
         build_cost: metrics.build_cost!,
         upgrade_level: 0,
         metadata: { distance: dist, cross_province: !sameProv, tier_link: meta?.tier_link || "peer", ...meta },
+        route_origin: "generated",
+        construction_state: "complete",
       });
     };
 
@@ -242,8 +260,11 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Delete old and insert new
-    await sb.from("province_routes").delete().eq("session_id", session_id);
+    // Delete only generated routes; player_built / treaty / event are immutable.
+    await sb.from("province_routes")
+      .delete()
+      .eq("session_id", session_id)
+      .eq("route_origin", "generated");
     const BATCH = 50;
     for (let i = 0; i < routes.length; i += BATCH) {
       const { error } = await sb.from("province_routes").insert(routes.slice(i, i + BATCH));
@@ -267,6 +288,7 @@ Deno.serve(async (req) => {
     return new Response(JSON.stringify({
       ok: true,
       routes_created: routes.length,
+      protected_routes_preserved: protectedCount,
       by_type: byType,
       by_tier_link: byTierLink,
       max_degree: maxDegree,
