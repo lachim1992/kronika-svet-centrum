@@ -3491,14 +3491,17 @@ async function executeCancelRouteConstruction(
     .eq("session_id", sessionId)
     .eq("assigned_route_id", routeId);
 
-  // Refund 50% of gold cost
+  // Refund 50% of gold cost AND 50% of allocated labor (the rest is "spent on site")
   const refund = Math.floor((route.build_cost || 0) * 0.5);
-  if (refund > 0) {
+  const allocatedLabor = Number(md.assigned_labor || md.assigned_soldiers || 0);
+  const laborRefund = Math.floor(allocatedLabor * 0.5);
+  if (refund > 0 || laborRefund > 0) {
     const { data: realm } = await supabase.from("realm_resources")
-      .select("id, gold_reserve").eq("session_id", sessionId).eq("player_name", actor.name).maybeSingle();
+      .select("id, gold_reserve, labor_reserve").eq("session_id", sessionId).eq("player_name", actor.name).maybeSingle();
     if (realm) {
       await supabase.from("realm_resources").update({
         gold_reserve: (realm.gold_reserve || 0) + refund,
+        labor_reserve: (realm.labor_reserve || 0) + laborRefund,
       }).eq("id", realm.id);
     }
   }
@@ -3506,7 +3509,7 @@ async function executeCancelRouteConstruction(
   // Delete route (it never reached complete state)
   await supabase.from("province_routes").delete().eq("id", routeId);
 
-  const note = `${actor.name} zrušil stavbu cesty (${route.route_type}). Vráceno ${refund} zlata.`;
+  const note = `${actor.name} zrušil stavbu cesty (${route.route_type}). Vráceno ${refund} zlata a ${laborRefund} pracovní síly.`;
   return insertEventsWithChronicle(supabase, commandId, sessionId, turnNumber, [{
     ...base,
     event_type: "construction_cancelled",
