@@ -7,10 +7,11 @@ const corsHeaders = {
  * refresh-economy: Safe 4-step economy recalculation without process-turn.
  *
  * Pipeline:
- * 1. compute-province-routes  (rebuild routes)
+ * 1. compute-province-routes  (rebuild routes; player_built protected)
  * 2. compute-hex-flows         (force_all: true)
- * 3. compute-economy-flow      (node-level metrics)
- * 4. compute-trade-flows       (goods pipeline)
+ * 3. compute-trade-systems     (BFS components + access projection from treaties)
+ * 4. compute-trade-flows       (goods pipeline; consumes trade systems & access)
+ * 5. compute-economy-flow      (final realm_resources aggregation)
  *
  * No side effects on turn state. Best-effort in-memory per-session guard.
  */
