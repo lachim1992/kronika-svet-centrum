@@ -62,9 +62,6 @@ Deno.serve(async (req) => {
     }
 
     // ── Resolve actor.name to canonical realm player_name ──
-    // The UI may send a display name (e.g. "HRÁČ") that differs from the
-    // canonical realm name (e.g. "Lachim"). For player actors, look up the
-    // canonical name via the JWT-authenticated user_id in game_players.
     if (actor?.type !== "system" && actor?.type !== "ai_faction") {
       try {
         const authHeader = req.headers.get("authorization") || "";
@@ -72,18 +69,13 @@ Deno.serve(async (req) => {
         if (jwt) {
           const { data: userData } = await supabase.auth.getUser(jwt);
           const userId = userData?.user?.id;
-          if (userId) {
-            const { data: gp } = await supabase
-              .from("game_players")
-              .select("player_name")
-              .eq("session_id", sessionId)
-              .eq("user_id", userId)
-              .maybeSingle();
-            if (gp?.player_name && gp.player_name !== actor.name) {
-              console.log(`[command-dispatch] Resolved actor "${actor.name}" → "${gp.player_name}" (user_id=${userId})`);
-              actor.name = gp.player_name;
-            }
-          }
+          if (userId && !actor.id) actor.id = userId;
+        }
+
+        const canonicalName = await resolveCanonicalPlayerName(supabase, sessionId, actor);
+        if (canonicalName && canonicalName !== actor.name) {
+          console.log(`[command-dispatch] Resolved actor "${actor.name}" → "${canonicalName}"`);
+          actor.name = canonicalName;
         }
       } catch (e) {
         console.warn("[command-dispatch] actor resolution failed:", (e as Error).message);
@@ -146,6 +138,78 @@ interface CommandResult {
   idempotent?: boolean;
   error?: string;
   status?: number;
+}
+
+async function resolveCanonicalPlayerName(
+  supabase: any,
+  sessionId: string,
+  actor: Actor,
+): Promise<string> {
+  const requestedName = actor?.name?.trim();
+  if (!requestedName) return "";
+
+  const directRealm = await supabase
+    .from("realm_resources")
+    .select("player_name")
+    .eq("session_id", sessionId)
+    .eq("player_name", requestedName)
+    .maybeSingle();
+
+  if (directRealm.data?.player_name) return directRealm.data.player_name;
+
+  const directPlayer = await supabase
+    .from("game_players")
+    .select("player_name")
+    .eq("session_id", sessionId)
+    .eq("player_name", requestedName)
+    .maybeSingle();
+
+  if (directPlayer.data?.player_name) return directPlayer.data.player_name;
+
+  if (actor?.id) {
+    const byActorId = await supabase
+      .from("game_players")
+      .select("player_name")
+      .eq("session_id", sessionId)
+      .eq("user_id", actor.id)
+      .maybeSingle();
+
+    if (byActorId.data?.player_name) return byActorId.data.player_name;
+  }
+
+  const normalizedRequested = requestedName.toLocaleLowerCase("cs-CZ");
+  const { data: players } = await supabase
+    .from("game_players")
+    .select("player_name")
+    .eq("session_id", sessionId);
+
+  const fuzzy = (players || []).find((row: any) =>
+    String(row.player_name || "").trim().toLocaleLowerCase("cs-CZ") === normalizedRequested,
+  );
+
+  return fuzzy?.player_name || requestedName;
+}
+
+async function getRealmByActor(
+  supabase: any,
+  sessionId: string,
+  actor: Actor,
+  columns = "*",
+) {
+  const canonicalName = await resolveCanonicalPlayerName(supabase, sessionId, actor);
+  if (canonicalName && canonicalName !== actor.name) {
+    console.log(`[command-dispatch] Canonical realm fallback "${actor.name}" → "${canonicalName}"`);
+    actor.name = canonicalName;
+  }
+
+  const { data } = await supabase
+    .from("realm_resources")
+    .select(columns)
+    .eq("session_id", sessionId)
+    .eq("player_name", actor.name)
+    .maybeSingle();
+
+  return data;
 }
 
 // ═══════════════════════════════════════════
@@ -1091,9 +1155,7 @@ async function executeRecruitStack(
     : Math.round(baseProdCost);
 
   // ── Load realm resources ──
-  const { data: realm } = await supabase
-    .from("realm_resources").select("*")
-    .eq("session_id", sessionId).eq("player_name", playerName).maybeSingle();
+  const realm = await getRealmByActor(supabase, sessionId, actor, "*");
   if (!realm) return { events: [], error: "Realm resources not found" };
 
   // ── Manpower validation: free-form against pool (no mobilization cap) ──
@@ -1573,9 +1635,7 @@ async function executeBuildRoute(
   // Soldier requirement: minimum 50 to begin, paid upfront from realm.soldiers pool
   const requestedSoldiers = Math.max(50, Math.floor(Number(assignedSoldiers || 0)));
 
-  const { data: realm } = await supabase.from("realm_resources")
-    .select("id, gold_reserve, soldiers, manpower_available")
-    .eq("session_id", sessionId).eq("player_name", actor.name).single();
+  const realm = await getRealmByActor(supabase, sessionId, actor, "id, gold_reserve, soldiers, manpower_available");
   if (!realm) return { events: [], error: "Realm not found" };
   if ((realm.gold_reserve ?? 0) < goldCost) return { events: [], error: `Nedostatek zlata (potřeba: ${goldCost})` };
   if ((realm.soldiers ?? 0) < requestedSoldiers) {
@@ -2001,7 +2061,7 @@ const ARMY_GOLD_COST = 500;
 
 async function getRealm(supabase: any, sessionId: string, playerName: string) {
   const { data } = await supabase.from("realm_resources")
-    .select("id, manpower_committed, gold_reserve, mobilization_rate")
+    .select("id, manpower_committed, gold_reserve, mobilization_rate, player_name")
     .eq("session_id", sessionId).eq("player_name", playerName).maybeSingle();
   return data;
 }
@@ -3201,9 +3261,7 @@ async function executeMobilizeManpower(
   const requested = Math.max(0, Math.floor(Number(payload.amount || 0)));
   if (requested <= 0) return { events: [], error: "Missing or invalid amount" };
 
-  const { data: realm } = await supabase.from("realm_resources")
-    .select("id, manpower_pool, manpower_available, soldiers, total_population")
-    .eq("session_id", sessionId).eq("player_name", actor.name).single();
+  const realm = await getRealmByActor(supabase, sessionId, actor, "id, manpower_pool, manpower_available, soldiers, total_population");
   if (!realm) return { events: [], error: "Realm not found" };
 
   const pool = Number(realm.manpower_pool ?? 0);

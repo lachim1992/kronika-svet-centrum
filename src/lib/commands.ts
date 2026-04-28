@@ -30,6 +30,9 @@ export async function dispatchCommand(params: {
   commandId?: string;
 }): Promise<DispatchResult> {
   const commandId = params.commandId || crypto.randomUUID();
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
 
   const { data, error } = await supabase.functions.invoke("command-dispatch", {
     body: {
@@ -38,7 +41,7 @@ export async function dispatchCommand(params: {
       actor: {
         name: params.actor.name,
         type: params.actor.type || "player",
-        id: params.actor.id,
+        id: params.actor.id || session?.user?.id,
       },
       commandType: params.commandType,
       commandPayload: params.commandPayload,
