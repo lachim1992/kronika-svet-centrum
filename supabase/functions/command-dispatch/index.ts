@@ -61,6 +61,35 @@ Deno.serve(async (req) => {
       return json({ error: "Session not found" }, 404);
     }
 
+    // ── Resolve actor.name to canonical realm player_name ──
+    // The UI may send a display name (e.g. "HRÁČ") that differs from the
+    // canonical realm name (e.g. "Lachim"). For player actors, look up the
+    // canonical name via the JWT-authenticated user_id in game_players.
+    if (actor?.type !== "system" && actor?.type !== "ai_faction") {
+      try {
+        const authHeader = req.headers.get("authorization") || "";
+        const jwt = authHeader.replace(/^Bearer\s+/i, "");
+        if (jwt) {
+          const { data: userData } = await supabase.auth.getUser(jwt);
+          const userId = userData?.user?.id;
+          if (userId) {
+            const { data: gp } = await supabase
+              .from("game_players")
+              .select("player_name")
+              .eq("session_id", sessionId)
+              .eq("user_id", userId)
+              .maybeSingle();
+            if (gp?.player_name && gp.player_name !== actor.name) {
+              console.log(`[command-dispatch] Resolved actor "${actor.name}" → "${gp.player_name}" (user_id=${userId})`);
+              actor.name = gp.player_name;
+            }
+          }
+        }
+      } catch (e) {
+        console.warn("[command-dispatch] actor resolution failed:", (e as Error).message);
+      }
+    }
+
     if (turnNumber !== undefined && turnNumber !== null && turnNumber !== session.current_turn) {
       return json({ error: "Turn mismatch", expected: session.current_turn, received: turnNumber }, 409);
     }
