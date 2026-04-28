@@ -42,6 +42,8 @@ interface Route {
   build_cost: number;
   upgrade_level: number;
   metadata: Record<string, any>;
+  route_origin: string;        // Etapa 2: 'generated' for this function
+  construction_state: string;  // Etapa 2: 'complete' (generated routes are always usable)
 }
 
 function inferRouteType(a: Node, b: Node): string {
