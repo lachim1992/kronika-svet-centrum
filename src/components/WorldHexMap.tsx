@@ -1316,255 +1316,59 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
         )}
       </div>
 
-      {/* Top-right: admin controls */}
-      {isAdmin && (
-        <div className="absolute top-3 right-3 z-20 flex items-center gap-2">
-          <label className="flex items-center gap-1.5 text-[10px] text-muted-foreground cursor-pointer bg-card/70 backdrop-blur-sm px-2 py-1 rounded-md border border-border">
-            <Switch checked={devMode} onCheckedChange={async (v) => { setDevMode(v); if (v) await loadAllGenerated(); }} className="scale-75" />
-            <Eye className="h-3 w-3" /> DEV
-          </label>
-          {devMode && (
-            <>
-              <Button size="sm" variant="outline" className="h-7 text-[10px] gap-1 bg-card/70 backdrop-blur-sm"
-                onClick={handleRecomputeBiomes} disabled={recomputing}>
-                {recomputing ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
-                Přepočítat
-              </Button>
-              <Button size="sm" variant="outline" className="h-7 text-[10px] gap-1 bg-card/70 backdrop-blur-sm"
-                onClick={async () => {
-                  setRecomputingRoads(true);
-                  try {
-                    const { error } = await supabase.functions.invoke("refresh-economy", { body: { session_id: sessionId } });
-                    if (error) throw error;
-                    setRouteRefreshKey(k => k + 1);
-                    toast.success("Ekonomika přepočtena");
-                  } catch (e: any) { toast.error("Chyba: " + (e.message || "neznámá")); }
-                  finally { setRecomputingRoads(false); }
-                }} disabled={recomputingRoads}>
-                {recomputingRoads ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
-                ♻️ Ekonomika
-              </Button>
-            </>
-          )}
-        </div>
-      )}
+      {/* ── Unified bottom dock + layers popover (Google Maps style) ── */}
+      <MapBottomDock
+        zoom={zoom}
+        onZoomIn={zoomIn}
+        onZoomOut={zoomOut}
+        onHome={goHome}
+        isAdmin={isAdmin}
+        devMode={devMode}
+        onDevModeToggle={async (v) => { setDevMode(v); if (v) await loadAllGenerated(); }}
+        onRecomputeBiomes={handleRecomputeBiomes}
+        recomputingBiomes={recomputing}
+        recomputingEconomy={recomputingRoads}
+        onRecomputeEconomy={async () => {
+          setRecomputingRoads(true);
+          try {
+            const { error } = await supabase.functions.invoke("refresh-economy", { body: { session_id: sessionId } });
+            if (error) throw error;
+            setRouteRefreshKey(k => k + 1);
+            toast.success("Ekonomika přepočtena");
+          } catch (e: any) { toast.error("Chyba: " + (e.message || "neznámá")); }
+          finally { setRecomputingRoads(false); }
+        }}
+        layersTrigger={
+          <MapLayersPopover
+            open={showLayersPopover}
+            onOpenChange={setShowLayersPopover}
+            layers={{
+              province: showProvinceLayer,
+              road: showRoadLayer,
+              economy: showEconomyLayer,
+              influence: showInfluenceLayer,
+              underConstruction: showUnderConstructionLayer,
+              tradeSystems: showTradeSystemsLayer,
+            }}
+            onLayersChange={(next) => {
+              setShowProvinceLayer(next.province);
+              setShowRoadLayer(next.road);
+              setShowEconomyLayer(next.economy);
+              setShowInfluenceLayer(next.influence);
+              setShowUnderConstructionLayer(next.underConstruction);
+              setShowTradeSystemsLayer(next.tradeSystems);
+            }}
+            provinceLegend={provinceLegend}
+            provinceColors={PROVINCE_LEGEND_COLORS}
+            biomes={Object.entries(BIOME_LABELS).map(([key, label]) => ({
+              key, label,
+              icon: BIOME_ICONS[key] || "·",
+              color: BIOME_COLORS[key] || "#444",
+            }))}
+          />
+        }
+      />
 
-      {/* Right: zoom + home controls */}
-      <div className="absolute right-3 top-1/2 -translate-y-1/2 z-20 flex flex-col gap-2">
-        <Button size="icon" variant="secondary" className={`${isMobile ? 'h-11 w-11' : 'h-8 w-8'} bg-card/80 backdrop-blur-sm border-border`} onClick={zoomIn}>
-          <Plus className={isMobile ? 'h-5 w-5' : 'h-4 w-4'} />
-        </Button>
-        <Button size="icon" variant="secondary" className={`${isMobile ? 'h-11 w-11' : 'h-8 w-8'} bg-card/80 backdrop-blur-sm border-border`} onClick={zoomOut}>
-          <Minus className={isMobile ? 'h-5 w-5' : 'h-4 w-4'} />
-        </Button>
-        <Button size="icon" variant="secondary" className={`${isMobile ? 'h-11 w-11' : 'h-8 w-8'} bg-card/80 backdrop-blur-sm border-border`} onClick={goHome} title="Hlavní město">
-          <Home className={isMobile ? 'h-5 w-5' : 'h-4 w-4'} />
-        </Button>
-      </div>
-
-      {/* Bottom-left: legend toggle */}
-      <div className="absolute bottom-3 left-3 z-20">
-        <Button size="sm" variant="secondary" className="h-7 text-[10px] gap-1.5 bg-card/80 backdrop-blur-sm border-border"
-          onClick={() => setShowLegend(!showLegend)}>
-          <Layers className="h-3 w-3" />
-          Legenda {showLegend ? <ChevronDown className="h-3 w-3" /> : <ChevronUp className="h-3 w-3" />}
-        </Button>
-        {showLegend && (
-          <div className="mt-1.5 p-3 rounded-lg bg-card/90 backdrop-blur-md border border-border shadow-xl max-w-[320px]">
-            {/* Province legend */}
-            {provinceLegend.length > 0 && (
-              <div className="mb-2 pb-2 border-b border-border">
-                <div className="flex items-center justify-between mb-1.5">
-                  <p className="text-[10px] font-display font-semibold text-foreground">Provincie</p>
-                  <label className="flex items-center gap-1 text-[9px] text-muted-foreground cursor-pointer">
-                    <input type="checkbox" checked={showProvinceLayer} onChange={e => setShowProvinceLayer(e.target.checked)} className="w-3 h-3" />
-                    Zobrazit
-                  </label>
-                </div>
-                <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[9px]">
-                  {provinceLegend.map(p => (
-                    <div key={p.id} className="flex items-center gap-1.5 truncate">
-                      <span className="w-2.5 h-2.5 rounded-sm inline-block flex-shrink-0 border border-border"
-                        style={{ backgroundColor: PROVINCE_LEGEND_COLORS[p.colorIndex % PROVINCE_LEGEND_COLORS.length] }} />
-                      <span className="text-muted-foreground truncate">{p.name}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-            {/* Road network toggle */}
-            <div className="mb-2 pb-2 border-b border-border">
-              <div className="flex items-center justify-between mb-1">
-                <p className="text-[10px] font-display font-semibold text-foreground flex items-center gap-1">🛤️ Silnice</p>
-                <label className="flex items-center gap-1 text-[9px] text-muted-foreground cursor-pointer">
-                  <input type="checkbox" checked={showRoadLayer} onChange={e => setShowRoadLayer(e.target.checked)} className="w-3 h-3" />
-                  Zobrazit
-                </label>
-              </div>
-              {showRoadLayer && (
-                <div className="grid grid-cols-1 gap-y-1 text-[9px]">
-                  {(Object.entries(ROAD_STYLES) as Array<[string, { width: number; color: string; dash: string | undefined; label: string }]>).map(([key, style]) => (
-                    <span key={key} className="flex items-center gap-1.5 text-muted-foreground">
-                      <span className="w-4 h-0 inline-block border-t-[2px]" style={{ borderColor: style.color, borderStyle: style.dash ? "dashed" : "solid" }} />
-                      {style.label}
-                    </span>
-                  ))}
-                </div>
-              )}
-            </div>
-            {/* Node influence overlay toggle */}
-            <div className="mb-2 pb-2 border-b border-border">
-              <div className="flex items-center justify-between">
-                <p className="text-[10px] font-display font-semibold text-foreground flex items-center gap-1">🌐 Vliv na uzly</p>
-                <label className="flex items-center gap-1 text-[9px] text-muted-foreground cursor-pointer">
-                  <input type="checkbox" checked={showInfluenceLayer} onChange={e => setShowInfluenceLayer(e.target.checked)} className="w-3 h-3" />
-                  Zobrazit
-                </label>
-              </div>
-              {showInfluenceLayer && (
-                <p className="text-[8px] text-muted-foreground mt-1 leading-tight">
-                  Kruh = velikost integračního tlaku · barva = vedoucí hráč · <span className="text-[hsl(0,80%,60%)] font-semibold">CONTESTED</span> = rival ≥60% · <span className="text-[hsl(45,90%,55%)] font-semibold">BLOCKED</span> = anexe blokována
-                </p>
-              )}
-            </div>
-            {/* Economy v4.2 overlay toggle */}
-            <div className="mb-2 pb-2 border-b border-border">
-              <div className="flex items-center justify-between mb-1">
-                <p className="text-[10px] font-display font-semibold text-foreground flex items-center gap-1">📈 Ekonomika v4.3</p>
-                <label className="flex items-center gap-1 text-[9px] text-muted-foreground cursor-pointer">
-                  <input type="checkbox" checked={showEconomyLayer} onChange={e => setShowEconomyLayer(e.target.checked)} className="w-3 h-3" />
-                  Zobrazit
-                </label>
-              </div>
-              {showEconomyLayer && (
-                <div className="space-y-1.5">
-                  {/* View mode toggle */}
-                  <div className="flex gap-1 mb-1">
-                    <button
-                      onClick={() => setEconomyViewMode("goods")}
-                      className={`text-[8px] px-2 py-0.5 rounded-full border transition-colors ${economyViewMode === "goods" ? "bg-primary/20 border-primary text-primary" : "border-border text-muted-foreground hover:text-foreground"}`}
-                    >
-                      🏷️ Komodity
-                    </button>
-                    <button
-                      onClick={() => setEconomyViewMode("macro")}
-                      className={`text-[8px] px-2 py-0.5 rounded-full border transition-colors ${economyViewMode === "macro" ? "bg-primary/20 border-primary text-primary" : "border-border text-muted-foreground hover:text-foreground"}`}
-                    >
-                      📊 Makro
-                    </button>
-                  </div>
-
-                  {/* Goods category filters (only in goods mode) */}
-                  {economyViewMode === "goods" && (
-                    <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[9px]">
-                      {[
-                        { key: "food", icon: "🌾", label: "Potraviny" },
-                        { key: "raw", icon: "⛏️", label: "Suroviny" },
-                        { key: "luxury", icon: "✨", label: "Luxus" },
-                        { key: "manufactured", icon: "🔨", label: "Výrobky" },
-                      ].map(cat => (
-                        <label key={cat.key} className="flex items-center gap-1 text-muted-foreground cursor-pointer">
-                          <input type="checkbox" className="w-3 h-3"
-                            checked={economyCategories.has(cat.key)}
-                            onChange={e => {
-                              const next = new Set(economyCategories);
-                              if (e.target.checked) next.add(cat.key); else next.delete(cat.key);
-                              setEconomyCategories(next);
-                            }} />
-                          <span className="w-2 h-2 rounded-full inline-block" style={{ backgroundColor: CATEGORY_COLORS[cat.key] }} />
-                          {cat.icon} {cat.label}
-                        </label>
-                      ))}
-                    </div>
-                  )}
-
-                  {/* Macro legend (only in macro mode) */}
-                  {economyViewMode === "macro" && (
-                    <div className="space-y-1">
-                      <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[9px]">
-                        {[
-                          { key: "production", icon: "🏭", label: "Produkce" },
-                          { key: "supply", icon: "📦", label: "Zásoby" },
-                          { key: "wealth", icon: "💰", label: "Bohatství" },
-                          { key: "trade", icon: "🔀", label: "Obchod" },
-                          { key: "export", icon: "🚢", label: "Export" },
-                        ].map(cat => (
-                          <label key={cat.key} className="flex items-center gap-1 text-muted-foreground cursor-pointer">
-                            <input type="checkbox" className="w-3 h-3"
-                              checked={economyCategories.has(cat.key)}
-                              onChange={e => {
-                                const next = new Set(economyCategories);
-                                if (e.target.checked) next.add(cat.key); else next.delete(cat.key);
-                                setEconomyCategories(next);
-                              }} />
-                            <span className="w-2 h-2 rounded-full inline-block" style={{ backgroundColor: MACRO_COLORS[cat.key] }} />
-                            {cat.icon} {cat.label}
-                          </label>
-                        ))}
-                      </div>
-                      <div className="border-t border-border pt-1 mt-1 grid grid-cols-1 gap-y-0.5 text-[8px]">
-                        <span className="flex items-center gap-1 text-muted-foreground">
-                          <span className="w-2 h-2 rounded-full inline-block" style={{ backgroundColor: FLOW_LAYER_COLORS.local_logistics }} />
-                          ⛏→🏙 Lokální logistika
-                        </span>
-                        <span className="flex items-center gap-1 text-muted-foreground">
-                          <span className="w-2 h-2 rounded-full inline-block" style={{ backgroundColor: FLOW_LAYER_COLORS.caravan }} />
-                          🐫 Karavany
-                        </span>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Common indicators */}
-                  <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[9px] mt-1">
-                    <span className="flex items-center gap-1 text-muted-foreground">💫 Auto-produkce</span>
-                    <span className="flex items-center gap-1 text-muted-foreground">🟢🟡🔴 Nasycení</span>
-                    <span className="flex items-center gap-1 text-muted-foreground">➡️ Export šipky</span>
-                    <span className="flex items-center gap-1 text-muted-foreground">● Částice</span>
-                    <span className="flex items-center gap-1 text-muted-foreground"><span className="w-3 h-0 inline-block border-t-[2px] border-dashed" style={{ borderColor: "hsl(45, 80%, 55%)" }} /> Sporná</span>
-                    <span className="flex items-center gap-1 text-muted-foreground"><span className="w-3 h-0 inline-block border-t-[2px] border-dashed" style={{ borderColor: "hsl(0, 70%, 50%)" }} /> Blokovaná</span>
-                  </div>
-                </div>
-              )}
-            </div>
-            <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-[10px]">
-              {Object.entries(BIOME_LABELS).map(([key, label]) => (
-                <div key={key} className="flex items-center gap-1.5">
-                  <span className="w-3 h-3 rounded inline-block border border-border" style={{ backgroundColor: BIOME_COLORS[key] }} />
-                  <span className="text-muted-foreground">{BIOME_ICONS[key]} {label}</span>
-                </div>
-              ))}
-            </div>
-            <div className="flex flex-wrap gap-3 mt-2 pt-2 border-t border-border">
-              <span className="flex items-center gap-1 text-[9px] text-muted-foreground">
-                <span className="w-2.5 h-2.5 rounded-full border-2 border-[hsl(45,90%,55%)] inline-block" /> Pozice
-              </span>
-              <span className="flex items-center gap-1 text-[9px] text-muted-foreground">
-                <span className="w-2.5 h-2.5 rounded border border-dashed border-muted-foreground/40 bg-[#111318] opacity-40 inline-block" /> Neprozkoumaný
-              </span>
-              <span className="text-[9px] text-muted-foreground">🏰 Město</span>
-              <span className="text-[9px] text-muted-foreground">👑 Hlavní město</span>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Bottom-center: keyboard hint (desktop only) */}
-      {!isMobile && (
-        <div className="absolute bottom-3 left-1/2 -translate-x-1/2 z-20 pointer-events-none">
-          <div className="px-3 py-1 rounded-full bg-card/60 backdrop-blur-sm border border-border text-[9px] text-muted-foreground">
-            WASD / šipky = posun · kolečko = zoom · klik = průzkum / detail · ESC = zrušit
-          </div>
-        </div>
-      )}
-      {/* Mobile hint */}
-      {isMobile && (
-        <div className="absolute bottom-3 left-1/2 -translate-x-1/2 z-20 pointer-events-none">
-          <div className="px-3 py-1 rounded-full bg-card/60 backdrop-blur-sm border border-border text-[9px] text-muted-foreground">
-            Tažení = posun · Dvěma prsty = zoom · Klepnutí = detail
-          </div>
-        </div>
-      )}
 
       {/* Minimap */}
       {!selectedStack && (
