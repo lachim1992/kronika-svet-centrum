@@ -175,7 +175,13 @@ const ArmyTab = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, re
 
   // Compute population-based manpower
   // Compute workforce breakdown using new model
-  const myCities = cities.filter(c => c.owner_player === currentPlayerName);
+  // Resolve effective owner name: prefer realm.player_name (canonical), fall back to currentPlayerName.
+  const effectiveOwnerName = (realm as any)?.player_name || currentPlayerName;
+  let myCities = cities.filter(c => c.owner_player === effectiveOwnerName);
+  // Fallback: if no match (mismatched display name vs city owner), try currentPlayerName explicitly.
+  if (myCities.length === 0 && effectiveOwnerName !== currentPlayerName) {
+    myCities = cities.filter(c => c.owner_player === currentPlayerName);
+  }
   const mobRate = realm?.mobilization_rate || 0.1;
   const wf = computeWorkforceBreakdown(myCities, mobRate);
   const computedPool = wf.effectiveActivePop;
