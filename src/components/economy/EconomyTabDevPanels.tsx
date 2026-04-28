@@ -61,6 +61,8 @@ const EconomyTabDevPanels = ({ sessionId, currentPlayerName, cities, realm }: Pr
         playerName={currentPlayerName}
         realm={realm}
       />
+
+      <TradeSystemSupplyPanel sessionId={sessionId} />
       
       <EconomyDependencyMap realm={realm} cities={myCities} armies={[]} />
       
