@@ -1732,25 +1732,97 @@ async function executeUpgradeRoute(
     .eq("id", routeId).eq("session_id", sessionId).single();
   if (!route) return { events: [], error: "Route not found" };
 
-  const upgradeCost = Math.round(route.build_cost * 0.5 * (route.upgrade_level + 1));
+  // Tier ladder: trail → road → paved.
+  // Legacy aliases (land_road, caravan_route, river_route, sea_lane, mountain_pass) are normalized to "road".
+  const TIER_ORDER = ["trail", "road", "paved"] as const;
+  const TIER_LABELS: Record<string, string> = { trail: "Stezka", road: "Cesta", paved: "Dlážděná" };
+  const LEGACY_MAP: Record<string, string> = {
+    land_road: "road", caravan_route: "road", river_route: "road",
+    sea_lane: "road", mountain_pass: "trail",
+  };
+  const currentNormalized = LEGACY_MAP[route.route_type] || route.route_type;
+  const currentIdx = TIER_ORDER.indexOf(currentNormalized as any);
+  if (currentIdx < 0) {
+    return { events: [], error: `Neznámý typ cesty: ${route.route_type}` };
+  }
+  if (currentIdx >= TIER_ORDER.length - 1) {
+    return { events: [], error: "Cesta je již na maximálním tieru (dlážděná)." };
+  }
+  const nextTier = TIER_ORDER[currentIdx + 1];
+  const upgradeCost = Math.round((route.build_cost || 50) * 0.5 * (route.upgrade_level + 1));
 
   const { data: realm } = await supabase.from("realm_resources")
     .select("id, gold_reserve").eq("session_id", sessionId).eq("player_name", actor.name).single();
-  if (!realm || realm.gold_reserve < upgradeCost) return { events: [], error: `Nedostatek zlata (potřeba: ${upgradeCost})` };
+  if (!realm || (realm.gold_reserve ?? 0) < upgradeCost) {
+    return { events: [], error: `Nedostatek zlata (potřeba: ${upgradeCost})` };
+  }
 
   await supabase.from("realm_resources").update({ gold_reserve: realm.gold_reserve - upgradeCost }).eq("id", realm.id);
 
+  // Tier-specific stat bumps.
+  const tierStats: Record<string, { capacity: number; speed: number; vuln: number }> = {
+    trail: { capacity: 5, speed: 3, vuln: 5 },
+    road:  { capacity: 8, speed: 5, vuln: 4 },
+    paved: { capacity: 12, speed: 7, vuln: 2 },
+  };
+  const stats = tierStats[nextTier];
+
   await supabase.from("province_routes").update({
+    route_type: nextTier,
     upgrade_level: route.upgrade_level + 1,
-    capacity_value: route.capacity_value + 2,
+    capacity_value: stats.capacity,
+    speed_value: stats.speed,
+    vulnerability_score: stats.vuln,
   }).eq("id", routeId);
 
-  const note = `${actor.name} vylepšil trasu na úroveň ${route.upgrade_level + 1} za ${upgradeCost} zlata.`;
+  const note = `${actor.name} vylepšil cestu na ${TIER_LABELS[nextTier]} (úroveň ${route.upgrade_level + 1}) za ${upgradeCost}g.`;
 
   return insertEventsWithChronicle(supabase, commandId, sessionId, turnNumber, [{
     ...base,
     event_type: "construction", note, importance: "normal",
-    reference: { routeId, newLevel: route.upgrade_level + 1, cost: upgradeCost },
+    reference: { routeId, newTier: nextTier, newLevel: route.upgrade_level + 1, cost: upgradeCost },
+  }], payload.chronicleText);
+}
+
+// ═══════════════════════════════════════════
+// RENAME_ROUTE — change a route's display name
+// ═══════════════════════════════════════════
+
+async function executeRenameRoute(
+  supabase: any, base: any, actor: Actor, payload: any,
+  commandId: string, sessionId: string, turnNumber: number,
+): Promise<CommandResult> {
+  const { routeId, name } = payload;
+  if (!routeId) return { events: [], error: "Missing routeId" };
+
+  const { data: route } = await supabase.from("province_routes")
+    .select("id, node_a, node_b, metadata, name")
+    .eq("id", routeId).eq("session_id", sessionId).single();
+  if (!route) return { events: [], error: "Route not found" };
+
+  // Authorization: only built_by or controller of either endpoint may rename.
+  const builtBy = route.metadata?.built_by;
+  let allowed = builtBy === actor.name;
+  if (!allowed) {
+    const { data: ends } = await supabase.from("province_nodes")
+      .select("id, controlled_by").in("id", [route.node_a, route.node_b]);
+    allowed = (ends || []).some((n: any) => n.controlled_by === actor.name);
+  }
+  if (!allowed) return { events: [], error: "Pouze stavitel nebo vlastník koncového uzlu může cestu přejmenovat." };
+
+  const trimmed = typeof name === "string" ? name.trim().slice(0, 60) : "";
+  const finalName = trimmed.length > 0 ? trimmed : null;
+
+  await supabase.from("province_routes").update({ name: finalName }).eq("id", routeId);
+
+  const note = finalName
+    ? `${actor.name} přejmenoval cestu na „${finalName}".`
+    : `${actor.name} odebral vlastní název cesty.`;
+
+  return insertEventsWithChronicle(supabase, commandId, sessionId, turnNumber, [{
+    ...base,
+    event_type: "construction", note, importance: "minor",
+    reference: { routeId, name: finalName },
   }], payload.chronicleText);
 }
 
