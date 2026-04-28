@@ -86,6 +86,20 @@ const NODE_CAPABILITY_MAP: Record<string, { role: ProductionRole; tags: string[]
   ruined_keep: { role: "source", tags: ["stonecutting", "gathering"] },
   fallen_temple: { role: "source", tags: ["stonecutting", "ritual_craft"] },
   old_road_marker: { role: "source", tags: ["gathering"] },
+  burned_village: { role: "source", tags: ["gathering", "stonecutting"] },
+  // additional neutral subtypes
+  trapper_camp: { role: "source", tags: ["herding", "gathering", "tanning", "preserving"] },
+  river_ford_post: { role: "urban", tags: ["crafting", "fishing", "preserving"] },
+  marsh_oracle: { role: "source", tags: ["ritual_craft", "gathering", "brewing"] },
+  forest_shrine: { role: "source", tags: ["ritual_craft", "gathering"] },
+};
+
+// Fallback by node_type when subtype is unmapped
+const NODE_TYPE_FALLBACK: Record<string, { role: ProductionRole; tags: string[] }> = {
+  shrine: { role: "source", tags: ["ritual_craft", "gathering"] },
+  ruin: { role: "source", tags: ["stonecutting", "gathering"] },
+  resource_outpost: { role: "source", tags: ["gathering", "mining"] },
+  neutral_settlement: { role: "source", tags: ["farming", "herding", "crafting"] },
 };
 
 // Biome → bonus capability tags (synced s compute-province-nodes)
