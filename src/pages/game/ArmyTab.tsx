@@ -365,6 +365,14 @@ const ArmyTab = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, re
           <span className={mobRate > wf.maxMobilization ? "text-illuminated font-semibold" : ""}>{maxMobPct}% — Soft cap</span>
           <span>50% — Hard cap</span>
         </div>
+        {myCities.length === 0 && (
+          <div className="flex items-center gap-1.5 text-xs text-destructive bg-destructive/10 rounded-md px-3 py-1.5">
+            <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+            <span>
+              Nenalezena žádná tvá města (hráč: <b>{currentPlayerName}</b>{(realm as any)?.player_name && (realm as any).player_name !== currentPlayerName ? ` / realm: ${(realm as any).player_name}` : ""}). Mob. strop nelze vypočítat — zkontroluj přihlášení / vlastnictví měst.
+            </span>
+          </div>
+        )}
         {isOverMobCap && (
           <div className="flex items-center gap-1.5 text-xs text-illuminated bg-illuminated/10 rounded-md px-3 py-1.5">
             <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
