@@ -4,6 +4,7 @@
  */
 import { useState, useEffect, useCallback, useMemo, memo, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { emitRouteClick } from "@/lib/worldMapBus";
 
 const HEX_SIZE = 38;
 const SQRT3 = Math.sqrt(3);
@@ -24,10 +25,12 @@ interface RoadSegment {
   id: string;
   tier: RoadTier;
   path: Array<{ q: number; r: number }>;
+  name: string;
 }
 
 interface NodeInfo {
   id: string;
+  name: string;
   node_tier: string;
 }
 
@@ -36,6 +39,7 @@ interface RouteInfo {
   node_a: string;
   node_b: string;
   control_state: string;
+  name: string | null;
 }
 
 interface FlowPathRow {
@@ -62,12 +66,12 @@ const RoadNetworkOverlay = memo(({ sessionId, offsetX, offsetY, visible }: Props
     const [nodesRes, routesRes, flowPathsRes] = await Promise.all([
       supabase
         .from("province_nodes")
-        .select("id, node_tier")
+        .select("id, name, node_tier")
         .eq("session_id", sessionId)
         .eq("is_active", true),
       supabase
         .from("province_routes")
-        .select("id, node_a, node_b, control_state")
+        .select("id, node_a, node_b, control_state, name")
         .eq("session_id", sessionId),
       supabase
         .from("flow_paths")
@@ -117,7 +121,8 @@ const RoadNetworkOverlay = memo(({ sessionId, offsetX, offsetY, visible }: Props
       else if (nA.node_tier === "major" || nB.node_tier === "major") tier = "minor";
       else if (nA.node_tier === "minor" || nB.node_tier === "minor") tier = "micro";
 
-      roadSegments.push({ id: route.id, tier, path });
+      const displayName = route.name?.trim() || `Via ${nA.name} – ${nB.name}`;
+      roadSegments.push({ id: route.id, tier, path, name: displayName });
     }
 
     setRoads(roadSegments);
@@ -136,6 +141,8 @@ const RoadNetworkOverlay = memo(({ sessionId, offsetX, offsetY, visible }: Props
     void loadRoads();
   }, [loadRoads]);
 
+  const [hoveredId, setHoveredId] = useState<string | null>(null);
+
   const roadElements = useMemo(() => {
     if (!visible || roads.length === 0) return null;
 
@@ -151,22 +158,44 @@ const RoadNetworkOverlay = memo(({ sessionId, offsetX, offsetY, visible }: Props
         })
         .join(" ");
 
+      const isHover = hoveredId === road.id;
+
       return (
-        <polyline
-          key={`road-${road.id}`}
-          points={points}
-          fill="none"
-          stroke={style.color}
-          strokeWidth={style.width}
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          strokeDasharray={style.dash}
-          opacity={0.85}
-          style={{ pointerEvents: "none" }}
-        />
+        <g key={`road-${road.id}`}>
+          {/* Visible road */}
+          <polyline
+            points={points}
+            fill="none"
+            stroke={style.color}
+            strokeWidth={isHover ? style.width + 1.5 : style.width}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeDasharray={style.dash}
+            opacity={isHover ? 1 : 0.85}
+            style={{ pointerEvents: "none", transition: "stroke-width 120ms, opacity 120ms" }}
+          />
+          {/* Invisible hit area for clicks/hover */}
+          <polyline
+            points={points}
+            fill="none"
+            stroke="transparent"
+            strokeWidth={14}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            style={{ cursor: "pointer", pointerEvents: "stroke" }}
+            onMouseEnter={() => setHoveredId(road.id)}
+            onMouseLeave={() => setHoveredId((h) => (h === road.id ? null : h))}
+            onClick={(e) => {
+              e.stopPropagation();
+              emitRouteClick(road.id);
+            }}
+          >
+            <title>{road.name}</title>
+          </polyline>
+        </g>
       );
     });
-  }, [roads, offsetX, offsetY, visible]);
+  }, [roads, offsetX, offsetY, visible, hoveredId]);
 
   if (!visible) return null;
 

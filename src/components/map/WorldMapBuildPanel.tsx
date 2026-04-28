@@ -1,11 +1,15 @@
 /**
- * WorldMapBuildPanel — Stage 8
+ * WorldMapBuildPanel — Stage 8 (v2: waypoint planning + custom names)
  *
  * Floating panel (bottom-left) for player infrastructure actions on WorldMap:
- *   1. Build Mode: pick A & B node → A* preview length → BUILD_ROUTE
+ *   1. Build Mode: pick A & B node, optionally add waypoint hexes, set custom name
  *   2. Routes Under Construction: list, assign idle stack, cancel
  *
- * Pure-presentation: every mutation goes through dispatchCommand.
+ * Waypoint flow:
+ *   - "Plánovat trasu" toggle activates build mode (worldmap:build-mode)
+ *   - Clicking hexes on the map emits worldmap:hex-click events
+ *   - Hexes go into a sequential waypoint list; A* on the server chains
+ *     start → wp1 → wp2 → … → end via these forced points.
  */
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
@@ -13,10 +17,13 @@ import { dispatchCommand } from "@/lib/commands";
 import { computeWorkforceBreakdown } from "@/lib/economyConstants";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Hammer, Plus, X, HardHat, ChevronDown, ChevronUp, Trash2, Users } from "lucide-react";
+import {
+  Hammer, Plus, X, HardHat, ChevronDown, ChevronUp, Trash2, Users,
+  MapPin, Wand2,
+} from "lucide-react";
 import { toast } from "sonner";
-// Lightweight axial-distance preview (no terrain cost). True A* is computed server-side
-// during BUILD_ROUTE / compute-province-routes; this is just a length hint for the UI.
+import { emitBuildMode, WORLDMAP_EVENTS, type HexCoord } from "@/lib/worldMapBus";
+
 function axialHexDistance(a: { q: number; r: number }, b: { q: number; r: number }): number {
   const dq = a.q - b.q;
   const dr = a.r - b.r;
@@ -39,6 +46,7 @@ interface RouteRow {
   route_type: string;
   metadata: any;
   build_cost: number | null;
+  name: string | null;
 }
 
 interface StackRow {
@@ -76,13 +84,57 @@ export default function WorldMapBuildPanel({ sessionId, playerName, currentTurn 
   const [laborAvailable, setLaborAvailable] = useState<number>(0);
   const [submitting, setSubmitting] = useState(false);
 
+  // v2 additions
+  const [routeName, setRouteName] = useState<string>("");
+  const [planning, setPlanning] = useState<boolean>(false);
+  const [waypoints, setWaypoints] = useState<HexCoord[]>([]);
+
+  // Sync planning state with the global bus so the map knows to redirect clicks.
+  useEffect(() => {
+    emitBuildMode(planning);
+    return () => emitBuildMode(false);
+  }, [planning]);
+
+  // Receive hex clicks from the map while planning is active.
+  useEffect(() => {
+    if (!planning) return;
+    const onHex = (e: Event) => {
+      const detail = (e as CustomEvent).detail as HexCoord;
+      if (!detail) return;
+      setWaypoints((prev) => {
+        // Toggle: clicking an existing waypoint removes it.
+        const idx = prev.findIndex((w) => w.q === detail.q && w.r === detail.r);
+        if (idx >= 0) return prev.filter((_, i) => i !== idx);
+        return [...prev, { q: detail.q, r: detail.r }];
+      });
+    };
+    window.addEventListener(WORLDMAP_EVENTS.hexClick, onHex);
+    return () => window.removeEventListener(WORLDMAP_EVENTS.hexClick, onHex);
+  }, [planning]);
+
+  // Listen for "Stavět odsud" from the route detail sheet.
+  useEffect(() => {
+    const onFocus = (e: Event) => {
+      const detail = (e as CustomEvent).detail as { nodeId: string };
+      if (detail?.nodeId) {
+        setSection("build");
+        setOpen(true);
+        setNodeAId(detail.nodeId);
+        setNodeBId("");
+        setWaypoints([]);
+      }
+    };
+    window.addEventListener(WORLDMAP_EVENTS.focusBuild, onFocus);
+    return () => window.removeEventListener(WORLDMAP_EVENTS.focusBuild, onFocus);
+  }, []);
+
   const refresh = async () => {
     const [nRes, rRes, sRes, realmRes, citiesRes] = await Promise.all([
       supabase.from("province_nodes")
         .select("id, name, hex_q, hex_r, controlled_by, node_tier")
         .eq("session_id", sessionId).eq("is_active", true),
       supabase.from("province_routes")
-        .select("id, node_a, node_b, route_type, metadata, build_cost")
+        .select("id, node_a, node_b, route_type, metadata, build_cost, name")
         .eq("session_id", sessionId).eq("construction_state", "under_construction"),
       supabase.from("military_stacks")
         .select("id, name, soldiers, assignment, assigned_route_id")
@@ -132,10 +184,12 @@ export default function WorldMapBuildPanel({ sessionId, playerName, currentTurn 
     const a = allNodesById.get(nodeAId);
     const b = allNodesById.get(nodeBId);
     if (!a || !b) return null;
-    const length = axialHexDistance({ q: a.hex_q, r: a.hex_r }, { q: b.hex_q, r: b.hex_r });
-    // Synthetic 2-point path; server recomputes the real A* on commit.
-    return { length, path: [{ q: a.hex_q, r: a.hex_r }, { q: b.hex_q, r: b.hex_r }] };
-  }, [nodeAId, nodeBId, allNodesById]);
+    // Chained length: A → wp1 → … → wpN → B
+    const chain: HexCoord[] = [{ q: a.hex_q, r: a.hex_r }, ...waypoints, { q: b.hex_q, r: b.hex_r }];
+    let length = 0;
+    for (let i = 1; i < chain.length; i++) length += axialHexDistance(chain[i - 1], chain[i]);
+    return { length, path: chain };
+  }, [nodeAId, nodeBId, allNodesById, waypoints]);
 
   const idleStacks = useMemo(
     () => stacks.filter(s => (s.assignment || "idle") === "idle" && !s.assigned_route_id),
@@ -157,6 +211,8 @@ export default function WorldMapBuildPanel({ sessionId, playerName, currentTurn 
         nodeAId, nodeBId,
         routeType,
         labor,
+        name: routeName.trim() || undefined,
+        waypoints,
         hexPath: preview?.path || [],
       },
     });
@@ -164,6 +220,8 @@ export default function WorldMapBuildPanel({ sessionId, playerName, currentTurn 
     if (!res.ok) { toast.error(res.error || "Stavba selhala"); return; }
     toast.success("Stavba zahájena");
     setNodeAId(""); setNodeBId("");
+    setRouteName(""); setWaypoints([]);
+    setPlanning(false);
     void refresh();
   };
 
@@ -192,10 +250,13 @@ export default function WorldMapBuildPanel({ sessionId, playerName, currentTurn 
   };
 
   const selectedRouteCost = ROUTE_TYPE_OPTIONS.find(o => o.key === routeType)?.cost || 100;
+  const nodeAObj = nodeAId ? allNodesById.get(nodeAId) : null;
+  const nodeBObj = nodeBId ? allNodesById.get(nodeBId) : null;
+  const namePlaceholder = nodeAObj && nodeBObj ? `Via ${nodeAObj.name} – ${nodeBObj.name}` : "Via …";
 
   return (
     <div className="absolute bottom-2 left-2 z-30 pointer-events-auto">
-      <div className="rounded-lg bg-card/95 backdrop-blur-md border border-border shadow-xl w-[300px]">
+      <div className="rounded-lg bg-card/95 backdrop-blur-md border border-border shadow-xl w-[320px]">
         {/* Header */}
         <button
           onClick={() => setOpen(o => !o)}
@@ -250,6 +311,19 @@ export default function WorldMapBuildPanel({ sessionId, playerName, currentTurn 
                   </select>
                 </div>
 
+                {/* Custom name */}
+                <div className="space-y-1">
+                  <label className="text-[10px] font-display font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1">
+                    <Wand2 className="h-2.5 w-2.5" /> Název cesty (volitelné)
+                  </label>
+                  <input
+                    type="text" maxLength={60}
+                    value={routeName}
+                    onChange={e => setRouteName(e.target.value)}
+                    placeholder={namePlaceholder}
+                    className="w-full text-xs bg-background border border-border rounded px-2 py-1" />
+                </div>
+
                 <div className="grid grid-cols-2 gap-2">
                   <div>
                     <label className="text-[10px] font-display font-semibold text-muted-foreground uppercase tracking-wider">Typ</label>
@@ -275,6 +349,46 @@ export default function WorldMapBuildPanel({ sessionId, playerName, currentTurn 
                       k dispozici: {laborAvailable}
                     </div>
                   </div>
+                </div>
+
+                {/* Waypoint planning */}
+                <div className="rounded border border-border bg-muted/20 p-1.5 space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-display font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1">
+                      <MapPin className="h-2.5 w-2.5" /> Plánovaná trasa
+                    </span>
+                    <Button
+                      size="sm" variant={planning ? "default" : "outline"}
+                      className="h-5 text-[10px] px-2"
+                      onClick={() => setPlanning(p => !p)}>
+                      {planning ? "Hotovo" : "Klikat hexy"}
+                    </Button>
+                  </div>
+                  {planning && (
+                    <p className="text-[10px] text-muted-foreground italic">
+                      Klikejte hexy v mapě pro povinné průchozí body. Opakovaný klik bod odebere.
+                    </p>
+                  )}
+                  {waypoints.length > 0 ? (
+                    <div className="flex flex-wrap gap-1">
+                      {waypoints.map((w, i) => (
+                        <button
+                          key={`${w.q},${w.r}`}
+                          onClick={() => setWaypoints(prev => prev.filter((_, idx) => idx !== i))}
+                          title="Odstranit"
+                          className="text-[10px] font-mono bg-background border border-border rounded px-1.5 py-0.5 hover:bg-destructive/20 hover:border-destructive">
+                          ({w.q},{w.r}) ×
+                        </button>
+                      ))}
+                      <button
+                        onClick={() => setWaypoints([])}
+                        className="text-[10px] text-destructive underline">
+                        vyčistit
+                      </button>
+                    </div>
+                  ) : (
+                    <p className="text-[10px] text-muted-foreground/70">žádné — A* zvolí přímou cestu</p>
+                  )}
                 </div>
 
                 {preview && (
@@ -308,12 +422,13 @@ export default function WorldMapBuildPanel({ sessionId, playerName, currentTurn 
                   const builtByMe = md.built_by === playerName;
                   const a = allNodesById.get(r.node_a);
                   const b = allNodesById.get(r.node_b);
+                  const displayName = r.name?.trim() || `Via ${a?.name || "?"} – ${b?.name || "?"}`;
                   const assignedHere = stacks.filter(s => s.assigned_route_id === r.id);
                   return (
                     <div key={r.id} className="rounded border border-border bg-muted/20 p-2 space-y-1.5">
                       <div className="flex items-center justify-between gap-2">
-                        <span className="text-xs font-semibold truncate">
-                          {a?.name || "?"} ↔ {b?.name || "?"}
+                        <span className="text-xs font-semibold truncate" title={displayName}>
+                          {displayName}
                         </span>
                         <Badge variant="outline" className="h-4 text-[10px]">{r.route_type}</Badge>
                       </div>

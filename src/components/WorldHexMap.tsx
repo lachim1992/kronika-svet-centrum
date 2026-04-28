@@ -23,6 +23,7 @@ import EconomyFlowOverlay, { CATEGORY_COLORS, MACRO_COLORS, FLOW_LAYER_COLORS } 
 import type { EconomyViewMode } from "@/components/map/EconomyFlowOverlay";
 import NodeInfluenceOverlay from "@/components/map/NodeInfluenceOverlay";
 import UnderConstructionRoutesOverlay from "@/components/map/UnderConstructionRoutesOverlay";
+import { isBuildModeActive, emitHexClick } from "@/lib/worldMapBus";
 import TradeSystemsOverlay from "@/components/map/TradeSystemsOverlay";
 import MapMinimap from "@/components/map/MapMinimap";
 import { MINOR_NODE_TYPES, MICRO_NODE_TYPES, MAJOR_NODE_TYPES } from "@/lib/nodeTypes";
@@ -1060,6 +1061,11 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
 
   const handleTileClick = useCallback((q: number, r: number, isFrontier: boolean) => {
     if (dragRef.current?.moved) return;
+    // Build mode: route the click into the build panel as a waypoint pick.
+    if (isBuildModeActive()) {
+      emitHexClick({ q, r });
+      return;
+    }
     if (isFrontier) { handleExploreFrontier(q, r); return; }
     if (selectedStack) { setSelectedStack(null); return; }
     // Single click no longer opens detail — use double-click
@@ -1067,6 +1073,7 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
 
   const handleTileDoubleClick = useCallback((q: number, r: number) => {
     if (dragRef.current?.moved) return;
+    if (isBuildModeActive()) return; // suppress sheet while planning
     const hex = getHex(q, r);
     if (hex) { setSelectedHex(hex); setEditBiome(null); }
   }, [getHex]);

@@ -1,0 +1,3 @@
+ALTER TABLE public.province_routes
+  ADD COLUMN IF NOT EXISTS name TEXT,
+  ADD COLUMN IF NOT EXISTS waypoints JSONB;
