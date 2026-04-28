@@ -1427,6 +1427,12 @@ Deno.serve(async (req) => {
       supply_strain: Math.round(supplyStrain * 1000) / 1000,
       mobilization_production_penalty: Math.round(mobProductionPenalty * 10) / 10,
       mobilization_wealth_penalty: Math.round(mobWealthPenalty * 10) / 10,
+      // ── Stage 7: explicit manpower & military upkeep ledger ──
+      manpower_available: Math.max(0, manpowerPool - totalSoldiers),
+      manpower_mobilized: totalSoldiers,
+      over_mobilized: overMobilized,
+      military_gold_upkeep: armyWealthUpkeep,
+      military_food_upkeep: armyProductionUpkeep,
       last_turn_faith_delta: Math.round(faithGrowth * 100) / 100,
       // Goods economy fiscal columns (fix: was tax_pop, correct column is tax_population)
       tax_population: goodsPopTax,
