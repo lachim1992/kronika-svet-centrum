@@ -66,6 +66,26 @@ const NODE_CAPABILITY_MAP: Record<string, { role: ProductionRole; tags: string[]
   master_workshop: { role: "guild", tags: ["master_craft"] },
   court_manufactory: { role: "guild", tags: ["master_craft"] },
   temple_workshop: { role: "guild", tags: ["ritual_craft", "master_craft"] },
+
+  // ── R2: Neutral world-catalog subtypes (was unmapped → empty tags) ──
+  // resource_outpost subtypes
+  marble_quarry: { role: "source", tags: ["quarrying", "stonecutting"] },
+  obsidian_quarry: { role: "source", tags: ["quarrying", "mining"] },
+  salt_panner: { role: "source", tags: ["mining", "salting", "preserving"] },
+  incense_grove: { role: "source", tags: ["gathering", "ritual_craft"] },
+  charcoal_burner: { role: "processing", tags: ["logging", "smelting"] },
+  // neutral_settlement subtypes
+  horse_breeders: { role: "source", tags: ["herding", "tanning", "leatherwork"] },
+  roadside_camp: { role: "urban", tags: ["crafting", "baking", "preserving"] },
+  desert_oasis: { role: "source", tags: ["farming", "gathering", "preserving"] },
+  grain_hamlet: { role: "source", tags: ["farming", "milling", "baking"] },
+  // shrine subtypes
+  stone_circle: { role: "source", tags: ["ritual_craft", "gathering"] },
+  highland_shrine: { role: "source", tags: ["ritual_craft", "gathering"] },
+  // ruin subtypes (low yield, mostly stonecutting from rubble)
+  ruined_keep: { role: "source", tags: ["stonecutting", "gathering"] },
+  fallen_temple: { role: "source", tags: ["stonecutting", "ritual_craft"] },
+  old_road_marker: { role: "source", tags: ["gathering"] },
 };
 
 // Biome → bonus capability tags (synced s compute-province-nodes)

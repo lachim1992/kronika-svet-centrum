@@ -49,6 +49,21 @@ const NODE_CAPABILITY_MAP: Record<string, { role: string; tags: string[] }> = {
   trade_post: { role: "urban", tags: ["construction", "crafting"] },
   shrine: { role: "source", tags: ["ritual_craft"] },
   watchtower: { role: "source", tags: [] },
+  // ── R2: Neutral world-catalog subtypes (synced with backfill-economy-tags) ──
+  marble_quarry: { role: "source", tags: ["quarrying", "stonecutting"] },
+  obsidian_quarry: { role: "source", tags: ["quarrying", "mining"] },
+  salt_panner: { role: "source", tags: ["mining", "salting", "preserving"] },
+  incense_grove: { role: "source", tags: ["gathering", "ritual_craft"] },
+  charcoal_burner: { role: "processing", tags: ["logging", "smelting"] },
+  horse_breeders: { role: "source", tags: ["herding", "tanning", "leatherwork"] },
+  roadside_camp: { role: "urban", tags: ["crafting", "baking", "preserving"] },
+  desert_oasis: { role: "source", tags: ["farming", "gathering", "preserving"] },
+  grain_hamlet: { role: "source", tags: ["farming", "milling", "baking"] },
+  stone_circle: { role: "source", tags: ["ritual_craft", "gathering"] },
+  highland_shrine: { role: "source", tags: ["ritual_craft", "gathering"] },
+  ruined_keep: { role: "source", tags: ["stonecutting", "gathering"] },
+  fallen_temple: { role: "source", tags: ["stonecutting", "ritual_craft"] },
+  old_road_marker: { role: "source", tags: ["gathering"] },
 };
 
 // Biome → extra bonus capability tags (každý hex má 3-5 tagů → pokryje 12 baskets)
