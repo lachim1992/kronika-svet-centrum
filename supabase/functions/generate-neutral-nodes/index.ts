@@ -33,6 +33,49 @@ const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
 const IMPASSABLE_BIOMES = new Set(["ocean", "deep_ocean", "glacier", "ice"]);
 
+// ── R3: Map legacy/narrative basket keys → 12 canonical baskets ──
+const LEGACY_OUTPUT_BASKET_MAP: Record<string, string> = {
+  faith: "admin_supplies",     // ritual_goods → admin tier
+  drink: "feast",              // wines/beers
+  luxury: "luxury_clothing",
+  ritual: "admin_supplies",
+  prestige: "luxury_clothing",
+  variety: "feast",
+  basic_material: "metalwork",
+  textile: "basic_clothing",
+};
+const CANONICAL_BASKETS = new Set([
+  "staple_food","basic_clothing","tools","fuel",
+  "drinking_water","storage_logistics","admin_supplies",
+  "construction","metalwork","military_supply",
+  "luxury_clothing","feast",
+]);
+function mapBasket(raw: string): string {
+  if (CANONICAL_BASKETS.has(raw)) return raw;
+  return LEGACY_OUTPUT_BASKET_MAP[raw] || "staple_food";
+}
+
+// ── R2: subtype → capability tags + role (synced with backfill-economy-tags) ──
+const NEUTRAL_NODE_CAPABILITY_MAP: Record<string, { role: string; tags: string[] }> = {
+  marble_quarry: { role: "source", tags: ["quarrying", "stonecutting"] },
+  obsidian_quarry: { role: "source", tags: ["quarrying", "mining"] },
+  salt_panner: { role: "source", tags: ["mining", "salting", "preserving"] },
+  incense_grove: { role: "source", tags: ["gathering", "ritual_craft"] },
+  charcoal_burner: { role: "processing", tags: ["logging", "smelting"] },
+  horse_breeders: { role: "source", tags: ["herding", "tanning", "leatherwork"] },
+  roadside_camp: { role: "urban", tags: ["crafting", "baking", "preserving"] },
+  desert_oasis: { role: "source", tags: ["farming", "gathering", "preserving"] },
+  grain_hamlet: { role: "source", tags: ["farming", "milling", "baking"] },
+  stone_circle: { role: "source", tags: ["ritual_craft", "gathering"] },
+  highland_shrine: { role: "source", tags: ["ritual_craft", "gathering"] },
+  ruined_keep: { role: "source", tags: ["stonecutting", "gathering"] },
+  fallen_temple: { role: "source", tags: ["stonecutting", "ritual_craft"] },
+  old_road_marker: { role: "source", tags: ["gathering"] },
+  village: { role: "source", tags: ["farming", "herding", "baking", "milling"] },
+  outpost: { role: "source", tags: ["gathering"] },
+  ruin: { role: "source", tags: ["stonecutting"] },
+};
+
 function hexKey(q: number, r: number) { return `${q},${r}`; }
 
 // Axial hex distance
