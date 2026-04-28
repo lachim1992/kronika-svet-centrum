@@ -1606,7 +1606,7 @@ async function executeBuildRoute(
   // Node-Trade v1: BUILD_ROUTE creates a planned/under_construction route.
   // Construction is powered by LABOR (pracovní síla) drawn from realm.labor_reserve.
   // Soldiers/manpower are reserved exclusively for combat & garrison duties.
-  const { nodeAId, nodeBId, routeType, labor, assignedLabor, soldiers, hexPath } = payload;
+  const { nodeAId, nodeBId, routeType, labor, assignedLabor, soldiers, hexPath, name, waypoints } = payload;
   if (!nodeAId || !nodeBId) return { events: [], error: "Missing nodeAId or nodeBId" };
 
   const { data: nodeA } = await supabase.from("province_nodes")
@@ -1669,6 +1669,19 @@ async function executeBuildRoute(
     gold_reserve: realm.gold_reserve - goldCost,
   }).eq("id", realm.id);
 
+  // Sanitize name (max 60 chars, trimmed). Empty → NULL → UI fallback "Via A – B".
+  const trimmedName = typeof name === "string" ? name.trim().slice(0, 60) : "";
+  const finalName = trimmedName.length > 0 ? trimmedName : null;
+
+  // Sanitize waypoints (array of {q,r}); empty → NULL.
+  let finalWaypoints: any = null;
+  if (Array.isArray(waypoints) && waypoints.length > 0) {
+    finalWaypoints = waypoints
+      .filter((w: any) => w && Number.isFinite(w.q) && Number.isFinite(w.r))
+      .map((w: any) => ({ q: Math.trunc(w.q), r: Math.trunc(w.r) }));
+    if (finalWaypoints.length === 0) finalWaypoints = null;
+  }
+
   await supabase.from("province_routes").insert({
     session_id: sessionId,
     node_a: ordA, node_b: ordB,
@@ -1680,6 +1693,8 @@ async function executeBuildRoute(
     build_cost: goldCost, upgrade_level: 1,
     route_origin: "player_built",
     construction_state: "under_construction",
+    name: finalName,
+    waypoints: finalWaypoints,
     metadata: {
       built_by: actor.name,
       started_turn: turnNumber,
@@ -1687,6 +1702,8 @@ async function executeBuildRoute(
       total_work: totalWork,
       progress: 0,
       hex_path: Array.isArray(hexPath) ? hexPath : null,
+      waypoints: finalWaypoints,
+      custom_name: finalName,
     },
   });
 
