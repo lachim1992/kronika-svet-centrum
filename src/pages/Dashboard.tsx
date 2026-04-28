@@ -130,7 +130,7 @@ const Dashboard = () => {
     if (!user || !sessionId) return;
 
     const fetchMembership = async () => {
-      const [membershipRes, globalRoleRes] = await Promise.all([
+      const [membershipRes, globalRoleRes, sessionPlayersRes] = await Promise.all([
         supabase
           .from("game_memberships")
           .select("player_name, role")
@@ -143,16 +143,24 @@ const Dashboard = () => {
           .eq("user_id", user.id)
           .in("role", ["admin", "moderator"])
           .maybeSingle(),
+        supabase
+          .from("game_players")
+          .select("player_name, user_id")
+          .eq("session_id", sessionId)
+          .eq("user_id", user.id)
+          .maybeSingle(),
       ]);
 
-      if (membershipRes.data) {
-        let role = membershipRes.data.role;
+      const canonicalPlayerName = membershipRes.data?.player_name || sessionPlayersRes.data?.player_name;
+
+      if (canonicalPlayerName) {
+        let role = membershipRes.data?.role || "player";
         // Elevate to moderator if global role exists and game role is lower
         if (globalRoleRes.data && role === "player") {
           role = globalRoleRes.data.role === "admin" ? "admin" : "moderator";
         }
         setMyRole(role);
-        setMyPlayerName(membershipRes.data.player_name);
+        setMyPlayerName(canonicalPlayerName);
       } else {
         setMyPlayerName(localStorage.getItem("ch_playerName") || "Hráč");
         setMyRole(globalRoleRes.data?.role === "moderator" ? "moderator" : "admin");
