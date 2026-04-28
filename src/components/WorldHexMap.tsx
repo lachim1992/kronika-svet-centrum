@@ -28,6 +28,8 @@ import TradeSystemsOverlay from "@/components/map/TradeSystemsOverlay";
 import MapMinimap from "@/components/map/MapMinimap";
 import { MINOR_NODE_TYPES, MICRO_NODE_TYPES, MAJOR_NODE_TYPES } from "@/lib/nodeTypes";
 import HexDevTools from "@/components/map/HexDevTools";
+import MapBottomDock from "@/components/map/MapBottomDock";
+import MapLayersPopover from "@/components/map/MapLayersPopover";
 
 /* ───── Config ───── */
 const HEX_SIZE = 38;
