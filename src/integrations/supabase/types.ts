@@ -1430,6 +1430,7 @@ export type Database = {
           quality_weight: number | null
           session_id: string
           turn_number: number | null
+          unmet_demand: number
         }
         Insert: {
           auto_supply?: number | null
@@ -1447,6 +1448,7 @@ export type Database = {
           quality_weight?: number | null
           session_id: string
           turn_number?: number | null
+          unmet_demand?: number
         }
         Update: {
           auto_supply?: number | null
@@ -1464,6 +1466,7 @@ export type Database = {
           quality_weight?: number | null
           session_id?: string
           turn_number?: number | null
+          unmet_demand?: number
         }
         Relationships: [
           {
