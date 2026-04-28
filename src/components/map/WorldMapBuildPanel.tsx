@@ -12,7 +12,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { dispatchCommand } from "@/lib/commands";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Hammer, Plus, X, Users, ChevronDown, ChevronUp, Trash2 } from "lucide-react";
+import { Hammer, Plus, X, HardHat, ChevronDown, ChevronUp, Trash2, Users } from "lucide-react";
 import { toast } from "sonner";
 // Lightweight axial-distance preview (no terrain cost). True A* is computed server-side
 // during BUILD_ROUTE / compute-province-routes; this is just a length hint for the UI.
@@ -71,11 +71,12 @@ export default function WorldMapBuildPanel({ sessionId, playerName, currentTurn 
   const [nodeAId, setNodeAId] = useState<string>("");
   const [nodeBId, setNodeBId] = useState<string>("");
   const [routeType, setRouteType] = useState<string>("road");
-  const [soldiers, setSoldiers] = useState<number>(50);
+  const [labor, setLabor] = useState<number>(100);
+  const [laborAvailable, setLaborAvailable] = useState<number>(0);
   const [submitting, setSubmitting] = useState(false);
 
   const refresh = async () => {
-    const [nRes, rRes, sRes] = await Promise.all([
+    const [nRes, rRes, sRes, realmRes] = await Promise.all([
       supabase.from("province_nodes")
         .select("id, name, hex_q, hex_r, controlled_by, node_tier")
         .eq("session_id", sessionId).eq("is_active", true),
@@ -87,10 +88,14 @@ export default function WorldMapBuildPanel({ sessionId, playerName, currentTurn 
         .eq("session_id", sessionId)
         .eq("player_name", playerName)
         .eq("is_active", true),
+      supabase.from("realm_resources")
+        .select("labor_reserve")
+        .eq("session_id", sessionId).eq("player_name", playerName).maybeSingle(),
     ]);
     setNodes((nRes.data || []) as NodeRow[]);
     setRoutes((rRes.data || []) as RouteRow[]);
     setStacks((sRes.data || []) as StackRow[]);
+    setLaborAvailable(Number((realmRes.data as any)?.labor_reserve || 0));
   };
 
   useEffect(() => {
