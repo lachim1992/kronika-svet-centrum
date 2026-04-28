@@ -308,7 +308,7 @@ export default function WorldMapBuildPanel({ sessionId, playerName, currentTurn 
                         {assignedHere.length > 0 && (
                           <span className="flex items-center gap-0.5">
                             <Users className="h-2.5 w-2.5" />
-                            {assignedHere.reduce((s, x) => s + (x.soldiers || x.unit_count || 0), 0)}
+                            {assignedHere.reduce((s, x) => s + (x.soldiers || 0), 0)}
                           </span>
                         )}
                       </div>
@@ -323,7 +323,7 @@ export default function WorldMapBuildPanel({ sessionId, playerName, currentTurn 
                               <option value="">+ Přiřadit stack</option>
                               {idleStacks.map(s => (
                                 <option key={s.id} value={s.id}>
-                                  {s.name} ({s.soldiers || s.unit_count || 0})
+                                  {s.name} ({s.soldiers || 0})
                                 </option>
                               ))}
                             </select>
