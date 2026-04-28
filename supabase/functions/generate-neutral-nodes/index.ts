@@ -262,13 +262,13 @@ Deno.serve(async (req) => {
 
     const insertedIds = (inserted || []).map((n: any) => n.id);
 
-    // Insert outputs (link via index → returned id)
+    // Insert outputs (link via index → returned id) — R3: remap legacy basket keys
     const outputRows = outputInserts
       .filter((o) => insertedIds[o.idx])
       .map((o) => ({
         session_id,
         node_id: insertedIds[o.idx],
-        basket_key: o.basket,
+        basket_key: mapBasket(o.basket),
         good_key: o.good ?? null,
         quantity: o.quantity,
         quality: o.quality,
