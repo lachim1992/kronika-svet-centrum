@@ -3327,3 +3327,100 @@ async function executeCancelTreaty(
     reference: { treatyId, treatyType: t.treaty_type, terminated_by: actor.name },
   }], payload.chronicleText);
 }
+
+// ═══════════════════════════════════════════
+// Stage 8 — ASSIGN_STACK_TO_ROUTE
+// Assigns an idle military stack to a route under construction.
+// ═══════════════════════════════════════════
+async function executeAssignStackToRoute(
+  supabase: any, base: any, actor: Actor, payload: any,
+  commandId: string, sessionId: string, turnNumber: number,
+): Promise<CommandResult> {
+  const stackId = String(payload.stackId || "").trim();
+  const routeId = String(payload.routeId || "").trim();
+  if (!stackId || !routeId) return { events: [], error: "Missing stackId or routeId" };
+
+  const { data: stack } = await supabase.from("military_stacks")
+    .select("id, owner_player, player_name, soldiers, unit_count, assignment, assigned_route_id, name")
+    .eq("id", stackId).eq("session_id", sessionId).maybeSingle();
+  if (!stack) return { events: [], error: "Stack not found" };
+  const owner = stack.owner_player || stack.player_name;
+  if (owner !== actor.name) return { events: [], error: "You do not own this stack" };
+
+  const { data: route } = await supabase.from("province_routes")
+    .select("id, construction_state, route_type, metadata, node_a, node_b")
+    .eq("id", routeId).eq("session_id", sessionId).maybeSingle();
+  if (!route) return { events: [], error: "Route not found" };
+  if (route.construction_state !== "under_construction") {
+    return { events: [], error: `Route is not under construction (state=${route.construction_state})` };
+  }
+
+  await supabase.from("military_stacks").update({
+    assignment: "construction",
+    assigned_route_id: routeId,
+  }).eq("id", stackId);
+
+  const soldiers = stack.soldiers || stack.unit_count || 0;
+  const note = `${actor.name} přidělil ${stack.name} (${soldiers} mužů) na stavbu cesty (${route.route_type}).`;
+  return insertEventsWithChronicle(supabase, commandId, sessionId, turnNumber, [{
+    ...base,
+    event_type: "construction",
+    note, importance: "normal",
+    reference: { stackId, routeId, soldiers, routeType: route.route_type },
+  }], payload.chronicleText);
+}
+
+// ═══════════════════════════════════════════
+// Stage 8 — CANCEL_ROUTE_CONSTRUCTION
+// Cancels a route under construction; refunds 50% gold; releases assigned stacks.
+// ═══════════════════════════════════════════
+async function executeCancelRouteConstruction(
+  supabase: any, base: any, actor: Actor, payload: any,
+  commandId: string, sessionId: string, turnNumber: number,
+): Promise<CommandResult> {
+  const routeId = String(payload.routeId || "").trim();
+  if (!routeId) return { events: [], error: "Missing routeId" };
+
+  const { data: route } = await supabase.from("province_routes")
+    .select("id, construction_state, route_type, metadata, build_cost, node_a, node_b")
+    .eq("id", routeId).eq("session_id", sessionId).maybeSingle();
+  if (!route) return { events: [], error: "Route not found" };
+  if (route.construction_state !== "under_construction") {
+    return { events: [], error: "Route is not under construction" };
+  }
+
+  const md = (route.metadata || {}) as any;
+  const builtBy = md.built_by;
+  if (builtBy && builtBy !== actor.name) {
+    return { events: [], error: "Only the builder can cancel construction" };
+  }
+
+  // Release any assigned stacks
+  await supabase.from("military_stacks")
+    .update({ assignment: "idle", assigned_route_id: null })
+    .eq("session_id", sessionId)
+    .eq("assigned_route_id", routeId);
+
+  // Refund 50% of gold cost
+  const refund = Math.floor((route.build_cost || 0) * 0.5);
+  if (refund > 0) {
+    const { data: realm } = await supabase.from("realm_resources")
+      .select("id, gold_reserve").eq("session_id", sessionId).eq("player_name", actor.name).maybeSingle();
+    if (realm) {
+      await supabase.from("realm_resources").update({
+        gold_reserve: (realm.gold_reserve || 0) + refund,
+      }).eq("id", realm.id);
+    }
+  }
+
+  // Delete route (it never reached complete state)
+  await supabase.from("province_routes").delete().eq("id", routeId);
+
+  const note = `${actor.name} zrušil stavbu cesty (${route.route_type}). Vráceno ${refund} zlata.`;
+  return insertEventsWithChronicle(supabase, commandId, sessionId, turnNumber, [{
+    ...base,
+    event_type: "construction_cancelled",
+    note, importance: "normal",
+    reference: { routeId, routeType: route.route_type, refund },
+  }], payload.chronicleText);
+}
