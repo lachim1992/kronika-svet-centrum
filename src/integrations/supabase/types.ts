@@ -2658,6 +2658,48 @@ export type Database = {
           },
         ]
       }
+      diplomatic_treaties: {
+        Row: {
+          cancelled_turn: number | null
+          created_at: string
+          id: string
+          metadata: Json
+          player_a: string
+          player_b: string
+          session_id: string
+          signed_turn: number | null
+          status: string
+          treaty_type: string
+          updated_at: string
+        }
+        Insert: {
+          cancelled_turn?: number | null
+          created_at?: string
+          id?: string
+          metadata?: Json
+          player_a: string
+          player_b: string
+          session_id: string
+          signed_turn?: number | null
+          status?: string
+          treaty_type: string
+          updated_at?: string
+        }
+        Update: {
+          cancelled_turn?: number | null
+          created_at?: string
+          id?: string
+          metadata?: Json
+          player_a?: string
+          player_b?: string
+          session_id?: string
+          signed_turn?: number | null
+          status?: string
+          treaty_type?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       discoveries: {
         Row: {
           discovered_at: string
@@ -6042,8 +6084,11 @@ export type Database = {
       }
       military_stacks: {
         Row: {
+          assigned_route_id: string | null
+          assignment: string
           battle_context: string | null
           blockading_route_id: string | null
+          construction_progress: number
           created_at: string
           current_node_id: string | null
           demobilized_turn: number | null
@@ -6069,15 +6114,21 @@ export type Database = {
           sigil_confirmed: boolean
           sigil_prompt: string | null
           sigil_url: string | null
+          soldiers: number
           stance: string
           travel_departed_turn: number | null
           travel_progress: number | null
           travel_route_id: string | null
           travel_target_node_id: string | null
+          upkeep_food: number
+          upkeep_gold: number
         }
         Insert: {
+          assigned_route_id?: string | null
+          assignment?: string
           battle_context?: string | null
           blockading_route_id?: string | null
+          construction_progress?: number
           created_at?: string
           current_node_id?: string | null
           demobilized_turn?: number | null
@@ -6103,15 +6154,21 @@ export type Database = {
           sigil_confirmed?: boolean
           sigil_prompt?: string | null
           sigil_url?: string | null
+          soldiers?: number
           stance?: string
           travel_departed_turn?: number | null
           travel_progress?: number | null
           travel_route_id?: string | null
           travel_target_node_id?: string | null
+          upkeep_food?: number
+          upkeep_gold?: number
         }
         Update: {
+          assigned_route_id?: string | null
+          assignment?: string
           battle_context?: string | null
           blockading_route_id?: string | null
+          construction_progress?: number
           created_at?: string
           current_node_id?: string | null
           demobilized_turn?: number | null
@@ -6137,11 +6194,14 @@ export type Database = {
           sigil_confirmed?: boolean
           sigil_prompt?: string | null
           sigil_url?: string | null
+          soldiers?: number
           stance?: string
           travel_departed_turn?: number | null
           travel_progress?: number | null
           travel_route_id?: string | null
           travel_target_node_id?: string | null
+          upkeep_food?: number
+          upkeep_gold?: number
         }
         Relationships: [
           {
@@ -6908,6 +6968,44 @@ export type Database = {
           },
         ]
       }
+      player_trade_system_access: {
+        Row: {
+          access_level: string
+          access_source: string | null
+          computed_at: string
+          player_name: string
+          session_id: string
+          tariff_factor: number
+          trade_system_id: string
+        }
+        Insert: {
+          access_level: string
+          access_source?: string | null
+          computed_at?: string
+          player_name: string
+          session_id: string
+          tariff_factor?: number
+          trade_system_id: string
+        }
+        Update: {
+          access_level?: string
+          access_source?: string | null
+          computed_at?: string
+          player_name?: string
+          session_id?: string
+          tariff_factor?: number
+          trade_system_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "player_trade_system_access_trade_system_id_fkey"
+            columns: ["trade_system_id"]
+            isOneToOne: false
+            referencedRelation: "trade_systems"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       player_watches: {
         Row: {
           created_at: string
@@ -7335,6 +7433,7 @@ export type Database = {
           throughput_military: number
           toll_rate: number
           trade_efficiency: number
+          trade_system_id: string | null
           updated_at: string
           upgrade_level: number
           upkeep_supplies: number | null
@@ -7420,6 +7519,7 @@ export type Database = {
           throughput_military?: number
           toll_rate?: number
           trade_efficiency?: number
+          trade_system_id?: string | null
           updated_at?: string
           upgrade_level?: number
           upkeep_supplies?: number | null
@@ -7505,6 +7605,7 @@ export type Database = {
           throughput_military?: number
           toll_rate?: number
           trade_efficiency?: number
+          trade_system_id?: string | null
           updated_at?: string
           upgrade_level?: number
           upkeep_supplies?: number | null
@@ -7563,6 +7664,7 @@ export type Database = {
           blocked_by: string[] | null
           build_cost: number
           capacity_value: number
+          construction_state: string
           control_state: string
           controlled_by: string | null
           created_at: string
@@ -7580,6 +7682,7 @@ export type Database = {
           node_a: string
           node_b: string
           path_dirty: boolean | null
+          route_origin: string
           route_type: string
           safety_value: number
           session_id: string
@@ -7592,6 +7695,7 @@ export type Database = {
           blocked_by?: string[] | null
           build_cost?: number
           capacity_value?: number
+          construction_state?: string
           control_state?: string
           controlled_by?: string | null
           created_at?: string
@@ -7609,6 +7713,7 @@ export type Database = {
           node_a: string
           node_b: string
           path_dirty?: boolean | null
+          route_origin?: string
           route_type?: string
           safety_value?: number
           session_id: string
@@ -7621,6 +7726,7 @@ export type Database = {
           blocked_by?: string[] | null
           build_cost?: number
           capacity_value?: number
+          construction_state?: string
           control_state?: string
           controlled_by?: string | null
           created_at?: string
@@ -7638,6 +7744,7 @@ export type Database = {
           node_a?: string
           node_b?: string
           path_dirty?: boolean | null
+          route_origin?: string
           route_type?: string
           safety_value?: number
           session_id?: string
@@ -7934,12 +8041,17 @@ export type Database = {
           last_turn_stone_prod: number
           last_turn_wood_prod: number
           logistic_capacity: number
+          manpower_available: number
           manpower_committed: number
+          manpower_mobilized: number
           manpower_pool: number
+          military_food_upkeep: number
+          military_gold_upkeep: number
           military_prestige: number
           mobilization_production_penalty: number | null
           mobilization_rate: number
           mobilization_wealth_penalty: number | null
+          over_mobilized: boolean
           player_name: string
           prestige: number
           production_reserve: number
@@ -8021,12 +8133,17 @@ export type Database = {
           last_turn_stone_prod?: number
           last_turn_wood_prod?: number
           logistic_capacity?: number
+          manpower_available?: number
           manpower_committed?: number
+          manpower_mobilized?: number
           manpower_pool?: number
+          military_food_upkeep?: number
+          military_gold_upkeep?: number
           military_prestige?: number
           mobilization_production_penalty?: number | null
           mobilization_rate?: number
           mobilization_wealth_penalty?: number | null
+          over_mobilized?: boolean
           player_name: string
           prestige?: number
           production_reserve?: number
@@ -8108,12 +8225,17 @@ export type Database = {
           last_turn_stone_prod?: number
           last_turn_wood_prod?: number
           logistic_capacity?: number
+          manpower_available?: number
           manpower_committed?: number
+          manpower_mobilized?: number
           manpower_pool?: number
+          military_food_upkeep?: number
+          military_gold_upkeep?: number
           military_prestige?: number
           mobilization_production_penalty?: number | null
           mobilization_rate?: number
           mobilization_wealth_penalty?: number | null
+          over_mobilized?: boolean
           player_name?: string
           prestige?: number
           production_reserve?: number
@@ -9321,6 +9443,119 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      trade_system_basket_supply: {
+        Row: {
+          avg_quality: number
+          basket_key: string
+          computed_at: string
+          price_index: number
+          session_id: string
+          shortage: number
+          surplus: number
+          total_demand: number
+          total_supply: number
+          trade_system_id: string
+        }
+        Insert: {
+          avg_quality?: number
+          basket_key: string
+          computed_at?: string
+          price_index?: number
+          session_id: string
+          shortage?: number
+          surplus?: number
+          total_demand?: number
+          total_supply?: number
+          trade_system_id: string
+        }
+        Update: {
+          avg_quality?: number
+          basket_key?: string
+          computed_at?: string
+          price_index?: number
+          session_id?: string
+          shortage?: number
+          surplus?: number
+          total_demand?: number
+          total_supply?: number
+          trade_system_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "trade_system_basket_supply_trade_system_id_fkey"
+            columns: ["trade_system_id"]
+            isOneToOne: false
+            referencedRelation: "trade_systems"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      trade_system_node_snapshot: {
+        Row: {
+          node_id: string
+          session_id: string
+          snapshot_at: string
+          snapshot_turn: number | null
+          system_key: string | null
+          trade_system_id: string | null
+        }
+        Insert: {
+          node_id: string
+          session_id: string
+          snapshot_at?: string
+          snapshot_turn?: number | null
+          system_key?: string | null
+          trade_system_id?: string | null
+        }
+        Update: {
+          node_id?: string
+          session_id?: string
+          snapshot_at?: string
+          snapshot_turn?: number | null
+          system_key?: string | null
+          trade_system_id?: string | null
+        }
+        Relationships: []
+      }
+      trade_systems: {
+        Row: {
+          computed_turn: number | null
+          created_at: string
+          id: string
+          member_players: string[]
+          node_count: number
+          route_count: number
+          session_id: string
+          system_key: string
+          total_capacity: number
+          updated_at: string
+        }
+        Insert: {
+          computed_turn?: number | null
+          created_at?: string
+          id?: string
+          member_players?: string[]
+          node_count?: number
+          route_count?: number
+          session_id: string
+          system_key: string
+          total_capacity?: number
+          updated_at?: string
+        }
+        Update: {
+          computed_turn?: number | null
+          created_at?: string
+          id?: string
+          member_players?: string[]
+          node_count?: number
+          route_count?: number
+          session_id?: string
+          system_key?: string
+          total_capacity?: number
+          updated_at?: string
+        }
+        Relationships: []
       }
       travel_orders: {
         Row: {
