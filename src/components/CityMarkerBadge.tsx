@@ -98,15 +98,17 @@ const CityMarkerBadge = memo(({
           </text>
         )}
 
-        {/* City name below sprite */}
-        <text
-          x={cx} y={cy + spriteSize * 0.4}
-          textAnchor="middle" dominantBaseline="hanging"
-          fill="white" fontSize={nameSize} fontWeight="700"
-          style={{ pointerEvents: "none", textShadow: "0 1px 2px rgba(0,0,0,0.8)" }}
-        >
-          {displayName}
-        </text>
+        {/* City name below sprite (multi-line) */}
+        {nameLines.map((ln, i) => (
+          <text key={i}
+            x={cx} y={cy + spriteSize * 0.4 + i * (nameSize + 1)}
+            textAnchor="middle" dominantBaseline="hanging"
+            fill="white" fontSize={nameSize} fontWeight="700"
+            style={{ pointerEvents: "none", textShadow: "0 1px 2px rgba(0,0,0,0.8)" }}
+          >
+            {ln}
+          </text>
+        ))}
       </g>
     );
   }
