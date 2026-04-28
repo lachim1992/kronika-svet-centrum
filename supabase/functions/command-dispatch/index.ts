@@ -373,6 +373,19 @@ async function executeCommand(
     case "BLOCK_NODE_ANNEXATION":
       return await executeBlockNodeAnnexation(supabase, base, actor, payload, commandId, sessionId, turnNumber);
 
+    // ─── Node-Trade v1 (Stage 6) ───
+    case "MOBILIZE_MANPOWER":
+      return await executeMobilizeManpower(supabase, base, actor, payload, commandId, sessionId, turnNumber);
+
+    case "PROPOSE_TREATY":
+      return await executeProposeTreaty(supabase, base, actor, payload, commandId, sessionId, turnNumber);
+
+    case "RESPOND_TREATY":
+      return await executeRespondTreaty(supabase, base, actor, payload, commandId, sessionId, turnNumber);
+
+    case "CANCEL_TREATY":
+      return await executeCancelTreaty(supabase, base, actor, payload, commandId, sessionId, turnNumber);
+
     case "GENERIC":
       return insertEvents(supabase, commandId, [{
         ...base,
