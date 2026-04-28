@@ -44,7 +44,6 @@ interface StackRow {
   id: string;
   name: string;
   soldiers: number | null;
-  unit_count: number | null;
   assignment: string | null;
   assigned_route_id: string | null;
 }
