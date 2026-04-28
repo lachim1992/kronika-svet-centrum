@@ -435,7 +435,7 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
   const [submittingBattle, setSubmittingBattle] = useState(false);
   const [battleResult, setBattleResult] = useState<any>(null);
   const [bootstrapping, setBootstrapping] = useState(false);
-  const [showLegend, setShowLegend] = useState(false);
+  const [showLayersPopover, setShowLayersPopover] = useState(false);
   const [showFoundDialog, setShowFoundDialog] = useState(false);
   const [showProvinceLayer, setShowProvinceLayer] = useState(true);
   const [showRoadLayer, setShowRoadLayer] = useState(true);
@@ -745,7 +745,7 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
     setCurrentPos({ q, r });
   }, []);
 
-  /* ── Keyboard controls (WASD + arrows) ── */
+  /* ── Keyboard controls (WASD + arrows + zoom + L for layers + H home) ── */
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       // Don't capture when typing in inputs
@@ -758,10 +758,21 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
         case "d": case "D": case "ArrowRight": dx = -PAN_SPEED; break;
         case "+": case "=": setZoom(z => Math.min(3, z + 0.15)); return;
         case "-": case "_": setZoom(z => Math.max(0.3, z - 0.15)); return;
+        case "0": setZoom(1); setPan({ x: 0, y: 0 }); return;
+        case "h": case "H":
+          if (playerCities.length > 0) {
+            setCurrentPos({ q: playerCities[0].q, r: playerCities[0].r });
+            setPan({ x: 0, y: 0 });
+          }
+          return;
+        case "l": case "L":
+          setShowLayersPopover(v => !v);
+          return;
         case "Escape":
           setSelectedStack(null);
           setSelectedHex(null);
           setBattleTarget(null);
+          setShowLayersPopover(false);
           return;
         default: return;
       }
@@ -770,7 +781,7 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, []);
+  }, [playerCities]);
 
   /* ── Pan handlers (mouse drag) with inertia ── */
   const onPointerDown = useCallback((e: React.PointerEvent) => {
