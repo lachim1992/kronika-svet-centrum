@@ -1637,17 +1637,33 @@ async function executeBuildRoute(
   // Labor requirement: minimum 50 of labor_reserve allocated upfront. Pure civilian workforce.
   const requestedLabor = Math.max(50, Math.floor(Number(labor ?? assignedLabor ?? soldiers ?? 0)));
 
-  const realm = await getRealmByActor(supabase, sessionId, actor, "id, gold_reserve, labor_reserve");
+  const realm = await getRealmByActor(supabase, sessionId, actor, "id, gold_reserve, mobilization_rate, player_name");
   if (!realm) return { events: [], error: "Realm not found" };
   if ((realm.gold_reserve ?? 0) < goldCost) return { events: [], error: `Nedostatek zlata (potřeba: ${goldCost})` };
-  const laborAvail = Number(realm.labor_reserve ?? 0);
-  if (laborAvail < requestedLabor) {
-    return { events: [], error: `Nedostatek pracovní síly (k dispozici: ${laborAvail}, potřeba: ${requestedLabor}).` };
+
+  // Pracovní síla = aktivní populace − mobilizovaní (computed z měst). Není to ledger; neodečítáme ji.
+  const { data: ownedCities } = await supabase.from("cities")
+    .select("status, population_peasants, population_burghers, population_clerics")
+    .eq("session_id", sessionId).eq("owner_player", realm.player_name);
+  const ACTIVE_POP_WEIGHTS = { peasants: 1.0, burghers: 0.8, clerics: 0.4 };
+  const DEFAULT_ACTIVE_POP_RATIO = 0.5;
+  let activePopRaw = 0;
+  for (const c of (ownedCities || [])) {
+    if (c.status && c.status !== "ok") continue;
+    activePopRaw += (c.population_peasants || 0) * ACTIVE_POP_WEIGHTS.peasants
+                  + (c.population_burghers || 0) * ACTIVE_POP_WEIGHTS.burghers
+                  + (c.population_clerics || 0) * ACTIVE_POP_WEIGHTS.clerics;
+  }
+  const effectiveActivePop = Math.floor(activePopRaw * DEFAULT_ACTIVE_POP_RATIO);
+  const mobRate = Number(realm.mobilization_rate ?? 0.1);
+  const mobilized = Math.floor(effectiveActivePop * mobRate);
+  const workforceAvailable = Math.max(0, effectiveActivePop - mobilized);
+  if (workforceAvailable < requestedLabor) {
+    return { events: [], error: `Nedostatek pracovní síly (k dispozici: ${workforceAvailable}, potřeba: ${requestedLabor}).` };
   }
 
   await supabase.from("realm_resources").update({
     gold_reserve: realm.gold_reserve - goldCost,
-    labor_reserve: laborAvail - requestedLabor,
   }).eq("id", realm.id);
 
   await supabase.from("province_routes").insert({
