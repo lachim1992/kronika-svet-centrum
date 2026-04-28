@@ -66,12 +66,12 @@ const RoadNetworkOverlay = memo(({ sessionId, offsetX, offsetY, visible }: Props
     const [nodesRes, routesRes, flowPathsRes] = await Promise.all([
       supabase
         .from("province_nodes")
-        .select("id, node_tier")
+        .select("id, name, node_tier")
         .eq("session_id", sessionId)
         .eq("is_active", true),
       supabase
         .from("province_routes")
-        .select("id, node_a, node_b, control_state")
+        .select("id, node_a, node_b, control_state, name")
         .eq("session_id", sessionId),
       supabase
         .from("flow_paths")
@@ -121,7 +121,8 @@ const RoadNetworkOverlay = memo(({ sessionId, offsetX, offsetY, visible }: Props
       else if (nA.node_tier === "major" || nB.node_tier === "major") tier = "minor";
       else if (nA.node_tier === "minor" || nB.node_tier === "minor") tier = "micro";
 
-      roadSegments.push({ id: route.id, tier, path });
+      const displayName = route.name?.trim() || `Via ${nA.name} – ${nB.name}`;
+      roadSegments.push({ id: route.id, tier, path, name: displayName });
     }
 
     setRoads(roadSegments);
