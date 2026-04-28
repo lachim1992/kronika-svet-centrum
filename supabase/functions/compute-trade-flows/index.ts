@@ -110,7 +110,16 @@ Deno.serve(async (req) => {
     // Reset counters per invocation
     remapCounters.unmapped = 0;
     remapCounters.legacy = 0;
-    const tn = turn_number || 1;
+    // Resolve turn_number from session if not provided (refresh-economy doesn't pass it).
+    let tn = (turn_number as number | undefined);
+    if (!tn) {
+      const { data: sessRow } = await sb
+        .from("game_sessions")
+        .select("current_turn")
+        .eq("id", session_id)
+        .maybeSingle();
+      tn = (sessRow?.current_turn as number) || 1;
+    }
 
     // ── LOAD DATA ──
     const [goodsRes, recipesRes, nodesRes, citiesRes, routesRes, hexesRes] = await Promise.all([
