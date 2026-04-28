@@ -243,6 +243,11 @@ Deno.serve(async (req) => {
         mapping = CITY_TAGS;
       }
 
+      // Fallback: derive from node_type for unmapped neutral subtypes
+      if (!mapping && node.node_type) {
+        mapping = NODE_TYPE_FALLBACK[node.node_type as string];
+      }
+
       if (!mapping) continue;
 
       // Merge biome bonus tags
