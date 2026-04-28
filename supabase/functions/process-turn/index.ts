@@ -432,55 +432,61 @@ Deno.serve(async (req) => {
     const currentCapacity = Math.max(5, totalCapacity * 2 + (infra?.roads_level || 0) * 2);
     const supplyStrain = currentCapacity > 0 ? totalArmySize / (currentCapacity * 100) : 0;
 
-    // ── Construction tick: assigned stacks contribute work to under_construction routes ──
+    // ── Construction tick: LABOR powers all under_construction routes for this player ──
+    // Each route progresses every turn proportionally to its allocated labor (assigned at BUILD_ROUTE).
+    // Optional military stack assignment provides a small engineering bonus.
     const ENGINEERING_MULT: Record<string, number> = {
-      trail: 1.0, road: 0.7, paved: 0.4, harbor_link: 0.5,
+      trail: 1.2, road: 1.0, paved: 0.6, harbor_link: 0.8,
+      land_road: 1.0, river_route: 1.1, sea_lane: 0.9, mountain_pass: 0.5, caravan_route: 1.0,
     };
-    const assignedRouteIds = (stacks || [])
-      .filter(s => s.assignment === "construction" && s.assigned_route_id)
-      .map(s => s.assigned_route_id as string);
 
-    if (assignedRouteIds.length > 0) {
-      const { data: routesUC } = await supabase.from("province_routes")
-        .select("id, route_type, construction_state, metadata")
-        .eq("session_id", sessionId)
-        .in("id", assignedRouteIds)
-        .eq("construction_state", "under_construction");
+    const { data: playerRoutesUC } = await supabase.from("province_routes")
+      .select("id, route_type, construction_state, metadata")
+      .eq("session_id", sessionId)
+      .eq("construction_state", "under_construction");
 
-      for (const route of (routesUC || [])) {
-        const md = (route.metadata || {}) as any;
-        const totalWork = Number(md.total_work || 0);
-        const currentProgress = Number(md.progress || 0);
-        const assignedStacks = (stacks || []).filter(s => s.assigned_route_id === route.id && s.assignment === "construction");
-        const soldiersOnSite = assignedStacks.reduce((sum, s) => sum + (s.soldiers || s.unit_count || 0), 0);
-        if (soldiersOnSite <= 0) continue;
+    const myUCRoutes = (playerRoutesUC || []).filter(r => ((r.metadata as any)?.built_by) === playerName);
 
-        const engMult = ENGINEERING_MULT[route.route_type as string] ?? 1.0;
-        const workThisTurn = Math.round(soldiersOnSite * engMult);
-        const newProgress = Math.min(totalWork, currentProgress + workThisTurn);
-        const completed = newProgress >= totalWork;
+    for (const route of myUCRoutes) {
+      const md = (route.metadata || {}) as any;
+      const totalWork = Number(md.total_work || 0);
+      const currentProgress = Number(md.progress || 0);
+      if (totalWork <= 0) continue;
 
-        await supabase.from("province_routes").update({
-          construction_state: completed ? "complete" : "under_construction",
-          metadata: { ...md, progress: newProgress, last_tick_turn: currentTurn },
-        }).eq("id", route.id);
+      const allocatedLabor = Number(md.assigned_labor || md.assigned_soldiers || 0);
+      // Stacks may still be assigned for a small bonus, but are no longer required.
+      const assignedStacks = (stacks || []).filter(
+        s => s.assigned_route_id === route.id && s.assignment === "construction",
+      );
+      const soldierBonus = assignedStacks.reduce((sum, s) => sum + (s.soldiers || s.unit_count || 0), 0);
 
-        // Persist per-stack accumulator
+      const engMult = ENGINEERING_MULT[route.route_type as string] ?? 1.0;
+      const baseLaborTick = Math.max(1, Math.round(allocatedLabor * 0.10));
+      const workThisTurn = Math.max(1, Math.round((baseLaborTick + soldierBonus * 0.5) * engMult));
+      const newProgress = Math.min(totalWork, currentProgress + workThisTurn);
+      const completed = newProgress >= totalWork;
+
+      await supabase.from("province_routes").update({
+        construction_state: completed ? "complete" : "under_construction",
+        metadata: { ...md, progress: newProgress, last_tick_turn: currentTurn },
+      }).eq("id", route.id);
+
+      if (completed && assignedStacks.length > 0) {
         for (const s of assignedStacks) {
           await supabase.from("military_stacks").update({
+            assignment: "idle", assigned_route_id: null,
             construction_progress: (s.construction_progress || 0) + Math.round((s.soldiers || s.unit_count || 0) * engMult),
-            ...(completed ? { assignment: "idle", assigned_route_id: null } : {}),
           }).eq("id", s.id);
         }
+      }
 
-        if (completed) {
-          newEvents.push({
-            session_id: sessionId, turn_number: currentTurn,
-            event_type: "construction", player_name: playerName,
-            note: `Stavba cesty dokončena (${route.route_type}). Vojáci uvolněni.`,
-            importance: "normal", reference: { route_id: route.id, route_type: route.route_type },
-          } as any);
-        }
+      if (completed) {
+        newEvents.push({
+          session_id: sessionId, turn_number: currentTurn,
+          event_type: "construction", player_name: playerName,
+          note: `Stavba cesty dokončena (${route.route_type}). Pracovní síla se vrací k běžným úkolům.`,
+          importance: "normal", reference: { route_id: route.id, route_type: route.route_type },
+        } as any);
       }
     }
 

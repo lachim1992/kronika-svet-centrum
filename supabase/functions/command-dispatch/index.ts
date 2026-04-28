@@ -1601,8 +1601,9 @@ async function executeBuildRoute(
   commandId: string, sessionId: string, turnNumber: number,
 ): Promise<CommandResult> {
   // Node-Trade v1: BUILD_ROUTE creates a planned/under_construction route.
-  // Construction progress is ticked by process-turn, gated by assigned soldiers.
-  const { nodeAId, nodeBId, routeType, assignedSoldiers, hexPath } = payload;
+  // Construction is powered by LABOR (pracovní síla) drawn from realm.labor_reserve.
+  // Soldiers/manpower are reserved exclusively for combat & garrison duties.
+  const { nodeAId, nodeBId, routeType, labor, assignedLabor, soldiers, hexPath } = payload;
   if (!nodeAId || !nodeBId) return { events: [], error: "Missing nodeAId or nodeBId" };
 
   const { data: nodeA } = await supabase.from("province_nodes")
@@ -1627,24 +1628,26 @@ async function executeBuildRoute(
 
   const buildCostMap: Record<string, number> = {
     land_road: 50, river_route: 30, sea_lane: 20, mountain_pass: 80, caravan_route: 60,
+    trail: 30, road: 50, paved: 100,
   };
   const type = routeType || "land_road";
   const goldCost = buildCostMap[type] || 50;
-  const totalWork = goldCost * 4; // 4 work-units per gold cost; soldiers chip away at it
+  const totalWork = goldCost * 4; // 4 work-units per gold cost
 
-  // Soldier requirement: minimum 50 to begin, paid upfront from realm.soldiers pool
-  const requestedSoldiers = Math.max(50, Math.floor(Number(assignedSoldiers || 0)));
+  // Labor requirement: minimum 50 of labor_reserve allocated upfront. Pure civilian workforce.
+  const requestedLabor = Math.max(50, Math.floor(Number(labor ?? assignedLabor ?? soldiers ?? 0)));
 
-  const realm = await getRealmByActor(supabase, sessionId, actor, "id, gold_reserve, soldiers, manpower_available");
+  const realm = await getRealmByActor(supabase, sessionId, actor, "id, gold_reserve, labor_reserve");
   if (!realm) return { events: [], error: "Realm not found" };
   if ((realm.gold_reserve ?? 0) < goldCost) return { events: [], error: `Nedostatek zlata (potřeba: ${goldCost})` };
-  if ((realm.soldiers ?? 0) < requestedSoldiers) {
-    return { events: [], error: `Nedostatek vojáků (k dispozici: ${realm.soldiers ?? 0}, potřeba: ${requestedSoldiers}). Mobilizuj manpower.` };
+  const laborAvail = Number(realm.labor_reserve ?? 0);
+  if (laborAvail < requestedLabor) {
+    return { events: [], error: `Nedostatek pracovní síly (k dispozici: ${laborAvail}, potřeba: ${requestedLabor}).` };
   }
 
   await supabase.from("realm_resources").update({
     gold_reserve: realm.gold_reserve - goldCost,
-    // Soldiers stay assigned; we tag them in route metadata.
+    labor_reserve: laborAvail - requestedLabor,
   }).eq("id", realm.id);
 
   await supabase.from("province_routes").insert({
@@ -1661,19 +1664,19 @@ async function executeBuildRoute(
     metadata: {
       built_by: actor.name,
       started_turn: turnNumber,
-      assigned_soldiers: requestedSoldiers,
+      assigned_labor: requestedLabor,
       total_work: totalWork,
       progress: 0,
       hex_path: Array.isArray(hexPath) ? hexPath : null,
     },
   });
 
-  const note = `${actor.name} zahájil stavbu cesty (${type}) mezi ${nodeA.name} a ${nodeB.name}. Vyhrazeno ${requestedSoldiers} vojáků.`;
+  const note = `${actor.name} zahájil stavbu cesty (${type}) mezi ${nodeA.name} a ${nodeB.name}. Vyhrazeno ${requestedLabor} pracovní síly.`;
   return insertEventsWithChronicle(supabase, commandId, sessionId, turnNumber, [{
     ...base,
     event_type: "construction",
     note, importance: "normal",
-    reference: { nodeAId, nodeBId, routeType: type, goldCost, assignedSoldiers: requestedSoldiers },
+    reference: { nodeAId, nodeBId, routeType: type, goldCost, assignedLabor: requestedLabor },
   }], payload.chronicleText);
 }
 
@@ -3488,14 +3491,17 @@ async function executeCancelRouteConstruction(
     .eq("session_id", sessionId)
     .eq("assigned_route_id", routeId);
 
-  // Refund 50% of gold cost
+  // Refund 50% of gold cost AND 50% of allocated labor (the rest is "spent on site")
   const refund = Math.floor((route.build_cost || 0) * 0.5);
-  if (refund > 0) {
+  const allocatedLabor = Number(md.assigned_labor || md.assigned_soldiers || 0);
+  const laborRefund = Math.floor(allocatedLabor * 0.5);
+  if (refund > 0 || laborRefund > 0) {
     const { data: realm } = await supabase.from("realm_resources")
-      .select("id, gold_reserve").eq("session_id", sessionId).eq("player_name", actor.name).maybeSingle();
+      .select("id, gold_reserve, labor_reserve").eq("session_id", sessionId).eq("player_name", actor.name).maybeSingle();
     if (realm) {
       await supabase.from("realm_resources").update({
         gold_reserve: (realm.gold_reserve || 0) + refund,
+        labor_reserve: (realm.labor_reserve || 0) + laborRefund,
       }).eq("id", realm.id);
     }
   }
@@ -3503,7 +3509,7 @@ async function executeCancelRouteConstruction(
   // Delete route (it never reached complete state)
   await supabase.from("province_routes").delete().eq("id", routeId);
 
-  const note = `${actor.name} zrušil stavbu cesty (${route.route_type}). Vráceno ${refund} zlata.`;
+  const note = `${actor.name} zrušil stavbu cesty (${route.route_type}). Vráceno ${refund} zlata a ${laborRefund} pracovní síly.`;
   return insertEventsWithChronicle(supabase, commandId, sessionId, turnNumber, [{
     ...base,
     event_type: "construction_cancelled",

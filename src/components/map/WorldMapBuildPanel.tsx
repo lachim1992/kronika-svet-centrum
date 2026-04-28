@@ -12,7 +12,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { dispatchCommand } from "@/lib/commands";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Hammer, Plus, X, Users, ChevronDown, ChevronUp, Trash2 } from "lucide-react";
+import { Hammer, Plus, X, HardHat, ChevronDown, ChevronUp, Trash2, Users } from "lucide-react";
 import { toast } from "sonner";
 // Lightweight axial-distance preview (no terrain cost). True A* is computed server-side
 // during BUILD_ROUTE / compute-province-routes; this is just a length hint for the UI.
@@ -71,11 +71,12 @@ export default function WorldMapBuildPanel({ sessionId, playerName, currentTurn 
   const [nodeAId, setNodeAId] = useState<string>("");
   const [nodeBId, setNodeBId] = useState<string>("");
   const [routeType, setRouteType] = useState<string>("road");
-  const [soldiers, setSoldiers] = useState<number>(50);
+  const [labor, setLabor] = useState<number>(100);
+  const [laborAvailable, setLaborAvailable] = useState<number>(0);
   const [submitting, setSubmitting] = useState(false);
 
   const refresh = async () => {
-    const [nRes, rRes, sRes] = await Promise.all([
+    const [nRes, rRes, sRes, realmRes] = await Promise.all([
       supabase.from("province_nodes")
         .select("id, name, hex_q, hex_r, controlled_by, node_tier")
         .eq("session_id", sessionId).eq("is_active", true),
@@ -87,10 +88,14 @@ export default function WorldMapBuildPanel({ sessionId, playerName, currentTurn 
         .eq("session_id", sessionId)
         .eq("player_name", playerName)
         .eq("is_active", true),
+      supabase.from("realm_resources")
+        .select("labor_reserve")
+        .eq("session_id", sessionId).eq("player_name", playerName).maybeSingle(),
     ]);
     setNodes((nRes.data || []) as NodeRow[]);
     setRoutes((rRes.data || []) as RouteRow[]);
     setStacks((sRes.data || []) as StackRow[]);
+    setLaborAvailable(Number((realmRes.data as any)?.labor_reserve || 0));
   };
 
   useEffect(() => {
@@ -134,7 +139,8 @@ export default function WorldMapBuildPanel({ sessionId, playerName, currentTurn 
   const handleBuild = async () => {
     if (!nodeAId || !nodeBId) { toast.error("Vyberte oba uzly"); return; }
     if (nodeAId === nodeBId) { toast.error("Uzly musí být různé"); return; }
-    if (soldiers < 50) { toast.error("Minimálně 50 vojáků"); return; }
+    if (labor < 50) { toast.error("Minimálně 50 pracovní síly"); return; }
+    if (labor > laborAvailable) { toast.error(`Nedostatek pracovní síly (k dispozici: ${laborAvailable})`); return; }
     setSubmitting(true);
     const res = await dispatchCommand({
       sessionId,
@@ -144,7 +150,7 @@ export default function WorldMapBuildPanel({ sessionId, playerName, currentTurn 
       commandPayload: {
         nodeAId, nodeBId,
         routeType,
-        soldiers,
+        labor,
         hexPath: preview?.path || [],
       },
     });
@@ -251,12 +257,17 @@ export default function WorldMapBuildPanel({ sessionId, playerName, currentTurn 
                     </select>
                   </div>
                   <div>
-                    <label className="text-[10px] font-display font-semibold text-muted-foreground uppercase tracking-wider">Vojáci</label>
+                    <label className="text-[10px] font-display font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1">
+                      <HardHat className="h-2.5 w-2.5" /> Pracovní síla
+                    </label>
                     <input
-                      type="number" min={50} step={10}
-                      value={soldiers}
-                      onChange={e => setSoldiers(Math.max(0, Math.floor(Number(e.target.value) || 0)))}
+                      type="number" min={50} step={10} max={laborAvailable || undefined}
+                      value={labor}
+                      onChange={e => setLabor(Math.max(0, Math.floor(Number(e.target.value) || 0)))}
                       className="w-full text-xs bg-background border border-border rounded px-2 py-1 mt-0.5 font-mono" />
+                    <div className="text-[9px] text-muted-foreground font-mono mt-0.5">
+                      k dispozici: {laborAvailable}
+                    </div>
                   </div>
                 </div>
 
@@ -271,9 +282,9 @@ export default function WorldMapBuildPanel({ sessionId, playerName, currentTurn 
                   size="sm"
                   className="w-full h-7 text-xs gap-1"
                   onClick={handleBuild}
-                  disabled={submitting || !nodeAId || !nodeBId || nodeAId === nodeBId || soldiers < 50}>
+                  disabled={submitting || !nodeAId || !nodeBId || nodeAId === nodeBId || labor < 50 || labor > laborAvailable}>
                   <Plus className="h-3 w-3" />
-                  Postavit ({selectedRouteCost} 💰 + {soldiers} vojáků)
+                  Postavit ({selectedRouteCost} 💰 + {labor} 👷)
                 </Button>
               </div>
             )}
@@ -305,12 +316,20 @@ export default function WorldMapBuildPanel({ sessionId, playerName, currentTurn 
                       </div>
                       <div className="flex items-center justify-between text-[10px] text-muted-foreground font-mono">
                         <span>{progress} / {total} ({pct}%)</span>
-                        {assignedHere.length > 0 && (
-                          <span className="flex items-center gap-0.5">
-                            <Users className="h-2.5 w-2.5" />
-                            {assignedHere.reduce((s, x) => s + (x.soldiers || 0), 0)}
-                          </span>
-                        )}
+                        <span className="flex items-center gap-1.5">
+                          {(md.assigned_labor || md.assigned_soldiers) > 0 && (
+                            <span className="flex items-center gap-0.5" title="Vyhrazená pracovní síla">
+                              <HardHat className="h-2.5 w-2.5" />
+                              {md.assigned_labor || md.assigned_soldiers}
+                            </span>
+                          )}
+                          {assignedHere.length > 0 && (
+                            <span className="flex items-center gap-0.5" title="Vojenský bonus">
+                              <Users className="h-2.5 w-2.5" />
+                              {assignedHere.reduce((s, x) => s + (x.soldiers || 0), 0)}
+                            </span>
+                          )}
+                        </span>
                       </div>
 
                       {builtByMe && (
@@ -320,7 +339,7 @@ export default function WorldMapBuildPanel({ sessionId, playerName, currentTurn 
                               defaultValue=""
                               onChange={e => { if (e.target.value) handleAssign(r.id, e.target.value); }}
                               className="flex-1 text-[10px] bg-background border border-border rounded px-1.5 py-0.5">
-                              <option value="">+ Přiřadit stack</option>
+                              <option value="">+ Vojenský bonus (volitelné)</option>
                               {idleStacks.map(s => (
                                 <option key={s.id} value={s.id}>
                                   {s.name} ({s.soldiers || 0})
@@ -328,7 +347,7 @@ export default function WorldMapBuildPanel({ sessionId, playerName, currentTurn 
                               ))}
                             </select>
                           ) : (
-                            <span className="flex-1 text-[10px] text-muted-foreground italic">Žádný idle stack</span>
+                            <span className="flex-1 text-[10px] text-muted-foreground italic">Stavba běží na pracovní síle</span>
                           )}
                           <Button
                             size="icon" variant="ghost" className="h-5 w-5"
