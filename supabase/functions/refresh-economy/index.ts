@@ -7,10 +7,11 @@ const corsHeaders = {
  * refresh-economy: Safe 4-step economy recalculation without process-turn.
  *
  * Pipeline:
- * 1. compute-province-routes  (rebuild routes)
+ * 1. compute-province-routes  (rebuild routes; player_built protected)
  * 2. compute-hex-flows         (force_all: true)
- * 3. compute-economy-flow      (node-level metrics)
- * 4. compute-trade-flows       (goods pipeline)
+ * 3. compute-trade-systems     (BFS components + access projection from treaties)
+ * 4. compute-trade-flows       (goods pipeline; consumes trade systems & access)
+ * 5. compute-economy-flow      (final realm_resources aggregation)
  *
  * No side effects on turn state. Best-effort in-memory per-session guard.
  */
@@ -88,6 +89,8 @@ Deno.serve(async (req) => {
     const steps: { name: string; fn: string; body: Record<string, unknown> }[] = [
       { name: "compute-province-routes", fn: "compute-province-routes", body: { session_id } },
       { name: "compute-hex-flows", fn: "compute-hex-flows", body: { session_id, force_all: true } },
+      // Node-Trade v1: project trade systems & player access BEFORE the goods solver consumes them
+      { name: "compute-trade-systems", fn: "compute-trade-systems", body: { session_id } },
       { name: "compute-trade-flows", fn: "compute-trade-flows", body: { session_id } },
       { name: "compute-economy-flow", fn: "compute-economy-flow", body: { session_id } },
     ];
