@@ -71,6 +71,32 @@ serve(async (req) => {
       .in("city_node_id", myNodeIds.length > 0 ? myNodeIds : ["__none__"])
       .limit(300);
 
+    // NEW: Top deficit baskets (city-level aggregation, persistované unmet_demand)
+    const { data: cityDeficits } = await supabase
+      .from("city_market_baskets")
+      .select("basket_key, unmet_demand, local_demand, local_supply, domestic_satisfaction, city_id")
+      .eq("session_id", sessionId)
+      .eq("player_name", playerName)
+      .gt("unmet_demand", 0)
+      .order("unmet_demand", { ascending: false })
+      .limit(10);
+
+    // Mapování basket_key → potřebný capability_tag (pro konkrétní build doporučení)
+    const BASKET_TO_TAG: Record<string, string[]> = {
+      staple_food: ["farming", "baking"],
+      meat_dairy: ["herding"],
+      fish: ["fishing"],
+      tools: ["smithing", "smelting"],
+      metalwork: ["smithing", "smelting", "mining"],
+      textiles: ["weaving", "spinning"],
+      leather_goods: ["leatherwork", "tanning"],
+      pottery_ware: ["pottery", "crafting"],
+      timber_goods: ["logging", "carpentry"],
+      stone_goods: ["quarrying", "stonecutting"],
+      brewed_drinks: ["brewing", "fermenting"],
+      ritual_goods: ["ritual_craft"],
+    };
+
     // Build context for AI
     const gapGoods = (baskets || [])
       .filter((b: any) => b.quantity_fulfilled < b.quantity_needed)
