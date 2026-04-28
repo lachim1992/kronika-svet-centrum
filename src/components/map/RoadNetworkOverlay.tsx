@@ -141,6 +141,8 @@ const RoadNetworkOverlay = memo(({ sessionId, offsetX, offsetY, visible }: Props
     void loadRoads();
   }, [loadRoads]);
 
+  const [hoveredId, setHoveredId] = useState<string | null>(null);
+
   const roadElements = useMemo(() => {
     if (!visible || roads.length === 0) return null;
 
@@ -156,22 +158,44 @@ const RoadNetworkOverlay = memo(({ sessionId, offsetX, offsetY, visible }: Props
         })
         .join(" ");
 
+      const isHover = hoveredId === road.id;
+
       return (
-        <polyline
-          key={`road-${road.id}`}
-          points={points}
-          fill="none"
-          stroke={style.color}
-          strokeWidth={style.width}
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          strokeDasharray={style.dash}
-          opacity={0.85}
-          style={{ pointerEvents: "none" }}
-        />
+        <g key={`road-${road.id}`}>
+          {/* Visible road */}
+          <polyline
+            points={points}
+            fill="none"
+            stroke={style.color}
+            strokeWidth={isHover ? style.width + 1.5 : style.width}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeDasharray={style.dash}
+            opacity={isHover ? 1 : 0.85}
+            style={{ pointerEvents: "none", transition: "stroke-width 120ms, opacity 120ms" }}
+          />
+          {/* Invisible hit area for clicks/hover */}
+          <polyline
+            points={points}
+            fill="none"
+            stroke="transparent"
+            strokeWidth={14}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            style={{ cursor: "pointer", pointerEvents: "stroke" }}
+            onMouseEnter={() => setHoveredId(road.id)}
+            onMouseLeave={() => setHoveredId((h) => (h === road.id ? null : h))}
+            onClick={(e) => {
+              e.stopPropagation();
+              emitRouteClick(road.id);
+            }}
+          >
+            <title>{road.name}</title>
+          </polyline>
+        </g>
       );
     });
-  }, [roads, offsetX, offsetY, visible]);
+  }, [roads, offsetX, offsetY, visible, hoveredId]);
 
   if (!visible) return null;
 
