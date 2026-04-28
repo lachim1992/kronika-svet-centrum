@@ -239,8 +239,8 @@ const HexTile = memo(({
                 } else {
                   icon = MICRO_NODE_TYPES.find(t => t.key === n.node_subtype)?.icon || "⛏";
                 }
-                const ny = i === 0 ? cy - 6 : cy + 8;
-                const rad = n.node_tier === "major" ? 12 : 9;
+                const ny = i === 0 ? cy - 9 : cy + 12;
+                const rad = n.node_tier === "major" ? 18 : 14; // +50%
                 // Glow for minor/major nodes based on net_balance
                 const showGlow = (n.node_tier === "minor" || n.node_tier === "major") && n.net_balance !== undefined && n.net_balance !== 0;
                 const glowColor = n.net_balance !== undefined && n.net_balance < 0
@@ -249,21 +249,21 @@ const HexTile = memo(({
                 return (
                   <g key={n.id} className="cursor-pointer" onClick={(e) => { e.stopPropagation(); onNodeClick?.(n); }}>
                     {showGlow && (
-                      <circle cx={cx} cy={ny} r={rad + 4} fill={glowColor} fillOpacity={glowOpacity} style={{ pointerEvents: "none" }} />
+                      <circle cx={cx} cy={ny} r={rad + 5} fill={glowColor} fillOpacity={glowOpacity} style={{ pointerEvents: "none" }} />
                     )}
                     <circle cx={cx} cy={ny} r={rad} fill="black" fillOpacity={0.01} />
                     <text x={cx} y={ny} textAnchor="middle" dominantBaseline="middle"
-                      fill="white" fontSize={n.node_tier === "major" ? "14" : i === 0 ? "11" : "9"}>
+                      fill="white" fontSize={n.node_tier === "major" ? "21" : i === 0 ? "16" : "14"}>
                       {icon}
                     </text>
                     {/* Net balance badge */}
                     {showGlow && (
                       <g style={{ pointerEvents: "none" }}>
-                        <rect x={cx + rad - 2} y={ny - rad + 1} width={18} height={8} rx={3}
+                        <rect x={cx + rad - 2} y={ny - rad + 1} width={26} height={11} rx={3}
                           fill="hsl(0, 0%, 8%)" fillOpacity={0.85} />
-                        <text x={cx + rad + 7} y={ny - rad + 5.5} textAnchor="middle" dominantBaseline="middle"
+                        <text x={cx + rad + 11} y={ny - rad + 7} textAnchor="middle" dominantBaseline="middle"
                           fill={n.net_balance !== undefined && n.net_balance < 0 ? "hsl(0, 70%, 65%)" : "hsl(140, 60%, 65%)"}
-                          fontSize="5" fontWeight="700">
+                          fontSize="7.5" fontWeight="700">
                           {n.net_balance !== undefined && n.net_balance > 0 ? "+" : ""}{Math.round((n.net_balance || 0) * 10) / 10}
                         </text>
                       </g>
@@ -271,26 +271,41 @@ const HexTile = memo(({
                   </g>
                 );
               })}
-              {nodes.length === 1 && (
-                <text x={cx} y={cy + 8} textAnchor="middle" dominantBaseline="middle"
-                  fill="white" fontSize="6" fontWeight="600" opacity={0.8} style={{ pointerEvents: "none" }}>
-                  {nodes[0].name.length > 8 ? nodes[0].name.slice(0, 7) + "…" : nodes[0].name}
-                </text>
-              )}
+              {nodes.length === 1 && (() => {
+                const name = nodes[0].name;
+                const wrapMax = 14;
+                const lines: string[] = name.length <= wrapMax
+                  ? [name]
+                  : (() => {
+                      const mid = Math.floor(name.length / 2);
+                      const sp = name.lastIndexOf(" ", mid + 4);
+                      return sp > 2 && sp < name.length - 2
+                        ? [name.slice(0, sp), name.slice(sp + 1)]
+                        : [name.slice(0, wrapMax), name.slice(wrapMax, wrapMax * 2)];
+                    })();
+                return lines.map((ln, i) => (
+                  <text key={i} x={cx} y={cy + 14 + i * 10} textAnchor="middle" dominantBaseline="middle"
+                    fill="white" fontSize="9" fontWeight="600" opacity={0.9}
+                    style={{ pointerEvents: "none", textShadow: "0 1px 2px rgba(0,0,0,0.8)" }}>
+                    {ln}
+                  </text>
+                ));
+              })()}
               {nodes.length > 2 && (
-                <text x={cx + 12} y={cy + 14} textAnchor="middle" dominantBaseline="middle"
-                  fill="hsl(45, 80%, 65%)" fontSize="6" fontWeight="700" style={{ pointerEvents: "none" }}>+{nodes.length - 2}</text>
+                <text x={cx + 14} y={cy + 18} textAnchor="middle" dominantBaseline="middle"
+                  fill="hsl(45, 80%, 65%)" fontSize="9" fontWeight="700" style={{ pointerEvents: "none" }}>+{nodes.length - 2}</text>
               )}
             </>
           ) : (
             <>
               {/* Biome icon */}
-              <text x={cx} y={cy - 8} textAnchor="middle" dominantBaseline="middle"
-                fill="white" fontSize="12" style={{ pointerEvents: "none" }}>
+              <text x={cx} y={cy - 10} textAnchor="middle" dominantBaseline="middle"
+                fill="white" fontSize="18" style={{ pointerEvents: "none" }}>
                 {BIOME_ICONS[hex.biome_family] || ""}
               </text>
-              <text x={cx} y={cy + 6} textAnchor="middle" dominantBaseline="middle"
-                fill="white" fontSize="7" fontWeight="600" opacity={0.7} style={{ pointerEvents: "none" }}>
+              <text x={cx} y={cy + 9} textAnchor="middle" dominantBaseline="middle"
+                fill="white" fontSize="10" fontWeight="600" opacity={0.8}
+                style={{ pointerEvents: "none", textShadow: "0 1px 2px rgba(0,0,0,0.8)" }}>
                 {BIOME_LABELS[hex.biome_family] || hex.biome_family}
               </text>
             </>
@@ -398,10 +413,10 @@ const HexTile = memo(({
       )}
       {isFrontier && !loading && (
         <>
-          <text x={cx} y={cy - 4} textAnchor="middle" dominantBaseline="middle"
-            fill="hsl(var(--primary))" fontSize="12" opacity={0.7} style={{ pointerEvents: "none" }}>?</text>
-          <text x={cx} y={cy + 8} textAnchor="middle" dominantBaseline="middle"
-            fill="hsl(var(--primary))" fontSize="5.5" opacity={0.5} style={{ pointerEvents: "none" }}>Prozkoumat</text>
+          <text x={cx} y={cy - 5} textAnchor="middle" dominantBaseline="middle"
+            fill="hsl(var(--primary))" fontSize="18" opacity={0.75} style={{ pointerEvents: "none" }}>?</text>
+          <text x={cx} y={cy + 11} textAnchor="middle" dominantBaseline="middle"
+            fill="hsl(var(--primary))" fontSize="8" opacity={0.7} style={{ pointerEvents: "none" }}>Prozkoumat</text>
         </>
       )}
     </g>
