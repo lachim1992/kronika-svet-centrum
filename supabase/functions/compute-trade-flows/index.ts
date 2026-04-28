@@ -535,6 +535,8 @@ Deno.serve(async (req) => {
 
     // Persist city_market_baskets
     if (cityBasketRows.length > 0) {
+      const sample = cityBasketRows.find((r) => r.unmet_demand > 0) || cityBasketRows[0];
+      console.log("[city_market_baskets] sample row:", JSON.stringify(sample));
       await sb.from("city_market_baskets").delete().eq("session_id", session_id).eq("turn_number", tn);
       for (let i = 0; i < cityBasketRows.length; i += 50) {
         const { error } = await sb.from("city_market_baskets").insert(cityBasketRows.slice(i, i + 50));
