@@ -23,6 +23,7 @@ interface CityBasketRow {
   local_demand: number;
   local_supply: number;
   domestic_satisfaction: number;
+  unmet_demand?: number;
   export_surplus: number;
   turn_number: number;
 }
