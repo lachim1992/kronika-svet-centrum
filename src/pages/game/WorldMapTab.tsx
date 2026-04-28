@@ -1,5 +1,7 @@
 import WorldHexMap from "@/components/WorldHexMap";
 import { useIsMobile } from "@/hooks/use-mobile";
+import ManpowerHUDCard from "@/components/map/ManpowerHUDCard";
+import WorldMapBuildPanel from "@/components/map/WorldMapBuildPanel";
 
 interface Props {
   sessionId: string;
@@ -22,6 +24,10 @@ const WorldMapTab = ({ sessionId, currentPlayerName, myRole, worldName, currentT
         currentTurn={currentTurn}
         onCityClick={onCityClick}
       />
+
+      {/* Stage 8 floating overlays */}
+      <ManpowerHUDCard sessionId={sessionId} playerName={currentPlayerName} />
+      <WorldMapBuildPanel sessionId={sessionId} playerName={currentPlayerName} currentTurn={currentTurn} />
 
       {/* Overlay: world name badge */}
       {worldName && (

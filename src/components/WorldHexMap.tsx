@@ -22,6 +22,8 @@ import RoadNetworkOverlay, { ROAD_STYLES } from "@/components/map/RoadNetworkOve
 import EconomyFlowOverlay, { CATEGORY_COLORS, MACRO_COLORS, FLOW_LAYER_COLORS } from "@/components/map/EconomyFlowOverlay";
 import type { EconomyViewMode } from "@/components/map/EconomyFlowOverlay";
 import NodeInfluenceOverlay from "@/components/map/NodeInfluenceOverlay";
+import UnderConstructionRoutesOverlay from "@/components/map/UnderConstructionRoutesOverlay";
+import TradeSystemsOverlay from "@/components/map/TradeSystemsOverlay";
 import MapMinimap from "@/components/map/MapMinimap";
 import { MINOR_NODE_TYPES, MICRO_NODE_TYPES, MAJOR_NODE_TYPES } from "@/lib/nodeTypes";
 import HexDevTools from "@/components/map/HexDevTools";
@@ -438,6 +440,8 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
   const [showRoadLayer, setShowRoadLayer] = useState(true);
   const [showEconomyLayer, setShowEconomyLayer] = useState(true);
   const [showInfluenceLayer, setShowInfluenceLayer] = useState(false);
+  const [showUnderConstructionLayer, setShowUnderConstructionLayer] = useState(true);
+  const [showTradeSystemsLayer, setShowTradeSystemsLayer] = useState(false);
   const [economyCategories, setEconomyCategories] = useState<Set<string>>(new Set(["food", "raw", "luxury", "manufactured", "production", "supply", "wealth", "trade", "export"]));
   const [economyViewMode, setEconomyViewMode] = useState<EconomyViewMode>("goods");
   const [expandingProvince, setExpandingProvince] = useState(false);
@@ -1245,6 +1249,8 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
             offsetY={offsetY}
             visible={showInfluenceLayer}
           />
+          <UnderConstructionRoutesOverlay sessionId={sessionId} offsetX={offsetX} offsetY={offsetY} visible={showUnderConstructionLayer} />
+          <TradeSystemsOverlay sessionId={sessionId} offsetX={offsetX} offsetY={offsetY} visible={showTradeSystemsLayer} />
         </g>
       </svg>
 
