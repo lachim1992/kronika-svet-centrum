@@ -88,6 +88,8 @@ Deno.serve(async (req) => {
     const steps: { name: string; fn: string; body: Record<string, unknown> }[] = [
       { name: "compute-province-routes", fn: "compute-province-routes", body: { session_id } },
       { name: "compute-hex-flows", fn: "compute-hex-flows", body: { session_id, force_all: true } },
+      // Node-Trade v1: project trade systems & player access BEFORE the goods solver consumes them
+      { name: "compute-trade-systems", fn: "compute-trade-systems", body: { session_id } },
       { name: "compute-trade-flows", fn: "compute-trade-flows", body: { session_id } },
       { name: "compute-economy-flow", fn: "compute-economy-flow", body: { session_id } },
     ];
