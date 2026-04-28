@@ -1157,7 +1157,7 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
   const offsetY = svgH / 2 - cameraCenter.y;
 
   return (
-    <div ref={containerRef} className="relative w-full h-full bg-[#0a0c10] overflow-hidden select-none touch-none"
+    <div ref={containerRef} className={`relative w-full h-full bg-[#0a0c10] overflow-hidden select-none touch-none ${dragRef.current?.moved ? 'cursor-grabbing' : 'cursor-grab'}`}
       onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp}
       onPointerLeave={onPointerUp}
       onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}
