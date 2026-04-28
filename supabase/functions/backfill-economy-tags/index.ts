@@ -21,44 +21,44 @@ const corsHeaders = {
 type ProductionRole = "source" | "processing" | "urban" | "guild";
 
 const NODE_CAPABILITY_MAP: Record<string, { role: ProductionRole; tags: string[] }> = {
-  // Source
+  // Source (rozšířeno o craft tagy aby pokrylo všech 12 baskets)
   field: { role: "source", tags: ["farming"] },
   vineyard: { role: "source", tags: ["farming", "viticulture"] },
-  hunting_ground: { role: "source", tags: ["herding", "gathering"] },
-  pastoral_camp: { role: "source", tags: ["herding"] },
-  fishery: { role: "source", tags: ["fishing"] },
-  fishing_village: { role: "source", tags: ["fishing"] },
-  mine: { role: "source", tags: ["mining"] },
-  mining_camp: { role: "source", tags: ["mining"] },
+  hunting_ground: { role: "source", tags: ["herding", "gathering", "leatherwork"] },
+  pastoral_camp: { role: "source", tags: ["herding", "leatherwork", "weaving"] },
+  fishery: { role: "source", tags: ["fishing", "salting"] },
+  fishing_village: { role: "source", tags: ["fishing", "salting"] },
+  mine: { role: "source", tags: ["mining", "smelting"] },
+  mining_camp: { role: "source", tags: ["mining", "quarrying", "smelting"] },
   quarry: { role: "source", tags: ["quarrying"] },
-  sawmill: { role: "source", tags: ["logging", "sawing"] },
-  lumber_camp: { role: "source", tags: ["logging"] },
-  herbalist: { role: "source", tags: ["gathering"] },
+  sawmill: { role: "source", tags: ["logging", "sawing", "carpentry"] },
+  lumber_camp: { role: "source", tags: ["logging", "carpentry"] },
+  herbalist: { role: "source", tags: ["gathering", "brewing"] },
   resin_collector: { role: "source", tags: ["logging", "gathering"] },
-  salt_pan: { role: "source", tags: ["mining"] },
-  village: { role: "source", tags: ["farming", "herding"] },
+  salt_pan: { role: "source", tags: ["mining", "salting"] },
+  village: { role: "source", tags: ["farming", "herding", "baking", "brewing"] },
   shrine: { role: "source", tags: ["ritual_craft"] },
   watchtower: { role: "source", tags: [] },
   outpost: { role: "source", tags: [] },
   // Processing
   smithy: { role: "processing", tags: ["smelting", "smithing"] },
-  mill: { role: "processing", tags: ["milling"] },
+  mill: { role: "processing", tags: ["milling", "baking"] },
   press: { role: "processing", tags: ["pressing"] },
-  tannery: { role: "processing", tags: ["tanning"] },
-  spinner: { role: "processing", tags: ["spinning"] },
-  stonecutter: { role: "processing", tags: ["stonecutting"] },
-  smokehouse: { role: "processing", tags: ["preserving"] },
+  tannery: { role: "processing", tags: ["tanning", "leatherwork"] },
+  spinner: { role: "processing", tags: ["spinning", "weaving"] },
+  stonecutter: { role: "processing", tags: ["stonecutting", "quarrying"] },
+  smokehouse: { role: "processing", tags: ["preserving", "salting"] },
   smelter: { role: "processing", tags: ["smelting"] },
   // Urban
   bakery: { role: "urban", tags: ["baking"] },
   forge: { role: "urban", tags: ["smithing", "armoring"] },
   weaver: { role: "urban", tags: ["weaving"] },
-  winery: { role: "urban", tags: ["fermenting"] },
-  pottery_workshop: { role: "urban", tags: ["crafting"] },
+  winery: { role: "urban", tags: ["fermenting", "brewing"] },
+  pottery_workshop: { role: "urban", tags: ["crafting", "pottery"] },
   armory: { role: "urban", tags: ["smithing", "armoring"] },
   builder_yard: { role: "urban", tags: ["construction"] },
-  trade_hub: { role: "urban", tags: ["construction"] },
-  trade_post: { role: "urban", tags: [] },
+  trade_hub: { role: "urban", tags: ["construction", "pottery", "weaving"] },
+  trade_post: { role: "urban", tags: ["pottery"] },
   // Guild
   guild_workshop: { role: "guild", tags: ["master_craft"] },
   master_workshop: { role: "guild", tags: ["master_craft"] },
@@ -66,10 +66,32 @@ const NODE_CAPABILITY_MAP: Record<string, { role: ProductionRole; tags: string[]
   temple_workshop: { role: "guild", tags: ["ritual_craft", "master_craft"] },
 };
 
-// City nodes get urban role with basic tags
+// Biome → bonus capability tags (synced s compute-province-nodes)
+const BIOME_BONUS_TAGS: Record<string, string[]> = {
+  forest: ["logging", "gathering", "carpentry"],
+  taiga: ["logging", "carpentry"],
+  hills: ["mining", "quarrying", "smelting"],
+  mountain: ["mining", "quarrying", "smelting"],
+  mountains: ["mining", "quarrying", "smelting"],
+  highland: ["mining", "quarrying"],
+  coastal: ["fishing", "salting"],
+  lake: ["fishing", "salting"],
+  river: ["fishing", "salting"],
+  plains: ["farming", "herding", "weaving"],
+  grassland: ["farming", "herding", "weaving"],
+  steppe: ["herding", "leatherwork"],
+  savanna: ["herding", "leatherwork"],
+  temperate: ["farming", "weaving"],
+  desert: ["mining", "salting"],
+  marsh: ["gathering", "brewing"],
+  jungle: ["gathering", "brewing"],
+  volcanic: ["mining", "smelting"],
+};
+
+// City nodes get urban role with basic tags + crafting
 const CITY_TAGS: { role: ProductionRole; tags: string[] } = {
   role: "urban",
-  tags: ["baking", "construction"],
+  tags: ["baking", "construction", "pottery", "weaving", "smithing"],
 };
 
 // ── BIOME → RESOURCE DEPOSITS ──
@@ -152,15 +174,24 @@ Deno.serve(async (req) => {
 
     const sb = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 
-    // ── PHASE 1: Hydrate capability_tags + production_role ──
+    // ── PHASE 1: Hydrate capability_tags + production_role (s biome merge) ──
     const { data: nodes } = await sb.from("province_nodes")
-      .select("id, node_subtype, node_type, city_id, capability_tags, production_role")
+      .select("id, node_subtype, node_type, city_id, hex_q, hex_r, capability_tags, production_role")
       .eq("session_id", session_id);
 
     if (!nodes || nodes.length === 0) {
       return new Response(JSON.stringify({ ok: true, message: "No nodes found" }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
+    }
+
+    // Načti biome lookup pro hex koordináty
+    const { data: hexBiomes } = await sb.from("province_hexes")
+      .select("q, r, biome")
+      .eq("session_id", session_id);
+    const biomeMap = new Map<string, string>();
+    for (const h of hexBiomes || []) {
+      biomeMap.set(`${h.q},${h.r}`, (h.biome as string || "plains").toLowerCase());
     }
 
     let updated = 0;
@@ -177,18 +208,23 @@ Deno.serve(async (req) => {
 
       if (!mapping) continue;
 
-      // Only update if tags are empty or role is wrong
+      // Merge biome bonus tags
+      const biome = biomeMap.get(`${node.hex_q},${node.hex_r}`) || "";
+      const biomeTags = BIOME_BONUS_TAGS[biome] || [];
+      const mergedTags = [...new Set([...mapping.tags, ...biomeTags])];
+
+      // Only update if tags differ or role is wrong
       const currentTags = node.capability_tags as string[] || [];
       const currentRole = node.production_role as string;
 
       if (
         currentTags.length === 0 ||
         currentRole !== mapping.role ||
-        JSON.stringify(currentTags.sort()) !== JSON.stringify(mapping.tags.sort())
+        JSON.stringify(currentTags.slice().sort()) !== JSON.stringify(mergedTags.slice().sort())
       ) {
         updates.push({
           id: node.id,
-          capability_tags: mapping.tags,
+          capability_tags: mergedTags,
           production_role: mapping.role,
         });
       }

@@ -1,112 +1,94 @@
 ## Cíl
 
-Z cest ve WorldMap udělat živé objekty: každá má vlastní jméno, jde rozkliknout, upgradovat na vyšší tier, navazovat na ní další cesty a hráč si může při stavbě sám vybrat hexy, kterými má vést (plánování koridorů pro budoucí expanzi).
+Eliminovat strukturální 0% baskety (`min_sat=0.00` u všech hráčů) a dát AI advisorovi/UI konkrétní cíl k optimalizaci. Dvě úzce související změny v jedné dávce.
 
----
+## Kontext (current state)
 
-## 1. Schema cesty (DB migrace)
+- `node_inventory` se plní správně z `capability_tags` × `recipes` (verified v `compute-trade-flows` Phase 1a).
+- `BIOME_BONUS_TAGS` v `compute-province-nodes/index.ts` (ř. 49–66) přiřazuje max 2 tagy per biome a zcela chybí **processing tagy** (`smithing`, `weaving`, `leatherwork`, `brewing`, `baking`, `pottery`).
+- `city_market_baskets` má `local_demand`, `local_supply`, `domestic_satisfaction` — ale **chybí `unmet_demand`** jako persistovaný kolumn → AI advisor i UI ho musí pokaždé počítat klientsky a nemůže filtrovat/řadit přes index.
+- Real data potvrzují deficit: každý hráč má 4–7 basketů se sat<0.5, typicky `metalwork`, `tools`, `leather_goods`, `textiles`.
 
-Doplnit do `province_routes`:
-- `name TEXT` — uživatelský název (např. "Via Korint–Lachim"). Pokud chybí, fallback na auto-generovaný.
-- `waypoints JSONB` — povinné průchozí hexy `[{q,r}, ...]` zadané hráčem; server tyto body **musí** zařadit do A* trasy.
+## Změna 1: Rozšířený biome → tag mapping + processing tagy z urban/source vztahu
 
-Žádný drop sloupců. Existující cesty zůstávají (`name = NULL` → fallback v UI).
+**Soubor:** `supabase/functions/compute-province-nodes/index.ts`
 
----
+Rozšířit `BIOME_BONUS_TAGS` a `NODE_CAPABILITY_MAP`:
 
-## 2. Stavba s waypointy (Build flow v2)
+- `village` → přidat `baking`, `brewing` (každá vesnice peče a vaří)
+- `mining_camp` (minor subtype) → potvrdit `mining` + přidat `quarrying`
+- `lumber_camp` → `logging` + `carpentry`
+- `pastoral_camp` → `herding` + `leatherwork` + `weaving` (vlna)
+- `fishing_village` → `fishing` + `salting`
+- `smithy` (existing) → `smelting` + `smithing` ✓
+- Nový `trade_hub` urban tagy: přidat `pottery`, `weaving` (městská řemesla)
 
-V `WorldMapBuildPanel`:
-- Přidat **Waypoint mode** — toggle "Plánovat trasu". Po zapnutí:
-  - Vybraný `nodeA` se zafixuje jako start.
-  - Klikání na hexy v mapě přidává/odebírá waypointy do seznamu (pořadí zachováno, drag-to-reorder není v MVP).
-  - Druhý uzel B se vybere ze selectu nebo kliknutím na node-hex.
-  - Pod náhledem A* se ukáže lišta s emoji řetězcem waypointů + tlačítka "Smazat" a "Vyčistit".
-- Nové pole **"Název cesty"** (volitelné, max 60 znaků). Placeholder = `Via {NodeA} – {NodeB}`.
-- Server (`command-dispatch / executeBuildRoute`) přijme `name` + `waypoints[]`. A* běží jako řetěz: A → wp1 → wp2 → … → B; pokud nějaký segment není průchozí, vrátí `error: "Waypoint X je nepřístupný"`.
+**Biome bonus rozšíření:**
+- `coastal/lake/river` → `fishing` + `salting`
+- `plains/grassland` → `farming` + `herding` + `weaving` (len)
+- `forest` → `logging` + `gathering` + `carpentry`
+- `hills/mountain` → `mining` + `quarrying` + `smelting` (přístup k rudě)
 
-UI mapy (`WorldHexMap.handleTileClick`) musí znát build režim — zavedeme lehký kontext nebo prop `buildMode: { active, onHexPick }` předaný z `WorldMapTab` do mapy a panelu, aby si rozdělili kliky:
-- pokud `buildMode.active` → klik na hex jde do panelu (waypoint), Sheet se neotvírá;
-- jinak normální chování (Sheet provincie nebo route detail).
+Důsledek: každý zalidněný hex bude mít 3–5 capability tagů místo 1–2 → recipes pokryjí všech 12 baskets.
 
----
+## Změna 2: Backfill existujících nodů
 
-## 3. Klikatelné cesty + detail (Route Sheet)
+**Soubor:** `supabase/functions/backfill-economy-tags/index.ts`
 
-`RoadNetworkOverlay` rozšířit:
-- Pro každou polyline přidat neviditelnou tlustší "hit" polyline (stroke ~14 px, `stroke="transparent"`, `pointer-events: stroke`) jako klikací cíl.
-- `onClick` → `onRouteClick(routeId)` callback do rodiče.
-- Hover: zvýraznit (zvýšit opacity / glow).
+Přepoužít rozšířený `resolveCapabilityTags` na všechny existující nody v běžících sessions. Spustit z dev tools (Recompute panel).
 
-V `WorldHexMap` (nebo přímo ve `WorldMapTab`) přidat nový `RouteDetailSheet`:
-- **Hlavička:** název cesty (editovatelný inline pro vlastníka), `node_a ↔ node_b`, tier badge.
-- **Statistiky:** route_type, upgrade_level, capacity_value, control_state, vulnerability_score, hex_path_length, build_cost.
-- **Údržba (route_state):** maintenance_level, lifecycle_state, turns_unpaid.
-- **Akce (jen pro vlastníka = `controlled_by` nebo `metadata.built_by`):**
-  - **Upgrade tier** (trail → road → paved): tlačítko + cena, posílá `UPGRADE_ROUTE`.
-  - **Investovat do údržby** (50 g) — `manage-route INVEST_MAINTENANCE`.
-  - **Obnovit** (200 g) když `blocked` — `RESTORE_ROUTE`.
-  - **Opustit cestu** — `ABANDON_ROUTE` s confirm dialogem.
-  - **Přejmenovat** — nový lehký command `RENAME_ROUTE { routeId, name }` přes command-dispatch (idempotent on (routeId, name)).
-  - **Postavit navazující cestu** — tlačítko "Stavět odsud", které předvyplní `nodeA` v build panelu jedním z koncových uzlů a otevře build mode.
+## Změna 3: `unmet_demand` jako persistovaná kolumna
 
----
+**Migrace:** přidat sloupec do `city_market_baskets`:
+```sql
+ALTER TABLE city_market_baskets 
+  ADD COLUMN IF NOT EXISTS unmet_demand numeric DEFAULT 0;
+CREATE INDEX IF NOT EXISTS idx_cmb_unmet 
+  ON city_market_baskets(session_id, turn_number, unmet_demand DESC) 
+  WHERE unmet_demand > 0;
+```
 
-## 4. Upgrade systém (lineární tier)
+**Soubor:** `supabase/functions/compute-trade-flows/index.ts` (kolem ř. 510)
+- Po výpočtu `localSupply` + případných importů spočítat:
+  ```ts
+  unmet_demand = max(0, demandQty - localSupply - importedQty)
+  ```
+- Persistovat jako další pole v `cityBasketRows`.
 
-Rozšířit existující `UPGRADE_ROUTE` v `command-dispatch`:
-- Definovat tier order: `trail → road → paved` (a držet legacy aliasy `land_road`/atd. mapované do `road`).
-- Při upgradu změnit `route_type` na další tier + zvednout `upgrade_level`, `capacity_value`, `speed_value`, snížit `vulnerability_score`.
-- Cena: `build_cost * 0.5 * (level+1)` (už existuje), přidat strop `paved` (nelze upgradovat dál).
-- Logovat `world_event` typu `route_upgraded` pro chronicle.
+## Změna 4: AI Advisor & UI využití
 
-UI v `RouteDetailSheet` ukáže "Aktuální: Cesta → Další: Dlážděná (cena 200 g)" nebo "Maximální tier".
+**Soubor:** `supabase/functions/economy-advisor/index.ts`
+- Místo počítání deficit per request: query `city_market_baskets WHERE unmet_demand > 0 ORDER BY unmet_demand DESC LIMIT 5`.
+- Doporučení mapovat: `basket_key` → chybějící `capability_tag` → konkrétní node subtype k postavení (např. `metalwork` → chybí `smithing` → postav `smithy` minor).
 
----
+**UI:** `src/pages/game/EconomyTab.tsx` (nebo Markets panel)
+- Sloupec „Chybí" v basket tabulce zobrazující `unmet_demand` s červeným badge.
+- Sort by `unmet_demand DESC` jako default view.
 
-## 5. Pojmenování — UI logika
+## Technická poznámka pro non-tech
 
-- Při stavbě: vstupní pole. Pokud prázdné → server uloží `name = NULL`, UI render používá `name ?? "Via {nodeA.name} – {nodeB.name}"`.
-- V detailu: ikona tužky vedle názvu pro vlastníka → modal/inline edit → `RENAME_ROUTE`.
-- Popisek v `RoadNetworkOverlay` (na hover tooltip) ukáže název.
+Hra teď ví, kolik města vyrábí a kolik chtějí, ale nezná **jak moc jim chybí konkrétně**. Po této změně každý město přesně řekne „chybí mi 3.2 jednotek nářadí" a AI poradce může říct „postav kovárnu na hexu X". Současně rozšíříme typy řemesel, které vesnice automaticky umí, aby existovala šance na 100 % saturaci bez zázračné expanze.
 
----
+## Pořadí implementace
 
-## 6. Soubory, které se změní / vytvoří
+1. Migrace `unmet_demand` (DB schema)
+2. `compute-province-nodes` rozšíření tagů
+3. `compute-trade-flows` zápis `unmet_demand`
+4. `backfill-economy-tags` přepočet na existujících sessions (jednorázový dev call)
+5. `economy-advisor` query + recommendation mapping
+6. UI badge + sort
 
-**DB migrace:**
-- Přidat sloupce `name`, `waypoints` do `province_routes`.
+## Soubory k úpravě
 
-**Backend (`supabase/functions/command-dispatch/index.ts`):**
-- `executeBuildRoute` — přijímat `name`, `waypoints`, řetězit A* mezi waypointy, ukládat oba sloupce.
-- `executeUpgradeRoute` — tier ladder (trail→road→paved), aktualizace stat, validace stropu.
-- Nový handler `executeRenameRoute` + zaregistrovat command type `RENAME_ROUTE`.
+- `supabase/migrations/<new>.sql` (nový, ALTER TABLE)
+- `supabase/functions/compute-province-nodes/index.ts`
+- `supabase/functions/backfill-economy-tags/index.ts`
+- `supabase/functions/compute-trade-flows/index.ts`
+- `supabase/functions/economy-advisor/index.ts`
+- `src/pages/game/EconomyTab.tsx` (případně související basket panel)
 
-**Frontend:**
-- `src/components/map/WorldMapBuildPanel.tsx` — waypoint mode, název, předání `buildMode` callbacku ven.
-- `src/components/map/RoadNetworkOverlay.tsx` — neviditelná hit polyline + `onRouteClick` prop, hover state.
-- `src/components/map/RouteDetailSheet.tsx` — **nový soubor**, full detail + akce.
-- `src/components/WorldHexMap.tsx` — koordinace `selectedRouteId` ↔ `selectedHex`, build mode gating klikání na hexy, vykreslení `RouteDetailSheet`.
-- `src/pages/game/WorldMapTab.tsx` — přemostění stavu `buildMode` mezi panelem a mapou.
+## Co tato změna **nedělá** (mimo scope)
 
-**`src/lib/commands.ts`:** typy pro `BUILD_ROUTE` (name, waypoints) a `RENAME_ROUTE`.
-
----
-
-## 7. Co je mimo rozsah (pro tuto iteraci)
-
-- Drag waypointů pro reorder (zatím jen smaž a přidej znovu).
-- Multi-osa upgrade (capacity/safety/speed zvlášť) — zachováváme lineární tier.
-- AI generování názvů.
-- Vizualizace plánovaných (zatím nepostavených) koridorů jako "ghost cest" — lze přidat v dalším kroku.
-
----
-
-## Akceptační kritéria
-
-1. Klik na čáru cesty otevře Sheet s názvem, statistikami a akcemi.
-2. Vlastník může cestu přejmenovat, upgradovat (trail→road→paved), udržovat, obnovit, opustit.
-3. V build módu lze sekvenčně klikat hexy a vytvořit tak povinný koridor; A* respektuje waypointy.
-4. Stavba přijímá vlastní název (nebo fallback `Via A – B`).
-5. Existující cesty bez `name` a `waypoints` fungují beze změny.
-6. Po upgradu se polyline na mapě překreslí novým tier stylem.
+- Reconcile `production_output` ↔ `node_inventory.quantity` (separátní práce, lze udělat potom)
+- Wealth realization / monetization opravy (samostatný kanál)
+- Nový dev panel „Node → Basket trace" (může přijít později)

@@ -503,6 +503,7 @@ Deno.serve(async (req) => {
         }
 
         // city_market_baskets row (v4.2)
+        const unmetDemand = Math.max(0, demandQty - localSupply);
         cityBasketRows.push({
           session_id,
           city_id: city.id,
@@ -513,6 +514,7 @@ Deno.serve(async (req) => {
           local_demand: demandQty,
           local_supply: localSupply,
           domestic_satisfaction: Math.round(domesticSatisfaction * 1000) / 1000,
+          unmet_demand: Math.round(unmetDemand * 100) / 100,
           export_surplus: Math.round(exportSurplus * 100) / 100,
           quality_weight: qualityWeight,
           market_access: Math.round(cityMarketAccess * 1000) / 1000,
