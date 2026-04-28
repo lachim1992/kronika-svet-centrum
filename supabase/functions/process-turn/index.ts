@@ -406,24 +406,83 @@ Deno.serve(async (req) => {
     const mobWealthPenalty = mobilized * MOB_WEALTH_PENALTY_RATE;
 
     // ══════════════════════════════════════════
-    // ARMY UPKEEP + SUPPLY STRAIN
+    // ARMY UPKEEP + SUPPLY STRAIN + CONSTRUCTION TICK (Stage 7)
+    // Upkeep parity: 0.3% gold + 0.4% food per soldier
+    // Over-mobilization: ×1.5 upkeep when soft trigger crossed (>10% pop mobilized)
     // ══════════════════════════════════════════
     const { data: stacks } = await supabase.from("military_stacks")
-      .select("id, unit_count, maintenance_cost, morale, combat_power")
+      .select("id, unit_count, soldiers, maintenance_cost, morale, combat_power, assignment, assigned_route_id, construction_progress")
       .eq("session_id", sessionId).eq("owner_player", playerName);
+
+    // Soft over-mobilization trigger (10% pop). Hard 20% cap is enforced on MOBILIZE command.
+    const totalSoldiers = (stacks || []).reduce((sum, s) => sum + (s.soldiers || s.unit_count || 0), 0);
+    const overMobilized = totalPopulation > 0 && totalSoldiers > Math.floor(totalPopulation * 0.10);
+    const upkeepMult = overMobilized ? 1.5 : 1.0;
 
     let totalArmySize = 0, armyProductionUpkeep = 0, armyWealthUpkeep = 0;
     for (const s of (stacks || [])) {
-      const men = s.unit_count || 0;
+      const men = s.soldiers || s.unit_count || 0;
       totalArmySize += men;
-      // Mixed upkeep: 0.4 prod, 0.3 wealth (remaining via manpower/capacity implicitly)
-      armyProductionUpkeep += Math.ceil(men * 0.004); // ~2 per 500
-      armyWealthUpkeep += Math.ceil(men * 0.003);     // ~3 per 1000
+      // Parity formula: 0.3% gold + 0.4% food per soldier (× over-mobilization mult)
+      armyProductionUpkeep += Math.ceil(men * 0.004 * upkeepMult);
+      armyWealthUpkeep += Math.ceil(men * 0.003 * upkeepMult);
     }
 
     // Supply strain = army_size / logistic_capacity
     const currentCapacity = Math.max(5, totalCapacity * 2 + (infra?.roads_level || 0) * 2);
     const supplyStrain = currentCapacity > 0 ? totalArmySize / (currentCapacity * 100) : 0;
+
+    // ── Construction tick: assigned stacks contribute work to under_construction routes ──
+    const ENGINEERING_MULT: Record<string, number> = {
+      trail: 1.0, road: 0.7, paved: 0.4, harbor_link: 0.5,
+    };
+    const assignedRouteIds = (stacks || [])
+      .filter(s => s.assignment === "construction" && s.assigned_route_id)
+      .map(s => s.assigned_route_id as string);
+
+    if (assignedRouteIds.length > 0) {
+      const { data: routesUC } = await supabase.from("province_routes")
+        .select("id, route_type, construction_state, metadata")
+        .eq("session_id", sessionId)
+        .in("id", assignedRouteIds)
+        .eq("construction_state", "under_construction");
+
+      for (const route of (routesUC || [])) {
+        const md = (route.metadata || {}) as any;
+        const totalWork = Number(md.total_work || 0);
+        const currentProgress = Number(md.progress || 0);
+        const assignedStacks = (stacks || []).filter(s => s.assigned_route_id === route.id && s.assignment === "construction");
+        const soldiersOnSite = assignedStacks.reduce((sum, s) => sum + (s.soldiers || s.unit_count || 0), 0);
+        if (soldiersOnSite <= 0) continue;
+
+        const engMult = ENGINEERING_MULT[route.route_type as string] ?? 1.0;
+        const workThisTurn = Math.round(soldiersOnSite * engMult);
+        const newProgress = Math.min(totalWork, currentProgress + workThisTurn);
+        const completed = newProgress >= totalWork;
+
+        await supabase.from("province_routes").update({
+          construction_state: completed ? "complete" : "under_construction",
+          metadata: { ...md, progress: newProgress, last_tick_turn: currentTurn },
+        }).eq("id", route.id);
+
+        // Persist per-stack accumulator
+        for (const s of assignedStacks) {
+          await supabase.from("military_stacks").update({
+            construction_progress: (s.construction_progress || 0) + Math.round((s.soldiers || s.unit_count || 0) * engMult),
+            ...(completed ? { assignment: "idle", assigned_route_id: null } : {}),
+          }).eq("id", s.id);
+        }
+
+        if (completed) {
+          newEvents.push({
+            session_id: sessionId, turn_number: currentTurn,
+            event_type: "construction", player_name: playerName,
+            note: `Stavba cesty dokončena (${route.route_type}). Vojáci uvolněni.`,
+            importance: "normal", reference: { route_id: route.id, route_type: route.route_type },
+          } as any);
+        }
+      }
+    }
 
     // ══════════════════════════════════════════════════════════════
     // ▶ PER-CITY CIVILIZATIONAL ECONOMY
