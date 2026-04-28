@@ -120,11 +120,18 @@ serve(async (req) => {
 ${basketSnapshot ? basketSnapshot + "\n\n" : ""}MĚSTA HRÁČE:
 ${(cities || []).map((c: any) => `- ${c.name} (pop: ${c.population_total}, level: ${c.settlement_level}, stabilita: ${c.city_stability}%)`).join("\n")}
 
-CHYBĚJÍCÍ ZBOŽÍ (seřazeno dle urgence):
+CHYBĚJÍCÍ ZBOŽÍ (per-node, seřazeno dle urgence):
 ${gapGoods.map((g: any) => {
   const cityName = cityNames.get(nodeToCity.get(g.city_id) || "") || g.city_id;
   return `- ${g.basket_key} [${g.fulfillment_type}]: potřeba ${g.quantity_needed}, splněno ${g.quantity_fulfilled} (${(g.satisfaction_score * 100).toFixed(0)}%) — město: ${cityName}`;
 }).join("\n") || "Žádné mezery"}
+
+TOP DEFICITNÍ BASKETY MĚST (city-level, persistovaný unmet_demand):
+${(cityDeficits || []).map((d: any) => {
+  const cityName = cityNames.get(d.city_id) || d.city_id;
+  const tags = BASKET_TO_TAG[d.basket_key]?.join(", ") || "?";
+  return `- ${d.basket_key} v ${cityName}: chybí ${d.unmet_demand.toFixed(1)} (poptávka ${d.local_demand.toFixed(1)}, dodávka ${d.local_supply.toFixed(1)}, sat ${(d.domestic_satisfaction * 100).toFixed(0)}%) → potřebuje tag(y): [${tags}]`;
+}).join("\n") || "Žádné deficity"}
 
 DOSTUPNÉ PRODUKČNÍ CAPABILITY:
 ${nodeCapabilities.map((n: any) => `- ${n.name}: [${n.tags.join(", ")}] role=${n.role}`).join("\n")}
