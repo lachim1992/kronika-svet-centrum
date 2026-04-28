@@ -1,31 +1,112 @@
-# Node-Trade v1 — IMPLEMENTAČNÍ LOCK
+## Cíl
 
-Architektonické pravidlo:
-> **Diplomacy writes treaties. `compute-trade-systems` projects access. `compute-trade-flows` consumes access. WorldMap only visualizes canonical outputs.**
+Z cest ve WorldMap udělat živé objekty: každá má vlastní jméno, jde rozkliknout, upgradovat na vyšší tier, navazovat na ní další cesty a hráč si může při stavbě sám vybrat hexy, kterými má vést (plánování koridorů pro budoucí expanzi).
 
-## Stav etap
+---
 
-- [x] **Etapa 1 — Schema** (migrace + backfill, RLS read-only public, write jen service role).
-  Tabulky: `trade_systems`, `trade_system_basket_supply`, `trade_system_node_snapshot`, `player_trade_system_access`, `diplomatic_treaties`.
-  Sloupce: `province_nodes.trade_system_id`, `province_routes.{route_origin, construction_state}`, `realm_resources.{manpower_available, manpower_mobilized, military_gold_upkeep, military_food_upkeep, over_mobilized}`, `military_stacks.{soldiers, assignment, assigned_route_id, upkeep_gold, upkeep_food, construction_progress}`.
-- [x] **Etapa 2 — Ochrana player_built routes** v `compute-province-routes`: maže jen `route_origin='generated'`, pre-seeduje `routeSet` pairs z protected řádků, inserts mají explicit `route_origin='generated'`, `construction_state='complete'`.
-- [ ] **Etapa 3 — Neutral nodes density** (`generate-neutral-nodes`: presets 0.06/0.05/0.04, 4 role intent, repair-world backfill).
-- [ ] **Etapa 4 — `compute-trade-systems`** (snapshot → BFS jen `control_state='open'` + lifecycle usable/maintained/degraded → deterministic system_key sha256(sorted nodes)[0:16] → upsert + diff events → access projekce z `diplomatic_treaties` + own_city/discovery/occupation/vassalage).
-- [ ] **Etapa 5 — `compute-trade-flows`** system aggregation; symetrický price `pressure=(d-s)/max(d+s,1)`, `price=clamp(0.5,2.0,1+pressure)`; per-city fill local→system pool s tariff×route_access×exportable_penalty.
-- [ ] **Etapa 6 — Commands** v `command-dispatch`: MOBILIZE/DEMOBILIZE_MANPOWER (hard 20% cap, soft 10% over_mobilized flag), BUILD_ROUTE (A* validation, neutral risk flags, route_origin='player_built', construction_state='under_construction'), ASSIGN_STACK_TO_ROUTE, CANCEL_ROUTE_CONSTRUCTION, PROPOSE/ACCEPT/BREAK_TREATY (open_borders, trade_access).
-- [x] **Etapa 7 — `process-turn` construction tick + manpower ledger**: progress = soldiers × engineering_mult; complete → construction_state='complete', stack assignment='idle'. Upkeep parity 0.3% gold + 0.4% food per soldier; over_mobilized (>10% pop) → ×1.5 upkeep. Writes `manpower_available`/`manpower_mobilized`/`over_mobilized`/`military_gold_upkeep`/`military_food_upkeep` na `realm_resources`. (Ambush check + ×0.85 city prod + unrest odloženo do Etapy 8 UI feedback.)
-- [x] **Etapa 8 — WorldMap UI**: ManpowerHUDCard, WorldMapBuildPanel (Build Mode + assignment + cancel), UnderConstructionRoutesOverlay (dashed pulse + %), TradeSystemsOverlay (color halos). Recruit refactor: free-form `manpower` proti `realm.manpower_pool`. Nové commandy ASSIGN_STACK_TO_ROUTE + CANCEL_ROUTE_CONSTRUCTION.
-- [ ] **Etapa 9 — Legacy degradace**: TradePanel pod Diplomacy → Smluvní obchod (legacy); compute-trade-flows přestane číst trade_routes pro auto-fill.
+## 1. Schema cesty (DB migrace)
 
-## Klíčové konstanty
+Doplnit do `province_routes`:
+- `name TEXT` — uživatelský název (např. "Via Korint–Lachim"). Pokud chybí, fallback na auto-generovaný.
+- `waypoints JSONB` — povinné průchozí hexy `[{q,r}, ...]` zadané hráčem; server tyto body **musí** zařadit do A* trasy.
 
-- **Neutral density**: small=0.06, medium=0.05, large=0.04.
-- **Price**: `pressure=(d-s)/max(d+s,1); price=clamp(0.5,2.0,1+pressure)`.
-- **Tariffs**: direct=1.0, occupied=1.0, treaty=1.05, open=1.15, vassal=0.95.
-- **Manpower**: hard 20% pop, soft trigger 10%.
-- **Upkeep parity**: 0.3% gold + 0.4% food per soldier.
-- **soldier_power_ratio**: 1.0 (zatím konstanta, později economy_overrides).
-- **engineering_mult**: trail=1.0, road=0.7, paved=0.4, harbor_link=0.5.
-- **Build cost**: trail=50, road=100, paved=200, harbor_link=30.
-- **system_key**: `sha256(sorted(node_ids).join(',')).slice(0,16)`.
-- **BFS edge filter**: `construction_state='complete'` AND `control_state='open'` AND `route_state.lifecycle_state IN ('maintained','usable','degraded')`. (`contested` mimo MVP.)
+Žádný drop sloupců. Existující cesty zůstávají (`name = NULL` → fallback v UI).
+
+---
+
+## 2. Stavba s waypointy (Build flow v2)
+
+V `WorldMapBuildPanel`:
+- Přidat **Waypoint mode** — toggle "Plánovat trasu". Po zapnutí:
+  - Vybraný `nodeA` se zafixuje jako start.
+  - Klikání na hexy v mapě přidává/odebírá waypointy do seznamu (pořadí zachováno, drag-to-reorder není v MVP).
+  - Druhý uzel B se vybere ze selectu nebo kliknutím na node-hex.
+  - Pod náhledem A* se ukáže lišta s emoji řetězcem waypointů + tlačítka "Smazat" a "Vyčistit".
+- Nové pole **"Název cesty"** (volitelné, max 60 znaků). Placeholder = `Via {NodeA} – {NodeB}`.
+- Server (`command-dispatch / executeBuildRoute`) přijme `name` + `waypoints[]`. A* běží jako řetěz: A → wp1 → wp2 → … → B; pokud nějaký segment není průchozí, vrátí `error: "Waypoint X je nepřístupný"`.
+
+UI mapy (`WorldHexMap.handleTileClick`) musí znát build režim — zavedeme lehký kontext nebo prop `buildMode: { active, onHexPick }` předaný z `WorldMapTab` do mapy a panelu, aby si rozdělili kliky:
+- pokud `buildMode.active` → klik na hex jde do panelu (waypoint), Sheet se neotvírá;
+- jinak normální chování (Sheet provincie nebo route detail).
+
+---
+
+## 3. Klikatelné cesty + detail (Route Sheet)
+
+`RoadNetworkOverlay` rozšířit:
+- Pro každou polyline přidat neviditelnou tlustší "hit" polyline (stroke ~14 px, `stroke="transparent"`, `pointer-events: stroke`) jako klikací cíl.
+- `onClick` → `onRouteClick(routeId)` callback do rodiče.
+- Hover: zvýraznit (zvýšit opacity / glow).
+
+V `WorldHexMap` (nebo přímo ve `WorldMapTab`) přidat nový `RouteDetailSheet`:
+- **Hlavička:** název cesty (editovatelný inline pro vlastníka), `node_a ↔ node_b`, tier badge.
+- **Statistiky:** route_type, upgrade_level, capacity_value, control_state, vulnerability_score, hex_path_length, build_cost.
+- **Údržba (route_state):** maintenance_level, lifecycle_state, turns_unpaid.
+- **Akce (jen pro vlastníka = `controlled_by` nebo `metadata.built_by`):**
+  - **Upgrade tier** (trail → road → paved): tlačítko + cena, posílá `UPGRADE_ROUTE`.
+  - **Investovat do údržby** (50 g) — `manage-route INVEST_MAINTENANCE`.
+  - **Obnovit** (200 g) když `blocked` — `RESTORE_ROUTE`.
+  - **Opustit cestu** — `ABANDON_ROUTE` s confirm dialogem.
+  - **Přejmenovat** — nový lehký command `RENAME_ROUTE { routeId, name }` přes command-dispatch (idempotent on (routeId, name)).
+  - **Postavit navazující cestu** — tlačítko "Stavět odsud", které předvyplní `nodeA` v build panelu jedním z koncových uzlů a otevře build mode.
+
+---
+
+## 4. Upgrade systém (lineární tier)
+
+Rozšířit existující `UPGRADE_ROUTE` v `command-dispatch`:
+- Definovat tier order: `trail → road → paved` (a držet legacy aliasy `land_road`/atd. mapované do `road`).
+- Při upgradu změnit `route_type` na další tier + zvednout `upgrade_level`, `capacity_value`, `speed_value`, snížit `vulnerability_score`.
+- Cena: `build_cost * 0.5 * (level+1)` (už existuje), přidat strop `paved` (nelze upgradovat dál).
+- Logovat `world_event` typu `route_upgraded` pro chronicle.
+
+UI v `RouteDetailSheet` ukáže "Aktuální: Cesta → Další: Dlážděná (cena 200 g)" nebo "Maximální tier".
+
+---
+
+## 5. Pojmenování — UI logika
+
+- Při stavbě: vstupní pole. Pokud prázdné → server uloží `name = NULL`, UI render používá `name ?? "Via {nodeA.name} – {nodeB.name}"`.
+- V detailu: ikona tužky vedle názvu pro vlastníka → modal/inline edit → `RENAME_ROUTE`.
+- Popisek v `RoadNetworkOverlay` (na hover tooltip) ukáže název.
+
+---
+
+## 6. Soubory, které se změní / vytvoří
+
+**DB migrace:**
+- Přidat sloupce `name`, `waypoints` do `province_routes`.
+
+**Backend (`supabase/functions/command-dispatch/index.ts`):**
+- `executeBuildRoute` — přijímat `name`, `waypoints`, řetězit A* mezi waypointy, ukládat oba sloupce.
+- `executeUpgradeRoute` — tier ladder (trail→road→paved), aktualizace stat, validace stropu.
+- Nový handler `executeRenameRoute` + zaregistrovat command type `RENAME_ROUTE`.
+
+**Frontend:**
+- `src/components/map/WorldMapBuildPanel.tsx` — waypoint mode, název, předání `buildMode` callbacku ven.
+- `src/components/map/RoadNetworkOverlay.tsx` — neviditelná hit polyline + `onRouteClick` prop, hover state.
+- `src/components/map/RouteDetailSheet.tsx` — **nový soubor**, full detail + akce.
+- `src/components/WorldHexMap.tsx` — koordinace `selectedRouteId` ↔ `selectedHex`, build mode gating klikání na hexy, vykreslení `RouteDetailSheet`.
+- `src/pages/game/WorldMapTab.tsx` — přemostění stavu `buildMode` mezi panelem a mapou.
+
+**`src/lib/commands.ts`:** typy pro `BUILD_ROUTE` (name, waypoints) a `RENAME_ROUTE`.
+
+---
+
+## 7. Co je mimo rozsah (pro tuto iteraci)
+
+- Drag waypointů pro reorder (zatím jen smaž a přidej znovu).
+- Multi-osa upgrade (capacity/safety/speed zvlášť) — zachováváme lineární tier.
+- AI generování názvů.
+- Vizualizace plánovaných (zatím nepostavených) koridorů jako "ghost cest" — lze přidat v dalším kroku.
+
+---
+
+## Akceptační kritéria
+
+1. Klik na čáru cesty otevře Sheet s názvem, statistikami a akcemi.
+2. Vlastník může cestu přejmenovat, upgradovat (trail→road→paved), udržovat, obnovit, opustit.
+3. V build módu lze sekvenčně klikat hexy a vytvořit tak povinný koridor; A* respektuje waypointy.
+4. Stavba přijímá vlastní název (nebo fallback `Via A – B`).
+5. Existující cesty bez `name` a `waypoints` fungují beze změny.
+6. Po upgradu se polyline na mapě překreslí novým tier stylem.
