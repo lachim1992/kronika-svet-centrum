@@ -542,6 +542,18 @@ Deno.serve(async (req) => {
       });
       results.economyFlow = { ok: true };
 
+      // Node-Trade v1: project trade systems & player access from current treaties
+      try {
+        const { data: tsRes, error: tsErr } = await supabase.functions.invoke("compute-trade-systems", {
+          body: { session_id: sessionId },
+        });
+        if (tsErr) console.warn("compute-trade-systems warning:", tsErr.message);
+        results.tradeSystems = tsRes || { error: tsErr?.message };
+      } catch (tsE) {
+        console.warn("compute-trade-systems warning:", (tsE as Error).message);
+        results.tradeSystems = { error: (tsE as Error).message };
+      }
+
       // Goods economy: compute trade flows (recipes → inventory → market → flows)
       try {
         const { data: tfRes, error: tfErr } = await supabase.functions.invoke("compute-trade-flows", {
