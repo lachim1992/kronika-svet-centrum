@@ -4,6 +4,7 @@
  */
 import { useState, useEffect, useCallback, useMemo, memo, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { emitRouteClick } from "@/lib/worldMapBus";
 
 const HEX_SIZE = 38;
 const SQRT3 = Math.sqrt(3);
@@ -24,10 +25,12 @@ interface RoadSegment {
   id: string;
   tier: RoadTier;
   path: Array<{ q: number; r: number }>;
+  name: string;
 }
 
 interface NodeInfo {
   id: string;
+  name: string;
   node_tier: string;
 }
 
@@ -36,6 +39,7 @@ interface RouteInfo {
   node_a: string;
   node_b: string;
   control_state: string;
+  name: string | null;
 }
 
 interface FlowPathRow {
