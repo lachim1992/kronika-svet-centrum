@@ -127,10 +127,10 @@ const DemandFulfillmentPanel = ({ sessionId, playerName, cities }: Props) => {
     return map;
   }, [byBasket]);
 
-  // Sort baskets by gap
+  // Sort baskets by unmet demand (přesnější než lokální gap)
   const sortedBaskets = useMemo(() =>
     Object.entries(byBasket)
-      .map(([key, d]) => ({ key, ...d, gap: d.demand - d.supply, sat: d.demand > 0 ? Math.min(1, d.supply / d.demand) : 1 }))
+      .map(([key, d]) => ({ key, ...d, gap: d.unmet, sat: d.demand > 0 ? Math.min(1, d.supply / d.demand) : 1 }))
       .sort((a, b) => b.gap - a.gap),
   [byBasket]);
 
