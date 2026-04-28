@@ -1,94 +1,113 @@
-## Cíl
 
-Eliminovat strukturální 0% baskety (`min_sat=0.00` u všech hráčů) a dát AI advisorovi/UI konkrétní cíl k optimalizaci. Dvě úzce související změny v jedné dávce.
+# Audit Dev Tab + Refaktor World Map (varianta: Bottom Floating Bar)
 
-## Kontext (current state)
+## Část 1 — Dev Tab audit
 
-- `node_inventory` se plní správně z `capability_tags` × `recipes` (verified v `compute-trade-flows` Phase 1a).
-- `BIOME_BONUS_TAGS` v `compute-province-nodes/index.ts` (ř. 49–66) přiřazuje max 2 tagy per biome a zcela chybí **processing tagy** (`smithing`, `weaving`, `leatherwork`, `brewing`, `baking`, `pottery`).
-- `city_market_baskets` má `local_demand`, `local_supply`, `domestic_satisfaction` — ale **chybí `unmet_demand`** jako persistovaný kolumn → AI advisor i UI ho musí pokaždé počítat klientsky a nemůže filtrovat/řadit přes index.
-- Real data potvrzují deficit: každý hráč má 4–7 basketů se sat<0.5, typicky `metalwork`, `tools`, `leather_goods`, `textiles`.
+Po Phase 0+1 ekonomického refaktoringu je Dev tab **z 90 % aktuální**. Konkrétně:
 
-## Změna 1: Rozšířený biome → tag mapping + processing tagy z urban/source vztahu
+| Sekce | Stav | Poznámka |
+|---|---|---|
+| Engine (RealSimulation, Hydration, Integrity, DevConsole) | ✅ aktuální | Volá refresh-economy / commit-turn správně |
+| Data & Seeding (SeedSection, EconomyQA, QATest) | ✅ aktuální | EconomyQASection už pokrývá basket diagnostics |
+| Editors (NodeSpawner, NodeEditor, PlayerEditor, FormulaTuner) | ✅ aktuální | |
+| **Economy (GoodsEconomyDebugPanel)** | ⚠️ ověřit | Může ještě ukazovat legacy basket keys před remapem |
+| **Infrastructure (HexNodeMechanicsPanel, ProvinceGraph)** | ⚠️ ověřit | Po Phase 1 backfillu by měly fungovat — vizuální audit |
+| Observatory | ✅ aktuální | |
 
-**Soubor:** `supabase/functions/compute-province-nodes/index.ts`
+**P0 fix v Dev tabu:**
+- Audit `GoodsEconomyDebugPanel` a `HexNodeMechanicsPanel` — ověřit, že čtou aktuální `capability_tags` + 12 canonical basket keys; přidat fallback labely u legacy hodnot.
+- Přidat shortcut na nový `TradeSystemSupplyPanel` taky do Dev tabu (dnes je jen v Economy → Dev panels).
 
-Rozšířit `BIOME_BONUS_TAGS` a `NODE_CAPABILITY_MAP`:
+---
 
-- `village` → přidat `baking`, `brewing` (každá vesnice peče a vaří)
-- `mining_camp` (minor subtype) → potvrdit `mining` + přidat `quarrying`
-- `lumber_camp` → `logging` + `carpentry`
-- `pastoral_camp` → `herding` + `leatherwork` + `weaving` (vlna)
-- `fishing_village` → `fishing` + `salting`
-- `smithy` (existing) → `smelting` + `smithing` ✓
-- Nový `trade_hub` urban tagy: přidat `pottery`, `weaving` (městská řemesla)
+## Část 2 — World Map: identifikované problémy
 
-**Biome bonus rozšíření:**
-- `coastal/lake/river` → `fishing` + `salting`
-- `plains/grassland` → `farming` + `herding` + `weaving` (len)
-- `forest` → `logging` + `gathering` + `carpentry`
-- `hills/mountain` → `mining` + `quarrying` + `smelting` (přístup k rudě)
+### Co je rozbité v `WorldHexMap.tsx` (2187 řádků)
 
-Důsledek: každý zalidněný hex bude mít 3–5 capability tagů místo 1–2 → recipes pokryjí všech 12 baskets.
+1. **Legenda je schovaná v `bottom-3 left-3`** — překrývá se s `WorldMapBuildPanel` floating sheet, na 1087×770 ji uživatel nevidí.
+2. **Pan vs klik konflikt** — drag threshold 3 px je příliš nízký; klik na node/hex se snadno zaregistruje jako drag.
+3. **Wheel zoom je agresivní** (`deltaY * 0.001` bez per-event clampu) — Mac trackpad pinch shazuje zoom o desítky % v jednom gestu.
+4. **Inertia po panu pokračuje** i když uživatel klikne (mizí target, klik se „mine").
+5. **Žádné vizuální cues** při dragu (kurzor se nemění z `default` na `grab`/`grabbing`).
+6. **Floating UI chaos** — 6 floating bloků v rozích (position badge, stats, world name, admin DEV switch, zoom, legend) se navzájem překrývají.
+7. **Chybí keyboard shortcuts** kromě WASD pro pohyb.
 
-## Změna 2: Backfill existujících nodů
+---
 
-**Soubor:** `supabase/functions/backfill-economy-tags/index.ts`
+## Část 3 — Refaktor World Map (P0)
 
-Přepoužít rozšířený `resolveCapabilityTags` na všechny existující nody v běžících sessions. Spustit z dev tools (Recompute panel).
+### A. Bottom Floating Bar (Google-Maps style)
 
-## Změna 3: `unmet_demand` jako persistovaná kolumna
+Sjednocený horizontální dock zarovnaný **bottom-center**, podobně jako Google Maps tools:
 
-**Migrace:** přidat sloupec do `city_market_baskets`:
-```sql
-ALTER TABLE city_market_baskets 
-  ADD COLUMN IF NOT EXISTS unmet_demand numeric DEFAULT 0;
-CREATE INDEX IF NOT EXISTS idx_cmb_unmet 
-  ON city_market_baskets(session_id, turn_number, unmet_demand DESC) 
-  WHERE unmet_demand > 0;
+```text
+                  ┌─────────────────────────────────────────────┐
+                  │ [🔍−] [100%] [🔍+] │ [🏠] │ [Layers ▾] │ [⚙ DEV] │
+                  └─────────────────────────────────────────────┘
+                              bottom-4, center, max-w-fit
 ```
 
-**Soubor:** `supabase/functions/compute-trade-flows/index.ts` (kolem ř. 510)
-- Po výpočtu `localSupply` + případných importů spočítat:
-  ```ts
-  unmet_demand = max(0, demandQty - localSupply - importedQty)
-  ```
-- Persistovat jako další pole v `cityBasketRows`.
+- **Vždy viditelný**, jeden pruh, žádné překrývání rohů.
+- Sekce oddělené vertikálními dividery: zoom group | home | layers | dev (admin only).
+- Mobile: stejný layout, jen menší ikony + skrytí % indikátoru.
 
-## Změna 4: AI Advisor & UI využití
+### B. Nová `MapLegendPopover` komponenta
 
-**Soubor:** `supabase/functions/economy-advisor/index.ts`
-- Místo počítání deficit per request: query `city_market_baskets WHERE unmet_demand > 0 ORDER BY unmet_demand DESC LIMIT 5`.
-- Doporučení mapovat: `basket_key` → chybějící `capability_tag` → konkrétní node subtype k postavení (např. `metalwork` → chybí `smithing` → postav `smithy` minor).
+- Klik na **„Layers ▾"** v bottom baru → otevře popover **nad** dockem (popup-up).
+- Tabbed obsah:
+  - **Vrstvy** (toggle switches): Provincie / Silnice / Vliv / Trade Systems / Under-construction / Economy flow
+  - **Biomy** (color key, read-only)
+  - **Provincie** (seznam s color swatches + vlastník)
+  - **Klávesové zkratky** (cheat-sheet)
+- Persistence toggles přes `localStorage` key `worldmap.layers.v1`.
 
-**UI:** `src/pages/game/EconomyTab.tsx` (nebo Markets panel)
-- Sloupec „Chybí" v basket tabulce zobrazující `unmet_demand` s červeným badge.
-- Sort by `unmet_demand DESC` jako default view.
+### C. Fixy ovládání
 
-## Technická poznámka pro non-tech
+| Problém | Fix |
+|---|---|
+| Klik vs drag | Drag threshold 3 → **8 px** + time guard >120 ms; pod thresholdem = klik. |
+| Wheel agresivní | Step `deltaY * 0.0015` clamped na max ±10 % per event; respektovat `e.ctrlKey` (trackpad pinch). |
+| Inertia interferuje | `onPointerDown` cancel `inertiaRef` (už existuje, ale fix ordering). |
+| Žádný cursor feedback | `cursor-grab` → `cursor-grabbing` při aktivním dragu. |
+| Chybí shortcuts | `+`/`-` zoom, `0` reset zoom, `H` home, `L` toggle layers popover, `Esc` clear selection. |
 
-Hra teď ví, kolik města vyrábí a kolik chtějí, ale nezná **jak moc jim chybí konkrétně**. Po této změně každý město přesně řekne „chybí mi 3.2 jednotek nářadí" a AI poradce může říct „postav kovárnu na hexu X". Současně rozšíříme typy řemesel, které vesnice automaticky umí, aby existovala šance na 100 % saturaci bez zázračné expanze.
+### D. Top-area cleanup
 
-## Pořadí implementace
+- **Top-left**: jen position badge (`📍 (q,r) Město`) — ostatní stats (provincie / hranice count) přesunout do legend popoveru.
+- **Top-center**: world name (zachovat).
+- **Top-right**: úplně vyklidit — admin DEV switch a recompute buttons přesunout do bottom dock pod „⚙ DEV" sekci.
 
-1. Migrace `unmet_demand` (DB schema)
-2. `compute-province-nodes` rozšíření tagů
-3. `compute-trade-flows` zápis `unmet_demand`
-4. `backfill-economy-tags` přepočet na existujících sessions (jednorázový dev call)
-5. `economy-advisor` query + recommendation mapping
-6. UI badge + sort
+---
 
-## Soubory k úpravě
+## Implementační kroky
 
-- `supabase/migrations/<new>.sql` (nový, ALTER TABLE)
-- `supabase/functions/compute-province-nodes/index.ts`
-- `supabase/functions/backfill-economy-tags/index.ts`
-- `supabase/functions/compute-trade-flows/index.ts`
-- `supabase/functions/economy-advisor/index.ts`
-- `src/pages/game/EconomyTab.tsx` (případně související basket panel)
+1. **Vytvořit `src/components/map/MapBottomDock.tsx`** — horizontální floating bar (zoom −/%/+, home, layers button, dev cluster).
+2. **Vytvořit `src/components/map/MapLayersPopover.tsx`** — tabs: Vrstvy / Biomy / Provincie / Zkratky; popup-up nad dockem.
+3. **Refaktor `WorldHexMap.tsx`**:
+   - Vyhodit inline legend block (řádky 1346–1500) → nahradit `<MapLayersPopover />`.
+   - Vyhodit zoom column right-3 (řádky 1333–1343) → přesunout do `<MapBottomDock />`.
+   - Vyhodit admin top-right cluster (řádky 1300–1330) → přesunout do dock dev-cluster.
+   - Drag threshold 3 → 8 px + time guard.
+   - Wheel: clamp na ±0.1 per event.
+   - PointerDown: cancel inertia first thing.
+   - CSS cursor states (`cursor-grab` / `cursor-grabbing`).
+   - Rozšířit `handleKeyDown` o nové shortcuts.
+   - Layer toggle states do `localStorage` (`worldmap.layers.v1`).
+4. **Audit `GoodsEconomyDebugPanel` + `HexNodeMechanicsPanel`** — ověřit data sources po backfillu, přidat fallback labely.
+5. **Přidat `TradeSystemSupplyPanel`** do Dev tab → Economy sekce.
 
-## Co tato změna **nedělá** (mimo scope)
+### Co NEDĚLÁM v P0
 
-- Reconcile `production_output` ↔ `node_inventory.quantity` (separátní práce, lze udělat potom)
-- Wealth realization / monetization opravy (samostatný kanál)
-- Nový dev panel „Node → Basket trace" (může přijít později)
+- Nerozbíjím 2187-řádkový `WorldHexMap.tsx` na menší soubory (P1, riziko).
+- Neměním vlastní rendering hexů ani SVG vrstvy.
+- Neměním logiku `WorldMapBuildPanel` (jen ho nechám floating tam, kde je — bottom dock je centrovaný, takže nekoliduje).
+
+---
+
+## Výsledek pro uživatele
+
+- **Jeden floating bar dole = vždy víš kde co je**, žádné rohy.
+- **Klik na hex/node funguje spolehlivě**, protože drag se rozezná jen u skutečného pohybu.
+- **Trackpad zoom je předvídatelný**, ne skokový.
+- **Legenda zpět** + s persistence layer toggles + s biome key + se zkratkami.
+- **Dev tab konzistentní** s aktuálním ekonomickým modelem (12 canonical baskets).
