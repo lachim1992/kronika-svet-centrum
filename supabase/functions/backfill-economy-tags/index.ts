@@ -174,15 +174,24 @@ Deno.serve(async (req) => {
 
     const sb = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 
-    // ── PHASE 1: Hydrate capability_tags + production_role ──
+    // ── PHASE 1: Hydrate capability_tags + production_role (s biome merge) ──
     const { data: nodes } = await sb.from("province_nodes")
-      .select("id, node_subtype, node_type, city_id, capability_tags, production_role")
+      .select("id, node_subtype, node_type, city_id, hex_q, hex_r, capability_tags, production_role")
       .eq("session_id", session_id);
 
     if (!nodes || nodes.length === 0) {
       return new Response(JSON.stringify({ ok: true, message: "No nodes found" }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
+    }
+
+    // Načti biome lookup pro hex koordináty
+    const { data: hexBiomes } = await sb.from("province_hexes")
+      .select("q, r, biome")
+      .eq("session_id", session_id);
+    const biomeMap = new Map<string, string>();
+    for (const h of hexBiomes || []) {
+      biomeMap.set(`${h.q},${h.r}`, (h.biome as string || "plains").toLowerCase());
     }
 
     let updated = 0;
@@ -199,18 +208,23 @@ Deno.serve(async (req) => {
 
       if (!mapping) continue;
 
-      // Only update if tags are empty or role is wrong
+      // Merge biome bonus tags
+      const biome = biomeMap.get(`${node.hex_q},${node.hex_r}`) || "";
+      const biomeTags = BIOME_BONUS_TAGS[biome] || [];
+      const mergedTags = [...new Set([...mapping.tags, ...biomeTags])];
+
+      // Only update if tags differ or role is wrong
       const currentTags = node.capability_tags as string[] || [];
       const currentRole = node.production_role as string;
 
       if (
         currentTags.length === 0 ||
         currentRole !== mapping.role ||
-        JSON.stringify(currentTags.sort()) !== JSON.stringify(mapping.tags.sort())
+        JSON.stringify(currentTags.slice().sort()) !== JSON.stringify(mergedTags.slice().sort())
       ) {
         updates.push({
           id: node.id,
-          capability_tags: mapping.tags,
+          capability_tags: mergedTags,
           production_role: mapping.role,
         });
       }
