@@ -316,12 +316,20 @@ export default function WorldMapBuildPanel({ sessionId, playerName, currentTurn 
                       </div>
                       <div className="flex items-center justify-between text-[10px] text-muted-foreground font-mono">
                         <span>{progress} / {total} ({pct}%)</span>
-                        {assignedHere.length > 0 && (
-                          <span className="flex items-center gap-0.5">
-                            <Users className="h-2.5 w-2.5" />
-                            {assignedHere.reduce((s, x) => s + (x.soldiers || 0), 0)}
-                          </span>
-                        )}
+                        <span className="flex items-center gap-1.5">
+                          {(md.assigned_labor || md.assigned_soldiers) > 0 && (
+                            <span className="flex items-center gap-0.5" title="Vyhrazená pracovní síla">
+                              <HardHat className="h-2.5 w-2.5" />
+                              {md.assigned_labor || md.assigned_soldiers}
+                            </span>
+                          )}
+                          {assignedHere.length > 0 && (
+                            <span className="flex items-center gap-0.5" title="Vojenský bonus">
+                              <Users className="h-2.5 w-2.5" />
+                              {assignedHere.reduce((s, x) => s + (x.soldiers || 0), 0)}
+                            </span>
+                          )}
+                        </span>
                       </div>
 
                       {builtByMe && (
@@ -331,7 +339,7 @@ export default function WorldMapBuildPanel({ sessionId, playerName, currentTurn 
                               defaultValue=""
                               onChange={e => { if (e.target.value) handleAssign(r.id, e.target.value); }}
                               className="flex-1 text-[10px] bg-background border border-border rounded px-1.5 py-0.5">
-                              <option value="">+ Přiřadit stack</option>
+                              <option value="">+ Vojenský bonus (volitelné)</option>
                               {idleStacks.map(s => (
                                 <option key={s.id} value={s.id}>
                                   {s.name} ({s.soldiers || 0})
@@ -339,7 +347,7 @@ export default function WorldMapBuildPanel({ sessionId, playerName, currentTurn 
                               ))}
                             </select>
                           ) : (
-                            <span className="flex-1 text-[10px] text-muted-foreground italic">Žádný idle stack</span>
+                            <span className="flex-1 text-[10px] text-muted-foreground italic">Stavba běží na pracovní síle</span>
                           )}
                           <Button
                             size="icon" variant="ghost" className="h-5 w-5"
