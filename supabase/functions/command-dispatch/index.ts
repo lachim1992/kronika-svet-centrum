@@ -1155,9 +1155,7 @@ async function executeRecruitStack(
     : Math.round(baseProdCost);
 
   // ── Load realm resources ──
-  const { data: realm } = await supabase
-    .from("realm_resources").select("*")
-    .eq("session_id", sessionId).eq("player_name", playerName).maybeSingle();
+  const realm = await getRealmByActor(supabase, sessionId, actor, "*");
   if (!realm) return { events: [], error: "Realm resources not found" };
 
   // ── Manpower validation: free-form against pool (no mobilization cap) ──
@@ -1637,9 +1635,7 @@ async function executeBuildRoute(
   // Soldier requirement: minimum 50 to begin, paid upfront from realm.soldiers pool
   const requestedSoldiers = Math.max(50, Math.floor(Number(assignedSoldiers || 0)));
 
-  const { data: realm } = await supabase.from("realm_resources")
-    .select("id, gold_reserve, soldiers, manpower_available")
-    .eq("session_id", sessionId).eq("player_name", actor.name).single();
+  const realm = await getRealmByActor(supabase, sessionId, actor, "id, gold_reserve, soldiers, manpower_available");
   if (!realm) return { events: [], error: "Realm not found" };
   if ((realm.gold_reserve ?? 0) < goldCost) return { events: [], error: `Nedostatek zlata (potřeba: ${goldCost})` };
   if ((realm.soldiers ?? 0) < requestedSoldiers) {
@@ -3265,9 +3261,7 @@ async function executeMobilizeManpower(
   const requested = Math.max(0, Math.floor(Number(payload.amount || 0)));
   if (requested <= 0) return { events: [], error: "Missing or invalid amount" };
 
-  const { data: realm } = await supabase.from("realm_resources")
-    .select("id, manpower_pool, manpower_available, soldiers, total_population")
-    .eq("session_id", sessionId).eq("player_name", actor.name).single();
+  const realm = await getRealmByActor(supabase, sessionId, actor, "id, manpower_pool, manpower_available, soldiers, total_population");
   if (!realm) return { events: [], error: "Realm not found" };
 
   const pool = Number(realm.manpower_pool ?? 0);
