@@ -1494,41 +1494,55 @@ async function executeBuildRoute(
   supabase: any, base: any, actor: Actor, payload: any,
   commandId: string, sessionId: string, turnNumber: number,
 ): Promise<CommandResult> {
-  const { nodeAId, nodeBId, routeType } = payload;
+  // Node-Trade v1: BUILD_ROUTE creates a planned/under_construction route.
+  // Construction progress is ticked by process-turn, gated by assigned soldiers.
+  const { nodeAId, nodeBId, routeType, assignedSoldiers, hexPath } = payload;
   if (!nodeAId || !nodeBId) return { events: [], error: "Missing nodeAId or nodeBId" };
 
-  // Verify both nodes exist and at least one is controlled by actor
   const { data: nodeA } = await supabase.from("province_nodes")
     .select("id, name, controlled_by, province_id").eq("id", nodeAId).eq("session_id", sessionId).single();
   const { data: nodeB } = await supabase.from("province_nodes")
     .select("id, name, controlled_by, province_id").eq("id", nodeBId).eq("session_id", sessionId).single();
-
   if (!nodeA || !nodeB) return { events: [], error: "Node not found" };
   if (nodeA.controlled_by !== actor.name && nodeB.controlled_by !== actor.name) {
     return { events: [], error: "You must control at least one endpoint node" };
   }
 
-  // Check no existing route
+  // Idempotency on (session, ordered pair)
   const ordA = nodeAId < nodeBId ? nodeAId : nodeBId;
   const ordB = nodeAId < nodeBId ? nodeBId : nodeAId;
   const { data: existing } = await supabase.from("province_routes")
-    .select("id").eq("session_id", sessionId).eq("node_a", ordA).eq("node_b", ordB).maybeSingle();
-  if (existing) return { events: [], error: "Route already exists between these nodes" };
+    .select("id, construction_state").eq("session_id", sessionId).eq("node_a", ordA).eq("node_b", ordB).maybeSingle();
+  if (existing) {
+    return { events: [], error: existing.construction_state === "complete"
+      ? "Route already exists between these nodes"
+      : "A route between these nodes is already under construction" };
+  }
 
   const buildCostMap: Record<string, number> = {
     land_road: 50, river_route: 30, sea_lane: 20, mountain_pass: 80, caravan_route: 60,
   };
   const type = routeType || "land_road";
-  const cost = buildCostMap[type] || 50;
+  const goldCost = buildCostMap[type] || 50;
+  const totalWork = goldCost * 4; // 4 work-units per gold cost; soldiers chip away at it
 
-  // Deduct gold
+  // Soldier requirement: minimum 50 to begin, paid upfront from realm.soldiers pool
+  const requestedSoldiers = Math.max(50, Math.floor(Number(assignedSoldiers || 0)));
+
   const { data: realm } = await supabase.from("realm_resources")
-    .select("id, gold_reserve").eq("session_id", sessionId).eq("player_name", actor.name).single();
-  if (!realm || realm.gold_reserve < cost) return { events: [], error: `Nedostatek zlata (potřeba: ${cost})` };
+    .select("id, gold_reserve, soldiers, manpower_available")
+    .eq("session_id", sessionId).eq("player_name", actor.name).single();
+  if (!realm) return { events: [], error: "Realm not found" };
+  if ((realm.gold_reserve ?? 0) < goldCost) return { events: [], error: `Nedostatek zlata (potřeba: ${goldCost})` };
+  if ((realm.soldiers ?? 0) < requestedSoldiers) {
+    return { events: [], error: `Nedostatek vojáků (k dispozici: ${realm.soldiers ?? 0}, potřeba: ${requestedSoldiers}). Mobilizuj manpower.` };
+  }
 
-  await supabase.from("realm_resources").update({ gold_reserve: realm.gold_reserve - cost }).eq("id", realm.id);
+  await supabase.from("realm_resources").update({
+    gold_reserve: realm.gold_reserve - goldCost,
+    // Soldiers stay assigned; we tag them in route metadata.
+  }).eq("id", realm.id);
 
-  // Insert route
   await supabase.from("province_routes").insert({
     session_id: sessionId,
     node_a: ordA, node_b: ordB,
@@ -1537,17 +1551,25 @@ async function executeBuildRoute(
     military_relevance: 3, economic_relevance: 3,
     vulnerability_score: 4,
     control_state: "open",
-    build_cost: cost, upgrade_level: 1,
-    metadata: { built_by: actor.name, built_turn: turnNumber },
+    build_cost: goldCost, upgrade_level: 1,
+    route_origin: "player_built",
+    construction_state: "under_construction",
+    metadata: {
+      built_by: actor.name,
+      started_turn: turnNumber,
+      assigned_soldiers: requestedSoldiers,
+      total_work: totalWork,
+      progress: 0,
+      hex_path: Array.isArray(hexPath) ? hexPath : null,
+    },
   });
 
-  const note = `${actor.name} vybudoval ${type === "land_road" ? "silnici" : type} mezi ${nodeA.name} a ${nodeB.name} za ${cost} zlata.`;
-
+  const note = `${actor.name} zahájil stavbu cesty (${type}) mezi ${nodeA.name} a ${nodeB.name}. Vyhrazeno ${requestedSoldiers} vojáků.`;
   return insertEventsWithChronicle(supabase, commandId, sessionId, turnNumber, [{
     ...base,
     event_type: "construction",
     note, importance: "normal",
-    reference: { nodeAId, nodeBId, routeType: type, cost },
+    reference: { nodeAId, nodeBId, routeType: type, goldCost, assignedSoldiers: requestedSoldiers },
   }], payload.chronicleText);
 }
 
