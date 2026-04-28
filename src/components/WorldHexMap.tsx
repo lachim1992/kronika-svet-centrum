@@ -413,10 +413,10 @@ const HexTile = memo(({
       )}
       {isFrontier && !loading && (
         <>
-          <text x={cx} y={cy - 4} textAnchor="middle" dominantBaseline="middle"
-            fill="hsl(var(--primary))" fontSize="12" opacity={0.7} style={{ pointerEvents: "none" }}>?</text>
-          <text x={cx} y={cy + 8} textAnchor="middle" dominantBaseline="middle"
-            fill="hsl(var(--primary))" fontSize="5.5" opacity={0.5} style={{ pointerEvents: "none" }}>Prozkoumat</text>
+          <text x={cx} y={cy - 5} textAnchor="middle" dominantBaseline="middle"
+            fill="hsl(var(--primary))" fontSize="18" opacity={0.75} style={{ pointerEvents: "none" }}>?</text>
+          <text x={cx} y={cy + 11} textAnchor="middle" dominantBaseline="middle"
+            fill="hsl(var(--primary))" fontSize="8" opacity={0.7} style={{ pointerEvents: "none" }}>Prozkoumat</text>
         </>
       )}
     </g>
