@@ -794,7 +794,12 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
     if (!dragRef.current) return;
     const dx = e.clientX - dragRef.current.startX;
     const dy = e.clientY - dragRef.current.startY;
-    if (Math.abs(dx) > 3 || Math.abs(dy) > 3) dragRef.current.moved = true;
+    // Higher threshold (8px) + time guard prevents accidental drag on click
+    const elapsed = performance.now() - dragRef.current.lastTime;
+    if (!dragRef.current.moved && (Math.abs(dx) > 8 || Math.abs(dy) > 8)) {
+      dragRef.current.moved = true;
+    }
+    if (!dragRef.current.moved) return;
     setPan({ x: dragRef.current.panX + dx, y: dragRef.current.panY + dy });
     // Track velocity
     const now = performance.now();
@@ -873,12 +878,16 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
   onWheelRef.current = (e: WheelEvent) => {
     e.preventDefault();
     const container = containerRef.current;
-    if (!container) { setZoom(z => Math.max(0.3, Math.min(3, z - e.deltaY * 0.001))); return; }
+    // Clamp delta per-event so trackpad pinch is smooth and not jumpy
+    const rawDelta = e.deltaY * 0.0015;
+    const delta = Math.max(-0.1, Math.min(0.1, rawDelta));
+    if (!container) { setZoom(z => Math.max(0.3, Math.min(3, z - delta))); return; }
     const rect = container.getBoundingClientRect();
     const cursorX = e.clientX - rect.left;
     const cursorY = e.clientY - rect.top;
     const oldZoom = zoom;
-    const newZoom = Math.max(0.3, Math.min(3, oldZoom - e.deltaY * 0.001));
+    const newZoom = Math.max(0.3, Math.min(3, oldZoom - delta));
+    if (newZoom === oldZoom) return;
     // Adjust pan so cursor stays at the same world position
     const worldXBefore = (cursorX - pan.x) / oldZoom;
     const worldYBefore = (cursorY - pan.y) / oldZoom;
