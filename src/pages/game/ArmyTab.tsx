@@ -1069,7 +1069,11 @@ function RecruitDialog({
 }) {
   const [name, setName] = useState("");
   const [selectedPreset, setSelectedPreset] = useState<string | null>(null);
+  const [manpowerCount, setManpowerCount] = useState<number>(400);
   const [saving, setSaving] = useState(false);
+
+  // Free-form pool: prefer canonical manpower_pool from realm; fall back to legacy availableManpower.
+  const truePool = Math.max(0, (realm as any)?.manpower_pool ?? availableManpower ?? 0);
 
   // Resolve civ-specific unit labels
   const unitLabel = (type: string) => {
@@ -1083,18 +1087,23 @@ function RecruitDialog({
     return FORMATION_PRESETS[key].label;
   };
 
+  // Costs scale linearly with manpowerCount relative to preset baseline.
+  const preset = selectedPreset ? FORMATION_PRESETS[selectedPreset] : null;
+  const presetBaseline = preset ? preset.composition.reduce((s, c) => s + c.manpower, 0) : 400;
+  const scale = preset ? manpowerCount / presetBaseline : 1;
+  const scaledGold = preset
+    ? Math.round((preset.gold_override ?? preset.composition.reduce((s, c) => s + c.manpower * (UNIT_GOLD_FACTOR[c.unit_type] || 1), 0)) * scale)
+    : 0;
+  const scaledProd = preset
+    ? Math.round((preset.composition.reduce((s, c) => s + c.manpower * 0.5, 0)) * scale)
+    : 0;
+
   const handleCreate = async () => {
     if (!name.trim()) { toast.error("Zadejte název"); return; }
-    if (!selectedPreset) { toast.error("Vyberte typ"); return; }
-
-    const preset = FORMATION_PRESETS[selectedPreset];
-    if (!preset) { toast.error("Neznámý preset"); return; }
-
-    const totalManpower = preset.composition.reduce((s, c) => s + c.manpower, 0);
-    const totalGold = preset.gold_override ?? preset.composition.reduce((s, c) => s + c.manpower * (UNIT_GOLD_FACTOR[c.unit_type] || 1), 0);
-
-    if (totalManpower > availableManpower) { toast.error(`Nedostatek mužů (${totalManpower} potřeba)`); return; }
-    if (totalGold > (realm?.gold_reserve || 0)) { toast.error(`Nedostatek zlata (${totalGold} potřeba)`); return; }
+    if (!selectedPreset || !preset) { toast.error("Vyberte typ"); return; }
+    if (manpowerCount <= 0) { toast.error("Vyberte počet mužů"); return; }
+    if (manpowerCount > truePool) { toast.error(`Nedostatek mužů (${manpowerCount} potřeba, ${truePool} v poolu)`); return; }
+    if (scaledGold > (realm?.gold_reserve || 0)) { toast.error(`Nedostatek zlata (${scaledGold} potřeba)`); return; }
 
     setSaving(true);
     try {
@@ -1102,12 +1111,13 @@ function RecruitDialog({
         sessionId,
         actor: { name: currentPlayerName },
         commandType: "RECRUIT_STACK",
-        commandPayload: { stackName: name.trim(), presetKey: selectedPreset },
+        commandPayload: { stackName: name.trim(), presetKey: selectedPreset, manpower: manpowerCount },
       });
       if (!result.ok) throw new Error(result.error || "Chyba při rekrutaci");
-      toast.success(`${name.trim()} zřízen!`);
+      toast.success(`${name.trim()} zřízen (${manpowerCount} mužů)!`);
       setName("");
       setSelectedPreset(null);
+      setManpowerCount(400);
       onRefresh();
       onClose();
     } catch (e: any) {
@@ -1132,8 +1142,6 @@ function RecruitDialog({
           <div className="space-y-2">
             <p className="text-xs font-display font-semibold text-muted-foreground">Vyberte předlohu</p>
             {Object.entries(FORMATION_PRESETS).map(([key, preset]) => {
-              const totalMp = preset.composition.reduce((s, c) => s + c.manpower, 0);
-              const totalGold = preset.gold_override ?? preset.composition.reduce((s, c) => s + c.manpower * (UNIT_GOLD_FACTOR[c.unit_type] || 1), 0);
               const isSelected = selectedPreset === key;
               return (
                 <div
@@ -1150,26 +1158,54 @@ function RecruitDialog({
                       const UIcon = UNIT_ICONS[c.unit_type] || Shield;
                       return (
                         <span key={i} className="flex items-center gap-0.5">
-                          <UIcon className="h-3 w-3" />{c.manpower} {unitLabel(c.unit_type)}
+                          <UIcon className="h-3 w-3" />{unitLabel(c.unit_type)}
                         </span>
                       );
                     })}
-                  </div>
-                  <div className="flex items-center gap-3 mt-1 text-xs">
-                    <span className="flex items-center gap-0.5"><Users className="h-3 w-3" />{totalMp} mužů</span>
-                    <span className="flex items-center gap-0.5"><Coins className="h-3 w-3" />{totalGold} zlata</span>
                   </div>
                 </div>
               );
             })}
           </div>
 
-          <div className="text-xs text-muted-foreground">
-            Dostupní muži: {availableManpower} · Zlato: {realm?.gold_reserve || 0}
+          {/* Free-form manpower selector */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between text-xs">
+              <span className="font-display font-semibold text-muted-foreground">Počet mužů</span>
+              <span className="font-mono">{manpowerCount.toLocaleString()} / {truePool.toLocaleString()}</span>
+            </div>
+            <Input
+              type="number"
+              min={1}
+              max={truePool || undefined}
+              step={50}
+              value={manpowerCount}
+              onChange={e => setManpowerCount(Math.max(1, Math.min(truePool || 9_999_999, Math.floor(Number(e.target.value) || 0))))}
+              className="h-9 font-mono"
+            />
+            <input
+              type="range"
+              min={1}
+              max={Math.max(1, truePool)}
+              step={Math.max(10, Math.round((truePool || 1000) / 100))}
+              value={Math.min(manpowerCount, Math.max(1, truePool))}
+              onChange={e => setManpowerCount(Math.floor(Number(e.target.value)))}
+              className="w-full accent-primary"
+            />
+            {selectedPreset && (
+              <div className="text-[11px] text-muted-foreground flex items-center gap-3">
+                <span className="flex items-center gap-0.5"><Coins className="h-3 w-3" />{scaledGold} zlata</span>
+                <span>~{scaledProd} produkce</span>
+              </div>
+            )}
           </div>
 
-          <Button onClick={handleCreate} disabled={saving || !name.trim() || !selectedPreset} className="w-full font-display">
-            <Swords className="h-4 w-4 mr-1" />Zřídit jednotku
+          <div className="text-xs text-muted-foreground">
+            Manpower pool: {truePool.toLocaleString()} · Zlato: {realm?.gold_reserve || 0}
+          </div>
+
+          <Button onClick={handleCreate} disabled={saving || !name.trim() || !selectedPreset || manpowerCount <= 0 || manpowerCount > truePool} className="w-full font-display">
+            <Swords className="h-4 w-4 mr-1" />Zřídit jednotku ({manpowerCount.toLocaleString()} mužů)
           </Button>
         </div>
       </DialogContent>
