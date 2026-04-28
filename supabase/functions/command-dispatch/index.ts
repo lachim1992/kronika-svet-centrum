@@ -415,6 +415,9 @@ async function executeCommand(
     case "UPGRADE_ROUTE":
       return await executeUpgradeRoute(supabase, base, actor, payload, commandId, sessionId, turnNumber);
 
+    case "RENAME_ROUTE":
+      return await executeRenameRoute(supabase, base, actor, payload, commandId, sessionId, turnNumber);
+
     case "FORTIFY_NODE":
       return await executeFortifyNode(supabase, base, actor, payload, commandId, sessionId, turnNumber);
 
