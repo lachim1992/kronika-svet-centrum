@@ -22,6 +22,8 @@ import RoadNetworkOverlay, { ROAD_STYLES } from "@/components/map/RoadNetworkOve
 import EconomyFlowOverlay, { CATEGORY_COLORS, MACRO_COLORS, FLOW_LAYER_COLORS } from "@/components/map/EconomyFlowOverlay";
 import type { EconomyViewMode } from "@/components/map/EconomyFlowOverlay";
 import NodeInfluenceOverlay from "@/components/map/NodeInfluenceOverlay";
+import UnderConstructionRoutesOverlay from "@/components/map/UnderConstructionRoutesOverlay";
+import TradeSystemsOverlay from "@/components/map/TradeSystemsOverlay";
 import MapMinimap from "@/components/map/MapMinimap";
 import { MINOR_NODE_TYPES, MICRO_NODE_TYPES, MAJOR_NODE_TYPES } from "@/lib/nodeTypes";
 import HexDevTools from "@/components/map/HexDevTools";
