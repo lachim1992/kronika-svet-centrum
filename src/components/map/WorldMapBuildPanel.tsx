@@ -121,8 +121,9 @@ export default function WorldMapBuildPanel({ sessionId, playerName, currentTurn 
     const a = allNodesById.get(nodeAId);
     const b = allNodesById.get(nodeBId);
     if (!a || !b) return null;
-    const path = findHexPath({ q: a.hex_q, r: a.hex_r }, { q: b.hex_q, r: b.hex_r });
-    return path ? { length: path.length, path } : null;
+    const length = axialHexDistance({ q: a.hex_q, r: a.hex_r }, { q: b.hex_q, r: b.hex_r });
+    // Synthetic 2-point path; server recomputes the real A* on commit.
+    return { length, path: [{ q: a.hex_q, r: a.hex_r }, { q: b.hex_q, r: b.hex_r }] };
   }, [nodeAId, nodeBId, allNodesById]);
 
   const idleStacks = useMemo(
