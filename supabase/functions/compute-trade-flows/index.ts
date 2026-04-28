@@ -830,10 +830,12 @@ Deno.serve(async (req) => {
     //   - members of a system gain pooled supply weighted by access tariff
     //   Architecture: compute-trade-systems projects access → THIS consumes.
     // ════════════════════════════════════════════
+    let sysSupplyInjectedCount = 0;
     try {
       const [systemsRes, accessRes, outputsRes2, nodesRes2] = await Promise.all([
         sb.from("trade_systems").select("id, system_key, member_players").eq("session_id", session_id),
         sb.from("player_trade_system_access").select("trade_system_id, player_name, access_level, tariff_factor").eq("session_id", session_id),
+        // Legacy world_node_outputs kept as ADDITIVE source for narrative neutral nodes
         sb.from("world_node_outputs").select("node_id, basket_key, quantity, quality, exportable_ratio").eq("session_id", session_id),
         sb.from("province_nodes").select("id, trade_system_id, controlled_by, is_neutral").eq("session_id", session_id),
       ]);
@@ -845,6 +847,11 @@ Deno.serve(async (req) => {
       const sysIdToKey = new Map<string, string>(systems.map((s: any) => [s.id, s.system_key as string]));
       const nodeToSys = new Map<string, string>();
       for (const n of nodes2) if ((n as any).trade_system_id) nodeToSys.set((n as any).id, (n as any).trade_system_id);
+      const nodeOwnedMap = new Map<string, boolean>();
+      for (const n of nodes2) {
+        const owned = !(n as any).is_neutral && !!(n as any).controlled_by;
+        nodeOwnedMap.set((n as any).id, owned);
+      }
 
       // System-level supply/quality by basket
       type SysAgg = { supply: number; quality_sum: number; quality_n: number; demand: number };
@@ -856,18 +863,41 @@ Deno.serve(async (req) => {
         return m.get(bk)!;
       };
 
-      // Supply: every node output contributes to its system, scaled by exportable_ratio
-      // (annexed/owned full quantity; neutral exportable_ratio kept as-is)
+      // ── R1 PRIMARY SOURCE: per-node recipe yields from Phase 1a (nodeInventories) ──
+      // Each inventory item is good_key + quantity at a node. Map good→basket via goodsMap,
+      // then assign supply to that node's trade system. Owned nodes contribute 1.0,
+      // neutral nodes contribute 0.4 (default exportable_ratio).
+      for (const inv of nodeInventories) {
+        const sysId = nodeToSys.get(inv.node_id);
+        if (!sysId) continue;
+        const good = goodsMap.get(inv.good_key);
+        if (!good) continue;
+        const basketKey = resolveBasketKey(good.demand_basket || "staple_food", warnings);
+        const isOwned = nodeOwnedMap.get(inv.node_id) ?? false;
+        const ratio = isOwned ? 1.0 : 0.4;
+        const supplyAdd = Number(inv.quantity || 0) * ratio;
+        if (supplyAdd <= 0) continue;
+        const agg = ensure(sysId, basketKey);
+        agg.supply += supplyAdd;
+        const q = 1 + (inv.quality_band || 0) * 0.1;
+        agg.quality_sum += q * supplyAdd;
+        agg.quality_n += supplyAdd;
+        sysSupplyInjectedCount++;
+      }
+
+      // ── R3 LEGACY SOURCE: world_node_outputs as additive contribution (narrative neutrals) ──
+      // After R3 fix this should already use canonical baskets; resolveBasketKey guards old keys.
       for (const o of outputs2) {
         const sysId = nodeToSys.get((o as any).node_id);
         if (!sysId) continue;
-        const node = nodes2.find((n: any) => n.id === (o as any).node_id);
-        const isOwned = !!node && !(node as any).is_neutral && !!(node as any).controlled_by;
+        const isOwned = nodeOwnedMap.get((o as any).node_id) ?? false;
         const qty = Number((o as any).quantity || 0);
         const ratio = isOwned ? 1.0 : Number((o as any).exportable_ratio || 0.4);
         const supplyAdd = qty * ratio;
         if (supplyAdd <= 0) continue;
-        const agg = ensure(sysId, (o as any).basket_key);
+        const rawBasket = String((o as any).basket_key || "");
+        const bk = resolveBasketKey(rawBasket, warnings);
+        const agg = ensure(sysId, bk);
         agg.supply += supplyAdd;
         const q = Number((o as any).quality ?? 1);
         agg.quality_sum += q * supplyAdd;
