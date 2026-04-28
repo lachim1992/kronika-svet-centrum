@@ -260,8 +260,11 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Delete old and insert new
-    await sb.from("province_routes").delete().eq("session_id", session_id);
+    // Delete only generated routes; player_built / treaty / event are immutable.
+    await sb.from("province_routes")
+      .delete()
+      .eq("session_id", session_id)
+      .eq("route_origin", "generated");
     const BATCH = 50;
     for (let i = 0; i < routes.length; i += BATCH) {
       const { error } = await sb.from("province_routes").insert(routes.slice(i, i + BATCH));
