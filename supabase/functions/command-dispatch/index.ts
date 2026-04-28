@@ -373,6 +373,19 @@ async function executeCommand(
     case "BLOCK_NODE_ANNEXATION":
       return await executeBlockNodeAnnexation(supabase, base, actor, payload, commandId, sessionId, turnNumber);
 
+    // ─── Node-Trade v1 (Stage 6) ───
+    case "MOBILIZE_MANPOWER":
+      return await executeMobilizeManpower(supabase, base, actor, payload, commandId, sessionId, turnNumber);
+
+    case "PROPOSE_TREATY":
+      return await executeProposeTreaty(supabase, base, actor, payload, commandId, sessionId, turnNumber);
+
+    case "RESPOND_TREATY":
+      return await executeRespondTreaty(supabase, base, actor, payload, commandId, sessionId, turnNumber);
+
+    case "CANCEL_TREATY":
+      return await executeCancelTreaty(supabase, base, actor, payload, commandId, sessionId, turnNumber);
+
     case "GENERIC":
       return insertEvents(supabase, commandId, [{
         ...base,
@@ -1481,41 +1494,55 @@ async function executeBuildRoute(
   supabase: any, base: any, actor: Actor, payload: any,
   commandId: string, sessionId: string, turnNumber: number,
 ): Promise<CommandResult> {
-  const { nodeAId, nodeBId, routeType } = payload;
+  // Node-Trade v1: BUILD_ROUTE creates a planned/under_construction route.
+  // Construction progress is ticked by process-turn, gated by assigned soldiers.
+  const { nodeAId, nodeBId, routeType, assignedSoldiers, hexPath } = payload;
   if (!nodeAId || !nodeBId) return { events: [], error: "Missing nodeAId or nodeBId" };
 
-  // Verify both nodes exist and at least one is controlled by actor
   const { data: nodeA } = await supabase.from("province_nodes")
     .select("id, name, controlled_by, province_id").eq("id", nodeAId).eq("session_id", sessionId).single();
   const { data: nodeB } = await supabase.from("province_nodes")
     .select("id, name, controlled_by, province_id").eq("id", nodeBId).eq("session_id", sessionId).single();
-
   if (!nodeA || !nodeB) return { events: [], error: "Node not found" };
   if (nodeA.controlled_by !== actor.name && nodeB.controlled_by !== actor.name) {
     return { events: [], error: "You must control at least one endpoint node" };
   }
 
-  // Check no existing route
+  // Idempotency on (session, ordered pair)
   const ordA = nodeAId < nodeBId ? nodeAId : nodeBId;
   const ordB = nodeAId < nodeBId ? nodeBId : nodeAId;
   const { data: existing } = await supabase.from("province_routes")
-    .select("id").eq("session_id", sessionId).eq("node_a", ordA).eq("node_b", ordB).maybeSingle();
-  if (existing) return { events: [], error: "Route already exists between these nodes" };
+    .select("id, construction_state").eq("session_id", sessionId).eq("node_a", ordA).eq("node_b", ordB).maybeSingle();
+  if (existing) {
+    return { events: [], error: existing.construction_state === "complete"
+      ? "Route already exists between these nodes"
+      : "A route between these nodes is already under construction" };
+  }
 
   const buildCostMap: Record<string, number> = {
     land_road: 50, river_route: 30, sea_lane: 20, mountain_pass: 80, caravan_route: 60,
   };
   const type = routeType || "land_road";
-  const cost = buildCostMap[type] || 50;
+  const goldCost = buildCostMap[type] || 50;
+  const totalWork = goldCost * 4; // 4 work-units per gold cost; soldiers chip away at it
 
-  // Deduct gold
+  // Soldier requirement: minimum 50 to begin, paid upfront from realm.soldiers pool
+  const requestedSoldiers = Math.max(50, Math.floor(Number(assignedSoldiers || 0)));
+
   const { data: realm } = await supabase.from("realm_resources")
-    .select("id, gold_reserve").eq("session_id", sessionId).eq("player_name", actor.name).single();
-  if (!realm || realm.gold_reserve < cost) return { events: [], error: `Nedostatek zlata (potřeba: ${cost})` };
+    .select("id, gold_reserve, soldiers, manpower_available")
+    .eq("session_id", sessionId).eq("player_name", actor.name).single();
+  if (!realm) return { events: [], error: "Realm not found" };
+  if ((realm.gold_reserve ?? 0) < goldCost) return { events: [], error: `Nedostatek zlata (potřeba: ${goldCost})` };
+  if ((realm.soldiers ?? 0) < requestedSoldiers) {
+    return { events: [], error: `Nedostatek vojáků (k dispozici: ${realm.soldiers ?? 0}, potřeba: ${requestedSoldiers}). Mobilizuj manpower.` };
+  }
 
-  await supabase.from("realm_resources").update({ gold_reserve: realm.gold_reserve - cost }).eq("id", realm.id);
+  await supabase.from("realm_resources").update({
+    gold_reserve: realm.gold_reserve - goldCost,
+    // Soldiers stay assigned; we tag them in route metadata.
+  }).eq("id", realm.id);
 
-  // Insert route
   await supabase.from("province_routes").insert({
     session_id: sessionId,
     node_a: ordA, node_b: ordB,
@@ -1524,17 +1551,25 @@ async function executeBuildRoute(
     military_relevance: 3, economic_relevance: 3,
     vulnerability_score: 4,
     control_state: "open",
-    build_cost: cost, upgrade_level: 1,
-    metadata: { built_by: actor.name, built_turn: turnNumber },
+    build_cost: goldCost, upgrade_level: 1,
+    route_origin: "player_built",
+    construction_state: "under_construction",
+    metadata: {
+      built_by: actor.name,
+      started_turn: turnNumber,
+      assigned_soldiers: requestedSoldiers,
+      total_work: totalWork,
+      progress: 0,
+      hex_path: Array.isArray(hexPath) ? hexPath : null,
+    },
   });
 
-  const note = `${actor.name} vybudoval ${type === "land_road" ? "silnici" : type} mezi ${nodeA.name} a ${nodeB.name} za ${cost} zlata.`;
-
+  const note = `${actor.name} zahájil stavbu cesty (${type}) mezi ${nodeA.name} a ${nodeB.name}. Vyhrazeno ${requestedSoldiers} vojáků.`;
   return insertEventsWithChronicle(supabase, commandId, sessionId, turnNumber, [{
     ...base,
     event_type: "construction",
     note, importance: "normal",
-    reference: { nodeAId, nodeBId, routeType: type, cost },
+    reference: { nodeAId, nodeBId, routeType: type, goldCost, assignedSoldiers: requestedSoldiers },
   }], payload.chronicleText);
 }
 
@@ -3108,4 +3143,172 @@ async function emitAnnexationRumor(
     .then(() => {}, (e: any) => {
       console.warn("emitAnnexationRumor error:", e?.message);
     });
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// Node-Trade v1 — Stage 6 handlers
+// MOBILIZE_MANPOWER, PROPOSE_TREATY, RESPOND_TREATY, CANCEL_TREATY
+// ═══════════════════════════════════════════════════════════════════════
+
+async function executeMobilizeManpower(
+  supabase: any, base: any, actor: Actor, payload: any,
+  commandId: string, sessionId: string, turnNumber: number,
+): Promise<CommandResult> {
+  const requested = Math.max(0, Math.floor(Number(payload.amount || 0)));
+  if (requested <= 0) return { events: [], error: "Missing or invalid amount" };
+
+  const { data: realm } = await supabase.from("realm_resources")
+    .select("id, manpower_pool, manpower_available, soldiers, total_population")
+    .eq("session_id", sessionId).eq("player_name", actor.name).single();
+  if (!realm) return { events: [], error: "Realm not found" };
+
+  const pool = Number(realm.manpower_pool ?? 0);
+  if (pool < requested) {
+    return { events: [], error: `Nedostatek manpower poolu (k dispozici: ${pool}, požadováno: ${requested}).` };
+  }
+
+  // Hard cap: total mobilized soldiers ≤ 20% of population (when known)
+  const pop = Number(realm.total_population ?? 0);
+  const currentSoldiers = Number(realm.soldiers ?? 0);
+  if (pop > 0 && currentSoldiers + requested > Math.floor(pop * 0.2)) {
+    return { events: [], error: `Hard cap: nelze mobilizovat víc než 20 % populace (limit ${Math.floor(pop * 0.2)}, nyní ${currentSoldiers}).` };
+  }
+
+  await supabase.from("realm_resources").update({
+    manpower_pool: pool - requested,
+    manpower_available: Number(realm.manpower_available ?? 0) + requested,
+    soldiers: currentSoldiers + requested,
+  }).eq("id", realm.id);
+
+  const note = `${actor.name} mobilizoval ${requested} obyvatel do vojenské služby. Celkem vojáků: ${currentSoldiers + requested}.`;
+  return insertEventsWithChronicle(supabase, commandId, sessionId, turnNumber, [{
+    ...base,
+    event_type: "mobilization",
+    note, importance: "normal",
+    reference: { amount: requested, total_soldiers: currentSoldiers + requested },
+  }], payload.chronicleText);
+}
+
+async function executeProposeTreaty(
+  supabase: any, base: any, actor: Actor, payload: any,
+  commandId: string, sessionId: string, turnNumber: number,
+): Promise<CommandResult> {
+  const treatyType = String(payload.treatyType || "").trim();
+  const partner = String(payload.partner || payload.otherParty || "").trim();
+  const ALLOWED = ["open_borders", "trade_access", "non_aggression", "alliance", "peace"];
+  if (!ALLOWED.includes(treatyType)) {
+    return { events: [], error: `Invalid treatyType (${treatyType}). Allowed: ${ALLOWED.join(", ")}` };
+  }
+  if (!partner || partner === actor.name) return { events: [], error: "Invalid partner" };
+
+  // Idempotent on (session, type, sorted players, status=proposed)
+  const [pa, pb] = [actor.name, partner].sort();
+  const { data: dup } = await supabase.from("diplomatic_treaties")
+    .select("id").eq("session_id", sessionId)
+    .eq("treaty_type", treatyType).eq("player_a", pa).eq("player_b", pb)
+    .in("status", ["proposed", "active"]).maybeSingle();
+  if (dup) return { events: [], error: "Treaty already proposed or active between these players" };
+
+  const meta = {
+    proposed_by: actor.name,
+    tariff_factor: typeof payload.tariffFactor === "number" ? payload.tariffFactor : 1.2,
+    terms: payload.terms || null,
+  };
+
+  const { data: inserted, error } = await supabase.from("diplomatic_treaties").insert({
+    session_id: sessionId,
+    treaty_type: treatyType,
+    player_a: pa, player_b: pb,
+    status: "proposed",
+    signed_turn: null,
+    metadata: meta,
+  }).select("id").single();
+  if (error) return { events: [], error: error.message };
+
+  const note = `${actor.name} navrhl ${partner} smlouvu typu „${treatyType}".`;
+  return insertEventsWithChronicle(supabase, commandId, sessionId, turnNumber, [{
+    ...base,
+    event_type: "treaty_proposed",
+    note, importance: "normal",
+    reference: { treatyId: inserted?.id, treatyType, partner, terms: meta.terms },
+  }], payload.chronicleText);
+}
+
+async function executeRespondTreaty(
+  supabase: any, base: any, actor: Actor, payload: any,
+  commandId: string, sessionId: string, turnNumber: number,
+): Promise<CommandResult> {
+  const treatyId = String(payload.treatyId || "").trim();
+  const accept = !!payload.accept;
+  if (!treatyId) return { events: [], error: "Missing treatyId" };
+
+  const { data: t } = await supabase.from("diplomatic_treaties")
+    .select("id, treaty_type, player_a, player_b, status, metadata")
+    .eq("id", treatyId).eq("session_id", sessionId).single();
+  if (!t) return { events: [], error: "Treaty not found" };
+  if (t.status !== "proposed") return { events: [], error: `Treaty is not pending (status=${t.status})` };
+  if (t.player_a !== actor.name && t.player_b !== actor.name) {
+    return { events: [], error: "You are not party to this treaty" };
+  }
+  const proposer = (t.metadata as any)?.proposed_by;
+  if (proposer === actor.name) return { events: [], error: "You cannot respond to your own proposal" };
+
+  if (accept) {
+    await supabase.from("diplomatic_treaties").update({
+      status: "active",
+      signed_turn: turnNumber,
+    }).eq("id", treatyId);
+    const note = `${actor.name} přijal smlouvu „${t.treaty_type}" s ${proposer || (t.player_a === actor.name ? t.player_b : t.player_a)}.`;
+    return insertEventsWithChronicle(supabase, commandId, sessionId, turnNumber, [{
+      ...base,
+      event_type: "treaty_signed",
+      note, importance: "critical",
+      reference: { treatyId, treatyType: t.treaty_type, partners: [t.player_a, t.player_b] },
+    }], payload.chronicleText);
+  } else {
+    await supabase.from("diplomatic_treaties").update({
+      status: "rejected",
+      cancelled_turn: turnNumber,
+    }).eq("id", treatyId);
+    const note = `${actor.name} odmítl návrh smlouvy „${t.treaty_type}".`;
+    return insertEventsWithChronicle(supabase, commandId, sessionId, turnNumber, [{
+      ...base,
+      event_type: "treaty_rejected",
+      note, importance: "normal",
+      reference: { treatyId, treatyType: t.treaty_type },
+    }], payload.chronicleText);
+  }
+}
+
+async function executeCancelTreaty(
+  supabase: any, base: any, actor: Actor, payload: any,
+  commandId: string, sessionId: string, turnNumber: number,
+): Promise<CommandResult> {
+  const treatyId = String(payload.treatyId || "").trim();
+  if (!treatyId) return { events: [], error: "Missing treatyId" };
+
+  const { data: t } = await supabase.from("diplomatic_treaties")
+    .select("id, treaty_type, player_a, player_b, status")
+    .eq("id", treatyId).eq("session_id", sessionId).single();
+  if (!t) return { events: [], error: "Treaty not found" };
+  if (t.player_a !== actor.name && t.player_b !== actor.name) {
+    return { events: [], error: "You are not party to this treaty" };
+  }
+  if (t.status === "cancelled" || t.status === "rejected") {
+    return { events: [], error: `Treaty already inactive (status=${t.status})` };
+  }
+
+  await supabase.from("diplomatic_treaties").update({
+    status: "cancelled",
+    cancelled_turn: turnNumber,
+  }).eq("id", treatyId);
+
+  const other = t.player_a === actor.name ? t.player_b : t.player_a;
+  const note = `${actor.name} jednostranně ukončil smlouvu „${t.treaty_type}" s ${other}.`;
+  return insertEventsWithChronicle(supabase, commandId, sessionId, turnNumber, [{
+    ...base,
+    event_type: "treaty_cancelled",
+    note, importance: "critical",
+    reference: { treatyId, treatyType: t.treaty_type, terminated_by: actor.name },
+  }], payload.chronicleText);
 }
