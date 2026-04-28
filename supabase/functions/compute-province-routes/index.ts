@@ -143,7 +143,7 @@ Deno.serve(async (req) => {
 
     const addRoute = (a: Node, b: Node, meta?: Record<string, any>) => {
       const key = routeKey(a.id, b.id);
-      if (routeSet.has(key)) return;
+      if (routeSet.has(key)) return; // also blocks duplicates of protected pairs
       routeSet.add(key);
       const dist = axialDist(a.hex_q, a.hex_r, b.hex_q, b.hex_r);
       const routeType = inferRouteType(a, b);
@@ -162,6 +162,8 @@ Deno.serve(async (req) => {
         build_cost: metrics.build_cost!,
         upgrade_level: 0,
         metadata: { distance: dist, cross_province: !sameProv, tier_link: meta?.tier_link || "peer", ...meta },
+        route_origin: "generated",
+        construction_state: "complete",
       });
     };
 
