@@ -386,6 +386,12 @@ async function executeCommand(
     case "CANCEL_TREATY":
       return await executeCancelTreaty(supabase, base, actor, payload, commandId, sessionId, turnNumber);
 
+    case "ASSIGN_STACK_TO_ROUTE":
+      return await executeAssignStackToRoute(supabase, base, actor, payload, commandId, sessionId, turnNumber);
+
+    case "CANCEL_ROUTE_CONSTRUCTION":
+      return await executeCancelRouteConstruction(supabase, base, actor, payload, commandId, sessionId, turnNumber);
+
     case "GENERIC":
       return insertEvents(supabase, commandId, [{
         ...base,
