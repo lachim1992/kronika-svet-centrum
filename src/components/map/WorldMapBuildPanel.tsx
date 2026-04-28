@@ -83,9 +83,9 @@ export default function WorldMapBuildPanel({ sessionId, playerName, currentTurn 
         .select("id, node_a, node_b, route_type, metadata, build_cost")
         .eq("session_id", sessionId).eq("construction_state", "under_construction"),
       supabase.from("military_stacks")
-        .select("id, name, soldiers, unit_count, assignment, assigned_route_id")
+        .select("id, name, soldiers, assignment, assigned_route_id")
         .eq("session_id", sessionId)
-        .or(`owner_player.eq.${playerName},player_name.eq.${playerName}`)
+        .eq("player_name", playerName)
         .eq("is_active", true),
     ]);
     setNodes((nRes.data || []) as NodeRow[]);
