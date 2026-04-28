@@ -113,6 +113,20 @@ Deno.serve(async (req) => {
       });
     }
 
+    // ── PROTECTED ROUTES (Etapa 2): load existing non-generated routes
+    // (player_built, treaty, event) — these are IMMUTABLE: we never delete or
+    // modify them, and we skip generating duplicates between the same node pair.
+    const { data: protectedRows } = await sb.from("province_routes")
+      .select("id, node_a, node_b, route_origin")
+      .eq("session_id", session_id)
+      .neq("route_origin", "generated");
+    const protectedPairs = new Set<string>();
+    for (const r of protectedRows || []) {
+      const a = r.node_a as string, b = r.node_b as string;
+      protectedPairs.add(a < b ? `${a}|${b}` : `${b}|${a}`);
+    }
+    const protectedCount = protectedRows?.length ?? 0;
+
     // Index
     const nodeById = new Map(nodes.map(n => [n.id, n]));
     const nodesByProv: Record<string, Node[]> = {};
@@ -122,7 +136,7 @@ Deno.serve(async (req) => {
     }
 
     const routeKey = (a: string, b: string) => a < b ? `${a}|${b}` : `${b}|${a}`;
-    const routeSet = new Set<string>();
+    const routeSet = new Set<string>(protectedPairs); // pre-seed so we don't duplicate
     const routes: Route[] = [];
 
     const addRoute = (a: Node, b: Node, meta?: Record<string, any>) => {
