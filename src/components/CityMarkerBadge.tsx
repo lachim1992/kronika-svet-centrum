@@ -38,12 +38,22 @@ const CityMarkerBadge = memo(({
   cityId, cityName, settlementLevel, ownerPlayer, isCapital,
   imageUrl, mapIconUrl, population = 1000, size = "md", cx, cy, onClick,
 }: CityMarkerProps) => {
-  const baseR = size === "sm" ? 10 : 14;
+  const baseR = size === "sm" ? 15 : 21; // +50%
   const r = Math.round(baseR * popScale(population));
   const icon = SETTLEMENT_ICONS[settlementLevel] || SETTLEMENT_ICONS.HAMLET;
-  const nameSize = Math.max(5, Math.round(r * 0.42));
-  const nameMaxLen = size === "sm" ? 7 : 10;
-  const displayName = cityName.length > nameMaxLen ? cityName.slice(0, nameMaxLen - 1) + "…" : cityName;
+  const nameSize = Math.max(8, Math.round(r * 0.48));
+  // Wrap long names onto up to 2 lines (split at space near the middle, fallback to char split)
+  const wrapMax = size === "sm" ? 12 : 16;
+  const nameLines: string[] = (() => {
+    if (cityName.length <= wrapMax) return [cityName];
+    const mid = Math.floor(cityName.length / 2);
+    const spaceIdx = cityName.lastIndexOf(" ", mid + 4);
+    if (spaceIdx > 2 && spaceIdx < cityName.length - 2) {
+      return [cityName.slice(0, spaceIdx), cityName.slice(spaceIdx + 1)];
+    }
+    // hard break
+    return [cityName.slice(0, wrapMax), cityName.slice(wrapMax, wrapMax * 2)];
+  })();
   const clipId = `city-clip-${cityId}`;
 
   // ── Pixel art sprite mode ──
