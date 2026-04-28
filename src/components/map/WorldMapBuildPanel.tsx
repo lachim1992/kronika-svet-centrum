@@ -14,7 +14,13 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Hammer, Plus, X, Users, ChevronDown, ChevronUp, Trash2 } from "lucide-react";
 import { toast } from "sonner";
-import { findHexPath } from "@/lib/hexPathfinding";
+// Lightweight axial-distance preview (no terrain cost). True A* is computed server-side
+// during BUILD_ROUTE / compute-province-routes; this is just a length hint for the UI.
+function axialHexDistance(a: { q: number; r: number }, b: { q: number; r: number }): number {
+  const dq = a.q - b.q;
+  const dr = a.r - b.r;
+  return (Math.abs(dq) + Math.abs(dr) + Math.abs(dq + dr)) / 2;
+}
 
 interface NodeRow {
   id: string;
