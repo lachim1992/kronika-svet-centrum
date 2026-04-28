@@ -807,9 +807,151 @@ Deno.serve(async (req) => {
           if (supplyAdd <= 0) continue;
           addToBasket(node.controlled_by, o.basket_key, supplyAdd);
         }
+    }
+
+    // ════════════════════════════════════════════
+    // PHASE 4a-ter: Trade systems aggregation (Node-Trade v1, Stage 5)
+    //   - aggregate supply/demand per (trade_system, basket)
+    //   - symmetric price index: clamp(0.5, 2.0, 1 + (D - S) / max(D + S, 1))
+    //   - members of a system gain pooled supply weighted by access tariff
+    //   Architecture: compute-trade-systems projects access → THIS consumes.
+    // ════════════════════════════════════════════
+    try {
+      const [systemsRes, accessRes, outputsRes2, nodesRes2] = await Promise.all([
+        sb.from("trade_systems").select("id, system_key, member_players").eq("session_id", session_id),
+        sb.from("player_trade_system_access").select("trade_system_id, player_name, access_level, tariff_factor").eq("session_id", session_id),
+        sb.from("world_node_outputs").select("node_id, basket_key, quantity, quality, exportable_ratio").eq("session_id", session_id),
+        sb.from("province_nodes").select("id, trade_system_id, controlled_by, is_neutral").eq("session_id", session_id),
+      ]);
+      const systems = systemsRes.data || [];
+      const accesses = accessRes.data || [];
+      const outputs2 = outputsRes2.data || [];
+      const nodes2 = nodesRes2.data || [];
+
+      const sysIdToKey = new Map<string, string>(systems.map((s: any) => [s.id, s.system_key as string]));
+      const nodeToSys = new Map<string, string>();
+      for (const n of nodes2) if ((n as any).trade_system_id) nodeToSys.set((n as any).id, (n as any).trade_system_id);
+
+      // System-level supply/quality by basket
+      type SysAgg = { supply: number; quality_sum: number; quality_n: number; demand: number };
+      const sysAgg = new Map<string, Map<string, SysAgg>>(); // sysId -> basket -> agg
+      const ensure = (sysId: string, bk: string): SysAgg => {
+        if (!sysAgg.has(sysId)) sysAgg.set(sysId, new Map());
+        const m = sysAgg.get(sysId)!;
+        if (!m.has(bk)) m.set(bk, { supply: 0, quality_sum: 0, quality_n: 0, demand: 0 });
+        return m.get(bk)!;
+      };
+
+      // Supply: every node output contributes to its system, scaled by exportable_ratio
+      // (annexed/owned full quantity; neutral exportable_ratio kept as-is)
+      for (const o of outputs2) {
+        const sysId = nodeToSys.get((o as any).node_id);
+        if (!sysId) continue;
+        const node = nodes2.find((n: any) => n.id === (o as any).node_id);
+        const isOwned = !!node && !(node as any).is_neutral && !!(node as any).controlled_by;
+        const qty = Number((o as any).quantity || 0);
+        const ratio = isOwned ? 1.0 : Number((o as any).exportable_ratio || 0.4);
+        const supplyAdd = qty * ratio;
+        if (supplyAdd <= 0) continue;
+        const agg = ensure(sysId, (o as any).basket_key);
+        agg.supply += supplyAdd;
+        const q = Number((o as any).quality ?? 1);
+        agg.quality_sum += q * supplyAdd;
+        agg.quality_n += supplyAdd;
+      }
+
+      // Demand: aggregate localDemand of members into their systems
+      // (a player may belong to multiple systems → demand split equally across them)
+      const memberSystems = new Map<string, string[]>(); // player -> sysIds
+      for (const s of systems) {
+        for (const m of (s as any).member_players || []) {
+          const arr = memberSystems.get(m) ?? [];
+          arr.push((s as any).id);
+          memberSystems.set(m, arr);
+        }
+      }
+      for (const [player, baskets] of playerBasketData) {
+        const sysIds = memberSystems.get(player) || [];
+        if (sysIds.length === 0) continue;
+        const split = 1 / sysIds.length;
+        for (const [bk, data] of baskets) {
+          if (!data.localDemand) continue;
+          for (const sysId of sysIds) {
+            const agg = ensure(sysId, bk);
+            agg.demand += data.localDemand * split;
+          }
+        }
+      }
+
+      // Persist trade_system_basket_supply (delete + insert; cascades cleared above by compute-trade-systems too)
+      await sb.from("trade_system_basket_supply").delete().eq("session_id", session_id);
+      const supplyRows: any[] = [];
+      for (const [sysId, byBasket] of sysAgg.entries()) {
+        for (const [bk, a] of byBasket.entries()) {
+          const D = a.demand;
+          const S = a.supply;
+          const denom = Math.max(D + S, 1);
+          const priceIndex = Math.max(0.5, Math.min(2.0, 1 + (D - S) / denom));
+          const avgQuality = a.quality_n > 0 ? a.quality_sum / a.quality_n : 1.0;
+          supplyRows.push({
+            session_id,
+            trade_system_id: sysId,
+            basket_key: bk,
+            total_supply: Math.round(S * 100) / 100,
+            total_demand: Math.round(D * 100) / 100,
+            surplus: Math.max(0, Math.round((S - D) * 100) / 100),
+            shortage: Math.max(0, Math.round((D - S) * 100) / 100),
+            price_index: Math.round(priceIndex * 1000) / 1000,
+            avg_quality: Math.round(avgQuality * 1000) / 1000,
+            computed_at: new Date().toISOString(),
+          });
+        }
+      }
+      if (supplyRows.length > 0) {
+        const CHUNK = 200;
+        for (let i = 0; i < supplyRows.length; i += CHUNK) {
+          const { error } = await sb.from("trade_system_basket_supply").insert(supplyRows.slice(i, i + CHUNK));
+          if (error) console.warn("trade_system_basket_supply insert failed:", error.message);
+        }
+      }
+
+      // Inject system-pooled supply back into playerBasketData via access projection
+      // Each member with access gets a tariff-scaled share of the system surplus.
+      const accessByPlayer = new Map<string, Array<{ sysId: string; tariff: number; level: string }>>();
+      for (const a of accesses) {
+        const arr = accessByPlayer.get((a as any).player_name) ?? [];
+        arr.push({ sysId: (a as any).trade_system_id, tariff: Number((a as any).tariff_factor || 1), level: String((a as any).access_level) });
+        accessByPlayer.set((a as any).player_name, arr);
+      }
+      for (const [player, accList] of accessByPlayer.entries()) {
+        if (!playerBasketData.has(player)) playerBasketData.set(player, new Map());
+        const pMap = playerBasketData.get(player)!;
+        for (const acc of accList) {
+          if (acc.level === "visible") continue; // intel only, no trade
+          const byBasket = sysAgg.get(acc.sysId);
+          if (!byBasket) continue;
+          // Count how many traders share this system to split surplus fairly
+          const sharers = (accesses as any[]).filter((x) => x.trade_system_id === acc.sysId && x.access_level !== "visible").length || 1;
+          for (const [bk, a] of byBasket.entries()) {
+            const surplus = Math.max(0, a.supply - a.demand);
+            if (surplus <= 0) continue;
+            const grant = (surplus / sharers) / Math.max(0.5, acc.tariff);
+            const existing = pMap.get(bk) || {
+              localSupply: 0, localDemand: 0, effectiveExport: 0,
+              domesticSatisfaction: 0, autoProduction: 0, bonusProduction: 0,
+              qualityWeight: 1,
+            };
+            existing.localSupply += grant;
+            existing.bonusProduction += grant;
+            existing.effectiveExport += grant; // already tariff-adjusted
+            const avgQ = a.quality_n > 0 ? a.quality_sum / a.quality_n : 1;
+            existing.qualityWeight = Math.max(existing.qualityWeight, avgQ);
+            pMap.set(bk, existing);
+          }
+        }
       }
     } catch (e) {
-      warnings.push(`Neutral node integration failed: ${(e as Error).message}`);
+      warnings.push(`Trade systems aggregation failed: ${(e as Error).message}`);
     }
 
     // Compute domestic satisfaction per player per basket (weighted aggregate)
