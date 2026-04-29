@@ -125,8 +125,9 @@ const ArmyTab = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, re
   const [stacks, setStacks] = useState<Stack[]>([]);
   const [generals, setGenerals] = useState<General[]>([]);
   const realm = (realmProp as RealmRes | null) || null;
-  // Local setter retained for optimistic mobilization slider preview only.
-  const setRealm = (_next: any) => { /* no-op: realm is canonical via prop */ };
+  // Local slider preview — keeps the bar responsive while the canonical realm
+  // value updates asynchronously after dispatchCommand.
+  const [sliderRate, setSliderRate] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [selectedStack, setSelectedStack] = useState<Stack | null>(null);
   const [showRecruit, setShowRecruit] = useState(false);
