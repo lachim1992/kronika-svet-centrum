@@ -933,38 +933,59 @@ async function executeAction(
       let preset = action.armyPreset || "militia";
       const name = action.armyName || `${factionName} ${preset} ${turn}`;
 
-      // Auto-downgrade preset if manpower is insufficient
+      // Auto-downgrade preset if manpower is insufficient.
+      // SSOT: realm_resources.manpower_pool already reflects mobilizationRate (set by refresh-economy).
       const presetManpower: Record<string, number> = {
-        legion: 800, cavalry_wing: 200, cohort: 400, militia: 200,
+        legion: 800, cavalry_wing: 200, cohort: 400, militia: 200, professional: 400,
       };
       const availableManpower = realmRes?.manpower_pool || 0;
-      const mobRate = realmRes?.mobilization_rate || 0.1;
-      const mobilizedCap = Math.floor(availableManpower * mobRate);
+      const goldReserve = realmRes?.gold_reserve || 0;
+      const grainReserve = realmRes?.grain_reserve || 0;
 
-      if (mobilizedCap < (presetManpower[preset] || 200)) {
-        // Try to downgrade
-        const fallbackOrder = ["militia", "cohort", "cavalry_wing", "legion"];
+      // Cheap militia floor: ~80 manpower, ~32 gold, ~20 prod
+      const MIN_RECRUIT_MANPOWER = 80;
+      const MIN_RECRUIT_GOLD = 30;
+      const MIN_RECRUIT_PROD = 20;
+
+      if (availableManpower < MIN_RECRUIT_MANPOWER || goldReserve < MIN_RECRUIT_GOLD || grainReserve < MIN_RECRUIT_PROD) {
+        console.log(`[${factionName}] Cannot recruit — pool=${availableManpower} gold=${goldReserve} grain=${grainReserve}`);
+        return "insufficient_resources";
+      }
+
+      // Downgrade preset if requested size > pool
+      const target = presetManpower[preset] || 200;
+      if (target > availableManpower) {
+        const fallbackOrder = ["militia", "cohort", "professional", "cavalry_wing", "legion"];
         let found = false;
         for (const fb of fallbackOrder) {
-          if (mobilizedCap >= (presetManpower[fb] || 200)) {
-            console.log(`[${factionName}] Downgraded ${preset} → ${fb} (manpower ${mobilizedCap})`);
+          if (availableManpower >= (presetManpower[fb] || 200)) {
+            console.log(`[${factionName}] Downgraded ${preset} → ${fb} (pool ${availableManpower})`);
             preset = fb;
             found = true;
             break;
           }
         }
         if (!found) {
-          console.log(`[${factionName}] Cannot recruit — manpower ${mobilizedCap} too low for any preset`);
-          return "insufficient_manpower";
+          // Recruit a smallest-possible militia using free-form manpower.
+          preset = "militia";
         }
       }
+
+      // Cap manpower to what's actually affordable across all 3 resources.
+      // Costs (per soldier, MILITIA): gold 0.4, prod 0.25
+      const maxByGold = Math.floor(goldReserve / 0.4);
+      const maxByProd = Math.floor(grainReserve / 0.25);
+      const requestedManpower = Math.max(
+        MIN_RECRUIT_MANPOWER,
+        Math.min(presetManpower[preset] || 200, availableManpower, maxByGold, maxByProd),
+      );
 
       await invokeFunction(supabaseUrl, supabaseKey, "command-dispatch", {
         sessionId, turnNumber: turn,
         actor: { name: factionName, type: "ai_faction" },
         commandType: "RECRUIT_STACK",
         commandPayload: {
-          stackName: name, presetKey: preset,
+          stackName: name, presetKey: preset, manpower: requestedManpower,
           note: action.description,
           chronicleText: action.narrativeNote || `${factionName} verbuje novou armádu: ${name}.`,
         },
