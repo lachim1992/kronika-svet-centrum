@@ -41,7 +41,7 @@ const CityMarkerBadge = memo(({
   const baseR = size === "sm" ? 15 : 21; // +50%
   const r = Math.round(baseR * popScale(population));
   const icon = SETTLEMENT_ICONS[settlementLevel] || SETTLEMENT_ICONS.HAMLET;
-  const nameSize = Math.max(8, Math.round(r * 0.48));
+  const nameSize = Math.max(6.5, Math.round(r * 0.34));
   // Wrap long names onto up to 2 lines (split at space near the middle, fallback to char split)
   const wrapMax = size === "sm" ? 12 : 16;
   const nameLines: string[] = (() => {
