@@ -336,10 +336,8 @@ const ArmyTab = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, re
           min={0}
           step={1}
           onValueChange={(val) => {
-            if (!realm) return;
-            const rate = val[0] / 100;
-            const newWf = computeWorkforceBreakdown(myCities, rate);
-            setRealm({ ...realm, mobilization_rate: rate, manpower_pool: newWf.effectiveActivePop });
+            // Live preview: update local slider state so the bar reacts instantly.
+            setSliderRate(val[0] / 100);
           }}
           onValueCommit={async (val) => {
             if (!realm) return;
@@ -350,8 +348,7 @@ const ArmyTab = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, re
             if (newCap < totalCommitted) {
               setPendingMobRate(rate);
               setShowDemobilize(true);
-              // Revert slider visually
-              setRealm({ ...realm, mobilization_rate: mobRate, manpower_pool: wf.effectiveActivePop });
+              setSliderRate(null); // revert preview to canonical
               return;
             }
             const res = await dispatchCommand({
@@ -360,7 +357,14 @@ const ArmyTab = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, re
               commandType: "SET_MOBILIZATION",
               commandPayload: { rate, manpowerPool: newWf.effectiveActivePop },
             });
-            if (!res.ok) { toast.error(res.error || "Změna mobilizace selhala"); return; }
+            if (!res.ok) {
+              toast.error(res.error || "Změna mobilizace selhala");
+              setSliderRate(null);
+              return;
+            }
+            // Keep preview until parent prop refreshes; clear on next render via effect below.
+            setSliderRate(null);
+            onRefetch?.();
             fetchMilitary();
           }}
           className="w-full"
