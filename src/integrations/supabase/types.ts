@@ -6109,6 +6109,7 @@ export type Database = {
           morale: number
           moved_this_turn: boolean
           name: string
+          owner_player: string | null
           player_name: string
           power: number
           province_id: string | null
@@ -6149,6 +6150,7 @@ export type Database = {
           morale?: number
           moved_this_turn?: boolean
           name: string
+          owner_player?: string | null
           player_name: string
           power?: number
           province_id?: string | null
@@ -6189,6 +6191,7 @@ export type Database = {
           morale?: number
           moved_this_turn?: boolean
           name?: string
+          owner_player?: string | null
           player_name?: string
           power?: number
           province_id?: string | null
