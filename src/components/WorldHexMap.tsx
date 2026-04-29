@@ -298,15 +298,10 @@ const HexTile = memo(({
             </>
           ) : (
             <>
-              {/* Biome icon */}
-              <text x={cx} y={cy - 4} textAnchor="middle" dominantBaseline="middle"
-                fill="white" fontSize="14" opacity={0.85} style={{ pointerEvents: "none" }}>
+              {/* Biome icon only — name shown in side panel */}
+              <text x={cx} y={cy} textAnchor="middle" dominantBaseline="middle"
+                fill="white" fontSize="14" opacity={0.8} style={{ pointerEvents: "none" }}>
                 {BIOME_ICONS[hex.biome_family] || ""}
-              </text>
-              <text x={cx} y={cy + 9} textAnchor="middle" dominantBaseline="middle"
-                fill="white" fontSize="6.5" fontWeight="500" opacity={0.55}
-                style={{ pointerEvents: "none", textShadow: "0 1px 1px rgba(0,0,0,0.7)" }}>
-                {BIOME_LABELS[hex.biome_family] || hex.biome_family}
               </text>
             </>
           )}
