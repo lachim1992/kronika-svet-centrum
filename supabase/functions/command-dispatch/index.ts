@@ -1209,12 +1209,14 @@ async function executeRecruitStack(
   const finalMorale = Math.min(100, adjustedMorale + disciplineBonus);
 
   // ── 1. Create stack ──
+  const stackPower = computeStackPower(scaledComposition, finalMorale, 0);
   const { data: stack, error: stackErr } = await supabase.from("military_stacks").insert({
     session_id: sessionId, player_name: playerName, owner_player: playerName,
     name: stackName.trim(),
     formation_type: preset.formation_type, morale: finalMorale,
     soldiers: totalManpower,
     unit_count: totalManpower,
+    power: stackPower,
     assignment: "idle",
   }).select("id").single();
 
