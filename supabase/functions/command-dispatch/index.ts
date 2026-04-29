@@ -2337,6 +2337,24 @@ async function executeReinforceStack(
     }
   }
 
+  // Recompute stack power + soldier counters from updated composition
+  const { data: updatedComps } = await supabase
+    .from("military_stack_composition")
+    .select("unit_type, manpower")
+    .eq("stack_id", stackId);
+  const totalSoldiers = (updatedComps || []).reduce((s: number, c: any) => s + (c.manpower || 0), 0);
+  const { data: stackRow } = await supabase.from("military_stacks")
+    .select("morale, general_id").eq("id", stackId).maybeSingle();
+  let genSkill = 0;
+  if (stackRow?.general_id) {
+    const { data: gen } = await supabase.from("generals").select("skill").eq("id", stackRow.general_id).maybeSingle();
+    genSkill = gen?.skill || 0;
+  }
+  const newPower = computeStackPower(updatedComps || [], stackRow?.morale ?? 70, genSkill);
+  await supabase.from("military_stacks").update({
+    soldiers: totalSoldiers, unit_count: totalSoldiers, power: newPower,
+  }).eq("id", stackId);
+
   await supabase.from("realm_resources").update({
     manpower_committed: (realm.manpower_committed || 0) + (addedManpower || 0),
     gold_reserve: (realm.gold_reserve || 0) - (addedGold || 0),
