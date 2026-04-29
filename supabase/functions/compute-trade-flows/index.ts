@@ -1019,6 +1019,18 @@ Deno.serve(async (req) => {
       }
     }
 
+    // Build set of (player, basket) pairs that have ACTUAL active trade flows.
+    // wealth_market_share is only credited for baskets where the player physically exports.
+    const activeExports = new Set<string>(); // key: `${player}::${basketKey}`
+    for (const flow of tradeFlows) {
+      const src = flow.source_player;
+      if (!src) continue;
+      const good = goodsMap.get(flow.good_key);
+      if (!good) continue;
+      const bk = resolveBasketKey(good.demand_basket || "staple_food", warnings);
+      activeExports.add(`${src}::${bk}`);
+    }
+
     // Compute market_shares rows + player wealth
     const marketShareRows: any[] = [];
     const playerMarketWealth = new Map<string, number>();
@@ -1035,11 +1047,14 @@ Deno.serve(async (req) => {
         const marketShare = global.totalExport > 0 ? data.effectiveExport / global.totalExport : 0;
         const marketFill = global.totalDemand > 0 ? Math.min(1, global.totalSupply / global.totalDemand) : 1;
 
-        // Player market basket wealth
-        const playerMarketBasketWealth = bc.basketValue * marketShare * marketFill;
+        // Gate: only credit market wealth if player has an active outgoing trade_flow for this basket
+        const hasActiveExport = activeExports.has(`${player}::${bk}`);
+        const playerMarketBasketWealth = hasActiveExport
+          ? bc.basketValue * marketShare * marketFill
+          : 0;
         totalMW += playerMarketBasketWealth;
 
-        // Domestic wealth component
+        // Domestic wealth component (unchanged — local consumption is independent of exports)
         const domesticWealth = data.localDemand * data.domesticSatisfaction * bc.basketValue;
         totalDW += domesticWealth;
 

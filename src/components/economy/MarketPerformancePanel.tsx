@@ -48,7 +48,7 @@ const MarketPerformancePanel = ({ realm }: Props) => {
           <div className="flex items-center justify-between text-xs">
             <span className="font-semibold flex items-center gap-1">
               📈 Exportní tržní pozice
-              <InfoTip side="right">Obchodní síla na globálním trhu. Determinuje budoucí exportní příjmy.</InfoTip>
+              <InfoTip side="right">Bohatství z reálných obchodních cest (trade flows). Započítává se pouze u košíků, kde má vaše říše aktivní obchodní tok do sousedního města. Pokud nemáte žádné aktivní toky, bude 0.</InfoTip>
             </span>
             <span className="font-mono font-bold">{position.exportPosition.toFixed(1)}</span>
           </div>
