@@ -183,15 +183,19 @@ const ArmyTab = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, re
   if (myCities.length === 0 && effectiveOwnerName !== currentPlayerName) {
     myCities = cities.filter(c => c.owner_player === currentPlayerName);
   }
-  const mobRate = realm?.mobilization_rate || 0.1;
+  // Mobilization rate: prefer live slider preview, fall back to canonical realm value.
+  const mobRate = sliderRate ?? realm?.mobilization_rate ?? 0.1;
   const wf = computeWorkforceBreakdown(myCities, mobRate);
   const computedPool = wf.effectiveActivePop;
   const totalPower = stacks.filter(s => s.is_active).reduce((s, st) => s + st.power, 0);
-  const totalCommitted = stacks.filter(s => s.is_active).reduce((s, st) => s + st.compositions.reduce((a, c) => a + c.manpower, 0), 0);
+  const totalCommitted = realm?.manpower_committed
+    ?? stacks.filter(s => s.is_active).reduce((s, st) => s + st.compositions.reduce((a, c) => a + c.manpower, 0), 0);
   const maxMobPct = Math.round(wf.maxMobilization * 100);
   // Mobilization cap = how many can be mobilized at current rate
   const mobilizationCap = wf.mobilized;
-  const availableManpower = Math.max(0, mobilizationCap - totalCommitted);
+  // Available manpower: canonical realm.manpower_pool is the SSOT (set by backend after recruit/refresh).
+  // Fallback to derived (cap − committed) only if the realm row is missing.
+  const availableManpower = realm?.manpower_pool ?? Math.max(0, mobilizationCap - totalCommitted);
   const isOverMobCap = mobRate > wf.maxMobilization;
   const overMobPenalty = isOverMobCap ? Math.round((mobRate - wf.maxMobilization) * 100) : 0;
 
