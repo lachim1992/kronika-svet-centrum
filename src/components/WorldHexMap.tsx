@@ -284,8 +284,8 @@ const HexTile = memo(({
                         : [name.slice(0, wrapMax), name.slice(wrapMax, wrapMax * 2)];
                     })();
                 return lines.map((ln, i) => (
-                  <text key={i} x={cx} y={cy + 14 + i * 10} textAnchor="middle" dominantBaseline="middle"
-                    fill="white" fontSize="9" fontWeight="600" opacity={0.9}
+                  <text key={i} x={cx} y={cy + 12 + i * 7} textAnchor="middle" dominantBaseline="middle"
+                    fill="white" fontSize="6.5" fontWeight="600" opacity={0.85}
                     style={{ pointerEvents: "none", textShadow: "0 1px 2px rgba(0,0,0,0.8)" }}>
                     {ln}
                   </text>
