@@ -6124,6 +6124,7 @@ export type Database = {
           travel_progress: number | null
           travel_route_id: string | null
           travel_target_node_id: string | null
+          unit_count: number
           upkeep_food: number
           upkeep_gold: number
         }
@@ -6165,6 +6166,7 @@ export type Database = {
           travel_progress?: number | null
           travel_route_id?: string | null
           travel_target_node_id?: string | null
+          unit_count?: number
           upkeep_food?: number
           upkeep_gold?: number
         }
@@ -6206,6 +6208,7 @@ export type Database = {
           travel_progress?: number | null
           travel_route_id?: string | null
           travel_target_node_id?: string | null
+          unit_count?: number
           upkeep_food?: number
           upkeep_gold?: number
         }
