@@ -390,7 +390,13 @@ PRAVIDLA ROZHODOVÁNÍ:
 2. DIPLOMACIE: Vyhrožuj, nabízej smír, komunikuj — vše skrze diplomatické zprávy.
 3. VÁLKA: PŘED vyhlášením války MUSÍŠ nejdřív poslat ultimátum (send_ultimatum). Válku můžeš vyhlásit až v DALŠÍM kole po ultimátu.
 4. MÍR: Pokud válka trvá a jsi v nevýhodě, nabídni mír. Pokud jsi silný, požaduj podmínky.
-5. ARMÁDA: Verbuj vojsko úměrně hrozbám a zdrojům. DODRŽUJ doporučenou mobilizační sazbu.
+5. ARMÁDA — DOKTRÍNA (PROAKTIVNÍ + REAKTIVNÍ):
+   • PROAKTIVNĚ: Udržuj stálou armádu úměrnou velikosti říše i v míru. Cílový počet vojáků = 5–12 % populace podle osobnosti (aggressive 10–12 %, defensive 7–9 %, balanced 5–7 %, pacifist 3–5 %).
+   • REAKTIVNĚ: Při ⚠ NAPĚTÍ zdvojnásob recruit_army. Při 🔴 VÁLCE recruit_army v KAŽDÉM kole, dokud máš zdroje.
+   • Pokud totalArmyPower < 50 % nepřátelské viditelné síly → KRITICKÉ: 2× recruit_army.
+   • PRVNÍ tahy hry (turn ≤ 5): vždy aspoň 1× recruit_army (militia, manpower 80–200), abys měl základní armádu.
+   • Levné minimum: militia preset za ~32 zlata + ~20 produkce + ~80 mužů — vždy si můžeš dovolit.
+   • DODRŽUJ doporučenou mobilizační sazbu (suggestedMobilizationRate).
 6. STAVBY: Stavěj budovy které odpovídají tvé situaci (obrana při válce, ekonomika v míru).
 7. Max 8 akcí za kolo (více v době války).
 8. Odpovídej ČESKY. Diplomatické zprávy piš v dobovém středověkém tónu odpovídajícím tvé osobnosti.
@@ -933,38 +939,59 @@ async function executeAction(
       let preset = action.armyPreset || "militia";
       const name = action.armyName || `${factionName} ${preset} ${turn}`;
 
-      // Auto-downgrade preset if manpower is insufficient
+      // Auto-downgrade preset if manpower is insufficient.
+      // SSOT: realm_resources.manpower_pool already reflects mobilizationRate (set by refresh-economy).
       const presetManpower: Record<string, number> = {
-        legion: 800, cavalry_wing: 200, cohort: 400, militia: 200,
+        legion: 800, cavalry_wing: 200, cohort: 400, militia: 200, professional: 400,
       };
       const availableManpower = realmRes?.manpower_pool || 0;
-      const mobRate = realmRes?.mobilization_rate || 0.1;
-      const mobilizedCap = Math.floor(availableManpower * mobRate);
+      const goldReserve = realmRes?.gold_reserve || 0;
+      const grainReserve = realmRes?.grain_reserve || 0;
 
-      if (mobilizedCap < (presetManpower[preset] || 200)) {
-        // Try to downgrade
-        const fallbackOrder = ["militia", "cohort", "cavalry_wing", "legion"];
+      // Cheap militia floor: ~80 manpower, ~32 gold, ~20 prod
+      const MIN_RECRUIT_MANPOWER = 80;
+      const MIN_RECRUIT_GOLD = 30;
+      const MIN_RECRUIT_PROD = 20;
+
+      if (availableManpower < MIN_RECRUIT_MANPOWER || goldReserve < MIN_RECRUIT_GOLD || grainReserve < MIN_RECRUIT_PROD) {
+        console.log(`[${factionName}] Cannot recruit — pool=${availableManpower} gold=${goldReserve} grain=${grainReserve}`);
+        return "insufficient_resources";
+      }
+
+      // Downgrade preset if requested size > pool
+      const target = presetManpower[preset] || 200;
+      if (target > availableManpower) {
+        const fallbackOrder = ["militia", "cohort", "professional", "cavalry_wing", "legion"];
         let found = false;
         for (const fb of fallbackOrder) {
-          if (mobilizedCap >= (presetManpower[fb] || 200)) {
-            console.log(`[${factionName}] Downgraded ${preset} → ${fb} (manpower ${mobilizedCap})`);
+          if (availableManpower >= (presetManpower[fb] || 200)) {
+            console.log(`[${factionName}] Downgraded ${preset} → ${fb} (pool ${availableManpower})`);
             preset = fb;
             found = true;
             break;
           }
         }
         if (!found) {
-          console.log(`[${factionName}] Cannot recruit — manpower ${mobilizedCap} too low for any preset`);
-          return "insufficient_manpower";
+          // Recruit a smallest-possible militia using free-form manpower.
+          preset = "militia";
         }
       }
+
+      // Cap manpower to what's actually affordable across all 3 resources.
+      // Costs (per soldier, MILITIA): gold 0.4, prod 0.25
+      const maxByGold = Math.floor(goldReserve / 0.4);
+      const maxByProd = Math.floor(grainReserve / 0.25);
+      const requestedManpower = Math.max(
+        MIN_RECRUIT_MANPOWER,
+        Math.min(presetManpower[preset] || 200, availableManpower, maxByGold, maxByProd),
+      );
 
       await invokeFunction(supabaseUrl, supabaseKey, "command-dispatch", {
         sessionId, turnNumber: turn,
         actor: { name: factionName, type: "ai_faction" },
         commandType: "RECRUIT_STACK",
         commandPayload: {
-          stackName: name, presetKey: preset,
+          stackName: name, presetKey: preset, manpower: requestedManpower,
           note: action.description,
           chronicleText: action.narrativeNote || `${factionName} verbuje novou armádu: ${name}.`,
         },

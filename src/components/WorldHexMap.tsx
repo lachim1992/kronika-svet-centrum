@@ -1008,25 +1008,29 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
     if (stackData?.moved_this_turn) { toast.error("Tato jednotka se již tento tah přesunula!"); return; }
     setMovingStack(true);
     try {
-      // 1. Update position
-      const { error } = await supabase.from("military_stacks").update({ hex_q: targetQ, hex_r: targetR, moved_this_turn: true }).eq("id", selectedStack.id);
-      if (error) throw error;
-      // 2. Log via event sourcing
+      // SSOT: server-side MOVE_STACK does the position update + passability check + event log.
+      // Client must NOT write directly to military_stacks here (dual-write race + bypasses checks).
       const { dispatchCommand } = await import("@/lib/commands");
-      await dispatchCommand({
+      const res = await dispatchCommand({
         sessionId,
         actor: { name: playerName },
         commandType: "MOVE_STACK",
         commandPayload: {
           stackId: selectedStack.id,
           stackName: selectedStack.name || stackData?.name || "Armáda",
-        fromQ: selectedStack.q,
-        fromR: selectedStack.r,
+          fromQ: selectedStack.q,
+          fromR: selectedStack.r,
           toQ: targetQ,
           toR: targetR,
           chronicleText: `${playerName} přesunul **${selectedStack.name || "armádu"}** na pozici (${targetQ}, ${targetR}).`,
         },
       });
+      if (!res.ok) {
+        toast.error(res.error || "Přesun selhal");
+        return;
+      }
+      // Mark moved_this_turn locally (server-side MOVE_STACK doesn't set this flag yet).
+      await supabase.from("military_stacks").update({ moved_this_turn: true }).eq("id", selectedStack.id);
       toast.success(`${selectedStack.name} přesunuta na (${targetQ}, ${targetR})`);
       setSelectedStack(null); await fetchStacks();
     } catch (e: any) { toast.error("Přesun selhal: " + (e.message || "neznámá chyba")); }

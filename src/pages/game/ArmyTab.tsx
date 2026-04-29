@@ -125,8 +125,9 @@ const ArmyTab = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, re
   const [stacks, setStacks] = useState<Stack[]>([]);
   const [generals, setGenerals] = useState<General[]>([]);
   const realm = (realmProp as RealmRes | null) || null;
-  // Local setter retained for optimistic mobilization slider preview only.
-  const setRealm = (_next: any) => { /* no-op: realm is canonical via prop */ };
+  // Local slider preview — keeps the bar responsive while the canonical realm
+  // value updates asynchronously after dispatchCommand.
+  const [sliderRate, setSliderRate] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [selectedStack, setSelectedStack] = useState<Stack | null>(null);
   const [showRecruit, setShowRecruit] = useState(false);
@@ -182,15 +183,19 @@ const ArmyTab = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, re
   if (myCities.length === 0 && effectiveOwnerName !== currentPlayerName) {
     myCities = cities.filter(c => c.owner_player === currentPlayerName);
   }
-  const mobRate = realm?.mobilization_rate || 0.1;
+  // Mobilization rate: prefer live slider preview, fall back to canonical realm value.
+  const mobRate = sliderRate ?? realm?.mobilization_rate ?? 0.1;
   const wf = computeWorkforceBreakdown(myCities, mobRate);
   const computedPool = wf.effectiveActivePop;
   const totalPower = stacks.filter(s => s.is_active).reduce((s, st) => s + st.power, 0);
-  const totalCommitted = stacks.filter(s => s.is_active).reduce((s, st) => s + st.compositions.reduce((a, c) => a + c.manpower, 0), 0);
+  const totalCommitted = realm?.manpower_committed
+    ?? stacks.filter(s => s.is_active).reduce((s, st) => s + st.compositions.reduce((a, c) => a + c.manpower, 0), 0);
   const maxMobPct = Math.round(wf.maxMobilization * 100);
   // Mobilization cap = how many can be mobilized at current rate
   const mobilizationCap = wf.mobilized;
-  const availableManpower = Math.max(0, mobilizationCap - totalCommitted);
+  // Available manpower: canonical realm.manpower_pool is the SSOT (set by backend after recruit/refresh).
+  // Fallback to derived (cap − committed) only if the realm row is missing.
+  const availableManpower = realm?.manpower_pool ?? Math.max(0, mobilizationCap - totalCommitted);
   const isOverMobCap = mobRate > wf.maxMobilization;
   const overMobPenalty = isOverMobCap ? Math.round((mobRate - wf.maxMobilization) * 100) : 0;
 
@@ -331,10 +336,8 @@ const ArmyTab = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, re
           min={0}
           step={1}
           onValueChange={(val) => {
-            if (!realm) return;
-            const rate = val[0] / 100;
-            const newWf = computeWorkforceBreakdown(myCities, rate);
-            setRealm({ ...realm, mobilization_rate: rate, manpower_pool: newWf.effectiveActivePop });
+            // Live preview: update local slider state so the bar reacts instantly.
+            setSliderRate(val[0] / 100);
           }}
           onValueCommit={async (val) => {
             if (!realm) return;
@@ -345,8 +348,7 @@ const ArmyTab = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, re
             if (newCap < totalCommitted) {
               setPendingMobRate(rate);
               setShowDemobilize(true);
-              // Revert slider visually
-              setRealm({ ...realm, mobilization_rate: mobRate, manpower_pool: wf.effectiveActivePop });
+              setSliderRate(null); // revert preview to canonical
               return;
             }
             const res = await dispatchCommand({
@@ -355,7 +357,14 @@ const ArmyTab = ({ sessionId, currentPlayerName, currentTurn, myRole, cities, re
               commandType: "SET_MOBILIZATION",
               commandPayload: { rate, manpowerPool: newWf.effectiveActivePop },
             });
-            if (!res.ok) { toast.error(res.error || "Změna mobilizace selhala"); return; }
+            if (!res.ok) {
+              toast.error(res.error || "Změna mobilizace selhala");
+              setSliderRate(null);
+              return;
+            }
+            // Keep preview until parent prop refreshes; clear on next render via effect below.
+            setSliderRate(null);
+            onRefetch?.();
             fetchMilitary();
           }}
           className="w-full"

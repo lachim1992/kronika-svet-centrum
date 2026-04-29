@@ -31,9 +31,16 @@ export const UNIT_WEIGHTS: Record<string, number> = {
   PROFESSIONAL: 1.3,
 };
 
+// HALVED in Apr 2026 balance pass — must mirror command-dispatch UNIT_GOLD_FACTOR.
 export const UNIT_GOLD_FACTOR: Record<string, number> = {
-  MILITIA: 0.8,
-  PROFESSIONAL: 2,
+  MILITIA: 0.4,
+  PROFESSIONAL: 1.0,
+};
+
+// Production cost per soldier — must mirror command-dispatch UNIT_PROD_FACTOR.
+export const UNIT_PROD_FACTOR: Record<string, number> = {
+  MILITIA: 0.25,
+  PROFESSIONAL: 0.75,
 };
 
 export const FORMATION_PRESETS: Record<string, { label: string; composition: { unit_type: string; manpower: number }[]; formation_type: string; morale: number; gold_override?: number; requires_buildings?: string[] }> = {

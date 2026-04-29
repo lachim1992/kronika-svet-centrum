@@ -1074,9 +1074,28 @@ const FORMATION_PRESETS: Record<string, { label: string; composition: { unit_typ
   legion: { label: "Zárodek legie", composition: [{ unit_type: "MILITIA", manpower: 400 }, { unit_type: "PROFESSIONAL", manpower: 400 }], formation_type: "LEGION", morale: 70, gold_override: 80, requires_buildings: ["barracks", "smithy"] },
 };
 
-// Mixed recruitment cost: 40% production, 30% wealth
-const UNIT_GOLD_FACTOR: Record<string, number> = { MILITIA: 0.8, PROFESSIONAL: 2 };
-const UNIT_PROD_FACTOR: Record<string, number> = { MILITIA: 0.5, PROFESSIONAL: 1.5 };
+// Mixed recruitment cost: HALVED (Apr 2026 balance pass — wealth & prod /2; manpower untouched)
+const UNIT_GOLD_FACTOR: Record<string, number> = { MILITIA: 0.4, PROFESSIONAL: 1.0 };
+const UNIT_PROD_FACTOR: Record<string, number> = { MILITIA: 0.25, PROFESSIONAL: 0.75 };
+
+// Combat power per soldier (used for stack.power on creation/reinforce)
+const UNIT_POWER_FACTOR: Record<string, number> = { MILITIA: 1.0, PROFESSIONAL: 2.2 };
+
+function computeStackPower(
+  composition: Array<{ unit_type: string; manpower: number }>,
+  morale: number,
+  generalSkill = 0,
+): number {
+  let base = 0;
+  for (const c of composition) {
+    base += c.manpower * (UNIT_POWER_FACTOR[c.unit_type] ?? 1.0);
+  }
+  // Morale 0..100 → 0.5..1.2 multiplier
+  const moraleMult = 0.5 + (Math.max(0, Math.min(100, morale)) / 100) * 0.7;
+  // General skill 0..10 → +0% .. +25% multiplier
+  const generalMult = 1 + (Math.max(0, Math.min(10, generalSkill)) / 10) * 0.25;
+  return Math.round(base * moraleMult * generalMult);
+}
 const UNIT_TYPE_LABELS: Record<string, string> = { MILITIA: "Milice", PROFESSIONAL: "Profesionálové" };
 const ACTIVE_POP_WEIGHTS = { peasants: 1.0, burghers: 0.7, clerics: 0.2, warriors: 0.9 };
 const DEFAULT_ACTIVE_POP_RATIO = 0.5;
@@ -1190,12 +1209,14 @@ async function executeRecruitStack(
   const finalMorale = Math.min(100, adjustedMorale + disciplineBonus);
 
   // ── 1. Create stack ──
+  const stackPower = computeStackPower(scaledComposition, finalMorale, 0);
   const { data: stack, error: stackErr } = await supabase.from("military_stacks").insert({
     session_id: sessionId, player_name: playerName, owner_player: playerName,
     name: stackName.trim(),
     formation_type: preset.formation_type, morale: finalMorale,
     soldiers: totalManpower,
     unit_count: totalManpower,
+    power: stackPower,
     assignment: "idle",
   }).select("id").single();
 
@@ -2315,6 +2336,24 @@ async function executeReinforceStack(
       }
     }
   }
+
+  // Recompute stack power + soldier counters from updated composition
+  const { data: updatedComps } = await supabase
+    .from("military_stack_composition")
+    .select("unit_type, manpower")
+    .eq("stack_id", stackId);
+  const totalSoldiers = (updatedComps || []).reduce((s: number, c: any) => s + (c.manpower || 0), 0);
+  const { data: stackRow } = await supabase.from("military_stacks")
+    .select("morale, general_id").eq("id", stackId).maybeSingle();
+  let genSkill = 0;
+  if (stackRow?.general_id) {
+    const { data: gen } = await supabase.from("generals").select("skill").eq("id", stackRow.general_id).maybeSingle();
+    genSkill = gen?.skill || 0;
+  }
+  const newPower = computeStackPower(updatedComps || [], stackRow?.morale ?? 70, genSkill);
+  await supabase.from("military_stacks").update({
+    soldiers: totalSoldiers, unit_count: totalSoldiers, power: newPower,
+  }).eq("id", stackId);
 
   await supabase.from("realm_resources").update({
     manpower_committed: (realm.manpower_committed || 0) + (addedManpower || 0),
