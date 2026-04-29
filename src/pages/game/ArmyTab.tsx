@@ -1177,6 +1177,11 @@ function RecruitDialog({
                       );
                     })}
                   </div>
+                  {preset.requires_buildings && preset.requires_buildings.length > 0 && (
+                    <div className="mt-1.5 text-[11px] text-amber-600 dark:text-amber-400">
+                      ⚠ Vyžaduje budovy ve městě: {preset.requires_buildings.join(", ")}
+                    </div>
+                  )}
                 </div>
               );
             })}
