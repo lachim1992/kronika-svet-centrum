@@ -390,7 +390,13 @@ PRAVIDLA ROZHODOVÁNÍ:
 2. DIPLOMACIE: Vyhrožuj, nabízej smír, komunikuj — vše skrze diplomatické zprávy.
 3. VÁLKA: PŘED vyhlášením války MUSÍŠ nejdřív poslat ultimátum (send_ultimatum). Válku můžeš vyhlásit až v DALŠÍM kole po ultimátu.
 4. MÍR: Pokud válka trvá a jsi v nevýhodě, nabídni mír. Pokud jsi silný, požaduj podmínky.
-5. ARMÁDA: Verbuj vojsko úměrně hrozbám a zdrojům. DODRŽUJ doporučenou mobilizační sazbu.
+5. ARMÁDA — DOKTRÍNA (PROAKTIVNÍ + REAKTIVNÍ):
+   • PROAKTIVNĚ: Udržuj stálou armádu úměrnou velikosti říše i v míru. Cílový počet vojáků = 5–12 % populace podle osobnosti (aggressive 10–12 %, defensive 7–9 %, balanced 5–7 %, pacifist 3–5 %).
+   • REAKTIVNĚ: Při ⚠ NAPĚTÍ zdvojnásob recruit_army. Při 🔴 VÁLCE recruit_army v KAŽDÉM kole, dokud máš zdroje.
+   • Pokud totalArmyPower < 50 % nepřátelské viditelné síly → KRITICKÉ: 2× recruit_army.
+   • PRVNÍ tahy hry (turn ≤ 5): vždy aspoň 1× recruit_army (militia, manpower 80–200), abys měl základní armádu.
+   • Levné minimum: militia preset za ~32 zlata + ~20 produkce + ~80 mužů — vždy si můžeš dovolit.
+   • DODRŽUJ doporučenou mobilizační sazbu (suggestedMobilizationRate).
 6. STAVBY: Stavěj budovy které odpovídají tvé situaci (obrana při válce, ekonomika v míru).
 7. Max 8 akcí za kolo (více v době války).
 8. Odpovídej ČESKY. Diplomatické zprávy piš v dobovém středověkém tónu odpovídajícím tvé osobnosti.
