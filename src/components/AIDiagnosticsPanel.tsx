@@ -267,6 +267,11 @@ const AIDiagnosticsPanel = ({ sessionId }: Props) => {
             </CardContent>
           </Card>
         </TabsContent>
+
+        {/* ── ENGINE TAB ── */}
+        <TabsContent value="engine" className="mt-3">
+          <AIFactionEnginePanel sessionId={sessionId} />
+        </TabsContent>
       </Tabs>
     </div>
   );
