@@ -44,6 +44,7 @@ interface Pact {
 }
 interface ActionLog {
   id: string; player_name: string; turn_number: number; action_type: string; description: string; created_at: string;
+  metadata?: any;
 }
 interface DiplomacyRoom {
   id: string; participant_a: string; participant_b: string; room_type: string;
@@ -148,7 +149,8 @@ const DiplomacyDebugPanel = ({ sessionId }: Props) => {
         supabase.from("diplomatic_memory").select("*").eq("session_id", sessionId).order("turn_number", { ascending: false }).limit(200),
         supabase.from("faction_intents").select("*").eq("session_id", sessionId).order("created_turn", { ascending: false }).limit(100),
         supabase.from("diplomatic_pacts").select("*").eq("session_id", sessionId).order("created_at", { ascending: false }).limit(50),
-        supabase.from("world_action_log").select("*").eq("session_id", sessionId)
+        supabase.from("world_action_log").select("id, player_name, turn_number, action_type, description, created_at, metadata")
+          .eq("session_id", sessionId)
           .in("action_type", ["ai_faction_turn", "diplomacy", "war_declared", "peace_offered", "treaty", "pact_created", "pact_broken"])
           .order("turn_number", { ascending: false }).limit(100),
         supabase.from("diplomacy_rooms").select("id, participant_a, participant_b, room_type").eq("session_id", sessionId),
@@ -425,27 +427,126 @@ const DiplomacyDebugPanel = ({ sessionId }: Props) => {
     const dipLogs = actionLogs.filter(a => a.action_type === "ai_faction_turn" && a.player_name === selectedFaction);
     return (
       <div className="space-y-2">
-        <p className="text-xs text-muted-foreground">AI Turn logy pro {selectedFaction} — diplomatické rozhodování</p>
-        <ScrollArea className="h-[350px]">
+        <p className="text-xs text-muted-foreground">AI Turn logy pro {selectedFaction} — kompletní rozhodovací trace</p>
+        <ScrollArea className="h-[450px]">
           {dipLogs.map(log => {
-            // Parse the internal thought from description
             const thought = log.description?.match(/\[.*?\]\.\s*(.*)/)?.[1] || log.description;
+            const m = log.metadata;
             return (
               <Card key={log.id} className="p-2 mb-2">
                 <div className="flex items-center gap-2 text-xs">
                   <Brain className="h-3 w-3 text-primary" />
                   <span className="font-display font-semibold">Rok {log.turn_number}</span>
+                  {m?.doctrine && <Badge variant="secondary" className="text-[9px]">{m.doctrine}</Badge>}
+                  {m?.war_state && <Badge variant="outline" className="text-[9px]">{m.war_state}</Badge>}
+                  {m?.ms_elapsed && <span className="text-[9px] text-muted-foreground">{m.ms_elapsed}ms</span>}
                   <span className="text-[10px] text-muted-foreground ml-auto">{new Date(log.created_at).toLocaleString("cs")}</span>
                 </div>
-                <p className="text-xs mt-1 whitespace-pre-wrap">{thought}</p>
+                <p className="text-xs mt-1 mb-2 whitespace-pre-wrap">{thought}</p>
+
+                {m && (
+                  <div className="space-y-2 border-t border-border/40 pt-2">
+                    {/* Vstupní signály */}
+                    {m.inputs && (
+                      <div>
+                        <p className="text-[10px] font-semibold text-muted-foreground mb-1">📊 Vstupní signály</p>
+                        <div className="grid grid-cols-2 gap-2 text-[10px]">
+                          {m.inputs.military && (
+                            <div className="bg-muted/30 p-1.5 rounded">
+                              <p className="font-semibold text-foreground/80 mb-0.5">⚔ Vojensky</p>
+                              <p>Stacky: {m.inputs.military.my_stacks_count} • Síla: {m.inputs.military.my_total_power}</p>
+                              <p>Manpower: {m.inputs.military.manpower_pool} • Mob: {Math.round((m.inputs.military.mobilization_rate || 0) * 100)}%</p>
+                              <p>Nepřítel: {m.inputs.military.enemy_visible_power} • Stav: {m.inputs.military.war_state}</p>
+                            </div>
+                          )}
+                          {m.inputs.economic && (
+                            <div className="bg-muted/30 p-1.5 rounded">
+                              <p className="font-semibold text-foreground/80 mb-0.5">💰 Ekonomicky</p>
+                              <p>Zlato: {m.inputs.economic.gold} • Obilí: {m.inputs.economic.grain}</p>
+                              <p>Wealth: {m.inputs.economic.wealth} • Prod: {m.inputs.economic.production}</p>
+                              <p>Kapacita: {m.inputs.economic.capacity} • Víra: {m.inputs.economic.faith}</p>
+                            </div>
+                          )}
+                          {m.inputs.diplomatic && (
+                            <div className="bg-muted/30 p-1.5 rounded">
+                              <p className="font-semibold text-foreground/80 mb-0.5">🤝 Diplomaticky</p>
+                              <p>Pakty: {m.inputs.diplomatic.active_pacts} • Záměry: {m.inputs.diplomatic.active_intents}</p>
+                              <p>Spojenci: {m.inputs.diplomatic.allied_relations} • Nepřátelé: {m.inputs.diplomatic.hostile_relations}</p>
+                              <p>Ultimáta: {m.inputs.diplomatic.pending_ultimatums}</p>
+                            </div>
+                          )}
+                          {m.inputs.spatial && (
+                            <div className="bg-muted/30 p-1.5 rounded">
+                              <p className="font-semibold text-foreground/80 mb-0.5">🗺️ Prostorově</p>
+                              <p>Města: {m.inputs.spatial.my_cities} • Provincie: {m.inputs.spatial.my_provinces}</p>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Zvážené paměti */}
+                    {Array.isArray(m.weighted_memories) && m.weighted_memories.length > 0 && (
+                      <div>
+                        <p className="text-[10px] font-semibold text-muted-foreground mb-1">🧠 Zvážené paměti (top {m.weighted_memories.length})</p>
+                        <table className="w-full text-[10px]">
+                          <tbody>
+                            {m.weighted_memories.map((mem: any, i: number) => (
+                              <tr key={i} className="border-b border-border/20">
+                                <td className="p-1">{MEMORY_ICONS[mem.type] || "•"}</td>
+                                <td className="p-1 font-semibold">{mem.target}</td>
+                                <td className="p-1"><Badge variant="outline" className="text-[9px]">w {Math.round(mem.weight)}</Badge></td>
+                                <td className="p-1 truncate text-muted-foreground">{mem.detail}</td>
+                                <td className="p-1 text-muted-foreground text-right">R{mem.turn}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+
+                    {/* Kandidátní vs provedené */}
+                    {(Array.isArray(m.candidate_actions) && m.candidate_actions.length > 0) && (
+                      <div>
+                        <p className="text-[10px] font-semibold text-muted-foreground mb-1">⚙ Kandidátní → provedené akce</p>
+                        <div className="space-y-0.5">
+                          {m.candidate_actions.map((a: any, i: number) => {
+                            const exec = (m.executed_actions || [])[i];
+                            const ok = exec?.ok;
+                            return (
+                              <div key={i} className="flex items-center gap-2 text-[10px] bg-muted/20 px-1.5 py-1 rounded">
+                                <span className={ok ? "text-green-500" : exec ? "text-destructive" : "text-muted-foreground"}>
+                                  {ok ? "✅" : exec ? "❌" : "·"}
+                                </span>
+                                <Badge variant="outline" className="text-[9px]">{a.type}</Badge>
+                                {a.target && <span className="text-foreground/70">→ {a.target}</span>}
+                                <span className="text-muted-foreground truncate flex-1">{a.description}</span>
+                                {exec?.error && <span className="text-destructive text-[9px]" title={exec.error}>{exec.error.substring(0, 40)}</span>}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+                    {m.counts && (
+                      <div className="flex gap-2 text-[10px] text-muted-foreground">
+                        <span>📋 {m.counts.planned} plán</span>
+                        <span className="text-green-500">✓ {m.counts.executed}</span>
+                        {m.counts.failed > 0 && <span className="text-destructive">✗ {m.counts.failed}</span>}
+                        <span>⚔ {m.counts.recruits}</span>
+                        <span>🏗 {m.counts.builds}</span>
+                        <span>⚡ {m.counts.attacks}</span>
+                        <span>💱 {m.counts.trades}</span>
+                      </div>
+                    )}
+                  </div>
+                )}
               </Card>
             );
           })}
           {!dipLogs.length && <p className="text-muted-foreground text-sm py-4 text-center">Žádné záznamy.</p>}
         </ScrollArea>
-        <p className="text-[10px] text-muted-foreground italic">
-          💡 Podrobnější diplomacy_trace (vstupní signály, zvážené paměti, kandidátní akce) — připraveno k rozšíření v ai-faction-turn.
-        </p>
       </div>
     );
   };

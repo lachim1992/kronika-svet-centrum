@@ -189,6 +189,15 @@ Deno.serve(async (req) => {
     // Each faction acts independently (no shared turn-state mutation between AI),
     // and its queued battles are resolved sequentially after its decision.
     // ═══════════════════════════════════════════
+    // Reset moved_this_turn for ALL stacks in the session — fresh movement budget for everyone (players + AI).
+    try {
+      const { error: resetErr } = await supabase.from("military_stacks")
+        .update({ moved_this_turn: false })
+        .eq("session_id", sessionId)
+        .eq("moved_this_turn", true);
+      if (resetErr) console.warn("[commit-turn] moved_this_turn reset error:", resetErr.message);
+    } catch (e) { console.warn("[commit-turn] moved_this_turn reset exception:", (e as Error).message); }
+
     const t3 = Date.now();
     try {
       const { data: aiFactions } = await supabase.from("ai_factions")

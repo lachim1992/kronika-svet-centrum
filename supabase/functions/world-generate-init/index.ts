@@ -1009,9 +1009,13 @@ DŮLEŽITÉ: affected_players/faction MUSÍ používat přesná jména frakcí. 
               "Quintus","Rex","Servius","Titus","Ulric","Varro","Xander","Zeno",
               "Ajax","Balthus","Corvus","Drago","Erebus","Falco","Gryphon","Hadrian",
             ];
+            // Sphaera roster: 22 players per team — must match bulk-generate-teams.
             const POSITIONS = [
-              { pos: "goalkeeper", count: 1 }, { pos: "defender", count: 4 },
-              { pos: "midfielder", count: 3 }, { pos: "attacker", count: 3 },
+              { pos: "praetor", count: 2 },
+              { pos: "guardian", count: 5 },
+              { pos: "striker", count: 7 },
+              { pos: "carrier", count: 4 },
+              { pos: "exactor", count: 4 },
             ];
             const baseRating = 30 + Math.floor((popTotal / 200) * 3);
             const usedPrefixes = new Set<string>();
@@ -1043,7 +1047,7 @@ DŮLEŽITÉ: affected_players/faction MUSÍ používat přesná jména frakcí. 
                     let pName: string;
                     do { pName = FIRST_NAMES[Math.floor(Math.random() * FIRST_NAMES.length)]; } while (usedNames.has(pName));
                     usedNames.add(pName);
-                    const isCap = posGroup.pos === "midfielder" && pi === 0;
+                    const isCap = posGroup.pos === "carrier" && pi === 0;
                     playerRows.push({
                       session_id: sessionId, team_id: teamRow.id, name: pName,
                       position: posGroup.pos, is_captain: isCap,

@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import AIFactionEnginePanel from "@/components/dev/AIFactionEnginePanel";
 
 interface Props {
   sessionId: string;
@@ -76,11 +77,12 @@ const AIDiagnosticsPanel = ({ sessionId }: Props) => {
       </div>
 
       <Tabs defaultValue="behavior" className="w-full">
-        <TabsList className="grid w-full grid-cols-4 h-auto">
+        <TabsList className="grid w-full grid-cols-5 h-auto">
           <TabsTrigger value="behavior" className="text-xs gap-1"><Brain className="h-3.5 w-3.5" />Chování</TabsTrigger>
           <TabsTrigger value="economy" className="text-xs gap-1"><Activity className="h-3.5 w-3.5" />Ekonomika</TabsTrigger>
           <TabsTrigger value="diplomacy" className="text-xs gap-1"><HandshakeIcon className="h-3.5 w-3.5" />Diplomacie</TabsTrigger>
           <TabsTrigger value="pipeline" className="text-xs gap-1"><Sparkles className="h-3.5 w-3.5" />Pipeline</TabsTrigger>
+          <TabsTrigger value="engine" className="text-xs gap-1"><Swords className="h-3.5 w-3.5" />Engine</TabsTrigger>
         </TabsList>
 
         {/* ── BEHAVIOR TAB ── */}
@@ -265,6 +267,11 @@ const AIDiagnosticsPanel = ({ sessionId }: Props) => {
               </Collapsible>
             </CardContent>
           </Card>
+        </TabsContent>
+
+        {/* ── ENGINE TAB ── */}
+        <TabsContent value="engine" className="mt-3">
+          <AIFactionEnginePanel sessionId={sessionId} />
         </TabsContent>
       </Tabs>
     </div>
