@@ -297,13 +297,7 @@ const HexTile = memo(({
               )}
             </>
           ) : (
-            <>
-              {/* Biome icon only — name shown in side panel */}
-              <text x={cx} y={cy} textAnchor="middle" dominantBaseline="middle"
-                fill="white" fontSize="14" opacity={0.8} style={{ pointerEvents: "none" }}>
-                {BIOME_ICONS[hex.biome_family] || ""}
-              </text>
-            </>
+            <>{/* Biome avatar removed — biom info available in side panel */}</>
           )}
           {hex.coastal && !hex.has_river && cities.length === 0 && (
             <text x={cx} y={cy + 16} textAnchor="middle" dominantBaseline="middle"
