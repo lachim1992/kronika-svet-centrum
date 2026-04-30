@@ -882,23 +882,134 @@ Rozhodni, co frakce udělá v tomto kole. ${milMetrics.warState === "war" ? "JST
       await supabase.from("faction_intents").insert(intentRows);
     }
 
-    // ── Audit log ──
+    // ── Derive doctrine from candidate actions for diagnostics ──
+    const candidateActions = (result.actions || []).slice(0, 8);
+    const recruits = candidateActions.filter((a: any) => a.actionType === "recruit_army").length;
+    const builds = candidateActions.filter((a: any) => a.actionType === "build_building").length;
+    const attacks = candidateActions.filter((a: any) => ["attack_target", "apply_military_pressure", "send_ultimatum", "declare_war"].includes(a.actionType)).length;
+    const trades = candidateActions.filter((a: any) => ["trade", "open_trade_with_node", "propose_trade_pact"].includes(a.actionType)).length;
+    let doctrine: "military" | "expansion" | "economy" | "diplomacy" = "diplomacy";
+    if (recruits + attacks >= 2) doctrine = "military";
+    else if (candidateActions.some((a: any) => a.actionType === "found_settlement" || a.actionType === "annex_node")) doctrine = "expansion";
+    else if (builds + trades >= 2) doctrine = "economy";
+
+    // ── Compute deltas vs previous turn (best-effort) ──
+    let powerDelta = 0;
+    let wealthDelta = 0;
+    try {
+      const { data: prevSummary } = await supabase.from("ai_faction_turn_summary")
+        .select("power_delta, wealth_delta")
+        .eq("session_id", sessionId).eq("faction_name", factionName)
+        .lt("turn_number", turn).order("turn_number", { ascending: false }).limit(1).maybeSingle();
+      // We don't store absolute power; instead approximate delta from milMetrics vs prev.
+      // For now, store current totalArmyPower / totalWealth as the "delta" snapshot proxy.
+      powerDelta = milMetrics.totalArmyPower || 0;
+      wealthDelta = Math.round(realmRes?.total_wealth || 0);
+      void prevSummary;
+    } catch (_e) { /* noop */ }
+
+    const failedActions = executedActions.filter((a) => !a.executed);
+    const okActions = executedActions.filter((a) => a.executed);
+
+    // ── Build rich metadata trace ──
+    const otherSide = (m: any) => m.faction_a === factionName ? m.faction_b : m.faction_a;
+    const traceMetadata = {
+      doctrine,
+      war_state: milMetrics.warState,
+      inputs: {
+        military: {
+          manpower_pool: realmRes?.manpower_pool || 0,
+          mobilization_rate: realmRes?.mobilization_rate || 0,
+          my_stacks_count: (stacks || []).length,
+          my_total_power: milMetrics.totalArmyPower,
+          deployed_power: milMetrics.deployedArmyPower,
+          enemy_visible_power: milMetrics.enemyVisiblePower,
+          war_state: milMetrics.warState,
+          war_readiness: milMetrics.warReadiness,
+        },
+        economic: {
+          wealth: Math.round(realmRes?.total_wealth || 0),
+          production: Math.round(realmRes?.total_production || 0),
+          production_reserve: Math.round(realmRes?.production_reserve || 0),
+          capacity: Math.round(realmRes?.total_capacity || 0),
+          grain: resources.grain,
+          gold: resources.gold,
+          faith: realmRes?.faith || 0,
+        },
+        diplomatic: {
+          active_pacts: (pendingPactEvents || []).length,
+          hostile_relations: (diplomRelations || []).filter((r: any) => r.overall_disposition < -20).length,
+          allied_relations: (diplomRelations || []).filter((r: any) => r.overall_disposition > 20).length,
+          pending_ultimatums: sentUltimatums.length,
+          active_intents: (activeIntents || []).length,
+        },
+        spatial: {
+          my_cities: (cities || []).length,
+          my_provinces: (myProvinces || []).length,
+        },
+      },
+      weighted_memories: (diplomMemories || []).slice(0, 8).map((m: any) => ({
+        type: m.memory_type,
+        target: otherSide(m),
+        importance: m.importance,
+        decay: m.decay_rate,
+        weight: Math.max(0, (m.importance || 0) * (1 - (m.decay_rate || 0) * Math.max(0, turn - (m.turn_number || turn)))),
+        detail: (m.detail || "").substring(0, 140),
+        turn: m.turn_number,
+      })),
+      candidate_actions: candidateActions.map((a: any) => ({
+        type: a.actionType,
+        target: a.targetCity || a.targetPlayer || a.targetNodeName || a.targetStackName || null,
+        description: (a.description || "").substring(0, 120),
+      })),
+      executed_actions: executedActions.map((a) => ({
+        type: a.actionType,
+        ok: !!a.executed,
+        error: a.error ? String(a.error).substring(0, 200) : null,
+      })),
+      counts: { recruits, builds, attacks, trades, planned: candidateActions.length, executed: okActions.length, failed: failedActions.length },
+      model_used: "google/gemini-2.5-pro",
+      ms_elapsed: Date.now() - startedAt,
+    };
+
+    // ── Audit log (with rich metadata trace for AI Lab) ──
     await supabase.from("world_action_log").insert({
       session_id: sessionId,
       player_name: factionName,
       turn_number: turn,
       action_type: "ai_faction_turn",
-      description: `AI frakce ${factionName}: ${executedActions.filter(a => a.executed).length}/${executedActions.length} akcí [${milMetrics.warState}]. ${result.internalThought || ""}`,
-    }).then(() => {}, () => {});
+      description: `AI frakce ${factionName}: ${okActions.length}/${executedActions.length} akcí [${milMetrics.warState}][${doctrine}]. ${result.internalThought || ""}`,
+      metadata: traceMetadata,
+    }).then(() => {}, (e: any) => { console.warn("world_action_log insert:", e?.message); });
+
+    // ── Per-turn summary row for AI Lab Engine panel ──
+    await supabase.from("ai_faction_turn_summary").upsert({
+      session_id: sessionId,
+      faction_name: factionName,
+      turn_number: turn,
+      doctrine,
+      war_state: milMetrics.warState,
+      actions_planned: candidateActions.length,
+      actions_executed: okActions.length,
+      actions_failed: failedActions.length,
+      recruits_attempted: recruits,
+      builds_attempted: builds,
+      attacks_attempted: attacks,
+      power_delta: powerDelta,
+      wealth_delta: wealthDelta,
+      internal_thought: (result.internalThought || "").substring(0, 2000),
+      failure_reasons: failedActions.map((a: any) => `${a.actionType}: ${String(a.error || "unknown").substring(0, 160)}`).slice(0, 8),
+    }, { onConflict: "session_id,faction_name,turn_number" }).then(() => {}, (e: any) => { console.warn("ai_faction_turn_summary upsert:", e?.message); });
 
     // Economy is now handled centrally by commit-turn (no duplicate processing)
 
     return json({
       faction: factionName,
-      actionsCount: executedActions.filter(a => a.executed).length,
+      actionsCount: executedActions.filter((a) => a.executed).length,
       actions: executedActions,
       militaryMetrics: milMetrics,
       internalThought: result.internalThought,
+      doctrine,
     });
   } catch (e) {
     console.error("ai-faction-turn error:", e);
