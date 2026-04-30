@@ -59,7 +59,7 @@ const AIFactionEnginePanel = ({ sessionId }: Props) => {
   const fetchRows = async () => {
     setLoading(true);
     try {
-      const { data, error } = await supabase
+      const { data, error } = await (supabase as any)
         .from("ai_faction_turn_summary")
         .select("*")
         .eq("session_id", sessionId)
