@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import AIFactionEnginePanel from "@/components/dev/AIFactionEnginePanel";
 
 interface Props {
   sessionId: string;
