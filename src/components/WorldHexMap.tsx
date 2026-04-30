@@ -998,12 +998,10 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
 
   const handleMoveStackToHex = useCallback(async (targetQ: number, targetR: number) => {
     if (!selectedStack || movingStack) return;
-    const { data: stackData } = await supabase.from("military_stacks").select("moved_this_turn, name").eq("id", selectedStack.id).single();
-    if (stackData?.moved_this_turn) { toast.error("Tato jednotka se již tento tah přesunula!"); return; }
     setMovingStack(true);
     try {
-      // SSOT: server-side MOVE_STACK does the position update + passability check + event log.
-      // Client must NOT write directly to military_stacks here (dual-write race + bypasses checks).
+      // SSOT: server-side MOVE_STACK validates moved_this_turn, passability, distance,
+      // updates position + flag, and logs the event. Client never writes to military_stacks.
       const { dispatchCommand } = await import("@/lib/commands");
       const res = await dispatchCommand({
         sessionId,
@@ -1011,7 +1009,7 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
         commandType: "MOVE_STACK",
         commandPayload: {
           stackId: selectedStack.id,
-          stackName: selectedStack.name || stackData?.name || "Armáda",
+          stackName: selectedStack.name || "Armáda",
           fromQ: selectedStack.q,
           fromR: selectedStack.r,
           toQ: targetQ,
@@ -1023,8 +1021,6 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
         toast.error(res.error || "Přesun selhal");
         return;
       }
-      // Mark moved_this_turn locally (server-side MOVE_STACK doesn't set this flag yet).
-      await supabase.from("military_stacks").update({ moved_this_turn: true }).eq("id", selectedStack.id);
       toast.success(`${selectedStack.name} přesunuta na (${targetQ}, ${targetR})`);
       setSelectedStack(null); await fetchStacks();
     } catch (e: any) { toast.error("Přesun selhal: " + (e.message || "neznámá chyba")); }
