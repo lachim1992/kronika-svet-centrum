@@ -757,11 +757,12 @@ async function executeMoveStack(
 
   // Verify stack belongs to actor
   const { data: stack } = await supabase.from("military_stacks")
-    .select("id, player_name, hex_q, hex_r")
+    .select("id, player_name, hex_q, hex_r, moved_this_turn")
     .eq("id", stackId).eq("session_id", sessionId).single();
 
   if (!stack) return { events: [], error: "Stack not found" };
   if (stack.player_name !== actor.name) return { events: [], error: "Not your stack" };
+  if (stack.moved_this_turn) return { events: [], error: "Tato jednotka se již tento tah přesunula" };
 
   // Server-side distance check
   const actualFromQ = fromQ ?? stack.hex_q;
@@ -792,9 +793,9 @@ async function executeMoveStack(
     }
   }
 
-  // Update stack position
+  // Update stack position + moved flag (SSOT — server is the only writer of moved_this_turn)
   const { error: moveErr } = await supabase.from("military_stacks")
-    .update({ hex_q: toQ, hex_r: toR })
+    .update({ hex_q: toQ, hex_r: toR, moved_this_turn: true })
     .eq("id", stackId)
     .eq("session_id", sessionId);
 
