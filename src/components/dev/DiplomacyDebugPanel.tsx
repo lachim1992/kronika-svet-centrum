@@ -44,6 +44,7 @@ interface Pact {
 }
 interface ActionLog {
   id: string; player_name: string; turn_number: number; action_type: string; description: string; created_at: string;
+  metadata?: any;
 }
 interface DiplomacyRoom {
   id: string; participant_a: string; participant_b: string; room_type: string;
@@ -148,7 +149,8 @@ const DiplomacyDebugPanel = ({ sessionId }: Props) => {
         supabase.from("diplomatic_memory").select("*").eq("session_id", sessionId).order("turn_number", { ascending: false }).limit(200),
         supabase.from("faction_intents").select("*").eq("session_id", sessionId).order("created_turn", { ascending: false }).limit(100),
         supabase.from("diplomatic_pacts").select("*").eq("session_id", sessionId).order("created_at", { ascending: false }).limit(50),
-        supabase.from("world_action_log").select("*").eq("session_id", sessionId)
+        supabase.from("world_action_log").select("id, player_name, turn_number, action_type, description, created_at, metadata")
+          .eq("session_id", sessionId)
           .in("action_type", ["ai_faction_turn", "diplomacy", "war_declared", "peace_offered", "treaty", "pact_created", "pact_broken"])
           .order("turn_number", { ascending: false }).limit(100),
         supabase.from("diplomacy_rooms").select("id, participant_a, participant_b, room_type").eq("session_id", sessionId),
