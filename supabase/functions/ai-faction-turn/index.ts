@@ -151,6 +151,7 @@ function computeMilitaryMetrics(
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
+  const startedAt = Date.now();
   try {
     const { sessionId, factionName } = await req.json();
 
