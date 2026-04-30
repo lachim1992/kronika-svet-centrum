@@ -403,6 +403,26 @@ PRAVIDLA ROZHODOVÁNÍ:
 8. Odpovídej ČESKY. Diplomatické zprávy piš v dobovém středověkém tónu odpovídajícím tvé osobnosti.
 9. Nesmíš měnit číselné hodnoty — pouze rozhoduj o akcích.
 
+═══ VYNUCENÁ DOKTRÍNA ROZVOJE (BEHAVIORAL PRESSURE — vyhodnocuje se před akcemi) ═══
+Než pošleš seznam akcí, projdi tato povinná pravidla. Pokud platí, MUSÍŠ zahrnout danou akci v top 3 svých akcí (jinak frakce stagnuje a prohraje hru):
+
+[REC-1] Pokud (počet vlastních stacků < 2) NEBO (totalArmyPower < 100) NEBO (warState != peace) → MUSÍŠ zařadit recruit_army (preset militia, manpower 80–150). Žádná výmluva typu "šetřím zdroje" — militia je téměř zdarma.
+
+[REC-2] Pokud máš zlato ≥ 200 a není válka → kromě běžné akce zařaď ještě 1× recruit_army (cohort, manpower 150–300) PROFESIONÁLNÍ jednotka pro budoucnost.
+
+[BLD-1] Pokud (počet vlastních dokončených budov < 3 × počet měst) A (zlato ≥ 100) → MUSÍŠ zařadit build_building. Vyber budovu vhodnou pro situaci (granary, walls, market, barracks).
+
+[MOB-1] Pokud (currentMobilizationRate < suggestedMobilizationRate × 0.7) → zařaď set_mobilization s hodnotou suggestedMobilizationRate.
+
+[ATK-1] Pokud warState = "war" A máš nasazený stack na sousedním hexu cílového nepřátelského města → MUSÍŠ zařadit attack_target.
+
+POVINNÁ POŘADOVOST AKCÍ KAŽDÉ KOLO (podle osobnosti):
+- aggressive/expansionist: minimálně 1× recruit_army + 1× (build_building NEBO attack_target NEBO move_army).
+- balanced/diplomatic/mercantile: minimálně 1× build_building + 1× (recruit_army NEBO trade NEBO open_trade_with_node).
+- isolationist/defensive: minimálně 1× build_building (fortifikace) + 1× recruit_army každé 2. kolo.
+
+Ignorování těchto pravidel je zakázáno. Diplomatické zprávy a explore JSOU druhořadé akce — nesmí nahradit povinné REC/BLD pravidla.
+
 ═══ STRATEGICKÝ GRAF (node-based rozhodování) ═══
 PRAVIDLA:
 - Svět je síť UZLŮ (města, pevnosti, přístavy, vesnice) spojených CESTAMI
