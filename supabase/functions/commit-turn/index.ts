@@ -252,6 +252,35 @@ Deno.serve(async (req) => {
           city_stability: 30, // freshly conquered = unstable
         }).eq("id", city.id);
 
+        // Transfer territory ownership: province + all its hexes follow the annexed city.
+        try {
+          const oldOwner = city.owner_player;
+          const cq = (city as any).province_q;
+          const cr = (city as any).province_r;
+          if (cq != null && cr != null) {
+            // Find the province containing the city's hex.
+            const { data: cityHex } = await supabase.from("province_hexes")
+              .select("province_id")
+              .eq("session_id", sessionId).eq("q", cq).eq("r", cr).maybeSingle();
+            const provinceId = cityHex?.province_id;
+            if (provinceId) {
+              await supabase.from("provinces").update({ owner_player: newOwner })
+                .eq("id", provinceId).eq("session_id", sessionId);
+              await supabase.from("province_hexes").update({ owner_player: newOwner })
+                .eq("session_id", sessionId).eq("province_id", provinceId);
+            } else {
+              // Fallback: flip just the single hex under the city.
+              await supabase.from("province_hexes").update({ owner_player: newOwner })
+                .eq("session_id", sessionId).eq("q", cq).eq("r", cr);
+            }
+          }
+          // Also flip any province_nodes located in this city.
+          await supabase.from("province_nodes").update({ controlled_by: newOwner })
+            .eq("session_id", sessionId).eq("city_id", city.id);
+        } catch (terrErr) {
+          console.error("annex: territory transfer failed for city", city.id, terrErr);
+        }
+
         await supabase.from("game_events").insert({
           session_id: sessionId, player: newOwner, event_type: "city_annexed",
           turn_number: turnNumber, confirmed: true, truth_state: "canon",
