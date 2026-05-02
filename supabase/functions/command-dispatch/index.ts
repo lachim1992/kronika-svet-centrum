@@ -811,7 +811,7 @@ async function executeMoveStack(
 }
 
 // ═══════════════════════════════════════════
-// POST_BATTLE_DECISION — Conquer / Pillage / Vassalize
+// POST_BATTLE_DECISION — Occupy / Pillage / legacy Vassalize
 // ═══════════════════════════════════════════
 
 async function executePostBattleDecision(
@@ -819,7 +819,7 @@ async function executePostBattleDecision(
   commandId: string, sessionId: string, turnNumber: number,
 ): Promise<CommandResult> {
   const { battleId, decision, cityId } = payload;
-  // decision: "conquer" | "pillage" | "vassalize"
+  // decision: "occupy" | "pillage" | legacy "conquer" | "vassalize"
   if (!battleId) return { events: [], error: "Missing battleId" };
   if (!decision) return { events: [], error: "Missing decision" };
   if (!cityId) return { events: [], error: "Missing cityId" };
@@ -843,35 +843,11 @@ async function executePostBattleDecision(
   const sideEffects: Record<string, any> = { decision, cityId, previousOwner };
 
   switch (decision) {
+    case "occupy":
     case "conquer": {
-      // Transfer city ownership
-      await supabase.from("cities").update({
-        owner_player: actor.name,
-        city_stability: Math.max(5, Math.floor((city.city_stability || 50) * 0.4)),
-        legitimacy: Math.max(0, (city.legitimacy || 50) - 30),
-      }).eq("id", cityId);
-
-      // Transfer province ownership if exists
-      if (city.province_id) {
-        await safeInsert(supabase.from("provinces").update({
-          owner_player: actor.name,
-        }).eq("id", city.province_id).eq("owner_player", previousOwner));
-      }
-
-      // Update wiki
-      await safeInsert(supabase.from("wiki_entries").update({
-        owner_player: actor.name,
-      }).eq("session_id", sessionId).eq("entity_type", "city").eq("entity_id", cityId));
-
-      // Auto-discover for new owner
-      await safeInsert(supabase.from("discoveries").upsert({
-        session_id: sessionId, player_name: actor.name,
-        entity_type: "city", entity_id: cityId, source: "conquered",
-      }, { onConflict: "session_id,player_name,entity_type,entity_id" }));
-
-      chronicleText = `V roce ${turnNumber} dobyl **${actor.name}** město **${cityName}**, které dříve patřilo ${previousOwner}. Nový pořádek se etabluje za cenu stability a legitimity.`;
-      sideEffects.newOwner = actor.name;
-      sideEffects.stabilityAfter = Math.max(5, Math.floor((city.city_stability || 50) * 0.4));
+      chronicleText = `V roce ${turnNumber} upevnil **${actor.name}** okupaci města **${cityName}** (${previousOwner}). O osudu města rozhodne až konec okupační lhůty nebo osvobození.`;
+      sideEffects.occupiedBy = actor.name;
+      sideEffects.liberationDeadlineTurn = city.liberation_deadline_turn;
       break;
     }
 
@@ -943,9 +919,9 @@ async function executePostBattleDecision(
   await safeInsert(supabase.from("city_rumors").insert({
     session_id: sessionId, city_id: cityId, city_name: cityName,
     turn_number: turnNumber, created_by: "system",
-    tone_tag: decision === "conquer" ? "dramatic" : decision === "pillage" ? "alarming" : "tense",
-    text: decision === "conquer"
-      ? `Město ${cityName} padlo do rukou ${actor.name}! Nový vladař přebírá vládu.`
+    tone_tag: decision === "occupy" || decision === "conquer" ? "dramatic" : decision === "pillage" ? "alarming" : "tense",
+    text: decision === "occupy" || decision === "conquer"
+      ? `Město ${cityName} zůstává pod okupací ${actor.name}. Trvalá anexe ještě nenastala.`
       : decision === "pillage"
       ? `Hrůza! Armáda ${actor.name} zpustošila ${cityName}. Ruiny a popel jsou vše, co zbylo.`
       : `Město ${cityName} se poddalo ${actor.name} jako vazal. Tribut bude placen výměnou za přežití.`,
@@ -974,7 +950,7 @@ async function executePostBattleDecision(
     ...base,
     event_type: "battle_outcome",
     city_id: cityId,
-    note: `${actor.name} rozhodl o osudu města ${cityName}: ${decision === "conquer" ? "Dobytí" : decision === "pillage" ? "Drancování" : "Vazalství"}.`,
+    note: `${actor.name} rozhodl o osudu města ${cityName}: ${decision === "occupy" || decision === "conquer" ? "Potvrzená okupace" : decision === "pillage" ? "Drancování" : "Vazalství"}.`,
     importance: "critical",
     reference: { battleId, decision, cityId, previousOwner, ...sideEffects },
   }], chronicleText, sideEffects);
