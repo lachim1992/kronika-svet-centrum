@@ -498,6 +498,7 @@ export type Database = {
       }
       battle_lobbies: {
         Row: {
+          ai_responded_at: string | null
           attacker_formation: string
           attacker_player: string
           attacker_ready: boolean
@@ -516,6 +517,8 @@ export type Database = {
           defender_speech_modifier: number | null
           defender_stack_id: string | null
           id: string
+          is_ai_attacker: boolean | null
+          is_ai_defender: boolean | null
           resolved_at: string | null
           session_id: string
           status: string
@@ -526,6 +529,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          ai_responded_at?: string | null
           attacker_formation?: string
           attacker_player: string
           attacker_ready?: boolean
@@ -544,6 +548,8 @@ export type Database = {
           defender_speech_modifier?: number | null
           defender_stack_id?: string | null
           id?: string
+          is_ai_attacker?: boolean | null
+          is_ai_defender?: boolean | null
           resolved_at?: string | null
           session_id: string
           status?: string
@@ -554,6 +560,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          ai_responded_at?: string | null
           attacker_formation?: string
           attacker_player?: string
           attacker_ready?: boolean
@@ -572,6 +579,8 @@ export type Database = {
           defender_speech_modifier?: number | null
           defender_stack_id?: string | null
           id?: string
+          is_ai_attacker?: boolean | null
+          is_ai_defender?: boolean | null
           resolved_at?: string | null
           session_id?: string
           status?: string
@@ -918,6 +927,7 @@ export type Database = {
           last_turn_wood_prod: number
           legitimacy: number
           level: string
+          liberation_deadline_turn: number | null
           local_grain_reserve: number
           local_granary_capacity: number
           local_renown: number
@@ -927,6 +937,9 @@ export type Database = {
           military_garrison: number
           mobility_rate: number
           name: string
+          occupation_loyalty: number | null
+          occupation_turn: number | null
+          occupied_by: string | null
           overcrowding_ratio: number
           owner_player: string
           population_burghers: number
@@ -987,6 +1000,7 @@ export type Database = {
           last_turn_wood_prod?: number
           legitimacy?: number
           level?: string
+          liberation_deadline_turn?: number | null
           local_grain_reserve?: number
           local_granary_capacity?: number
           local_renown?: number
@@ -996,6 +1010,9 @@ export type Database = {
           military_garrison?: number
           mobility_rate?: number
           name: string
+          occupation_loyalty?: number | null
+          occupation_turn?: number | null
+          occupied_by?: string | null
           overcrowding_ratio?: number
           owner_player: string
           population_burghers?: number
@@ -1056,6 +1073,7 @@ export type Database = {
           last_turn_wood_prod?: number
           legitimacy?: number
           level?: string
+          liberation_deadline_turn?: number | null
           local_grain_reserve?: number
           local_granary_capacity?: number
           local_renown?: number
@@ -1065,6 +1083,9 @@ export type Database = {
           military_garrison?: number
           mobility_rate?: number
           name?: string
+          occupation_loyalty?: number | null
+          occupation_turn?: number | null
+          occupied_by?: string | null
           overcrowding_ratio?: number
           owner_player?: string
           population_burghers?: number
