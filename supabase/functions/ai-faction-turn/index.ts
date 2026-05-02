@@ -833,6 +833,15 @@ Rozhodni, co frakce udělá v tomto kole. ${milMetrics.warState === "war" ? "JST
       console.log(`[${factionName}] Auto-raised mobilization to ${warMobRate} due to war state`);
     }
 
+    // ── Auto-raise mobilization for stack-less factions (turn ≥ 3) ──
+    // Prevents permanent stagnation where AI never accumulates manpower to recruit.
+    const myActiveStackCount = (stacks || []).filter((s: any) => s.is_active).length;
+    if (myActiveStackCount === 0 && turn >= 3 && (realmRes?.mobilization_rate || 0.1) < 0.25) {
+      await supabase.from("realm_resources").update({ mobilization_rate: 0.25 })
+        .eq("session_id", sessionId).eq("player_name", factionName);
+      console.log(`[${factionName}] Auto-raised mobilization to 0.25 (no active stacks)`);
+    }
+
     // ── SPORTS ONBOARDING: ensure AI has all 3 association types, academies, teams, funding ──
     await ensureSportsOnboarding(supabase, sessionId, factionName, turn, cities || []);
 
