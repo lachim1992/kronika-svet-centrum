@@ -1046,6 +1046,9 @@ async function executeDeclareWar(
 // ═══════════════════════════════════════════
 
 const FORMATION_PRESETS: Record<string, { label: string; composition: { unit_type: string; manpower: number }[]; formation_type: string; morale: number; gold_override?: number; prod_override?: number; requires_buildings?: string[] }> = {
+  // Emergency militia: small recovery unit so disarmed factions (player or AI) can rebuild
+  // without waiting many turns. Free-form manpower scales this further down if needed.
+  emergency_militia: { label: "Krizová milice", composition: [{ unit_type: "MILITIA", manpower: 80 }], formation_type: "UNIT", morale: 45 },
   militia: { label: "Milice", composition: [{ unit_type: "MILITIA", manpower: 400 }], formation_type: "UNIT", morale: 55 },
   professional: { label: "Profesionální vojsko", composition: [{ unit_type: "PROFESSIONAL", manpower: 400 }], formation_type: "UNIT", morale: 70, requires_buildings: ["barracks", "smithy"] },
   legion: { label: "Zárodek legie", composition: [{ unit_type: "MILITIA", manpower: 400 }, { unit_type: "PROFESSIONAL", manpower: 400 }], formation_type: "LEGION", morale: 70, gold_override: 80, requires_buildings: ["barracks", "smithy"] },
@@ -2415,8 +2418,47 @@ async function executeBuildBuilding(
   supabase: any, base: any, actor: Actor, payload: any,
   commandId: string, sessionId: string, turnNumber: number,
 ): Promise<CommandResult> {
-  const { cityId, cityName, building, isAiGenerated, chronicleText } = payload;
+  let { cityId, cityName, building, isAiGenerated, chronicleText } = payload;
+
+  // Back-compat: AI faction calls send buildingName/templateId without a building object.
+  // Resolve the template into a building payload so the command does not 400 on legacy callers.
+  if (!building && (payload.templateId || payload.buildingName)) {
+    let tmpl: any = null;
+    if (payload.templateId) {
+      const { data } = await supabase.from("building_templates")
+        .select("*").eq("id", payload.templateId).maybeSingle();
+      tmpl = data;
+    }
+    if (!tmpl && payload.buildingName) {
+      const { data } = await supabase.from("building_templates")
+        .select("*").ilike("name", payload.buildingName).limit(1).maybeSingle();
+      tmpl = data;
+    }
+    if (tmpl) {
+      building = {
+        template_id: tmpl.id,
+        name: tmpl.name,
+        description: tmpl.description,
+        category: tmpl.category,
+        cost_wealth: tmpl.cost_wealth || 0,
+        cost_wood: tmpl.cost_wood || 0,
+        cost_stone: tmpl.cost_stone || 0,
+        cost_iron: tmpl.cost_iron || 0,
+        build_duration: tmpl.build_duration || tmpl.build_turns || 1,
+        effects: tmpl.effects || {},
+        max_level: tmpl.max_level,
+        building_tags: tmpl.building_tags || null,
+      };
+    }
+  }
+
   if (!cityId || !building) return { events: [], error: "Missing cityId or building" };
+
+  // Resolve city name if missing
+  if (!cityName) {
+    const { data: c } = await supabase.from("cities").select("name").eq("id", cityId).maybeSingle();
+    cityName = c?.name || "město";
+  }
 
   const realm = await getRealmFull(supabase, sessionId, actor.name);
   if (!realm) return { events: [], error: "Realm not found" };
