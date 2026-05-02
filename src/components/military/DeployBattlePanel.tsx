@@ -67,14 +67,6 @@ export default function DeployBattlePanel({ sessionId, currentPlayerName, curren
   const [loading, setLoading] = useState(false);
 
   const myCities = cities.filter(c => c.owner_player === currentPlayerName);
-  const occupiedCityIds = new Set(
-    cities.filter(c => !!c.occupied_by).map(c => c.id),
-  );
-  const preparingCityIds = new Set(
-    activeLobbies
-      .filter(lb => lb.status === "preparing" && !!lb.defender_city_id)
-      .map(lb => lb.defender_city_id),
-  );
   const deployedStacks = stacks.filter(s => s.is_active && s.is_deployed);
   const garrisonStacks = stacks.filter(s => s.is_active && !s.is_deployed);
 
@@ -335,7 +327,7 @@ export default function DeployBattlePanel({ sessionId, currentPlayerName, curren
       {/* Battle target selection dialog */}
       {battleTargetDialog && (
         <BattleTargetDialog stack={battleTargetDialog} sessionId={sessionId}
-          currentPlayerName={currentPlayerName} cities={cities} stacks={stacks}
+          currentPlayerName={currentPlayerName} cities={cities} stacks={stacks} activeLobbies={activeLobbies}
           onClose={() => setBattleTargetDialog(null)}
           onCreateLobby={createLobby} />
       )}
@@ -448,9 +440,9 @@ function MoveStackDialog({ stack, sessionId, onClose, onRefresh }: {
 }
 
 // ═══ Battle Target Selection Dialog ═══
-function BattleTargetDialog({ stack, sessionId, currentPlayerName, cities, stacks, onClose, onCreateLobby }: {
+function BattleTargetDialog({ stack, sessionId, currentPlayerName, cities, stacks, activeLobbies, onClose, onCreateLobby }: {
   stack: Stack; sessionId: string; currentPlayerName: string;
-  cities: any[]; stacks: Stack[];
+  cities: any[]; stacks: Stack[]; activeLobbies: any[];
   onClose: () => void; onCreateLobby: (stack: Stack, type: "city" | "stack", targetId: string) => void;
 }) {
   const [targetType, setTargetType] = useState<"city" | "stack">("city");
@@ -463,12 +455,19 @@ function BattleTargetDialog({ stack, sessionId, currentPlayerName, cities, stack
     ...AXIAL_NEIGHBORS.map(n => `${q + n.dq},${r + n.dr}`),
   ]);
 
+  const preparingCityIds = new Set(
+    activeLobbies
+      .filter(lb => lb.status === "preparing" && !!lb.defender_city_id)
+      .map(lb => lb.defender_city_id),
+  );
+
   const enemyCities = cities.filter(c => {
     const occupiedByMe = c.occupied_by === currentPlayerName;
     const occupiedByAnyone = !!c.occupied_by;
     return c.owner_player !== currentPlayerName &&
       !occupiedByMe &&
       !occupiedByAnyone &&
+      !preparingCityIds.has(c.id) &&
       reachableHexes.has(`${c.province_q},${c.province_r}`);
   });
 
