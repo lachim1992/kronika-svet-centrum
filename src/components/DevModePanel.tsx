@@ -18,6 +18,7 @@ import GoodsEconomyDebugPanel from "@/components/dev/GoodsEconomyDebugPanel";
 import DevConsolePanel from "@/components/dev/DevConsolePanel";
 import ProvinceGraphPanel from "@/components/dev/ProvinceGraphPanel";
 import HexNodeMechanicsPanel from "@/components/dev/HexNodeMechanicsPanel";
+import DevRoadSpeedupPanel from "@/components/dev/DevRoadSpeedupPanel";
 import { getPermissions } from "@/lib/permissions";
 
 interface DevModePanelProps {
@@ -145,6 +146,9 @@ const DevModePanel = ({
           <ProvinceGraphPanel sessionId={sessionId} />
           <div className="border-t border-border/50 pt-3">
             <HexNodeMechanicsPanel sessionId={sessionId} />
+          </div>
+          <div className="border-t border-border/50 pt-3">
+            <DevRoadSpeedupPanel sessionId={sessionId} onRefetch={onRefetch} />
           </div>
         </div>
       </DevSection>
