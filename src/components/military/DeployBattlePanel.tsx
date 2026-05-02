@@ -118,6 +118,18 @@ export default function DeployBattlePanel({ sessionId, currentPlayerName, curren
     toast.success(`Bitevní lobby vytvořeno — ${attackerStack.name} vs ${targetCity?.name || targetStack?.name}`);
     setActiveLobby(data);
     setBattleTargetDialog(null);
+
+    // If defender is AI faction, trigger autopilot response immediately
+    try {
+      const { data: aiCheck } = await supabase.from("ai_factions")
+        .select("faction_name").eq("session_id", sessionId).eq("faction_name", defenderPlayer).eq("is_active", true).maybeSingle();
+      if (aiCheck) {
+        // Fire-and-forget; AI autopilot will set ready and possibly auto-resolve
+        supabase.functions.invoke("ai-battle-respond", {
+          body: { lobby_id: data.id, side: "defender" },
+        }).catch(err => console.warn("ai-battle-respond defender:", err));
+      }
+    } catch (_) { /* non-critical */ }
   };
 
   return (
