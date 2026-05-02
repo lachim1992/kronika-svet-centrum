@@ -221,7 +221,7 @@ Deno.serve(async (req) => {
     // ═══════════════════════════════════════════
     try {
       const { data: dueOccupations } = await supabase.from("cities")
-        .select("id, name, owner_player, occupied_by, occupation_turn, occupation_loyalty")
+        .select("id, name, owner_player, occupied_by, occupation_turn, occupation_loyalty, province_q, province_r")
         .eq("session_id", sessionId)
         .not("occupied_by", "is", null)
         .lte("liberation_deadline_turn", turnNumber);
