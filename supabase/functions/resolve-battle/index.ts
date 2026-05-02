@@ -259,17 +259,45 @@ Deno.serve(async (req) => {
     const casualtiesAttacker = Math.round(attackerTotalManpower * casualtyRateAttacker);
     const casualtiesDefender = Math.round(defenderTotalManpower * casualtyRateDefender);
 
-    // Apply casualties and check for destruction
+    // Apply casualties and check for destruction + UPDATE STACK SSOT (unit_count, power)
+    const attackerOriginalUnits = attackerStack.unit_count || attackerTotalManpower;
     const attackerRemaining = await applyCasualties(supabase, attackerStack.military_stack_composition || [], casualtiesAttacker);
+    const attackerLost = Math.max(0, attackerOriginalUnits - attackerRemaining);
     if (attackerRemaining <= 0) {
-      await supabase.from("military_stacks").update({ is_active: false, is_deployed: false }).eq("id", attackerStack.id);
+      await supabase.from("military_stacks").update({ is_active: false, is_deployed: false, unit_count: 0, power: 0, soldiers: 0 }).eq("id", attackerStack.id);
+    } else {
+      // Recompute power = manpower * morale_factor (simple SSOT formula)
+      const newPower = Math.round(attackerRemaining * (0.5 + (attackerMorale + (result.includes("victory") ? 5 : -10)) / 200));
+      await supabase.from("military_stacks").update({ unit_count: attackerRemaining, power: Math.max(1, newPower), soldiers: attackerRemaining }).eq("id", attackerStack.id);
+    }
+    // Release manpower_committed on attacker realm
+    if (attackerLost > 0 && attackerStack.player_name) {
+      const { data: realm } = await supabase.from("realm_resources").select("manpower_committed, manpower_pool").eq("session_id", session_id).eq("player_name", attackerStack.player_name).maybeSingle();
+      if (realm) {
+        await supabase.from("realm_resources").update({
+          manpower_committed: Math.max(0, (realm.manpower_committed || 0) - attackerLost),
+        }).eq("session_id", session_id).eq("player_name", attackerStack.player_name);
+      }
     }
 
     let defenderStackRemaining = -1;
-    if (defenderComps.length > 0) {
+    if (defenderComps.length > 0 && defenderStack) {
+      const defenderOriginalUnits = defenderStack.unit_count || defenderComps.reduce((s: number, c: any) => s + (c.manpower || 0), 0);
       defenderStackRemaining = await applyCasualties(supabase, defenderComps, Math.round(casualtiesDefender * 0.7));
-      if (defenderStackRemaining <= 0 && defenderStack) {
-        await supabase.from("military_stacks").update({ is_active: false, is_deployed: false }).eq("id", defenderStack.id);
+      const defenderLost = Math.max(0, defenderOriginalUnits - defenderStackRemaining);
+      if (defenderStackRemaining <= 0) {
+        await supabase.from("military_stacks").update({ is_active: false, is_deployed: false, unit_count: 0, power: 0, soldiers: 0 }).eq("id", defenderStack.id);
+      } else {
+        const newPower = Math.round(defenderStackRemaining * (0.5 + (defenderMorale + (result.includes("victory") ? -15 : 5)) / 200));
+        await supabase.from("military_stacks").update({ unit_count: defenderStackRemaining, power: Math.max(1, newPower), soldiers: defenderStackRemaining }).eq("id", defenderStack.id);
+      }
+      if (defenderLost > 0 && defenderStack.player_name) {
+        const { data: dRealm } = await supabase.from("realm_resources").select("manpower_committed").eq("session_id", session_id).eq("player_name", defenderStack.player_name).maybeSingle();
+        if (dRealm) {
+          await supabase.from("realm_resources").update({
+            manpower_committed: Math.max(0, (dRealm.manpower_committed || 0) - defenderLost),
+          }).eq("session_id", session_id).eq("player_name", defenderStack.player_name);
+        }
       }
     }
     if (defenderCity) {
@@ -350,11 +378,34 @@ Deno.serve(async (req) => {
       }).eq("id", inputRouteId);
     }
 
+    // ═══ CITY OCCUPATION (Phase 1 of 2-phase conquest) ═══
+    // Vítězství v městské bitvě → 3-tahová okupace. Po 3 tazích bez liberation = anexe.
+    if (isVictory && defenderCity && (result === "decisive_victory" || result === "victory")) {
+      const attackerPlayer = player_name || attackerStack.player_name;
+      const occupationLoyalty = result === "decisive_victory" ? 25 : 15;
+      await supabase.from("cities").update({
+        occupied_by: attackerPlayer,
+        occupation_turn: turnNumber,
+        liberation_deadline_turn: turnNumber + 3,
+        occupation_loyalty: occupationLoyalty,
+        // Production drop on occupation: stability halved
+        city_stability: Math.max(10, Math.round((defenderCity.city_stability || 50) * 0.5)),
+      }).eq("id", defenderCity.id);
+
+      await supabase.from("game_events").insert({
+        session_id, player: attackerPlayer, event_type: "city_occupied",
+        turn_number: turnNumber, confirmed: true, truth_state: "canon",
+        note: `Město ${defenderCity.name} je okupováno! Liberation deadline: rok ${turnNumber + 3}.`,
+        importance: "critical",
+      });
+    }
+
     // Clear battle context on stacks
     await supabase.from("military_stacks").update({ battle_context: null }).eq("id", attacker_stack_id);
     if (defender_stack_id) {
       await supabase.from("military_stacks").update({ battle_context: null }).eq("id", defender_stack_id);
     }
+
 
     // Post-battle decision
     if (needsDecision && defender_city_id) {
