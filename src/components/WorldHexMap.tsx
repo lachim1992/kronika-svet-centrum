@@ -1081,10 +1081,10 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
       // Show result immediately
       setBattleResult(data);
       setBattleTarget(null); setSelectedStack(null);
-      await Promise.all([fetchStacks(), fetchCities()]);
+      await Promise.all([fetchStacks(), fetchCities(), fetchProvinces()]);
     } catch (e: any) { toast.error("Chyba: " + (e.message || "neznámá")); }
     setSubmittingBattle(false);
-  }, [selectedStack, battleTarget, citiesByCoord, stacksByCoord, playerName, sessionId, battleSpeech, speechResult, fetchStacks, fetchCities]);
+  }, [selectedStack, battleTarget, citiesByCoord, stacksByCoord, playerName, sessionId, battleSpeech, speechResult, fetchStacks, fetchCities, fetchProvinces]);
 
   const handleTileClick = useCallback((q: number, r: number, isFrontier: boolean) => {
     if (dragRef.current?.moved) return;
