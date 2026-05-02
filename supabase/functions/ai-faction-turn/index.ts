@@ -911,21 +911,23 @@ Rozhodni, co frakce udělá v tomto kole. ${milMetrics.warState === "war" ? "JST
         const mp = rrNow?.manpower_pool || 0;
         const gold = rrNow?.gold_reserve || 0;
         const grain = rrNow?.grain_reserve || 0;
-        if (mp >= 40 && gold >= 20 && grain >= 10) {
-          console.log(`[${factionName}] FORCED RECRUIT (0 stacks; mp=${mp} gold=${gold} grain=${grain})`);
+        // emergency_militia floor: ~50 men → 50 mp, 20 gold, 13 prod
+        if (mp >= 50 && gold >= 20 && grain >= 13) {
+          console.log(`[${factionName}] FORCED RECRUIT emergency_militia (mp=${mp} gold=${gold} grain=${grain})`);
           const forcedAction = {
             actionType: "recruit_army",
-            armyPreset: "militia",
-            armyName: `${factionName} Milice ${turn}`,
+            armyPreset: "emergency_militia",
+            armyName: `${factionName} Krizová milice ${turn}`,
             description: "Deterministický fallback — frakce bez aktivních stacků",
-            narrativeNote: `${factionName} mobilizuje milice, neboť frakce nesmí zůstat bez ozbrojené síly.`,
+            narrativeNote: `${factionName} v zoufalství mobilizuje krizovou milici, neboť žádná frakce nesmí zůstat bez ozbrojené síly.`,
           };
           try {
             const fres = await executeAction(
               supabase, supabaseUrl, supabaseKey, sessionId, turn, factionName, forcedAction, faction,
               sentUltimatums.length > 0, stacks || [], cities || [], allCities || [], enemyStacks || [], { ...realmRes, ...rrNow },
             );
-            executedActions.push({ ...forcedAction, executed: true, result: fres, _forced: true });
+            const failed = typeof fres === "string" && (fres.startsWith("recruit_failed") || fres.endsWith("_failed") || ["insufficient_resources","city_not_found","template_not_found"].includes(fres));
+            executedActions.push({ ...forcedAction, executed: !failed, result: fres, _forced: true, error: failed ? fres : undefined });
           } catch (err) {
             console.error(`[${factionName}] Forced recruit failed:`, err);
             executedActions.push({ ...forcedAction, executed: false, error: (err as Error).message, _forced: true });
