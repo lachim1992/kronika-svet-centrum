@@ -185,9 +185,58 @@ Deno.serve(async (req) => {
     }
 
     // ═══════════════════════════════════════════
+    // 2c. CITY OCCUPATION → ANNEXATION (Phase 2)
+    // Cities that have been occupied past liberation_deadline → ownership transfers.
+    // ═══════════════════════════════════════════
+    try {
+      const { data: dueOccupations } = await supabase.from("cities")
+        .select("id, name, owner_player, occupied_by, occupation_turn, occupation_loyalty")
+        .eq("session_id", sessionId)
+        .not("occupied_by", "is", null)
+        .lte("liberation_deadline_turn", turnNumber);
+
+      let annexed = 0;
+      for (const city of (dueOccupations || [])) {
+        const newOwner = city.occupied_by;
+        // Treasury bonus: attacker gets 30% of city wealth
+        try {
+          const { data: defRealm } = await supabase.from("realm_resources")
+            .select("gold_reserve").eq("session_id", sessionId).eq("player_name", city.owner_player).maybeSingle();
+          const lootGold = Math.floor((defRealm?.gold_reserve || 0) * 0.05); // 5% per city
+          if (lootGold > 0) {
+            await supabase.from("realm_resources").update({ gold_reserve: Math.max(0, (defRealm?.gold_reserve || 0) - lootGold) }).eq("session_id", sessionId).eq("player_name", city.owner_player);
+            const { data: atkRealm } = await supabase.from("realm_resources").select("gold_reserve").eq("session_id", sessionId).eq("player_name", newOwner).maybeSingle();
+            if (atkRealm) {
+              await supabase.from("realm_resources").update({ gold_reserve: (atkRealm.gold_reserve || 0) + lootGold }).eq("session_id", sessionId).eq("player_name", newOwner);
+            }
+          }
+        } catch (_) { /* non-critical */ }
+
+        await supabase.from("cities").update({
+          owner_player: newOwner,
+          occupied_by: null,
+          occupation_turn: null,
+          liberation_deadline_turn: null,
+          occupation_loyalty: 100, // resets to neutral after annexation
+          city_stability: 30, // freshly conquered = unstable
+        }).eq("id", city.id);
+
+        await supabase.from("game_events").insert({
+          session_id: sessionId, player: newOwner, event_type: "city_annexed",
+          turn_number: turnNumber, confirmed: true, truth_state: "canon",
+          note: `Město ${city.name} bylo trvale připojeno k říši ${newOwner}! Předchozí vlastník ${city.owner_player} nestihl liberation.`,
+          importance: "critical",
+        });
+        annexed++;
+      }
+      results.cityAnnexations = { count: annexed };
+    } catch (e) {
+      console.error("city annexation phase error:", e);
+      results.cityAnnexations = { error: (e as Error).message };
+    }
+
+    // ═══════════════════════════════════════════
     // 3. AI FACTIONS — PARALLEL across factions, sequential battles inside.
-    // Each faction acts independently (no shared turn-state mutation between AI),
-    // and its queued battles are resolved sequentially after its decision.
     // ═══════════════════════════════════════════
     // Reset moved_this_turn for ALL stacks in the session — fresh movement budget for everyone (players + AI).
     try {
@@ -197,6 +246,7 @@ Deno.serve(async (req) => {
         .eq("moved_this_turn", true);
       if (resetErr) console.warn("[commit-turn] moved_this_turn reset error:", resetErr.message);
     } catch (e) { console.warn("[commit-turn] moved_this_turn reset exception:", (e as Error).message); }
+
 
     const t3 = Date.now();
     try {
