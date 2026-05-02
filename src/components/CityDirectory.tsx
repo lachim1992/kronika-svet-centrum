@@ -296,12 +296,25 @@ const CityDirectory = ({
               <div className="p-4">
                 <div className="flex items-start justify-between mb-1">
                   <div>
-                    <h3 className="font-display font-semibold text-base flex items-center gap-1.5">
+                     <h3 className="font-display font-semibold text-base flex items-center gap-1.5">
                       {city.name}
                       {STATUS_ICONS[(city as any).status || "ok"]}
                       {city.famine_turn && <Flame className="h-3 w-3 text-destructive" />}
+                      {(city as any).occupied_by && (
+                        <Badge variant="destructive" className="text-[10px] gap-1">
+                          <Shield className="h-3 w-3" />Okupováno
+                        </Badge>
+                      )}
                     </h3>
-                    <p className="text-xs text-muted-foreground">{city.owner_player}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {city.owner_player}
+                      {(city as any).occupied_by && (
+                        <span className="ml-1 text-destructive">
+                          → drží {(city as any).occupied_by}
+                          {(city as any).liberation_deadline_turn && ` (anexe v roce ${(city as any).liberation_deadline_turn})`}
+                        </span>
+                      )}
+                    </p>
                   </div>
                   <div className="flex flex-col items-end gap-1">
                     <Badge variant="secondary" className="text-[10px]">{SETTLEMENT_LABELS[city.settlement_level] || city.level}</Badge>
