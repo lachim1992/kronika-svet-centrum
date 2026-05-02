@@ -323,7 +323,7 @@ Deno.serve(async (req) => {
       }).eq("id", defenderStack.id);
     }
 
-    const needsDecision = result === "decisive_victory" || result === "victory" || result === "pyrrhic_victory";
+    const needsDecision = !!defender_city_id && (result === "decisive_victory" || result === "victory" || result === "pyrrhic_victory");
 
     // Write battle record
     const { data: battleRecord, error: battleErr } = await supabase.from("battles").insert({
@@ -408,6 +408,7 @@ Deno.serve(async (req) => {
 
 
     // Post-battle decision
+    // City ownership is now governed by the 2-phase occupation flow; decision remains only for aftermath handling.
     if (needsDecision && defender_city_id) {
       await supabase.from("action_queue").insert({
         session_id, player_name: player_name || attackerStack.player_name,
@@ -629,7 +630,7 @@ Deno.serve(async (req) => {
       casualties_attacker: casualtiesAttacker,
       casualties_defender: casualtiesDefender,
       luck_roll: luckRoll,
-      needs_decision: needsDecision && !!defender_city_id,
+      needs_decision: needsDecision,
       attacker_destroyed: attackerDestroyed,
       defender_destroyed: !!defenderDestroyed,
     }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
