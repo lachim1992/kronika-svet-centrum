@@ -378,11 +378,34 @@ Deno.serve(async (req) => {
       }).eq("id", inputRouteId);
     }
 
+    // ═══ CITY OCCUPATION (Phase 1 of 2-phase conquest) ═══
+    // Vítězství v městské bitvě → 3-tahová okupace. Po 3 tazích bez liberation = anexe.
+    if (isVictory && defenderCity && (result === "decisive_victory" || result === "victory")) {
+      const attackerPlayer = player_name || attackerStack.player_name;
+      const occupationLoyalty = result === "decisive_victory" ? 25 : 15;
+      await supabase.from("cities").update({
+        occupied_by: attackerPlayer,
+        occupation_turn: turnNumber,
+        liberation_deadline_turn: turnNumber + 3,
+        occupation_loyalty: occupationLoyalty,
+        // Production drop on occupation: stability halved
+        city_stability: Math.max(10, Math.round((defenderCity.city_stability || 50) * 0.5)),
+      }).eq("id", defenderCity.id);
+
+      await supabase.from("game_events").insert({
+        session_id, player: attackerPlayer, event_type: "city_occupied",
+        turn_number: turnNumber, confirmed: true, truth_state: "canon",
+        note: `Město ${defenderCity.name} je okupováno! Liberation deadline: rok ${turnNumber + 3}.`,
+        importance: "critical",
+      });
+    }
+
     // Clear battle context on stacks
     await supabase.from("military_stacks").update({ battle_context: null }).eq("id", attacker_stack_id);
     if (defender_stack_id) {
       await supabase.from("military_stacks").update({ battle_context: null }).eq("id", defender_stack_id);
     }
+
 
     // Post-battle decision
     if (needsDecision && defender_city_id) {
