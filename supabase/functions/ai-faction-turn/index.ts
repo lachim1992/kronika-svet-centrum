@@ -2047,9 +2047,12 @@ async function invokeFunction(
     headers: { Authorization: `Bearer ${supabaseKey}`, "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
+  const text = await res.text().catch(() => "");
+  let parsed: any = null;
+  try { parsed = text ? JSON.parse(text) : null; } catch { parsed = { raw: text }; }
   if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    throw new Error(`${funcName} failed (${res.status}): ${text}`);
+    // Do not throw — return a structured error so callers can mark the action as failed.
+    return { ok: false, error: parsed?.error || `${funcName} failed (${res.status})`, status: res.status };
   }
-  return res.json();
+  return parsed ?? {};
 }
