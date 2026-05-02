@@ -398,12 +398,30 @@ export default function BattleLobbyPanel({ lobby: initialLobby, currentPlayerNam
                       value={speechText} onChange={e => setSpeechText(e.target.value)}
                       className="text-sm min-h-[60px]"
                     />
-                    <Button size="sm" variant="outline" className="text-xs font-display"
-                      disabled={evaluatingSpeech || !speechText.trim()} onClick={handleEvaluateSpeech}>
-                      {evaluatingSpeech
-                        ? <><Loader2 className="h-3 w-3 mr-1 animate-spin" />Hodnotím...</>
-                        : <><Scroll className="h-3 w-3 mr-1" />Vyhodnotit proslov</>}
-                    </Button>
+                    <div className="flex gap-2">
+                      <Button size="sm" variant="outline" className="text-xs font-display flex-1"
+                        disabled={evaluatingSpeech || !speechText.trim()} onClick={handleEvaluateSpeech}>
+                        {evaluatingSpeech
+                          ? <><Loader2 className="h-3 w-3 mr-1 animate-spin" />Hodnotím...</>
+                          : <><Scroll className="h-3 w-3 mr-1" />Vyhodnotit proslov</>}
+                      </Button>
+                      <Button size="sm" variant="ghost" className="text-xs font-display"
+                        disabled={evaluatingSpeech}
+                        onClick={async () => {
+                          const speechField = isAttacker ? "attacker_speech" : "defender_speech";
+                          const modField = isAttacker ? "attacker_speech_modifier" : "defender_speech_modifier";
+                          const feedbackField = isAttacker ? "attacker_speech_feedback" : "defender_speech_feedback";
+                          await supabase.from("battle_lobbies").update({
+                            [speechField]: "(bez proslovu)",
+                            [modField]: 0,
+                            [feedbackField]: "Velitel mlčel.",
+                          } as any).eq("id", lobby.id);
+                          setLobby(prev => ({ ...prev, [speechField]: "(bez proslovu)", [modField]: 0, [feedbackField]: "Velitel mlčel." }));
+                          toast.info("Proslov přeskočen (0 morálka)");
+                        }}>
+                        Přeskočit
+                      </Button>
+                    </div>
                   </>
                 )}
               </CardContent>
