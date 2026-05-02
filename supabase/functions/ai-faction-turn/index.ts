@@ -898,7 +898,7 @@ Rozhodni, co frakce udělá v tomto kole. ${milMetrics.warState === "war" ? "JST
         const mp = rrNow?.manpower_pool || 0;
         const gold = rrNow?.gold_reserve || 0;
         const grain = rrNow?.grain_reserve || 0;
-        if (mp >= 80 && gold >= 32 && grain >= 20) {
+        if (mp >= 40 && gold >= 20 && grain >= 10) {
           console.log(`[${factionName}] FORCED RECRUIT (0 stacks; mp=${mp} gold=${gold} grain=${grain})`);
           const forcedAction = {
             actionType: "recruit_army",
