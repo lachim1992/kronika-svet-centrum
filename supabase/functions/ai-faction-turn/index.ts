@@ -859,6 +859,47 @@ Rozhodni, co frakce udělá v tomto kole. ${milMetrics.warState === "war" ? "JST
       }
     }
 
+    // ── DETERMINISTIC RECRUIT FALLBACK ──
+    // If AI has 0 active stacks AND can afford militia AND didn't recruit this turn,
+    // force one militia recruit. Breaks "AI never builds army" stagnation.
+    try {
+      const recruitedThisTurn = executedActions.some(
+        (a) => a.actionType === "recruit_army" && a.executed && a.result === "ok",
+      );
+      if (myActiveStackCount === 0 && !recruitedThisTurn) {
+        const { data: rrNow } = await supabase.from("realm_resources")
+          .select("manpower_pool, gold_reserve, grain_reserve")
+          .eq("session_id", sessionId).eq("player_name", factionName).maybeSingle();
+        const mp = rrNow?.manpower_pool || 0;
+        const gold = rrNow?.gold_reserve || 0;
+        const grain = rrNow?.grain_reserve || 0;
+        if (mp >= 80 && gold >= 32 && grain >= 20) {
+          console.log(`[${factionName}] FORCED RECRUIT (0 stacks; mp=${mp} gold=${gold} grain=${grain})`);
+          const forcedAction = {
+            actionType: "recruit_army",
+            armyPreset: "militia",
+            armyName: `${factionName} Milice ${turn}`,
+            description: "Deterministický fallback — frakce bez aktivních stacků",
+            narrativeNote: `${factionName} mobilizuje milice, neboť frakce nesmí zůstat bez ozbrojené síly.`,
+          };
+          try {
+            const fres = await executeAction(
+              supabase, supabaseUrl, supabaseKey, sessionId, turn, factionName, forcedAction, faction,
+              sentUltimatums.length > 0, stacks || [], cities || [], allCities || [], enemyStacks || [], { ...realmRes, ...rrNow },
+            );
+            executedActions.push({ ...forcedAction, executed: true, result: fres, _forced: true });
+          } catch (err) {
+            console.error(`[${factionName}] Forced recruit failed:`, err);
+            executedActions.push({ ...forcedAction, executed: false, error: (err as Error).message, _forced: true });
+          }
+        } else {
+          console.log(`[${factionName}] Forced recruit skipped — insufficient (mp=${mp} gold=${gold} grain=${grain})`);
+        }
+      }
+    } catch (e) {
+      console.warn(`[${factionName}] Forced recruit check failed:`, e);
+    }
+
     // ── Update disposition ──
     if (result.dispositionChanges && typeof result.dispositionChanges === "object") {
       const newDisposition = { ...faction.disposition };
