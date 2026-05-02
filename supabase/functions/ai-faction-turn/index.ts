@@ -871,13 +871,26 @@ Rozhodni, co frakce udělá v tomto kole. ${milMetrics.warState === "war" ? "JST
     await ensureSportsOnboarding(supabase, sessionId, factionName, turn, cities || []);
 
     // ── Execute each action ──
+    const FAILURE_RESULTS = new Set([
+      "missing_params", "missing_target", "stack_not_found", "city_not_found", "template_not_found",
+      "no_target", "no_target_in_range", "already_deployed", "already_moved", "not_deployed",
+      "insufficient_resources", "ultimatum_required_first", "war_already_active", "no_active_war",
+      "room_creation_failed",
+    ]);
     for (const action of (result.actions || []).slice(0, 8)) {
       try {
         const executed = await executeAction(
           supabase, supabaseUrl, supabaseKey, sessionId, turn, factionName, action, faction,
           sentUltimatums.length > 0, stacks || [], cities || [], allCities || [], enemyStacks || [], realmRes,
         );
-        executedActions.push({ ...action, executed: true, result: executed });
+        const isFailure = typeof executed === "string"
+          && (FAILURE_RESULTS.has(executed) || executed.endsWith("_failed") || executed.startsWith("recruit_failed"));
+        executedActions.push({
+          ...action,
+          executed: !isFailure,
+          result: executed,
+          error: isFailure ? executed : undefined,
+        });
       } catch (err) {
         console.error(`Action ${action.actionType} failed:`, err);
         executedActions.push({ ...action, executed: false, error: (err as Error).message });
