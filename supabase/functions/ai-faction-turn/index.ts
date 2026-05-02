@@ -1146,54 +1146,49 @@ async function executeAction(
       let preset = action.armyPreset || "militia";
       const name = action.armyName || `${factionName} ${preset} ${turn}`;
 
-      // Auto-downgrade preset if manpower is insufficient.
-      // SSOT: realm_resources.manpower_pool already reflects mobilizationRate (set by refresh-economy).
+      // Aligned with command-dispatch FORMATION_PRESETS (incl. new emergency_militia).
       const presetManpower: Record<string, number> = {
-        legion: 800, cavalry_wing: 200, cohort: 400, militia: 200, professional: 400,
+        emergency_militia: 80, militia: 400, cohort: 400, professional: 400, cavalry_wing: 200, legion: 800,
       };
       const availableManpower = realmRes?.manpower_pool || 0;
       const goldReserve = realmRes?.gold_reserve || 0;
       const grainReserve = realmRes?.grain_reserve || 0;
 
-      // Cheap militia floor: ~80 manpower, ~32 gold, ~20 prod
-      const MIN_RECRUIT_MANPOWER = 80;
-      const MIN_RECRUIT_GOLD = 30;
-      const MIN_RECRUIT_PROD = 20;
+      // Absolute floor for an emergency militia (~50 men): 50 mp, 20 gold, 13 prod.
+      const MIN_RECRUIT_MANPOWER = 50;
+      const MIN_RECRUIT_GOLD = 20;
+      const MIN_RECRUIT_PROD = 13;
 
       if (availableManpower < MIN_RECRUIT_MANPOWER || goldReserve < MIN_RECRUIT_GOLD || grainReserve < MIN_RECRUIT_PROD) {
         console.log(`[${factionName}] Cannot recruit — pool=${availableManpower} gold=${goldReserve} grain=${grainReserve}`);
         return "insufficient_resources";
       }
 
-      // Downgrade preset if requested size > pool
+      // If the requested preset cannot be afforded at full strength, drop down to
+      // emergency_militia so the call always produces a real stack instead of failing.
       const target = presetManpower[preset] || 200;
       if (target > availableManpower) {
-        const fallbackOrder = ["militia", "cohort", "professional", "cavalry_wing", "legion"];
-        let found = false;
-        for (const fb of fallbackOrder) {
-          if (availableManpower >= (presetManpower[fb] || 200)) {
-            console.log(`[${factionName}] Downgraded ${preset} → ${fb} (pool ${availableManpower})`);
-            preset = fb;
-            found = true;
-            break;
-          }
-        }
-        if (!found) {
-          // Recruit a smallest-possible militia using free-form manpower.
-          preset = "militia";
+        const downgrade = ["militia", "cohort", "professional", "cavalry_wing", "legion"]
+          .find((fb) => availableManpower >= (presetManpower[fb] || 9999));
+        if (downgrade) {
+          console.log(`[${factionName}] Downgraded ${preset} → ${downgrade} (pool ${availableManpower})`);
+          preset = downgrade;
+        } else {
+          preset = "emergency_militia";
+          console.log(`[${factionName}] Downgraded to emergency_militia (pool ${availableManpower})`);
         }
       }
 
-      // Cap manpower to what's actually affordable across all 3 resources.
-      // Costs (per soldier, MILITIA): gold 0.4, prod 0.25
+      // Cap manpower to what is actually affordable across all 3 resources.
+      // Costs (per soldier, MILITIA): gold 0.4, prod 0.25.
       const maxByGold = Math.floor(goldReserve / 0.4);
       const maxByProd = Math.floor(grainReserve / 0.25);
       const requestedManpower = Math.max(
-        MIN_RECRUIT_MANPOWER,
+        preset === "emergency_militia" ? 50 : 80,
         Math.min(presetManpower[preset] || 200, availableManpower, maxByGold, maxByProd),
       );
 
-      await invokeFunction(supabaseUrl, supabaseKey, "command-dispatch", {
+      const dispatchRes = await invokeFunction(supabaseUrl, supabaseKey, "command-dispatch", {
         sessionId, turnNumber: turn,
         actor: { name: factionName, type: "ai_faction" },
         commandType: "RECRUIT_STACK",
@@ -1204,6 +1199,31 @@ async function executeAction(
         },
         commandId,
       });
+      if (dispatchRes && dispatchRes.error) {
+        return `recruit_failed: ${dispatchRes.error}`;
+      }
+
+      // Auto-deploy: if the faction had no deployed stacks before this recruit, immediately
+      // place the new stack at the capital so the AI is functional within the same turn.
+      try {
+        const hadDeployed = (myStacks || []).some((s: any) => s.is_active && s.is_deployed);
+        if (!hadDeployed) {
+          const newStackId: string | undefined = dispatchRes?.sideEffects?.stackId;
+          const capital = (myCities || [])[0];
+          if (newStackId && capital) {
+            await supabase.from("military_stacks").update({
+              hex_q: capital.province_q,
+              hex_r: capital.province_r,
+              is_deployed: true,
+              moved_this_turn: false,
+            }).eq("id", newStackId);
+            console.log(`[${factionName}] Auto-deployed ${name} → ${capital.name}`);
+          }
+        }
+      } catch (e) {
+        console.warn(`[${factionName}] Auto-deploy after recruit failed:`, (e as Error).message);
+      }
+
       return "ok";
     }
 
