@@ -1,143 +1,133 @@
+# Military / AI audit and completion plan
 
-## Plný audit a plán: AI Lab + Engine + MOVE_STACK + Liga
+## What the audit confirmed
+- AI factions in session `IJ8BQ5` are still effectively disarmed: only Lachim currently has a `military_stacks` row.
+- The main blocker is a hard mismatch in recruitment logic:
+  - `ai-faction-turn` forced recruitment triggers at roughly `40–80 manpower`.
+  - `command-dispatch` militia preset still resolves to a `400 manpower` stack.
+  - Result: AI logs say `FORCED RECRUIT`, but the actual `RECRUIT_STACK` command fails every time.
+- AI action reporting is misleading:
+  - `ai-faction-turn` marks many actions as executed even when the returned result is not truly successful.
+  - In `world_action_log`, AI turns therefore look active, but no stacks are created.
+- A second backend contract mismatch exists for construction:
+  - `ai-faction-turn` sends `build_building` with `buildingName/templateId`.
+  - `command-dispatch` now expects `payload.building`.
+  - This causes real 400 errors: `Missing cityId or building`.
+- AI is generating plans, but most military follow-through is missing or weak:
+  - recruit fails
+  - deploy is not guaranteed after recruit
+  - attack logic depends on existing deployed stacks
+  - recovery after defeat is not deterministic enough
+- There is also an observability gap:
+  - `ai_faction_turn_summary` appears missing in the backend, so part of the AI Lab/debug surface is likely not persisting.
 
-### Co dnes existuje a funguje
-- **AI Lab** (`AILabTab`) má 3 vrstvy: `AIDiagnosticsPanel` (frakce/ekonomika/diplomacie/pipeline) ✅, `SmartAIGenerationPanel` (chybějící obsah) ✅, `DiplomacyDebugPanel` (8 záložek včetně **Trace** s `world_action_log`) ✅. Vše napojené na nový engine (`realm_resources`, `ai_factions`, `diplomatic_*`).
-- AI loguje **každý tah** do `world_action_log` jako `action_type='ai_faction_turn'` s `description = "AI frakce X: N/M akcí [warState]. <internalThought>"` — to je přesně to, co je na screenshotu vidět.
-- `world_action_log` má **nevyužitý `metadata jsonb` sloupec** — přesně sem patří rozšířený `diplomacy_trace` zmíněný v patičce panelu.
+## Implementation plan
 
-### Co je rozbité (DB-confirmed)
-1. **AI nestaví armádu ani budovy** — `game_events` (kola 8–13) ukazuje od AI pouze `explore` + `treaty`. Žádný `military`/`recruit`/`build`. Code-path existuje (RECRUIT_STACK, BUILD_BUILDING), ale Gemini plánovač akce nevybírá. Promptu chybí "behavioral pressure" k vojenskému rozvoji.
-2. **MOVE_STACK se nepřepne na další tah** — `executeMoveStack` v command-dispatch **nenastavuje** `moved_this_turn`, klient si ho zapisuje sám (porušení SSOT), a **nikde v `commit-turn`/`process-turn` se flag NEresetuje** → po prvním přesunu nejde nikdy znovu pohnout.
-3. **Liga — nerovnost rosterů**: Lachim 22 hráčů/tým, AI frakce 7 hráčů/tým. Příčina: `world-generate-init:1010` používá legacy roster (goalkeeper/defender/midfielder/attacker = 11), `bulk-generate-teams` topup pro AI nedoběhl. Navíc duplikát "Panter Republika …" — chybí UNIQUE constraint na `(session_id, team_name)`.
-4. **`DiplomacyDebugPanel` Trace tab** ukazuje jen text z `description`. Připravený rozšířený `diplomacy_trace` (input signals, weighted memories, candidate actions) **nikdy nebyl naplněn** — `metadata` sloupec zůstává prázdný.
+### 1) Fix recruitment so AI can actually create armies
+- Align the AI fallback thresholds with the real recruitment backend.
+- Choose one canonical approach and apply it consistently:
+  1. either lower militia to a true emergency/light formation,
+  2. or keep militia at 400 and raise AI fallback/emergency manpower to that real threshold.
+- I recommend the first option: add a real emergency militia tier for AI/hard recovery states so destroyed factions can re-enter the game without waiting many turns.
+- Ensure cost formulas, manpower checks, and preset sizes are derived from one shared source instead of duplicated constants.
 
----
+### 2) Make AI success/failure accounting truthful
+- Update `ai-faction-turn` so actions are only counted as successful when the backend command truly succeeded.
+- Distinguish clearly between:
+  - planned
+  - attempted
+  - succeeded
+  - failed
+  - skipped
+- Log backend errors directly into AI trace metadata so the AI Lab reflects real blockers instead of false positives.
 
-## Plán implementace (1 milestone, 5 vrstev)
+### 3) Repair the broken AI building command path
+- Normalize `build_building` payloads so `ai-faction-turn` sends the structure expected by `command-dispatch`.
+- Reuse the same resolution logic as player-side building flows where possible.
+- Add defensive validation so future schema drift cannot silently break AI construction again.
 
-### Vrstva 1: Migrace
-1. **Nový sloupec `world_action_log.metadata`** — už existuje, jen ho budeme plnit (žádná migrace). Indexy nepotřeba.
-2. `ALTER TABLE league_teams ADD CONSTRAINT league_teams_session_team_name_unique UNIQUE (session_id, team_name)` + `DELETE` duplikátu "Panter Republika Korálových břehů – Hlavní" (ponechat starší).
-3. **Cleanup zaseknutého stavu pro session 0de6fab4**: `UPDATE military_stacks SET moved_this_turn=false WHERE session_id='0de6fab4-…'` aby se Lachim mohl pohybovat hned po deployi opravy.
+### 4) Add a deterministic military recovery state machine for AI
+- Introduce a simple fallback sequence when AI has no active army:
+  1. raise mobilization
+  2. recruit emergency stack
+  3. deploy to capital / safest owned city
+  4. defend city if enemy nearby
+  5. move toward threatened border only after at least one garrison exists
+- This logic should run even if the model output is bad or incomplete.
+- Keep the model for flavor and prioritization, but force the minimum military loop server-side.
 
-### Vrstva 2: Backend — MOVE_STACK SSOT (ten "bug v moving stack")
-1. `executeMoveStack` (command-dispatch:750–810) přidá `moved_this_turn: true` do update.
-2. Odstranit klientský zápis ve `WorldHexMap.tsx:1027` (porušuje SSOT).
-3. V `commit-turn` na začátku fáze 3 (před AI faction loop): `await supabase.from("military_stacks").update({moved_this_turn: false}).eq("session_id", sessionId)` — reset všem stackům, hráčským i AI.
+### 5) Improve AI war behavior after armies exist
+- Add deterministic rules for:
+  - defend threatened city first
+  - counterattack adjacent occupier if favorable
+  - garrison capital before expansion
+  - avoid suicide attacks with low morale / no advantage
+  - prioritize reclaiming occupied cities over random aggression
+- Ensure AI can do all of: recruit, deploy, move, attack, and reconstitute after losses.
+- Keep AI simplification acceptable: it does not need perfect tactics, but it must be functional and legible.
 
-### Vrstva 3: Backend — AI staví armádu + rozšířený trace logging
+### 6) Strengthen turn-engine integration for AI military actions
+- Verify that AI-created battle actions always enter the same resolution path used by players.
+- Ensure post-recruit deployment and queued battle actions are processed in the same turn loop consistently.
+- Add guardrails so stale or impossible actions are canceled cleanly instead of clogging the action flow.
 
-#### 3a. Behavioral pressure v `ai-faction-turn` system promptu
-Přidat tvrdé pravidlo v prompt builderu:
-- `garrison_ratio < 5% population` **NEBO** `at_war = true` → akce `recruit_army` má prioritu nad explore/diplomacy (musí být v top 3 navržených akcí).
-- `wealth_reserve > 200` AND existují volné district sloty → minimálně 1× `build_building` per tah.
-- `manpower < target_pool * 0.3` → zvýšit `mobilization_rate` (decree action).
-- Personality multiplikátor: `aggressive → 12% army target`, `expansionist → 10%`, `defensive → 8%`, `mercantile/diplomatic → 5%`.
+### 7) Restore/debug observability for AI turns
+- Repair or create the missing `ai_faction_turn_summary` storage so AI Lab can show real numbers.
+- Expose per-turn military diagnostics such as:
+  - active stacks
+  - deployable stacks
+  - manpower pool
+  - recruit affordability
+  - last failed command reason
+  - nearby enemy pressure
+- This will make future AI military regressions easy to detect.
 
-Konkrétní změna: rozšířit `behaviorRules` sekci v prompt builderu (~ řádek 350–500 v `ai-faction-turn`) o explicitní military doctrine klauzule.
+### 8) Apply a live repair pass to the current lobby state
+- After code fixes, run a targeted repair for `IJ8BQ5` so the lobby is not stuck in a pre-fix dead state.
+- Validate current AI factions, clean any broken pending military actions if needed, and ensure next turn can produce actual armies.
+- If necessary, normalize AI resource/mobilization state so the repaired logic takes effect immediately.
 
-#### 3b. Rozšířený `diplomacy_trace` do `metadata`
-V `ai-faction-turn:865` rozšířit insert do `world_action_log`:
-```ts
-metadata: {
-  // input signals (co AI viděla)
-  inputs: {
-    military: { manpower_pool, garrison_ratio, war_state, my_stacks_count, my_total_strength, enemy_stacks_count, enemy_total_strength },
-    economic: { wealth, grain, production, capacity, mobilization_rate },
-    spatial: { my_nodes, controlled_routes, blockades_against_me, supply_isolated_count },
-    diplomatic: { active_pacts: pacts.length, hostile_relations, allied_relations, pending_ultimatums },
-  },
-  // weighted memories (co AI vážila)
-  weighted_memories: diplomMemories.slice(0, 8).map(m => ({
-    type: m.memory_type, target: other(m), weight: m.importance * (1 - m.decay_rate * (turn - m.turn_number)), detail: m.detail.slice(0, 120),
-  })),
-  // candidate actions (co Gemini navrhl, než exekuovala)
-  candidate_actions: result.actions.map(a => ({ type: a.actionType, target: a.targetCity || a.targetFaction, priority: a.priority || null })),
-  // executed
-  executed_actions: executedActions.map(a => ({ type: a.actionType, ok: a.executed, error: a.error || null, result: a.result })),
-  // doctrine + war state
-  doctrine: derivedDoctrine, // 'military' | 'expansion' | 'economy' | 'diplomacy'
-  war_state: milMetrics.warState,
-  // model + timing
-  model_used: result.modelUsed || "google/gemini-2.5-pro",
-  ms_elapsed: Date.now() - startedAt,
-}
+## Files likely involved
+- `supabase/functions/ai-faction-turn/index.ts`
+- `supabase/functions/command-dispatch/index.ts`
+- `supabase/functions/commit-turn/index.ts`
+- possibly `supabase/functions/resolve-battle/index.ts`
+- a migration for AI summary/debug storage if the summary table is indeed absent
+- optional AI Lab / military debug UI if existing panels need to show the corrected diagnostics
+
+## Technical details
+```text
+Current broken path:
+AI fallback says: recruit if manpower >= 40..80
+        ↓
+ai-faction-turn sends RECRUIT_STACK
+        ↓
+command-dispatch militia preset requires 400 manpower
+        ↓
+command fails
+        ↓
+AI log still appears mostly successful
+        ↓
+no stack exists, so no deploy / no attack / no real war behavior
 ```
 
-#### 3c. Tabulka `ai_faction_turn_summary` (nová migrace)
-Pro rychlé dotazy v dashboardu bez parsing JSONB:
-```sql
-CREATE TABLE ai_faction_turn_summary (
-  id uuid PK,
-  session_id uuid REF,
-  faction_name text,
-  turn_number int,
-  doctrine text,            -- military|expansion|economy|diplomacy
-  war_state text,           -- peace|tension|war
-  actions_planned int,
-  actions_executed int,
-  actions_failed int,
-  recruits_attempted int,   -- count of recruit_army actions
-  builds_attempted int,     -- count of build_building
-  attacks_attempted int,
-  power_delta int,          -- vs minulé kolo
-  wealth_delta int,
-  internal_thought text,
-  created_at timestamptz DEFAULT now(),
-  UNIQUE(session_id, faction_name, turn_number)
-);
-ALTER TABLE ai_faction_turn_summary ENABLE ROW LEVEL SECURITY;
--- RLS: members of session_id mohou číst (přes game_memberships)
+```text
+Target stable loop:
+No stacks
+  → emergency recruit succeeds
+  → stack created
+  → deploy to owned city
+  → defend if enemy adjacent
+  → move/attack only when viable
+  → after losses, repeat recovery automatically
 ```
-Insert na konci `ai-faction-turn` (vedle `world_action_log`).
 
-### Vrstva 4: Frontend — rozšíření AI Lab
+## Validation after implementation
+- In `IJ8BQ5`, at least one AI faction should successfully create a new `military_stacks` row on the next processed turn.
+- `world_action_log` should show real `RECRUIT_STACK` / `DEPLOY_STACK` events, not only AI narrative summaries.
+- AI factions should no longer report successful recruitment when no stack was created.
+- Building attempts from AI should no longer fail with `Missing cityId or building`.
+- AI with zero armies should recover within a predictable number of turns instead of staying permanently inert.
+- If an enemy is adjacent, AI should eventually defend or attack through the standard battle pipeline.
 
-#### 4a. Nový tab `Engine` v `AIDiagnosticsPanel`
-Vedle existujících `Chování / Ekonomika / Diplomacie / Pipeline` přidat 5. tab `Engine`:
-- **Tabulka per-faction × posledních 5 tahů** (z `ai_faction_turn_summary`): doctrine ikona, plánováno/provedeno/selhalo, ⚔ recruits, 🏗 builds, ⚡ attacks, +/- power, +/- wealth.
-- **Stagnační detektor**: žluté varování "Frakce X bez recruitu/buildu 3+ tahy".
-- **"Vynutit AI tah teď"** (admin-only) → invokuje `ai-faction-turn` pro vybranou frakci.
-- **Last-error detail**: rozkliknutelný řádek ukáže `failure_reasons` z `metadata.executed_actions[].error`.
-
-Komponent: `src/components/dev/AIFactionEnginePanel.tsx`. Napojit do `AIDiagnosticsPanel` jako 5. `TabsTrigger`.
-
-#### 4b. Rozšířený Trace v `DiplomacyDebugPanel`
-Upravit `DecisionTrace` komponentu (řádek 423–451):
-- Načíst i `metadata` z `world_action_log` (rozšířit fetch query).
-- Zobrazit pod `internalThought` rozbalitelnou sekci s tabulkami:
-  - **Vstupní signály** (key/value mřížka: Military, Economic, Spatial, Diplomatic).
-  - **Zvážené paměti** (top 8 dle weight: type, target, weight, detail).
-  - **Kandidátní vs provedené akce** (vedle sebe se ✅/❌).
-- Odstranit footnote "připraveno k rozšíření" — bude reálně rozšířeno.
-
-### Vrstva 5: Liga — parita rosteru
-1. **Migrace** (Vrstva 1) řeší duplikáty + UNIQUE.
-2. **Fix `world-generate-init:1010`**: nahradit legacy POSITIONS (4 skupiny, 11 hráčů) za Sphaera POSITIONS (5 skupin, 22 hráčů: 2 praetor / 5 guardian / 7 striker / 4 carrier / 4 exactor) — zkopírovat z `bulk-generate-teams:34–40`. Tím nové světy už nikdy nebudou mít nerovnost.
-3. **One-shot opravná akce pro session 0de6fab4**: po deployi spustit `bulk-generate-teams` s `players_per_team=22` přes `OnboardingChecklist` (nebo dev tlačítko). Topup logika v sekci "Fill existing teams to target player count" doplní AI týmy z 7 na 22.
-4. **Onboarding hook**: přidat krok "Ensure team rosters" do `OnboardingChecklist` po vytvoření světa, který volá `bulk-generate-teams` s `players_per_team=22`.
-
----
-
-## Pořadí implementace
-
-1. **Migrace**: `ai_faction_turn_summary`, `league_teams` UNIQUE + dedupe, reset `moved_this_turn` pro 0de6fab4.
-2. **MOVE_STACK SSOT** (command-dispatch + commit-turn + WorldHexMap cleanup).
-3. **AI doctrine v promptu** + rozšířený metadata logging do `world_action_log` + insert do `ai_faction_turn_summary`.
-4. **Frontend**: nový `AIFactionEnginePanel` + integrace do `AIDiagnosticsPanel` + rozšířený `DecisionTrace`.
-5. **Liga**: oprava `world-generate-init` rosteru + onboarding hook + ruční topup pro 0de6fab4.
-6. **Update Memory** (`mem://features/ai-factions/behavioral-logic-v2`): doctrine pressure rules + diplomacy_trace metadata schema.
-
----
-
-## Otázky
-
-Jen jedna kritická volba — zbytek je deterministický:
-
-**Jak agresivně boostnout AI doctrine pressure?**
-- **Konzervativně**: jen "při válce nebo nízké garnizoně vynutit recruit". Pacifistické AI dál mohou stagnovat.
-- **Vyváženě (doporučeno)**: každá AI frakce má _minimum_ 1× build/recruit per turn dokud nemá ≥2 stacky a ≥3 buildings; pak se chová podle personality.
-- **Agresivně**: každá AI frakce každý tah povinně 1× recruit + 1× build, jinak fail-flag v summary.
-
-Bez odpovědi jdu cestou **Vyváženě**.
+If you approve this plan, I’ll implement the fixes and then do a live verification pass against the current game state.

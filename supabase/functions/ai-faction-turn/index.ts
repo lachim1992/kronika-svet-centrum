@@ -871,13 +871,26 @@ Rozhodni, co frakce udělá v tomto kole. ${milMetrics.warState === "war" ? "JST
     await ensureSportsOnboarding(supabase, sessionId, factionName, turn, cities || []);
 
     // ── Execute each action ──
+    const FAILURE_RESULTS = new Set([
+      "missing_params", "missing_target", "stack_not_found", "city_not_found", "template_not_found",
+      "no_target", "no_target_in_range", "already_deployed", "already_moved", "not_deployed",
+      "insufficient_resources", "ultimatum_required_first", "war_already_active", "no_active_war",
+      "room_creation_failed",
+    ]);
     for (const action of (result.actions || []).slice(0, 8)) {
       try {
         const executed = await executeAction(
           supabase, supabaseUrl, supabaseKey, sessionId, turn, factionName, action, faction,
           sentUltimatums.length > 0, stacks || [], cities || [], allCities || [], enemyStacks || [], realmRes,
         );
-        executedActions.push({ ...action, executed: true, result: executed });
+        const isFailure = typeof executed === "string"
+          && (FAILURE_RESULTS.has(executed) || executed.endsWith("_failed") || executed.startsWith("recruit_failed"));
+        executedActions.push({
+          ...action,
+          executed: !isFailure,
+          result: executed,
+          error: isFailure ? executed : undefined,
+        });
       } catch (err) {
         console.error(`Action ${action.actionType} failed:`, err);
         executedActions.push({ ...action, executed: false, error: (err as Error).message });
@@ -898,21 +911,23 @@ Rozhodni, co frakce udělá v tomto kole. ${milMetrics.warState === "war" ? "JST
         const mp = rrNow?.manpower_pool || 0;
         const gold = rrNow?.gold_reserve || 0;
         const grain = rrNow?.grain_reserve || 0;
-        if (mp >= 40 && gold >= 20 && grain >= 10) {
-          console.log(`[${factionName}] FORCED RECRUIT (0 stacks; mp=${mp} gold=${gold} grain=${grain})`);
+        // emergency_militia floor: ~50 men → 50 mp, 20 gold, 13 prod
+        if (mp >= 50 && gold >= 20 && grain >= 13) {
+          console.log(`[${factionName}] FORCED RECRUIT emergency_militia (mp=${mp} gold=${gold} grain=${grain})`);
           const forcedAction = {
             actionType: "recruit_army",
-            armyPreset: "militia",
-            armyName: `${factionName} Milice ${turn}`,
+            armyPreset: "emergency_militia",
+            armyName: `${factionName} Krizová milice ${turn}`,
             description: "Deterministický fallback — frakce bez aktivních stacků",
-            narrativeNote: `${factionName} mobilizuje milice, neboť frakce nesmí zůstat bez ozbrojené síly.`,
+            narrativeNote: `${factionName} v zoufalství mobilizuje krizovou milici, neboť žádná frakce nesmí zůstat bez ozbrojené síly.`,
           };
           try {
             const fres = await executeAction(
               supabase, supabaseUrl, supabaseKey, sessionId, turn, factionName, forcedAction, faction,
               sentUltimatums.length > 0, stacks || [], cities || [], allCities || [], enemyStacks || [], { ...realmRes, ...rrNow },
             );
-            executedActions.push({ ...forcedAction, executed: true, result: fres, _forced: true });
+            const failed = typeof fres === "string" && (fres.startsWith("recruit_failed") || fres.endsWith("_failed") || ["insufficient_resources","city_not_found","template_not_found"].includes(fres));
+            executedActions.push({ ...forcedAction, executed: !failed, result: fres, _forced: true, error: failed ? fres : undefined });
           } catch (err) {
             console.error(`[${factionName}] Forced recruit failed:`, err);
             executedActions.push({ ...forcedAction, executed: false, error: (err as Error).message, _forced: true });
@@ -1146,54 +1161,49 @@ async function executeAction(
       let preset = action.armyPreset || "militia";
       const name = action.armyName || `${factionName} ${preset} ${turn}`;
 
-      // Auto-downgrade preset if manpower is insufficient.
-      // SSOT: realm_resources.manpower_pool already reflects mobilizationRate (set by refresh-economy).
+      // Aligned with command-dispatch FORMATION_PRESETS (incl. new emergency_militia).
       const presetManpower: Record<string, number> = {
-        legion: 800, cavalry_wing: 200, cohort: 400, militia: 200, professional: 400,
+        emergency_militia: 80, militia: 400, cohort: 400, professional: 400, cavalry_wing: 200, legion: 800,
       };
       const availableManpower = realmRes?.manpower_pool || 0;
       const goldReserve = realmRes?.gold_reserve || 0;
       const grainReserve = realmRes?.grain_reserve || 0;
 
-      // Cheap militia floor: ~80 manpower, ~32 gold, ~20 prod
-      const MIN_RECRUIT_MANPOWER = 80;
-      const MIN_RECRUIT_GOLD = 30;
-      const MIN_RECRUIT_PROD = 20;
+      // Absolute floor for an emergency militia (~50 men): 50 mp, 20 gold, 13 prod.
+      const MIN_RECRUIT_MANPOWER = 50;
+      const MIN_RECRUIT_GOLD = 20;
+      const MIN_RECRUIT_PROD = 13;
 
       if (availableManpower < MIN_RECRUIT_MANPOWER || goldReserve < MIN_RECRUIT_GOLD || grainReserve < MIN_RECRUIT_PROD) {
         console.log(`[${factionName}] Cannot recruit — pool=${availableManpower} gold=${goldReserve} grain=${grainReserve}`);
         return "insufficient_resources";
       }
 
-      // Downgrade preset if requested size > pool
+      // If the requested preset cannot be afforded at full strength, drop down to
+      // emergency_militia so the call always produces a real stack instead of failing.
       const target = presetManpower[preset] || 200;
       if (target > availableManpower) {
-        const fallbackOrder = ["militia", "cohort", "professional", "cavalry_wing", "legion"];
-        let found = false;
-        for (const fb of fallbackOrder) {
-          if (availableManpower >= (presetManpower[fb] || 200)) {
-            console.log(`[${factionName}] Downgraded ${preset} → ${fb} (pool ${availableManpower})`);
-            preset = fb;
-            found = true;
-            break;
-          }
-        }
-        if (!found) {
-          // Recruit a smallest-possible militia using free-form manpower.
-          preset = "militia";
+        const downgrade = ["militia", "cohort", "professional", "cavalry_wing", "legion"]
+          .find((fb) => availableManpower >= (presetManpower[fb] || 9999));
+        if (downgrade) {
+          console.log(`[${factionName}] Downgraded ${preset} → ${downgrade} (pool ${availableManpower})`);
+          preset = downgrade;
+        } else {
+          preset = "emergency_militia";
+          console.log(`[${factionName}] Downgraded to emergency_militia (pool ${availableManpower})`);
         }
       }
 
-      // Cap manpower to what's actually affordable across all 3 resources.
-      // Costs (per soldier, MILITIA): gold 0.4, prod 0.25
+      // Cap manpower to what is actually affordable across all 3 resources.
+      // Costs (per soldier, MILITIA): gold 0.4, prod 0.25.
       const maxByGold = Math.floor(goldReserve / 0.4);
       const maxByProd = Math.floor(grainReserve / 0.25);
       const requestedManpower = Math.max(
-        MIN_RECRUIT_MANPOWER,
+        preset === "emergency_militia" ? 50 : 80,
         Math.min(presetManpower[preset] || 200, availableManpower, maxByGold, maxByProd),
       );
 
-      await invokeFunction(supabaseUrl, supabaseKey, "command-dispatch", {
+      const dispatchRes = await invokeFunction(supabaseUrl, supabaseKey, "command-dispatch", {
         sessionId, turnNumber: turn,
         actor: { name: factionName, type: "ai_faction" },
         commandType: "RECRUIT_STACK",
@@ -1204,6 +1214,31 @@ async function executeAction(
         },
         commandId,
       });
+      if (dispatchRes && dispatchRes.error) {
+        return `recruit_failed: ${dispatchRes.error}`;
+      }
+
+      // Auto-deploy: if the faction had no deployed stacks before this recruit, immediately
+      // place the new stack at the capital so the AI is functional within the same turn.
+      try {
+        const hadDeployed = (myStacks || []).some((s: any) => s.is_active && s.is_deployed);
+        if (!hadDeployed) {
+          const newStackId: string | undefined = dispatchRes?.sideEffects?.stackId;
+          const capital = (myCities || [])[0];
+          if (newStackId && capital) {
+            await supabase.from("military_stacks").update({
+              hex_q: capital.province_q,
+              hex_r: capital.province_r,
+              is_deployed: true,
+              moved_this_turn: false,
+            }).eq("id", newStackId);
+            console.log(`[${factionName}] Auto-deployed ${name} → ${capital.name}`);
+          }
+        }
+      } catch (e) {
+        console.warn(`[${factionName}] Auto-deploy after recruit failed:`, (e as Error).message);
+      }
+
       return "ok";
     }
 
@@ -2027,9 +2062,12 @@ async function invokeFunction(
     headers: { Authorization: `Bearer ${supabaseKey}`, "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
+  const text = await res.text().catch(() => "");
+  let parsed: any = null;
+  try { parsed = text ? JSON.parse(text) : null; } catch { parsed = { raw: text }; }
   if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    throw new Error(`${funcName} failed (${res.status}): ${text}`);
+    // Do not throw — return a structured error so callers can mark the action as failed.
+    return { ok: false, error: parsed?.error || `${funcName} failed (${res.status})`, status: res.status };
   }
-  return res.json();
+  return parsed ?? {};
 }
