@@ -4,7 +4,7 @@ import { dispatchCommand } from "@/lib/commands";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Progress } from "@/components/ui/progress";
 import {
@@ -327,7 +327,7 @@ export default function DeployBattlePanel({ sessionId, currentPlayerName, curren
       {/* Battle target selection dialog */}
       {battleTargetDialog && (
         <BattleTargetDialog stack={battleTargetDialog} sessionId={sessionId}
-          currentPlayerName={currentPlayerName} cities={cities} stacks={stacks}
+          currentPlayerName={currentPlayerName} cities={cities} stacks={stacks} activeLobbies={activeLobbies}
           onClose={() => setBattleTargetDialog(null)}
           onCreateLobby={createLobby} />
       )}
@@ -440,9 +440,9 @@ function MoveStackDialog({ stack, sessionId, onClose, onRefresh }: {
 }
 
 // ═══ Battle Target Selection Dialog ═══
-function BattleTargetDialog({ stack, sessionId, currentPlayerName, cities, stacks, onClose, onCreateLobby }: {
+function BattleTargetDialog({ stack, sessionId, currentPlayerName, cities, stacks, activeLobbies, onClose, onCreateLobby }: {
   stack: Stack; sessionId: string; currentPlayerName: string;
-  cities: any[]; stacks: Stack[];
+  cities: any[]; stacks: Stack[]; activeLobbies: any[];
   onClose: () => void; onCreateLobby: (stack: Stack, type: "city" | "stack", targetId: string) => void;
 }) {
   const [targetType, setTargetType] = useState<"city" | "stack">("city");
@@ -455,10 +455,21 @@ function BattleTargetDialog({ stack, sessionId, currentPlayerName, cities, stack
     ...AXIAL_NEIGHBORS.map(n => `${q + n.dq},${r + n.dr}`),
   ]);
 
-  const enemyCities = cities.filter(c =>
-    c.owner_player !== currentPlayerName &&
-    reachableHexes.has(`${c.province_q},${c.province_r}`)
+  const preparingCityIds = new Set(
+    activeLobbies
+      .filter(lb => lb.status === "preparing" && !!lb.defender_city_id)
+      .map(lb => lb.defender_city_id),
   );
+
+  const enemyCities = cities.filter(c => {
+    const occupiedByMe = c.occupied_by === currentPlayerName;
+    const occupiedByAnyone = !!c.occupied_by;
+    return c.owner_player !== currentPlayerName &&
+      !occupiedByMe &&
+      !occupiedByAnyone &&
+      !preparingCityIds.has(c.id) &&
+      reachableHexes.has(`${c.province_q},${c.province_r}`);
+  });
 
   const enemyStacks = stacks.filter(s =>
     s.player_name !== currentPlayerName &&
@@ -473,6 +484,9 @@ function BattleTargetDialog({ stack, sessionId, currentPlayerName, cities, stack
           <DialogTitle className="font-display flex items-center gap-2">
             <Swords className="h-5 w-5 text-destructive" /> Vybrat cíl — {stack.name}
           </DialogTitle>
+          <DialogDescription className="text-xs">
+            Vyber jen město nebo armádu, které nejsou právě pod okupací ani už nejsou rozebrané v jiné aktivní bitvě.
+          </DialogDescription>
         </DialogHeader>
         <div className="space-y-3">
           <div className="flex gap-2">
@@ -548,15 +562,13 @@ function PostBattleDecision({ decision, sessionId, playerName, currentTurn, stac
   const city = cities.find(c => c.id === data.defender_city_id);
   const result = RESULT_LABELS[data.result] || { label: data.result, className: "" };
 
-  const handleDecision = async (action: "conquer" | "pillage" | "vassalize") => {
+  const handleDecision = async (action: "occupy" | "pillage") => {
     setSaving(true);
     const labels: Record<string, string> = {
-      conquer: "dobytí", pillage: "drancování", vassalize: "vazalství",
+      occupy: "okupaci", pillage: "drancování",
     };
 
-    if (action === "conquer" && city) {
-      await supabase.from("cities").update({ owner_player: playerName }).eq("id", city.id);
-    } else if (action === "pillage" && city) {
+    if (action === "pillage" && city) {
       await supabase.from("cities").update({
         status: "devastated", devastated_round: currentTurn,
         city_stability: Math.max(0, (city.city_stability || 50) - 30),
@@ -587,16 +599,12 @@ function PostBattleDecision({ decision, sessionId, playerName, currentTurn, stac
       </p>
       <div className="flex gap-2">
         <Button size="sm" className="text-xs font-display" disabled={saving}
-          onClick={() => handleDecision("conquer")}>
-          <Castle className="h-3 w-3 mr-1" />Dobýt
+          onClick={() => handleDecision("occupy")}>
+          <Castle className="h-3 w-3 mr-1" />Potvrdit okupaci
         </Button>
         <Button size="sm" variant="outline" className="text-xs font-display" disabled={saving}
           onClick={() => handleDecision("pillage")}>
           <Crosshair className="h-3 w-3 mr-1" />Drancovat
-        </Button>
-        <Button size="sm" variant="secondary" className="text-xs font-display" disabled={saving}
-          onClick={() => handleDecision("vassalize")}>
-          <Shield className="h-3 w-3 mr-1" />Vazalství
         </Button>
       </div>
     </div>

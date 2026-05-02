@@ -171,6 +171,21 @@ Deno.serve(async (req) => {
       let autoResolved = 0;
       for (const lb of (unresolvedLobbies || [])) {
         try {
+          if (lb.defender_city_id) {
+            const { data: city } = await supabase.from("cities")
+              .select("id, occupied_by, liberation_deadline_turn")
+              .eq("id", lb.defender_city_id)
+              .maybeSingle();
+
+            if (city?.occupied_by) {
+              await supabase.from("battle_lobbies").update({
+                status: "resolved",
+                resolved_at: new Date().toISOString(),
+              }).eq("id", lb.id);
+              continue;
+            }
+          }
+
           await supabase.functions.invoke("resolve-battle", {
             body: {
               session_id: sessionId,
