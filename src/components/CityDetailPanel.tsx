@@ -294,6 +294,12 @@ const CityDetailPanel = ({
               <h1 className="text-2xl md:text-3xl font-display font-bold">{city.name}</h1>
               <Badge variant="secondary" className="font-display">{city.level}</Badge>
               {city.tags && city.tags.map(t => <Badge key={t} variant="outline" className="text-[10px]">{t}</Badge>)}
+              {(city as any).occupied_by && (
+                <Badge variant="destructive" className="flex items-center gap-1">
+                  <Shield className="h-3 w-3" />
+                  Okupováno do roku {(city as any).liberation_deadline_turn ?? "?"}
+                </Badge>
+              )}
               {(city as any).status && (city as any).status !== "ok" && (
                 <Badge variant="destructive" className="flex items-center gap-1">
                   {(city as any).status === "devastated" ? <Flame className="h-3 w-3" /> : <Shield className="h-3 w-3" />}
@@ -313,6 +319,12 @@ const CityDetailPanel = ({
                 <Crown className="h-3 w-3 text-primary" />
                 <span>{city.owner_player}</span>
               </div>
+              {(city as any).occupied_by && (
+                <div className="flex items-center gap-1 px-2 py-1 rounded-md bg-background/70 backdrop-blur-sm border border-border/50 text-xs">
+                  <Shield className="h-3 w-3 text-destructive" />
+                  <span>Drží {(city as any).occupied_by}</span>
+                </div>
+              )}
               <div className="flex items-center gap-1 px-2 py-1 rounded-md bg-background/70 backdrop-blur-sm border border-border/50 text-xs">
                 <span>👥</span>
                 <span className="font-semibold">{pop.toLocaleString()}</span>
