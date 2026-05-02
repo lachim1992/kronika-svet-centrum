@@ -465,7 +465,7 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
   const [routeRefreshKey, setRouteRefreshKey] = useState(0);
 
   // Province data
-  const [provinceHexMap, setProvinceHexMap] = useState<Map<string, { provinceId: string; colorIndex: number }>>(new Map());
+  const [provinceHexMap, setProvinceHexMap] = useState<Map<string, { provinceId: string; colorIndex: number; ownerPlayer: string | null }>>(new Map());
   const [provinceLegend, setProvinceLegend] = useState<{ id: string; name: string; colorIndex: number; ownerPlayer: string }[]>([]);
 
   // Pan state
@@ -539,10 +539,6 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
         .eq("session_id", sessionId),
     ]);
     if (provHexes) {
-      const provColorMap = new Map<string, number>();
-      for (const p of provs || []) provColorMap.set(p.id, p.color_index ?? 0);
-      
-      // Build a color index for owner_player as fallback
       const ownerColorMap = new Map<string, number>();
       let ownerIdx = 0;
       for (const p of provs || []) {
@@ -550,20 +546,25 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
           ownerColorMap.set(p.owner_player, ownerIdx++);
         }
       }
+      const provOwnerMap = new Map<string, string | null>();
+      for (const p of provs || []) provOwnerMap.set(p.id, p.owner_player ?? null);
       
-      const hexMap = new Map<string, { provinceId: string; colorIndex: number }>();
+      const hexMap = new Map<string, { provinceId: string; colorIndex: number; ownerPlayer: string | null }>();
       for (const ph of provHexes) {
         const provId = ph.province_id;
+        const resolvedOwner = ph.owner_player ?? (provId ? (provOwnerMap.get(provId) ?? null) : null);
         if (provId) {
           hexMap.set(hKey(ph.q, ph.r), {
             provinceId: provId,
-            colorIndex: provColorMap.get(provId) ?? (ph.owner_player ? (ownerColorMap.get(ph.owner_player) ?? 0) : 0),
+            colorIndex: resolvedOwner ? (ownerColorMap.get(resolvedOwner) ?? 0) : 0,
+            ownerPlayer: resolvedOwner,
           });
-        } else if (ph.owner_player) {
+        } else if (resolvedOwner) {
           // Hex owned but not in a province yet — show with faction color
           hexMap.set(hKey(ph.q, ph.r), {
             provinceId: "",
-            colorIndex: ownerColorMap.get(ph.owner_player) ?? 0,
+            colorIndex: ownerColorMap.get(resolvedOwner) ?? 0,
+            ownerPlayer: resolvedOwner,
           });
         }
       }
@@ -571,7 +572,7 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
     }
     if (provs) {
       setProvinceLegend(provs.map(p => ({
-        id: p.id, name: p.name, colorIndex: p.color_index ?? 0,
+        id: p.id, name: p.name, colorIndex: p.owner_player ? (ownerColorMap.get(p.owner_player) ?? 0) : 0,
         ownerPlayer: p.owner_player,
       })));
     }
