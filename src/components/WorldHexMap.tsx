@@ -538,14 +538,14 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
       supabase.from("province_hexes").select("q, r, province_id, owner_player")
         .eq("session_id", sessionId),
     ]);
-    if (provHexes) {
-      const ownerColorMap = new Map<string, number>();
-      let ownerIdx = 0;
-      for (const p of provs || []) {
-        if (p.owner_player && !ownerColorMap.has(p.owner_player)) {
-          ownerColorMap.set(p.owner_player, ownerIdx++);
-        }
+    const ownerColorMap = new Map<string, number>();
+    let ownerIdx = 0;
+    for (const p of provs || []) {
+      if (p.owner_player && !ownerColorMap.has(p.owner_player)) {
+        ownerColorMap.set(p.owner_player, ownerIdx++);
       }
+    }
+    if (provHexes) {
       const provOwnerMap = new Map<string, string | null>();
       for (const p of provs || []) provOwnerMap.set(p.id, p.owner_player ?? null);
       
