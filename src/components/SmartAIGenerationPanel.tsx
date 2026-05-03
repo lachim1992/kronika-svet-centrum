@@ -136,12 +136,10 @@ const SmartAIGenerationPanel = ({ sessionId, onRefetch }: Props) => {
   const generateWikiDescriptions = () => runBatch(
     "wiki", report!.wikiNoDesc,
     async (entry) => {
-      const { data } = await supabase.functions.invoke("wiki-generate", {
-        body: { entityName: entry.name, entityType: entry.type, entityId: entry.id, sessionId, ownerPlayer: entry.owner },
+      const { ensureWikiEntry } = await import("@/lib/wikiOrchestrator");
+      await ensureWikiEntry({
+        sessionId, entityType: entry.type, entityId: entry.id, entityName: entry.name, ownerPlayer: entry.owner,
       });
-      if (data?.aiDescription) {
-        await supabase.from("wiki_entries").update({ ai_description: data.aiDescription }).eq("id", entry.id);
-      }
     },
     (e) => e.name,
     "Wiki popisy",
@@ -162,7 +160,8 @@ const SmartAIGenerationPanel = ({ sessionId, onRefetch }: Props) => {
   const generateWonderImages = () => runBatch(
     "wonder-images", report!.wondersNoImage,
     async (w) => {
-      await supabase.functions.invoke("generate-entity-media", { body: { sessionId, entityId: w.id, entityType: "wonder", entityName: w.name, kind: "cover" } });
+      const { ensureWikiEntry } = await import("@/lib/wikiOrchestrator");
+      await ensureWikiEntry({ sessionId, entityType: "wonder", entityId: w.id, entityName: w.name });
     },
     (w) => w.name,
     "Obrázky divů",
@@ -171,7 +170,8 @@ const SmartAIGenerationPanel = ({ sessionId, onRefetch }: Props) => {
   const generatePersonImages = () => runBatch(
     "person-images", report!.personsNoImage,
     async (p) => {
-      await supabase.functions.invoke("generate-entity-media", { body: { sessionId, entityId: p.id, entityType: "person", entityName: p.name, kind: "cover" } });
+      const { ensureWikiEntry } = await import("@/lib/wikiOrchestrator");
+      await ensureWikiEntry({ sessionId, entityType: "person", entityId: p.id, entityName: p.name });
     },
     (p) => p.name,
     "Portréty osobností",
