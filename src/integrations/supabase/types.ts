@@ -797,11 +797,14 @@ export type Database = {
           created_at: string
           epoch_style: string
           event_id: string | null
+          highlights: Json | null
           id: string
+          referenced_event_ids: string[] | null
           references: Json | null
           session_id: string
           source_type: string
           text: string
+          title: string | null
           turn_from: number | null
           turn_to: number | null
         }
@@ -809,11 +812,14 @@ export type Database = {
           created_at?: string
           epoch_style?: string
           event_id?: string | null
+          highlights?: Json | null
           id?: string
+          referenced_event_ids?: string[] | null
           references?: Json | null
           session_id: string
           source_type?: string
           text: string
+          title?: string | null
           turn_from?: number | null
           turn_to?: number | null
         }
@@ -821,11 +827,14 @@ export type Database = {
           created_at?: string
           epoch_style?: string
           event_id?: string | null
+          highlights?: Json | null
           id?: string
+          referenced_event_ids?: string[] | null
           references?: Json | null
           session_id?: string
           source_type?: string
           text?: string
+          title?: string | null
           turn_from?: number | null
           turn_to?: number | null
         }
