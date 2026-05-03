@@ -886,8 +886,19 @@ Deno.serve(async (req) => {
             } catch (wcErr) { console.error("Auto world-chronicle error:", wcErr); }
           }
 
-          // Player Chronicles
+          // Player Chronicles — Wave 1: throttled to every 3rd turn unless major event
           try {
+            const PLAYER_CHRONICLE_EVERY = 3;
+            const hasMajorPlayerEvent =
+              confirmedEvents.some((e: any) =>
+                e.truth_state === "canon" ||
+                ["battle", "conquest", "wonder_built", "founding", "disaster", "famine"].includes(e.event_type)
+              ) || battles.length > 0;
+            const shouldRunPC = (closedTurn % PLAYER_CHRONICLE_EVERY === 0) || hasMajorPlayerEvent;
+
+            if (!shouldRunPC) {
+              logAISkip("commit-turn", "player-chronicle", "throttle", { turn: closedTurn });
+            } else {
             const { data: allPlayersForChron } = await supabase.from("game_players")
               .select("player_name").eq("session_id", sessionId);
             const { data: allCivs } = await supabase.from("civilizations")
