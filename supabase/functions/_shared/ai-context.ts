@@ -926,6 +926,8 @@ export async function invokeAI(
     if (toolCall?.function?.arguments) {
       try {
         const parsed = JSON.parse(toolCall.function.arguments);
+        const outChars = JSON.stringify(parsed).length;
+        console.log(`[ai-done] fn=${functionName} model=${model} output_chars=${outChars}`);
         void logAIInvocation(ctx, functionName, model, true);
         return { ok: true, data: parsed, debug };
       } catch (parseErr) {
@@ -937,10 +939,13 @@ export async function invokeAI(
     const content = data.choices?.[0]?.message?.content || "";
     try {
       const parsed = JSON.parse(content);
+      const outChars = JSON.stringify(parsed).length;
+      console.log(`[ai-done] fn=${functionName} model=${model} output_chars=${outChars}`);
       void logAIInvocation(ctx, functionName, model, true);
       return { ok: true, data: parsed, debug };
     } catch {
       // Return raw content
+      console.log(`[ai-done] fn=${functionName} model=${model} output_chars=${content.length}`);
       void logAIInvocation(ctx, functionName, model, true);
       return { ok: true, data: { content }, debug };
     }
