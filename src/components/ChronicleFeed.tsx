@@ -273,38 +273,22 @@ const ChronicleFeed = ({
   const handleRewrite = async (entryId: string, turn: number) => {
     setRewriting(entryId);
     try {
-      const roundEvents = events.filter(e => e.turn_number === turn);
-      const eventIds = roundEvents.map(e => e.id);
-      const approvedMemories = memories.filter(m => m.approved).map(m => ({ text: m.text, category: (m as any).category }));
-
-      const [{ data: responsesData }, { data: feedCommentsData }] = await Promise.all([
-        supabase.from("event_responses").select("*").in("event_id", eventIds),
-        supabase.from("feed_comments").select("*").eq("session_id", sessionId).eq("target_type", "event").in("target_id", eventIds),
-      ]);
-
-      const playerReactions = [
-        ...(responsesData || []).map((r: any) => ({ player: r.player, text: r.note, event_id: r.event_id })),
-        ...(feedCommentsData || []).map((c: any) => ({ player: c.player_name, text: c.comment_text, event_id: c.target_id })),
-      ];
-
+      // Server (world-chronicle-round) loads all sources itself from DB.
       const { data, error } = await supabase.functions.invoke("world-chronicle-round", {
-        body: {
-          sessionId,
-          round: turn,
-          confirmedEvents: roundEvents,
-          annotations: [],
-          worldMemories: approvedMemories,
-          playerReactions,
-          epochStyle,
-        },
+        body: { sessionId, round: turn },
       });
 
       if (error) throw error;
 
-      if (data.chronicleText) {
+      const bodyText: string = data?.body || data?.chronicleText || "";
+      if (bodyText) {
+        const title: string = data?.title || `Rok ${turn}`;
         await supabase.from("chronicle_entries").update({
-          text: `📜 Rok ${turn}\n\n${data.chronicleText}`,
-        }).eq("id", entryId);
+          title,
+          text: `📜 ${title}\n\n${bodyText}`,
+          highlights: data?.highlights || [],
+          referenced_event_ids: data?.referencedEventIds || [],
+        } as any).eq("id", entryId);
         toast.success("Kronika přepsána AI");
         onRefetch?.();
       }
