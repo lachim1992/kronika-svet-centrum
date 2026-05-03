@@ -202,36 +202,8 @@ const CityDetailPanel = ({
       ]);
       if (wikiData) { setWikiImage(wikiData.image_url); setWikiSummary(wikiData.summary); }
       if (iconData && iconData.length > 0) { setMapIconUrl(iconData[0].image_url); }
-
-      // Lazy generate: if ai_description is empty, check server_config and trigger wiki-generate
-      const aiDesc = wikiData?.ai_description;
-      if (!aiDesc || (typeof aiDesc === "string" && aiDesc.trim().length < 10)) {
-        // Check if lazy generation is enabled
-        const { data: cfgData } = await supabase
-          .from("server_config" as any)
-          .select("economic_params")
-          .eq("session_id", city.session_id)
-          .maybeSingle();
-        const econ = (cfgData as any)?.economic_params || {};
-        if (econ.lazy_generate_on_open !== false) {
-          setLazyGenerating(true);
-          try {
-            const { data: genData } = await supabase.functions.invoke("wiki-generate", {
-              body: {
-                entityType: "city", entityName: city.name, entityId: city.id,
-                sessionId: city.session_id, ownerPlayer: city.owner_player,
-                context: { regionName: city.province, description: city.city_description_cached, level: city.level },
-              },
-            });
-            if (genData?.summary) setWikiSummary(genData.summary);
-            if (genData?.imageUrl) setWikiImage(genData.imageUrl);
-          } catch (e) {
-            console.error("Lazy wiki generation failed:", e);
-          } finally {
-            setLazyGenerating(false);
-          }
-        }
-      }
+      // P0: lazy auto-generation REMOVED. Wiki text/image is generated only via
+      // explicit user action through wiki-orchestrator (see WikiPanel buttons).
     };
     fetchWiki();
   }, [city.id, city.session_id]);
