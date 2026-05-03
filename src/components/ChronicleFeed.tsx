@@ -67,25 +67,28 @@ const ChronicleFeed = ({
   const displayRound = viewingRound ?? currentTurn;
   const displayEvents = events.filter(e => e.turn_number === displayRound);
 
+  // Whitelist source_types allowed in main world Chronicle feed
+  const MAIN_CHRONICLE_TYPES = new Set([
+    "chronicle", "chronicle_zero", "world_round", "world_founding",
+  ]);
+
   // Check if Chronicle Zero exists
   const hasChronicleZero = chronicles.some(c => {
     const cf = c as any;
-    return cf.source_type === "chronicle_zero" || cf.source_type === "founding" ||
-      (cf.turn_from != null && cf.turn_from < 1 && cf.turn_to != null && cf.turn_to <= 0);
+    return cf.source_type === "chronicle_zero" || cf.source_type === "world_founding";
   });
 
-  // Match chronicles by turn_from/turn_to or text (no filtering — unified stream)
+  // Hard whitelist filter — fragments / duplicates / legacy / ai_faction are excluded
   const roundChronicles = chronicles.filter(c => {
     const cf = c as any;
-    // Round 0 = show chronicle_zero / founding entries
+    if (!MAIN_CHRONICLE_TYPES.has(cf.source_type)) return false;
     if (displayRound === 0) {
-      return cf.source_type === "chronicle_zero" || cf.source_type === "founding" ||
-        (cf.turn_from != null && cf.turn_from < 1 && cf.turn_to != null && cf.turn_to <= 0);
+      return cf.source_type === "chronicle_zero" || cf.source_type === "world_founding";
     }
     if (cf.turn_from != null && cf.turn_to != null) {
       return displayRound >= cf.turn_from && displayRound <= cf.turn_to;
     }
-    return c.text.includes(`Rok ${displayRound}`) || c.text.includes(`rok ${displayRound}`);
+    return false;
   });
   const hasChronicleForRound = roundChronicles.length > 0;
 
