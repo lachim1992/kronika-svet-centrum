@@ -844,41 +844,40 @@ Deno.serve(async (req) => {
         const rumors = turnRumors || [];
         const enrichment = { battles, declarations, completedBuildings, rumors };
 
-        if (confirmedEvents.length > 0 || battles.length > 0 || declarations.length > 0) {
+        // World Chronicle — always attempt (server loads its own data; fragments alone justify a chronicle)
+        {
           const { data: existingChronicle } = await supabase.from("chronicle_entries")
             .select("id").eq("session_id", sessionId)
             .eq("turn_from", closedTurn).eq("turn_to", closedTurn)
             .eq("source_type", "chronicle").maybeSingle();
 
-          // World Chronicle
           if (!existingChronicle) {
             try {
-              const annotationsForTurn = (turnAnnotations || []).filter((a: any) =>
-                confirmedEvents.some((e: any) => e.id === a.event_id)
-              ).map((a: any) => {
-                const evt = confirmedEvents.find((e: any) => e.id === a.event_id);
-                return { ...a, event_type: evt?.event_type || "unknown" };
-              });
-
               const { data: wcData } = await supabase.functions.invoke("world-chronicle-round", {
-                body: {
-                  sessionId, round: closedTurn, confirmedEvents,
-                  annotations: annotationsForTurn.filter((a: any) => a.visibility !== "private"),
-                  worldMemories: approvedMemories, ...enrichment,
-                },
+                body: { sessionId, round: closedTurn },
               });
 
-              if (wcData?.chronicleText) {
+              const bodyText: string = wcData?.body || wcData?.chronicleText || "";
+              if (bodyText) {
+                const title: string = wcData?.title || `Rok ${closedTurn}`;
                 await supabase.from("chronicle_entries").insert({
-                  session_id: sessionId, turn_from: closedTurn, turn_to: closedTurn,
-                  text: `📜 Rok ${closedTurn}\n\n${wcData.chronicleText}`,
-                  source_type: "chronicle", epoch_style: session.epoch_style || "kroniky",
+                  session_id: sessionId,
+                  turn_from: closedTurn,
+                  turn_to: closedTurn,
+                  title,
+                  text: `📜 ${title}\n\n${bodyText}`,
+                  source_type: "chronicle",
+                  epoch_style: session.epoch_style || "kroniky",
+                  highlights: wcData?.highlights || [],
+                  referenced_event_ids: wcData?.referencedEventIds || [],
                 });
-                if (wcData.newSuggestedMemories?.length) {
+                if (wcData?.newSuggestedMemories?.length) {
                   for (const mem of wcData.newSuggestedMemories) {
                     await safeInsert(supabase.from("world_memories").insert({
-                      session_id: sessionId, text: typeof mem === "string" ? mem : mem.text || "",
-                      approved: false, category: typeof mem === "object" ? mem.category : "general",
+                      session_id: sessionId,
+                      text: typeof mem === "string" ? mem : mem.text || "",
+                      approved: false,
+                      category: typeof mem === "object" ? mem.category : "general",
                     }));
                   }
                 }
