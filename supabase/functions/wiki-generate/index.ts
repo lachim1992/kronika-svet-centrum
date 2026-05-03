@@ -23,7 +23,7 @@ Deno.serve(async (req) => {
     // ═══ Fetch existing wiki entry to preserve player-written content ═══
     const { data: existingWiki } = await sb
       .from("wiki_entries")
-      .select("id, body_md, summary, ai_description")
+      .select("id, body_md, summary, ai_description, image_url, image_prompt")
       .eq("session_id", sessionId)
       .eq("entity_type", entityType)
       .eq("entity_id", entityId)
@@ -31,6 +31,23 @@ Deno.serve(async (req) => {
 
     const playerLegend = (existingWiki as any)?.body_md || "";
     const playerSummary = (existingWiki as any)?.summary || "";
+
+    // ═══ P1: Cache-first guard — skip ALL AI calls when content exists and force !== true ═══
+    const existingDesc = (existingWiki as any)?.ai_description || "";
+    const hasUsableContent = (existingDesc && existingDesc.trim().length > 10)
+      || (playerLegend && playerLegend.trim().length > 10);
+    if (!force && existingWiki && hasUsableContent) {
+      return jsonResponse({
+        ok: true,
+        cached: true,
+        skipped: true,
+        entry_id: (existingWiki as any).id,
+        summary: (existingWiki as any).summary,
+        aiDescription: existingDesc,
+        imageUrl: (existingWiki as any).image_url,
+        imagePrompt: (existingWiki as any).image_prompt,
+      });
+    }
 
     // ═══ Fetch flavor_prompt for cities ═══
     let flavorPrompt = "";
