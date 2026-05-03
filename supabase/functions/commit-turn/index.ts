@@ -690,6 +690,25 @@ Deno.serve(async (req) => {
     }
     console.log(`[commit-turn] phase-4b routes/flows/economy/trade: ${Date.now() - t4b}ms`);
 
+    // ─── Claim processed route_completed events (Increment 3) ──────────
+    // World-turn already advanced (phase 4) and economy chain ran. Mark
+    // route_completed events as processed so downstream consumers and
+    // future ticks don't re-trigger refresh on them.
+    try {
+      const { data: claimed, error: claimErr } = await supabase
+        .from("game_events")
+        .update({ processed_at: new Date().toISOString() })
+        .eq("session_id", sessionId)
+        .eq("event_type", "route_completed")
+        .is("processed_at", null)
+        .lte("turn_number", turnNumber)
+        .select("id");
+      if (claimErr) console.warn("[commit-turn] claim route_completed warning:", claimErr.message);
+      results.routeCompletedClaimed = { count: (claimed || []).length };
+    } catch (e) {
+      console.warn("[commit-turn] claim route_completed error:", (e as Error).message);
+    }
+
     // ═══════════════════════════════════════════
     // 5. PROCESS TURN (economy for all players + AI factions)
     // PARALLEL — entities are isolated (each has own balance/resources).
