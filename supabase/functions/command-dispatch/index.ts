@@ -9,6 +9,7 @@ import {
   type InfluenceState,
   type RivalRow,
 } from "../_shared/nodeInfluence.ts";
+import { applyStackMove } from "../_shared/stackMovementCommand.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
