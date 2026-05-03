@@ -28,35 +28,15 @@ const DevRoadSpeedupPanel = ({ sessionId, onRefetch }: Props) => {
   const completeAll = async () => {
     setBusy(true);
     try {
-      const { data: routes, error } = await supabase
-        .from("province_routes")
-        .select("id, metadata, route_type, node_a, node_b")
-        .eq("session_id", sessionId)
-        .eq("construction_state", "under_construction");
+      const { data, error } = await supabase.functions.invoke("dev-complete-roads", {
+        body: { session_id: sessionId },
+      });
       if (error) throw error;
-      if (!routes || routes.length === 0) {
+      const updated = (data as any)?.updated ?? 0;
+      if (updated === 0) {
         toast.info("Žádné silnice ve výstavbě.");
         return;
       }
-
-      let updated = 0;
-      for (const r of routes) {
-        const md = (r.metadata as any) || {};
-        const total = Number(md.total_work || 0) || 1;
-        const newMd = { ...md, progress: total, last_tick_turn: md.last_tick_turn ?? null, dev_completed: true };
-        const { error: uErr } = await supabase
-          .from("province_routes")
-          .update({
-            construction_state: "complete",
-            control_state: "open",
-            metadata: newMd,
-            path_dirty: true,
-            completed_at: new Date().toISOString(),
-          })
-          .eq("id", r.id);
-        if (!uErr) updated++;
-      }
-
       toast.success(`✅ Dokončeno ${updated} silnic`, {
         description: "Spouštím přepočet ekonomiky…",
       });
