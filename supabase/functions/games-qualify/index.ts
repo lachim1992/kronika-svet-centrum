@@ -124,8 +124,15 @@ Deno.serve(async (req) => {
         .in("status", ["graduated", "promoted"]);
 
       if (!graduates || graduates.length === 0) {
-        return new Response(JSON.stringify({ error: "Žádní absolventi k dispozici. Nejprve potřebujete akademie s absolventy." }), {
-          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        // Soft fallback: no crash on frontend, just inform the player.
+        return new Response(JSON.stringify({
+          ok: true,
+          fallback: true,
+          code: "NO_GRADUATES_AVAILABLE",
+          error: "Žádní absolventi k dispozici. Nejprve potřebujete akademie s absolventy.",
+          results: [],
+        }), {
+          status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
 
