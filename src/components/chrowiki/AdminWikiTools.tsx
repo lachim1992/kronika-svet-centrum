@@ -64,29 +64,27 @@ export default function AdminWikiTools({
   const handleRegenerateText = async () => {
     setRegeneratingText(true);
     try {
-      const { data, error } = await supabase.functions.invoke("wiki-generate", {
-        body: { entityType, entityName, entityId, sessionId, ownerPlayer: currentPlayerName, context: {} },
+      if (!wikiEntryId) {
+        toast.error("Wiki entry not found");
+        return;
+      }
+      // Snapshot version BEFORE regenerating.
+      await supabase.from("wiki_entry_versions" as any).insert({
+        wiki_entry_id: wikiEntryId,
+        session_id: sessionId,
+        field_changed: "ai_description",
+        old_value: currentDescription || null,
+        new_value: null,
+        changed_by: currentPlayerName,
+        change_reason: "Admin regenerate (pre-snapshot)",
       });
-      if (error) throw error;
-      if (data?.aiDescription && wikiEntryId) {
-        // Save version
-        await supabase.from("wiki_entry_versions" as any).insert({
-          wiki_entry_id: wikiEntryId,
-          session_id: sessionId,
-          field_changed: "ai_description",
-          old_value: currentDescription || null,
-          new_value: data.aiDescription,
-          changed_by: currentPlayerName,
-          change_reason: "Admin regenerate",
-        });
-        await supabase.from("wiki_entries").update({
-          summary: data.summary,
-          ai_description: data.aiDescription,
-          image_prompt: data.imagePrompt,
-          updated_at: new Date().toISOString(),
-        }).eq("id", wikiEntryId);
+      const { regenerateWiki } = await import("@/lib/wikiOrchestrator");
+      const res = await regenerateWiki(wikiEntryId, ["content"]);
+      if (res.ok) {
         await onRefresh();
         toast.success("📜 Text přegenerován a verze uložena!");
+      } else {
+        toast.error("Regenerace textu selhala");
       }
     } catch (e) {
       console.error(e);
@@ -98,40 +96,33 @@ export default function AdminWikiTools({
   const handleRegenerateImage = async (extraPrompt?: string) => {
     setRegeneratingImage(true);
     try {
-      const prompt = extraPrompt
-        ? `${currentImagePrompt || `Illustration of ${entityName}`}. Additional: ${extraPrompt}`
-        : currentImagePrompt || `Illustration of ${entityName}, fantasy style`;
-      
-      const { data, error } = await supabase.functions.invoke("encyclopedia-image", {
-        body: {
-          entityType, entityName, entityId, sessionId,
-          imagePrompt: prompt,
-          createdBy: currentPlayerName,
-          description: currentDescription?.substring(0, 200) || entityName,
-        },
+      if (!wikiEntryId) {
+        toast.error("Wiki entry not found");
+        return;
+      }
+      // If admin provided a custom extra prompt, persist it to image_prompt before regen.
+      if (extraPrompt) {
+        const newPrompt = `${currentImagePrompt || `Illustration of ${entityName}`}. Additional: ${extraPrompt}`;
+        await supabase.from("wiki_entries").update({ image_prompt: newPrompt } as any).eq("id", wikiEntryId);
+      }
+      // Snapshot version BEFORE regenerating.
+      await supabase.from("wiki_entry_versions" as any).insert({
+        wiki_entry_id: wikiEntryId,
+        session_id: sessionId,
+        field_changed: "image",
+        old_image_url: currentImageUrl || null,
+        new_image_url: null,
+        image_custom_prompt: extraPrompt || null,
+        changed_by: currentPlayerName,
+        change_reason: extraPrompt ? "Admin custom re-prompt (pre-snapshot)" : "Admin image regenerate (pre-snapshot)",
       });
-      if (error) throw error;
-      if (data?.error) { toast.error(data.error); return; }
-
-      if (data?.imageUrl && wikiEntryId) {
-        // Save version
-        await supabase.from("wiki_entry_versions" as any).insert({
-          wiki_entry_id: wikiEntryId,
-          session_id: sessionId,
-          field_changed: "image",
-          old_image_url: currentImageUrl || null,
-          new_image_url: data.imageUrl,
-          image_custom_prompt: extraPrompt || null,
-          changed_by: currentPlayerName,
-          change_reason: extraPrompt ? "Admin custom re-prompt" : "Admin image regenerate",
-        });
-
-        await supabase.from("wiki_entries").update({
-          image_url: data.imageUrl,
-          updated_at: new Date().toISOString(),
-        }).eq("id", wikiEntryId);
+      const { regenerateWiki } = await import("@/lib/wikiOrchestrator");
+      const res = await regenerateWiki(wikiEntryId, ["image"]);
+      if (res.ok) {
         await onRefresh();
         toast.success("🖼️ Obraz přegenerován!");
+      } else {
+        toast.error("Regenerace obrazu selhala");
       }
       setEditingImagePrompt(false);
       setCustomImagePrompt("");

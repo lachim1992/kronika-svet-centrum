@@ -95,34 +95,34 @@ const CityDirectory = ({
     fetchWiki();
   }, [sessionId, cities]);
 
-  // Lazy generate image for a single city
+  // Lazy generate image for a single city — routes through wiki-orchestrator (cache-first).
   const lazyGenerateImage = useCallback(async (city: City) => {
     if (generatingImages.has(city.id)) return;
     setGeneratingImages(prev => new Set(prev).add(city.id));
     try {
-      const { data } = await supabase.functions.invoke("generate-entity-media", {
-        body: {
-          sessionId,
-          entityId: city.id,
-          entityType: "city",
-          entityName: city.name,
-          kind: "cover",
-          imagePrompt: [city.flavor_prompt, city.name, city.province, ...(city.tags || [])].filter(Boolean).join(", "),
-          createdBy: "lazy_hydrate",
-        },
+      const { ensureWikiEntry } = await import("@/lib/wikiOrchestrator");
+      const res = await ensureWikiEntry({
+        sessionId,
+        entityType: "city",
+        entityId: city.id,
+        entityName: city.name,
+        ownerPlayer: city.owner_player,
       });
-      if (data?.imageUrl) {
+      if (res.image?.imageUrl) {
         setWikiMap(prev => ({
           ...prev,
-          [city.id]: { ...prev[city.id], image_url: data.imageUrl },
+          [city.id]: { ...prev[city.id], image_url: res.image!.imageUrl! },
         }));
-        // Also write back to wiki_entries
-        await supabase
+      } else {
+        // Re-read wiki entry to pick up image_url written by orchestrator.
+        const { data } = await supabase
           .from("wiki_entries")
-          .update({ image_url: data.imageUrl, image_prompt: data.imagePrompt } as any)
-          .eq("session_id", sessionId)
-          .eq("entity_type", "city")
-          .eq("entity_id", city.id);
+          .select("image_url, summary")
+          .eq("session_id", sessionId).eq("entity_type", "city").eq("entity_id", city.id)
+          .maybeSingle();
+        if (data?.image_url) {
+          setWikiMap(prev => ({ ...prev, [city.id]: { image_url: data.image_url, summary: data.summary } }));
+        }
       }
     } catch (e) {
       console.error("Lazy image gen failed for", city.name, e);

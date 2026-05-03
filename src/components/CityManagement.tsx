@@ -379,7 +379,7 @@ const CityManagement = ({ sessionId, cityId, currentPlayerName, currentTurn, onB
                     <span className="text-xs text-muted-foreground">{city.owner_player}</span>
                   </div>
                 </div>
-                {/* Generate image button */}
+                {/* Generate image button — routes through wiki-orchestrator. */}
                 {!wikiImage && !generatingImage && (
                   <Button
                     size="sm" variant="secondary"
@@ -387,18 +387,18 @@ const CityManagement = ({ sessionId, cityId, currentPlayerName, currentTurn, onB
                     onClick={async () => {
                       setGeneratingImage(true);
                       try {
-                        const { data } = await supabase.functions.invoke("generate-entity-media", {
-                          body: {
-                            sessionId, entityId: cityId, entityType: "city",
-                            entityName: city.name, kind: "cover",
-                            imagePrompt: [city.flavor_prompt, city.name, city.province, ...(city.tags || [])].filter(Boolean).join(", "),
-                            createdBy: "city_management",
-                          },
+                        const { ensureWikiEntry } = await import("@/lib/wikiOrchestrator");
+                        const res = await ensureWikiEntry({
+                          sessionId, entityType: "city", entityId: cityId,
+                          entityName: city.name, ownerPlayer: city.owner_player,
                         });
-                        if (data?.imageUrl) {
-                          setWikiImage(data.imageUrl);
-                          await supabase.from("wiki_entries").update({ image_url: data.imageUrl } as any)
-                            .eq("session_id", sessionId).eq("entity_type", "city").eq("entity_id", cityId);
+                        const url = res.image?.imageUrl;
+                        if (url) setWikiImage(url);
+                        else {
+                          const { data } = await supabase.from("wiki_entries")
+                            .select("image_url").eq("session_id", sessionId)
+                            .eq("entity_type", "city").eq("entity_id", cityId).maybeSingle();
+                          if (data?.image_url) setWikiImage(data.image_url);
                         }
                       } catch (e) { console.error(e); }
                       setGeneratingImage(false);

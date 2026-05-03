@@ -92,28 +92,48 @@ const WonderPortrait = ({
   };
 
   const handleApprove = async (draft: DraftImage) => {
-    // Set this draft as primary cover in encyclopedia_images
-    await supabase
+    // P3: canonical-replace promote. Update existing cover row in place (unique index
+    // encyclopedia_images_one_cover allows ≤1 cover per entity). Draft row stays as
+    // 'illustration' (append-only history preserved).
+    const coverPayload = {
+      image_url: draft.image_url,
+      image_prompt: draft.image_prompt || promptText,
+      is_primary: true,
+      kind: "cover",
+      style_preset: "default",
+      created_by: currentPlayerName,
+    } as any;
+
+    const { data: existingCover } = await supabase
       .from("encyclopedia_images")
-      .update({ is_primary: false })
+      .select("id, image_version")
       .eq("session_id", sessionId)
       .eq("entity_type", "wonder")
       .eq("entity_id", wonderId)
-      .eq("is_primary", true);
+      .eq("kind", "cover")
+      .maybeSingle();
 
-    await supabase
-      .from("encyclopedia_images")
-      .update({ is_primary: true, kind: "cover" })
-      .eq("id", draft.id);
+    if (existingCover) {
+      await supabase.from("encyclopedia_images")
+        .update({ ...coverPayload, image_version: ((existingCover as any).image_version ?? 1) + 1 })
+        .eq("id", (existingCover as any).id);
+    } else {
+      await supabase.from("encyclopedia_images").insert({
+        session_id: sessionId,
+        entity_type: "wonder",
+        entity_id: wonderId,
+        image_version: 1,
+        ...coverPayload,
+      } as any);
+    }
 
-    // Also update wonders table for backward compat
+    // Mirror to legacy tables for backward compat.
     await supabase.from("wonders").update({
       image_url: draft.image_url,
       image_prompt: draft.image_prompt || promptText,
       updated_at: new Date().toISOString(),
     }).eq("id", wonderId);
 
-    // Update wiki_entries for backward compat
     await supabase.from("wiki_entries").update({
       image_url: draft.image_url,
       image_prompt: draft.image_prompt || promptText,
@@ -126,7 +146,7 @@ const WonderPortrait = ({
       currentTurn
     );
 
-    setDrafts([]);
+    await fetchDrafts();
     toast.success(`✅ Oficiální portrét „${wonderName}" potvrzen!`);
     onRefetch?.();
   };

@@ -507,26 +507,22 @@ const ChroWikiDetailPanel = ({
         else if (entityType === "country") Object.assign(context, { description: entity.description, motto: entity.motto, ruler_player: entity.ruler_player });
         else if (entityType === "event") Object.assign(context, { date: entity.date, summary: entity.summary, description: entity.description, category: entity.event_category });
       }
-      const { data, error } = await supabase.functions.invoke("wiki-generate", {
-        body: { entityType, entityName, entityId, sessionId, ownerPlayer: entity?.owner_player || entity?.player_name || "", context },
-      });
-      if (error) throw error;
-      if (data?.aiDescription) {
-        const existing = wikiEntries.find(w => w.entity_id === entityId && w.entity_type === entityType);
-        if (existing) {
-          await supabase.from("wiki_entries").update({
-            summary: data.summary, ai_description: data.aiDescription,
-            image_url: data.imageUrl || existing.image_url, image_prompt: data.imagePrompt,
-            updated_at: new Date().toISOString(), last_enriched_turn: currentTurn || 1,
-          }).eq("id", existing.id);
-        } else {
-          await supabase.from("wiki_entries").upsert({
-            session_id: sessionId, entity_type: entityType, entity_id: entityId, entity_name: entityName,
-            owner_player: entity?.owner_player || entity?.player_name || "",
-            summary: data.summary, ai_description: data.aiDescription,
-            image_url: data.imageUrl, image_prompt: data.imagePrompt, updated_at: new Date().toISOString(),
-          });
-        }
+      const ownerPlayer = entity?.owner_player || entity?.player_name || "";
+      const { ensureWikiEntry, regenerateWiki, ensureAndGetEntryId } = await import("@/lib/wikiOrchestrator");
+      const existing = wikiEntries.find(w => w.entity_id === entityId && w.entity_type === entityType);
+      if (existing?.id) {
+        // Existing entry → explicit user-driven regenerate (force=true downstream).
+        await regenerateWiki(existing.id, ["content", "image"]);
+      } else {
+        const entryId = await ensureAndGetEntryId({
+          sessionId, entityType, entityId, entityName, ownerPlayer,
+        });
+        if (entryId) await ensureWikiEntry({ sessionId, entityType, entityId, entityName, ownerPlayer });
+      }
+      if (currentTurn) {
+        await supabase.from("wiki_entries")
+          .update({ last_enriched_turn: currentTurn } as any)
+          .eq("session_id", sessionId).eq("entity_type", entityType).eq("entity_id", entityId);
       }
       await onRefreshWiki();
       toast.success(`📜 Záznam „${entityName}" vytvořen!`);
