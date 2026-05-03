@@ -381,10 +381,10 @@ const ChronicleFeed = ({
           {allRounds.map(r => {
             const hasChr = chronicles.some(c => {
               const cf = c as any;
-              if (r === 0) return cf.source_type === "chronicle_zero" || cf.source_type === "founding" ||
-                (cf.turn_from != null && cf.turn_from < 1 && cf.turn_to != null && cf.turn_to <= 0);
-              if (cf.turn_from && cf.turn_to) return r >= cf.turn_from && r <= cf.turn_to;
-              return c.text.includes(`Rok ${r}`);
+              if (!MAIN_CHRONICLE_TYPES.has(cf.source_type)) return false;
+              if (r === 0) return cf.source_type === "chronicle_zero" || cf.source_type === "world_founding";
+              if (cf.turn_from != null && cf.turn_to != null) return r >= cf.turn_from && r <= cf.turn_to;
+              return false;
             });
             return (
               <Button key={r} variant={r === displayRound ? "default" : hasChr ? "secondary" : "ghost"}
