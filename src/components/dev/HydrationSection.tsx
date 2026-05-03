@@ -89,45 +89,51 @@ const HydrationSection = ({ sessionId, onRefetch }: Props) => {
     setHydrationLog(prev => [...prev.slice(-100), `[${new Date().toLocaleTimeString("cs")}] ${msg}`]);
   }, []);
 
-  // ---- Generator functions ----
+  // ---- Generator functions (route through wiki-orchestrator) ----
   const genWiki = async (items: MissingItem[]) => {
+    const { ensureWikiEntry } = await import("@/lib/wikiOrchestrator");
     for (const entry of items) {
       try {
-        const { data } = await supabase.functions.invoke("wiki-generate", {
-          body: { entityName: entry.name, entityType: entry.type || "city", entityId: entry.id, sessionId, ownerPlayer: entry.owner || "" },
+        await ensureWikiEntry({
+          sessionId, entityType: entry.type || "city", entityId: entry.id, entityName: entry.name, ownerPlayer: entry.owner || "",
         });
-        if (data?.aiDescription) {
-          await supabase.from("wiki_entries").update({ ai_description: data.aiDescription }).eq("id", entry.id);
-          hLog(`✅ Wiki: ${entry.name}`);
-        }
+        hLog(`✅ Wiki: ${entry.name}`);
       } catch { hLog(`❌ Wiki: ${entry.name}`); }
     }
   };
 
   const genProvinces = async (items: MissingItem[]) => {
+    const { ensureWikiEntry } = await import("@/lib/wikiOrchestrator");
     for (const prov of items) {
       try {
-        const { data } = await supabase.functions.invoke("wiki-generate", {
-          body: { entityName: prov.name, entityType: "province", sessionId, ownerPlayer: prov.owner || "" },
+        await ensureWikiEntry({
+          sessionId, entityType: "province", entityId: prov.id, entityName: prov.name, ownerPlayer: prov.owner || "",
         });
-        if (data?.aiDescription) {
-          await supabase.from("provinces").update({ ai_description: data.aiDescription }).eq("id", prov.id);
-          hLog(`✅ Provincie: ${prov.name}`);
+        const { data: w } = await supabase.from("wiki_entries")
+          .select("ai_description").eq("session_id", sessionId)
+          .eq("entity_type", "province").eq("entity_id", prov.id).maybeSingle();
+        if (w?.ai_description) {
+          await supabase.from("provinces").update({ ai_description: w.ai_description }).eq("id", prov.id);
         }
+        hLog(`✅ Provincie: ${prov.name}`);
       } catch { hLog(`❌ Provincie: ${prov.name}`); }
     }
   };
 
   const genRegions = async (items: MissingItem[]) => {
+    const { ensureWikiEntry } = await import("@/lib/wikiOrchestrator");
     for (const reg of items) {
       try {
-        const { data } = await supabase.functions.invoke("wiki-generate", {
-          body: { entityName: reg.name, entityType: "region", sessionId, ownerPlayer: "" },
+        await ensureWikiEntry({
+          sessionId, entityType: "region", entityId: reg.id, entityName: reg.name,
         });
-        if (data?.aiDescription) {
-          await supabase.from("regions").update({ ai_description: data.aiDescription }).eq("id", reg.id);
-          hLog(`✅ Region: ${reg.name}`);
+        const { data: w } = await supabase.from("wiki_entries")
+          .select("ai_description").eq("session_id", sessionId)
+          .eq("entity_type", "region").eq("entity_id", reg.id).maybeSingle();
+        if (w?.ai_description) {
+          await supabase.from("regions").update({ ai_description: w.ai_description }).eq("id", reg.id);
         }
+        hLog(`✅ Region: ${reg.name}`);
       } catch { hLog(`❌ Region: ${reg.name}`); }
     }
   };
@@ -154,29 +160,37 @@ const HydrationSection = ({ sessionId, onRefetch }: Props) => {
   };
 
   const genWonderDescs = async (items: MissingItem[]) => {
+    const { ensureWikiEntry } = await import("@/lib/wikiOrchestrator");
     for (const w of items) {
       try {
-        const { data } = await supabase.functions.invoke("wiki-generate", {
-          body: { entityName: w.name, entityType: "wonder", sessionId, ownerPlayer: "" },
+        await ensureWikiEntry({
+          sessionId, entityType: "wonder", entityId: w.id, entityName: w.name,
         });
-        if (data?.aiDescription) {
-          await supabase.from("wonders").update({ description: data.aiDescription }).eq("id", w.id);
-          hLog(`✅ Div: ${w.name}`);
+        const { data: we } = await supabase.from("wiki_entries")
+          .select("ai_description").eq("session_id", sessionId)
+          .eq("entity_type", "wonder").eq("entity_id", w.id).maybeSingle();
+        if (we?.ai_description) {
+          await supabase.from("wonders").update({ description: we.ai_description }).eq("id", w.id);
         }
+        hLog(`✅ Div: ${w.name}`);
       } catch { hLog(`❌ Div: ${w.name}`); }
     }
   };
 
   const genPersonBios = async (items: MissingItem[]) => {
+    const { ensureWikiEntry } = await import("@/lib/wikiOrchestrator");
     for (const p of items) {
       try {
-        const { data } = await supabase.functions.invoke("wiki-generate", {
-          body: { entityName: p.name, entityType: "person", sessionId, ownerPlayer: "" },
+        await ensureWikiEntry({
+          sessionId, entityType: "person", entityId: p.id, entityName: p.name,
         });
-        if (data?.aiDescription) {
-          await supabase.from("great_persons").update({ bio: data.aiDescription }).eq("id", p.id);
-          hLog(`✅ Osobnost: ${p.name}`);
+        const { data: w } = await supabase.from("wiki_entries")
+          .select("ai_description").eq("session_id", sessionId)
+          .eq("entity_type", "person").eq("entity_id", p.id).maybeSingle();
+        if (w?.ai_description) {
+          await supabase.from("great_persons").update({ bio: w.ai_description }).eq("id", p.id);
         }
+        hLog(`✅ Osobnost: ${p.name}`);
       } catch { hLog(`❌ Osobnost: ${p.name}`); }
     }
   };
@@ -202,18 +216,20 @@ const HydrationSection = ({ sessionId, onRefetch }: Props) => {
   };
 
   const genWonderImages = async (items: MissingItem[]) => {
+    const { ensureWikiEntry } = await import("@/lib/wikiOrchestrator");
     for (const w of items) {
       try {
-        await supabase.functions.invoke("generate-entity-media", { body: { sessionId, entityId: w.id, entityType: "wonder", entityName: w.name, kind: "cover" } });
+        await ensureWikiEntry({ sessionId, entityType: "wonder", entityId: w.id, entityName: w.name });
         hLog(`✅ Obrázek divu: ${w.name}`);
       } catch { hLog(`❌ Obrázek divu: ${w.name}`); }
     }
   };
 
   const genPersonImages = async (items: MissingItem[]) => {
+    const { ensureWikiEntry } = await import("@/lib/wikiOrchestrator");
     for (const p of items) {
       try {
-        await supabase.functions.invoke("generate-entity-media", { body: { sessionId, entityId: p.id, entityType: "person", entityName: p.name, kind: "cover" } });
+        await ensureWikiEntry({ sessionId, entityType: "person", entityId: p.id, entityName: p.name });
         hLog(`✅ Portrét: ${p.name}`);
       } catch { hLog(`❌ Portrét: ${p.name}`); }
     }
