@@ -1614,13 +1614,76 @@ async function executeBuildRoute(
       : "A route between these nodes is already under construction" };
   }
 
+  // Length & terrain-sensitive totalWork (Inkrement 2).
+  // Source of truth for planned path: payload.hexPath if valid, else node-to-node fallback.
   const buildCostMap: Record<string, number> = {
     land_road: 50, river_route: 30, sea_lane: 20, mountain_pass: 80, caravan_route: 60,
     trail: 30, road: 50, paved: 100,
   };
   const type = routeType || "land_road";
   const goldCost = buildCostMap[type] || 50;
-  const totalWork = goldCost * 4; // 4 work-units per gold cost
+
+  // Compute planned hex path
+  let plannedHexPath: { q: number; r: number }[] = [];
+  if (Array.isArray(hexPath) && hexPath.length >= 2) {
+    plannedHexPath = hexPath
+      .filter((h: any) => Number.isFinite(h?.q) && Number.isFinite(h?.r))
+      .map((h: any) => ({ q: h.q, r: h.r }));
+  }
+  if (plannedHexPath.length < 2) {
+    // Fallback: fetch node hex positions, build straight chebyshev interpolation
+    const { data: nodeAPos } = await supabase.from("province_nodes")
+      .select("hex_q, hex_r").eq("id", nodeAId).maybeSingle();
+    const { data: nodeBPos } = await supabase.from("province_nodes")
+      .select("hex_q, hex_r").eq("id", nodeBId).maybeSingle();
+    if (nodeAPos && nodeBPos) {
+      const aq = nodeAPos.hex_q, ar = nodeAPos.hex_r;
+      const bq = nodeBPos.hex_q, br = nodeBPos.hex_r;
+      const dq = bq - aq, dr = br - ar;
+      const steps = Math.max(Math.abs(dq), Math.abs(dr), Math.abs(dq + dr));
+      plannedHexPath = [];
+      for (let i = 0; i <= steps; i++) {
+        const t = steps === 0 ? 0 : i / steps;
+        plannedHexPath.push({ q: Math.round(aq + dq * t), r: Math.round(ar + dr * t) });
+      }
+      // Dedupe
+      plannedHexPath = plannedHexPath.filter((h, i, arr) =>
+        i === 0 || h.q !== arr[i - 1].q || h.r !== arr[i - 1].r);
+    }
+  }
+
+  // Hard terrain count on entry hexes (slice(1))
+  let hardTerrainHexes = 0;
+  if (plannedHexPath.length >= 2) {
+    const qs = plannedHexPath.slice(1).map(h => h.q);
+    const rs = plannedHexPath.slice(1).map(h => h.r);
+    const { data: pathHexes } = await supabase
+      .from("province_hexes")
+      .select("q, r, biome_family")
+      .eq("session_id", sessionId)
+      .in("q", qs)
+      .in("r", rs);
+    const lookup = new Map<string, string>();
+    for (const h of (pathHexes || [])) lookup.set(`${h.q},${h.r}`, h.biome_family || "");
+    for (const h of plannedHexPath.slice(1)) {
+      const b = lookup.get(`${h.q},${h.r}`) || "";
+      if (b === "mountains" || b === "mountain" || b === "swamp" || b === "dense_forest") hardTerrainHexes++;
+    }
+  }
+
+  const pathEdgeCount = Math.max(1, plannedHexPath.length - 1);
+  const WORK_TABLE: Record<string, { base: number; perEdge: number; perHard: number }> = {
+    land_road:     { base: 20, perEdge: 5, perHard: 8 },
+    road:          { base: 20, perEdge: 5, perHard: 8 },
+    paved:         { base: 30, perEdge: 7, perHard: 10 },
+    trail:         { base: 15, perEdge: 4, perHard: 6 },
+    river_route:   { base: 15, perEdge: 3, perHard: 0 },
+    sea_lane:      { base: 10, perEdge: 2, perHard: 0 },
+    mountain_pass: { base: 40, perEdge: 8, perHard: 12 },
+    caravan_route: { base: 25, perEdge: 5, perHard: 8 },
+  };
+  const wt = WORK_TABLE[type] || WORK_TABLE.land_road;
+  const totalWork = wt.base + pathEdgeCount * wt.perEdge + hardTerrainHexes * wt.perHard;
 
   // Labor requirement: minimum 50 of labor_reserve allocated upfront. Pure civilian workforce.
   const requestedLabor = Math.max(50, Math.floor(Number(labor ?? assignedLabor ?? soldiers ?? 0)));
