@@ -1759,12 +1759,36 @@ async function executeAction(
     case "block_node_annexation": {
       if (!action.targetNodeName) return "missing_params";
       const { data: node } = await supabase.from("province_nodes")
-        .select("id, name, is_neutral, discovered, controlled_by")
+        .select("id, name, hex_q, hex_r, is_neutral, discovered, controlled_by")
         .eq("session_id", sessionId)
         .ilike("name", action.targetNodeName).limit(1).maybeSingle();
       if (!node) return "node_not_found";
       if (!node.is_neutral || node.controlled_by) return "node_not_neutral";
       if (!node.discovered) return "node_not_discovered";
+
+      let effectiveActionType = action.actionType;
+
+      // ─── Inc 5: annex_node requires adjacent friendly stack.
+      // Without one, downgrade to military_pressure (long-term claim project).
+      if (effectiveActionType === "annex_node") {
+        const { data: ownStacks } = await supabase
+          .from("military_stacks")
+          .select("hex_q, hex_r, soldiers, unit_count")
+          .eq("session_id", sessionId)
+          .eq("owner_player", factionName);
+        const adjacent = (ownStacks || []).some((s: any) => {
+          const dq = (s.hex_q ?? 0) - (node.hex_q ?? 0);
+          const dr = (s.hex_r ?? 0) - (node.hex_r ?? 0);
+          // Hex axial distance ≤ 1 (same hex or neighbour)
+          const dist = (Math.abs(dq) + Math.abs(dr) + Math.abs(dq + dr)) / 2;
+          const strength = Number(s.soldiers ?? s.unit_count ?? 0);
+          return dist <= 1 && strength > 0;
+        });
+        if (!adjacent) {
+          effectiveActionType = "apply_military_pressure";
+          console.log(`[ai-faction-turn] ${factionName}: annex_node ${node.name} downgraded to apply_military_pressure (no adjacent stack)`);
+        }
+      }
 
       const cmdMap: Record<string, string> = {
         open_trade_with_node: "OPEN_TRADE_WITH_NODE",
@@ -1774,7 +1798,7 @@ async function executeAction(
         block_node_annexation: "BLOCK_NODE_ANNEXATION",
       };
       const extraPayload: Record<string, unknown> = { note: action.description };
-      if (action.actionType === "block_node_annexation") {
+      if (effectiveActionType === "block_node_annexation") {
         const dur = Number((action as any).blockDurationTurns ?? 3);
         extraPayload.duration_turns = Math.max(1, Math.min(10, dur));
         extraPayload.reason = (action as any).narrativeNote || `Diplomatický blok (${factionName})`;
@@ -1782,7 +1806,7 @@ async function executeAction(
       await invokeFunction(supabaseUrl, supabaseKey, "command-dispatch", {
         sessionId, turnNumber: turn,
         actor: { name: factionName, type: "ai_faction" },
-        commandType: cmdMap[action.actionType],
+        commandType: cmdMap[effectiveActionType],
         commandPayload: { node_id: node.id, ...extraPayload },
         commandId,
       });
