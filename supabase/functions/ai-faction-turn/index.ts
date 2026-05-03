@@ -1307,12 +1307,29 @@ async function executeAction(
       // Already at target?
       if (stack.hex_q === targetQ && stack.hex_r === targetR) return "already_at_target";
 
-      const next = stepToward(stack.hex_q, stack.hex_r, targetQ, targetR);
-      await supabase.from("military_stacks").update({
-        hex_q: next.q, hex_r: next.r, moved_this_turn: true,
-      }).eq("id", stack.id);
+      // Plan up to 2 hexes via shared engine (handles road bonus & passability)
+      const plan = await planShortHopToward(
+        supabase,
+        sessionId,
+        { q: stack.hex_q, r: stack.hex_r },
+        { q: targetQ, r: targetR },
+      );
+      if (plan.path.length < 2) return "blocked_no_step";
 
-      return `moved_to_${next.q}_${next.r}`;
+      const moveResult = await applyStackMove(supabase, {
+        sessionId,
+        stackId: stack.id,
+        plannedPath: plan.path,
+        actorName: factionName,
+      });
+      if (!moveResult.ok) return `move_failed_${moveResult.code}`;
+
+      // Mirror local cache so subsequent actions in this turn see new pos
+      stack.hex_q = moveResult.finalHex.q;
+      stack.hex_r = moveResult.finalHex.r;
+      stack.moved_this_turn = true;
+
+      return `moved_to_${moveResult.finalHex.q}_${moveResult.finalHex.r}${moveResult.usedRoadBonus ? "_road" : ""}`;
     }
 
     // ─── ATTACK TARGET (city or stack) ───
