@@ -9,6 +9,7 @@ import {
   computeStructuralBonuses,
   type CityForGrowth,
 } from "../_shared/physics.ts";
+import { logAISkip } from "../_shared/ai-context.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
