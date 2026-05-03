@@ -1,133 +1,283 @@
-# Military / AI audit and completion plan
+## Princip
 
-## What the audit confirmed
-- AI factions in session `IJ8BQ5` are still effectively disarmed: only Lachim currently has a `military_stacks` row.
-- The main blocker is a hard mismatch in recruitment logic:
-  - `ai-faction-turn` forced recruitment triggers at roughly `40–80 manpower`.
-  - `command-dispatch` militia preset still resolves to a `400 manpower` stack.
-  - Result: AI logs say `FORCED RECRUIT`, but the actual `RECRUIT_STACK` command fails every time.
-- AI action reporting is misleading:
-  - `ai-faction-turn` marks many actions as executed even when the returned result is not truly successful.
-  - In `world_action_log`, AI turns therefore look active, but no stacks are created.
-- A second backend contract mismatch exists for construction:
-  - `ai-faction-turn` sends `build_building` with `buildingName/templateId`.
-  - `command-dispatch` now expects `payload.building`.
-  - This causes real 400 errors: `Missing cityId or building`.
-- AI is generating plans, but most military follow-through is missing or weak:
-  - recruit fails
-  - deploy is not guaranteed after recruit
-  - attack logic depends on existing deployed stacks
-  - recovery after defeat is not deterministic enough
-- There is also an observability gap:
-  - `ai_faction_turn_summary` appears missing in the backend, so part of the AI Lab/debug surface is likely not persisting.
+Šest inkrementů, každý mergeable samostatně. Pohybová fyzika je nízkoúrovňová (žádný `trade_system` v movement engine). AI počítá záměr, zápis vede stejnou cestou jako hráč. Pět implementačních pojistek z review je zapracováno přímo v DB checklistu, vzorcích a pipeline.
 
-## Implementation plan
+---
 
-### 1) Fix recruitment so AI can actually create armies
-- Align the AI fallback thresholds with the real recruitment backend.
-- Choose one canonical approach and apply it consistently:
-  1. either lower militia to a true emergency/light formation,
-  2. or keep militia at 400 and raise AI fallback/emergency manpower to that real threshold.
-- I recommend the first option: add a real emergency militia tier for AI/hard recovery states so destroyed factions can re-enter the game without waiting many turns.
-- Ensure cost formulas, manpower checks, and preset sizes are derived from one shared source instead of duplicated constants.
+## Inkrement 0 — DB checklist a invariants
 
-### 2) Make AI success/failure accounting truthful
-- Update `ai-faction-turn` so actions are only counted as successful when the backend command truly succeeded.
-- Distinguish clearly between:
-  - planned
-  - attempted
-  - succeeded
-  - failed
-  - skipped
-- Log backend errors directly into AI trace metadata so the AI Lab reflects real blockers instead of false positives.
+Ověřit `read_query` před implementací 1–3, doplnit migracemi pokud chybí.
 
-### 3) Repair the broken AI building command path
-- Normalize `build_building` payloads so `ai-faction-turn` sends the structure expected by `command-dispatch`.
-- Reuse the same resolution logic as player-side building flows where possible.
-- Add defensive validation so future schema drift cannot silently break AI construction again.
+```sql
+-- world_events: idempotence + claim lock
+ALTER TABLE world_events
+  ADD COLUMN IF NOT EXISTS processed_at            timestamptz NULL,
+  ADD COLUMN IF NOT EXISTS processing_started_at   timestamptz NULL,
+  ADD COLUMN IF NOT EXISTS turn_number             int         NULL,
+  ADD COLUMN IF NOT EXISTS route_id                uuid        NULL,
+  ADD COLUMN IF NOT EXISTS construction_generation int         NULL;
 
-### 4) Add a deterministic military recovery state machine for AI
-- Introduce a simple fallback sequence when AI has no active army:
-  1. raise mobilization
-  2. recruit emergency stack
-  3. deploy to capital / safest owned city
-  4. defend city if enemy nearby
-  5. move toward threatened border only after at least one garrison exists
-- This logic should run even if the model output is bad or incomplete.
-- Keep the model for flavor and prioritization, but force the minimum military loop server-side.
+CREATE UNIQUE INDEX IF NOT EXISTS world_events_route_completed_uniq
+  ON world_events(session_id, route_id, event_type, construction_generation)
+  WHERE event_type = 'route_completed' AND route_id IS NOT NULL;
 
-### 5) Improve AI war behavior after armies exist
-- Add deterministic rules for:
-  - defend threatened city first
-  - counterattack adjacent occupier if favorable
-  - garrison capital before expansion
-  - avoid suicide attacks with low morale / no advantage
-  - prioritize reclaiming occupied cities over random aggression
-- Ensure AI can do all of: recruit, deploy, move, attack, and reconstitute after losses.
-- Keep AI simplification acceptable: it does not need perfect tactics, but it must be functional and legible.
+-- flow_paths: upsert key
+CREATE UNIQUE INDEX IF NOT EXISTS flow_paths_route_id_uniq
+  ON flow_paths(route_id) WHERE route_id IS NOT NULL;
 
-### 6) Strengthen turn-engine integration for AI military actions
-- Verify that AI-created battle actions always enter the same resolution path used by players.
-- Ensure post-recruit deployment and queued battle actions are processed in the same turn loop consistently.
-- Add guardrails so stale or impossible actions are canceled cleanly instead of clogging the action flow.
+-- province_routes
+ALTER TABLE province_routes
+  ADD COLUMN IF NOT EXISTS path_dirty              boolean     NOT NULL DEFAULT true,
+  ADD COLUMN IF NOT EXISTS completed_at            timestamptz NULL,
+  ADD COLUMN IF NOT EXISTS planned_hex_path        jsonb       NULL,
+  ADD COLUMN IF NOT EXISTS construction_generation int         NOT NULL DEFAULT 1;
+```
 
-### 7) Restore/debug observability for AI turns
-- Repair or create the missing `ai_faction_turn_summary` storage so AI Lab can show real numbers.
-- Expose per-turn military diagnostics such as:
-  - active stacks
-  - deployable stacks
-  - manpower pool
-  - recruit affordability
-  - last failed command reason
-  - nearby enemy pressure
-- This will make future AI military regressions easy to detect.
+**Pokud `world_events` nemá vlastní sloupce a používá `reference` jsonb**, místo varianty A nasadit expression index:
+```sql
+CREATE UNIQUE INDEX IF NOT EXISTS world_events_route_completed_uniq
+  ON world_events(
+    session_id,
+    event_type,
+    ((reference->>'route_id')),
+    ((reference->>'construction_generation'))
+  ) WHERE event_type = 'route_completed';
+```
 
-### 8) Apply a live repair pass to the current lobby state
-- After code fixes, run a targeted repair for `IJ8BQ5` so the lobby is not stuck in a pre-fix dead state.
-- Validate current AI factions, clean any broken pending military actions if needed, and ensure next turn can produce actual armies.
-- If necessary, normalize AI resource/mobilization state so the repaired logic takes effect immediately.
+**Definice / invariants používané v dalších inkrementech:**
+- `pathEdgeCount = planned_hex_path.length - 1` (kroky, ne hexy).
+- `hardTerrainHexes` = počet **vstupních** hard hexů na trase = `planned_hex_path.slice(1)` filtrované na `mountain | swamp | dense_forest`.
+- `compute-hex-flows` pro constructed routes **preferuje `planned_hex_path` jako autoritativní `flow_paths.hex_path`**. A* je pouze fallback (chybí / nevalidní planned).
+- `mountain_road` slouží průchodnosti / trade / propojení / vizuálu — **nedává 2 hex/tah přes mountain** (hard terrain pravidlo platí univerzálně).
 
-## Files likely involved
-- `supabase/functions/ai-faction-turn/index.ts`
-- `supabase/functions/command-dispatch/index.ts`
+---
+
+## Inkrement 1 — Shared movement engine + atomický zápis
+
+**Soubory:**
+- `supabase/functions/_shared/movement.ts` (čistý výpočet)
+- `supabase/functions/_shared/stackMovementCommand.ts` (autoritativní zápis)
+- `supabase/functions/command-dispatch/index.ts` — `MOVE_STACK` deleguje
+- `supabase/functions/ai-faction-turn/index.ts` — generuje záměr, volá `applyStackMove`
+
+**API:**
+```ts
+buildRoadEdgeIndex(sessionId)            // Map<edgeKey, { routeId, complete, open }>
+computeStackPath(start, target)          // A* v bbox kolem start↔target
+computeAllowedMove(stack, plannedPath, roadEdgeIndex)
+  → { allowedSteps, finalHex, usedRoadBonus, blockedReason }
+explainMove(...)
+applyStackMove(sb, { sessionId, stackId, plannedPath, actor })
+```
+
+**Pravidla pohybu:**
+- Vstup na libovolný `is_passable` hex.
+- Base = **1 hex/tah**.
+- Bonus na **2 hex/tah** jen pokud:
+  1. obě po sobě jdoucí edges `(cur→s1)`, `(s1→s2)` jsou road edges,
+  2. obě edges patří **ke stejnému `route_id`** (cross-route chaining odloženo do 1B),
+  3. ta route má `construction_state='complete'` AND `control_state='open'`,
+  4. edges existují jako po sobě jdoucí v `flow_paths.hex_path`.
+- Hard terrain = vstup ukončí pohyb (varianta B), univerzálně.
+- Impassable / `Infinity` = nikdy.
+
+**Atomicita zápisu (`applyStackMove`):**
+Minimum — conditional update proti původní pozici:
+```sql
+UPDATE military_stacks
+   SET q = $final_q, r = $final_r, updated_at = now()
+ WHERE id = $stack_id
+   AND session_id = $session_id
+   AND q = $start_q
+   AND r = $start_r
+RETURNING *;
+```
+0 řádků z RETURNING ⇒ retry/abort, ne tichý overwrite.
+**Doporučeno**: vyklopit do Postgres RPC `rpc_apply_stack_move(session_id, stack_id, planned_path jsonb, actor jsonb)` — validace + zápis v jedné transakci. Pokud RPC v tomto sprintu nestihneš, conditional update je povinné minimum.
+
+**Server validace plannedPath:**
+- `path[0]` = aktuální pozice stacku,
+- každý krok = sousední hex,
+- každý hex passable,
+- `allowedSteps ≥ pathEdgeCount`.
+
+**Akceptace:**
+- Hráč i AI volají `applyStackMove`. `military_stacks.position` mění výhradně tato funkce / RPC.
+- Seed s existující `flow_paths.hex_path` na complete+open route → 2 hexy/tah.
+- Mountain road → 1 hex (hard terrain blokuje druhý krok).
+- Dvě sousedící routes bez společného `route_id` → 1 hex.
+- Dva paralelní `applyStackMove` na stejný stack → uspěje právě jeden.
+
+---
+
+## Inkrement 2 — Lifecycle stavby silnic (s planned path)
+
+**Soubory:**
+- `supabase/functions/command-dispatch/index.ts` (`executeBuildRoute`)
+- `supabase/functions/process-turn/index.ts` (construction tick)
+
+**Změny:**
+- `BUILD_ROUTE` spočítá `planned_hex_path` přes shared A* a uloží do `province_routes.planned_hex_path`. Stejná trasa pro cenu, overlay UC, i jako preferovaná `flow_paths.hex_path` po dokončení.
+- `totalWork`:
+  ```
+  pathEdgeCount   = planned_hex_path.length - 1
+  hardTerrainHexes = count(planned_hex_path.slice(1) where terrain ∈ {mountain,swamp,dense_forest})
+
+  totalWork = baseWorkByType
+            + pathEdgeCount   * workPerHexByType
+            + hardTerrainHexes * hardPenaltyByType
+  ```
+  MVP tabulka:
+  ```
+  land_road:     base 20 + 5/edge + 8/hard
+  river_route:   base 15 + 3/edge
+  mountain_road: base 40 + 8/edge + 12/hard
+  ```
+  Sanity: 1‑edge land_road bez hard = 25, 6‑edge bez hard = 50.
+- Tick: `baseLaborTick = max(2, round(allocated_labor * 0.20))`.
+- **Completion guard** přechodem stavu (atomicky):
+  ```sql
+  UPDATE province_routes
+     SET construction_state='complete',
+         path_dirty=true,
+         completed_at=now(),
+         control_state = COALESCE(NULLIF(control_state,''),'open')
+   WHERE id = $id AND construction_state = 'under_construction'
+  RETURNING id, construction_generation, node_a, node_b;
+  ```
+  Insert `world_events` typ `route_completed` JEN když RETURNING vrátil řádek. Insert nese `route_id`, `construction_generation`, `turn_number`. Unique index z Inkr. 0 zajistí idempotenci.
+- Rebuild po destrukci: před přechodem zpět na `under_construction` zvýšit `construction_generation += 1`. Tím nový `route_completed` projde indexem.
+
+**Akceptace:**
+- 6‑edge land_road = 50 work, 1‑edge = 25.
+- `UnderConstructionRoutesOverlay` kreslí přesně `planned_hex_path` použitý pro cenu.
+- 2× volání BUILD_ROUTE bez postupu nezpůsobí 2× event.
+- Po `complete` existuje právě 1 nezpracovaný `route_completed` event s odpovídajícím `construction_generation`.
+
+---
+
+## Inkrement 3 — Refresh pipeline + bezpečný claim
+
+**Soubory:**
 - `supabase/functions/commit-turn/index.ts`
-- possibly `supabase/functions/resolve-battle/index.ts`
-- a migration for AI summary/debug storage if the summary table is indeed absent
-- optional AI Lab / military debug UI if existing panels need to show the corrected diagnostics
+- `supabase/functions/refresh-economy/index.ts`
 
-## Technical details
-```text
-Current broken path:
-AI fallback says: recruit if manpower >= 40..80
-        ↓
-ai-faction-turn sends RECRUIT_STACK
-        ↓
-command-dispatch militia preset requires 400 manpower
-        ↓
-command fails
-        ↓
-AI log still appears mostly successful
-        ↓
-no stack exists, so no deploy / no attack / no real war behavior
+**Pořadí (přesné):**
+```
+1. commit-turn vyhodnotí, zda tento běh ADVANCED world turn → advancedTurnNumber
+2. pokud NE → konec (žádný claim, žádná pipeline)
+3. pokud ANO → atomický claim:
+```
+```sql
+UPDATE world_events
+   SET processing_started_at = now()
+ WHERE session_id = $1
+   AND event_type = 'route_completed'
+   AND processed_at IS NULL
+   AND processing_started_at IS NULL
+   AND turn_number <= $2          -- advancedTurnNumber
+RETURNING id, route_id;
+```
+```
+4. claim ≥ 1 řádek → refresh-economy({ session_id, reason:'route_completed' })
+   refresh-economy orchestruje:
+     compute-hex-flows(force_all:false)   // pro constructed routes preferuje planned_hex_path
+     → compute-trade-systems
+     → compute-trade-flows
+5. úspěch → processed_at = now()
+6. chyba → processing_started_at = NULL (re-claim možný)
 ```
 
-```text
-Target stable loop:
-No stacks
-  → emergency recruit succeeds
-  → stack created
-  → deploy to owned city
-  → defend if enemy adjacent
-  → move/attack only when viable
-  → after losses, repeat recovery automatically
+`refresh-economy` musí být **idempotentní** (deterministický rebuild, upserty `flow_paths` přes unique `route_id`); claim je optimalizace.
+
+**Akceptace:**
+- Po commitu world turn s `route_completed`: `path_dirty=false`, `flow_paths` row pro `route_id` (`length(hex_path)>=2`), trade systems route vidí.
+- Pipeline neproběhne, pokud commit nebyl world-turn advance.
+- Dva paralelní commity → pipeline 1×.
+- Pending event z dřívějšího turnu se claimne při dalším skutečném advance.
+
+---
+
+## Inkrement 4 — Overlaye podle DB pravdy
+
+**4A (povinné):**
+- `RoadNetworkOverlay` → `.eq('construction_state','complete')`.
+- `UnderConstructionRoutesOverlay` → `.eq('construction_state','under_construction')`, kreslí z `planned_hex_path`.
+- Po `commit-turn` / `BUILD_ROUTE` / `DevRoadSpeedup`:
+  ```ts
+  queryClient.invalidateQueries({ queryKey:['province_routes', sessionId] });
+  queryClient.invalidateQueries({ queryKey:['flow_paths',     sessionId] });
+  ```
+- `worldMapBus` zůstává jako lokální nudge.
+
+**4B (volitelné, později):** Supabase realtime subscription na `province_routes` a `flow_paths` filtrované `session_id`.
+
+**Akceptace:** přechod UC → complete do 2 s bez ručního refresh; žádná route v obou vrstvách současně.
+
+---
+
+## Inkrement 5 — AI akce nad hotovou fyzikou
+
+**Soubor:** `supabase/functions/ai-faction-turn/index.ts`
+
+**Akce:** `build_route`, `expand_node`, `repair_route`. **Movement výhradně přes `applyStackMove`.**
+
+**`build_route` scoring:**
 ```
+routeScore = targetNodeValue
+           + connectsOwnClusterBonus
+           + neutralExpansionBonus
+           + marketBasketBonus
+           + frontierBonus
+           - distancePenalty
+           - hostileRiskPenalty
+           - duplicateNetworkPenalty
+```
+Trigger ≥1: hlavní node bez complete route / izolovaný own node mimo trade_system / discovered neutral ≤6 hex se score≥30 a non-duplicate.
 
-## Validation after implementation
-- In `IJ8BQ5`, at least one AI faction should successfully create a new `military_stacks` row on the next processed turn.
-- `world_action_log` should show real `RECRUIT_STACK` / `DEPLOY_STACK` events, not only AI narrative summaries.
-- AI factions should no longer report successful recruitment when no stack was created.
-- Building attempts from AI should no longer fail with `Missing cityId or building`.
-- AI with zero armies should recover within a predictable number of turns instead of staying permanently inert.
-- If an enemy is adjacent, AI should eventually defend or attack through the standard battle pipeline.
+**`expand_node` — podle síly přítomnosti:**
+- adjacent/inside owned military stack → `annex_node`
+- bez stacku, ale `influence ≥ threshold` → `start_claim_project` (dozraje za N tahů)
+- jinak → ne
 
-If you approve this plan, I’ll implement the fixes and then do a live verification pass against the current game state.
+Společné předpoklady: `controlled_by IS NULL`, `is_neutral=true`, `hostile=false`, vzdálenost ≤ doctrine range.
+
+**Doctrine váhy:**
+- `defenders`: fortify_node, repair_route, garrison
+- `expansion`: build_route, expand_node, found_settlement
+- `dominate`: recruit_army, move_stack, attack_target
+
+**Auto‑deploy s limitem:** zachovat `max(1 stack, 30% total_military_power)` v capital, zbytek na nejbližší frontier.
+
+**Akceptace (seeded):** doctrine `expansion`, město + frontier + discovered neutral ≤4 hex. Do 3 AI tahů: BUILD_ROUTE command nebo `province_routes` řádek + pohyb stacku přes `applyStackMove` + claim/annex pokus.
+
+---
+
+## Inkrement 6 — Dev tools
+
+- `DevRoadSpeedupPanel` po dokončení volá `refresh-economy({ reason:'route_completed' })`.
+- `DevModePanel` tlačítko **„Spustit AI tah pro všechny frakce"** (sériově, log do toast).
+- Volitelně **Movement explainer** — stack + cíl → výstup `explainMove()`.
+
+---
+
+## Mapování pojistek z review
+
+| Pojistka | Vyřešeno v |
+|---|---|
+| Idempotence klíč fyzicky v DB | Inkr. 0: sloupce + partial unique index (var. A nebo expression index B) |
+| Claim až po world-turn advance | Inkr. 3: explicitní pořadí 1→2→3, `turn_number ≤ advancedTurnNumber` |
+| `applyStackMove` atomicita | Inkr. 1: conditional update min., RPC doporučeno |
+| `pathEdgeCount = length-1` | Inkr. 0 invariants + Inkr. 2 vzorec |
+| `planned_hex_path` autoritativní pro flow | Inkr. 0 invariants + Inkr. 3 popis `compute-hex-flows` |
+| `mountain_road` ≠ rychlost přes mountain | Inkr. 0 explicitní poznámka |
+| Movement bez vazby na `trade_system` | Inkr. 1 pravidla |
+| AI bez vlastního zápisu pohybu | Inkr. 1 + 5 |
+| Overlaye realtime split | Inkr. 4A/4B |
+| `expand_node` bez magic annex | Inkr. 5 |
+
+---
+
+## Pořadí merge
+
+`0 → 1 → 2 → 3 → 4A → 5 → 6` (4B a 1B kdykoli později).
