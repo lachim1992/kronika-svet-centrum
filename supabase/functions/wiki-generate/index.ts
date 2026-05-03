@@ -98,8 +98,8 @@ Deno.serve(async (req) => {
       });
 
       if (!result.ok) {
-        if (result.status === 429) return jsonResponse({ error: "Rate limit" }, 429);
-        if (result.status === 402) return jsonResponse({ error: "Nedostatek kreditů" }, 402);
+        if (result.status === 429) return jsonResponse({ ok: false, fallback: true, error: "Rate limit", summary, aiDescription, imagePrompt }, 200);
+        if (result.status === 402) return jsonResponse({ ok: false, fallback: true, error: "AI kredit vyčerpán — dobijte v Settings → Cloud & AI balance.", summary, aiDescription, imagePrompt }, 200);
       }
 
       if (result.ok && result.data) {
