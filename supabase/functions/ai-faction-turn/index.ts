@@ -5,6 +5,8 @@
 
 import { createAIContext, invokeAI, getServiceClient, corsHeaders, jsonResponse as json, errorResponse } from "../_shared/ai-context.ts";
 import { buildBasketSnapshot } from "../_shared/basket-context.ts";
+import { applyStackMove } from "../_shared/stackMovementCommand.ts";
+import { planShortHopToward } from "../_shared/movement.ts";
 
 // ═══════════════════════════════════════════
 // HEX MATH
