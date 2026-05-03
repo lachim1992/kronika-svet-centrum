@@ -877,6 +877,12 @@ export async function invokeAI(
   // Inject premise into system prompt
   const fullSystemPrompt = `${ctx.premisePrompt}\n\n${opts.systemPrompt}`;
 
+  // ── Wave 1 telemetry: compact one-line log per AI call ──
+  const inputChars = (fullSystemPrompt?.length || 0) + (opts.userPrompt?.length || 0);
+  console.log(
+    `[ai-call] fn=${functionName} purpose=${opts.purpose ?? "unknown"} session=${ctx.sessionId ?? "unknown"} player=${ctx.civContext?.playerName ?? "unknown"} model=${model} input_chars=${inputChars} auto=${opts.auto ?? "unknown"}`,
+  );
+
   const body: any = {
     model,
     messages: [
