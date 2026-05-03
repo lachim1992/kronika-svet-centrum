@@ -38,36 +38,37 @@ export default function MemoriamCard({ player: p, sessionId, currentPlayerName, 
       const basePrompt = `A grand bronze memorial statue of "${p.name}", a fallen Sphaera ${POS_FULL[p.position] || p.position} athlete. The statue depicts the athlete ${pose}. The figure wears a light ancient athletic tunic and leather sandals (NOT heavy armor, NOT a warrior). The heavy metal Sphaera ball is prominently featured. Set in a memorial garden beside an ancient oval arena, with eternal torches and laurel wreaths. Bronze plaque at the base reads "${p.name}". Classical Greco-Roman athletic monument style, solemn and dignified. Ultra high resolution.`;
       const prompt = extraPrompt ? `${basePrompt} Additional details: ${extraPrompt}` : basePrompt;
 
-      const { data, error } = await supabase.functions.invoke("encyclopedia-image", {
-        body: {
-          entityType: "person",
-          entityName: p.name,
-          entityId: p.id,
-          sessionId,
-          imagePrompt: prompt,
-          createdBy: currentPlayerName,
-          description: `${p.name}, ${POS_FULL[p.position] || p.position} týmu ${p.team_name}. Padl v ${p.death_turn}. kole.`,
-        },
+      // Ensure wiki entry exists, set custom prompt, then regenerate cover via orchestrator.
+      const { ensureAndGetEntryId, regenerateWiki } = await import("@/lib/wikiOrchestrator");
+      const entryId = await ensureAndGetEntryId({
+        sessionId, entityType: "person", entityId: p.id, entityName: p.name,
+        ownerPlayer: p.owner_player || "unknown",
       });
-      if (error) throw error;
-      if (data?.error) { toast.error(data.error); return; }
+      if (!entryId) throw new Error("Wiki entry nelze vytvořit");
 
-      if (data?.imageUrl) {
-        // Save version history
-        await supabase.from("wiki_entry_versions" as any).insert({
-          wiki_entry_id: p.id,
-          session_id: sessionId,
-          field_changed: "image",
-          old_image_url: p.portrait_url,
-          new_image_url: data.imageUrl,
-          image_custom_prompt: extraPrompt || null,
-          changed_by: currentPlayerName,
-          change_reason: extraPrompt ? "Admin re-prompt" : "Generate statue",
-        });
+      await supabase.from("wiki_entries").update({ image_prompt: prompt } as any).eq("id", entryId);
 
+      // Snapshot version BEFORE regenerating.
+      await supabase.from("wiki_entry_versions" as any).insert({
+        wiki_entry_id: p.id,
+        session_id: sessionId,
+        field_changed: "image",
+        old_image_url: p.portrait_url,
+        new_image_url: null,
+        image_custom_prompt: extraPrompt || null,
+        changed_by: currentPlayerName,
+        change_reason: extraPrompt ? "Admin re-prompt" : "Generate statue",
+      });
+
+      const res = await regenerateWiki(entryId, ["image"]);
+      const url = res.image?.imageUrl;
+      if (url) {
         await supabase.from("league_players")
-          .update({ portrait_url: data.imageUrl } as any)
+          .update({ portrait_url: url } as any)
           .eq("id", p.id);
+      } else if (!res.ok) {
+        toast.error("Generování sochy selhalo");
+        return;
       }
 
       toast.success(`🗿 Pamětní socha ${p.name} odhalena!`);
