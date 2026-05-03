@@ -12,7 +12,7 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const { entityType, entityName, entityId, sessionId, ownerPlayer, context } = await req.json();
+    const { entityType, entityName, entityId, sessionId, ownerPlayer, context, force } = await req.json();
     if (!sessionId) {
       return jsonResponse({ summary: `${entityName} — záznam v encyklopedii.`, aiDescription: "", imageUrl: null });
     }
