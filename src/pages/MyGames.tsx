@@ -276,22 +276,31 @@ const MyGames = () => {
         </section>
 
         {/* ====== SECTION C: Create New World ====== */}
-        <section>
+        <section className="space-y-3">
           {!showCreate ? (
-            <button
-              onClick={() => setShowCreate(true)}
-              className="w-full p-5 rounded-lg border-2 border-dashed border-primary/30 hover:border-primary/60 bg-primary/5 hover:bg-primary/10 transition-all group"
-            >
-              <div className="flex items-center justify-center gap-3">
-                <div className="h-10 w-10 rounded-full bg-primary/15 flex items-center justify-center group-hover:bg-primary/25 transition-colors">
-                  <Plus className="h-5 w-5 text-primary" />
+            <>
+              <button
+                onClick={() => setShowCreate(true)}
+                className="w-full p-5 rounded-lg border-2 border-dashed border-primary/30 hover:border-primary/60 bg-primary/5 hover:bg-primary/10 transition-all group"
+              >
+                <div className="flex items-center justify-center gap-3">
+                  <div className="h-10 w-10 rounded-full bg-primary/15 flex items-center justify-center group-hover:bg-primary/25 transition-colors">
+                    <Plus className="h-5 w-5 text-primary" />
+                  </div>
+                  <div className="text-left">
+                    <p className="font-display font-bold text-lg text-foreground">Založit nový svět</p>
+                    <p className="text-sm text-muted-foreground">Turn-Based · AI Svět · Multiplayer · Persistent Server</p>
+                  </div>
                 </div>
-                <div className="text-left">
-                  <p className="font-display font-bold text-lg text-foreground">Založit nový svět</p>
-                  <p className="text-sm text-muted-foreground">Turn-Based · AI Svět · Multiplayer · Persistent Server</p>
-                </div>
-              </div>
-            </button>
+              </button>
+
+              <QuickRandomGameButton
+                userId={user!.id}
+                defaultPlayerName={profile?.username || "Hráč"}
+                onCreated={handleGameCreated}
+                onNeedsWizard={() => setShowCreate(true)}
+              />
+            </>
           ) : (
             <WorldSetupWizard
               userId={user!.id}
