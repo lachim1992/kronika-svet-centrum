@@ -390,6 +390,7 @@ async function executeCommand(
           turn_from: chronicleTurn,
           turn_to: chronicleTurn,
           text: payload.chronicleText,
+          source_type: "event_fragment",
         }));
       }
       return result;
