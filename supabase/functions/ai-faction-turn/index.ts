@@ -7,6 +7,8 @@ import { createAIContext, invokeAI, getServiceClient, corsHeaders, jsonResponse 
 import { buildBasketSnapshot } from "../_shared/basket-context.ts";
 import { applyStackMove } from "../_shared/stackMovementCommand.ts";
 import { planShortHopToward } from "../_shared/movement.ts";
+import { buildFactionBriefing } from "./briefing.ts";
+import { generateValidActions } from "./actions.ts";
 
 // ═══════════════════════════════════════════
 // HEX MATH
@@ -820,6 +822,50 @@ Rozhodni, co frakce udělá v tomto kole. ${milMetrics.warState === "war" ? "JST
       }],
       toolChoice: { type: "function", function: { name: "faction_turn" } },
     });
+
+    // ── Wave 2 SHADOW telemetry — does NOT affect AI behavior. ──
+    try {
+      const briefing = buildFactionBriefing({
+        factionName, faction, civ, turn,
+        resources, realmRes, milMetrics,
+        cities: cities || [], allCities: allCities || [],
+        allFactions: allFactions || [],
+        allTensionData: allTensionData || [],
+        tradeRoutes: tradeRoutes || [],
+        diplomRelations: diplomRelations || [],
+        diplomMemories: diplomMemories || [],
+        myPastActions: myPastActions || [],
+        activeWars, peaceOffers,
+        recentMessages, sentUltimatums,
+        strategicNodes: strategicNodes || [],
+        supplyStates: supplyStates || [],
+        enemyStacks: enemyStacks || [],
+      });
+      const validActions = generateValidActions({
+        factionName, resources, realmRes, milMetrics,
+        cities: cities || [],
+        affordableBuildings,
+        strategicNodes: strategicNodes || [],
+        strategicRoutes: strategicRoutes || [],
+        supplyStates: supplyStates || [],
+        influenceByNode, rivalsByNode,
+      });
+      const briefingChars = JSON.stringify(briefing).length;
+      const currentPromptChars = systemPrompt.length + userPrompt.length;
+      const ratio = currentPromptChars > 0 ? briefingChars / currentPromptChars : 0;
+      const top5 = [...validActions].sort((a, b) => b.score - a.score).slice(0, 5)
+        .map(a => `${a.type}:${a.score}`);
+      const hasHold = validActions.some(a => a.type === "HOLD_POSITION");
+      const hasEcoOrDef = validActions.some(a => ["BUILD_BUILDING","FORTIFY_NODE","REPAIR_ROUTE","OPEN_TRADE_WITH_NODE"].includes(a.type));
+      const hasMilOrDip = validActions.some(a => ["RECRUIT_ARMY","MOVE_ARMY","ATTACK_TARGET","ANNEX_NODE"].includes(a.type));
+      if (validActions.length === 0) {
+        console.error(`[ai-shadow] ERROR fn=ai-faction-turn faction=${factionName} valid_actions_count=0 turn=${turn} state=${milMetrics.warState}`);
+      } else {
+        console.log(`[ai-shadow] fn=ai-faction-turn faction=${factionName} turn=${turn} state=${milMetrics.warState} current_chars=${currentPromptChars} briefing_chars=${briefingChars} ratio=${ratio.toFixed(3)} valid_actions=${validActions.length} top5=[${top5.join(",")}] has_hold=${hasHold} has_eco_def=${hasEcoOrDef} has_mil_dip=${hasMilOrDip}`);
+      }
+    } catch (e) {
+      console.error(`[ai-shadow] threw fn=ai-faction-turn faction=${factionName}: ${(e as Error).message}`);
+    }
 
     if (!aiResult.ok) {
       if (aiResult.status === 429) return json({ error: "Rate limit" }, 429);
