@@ -191,7 +191,7 @@ const CityDetailPanel = ({
   // Fetch wiki image for hero + lazy generate if ai_description empty
   const [wikiImage, setWikiImage] = useState<string | null>(null);
   const [wikiSummary, setWikiSummary] = useState<string | null>(null);
-  const [lazyGenerating, setLazyGenerating] = useState(false);
+  
   useEffect(() => {
     const fetchWiki = async () => {
       const [{ data: wikiData }, { data: iconData }] = await Promise.all([
