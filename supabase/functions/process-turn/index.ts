@@ -461,17 +461,36 @@ Deno.serve(async (req) => {
       const soldierBonus = assignedStacks.reduce((sum, s) => sum + (s.soldiers || s.unit_count || 0), 0);
 
       const engMult = ENGINEERING_MULT[route.route_type as string] ?? 1.0;
-      const baseLaborTick = Math.max(1, Math.round(allocatedLabor * 0.10));
+      const baseLaborTick = Math.max(2, Math.round(allocatedLabor * 0.20));
       const workThisTurn = Math.max(1, Math.round((baseLaborTick + soldierBonus * 0.5) * engMult));
       const newProgress = Math.min(totalWork, currentProgress + workThisTurn);
-      const completed = newProgress >= totalWork;
+      const willComplete = newProgress >= totalWork;
 
-      await supabase.from("province_routes").update({
-        construction_state: completed ? "complete" : "under_construction",
-        metadata: { ...md, progress: newProgress, last_tick_turn: currentTurn },
-      }).eq("id", route.id);
+      if (!willComplete) {
+        await supabase.from("province_routes").update({
+          metadata: { ...md, progress: newProgress, last_tick_turn: currentTurn },
+        }).eq("id", route.id);
+        continue;
+      }
 
-      if (completed && assignedStacks.length > 0) {
+      // Atomic state-transition guard: only the under_construction → complete transition
+      // mutates the row, so a parallel tick cannot emit duplicate route_completed events.
+      const { data: completedRows } = await supabase
+        .from("province_routes")
+        .update({
+          construction_state: "complete",
+          path_dirty: true,
+          completed_at: new Date().toISOString(),
+          metadata: { ...md, progress: newProgress, last_tick_turn: currentTurn },
+        })
+        .eq("id", route.id)
+        .eq("construction_state", "under_construction")
+        .select("id, construction_generation, node_a, node_b, route_type");
+
+      const transitioned = (completedRows || [])[0];
+      if (!transitioned) continue; // someone else already completed it
+
+      if (assignedStacks.length > 0) {
         for (const s of assignedStacks) {
           await supabase.from("military_stacks").update({
             assignment: "idle", assigned_route_id: null,
@@ -480,14 +499,31 @@ Deno.serve(async (req) => {
         }
       }
 
-      if (completed) {
-        newEvents.push({
-          session_id: sessionId, turn_number: currentTurn,
-          event_type: "construction", player_name: playerName,
-          note: `Stavba cesty dokončena (${route.route_type}). Pracovní síla se vrací k běžným úkolům.`,
-          importance: "normal", reference: { route_id: route.id, route_type: route.route_type },
-        } as any);
-      }
+      // Idempotent route_completed event (UNIQUE index on session+route_id+construction_generation).
+      await supabase.from("game_events").insert({
+        session_id: sessionId,
+        turn_number: currentTurn,
+        event_type: "route_completed",
+        player: playerName,
+        note: `Stavba cesty dokončena (${route.route_type}).`,
+        importance: "normal",
+        confirmed: true,
+        reference: {
+          route_id: route.id,
+          construction_generation: transitioned.construction_generation ?? 1,
+          route_type: route.route_type,
+          node_a: transitioned.node_a,
+          node_b: transitioned.node_b,
+        },
+      } as any);
+
+      // Player-facing construction event (separate, not idempotency-locked).
+      newEvents.push({
+        session_id: sessionId, turn_number: currentTurn,
+        event_type: "construction", player_name: playerName,
+        note: `Stavba cesty dokončena (${route.route_type}). Pracovní síla se vrací k běžným úkolům.`,
+        importance: "normal", reference: { route_id: route.id, route_type: route.route_type },
+      } as any);
     }
 
     // ══════════════════════════════════════════════════════════════
