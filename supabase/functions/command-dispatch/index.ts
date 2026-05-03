@@ -752,62 +752,45 @@ async function executeMoveStack(
   supabase: any, base: any, actor: Actor, payload: any,
   commandId: string, sessionId: string, turnNumber: number,
 ): Promise<CommandResult> {
-  const { stackId, toQ, toR, fromQ, fromR } = payload;
+  const { stackId, toQ, toR, fromQ, fromR, plannedPath } = payload;
   if (!stackId) return { events: [], error: "Missing stackId" };
-  if (toQ === undefined || toR === undefined) return { events: [], error: "Missing toQ/toR" };
 
-  // Verify stack belongs to actor
-  const { data: stack } = await supabase.from("military_stacks")
-    .select("id, player_name, hex_q, hex_r, moved_this_turn")
-    .eq("id", stackId).eq("session_id", sessionId).single();
-
-  if (!stack) return { events: [], error: "Stack not found" };
-  if (stack.player_name !== actor.name) return { events: [], error: "Not your stack" };
-  if (stack.moved_this_turn) return { events: [], error: "Tato jednotka se již tento tah přesunula" };
-
-  // Server-side distance check
-  const actualFromQ = fromQ ?? stack.hex_q;
-  const actualFromR = fromR ?? stack.hex_r;
-  const dq2 = toQ - actualFromQ;
-  const dr2 = toR - actualFromR;
-  const actualDist = Math.max(Math.abs(dq2), Math.abs(dr2), Math.abs(dq2 + dr2));
-  if (actualDist > 3) {
-    return { events: [], error: `Move too far: distance ${actualDist} exceeds max 3 hexes per turn` };
+  // Build planned path: prefer client-supplied plannedPath if it looks valid,
+  // otherwise synthesize start→target using fromQ/fromR + toQ/toR (single hop).
+  let path: { q: number; r: number }[] | null = null;
+  if (Array.isArray(plannedPath) && plannedPath.length >= 2) {
+    path = plannedPath
+      .filter((h: any) => typeof h?.q === "number" && typeof h?.r === "number")
+      .map((h: any) => ({ q: h.q, r: h.r }));
+  }
+  if (!path || path.length < 2) {
+    if (toQ === undefined || toR === undefined) return { events: [], error: "Missing toQ/toR" };
+    // Fetch current position to anchor the path
+    const { data: stackPos } = await supabase.from("military_stacks")
+      .select("hex_q, hex_r").eq("id", stackId).eq("session_id", sessionId).maybeSingle();
+    if (!stackPos) return { events: [], error: "Stack not found" };
+    const sq = fromQ ?? stackPos.hex_q;
+    const sr = fromR ?? stackPos.hex_r;
+    path = [{ q: sq, r: sr }, { q: toQ, r: toR }];
   }
 
-  // ── PASSABILITY CHECK ──
-  const { data: targetHex } = await supabase.from("province_hexes")
-    .select("biome_family, is_passable, has_river, has_bridge")
-    .eq("session_id", sessionId).eq("q", toQ).eq("r", toR).maybeSingle();
+  const result = await applyStackMove(supabase, {
+    sessionId,
+    stackId,
+    plannedPath: path,
+    actorName: actor.name,
+  });
 
-  if (targetHex) {
-    // Sea and mountains are always impassable
-    if (targetHex.biome_family === "sea") {
-      return { events: [], error: "Nelze vstoupit na moře — hex je neprostupný" };
-    }
-    if (targetHex.biome_family === "mountains") {
-      return { events: [], error: "Nelze vstoupit do hor — hex je neprostupný" };
-    }
-    // River without bridge is impassable
-    if (targetHex.has_river && !targetHex.has_bridge) {
-      return { events: [], error: "Nelze překročit řeku bez mostu — hex je neprostupný" };
-    }
-  }
-
-  // Update stack position + moved flag (SSOT — server is the only writer of moved_this_turn)
-  const { error: moveErr } = await supabase.from("military_stacks")
-    .update({ hex_q: toQ, hex_r: toR, moved_this_turn: true })
-    .eq("id", stackId)
-    .eq("session_id", sessionId);
-
-  if (moveErr) return { events: [], error: `Move failed: ${moveErr.message}` };
+  if (!result.ok) return { events: [], error: result.error };
 
   return insertEventsWithChronicle(supabase, commandId, sessionId, turnNumber, [{
     ...base,
     event_type: "military",
-    note: payload.note || `${actor.name} přesunul armádu ${payload.stackName || ""} na [${toQ},${toR}].`,
+    note: payload.note ||
+      `${actor.name} přesunul armádu ${payload.stackName || ""} na [${result.finalHex.q},${result.finalHex.r}]` +
+      (result.usedRoadBonus ? " (po silnici)" : "") + ".",
     importance: "normal",
-    reference: payload,
+    reference: { ...payload, finalHex: result.finalHex, usedRoadBonus: result.usedRoadBonus, allowedSteps: result.allowedSteps },
   }], payload.chronicleText);
 }
 
