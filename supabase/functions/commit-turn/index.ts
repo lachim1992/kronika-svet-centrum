@@ -966,7 +966,6 @@ Deno.serve(async (req) => {
               }
             }
           } catch (whErr) { console.error("Auto world-history error:", whErr); }
-        }
       } catch (chronErr) { console.error("Chronicle auto-generation error:", chronErr); }
 
       // ═══ 8. WIKI EVENT REFS ═══
