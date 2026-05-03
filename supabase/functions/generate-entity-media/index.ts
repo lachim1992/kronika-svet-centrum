@@ -52,10 +52,11 @@ interface GenerateParams {
   entityId: string;
   entityType: string;
   entityName: string;
-  kind: string; // 'cover' | 'portrait' | 'illustration' | 'sigil' | 'card'
+  kind: string; // 'cover' | 'portrait' | 'illustration' | 'sigil' | 'card' | 'map_icon'
   stylePreset?: string;
   imagePrompt?: string; // explicit override
   createdBy?: string;
+  force?: boolean; // P2: required to bypass cover cache
 }
 
 serve(async (req) => {
@@ -72,14 +73,38 @@ serve(async (req) => {
       stylePreset = "default",
       imagePrompt,
       createdBy = "system",
+      force = false,
     } = params;
-
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY not configured");
 
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
     const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const sb = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+
+    // ─── P2: Cover cache-first guard ───
+    // For canonical cover images: if one already exists, return it (no AI call).
+    // Bypass only with force=true (explicit regenerate via orchestrator).
+    if (kind === "cover" && !force && entityId) {
+      const { data: existingCover } = await sb
+        .from("encyclopedia_images")
+        .select("id, image_url, image_prompt, storage_path, image_version")
+        .eq("session_id", sessionId)
+        .eq("entity_type", entityType)
+        .eq("entity_id", entityId)
+        .eq("kind", "cover")
+        .maybeSingle();
+      if (existingCover?.image_url) {
+        return new Response(JSON.stringify({
+          imageUrl: (existingCover as any).image_url,
+          imagePrompt: (existingCover as any).image_prompt,
+          cached: true,
+          kind: "cover",
+          imageVersion: (existingCover as any).image_version ?? 1,
+        }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+    }
+
+    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+    if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY not configured");
 
     // ── 1. Fetch lore bible ──
     const { data: styleCfg } = await sb
@@ -287,9 +312,13 @@ serve(async (req) => {
     }
 
     // ── 6. Upload to storage ──
+    // P2: cover = stable canonical path (replace), other kinds = timestamped (append).
     const base64Data = imageBase64.replace(/^data:image\/\w+;base64,/, "");
     const binaryData = Uint8Array.from(atob(base64Data), (c) => c.charCodeAt(0));
-    const fileName = `${sessionId}/${entityType}/${entityId || "new"}-${kind}-${Date.now()}.png`;
+    const isCover = kind === "cover" && !!entityId;
+    const fileName = isCover
+      ? `${sessionId}/${entityType}/${entityId}/cover.png`
+      : `${sessionId}/${entityType}/${entityId || "new"}-${kind}-${Date.now()}.png`;
 
     const { error: uploadError } = await sb.storage
       .from("wonder-images")
@@ -304,34 +333,67 @@ serve(async (req) => {
       imageUrl = publicUrl.publicUrl;
     }
 
-    // ── 7. Store in encyclopedia_images (SINGLE SOURCE OF TRUTH) ──
-    // If this is a primary cover, unset other primaries first
-    if (kind === "cover") {
-      await sb
+    // ── 7. Store in encyclopedia_images ──
+    if (isCover) {
+      // P2: canonical replace mode for cover. Look up existing row and UPDATE in place,
+      // otherwise INSERT (unique index encyclopedia_images_one_cover guarantees ≤1 row).
+      const { data: existingRow } = await sb
         .from("encyclopedia_images")
-        .update({ is_primary: false })
+        .select("id, image_version")
         .eq("session_id", sessionId)
         .eq("entity_type", entityType)
         .eq("entity_id", entityId)
         .eq("kind", "cover")
-        .eq("is_primary", true);
+        .maybeSingle();
+
+      if (existingRow) {
+        await sb.from("encyclopedia_images")
+          .update({
+            image_url: imageUrl,
+            image_prompt: prompt,
+            storage_path: uploadError ? null : fileName,
+            image_version: ((existingRow as any).image_version ?? 1) + 1,
+            is_primary: true,
+            style_preset: effectivePreset,
+            model_meta: { model: "gemini-2.5-flash-image", loreBibleUsed: !!loreBible },
+            created_by: createdBy,
+          } as any)
+          .eq("id", (existingRow as any).id);
+      } else {
+        await sb.from("encyclopedia_images").insert({
+          session_id: sessionId,
+          entity_type: entityType,
+          entity_id: entityId,
+          image_url: imageUrl,
+          image_prompt: prompt,
+          storage_path: uploadError ? null : fileName,
+          image_version: 1,
+          created_by: createdBy,
+          is_primary: true,
+          kind: "cover",
+          style_preset: effectivePreset,
+          model_meta: { model: "gemini-2.5-flash-image", loreBibleUsed: !!loreBible },
+        } as any);
+      }
+    } else {
+      // Append-only for illustration / portrait / sigil / draft kinds (WonderPortrait flow).
+      await sb.from("encyclopedia_images").insert({
+        session_id: sessionId,
+        entity_type: entityType,
+        entity_id: entityId,
+        image_url: imageUrl,
+        image_prompt: prompt,
+        storage_path: uploadError ? null : fileName,
+        created_by: createdBy,
+        is_primary: false,
+        kind,
+        style_preset: effectivePreset,
+        model_meta: { model: "gemini-2.5-flash-image", loreBibleUsed: !!loreBible },
+      } as any);
     }
 
-    await sb.from("encyclopedia_images").insert({
-      session_id: sessionId,
-      entity_type: entityType,
-      entity_id: entityId,
-      image_url: imageUrl,
-      image_prompt: prompt,
-      created_by: createdBy,
-      is_primary: kind === "cover",
-      kind,
-      style_preset: effectivePreset,
-      model_meta: { model: "gemini-2.5-flash-image", loreBibleUsed: !!loreBible },
-    });
-
-    // ── 8. Also update wiki_entries.image_url for backward compat ──
-    if (kind === "cover" && wiki) {
+    // ── 8. Mirror cover to wiki_entries.image_url for backward compat ──
+    if (isCover && wiki) {
       await sb
         .from("wiki_entries")
         .update({ image_url: imageUrl, image_prompt: prompt, updated_at: new Date().toISOString() })

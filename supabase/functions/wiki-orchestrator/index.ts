@@ -181,6 +181,7 @@ async function _generateText(row: WikiEntryRow): Promise<{ ok: boolean; error?: 
         entityId: row.entity_id,
         entityName: row.entity_name,
         ownerPlayer: row.owner_player ?? "",
+        force: true,
       }),
     });
     if (!res.ok) {
@@ -211,6 +212,7 @@ async function _generateImage(row: WikiEntryRow): Promise<{ ok: boolean; imageUr
         kind: "cover",
         imagePrompt: row.image_prompt ?? `${row.entity_name} — ${row.entity_type}`,
         createdBy: "wiki-orchestrator",
+        force: true,
       }),
     });
     if (!res.ok) {

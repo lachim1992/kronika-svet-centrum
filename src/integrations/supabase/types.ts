@@ -2812,11 +2812,13 @@ export type Database = {
           id: string
           image_prompt: string | null
           image_url: string
+          image_version: number
           is_primary: boolean
           kind: string
           model_meta: Json | null
           session_id: string
           source_turn: number | null
+          storage_path: string | null
           style_preset: string
         }
         Insert: {
@@ -2827,11 +2829,13 @@ export type Database = {
           id?: string
           image_prompt?: string | null
           image_url: string
+          image_version?: number
           is_primary?: boolean
           kind?: string
           model_meta?: Json | null
           session_id: string
           source_turn?: number | null
+          storage_path?: string | null
           style_preset?: string
         }
         Update: {
@@ -2842,11 +2846,13 @@ export type Database = {
           id?: string
           image_prompt?: string | null
           image_url?: string
+          image_version?: number
           is_primary?: boolean
           kind?: string
           model_meta?: Json | null
           session_id?: string
           source_turn?: number | null
+          storage_path?: string | null
           style_preset?: string
         }
         Relationships: [

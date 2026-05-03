@@ -232,59 +232,10 @@ const ChroWikiDetailPanel = ({
         // Lock expired — continue with generation
       }
 
-      // No content yet — check if lazy gen is enabled
-      const { data: cfgData } = await supabase
-        .from("server_config" as any)
-        .select("economic_params")
-        .eq("session_id", sessionId)
-        .maybeSingle();
-      const econ = (cfgData as any)?.economic_params || {};
-      if (econ.lazy_generate_on_open === false) return;
-
-      // Set generating lock
-      if (dbWiki) {
-        await supabase.from("wiki_entries" as any)
-          .update({ generating_lock: new Date().toISOString() } as any)
-          .eq("id", (dbWiki as any).id);
-      }
-
-      setLazyGenerating(true);
-      try {
-        const wikiEntry = wikiEntries.find(w => w.entity_id === entityId);
-        const { data: genData, error } = await supabase.functions.invoke("wiki-generate", {
-          body: {
-            entityType, entityName, entityId, sessionId,
-            ownerPlayer: wikiEntry?.owner_player || "",
-            context: {},
-          },
-        });
-        if (!error && genData?.aiDescription) {
-          // Mark generation turn + clear lock
-          if (dbWiki) {
-            await supabase.from("wiki_entries" as any)
-              .update({ last_enriched_turn: currentTurn || 1, generating_lock: null } as any)
-              .eq("id", (dbWiki as any).id);
-          }
-          await onRefreshWiki();
-        } else {
-          // Clear lock on failure
-          if (dbWiki) {
-            await supabase.from("wiki_entries" as any)
-              .update({ generating_lock: null } as any)
-              .eq("id", (dbWiki as any).id);
-          }
-        }
-      } catch (e) {
-        console.error("Lazy wiki generation failed:", e);
-        // Clear lock on error
-        if (dbWiki) {
-          await supabase.from("wiki_entries" as any)
-            .update({ generating_lock: null } as any)
-            .eq("id", (dbWiki as any).id);
-        }
-      } finally {
-        setLazyGenerating(false);
-      }
+      // P0: lazy auto-generation REMOVED. Wiki text is generated only via
+      // explicit user action (e.g. WikiPanel "Generate" button → wiki-orchestrator).
+      // Opening a detail must NEVER trigger AI calls.
+      return;
     };
     checkAndGenerate();
   }, [entityId, entityType, sessionId]);
