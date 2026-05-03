@@ -1067,6 +1067,12 @@ Deno.serve(async (req) => {
               const { data: wiki } = await supabase.from("wiki_entries")
                 .select("last_enriched_turn").eq("session_id", sessionId).eq("entity_id", entityId).maybeSingle();
               const lastEnriched = (wiki as any)?.last_enriched_turn || 0;
+              // Wave 1: 3-turn cooldown per entity. First enrichment (lastEnriched===0) NOT blocked.
+              if (lastEnriched && (closedTurnForRefs - lastEnriched) < 3) {
+                logAISkip("commit-turn", "wiki-enrich", "cooldown",
+                  { entity: entityId, last: lastEnriched, turn: closedTurnForRefs });
+                continue;
+              }
               const { count: newRefsCount } = await supabase.from("wiki_event_refs")
                 .select("id", { count: "exact", head: true })
                 .eq("session_id", sessionId).eq("entity_id", entityId).gt("turn_number", lastEnriched);
