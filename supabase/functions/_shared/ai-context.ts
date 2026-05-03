@@ -96,6 +96,10 @@ export interface AIInvokeOptions {
    * Strongly recommended; will be "unknown" if omitted.
    */
   functionName?: string;
+  /** Sub-purpose tag for telemetry (e.g. "decision", "narrative"). Optional. */
+  purpose?: string;
+  /** True if call was auto-triggered by engine (not direct user action). Optional. */
+  auto?: boolean;
 }
 
 export interface AIInvokeResult {
