@@ -578,8 +578,15 @@ function PostBattleDecision({ decision, sessionId, playerName, currentTurn, stac
     await supabase.from("action_queue").update({ status: "executed" }).eq("id", decision.id);
     await dispatchCommand({
       sessionId, actor: { name: playerName }, commandType: "POST_BATTLE_DECISION",
-      commandPayload: { action, cityId: city?.id, cityName: city?.name, decisionId: decision.id,
-        chronicleText: `Po vítězné bitvě se **${playerName}** rozhodl pro **${labels[action]}** města **${city?.name || "?"}**.` },
+      commandPayload: {
+        battleId: data.battle_id,
+        decision: action,
+        action,
+        cityId: city?.id,
+        cityName: city?.name,
+        decisionId: decision.id,
+        chronicleText: `Po vítězné bitvě se **${playerName}** rozhodl pro **${labels[action]}** města **${city?.name || "?"}**.`,
+      },
     });
     toast.success(`Rozhodnutí: ${labels[action]}`);
     setSaving(false);
