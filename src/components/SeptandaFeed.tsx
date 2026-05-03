@@ -4,7 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Loader2, RefreshCw, Eye, ChevronDown, ChevronUp, Shield, Coins, Users, Skull, HelpCircle, Globe, MapPin, Map, Scroll, Swords, BookOpen } from "lucide-react";
+import { Loader2, RefreshCw, Eye, ChevronDown, ChevronUp, Shield, Coins, Users, Skull, HelpCircle, Globe, MapPin, Map, Scroll, Swords } from "lucide-react";
 import { toast } from "sonner";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import FeedComments from "@/components/feed/FeedComments";
@@ -101,7 +101,7 @@ const SeptandaFeed = ({ sessionId, currentTurn, currentPlayerName, players = [],
   const [scopeFilter, setScopeFilter] = useState<string>("all");
   const [playerFilter, setPlayerFilter] = useState<string>("all");
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
-  const [chronicling, setChronicling] = useState<string | null>(null);
+  
 
   // Build player color map
   const allPlayers = [...new Set([...players, ...events.map(e => e.player)])];
