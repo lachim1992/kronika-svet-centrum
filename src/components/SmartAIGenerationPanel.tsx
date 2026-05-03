@@ -192,11 +192,15 @@ const SmartAIGenerationPanel = ({ sessionId, onRefetch }: Props) => {
   const generateProvinceDescriptions = () => runBatch(
     "provinces", report!.provincesNoDesc,
     async (prov) => {
-      const { data } = await supabase.functions.invoke("wiki-generate", {
-        body: { entityName: prov.name, entityType: "province", sessionId, ownerPlayer: prov.owner },
+      const { ensureWikiEntry } = await import("@/lib/wikiOrchestrator");
+      await ensureWikiEntry({
+        sessionId, entityType: "province", entityId: prov.id, entityName: prov.name, ownerPlayer: prov.owner,
       });
-      if (data?.aiDescription) {
-        await supabase.from("provinces").update({ ai_description: data.aiDescription }).eq("id", prov.id);
+      const { data: w } = await supabase.from("wiki_entries")
+        .select("ai_description").eq("session_id", sessionId)
+        .eq("entity_type", "province").eq("entity_id", prov.id).maybeSingle();
+      if (w?.ai_description) {
+        await supabase.from("provinces").update({ ai_description: w.ai_description }).eq("id", prov.id);
       }
     },
     (p) => p.name,
@@ -206,11 +210,15 @@ const SmartAIGenerationPanel = ({ sessionId, onRefetch }: Props) => {
   const generateRegionDescriptions = () => runBatch(
     "regions", report!.regionsNoDesc,
     async (reg) => {
-      const { data } = await supabase.functions.invoke("wiki-generate", {
-        body: { entityName: reg.name, entityType: "region", sessionId, ownerPlayer: "" },
+      const { ensureWikiEntry } = await import("@/lib/wikiOrchestrator");
+      await ensureWikiEntry({
+        sessionId, entityType: "region", entityId: reg.id, entityName: reg.name,
       });
-      if (data?.aiDescription) {
-        await supabase.from("regions").update({ ai_description: data.aiDescription }).eq("id", reg.id);
+      const { data: w } = await supabase.from("wiki_entries")
+        .select("ai_description").eq("session_id", sessionId)
+        .eq("entity_type", "region").eq("entity_id", reg.id).maybeSingle();
+      if (w?.ai_description) {
+        await supabase.from("regions").update({ ai_description: w.ai_description }).eq("id", reg.id);
       }
     },
     (r) => r.name,
@@ -243,11 +251,15 @@ const SmartAIGenerationPanel = ({ sessionId, onRefetch }: Props) => {
   const generatePersonBios = () => runBatch(
     "person-bios", report!.personsNoBio,
     async (p) => {
-      const { data } = await supabase.functions.invoke("wiki-generate", {
-        body: { entityName: p.name, entityType: "person", sessionId, ownerPlayer: "" },
+      const { ensureWikiEntry } = await import("@/lib/wikiOrchestrator");
+      await ensureWikiEntry({
+        sessionId, entityType: "person", entityId: p.id, entityName: p.name,
       });
-      if (data?.aiDescription) {
-        await supabase.from("great_persons").update({ bio: data.aiDescription }).eq("id", p.id);
+      const { data: w } = await supabase.from("wiki_entries")
+        .select("ai_description").eq("session_id", sessionId)
+        .eq("entity_type", "person").eq("entity_id", p.id).maybeSingle();
+      if (w?.ai_description) {
+        await supabase.from("great_persons").update({ bio: w.ai_description }).eq("id", p.id);
       }
     },
     (p) => p.name,
@@ -257,11 +269,15 @@ const SmartAIGenerationPanel = ({ sessionId, onRefetch }: Props) => {
   const generateWonderDescriptions = () => runBatch(
     "wonder-descs", report!.wondersNoDesc,
     async (w) => {
-      const { data } = await supabase.functions.invoke("wiki-generate", {
-        body: { entityName: w.name, entityType: "wonder", sessionId, ownerPlayer: "" },
+      const { ensureWikiEntry } = await import("@/lib/wikiOrchestrator");
+      await ensureWikiEntry({
+        sessionId, entityType: "wonder", entityId: w.id, entityName: w.name,
       });
-      if (data?.aiDescription) {
-        await supabase.from("wonders").update({ description: data.aiDescription }).eq("id", w.id);
+      const { data: we } = await supabase.from("wiki_entries")
+        .select("ai_description").eq("session_id", sessionId)
+        .eq("entity_type", "wonder").eq("entity_id", w.id).maybeSingle();
+      if (we?.ai_description) {
+        await supabase.from("wonders").update({ description: we.ai_description }).eq("id", w.id);
       }
     },
     (w) => w.name,
