@@ -829,9 +829,18 @@ async function executePostBattleDecision(
   switch (decision) {
     case "occupy":
     case "conquer": {
-      chronicleText = `V roce ${turnNumber} upevnil **${actor.name}** okupaci města **${cityName}** (${previousOwner}). O osudu města rozhodne až konec okupační lhůty nebo osvobození.`;
+      const liberationDeadline = city.liberation_deadline_turn ?? (turnNumber + 5);
+      await supabase.from("cities").update({
+        status: "occupied",
+        occupied_by: actor.name,
+        occupation_turn: turnNumber,
+        liberation_deadline_turn: liberationDeadline,
+        city_stability: Math.max(0, (city.city_stability || 50) - 20),
+      }).eq("id", cityId);
+      chronicleText = `V roce ${turnNumber} upevnil **${actor.name}** okupaci města **${cityName}** (${previousOwner}). O osudu města rozhodne až konec okupační lhůty (kolo ${liberationDeadline}) nebo osvobození.`;
       sideEffects.occupiedBy = actor.name;
-      sideEffects.liberationDeadlineTurn = city.liberation_deadline_turn;
+      sideEffects.occupationTurn = turnNumber;
+      sideEffects.liberationDeadlineTurn = liberationDeadline;
       break;
     }
 
