@@ -947,19 +947,25 @@ Deno.serve(async (req) => {
                 }
               } catch (pcErr) { console.error(`Player chronicle for ${p.player_name} error:`, pcErr); }
             }
+            } // end shouldRunPC else
           } catch (pcAllErr) { console.error("Auto player-chronicles error:", pcAllErr); }
 
-          // World History
+          // World History — Wave 1: only on epoch boundary OR canon/battle events
           try {
             const { data: existingHistory } = await supabase.from("world_history_chapters")
               .select("id").eq("session_id", sessionId)
               .gte("to_turn", closedTurn).lte("from_turn", closedTurn).maybeSingle();
 
             if (!existingHistory) {
-              const { data: existingWorldEvents } = await supabase.from("world_events")
-                .select("id, title, date, summary").eq("session_id", sessionId);
               const canonEvents = confirmedEvents.filter((e: any) => e.truth_state === "canon");
-              if (canonEvents.length > 0 || battles.length > 0) {
+              const isEpoch = closedTurn % 10 === 0;
+              const hasCanonOrBattle = canonEvents.length > 0 || battles.length > 0;
+
+              if (!isEpoch && !hasCanonOrBattle) {
+                logAISkip("commit-turn", "world-history", "not_epoch_no_major", { turn: closedTurn });
+              } else {
+                const { data: existingWorldEvents } = await supabase.from("world_events")
+                  .select("id, title, date, summary").eq("session_id", sessionId);
                 const { data: whData } = await supabase.functions.invoke("world-history", {
                   body: {
                     sessionId, events: canonEvents,
