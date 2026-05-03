@@ -420,7 +420,31 @@ const ChronicleFeed = ({
                     </div>
                   </div>
                 ) : (
-                  <RichText text={entry.text} onEventClick={onEventClick} onEntityClick={onEntityClick} entityIndex={entityIndex} className="text-sm leading-relaxed whitespace-pre-wrap" />
+                  <>
+                    <RichText text={entry.text} onEventClick={onEventClick} onEntityClick={onEntityClick} entityIndex={entityIndex} className="text-sm leading-relaxed whitespace-pre-wrap" />
+                    {Array.isArray((entry as any).highlights) && (entry as any).highlights.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5 mt-3 pt-3 border-t border-border/50">
+                        {((entry as any).highlights as string[]).map((h, i) => (
+                          <Badge key={i} variant="outline" className="text-xs">{h}</Badge>
+                        ))}
+                      </div>
+                    )}
+                    {Array.isArray((entry as any).referenced_event_ids) && (entry as any).referenced_event_ids.length > 0 && (
+                      <details className="mt-3 text-xs text-muted-foreground">
+                        <summary className="cursor-pointer hover:text-foreground">
+                          Zdroje ({(entry as any).referenced_event_ids.length} událostí)
+                        </summary>
+                        <div className="mt-2 flex flex-wrap gap-1">
+                          {((entry as any).referenced_event_ids as string[]).map((eid) => (
+                            <button key={eid} onClick={() => onEventClick?.(eid)}
+                              className="text-xs px-2 py-0.5 rounded bg-muted hover:bg-accent transition-colors font-mono">
+                              {eid.slice(0, 8)}
+                            </button>
+                          ))}
+                        </div>
+                      </details>
+                    )}
+                  </>
                 )}
 
                 <div className="flex items-center justify-between mt-3">
