@@ -96,6 +96,10 @@ export interface AIInvokeOptions {
    * Strongly recommended; will be "unknown" if omitted.
    */
   functionName?: string;
+  /** Sub-purpose tag for telemetry (e.g. "decision", "narrative"). Optional. */
+  purpose?: string;
+  /** True if call was auto-triggered by engine (not direct user action). Optional. */
+  auto?: boolean;
 }
 
 export interface AIInvokeResult {
@@ -873,6 +877,12 @@ export async function invokeAI(
   // Inject premise into system prompt
   const fullSystemPrompt = `${ctx.premisePrompt}\n\n${opts.systemPrompt}`;
 
+  // ── Wave 1 telemetry: compact one-line log per AI call ──
+  const inputChars = (fullSystemPrompt?.length || 0) + (opts.userPrompt?.length || 0);
+  console.log(
+    `[ai-call] fn=${functionName} purpose=${opts.purpose ?? "unknown"} session=${ctx.sessionId ?? "unknown"} player=${ctx.civContext?.playerName ?? "unknown"} model=${model} input_chars=${inputChars} auto=${opts.auto ?? "unknown"}`,
+  );
+
   const body: any = {
     model,
     messages: [
@@ -916,6 +926,8 @@ export async function invokeAI(
     if (toolCall?.function?.arguments) {
       try {
         const parsed = JSON.parse(toolCall.function.arguments);
+        const outChars = JSON.stringify(parsed).length;
+        console.log(`[ai-done] fn=${functionName} model=${model} output_chars=${outChars}`);
         void logAIInvocation(ctx, functionName, model, true);
         return { ok: true, data: parsed, debug };
       } catch (parseErr) {
@@ -927,10 +939,13 @@ export async function invokeAI(
     const content = data.choices?.[0]?.message?.content || "";
     try {
       const parsed = JSON.parse(content);
+      const outChars = JSON.stringify(parsed).length;
+      console.log(`[ai-done] fn=${functionName} model=${model} output_chars=${outChars}`);
       void logAIInvocation(ctx, functionName, model, true);
       return { ok: true, data: parsed, debug };
     } catch {
       // Return raw content
+      console.log(`[ai-done] fn=${functionName} model=${model} output_chars=${content.length}`);
       void logAIInvocation(ctx, functionName, model, true);
       return { ok: true, data: { content }, debug };
     }
@@ -968,6 +983,26 @@ async function logAIInvocation(
     });
   } catch (e) {
     console.warn(`[ai-context] telemetry log failed for ${functionName}:`, e);
+  }
+}
+
+/**
+ * Wave 1: log a throttled / skipped AI call.
+ * Compact one-liner; never throws. Used by orchestrators (commit-turn etc.).
+ */
+export function logAISkip(
+  fn: string,
+  target: string,
+  reason: string,
+  meta: Record<string, any> = {},
+): void {
+  try {
+    const metaStr = Object.entries(meta)
+      .map(([k, v]) => `${k}=${v}`)
+      .join(" ");
+    console.log(`[ai-skip] fn=${fn} target=${target} reason=${reason}${metaStr ? " " + metaStr : ""}`);
+  } catch {
+    // never throw from a logger
   }
 }
 

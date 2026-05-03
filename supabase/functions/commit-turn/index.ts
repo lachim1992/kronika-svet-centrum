@@ -9,6 +9,7 @@ import {
   computeStructuralBonuses,
   type CityForGrowth,
 } from "../_shared/physics.ts";
+import { logAISkip } from "../_shared/ai-context.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -885,8 +886,19 @@ Deno.serve(async (req) => {
             } catch (wcErr) { console.error("Auto world-chronicle error:", wcErr); }
           }
 
-          // Player Chronicles
+          // Player Chronicles — Wave 1: throttled to every 3rd turn unless major event
           try {
+            const PLAYER_CHRONICLE_EVERY = 3;
+            const hasMajorPlayerEvent =
+              confirmedEvents.some((e: any) =>
+                e.truth_state === "canon" ||
+                ["battle", "conquest", "wonder_built", "founding", "disaster", "famine"].includes(e.event_type)
+              ) || battles.length > 0;
+            const shouldRunPC = (closedTurn % PLAYER_CHRONICLE_EVERY === 0) || hasMajorPlayerEvent;
+
+            if (!shouldRunPC) {
+              logAISkip("commit-turn", "player-chronicle", "throttle", { turn: closedTurn });
+            } else {
             const { data: allPlayersForChron } = await supabase.from("game_players")
               .select("player_name").eq("session_id", sessionId);
             const { data: allCivs } = await supabase.from("civilizations")
@@ -935,19 +947,25 @@ Deno.serve(async (req) => {
                 }
               } catch (pcErr) { console.error(`Player chronicle for ${p.player_name} error:`, pcErr); }
             }
+            } // end shouldRunPC else
           } catch (pcAllErr) { console.error("Auto player-chronicles error:", pcAllErr); }
 
-          // World History
+          // World History — Wave 1: only on epoch boundary OR canon/battle events
           try {
             const { data: existingHistory } = await supabase.from("world_history_chapters")
               .select("id").eq("session_id", sessionId)
               .gte("to_turn", closedTurn).lte("from_turn", closedTurn).maybeSingle();
 
             if (!existingHistory) {
-              const { data: existingWorldEvents } = await supabase.from("world_events")
-                .select("id, title, date, summary").eq("session_id", sessionId);
               const canonEvents = confirmedEvents.filter((e: any) => e.truth_state === "canon");
-              if (canonEvents.length > 0 || battles.length > 0) {
+              const isEpoch = closedTurn % 10 === 0;
+              const hasCanonOrBattle = canonEvents.length > 0 || battles.length > 0;
+
+              if (!isEpoch && !hasCanonOrBattle) {
+                logAISkip("commit-turn", "world-history", "not_epoch_no_major", { turn: closedTurn });
+              } else {
+                const { data: existingWorldEvents } = await supabase.from("world_events")
+                  .select("id, title, date, summary").eq("session_id", sessionId);
                 const { data: whData } = await supabase.functions.invoke("world-history", {
                   body: {
                     sessionId, events: canonEvents,
@@ -1049,6 +1067,12 @@ Deno.serve(async (req) => {
               const { data: wiki } = await supabase.from("wiki_entries")
                 .select("last_enriched_turn").eq("session_id", sessionId).eq("entity_id", entityId).maybeSingle();
               const lastEnriched = (wiki as any)?.last_enriched_turn || 0;
+              // Wave 1: 3-turn cooldown per entity. First enrichment (lastEnriched===0) NOT blocked.
+              if (lastEnriched && (closedTurnForRefs - lastEnriched) < 3) {
+                logAISkip("commit-turn", "wiki-enrich", "cooldown",
+                  { entity: entityId, last: lastEnriched, turn: closedTurnForRefs });
+                continue;
+              }
               const { count: newRefsCount } = await supabase.from("wiki_event_refs")
                 .select("id", { count: "exact", head: true })
                 .eq("session_id", sessionId).eq("entity_id", entityId).gt("turn_number", lastEnriched);
