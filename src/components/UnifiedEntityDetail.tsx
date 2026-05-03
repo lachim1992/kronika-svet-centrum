@@ -253,35 +253,12 @@ const UnifiedEntityDetail = ({
             ? { personType: person.person_type, flavor: person.flavor_trait, alive: person.is_alive, bio: person.bio }
             : {};
 
-      const { data, error } = await supabase.functions.invoke("encyclopedia-generate", {
-        body: {
-          entityType, entityName, context,
-          relatedEvents: relatedWorldEvents.map(e => ({ title: e.title, date: e.date, summary: e.summary, description: e.description })),
-          worldMemories,
-          epochStyle: epochStyle || "kroniky",
-        },
-      });
-      if (error) throw error;
-      if (data.error) { toast.error(data.error); return; }
-
-      if (wiki) {
-        await supabase.from("wiki_entries").update({
-          summary: data.summary,
-          ai_description: data.description,
-          image_prompt: data.imagePrompt,
-          entity_id: entityId,
-          updated_at: new Date().toISOString(),
-        }).eq("id", wiki.id);
+      const { ensureWikiEntry, regenerateWiki } = await import("@/lib/wikiOrchestrator");
+      if (wiki?.id) {
+        await regenerateWiki(wiki.id, ["content"]);
       } else {
-        await supabase.from("wiki_entries").insert({
-          session_id: sessionId,
-          entity_type: entityType,
-          entity_id: entityId,
-          entity_name: entityName,
-          owner_player: entityOwner,
-          summary: data.summary,
-          ai_description: data.description,
-          image_prompt: data.imagePrompt,
+        await ensureWikiEntry({
+          sessionId, entityType, entityId, entityName, ownerPlayer: entityOwner,
         });
       }
       await fetchEntityData();
@@ -293,21 +270,20 @@ const UnifiedEntityDetail = ({
     setGeneratingText(false);
   };
 
-  // ── Generate image (unified pipeline)
+  // ── Generate image (via wiki-orchestrator)
   const handleGenerateImage = async () => {
     setGeneratingImage(true);
     try {
-      const { data, error } = await supabase.functions.invoke("generate-entity-media", {
-        body: {
-          sessionId, entityType, entityName, entityId,
-          kind: "cover",
-          imagePrompt: wiki?.image_prompt,
-          createdBy: isAdmin ? "admin" : currentPlayerName,
-        },
-      });
-      if (error) throw error;
-      if (data.error) { toast.error(data.error); return; }
-
+      const { ensureWikiEntry, regenerateWiki, ensureAndGetEntryId } = await import("@/lib/wikiOrchestrator");
+      if (wiki?.id) {
+        // Explicit user action → force regenerate of cover.
+        await regenerateWiki(wiki.id, ["image"]);
+      } else {
+        const entryId = await ensureAndGetEntryId({
+          sessionId, entityType, entityId, entityName, ownerPlayer: entityOwner,
+        });
+        if (entryId) await ensureWikiEntry({ sessionId, entityType, entityId, entityName, ownerPlayer: entityOwner });
+      }
       await fetchEntityData();
       toast.success(`🖼️ Ilustrace vygenerována!`);
     } catch (e) {

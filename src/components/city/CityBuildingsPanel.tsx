@@ -364,27 +364,22 @@ const CityBuildingsPanel = ({
   const handleRegenerateImage = async (b: any) => {
     setRegeneratingId(b.id);
     try {
-      const { data, error } = await supabase.functions.invoke("encyclopedia-image", {
-        body: {
-          entityType: b.is_arena ? "arena" : "building",
-          entityName: b.name,
-          entityId: b.id,
-          sessionId,
-          description: b.architectural_style || b.flavor_text || b.description,
-          flavorText: b.founding_myth || "",
-        },
+      const entityType = b.is_arena ? "arena" : "building";
+      const promptHint = b.architectural_style || b.flavor_text || b.description || "";
+      // 1) Ensure wiki entry exists, seed image_prompt so orchestrator forwards it.
+      const { ensureAndGetEntryId, regenerateWiki } = await import("@/lib/wikiOrchestrator");
+      const entryId = await ensureAndGetEntryId({
+        sessionId, entityType, entityId: b.id, entityName: b.name,
       });
-      if (error) throw error;
-      if (data?.imageUrl) {
-        await supabase.from("city_buildings").update({
-          image_url: data.imageUrl,
-          image_prompt: data.imagePrompt,
-        } as any).eq("id", b.id);
-        // Sync to wiki
-        await supabase.from("wiki_entries").update({
-          image_url: data.imageUrl,
-          image_prompt: data.imagePrompt,
-        } as any).eq("entity_id", b.id).eq("entity_type", "building");
+      if (!entryId) throw new Error("Wiki entry nelze vytvořit");
+      if (promptHint) {
+        await supabase.from("wiki_entries").update({ image_prompt: promptHint } as any).eq("id", entryId);
+      }
+      // 2) Explicit regenerate of the cover image.
+      const res = await regenerateWiki(entryId, ["image"]);
+      const url = res.image?.imageUrl;
+      if (url) {
+        await supabase.from("city_buildings").update({ image_url: url } as any).eq("id", b.id);
         toast.success("Nový obrázek vygenerován!");
         fetchData();
       } else {
