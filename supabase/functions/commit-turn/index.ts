@@ -407,7 +407,7 @@ Deno.serve(async (req) => {
           await safeInsert(supabase.from("chronicle_entries").insert({
             session_id: sessionId, turn_from: turnNumber, turn_to: turnNumber,
             text: `🌍 Dohoda o otevření hranic mezi ${p.party_a} a ${p.party_b} vypršela.`,
-            source_type: "system",
+            source_type: "event_fragment",
           }));
         }
       }
@@ -447,7 +447,7 @@ Deno.serve(async (req) => {
             await safeInsert(supabase.from("chronicle_entries").insert({
               session_id: sessionId, turn_from: turnNumber, turn_to: turnNumber,
               text: `🛡️ ${ally} vstupuje do války proti ${war.declaring_player} na obranu spojence ${war.target_player} — obranný pakt v platnosti.`,
-              source_type: "system",
+              source_type: "event_fragment",
             }));
             autoWarsTriggered++;
           }
@@ -564,7 +564,7 @@ Deno.serve(async (req) => {
           await safeInsert(supabase.from("chronicle_entries").insert({
             session_id: sessionId, turn_from: turnNumber, turn_to: turnNumber,
             text: `📜 ${offer.to_player} přijal obchodní nabídku od ${offer.from_player}: ${offerAmt}× ${offerType} za ${reqAmt}× ${reqType}.`,
-            source_type: "system",
+            source_type: "event_fragment",
           }));
           offersAccepted++;
         } else {
@@ -577,7 +577,7 @@ Deno.serve(async (req) => {
           await safeInsert(supabase.from("chronicle_entries").insert({
             session_id: sessionId, turn_from: turnNumber, turn_to: turnNumber,
             text: `❌ ${offer.to_player} odmítl obchodní nabídku od ${offer.from_player} (${reason}).`,
-            source_type: "system",
+            source_type: "event_fragment",
           }));
           offersRejected++;
         }
@@ -596,7 +596,7 @@ Deno.serve(async (req) => {
         await safeInsert(supabase.from("chronicle_entries").insert({
           session_id: sessionId, turn_from: turnNumber, turn_to: turnNumber,
           text: `📦 Obchodní trasa mezi ${route.from_player} a ${route.to_player} vypršela.`,
-          source_type: "system",
+          source_type: "event_fragment",
         }));
         routesExpired++;
       }

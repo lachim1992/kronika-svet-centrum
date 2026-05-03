@@ -651,6 +651,7 @@ async function executeFoundCity(
     turn_from: turnNumber,
     turn_to: turnNumber,
     text: chronicleText,
+    source_type: "event_fragment",
   }));
 
   // ── 5. Wiki entry ──
@@ -1006,7 +1007,7 @@ async function executeDeclareWar(
   const chronicleText = `V roce ${turnNumber} vyhlásil **${actor.name}** válku **${targetPlayer}**. ${reason ? `Důvod: ${reason}.` : "Příčiny konfliktu zůstávají zahaleny tajemstvím."}`;
   await safeInsert(supabase.from("chronicle_entries").insert({
     session_id: sessionId, turn_from: turnNumber, turn_to: turnNumber,
-    text: chronicleText, source_type: "system",
+    text: chronicleText, source_type: "event_fragment",
   }));
 
   // City rumors for both sides
@@ -1220,6 +1221,7 @@ async function executeRecruitStack(
   const chronicleText = `${playerName} zřídil armádu **${stackName.trim()}** (${preset.label}). Síla: ${totalManpower} mužů, náklady: ${totalGold} zlata + ${totalProdCost} produkce. Morálka: ${finalMorale}.`;
   await safeInsert(supabase.from("chronicle_entries").insert({
     session_id: sessionId, turn_from: turnNumber, turn_to: turnNumber, text: chronicleText,
+    source_type: "event_fragment",
   }));
 
   // ── 5. Legacy compat ──
@@ -1289,6 +1291,7 @@ async function insertEventsWithChronicle(
       turn_from: turnNumber,
       turn_to: turnNumber,
       text: chronicleText,
+      source_type: "event_fragment",
     }));
   }
 
@@ -1363,7 +1366,7 @@ async function executeProposePact(
 
   await safeInsert(supabase.from("chronicle_entries").insert({
     session_id: sessionId, turn_from: turnNumber, turn_to: turnNumber,
-    text: chronicleText, source_type: "system",
+    text: chronicleText, source_type: "event_fragment",
   }));
 
   return insertEventsWithChronicle(supabase, commandId, sessionId, turnNumber, [{
@@ -1406,7 +1409,7 @@ async function executeAcceptPact(
 
   await safeInsert(supabase.from("chronicle_entries").insert({
     session_id: sessionId, turn_from: turnNumber, turn_to: turnNumber,
-    text: chronicleText, source_type: "system",
+    text: chronicleText, source_type: "event_fragment",
   }));
 
   // Apply condemnation effects on accept
@@ -1495,7 +1498,7 @@ async function executeLiftEmbargo(
 
   await safeInsert(supabase.from("chronicle_entries").insert({
     session_id: sessionId, turn_from: turnNumber, turn_to: turnNumber,
-    text: note, source_type: "system",
+    text: note, source_type: "event_fragment",
   }));
 
   return insertEventsWithChronicle(supabase, commandId, sessionId, turnNumber, [{
