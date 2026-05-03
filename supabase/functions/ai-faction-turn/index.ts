@@ -849,19 +849,44 @@ Rozhodni, co frakce udělá v tomto kole. ${milMetrics.warState === "war" ? "JST
         strategicRoutes: strategicRoutes || [],
         supplyStates: supplyStates || [],
         influenceByNode, rivalsByNode,
+        enemyStacks: enemyStacks || [],
+        activeWars: activeWars || [],
+        peaceOffers: peaceOffers || [],
+        allTensionData: allTensionData || [],
+        tradeRoutes: tradeRoutes || [],
+        allFactions: allFactions || [],
+        turn,
       });
       const briefingChars = JSON.stringify(briefing).length;
       const currentPromptChars = systemPrompt.length + userPrompt.length;
       const ratio = currentPromptChars > 0 ? briefingChars / currentPromptChars : 0;
-      const top5 = [...validActions].sort((a, b) => b.score - a.score).slice(0, 5)
-        .map(a => `${a.type}:${a.score}`);
+      const sorted = [...validActions].sort((a, b) => b.score - a.score);
+      const top5Arr = sorted.slice(0, 5);
+      const top5 = top5Arr.map(a => `${a.type}:${a.score}`);
+      const top5UniqueTypes = new Set(top5Arr.map(a => a.type)).size;
+      const top5Scores = top5Arr.map(a => a.score);
+      const top5Spread = top5Scores.length > 0 ? Math.max(...top5Scores) - Math.min(...top5Scores) : 0;
+      const MIL = ["RECRUIT_ARMY","MOVE_ARMY","ATTACK_TARGET","ANNEX_NODE"];
+      const DIP = ["OFFER_PEACE","SEND_DIPLOMACY_MESSAGE","PROPOSE_TRADE"];
       const hasHold = validActions.some(a => a.type === "HOLD_POSITION");
       const hasEcoOrDef = validActions.some(a => ["BUILD_BUILDING","FORTIFY_NODE","REPAIR_ROUTE","OPEN_TRADE_WITH_NODE"].includes(a.type));
-      const hasMilOrDip = validActions.some(a => ["RECRUIT_ARMY","MOVE_ARMY","ATTACK_TARGET","ANNEX_NODE"].includes(a.type));
+      const hasMil = validActions.some(a => MIL.includes(a.type));
+      const hasDip = validActions.some(a => DIP.includes(a.type));
+      const hasMilOrDip = hasMil || hasDip;
+      const hasRecruit = validActions.some(a => a.type === "RECRUIT_ARMY");
+      const hasMoveOrAttack = validActions.some(a => a.type === "MOVE_ARMY" || a.type === "ATTACK_TARGET");
+      let missingReason = "";
+      if (!hasMilOrDip) {
+        const reasons: string[] = [];
+        if (!hasRecruit) reasons.push(`no_recruit(mp=${resources.manpower},gold=${resources.gold},prod=${resources.production})`);
+        if (!hasMoveOrAttack) reasons.push(`no_move(deployed=${(milMetrics.deployedStacks||[]).length},targets=${(milMetrics.suggestedTargets||[]).length},enemy=${(enemyStacks||[]).length})`);
+        if (!hasDip) reasons.push(`no_diplo(wars=${(activeWars||[]).length},offers=${(peaceOffers||[]).length})`);
+        missingReason = reasons.join("|");
+      }
       if (validActions.length === 0) {
         console.error(`[ai-shadow] ERROR fn=ai-faction-turn faction=${factionName} valid_actions_count=0 turn=${turn} state=${milMetrics.warState}`);
       } else {
-        console.log(`[ai-shadow] fn=ai-faction-turn faction=${factionName} turn=${turn} state=${milMetrics.warState} current_chars=${currentPromptChars} briefing_chars=${briefingChars} ratio=${ratio.toFixed(3)} valid_actions=${validActions.length} top5=[${top5.join(",")}] has_hold=${hasHold} has_eco_def=${hasEcoOrDef} has_mil_dip=${hasMilOrDip}`);
+        console.log(`[ai-shadow] fn=ai-faction-turn faction=${factionName} turn=${turn} state=${milMetrics.warState} current_chars=${currentPromptChars} briefing_chars=${briefingChars} ratio=${ratio.toFixed(3)} valid_actions=${validActions.length} top5=[${top5.join(",")}] top5_uniq=${top5UniqueTypes} top5_spread=${top5Spread} has_hold=${hasHold} has_eco_def=${hasEcoOrDef} has_mil_dip=${hasMilOrDip} has_recruit=${hasRecruit} has_move_attack=${hasMoveOrAttack} has_diplomacy=${hasDip}${missingReason ? ` missing=${missingReason}` : ""}`);
       }
     } catch (e) {
       console.error(`[ai-shadow] threw fn=ai-faction-turn faction=${factionName}: ${(e as Error).message}`);
