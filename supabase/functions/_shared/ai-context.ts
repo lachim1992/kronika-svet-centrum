@@ -986,6 +986,26 @@ async function logAIInvocation(
   }
 }
 
+/**
+ * Wave 1: log a throttled / skipped AI call.
+ * Compact one-liner; never throws. Used by orchestrators (commit-turn etc.).
+ */
+export function logAISkip(
+  fn: string,
+  target: string,
+  reason: string,
+  meta: Record<string, any> = {},
+): void {
+  try {
+    const metaStr = Object.entries(meta)
+      .map(([k, v]) => `${k}=${v}`)
+      .join(" ");
+    console.log(`[ai-skip] fn=${fn} target=${target} reason=${reason}${metaStr ? " " + metaStr : ""}`);
+  } catch {
+    // never throw from a logger
+  }
+}
+
 
 // ─── CORS Helper ───
 
