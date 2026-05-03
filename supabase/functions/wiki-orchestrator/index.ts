@@ -181,6 +181,7 @@ async function _generateText(row: WikiEntryRow): Promise<{ ok: boolean; error?: 
         entityId: row.entity_id,
         entityName: row.entity_name,
         ownerPlayer: row.owner_player ?? "",
+        force: true,
       }),
     });
     if (!res.ok) {
