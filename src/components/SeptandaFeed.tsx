@@ -325,69 +325,6 @@ const SeptandaFeed = ({ sessionId, currentTurn, currentPlayerName, players = [],
               Detail →
             </Button>
           )}
-          <Button
-            size="sm"
-            variant="ghost"
-            className="text-[10px] h-5 px-1.5 gap-0.5"
-            disabled={chronicling === event.id}
-            onClick={async () => {
-              setChronicling(event.id);
-              try {
-                // Fetch all data for this turn to generate chronicle
-                const { data: turnEvents } = await supabase
-                  .from("game_events")
-                  .select("*")
-                  .eq("session_id", sessionId)
-                  .eq("turn_number", event.turn_number)
-                  .eq("truth_state", "canon");
-
-                const eventIds = (turnEvents || []).map((e: any) => e.id);
-                const [{ data: respData }, { data: commData }] = await Promise.all([
-                  supabase.from("event_responses").select("*").in("event_id", eventIds),
-                  supabase.from("feed_comments").select("*").eq("session_id", sessionId).eq("target_type", "event").in("target_id", eventIds),
-                ]);
-
-                const playerReactions = [
-                  ...(respData || []).map((r: any) => ({ player: r.player, text: r.note, event_id: r.event_id })),
-                  ...(commData || []).map((c: any) => ({ player: c.player_name, text: c.comment_text, event_id: c.target_id })),
-                ];
-
-                const { data, error } = await supabase.functions.invoke("world-chronicle-round", {
-                  body: {
-                    sessionId,
-                    round: event.turn_number,
-                    confirmedEvents: turnEvents || [],
-                    annotations: [],
-                    worldMemories: [],
-                    playerReactions,
-                  },
-                });
-
-                if (error) throw error;
-                if (data?.chronicleText) {
-                  await supabase.from("chronicle_entries").insert({
-                    session_id: sessionId,
-                    text: `📜 Rok ${event.turn_number}\n\n${data.chronicleText}`,
-                    source_type: "chronicle",
-                    turn_from: event.turn_number,
-                    turn_to: event.turn_number,
-                  });
-                  toast.success(`Kronika roku ${event.turn_number} vygenerována!`);
-                }
-              } catch (err) {
-                toast.error("Generování kroniky selhalo");
-                console.error(err);
-              }
-              setChronicling(null);
-            }}
-          >
-            {chronicling === event.id ? (
-              <Loader2 className="h-3 w-3 animate-spin" />
-            ) : (
-              <BookOpen className="h-3 w-3" />
-            )}
-            Zapsat do kroniky
-          </Button>
         </div>
 
         <FeedReactions sessionId={sessionId} targetType="event" targetId={event.id} playerName={currentPlayerName} />
