@@ -1067,7 +1067,7 @@ Rozhodni, co frakce udělá v tomto kole. ${milMetrics.warState === "war" ? "JST
         error: a.error ? String(a.error).substring(0, 200) : null,
       })),
       counts: { recruits, builds, attacks, trades, planned: candidateActions.length, executed: okActions.length, failed: failedActions.length },
-      model_used: "google/gemini-2.5-pro",
+      model_used: factionModel,
       ms_elapsed: Date.now() - startedAt,
     };
 
