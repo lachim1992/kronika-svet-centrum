@@ -13,6 +13,7 @@ import ChronicleHubLogo from "@/components/ChronicleHubLogo";
 import { toast } from "sonner";
 import WorldSetupWizard from "@/components/WorldSetupWizard";
 import PromoWorldGenerator from "@/components/PromoWorldGenerator";
+import QuickRandomGameButton from "@/components/QuickRandomGameButton";
 import AdminWorldsPanel from "@/components/AdminWorldsPanel";
 interface GameMembership {
   id: string;
