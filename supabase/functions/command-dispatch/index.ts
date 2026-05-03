@@ -9,6 +9,7 @@ import {
   type InfluenceState,
   type RivalRow,
 } from "../_shared/nodeInfluence.ts";
+import { applyStackMove } from "../_shared/stackMovementCommand.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -751,62 +752,45 @@ async function executeMoveStack(
   supabase: any, base: any, actor: Actor, payload: any,
   commandId: string, sessionId: string, turnNumber: number,
 ): Promise<CommandResult> {
-  const { stackId, toQ, toR, fromQ, fromR } = payload;
+  const { stackId, toQ, toR, fromQ, fromR, plannedPath } = payload;
   if (!stackId) return { events: [], error: "Missing stackId" };
-  if (toQ === undefined || toR === undefined) return { events: [], error: "Missing toQ/toR" };
 
-  // Verify stack belongs to actor
-  const { data: stack } = await supabase.from("military_stacks")
-    .select("id, player_name, hex_q, hex_r, moved_this_turn")
-    .eq("id", stackId).eq("session_id", sessionId).single();
-
-  if (!stack) return { events: [], error: "Stack not found" };
-  if (stack.player_name !== actor.name) return { events: [], error: "Not your stack" };
-  if (stack.moved_this_turn) return { events: [], error: "Tato jednotka se již tento tah přesunula" };
-
-  // Server-side distance check
-  const actualFromQ = fromQ ?? stack.hex_q;
-  const actualFromR = fromR ?? stack.hex_r;
-  const dq2 = toQ - actualFromQ;
-  const dr2 = toR - actualFromR;
-  const actualDist = Math.max(Math.abs(dq2), Math.abs(dr2), Math.abs(dq2 + dr2));
-  if (actualDist > 3) {
-    return { events: [], error: `Move too far: distance ${actualDist} exceeds max 3 hexes per turn` };
+  // Build planned path: prefer client-supplied plannedPath if it looks valid,
+  // otherwise synthesize start→target using fromQ/fromR + toQ/toR (single hop).
+  let path: { q: number; r: number }[] | null = null;
+  if (Array.isArray(plannedPath) && plannedPath.length >= 2) {
+    path = plannedPath
+      .filter((h: any) => typeof h?.q === "number" && typeof h?.r === "number")
+      .map((h: any) => ({ q: h.q, r: h.r }));
+  }
+  if (!path || path.length < 2) {
+    if (toQ === undefined || toR === undefined) return { events: [], error: "Missing toQ/toR" };
+    // Fetch current position to anchor the path
+    const { data: stackPos } = await supabase.from("military_stacks")
+      .select("hex_q, hex_r").eq("id", stackId).eq("session_id", sessionId).maybeSingle();
+    if (!stackPos) return { events: [], error: "Stack not found" };
+    const sq = fromQ ?? stackPos.hex_q;
+    const sr = fromR ?? stackPos.hex_r;
+    path = [{ q: sq, r: sr }, { q: toQ, r: toR }];
   }
 
-  // ── PASSABILITY CHECK ──
-  const { data: targetHex } = await supabase.from("province_hexes")
-    .select("biome_family, is_passable, has_river, has_bridge")
-    .eq("session_id", sessionId).eq("q", toQ).eq("r", toR).maybeSingle();
+  const result = await applyStackMove(supabase, {
+    sessionId,
+    stackId,
+    plannedPath: path,
+    actorName: actor.name,
+  });
 
-  if (targetHex) {
-    // Sea and mountains are always impassable
-    if (targetHex.biome_family === "sea") {
-      return { events: [], error: "Nelze vstoupit na moře — hex je neprostupný" };
-    }
-    if (targetHex.biome_family === "mountains") {
-      return { events: [], error: "Nelze vstoupit do hor — hex je neprostupný" };
-    }
-    // River without bridge is impassable
-    if (targetHex.has_river && !targetHex.has_bridge) {
-      return { events: [], error: "Nelze překročit řeku bez mostu — hex je neprostupný" };
-    }
-  }
-
-  // Update stack position + moved flag (SSOT — server is the only writer of moved_this_turn)
-  const { error: moveErr } = await supabase.from("military_stacks")
-    .update({ hex_q: toQ, hex_r: toR, moved_this_turn: true })
-    .eq("id", stackId)
-    .eq("session_id", sessionId);
-
-  if (moveErr) return { events: [], error: `Move failed: ${moveErr.message}` };
+  if (!result.ok) return { events: [], error: result.error };
 
   return insertEventsWithChronicle(supabase, commandId, sessionId, turnNumber, [{
     ...base,
     event_type: "military",
-    note: payload.note || `${actor.name} přesunul armádu ${payload.stackName || ""} na [${toQ},${toR}].`,
+    note: payload.note ||
+      `${actor.name} přesunul armádu ${payload.stackName || ""} na [${result.finalHex.q},${result.finalHex.r}]` +
+      (result.usedRoadBonus ? " (po silnici)" : "") + ".",
     importance: "normal",
-    reference: payload,
+    reference: { ...payload, finalHex: result.finalHex, usedRoadBonus: result.usedRoadBonus, allowedSteps: result.allowedSteps },
   }], payload.chronicleText);
 }
 
@@ -1630,13 +1614,76 @@ async function executeBuildRoute(
       : "A route between these nodes is already under construction" };
   }
 
+  // Length & terrain-sensitive totalWork (Inkrement 2).
+  // Source of truth for planned path: payload.hexPath if valid, else node-to-node fallback.
   const buildCostMap: Record<string, number> = {
     land_road: 50, river_route: 30, sea_lane: 20, mountain_pass: 80, caravan_route: 60,
     trail: 30, road: 50, paved: 100,
   };
   const type = routeType || "land_road";
   const goldCost = buildCostMap[type] || 50;
-  const totalWork = goldCost * 4; // 4 work-units per gold cost
+
+  // Compute planned hex path
+  let plannedHexPath: { q: number; r: number }[] = [];
+  if (Array.isArray(hexPath) && hexPath.length >= 2) {
+    plannedHexPath = hexPath
+      .filter((h: any) => Number.isFinite(h?.q) && Number.isFinite(h?.r))
+      .map((h: any) => ({ q: h.q, r: h.r }));
+  }
+  if (plannedHexPath.length < 2) {
+    // Fallback: fetch node hex positions, build straight chebyshev interpolation
+    const { data: nodeAPos } = await supabase.from("province_nodes")
+      .select("hex_q, hex_r").eq("id", nodeAId).maybeSingle();
+    const { data: nodeBPos } = await supabase.from("province_nodes")
+      .select("hex_q, hex_r").eq("id", nodeBId).maybeSingle();
+    if (nodeAPos && nodeBPos) {
+      const aq = nodeAPos.hex_q, ar = nodeAPos.hex_r;
+      const bq = nodeBPos.hex_q, br = nodeBPos.hex_r;
+      const dq = bq - aq, dr = br - ar;
+      const steps = Math.max(Math.abs(dq), Math.abs(dr), Math.abs(dq + dr));
+      plannedHexPath = [];
+      for (let i = 0; i <= steps; i++) {
+        const t = steps === 0 ? 0 : i / steps;
+        plannedHexPath.push({ q: Math.round(aq + dq * t), r: Math.round(ar + dr * t) });
+      }
+      // Dedupe
+      plannedHexPath = plannedHexPath.filter((h, i, arr) =>
+        i === 0 || h.q !== arr[i - 1].q || h.r !== arr[i - 1].r);
+    }
+  }
+
+  // Hard terrain count on entry hexes (slice(1))
+  let hardTerrainHexes = 0;
+  if (plannedHexPath.length >= 2) {
+    const qs = plannedHexPath.slice(1).map(h => h.q);
+    const rs = plannedHexPath.slice(1).map(h => h.r);
+    const { data: pathHexes } = await supabase
+      .from("province_hexes")
+      .select("q, r, biome_family")
+      .eq("session_id", sessionId)
+      .in("q", qs)
+      .in("r", rs);
+    const lookup = new Map<string, string>();
+    for (const h of (pathHexes || [])) lookup.set(`${h.q},${h.r}`, h.biome_family || "");
+    for (const h of plannedHexPath.slice(1)) {
+      const b = lookup.get(`${h.q},${h.r}`) || "";
+      if (b === "mountains" || b === "mountain" || b === "swamp" || b === "dense_forest") hardTerrainHexes++;
+    }
+  }
+
+  const pathEdgeCount = Math.max(1, plannedHexPath.length - 1);
+  const WORK_TABLE: Record<string, { base: number; perEdge: number; perHard: number }> = {
+    land_road:     { base: 20, perEdge: 5, perHard: 8 },
+    road:          { base: 20, perEdge: 5, perHard: 8 },
+    paved:         { base: 30, perEdge: 7, perHard: 10 },
+    trail:         { base: 15, perEdge: 4, perHard: 6 },
+    river_route:   { base: 15, perEdge: 3, perHard: 0 },
+    sea_lane:      { base: 10, perEdge: 2, perHard: 0 },
+    mountain_pass: { base: 40, perEdge: 8, perHard: 12 },
+    caravan_route: { base: 25, perEdge: 5, perHard: 8 },
+  };
+  const wt = WORK_TABLE[type] || WORK_TABLE.land_road;
+  const totalWork = wt.base + pathEdgeCount * wt.perEdge + hardTerrainHexes * wt.perHard;
 
   // Labor requirement: minimum 50 of labor_reserve allocated upfront. Pure civilian workforce.
   const requestedLabor = Math.max(50, Math.floor(Number(labor ?? assignedLabor ?? soldiers ?? 0)));
@@ -1696,13 +1743,18 @@ async function executeBuildRoute(
     construction_state: "under_construction",
     name: finalName,
     waypoints: finalWaypoints,
+    planned_hex_path: plannedHexPath.length >= 2 ? plannedHexPath : null,
+    path_dirty: true,
     metadata: {
       built_by: actor.name,
       started_turn: turnNumber,
       assigned_labor: requestedLabor,
       total_work: totalWork,
       progress: 0,
-      hex_path: Array.isArray(hexPath) ? hexPath : null,
+      hex_path: plannedHexPath.length >= 2 ? plannedHexPath : null,
+      planned_hex_path: plannedHexPath.length >= 2 ? plannedHexPath : null,
+      path_edge_count: pathEdgeCount,
+      hard_terrain_hexes: hardTerrainHexes,
       waypoints: finalWaypoints,
       custom_name: finalName,
     },

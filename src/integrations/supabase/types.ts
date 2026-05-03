@@ -3549,6 +3549,8 @@ export type Database = {
           location: string | null
           note: string | null
           player: string
+          processed_at: string | null
+          processing_started_at: string | null
           reference: Json
           result: string | null
           secondary_city_id: string | null
@@ -3576,6 +3578,8 @@ export type Database = {
           location?: string | null
           note?: string | null
           player: string
+          processed_at?: string | null
+          processing_started_at?: string | null
           reference?: Json
           result?: string | null
           secondary_city_id?: string | null
@@ -3603,6 +3607,8 @@ export type Database = {
           location?: string | null
           note?: string | null
           player?: string
+          processed_at?: string | null
+          processing_started_at?: string | null
           reference?: Json
           result?: string | null
           secondary_city_id?: string | null
@@ -7694,6 +7700,8 @@ export type Database = {
           blocked_by: string[] | null
           build_cost: number
           capacity_value: number
+          completed_at: string | null
+          construction_generation: number
           construction_state: string
           control_state: string
           controlled_by: string | null
@@ -7713,6 +7721,7 @@ export type Database = {
           node_a: string
           node_b: string
           path_dirty: boolean | null
+          planned_hex_path: Json | null
           route_origin: string
           route_type: string
           safety_value: number
@@ -7727,6 +7736,8 @@ export type Database = {
           blocked_by?: string[] | null
           build_cost?: number
           capacity_value?: number
+          completed_at?: string | null
+          construction_generation?: number
           construction_state?: string
           control_state?: string
           controlled_by?: string | null
@@ -7746,6 +7757,7 @@ export type Database = {
           node_a: string
           node_b: string
           path_dirty?: boolean | null
+          planned_hex_path?: Json | null
           route_origin?: string
           route_type?: string
           safety_value?: number
@@ -7760,6 +7772,8 @@ export type Database = {
           blocked_by?: string[] | null
           build_cost?: number
           capacity_value?: number
+          completed_at?: string | null
+          construction_generation?: number
           construction_state?: string
           control_state?: string
           controlled_by?: string | null
@@ -7779,6 +7793,7 @@ export type Database = {
           node_a?: string
           node_b?: string
           path_dirty?: boolean | null
+          planned_hex_path?: Json | null
           route_origin?: string
           route_type?: string
           safety_value?: number
