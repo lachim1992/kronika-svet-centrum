@@ -52,10 +52,11 @@ interface GenerateParams {
   entityId: string;
   entityType: string;
   entityName: string;
-  kind: string; // 'cover' | 'portrait' | 'illustration' | 'sigil' | 'card'
+  kind: string; // 'cover' | 'portrait' | 'illustration' | 'sigil' | 'card' | 'map_icon'
   stylePreset?: string;
   imagePrompt?: string; // explicit override
   createdBy?: string;
+  force?: boolean; // P2: required to bypass cover cache
 }
 
 serve(async (req) => {
@@ -72,14 +73,38 @@ serve(async (req) => {
       stylePreset = "default",
       imagePrompt,
       createdBy = "system",
+      force = false,
     } = params;
-
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY not configured");
 
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
     const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const sb = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+
+    // ─── P2: Cover cache-first guard ───
+    // For canonical cover images: if one already exists, return it (no AI call).
+    // Bypass only with force=true (explicit regenerate via orchestrator).
+    if (kind === "cover" && !force && entityId) {
+      const { data: existingCover } = await sb
+        .from("encyclopedia_images")
+        .select("id, image_url, image_prompt, storage_path, image_version")
+        .eq("session_id", sessionId)
+        .eq("entity_type", entityType)
+        .eq("entity_id", entityId)
+        .eq("kind", "cover")
+        .maybeSingle();
+      if (existingCover?.image_url) {
+        return new Response(JSON.stringify({
+          imageUrl: (existingCover as any).image_url,
+          imagePrompt: (existingCover as any).image_prompt,
+          cached: true,
+          kind: "cover",
+          imageVersion: (existingCover as any).image_version ?? 1,
+        }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+    }
+
+    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+    if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY not configured");
 
     // ── 1. Fetch lore bible ──
     const { data: styleCfg } = await sb
