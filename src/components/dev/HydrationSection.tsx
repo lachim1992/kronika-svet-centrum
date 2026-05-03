@@ -91,12 +91,11 @@ const HydrationSection = ({ sessionId, onRefetch }: Props) => {
 
   // ---- Generator functions (route through wiki-orchestrator) ----
   const genWiki = async (items: MissingItem[]) => {
-    const { ensureWikiEntry } = await import("@/lib/wikiOrchestrator");
+    const { regenerateWiki } = await import("@/lib/wikiOrchestrator");
     for (const entry of items) {
       try {
-        await ensureWikiEntry({
-          sessionId, entityType: entry.type || "city", entityId: entry.id, entityName: entry.name, ownerPlayer: entry.owner || "",
-        });
+        // entry.id = wiki_entries.id (existing rows without description).
+        await regenerateWiki(entry.id, ["content"]);
         hLog(`✅ Wiki: ${entry.name}`);
       } catch { hLog(`❌ Wiki: ${entry.name}`); }
     }

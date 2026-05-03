@@ -136,10 +136,9 @@ const SmartAIGenerationPanel = ({ sessionId, onRefetch }: Props) => {
   const generateWikiDescriptions = () => runBatch(
     "wiki", report!.wikiNoDesc,
     async (entry) => {
-      const { ensureWikiEntry } = await import("@/lib/wikiOrchestrator");
-      await ensureWikiEntry({
-        sessionId, entityType: entry.type, entityId: entry.id, entityName: entry.name, ownerPlayer: entry.owner,
-      });
+      // entry.id is wiki_entries.id of an existing row missing description.
+      const { regenerateWiki } = await import("@/lib/wikiOrchestrator");
+      await regenerateWiki(entry.id, ["content"]);
     },
     (e) => e.name,
     "Wiki popisy",
