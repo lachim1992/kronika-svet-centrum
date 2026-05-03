@@ -71,8 +71,9 @@ const RoadNetworkOverlay = memo(({ sessionId, offsetX, offsetY, visible }: Props
         .eq("is_active", true),
       supabase
         .from("province_routes")
-        .select("id, node_a, node_b, control_state, name")
-        .eq("session_id", sessionId),
+        .select("id, node_a, node_b, control_state, name, construction_state")
+        .eq("session_id", sessionId)
+        .eq("construction_state", "complete"),
       supabase
         .from("flow_paths")
         .select("route_id, hex_path, total_cost, path_length")

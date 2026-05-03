@@ -20,6 +20,7 @@ interface RouteRow {
   node_b: string;
   route_type: string;
   metadata: any;
+  planned_hex_path: Array<{ q: number; r: number }> | null;
 }
 
 interface FlowPathRow {
@@ -44,28 +45,39 @@ const UnderConstructionRoutesOverlay = memo(({ sessionId, offsetX, offsetY, visi
     const load = async () => {
       const { data: r } = await supabase
         .from("province_routes")
-        .select("id, node_a, node_b, route_type, metadata")
+        .select("id, node_a, node_b, route_type, metadata, planned_hex_path")
         .eq("session_id", sessionId)
         .eq("construction_state", "under_construction");
       const ids = (r || []).map((x: any) => x.id);
       const fpMap = new Map<string, Array<{ q: number; r: number }>>();
-      if (ids.length > 0) {
+
+      // Authoritative: planned_hex_path on the route itself.
+      for (const route of (r || []) as RouteRow[]) {
+        const planned = route.planned_hex_path;
+        if (Array.isArray(planned) && planned.length >= 2) {
+          fpMap.set(route.id, planned.map((h: any) => ({ q: h.q, r: h.r })));
+        }
+      }
+
+      // Fallback A: legacy hex_path stored on metadata.
+      for (const route of (r || []) as RouteRow[]) {
+        if (fpMap.has(route.id)) continue;
+        const md = route.metadata || {};
+        if (Array.isArray(md.hex_path) && md.hex_path.length >= 2) {
+          fpMap.set(route.id, md.hex_path.map((h: any) => ({ q: h.q, r: h.r })));
+        }
+      }
+
+      // Fallback B: flow_paths (only routes still missing a path).
+      const missingIds = ids.filter((id: string) => !fpMap.has(id));
+      if (missingIds.length > 0) {
         const { data: fps } = await supabase
           .from("flow_paths")
           .select("route_id, hex_path")
-          .in("route_id", ids);
+          .in("route_id", missingIds);
         for (const fp of (fps || []) as FlowPathRow[]) {
           if (fp.route_id && Array.isArray(fp.hex_path) && fp.hex_path.length >= 2) {
             fpMap.set(fp.route_id, fp.hex_path.map(h => ({ q: h.q, r: h.r })));
-          }
-        }
-        // Fallback: hex_path stored in metadata when freshly created (Stage 6).
-        for (const route of (r || []) as RouteRow[]) {
-          if (!fpMap.has(route.id)) {
-            const md = route.metadata || {};
-            if (Array.isArray(md.hex_path) && md.hex_path.length >= 2) {
-              fpMap.set(route.id, md.hex_path.map((h: any) => ({ q: h.q, r: h.r })));
-            }
           }
         }
       }
