@@ -854,7 +854,7 @@ export async function invokeAI(
 ): Promise<AIInvokeResult> {
   const apiKey = Deno.env.get("LOVABLE_API_KEY");
   const model = opts.model || "google/gemini-3-flash-preview";
-  const functionName = opts.functionName ?? "unknown";
+  const functionName = opts.functionName ?? inferFunctionName();
   const playerContextUsed = !!ctx.civContext;
   const lineageNamesAvailable = (ctx.civContext?.claimedLineages ?? []).map((l) => l.name);
 
