@@ -728,6 +728,9 @@ Rozhodni, co frakce udělá v tomto kole. ${milMetrics.warState === "war" ? "JST
 
     const aiResult = await invokeAI(aiCtx, {
       model: factionModel,
+      functionName: "ai-faction-turn",
+      purpose: highStakes ? "war-decision" : "peace-decision",
+      auto: true,
       systemPrompt,
       userPrompt,
       tools: [{
