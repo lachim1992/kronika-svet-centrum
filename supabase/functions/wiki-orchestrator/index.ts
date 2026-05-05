@@ -274,12 +274,15 @@ async function actionEnsure(payload: any) {
     last_generated_at: new Date().toISOString(),
   };
   if (needText) {
-    updates.generation_status = textResult?.ok ? "ready" : "failed";
-    if (textResult?.ok) updates.content_locked = true;
+    // Wave 1 fix: only mark ready+lock when wiki-generate actually produced text.
+    const producedText = hasText(refreshed);
+    updates.generation_status = (textResult?.ok && producedText) ? "ready" : "failed";
+    if (textResult?.ok && producedText) updates.content_locked = true;
   }
   if (needImage) {
-    updates.image_generation_status = imageResult?.ok ? "ready" : "failed";
-    if (imageResult?.ok) {
+    const producedImage = !!(imageResult?.imageUrl) || hasImage(refreshed);
+    updates.image_generation_status = (imageResult?.ok && producedImage) ? "ready" : "failed";
+    if (imageResult?.ok && producedImage) {
       updates.image_locked = true;
       if (imageResult.imageUrl) updates.image_url = imageResult.imageUrl;
     }

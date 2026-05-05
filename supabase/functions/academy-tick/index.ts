@@ -341,46 +341,11 @@ Deno.serve(async (req) => {
           graduateStatus = 'graduated';
         }
 
-        // Generate portrait via AI
-        let portraitUrl: string | null = null;
-        try {
-          const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-          if (LOVABLE_API_KEY) {
-            const portraitPrompt = `Generate ONE portrait image of an ancient Greek/Roman athlete named ${name}. ${specialty} specialist with ${traits.join(", ")} personality. Athletic physique, historical setting, dramatic lighting. Oil painting style. Do not include any text.`;
-            const aiResp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-              method: "POST",
-              headers: {
-                Authorization: `Bearer ${LOVABLE_API_KEY}`,
-                "Content-Type": "application/json",
-              },
-              body: JSON.stringify({
-                model: "google/gemini-3-pro-image-preview",
-                messages: [{ role: "user", content: portraitPrompt }],
-                modalities: ["image", "text"],
-              }),
-            });
-
-            if (aiResp.ok) {
-              const aiData = await aiResp.json();
-              const imageData = aiData.choices?.[0]?.message?.images?.[0]?.image_url?.url;
-              if (imageData) {
-                // Upload to storage instead of storing base64 directly
-                const base64Data = imageData.replace(/^data:image\/\w+;base64,/, "");
-                const bytes = Uint8Array.from(atob(base64Data), c => c.charCodeAt(0));
-                const fileName = `athlete-${crypto.randomUUID()}.png`;
-                const { error: uploadErr } = await sb.storage
-                  .from("building-images")
-                  .upload(`athletes/${fileName}`, bytes, { contentType: "image/png", upsert: true });
-                if (!uploadErr) {
-                  const { data: urlData } = sb.storage.from("building-images").getPublicUrl(`athletes/${fileName}`);
-                  portraitUrl = urlData?.publicUrl || null;
-                }
-              }
-            }
-          }
-        } catch (portraitErr) {
-          console.error("Portrait generation failed (non-critical):", portraitErr);
-        }
+        // Wave 1: SKIP automatic portrait generation during turn ticks.
+        // Portraits are now generated lazily on-demand from the UI (StudentDetailModal)
+        // when a player actually opens an athlete's profile. This eliminates ~40% of AI
+        // image cost per turn (was: pro-image per athlete per turn for every academy).
+        const portraitUrl: string | null = null;
 
         const { data: insertedStudent } = await sb.from("academy_students").insert({
           academy_id: acad.id,
