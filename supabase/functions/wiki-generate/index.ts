@@ -32,10 +32,11 @@ Deno.serve(async (req) => {
     const playerLegend = (existingWiki as any)?.body_md || "";
     const playerSummary = (existingWiki as any)?.summary || "";
 
-    // ═══ P1: Cache-first guard — skip ALL AI calls when content exists and force !== true ═══
+    // ═══ P1: Cache-first guard — skip ALL AI calls when AI content exists and force !== true ═══
+    // NOTE: presence of player-written body_md alone is NOT enough — we still need
+    // ai_description so the public wiki has a real article. (Bug fix Wave 1.)
     const existingDesc = (existingWiki as any)?.ai_description || "";
-    const hasUsableContent = (existingDesc && existingDesc.trim().length > 10)
-      || (playerLegend && playerLegend.trim().length > 10);
+    const hasUsableContent = existingDesc && existingDesc.trim().length > 10;
     if (!force && existingWiki && hasUsableContent) {
       return jsonResponse({
         ok: true,
