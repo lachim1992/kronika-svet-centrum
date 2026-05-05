@@ -719,10 +719,10 @@ Volné hexy existují, pokud v provincii není přelidněno.
 Rozhodni, co frakce udělá v tomto kole. ${milMetrics.warState === "war" ? "JSTE VE VÁLCE — PRIORITA: nasadit armády, útočit na města, bránit vlastní území!" : ""} Buď strategický a situační. Zvažuj akce vůči VŠEM hráčům i AI frakcím — obchod, pakty, společné útoky. Na základě svých vztahů, pamětí a cílů navrhni nebo uprav své strategické záměry (intenty).`;
 
     // ── Call AI via unified pipeline ──
-    // Wave 1: model selection — Pro only for high-stakes situations.
+    // Wave 1: model selection — Pro ONLY for active war or triggered crisis.
+    // Tension/peace uses Flash (cheaper, sufficient for routine planning).
     const highStakes =
       milMetrics.warState === "war" ||
-      milMetrics.warState === "tension" ||
       ((allTensionData as any[]) || []).some((t: any) => t.crisis_triggered);
     const factionModel = highStakes ? "google/gemini-2.5-pro" : "google/gemini-2.5-flash";
 
