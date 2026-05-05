@@ -845,14 +845,24 @@ Deno.serve(async (req) => {
         const rumors = turnRumors || [];
         const enrichment = { battles, declarations, completedBuildings, rumors };
 
-        // World Chronicle — always attempt (server loads its own data; fragments alone justify a chronicle)
+        // World Chronicle — Wave 1: throttled to every 4 turns or on major canon/battle events.
         {
+          const WORLD_CHRONICLE_EVERY = 4;
+          const hasMajorWorldEvent =
+            confirmedEvents.some((e: any) =>
+              e.truth_state === "canon" ||
+              ["battle", "conquest", "wonder_built", "founding", "disaster", "famine", "war_declared"].includes(e.event_type)
+            ) || battles.length > 0;
+          const isEpoch = closedTurn % WORLD_CHRONICLE_EVERY === 0;
+
           const { data: existingChronicle } = await supabase.from("chronicle_entries")
             .select("id").eq("session_id", sessionId)
             .eq("turn_from", closedTurn).eq("turn_to", closedTurn)
             .eq("source_type", "chronicle").maybeSingle();
 
-          if (!existingChronicle) {
+          if (!existingChronicle && !isEpoch && !hasMajorWorldEvent) {
+            logAISkip("commit-turn", "world-chronicle-round", "throttle", { turn: closedTurn, reason: "no-major-event" });
+          } else if (!existingChronicle) {
             try {
               const { data: wcData } = await supabase.functions.invoke("world-chronicle-round", {
                 body: { sessionId, round: closedTurn },
