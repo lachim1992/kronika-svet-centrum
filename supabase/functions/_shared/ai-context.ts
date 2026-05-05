@@ -123,6 +123,20 @@ export interface AIInvokeResult {
 
 const AI_GATEWAY_URL = "https://ai.gateway.lovable.dev/v1/chat/completions";
 
+/**
+ * Best-effort function-name inference from the caller's stack trace.
+ * Looks for `/functions/<name>/index.ts` in the V8 stack so callers that
+ * forget to pass `functionName` still get useful telemetry instead of "unknown".
+ */
+function inferFunctionName(): string {
+  try {
+    const stack = new Error().stack || "";
+    const m = stack.match(/\/functions\/([a-z0-9_-]+)\/[^/\s)]+/i);
+    if (m && m[1] && m[1] !== "_shared") return m[1];
+  } catch { /* ignore */ }
+  return "unknown";
+}
+
 const WRITING_STYLE_MAP: Record<string, string> = {
   "narrative": "Piš jako středověký učenec — vzdělaně, s respektem k faktům.",
   "political-chronicle": "Piš jako politický kronikář — střízlivě, fakticky, bez přehnaných metafor. Styl zpravodajského komentáře.",
