@@ -203,7 +203,7 @@ export function generateValidActions(input: {
   // If no suggestedTargets but we're in war/tension and there are visible enemy stacks,
   // generate move-toward-nearest-enemy or move-to-defend-vulnerable-city.
   if ((atWar || tension) && (input.enemyStacks?.length || 0) > 0) {
-    for (const stack of deployed.slice(0, 3)) {
+    for (const stack of deployed.slice(0, 6)) {
       if (movedTargets.has(stack.id) || stack.movedThisTurn) continue;
       // nearest enemy
       let nearest: any = null;
