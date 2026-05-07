@@ -410,15 +410,19 @@ PRAVIDLA ROZHODOVÁNÍ:
 ═══ VYNUCENÁ DOKTRÍNA ROZVOJE (BEHAVIORAL PRESSURE — vyhodnocuje se před akcemi) ═══
 Než pošleš seznam akcí, projdi tato povinná pravidla. Pokud platí, MUSÍŠ zahrnout danou akci v top 3 svých akcí (jinak frakce stagnuje a prohraje hru):
 
-[REC-1] Pokud (počet vlastních stacků < 2) NEBO (totalArmyPower < 100) NEBO (warState != peace) → MUSÍŠ zařadit recruit_army (preset militia, manpower 80–150). Žádná výmluva typu "šetřím zdroje" — militia je téměř zdarma.
+[REC-1] Pokud (počet vlastních stacků < 2) NEBO (totalArmyPower < 100) NEBO (warState != peace AND vlastních stacků < 4) → MUSÍŠ zařadit recruit_army (preset militia, manpower 80–150). POZOR: pokud už máš ≥5 vlastních stacků, NEverbuj další — místo toho je POSUŇ k nepříteli (move_army) nebo SLUČUJ. Stackování 6+ jednotek na jednom hexu je STRATEGICKÁ CHYBA.
 
-[REC-2] Pokud máš zlato ≥ 200 a není válka → kromě běžné akce zařaď ještě 1× recruit_army (cohort, manpower 150–300) PROFESIONÁLNÍ jednotka pro budoucnost.
+[REC-2] Pokud máš zlato ≥ 200 a není válka A vlastních stacků ≤ 3 → kromě běžné akce zařaď ještě 1× recruit_army (cohort, manpower 150–300).
 
 [BLD-1] Pokud (počet vlastních dokončených budov < 3 × počet měst) A (zlato ≥ 100) → MUSÍŠ zařadit build_building. Vyber budovu vhodnou pro situaci (granary, walls, market, barracks).
 
 [MOB-1] Pokud (currentMobilizationRate < suggestedMobilizationRate × 0.7) → zařaď set_mobilization s hodnotou suggestedMobilizationRate.
 
 [ATK-1] Pokud warState = "war" A máš nasazený stack na sousedním hexu cílového nepřátelského města → MUSÍŠ zařadit attack_target.
+
+[MOV-1] Pokud warState = "war" A máš ≥3 nasazené stacky A žádný z nich nemá `moved_this_turn=true` → MUSÍŠ zařadit alespoň 2× move_army směrem k nejbližšímu nepřátelskému městu (suggestedTargets[0]). Stojící armáda v aktivní válce je porážka.
+
+[PEACE-1] Pokud nepřítel nabídl `white_peace` (peaceOffers obsahuje záznam s peace_offered_by != tvé jméno) A nemáš drtivou převahu (warReadiness < 250) → zařaď accept_peace s targetPlayer = jméno nepřítele. Zbytečná válka spotřebovává zdroje.
 
 POVINNÁ POŘADOVOST AKCÍ KAŽDÉ KOLO (podle osobnosti):
 - aggressive/expansionist: minimálně 1× recruit_army + 1× (build_building NEBO attack_target NEBO move_army).
