@@ -1060,6 +1060,63 @@ Rozhodni, co frakce udělá v tomto kole. ${milMetrics.warState === "war" ? "JST
       console.warn(`[${factionName}] Forced recruit check failed:`, e);
     }
 
+    // ── DETERMINISTIC FORCE-MOVE FOR IDLE STACKS (Wave 2 — anti-stacking) ──
+    try {
+      const stillAtWar = (warDeclarations || []).some((w: any) => w.status === "active");
+      const enemyVisibleCount = (enemyStacks || []).length + ((milMetrics.suggestedTargets || []).length);
+      if ((stillAtWar || milMetrics.warState === "tension") && enemyVisibleCount > 0) {
+        const movedIds = new Set(
+          executedActions
+            .filter(a => (a.actionType === "move_army" || a.actionType === "attack_target") && a.executed)
+            .map(a => a.stackId).filter(Boolean)
+        );
+        const idleStacks = (stacks || []).filter((s: any) =>
+          s.is_active && s.is_deployed && !s.moved_this_turn && !movedIds.has(s.id)
+        ).sort((a: any, b: any) => (b.power || 0) - (a.power || 0));
+
+        const sgTargets = milMetrics.suggestedTargets || [];
+        const fallbackEnemy = (enemyStacks || [])[0];
+
+        for (const stack of idleStacks.slice(0, 4)) {
+          let tgtQ: number | null = null, tgtR: number | null = null, label = "";
+          if (sgTargets.length > 0) {
+            const nearest = sgTargets.reduce((best: any, t: any) => {
+              const d = Math.abs(t.hexQ - stack.hex_q) + Math.abs(t.hexR - stack.hex_r);
+              return !best || d < best.d ? { t, d } : best;
+            }, null);
+            if (nearest) { tgtQ = nearest.t.hexQ; tgtR = nearest.t.hexR; label = nearest.t.name; }
+          }
+          if (tgtQ == null && fallbackEnemy) {
+            tgtQ = fallbackEnemy.hex_q; tgtR = fallbackEnemy.hex_r;
+            label = `nepřítel ${fallbackEnemy.player_name || "?"}`;
+          }
+          if (tgtQ == null || tgtR == null) break;
+
+          const forced = {
+            actionType: "move_army",
+            stackId: stack.id,
+            targetHexQ: tgtQ,
+            targetHexR: tgtR,
+            description: "Deterministický force-move (anti-stagnace)",
+            narrativeNote: `${stack.name} se vydává na pochod směrem k ${label}.`,
+          };
+          try {
+            const fres = await executeAction(
+              supabase, supabaseUrl, supabaseKey, sessionId, turn, factionName, forced, faction,
+              sentUltimatums.length > 0, stacks || [], cities || [], allCities || [], enemyStacks || [], realmRes,
+            );
+            const failed = typeof fres === "string" && (fres.startsWith("move_failed") || ["stack_not_found","not_deployed","already_moved","no_target","blocked_no_step","already_at_target"].includes(fres));
+            executedActions.push({ ...forced, executed: !failed, result: fres, _forced: true, error: failed ? fres : undefined });
+            if (!failed) console.log(`[${factionName}] FORCE-MOVE ${stack.name} -> (${tgtQ},${tgtR}) [${label}] = ${fres}`);
+          } catch (err) {
+            console.warn(`[${factionName}] force-move failed for ${stack.name}:`, err);
+          }
+        }
+      }
+    } catch (e) {
+      console.warn(`[${factionName}] force-move check failed:`, e);
+    }
+
     // ── Update disposition ──
     if (result.dispositionChanges && typeof result.dispositionChanges === "object") {
       const newDisposition = { ...faction.disposition };
