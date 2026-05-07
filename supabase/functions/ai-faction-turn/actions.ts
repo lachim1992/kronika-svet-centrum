@@ -166,11 +166,12 @@ export function generateValidActions(input: {
   }
 
   // ─── MOVE_ARMY / ATTACK_TARGET — primary path via suggestedTargets ───
+  // Wave 2: expanded slice 3→6 stacks, 2→3 targets to break "AI never moves big stacks" loop.
   const deployed: any[] = mm.deployedStacks || [];
   const targets: any[] = mm.suggestedTargets || [];
   const movedTargets = new Set<string>();
-  for (const stack of deployed.slice(0, 3)) {
-    for (const tgt of targets.slice(0, 2)) {
+  for (const stack of deployed.slice(0, 6)) {
+    for (const tgt of targets.slice(0, 3)) {
       const d = hexDist(stack.hexQ, stack.hexR, tgt.hexQ, tgt.hexR);
       if (d <= 1 && atWar) {
         out.push({
@@ -180,10 +181,10 @@ export function generateValidActions(input: {
           params: { stackId: stack.id, targetCity: tgt.name },
           cost: {},
           expected: "bitva",
-          score: 90,
+          score: 92,
         });
         movedTargets.add(stack.id);
-      } else if (d > 1 && d <= 12 && !stack.movedThisTurn) {
+      } else if (d > 1 && d <= 14 && !stack.movedThisTurn) {
         out.push({
           action_id: `MOVE:${stack.id}:${tgt.hexQ},${tgt.hexR}`,
           type: "MOVE_ARMY",
@@ -191,7 +192,7 @@ export function generateValidActions(input: {
           params: { stackId: stack.id, targetHexQ: tgt.hexQ, targetHexR: tgt.hexR },
           cost: {},
           expected: "přiblížení k cíli",
-          score: atWar ? 70 : 30,
+          score: atWar ? 78 : 35,
         });
         movedTargets.add(stack.id);
       }
