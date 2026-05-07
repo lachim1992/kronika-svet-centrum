@@ -442,9 +442,9 @@ Než pošleš seznam akcí, projdi tato povinná pravidla. Pokud platí, MUSÍŠ
 
 [ATK-1] Pokud warState = "war" A máš nasazený stack na sousedním hexu cílového nepřátelského města → MUSÍŠ zařadit attack_target.
 
-[MOV-1] Pokud warState = "war" A máš ≥3 nasazené stacky A žádný z nich nemá `moved_this_turn=true` → MUSÍŠ zařadit alespoň 2× move_army směrem k nejbližšímu nepřátelskému městu (suggestedTargets[0]). Stojící armáda v aktivní válce je porážka.
+[MOV-1] Pokud warState = "war" A máš ≥3 nasazené stacky A žádný z nich nemá \`moved_this_turn=true\` → MUSÍŠ zařadit alespoň 2× move_army směrem k nejbližšímu nepřátelskému městu (suggestedTargets[0]). Stojící armáda v aktivní válce je porážka.
 
-[PEACE-1] Pokud nepřítel nabídl `white_peace` (peaceOffers obsahuje záznam s peace_offered_by != tvé jméno) A nemáš drtivou převahu (warReadiness < 250) → zařaď accept_peace s targetPlayer = jméno nepřítele. Zbytečná válka spotřebovává zdroje.
+[PEACE-1] Pokud nepřítel nabídl \`white_peace\` (peaceOffers obsahuje záznam s peace_offered_by != tvé jméno) A nemáš drtivou převahu (warReadiness < 250) → zařaď accept_peace s targetPlayer = jméno nepřítele. Zbytečná válka spotřebovává zdroje.
 
 POVINNÁ POŘADOVOST AKCÍ KAŽDÉ KOLO (podle osobnosti):
 - aggressive/expansionist: minimálně 1× recruit_army + 1× (build_building NEBO attack_target NEBO move_army).
