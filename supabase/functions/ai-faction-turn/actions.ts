@@ -66,9 +66,13 @@ export function generateValidActions(input: {
   const canMilitia = input.resources.gold >= militiaCost.gold &&
                      input.resources.production >= militiaCost.production &&
                      input.resources.manpower >= militiaCost.manpower;
+  // Wave 2: Penalize recruit when already over-stacked (avoid 9-stacks-on-one-hex pattern)
+  const ownStackCount = (mm.deployedStacks || []).length + (mm.undeployedStacks || []).length;
+  const stackGlut = ownStackCount >= 5;
   if (canMilitia) {
     for (const c of myCities.slice(0, 3)) {
-      const score = atWar ? 80 : tension ? 60 : ownPower < 100 ? 70 : 40;
+      let score = atWar ? 80 : tension ? 60 : ownPower < 100 ? 70 : 40;
+      if (stackGlut) score = Math.max(15, score - 35);
       out.push({
         action_id: `RECRUIT:militia:${c.id}`,
         type: "RECRUIT_ARMY",
@@ -166,11 +170,12 @@ export function generateValidActions(input: {
   }
 
   // ─── MOVE_ARMY / ATTACK_TARGET — primary path via suggestedTargets ───
+  // Wave 2: expanded slice 3→6 stacks, 2→3 targets to break "AI never moves big stacks" loop.
   const deployed: any[] = mm.deployedStacks || [];
   const targets: any[] = mm.suggestedTargets || [];
   const movedTargets = new Set<string>();
-  for (const stack of deployed.slice(0, 3)) {
-    for (const tgt of targets.slice(0, 2)) {
+  for (const stack of deployed.slice(0, 6)) {
+    for (const tgt of targets.slice(0, 3)) {
       const d = hexDist(stack.hexQ, stack.hexR, tgt.hexQ, tgt.hexR);
       if (d <= 1 && atWar) {
         out.push({
@@ -180,10 +185,10 @@ export function generateValidActions(input: {
           params: { stackId: stack.id, targetCity: tgt.name },
           cost: {},
           expected: "bitva",
-          score: 90,
+          score: 92,
         });
         movedTargets.add(stack.id);
-      } else if (d > 1 && d <= 12 && !stack.movedThisTurn) {
+      } else if (d > 1 && d <= 14 && !stack.movedThisTurn) {
         out.push({
           action_id: `MOVE:${stack.id}:${tgt.hexQ},${tgt.hexR}`,
           type: "MOVE_ARMY",
@@ -191,7 +196,7 @@ export function generateValidActions(input: {
           params: { stackId: stack.id, targetHexQ: tgt.hexQ, targetHexR: tgt.hexR },
           cost: {},
           expected: "přiblížení k cíli",
-          score: atWar ? 70 : 30,
+          score: atWar ? 78 : 35,
         });
         movedTargets.add(stack.id);
       }
@@ -202,7 +207,7 @@ export function generateValidActions(input: {
   // If no suggestedTargets but we're in war/tension and there are visible enemy stacks,
   // generate move-toward-nearest-enemy or move-to-defend-vulnerable-city.
   if ((atWar || tension) && (input.enemyStacks?.length || 0) > 0) {
-    for (const stack of deployed.slice(0, 3)) {
+    for (const stack of deployed.slice(0, 6)) {
       if (movedTargets.has(stack.id) || stack.movedThisTurn) continue;
       // nearest enemy
       let nearest: any = null;

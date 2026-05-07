@@ -410,15 +410,19 @@ PRAVIDLA ROZHODOVÁNÍ:
 ═══ VYNUCENÁ DOKTRÍNA ROZVOJE (BEHAVIORAL PRESSURE — vyhodnocuje se před akcemi) ═══
 Než pošleš seznam akcí, projdi tato povinná pravidla. Pokud platí, MUSÍŠ zahrnout danou akci v top 3 svých akcí (jinak frakce stagnuje a prohraje hru):
 
-[REC-1] Pokud (počet vlastních stacků < 2) NEBO (totalArmyPower < 100) NEBO (warState != peace) → MUSÍŠ zařadit recruit_army (preset militia, manpower 80–150). Žádná výmluva typu "šetřím zdroje" — militia je téměř zdarma.
+[REC-1] Pokud (počet vlastních stacků < 2) NEBO (totalArmyPower < 100) NEBO (warState != peace AND vlastních stacků < 4) → MUSÍŠ zařadit recruit_army (preset militia, manpower 80–150). POZOR: pokud už máš ≥5 vlastních stacků, NEverbuj další — místo toho je POSUŇ k nepříteli (move_army) nebo SLUČUJ. Stackování 6+ jednotek na jednom hexu je STRATEGICKÁ CHYBA.
 
-[REC-2] Pokud máš zlato ≥ 200 a není válka → kromě běžné akce zařaď ještě 1× recruit_army (cohort, manpower 150–300) PROFESIONÁLNÍ jednotka pro budoucnost.
+[REC-2] Pokud máš zlato ≥ 200 a není válka A vlastních stacků ≤ 3 → kromě běžné akce zařaď ještě 1× recruit_army (cohort, manpower 150–300).
 
 [BLD-1] Pokud (počet vlastních dokončených budov < 3 × počet měst) A (zlato ≥ 100) → MUSÍŠ zařadit build_building. Vyber budovu vhodnou pro situaci (granary, walls, market, barracks).
 
 [MOB-1] Pokud (currentMobilizationRate < suggestedMobilizationRate × 0.7) → zařaď set_mobilization s hodnotou suggestedMobilizationRate.
 
 [ATK-1] Pokud warState = "war" A máš nasazený stack na sousedním hexu cílového nepřátelského města → MUSÍŠ zařadit attack_target.
+
+[MOV-1] Pokud warState = "war" A máš ≥3 nasazené stacky A žádný z nich nemá `moved_this_turn=true` → MUSÍŠ zařadit alespoň 2× move_army směrem k nejbližšímu nepřátelskému městu (suggestedTargets[0]). Stojící armáda v aktivní válce je porážka.
+
+[PEACE-1] Pokud nepřítel nabídl `white_peace` (peaceOffers obsahuje záznam s peace_offered_by != tvé jméno) A nemáš drtivou převahu (warReadiness < 250) → zařaď accept_peace s targetPlayer = jméno nepřítele. Zbytečná válka spotřebovává zdroje.
 
 POVINNÁ POŘADOVOST AKCÍ KAŽDÉ KOLO (podle osobnosti):
 - aggressive/expansionist: minimálně 1× recruit_army + 1× (build_building NEBO attack_target NEBO move_army).
@@ -908,6 +912,43 @@ Rozhodni, co frakce udělá v tomto kole. ${milMetrics.warState === "war" ? "JST
     // ── Auto-accept incoming pacts from other AI factions ──
     await autoAcceptPendingPacts(supabase, sessionId, factionName, faction, allFactions || [], turn);
 
+    // ── Auto-accept white_peace offers (Wave 2 — anti-stagnation) ──
+    // If opponent offers white_peace and we're not in a clearly winning position, accept immediately.
+    // Prevents AI from being permanently stuck "at war" with a faction that already capitulated.
+    try {
+      const incomingPeaceOffers = (warDeclarations || []).filter((w: any) =>
+        w.status === "peace_offered" &&
+        w.peace_offered_by &&
+        w.peace_offered_by !== factionName &&
+        (w.declaring_player === factionName || w.target_player === factionName)
+      );
+      for (const offer of incomingPeaceOffers) {
+        const conditions = offer.peace_conditions || {};
+        const isWhitePeace = conditions.type === "white_peace" || !conditions.type;
+        // Accept white peace unless we have crushing military advantage (>2.5x).
+        const winning = milMetrics.warReadiness >= 250;
+        if (isWhitePeace && !winning) {
+          const otherSide = offer.declaring_player === factionName ? offer.target_player : offer.declaring_player;
+          await supabase.from("war_declarations").update({
+            status: "peace_accepted", ended_turn: turn,
+          }).eq("id", offer.id);
+          await supabase.from("game_events").insert({
+            session_id: sessionId, event_type: "treaty", player: factionName,
+            turn_number: turn, confirmed: true,
+            note: `${factionName} přijímá bílý mír od ${otherSide}.`,
+            importance: "critical", truth_state: "canon", actor_type: "ai_faction",
+            treaty_type: "peace", terms_summary: JSON.stringify(conditions),
+          }).then(() => {}, () => {});
+          console.log(`[${factionName}] AUTO-ACCEPTED white_peace from ${otherSide} (war ${offer.id})`);
+          // Remove from local activeWars/peaceOffers so subsequent logic sees peace
+          const idx = (warDeclarations || []).findIndex((w: any) => w.id === offer.id);
+          if (idx >= 0) (warDeclarations as any[])[idx].status = "peace_accepted";
+        }
+      }
+    } catch (e) {
+      console.warn(`[${factionName}] auto-accept white_peace failed:`, e);
+    }
+
     // ── Auto-raise mobilization if at war but too low ──
     if (milMetrics.warState === "war" && (realmRes?.mobilization_rate || 0.1) < 0.3) {
       const warMobRate = Math.min(0.55, milMetrics.suggestedMobilizationRate);
@@ -1021,6 +1062,63 @@ Rozhodni, co frakce udělá v tomto kole. ${milMetrics.warState === "war" ? "JST
       }
     } catch (e) {
       console.warn(`[${factionName}] Forced recruit check failed:`, e);
+    }
+
+    // ── DETERMINISTIC FORCE-MOVE FOR IDLE STACKS (Wave 2 — anti-stacking) ──
+    try {
+      const stillAtWar = (warDeclarations || []).some((w: any) => w.status === "active");
+      const enemyVisibleCount = (enemyStacks || []).length + ((milMetrics.suggestedTargets || []).length);
+      if ((stillAtWar || milMetrics.warState === "tension") && enemyVisibleCount > 0) {
+        const movedIds = new Set(
+          executedActions
+            .filter(a => (a.actionType === "move_army" || a.actionType === "attack_target") && a.executed)
+            .map(a => a.stackId).filter(Boolean)
+        );
+        const idleStacks = (stacks || []).filter((s: any) =>
+          s.is_active && s.is_deployed && !s.moved_this_turn && !movedIds.has(s.id)
+        ).sort((a: any, b: any) => (b.power || 0) - (a.power || 0));
+
+        const sgTargets = milMetrics.suggestedTargets || [];
+        const fallbackEnemy = (enemyStacks || [])[0];
+
+        for (const stack of idleStacks.slice(0, 4)) {
+          let tgtQ: number | null = null, tgtR: number | null = null, label = "";
+          if (sgTargets.length > 0) {
+            const nearest = sgTargets.reduce((best: any, t: any) => {
+              const d = Math.abs(t.hexQ - stack.hex_q) + Math.abs(t.hexR - stack.hex_r);
+              return !best || d < best.d ? { t, d } : best;
+            }, null);
+            if (nearest) { tgtQ = nearest.t.hexQ; tgtR = nearest.t.hexR; label = nearest.t.name; }
+          }
+          if (tgtQ == null && fallbackEnemy) {
+            tgtQ = fallbackEnemy.hex_q; tgtR = fallbackEnemy.hex_r;
+            label = `nepřítel ${fallbackEnemy.player_name || "?"}`;
+          }
+          if (tgtQ == null || tgtR == null) break;
+
+          const forced = {
+            actionType: "move_army",
+            stackId: stack.id,
+            targetHexQ: tgtQ,
+            targetHexR: tgtR,
+            description: "Deterministický force-move (anti-stagnace)",
+            narrativeNote: `${stack.name} se vydává na pochod směrem k ${label}.`,
+          };
+          try {
+            const fres = await executeAction(
+              supabase, supabaseUrl, supabaseKey, sessionId, turn, factionName, forced, faction,
+              sentUltimatums.length > 0, stacks || [], cities || [], allCities || [], enemyStacks || [], realmRes,
+            );
+            const failed = typeof fres === "string" && (fres.startsWith("move_failed") || ["stack_not_found","not_deployed","already_moved","no_target","blocked_no_step","already_at_target"].includes(fres));
+            executedActions.push({ ...forced, executed: !failed, result: fres, _forced: true, error: failed ? fres : undefined });
+            if (!failed) console.log(`[${factionName}] FORCE-MOVE ${stack.name} -> (${tgtQ},${tgtR}) [${label}] = ${fres}`);
+          } catch (err) {
+            console.warn(`[${factionName}] force-move failed for ${stack.name}:`, err);
+          }
+        }
+      }
+    } catch (e) {
+      console.warn(`[${factionName}] force-move check failed:`, e);
     }
 
     // ── Update disposition ──
