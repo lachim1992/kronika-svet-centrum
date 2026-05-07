@@ -908,6 +908,43 @@ Rozhodni, co frakce udělá v tomto kole. ${milMetrics.warState === "war" ? "JST
     // ── Auto-accept incoming pacts from other AI factions ──
     await autoAcceptPendingPacts(supabase, sessionId, factionName, faction, allFactions || [], turn);
 
+    // ── Auto-accept white_peace offers (Wave 2 — anti-stagnation) ──
+    // If opponent offers white_peace and we're not in a clearly winning position, accept immediately.
+    // Prevents AI from being permanently stuck "at war" with a faction that already capitulated.
+    try {
+      const incomingPeaceOffers = (warDeclarations || []).filter((w: any) =>
+        w.status === "peace_offered" &&
+        w.peace_offered_by &&
+        w.peace_offered_by !== factionName &&
+        (w.declaring_player === factionName || w.target_player === factionName)
+      );
+      for (const offer of incomingPeaceOffers) {
+        const conditions = offer.peace_conditions || {};
+        const isWhitePeace = conditions.type === "white_peace" || !conditions.type;
+        // Accept white peace unless we have crushing military advantage (>2.5x).
+        const winning = milMetrics.warReadiness >= 250;
+        if (isWhitePeace && !winning) {
+          const otherSide = offer.declaring_player === factionName ? offer.target_player : offer.declaring_player;
+          await supabase.from("war_declarations").update({
+            status: "peace_accepted", ended_turn: turn,
+          }).eq("id", offer.id);
+          await supabase.from("game_events").insert({
+            session_id: sessionId, event_type: "treaty", player: factionName,
+            turn_number: turn, confirmed: true,
+            note: `${factionName} přijímá bílý mír od ${otherSide}.`,
+            importance: "critical", truth_state: "canon", actor_type: "ai_faction",
+            treaty_type: "peace", terms_summary: JSON.stringify(conditions),
+          }).then(() => {}, () => {});
+          console.log(`[${factionName}] AUTO-ACCEPTED white_peace from ${otherSide} (war ${offer.id})`);
+          // Remove from local activeWars/peaceOffers so subsequent logic sees peace
+          const idx = (warDeclarations || []).findIndex((w: any) => w.id === offer.id);
+          if (idx >= 0) (warDeclarations as any[])[idx].status = "peace_accepted";
+        }
+      }
+    } catch (e) {
+      console.warn(`[${factionName}] auto-accept white_peace failed:`, e);
+    }
+
     // ── Auto-raise mobilization if at war but too low ──
     if (milMetrics.warState === "war" && (realmRes?.mobilization_rate || 0.1) < 0.3) {
       const warMobRate = Math.min(0.55, milMetrics.suggestedMobilizationRate);
