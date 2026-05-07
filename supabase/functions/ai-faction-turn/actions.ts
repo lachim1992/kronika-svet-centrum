@@ -66,9 +66,13 @@ export function generateValidActions(input: {
   const canMilitia = input.resources.gold >= militiaCost.gold &&
                      input.resources.production >= militiaCost.production &&
                      input.resources.manpower >= militiaCost.manpower;
+  // Wave 2: Penalize recruit when already over-stacked (avoid 9-stacks-on-one-hex pattern)
+  const ownStackCount = (mm.deployedStacks || []).length + (mm.undeployedStacks || []).length;
+  const stackGlut = ownStackCount >= 5;
   if (canMilitia) {
     for (const c of myCities.slice(0, 3)) {
-      const score = atWar ? 80 : tension ? 60 : ownPower < 100 ? 70 : 40;
+      let score = atWar ? 80 : tension ? 60 : ownPower < 100 ? 70 : 40;
+      if (stackGlut) score = Math.max(15, score - 35);
       out.push({
         action_id: `RECRUIT:militia:${c.id}`,
         type: "RECRUIT_ARMY",
