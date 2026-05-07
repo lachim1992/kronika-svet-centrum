@@ -350,8 +350,30 @@ Deno.serve(async (req) => {
       faith: realmRes?.faith || 0,
     };
 
-    const activeWars = (warDeclarations || []).filter((w: any) => w.status === "active");
-    const peaceOffers = (warDeclarations || []).filter((w: any) => w.status === "peace_offered");
+    // Auto-expire stuck peace offers older than 5 turns → white peace
+    const STUCK_PEACE_TURNS = 5;
+    const stuckOffers = (warDeclarations || []).filter((w: any) =>
+      w.status === "peace_offered" && (turn - (w.declared_turn || 0)) >= STUCK_PEACE_TURNS
+    );
+    for (const w of stuckOffers) {
+      await supabase.from("war_declarations").update({
+        status: "peace_accepted", ended_turn: turn,
+      }).eq("id", w.id);
+      await supabase.from("game_events").insert({
+        session_id: sessionId, event_type: "treaty", player: factionName,
+        turn_number: turn, confirmed: true, importance: "important",
+        note: `Válka mezi ${w.declaring_player} a ${w.target_player} skončila bílým mírem (nabídka ignorována ${turn - (w.declared_turn || 0)} kol).`,
+        treaty_type: "peace", truth_state: "canon", actor_type: "system",
+      }).then(() => {}, () => {});
+    }
+    const stuckIds = new Set(stuckOffers.map((w: any) => w.id));
+    // Treat peace_offered as ongoing war so AI keeps military stance until accepted
+    const activeWars = (warDeclarations || []).filter((w: any) =>
+      !stuckIds.has(w.id) && (w.status === "active" || w.status === "peace_offered")
+    );
+    const peaceOffers = (warDeclarations || []).filter((w: any) =>
+      !stuckIds.has(w.id) && w.status === "peace_offered"
+    );
 
     // ── MILITARY METRICS ──
     const milMetrics = computeMilitaryMetrics(
