@@ -1,7 +1,11 @@
+import { useState } from "react";
 import type { Tables } from "@/integrations/supabase/types";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Shield, Flame, Swords, MapPin, AlertTriangle, Castle } from "lucide-react";
 import WarDeclarationPanel from "@/components/WarDeclarationPanel";
+import PostBattleDecisionModal from "@/components/military/PostBattleDecisionModal";
+import { usePendingBattleDecisions } from "@/hooks/usePendingBattleDecisions";
 
 type City = Tables<"cities">;
 type MilitaryStack = Tables<"military_stacks">;
