@@ -1928,11 +1928,13 @@ async function executeAction(
       // 3) Casus belli: cizí stack do 2 hexů od mého města
       if (!canSkipUltimatum) {
         for (const myCity of myCities) {
-          if (myCity.hex_q == null || myCity.hex_r == null) continue;
+          const cq = myCity.province_q ?? myCity.hex_q;
+          const cr = myCity.province_r ?? myCity.hex_r;
+          if (cq == null || cr == null) continue;
           const threat = enemyStacks.find((es: any) =>
             es.player_name === action.targetPlayer &&
             es.hex_q != null && es.hex_r != null &&
-            (Math.abs(es.hex_q - myCity.hex_q) + Math.abs(es.hex_r - myCity.hex_r) + Math.abs((es.hex_q - myCity.hex_q) + (es.hex_r - myCity.hex_r))) / 2 <= 2
+            (Math.abs(es.hex_q - cq) + Math.abs(es.hex_r - cr) + Math.abs((es.hex_q - cq) + (es.hex_r - cr))) / 2 <= 2
           );
           if (threat) { canSkipUltimatum = true; surpriseReason = "casus_belli"; break; }
         }
