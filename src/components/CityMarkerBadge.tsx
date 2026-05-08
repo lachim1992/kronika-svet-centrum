@@ -24,6 +24,7 @@ export interface CityMarkerProps {
   cx: number;
   cy: number;
   onClick?: (e: React.MouseEvent) => void;
+  onDoubleClick?: (e: React.MouseEvent) => void;
 }
 
 /** Map population to a radius multiplier (0.7 – 1.6) */
