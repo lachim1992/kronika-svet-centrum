@@ -452,6 +452,45 @@ export type Database = {
         }
         Relationships: []
       }
+      ai_war_plans: {
+        Row: {
+          created_at: string
+          faction_name: string
+          id: string
+          session_id: string
+          staging_max_turns: number
+          staging_started_turn: number
+          status: string
+          target_city_id: string | null
+          target_player: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          faction_name: string
+          id?: string
+          session_id: string
+          staging_max_turns?: number
+          staging_started_turn: number
+          status?: string
+          target_city_id?: string | null
+          target_player: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          faction_name?: string
+          id?: string
+          session_id?: string
+          staging_max_turns?: number
+          staging_started_turn?: number
+          status?: string
+          target_city_id?: string | null
+          target_player?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       ai_world_summaries: {
         Row: {
           created_at: string
@@ -9950,6 +9989,7 @@ export type Database = {
           session_id: string
           stability_penalty_applied: boolean
           status: string
+          surprise_war: boolean
           target_player: string
           updated_at: string
         }
@@ -9968,6 +10008,7 @@ export type Database = {
           session_id: string
           stability_penalty_applied?: boolean
           status?: string
+          surprise_war?: boolean
           target_player: string
           updated_at?: string
         }
@@ -9986,6 +10027,7 @@ export type Database = {
           session_id?: string
           stability_penalty_applied?: boolean
           status?: string
+          surprise_war?: boolean
           target_player?: string
           updated_at?: string
         }
