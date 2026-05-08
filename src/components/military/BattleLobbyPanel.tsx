@@ -703,13 +703,18 @@ function SidePanel({ label, playerName, stackInfo, formation, speech, speechMod,
         <span className="text-xs font-display font-semibold">{FORMATION_LABELS[formation] || formation}</span>
       </div>
 
-      {/* Speech preview */}
+      {/* Speech preview + AI feedback */}
       {speech && (
         <div className="text-[10px] italic text-muted-foreground bg-muted/20 rounded p-1.5">
           „{speech.length > 100 ? speech.slice(0, 100) + "…" : speech}"
           <span className={`ml-1 font-semibold ${speechMod >= 0 ? "text-accent" : "text-destructive"}`}>
             ({speechMod >= 0 ? "+" : ""}{speechMod})
           </span>
+        </div>
+      )}
+      {speechFeedback && (
+        <div className={`text-[10px] rounded p-1.5 border ${speechMod >= 1 ? "bg-amber-500/10 border-amber-500/30 text-amber-200" : speechMod < 0 ? "bg-destructive/10 border-destructive/30 text-destructive" : "bg-muted/20 border-border text-muted-foreground"}`}>
+          🎙 {speechFeedback}
         </div>
       )}
     </div>
