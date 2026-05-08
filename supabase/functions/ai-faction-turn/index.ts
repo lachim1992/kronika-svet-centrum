@@ -444,6 +444,10 @@ Než pošleš seznam akcí, projdi tato povinná pravidla. Pokud platí, MUSÍŠ
 
 [MOV-1] Pokud warState = "war" A máš ≥3 nasazené stacky A žádný z nich nemá \`moved_this_turn=true\` → MUSÍŠ zařadit alespoň 2× move_army směrem k nejbližšímu nepřátelskému městu (suggestedTargets[0]). Stojící armáda v aktivní válce je porážka.
 
+[AGG-1] Pokud warState = "war" A máš ≥6 vlastních stacků A průměrný power stacku < 80 → MUSÍŠ zařadit alespoň 1× combine_stacks (slouč 2 nejslabší stacky na stejném/sousedním hexu). Roztříštěná malá armáda nikdy nedobude město. Cíl: vytvořit ≥2 mega-stacky s power ≥150.
+
+[OFF-1] Pokud warState = "war" A máš ≥2 stacky s power ≥150 → MUSÍŠ je seskupit a poslat spolu k nejbližšímu nepřátelskému městu (suggestedTargets[0]) přes move_army. Defenzivní rozprostření po vlastním území v aktivní válce = automatická porážka.
+
 [PEACE-1] Pokud nepřítel nabídl \`white_peace\` (peaceOffers obsahuje záznam s peace_offered_by != tvé jméno) A nemáš drtivou převahu (warReadiness < 250) → zařaď accept_peace s targetPlayer = jméno nepřítele. Zbytečná válka spotřebovává zdroje.
 
 POVINNÁ POŘADOVOST AKCÍ KAŽDÉ KOLO (podle osobnosti):
@@ -977,6 +981,15 @@ Rozhodni, co frakce udělá v tomto kole. ${milMetrics.warState === "war" ? "JST
       await supabase.from("realm_resources").update({ mobilization_rate: warMobRate })
         .eq("session_id", sessionId).eq("player_name", factionName);
       console.log(`[${factionName}] Auto-raised mobilization to ${warMobRate} due to war state`);
+    }
+
+    // ── EMERGENCY WARTIME: very low manpower in active war → max mobilization ──
+    // Prevents the "war declared but no army" trap (e.g. Říše Zlatého Lva: war@t34, MP=0).
+    const mpAvailable = (realmRes as any)?.manpower_available ?? (realmRes as any)?.manpower_pool ?? 0;
+    if (milMetrics.warState === "war" && mpAvailable < 50) {
+      await supabase.from("realm_resources").update({ mobilization_rate: 0.9 })
+        .eq("session_id", sessionId).eq("player_name", factionName);
+      console.log(`[${factionName}] EMERGENCY mobilization → 0.9 (war + MP=${mpAvailable})`);
     }
 
     // ── Auto-raise mobilization for stack-less factions (turn ≥ 3) ──

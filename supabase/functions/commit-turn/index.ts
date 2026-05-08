@@ -1112,6 +1112,39 @@ Deno.serve(async (req) => {
         } catch (e) { console.error("Rumor generation error:", e); }
       }
 
+      // ═══ 8b-bis. WIKI BACKFILL — fill empty wiki entries (3 oldest per turn) ═══
+      // Many auto-created entries (academy, country, region, province, city) never
+      // get a triggering event, so they sit empty forever. Pick a small batch each
+      // turn so ChroWiki gradually fills out.
+      if (!skipNarrative) {
+        try {
+          const { data: emptyEntries } = await supabase.from("wiki_entries")
+            .select("id, entity_type, entity_id, entity_name, summary, ai_description")
+            .eq("session_id", sessionId)
+            .or("summary.is.null,summary.eq.")
+            .or("ai_description.is.null,ai_description.eq.")
+            .neq("generation_status", "generating")
+            .order("created_at", { ascending: true })
+            .limit(3);
+          for (const e of (emptyEntries || [])) {
+            const hasContent = ((e as any).summary && (e as any).summary.length > 50)
+              || ((e as any).ai_description && (e as any).ai_description.length > 10);
+            if (hasContent) continue;
+            try {
+              await supabase.functions.invoke("wiki-orchestrator", {
+                body: {
+                  action: "ensure",
+                  session_id: sessionId,
+                  entity_type: (e as any).entity_type,
+                  entity_id: (e as any).entity_id,
+                  entity_name: (e as any).entity_name,
+                },
+              });
+            } catch (we) { console.error(`Wiki backfill ${(e as any).entity_name} failed:`, we); }
+          }
+        } catch (e) { console.error("Wiki backfill error:", e); }
+      }
+
       // ═══ 8c. GAMES & FESTIVALS ═══
       try {
         const nextTurn = turnNumber + 1;

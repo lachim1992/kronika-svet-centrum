@@ -125,7 +125,7 @@ Deno.serve(async (req) => {
     const [goodsRes, recipesRes, nodesRes, citiesRes, routesRes, hexesRes] = await Promise.all([
       sb.from("goods").select("key, category, production_stage, market_tier, base_price_numeric, demand_basket, substitution_map, storable"),
       sb.from("production_recipes").select("*"),
-      sb.from("province_nodes").select("id, session_id, node_type, node_tier, node_subtype, production_role, capability_tags, guild_level, city_id, controlled_by, production_output, hex_q, hex_r, upgrade_level, specialization_scores, parent_node_id, route_access_factor").eq("session_id", session_id),
+      sb.from("province_nodes").select("id, session_id, node_type, node_tier, node_subtype, production_role, capability_tags, guild_level, city_id, controlled_by, production_output, hex_q, hex_r, upgrade_level, specialization_scores, parent_node_id, route_access_factor, trade_system_id").eq("session_id", session_id),
       sb.from("cities").select("id, name, owner_player, population_total, population_peasants, population_burghers, population_clerics, population_warriors, market_level, settlement_level, temple_level, city_stability, labor_allocation").eq("session_id", session_id),
       sb.from("province_routes").select("id, node_a, node_b, capacity_value, control_state").eq("session_id", session_id),
       sb.from("province_hexes").select("q, r, resource_deposits").eq("session_id", session_id).not("resource_deposits", "is", null),
@@ -553,15 +553,39 @@ Deno.serve(async (req) => {
 
     // ════════════════════════════════════════════
     // PHASE 3: Trade pressure & trade_flows
+    // FIX (May 2026): Build adjacency via shared trade_system_id, not direct
+    // route endpoints. Routes pass through resource_node/trade_hub/fortress
+    // intermediates, so node_a/node_b filtering dropped 95%+ of pairs.
+    // Cities sharing a trade_system_id are reachable through the union-find
+    // graph already computed by compute-trade-systems.
     // ════════════════════════════════════════════
     const cityAdjacency = new Map<string, Set<string>>();
+    const systemToCities = new Map<string, string[]>();
+    for (const city of cities) {
+      const nodeId = cityToNodeId.get(city.id);
+      if (!nodeId) continue;
+      const node = nodeById.get(nodeId);
+      const sysId = (node as any)?.trade_system_id;
+      if (!sysId) continue;
+      if (!systemToCities.has(sysId)) systemToCities.set(sysId, []);
+      systemToCities.get(sysId)!.push(city.id);
+    }
+    for (const [, members] of systemToCities) {
+      for (const a of members) {
+        for (const b of members) {
+          if (a === b) continue;
+          if (!cityAdjacency.has(a)) cityAdjacency.set(a, new Set());
+          cityAdjacency.get(a)!.add(b);
+        }
+      }
+    }
+    // Fallback: keep direct-route adjacency for cities not in any trade system
     for (const route of routes) {
       if (route.control_state === "blocked") continue;
       const nodeA = nodeById.get(route.node_a);
       const nodeB = nodeById.get(route.node_b);
       if (!nodeA?.city_id || !nodeB?.city_id) continue;
       if (nodeA.city_id === nodeB.city_id) continue;
-
       if (!cityAdjacency.has(nodeA.city_id)) cityAdjacency.set(nodeA.city_id, new Set());
       if (!cityAdjacency.has(nodeB.city_id)) cityAdjacency.set(nodeB.city_id, new Set());
       cityAdjacency.get(nodeA.city_id)!.add(nodeB.city_id);
