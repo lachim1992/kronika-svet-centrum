@@ -106,8 +106,8 @@ export default function PostBattleDecisionModal({
             <Button onClick={() => handleAction("occupy")} disabled={saving} className="justify-start">
               <Castle className="h-4 w-4 mr-2" />
               <div className="text-left">
-                <div className="font-display font-semibold">Okupovat město</div>
-                <div className="text-xs opacity-80">Po 3 tazích bez osvobození město přejde pod tvou kontrolu.</div>
+                <div className="font-display font-semibold">Anektovat (5 kol → trvalé)</div>
+                <div className="text-xs opacity-80">Obsadit město. Po 5 tazích bez osvobození se stává trvale tvým.</div>
               </div>
             </Button>
 

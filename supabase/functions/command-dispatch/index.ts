@@ -417,6 +417,9 @@ async function executeCommand(
     case "UPGRADE_ROUTE":
       return await executeUpgradeRoute(supabase, base, actor, payload, commandId, sessionId, turnNumber);
 
+    case "ADJUST_ROUTE_WORKFORCE":
+      return await executeAdjustRouteWorkforce(supabase, base, actor, payload, commandId, sessionId, turnNumber);
+
     case "RENAME_ROUTE":
       return await executeRenameRoute(supabase, base, actor, payload, commandId, sessionId, turnNumber);
 
@@ -1681,7 +1684,10 @@ async function executeBuildRoute(
   // Node-Trade v1: BUILD_ROUTE creates a planned/under_construction route.
   // Construction is powered by LABOR (pracovní síla) drawn from realm.labor_reserve.
   // Soldiers/manpower are reserved exclusively for combat & garrison duties.
-  const { nodeAId, nodeBId, routeType, labor, assignedLabor, soldiers, hexPath, name, waypoints } = payload;
+  // Unified workforce model (May 2026):
+  // 1 hex = 25 workforce. Player allocates `workforcePerTurn` to project (min 5).
+  // Each turn that allocation is added to progress; project completes when progress ≥ totalWork.
+  const { nodeAId, nodeBId, routeType, workforcePerTurn, labor, assignedLabor, soldiers, hexPath, name, waypoints } = payload;
   if (!nodeAId || !nodeBId) return { events: [], error: "Missing nodeAId or nodeBId" };
 
   const { data: nodeA } = await supabase.from("province_nodes")
@@ -1704,8 +1710,7 @@ async function executeBuildRoute(
       : "A route between these nodes is already under construction" };
   }
 
-  // Length & terrain-sensitive totalWork (Inkrement 2).
-  // Source of truth for planned path: payload.hexPath if valid, else node-to-node fallback.
+  // Gold cost (small flat fee, per route type)
   const buildCostMap: Record<string, number> = {
     land_road: 50, river_route: 30, sea_lane: 20, mountain_pass: 80, caravan_route: 60,
     trail: 30, road: 50, paved: 100,
@@ -1713,7 +1718,7 @@ async function executeBuildRoute(
   const type = routeType || "land_road";
   const goldCost = buildCostMap[type] || 50;
 
-  // Compute planned hex path
+  // Compute planned hex path (A* / waypoints / chebyshev fallback)
   let plannedHexPath: { q: number; r: number }[] = [];
   if (Array.isArray(hexPath) && hexPath.length >= 2) {
     plannedHexPath = hexPath
@@ -1721,7 +1726,6 @@ async function executeBuildRoute(
       .map((h: any) => ({ q: h.q, r: h.r }));
   }
   if (plannedHexPath.length < 2) {
-    // Fallback: fetch node hex positions, build straight chebyshev interpolation
     const { data: nodeAPos } = await supabase.from("province_nodes")
       .select("hex_q, hex_r").eq("id", nodeAId).maybeSingle();
     const { data: nodeBPos } = await supabase.from("province_nodes")
@@ -1736,53 +1740,27 @@ async function executeBuildRoute(
         const t = steps === 0 ? 0 : i / steps;
         plannedHexPath.push({ q: Math.round(aq + dq * t), r: Math.round(ar + dr * t) });
       }
-      // Dedupe
       plannedHexPath = plannedHexPath.filter((h, i, arr) =>
         i === 0 || h.q !== arr[i - 1].q || h.r !== arr[i - 1].r);
     }
   }
 
-  // Hard terrain count on entry hexes (slice(1))
-  let hardTerrainHexes = 0;
-  if (plannedHexPath.length >= 2) {
-    const qs = plannedHexPath.slice(1).map(h => h.q);
-    const rs = plannedHexPath.slice(1).map(h => h.r);
-    const { data: pathHexes } = await supabase
-      .from("province_hexes")
-      .select("q, r, biome_family")
-      .eq("session_id", sessionId)
-      .in("q", qs)
-      .in("r", rs);
-    const lookup = new Map<string, string>();
-    for (const h of (pathHexes || [])) lookup.set(`${h.q},${h.r}`, h.biome_family || "");
-    for (const h of plannedHexPath.slice(1)) {
-      const b = lookup.get(`${h.q},${h.r}`) || "";
-      if (b === "mountains" || b === "mountain" || b === "swamp" || b === "dense_forest") hardTerrainHexes++;
-    }
-  }
+  // === Sjednocený workforce model: 25 prac. síly na hex ===
+  const WORKFORCE_PER_HEX = 25;
+  const hexCount = Math.max(1, plannedHexPath.length - 1); // počet hex-edges (= "hex" pro user-facing výpočet)
+  const totalWork = WORKFORCE_PER_HEX * hexCount;
 
-  const pathEdgeCount = Math.max(1, plannedHexPath.length - 1);
-  const WORK_TABLE: Record<string, { base: number; perEdge: number; perHard: number }> = {
-    land_road:     { base: 20, perEdge: 5, perHard: 8 },
-    road:          { base: 20, perEdge: 5, perHard: 8 },
-    paved:         { base: 30, perEdge: 7, perHard: 10 },
-    trail:         { base: 15, perEdge: 4, perHard: 6 },
-    river_route:   { base: 15, perEdge: 3, perHard: 0 },
-    sea_lane:      { base: 10, perEdge: 2, perHard: 0 },
-    mountain_pass: { base: 40, perEdge: 8, perHard: 12 },
-    caravan_route: { base: 25, perEdge: 5, perHard: 8 },
-  };
-  const wt = WORK_TABLE[type] || WORK_TABLE.land_road;
-  const totalWork = wt.base + pathEdgeCount * wt.perEdge + hardTerrainHexes * wt.perHard;
-
-  // Labor requirement: minimum 50 of labor_reserve allocated upfront. Pure civilian workforce.
-  const requestedLabor = Math.max(50, Math.floor(Number(labor ?? assignedLabor ?? soldiers ?? 0)));
+  // Per-turn allocation. Backward-compat: starý `labor` parametr se interpretuje jako per-turn alokace.
+  const requestedPerTurn = Math.max(
+    5,
+    Math.floor(Number(workforcePerTurn ?? labor ?? assignedLabor ?? soldiers ?? WORKFORCE_PER_HEX)),
+  );
 
   const realm = await getRealmByActor(supabase, sessionId, actor, "id, gold_reserve, mobilization_rate, player_name");
   if (!realm) return { events: [], error: "Realm not found" };
   if ((realm.gold_reserve ?? 0) < goldCost) return { events: [], error: `Nedostatek zlata (potřeba: ${goldCost})` };
 
-  // Pracovní síla = aktivní populace − mobilizovaní (computed z měst). Není to ledger; neodečítáme ji.
+  // Workforce = aktivní pop − mobilizovaní (computed). Není to ledger; per-turn alokace se odčítá v process-turn.
   const { data: ownedCities } = await supabase.from("cities")
     .select("status, population_peasants, population_burghers, population_clerics")
     .eq("session_id", sessionId).eq("owner_player", realm.player_name);
@@ -1799,8 +1777,8 @@ async function executeBuildRoute(
   const mobRate = Number(realm.mobilization_rate ?? 0.1);
   const mobilized = Math.floor(effectiveActivePop * mobRate);
   const workforceAvailable = Math.max(0, effectiveActivePop - mobilized);
-  if (workforceAvailable < requestedLabor) {
-    return { events: [], error: `Nedostatek pracovní síly (k dispozici: ${workforceAvailable}, potřeba: ${requestedLabor}).` };
+  if (workforceAvailable < requestedPerTurn) {
+    return { events: [], error: `Nedostatek pracovní síly (k dispozici: ${workforceAvailable}, požaduješ ${requestedPerTurn}/tah).` };
   }
 
   await supabase.from("realm_resources").update({
@@ -1838,24 +1816,58 @@ async function executeBuildRoute(
     metadata: {
       built_by: actor.name,
       started_turn: turnNumber,
-      assigned_labor: requestedLabor,
+      workforce_per_turn: requestedPerTurn,
+      assigned_labor: requestedPerTurn, // back-compat
       total_work: totalWork,
       progress: 0,
       hex_path: plannedHexPath.length >= 2 ? plannedHexPath : null,
       planned_hex_path: plannedHexPath.length >= 2 ? plannedHexPath : null,
-      path_edge_count: pathEdgeCount,
-      hard_terrain_hexes: hardTerrainHexes,
+      path_edge_count: hexCount,
+      hex_count: hexCount,
       waypoints: finalWaypoints,
       custom_name: finalName,
     },
   });
 
-  const note = `${actor.name} zahájil stavbu cesty (${type}) mezi ${nodeA.name} a ${nodeB.name}. Vyhrazeno ${requestedLabor} pracovní síly.`;
+  const etaTurns = Math.max(1, Math.ceil(totalWork / requestedPerTurn));
+  const note = `${actor.name} zahájil stavbu cesty (${type}) mezi ${nodeA.name} a ${nodeB.name}. ${hexCount} hexů × 25 prac. síly = ${totalWork}. Alokováno ${requestedPerTurn}/tah → hotovo za ${etaTurns} kol.`;
   return insertEventsWithChronicle(supabase, commandId, sessionId, turnNumber, [{
     ...base,
     event_type: "construction",
     note, importance: "normal",
-    reference: { nodeAId, nodeBId, routeType: type, goldCost, assignedLabor: requestedLabor },
+    reference: { nodeAId, nodeBId, routeType: type, goldCost, workforcePerTurn: requestedPerTurn, totalWork, hexCount, etaTurns },
+  }], payload.chronicleText);
+}
+
+// ═══════════════════════════════════════════
+// ADJUST_ROUTE_WORKFORCE — change per-turn workforce allocation on under-construction route
+// ═══════════════════════════════════════════
+
+async function executeAdjustRouteWorkforce(
+  supabase: any, base: any, actor: Actor, payload: any,
+  commandId: string, sessionId: string, turnNumber: number,
+): Promise<CommandResult> {
+  const { routeId, workforcePerTurn } = payload;
+  if (!routeId || !Number.isFinite(workforcePerTurn)) return { events: [], error: "Missing routeId or workforcePerTurn" };
+  const newAlloc = Math.max(5, Math.floor(Number(workforcePerTurn)));
+
+  const { data: route } = await supabase.from("province_routes")
+    .select("id, metadata, construction_state").eq("id", routeId).eq("session_id", sessionId).single();
+  if (!route) return { events: [], error: "Route not found" };
+  if (route.construction_state !== "under_construction") return { events: [], error: "Route not under construction" };
+  const md = (route.metadata || {}) as any;
+  if (md.built_by !== actor.name) return { events: [], error: "Not your project" };
+
+  await supabase.from("province_routes").update({
+    metadata: { ...md, workforce_per_turn: newAlloc, assigned_labor: newAlloc },
+  }).eq("id", routeId);
+
+  const remaining = Math.max(0, Number(md.total_work || 0) - Number(md.progress || 0));
+  const etaTurns = newAlloc > 0 ? Math.max(1, Math.ceil(remaining / newAlloc)) : 0;
+  return insertEventsWithChronicle(supabase, commandId, sessionId, turnNumber, [{
+    ...base, event_type: "construction",
+    note: `${actor.name} upravil alokaci pracovní síly na ${newAlloc}/tah (zbývá ~${etaTurns} kol).`,
+    importance: "minor", reference: { routeId, workforcePerTurn: newAlloc, etaTurns },
   }], payload.chronicleText);
 }
 
