@@ -787,6 +787,7 @@ Rozhodni, co frakce udělá v tomto kole. ${milMetrics.warState === "war" ? "JST
                         "fortify_node", "repair_route", "blockade_route",
                         "open_trade_with_node", "send_envoy_to_node",
                         "apply_military_pressure", "annex_node", "block_node_annexation",
+                        "prepare_invasion",
                       ],
                     },
                     description: { type: "string", description: "Stručný popis akce" },
