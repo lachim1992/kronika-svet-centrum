@@ -1648,7 +1648,61 @@ async function executeAction(
 
       if (!defenderCityId && !defenderStackId) return "no_target_in_range";
 
-      // Create battle in action_queue
+      // Determine defender player & whether they are HUMAN (not in ai_factions)
+      let defenderPlayer: string | null = null;
+      if (defenderCityId) {
+        const dc = allCities.find((c: any) => c.id === defenderCityId);
+        defenderPlayer = dc?.owner_player || null;
+      } else if (defenderStackId) {
+        const ds = enemyStacks.find((s: any) => s.id === defenderStackId);
+        defenderPlayer = ds?.player_name || null;
+      }
+      let defenderIsHuman = false;
+      if (defenderPlayer) {
+        const { data: aiCheck } = await supabase.from("ai_factions")
+          .select("id").eq("session_id", sessionId).eq("faction_name", defenderPlayer)
+          .eq("is_active", true).maybeSingle();
+        defenderIsHuman = !aiCheck;
+      }
+
+      const speechText = action.narrativeNote || `Za slávu ${factionName}!`;
+
+      // ── HUMAN DEFENDER → create battle_lobbies (gives player chance to react) ──
+      if (defenderIsHuman) {
+        const { data: lobby, error: lobbyErr } = await supabase.from("battle_lobbies").insert({
+          session_id: sessionId,
+          turn_number: turn,
+          attacker_stack_id: stack.id,
+          attacker_player: factionName,
+          defender_stack_id: defenderStackId,
+          defender_city_id: defenderCityId,
+          defender_player: defenderPlayer,
+          attacker_formation: "ASSAULT",
+          defender_formation: "DEFENSIVE",
+          attacker_speech: speechText,
+          attacker_ready: true,
+          defender_ready: false,
+          is_ai_attacker: true,
+          is_ai_defender: false,
+          status: "preparing",
+          ai_responded_at: new Date().toISOString(),
+        }).select("id").single();
+        if (lobbyErr) {
+          console.warn(`[${factionName}] battle_lobby insert failed, falling back to action_queue:`, lobbyErr);
+        } else {
+          // Notify player via game_event so toast/notification shows
+          await supabase.from("game_events").insert({
+            session_id: sessionId, event_type: "battle_incoming", player: defenderPlayer,
+            turn_number: turn, confirmed: true, importance: "critical",
+            note: `⚔️ ${factionName} útočí na ${defenderCityId ? "tvé město" : "tvou armádu"}! Otevři Vojenský panel a připrav obranu.`,
+            truth_state: "canon", actor_type: "ai_faction",
+            reference: { lobby_id: lobby.id, attacker: factionName },
+          }).then(() => {}, () => {});
+          return `lobby_created_${defenderCityId ? "city" : "stack"}_lobby=${lobby.id}`;
+        }
+      }
+
+      // AI vs AI (or fallback): direct queue → auto-resolve in commit-turn
       const seed = Date.now() + Math.floor(Math.random() * 100000);
       await supabase.from("action_queue").insert({
         session_id: sessionId,
@@ -1659,7 +1713,7 @@ async function executeAction(
           attacker_stack_id: stack.id,
           defender_city_id: defenderCityId,
           defender_stack_id: defenderStackId,
-          speech_text: action.narrativeNote || `Za slávu ${factionName}!`,
+          speech_text: speechText,
           speech_morale_modifier: 0,
           seed,
           biome: "plains",
