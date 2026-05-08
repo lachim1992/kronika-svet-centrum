@@ -409,6 +409,56 @@ const CityActionsPopover = ({
                 </Button>
               )}
 
+              {discovered && !isOwn && !isNeutral && (() => {
+                const hasUnion = treaties.some(t => t.treaty_type === "trade_union" && (t.status === "active" || t.status === "pending"));
+                if (hasUnion) {
+                  const u = treaties.find(t => t.treaty_type === "trade_union")!;
+                  return (
+                    <div className="text-[11px] text-muted-foreground px-2">
+                      🤝 Trade Union: <Badge variant="outline" className="text-[9px] ml-1">{u.status}</Badge>
+                    </div>
+                  );
+                }
+                return (
+                  <Button
+                    onClick={async () => {
+                      if (!city?.owner_player) return;
+                      setBusy("union");
+                      try {
+                        await supabase.from("diplomatic_treaties").insert({
+                          session_id: sessionId,
+                          treaty_type: "trade_union",
+                          player_a: currentPlayerName,
+                          player_b: city.owner_player,
+                          status: "pending",
+                          metadata: { proposed_at_turn: currentTurn },
+                        });
+                        await supabase.from("game_events").insert({
+                          session_id: sessionId,
+                          turn_number: currentTurn,
+                          event_type: "trade_union_proposed",
+                          importance: "important",
+                          player: currentPlayerName,
+                          actor_type: "player",
+                          note: `${currentPlayerName} navrhuje Trade Union s ${city.owner_player}.`,
+                          city_id: cityId,
+                          reference: { from: currentPlayerName, to: city.owner_player, city_id: cityId },
+                        });
+                        toast.success("Návrh Trade Union odeslán");
+                        await load();
+                      } catch (e: any) { toast.error(e.message); }
+                      finally { setBusy(null); }
+                    }}
+                    disabled={busy !== null}
+                    variant="outline" size="sm"
+                    className="w-full justify-start gap-2"
+                  >
+                    {busy === "union" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Users className="h-3.5 w-3.5" />}
+                    Navrhnout Trade Union
+                  </Button>
+                );
+              })()}
+
               {discovered && !isOwn && !isNeutral && (
                 <Button onClick={() => { onOpenDiplomacy(); onClose(); }} variant="outline" size="sm" className="w-full justify-start gap-2">
                   <Handshake className="h-3.5 w-3.5" />
