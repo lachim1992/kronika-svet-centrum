@@ -444,7 +444,7 @@ Než pošleš seznam akcí, projdi tato povinná pravidla. Pokud platí, MUSÍŠ
 
 [MOV-1] Pokud warState = "war" A máš ≥3 nasazené stacky A žádný z nich nemá \`moved_this_turn=true\` → MUSÍŠ zařadit alespoň 2× move_army směrem k nejbližšímu nepřátelskému městu (suggestedTargets[0]). Stojící armáda v aktivní válce je porážka.
 
-[AGG-1] Pokud warState = "war" A máš ≥6 vlastních stacků A průměrný power stacku < 80 → MUSÍŠ zařadit alespoň 1× combine_stacks (slouč 2 nejslabší stacky na stejném/sousedním hexu). Roztříštěná malá armáda nikdy nedobude město. Cíl: vytvořit ≥2 mega-stacky s power ≥150.
+[AGG-1] Pokud warState = "war" A máš ≥4 vlastních nasazených stacků A průměrný power < 100 → MUSÍŠ zařadit alespoň 1× combine_stacks (sourceStackName = jméno slabšího stacku, targetStackName = jméno silnějšího stacku NA STEJNÉM nebo SOUSEDNÍM HEXU). Roztříštěná malá armáda nikdy nedobude město. Cíl: vytvořit ≥2 mega-stacky s power ≥200.
 
 [OFF-1] Pokud warState = "war" A máš ≥2 stacky s power ≥150 → MUSÍŠ je seskupit a poslat spolu k nejbližšímu nepřátelskému městu (suggestedTargets[0]) přes move_army. Defenzivní rozprostření po vlastním území v aktivní válce = automatická porážka.
 
@@ -780,7 +780,7 @@ Rozhodni, co frakce udělá v tomto kole. ${milMetrics.warState === "war" ? "JST
                       type: "string",
                       enum: [
                         "build_building", "recruit_army", "deploy_army", "move_army",
-                        "attack_target", "set_mobilization", "send_diplomacy_message",
+                        "attack_target", "combine_stacks", "set_mobilization", "send_diplomacy_message",
                         "send_ultimatum", "declare_war", "offer_peace", "accept_peace",
                         "issue_declaration", "propose_trade_pact", "propose_alliance_pact",
                         "found_settlement", "trade", "explore",
@@ -797,7 +797,10 @@ Rozhodni, co frakce udělá v tomto kole. ${milMetrics.warState === "war" ? "JST
                     armyPreset: { type: "string", enum: ["militia", "cohort", "cavalry_wing", "legion"] },
                     stackId: { type: "string" },
                     stackName: { type: "string" },
-                    targetStackName: { type: "string" },
+                     targetStackName: { type: "string" },
+                    targetStackId: { type: "string" },
+                    sourceStackName: { type: "string", description: "For combine_stacks: name of weaker stack that gets merged INTO targetStackName (must be on same/adjacent hex)" },
+                    sourceStackId: { type: "string" },
                     targetHexQ: { type: "number" },
                     targetHexR: { type: "number" },
                     settlementName: { type: "string" },
@@ -1097,6 +1100,54 @@ Rozhodni, co frakce udělá v tomto kole. ${milMetrics.warState === "war" ? "JST
       }
     } catch (e) {
       console.warn(`[${factionName}] Forced recruit check failed:`, e);
+    }
+
+    // ── DETERMINISTIC AUTO-COMBINE (anti-fragmentation) ──
+    // If at war + ≥4 deployed stacks averaging < 100 power, auto-combine the two weakest
+    // stacks that share a hex (or are adjacent). Prevents AI suiciding weak units one-by-one.
+    try {
+      const stillAtWar2 = (warDeclarations || []).some((w: any) => w.status === "active" || w.status === "peace_offered");
+      const myDeployed = (stacks || []).filter((s: any) => s.is_active && s.is_deployed);
+      const avgPower = myDeployed.length ? myDeployed.reduce((s: number, x: any) => s + (x.power || 0), 0) / myDeployed.length : 0;
+      if (stillAtWar2 && myDeployed.length >= 4 && avgPower < 100) {
+        const sorted = [...myDeployed].sort((a, b) => (a.power || 0) - (b.power || 0));
+        // Find a pair where weaker can merge into a same/adjacent stronger
+        let combined = false;
+        for (let i = 0; i < sorted.length && !combined; i++) {
+          const src = sorted[i];
+          for (let j = sorted.length - 1; j > i && !combined; j--) {
+            const tgt = sorted[j];
+            if (src.id === tgt.id) continue;
+            const dQ = (tgt.hex_q ?? 0) - (src.hex_q ?? 0);
+            const dR = (tgt.hex_r ?? 0) - (src.hex_r ?? 0);
+            const dist = (Math.abs(dQ) + Math.abs(dR) + Math.abs(-dQ - dR)) / 2;
+            if (dist > 1) continue;
+            const forced = {
+              actionType: "combine_stacks",
+              sourceStackName: src.name, targetStackName: tgt.name,
+              sourceStackId: src.id, targetStackId: tgt.id,
+              description: "Deterministický auto-combine (anti-fragmentation)",
+              narrativeNote: `${src.name} se připojuje k ${tgt.name}, aby vytvořili silnější jednotku.`,
+            };
+            try {
+              const fres = await executeAction(
+                supabase, supabaseUrl, supabaseKey, sessionId, turn, factionName, forced, faction,
+                sentUltimatums.length > 0, stacks || [], cities || [], allCities || [], enemyStacks || [], realmRes,
+              );
+              const failed = typeof fres === "string" && (fres.includes("not_") || fres === "stack_not_found" || fres === "same_stack");
+              executedActions.push({ ...forced, executed: !failed, result: fres, _forced: true, error: failed ? fres : undefined });
+              if (!failed) {
+                console.log(`[${factionName}] AUTO-COMBINE ${src.name} -> ${tgt.name} = ${fres}`);
+                combined = true;
+              }
+            } catch (err) {
+              console.warn(`[${factionName}] auto-combine failed:`, err);
+            }
+          }
+        }
+      }
+    } catch (e) {
+      console.warn(`[${factionName}] auto-combine check failed:`, e);
     }
 
     // ── DETERMINISTIC FORCE-MOVE FOR IDLE STACKS (Wave 2 — anti-stacking) ──
@@ -1619,6 +1670,79 @@ async function executeAction(
       });
 
       return `battle_queued_${defenderCityId ? "city" : "stack"}`;
+    }
+
+    // ─── COMBINE STACKS (merge source INTO target on same hex) ───
+    case "combine_stacks": {
+      const target = findStack(myStacks, action.targetStackId, action.targetStackName);
+      const source = findStack(myStacks, action.sourceStackId, action.sourceStackName);
+      if (!target || !source) return "stack_not_found";
+      if (target.id === source.id) return "same_stack";
+      if (!target.is_deployed || !source.is_deployed) return "not_deployed";
+      // Must be on same hex (or adjacent)
+      const dQ = (target.hex_q ?? 0) - (source.hex_q ?? 0);
+      const dR = (target.hex_r ?? 0) - (source.hex_r ?? 0);
+      const dist = (Math.abs(dQ) + Math.abs(dR) + Math.abs(-dQ - dR)) / 2;
+      if (dist > 1) return "not_adjacent";
+
+      // Load source composition
+      const { data: srcComps } = await supabase
+        .from("military_stack_composition")
+        .select("id, unit_type, manpower")
+        .eq("stack_id", source.id);
+      const { data: tgtComps } = await supabase
+        .from("military_stack_composition")
+        .select("id, unit_type, manpower")
+        .eq("stack_id", target.id);
+      const tgtMap = new Map((tgtComps || []).map((c: any) => [c.unit_type, c]));
+
+      // Merge composition
+      for (const sc of srcComps || []) {
+        const existing = tgtMap.get(sc.unit_type) as any;
+        if (existing) {
+          await supabase.from("military_stack_composition")
+            .update({ manpower: (existing.manpower || 0) + (sc.manpower || 0) })
+            .eq("id", existing.id);
+        } else {
+          await supabase.from("military_stack_composition")
+            .insert({ stack_id: target.id, unit_type: sc.unit_type, manpower: sc.manpower });
+        }
+      }
+      // Delete source composition
+      await supabase.from("military_stack_composition").delete().eq("stack_id", source.id);
+
+      // Recompute target totals
+      const { data: newComps } = await supabase
+        .from("military_stack_composition")
+        .select("unit_type, manpower").eq("stack_id", target.id);
+      const totalMen = (newComps || []).reduce((s: number, c: any) => s + (c.manpower || 0), 0);
+      // Simple power formula (avg ~1 power/soldier; bonus from combined morale)
+      const avgMorale = ((target.morale || 70) + (source.morale || 70)) / 2;
+      const newPower = Math.round(totalMen * (0.6 + avgMorale / 250));
+      await supabase.from("military_stacks").update({
+        soldiers: totalMen, unit_count: totalMen, power: newPower, morale: avgMorale,
+      }).eq("id", target.id);
+
+      // Disband source
+      await supabase.from("military_stacks").update({
+        is_active: false, soldiers: 0, unit_count: 0, power: 0,
+      }).eq("id", source.id);
+
+      // Update local cache
+      target.power = newPower;
+      target.soldiers = totalMen;
+      source.is_active = false;
+      source.power = 0;
+
+      // Log event
+      await supabase.from("game_events").insert({
+        session_id: sessionId, event_type: "military", player: factionName,
+        turn_number: turn, confirmed: true, importance: "normal",
+        note: `${factionName} sloučil ${source.name} do ${target.name} (nová síla: ${newPower}).`,
+        truth_state: "canon", actor_type: "ai_faction",
+      }).then(() => {}, () => {});
+
+      return `combined_${source.name}_into_${target.name}_power=${newPower}`;
     }
 
     // ─── SET MOBILIZATION RATE ───
