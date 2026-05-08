@@ -230,6 +230,8 @@ Deno.serve(async (req) => {
       }
     }
 
+
+    // ═══ FORMATION BONUSES ═══
     const atkFormBonus = FORMATION_BASE_BONUSES[attackerFormation] || { attack: 0, defense: 0, fortIgnore: 0 };
     const defFormBonus = FORMATION_BASE_BONUSES[defenderFormation] || { attack: 0, defense: 0, fortIgnore: 0 };
     const matchupBonus = (FORMATION_MATCHUPS[attackerFormation] || {})[defenderFormation] || 0;
