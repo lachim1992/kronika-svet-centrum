@@ -237,6 +237,10 @@ const EventDetailModal = ({
             </div>
           )}
 
+          {(event.event_type === "trade_access_requested" || event.event_type === "trade_union_proposed") && (
+            <TreatyApprovalBlock event={event} currentPlayerName={currentPlayerName} onClose={onClose} />
+          )}
+
           {event.event_type === "wonder" && (
             <div className="bg-muted/30 rounded-lg p-3 text-sm space-y-1 border">
               <p className="font-display font-semibold text-xs uppercase text-muted-foreground">Div světa</p>
