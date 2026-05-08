@@ -60,7 +60,7 @@ const CityActionsPopover = ({
     // City + its hex via the linked province_node
     const [cityRes, nodeRes] = await Promise.all([
       supabase.from("cities")
-        .select("id, name, owner_player, population, level, is_neutral")
+        .select("id, name, owner_player, population_total, settlement_level, is_neutral")
         .eq("id", cityId).maybeSingle(),
       supabase.from("province_nodes")
         .select("hex_q, hex_r, trade_system_id")
