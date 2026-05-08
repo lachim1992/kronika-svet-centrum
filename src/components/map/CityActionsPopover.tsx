@@ -380,10 +380,32 @@ const CityActionsPopover = ({
                 </Button>
               )}
 
+              {discovered && isNeutral && !isOwn && !existingPact && (
+                <Button
+                  onClick={connectNeutral}
+                  disabled={busy !== null || !hasRoadToCity}
+                  className="w-full justify-start gap-2"
+                  size="sm"
+                  variant="default"
+                  title={hasRoadToCity ? "Zaplatit tribut a připojit do trade systému" : "Nejprve postavte cestu k tomuto městu"}
+                >
+                  {busy === "pact" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Network className="h-3.5 w-3.5" />}
+                  {hasRoadToCity
+                    ? `Připojit do trade systému (tribut ${NEUTRAL_TRIBUTE[String(city?.settlement_level ?? "HAMLET").toUpperCase()] ?? 50}g)`
+                    : "Připojit (chybí cesta)"}
+                </Button>
+              )}
+
+              {discovered && isNeutral && existingPact && (
+                <div className="text-[11px] text-emerald-600 dark:text-emerald-400 px-2">
+                  ✅ Aktivní pakt — město je v tvém trade systému
+                </div>
+              )}
+
               {discovered && (
                 <Button onClick={() => { onOpenTrade(); onClose(); }} variant="outline" size="sm" className="w-full justify-start gap-2">
                   <ArrowLeftRight className="h-3.5 w-3.5" />
-                  Vytvořit obchodní route
+                  Nabídnout dohodu (P2P)
                 </Button>
               )}
 
