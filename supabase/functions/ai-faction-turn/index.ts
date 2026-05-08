@@ -1428,10 +1428,27 @@ Rozhodni, co frakce udělá v tomto kole. ${milMetrics.warState === "war" ? "JST
 
       // ── 1. BUILD_ROAD: spojit 2 vlastní uzly bez cesty (nejbližší dvojice) ──
       const { data: realmRow } = await supabase.from("realm_resources")
-        .select("gold_reserve").eq("session_id", sessionId).eq("player_name", factionName).maybeSingle();
+        .select("gold_reserve, mobilization_rate").eq("session_id", sessionId).eq("player_name", factionName).maybeSingle();
       const goldNow = Number(realmRow?.gold_reserve || 0);
+      const mobNow = Number(realmRow?.mobilization_rate ?? 0.1);
 
-      if (myNodes.length >= 2 && goldNow >= 80) {
+      // Workforce-aware allocation (matches command-dispatch BUILD_ROUTE formula)
+      const ACTIVE_POP_WEIGHTS = { peasants: 1.0, burghers: 0.8, clerics: 0.4 };
+      const DEFAULT_ACTIVE_POP_RATIO = 0.5;
+      let activePopRaw = 0;
+      for (const c of (cities || [])) {
+        if ((c as any).status && (c as any).status !== "ok") continue;
+        activePopRaw += ((c as any).population_peasants || 0) * ACTIVE_POP_WEIGHTS.peasants
+                      + ((c as any).population_burghers || 0) * ACTIVE_POP_WEIGHTS.burghers
+                      + ((c as any).population_clerics || 0) * ACTIVE_POP_WEIGHTS.clerics;
+      }
+      const effectiveActivePop = Math.floor(activePopRaw * DEFAULT_ACTIVE_POP_RATIO);
+      const mobilizedNow = Math.floor(effectiveActivePop * mobNow);
+      const workforceFree = Math.max(0, effectiveActivePop - mobilizedNow);
+      const aiWorkforcePerTurn = Math.max(5, Math.min(25, workforceFree));
+      const canBuildRoad = workforceFree >= 5 && goldNow >= 60;
+
+      if (canBuildRoad && myNodes.length >= 2) {
         let bestPair: { a: any; b: any; dist: number } | null = null;
         for (let i = 0; i < myNodes.length; i++) {
           for (let j = i + 1; j < myNodes.length; j++) {
@@ -1453,50 +1470,112 @@ Rozhodni, co frakce udělá v tomto kole. ${milMetrics.warState === "war" ? "JST
               nodeAId: bestPair.a.id,
               nodeBId: bestPair.b.id,
               routeType: "road",
-              workforcePerTurn: 25,
+              workforcePerTurn: aiWorkforcePerTurn,
             },
             commandId: crypto.randomUUID(),
           });
           if (buildRes && !buildRes.error) {
-            console.log(`[${factionName}] AI BUILD_ROUTE ${bestPair.a.name} → ${bestPair.b.name} (${bestPair.dist} hex)`);
+            console.log(`[${factionName}] AI BUILD_ROUTE ${bestPair.a.name} → ${bestPair.b.name} (${bestPair.dist} hex, wf=${aiWorkforcePerTurn})`);
             executedActions.push({ actionType: "build_road", executed: true } as any);
           } else {
             console.log(`[${factionName}] AI BUILD_ROUTE skipped: ${buildRes?.error}`);
           }
         }
+      } else if (myNodes.length >= 2) {
+        console.log(`[${factionName}] BUILD_ROUTE skipped (gold=${goldNow}, workforce_free=${workforceFree}, mob=${mobNow})`);
       }
 
-      // ── 2. ANNEX/OPEN_TRADE neutrální uzly do 2 hex od mých uzlů ──
+      // ── 1b. CROSS-FACTION BUILD_ROAD: link to friendly neighbour's nearest node (enables trade) ──
+      try {
+        const friendlyNeighbours = (allNodes || []).filter((n: any) =>
+          n.controlled_by && n.controlled_by !== factionName && !enemies.has(n.controlled_by)
+        );
+        if (canBuildRoad && friendlyNeighbours.length > 0 && goldNow >= 80) {
+          let xPair: { a: any; b: any; dist: number } | null = null;
+          for (const m of myNodes) {
+            for (const n of friendlyNeighbours) {
+              const ord = m.id < n.id ? `${m.id}|${n.id}` : `${n.id}|${m.id}`;
+              if (routeKeys.has(ord)) continue;
+              const dq = n.hex_q - m.hex_q, dr = n.hex_r - m.hex_r;
+              const dist = (Math.abs(dq) + Math.abs(dr) + Math.abs(dq + dr)) / 2;
+              if (dist < 1 || dist > 8) continue;
+              if (!xPair || dist < xPair.dist) xPair = { a: m, b: n, dist };
+            }
+          }
+          if (xPair) {
+            const buildRes = await invokeFunction(supabaseUrl, supabaseKey, "command-dispatch", {
+              sessionId, turnNumber: turn,
+              actor: { name: factionName, type: "ai_faction" },
+              commandType: "BUILD_ROUTE",
+              commandPayload: {
+                nodeAId: xPair.a.id,
+                nodeBId: xPair.b.id,
+                routeType: "road",
+                workforcePerTurn: aiWorkforcePerTurn,
+              },
+              commandId: crypto.randomUUID(),
+            });
+            if (buildRes && !buildRes.error) {
+              console.log(`[${factionName}] AI CROSS-BUILD_ROUTE ${xPair.a.name} → ${xPair.b.name} (faction=${xPair.b.controlled_by}, ${xPair.dist} hex)`);
+            } else {
+              console.log(`[${factionName}] AI CROSS-BUILD_ROUTE skipped: ${buildRes?.error}`);
+            }
+          }
+        }
+      } catch (xe) {
+        console.warn(`[${factionName}] Cross-build failed:`, (xe as Error).message);
+      }
+
+      // ── 2. OPEN_TRADE / ANNEX neutrály do 3 hex od mých uzlů ──
+      // FIX (May 2026): payload uses snake_case `node_id` (was `nodeId` → silent 400).
+      // Strategy: always OPEN_TRADE first (builds influence cheaply); ANNEX only once allowed.
       const neutrals = allNodes.filter((n: any) => n.is_neutral && !n.controlled_by);
       const adjacentNeutrals: any[] = [];
       for (const n of neutrals) {
+        let minD = Infinity;
         for (const m of myNodes) {
           const dq = n.hex_q - m.hex_q, dr = n.hex_r - m.hex_r;
           const d = (Math.abs(dq) + Math.abs(dr) + Math.abs(dq + dr)) / 2;
-          if (d <= 2) { adjacentNeutrals.push(n); break; }
+          if (d < minD) minD = d;
         }
+        if (minD <= 3) adjacentNeutrals.push({ ...n, _dist: minD });
       }
-      for (const n of adjacentNeutrals.slice(0, 2)) {
-        const annexRes = await invokeFunction(supabaseUrl, supabaseKey, "command-dispatch", {
+      adjacentNeutrals.sort((a: any, b: any) => a._dist - b._dist);
+      for (const n of adjacentNeutrals.slice(0, 3)) {
+        // Always try OPEN_TRADE first (cheap, builds influence)
+        const otRes = await invokeFunction(supabaseUrl, supabaseKey, "command-dispatch", {
           sessionId, turnNumber: turn,
           actor: { name: factionName, type: "ai_faction" },
-          commandType: n.discovered ? "ANNEX_NODE" : "OPEN_TRADE_WITH_NODE",
-          commandPayload: { nodeId: n.id },
+          commandType: "OPEN_TRADE_WITH_NODE",
+          commandPayload: { node_id: n.id },
           commandId: crypto.randomUUID(),
         });
-        if (annexRes && !annexRes.error) {
-          console.log(`[${factionName}] AI ${n.discovered ? "ANNEX" : "OPEN_TRADE"} neutral ${n.name}`);
+        if (otRes?.error) {
+          console.log(`[${factionName}] OPEN_TRADE ${n.name} failed: ${otRes.error}`);
+        } else {
+          console.log(`[${factionName}] AI OPEN_TRADE neutral ${n.name} (d=${n._dist})`);
+        }
+        // Then attempt ANNEX (will be 409 if not enough influence yet, but harmless)
+        if (n.discovered) {
+          const anRes = await invokeFunction(supabaseUrl, supabaseKey, "command-dispatch", {
+            sessionId, turnNumber: turn,
+            actor: { name: factionName, type: "ai_faction" },
+            commandType: "ANNEX_NODE",
+            commandPayload: { node_id: n.id },
+            commandId: crypto.randomUUID(),
+          });
+          if (anRes?.error) {
+            // Anex často skončí 409 (málo influence) — log jen jako debug
+            console.log(`[${factionName}] ANNEX ${n.name}: ${anRes.error}`);
+          } else {
+            console.log(`[${factionName}] AI ANNEX neutral ${n.name}`);
+          }
         }
       }
 
       // ── 3. PROPOSE_PACT (trade) sousední ne-nepřátelské frakci ──
       const { data: peers } = await supabase.from("game_players")
         .select("player_name").eq("session_id", sessionId);
-      const enemies = new Set(
-        ((diplomRelations || []) as any[])
-          .filter((r: any) => r.overall_disposition < -20)
-          .map((r: any) => r.faction_b === factionName ? r.faction_a : r.faction_b),
-      );
       const tradeTarget = (peers || [])
         .map((p: any) => p.player_name)
         .find((n: string) => n && n !== factionName && !enemies.has(n));
@@ -1508,7 +1587,9 @@ Rozhodni, co frakce udělá v tomto kole. ${milMetrics.warState === "war" ? "JST
           commandPayload: { targetFaction: tradeTarget, pactType: "trade_pact", durationTurns: 10 },
           commandId: crypto.randomUUID(),
         });
-        if (tradeRes && !tradeRes.error) {
+        if (tradeRes?.error) {
+          console.log(`[${factionName}] PROPOSE_PACT trade → ${tradeTarget} failed: ${tradeRes.error}`);
+        } else {
           console.log(`[${factionName}] AI PROPOSE_PACT trade → ${tradeTarget}`);
         }
       }
