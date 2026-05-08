@@ -211,7 +211,25 @@ Deno.serve(async (req) => {
       }
     }
 
-    // ═══ FORMATION BONUSES ═══
+    // ═══ DEFENDER REINFORCEMENTS (adjacent friendly stacks) ═══
+    const reinforcementStacks: any[] = [];
+    if (reinforcementIds.length > 0) {
+      const { data: rStacks } = await supabase
+        .from("military_stacks")
+        .select("*, military_stack_composition(*)")
+        .in("id", reinforcementIds)
+        .eq("session_id", session_id)
+        .eq("is_active", true);
+      for (const rs of (rStacks || [])) {
+        // Only include if matches expected defender owner (avoids cheating)
+        if (defenderCivPlayer && rs.player_name !== defenderCivPlayer) continue;
+        const comps = rs.military_stack_composition || [];
+        const reinfStrength = computeStackStrength(comps, rs.morale || 50, rs.formation_type);
+        defenderStrength += reinfStrength;
+        reinforcementStacks.push(rs);
+      }
+    }
+
     const atkFormBonus = FORMATION_BASE_BONUSES[attackerFormation] || { attack: 0, defense: 0, fortIgnore: 0 };
     const defFormBonus = FORMATION_BASE_BONUSES[defenderFormation] || { attack: 0, defense: 0, fortIgnore: 0 };
     const matchupBonus = (FORMATION_MATCHUPS[attackerFormation] || {})[defenderFormation] || 0;
