@@ -900,6 +900,77 @@ async function executePostBattleDecision(
       break;
     }
 
+    case "pursue": {
+      // Pronásledování poražené armády: vítěz utrpí drobné další ztráty,
+      // poražený dostane +50% extra ztrát + šance na rozprášení.
+      const defStackId = payload.defenderStackId;
+      const atkStackId = payload.attackerStackId;
+      if (!defStackId || !atkStackId) {
+        return { events: [], error: "Missing stack IDs for pursue" };
+      }
+      const { data: atk } = await supabase.from("military_stacks")
+        .select("*, military_stack_composition(*)")
+        .eq("id", atkStackId).maybeSingle();
+      const { data: def } = await supabase.from("military_stacks")
+        .select("*, military_stack_composition(*)")
+        .eq("id", defStackId).maybeSingle();
+      if (!atk || !def || !def.is_active) {
+        return { events: [], error: "Pursue not possible: stack inactive" };
+      }
+
+      const atkUnits = atk.unit_count || 0;
+      const atkLoss = Math.round(atkUnits * 0.10);
+      const atkRemaining = Math.max(0, atkUnits - atkLoss);
+      const defUnits = def.unit_count || 0;
+      const baseExtra = Math.round((battle.casualties_defender || 0) * 0.5);
+      const defLoss = Math.min(defUnits, baseExtra);
+      const defRemaining = Math.max(0, defUnits - defLoss);
+      const defWipe = defRemaining < defUnits * 0.3 || defRemaining <= 0;
+
+      // Apply attacker losses & morale penalty
+      const atkNewMorale = Math.max(0, (atk.morale || 50) - 10);
+      await supabase.from("military_stacks").update({
+        unit_count: atkRemaining, soldiers: atkRemaining,
+        power: Math.max(1, Math.round(atkRemaining * (0.5 + atkNewMorale / 200))),
+        morale: atkNewMorale,
+      }).eq("id", atkStackId);
+
+      // Apply defender losses (or wipe)
+      if (defWipe) {
+        await supabase.from("military_stacks").update({
+          is_active: false, is_deployed: false, unit_count: 0, power: 0, soldiers: 0,
+        }).eq("id", defStackId);
+      } else {
+        await supabase.from("military_stacks").update({
+          unit_count: defRemaining, soldiers: defRemaining,
+          power: Math.max(1, Math.round(defRemaining * 0.5)),
+        }).eq("id", defStackId);
+      }
+
+      // Update manpower_committed for both players
+      if (atkLoss > 0 && atk.player_name) {
+        const { data: ar } = await supabase.from("realm_resources")
+          .select("manpower_committed").eq("session_id", sessionId).eq("player_name", atk.player_name).maybeSingle();
+        if (ar) await supabase.from("realm_resources").update({
+          manpower_committed: Math.max(0, (ar.manpower_committed || 0) - atkLoss),
+        }).eq("session_id", sessionId).eq("player_name", atk.player_name);
+      }
+      if (defLoss > 0 && def.player_name) {
+        const { data: dr } = await supabase.from("realm_resources")
+          .select("manpower_committed").eq("session_id", sessionId).eq("player_name", def.player_name).maybeSingle();
+        if (dr) await supabase.from("realm_resources").update({
+          manpower_committed: Math.max(0, (dr.manpower_committed || 0) - defLoss),
+        }).eq("session_id", sessionId).eq("player_name", def.player_name);
+      }
+
+      chronicleText = `V roce ${turnNumber} **${actor.name}** pronásledoval poraženou armádu **${def.name || def.player_name}**. ${defWipe ? `Armáda byla zničena (${defLoss} mrtvých). Vlastní ztráty: ${atkLoss}.` : `Dalších ${defLoss} obránců padlo. Vlastní ztráty pronásledování: ${atkLoss}.`}`;
+      sideEffects.pursueAttackerLoss = atkLoss;
+      sideEffects.pursueDefenderLoss = defLoss;
+      sideEffects.defenderWiped = defWipe;
+      // Note: cityId still tracked but pursue doesn't change city ownership
+      break;
+    }
+
     default:
       return { events: [], error: `Unknown decision: ${decision}` };
   }
