@@ -17,7 +17,7 @@ interface Props {
   sessionId: string;
   currentPlayerName: string;
   currentTurn: number;
-  knownCoords: Set<string>;
+  knownCoords?: Set<string>;
   onClose: () => void;
   onOpenWiki: (cityId: string) => void;
   onOpenTrade: () => void;
