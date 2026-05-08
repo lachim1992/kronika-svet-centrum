@@ -553,15 +553,39 @@ Deno.serve(async (req) => {
 
     // ════════════════════════════════════════════
     // PHASE 3: Trade pressure & trade_flows
+    // FIX (May 2026): Build adjacency via shared trade_system_id, not direct
+    // route endpoints. Routes pass through resource_node/trade_hub/fortress
+    // intermediates, so node_a/node_b filtering dropped 95%+ of pairs.
+    // Cities sharing a trade_system_id are reachable through the union-find
+    // graph already computed by compute-trade-systems.
     // ════════════════════════════════════════════
     const cityAdjacency = new Map<string, Set<string>>();
+    const systemToCities = new Map<string, string[]>();
+    for (const city of cities) {
+      const nodeId = cityToNodeId.get(city.id);
+      if (!nodeId) continue;
+      const node = nodeById.get(nodeId);
+      const sysId = (node as any)?.trade_system_id;
+      if (!sysId) continue;
+      if (!systemToCities.has(sysId)) systemToCities.set(sysId, []);
+      systemToCities.get(sysId)!.push(city.id);
+    }
+    for (const [, members] of systemToCities) {
+      for (const a of members) {
+        for (const b of members) {
+          if (a === b) continue;
+          if (!cityAdjacency.has(a)) cityAdjacency.set(a, new Set());
+          cityAdjacency.get(a)!.add(b);
+        }
+      }
+    }
+    // Fallback: keep direct-route adjacency for cities not in any trade system
     for (const route of routes) {
       if (route.control_state === "blocked") continue;
       const nodeA = nodeById.get(route.node_a);
       const nodeB = nodeById.get(route.node_b);
       if (!nodeA?.city_id || !nodeB?.city_id) continue;
       if (nodeA.city_id === nodeB.city_id) continue;
-
       if (!cityAdjacency.has(nodeA.city_id)) cityAdjacency.set(nodeA.city_id, new Set());
       if (!cityAdjacency.has(nodeB.city_id)) cityAdjacency.set(nodeB.city_id, new Set());
       cityAdjacency.get(nodeA.city_id)!.add(nodeB.city_id);
