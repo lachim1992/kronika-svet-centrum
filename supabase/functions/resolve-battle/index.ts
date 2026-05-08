@@ -634,11 +634,15 @@ Deno.serve(async (req) => {
     // Post-battle decision
     // City ownership is now governed by the 2-phase occupation flow; decision remains only for aftermath handling.
     if (needsDecision && defender_city_id) {
+      // Check if defender stack survived for "pursue" option
+      const defenderSurvived = !!defenderStack && defenderStackRemaining > 0;
       await supabase.from("action_queue").insert({
         session_id, player_name: player_name || attackerStack.player_name,
         action_type: "post_battle_decision", status: "pending",
         action_data: {
           battle_id: battleRecord?.id, attacker_stack_id,
+          defender_stack_id: defender_stack_id || null,
+          defender_survived: defenderSurvived,
           defender_city_id, result,
           casualties_attacker: casualtiesAttacker, casualties_defender: casualtiesDefender,
         },
