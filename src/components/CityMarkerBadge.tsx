@@ -37,7 +37,7 @@ function popScale(pop: number): number {
 
 const CityMarkerBadge = memo(({
   cityId, cityName, settlementLevel, ownerPlayer, isCapital,
-  imageUrl, mapIconUrl, population = 1000, size = "md", cx, cy, onClick,
+  imageUrl, mapIconUrl, population = 1000, size = "md", cx, cy, onClick, onDoubleClick,
 }: CityMarkerProps) => {
   const baseR = size === "sm" ? 15 : 21; // +50%
   const r = Math.round(baseR * popScale(population));
