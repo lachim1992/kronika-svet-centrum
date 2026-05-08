@@ -444,7 +444,7 @@ Než pošleš seznam akcí, projdi tato povinná pravidla. Pokud platí, MUSÍŠ
 
 [MOV-1] Pokud warState = "war" A máš ≥3 nasazené stacky A žádný z nich nemá \`moved_this_turn=true\` → MUSÍŠ zařadit alespoň 2× move_army směrem k nejbližšímu nepřátelskému městu (suggestedTargets[0]). Stojící armáda v aktivní válce je porážka.
 
-[AGG-1] Pokud warState = "war" A máš ≥6 vlastních stacků A průměrný power stacku < 80 → MUSÍŠ zařadit alespoň 1× combine_stacks (slouč 2 nejslabší stacky na stejném/sousedním hexu). Roztříštěná malá armáda nikdy nedobude město. Cíl: vytvořit ≥2 mega-stacky s power ≥150.
+[AGG-1] Pokud warState = "war" A máš ≥4 vlastních nasazených stacků A průměrný power < 100 → MUSÍŠ zařadit alespoň 1× combine_stacks (sourceStackName = jméno slabšího stacku, targetStackName = jméno silnějšího stacku NA STEJNÉM nebo SOUSEDNÍM HEXU). Roztříštěná malá armáda nikdy nedobude město. Cíl: vytvořit ≥2 mega-stacky s power ≥200.
 
 [OFF-1] Pokud warState = "war" A máš ≥2 stacky s power ≥150 → MUSÍŠ je seskupit a poslat spolu k nejbližšímu nepřátelskému městu (suggestedTargets[0]) přes move_army. Defenzivní rozprostření po vlastním území v aktivní válce = automatická porážka.
 
