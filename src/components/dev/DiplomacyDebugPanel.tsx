@@ -52,6 +52,8 @@ interface DiplomacyRoom {
 interface DiplomacyMessage {
   id: string; room_id: string; sender: string; sender_type: string;
   message_text: string; secrecy: string; created_at: string;
+  action_tag?: string | null;
+  processed_for_memory_turn?: number | null;
   room?: DiplomacyRoom;
 }
 
