@@ -30,6 +30,9 @@ interface CityRow {
   population: number | null; level: string | null;
   hex_q?: number | null; hex_r?: number | null;
   is_neutral?: boolean | null;
+  node_id?: string | null;
+  trade_system_id?: string | null;
+  settlement_level?: string | null;
 }
 
 interface Treaty {
