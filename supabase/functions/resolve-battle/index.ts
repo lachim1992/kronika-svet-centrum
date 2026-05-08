@@ -43,6 +43,69 @@ function seededRandom(seed: number): number {
   return (s & 0x7fffffff) / 0x7fffffff;
 }
 
+// ═══ HEX HELPERS (axial coords) ═══
+const HEX_NEIGHBORS = [
+  [1, 0], [-1, 0], [0, 1], [0, -1], [1, -1], [-1, 1],
+];
+function hexDistance(aq: number, ar: number, bq: number, br: number): number {
+  const dq = aq - bq;
+  const dr = ar - br;
+  return (Math.abs(dq) + Math.abs(dr) + Math.abs(dq + dr)) / 2;
+}
+
+// Pick best retreat hex: empty of enemy stacks/cities, farthest from winner
+async function findRetreatHex(
+  supabase: any,
+  sessionId: string,
+  loserPlayer: string,
+  loserQ: number,
+  loserR: number,
+  winnerQ: number,
+  winnerR: number,
+): Promise<{ q: number; r: number } | null> {
+  const candidates = HEX_NEIGHBORS.map(([dq, dr]) => ({ q: loserQ + dq, r: loserR + dr }));
+
+  // Get all stacks on candidate hexes (any active, any owner ≠ loser)
+  const { data: stacksOnHexes } = await supabase
+    .from("military_stacks")
+    .select("hex_q, hex_r, player_name")
+    .eq("session_id", sessionId)
+    .eq("is_active", true)
+    .eq("is_deployed", true)
+    .in("hex_q", candidates.map(c => c.q))
+    .in("hex_r", candidates.map(c => c.r));
+
+  // Get enemy cities on candidate hexes
+  const { data: citiesOnHexes } = await supabase
+    .from("cities")
+    .select("hex_q, hex_r, owner_player")
+    .eq("session_id", sessionId)
+    .in("hex_q", candidates.map(c => c.q))
+    .in("hex_r", candidates.map(c => c.r));
+
+  const blocked = new Set<string>();
+  for (const s of (stacksOnHexes || [])) {
+    if (s.player_name !== loserPlayer) blocked.add(`${s.hex_q},${s.hex_r}`);
+  }
+  for (const c of (citiesOnHexes || [])) {
+    if (c.owner_player && c.owner_player !== loserPlayer) blocked.add(`${c.hex_q},${c.hex_r}`);
+  }
+
+  const valid = candidates
+    .filter(c => !blocked.has(`${c.q},${c.r}`))
+    .map(c => ({ ...c, dist: hexDistance(c.q, c.r, winnerQ, winnerR) }))
+    .sort((a, b) => b.dist - a.dist);
+
+  return valid.length > 0 ? { q: valid[0].q, r: valid[0].r } : null;
+}
+
+// Should the stack be wiped after taking casualties? (broken morale + decimated)
+function shouldWipe(remaining: number, original: number, morale: number): boolean {
+  if (remaining <= 0) return true;
+  if (original <= 0) return false;
+  return morale < 20 && remaining < original * 0.2;
+}
+
 function computeStackStrength(compositions: any[], morale: number, formationType: string): number {
   let raw = 0;
   for (const comp of compositions) {
