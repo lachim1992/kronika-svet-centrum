@@ -1744,6 +1744,7 @@ async function executeAction(
           speech_morale_modifier: 0,
           seed,
           biome: "plains",
+          attacker_intent: attackerIntent,
         },
         completes_at: new Date().toISOString(),
         created_turn: turn,
