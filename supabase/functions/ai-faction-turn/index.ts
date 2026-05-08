@@ -1859,10 +1859,86 @@ async function executeAction(
       return "ok";
     }
 
+    // ─── PREPARE INVASION (staging fáze před deklarací války) ───
+    case "prepare_invasion": {
+      if (!action.targetPlayer) return "missing_target";
+      // Existuje už aktivní plán?
+      const { data: existingPlan } = await supabase.from("ai_war_plans")
+        .select("id").eq("session_id", sessionId).eq("faction_name", factionName)
+        .eq("target_player", action.targetPlayer).eq("status", "staging").maybeSingle();
+      if (existingPlan) return "plan_already_active";
+
+      // Najdi cílové město
+      let targetCityId: string | null = null;
+      if (action.targetCity) {
+        const tc = allCities.find((c: any) =>
+          c.owner_player === action.targetPlayer && c.name?.toLowerCase() === action.targetCity.toLowerCase()
+        );
+        targetCityId = tc?.id || null;
+      }
+
+      await supabase.from("ai_war_plans").insert({
+        session_id: sessionId, faction_name: factionName,
+        target_player: action.targetPlayer, target_city_id: targetCityId,
+        staging_started_turn: turn, staging_max_turns: 3, status: "staging",
+      });
+
+      await supabase.from("game_events").insert({
+        session_id: sessionId, event_type: "war_staging", player: factionName,
+        turn_number: turn, confirmed: true,
+        note: `${factionName} tajně přesouvá vojska k ${action.targetPlayer}.`,
+        importance: "low", truth_state: "hidden", actor_type: "ai_faction",
+        reference: { targetPlayer: action.targetPlayer, targetCityId },
+      }).then(() => {}, () => {});
+      return "ok";
+    }
+
     // ─── DECLARE WAR ───
     case "declare_war": {
       if (!action.targetPlayer) return "missing_target";
-      if (!hasUltimatum) return "ultimatum_required_first";
+
+      // ── Zákeřné podmínky pro skip ultimata ──
+      let canSkipUltimatum = false;
+      let surpriseReason = "";
+
+      // 1) Dokončený staging plán
+      const { data: plan } = await supabase.from("ai_war_plans")
+        .select("id, staging_started_turn, staging_max_turns")
+        .eq("session_id", sessionId).eq("faction_name", factionName)
+        .eq("target_player", action.targetPlayer).eq("status", "staging").maybeSingle();
+      if (plan) {
+        canSkipUltimatum = true;
+        surpriseReason = "staging_complete";
+        await supabase.from("ai_war_plans").update({ status: "executed" }).eq("id", plan.id);
+      }
+
+      // 2) Vysoká grievance/betrayal
+      if (!canSkipUltimatum) {
+        const { data: rel } = await supabase.from("diplomatic_relations")
+          .select("grievance, betrayal_score")
+          .eq("session_id", sessionId)
+          .or(`and(player_a.eq.${factionName},player_b.eq.${action.targetPlayer}),and(player_a.eq.${action.targetPlayer},player_b.eq.${factionName})`)
+          .maybeSingle();
+        if (rel && ((rel.grievance || 0) > 50 || (rel.betrayal_score || 0) > 30)) {
+          canSkipUltimatum = true;
+          surpriseReason = "high_grievance";
+        }
+      }
+
+      // 3) Casus belli: cizí stack do 2 hexů od mého města
+      if (!canSkipUltimatum) {
+        for (const myCity of myCities) {
+          if (myCity.hex_q == null || myCity.hex_r == null) continue;
+          const threat = enemyStacks.find((es: any) =>
+            es.player_name === action.targetPlayer &&
+            es.hex_q != null && es.hex_r != null &&
+            (Math.abs(es.hex_q - myCity.hex_q) + Math.abs(es.hex_r - myCity.hex_r) + Math.abs((es.hex_q - myCity.hex_q) + (es.hex_r - myCity.hex_r))) / 2 <= 2
+          );
+          if (threat) { canSkipUltimatum = true; surpriseReason = "casus_belli"; break; }
+        }
+      }
+
+      if (!hasUltimatum && !canSkipUltimatum) return "ultimatum_required_first";
 
       const { data: existing } = await supabase.from("war_declarations")
         .select("id").eq("session_id", sessionId).eq("status", "active")
@@ -1870,14 +1946,20 @@ async function executeAction(
         .maybeSingle();
       if (existing) return "war_already_active";
 
-      const manifest = action.messageText || `Frakce ${factionName} vyhlašuje válku!`;
+      const isSurprise = !hasUltimatum && canSkipUltimatum;
+      const manifest = action.messageText || (isSurprise
+        ? `Frakce ${factionName} bez varování vyhlašuje válku!`
+        : `Frakce ${factionName} vyhlašuje válku!`);
       await supabase.from("war_declarations").insert({
         session_id: sessionId, declaring_player: factionName,
         target_player: action.targetPlayer, status: "active",
         manifest_text: manifest, declared_turn: turn,
         stability_penalty_applied: true,
+        surprise_war: isSurprise,
       });
 
+      // Zákeřnost = dvojnásobný stability penalty obránci
+      const defenderPenalty = isSurprise ? 16 : 8;
       const { data: attackerCities } = await supabase.from("cities")
         .select("id, city_stability").eq("session_id", sessionId).eq("owner_player", factionName);
       for (const c of (attackerCities || [])) {
@@ -1886,20 +1968,20 @@ async function executeAction(
       const { data: defenderCities } = await supabase.from("cities")
         .select("id, city_stability").eq("session_id", sessionId).eq("owner_player", action.targetPlayer);
       for (const c of (defenderCities || [])) {
-        await supabase.from("cities").update({ city_stability: Math.max(0, (c.city_stability || 50) - 8) }).eq("id", c.id);
+        await supabase.from("cities").update({ city_stability: Math.max(0, (c.city_stability || 50) - defenderPenalty) }).eq("id", c.id);
       }
 
       await supabase.from("game_events").insert({
-        session_id: sessionId, event_type: "war", player: factionName,
+        session_id: sessionId, event_type: isSurprise ? "war_surprise" : "war", player: factionName,
         turn_number: turn, confirmed: true, note: manifest,
         importance: "critical", truth_state: "canon", actor_type: "ai_faction",
-        reference: { targetPlayer: action.targetPlayer },
+        reference: { targetPlayer: action.targetPlayer, surprise: isSurprise, reason: surpriseReason },
       }).then(() => {}, () => {});
 
       await supabase.from("declarations").insert({
         session_id: sessionId, player_name: factionName,
         turn_number: turn, declaration_type: "war_declaration",
-        original_text: manifest, tone: "Threatening",
+        original_text: manifest, tone: isSurprise ? "Treacherous" : "Threatening",
         target_empire_ids: [action.targetPlayer], visibility: "PUBLIC",
         status: "published", ai_generated: true,
       }).then(() => {}, () => {});
