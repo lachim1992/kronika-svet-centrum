@@ -189,7 +189,7 @@ const CityActionsPopover = ({
           </div>
           <SheetDescription className="text-xs">
             {city?.owner_player ? `Vládce: ${city.owner_player}` : "Bez vládce"}
-            {city?.population ? ` · 👥 ${city.population.toLocaleString()}` : ""}
+            {(city as any)?.population_total ? ` · 👥 ${((city as any).population_total as number).toLocaleString()}` : ""}
           </SheetDescription>
         </SheetHeader>
 
