@@ -169,7 +169,7 @@ const DiplomacyDebugPanel = ({ sessionId }: Props) => {
       const roomIds = (dr || []).map((room: any) => room.id);
       if (roomIds.length > 0) {
         const { data: msgs } = await supabase.from("diplomacy_messages")
-          .select("id, room_id, sender, sender_type, message_text, secrecy, created_at")
+          .select("id, room_id, sender, sender_type, message_text, secrecy, created_at, action_tag, processed_for_memory_turn")
           .in("room_id", roomIds)
           .order("created_at", { ascending: false }).limit(500);
         setDiplomacyMessages((msgs || []) as DiplomacyMessage[]);
