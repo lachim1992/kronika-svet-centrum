@@ -93,6 +93,13 @@ export default function DeployBattlePanel({ sessionId, currentPlayerName, curren
 
   useEffect(() => { loadAll(); }, [loadAll, stacks]);
 
+  // Auto-open modal for first non-dismissed pending decision
+  useEffect(() => {
+    if (modalDecision) return;
+    const next = pendingDecisions.find(d => !dismissedDecisions.has(d.id));
+    if (next) setModalDecision(next);
+  }, [pendingDecisions, dismissedDecisions, modalDecision]);
+
   // Realtime: pop up immediately when AI creates a battle lobby targeting us
   useEffect(() => {
     const channel = supabase
