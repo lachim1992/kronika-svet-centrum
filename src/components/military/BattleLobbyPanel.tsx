@@ -470,7 +470,44 @@ export default function BattleLobbyPanel({ lobby: initialLobby, currentPlayerNam
             </Card>
           )}
 
-          {/* ═══ SURRENDER ═══ */}
+          {/* ═══ REINFORCEMENTS (defender only) ═══ */}
+          {!isResolved && isDefender && adjacentStacks.length > 0 && (
+            <Card className="border-illuminated/30">
+              <CardContent className="p-3 space-y-2">
+                <p className="text-xs font-display font-semibold flex items-center gap-1.5">
+                  <Users className="h-3.5 w-3.5 text-illuminated" /> Posily — sousedící armády ({adjacentStacks.length})
+                </p>
+                <p className="text-[10px] text-muted-foreground">Vyber, které okolní jednotky se připojí k obraně. Po bitvě je označíme jako vyčerpané.</p>
+                {adjacentStacks.map(s => {
+                  const checked = reinforcementIds.includes(s.id);
+                  return (
+                    <label key={s.id} className={`flex items-center gap-2 p-2 rounded border cursor-pointer transition-colors ${checked ? "border-illuminated bg-illuminated/10" : "border-border hover:border-illuminated/50"}`}>
+                      <input type="checkbox" checked={checked} onChange={() => toggleReinforcement(s.id)} className="h-3.5 w-3.5" />
+                      <span className="text-xs font-display font-semibold">{s.name}</span>
+                      <Badge variant="outline" className="text-[10px]">⚔️ {s.power}</Badge>
+                      <Badge variant="outline" className="text-[10px]">❤️ {s.morale}</Badge>
+                    </label>
+                  );
+                })}
+              </CardContent>
+            </Card>
+          )}
+
+          {/* ═══ ATTACKER INTENT (visible to defender) ═══ */}
+          {lobby.defender_city_id && lobby.attacker_intent && (
+            <Card className="border-destructive/30">
+              <CardContent className="p-3">
+                <p className="text-xs">
+                  <span className="font-display font-semibold">Záměr útočníka: </span>
+                  {lobby.attacker_intent === "occupy" && <Badge className="bg-illuminated/20 text-illuminated">Okupovat město</Badge>}
+                  {lobby.attacker_intent === "pillage" && <Badge className="bg-destructive/20 text-destructive">Vyplenit (loot + zpustošení)</Badge>}
+                  {lobby.attacker_intent === "raze" && <Badge className="bg-destructive/30 text-destructive">🔥 Vypálit do základů</Badge>}
+                </p>
+              </CardContent>
+            </Card>
+          )}
+
+
           {!isResolved && (isAttacker || isDefender) && (
             <Card>
               <CardContent className="p-3 space-y-2">
