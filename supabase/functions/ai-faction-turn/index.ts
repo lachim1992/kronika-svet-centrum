@@ -1622,6 +1622,79 @@ async function executeAction(
       return `battle_queued_${defenderCityId ? "city" : "stack"}`;
     }
 
+    // ─── COMBINE STACKS (merge source INTO target on same hex) ───
+    case "combine_stacks": {
+      const target = findStack(myStacks, action.targetStackId, action.targetStackName);
+      const source = findStack(myStacks, action.sourceStackId, action.sourceStackName);
+      if (!target || !source) return "stack_not_found";
+      if (target.id === source.id) return "same_stack";
+      if (!target.is_deployed || !source.is_deployed) return "not_deployed";
+      // Must be on same hex (or adjacent)
+      const dQ = (target.hex_q ?? 0) - (source.hex_q ?? 0);
+      const dR = (target.hex_r ?? 0) - (source.hex_r ?? 0);
+      const dist = (Math.abs(dQ) + Math.abs(dR) + Math.abs(-dQ - dR)) / 2;
+      if (dist > 1) return "not_adjacent";
+
+      // Load source composition
+      const { data: srcComps } = await supabase
+        .from("military_stack_composition")
+        .select("id, unit_type, manpower")
+        .eq("stack_id", source.id);
+      const { data: tgtComps } = await supabase
+        .from("military_stack_composition")
+        .select("id, unit_type, manpower")
+        .eq("stack_id", target.id);
+      const tgtMap = new Map((tgtComps || []).map((c: any) => [c.unit_type, c]));
+
+      // Merge composition
+      for (const sc of srcComps || []) {
+        const existing = tgtMap.get(sc.unit_type) as any;
+        if (existing) {
+          await supabase.from("military_stack_composition")
+            .update({ manpower: (existing.manpower || 0) + (sc.manpower || 0) })
+            .eq("id", existing.id);
+        } else {
+          await supabase.from("military_stack_composition")
+            .insert({ stack_id: target.id, unit_type: sc.unit_type, manpower: sc.manpower });
+        }
+      }
+      // Delete source composition
+      await supabase.from("military_stack_composition").delete().eq("stack_id", source.id);
+
+      // Recompute target totals
+      const { data: newComps } = await supabase
+        .from("military_stack_composition")
+        .select("unit_type, manpower").eq("stack_id", target.id);
+      const totalMen = (newComps || []).reduce((s: number, c: any) => s + (c.manpower || 0), 0);
+      // Simple power formula (avg ~1 power/soldier; bonus from combined morale)
+      const avgMorale = ((target.morale || 70) + (source.morale || 70)) / 2;
+      const newPower = Math.round(totalMen * (0.6 + avgMorale / 250));
+      await supabase.from("military_stacks").update({
+        soldiers: totalMen, unit_count: totalMen, power: newPower, morale: avgMorale,
+      }).eq("id", target.id);
+
+      // Disband source
+      await supabase.from("military_stacks").update({
+        is_active: false, soldiers: 0, unit_count: 0, power: 0,
+      }).eq("id", source.id);
+
+      // Update local cache
+      target.power = newPower;
+      target.soldiers = totalMen;
+      source.is_active = false;
+      source.power = 0;
+
+      // Log event
+      await supabase.from("game_events").insert({
+        session_id: sessionId, event_type: "military", player: factionName,
+        turn_number: turn, confirmed: true, importance: "normal",
+        note: `${factionName} sloučil ${source.name} do ${target.name} (nová síla: ${newPower}).`,
+        truth_state: "canon", actor_type: "ai_faction",
+      }).then(() => {}, () => {});
+
+      return `combined_${source.name}_into_${target.name}_power=${newPower}`;
+    }
+
     // ─── SET MOBILIZATION RATE ───
     case "set_mobilization": {
       const rate = Math.max(0.05, Math.min(0.6, action.mobilizationRate || 0.2));
