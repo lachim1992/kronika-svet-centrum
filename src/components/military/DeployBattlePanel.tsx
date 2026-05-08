@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import BattleLobbyPanel from "./BattleLobbyPanel";
+import PostBattleDecisionModal from "./PostBattleDecisionModal";
 
 interface Stack {
   id: string;
