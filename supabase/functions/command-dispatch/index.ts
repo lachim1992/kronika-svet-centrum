@@ -417,6 +417,9 @@ async function executeCommand(
     case "UPGRADE_ROUTE":
       return await executeUpgradeRoute(supabase, base, actor, payload, commandId, sessionId, turnNumber);
 
+    case "ADJUST_ROUTE_WORKFORCE":
+      return await executeAdjustRouteWorkforce(supabase, base, actor, payload, commandId, sessionId, turnNumber);
+
     case "RENAME_ROUTE":
       return await executeRenameRoute(supabase, base, actor, payload, commandId, sessionId, turnNumber);
 
