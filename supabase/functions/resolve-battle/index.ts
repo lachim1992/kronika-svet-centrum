@@ -368,6 +368,7 @@ Deno.serve(async (req) => {
       }
     }
 
+    if (defenderCity) {
       const garrisonLoss = Math.min(defenderCity.military_garrison || 0, Math.round(casualtiesDefender * 0.3));
       const popLoss = Math.round(casualtiesDefender * 0.1);
       const stabLoss = result.includes("victory") ? Math.min(30, Math.round(casualtiesDefender / 10)) : 5;
