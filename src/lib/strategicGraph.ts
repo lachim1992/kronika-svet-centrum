@@ -37,6 +37,8 @@ export async function buildRoute(params: {
   nodeAId: string;
   nodeBId: string;
   routeType?: string;
+  /** Per-turn workforce allocation (default 25; min 5). 25 prac. síly = 1 hex / tah. */
+  workforcePerTurn?: number;
 }) {
   return dispatchCommand({
     sessionId: params.sessionId,
@@ -47,7 +49,25 @@ export async function buildRoute(params: {
       nodeAId: params.nodeAId,
       nodeBId: params.nodeBId,
       routeType: params.routeType || "land_road",
+      workforcePerTurn: params.workforcePerTurn ?? 25,
     },
+  });
+}
+
+/** Adjust per-turn workforce allocation on an under-construction route */
+export async function adjustRouteWorkforce(params: {
+  sessionId: string;
+  turnNumber?: number;
+  playerName: string;
+  routeId: string;
+  workforcePerTurn: number;
+}) {
+  return dispatchCommand({
+    sessionId: params.sessionId,
+    turnNumber: params.turnNumber,
+    actor: { name: params.playerName, type: "player" },
+    commandType: "ADJUST_ROUTE_WORKFORCE",
+    commandPayload: { routeId: params.routeId, workforcePerTurn: params.workforcePerTurn },
   });
 }
 
