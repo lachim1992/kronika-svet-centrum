@@ -289,9 +289,12 @@ Deno.serve(async (req) => {
 
     const attackerTotalManpower = (attackerStack.military_stack_composition || [])
       .reduce((s: number, c: any) => s + (c.manpower || 0), 0);
+    const reinforcementManpower = reinforcementStacks.reduce((s, rs) =>
+      s + (rs.military_stack_composition || []).reduce((a: number, c: any) => a + (c.manpower || 0), 0), 0);
     const defenderTotalManpower = defenderComps
       .reduce((s: number, c: any) => s + (c.manpower || 0), 0)
-      + (defenderCity ? (defenderCity.military_garrison || 0) : 0);
+      + (defenderCity ? (defenderCity.military_garrison || 0) : 0)
+      + reinforcementManpower;
 
     const casualtiesAttacker = Math.round(attackerTotalManpower * casualtyRateAttacker);
     const casualtiesDefender = Math.round(defenderTotalManpower * casualtyRateDefender);
