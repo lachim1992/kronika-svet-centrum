@@ -619,16 +619,26 @@ const DiplomacyDebugPanel = ({ sessionId }: Props) => {
       return room.participant_a === sender ? room.participant_b : room.participant_a;
     };
 
-    // Detect action tags for audit trail
-    const getActionTag = (text: string): string | null => {
-      if (text.includes("[ULTIMÁTUM]")) return "ULTIMÁTUM";
-      if (text.includes("[OBCHODNÍ DOHODA]")) return "OBCH. NÁVRH";
-      if (text.includes("[OBRANNÝ PAKT]")) return "OBRANNÝ PAKT";
-      if (text.includes("[PŘIJATO]")) return "PŘIJATO";
-      if (text.includes("[ODMÍTNUTO]")) return "ODMÍTNUTO";
-      if (text.includes("[VÁLKA]")) return "VÁLKA";
-      if (text.includes("[MÍR]")) return "MÍR";
-      return null;
+    // Tag → memory impact mapping (must mirror commit-turn projection)
+    const TAG_IMPACT: Record<string, { label: string; impact: string; tone: "pos" | "neg" | "neutral" | "none" }> = {
+      "ULTIMÁTUM":       { label: "ULTIMÁTUM",     impact: "fear +8, trust −3",        tone: "neg" },
+      "VAROVÁNÍ":        { label: "VAROVÁNÍ",      impact: "fear +6, trust −2",        tone: "neg" },
+      "ODSOUZENÍ":       { label: "ODSOUZENÍ",     impact: "trust −3, grievance +3",   tone: "neg" },
+      "PŘIJATO":         { label: "PŘIJATO",       impact: "coop +5, trust +3 + PAKT", tone: "pos" },
+      "ODMÍTNUTO":       { label: "ODMÍTNUTO",     impact: "trust −3, grievance +3",   tone: "neg" },
+      "KONDOLENCE":      { label: "KONDOLENCE",    impact: "trust +2, coop +1",        tone: "pos" },
+      "PODPORA":         { label: "PODPORA",       impact: "trust +2, coop +1",        tone: "pos" },
+      "MÍR":             { label: "MÍR",           impact: "trust +5, grievance −3",   tone: "pos" },
+      "OBCHODNÍ DOHODA": { label: "OBCH. NÁVRH",   impact: "lore only (čeká na přijetí)", tone: "neutral" },
+      "OBRANNÝ PAKT":    { label: "OBRANNÝ PAKT",  impact: "lore only (čeká na přijetí)", tone: "neutral" },
+      "ALIANCE":         { label: "ALIANCE",       impact: "lore only (čeká na přijetí)", tone: "neutral" },
+      "NÁVRH":           { label: "NÁVRH",         impact: "lore only",                tone: "neutral" },
+    };
+
+    const getTag = (msg: DiplomacyMessage): string | null => {
+      if (msg.action_tag) return msg.action_tag.toUpperCase();
+      const m = (msg.message_text || "").match(/^\s*\[([A-ZÁ-Ž _]+)\]/);
+      return m ? m[1].toUpperCase() : null;
     };
 
     return (
@@ -645,7 +655,6 @@ const DiplomacyDebugPanel = ({ sessionId }: Props) => {
 
         <ScrollArea className="h-[400px]">
           {msgViewMode === "chat" ? (
-            // ── Chat Replay ──
             <div className="space-y-1 p-1">
               {filteredMsgs.map(msg => {
                 const recipient = getOtherParty(msg.room_id, msg.sender);
@@ -668,30 +677,45 @@ const DiplomacyDebugPanel = ({ sessionId }: Props) => {
               {!filteredMsgs.length && <p className="text-muted-foreground text-sm py-4 text-center">Žádné diplomatické zprávy.</p>}
             </div>
           ) : (
-            // ── Audit Trail ──
             <table className="w-full text-[11px]">
               <thead>
                 <tr className="border-b border-border text-muted-foreground">
                   <th className="text-left p-1">Čas</th>
-                  <th className="text-left p-1">Od</th>
-                  <th className="text-left p-1">Komu</th>
-                  <th className="text-left p-1">Akce</th>
+                  <th className="text-left p-1">Od → Komu</th>
+                  <th className="text-left p-1">Tag</th>
+                  <th className="text-left p-1">Dopad na vztahy</th>
+                  <th className="text-left p-1">Stav</th>
                   <th className="text-left p-1">Zpráva</th>
                 </tr>
               </thead>
               <tbody>
                 {filteredMsgs.map(msg => {
                   const recipient = getOtherParty(msg.room_id, msg.sender);
-                  const tag = getActionTag(msg.message_text || "");
+                  const tag = getTag(msg);
+                  const info = tag ? TAG_IMPACT[tag] : null;
+                  const tone = info?.tone ?? "none";
+                  const toneClass =
+                    tone === "pos" ? "text-green-500" :
+                    tone === "neg" ? "text-destructive" :
+                    tone === "neutral" ? "text-amber-500" :
+                    "text-muted-foreground";
                   return (
-                    <tr key={msg.id} className="border-b border-border/30 hover:bg-muted/20">
+                    <tr key={msg.id} className="border-b border-border/30 hover:bg-muted/20 align-top">
                       <td className="p-1 text-muted-foreground whitespace-nowrap">
                         {new Date(msg.created_at).toLocaleString("cs", { hour: "2-digit", minute: "2-digit", day: "numeric", month: "numeric" })}
                       </td>
-                      <td className="p-1 font-semibold">{msg.sender}</td>
-                      <td className="p-1">{recipient}</td>
+                      <td className="p-1 whitespace-nowrap"><span className="font-semibold">{msg.sender}</span> → {recipient}</td>
                       <td className="p-1">
-                        {tag ? <Badge variant="secondary" className="text-[9px]">{tag}</Badge> : <span className="text-muted-foreground">zpráva</span>}
+                        {info ? <Badge variant="secondary" className="text-[9px]">{info.label}</Badge>
+                              : <span className="text-muted-foreground italic">bez tagu</span>}
+                      </td>
+                      <td className={`p-1 whitespace-nowrap ${toneClass}`}>
+                        {info ? info.impact : <span className="text-muted-foreground italic">žádný (lore only)</span>}
+                      </td>
+                      <td className="p-1 whitespace-nowrap">
+                        {msg.processed_for_memory_turn != null
+                          ? <Badge variant="outline" className="text-[9px]">✓ kolo {msg.processed_for_memory_turn}</Badge>
+                          : <Badge variant="outline" className="text-[9px] text-amber-500">čeká</Badge>}
                       </td>
                       <td className="p-1 max-w-[300px] truncate">{msg.message_text}</td>
                     </tr>
