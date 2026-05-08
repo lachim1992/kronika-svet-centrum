@@ -218,7 +218,7 @@ const HexTile = memo(({
                   population={c.population} size="md"
                   cx={cx + (i > 0 ? (i === 1 ? -8 : 8) : 0)}
                   cy={cy + (i > 0 ? 6 : 0)}
-                  onClick={() => onCityClick?.(c.id)}
+                  onDoubleClick={() => onCityClick?.(c.id)}
                 />
               ))}
               {cities.length > 3 && (
@@ -1086,24 +1086,26 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
     setSubmittingBattle(false);
   }, [selectedStack, battleTarget, citiesByCoord, stacksByCoord, playerName, sessionId, battleSpeech, speechResult, fetchStacks, fetchCities, fetchProvinces]);
 
-  const handleTileClick = useCallback((q: number, r: number, isFrontier: boolean) => {
+  const handleTileClick = useCallback((q: number, r: number, _isFrontier: boolean) => {
     if (dragRef.current?.moved) return;
     // Build mode: route the click into the build panel as a waypoint pick.
     if (isBuildModeActive()) {
       emitHexClick({ q, r });
       return;
     }
-    if (isFrontier) { handleExploreFrontier(q, r); return; }
     if (selectedStack) { setSelectedStack(null); return; }
-    // Single click no longer opens detail — use double-click
-  }, [handleExploreFrontier, selectedStack]);
+    // Single click no longer opens detail nor explores — use double-click.
+  }, [selectedStack]);
 
   const handleTileDoubleClick = useCallback((q: number, r: number) => {
     if (dragRef.current?.moved) return;
-    if (isBuildModeActive()) return; // suppress sheet while planning
+    if (isBuildModeActive()) return;
+    // Frontier hex → trigger discovery on double click.
+    const isFrontierHex = frontierCoords.has(hKey(q, r));
+    if (isFrontierHex) { handleExploreFrontier(q, r); return; }
     const hex = getHex(q, r);
     if (hex) { setSelectedHex(hex); setEditBiome(null); }
-  }, [getHex]);
+  }, [getHex, frontierCoords, handleExploreFrontier]);
 
   /* ── Check if hex is suitable for founding ── */
   const canFoundOnSelectedHex = useMemo(() => {

@@ -24,6 +24,7 @@ export interface CityMarkerProps {
   cx: number;
   cy: number;
   onClick?: (e: React.MouseEvent) => void;
+  onDoubleClick?: (e: React.MouseEvent) => void;
 }
 
 /** Map population to a radius multiplier (0.7 – 1.6) */
@@ -36,7 +37,7 @@ function popScale(pop: number): number {
 
 const CityMarkerBadge = memo(({
   cityId, cityName, settlementLevel, ownerPlayer, isCapital,
-  imageUrl, mapIconUrl, population = 1000, size = "md", cx, cy, onClick,
+  imageUrl, mapIconUrl, population = 1000, size = "md", cx, cy, onClick, onDoubleClick,
 }: CityMarkerProps) => {
   const baseR = size === "sm" ? 15 : 21; // +50%
   const r = Math.round(baseR * popScale(population));
@@ -61,7 +62,7 @@ const CityMarkerBadge = memo(({
     const spriteSize = Math.round(r * 4.2); // fill entire hex
     return (
       <g
-        onClick={(e) => { e.stopPropagation(); onClick?.(e); }}
+        onClick={(e) => { e.stopPropagation(); onClick?.(e); }} onDoubleClick={(e) => { e.stopPropagation(); onDoubleClick?.(e); }}
         className="cursor-pointer"
         style={{ pointerEvents: "all" }}
       >
@@ -118,7 +119,7 @@ const CityMarkerBadge = memo(({
 
   return (
     <g
-      onClick={(e) => { e.stopPropagation(); onClick?.(e); }}
+      onClick={(e) => { e.stopPropagation(); onClick?.(e); }} onDoubleClick={(e) => { e.stopPropagation(); onDoubleClick?.(e); }}
       className="cursor-pointer"
       style={{ pointerEvents: "all" }}
     >

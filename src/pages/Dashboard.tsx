@@ -41,6 +41,7 @@ import WorldMapTab from "@/pages/game/WorldMapTab";
 import EngineTab from "@/pages/game/EngineTab";
 import GamesTab from "@/pages/game/GamesTab";
 import AILabTab from "@/pages/game/AILabTab";
+import CityActionsPopover from "@/components/map/CityActionsPopover";
 
 const Dashboard = () => {
   const { sessionId } = useParams<{ sessionId: string }>();
@@ -75,6 +76,7 @@ const Dashboard = () => {
   const [chronicle0, setChronicle0] = useState<{ text: string; title: string; sidebar: any } | null>(null);
   const [showChronicle0, setShowChronicle0] = useState(false);
   const [showVictory, setShowVictory] = useState(false);
+  const [cityActionsTarget, setCityActionsTarget] = useState<string | null>(null);
 
   const currentTurn = session?.current_turn ?? 0;
 
@@ -301,8 +303,12 @@ const Dashboard = () => {
     setActiveTab("wiki");
   };
 
-  /** Navigate to ChroWiki for a specific city (used by hex map city markers) */
+  /** Map double-click on a city marker → open contextual actions popover (Wiki is one of the actions). */
   const handleCityClickToWiki = (cityId: string) => {
+    setCityActionsTarget(cityId);
+  };
+
+  const handleOpenWikiFromPopover = (cityId: string) => {
     setWikiEntityTarget({ type: "city", id: cityId });
     setActiveTab("wiki");
   };
@@ -578,6 +584,19 @@ const Dashboard = () => {
           worldCrises={worldCrises}
         />
       )}
+      <CityActionsPopover
+        open={!!cityActionsTarget}
+        cityId={cityActionsTarget}
+        sessionId={session?.id || ""}
+        currentPlayerName={myPlayerName}
+        currentTurn={currentTurn}
+        knownCoords={new Set()}
+        onClose={() => setCityActionsTarget(null)}
+        onOpenWiki={handleOpenWikiFromPopover}
+        onOpenTrade={() => setActiveTab("realm")}
+        onOpenDiplomacy={() => setActiveTab("realm")}
+        onOpenArmy={() => setActiveTab("army")}
+      />
       </ErrorBoundary>
     </AppShell>
     </DevModeProvider>
