@@ -1,7 +1,11 @@
+import { useState } from "react";
 import type { Tables } from "@/integrations/supabase/types";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Shield, Flame, Swords, MapPin, AlertTriangle, Castle } from "lucide-react";
 import WarDeclarationPanel from "@/components/WarDeclarationPanel";
+import PostBattleDecisionModal from "@/components/military/PostBattleDecisionModal";
+import { usePendingBattleDecisions } from "@/hooks/usePendingBattleDecisions";
 
 type City = Tables<"cities">;
 type MilitaryStack = Tables<"military_stacks">;
@@ -27,6 +31,8 @@ const WarRoomPanel = ({ sessionId, currentPlayerName, currentTurn, gameMode, cit
   const devastatedCities = cities.filter(c => c.status === "devastated" || c.status === "besieged");
   const recentBattles = events.filter(e => e.turn_number >= currentTurn - 2 && (e.event_type === "battle" || e.event_type === "raid") && e.confirmed);
   const activeCrises = worldCrises.filter((c: any) => !c.resolved);
+  const { decisions: pendingDecisions, refresh: refreshDecisions } = usePendingBattleDecisions(sessionId, currentPlayerName);
+  const [openDecision, setOpenDecision] = useState<any | null>(null);
 
   return (
     <div className="space-y-6 px-4">
@@ -37,6 +43,40 @@ const WarRoomPanel = ({ sessionId, currentPlayerName, currentTurn, gameMode, cit
         </h1>
         <p className="text-sm text-muted-foreground">Strategický přehled světa — Rok {currentTurn}</p>
       </div>
+
+      {/* Pending post-battle decisions banner */}
+      {pendingDecisions.length > 0 && (
+        <div className="manuscript-card p-4 space-y-3 border-l-4" style={{ borderLeftColor: "hsl(var(--illuminated))" }}>
+          <h3 className="font-display font-semibold text-sm flex items-center gap-2 text-illuminated">
+            <AlertTriangle className="h-4 w-4" /> Čekající rozhodnutí po bitvě ({pendingDecisions.length})
+          </h3>
+          {pendingDecisions.map(dec => {
+            const data: any = dec.action_data || {};
+            const cityName = cities.find(c => c.id === data.defender_city_id)?.name || "—";
+            return (
+              <div key={dec.id} className="flex items-center gap-2 text-xs p-2 rounded bg-card border border-border">
+                <Swords className="h-3 w-3 text-illuminated" />
+                <span className="font-display font-semibold">{cityName}</span>
+                <span className="text-muted-foreground">— {data.result}</span>
+                <Button size="sm" variant="default" className="ml-auto h-7 text-xs"
+                  onClick={() => setOpenDecision(dec)}>
+                  Rozhodnout
+                </Button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      <PostBattleDecisionModal
+        decision={openDecision}
+        cityName={openDecision ? cities.find(c => c.id === (openDecision.action_data as any)?.defender_city_id)?.name : undefined}
+        sessionId={sessionId}
+        playerName={currentPlayerName}
+        currentTurn={currentTurn}
+        onClose={() => setOpenDecision(null)}
+        onResolved={() => { refreshDecisions(); onRefetch(); }}
+      />
 
       {/* War Declaration Module */}
       <WarDeclarationPanel

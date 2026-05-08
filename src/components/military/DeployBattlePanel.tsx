@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import BattleLobbyPanel from "./BattleLobbyPanel";
+import PostBattleDecisionModal from "./PostBattleDecisionModal";
 
 interface Stack {
   id: string;
@@ -62,6 +63,8 @@ export default function DeployBattlePanel({ sessionId, currentPlayerName, curren
   const [battleTargetDialog, setBattleTargetDialog] = useState<Stack | null>(null);
   const [activeLobby, setActiveLobby] = useState<any | null>(null);
   const [pendingDecisions, setPendingDecisions] = useState<any[]>([]);
+  const [modalDecision, setModalDecision] = useState<any | null>(null);
+  const [dismissedDecisions, setDismissedDecisions] = useState<Set<string>>(new Set());
   const [recentBattles, setRecentBattles] = useState<any[]>([]);
   const [activeLobbies, setActiveLobbies] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
@@ -89,6 +92,13 @@ export default function DeployBattlePanel({ sessionId, currentPlayerName, curren
   }, [sessionId, currentPlayerName]);
 
   useEffect(() => { loadAll(); }, [loadAll, stacks]);
+
+  // Auto-open modal for first non-dismissed pending decision
+  useEffect(() => {
+    if (modalDecision) return;
+    const next = pendingDecisions.find(d => !dismissedDecisions.has(d.id));
+    if (next) setModalDecision(next);
+  }, [pendingDecisions, dismissedDecisions, modalDecision]);
 
   // Realtime: pop up immediately when AI creates a battle lobby targeting us
   useEffect(() => {
@@ -165,6 +175,28 @@ export default function DeployBattlePanel({ sessionId, currentPlayerName, curren
           onRefresh={onRefresh}
         />
       )}
+
+      {/* Auto post-battle decision modal */}
+      <PostBattleDecisionModal
+        decision={modalDecision}
+        cityName={modalDecision ? cities.find(c => c.id === modalDecision.action_data?.defender_city_id)?.name : undefined}
+        sessionId={sessionId}
+        playerName={currentPlayerName}
+        currentTurn={currentTurn}
+        onClose={() => {
+          if (modalDecision) {
+            setDismissedDecisions(prev => new Set(prev).add(modalDecision.id));
+          }
+          setModalDecision(null);
+        }}
+        onResolved={() => {
+          if (modalDecision) {
+            setPendingDecisions(p => p.filter(d => d.id !== modalDecision.id));
+          }
+          loadAll();
+          onRefresh();
+        }}
+      />
 
       {/* Active lobbies waiting for action */}
       {activeLobbies.length > 0 && (
