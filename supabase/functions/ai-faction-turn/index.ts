@@ -2357,9 +2357,12 @@ async function sendDiplomacyMessage(
   }
   if (!roomId) return "room_creation_failed";
 
+  const tagMatch = (text || "").match(/^\s*\[([A-ZÁ-Ž _]+)\]/);
+  const action_tag = tagMatch ? tagMatch[1].toUpperCase().trim() : null;
+
   await supabase.from("diplomacy_messages").insert({
     room_id: roomId, sender, sender_type: "ai_faction",
-    message_text: text, secrecy: "PRIVATE",
+    message_text: text, secrecy: "PRIVATE", action_tag,
   });
   return "ok";
 }
