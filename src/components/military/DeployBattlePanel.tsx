@@ -176,6 +176,28 @@ export default function DeployBattlePanel({ sessionId, currentPlayerName, curren
         />
       )}
 
+      {/* Auto post-battle decision modal */}
+      <PostBattleDecisionModal
+        decision={modalDecision}
+        cityName={modalDecision ? cities.find(c => c.id === modalDecision.action_data?.defender_city_id)?.name : undefined}
+        sessionId={sessionId}
+        playerName={currentPlayerName}
+        currentTurn={currentTurn}
+        onClose={() => {
+          if (modalDecision) {
+            setDismissedDecisions(prev => new Set(prev).add(modalDecision.id));
+          }
+          setModalDecision(null);
+        }}
+        onResolved={() => {
+          if (modalDecision) {
+            setPendingDecisions(p => p.filter(d => d.id !== modalDecision.id));
+          }
+          loadAll();
+          onRefresh();
+        }}
+      />
+
       {/* Active lobbies waiting for action */}
       {activeLobbies.length > 0 && (
         <Card className="border-destructive/30">
