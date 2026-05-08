@@ -45,14 +45,16 @@ const RELATIONSHIP_LABEL: Record<string, { label: string; color: string }> = {
 
 const CityActionsPopover = ({
   open, cityId, sessionId, currentPlayerName, currentTurn,
-  knownCoords, onClose, onOpenWiki, onOpenTrade, onOpenDiplomacy, onOpenArmy,
+  knownCoords: knownCoordsProp, onClose, onOpenWiki, onOpenTrade, onOpenDiplomacy, onOpenArmy,
 }: Props) => {
   const [city, setCity] = useState<CityRow | null>(null);
   const [discovered, setDiscovered] = useState<boolean>(false);
   const [treaties, setTreaties] = useState<Treaty[]>([]);
   const [tradeAccess, setTradeAccess] = useState<{ access_level: string; tariff_factor: number } | null>(null);
+  const [knownCoordsLocal, setKnownCoordsLocal] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
+  const knownCoords = knownCoordsProp && knownCoordsProp.size > 0 ? knownCoordsProp : knownCoordsLocal;
 
   const load = useCallback(async () => {
     if (!cityId) return;
