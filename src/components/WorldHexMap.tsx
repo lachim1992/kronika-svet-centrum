@@ -218,7 +218,7 @@ const HexTile = memo(({
                   population={c.population} size="md"
                   cx={cx + (i > 0 ? (i === 1 ? -8 : 8) : 0)}
                   cy={cy + (i > 0 ? 6 : 0)}
-                  onClick={() => onCityClick?.(c.id)}
+                  onDoubleClick={() => onCityClick?.(c.id)}
                 />
               ))}
               {cities.length > 3 && (
