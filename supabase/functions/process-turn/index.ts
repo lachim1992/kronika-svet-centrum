@@ -432,14 +432,9 @@ Deno.serve(async (req) => {
     const currentCapacity = Math.max(5, totalCapacity * 2 + (infra?.roads_level || 0) * 2);
     const supplyStrain = currentCapacity > 0 ? totalArmySize / (currentCapacity * 100) : 0;
 
-    // ── Construction tick: LABOR powers all under_construction routes for this player ──
-    // Each route progresses every turn proportionally to its allocated labor (assigned at BUILD_ROUTE).
-    // Optional military stack assignment provides a small engineering bonus.
-    const ENGINEERING_MULT: Record<string, number> = {
-      trail: 1.2, road: 1.0, paved: 0.6, harbor_link: 0.8,
-      land_road: 1.0, river_route: 1.1, sea_lane: 0.9, mountain_pass: 0.5, caravan_route: 1.0,
-    };
-
+    // ── Construction tick: jednoduchý workforce model ──
+    // Každý tah se k progress přičte přesně metadata.workforce_per_turn (alokace hráče/AI).
+    // Volitelně přidělené stacky pouze získají construction_progress (žádný bonus k progressu).
     const { data: playerRoutesUC } = await supabase.from("province_routes")
       .select("id, route_type, construction_state, metadata")
       .eq("session_id", sessionId)
@@ -453,18 +448,21 @@ Deno.serve(async (req) => {
       const currentProgress = Number(md.progress || 0);
       if (totalWork <= 0) continue;
 
-      const allocatedLabor = Number(md.assigned_labor || md.assigned_soldiers || 0);
-      // Stacks may still be assigned for a small bonus, but are no longer required.
+      // Workforce per turn (back-compat: starý `assigned_labor` / 5).
+      const workforcePerTurn = Math.max(
+        5,
+        Math.floor(Number(md.workforce_per_turn ?? Math.round(Number(md.assigned_labor || 25) * 0.20))),
+      );
+
+      // Optional: zachovej i přiřazené stacky pro logging, ale nedávají bonus.
       const assignedStacks = (stacks || []).filter(
         s => s.assigned_route_id === route.id && s.assignment === "construction",
       );
-      const soldierBonus = assignedStacks.reduce((sum, s) => sum + (s.soldiers || s.unit_count || 0), 0);
 
-      const engMult = ENGINEERING_MULT[route.route_type as string] ?? 1.0;
-      const baseLaborTick = Math.max(2, Math.round(allocatedLabor * 0.20));
-      const workThisTurn = Math.max(1, Math.round((baseLaborTick + soldierBonus * 0.5) * engMult));
+      const workThisTurn = workforcePerTurn;
       const newProgress = Math.min(totalWork, currentProgress + workThisTurn);
       const willComplete = newProgress >= totalWork;
+      const engMult = 1.0;
 
       if (!willComplete) {
         await supabase.from("province_routes").update({
