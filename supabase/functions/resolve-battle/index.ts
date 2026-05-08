@@ -91,7 +91,26 @@ Deno.serve(async (req) => {
       battle_context: inputBattleContext,
       node_id: inputNodeId,
       route_id: inputRouteId,
+      attacker_intent: inputAttackerIntent,
+      defender_reinforcement_stack_ids: inputReinforcementIds,
     } = await req.json();
+
+    // Pull intent + reinforcements from lobby if available (lobby is SSOT)
+    let attackerIntent: string = inputAttackerIntent || "occupy";
+    let reinforcementIds: string[] = Array.isArray(inputReinforcementIds) ? inputReinforcementIds : [];
+    if (lobby_id) {
+      const { data: lobbyRow } = await createClient(
+        Deno.env.get("SUPABASE_URL")!,
+        Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+      ).from("battle_lobbies").select("attacker_intent, defender_reinforcement_stack_ids").eq("id", lobby_id).maybeSingle();
+      if (lobbyRow) {
+        attackerIntent = lobbyRow.attacker_intent || attackerIntent;
+        if (Array.isArray(lobbyRow.defender_reinforcement_stack_ids)) {
+          reinforcementIds = lobbyRow.defender_reinforcement_stack_ids as string[];
+        }
+      }
+    }
+    if (!["occupy", "pillage", "raze"].includes(attackerIntent)) attackerIntent = "occupy";
 
     if (!session_id || !attacker_stack_id) {
       return new Response(JSON.stringify({ error: "Missing session_id or attacker_stack_id" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
