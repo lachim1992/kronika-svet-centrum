@@ -780,7 +780,7 @@ Rozhodni, co frakce udělá v tomto kole. ${milMetrics.warState === "war" ? "JST
                       type: "string",
                       enum: [
                         "build_building", "recruit_army", "deploy_army", "move_army",
-                        "attack_target", "set_mobilization", "send_diplomacy_message",
+                        "attack_target", "combine_stacks", "set_mobilization", "send_diplomacy_message",
                         "send_ultimatum", "declare_war", "offer_peace", "accept_peace",
                         "issue_declaration", "propose_trade_pact", "propose_alliance_pact",
                         "found_settlement", "trade", "explore",
