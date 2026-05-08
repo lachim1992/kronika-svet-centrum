@@ -344,11 +344,11 @@ Deno.serve(async (req) => {
     let casualtyRateAttacker: number;
     let casualtyRateDefender: number;
 
-    if (ratio >= 2.0) { result = "decisive_victory"; casualtyRateAttacker = 0.05; casualtyRateDefender = 0.60; }
-    else if (ratio >= 1.3) { result = "victory"; casualtyRateAttacker = 0.15; casualtyRateDefender = 0.40; }
-    else if (ratio >= 0.8) { result = "pyrrhic_victory"; casualtyRateAttacker = 0.30; casualtyRateDefender = 0.30; }
-    else if (ratio >= 0.5) { result = "defeat"; casualtyRateAttacker = 0.40; casualtyRateDefender = 0.15; }
-    else { result = "rout"; casualtyRateAttacker = 0.60; casualtyRateDefender = 0.05; }
+    if (ratio >= 2.0) { result = "decisive_victory"; casualtyRateAttacker = 0.05; casualtyRateDefender = 0.75; }
+    else if (ratio >= 1.3) { result = "victory"; casualtyRateAttacker = 0.15; casualtyRateDefender = 0.55; }
+    else if (ratio >= 0.8) { result = "pyrrhic_victory"; casualtyRateAttacker = 0.35; casualtyRateDefender = 0.35; }
+    else if (ratio >= 0.5) { result = "defeat"; casualtyRateAttacker = 0.50; casualtyRateDefender = 0.20; }
+    else { result = "rout"; casualtyRateAttacker = 0.70; casualtyRateDefender = 0.08; }
 
     const attackerTotalManpower = (attackerStack.military_stack_composition || [])
       .reduce((s: number, c: any) => s + (c.manpower || 0), 0);
