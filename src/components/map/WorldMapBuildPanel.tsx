@@ -199,7 +199,7 @@ export default function WorldMapBuildPanel({ sessionId, playerName, currentTurn 
   const handleBuild = async () => {
     if (!nodeAId || !nodeBId) { toast.error("Vyberte oba uzly"); return; }
     if (nodeAId === nodeBId) { toast.error("Uzly musí být různé"); return; }
-    if (labor < 50) { toast.error("Minimálně 50 pracovní síly"); return; }
+    if (labor < 5) { toast.error("Minimálně 5 prac. síly / tah"); return; }
     if (labor > laborAvailable) { toast.error(`Nedostatek pracovní síly (k dispozici: ${laborAvailable})`); return; }
     setSubmitting(true);
     const res = await dispatchCommand({
@@ -210,7 +210,7 @@ export default function WorldMapBuildPanel({ sessionId, playerName, currentTurn 
       commandPayload: {
         nodeAId, nodeBId,
         routeType,
-        labor,
+        workforcePerTurn: labor,
         name: routeName.trim() || undefined,
         waypoints,
         hexPath: preview?.path || [],
