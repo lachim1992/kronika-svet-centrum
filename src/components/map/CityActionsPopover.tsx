@@ -57,11 +57,18 @@ const CityActionsPopover = ({
   const load = useCallback(async () => {
     if (!cityId) return;
     setLoading(true);
-    const { data: c } = await supabase
-      .from("cities")
-      .select("id, name, owner_player, hex_q, hex_r, population, settlement_level, is_neutral")
-      .eq("id", cityId).maybeSingle();
-    setCity(c as CityRow | null);
+    // City + its hex via the linked province_node
+    const [cityRes, nodeRes] = await Promise.all([
+      supabase.from("cities")
+        .select("id, name, owner_player, population, level, is_neutral")
+        .eq("id", cityId).maybeSingle(),
+      supabase.from("province_nodes")
+        .select("hex_q, hex_r, trade_system_id")
+        .eq("session_id", sessionId).eq("city_id", cityId).maybeSingle(),
+    ]);
+    const c = cityRes.data;
+    const node = nodeRes.data;
+    setCity(c ? { ...(c as any), hex_q: node?.hex_q ?? null, hex_r: node?.hex_r ?? null } : null);
 
     const { data: disc } = await supabase
       .from("discoveries")
@@ -71,18 +78,14 @@ const CityActionsPopover = ({
     setDiscovered(!!disc);
 
     if (c?.owner_player && c.owner_player !== currentPlayerName) {
+      const owner = c.owner_player;
       const { data: t } = await supabase
         .from("diplomatic_treaties")
         .select("id, treaty_type, status, player_a, player_b, signed_turn")
         .eq("session_id", sessionId)
-        .or(`and(player_a.eq.${currentPlayerName},player_b.eq.${c.owner_player}),and(player_a.eq.${c.owner_player},player_b.eq.${currentPlayerName})`);
+        .or(`and(player_a.eq.${currentPlayerName},player_b.eq.${owner}),and(player_a.eq.${owner},player_b.eq.${currentPlayerName})`);
       setTreaties((t as Treaty[]) || []);
 
-      // trade access via city's node trade_system_id
-      const { data: node } = await supabase
-        .from("province_nodes")
-        .select("trade_system_id")
-        .eq("session_id", sessionId).eq("city_id", cityId).maybeSingle();
       if (node?.trade_system_id) {
         const { data: acc } = await supabase
           .from("player_trade_system_access")
