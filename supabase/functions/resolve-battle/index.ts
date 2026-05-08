@@ -91,6 +91,8 @@ Deno.serve(async (req) => {
       battle_context: inputBattleContext,
       node_id: inputNodeId,
       route_id: inputRouteId,
+      attacker_intent: inputAttackerIntent,
+      defender_reinforcement_stack_ids: inputReinforcementIds,
     } = await req.json();
 
     if (!session_id || !attacker_stack_id) {
@@ -101,6 +103,21 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
+
+    // Pull intent + reinforcements from lobby if available (lobby is SSOT)
+    let attackerIntent: string = inputAttackerIntent || "occupy";
+    let reinforcementIds: string[] = Array.isArray(inputReinforcementIds) ? inputReinforcementIds : [];
+    if (lobby_id) {
+      const { data: lobbyRow } = await supabase.from("battle_lobbies")
+        .select("attacker_intent, defender_reinforcement_stack_ids").eq("id", lobby_id).maybeSingle();
+      if (lobbyRow) {
+        attackerIntent = lobbyRow.attacker_intent || attackerIntent;
+        if (Array.isArray(lobbyRow.defender_reinforcement_stack_ids)) {
+          reinforcementIds = lobbyRow.defender_reinforcement_stack_ids as string[];
+        }
+      }
+    }
+    if (!["occupy", "pillage", "raze"].includes(attackerIntent)) attackerIntent = "occupy";
 
     const attackerFormation = inputAttackerFormation || "ASSAULT";
     const defenderFormation = inputDefenderFormation || "DEFENSIVE";
@@ -194,6 +211,26 @@ Deno.serve(async (req) => {
       }
     }
 
+    // ═══ DEFENDER REINFORCEMENTS (adjacent friendly stacks) ═══
+    const reinforcementStacks: any[] = [];
+    if (reinforcementIds.length > 0) {
+      const { data: rStacks } = await supabase
+        .from("military_stacks")
+        .select("*, military_stack_composition(*)")
+        .in("id", reinforcementIds)
+        .eq("session_id", session_id)
+        .eq("is_active", true);
+      for (const rs of (rStacks || [])) {
+        // Only include if matches expected defender owner (avoids cheating)
+        if (defenderCivPlayer && rs.player_name !== defenderCivPlayer) continue;
+        const comps = rs.military_stack_composition || [];
+        const reinfStrength = computeStackStrength(comps, rs.morale || 50, rs.formation_type);
+        defenderStrength += reinfStrength;
+        reinforcementStacks.push(rs);
+      }
+    }
+
+
     // ═══ FORMATION BONUSES ═══
     const atkFormBonus = FORMATION_BASE_BONUSES[attackerFormation] || { attack: 0, defense: 0, fortIgnore: 0 };
     const defFormBonus = FORMATION_BASE_BONUSES[defenderFormation] || { attack: 0, defense: 0, fortIgnore: 0 };
@@ -252,9 +289,12 @@ Deno.serve(async (req) => {
 
     const attackerTotalManpower = (attackerStack.military_stack_composition || [])
       .reduce((s: number, c: any) => s + (c.manpower || 0), 0);
+    const reinforcementManpower = reinforcementStacks.reduce((s, rs) =>
+      s + (rs.military_stack_composition || []).reduce((a: number, c: any) => a + (c.manpower || 0), 0), 0);
     const defenderTotalManpower = defenderComps
       .reduce((s: number, c: any) => s + (c.manpower || 0), 0)
-      + (defenderCity ? (defenderCity.military_garrison || 0) : 0);
+      + (defenderCity ? (defenderCity.military_garrison || 0) : 0)
+      + reinforcementManpower;
 
     const casualtiesAttacker = Math.round(attackerTotalManpower * casualtyRateAttacker);
     const casualtiesDefender = Math.round(defenderTotalManpower * casualtyRateDefender);
@@ -300,6 +340,34 @@ Deno.serve(async (req) => {
         }
       }
     }
+
+    // ═══ REINFORCEMENT CASUALTIES (split remaining 30% across them, mark moved) ═══
+    if (reinforcementStacks.length > 0 && reinforcementManpower > 0) {
+      const reinfShare = Math.round(casualtiesDefender * 0.3 * (reinforcementManpower / Math.max(1, defenderTotalManpower)));
+      let perStackCas = Math.floor(reinfShare / reinforcementStacks.length);
+      for (const rs of reinforcementStacks) {
+        const comps = rs.military_stack_composition || [];
+        const origMP = comps.reduce((s: number, c: any) => s + (c.manpower || 0), 0);
+        const remaining = await applyCasualties(supabase, comps, Math.min(origMP, perStackCas));
+        const lost = Math.max(0, origMP - remaining);
+        const newMorale = Math.max(0, Math.min(100, (rs.morale || 50) + (result.includes("victory") ? -10 : 0)));
+        if (remaining <= 0) {
+          await supabase.from("military_stacks").update({ is_active: false, is_deployed: false, unit_count: 0, power: 0, soldiers: 0, moved_this_turn: true, morale: newMorale }).eq("id", rs.id);
+        } else {
+          const newPower = Math.round(remaining * (0.5 + newMorale / 200));
+          await supabase.from("military_stacks").update({ unit_count: remaining, power: Math.max(1, newPower), soldiers: remaining, moved_this_turn: true, morale: newMorale }).eq("id", rs.id);
+        }
+        if (lost > 0 && rs.player_name) {
+          const { data: rRealm } = await supabase.from("realm_resources").select("manpower_committed").eq("session_id", session_id).eq("player_name", rs.player_name).maybeSingle();
+          if (rRealm) {
+            await supabase.from("realm_resources").update({
+              manpower_committed: Math.max(0, (rRealm.manpower_committed || 0) - lost),
+            }).eq("session_id", session_id).eq("player_name", rs.player_name);
+          }
+        }
+      }
+    }
+
     if (defenderCity) {
       const garrisonLoss = Math.min(defenderCity.military_garrison || 0, Math.round(casualtiesDefender * 0.3));
       const popLoss = Math.round(casualtiesDefender * 0.1);
@@ -378,26 +446,64 @@ Deno.serve(async (req) => {
       }).eq("id", inputRouteId);
     }
 
-    // ═══ CITY OCCUPATION (Phase 1 of 2-phase conquest) ═══
-    // Vítězství v městské bitvě → 3-tahová okupace. Po 3 tazích bez liberation = anexe.
+    // ═══ CITY POST-VICTORY (intent-driven) ═══
+    // attackerIntent: "occupy" (default) | "pillage" | "raze"
     if (isVictory && defenderCity && (result === "decisive_victory" || result === "victory")) {
       const attackerPlayer = player_name || attackerStack.player_name;
-      const occupationLoyalty = result === "decisive_victory" ? 25 : 15;
-      await supabase.from("cities").update({
-        occupied_by: attackerPlayer,
-        occupation_turn: turnNumber,
-        liberation_deadline_turn: turnNumber + 3,
-        occupation_loyalty: occupationLoyalty,
-        // Production drop on occupation: stability halved
-        city_stability: Math.max(10, Math.round((defenderCity.city_stability || 50) * 0.5)),
-      }).eq("id", defenderCity.id);
 
-      await supabase.from("game_events").insert({
-        session_id, player: attackerPlayer, event_type: "city_occupied",
-        turn_number: turnNumber, confirmed: true, truth_state: "canon",
-        note: `Město ${defenderCity.name} je okupováno! Liberation deadline: rok ${turnNumber + 3}.`,
-        importance: "critical",
-      });
+      if (attackerIntent === "pillage" || attackerIntent === "raze") {
+        // Sack: devastate, steal loot, no ownership change
+        const isRaze = attackerIntent === "raze";
+        const lootGold = Math.floor(60 + (defenderCity.development_level || 1) * 25 + (defenderCity.population_total || 1000) * 0.025);
+        const lootGrain = Math.floor((defenderCity.local_grain_reserve || 0) * (isRaze ? 0.8 : 0.6));
+        const popLossRatio = isRaze ? 0.4 : 0.25;
+        const popLoss = Math.floor((defenderCity.population_total || 1000) * popLossRatio);
+        await supabase.from("cities").update({
+          status: "devastated",
+          devastated_round: turnNumber,
+          ruins_note: `${isRaze ? "Vypáleno" : "Vypleněno"} armádou ${attackerPlayer} v roce ${turnNumber}.`,
+          population_total: Math.max(50, (defenderCity.population_total || 1000) - popLoss),
+          population_peasants: Math.max(20, (defenderCity.population_peasants || 500) - Math.floor(popLoss * 0.6)),
+          population_burghers: Math.max(10, (defenderCity.population_burghers || 200) - Math.floor(popLoss * 0.3)),
+          population_clerics: Math.max(5, (defenderCity.population_clerics || 100) - Math.floor(popLoss * 0.1)),
+          city_stability: Math.max(0, (defenderCity.city_stability || 50) - (isRaze ? 50 : 30)),
+          local_grain_reserve: Math.max(0, (defenderCity.local_grain_reserve || 0) - lootGrain),
+          development_level: Math.max(0, (defenderCity.development_level || 1) - (isRaze ? 2 : 1)),
+        }).eq("id", defenderCity.id);
+
+        // Loot to attacker
+        const { data: aRealm } = await supabase.from("realm_resources").select("gold, grain").eq("session_id", session_id).eq("player_name", attackerPlayer).maybeSingle();
+        if (aRealm) {
+          await supabase.from("realm_resources").update({
+            gold: (aRealm.gold || 0) + lootGold,
+            grain: (aRealm.grain || 0) + lootGrain,
+          }).eq("session_id", session_id).eq("player_name", attackerPlayer);
+        }
+
+        await supabase.from("game_events").insert({
+          session_id, player: attackerPlayer, event_type: isRaze ? "city_razed" : "city_pillaged",
+          turn_number: turnNumber, confirmed: true, truth_state: "canon",
+          note: `${isRaze ? "🔥 Vypáleno" : "💰 Vypleněno"} ${defenderCity.name}: +${lootGold} zlato, +${lootGrain} obilí, ${popLoss} mrtvých.`,
+          importance: "critical",
+        });
+      } else {
+        // OCCUPY (default): 2-phase conquest, ownership transfers after 3 turns without liberation
+        const occupationLoyalty = result === "decisive_victory" ? 25 : 15;
+        await supabase.from("cities").update({
+          occupied_by: attackerPlayer,
+          occupation_turn: turnNumber,
+          liberation_deadline_turn: turnNumber + 3,
+          occupation_loyalty: occupationLoyalty,
+          city_stability: Math.max(10, Math.round((defenderCity.city_stability || 50) * 0.5)),
+        }).eq("id", defenderCity.id);
+
+        await supabase.from("game_events").insert({
+          session_id, player: attackerPlayer, event_type: "city_occupied",
+          turn_number: turnNumber, confirmed: true, truth_state: "canon",
+          note: `Město ${defenderCity.name} je okupováno! Liberation deadline: rok ${turnNumber + 3}.`,
+          importance: "critical",
+        });
+      }
     }
 
     // Clear battle context on stacks

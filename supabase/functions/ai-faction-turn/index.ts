@@ -1667,6 +1667,32 @@ async function executeAction(
 
       const speechText = action.narrativeNote || `Za slávu ${factionName}!`;
 
+      // ── Determine attacker_intent (occupy / pillage / raze) ──
+      // Heuristic: based on AI personality + own manpower situation.
+      let attackerIntent: "occupy" | "pillage" | "raze" = "occupy";
+      if (defenderCityId) {
+        // Allow AI prompt to override via action.attackIntent
+        const explicit = (action.attackIntent || "").toString().toLowerCase();
+        if (["occupy", "pillage", "raze", "sack"].includes(explicit)) {
+          attackerIntent = explicit === "sack" ? "pillage" : (explicit as any);
+        } else {
+          const { data: factionRow } = await supabase.from("ai_factions")
+            .select("personality, disposition").eq("session_id", sessionId).eq("faction_name", factionName).maybeSingle();
+          const pers = (factionRow?.personality || "diplomatic").toLowerCase();
+          const aggressive = pers.includes("aggress") || pers.includes("milit") || pers.includes("conqu") || pers.includes("warrior");
+          const expansionist = pers.includes("expan") || pers.includes("hegem") || pers.includes("imperial");
+          // Sample own manpower
+          const { data: realmRow } = await supabase.from("realm_resources")
+            .select("manpower_pool, manpower_committed").eq("session_id", sessionId).eq("player_name", factionName).maybeSingle();
+          const mpFree = (realmRow?.manpower_pool || 0) - (realmRow?.manpower_committed || 0);
+          if (expansionist) attackerIntent = "occupy";
+          else if (aggressive && mpFree < 200) attackerIntent = "raze";
+          else if (aggressive) attackerIntent = "pillage";
+          else attackerIntent = "occupy";
+        }
+      }
+
+
       // ── HUMAN DEFENDER → create battle_lobbies (gives player chance to react) ──
       if (defenderIsHuman) {
         const { data: lobby, error: lobbyErr } = await supabase.from("battle_lobbies").insert({
@@ -1685,6 +1711,7 @@ async function executeAction(
           is_ai_attacker: true,
           is_ai_defender: false,
           status: "preparing",
+          attacker_intent: attackerIntent,
           ai_responded_at: new Date().toISOString(),
         }).select("id").single();
         if (lobbyErr) {
@@ -1717,6 +1744,7 @@ async function executeAction(
           speech_morale_modifier: 0,
           seed,
           biome: "plains",
+          attacker_intent: attackerIntent,
         },
         completes_at: new Date().toISOString(),
         created_turn: turn,

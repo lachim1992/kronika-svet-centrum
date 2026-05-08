@@ -40,6 +40,8 @@ interface BattleLobby {
   surrender_accepted: boolean | null;
   status: string;
   battle_id: string | null;
+  attacker_intent?: string;
+  defender_reinforcement_stack_ids?: string[];
 }
 
 interface StackInfo {
@@ -93,6 +95,8 @@ export default function BattleLobbyPanel({ lobby: initialLobby, currentPlayerNam
   const [resolving, setResolving] = useState(false);
   const [battleResult, setBattleResult] = useState<any>(null);
   const [surrenderTerms, setSurrenderTerms] = useState("");
+  const [adjacentStacks, setAdjacentStacks] = useState<any[]>([]);
+  const [reinforcementIds, setReinforcementIds] = useState<string[]>(initialLobby.defender_reinforcement_stack_ids || []);
 
   const isAttacker = currentPlayerName === lobby.attacker_player;
   const isDefender = currentPlayerName === lobby.defender_player;
@@ -147,6 +151,44 @@ export default function BattleLobbyPanel({ lobby: initialLobby, currentPlayerNam
     };
     load();
   }, [lobby.attacker_stack_id, lobby.defender_stack_id, lobby.defender_city_id]);
+
+  // Load adjacent friendly stacks for defender (reinforcements)
+  useEffect(() => {
+    if (!isDefender) return;
+    const loadAdjacent = async () => {
+      // Determine defender hex
+      let dq: number | null = null, dr: number | null = null;
+      if (lobby.defender_city_id) {
+        const { data: c } = await supabase.from("cities").select("province_q, province_r").eq("id", lobby.defender_city_id).maybeSingle();
+        if (c) { dq = c.province_q; dr = c.province_r; }
+      } else if (lobby.defender_stack_id) {
+        const { data: s } = await supabase.from("military_stacks").select("hex_q, hex_r").eq("id", lobby.defender_stack_id).maybeSingle();
+        if (s) { dq = s.hex_q; dr = s.hex_r; }
+      }
+      if (dq === null || dr === null) return;
+      const { data: stacks } = await supabase.from("military_stacks")
+        .select("id, name, power, morale, hex_q, hex_r, moved_this_turn")
+        .eq("session_id", sessionId).eq("player_name", currentPlayerName)
+        .eq("is_active", true).eq("is_deployed", true);
+      const adj = (stacks || []).filter(s => {
+        if (s.id === lobby.defender_stack_id) return false;
+        const ddq = (s.hex_q ?? 0) - (dq as number);
+        const ddr = (s.hex_r ?? 0) - (dr as number);
+        const dist = (Math.abs(ddq) + Math.abs(ddr) + Math.abs(-ddq - ddr)) / 2;
+        return dist <= 1 && !s.moved_this_turn;
+      });
+      setAdjacentStacks(adj);
+    };
+    loadAdjacent();
+  }, [isDefender, lobby.defender_city_id, lobby.defender_stack_id, sessionId, currentPlayerName]);
+
+  const toggleReinforcement = async (stackId: string) => {
+    const next = reinforcementIds.includes(stackId)
+      ? reinforcementIds.filter(id => id !== stackId)
+      : [...reinforcementIds, stackId];
+    setReinforcementIds(next);
+    await supabase.from("battle_lobbies").update({ defender_reinforcement_stack_ids: next } as any).eq("id", lobby.id);
+  };
 
   // Realtime subscription
   useEffect(() => {
@@ -428,7 +470,44 @@ export default function BattleLobbyPanel({ lobby: initialLobby, currentPlayerNam
             </Card>
           )}
 
-          {/* ═══ SURRENDER ═══ */}
+          {/* ═══ REINFORCEMENTS (defender only) ═══ */}
+          {!isResolved && isDefender && adjacentStacks.length > 0 && (
+            <Card className="border-illuminated/30">
+              <CardContent className="p-3 space-y-2">
+                <p className="text-xs font-display font-semibold flex items-center gap-1.5">
+                  <Users className="h-3.5 w-3.5 text-illuminated" /> Posily — sousedící armády ({adjacentStacks.length})
+                </p>
+                <p className="text-[10px] text-muted-foreground">Vyber, které okolní jednotky se připojí k obraně. Po bitvě je označíme jako vyčerpané.</p>
+                {adjacentStacks.map(s => {
+                  const checked = reinforcementIds.includes(s.id);
+                  return (
+                    <label key={s.id} className={`flex items-center gap-2 p-2 rounded border cursor-pointer transition-colors ${checked ? "border-illuminated bg-illuminated/10" : "border-border hover:border-illuminated/50"}`}>
+                      <input type="checkbox" checked={checked} onChange={() => toggleReinforcement(s.id)} className="h-3.5 w-3.5" />
+                      <span className="text-xs font-display font-semibold">{s.name}</span>
+                      <Badge variant="outline" className="text-[10px]">⚔️ {s.power}</Badge>
+                      <Badge variant="outline" className="text-[10px]">❤️ {s.morale}</Badge>
+                    </label>
+                  );
+                })}
+              </CardContent>
+            </Card>
+          )}
+
+          {/* ═══ ATTACKER INTENT (visible to defender) ═══ */}
+          {lobby.defender_city_id && lobby.attacker_intent && (
+            <Card className="border-destructive/30">
+              <CardContent className="p-3">
+                <p className="text-xs">
+                  <span className="font-display font-semibold">Záměr útočníka: </span>
+                  {lobby.attacker_intent === "occupy" && <Badge className="bg-illuminated/20 text-illuminated">Okupovat město</Badge>}
+                  {lobby.attacker_intent === "pillage" && <Badge className="bg-destructive/20 text-destructive">Vyplenit (loot + zpustošení)</Badge>}
+                  {lobby.attacker_intent === "raze" && <Badge className="bg-destructive/30 text-destructive">🔥 Vypálit do základů</Badge>}
+                </p>
+              </CardContent>
+            </Card>
+          )}
+
+
           {!isResolved && (isAttacker || isDefender) && (
             <Card>
               <CardContent className="p-3 space-y-2">
