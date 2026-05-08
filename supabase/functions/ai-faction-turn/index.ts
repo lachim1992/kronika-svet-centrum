@@ -983,6 +983,15 @@ Rozhodni, co frakce udělá v tomto kole. ${milMetrics.warState === "war" ? "JST
       console.log(`[${factionName}] Auto-raised mobilization to ${warMobRate} due to war state`);
     }
 
+    // ── EMERGENCY WARTIME: very low manpower in active war → max mobilization ──
+    // Prevents the "war declared but no army" trap (e.g. Říše Zlatého Lva: war@t34, MP=0).
+    const mpAvailable = (realmRes as any)?.manpower_available ?? (realmRes as any)?.manpower_pool ?? 0;
+    if (milMetrics.warState === "war" && mpAvailable < 50) {
+      await supabase.from("realm_resources").update({ mobilization_rate: 0.9 })
+        .eq("session_id", sessionId).eq("player_name", factionName);
+      console.log(`[${factionName}] EMERGENCY mobilization → 0.9 (war + MP=${mpAvailable})`);
+    }
+
     // ── Auto-raise mobilization for stack-less factions (turn ≥ 3) ──
     // Prevents permanent stagnation where AI never accumulates manpower to recruit.
     // Escalating: turn 3+ → 0.3, turn 6+ → 0.45, turn 10+ → 0.6
