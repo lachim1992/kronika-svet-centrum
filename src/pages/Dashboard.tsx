@@ -584,6 +584,19 @@ const Dashboard = () => {
           worldCrises={worldCrises}
         />
       )}
+      <CityActionsPopover
+        open={!!cityActionsTarget}
+        cityId={cityActionsTarget}
+        sessionId={session?.id || ""}
+        currentPlayerName={myPlayerName}
+        currentTurn={currentTurn}
+        knownCoords={new Set()}
+        onClose={() => setCityActionsTarget(null)}
+        onOpenWiki={handleOpenWikiFromPopover}
+        onOpenTrade={() => setActiveTab("realm")}
+        onOpenDiplomacy={() => setActiveTab("realm")}
+        onOpenArmy={() => setActiveTab("army")}
+      />
       </ErrorBoundary>
     </AppShell>
     </DevModeProvider>
