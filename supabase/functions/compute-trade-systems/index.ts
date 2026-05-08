@@ -391,6 +391,22 @@ Deno.serve(async (req) => {
         if (c.members.includes(a) && b) upgrade(b, sysId, level, level === "open" ? 1.0 : tariff, `treaty:${(t as any).id}`);
         if (c.members.includes(b) && a) upgrade(a, sysId, level, level === "open" ? 1.0 : tariff, `treaty:${(t as any).id}`);
       }
+
+      // Neutral trade pacts: pact node belongs to this system → grant 'direct' access to player
+      for (const p of pacts) {
+        const nodeId = String((p as any).neutral_node_id ?? "");
+        if (!nodeId || !c.nodeIds.includes(nodeId)) continue;
+        upgrade(String((p as any).player_name), sysId, "direct", 1.0, `pact:${(p as any).id}`);
+      }
+
+      // Trade Union treaty: if either party is a member of this system, grant the other 'open' access
+      for (const t of treaties) {
+        if (String((t as any).treaty_type ?? "") !== "trade_union") continue;
+        const a = String((t as any).player_a ?? "");
+        const b = String((t as any).player_b ?? "");
+        if (c.members.includes(a) && b) upgrade(b, sysId, "open", 1.0, `union:${(t as any).id}`);
+        if (c.members.includes(b) && a) upgrade(a, sysId, "open", 1.0, `union:${(t as any).id}`);
+      }
     }
 
     const accessRows = Array.from(accessByPair.values());
