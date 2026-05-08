@@ -303,8 +303,12 @@ const Dashboard = () => {
     setActiveTab("wiki");
   };
 
-  /** Navigate to ChroWiki for a specific city (used by hex map city markers) */
+  /** Map double-click on a city marker → open contextual actions popover (Wiki is one of the actions). */
   const handleCityClickToWiki = (cityId: string) => {
+    setCityActionsTarget(cityId);
+  };
+
+  const handleOpenWikiFromPopover = (cityId: string) => {
     setWikiEntityTarget({ type: "city", id: cityId });
     setActiveTab("wiki");
   };
