@@ -124,6 +124,7 @@ Deno.serve(async (req) => {
     const nodeById = new Map<string, any>(nodes.map((n: any) => [n.id, n]));
     const routes = routeRes.data || [];
     const treaties = treatyRes.data || [];
+    const pacts = pactRes.data || [];
     const prevSnap = new Map<string, string>(
       (prevSnapRes.data || []).map((s: any) => [s.node_id, s.system_key as string])
     );
