@@ -1,82 +1,90 @@
+## Audit: nálezy
 
-# Wave 2 — Increment 1 + 2 only (SHADOW telemetry)
+**1. „Není objeveno"** — `WorldTab.tsx:85` blokuje klik na cizí město, dokud není v `entity_discoveries`. Discovery vzniká jen přes `Prozkoumat hex` nebo vlastnictví. Sousední neutrální město viditelné na mapě tedy zůstává zamčené.
 
-Approved scope: add briefing builder + valid_actions generator and log telemetry. Zero behavior change. Old prompt and old action schema remain active. AI continues to use the existing path.
+**2. „Nelze přidat do trade zone"** — Trade systems (`compute-trade-systems`) jsou **automatické** connected components nodů přes `province_routes`. Přístup hráče k cizímu systému se projektuje **pouze** ze:
+- vlastnictví uzlu, nebo
+- aktivní `diplomatic_treaties` typu `open_borders` / `trade_access`.
 
-## What changes
+Aktuální `DiplomacyPanel` ale **vůbec nepíše do `diplomatic_treaties`** → žádný hráč nemůže získat přístup do cizího systému. To je root cause.
 
-**New files:**
+**3. Žádný kontextový menu na město** — klik = rovnou ChroWiki. Žádný obchod, žádná diplomacie, žádná špionáž.
 
-1. `supabase/functions/ai-faction-turn/briefing.ts` — pure function `buildFactionBriefing(input)` returning a compact `Briefing` object (identity, resources, military, diplomacy top 5, problems top 3, opportunities top 3, threats top 3, memory top 5). No DB calls; consumes already-fetched data.
+**4. Single click otevírá detail** — koliduje s panem na mapě.
 
-2. `supabase/functions/ai-faction-turn/actions.ts` — `generateValidActions(input)` returning `ValidAction[]` with factories for the 9 baseline action types: `RECRUIT_ARMY`, `BUILD_BUILDING`, `MOVE_ARMY`, `ATTACK_TARGET`, `FORTIFY_NODE`, `REPAIR_ROUTE`, `OPEN_TRADE_WITH_NODE`, `ANNEX_NODE`, `HOLD_POSITION` (always emitted as fallback). Each action has `action_id`, `type`, `label`, `params`, `cost`, `expected`, `score (0–100)`. Pre-conditions enforced: only emit if affordable + valid target exists.
+---
 
-**Edited file:**
+## Návrh — UX „klik na město"
 
-3. `supabase/functions/ai-faction-turn/index.ts` — add **after** the existing `invokeAI` call (so AI flow is untouched), within a single `try { ... } catch` so a shadow failure never breaks the turn:
-
-```ts
-// Wave 2 SHADOW — telemetry only, do not consume.
-try {
-  const briefing = buildFactionBriefing({ /* pass already-fetched vars */ });
-  const validActions = generateValidActions({ briefing, milMetrics, cities,
-    strategicNodes, strategicRoutes, supplyStates, affordableBuildings,
-    realmRes, resources, factionName });
-  const briefingChars = JSON.stringify(briefing).length;
-  const currentPromptChars = systemPrompt.length + userPrompt.length;
-  const ratio = currentPromptChars > 0 ? briefingChars / currentPromptChars : 0;
-  const top5 = [...validActions].sort((a, b) => b.score - a.score).slice(0, 5)
-    .map(a => `${a.type}:${a.score}`);
-  const hasHold = validActions.some(a => a.type === "HOLD_POSITION");
-  const hasEcoOrDef = validActions.some(a => ["BUILD_BUILDING","FORTIFY_NODE","REPAIR_ROUTE","OPEN_TRADE_WITH_NODE"].includes(a.type));
-  const hasMilOrDip = validActions.some(a => ["RECRUIT_ARMY","MOVE_ARMY","ATTACK_TARGET","ANNEX_NODE"].includes(a.type));
-
-  if (validActions.length === 0) {
-    console.error(`[ai-shadow] ERROR fn=ai-faction-turn faction=${factionName} valid_actions_count=0 turn=${turn} state=${milMetrics.warState}`);
-  } else {
-    console.log(`[ai-shadow] fn=ai-faction-turn faction=${factionName} turn=${turn} state=${milMetrics.warState} current_chars=${currentPromptChars} briefing_chars=${briefingChars} ratio=${ratio.toFixed(3)} valid_actions=${validActions.length} top5=[${top5.join(",")}] has_hold=${hasHold} has_eco_def=${hasEcoOrDef} has_mil_dip=${hasMilOrDip}`);
-  }
-} catch (e) {
-  console.error(`[ai-shadow] threw fn=ai-faction-turn faction=${factionName}: ${(e as Error).message}`);
-}
+```text
+single click   → nic (jen pan / deselect)
+double click   → CityActionsPopover (Sheet z pravé strany)
+                  ├ status: discovered? vlastník? trade access?
+                  ├ akce: Navázat kontakt / Žádost o trade access
+                  │       Vytvořit obchodní route (prefill TradePanel)
+                  │       Diplomacie (otevře DiplomacyPanel)
+                  │       Špionáž / Vyslat armádu / Útok
+                  └ tlačítko 📜 Otevřít wiki (ChroWiki)
+triple click   → rovnou ChroWiki (shortcut pro power-usery)
 ```
 
-## Files modified
+Frontier hex: `single` = nic, `double` = Prozkoumat (přesun z aktuálního single).
 
-- `supabase/functions/ai-faction-turn/briefing.ts` (new, ~200 lines)
-- `supabase/functions/ai-faction-turn/actions.ts` (new, ~250 lines)
-- `supabase/functions/ai-faction-turn/index.ts` (one shadow block inserted after `invokeAI`, ~30 lines)
+---
 
-## Hard constraints (NO-GO until data collected)
+## Implementace
 
-- Do **not** replace `systemPrompt` or `userPrompt`.
-- Do **not** change AI tool schema.
-- Do **not** change executor branches.
-- Do **not** add Mode A/B/C switching.
-- Do **not** change DB schema.
-- Do **not** change model selection (Wave 1 logic stays).
-- Briefing/valid_actions are **read-only outputs** logged to console.
+### A) `WorldHexMap.tsx`
+- `handleTileClick`: přesunout `handleExploreFrontier(q,r)` z single na double.
+- `CityMarkerBadge.onClick`: přepnout na `onDoubleClick`. Single → no-op (povolí pan).
+- Přidat 3-click detekci přes `clickCountRef` s 350ms reset → triple = `onCityTripleClick`.
 
-## Acceptance metrics (after deploy)
+### B) Nová komponenta `src/components/map/CityActionsPopover.tsx`
+- Props: `cityId`, `sessionId`, `currentPlayerName`, `onClose`, `onOpenWiki`, `onOpenDiplomacy`, `onOpenTrade`.
+- Načte: city + owner_player + `entity_discoveries` + `player_trade_system_access` + `diplomatic_treaties` (status='active' s vlastníkem).
+- Sekce **Status**: discovered ✓/✗, vztah (owner/cizí/neutral), aktivní smlouvy, trade access level (`direct/treaty/visible/none`).
+- Sekce **Akce** (kontextové, gated podle stavu):
+  - `Auto-objevit` — zobraz pokud nediscovered + sousední/v dohledu (hybrid). Insert do `entity_discoveries`.
+  - `Vyslat poselstvo` — pokud nediscovered a vzdálený. Insert `entity_discoveries` + cost 20 zlata + 1 turn (přes command-dispatch).
+  - `Žádost o trade access` — pokud discovered, cizí majitel, není smlouva. Vytvoří `diplomatic_treaties` row se statusem `pending` + INSERT `world_event` `trade_access_requested` (notifikace pro 2. hráče).
+  - `Vytvořit obchodní route` — otevře TradePanel s prefillem.
+  - `Diplomacie` — otevře DiplomacyPanel (state cílového hráče).
+  - `Špionáž`, `Vyslat armádu`, `Útok` — placeholder/redirect na existující flowy.
+- Spodek: malý ghost button `📜 Otevřít wiki`.
 
-After 5 peace turns + 5 tension/war turns, grep edge function logs for `[ai-shadow]` and report:
+### C) `WorldTab.tsx`
+- Přidat state `cityPopover: { cityId } | null`.
+- `handleEntityClick("city", id)` → `setCityPopover({cityId: id})` (odstranit hard block na `isDiscovered`; popover si poradí).
+- Nové `handleCityTriple("city", id)` → původní `onEntityClick` (= ChroWiki).
+- Render `<CityActionsPopover>` jako Sheet.
 
-- average `current_chars` (peace vs war)
-- average `briefing_chars` (peace vs war)
-- reduction ratio
-- average `valid_actions` count
-- recurring top action types by frequency
-- any turn with `valid_actions_count=0` (must be zero occurrences)
-- coverage flags: `has_hold=true` always; `has_eco_def=true` in peace; `has_mil_dip=true` in tension/war
+### D) Treaty acceptance flow (mini — bez plné UI):
+- Příjemce vidí v `WorldFeedPanel` (event `trade_access_requested`) toast „X žádá o obchodní přístup k Y" + tlačítko **Přijmout** / **Odmítnout** v existujícím EventDetailModal.
+- Přijetí: update `diplomatic_treaties.status='active'`, `signed_turn=current_turn`, smaže/closuje event. Po `commit-turn` se `compute-trade-systems` přepočítá → access projeven.
 
-If all green → propose Increment 3 (Mode B switch) as a separate plan.
+### E) Auto-discovery hybrid helper `src/lib/discovery.ts`
+- `canAutoDiscover(cityHex, playerHexes)`: `true` pokud city hex sousedí s libovolným vlastním hexem nebo je v `discoveredCoords`.
+- Auto-discover se spustí při otevření popoveru (idempotentní upsert).
 
-## Risks
+---
 
-- **Extra CPU per faction turn**: ~5 ms (pure JS over already-loaded arrays). Negligible.
-- **Shadow throw**: wrapped in `try/catch`; cannot affect AI turn outcome.
-- **No DB writes**: nothing to roll back.
+## Soubory
 
-## What to do after approval
+**Nové:**
+- `src/components/map/CityActionsPopover.tsx`
+- `src/lib/discovery.ts`
 
-Deploy `ai-faction-turn` only. Wait for the user to play 10 turns. Read logs via `supabase--edge_function_logs function_name=ai-faction-turn search="[ai-shadow]"` and produce the coverage/size report.
+**Upravit:**
+- `src/components/WorldHexMap.tsx` (single/double/triple, frontier double-click)
+- `src/pages/game/WorldTab.tsx` (handleEntityClick, render popover)
+- `src/components/WorldFeedPanel.tsx` + `EventDetailModal.tsx` (Accept/Decline trade_access_requested)
+
+**Migrace:**
+- Přidat `'pending'` do dovolených statusů `diplomatic_treaties` (CHECK je v migraci flexibilní text → není potřeba migrace).
+
+---
+
+## Mimo scope (řeknu si pak):
+- Plné UI pro všechny treaty typy v DiplomacyPanel.
+- Špionáž jako reálná mechanika (zatím jen placeholder tlačítko).
+- Auto-merge stacku do města (slíbil jsem v minulém kole — udělám hned po tomhle).
