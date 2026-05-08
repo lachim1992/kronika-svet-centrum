@@ -981,17 +981,19 @@ async function executePostBattleDecision(
     resolved_at: new Date().toISOString(),
   }).eq("id", battleId);
 
-  // Add city rumor
-  await safeInsert(supabase.from("city_rumors").insert({
-    session_id: sessionId, city_id: cityId, city_name: cityName,
-    turn_number: turnNumber, created_by: "system",
-    tone_tag: decision === "occupy" || decision === "conquer" ? "dramatic" : decision === "pillage" ? "alarming" : "tense",
-    text: decision === "occupy" || decision === "conquer"
-      ? `Město ${cityName} zůstává pod okupací ${actor.name}. Trvalá anexe ještě nenastala.`
-      : decision === "pillage"
-      ? `Hrůza! Armáda ${actor.name} zpustošila ${cityName}. Ruiny a popel jsou vše, co zbylo.`
-      : `Město ${cityName} se poddalo ${actor.name} jako vazal. Tribut bude placen výměnou za přežití.`,
-  }));
+  // Add city rumor (skip for "pursue" — bitva mimo město)
+  if (decision !== "pursue") {
+    await safeInsert(supabase.from("city_rumors").insert({
+      session_id: sessionId, city_id: cityId, city_name: cityName,
+      turn_number: turnNumber, created_by: "system",
+      tone_tag: decision === "occupy" || decision === "conquer" ? "dramatic" : decision === "pillage" ? "alarming" : "tense",
+      text: decision === "occupy" || decision === "conquer"
+        ? `Město ${cityName} zůstává pod okupací ${actor.name}. Trvalá anexe ještě nenastala.`
+        : decision === "pillage"
+        ? `Hrůza! Armáda ${actor.name} zpustošila ${cityName}. Ruiny a popel jsou vše, co zbylo.`
+        : `Město ${cityName} se poddalo ${actor.name} jako vazal. Tribut bude placen výměnou za přežití.`,
+    }));
+  }
 
   // World feed item
   await safeInsert(supabase.from("world_feed_items").insert({
@@ -1001,7 +1003,7 @@ async function executePostBattleDecision(
   }));
 
   // Faction loyalty impacts in the city
-  if (decision !== "vassalize") {
+  if (decision !== "vassalize" && decision !== "pursue") {
     const { data: factions } = await supabase.from("city_factions")
       .select("id, loyalty, satisfaction").eq("city_id", cityId);
     for (const f of (factions || [])) {
