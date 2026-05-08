@@ -102,7 +102,7 @@ export const RouteStatePanel = ({ sessionId, playerName, currentTurn }: Props) =
         </Button>
       </div>
       {sorted.length === 0 && (
-        <p className="text-xs text-muted-foreground">Žádné trasy v tomto světě.</p>
+        <p className="text-xs text-muted-foreground">Žádné cesty v tomto světě.</p>
       )}
       <div className="space-y-2 max-h-[420px] overflow-y-auto">
         {sorted.map((r) => {
