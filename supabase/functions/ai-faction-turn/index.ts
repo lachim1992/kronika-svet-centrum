@@ -2285,11 +2285,31 @@ async function autoAcceptPendingPacts(
         .order("created_at", { ascending: false }).limit(3);
 
       for (const msg of (recentMsgs || [])) {
-        if (msg.message_text?.includes("[OBCHODNÍ DOHODA]") || msg.message_text?.includes("[OBRANNÝ PAKT]")) {
-          // Send acceptance message
+        const txt: string = msg.message_text || "";
+        const isTrade = txt.includes("[OBCHODNÍ DOHODA]");
+        const isDefense = txt.includes("[OBRANNÝ PAKT]");
+        const isAlliance = txt.includes("[ALIANCE]") && disposition > 50 && otherDisposition > 50;
+        if (isTrade || isDefense || isAlliance) {
+          const pactType = isAlliance ? "alliance" : isDefense ? "defense_pact" : "trade_pact";
+
+          // Idempotence: skip if active pact of same type already exists
+          const { data: existing } = await supabase.from("diplomatic_pacts")
+            .select("id").eq("session_id", sessionId).eq("status", "active")
+            .eq("pact_type", pactType)
+            .or(`and(party_a.eq.${factionName},party_b.eq.${otherParty}),and(party_a.eq.${otherParty},party_b.eq.${factionName})`)
+            .maybeSingle();
+
+          if (!existing) {
+            await supabase.from("diplomatic_pacts").insert({
+              session_id: sessionId, party_a: otherParty, party_b: factionName,
+              pact_type: pactType, status: "active", expires_turn: turn + 10,
+            });
+          }
+
           await supabase.from("diplomacy_messages").insert({
             room_id: room.id, sender: factionName, sender_type: "ai_faction",
             message_text: `[PŘIJATO] ${factionName} přijímá návrh od ${otherParty}. Ať tato dohoda prospívá oběma stranám.`,
+            action_tag: "PŘIJATO",
             secrecy: "PRIVATE",
           });
           break; // One acceptance per room per turn
