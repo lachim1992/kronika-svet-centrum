@@ -238,6 +238,73 @@ const CityActionsPopover = ({
     finally { setBusy(null); }
   };
 
+  const NEUTRAL_TRIBUTE: Record<string, number> = {
+    HAMLET: 50, TOWNSHIP: 100, CITY: 200, POLIS: 300,
+  };
+
+  const connectNeutral = async () => {
+    if (!city || !city.node_id) return;
+    if (!hasRoadToCity) {
+      toast.error("Nejprve postavte cestu k tomuto městu (ze svého nodu).");
+      return;
+    }
+    const lvl = String(city.settlement_level ?? "HAMLET").toUpperCase();
+    const tribute = NEUTRAL_TRIBUTE[lvl] ?? 50;
+    setBusy("pact");
+    try {
+      // Deduct gold from realm_resources (best-effort; fails silently if no resources row)
+      const { data: rr } = await supabase
+        .from("realm_resources")
+        .select("gold_reserve")
+        .eq("session_id", sessionId).eq("player_name", currentPlayerName)
+        .maybeSingle();
+      const currentGold = (rr as any)?.gold_reserve ?? 0;
+      if (currentGold < tribute) {
+        toast.error(`Nedostatek zlata (potřeba ${tribute}, máš ${currentGold}).`);
+        setBusy(null);
+        return;
+      }
+      await supabase.from("realm_resources")
+        .update({ gold_reserve: currentGold - tribute })
+        .eq("session_id", sessionId).eq("player_name", currentPlayerName);
+
+      const { error } = await supabase.from("neutral_trade_pacts" as any).insert({
+        session_id: sessionId,
+        neutral_node_id: city.node_id,
+        player_name: currentPlayerName,
+        tribute_paid: tribute,
+        signed_turn: currentTurn,
+        status: "active",
+        metadata: { city_id: cityId, settlement_level: lvl },
+      });
+      if (error) throw error;
+
+      await supabase.from("game_events").insert({
+        session_id: sessionId,
+        turn_number: currentTurn,
+        event_type: "neutral_pact_signed",
+        importance: "important",
+        player: currentPlayerName,
+        actor_type: "player",
+        note: `${currentPlayerName} uzavřel obchodní pakt s neutrálním ${city.name} (tribut ${tribute}g).`,
+        city_id: cityId,
+        reference: { player: currentPlayerName, city_id: cityId, tribute },
+      });
+
+      // Recompute trade systems → access projects this player as 'direct'
+      await supabase.functions.invoke("compute-trade-systems", {
+        body: { session_id: sessionId },
+      }).catch(() => {});
+
+      toast.success(`${city.name} vstoupilo do tvého trade systému (tribut ${tribute}g).`);
+      await load();
+    } catch (e: any) {
+      toast.error("Pakt selhal: " + e.message);
+    } finally {
+      setBusy(null);
+    }
+  };
+
   return (
     <Sheet open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
       <SheetContent side="right" className="w-full sm:max-w-md overflow-y-auto">
