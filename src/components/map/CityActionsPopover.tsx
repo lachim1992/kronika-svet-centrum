@@ -97,8 +97,23 @@ const CityActionsPopover = ({
         setTradeAccess(acc as any || null);
       } else setTradeAccess(null);
     } else { setTreaties([]); setTradeAccess(null); }
+
+    // Hybrid auto-discovery: load player's owned + discovered hex coords
+    if (!knownCoordsProp || knownCoordsProp.size === 0) {
+      const [ownNodes, hexDiscs] = await Promise.all([
+        supabase.from("province_nodes").select("hex_q, hex_r")
+          .eq("session_id", sessionId).eq("controlled_by", currentPlayerName),
+        supabase.from("discoveries").select("entity_id")
+          .eq("session_id", sessionId).eq("player_name", currentPlayerName)
+          .eq("entity_type", "hex"),
+      ]);
+      const set = new Set<string>();
+      (ownNodes.data || []).forEach((n: any) => { if (n.hex_q != null) set.add(`${n.hex_q},${n.hex_r}`); });
+      (hexDiscs.data || []).forEach((d: any) => { if (d.entity_id) set.add(d.entity_id); });
+      setKnownCoordsLocal(set);
+    }
     setLoading(false);
-  }, [cityId, sessionId, currentPlayerName]);
+  }, [cityId, sessionId, currentPlayerName, knownCoordsProp]);
 
   useEffect(() => { if (open && cityId) load(); }, [open, cityId, load]);
 
