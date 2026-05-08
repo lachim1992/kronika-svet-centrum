@@ -63,6 +63,8 @@ export default function DeployBattlePanel({ sessionId, currentPlayerName, curren
   const [battleTargetDialog, setBattleTargetDialog] = useState<Stack | null>(null);
   const [activeLobby, setActiveLobby] = useState<any | null>(null);
   const [pendingDecisions, setPendingDecisions] = useState<any[]>([]);
+  const [modalDecision, setModalDecision] = useState<any | null>(null);
+  const [dismissedDecisions, setDismissedDecisions] = useState<Set<string>>(new Set());
   const [recentBattles, setRecentBattles] = useState<any[]>([]);
   const [activeLobbies, setActiveLobbies] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
