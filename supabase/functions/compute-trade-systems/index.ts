@@ -92,8 +92,8 @@ Deno.serve(async (req) => {
       .maybeSingle();
     const currentTurn: number = (sessionRow as any)?.current_turn ?? 0;
 
-    // 1) Load nodes & routes
-    const [nodeRes, routeRes, prevSnapRes, treatyRes] = await Promise.all([
+    // 1) Load nodes, routes, treaties, neutral_trade_pacts
+    const [nodeRes, routeRes, prevSnapRes, treatyRes, pactRes] = await Promise.all([
       sb
         .from("province_nodes")
         .select("id, controlled_by, is_neutral, discovered, discovered_by, is_active")
