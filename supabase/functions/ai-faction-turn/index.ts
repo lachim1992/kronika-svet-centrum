@@ -1330,6 +1330,117 @@ Rozhodni, co frakce udělá v tomto kole. ${milMetrics.warState === "war" ? "JST
       ms_elapsed: Date.now() - startedAt,
     };
 
+    // ═══════════════════════════════════════════
+    // DETERMINISTIC INFRASTRUCTURE PASS (May 2026)
+    // AI musí stavět silnice, anektovat sousední neutrály a navrhovat obchody.
+    // Běží POST-LLM jako safety net, max 1 nová cesta + 2 anexe + 1 trade per turn.
+    // ═══════════════════════════════════════════
+    try {
+      const { data: aiNodes } = await supabase.from("province_nodes")
+        .select("id, name, hex_q, hex_r, controlled_by, is_neutral, discovered, autonomy_score")
+        .eq("session_id", sessionId);
+
+      const myNodes = (aiNodes || []).filter((n: any) => n.controlled_by === factionName);
+      const allNodes = aiNodes || [];
+
+      const { data: allRoutes } = await supabase.from("province_routes")
+        .select("node_a, node_b, construction_state").eq("session_id", sessionId);
+      const routeKeys = new Set((allRoutes || []).map((r: any) => {
+        const a = r.node_a < r.node_b ? r.node_a : r.node_b;
+        const b = r.node_a < r.node_b ? r.node_b : r.node_a;
+        return `${a}|${b}`;
+      }));
+
+      // ── 1. BUILD_ROAD: spojit 2 vlastní uzly bez cesty (nejbližší dvojice) ──
+      const { data: realmRow } = await supabase.from("realm_resources")
+        .select("gold_reserve").eq("session_id", sessionId).eq("player_name", factionName).maybeSingle();
+      const goldNow = Number(realmRow?.gold_reserve || 0);
+
+      if (myNodes.length >= 2 && goldNow >= 80) {
+        let bestPair: { a: any; b: any; dist: number } | null = null;
+        for (let i = 0; i < myNodes.length; i++) {
+          for (let j = i + 1; j < myNodes.length; j++) {
+            const a = myNodes[i], b = myNodes[j];
+            const ord = a.id < b.id ? `${a.id}|${b.id}` : `${b.id}|${a.id}`;
+            if (routeKeys.has(ord)) continue;
+            const dq = b.hex_q - a.hex_q, dr = b.hex_r - a.hex_r;
+            const dist = (Math.abs(dq) + Math.abs(dr) + Math.abs(dq + dr)) / 2;
+            if (dist < 1 || dist > 10) continue;
+            if (!bestPair || dist < bestPair.dist) bestPair = { a, b, dist };
+          }
+        }
+        if (bestPair) {
+          const buildRes = await invokeFunction(supabaseUrl, supabaseKey, "command-dispatch", {
+            sessionId, turnNumber: turn,
+            actor: { name: factionName, type: "ai_faction" },
+            commandType: "BUILD_ROUTE",
+            commandPayload: {
+              nodeAId: bestPair.a.id,
+              nodeBId: bestPair.b.id,
+              routeType: "road",
+              workforcePerTurn: 25,
+            },
+            commandId: crypto.randomUUID(),
+          });
+          if (buildRes && !buildRes.error) {
+            console.log(`[${factionName}] AI BUILD_ROUTE ${bestPair.a.name} → ${bestPair.b.name} (${bestPair.dist} hex)`);
+            executedActions.push({ actionType: "build_road", executed: true } as any);
+          } else {
+            console.log(`[${factionName}] AI BUILD_ROUTE skipped: ${buildRes?.error}`);
+          }
+        }
+      }
+
+      // ── 2. ANNEX/OPEN_TRADE neutrální uzly do 2 hex od mých uzlů ──
+      const neutrals = allNodes.filter((n: any) => n.is_neutral && !n.controlled_by);
+      const adjacentNeutrals: any[] = [];
+      for (const n of neutrals) {
+        for (const m of myNodes) {
+          const dq = n.hex_q - m.hex_q, dr = n.hex_r - m.hex_r;
+          const d = (Math.abs(dq) + Math.abs(dr) + Math.abs(dq + dr)) / 2;
+          if (d <= 2) { adjacentNeutrals.push(n); break; }
+        }
+      }
+      for (const n of adjacentNeutrals.slice(0, 2)) {
+        const annexRes = await invokeFunction(supabaseUrl, supabaseKey, "command-dispatch", {
+          sessionId, turnNumber: turn,
+          actor: { name: factionName, type: "ai_faction" },
+          commandType: n.discovered ? "ANNEX_NODE" : "OPEN_TRADE_WITH_NODE",
+          commandPayload: { nodeId: n.id },
+          commandId: crypto.randomUUID(),
+        });
+        if (annexRes && !annexRes.error) {
+          console.log(`[${factionName}] AI ${n.discovered ? "ANNEX" : "OPEN_TRADE"} neutral ${n.name}`);
+        }
+      }
+
+      // ── 3. PROPOSE_PACT (trade) sousední ne-nepřátelské frakci ──
+      const { data: peers } = await supabase.from("game_players")
+        .select("player_name").eq("session_id", sessionId);
+      const enemies = new Set(
+        ((diplomRelations || []) as any[])
+          .filter((r: any) => r.overall_disposition < -20)
+          .map((r: any) => r.faction_b === factionName ? r.faction_a : r.faction_b),
+      );
+      const tradeTarget = (peers || [])
+        .map((p: any) => p.player_name)
+        .find((n: string) => n && n !== factionName && !enemies.has(n));
+      if (tradeTarget && goldNow >= 50) {
+        const tradeRes = await invokeFunction(supabaseUrl, supabaseKey, "command-dispatch", {
+          sessionId, turnNumber: turn,
+          actor: { name: factionName, type: "ai_faction" },
+          commandType: "PROPOSE_PACT",
+          commandPayload: { targetFaction: tradeTarget, pactType: "trade_pact", durationTurns: 10 },
+          commandId: crypto.randomUUID(),
+        });
+        if (tradeRes && !tradeRes.error) {
+          console.log(`[${factionName}] AI PROPOSE_PACT trade → ${tradeTarget}`);
+        }
+      }
+    } catch (infraErr) {
+      console.warn(`[${factionName}] Infrastructure pass failed:`, (infraErr as Error)?.message);
+    }
+
     // ── Audit log (with rich metadata trace for AI Lab) ──
     await supabase.from("world_action_log").insert({
       session_id: sessionId,
