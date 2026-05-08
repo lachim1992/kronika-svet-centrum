@@ -111,6 +111,11 @@ Deno.serve(async (req) => {
         .select("id, treaty_type, player_a, player_b, status, metadata")
         .eq("session_id", session_id)
         .eq("status", "active"),
+      sb
+        .from("neutral_trade_pacts")
+        .select("id, neutral_node_id, player_name, status")
+        .eq("session_id", session_id)
+        .eq("status", "active"),
     ]);
     if (nodeRes.error) throw nodeRes.error;
     if (routeRes.error) throw routeRes.error;
