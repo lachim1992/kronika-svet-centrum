@@ -43,6 +43,69 @@ function seededRandom(seed: number): number {
   return (s & 0x7fffffff) / 0x7fffffff;
 }
 
+// ═══ HEX HELPERS (axial coords) ═══
+const HEX_NEIGHBORS = [
+  [1, 0], [-1, 0], [0, 1], [0, -1], [1, -1], [-1, 1],
+];
+function hexDistance(aq: number, ar: number, bq: number, br: number): number {
+  const dq = aq - bq;
+  const dr = ar - br;
+  return (Math.abs(dq) + Math.abs(dr) + Math.abs(dq + dr)) / 2;
+}
+
+// Pick best retreat hex: empty of enemy stacks/cities, farthest from winner
+async function findRetreatHex(
+  supabase: any,
+  sessionId: string,
+  loserPlayer: string,
+  loserQ: number,
+  loserR: number,
+  winnerQ: number,
+  winnerR: number,
+): Promise<{ q: number; r: number } | null> {
+  const candidates = HEX_NEIGHBORS.map(([dq, dr]) => ({ q: loserQ + dq, r: loserR + dr }));
+
+  // Get all stacks on candidate hexes (any active, any owner ≠ loser)
+  const { data: stacksOnHexes } = await supabase
+    .from("military_stacks")
+    .select("hex_q, hex_r, player_name")
+    .eq("session_id", sessionId)
+    .eq("is_active", true)
+    .eq("is_deployed", true)
+    .in("hex_q", candidates.map(c => c.q))
+    .in("hex_r", candidates.map(c => c.r));
+
+  // Get enemy cities on candidate hexes
+  const { data: citiesOnHexes } = await supabase
+    .from("cities")
+    .select("hex_q, hex_r, owner_player")
+    .eq("session_id", sessionId)
+    .in("hex_q", candidates.map(c => c.q))
+    .in("hex_r", candidates.map(c => c.r));
+
+  const blocked = new Set<string>();
+  for (const s of (stacksOnHexes || [])) {
+    if (s.player_name !== loserPlayer) blocked.add(`${s.hex_q},${s.hex_r}`);
+  }
+  for (const c of (citiesOnHexes || [])) {
+    if (c.owner_player && c.owner_player !== loserPlayer) blocked.add(`${c.hex_q},${c.hex_r}`);
+  }
+
+  const valid = candidates
+    .filter(c => !blocked.has(`${c.q},${c.r}`))
+    .map(c => ({ ...c, dist: hexDistance(c.q, c.r, winnerQ, winnerR) }))
+    .sort((a, b) => b.dist - a.dist);
+
+  return valid.length > 0 ? { q: valid[0].q, r: valid[0].r } : null;
+}
+
+// Should the stack be wiped after taking casualties? (broken morale + decimated)
+function shouldWipe(remaining: number, original: number, morale: number): boolean {
+  if (remaining <= 0) return true;
+  if (original <= 0) return false;
+  return morale < 20 && remaining < original * 0.2;
+}
+
 function computeStackStrength(compositions: any[], morale: number, formationType: string): number {
   let raw = 0;
   for (const comp of compositions) {
@@ -281,11 +344,11 @@ Deno.serve(async (req) => {
     let casualtyRateAttacker: number;
     let casualtyRateDefender: number;
 
-    if (ratio >= 2.0) { result = "decisive_victory"; casualtyRateAttacker = 0.05; casualtyRateDefender = 0.60; }
-    else if (ratio >= 1.3) { result = "victory"; casualtyRateAttacker = 0.15; casualtyRateDefender = 0.40; }
-    else if (ratio >= 0.8) { result = "pyrrhic_victory"; casualtyRateAttacker = 0.30; casualtyRateDefender = 0.30; }
-    else if (ratio >= 0.5) { result = "defeat"; casualtyRateAttacker = 0.40; casualtyRateDefender = 0.15; }
-    else { result = "rout"; casualtyRateAttacker = 0.60; casualtyRateDefender = 0.05; }
+    if (ratio >= 2.0) { result = "decisive_victory"; casualtyRateAttacker = 0.05; casualtyRateDefender = 0.75; }
+    else if (ratio >= 1.3) { result = "victory"; casualtyRateAttacker = 0.15; casualtyRateDefender = 0.55; }
+    else if (ratio >= 0.8) { result = "pyrrhic_victory"; casualtyRateAttacker = 0.35; casualtyRateDefender = 0.35; }
+    else if (ratio >= 0.5) { result = "defeat"; casualtyRateAttacker = 0.50; casualtyRateDefender = 0.20; }
+    else { result = "rout"; casualtyRateAttacker = 0.70; casualtyRateDefender = 0.08; }
 
     const attackerTotalManpower = (attackerStack.military_stack_composition || [])
       .reduce((s: number, c: any) => s + (c.manpower || 0), 0);
@@ -382,13 +445,68 @@ Deno.serve(async (req) => {
     // Morale shifts
     const moraleShiftAttacker = result.includes("victory") ? 5 : -10;
     const moraleShiftDefender = result.includes("victory") ? -15 : 5;
+    const finalAttackerMorale = Math.max(0, Math.min(100, attackerMorale + moraleShiftAttacker));
+    const finalDefenderMorale = Math.max(0, Math.min(100, defenderMorale + moraleShiftDefender));
     await supabase.from("military_stacks").update({
-      morale: Math.max(0, Math.min(100, attackerMorale + moraleShiftAttacker)),
+      morale: finalAttackerMorale,
     }).eq("id", attackerStack.id);
     if (defenderStack) {
       await supabase.from("military_stacks").update({
-        morale: Math.max(0, Math.min(100, defenderMorale + moraleShiftDefender)),
+        morale: finalDefenderMorale,
       }).eq("id", defenderStack.id);
+    }
+
+    // ═══ WIPE + FORCE RETREAT ═══
+    // Determine winner/loser stacks for retreat
+    const attackerWon = result.includes("victory");
+    const winnerStack = attackerWon ? attackerStack : defenderStack;
+    const loserStack = attackerWon ? defenderStack : attackerStack;
+    const loserMorale = attackerWon ? finalDefenderMorale : finalAttackerMorale;
+    const loserOriginal = attackerWon ? (defenderStack?.unit_count || 0) : attackerOriginalUnits;
+    const loserRemaining = attackerWon ? defenderStackRemaining : attackerRemaining;
+
+    if (loserStack && loserRemaining > 0 && winnerStack) {
+      // Wipe check (broken morale + decimated)
+      if (shouldWipe(loserRemaining, loserOriginal, loserMorale)) {
+        await supabase.from("military_stacks").update({
+          is_active: false, is_deployed: false, unit_count: 0, power: 0, soldiers: 0,
+        }).eq("id", loserStack.id);
+        await supabase.from("game_events").insert({
+          session_id, player: loserStack.player_name, event_type: "army_routed",
+          turn_number: turnNumber, confirmed: true, truth_state: "canon",
+          note: `Armáda ${loserStack.name || "?"} byla rozprášena (morálka ${loserMorale}, ${loserRemaining}/${loserOriginal} mužů).`,
+          importance: "critical",
+        }).then(() => {}, () => {});
+      } else if (loserStack.hex_q != null && loserStack.hex_r != null && winnerStack.hex_q != null && winnerStack.hex_r != null) {
+        // Try force retreat
+        const retreat = await findRetreatHex(
+          supabase, session_id, loserStack.player_name,
+          loserStack.hex_q, loserStack.hex_r,
+          winnerStack.hex_q, winnerStack.hex_r,
+        );
+        if (retreat) {
+          await supabase.from("military_stacks").update({
+            hex_q: retreat.q, hex_r: retreat.r, moved_this_turn: true,
+          }).eq("id", loserStack.id);
+          await supabase.from("game_events").insert({
+            session_id, player: loserStack.player_name, event_type: "army_retreated",
+            turn_number: turnNumber, confirmed: true, truth_state: "canon",
+            note: `Armáda ${loserStack.name || "?"} ustoupila na (${retreat.q}, ${retreat.r}).`,
+            importance: "normal",
+          }).then(() => {}, () => {});
+        } else {
+          // Encircled - no retreat possible → wipe
+          await supabase.from("military_stacks").update({
+            is_active: false, is_deployed: false, unit_count: 0, power: 0, soldiers: 0,
+          }).eq("id", loserStack.id);
+          await supabase.from("game_events").insert({
+            session_id, player: loserStack.player_name, event_type: "army_encircled",
+            turn_number: turnNumber, confirmed: true, truth_state: "canon",
+            note: `Armáda ${loserStack.name || "?"} byla obklíčena bez možnosti ústupu a zničena.`,
+            importance: "critical",
+          }).then(() => {}, () => {});
+        }
+      }
     }
 
     const needsDecision = !!defender_city_id && (result === "decisive_victory" || result === "victory" || result === "pyrrhic_victory");
@@ -516,11 +634,15 @@ Deno.serve(async (req) => {
     // Post-battle decision
     // City ownership is now governed by the 2-phase occupation flow; decision remains only for aftermath handling.
     if (needsDecision && defender_city_id) {
+      // Check if defender stack survived for "pursue" option
+      const defenderSurvived = !!defenderStack && defenderStackRemaining > 0;
       await supabase.from("action_queue").insert({
         session_id, player_name: player_name || attackerStack.player_name,
         action_type: "post_battle_decision", status: "pending",
         action_data: {
           battle_id: battleRecord?.id, attacker_stack_id,
+          defender_stack_id: defender_stack_id || null,
+          defender_survived: defenderSurvived,
           defender_city_id, result,
           casualties_attacker: casualtiesAttacker, casualties_defender: casualtiesDefender,
         },
