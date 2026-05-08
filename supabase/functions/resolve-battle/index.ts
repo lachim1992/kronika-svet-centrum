@@ -445,13 +445,68 @@ Deno.serve(async (req) => {
     // Morale shifts
     const moraleShiftAttacker = result.includes("victory") ? 5 : -10;
     const moraleShiftDefender = result.includes("victory") ? -15 : 5;
+    const finalAttackerMorale = Math.max(0, Math.min(100, attackerMorale + moraleShiftAttacker));
+    const finalDefenderMorale = Math.max(0, Math.min(100, defenderMorale + moraleShiftDefender));
     await supabase.from("military_stacks").update({
-      morale: Math.max(0, Math.min(100, attackerMorale + moraleShiftAttacker)),
+      morale: finalAttackerMorale,
     }).eq("id", attackerStack.id);
     if (defenderStack) {
       await supabase.from("military_stacks").update({
-        morale: Math.max(0, Math.min(100, defenderMorale + moraleShiftDefender)),
+        morale: finalDefenderMorale,
       }).eq("id", defenderStack.id);
+    }
+
+    // ═══ WIPE + FORCE RETREAT ═══
+    // Determine winner/loser stacks for retreat
+    const attackerWon = result.includes("victory");
+    const winnerStack = attackerWon ? attackerStack : defenderStack;
+    const loserStack = attackerWon ? defenderStack : attackerStack;
+    const loserMorale = attackerWon ? finalDefenderMorale : finalAttackerMorale;
+    const loserOriginal = attackerWon ? (defenderStack?.unit_count || 0) : attackerOriginalUnits;
+    const loserRemaining = attackerWon ? defenderStackRemaining : attackerRemaining;
+
+    if (loserStack && loserRemaining > 0 && winnerStack) {
+      // Wipe check (broken morale + decimated)
+      if (shouldWipe(loserRemaining, loserOriginal, loserMorale)) {
+        await supabase.from("military_stacks").update({
+          is_active: false, is_deployed: false, unit_count: 0, power: 0, soldiers: 0,
+        }).eq("id", loserStack.id);
+        await supabase.from("game_events").insert({
+          session_id, player: loserStack.player_name, event_type: "army_routed",
+          turn_number: turnNumber, confirmed: true, truth_state: "canon",
+          note: `Armáda ${loserStack.name || "?"} byla rozprášena (morálka ${loserMorale}, ${loserRemaining}/${loserOriginal} mužů).`,
+          importance: "critical",
+        }).then(() => {}, () => {});
+      } else if (loserStack.hex_q != null && loserStack.hex_r != null && winnerStack.hex_q != null && winnerStack.hex_r != null) {
+        // Try force retreat
+        const retreat = await findRetreatHex(
+          supabase, session_id, loserStack.player_name,
+          loserStack.hex_q, loserStack.hex_r,
+          winnerStack.hex_q, winnerStack.hex_r,
+        );
+        if (retreat) {
+          await supabase.from("military_stacks").update({
+            hex_q: retreat.q, hex_r: retreat.r, moved_this_turn: true,
+          }).eq("id", loserStack.id);
+          await supabase.from("game_events").insert({
+            session_id, player: loserStack.player_name, event_type: "army_retreated",
+            turn_number: turnNumber, confirmed: true, truth_state: "canon",
+            note: `Armáda ${loserStack.name || "?"} ustoupila na (${retreat.q}, ${retreat.r}).`,
+            importance: "normal",
+          }).then(() => {}, () => {});
+        } else {
+          // Encircled - no retreat possible → wipe
+          await supabase.from("military_stacks").update({
+            is_active: false, is_deployed: false, unit_count: 0, power: 0, soldiers: 0,
+          }).eq("id", loserStack.id);
+          await supabase.from("game_events").insert({
+            session_id, player: loserStack.player_name, event_type: "army_encircled",
+            turn_number: turnNumber, confirmed: true, truth_state: "canon",
+            note: `Armáda ${loserStack.name || "?"} byla obklíčena bez možnosti ústupu a zničena.`,
+            importance: "critical",
+          }).then(() => {}, () => {});
+        }
+      }
     }
 
     const needsDecision = !!defender_city_id && (result === "decisive_victory" || result === "victory" || result === "pyrrhic_victory");
