@@ -40,6 +40,8 @@ interface BattleLobby {
   surrender_accepted: boolean | null;
   status: string;
   battle_id: string | null;
+  attacker_intent?: string;
+  defender_reinforcement_stack_ids?: string[];
 }
 
 interface StackInfo {
