@@ -66,6 +66,84 @@ interface EventDetailModalProps {
   epochStyle: string;
 }
 
+/** Inline approval/rejection of pending treaty requests. */
+function TreatyApprovalBlock({
+  event, currentPlayerName, onClose,
+}: { event: GameEvent; currentPlayerName: string; onClose: () => void }) {
+  const ref = (event as any).reference ?? {};
+  const fromPlayer: string = ref.from ?? "";
+  const toPlayer: string = ref.to ?? "";
+  const isRecipient = toPlayer === currentPlayerName;
+  const isSender = fromPlayer === currentPlayerName;
+  const isUnion = event.event_type === "trade_union_proposed";
+  const treatyType = isUnion ? "trade_union" : "trade_access";
+  const [busy, setBusy] = useState<string | null>(null);
+  const [resolved, setResolved] = useState<string | null>(null);
+
+  const respond = async (accept: boolean) => {
+    setBusy(accept ? "accept" : "reject");
+    try {
+      const update: any = accept
+        ? { status: "active", signed_turn: event.turn_number ?? 0 }
+        : { status: "rejected" };
+      const { error } = await supabase
+        .from("diplomatic_treaties")
+        .update(update)
+        .eq("session_id", event.session_id)
+        .eq("treaty_type", treatyType)
+        .eq("player_a", fromPlayer)
+        .eq("player_b", toPlayer)
+        .eq("status", "pending");
+      if (error) throw error;
+      if (accept) {
+        await supabase.functions.invoke("compute-trade-systems", {
+          body: { session_id: event.session_id },
+        }).catch(() => {});
+        toast.success(isUnion ? "Trade Union podepsán" : "Obchodní přístup udělen");
+      } else {
+        toast.info("Žádost zamítnuta");
+      }
+      setResolved(accept ? "active" : "rejected");
+      setTimeout(onClose, 600);
+    } catch (e: any) {
+      toast.error("Chyba: " + e.message);
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  return (
+    <div className="bg-primary/5 rounded-lg p-3 text-sm space-y-2 border border-primary/20">
+      <p className="font-display font-semibold text-xs uppercase text-muted-foreground">
+        {isUnion ? "Návrh Trade Union" : "Žádost o obchodní přístup"}
+      </p>
+      <p className="text-sm">
+        <span className="font-semibold">{fromPlayer}</span>
+        {isUnion ? " navrhuje sloučit obchodní systémy s " : " žádá o obchodní přístup od "}
+        <span className="font-semibold">{toPlayer}</span>.
+      </p>
+      {resolved ? (
+        <Badge variant="outline" className="text-xs">
+          {resolved === "active" ? "✅ Schváleno" : "❌ Zamítnuto"}
+        </Badge>
+      ) : isRecipient ? (
+        <div className="flex gap-2 pt-1">
+          <Button size="sm" variant="default" disabled={busy !== null} onClick={() => respond(true)}>
+            {busy === "accept" ? "..." : "Přijmout"}
+          </Button>
+          <Button size="sm" variant="outline" disabled={busy !== null} onClick={() => respond(false)}>
+            {busy === "reject" ? "..." : "Odmítnout"}
+          </Button>
+        </div>
+      ) : isSender ? (
+        <Badge variant="outline" className="text-xs text-muted-foreground">⏳ Čeká na odpověď {toPlayer}</Badge>
+      ) : (
+        <Badge variant="outline" className="text-xs text-muted-foreground">Žádost mezi {fromPlayer} a {toPlayer}</Badge>
+      )}
+    </div>
+  );
+}
+
 const EventDetailModal = ({
   event, open, onClose, cities, memories, currentPlayerName, epochStyle,
 }: EventDetailModalProps) => {
