@@ -2105,48 +2105,79 @@ async function populateDiplomaticMemory(supabase: any, sessionId: string, turnNu
     });
   }
 
-  // ── 4. Diplomacy messages with action tags (ultimata, proposals) ──
+  // ── 4. Diplomacy messages with action tags ──
+  // Cursor-based: only messages not yet projected to memory (processed_for_memory_turn IS NULL)
+  // Per-room limit (20) + extended tag dictionary; návrhy nemají memory dopad (jen [PŘIJATO]/[ODMÍTNUTO] ano)
   const { data: rooms } = await supabase.from("diplomacy_rooms")
     .select("id, participant_a, participant_b")
     .eq("session_id", sessionId);
 
+  const processedMsgIds: string[] = [];
   if (rooms?.length) {
-    const roomIds = rooms.map((r: any) => r.id);
-    const { data: msgs } = await supabase.from("diplomacy_messages")
-      .select("id, room_id, sender, message_text, created_at")
-      .in("room_id", roomIds)
-      .order("created_at", { ascending: false }).limit(50);
+    for (const room of rooms) {
+      const { data: msgs } = await supabase.from("diplomacy_messages")
+        .select("id, sender, message_text, action_tag")
+        .eq("room_id", room.id)
+        .is("processed_for_memory_turn", null)
+        .order("created_at", { ascending: true })
+        .limit(20);
 
-    for (const msg of (msgs || [])) {
-      const createdAt = new Date(msg.created_at).getTime();
-      const now = Date.now();
-      if (now - createdAt > 5 * 60 * 1000) continue;
+      for (const msg of (msgs || [])) {
+        processedMsgIds.push(msg.id);
+        const otherParty = room.participant_a === msg.sender ? room.participant_b : room.participant_a;
+        const text: string = msg.message_text || "";
+        // Prefer explicit action_tag column; fallback parse [TAG] in text
+        const tag: string = (msg.action_tag || (text.match(/^\s*\[([A-ZÁ-Ž _]+)\]/)?.[1] || "")).toUpperCase().trim();
+        if (!tag) continue;
 
-      const room = rooms.find((r: any) => r.id === msg.room_id);
-      if (!room) continue;
-      const otherParty = room.participant_a === msg.sender ? room.participant_b : room.participant_a;
-      const text = msg.message_text || "";
+        const push = (memory_type: string, importance: number, decay_rate: number, prefix: string) => {
+          memoryEntries.push({
+            session_id: sessionId, faction_a: msg.sender, faction_b: otherParty,
+            memory_type, detail: `${prefix}: ${text.substring(0, 200)}`,
+            turn_number: turnNumber, importance, decay_rate,
+          });
+        };
 
-      if (text.includes("[ULTIMÁTUM]")) {
-        memoryEntries.push({
-          session_id: sessionId, faction_a: msg.sender, faction_b: otherParty,
-          memory_type: "threat", detail: `Ultimátum: ${text.substring(0, 200)}`,
-          turn_number: turnNumber, importance: 2, decay_rate: 0.03,
-        });
-      } else if (text.includes("[OBCHODNÍ DOHODA]") || text.includes("[OBRANNÝ PAKT]")) {
-        memoryEntries.push({
-          session_id: sessionId, faction_a: msg.sender, faction_b: otherParty,
-          memory_type: "cooperation", detail: `Návrh dohody: ${text.substring(0, 200)}`,
-          turn_number: turnNumber, importance: 1, decay_rate: 0.05,
-        });
-      } else if (text.includes("[PŘIJATO]")) {
-        memoryEntries.push({
-          session_id: sessionId, faction_a: msg.sender, faction_b: otherParty,
-          memory_type: "cooperation", detail: `Přijetí dohody: ${text.substring(0, 200)}`,
-          turn_number: turnNumber, importance: 2, decay_rate: 0.03,
-        });
+        switch (tag) {
+          case "ULTIMÁTUM":
+          case "ULTIMATUM":
+            push("threat", 3, 0.03, "Ultimátum"); break;
+          case "VAROVÁNÍ":
+          case "WARNING":
+            push("threat", 2, 0.04, "Varování"); break;
+          case "ODSOUZENÍ":
+          case "CONDEMN":
+            push("refused_help", 2, 0.04, "Odsouzení"); break;
+          case "PŘIJATO":
+          case "ACCEPT":
+            push("cooperation", 3, 0.03, "Přijetí dohody"); break;
+          case "ODMÍTNUTO":
+          case "REJECT":
+            push("refused_help", 2, 0.04, "Odmítnutí dohody"); break;
+          case "KONDOLENCE":
+          case "PODPORA":
+          case "SUPPORT":
+            push("aid", 1, 0.05, "Vyjádření podpory"); break;
+          case "MÍR":
+          case "PEACE":
+            push("peace", 3, 0.02, "Nabídka míru"); break;
+          // Pure proposals — log only, no memory impact (anti-spam)
+          case "OBCHODNÍ DOHODA":
+          case "OBRANNÝ PAKT":
+          case "ALIANCE":
+          case "NÁVRH":
+          default:
+            break;
+        }
       }
     }
+  }
+
+  // Mark processed
+  if (processedMsgIds.length > 0) {
+    await supabase.from("diplomacy_messages")
+      .update({ processed_for_memory_turn: turnNumber })
+      .in("id", processedMsgIds);
   }
 
   // Deduplicate by faction_a + faction_b + memory_type (keep highest importance)
