@@ -446,26 +446,64 @@ Deno.serve(async (req) => {
       }).eq("id", inputRouteId);
     }
 
-    // ═══ CITY OCCUPATION (Phase 1 of 2-phase conquest) ═══
-    // Vítězství v městské bitvě → 3-tahová okupace. Po 3 tazích bez liberation = anexe.
+    // ═══ CITY POST-VICTORY (intent-driven) ═══
+    // attackerIntent: "occupy" (default) | "pillage" | "raze"
     if (isVictory && defenderCity && (result === "decisive_victory" || result === "victory")) {
       const attackerPlayer = player_name || attackerStack.player_name;
-      const occupationLoyalty = result === "decisive_victory" ? 25 : 15;
-      await supabase.from("cities").update({
-        occupied_by: attackerPlayer,
-        occupation_turn: turnNumber,
-        liberation_deadline_turn: turnNumber + 3,
-        occupation_loyalty: occupationLoyalty,
-        // Production drop on occupation: stability halved
-        city_stability: Math.max(10, Math.round((defenderCity.city_stability || 50) * 0.5)),
-      }).eq("id", defenderCity.id);
 
-      await supabase.from("game_events").insert({
-        session_id, player: attackerPlayer, event_type: "city_occupied",
-        turn_number: turnNumber, confirmed: true, truth_state: "canon",
-        note: `Město ${defenderCity.name} je okupováno! Liberation deadline: rok ${turnNumber + 3}.`,
-        importance: "critical",
-      });
+      if (attackerIntent === "pillage" || attackerIntent === "raze") {
+        // Sack: devastate, steal loot, no ownership change
+        const isRaze = attackerIntent === "raze";
+        const lootGold = Math.floor(60 + (defenderCity.development_level || 1) * 25 + (defenderCity.population_total || 1000) * 0.025);
+        const lootGrain = Math.floor((defenderCity.local_grain_reserve || 0) * (isRaze ? 0.8 : 0.6));
+        const popLossRatio = isRaze ? 0.4 : 0.25;
+        const popLoss = Math.floor((defenderCity.population_total || 1000) * popLossRatio);
+        await supabase.from("cities").update({
+          status: "devastated",
+          devastated_round: turnNumber,
+          ruins_note: `${isRaze ? "Vypáleno" : "Vypleněno"} armádou ${attackerPlayer} v roce ${turnNumber}.`,
+          population_total: Math.max(50, (defenderCity.population_total || 1000) - popLoss),
+          population_peasants: Math.max(20, (defenderCity.population_peasants || 500) - Math.floor(popLoss * 0.6)),
+          population_burghers: Math.max(10, (defenderCity.population_burghers || 200) - Math.floor(popLoss * 0.3)),
+          population_clerics: Math.max(5, (defenderCity.population_clerics || 100) - Math.floor(popLoss * 0.1)),
+          city_stability: Math.max(0, (defenderCity.city_stability || 50) - (isRaze ? 50 : 30)),
+          local_grain_reserve: Math.max(0, (defenderCity.local_grain_reserve || 0) - lootGrain),
+          development_level: Math.max(0, (defenderCity.development_level || 1) - (isRaze ? 2 : 1)),
+        }).eq("id", defenderCity.id);
+
+        // Loot to attacker
+        const { data: aRealm } = await supabase.from("realm_resources").select("gold, grain").eq("session_id", session_id).eq("player_name", attackerPlayer).maybeSingle();
+        if (aRealm) {
+          await supabase.from("realm_resources").update({
+            gold: (aRealm.gold || 0) + lootGold,
+            grain: (aRealm.grain || 0) + lootGrain,
+          }).eq("session_id", session_id).eq("player_name", attackerPlayer);
+        }
+
+        await supabase.from("game_events").insert({
+          session_id, player: attackerPlayer, event_type: isRaze ? "city_razed" : "city_pillaged",
+          turn_number: turnNumber, confirmed: true, truth_state: "canon",
+          note: `${isRaze ? "🔥 Vypáleno" : "💰 Vypleněno"} ${defenderCity.name}: +${lootGold} zlato, +${lootGrain} obilí, ${popLoss} mrtvých.`,
+          importance: "critical",
+        });
+      } else {
+        // OCCUPY (default): 2-phase conquest, ownership transfers after 3 turns without liberation
+        const occupationLoyalty = result === "decisive_victory" ? 25 : 15;
+        await supabase.from("cities").update({
+          occupied_by: attackerPlayer,
+          occupation_turn: turnNumber,
+          liberation_deadline_turn: turnNumber + 3,
+          occupation_loyalty: occupationLoyalty,
+          city_stability: Math.max(10, Math.round((defenderCity.city_stability || 50) * 0.5)),
+        }).eq("id", defenderCity.id);
+
+        await supabase.from("game_events").insert({
+          session_id, player: attackerPlayer, event_type: "city_occupied",
+          turn_number: turnNumber, confirmed: true, truth_state: "canon",
+          note: `Město ${defenderCity.name} je okupováno! Liberation deadline: rok ${turnNumber + 3}.`,
+          importance: "critical",
+        });
+      }
     }
 
     // Clear battle context on stacks
