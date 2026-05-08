@@ -1100,6 +1100,54 @@ Rozhodni, co frakce udělá v tomto kole. ${milMetrics.warState === "war" ? "JST
       console.warn(`[${factionName}] Forced recruit check failed:`, e);
     }
 
+    // ── DETERMINISTIC AUTO-COMBINE (anti-fragmentation) ──
+    // If at war + ≥4 deployed stacks averaging < 100 power, auto-combine the two weakest
+    // stacks that share a hex (or are adjacent). Prevents AI suiciding weak units one-by-one.
+    try {
+      const stillAtWar2 = (warDeclarations || []).some((w: any) => w.status === "active" || w.status === "peace_offered");
+      const myDeployed = (stacks || []).filter((s: any) => s.is_active && s.is_deployed);
+      const avgPower = myDeployed.length ? myDeployed.reduce((s: number, x: any) => s + (x.power || 0), 0) / myDeployed.length : 0;
+      if (stillAtWar2 && myDeployed.length >= 4 && avgPower < 100) {
+        const sorted = [...myDeployed].sort((a, b) => (a.power || 0) - (b.power || 0));
+        // Find a pair where weaker can merge into a same/adjacent stronger
+        let combined = false;
+        for (let i = 0; i < sorted.length && !combined; i++) {
+          const src = sorted[i];
+          for (let j = sorted.length - 1; j > i && !combined; j--) {
+            const tgt = sorted[j];
+            if (src.id === tgt.id) continue;
+            const dQ = (tgt.hex_q ?? 0) - (src.hex_q ?? 0);
+            const dR = (tgt.hex_r ?? 0) - (src.hex_r ?? 0);
+            const dist = (Math.abs(dQ) + Math.abs(dR) + Math.abs(-dQ - dR)) / 2;
+            if (dist > 1) continue;
+            const forced = {
+              actionType: "combine_stacks",
+              sourceStackName: src.name, targetStackName: tgt.name,
+              sourceStackId: src.id, targetStackId: tgt.id,
+              description: "Deterministický auto-combine (anti-fragmentation)",
+              narrativeNote: `${src.name} se připojuje k ${tgt.name}, aby vytvořili silnější jednotku.`,
+            };
+            try {
+              const fres = await executeAction(
+                supabase, supabaseUrl, supabaseKey, sessionId, turn, factionName, forced, faction,
+                sentUltimatums.length > 0, stacks || [], cities || [], allCities || [], enemyStacks || [], realmRes,
+              );
+              const failed = typeof fres === "string" && (fres.includes("not_") || fres === "stack_not_found" || fres === "same_stack");
+              executedActions.push({ ...forced, executed: !failed, result: fres, _forced: true, error: failed ? fres : undefined });
+              if (!failed) {
+                console.log(`[${factionName}] AUTO-COMBINE ${src.name} -> ${tgt.name} = ${fres}`);
+                combined = true;
+              }
+            } catch (err) {
+              console.warn(`[${factionName}] auto-combine failed:`, err);
+            }
+          }
+        }
+      }
+    } catch (e) {
+      console.warn(`[${factionName}] auto-combine check failed:`, e);
+    }
+
     // ── DETERMINISTIC FORCE-MOVE FOR IDLE STACKS (Wave 2 — anti-stacking) ──
     try {
       const stillAtWar = (warDeclarations || []).some((w: any) => w.status === "active");
