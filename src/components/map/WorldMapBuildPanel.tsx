@@ -80,7 +80,7 @@ export default function WorldMapBuildPanel({ sessionId, playerName, currentTurn 
   const [nodeAId, setNodeAId] = useState<string>("");
   const [nodeBId, setNodeBId] = useState<string>("");
   const [routeType, setRouteType] = useState<string>("road");
-  const [labor, setLabor] = useState<number>(100);
+  const [labor, setLabor] = useState<number>(25); // pracovní síla / tah
   const [laborAvailable, setLaborAvailable] = useState<number>(0);
   const [submitting, setSubmitting] = useState(false);
 
