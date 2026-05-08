@@ -340,7 +340,34 @@ Deno.serve(async (req) => {
         }
       }
     }
-    if (defenderCity) {
+
+    // ═══ REINFORCEMENT CASUALTIES (split remaining 30% across them, mark moved) ═══
+    if (reinforcementStacks.length > 0 && reinforcementManpower > 0) {
+      const reinfShare = Math.round(casualtiesDefender * 0.3 * (reinforcementManpower / Math.max(1, defenderTotalManpower)));
+      let perStackCas = Math.floor(reinfShare / reinforcementStacks.length);
+      for (const rs of reinforcementStacks) {
+        const comps = rs.military_stack_composition || [];
+        const origMP = comps.reduce((s: number, c: any) => s + (c.manpower || 0), 0);
+        const remaining = await applyCasualties(supabase, comps, Math.min(origMP, perStackCas));
+        const lost = Math.max(0, origMP - remaining);
+        const newMorale = Math.max(0, Math.min(100, (rs.morale || 50) + (result.includes("victory") ? -10 : 0)));
+        if (remaining <= 0) {
+          await supabase.from("military_stacks").update({ is_active: false, is_deployed: false, unit_count: 0, power: 0, soldiers: 0, moved_this_turn: true, morale: newMorale }).eq("id", rs.id);
+        } else {
+          const newPower = Math.round(remaining * (0.5 + newMorale / 200));
+          await supabase.from("military_stacks").update({ unit_count: remaining, power: Math.max(1, newPower), soldiers: remaining, moved_this_turn: true, morale: newMorale }).eq("id", rs.id);
+        }
+        if (lost > 0 && rs.player_name) {
+          const { data: rRealm } = await supabase.from("realm_resources").select("manpower_committed").eq("session_id", session_id).eq("player_name", rs.player_name).maybeSingle();
+          if (rRealm) {
+            await supabase.from("realm_resources").update({
+              manpower_committed: Math.max(0, (rRealm.manpower_committed || 0) - lost),
+            }).eq("session_id", session_id).eq("player_name", rs.player_name);
+          }
+        }
+      }
+    }
+
       const garrisonLoss = Math.min(defenderCity.military_garrison || 0, Math.round(casualtiesDefender * 0.3));
       const popLoss = Math.round(casualtiesDefender * 0.1);
       const stabLoss = result.includes("victory") ? Math.min(30, Math.round(casualtiesDefender / 10)) : 5;
