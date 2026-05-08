@@ -808,7 +808,7 @@ async function executePostBattleDecision(
   // decision: "occupy" | "pillage" | legacy "conquer" | "vassalize"
   if (!battleId) return { events: [], error: "Missing battleId" };
   if (!decision) return { events: [], error: "Missing decision" };
-  if (!cityId) return { events: [], error: "Missing cityId" };
+  if (!cityId && decision !== "pursue") return { events: [], error: "Missing cityId" };
 
   // Validate battle exists and belongs to actor
   const { data: battle } = await supabase.from("battles")
