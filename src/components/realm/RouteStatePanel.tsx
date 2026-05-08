@@ -95,14 +95,14 @@ export const RouteStatePanel = ({ sessionId, playerName, currentTurn }: Props) =
     <Card className="p-4 space-y-3">
       <div className="flex items-center justify-between">
         <h3 className="text-sm font-semibold flex items-center gap-2">
-          <Wrench className="h-4 w-4" /> Stav obchodních tras
+          <Wrench className="h-4 w-4" /> Infrastruktura: Silnice a cesty
         </h3>
         <Button size="sm" variant="ghost" onClick={load} disabled={loading}>
           <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
         </Button>
       </div>
       {sorted.length === 0 && (
-        <p className="text-xs text-muted-foreground">Žádné trasy v tomto světě.</p>
+        <p className="text-xs text-muted-foreground">Žádné cesty v tomto světě.</p>
       )}
       <div className="space-y-2 max-h-[420px] overflow-y-auto">
         {sorted.map((r) => {

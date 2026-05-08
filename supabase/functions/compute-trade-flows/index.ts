@@ -674,6 +674,83 @@ Deno.serve(async (req) => {
     }
 
     // ════════════════════════════════════════════
+    // PHASE 3.5: Flow centrality (Trade Hubs) — Brandes betweenness per system
+    // ════════════════════════════════════════════
+    try {
+      const adj = new Map<string, Set<string>>();
+      for (const r of routes) {
+        if ((r as any).control_state === "blocked") continue;
+        const a = r.node_a, b = r.node_b;
+        if (!nodeById.has(a) || !nodeById.has(b)) continue;
+        if (!adj.has(a)) adj.set(a, new Set());
+        if (!adj.has(b)) adj.set(b, new Set());
+        adj.get(a)!.add(b); adj.get(b)!.add(a);
+      }
+      const sysNodes = new Map<string, string[]>();
+      for (const n of nodes) {
+        const sysId = (n as any).trade_system_id;
+        if (!sysId) continue;
+        if (!sysNodes.has(sysId)) sysNodes.set(sysId, []);
+        sysNodes.get(sysId)!.push(n.id);
+      }
+      const sysVolume = new Map<string, number>();
+      for (const f of tradeFlows) {
+        const node = nodeById.get((f as any).source_city_id);
+        const sysId = (node as any)?.trade_system_id;
+        if (!sysId) continue;
+        sysVolume.set(sysId, (sysVolume.get(sysId) || 0) + (f.volume_per_turn || 0));
+      }
+      const centrality = new Map<string, number>();
+      for (const [sysId, members] of sysNodes) {
+        if (members.length < 3) continue;
+        const memberSet = new Set(members);
+        const localScore = new Map<string, number>();
+        for (const src of members) {
+          const dist = new Map<string, number>();
+          const parents = new Map<string, string[]>();
+          const sigma = new Map<string, number>();
+          dist.set(src, 0); sigma.set(src, 1);
+          const queue = [src]; const order: string[] = [];
+          while (queue.length) {
+            const u = queue.shift()!; order.push(u);
+            for (const v of (adj.get(u) || [])) {
+              if (!memberSet.has(v)) continue;
+              if (!dist.has(v)) { dist.set(v, dist.get(u)! + 1); queue.push(v); }
+              if (dist.get(v) === dist.get(u)! + 1) {
+                sigma.set(v, (sigma.get(v) || 0) + (sigma.get(u) || 0));
+                if (!parents.has(v)) parents.set(v, []);
+                parents.get(v)!.push(u);
+              }
+            }
+          }
+          const delta = new Map<string, number>();
+          for (let i = order.length - 1; i >= 0; i--) {
+            const w = order[i]; const sw = sigma.get(w) || 1;
+            for (const v of parents.get(w) || []) {
+              delta.set(v, (delta.get(v) || 0) + ((sigma.get(v) || 0) / sw) * (1 + (delta.get(w) || 0)));
+            }
+            if (w !== src) localScore.set(w, (localScore.get(w) || 0) + (delta.get(w) || 0));
+          }
+        }
+        const maxLocal = Math.max(0.0001, ...Array.from(localScore.values()));
+        const volWeight = Math.min(1, (sysVolume.get(sysId) || 0) / 50);
+        for (const [nodeId, score] of localScore) {
+          const norm = (score / maxLocal) * volWeight;
+          centrality.set(nodeId, Math.max(centrality.get(nodeId) || 0, norm));
+        }
+      }
+      await sb.from("province_nodes").update({ flow_centrality: 0 }).eq("session_id", session_id);
+      for (const [nodeId, val] of centrality) {
+        if (val <= 0.05) continue;
+        await sb.from("province_nodes")
+          .update({ flow_centrality: Math.round(val * 1000) / 1000 })
+          .eq("id", nodeId);
+      }
+    } catch (e) {
+      console.warn("flow_centrality computation failed:", (e as Error).message);
+    }
+
+    // ════════════════════════════════════════════
     // PHASE 4: Per-player goods fiscal aggregates
     // ════════════════════════════════════════════
     const playerAggregates = new Map<string, {

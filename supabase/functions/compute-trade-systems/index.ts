@@ -92,8 +92,8 @@ Deno.serve(async (req) => {
       .maybeSingle();
     const currentTurn: number = (sessionRow as any)?.current_turn ?? 0;
 
-    // 1) Load nodes & routes
-    const [nodeRes, routeRes, prevSnapRes, treatyRes] = await Promise.all([
+    // 1) Load nodes, routes, treaties, neutral_trade_pacts
+    const [nodeRes, routeRes, prevSnapRes, treatyRes, pactRes] = await Promise.all([
       sb
         .from("province_nodes")
         .select("id, controlled_by, is_neutral, discovered, discovered_by, is_active")
@@ -111,6 +111,11 @@ Deno.serve(async (req) => {
         .select("id, treaty_type, player_a, player_b, status, metadata")
         .eq("session_id", session_id)
         .eq("status", "active"),
+      sb
+        .from("neutral_trade_pacts")
+        .select("id, neutral_node_id, player_name, status")
+        .eq("session_id", session_id)
+        .eq("status", "active"),
     ]);
     if (nodeRes.error) throw nodeRes.error;
     if (routeRes.error) throw routeRes.error;
@@ -119,6 +124,7 @@ Deno.serve(async (req) => {
     const nodeById = new Map<string, any>(nodes.map((n: any) => [n.id, n]));
     const routes = routeRes.data || [];
     const treaties = treatyRes.data || [];
+    const pacts = pactRes.data || [];
     const prevSnap = new Map<string, string>(
       (prevSnapRes.data || []).map((s: any) => [s.node_id, s.system_key as string])
     );
@@ -384,6 +390,22 @@ Deno.serve(async (req) => {
         if (!level) continue;
         if (c.members.includes(a) && b) upgrade(b, sysId, level, level === "open" ? 1.0 : tariff, `treaty:${(t as any).id}`);
         if (c.members.includes(b) && a) upgrade(a, sysId, level, level === "open" ? 1.0 : tariff, `treaty:${(t as any).id}`);
+      }
+
+      // Neutral trade pacts: pact node belongs to this system → grant 'direct' access to player
+      for (const p of pacts) {
+        const nodeId = String((p as any).neutral_node_id ?? "");
+        if (!nodeId || !c.nodeIds.includes(nodeId)) continue;
+        upgrade(String((p as any).player_name), sysId, "direct", 1.0, `pact:${(p as any).id}`);
+      }
+
+      // Trade Union treaty: if either party is a member of this system, grant the other 'open' access
+      for (const t of treaties) {
+        if (String((t as any).treaty_type ?? "") !== "trade_union") continue;
+        const a = String((t as any).player_a ?? "");
+        const b = String((t as any).player_b ?? "");
+        if (c.members.includes(a) && b) upgrade(b, sysId, "open", 1.0, `union:${(t as any).id}`);
+        if (c.members.includes(b) && a) upgrade(a, sysId, "open", 1.0, `union:${(t as any).id}`);
       }
     }
 

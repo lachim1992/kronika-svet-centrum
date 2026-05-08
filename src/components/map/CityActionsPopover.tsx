@@ -30,6 +30,9 @@ interface CityRow {
   population: number | null; level: string | null;
   hex_q?: number | null; hex_r?: number | null;
   is_neutral?: boolean | null;
+  node_id?: string | null;
+  trade_system_id?: string | null;
+  settlement_level?: string | null;
 }
 
 interface Treaty {
@@ -56,21 +59,28 @@ const CityActionsPopover = ({
   const [busy, setBusy] = useState<string | null>(null);
   const knownCoords = knownCoordsProp && knownCoordsProp.size > 0 ? knownCoordsProp : knownCoordsLocal;
 
+  const [hasRoadToCity, setHasRoadToCity] = useState<boolean>(false);
+  const [existingPact, setExistingPact] = useState<boolean>(false);
+
   const load = useCallback(async () => {
     if (!cityId) return;
     setLoading(true);
-    // City + its hex via the linked province_node
     const [cityRes, nodeRes] = await Promise.all([
       supabase.from("cities")
-        .select("id, name, owner_player, population_total, settlement_level")
+        .select("id, name, owner_player, population_total, settlement_level, is_neutral")
         .eq("id", cityId).maybeSingle(),
       supabase.from("province_nodes")
-        .select("hex_q, hex_r, trade_system_id")
+        .select("id, hex_q, hex_r, trade_system_id")
         .eq("session_id", sessionId).eq("city_id", cityId).maybeSingle(),
     ]);
-    const c = cityRes.data;
-    const node = nodeRes.data;
-    setCity(c ? { ...(c as any), hex_q: node?.hex_q ?? null, hex_r: node?.hex_r ?? null } : null);
+    const c = cityRes.data as any;
+    const node = nodeRes.data as any;
+    setCity(c ? {
+      ...c,
+      hex_q: node?.hex_q ?? null, hex_r: node?.hex_r ?? null,
+      node_id: node?.id ?? null,
+      trade_system_id: node?.trade_system_id ?? null,
+    } : null);
 
     const { data: disc } = await supabase
       .from("discoveries")
@@ -98,9 +108,42 @@ const CityActionsPopover = ({
       } else setTradeAccess(null);
     } else { setTreaties([]); setTradeAccess(null); }
 
+    // Neutral pact + road check
+    if (node?.id) {
+      const { data: pact } = await supabase
+        .from("neutral_trade_pacts" as any)
+        .select("id")
+        .eq("session_id", sessionId)
+        .eq("neutral_node_id", node.id)
+        .eq("player_name", currentPlayerName)
+        .eq("status", "active")
+        .maybeSingle();
+      setExistingPact(!!pact);
+
+      // Look up any complete route between an owned node and this city's node
+      const { data: ownNodes } = await supabase
+        .from("province_nodes")
+        .select("id")
+        .eq("session_id", sessionId)
+        .eq("controlled_by", currentPlayerName);
+      const ownIds = (ownNodes || []).map((n: any) => n.id);
+      if (ownIds.length > 0) {
+        const { data: routes } = await supabase
+          .from("province_routes")
+          .select("id, node_a, node_b, construction_state")
+          .eq("session_id", sessionId)
+          .or(`node_a.eq.${node.id},node_b.eq.${node.id}`);
+        const found = (routes || []).some((r: any) =>
+          r.construction_state === "complete" &&
+          (ownIds.includes(r.node_a) || ownIds.includes(r.node_b))
+        );
+        setHasRoadToCity(found);
+      } else setHasRoadToCity(false);
+    } else { setExistingPact(false); setHasRoadToCity(false); }
+
     // Hybrid auto-discovery: load player's owned + discovered hex coords
     if (!knownCoordsProp || knownCoordsProp.size === 0) {
-      const [ownNodes, hexDiscs] = await Promise.all([
+      const [ownNodes2, hexDiscs] = await Promise.all([
         supabase.from("province_nodes").select("hex_q, hex_r")
           .eq("session_id", sessionId).eq("controlled_by", currentPlayerName),
         supabase.from("discoveries").select("entity_id")
@@ -108,7 +151,7 @@ const CityActionsPopover = ({
           .eq("entity_type", "hex"),
       ]);
       const set = new Set<string>();
-      (ownNodes.data || []).forEach((n: any) => { if (n.hex_q != null) set.add(`${n.hex_q},${n.hex_r}`); });
+      (ownNodes2.data || []).forEach((n: any) => { if (n.hex_q != null) set.add(`${n.hex_q},${n.hex_r}`); });
       (hexDiscs.data || []).forEach((d: any) => { if (d.entity_id) set.add(d.entity_id); });
       setKnownCoordsLocal(set);
     }
@@ -195,6 +238,73 @@ const CityActionsPopover = ({
     finally { setBusy(null); }
   };
 
+  const NEUTRAL_TRIBUTE: Record<string, number> = {
+    HAMLET: 50, TOWNSHIP: 100, CITY: 200, POLIS: 300,
+  };
+
+  const connectNeutral = async () => {
+    if (!city || !city.node_id) return;
+    if (!hasRoadToCity) {
+      toast.error("Nejprve postavte cestu k tomuto městu (ze svého nodu).");
+      return;
+    }
+    const lvl = String(city.settlement_level ?? "HAMLET").toUpperCase();
+    const tribute = NEUTRAL_TRIBUTE[lvl] ?? 50;
+    setBusy("pact");
+    try {
+      // Deduct gold from realm_resources (best-effort; fails silently if no resources row)
+      const { data: rr } = await supabase
+        .from("realm_resources")
+        .select("gold_reserve")
+        .eq("session_id", sessionId).eq("player_name", currentPlayerName)
+        .maybeSingle();
+      const currentGold = (rr as any)?.gold_reserve ?? 0;
+      if (currentGold < tribute) {
+        toast.error(`Nedostatek zlata (potřeba ${tribute}, máš ${currentGold}).`);
+        setBusy(null);
+        return;
+      }
+      await supabase.from("realm_resources")
+        .update({ gold_reserve: currentGold - tribute })
+        .eq("session_id", sessionId).eq("player_name", currentPlayerName);
+
+      const { error } = await supabase.from("neutral_trade_pacts" as any).insert({
+        session_id: sessionId,
+        neutral_node_id: city.node_id,
+        player_name: currentPlayerName,
+        tribute_paid: tribute,
+        signed_turn: currentTurn,
+        status: "active",
+        metadata: { city_id: cityId, settlement_level: lvl },
+      });
+      if (error) throw error;
+
+      await supabase.from("game_events").insert({
+        session_id: sessionId,
+        turn_number: currentTurn,
+        event_type: "neutral_pact_signed",
+        importance: "important",
+        player: currentPlayerName,
+        actor_type: "player",
+        note: `${currentPlayerName} uzavřel obchodní pakt s neutrálním ${city.name} (tribut ${tribute}g).`,
+        city_id: cityId,
+        reference: { player: currentPlayerName, city_id: cityId, tribute },
+      });
+
+      // Recompute trade systems → access projects this player as 'direct'
+      await supabase.functions.invoke("compute-trade-systems", {
+        body: { session_id: sessionId },
+      }).catch(() => {});
+
+      toast.success(`${city.name} vstoupilo do tvého trade systému (tribut ${tribute}g).`);
+      await load();
+    } catch (e: any) {
+      toast.error("Pakt selhal: " + e.message);
+    } finally {
+      setBusy(null);
+    }
+  };
+
   return (
     <Sheet open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
       <SheetContent side="right" className="w-full sm:max-w-md overflow-y-auto">
@@ -270,12 +380,84 @@ const CityActionsPopover = ({
                 </Button>
               )}
 
+              {discovered && isNeutral && !isOwn && !existingPact && (
+                <Button
+                  onClick={connectNeutral}
+                  disabled={busy !== null || !hasRoadToCity}
+                  className="w-full justify-start gap-2"
+                  size="sm"
+                  variant="default"
+                  title={hasRoadToCity ? "Zaplatit tribut a připojit do trade systému" : "Nejprve postavte cestu k tomuto městu"}
+                >
+                  {busy === "pact" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Network className="h-3.5 w-3.5" />}
+                  {hasRoadToCity
+                    ? `Připojit do trade systému (tribut ${NEUTRAL_TRIBUTE[String(city?.settlement_level ?? "HAMLET").toUpperCase()] ?? 50}g)`
+                    : "Připojit (chybí cesta)"}
+                </Button>
+              )}
+
+              {discovered && isNeutral && existingPact && (
+                <div className="text-[11px] text-emerald-600 dark:text-emerald-400 px-2">
+                  ✅ Aktivní pakt — město je v tvém trade systému
+                </div>
+              )}
+
               {discovered && (
                 <Button onClick={() => { onOpenTrade(); onClose(); }} variant="outline" size="sm" className="w-full justify-start gap-2">
                   <ArrowLeftRight className="h-3.5 w-3.5" />
-                  Vytvořit obchodní route
+                  Nabídnout dohodu (P2P)
                 </Button>
               )}
+
+              {discovered && !isOwn && !isNeutral && (() => {
+                const hasUnion = treaties.some(t => t.treaty_type === "trade_union" && (t.status === "active" || t.status === "pending"));
+                if (hasUnion) {
+                  const u = treaties.find(t => t.treaty_type === "trade_union")!;
+                  return (
+                    <div className="text-[11px] text-muted-foreground px-2">
+                      🤝 Trade Union: <Badge variant="outline" className="text-[9px] ml-1">{u.status}</Badge>
+                    </div>
+                  );
+                }
+                return (
+                  <Button
+                    onClick={async () => {
+                      if (!city?.owner_player) return;
+                      setBusy("union");
+                      try {
+                        await supabase.from("diplomatic_treaties").insert({
+                          session_id: sessionId,
+                          treaty_type: "trade_union",
+                          player_a: currentPlayerName,
+                          player_b: city.owner_player,
+                          status: "pending",
+                          metadata: { proposed_at_turn: currentTurn },
+                        });
+                        await supabase.from("game_events").insert({
+                          session_id: sessionId,
+                          turn_number: currentTurn,
+                          event_type: "trade_union_proposed",
+                          importance: "important",
+                          player: currentPlayerName,
+                          actor_type: "player",
+                          note: `${currentPlayerName} navrhuje Trade Union s ${city.owner_player}.`,
+                          city_id: cityId,
+                          reference: { from: currentPlayerName, to: city.owner_player, city_id: cityId },
+                        });
+                        toast.success("Návrh Trade Union odeslán");
+                        await load();
+                      } catch (e: any) { toast.error(e.message); }
+                      finally { setBusy(null); }
+                    }}
+                    disabled={busy !== null}
+                    variant="outline" size="sm"
+                    className="w-full justify-start gap-2"
+                  >
+                    {busy === "union" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Users className="h-3.5 w-3.5" />}
+                    Navrhnout Trade Union
+                  </Button>
+                );
+              })()}
 
               {discovered && !isOwn && !isNeutral && (
                 <Button onClick={() => { onOpenDiplomacy(); onClose(); }} variant="outline" size="sm" className="w-full justify-start gap-2">

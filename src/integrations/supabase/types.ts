@@ -6326,6 +6326,45 @@ export type Database = {
           },
         ]
       }
+      neutral_trade_pacts: {
+        Row: {
+          created_at: string
+          id: string
+          metadata: Json | null
+          neutral_node_id: string
+          player_name: string
+          session_id: string
+          signed_turn: number
+          status: string
+          tribute_paid: number
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          metadata?: Json | null
+          neutral_node_id: string
+          player_name: string
+          session_id: string
+          signed_turn?: number
+          status?: string
+          tribute_paid?: number
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          metadata?: Json | null
+          neutral_node_id?: string
+          player_name?: string
+          session_id?: string
+          signed_turn?: number
+          status?: string
+          tribute_paid?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
       node_blockades: {
         Row: {
           blocked_by_player: string
@@ -7437,6 +7476,7 @@ export type Database = {
           economic_value: number
           faith_output: number
           faith_pressure: number
+          flow_centrality: number
           flow_role: string
           flow_target_node_id: string | null
           food_value: number
@@ -7523,6 +7563,7 @@ export type Database = {
           economic_value?: number
           faith_output?: number
           faith_pressure?: number
+          flow_centrality?: number
           flow_role?: string
           flow_target_node_id?: string | null
           food_value?: number
@@ -7609,6 +7650,7 @@ export type Database = {
           economic_value?: number
           faith_output?: number
           faith_pressure?: number
+          flow_centrality?: number
           flow_role?: string
           flow_target_node_id?: string | null
           food_value?: number
