@@ -500,6 +500,7 @@ export type Database = {
         Row: {
           ai_responded_at: string | null
           attacker_formation: string
+          attacker_intent: string
           attacker_player: string
           attacker_ready: boolean
           attacker_speech: string | null
@@ -512,6 +513,7 @@ export type Database = {
           defender_formation: string
           defender_player: string
           defender_ready: boolean
+          defender_reinforcement_stack_ids: Json
           defender_speech: string | null
           defender_speech_feedback: string | null
           defender_speech_modifier: number | null
@@ -531,6 +533,7 @@ export type Database = {
         Insert: {
           ai_responded_at?: string | null
           attacker_formation?: string
+          attacker_intent?: string
           attacker_player: string
           attacker_ready?: boolean
           attacker_speech?: string | null
@@ -543,6 +546,7 @@ export type Database = {
           defender_formation?: string
           defender_player: string
           defender_ready?: boolean
+          defender_reinforcement_stack_ids?: Json
           defender_speech?: string | null
           defender_speech_feedback?: string | null
           defender_speech_modifier?: number | null
@@ -562,6 +566,7 @@ export type Database = {
         Update: {
           ai_responded_at?: string | null
           attacker_formation?: string
+          attacker_intent?: string
           attacker_player?: string
           attacker_ready?: boolean
           attacker_speech?: string | null
@@ -574,6 +579,7 @@ export type Database = {
           defender_formation?: string
           defender_player?: string
           defender_ready?: boolean
+          defender_reinforcement_stack_ids?: Json
           defender_speech?: string | null
           defender_speech_feedback?: string | null
           defender_speech_modifier?: number | null
