@@ -996,6 +996,29 @@ Rozhodni, co frakce udělá v tomto kole. ${milMetrics.warState === "war" ? "JST
       console.log(`[${factionName}] EMERGENCY mobilization → 0.9 (war + MP=${mpAvailable})`);
     }
 
+    // ── FRENZY MODE: army significantly weaker than enemy → max-out mobilization ──
+    // Triggered when at war OR strong tension AND warReadiness < 50 (army < ½ enemy power).
+    // Pushes mobilization to 0.95 and flags the turn for an extra deterministic recruit pass below.
+    const isFrenzy = (
+      (milMetrics.warState === "war" && milMetrics.warReadiness < 60) ||
+      (milMetrics.warState === "tension" && milMetrics.warReadiness < 30 && milMetrics.enemyVisiblePower > 0)
+    );
+    if (isFrenzy) {
+      const frenzyRate = 0.95;
+      if ((realmRes?.mobilization_rate || 0.1) < frenzyRate) {
+        await supabase.from("realm_resources").update({ mobilization_rate: frenzyRate })
+          .eq("session_id", sessionId).eq("player_name", factionName);
+        if (realmRes) realmRes.mobilization_rate = frenzyRate;
+        console.log(`[${factionName}] FRENZY mobilization → ${frenzyRate} (state=${milMetrics.warState} readiness=${milMetrics.warReadiness}/100)`);
+      }
+      await supabase.from("world_action_log").insert({
+        session_id: sessionId, turn_number: turn, player_name: factionName,
+        action_type: "system_frenzy_mobilization",
+        description: `Šílené zbrojení: armáda je mnohem slabší než nepřítel (${milMetrics.totalArmyPower} vs ${milMetrics.enemyVisiblePower}). Mobilizace vytlačena na maximum.`,
+        metadata: { warReadiness: milMetrics.warReadiness, warState: milMetrics.warState, _system: true },
+      });
+    }
+
     // ── Auto-raise mobilization for stack-less factions (turn ≥ 3) ──
     // Prevents permanent stagnation where AI never accumulates manpower to recruit.
     // Escalating: turn 3+ → 0.3, turn 6+ → 0.45, turn 10+ → 0.6
@@ -1101,6 +1124,58 @@ Rozhodni, co frakce udělá v tomto kole. ${milMetrics.warState === "war" ? "JST
       }
     } catch (e) {
       console.warn(`[${factionName}] Forced recruit check failed:`, e);
+    }
+
+    // ── FRENZY EXTRA RECRUITS ──
+    // When isFrenzy (army < ½ of enemy power), force up to 2 extra militia recruits
+    // even if the LLM already recruited. Only constrained by available resources.
+    try {
+      if (isFrenzy) {
+        const { data: rrFr } = await supabase.from("realm_resources")
+          .select("manpower_pool, gold_reserve, grain_reserve")
+          .eq("session_id", sessionId).eq("player_name", factionName).maybeSingle();
+        let mp = rrFr?.manpower_pool || 0;
+        let gold = rrFr?.gold_reserve || 0;
+        let grain = rrFr?.grain_reserve || 0;
+        let extra = 0;
+        const maxExtra = 2;
+        // militia floor: ~80 men → 80 mp, 32 gold, 20 prod
+        while (extra < maxExtra && mp >= 80 && gold >= 32 && grain >= 20) {
+          const fa = {
+            actionType: "recruit_army",
+            armyPreset: "militia",
+            armyName: `${factionName} Šíleného zbrojení ${turn}-${extra + 1}`,
+            description: "Frenzy fallback — armáda dramaticky slabší než nepřítel",
+            narrativeNote: `${factionName} v zoufalství vyhlašuje šílené zbrojení a verbuje další milici, aby vyrovnala převahu nepřítele.`,
+          };
+          try {
+            const fres = await executeAction(
+              supabase, supabaseUrl, supabaseKey, sessionId, turn, factionName, fa, faction,
+              sentUltimatums.length > 0, stacks || [], cities || [], allCities || [], enemyStacks || [], realmRes,
+            );
+            const failed = typeof fres === "string" && (fres.startsWith("recruit_failed") || fres.endsWith("_failed") || ["insufficient_resources","city_not_found","template_not_found"].includes(fres));
+            executedActions.push({ ...fa, executed: !failed, result: fres, _frenzy: true, error: failed ? fres : undefined });
+            if (failed) break;
+            console.log(`[${factionName}] FRENZY RECRUIT #${extra + 1} ok`);
+            extra++;
+            // Decrement local estimates so loop terminates predictably
+            mp -= 80; gold -= 32; grain -= 20;
+          } catch (err) {
+            console.warn(`[${factionName}] Frenzy recruit failed:`, err);
+            break;
+          }
+        }
+        if (extra > 0) {
+          await supabase.from("world_action_log").insert({
+            session_id: sessionId, turn_number: turn, player_name: factionName,
+            action_type: "system_frenzy_recruit",
+            description: `Šílené zbrojení: ${extra}× extra milice navíc nad rámec běžného plánu.`,
+            metadata: { extraRecruits: extra, warReadiness: milMetrics.warReadiness, _system: true },
+          });
+        }
+      }
+    } catch (e) {
+      console.warn(`[${factionName}] Frenzy recruit check failed:`, e);
     }
 
     // ── DETERMINISTIC AUTO-COMBINE (anti-fragmentation) ──

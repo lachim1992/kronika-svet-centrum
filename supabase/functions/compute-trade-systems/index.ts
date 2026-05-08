@@ -265,14 +265,15 @@ Deno.serve(async (req) => {
       system_key: c.systemKey,
       node_count: c.nodeIds.length,
       route_count: 0, // filled below
-      total_capacity: 0,
+      total_capacity: 0, // filled below
       member_players: c.members,
       computed_turn: currentTurn,
       updated_at: new Date().toISOString(),
     }));
 
-    // Count routes per system
+    // Count routes + sum capacity per system
     const routeCount = new Map<string, number>();
+    const capacitySum = new Map<string, number>();
     for (const r of routes) {
       const cs = String((r as any).construction_state ?? "complete");
       const ctrl = String((r as any).control_state ?? "open");
@@ -280,9 +281,13 @@ Deno.serve(async (req) => {
       const nk = newKeyByNode.get((r as any).node_a);
       if (nk && nk === newKeyByNode.get((r as any).node_b)) {
         routeCount.set(nk, (routeCount.get(nk) ?? 0) + 1);
+        capacitySum.set(nk, (capacitySum.get(nk) ?? 0) + Number((r as any).capacity_value ?? 0));
       }
     }
-    for (const u of upserts) u.route_count = routeCount.get(u.system_key) ?? 0;
+    for (const u of upserts) {
+      u.route_count = routeCount.get(u.system_key) ?? 0;
+      u.total_capacity = Math.round((capacitySum.get(u.system_key) ?? 0) * 100) / 100;
+    }
 
     let systemIdByKey = new Map<string, string>();
     if (upserts.length > 0) {
