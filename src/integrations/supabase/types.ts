@@ -2420,33 +2420,39 @@ export type Database = {
       }
       diplomacy_messages: {
         Row: {
+          action_tag: string | null
           created_at: string
           id: string
           leak_chance: number
           message_tag: string | null
           message_text: string
+          processed_for_memory_turn: number | null
           room_id: string
           secrecy: string
           sender: string
           sender_type: string
         }
         Insert: {
+          action_tag?: string | null
           created_at?: string
           id?: string
           leak_chance?: number
           message_tag?: string | null
           message_text: string
+          processed_for_memory_turn?: number | null
           room_id: string
           secrecy?: string
           sender: string
           sender_type?: string
         }
         Update: {
+          action_tag?: string | null
           created_at?: string
           id?: string
           leak_chance?: number
           message_tag?: string | null
           message_text?: string
+          processed_for_memory_turn?: number | null
           room_id?: string
           secrecy?: string
           sender?: string
