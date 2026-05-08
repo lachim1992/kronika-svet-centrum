@@ -152,6 +152,44 @@ export default function BattleLobbyPanel({ lobby: initialLobby, currentPlayerNam
     load();
   }, [lobby.attacker_stack_id, lobby.defender_stack_id, lobby.defender_city_id]);
 
+  // Load adjacent friendly stacks for defender (reinforcements)
+  useEffect(() => {
+    if (!isDefender) return;
+    const loadAdjacent = async () => {
+      // Determine defender hex
+      let dq: number | null = null, dr: number | null = null;
+      if (lobby.defender_city_id) {
+        const { data: c } = await supabase.from("cities").select("province_q, province_r").eq("id", lobby.defender_city_id).maybeSingle();
+        if (c) { dq = c.province_q; dr = c.province_r; }
+      } else if (lobby.defender_stack_id) {
+        const { data: s } = await supabase.from("military_stacks").select("hex_q, hex_r").eq("id", lobby.defender_stack_id).maybeSingle();
+        if (s) { dq = s.hex_q; dr = s.hex_r; }
+      }
+      if (dq === null || dr === null) return;
+      const { data: stacks } = await supabase.from("military_stacks")
+        .select("id, name, power, morale, hex_q, hex_r, moved_this_turn")
+        .eq("session_id", sessionId).eq("player_name", currentPlayerName)
+        .eq("is_active", true).eq("is_deployed", true);
+      const adj = (stacks || []).filter(s => {
+        if (s.id === lobby.defender_stack_id) return false;
+        const ddq = (s.hex_q ?? 0) - (dq as number);
+        const ddr = (s.hex_r ?? 0) - (dr as number);
+        const dist = (Math.abs(ddq) + Math.abs(ddr) + Math.abs(-ddq - ddr)) / 2;
+        return dist <= 1 && !s.moved_this_turn;
+      });
+      setAdjacentStacks(adj);
+    };
+    loadAdjacent();
+  }, [isDefender, lobby.defender_city_id, lobby.defender_stack_id, sessionId, currentPlayerName]);
+
+  const toggleReinforcement = async (stackId: string) => {
+    const next = reinforcementIds.includes(stackId)
+      ? reinforcementIds.filter(id => id !== stackId)
+      : [...reinforcementIds, stackId];
+    setReinforcementIds(next);
+    await supabase.from("battle_lobbies").update({ defender_reinforcement_stack_ids: next } as any).eq("id", lobby.id);
+  };
+
   // Realtime subscription
   useEffect(() => {
     const channel = supabase
