@@ -413,9 +413,9 @@ export default function WorldMapBuildPanel({ sessionId, playerName, currentTurn 
                   size="sm"
                   className="w-full h-7 text-xs gap-1"
                   onClick={handleBuild}
-                  disabled={submitting || !nodeAId || !nodeBId || nodeAId === nodeBId || labor < 50 || labor > laborAvailable}>
+                  disabled={submitting || !nodeAId || !nodeBId || nodeAId === nodeBId || labor < 5 || labor > laborAvailable}>
                   <Plus className="h-3 w-3" />
-                  Postavit ({selectedRouteCost} 💰 + {labor} 👷)
+                  Postavit ({selectedRouteCost} 💰 + {labor} 👷/tah)
                 </Button>
               </div>
             )}
