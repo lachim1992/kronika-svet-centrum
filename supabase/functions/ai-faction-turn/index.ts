@@ -996,6 +996,29 @@ Rozhodni, co frakce udělá v tomto kole. ${milMetrics.warState === "war" ? "JST
       console.log(`[${factionName}] EMERGENCY mobilization → 0.9 (war + MP=${mpAvailable})`);
     }
 
+    // ── FRENZY MODE: army significantly weaker than enemy → max-out mobilization ──
+    // Triggered when at war OR strong tension AND warReadiness < 50 (army < ½ enemy power).
+    // Pushes mobilization to 0.95 and flags the turn for an extra deterministic recruit pass below.
+    const isFrenzy = (
+      (milMetrics.warState === "war" && milMetrics.warReadiness < 60) ||
+      (milMetrics.warState === "tension" && milMetrics.warReadiness < 30 && milMetrics.enemyVisiblePower > 0)
+    );
+    if (isFrenzy) {
+      const frenzyRate = 0.95;
+      if ((realmRes?.mobilization_rate || 0.1) < frenzyRate) {
+        await supabase.from("realm_resources").update({ mobilization_rate: frenzyRate })
+          .eq("session_id", sessionId).eq("player_name", factionName);
+        if (realmRes) realmRes.mobilization_rate = frenzyRate;
+        console.log(`[${factionName}] FRENZY mobilization → ${frenzyRate} (state=${milMetrics.warState} readiness=${milMetrics.warReadiness}/100)`);
+      }
+      await supabase.from("world_action_log").insert({
+        session_id: sessionId, turn_number: turn, player_name: factionName,
+        action_type: "system_frenzy_mobilization",
+        description: `Šílené zbrojení: armáda je mnohem slabší než nepřítel (${milMetrics.totalArmyPower} vs ${milMetrics.enemyVisiblePower}). Mobilizace vytlačena na maximum.`,
+        metadata: { warReadiness: milMetrics.warReadiness, warState: milMetrics.warState, _system: true },
+      });
+    }
+
     // ── Auto-raise mobilization for stack-less factions (turn ≥ 3) ──
     // Prevents permanent stagnation where AI never accumulates manpower to recruit.
     // Escalating: turn 3+ → 0.3, turn 6+ → 0.45, turn 10+ → 0.6
