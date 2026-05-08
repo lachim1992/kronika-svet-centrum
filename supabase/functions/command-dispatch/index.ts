@@ -1813,24 +1813,58 @@ async function executeBuildRoute(
     metadata: {
       built_by: actor.name,
       started_turn: turnNumber,
-      assigned_labor: requestedLabor,
+      workforce_per_turn: requestedPerTurn,
+      assigned_labor: requestedPerTurn, // back-compat
       total_work: totalWork,
       progress: 0,
       hex_path: plannedHexPath.length >= 2 ? plannedHexPath : null,
       planned_hex_path: plannedHexPath.length >= 2 ? plannedHexPath : null,
-      path_edge_count: pathEdgeCount,
-      hard_terrain_hexes: hardTerrainHexes,
+      path_edge_count: hexCount,
+      hex_count: hexCount,
       waypoints: finalWaypoints,
       custom_name: finalName,
     },
   });
 
-  const note = `${actor.name} zahájil stavbu cesty (${type}) mezi ${nodeA.name} a ${nodeB.name}. Vyhrazeno ${requestedLabor} pracovní síly.`;
+  const etaTurns = Math.max(1, Math.ceil(totalWork / requestedPerTurn));
+  const note = `${actor.name} zahájil stavbu cesty (${type}) mezi ${nodeA.name} a ${nodeB.name}. ${hexCount} hexů × 25 prac. síly = ${totalWork}. Alokováno ${requestedPerTurn}/tah → hotovo za ${etaTurns} kol.`;
   return insertEventsWithChronicle(supabase, commandId, sessionId, turnNumber, [{
     ...base,
     event_type: "construction",
     note, importance: "normal",
-    reference: { nodeAId, nodeBId, routeType: type, goldCost, assignedLabor: requestedLabor },
+    reference: { nodeAId, nodeBId, routeType: type, goldCost, workforcePerTurn: requestedPerTurn, totalWork, hexCount, etaTurns },
+  }], payload.chronicleText);
+}
+
+// ═══════════════════════════════════════════
+// ADJUST_ROUTE_WORKFORCE — change per-turn workforce allocation on under-construction route
+// ═══════════════════════════════════════════
+
+async function executeAdjustRouteWorkforce(
+  supabase: any, base: any, actor: Actor, payload: any,
+  commandId: string, sessionId: string, turnNumber: number,
+): Promise<CommandResult> {
+  const { routeId, workforcePerTurn } = payload;
+  if (!routeId || !Number.isFinite(workforcePerTurn)) return { events: [], error: "Missing routeId or workforcePerTurn" };
+  const newAlloc = Math.max(5, Math.floor(Number(workforcePerTurn)));
+
+  const { data: route } = await supabase.from("province_routes")
+    .select("id, metadata, construction_state").eq("id", routeId).eq("session_id", sessionId).single();
+  if (!route) return { events: [], error: "Route not found" };
+  if (route.construction_state !== "under_construction") return { events: [], error: "Route not under construction" };
+  const md = (route.metadata || {}) as any;
+  if (md.built_by !== actor.name) return { events: [], error: "Not your project" };
+
+  await supabase.from("province_routes").update({
+    metadata: { ...md, workforce_per_turn: newAlloc, assigned_labor: newAlloc },
+  }).eq("id", routeId);
+
+  const remaining = Math.max(0, Number(md.total_work || 0) - Number(md.progress || 0));
+  const etaTurns = newAlloc > 0 ? Math.max(1, Math.ceil(remaining / newAlloc)) : 0;
+  return insertEventsWithChronicle(supabase, commandId, sessionId, turnNumber, [{
+    ...base, event_type: "construction",
+    note: `${actor.name} upravil alokaci pracovní síly na ${newAlloc}/tah (zbývá ~${etaTurns} kol).`,
+    importance: "minor", reference: { routeId, workforcePerTurn: newAlloc, etaTurns },
   }], payload.chronicleText);
 }
 
