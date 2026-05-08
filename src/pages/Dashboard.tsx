@@ -77,7 +77,6 @@ const Dashboard = () => {
   const [showChronicle0, setShowChronicle0] = useState(false);
   const [showVictory, setShowVictory] = useState(false);
   const [cityActionsTarget, setCityActionsTarget] = useState<string | null>(null);
-  const [knownCoords, setKnownCoords] = useState<Set<string>>(new Set());
 
   const currentTurn = session?.current_turn ?? 0;
 
