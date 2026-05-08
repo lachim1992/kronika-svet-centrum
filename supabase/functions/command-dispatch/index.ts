@@ -818,13 +818,17 @@ async function executePostBattleDecision(
     return { events: [], error: "Battle already resolved", status: 409 };
   }
 
-  // Get the city
-  const { data: city } = await supabase.from("cities")
-    .select("*").eq("id", cityId).eq("session_id", sessionId).single();
-  if (!city) return { events: [], error: "City not found" };
+  // Get the city (optional for "pursue")
+  let city: any = null;
+  if (cityId) {
+    const { data: c } = await supabase.from("cities")
+      .select("*").eq("id", cityId).eq("session_id", sessionId).single();
+    if (!c && decision !== "pursue") return { events: [], error: "City not found" };
+    city = c;
+  }
 
-  const previousOwner = city.owner_player;
-  const cityName = city.name;
+  const previousOwner = city?.owner_player ?? null;
+  const cityName = city?.name ?? "—";
   let chronicleText = "";
   const sideEffects: Record<string, any> = { decision, cityId, previousOwner };
 
