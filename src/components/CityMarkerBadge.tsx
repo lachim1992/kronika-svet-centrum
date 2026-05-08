@@ -62,7 +62,7 @@ const CityMarkerBadge = memo(({
     const spriteSize = Math.round(r * 4.2); // fill entire hex
     return (
       <g
-        onClick={(e) => { e.stopPropagation(); onClick?.(e); }}
+        onClick={(e) => { e.stopPropagation(); onClick?.(e); }} onDoubleClick={(e) => { e.stopPropagation(); onDoubleClick?.(e); }}
         className="cursor-pointer"
         style={{ pointerEvents: "all" }}
       >
@@ -119,7 +119,7 @@ const CityMarkerBadge = memo(({
 
   return (
     <g
-      onClick={(e) => { e.stopPropagation(); onClick?.(e); }}
+      onClick={(e) => { e.stopPropagation(); onClick?.(e); }} onDoubleClick={(e) => { e.stopPropagation(); onDoubleClick?.(e); }}
       className="cursor-pointer"
       style={{ pointerEvents: "all" }}
     >
