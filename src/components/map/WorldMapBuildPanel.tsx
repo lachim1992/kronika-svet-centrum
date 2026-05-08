@@ -338,18 +338,29 @@ export default function WorldMapBuildPanel({ sessionId, playerName, currentTurn 
                   </div>
                   <div>
                     <label className="text-[10px] font-display font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1">
-                      <HardHat className="h-2.5 w-2.5" /> Pracovní síla
+                      <HardHat className="h-2.5 w-2.5" /> Prac. síla / tah
                     </label>
                     <input
-                      type="number" min={50} step={10} max={laborAvailable || undefined}
+                      type="number" min={5} step={5} max={laborAvailable || undefined}
                       value={labor}
-                      onChange={e => setLabor(Math.max(0, Math.floor(Number(e.target.value) || 0)))}
+                      onChange={e => setLabor(Math.max(5, Math.floor(Number(e.target.value) || 0)))}
                       className="w-full text-xs bg-background border border-border rounded px-2 py-1 mt-0.5 font-mono" />
                     <div className="text-[9px] text-muted-foreground font-mono mt-0.5">
                       k dispozici: {laborAvailable}
                     </div>
                   </div>
                 </div>
+
+                {/* Workforce ETA preview */}
+                {preview && preview.length > 0 && (
+                  <div className="rounded border border-primary/30 bg-primary/5 p-2 text-[10px] font-mono">
+                    <div className="text-primary font-display font-bold uppercase tracking-wider text-[9px] mb-1">
+                      Výpočet stavby
+                    </div>
+                    <div>{preview.length} hexů × 25 = <span className="text-foreground font-bold">{preview.length * 25}</span> prac. síly celkem</div>
+                    <div>Při alokaci {labor}/tah → hotovo za <span className="text-foreground font-bold">{Math.max(1, Math.ceil((preview.length * 25) / Math.max(5, labor)))} kol</span></div>
+                  </div>
+                )}
 
                 {/* Waypoint planning */}
                 <div className="rounded border border-border bg-muted/20 p-1.5 space-y-1.5">
