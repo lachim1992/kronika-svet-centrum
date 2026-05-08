@@ -95,6 +95,8 @@ export default function BattleLobbyPanel({ lobby: initialLobby, currentPlayerNam
   const [resolving, setResolving] = useState(false);
   const [battleResult, setBattleResult] = useState<any>(null);
   const [surrenderTerms, setSurrenderTerms] = useState("");
+  const [adjacentStacks, setAdjacentStacks] = useState<any[]>([]);
+  const [reinforcementIds, setReinforcementIds] = useState<string[]>(initialLobby.defender_reinforcement_stack_ids || []);
 
   const isAttacker = currentPlayerName === lobby.attacker_player;
   const isDefender = currentPlayerName === lobby.defender_player;
