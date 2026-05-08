@@ -27,8 +27,8 @@ interface Props {
 
 interface CityRow {
   id: string; name: string; owner_player: string | null;
-  hex_q: number | null; hex_r: number | null;
-  population: number | null; settlement_level: string | null;
+  population: number | null; level: string | null;
+  hex_q?: number | null; hex_r?: number | null;
   is_neutral?: boolean | null;
 }
 
