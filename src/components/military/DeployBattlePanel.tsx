@@ -71,25 +71,45 @@ export default function DeployBattlePanel({ sessionId, currentPlayerName, curren
   const garrisonStacks = stacks.filter(s => s.is_active && !s.is_deployed);
 
   // Load pending decisions, recent battles, and active lobbies
+  const loadAll = useCallback(async () => {
+    const [decRes, batRes, lobbyRes] = await Promise.all([
+      supabase.from("action_queue").select("*")
+        .eq("session_id", sessionId).eq("player_name", currentPlayerName)
+        .eq("action_type", "post_battle_decision").eq("status", "pending"),
+      supabase.from("battles").select("*")
+        .eq("session_id", sessionId)
+        .order("created_at", { ascending: false }).limit(5),
+      supabase.from("battle_lobbies").select("*")
+        .eq("session_id", sessionId).eq("status", "preparing")
+        .or(`attacker_player.eq.${currentPlayerName},defender_player.eq.${currentPlayerName}`),
+    ]);
+    setPendingDecisions(decRes.data || []);
+    setRecentBattles(batRes.data || []);
+    setActiveLobbies(lobbyRes.data || []);
+  }, [sessionId, currentPlayerName]);
+
+  useEffect(() => { loadAll(); }, [loadAll, stacks]);
+
+  // Realtime: pop up immediately when AI creates a battle lobby targeting us
   useEffect(() => {
-    const load = async () => {
-      const [decRes, batRes, lobbyRes] = await Promise.all([
-        supabase.from("action_queue").select("*")
-          .eq("session_id", sessionId).eq("player_name", currentPlayerName)
-          .eq("action_type", "post_battle_decision").eq("status", "pending"),
-        supabase.from("battles").select("*")
-          .eq("session_id", sessionId)
-          .order("created_at", { ascending: false }).limit(5),
-        supabase.from("battle_lobbies").select("*")
-          .eq("session_id", sessionId).eq("status", "preparing")
-          .or(`attacker_player.eq.${currentPlayerName},defender_player.eq.${currentPlayerName}`),
-      ]);
-      setPendingDecisions(decRes.data || []);
-      setRecentBattles(batRes.data || []);
-      setActiveLobbies(lobbyRes.data || []);
-    };
-    load();
-  }, [sessionId, currentPlayerName, stacks]);
+    const channel = supabase
+      .channel(`battle-lobbies-${sessionId}-${currentPlayerName}`)
+      .on("postgres_changes", {
+        event: "INSERT", schema: "public", table: "battle_lobbies",
+        filter: `session_id=eq.${sessionId}`,
+      }, (payload: any) => {
+        const lb = payload.new;
+        if (lb.defender_player === currentPlayerName && lb.is_ai_attacker) {
+          toast.error(`⚔️ ${lb.attacker_player} útočí! Otevři bitevní lobby a připrav obranu.`, {
+            duration: 10000,
+            action: { label: "Otevřít", onClick: () => setActiveLobby(lb) },
+          });
+          setActiveLobbies(prev => prev.some(p => p.id === lb.id) ? prev : [...prev, lb]);
+        }
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [sessionId, currentPlayerName]);
 
   // Create a new battle lobby
   const createLobby = async (attackerStack: Stack, targetType: "city" | "stack", targetId: string) => {
