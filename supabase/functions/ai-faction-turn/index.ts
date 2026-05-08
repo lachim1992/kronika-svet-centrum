@@ -1711,6 +1711,7 @@ async function executeAction(
           is_ai_attacker: true,
           is_ai_defender: false,
           status: "preparing",
+          attacker_intent: attackerIntent,
           ai_responded_at: new Date().toISOString(),
         }).select("id").single();
         if (lobbyErr) {
