@@ -131,16 +131,16 @@ const CityActionsPopover = ({
     if (!cityId) return;
     setBusy("envoy");
     try {
-      // Cost: 20 gold from realm_resources (best-effort; the action_queue will resolve)
+      const completesAt = new Date(Date.now() + 60_000).toISOString();
       await supabase.from("action_queue").insert({
         session_id: sessionId,
         player_name: currentPlayerName,
-        turn_submitted: currentTurn,
         action_type: "envoy",
-        details: { target_entity: "city", target_id: cityId, target_name: city?.name, cost: 20 },
+        completes_at: completesAt,
+        execute_on_turn: currentTurn + 1,
+        action_data: { target_entity: "city", target_id: cityId, target_name: city?.name, cost: 20 },
         status: "pending",
       });
-      // Immediate discovery so UI unlocks
       await discoverEntity(sessionId, currentPlayerName, "city", cityId, "envoy");
       setDiscovered(true);
       toast.success("Poselstvo vysláno — město objeveno (akce vyřízena v dalším tahu)");
@@ -161,16 +161,16 @@ const CityActionsPopover = ({
         metadata: { requested_for_city: cityId, requested_at_turn: currentTurn },
       });
       if (error) throw error;
-      // Notify the other side via world_events
-      await supabase.from("world_events").insert({
+      await supabase.from("game_events").insert({
         session_id: sessionId,
         turn_number: currentTurn,
         event_type: "trade_access_requested",
         importance: "important",
-        title: `${currentPlayerName} žádá o obchodní přístup`,
-        description: `${currentPlayerName} žádá o obchodní přístup k městu ${city.name}.`,
-        affected_players: [city.owner_player, currentPlayerName],
-        metadata: { from: currentPlayerName, to: city.owner_player, city_id: cityId },
+        player: currentPlayerName,
+        actor_type: "player",
+        note: `${currentPlayerName} žádá o obchodní přístup k městu ${city.name} (vlastník ${city.owner_player}).`,
+        city_id: cityId,
+        reference: { from: currentPlayerName, to: city.owner_player, city_id: cityId },
       });
       toast.success(`Žádost odeslána ${city.owner_player}`);
       await load();
