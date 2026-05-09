@@ -368,6 +368,8 @@ Deno.serve(async (req) => {
       ok: true,
       routes_created: routes.length,
       protected_routes_preserved: protectedCount,
+      skipped_as_waypoint: skippedAsWaypoint,
+      waypoint_routes_updated: waypointInserts.size,
       by_type: byType,
       by_tier_link: byTierLink,
       max_degree: maxDegree,
