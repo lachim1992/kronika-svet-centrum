@@ -204,6 +204,9 @@ Deno.serve(async (req) => {
     const addRoute = (a: Node, b: Node, meta?: Record<string, any>) => {
       const key = routeKey(a.id, b.id);
       if (routeSet.has(key)) return; // also blocks duplicates of protected pairs
+      // Skip generated edges that would visually duplicate a protected route
+      // passing through one endpoint's hex; instead register as waypoint.
+      if (tryRegisterAsWaypoint(a, b)) { routeSet.add(key); return; }
       routeSet.add(key);
       const dist = axialDist(a.hex_q, a.hex_r, b.hex_q, b.hex_r);
       const routeType = inferRouteType(a, b);
