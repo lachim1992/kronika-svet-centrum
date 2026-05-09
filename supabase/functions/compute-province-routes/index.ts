@@ -119,7 +119,7 @@ Deno.serve(async (req) => {
     // (player_built, treaty, event) — these are IMMUTABLE: we never delete or
     // modify them, and we skip generating duplicates between the same node pair.
     const { data: protectedRows } = await sb.from("province_routes")
-      .select("id, node_a, node_b, route_origin, planned_hex_path, metadata, waypoint_node_ids")
+      .select("id, node_a, node_b, route_origin, planned_hex_path, metadata")
       .eq("session_id", session_id)
       .neq("route_origin", "generated");
     const protectedPairs = new Set<string>();
