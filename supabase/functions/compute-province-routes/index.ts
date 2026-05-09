@@ -334,6 +334,22 @@ Deno.serve(async (req) => {
       if (error) console.error("Insert batch error:", error);
     }
 
+    // Persist newly-discovered waypoint nodes onto protected routes' metadata
+    if (waypointInserts.size > 0) {
+      const protectedById = new Map((protectedRows || []).map((r: any) => [r.id, r]));
+      for (const [routeId, nodeIds] of waypointInserts.entries()) {
+        const row: any = protectedById.get(routeId);
+        if (!row) continue;
+        const meta = row.metadata || {};
+        const existing: string[] = Array.isArray(meta.waypoint_node_ids) ? meta.waypoint_node_ids : [];
+        const merged = Array.from(new Set([...existing, ...nodeIds]));
+        if (merged.length === existing.length) continue;
+        await sb.from("province_routes")
+          .update({ metadata: { ...meta, waypoint_node_ids: merged } })
+          .eq("id", routeId);
+      }
+    }
+
     // Stats
     const nodeDegree: Record<string, number> = {};
     for (const r of routes) {
