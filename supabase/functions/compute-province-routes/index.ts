@@ -119,7 +119,7 @@ Deno.serve(async (req) => {
     // (player_built, treaty, event) — these are IMMUTABLE: we never delete or
     // modify them, and we skip generating duplicates between the same node pair.
     const { data: protectedRows } = await sb.from("province_routes")
-      .select("id, node_a, node_b, route_origin")
+      .select("id, node_a, node_b, route_origin, planned_hex_path, metadata")
       .eq("session_id", session_id)
       .neq("route_origin", "generated");
     const protectedPairs = new Set<string>();
@@ -128,6 +128,66 @@ Deno.serve(async (req) => {
       protectedPairs.add(a < b ? `${a}|${b}` : `${b}|${a}`);
     }
     const protectedCount = protectedRows?.length ?? 0;
+
+    // ── WAYPOINT GUARD: if a non-generated route's hex_path passes through a
+    // node's hex AND the other endpoint of the candidate generated edge is one
+    // of that route's endpoints, we skip generation and instead register the
+    // intermediate node as a waypoint on the protected route. This prevents
+    // visual duplicates when players add nodes on top of existing roads.
+    const protectedFlowRes = await sb.from("flow_paths")
+      .select("route_id, hex_path")
+      .eq("session_id", session_id)
+      .in("route_id", (protectedRows || []).map((r: any) => r.id).filter(Boolean));
+    const flowByRoute = new Map<string, Array<{ q: number; r: number }>>();
+    for (const fp of protectedFlowRes.data || []) {
+      try {
+        const arr = (typeof fp.hex_path === "string" ? JSON.parse(fp.hex_path) : fp.hex_path) || [];
+        flowByRoute.set(
+          fp.route_id as string,
+          arr.map((h: any) => ({ q: Number(h.q), r: Number(h.r) })).filter((h: any) => Number.isFinite(h.q) && Number.isFinite(h.r)),
+        );
+      } catch (_) { /* ignore */ }
+    }
+    // hexKey "q,r" → array of { routeId, endpoints: Set<nodeId> }
+    const hexToProtectedRoutes = new Map<string, Array<{ routeId: string; endpoints: Set<string> }>>();
+    for (const r of protectedRows || []) {
+      const a = r.node_a as string, b = r.node_b as string;
+      const endpoints = new Set<string>([a, b]);
+      // path candidates: flow_paths first, fallback to planned_hex_path
+      let path: Array<{ q: number; r: number }> = flowByRoute.get(r.id as string) || [];
+      if (path.length === 0 && Array.isArray(r.planned_hex_path)) {
+        path = (r.planned_hex_path as any[])
+          .map((h: any) => ({ q: Number(h.q), r: Number(h.r) }))
+          .filter((h: any) => Number.isFinite(h.q) && Number.isFinite(h.r));
+      }
+      // skip endpoint hexes (they aren't waypoints)
+      for (let i = 1; i < path.length - 1; i++) {
+        const k = `${path[i].q},${path[i].r}`;
+        const list = hexToProtectedRoutes.get(k) || [];
+        list.push({ routeId: r.id as string, endpoints });
+        hexToProtectedRoutes.set(k, list);
+      }
+    }
+    // Collect waypoint registrations: routeId → Set<nodeId>
+    const waypointInserts = new Map<string, Set<string>>();
+    let skippedAsWaypoint = 0;
+    function tryRegisterAsWaypoint(a: Node, b: Node): boolean {
+      const checks: Array<{ node: Node; other: Node }> = [{ node: a, other: b }, { node: b, other: a }];
+      for (const { node, other } of checks) {
+        const list = hexToProtectedRoutes.get(`${node.hex_q},${node.hex_r}`);
+        if (!list) continue;
+        for (const entry of list) {
+          if (entry.endpoints.has(other.id)) {
+            const set = waypointInserts.get(entry.routeId) || new Set<string>();
+            set.add(node.id);
+            waypointInserts.set(entry.routeId, set);
+            skippedAsWaypoint++;
+            return true;
+          }
+        }
+      }
+      return false;
+    }
 
     // Index
     const nodeById = new Map(nodes.map(n => [n.id, n]));
@@ -144,6 +204,9 @@ Deno.serve(async (req) => {
     const addRoute = (a: Node, b: Node, meta?: Record<string, any>) => {
       const key = routeKey(a.id, b.id);
       if (routeSet.has(key)) return; // also blocks duplicates of protected pairs
+      // Skip generated edges that would visually duplicate a protected route
+      // passing through one endpoint's hex; instead register as waypoint.
+      if (tryRegisterAsWaypoint(a, b)) { routeSet.add(key); return; }
       routeSet.add(key);
       const dist = axialDist(a.hex_q, a.hex_r, b.hex_q, b.hex_r);
       const routeType = inferRouteType(a, b);
@@ -271,6 +334,22 @@ Deno.serve(async (req) => {
       if (error) console.error("Insert batch error:", error);
     }
 
+    // Persist newly-discovered waypoint nodes onto protected routes' metadata
+    if (waypointInserts.size > 0) {
+      const protectedById = new Map((protectedRows || []).map((r: any) => [r.id, r]));
+      for (const [routeId, nodeIds] of waypointInserts.entries()) {
+        const row: any = protectedById.get(routeId);
+        if (!row) continue;
+        const meta = row.metadata || {};
+        const existing: string[] = Array.isArray(meta.waypoint_node_ids) ? meta.waypoint_node_ids : [];
+        const merged = Array.from(new Set([...existing, ...nodeIds]));
+        if (merged.length === existing.length) continue;
+        await sb.from("province_routes")
+          .update({ metadata: { ...meta, waypoint_node_ids: merged } })
+          .eq("id", routeId);
+      }
+    }
+
     // Stats
     const nodeDegree: Record<string, number> = {};
     for (const r of routes) {
@@ -289,6 +368,8 @@ Deno.serve(async (req) => {
       ok: true,
       routes_created: routes.length,
       protected_routes_preserved: protectedCount,
+      skipped_as_waypoint: skippedAsWaypoint,
+      waypoint_routes_updated: waypointInserts.size,
       by_type: byType,
       by_tier_link: byTierLink,
       max_degree: maxDegree,
