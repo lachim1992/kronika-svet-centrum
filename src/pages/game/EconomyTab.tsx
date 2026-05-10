@@ -308,6 +308,11 @@ const EconomyTab = ({ sessionId, currentPlayerName, currentTurn, cities, realm, 
           )}
         </TabsContent>
 
+        {/* ═══ TRADE SYSTEMS TAB ═══ */}
+        <TabsContent value="trade_systems" className="space-y-5 animate-fade-in">
+          <TradeSystemsSubTab sessionId={sessionId} playerName={currentPlayerName} />
+        </TabsContent>
+
         {/* ═══ CITIES TAB ═══ */}
         <TabsContent value="cities" className="space-y-5 animate-fade-in">
           <div className="rounded-xl border border-border/40 bg-card/50 overflow-hidden">
