@@ -59,6 +59,9 @@ export default function NeutralNodePanel({ sessionId, playerName, currentTurn, n
   const [system, setSystem] = useState<SystemInfo | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
+  const [joinDialogOpen, setJoinDialogOpen] = useState(false);
+  const [mySystems, setMySystems] = useState<Array<{ id: string; system_key: string; node_count: number; hasRoute: boolean }>>([]);
+  const [loadingSystems, setLoadingSystems] = useState(false);
 
   const isMine = !!node.controlled_by && node.controlled_by === playerName;
   const isForeign = !!node.controlled_by && node.controlled_by !== playerName && !node.is_neutral;
