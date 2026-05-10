@@ -432,9 +432,20 @@ export default function NeutralNodePanel({ sessionId, playerName, currentTurn, n
           {busy === "BLOCK_NODE_ANNEXATION" ? <Loader2 className="h-3 w-3 animate-spin" /> : <Shield className="h-3 w-3" />}
           {blockedByMe ? `Blok aktivní do t. ${blockade!.blocked_until_turn}` : "Diplomaticky zablokovat anexi (3 tahy)"}
         </Button>
+        <Button size="sm" variant="secondary" className="text-xs gap-2" disabled={!!busy || link?.link_status === "protected" || link?.link_status === "vassalized"}
+          onClick={() => dispatch("ESTABLISH_PROTECTORATE")}>
+          {busy === "ESTABLISH_PROTECTORATE" ? <Loader2 className="h-3 w-3 animate-spin" /> : <ShieldCheck className="h-3 w-3" />}
+          Ustavit protektorát (tlak ≥ 25, ekon ≥ 15)
+        </Button>
+        <Button size="sm" variant="secondary" className="text-xs gap-2" disabled={!!busy || link?.link_status === "vassalized"}
+          onClick={() => dispatch("VASSALIZE_NODE")}>
+          {busy === "VASSALIZE_NODE" ? <Loader2 className="h-3 w-3 animate-spin" /> : <Anchor className="h-3 w-3" />}
+          Vasalizovat (tlak ≥ 45, ekon ≥ 20, pol ≥ 20)
+        </Button>
         <Button size="sm" variant="destructive" className="text-xs gap-2" disabled={!!busy || annexBlocked} onClick={() => dispatch("ANNEX_NODE")}>
           {busy === "ANNEX_NODE" ? <Loader2 className="h-3 w-3 animate-spin" /> : <Flag className="h-3 w-3" />} Anektovat
         </Button>
+        {JoinSystemButton}
         {BuildRouteButton}
         {annexBlocked && (
           <p className="text-[10px] text-muted-foreground italic">
