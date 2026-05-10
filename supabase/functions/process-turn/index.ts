@@ -829,7 +829,7 @@ Deno.serve(async (req) => {
     // Strategic resource wealth multipliers
     const copperMult = STRATEGIC_TIER_BONUSES.copper[realm.strategic_copper_tier || 0]?.wealth_mult || 1.0;
     const goldMult = STRATEGIC_TIER_BONUSES.gold[realm.strategic_gold_tier || 0]?.wealth_mult || 1.0;
-    const taxRateModifier = (1 + (taxRateModifier_law / 100)); // legacy law modifier (kept for compat)
+    const lawTaxMult = 1 + (taxRateModifier / 100); // legacy law modifier (kept for compat)
 
     // ── GDP volumes (gross, before tax) ──
     const gdp_domestic = wealthDomesticComponent;
