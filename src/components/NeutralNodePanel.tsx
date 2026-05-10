@@ -282,7 +282,9 @@ export default function NeutralNodePanel({ sessionId, playerName, currentTurn, n
           <p className="text-muted-foreground">Tento uzel je pod tvou plnou kontrolou a přispívá plnou produkcí.</p>
         </div>
         {TradeSystemBlock}
+        {JoinSystemButton}
         {BuildRouteButton}
+        {JoinDialog}
       </div>
     );
   }
@@ -334,7 +336,7 @@ export default function NeutralNodePanel({ sessionId, playerName, currentTurn, n
   // ─── Neutral discovered — full panel (original behavior) ───────────────
   if (!isNeutral) {
     // Unowned, non-neutral — minimal
-    return <div className="space-y-3">{TradeSystemBlock}{BuildRouteButton}</div>;
+    return <div className="space-y-3">{TradeSystemBlock}{JoinSystemButton}{BuildRouteButton}{JoinDialog}</div>;
   }
 
   const pressure = integrationPressure(influence);
