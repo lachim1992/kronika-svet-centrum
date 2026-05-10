@@ -1933,14 +1933,13 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
                   </div>
                 )}
 
-                {(n.is_neutral || (n.controlled_by === playerName && n.discovered)) && (
-                  <NeutralNodePanel
-                    sessionId={sessionId}
-                    playerName={playerName || ""}
-                    node={n as any}
-                    onChanged={() => { fetchNodes(); }}
-                  />
-                )}
+                <NeutralNodePanel
+                  sessionId={sessionId}
+                  playerName={playerName || ""}
+                  currentTurn={currentTurn}
+                  node={n as any}
+                  onChanged={() => { fetchNodes(); }}
+                />
 
                 <div className="p-3 rounded-lg border border-border bg-muted/30 space-y-2">
                   <p className="text-xs font-display font-semibold flex items-center gap-1.5">

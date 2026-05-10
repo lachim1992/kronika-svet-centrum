@@ -350,6 +350,37 @@ Deno.serve(async (req) => {
       }
     }
 
+    // ── Auto-discover neutral nodes connected to player-controlled nodes via complete routes ──
+    try {
+      const { data: allCompleteRoutes } = await sb
+        .from("province_routes")
+        .select("node_a, node_b")
+        .eq("session_id", session_id)
+        .eq("construction_state", "complete");
+      const { data: nodeRows } = await sb
+        .from("province_nodes")
+        .select("id, is_neutral, discovered, controlled_by")
+        .eq("session_id", session_id);
+      const nodeMap = new Map<string, any>((nodeRows || []).map((n: any) => [n.id, n]));
+      const seen = new Set<string>();
+      for (const r of allCompleteRoutes || []) {
+        const a = nodeMap.get((r as any).node_a);
+        const b = nodeMap.get((r as any).node_b);
+        if (!a || !b) continue;
+        const pairs: { id: string; discoverer: string }[] = [];
+        if (a.is_neutral && !a.discovered && b.controlled_by) pairs.push({ id: a.id, discoverer: b.controlled_by });
+        if (b.is_neutral && !b.discovered && a.controlled_by) pairs.push({ id: b.id, discoverer: a.controlled_by });
+        for (const u of pairs) {
+          if (seen.has(u.id)) continue; seen.add(u.id);
+          await sb.from("province_nodes")
+            .update({ discovered: true, discovered_by: u.discoverer, discovered_at: new Date().toISOString() })
+            .eq("id", u.id).eq("discovered", false);
+        }
+      }
+    } catch (e) {
+      console.warn("auto-discovery pass failed:", (e as Error).message);
+    }
+
     // Stats
     const nodeDegree: Record<string, number> = {};
     for (const r of routes) {
