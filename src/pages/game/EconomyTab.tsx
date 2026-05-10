@@ -196,6 +196,9 @@ const EconomyTab = ({ sessionId, currentPlayerName, currentTurn, cities, realm, 
             <TabsTrigger value="fiscal" className="text-xs font-display rounded-lg data-[state=active]:bg-card data-[state=active]:shadow-sm whitespace-nowrap px-3">
               🏛️ Příjmy státu
             </TabsTrigger>
+            <TabsTrigger value="trade_systems" className="text-xs font-display rounded-lg data-[state=active]:bg-card data-[state=active]:shadow-sm whitespace-nowrap px-3">
+              🌐 Trade systems
+            </TabsTrigger>
             <TabsTrigger value="cities" className="text-xs font-display rounded-lg data-[state=active]:bg-card data-[state=active]:shadow-sm whitespace-nowrap px-3">
               🏙️ Sídla
             </TabsTrigger>
