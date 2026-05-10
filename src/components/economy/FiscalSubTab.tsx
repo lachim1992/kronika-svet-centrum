@@ -46,6 +46,18 @@ const FiscalSubTab = ({ realm, sessionId, playerName, onRefetch }: Props) => {
     { icon: "🎯", label: "Export capture", value: fi.exportCapture },
   ];
 
+  // Pillar 2 transparency — raw inputs from compute-trade-flows
+  const wealthDomesticComponent = Number(realm?.wealth_domestic_component ?? 0);
+  const wealthMarketShare = Number(realm?.wealth_market_share ?? 0);
+  const PILLAR2_DOMESTIC_WEIGHT = 0.4;
+  const PILLAR2_MARKET_WEIGHT = 0.6;
+
+  // Pillar 1 transparency — poll-tax vs city-wealth tax
+  const totalPopulation = Number(realm?.total_population ?? 0);
+  const POLL_TAX_PER_CAPITA = 0.002;
+  const pollTaxRaw = totalPopulation * POLL_TAX_PER_CAPITA;
+  const cityWealthTaxRaw = Math.max(0, fi.popTax - pollTaxRaw * (1 + (Number(realm?.tax_rate_modifier ?? 0) / 100)));
+
   const maxRevenue = Math.max(...pillars.map(r => r.value), 1);
 
   const handleIdeologySwitch = async (newIdeology: string) => {
