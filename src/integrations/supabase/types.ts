@@ -8193,10 +8193,15 @@ export type Database = {
           labor_reserve: number
           last_processed_turn: number
           last_turn_faith_delta: number | null
+          last_turn_gdp_domestic: number
+          last_turn_gdp_extraction: number
+          last_turn_gdp_market: number
+          last_turn_gdp_transit: number
           last_turn_grain_cons: number
           last_turn_grain_net: number
           last_turn_grain_prod: number
           last_turn_iron_prod: number
+          last_turn_laffer_loss: number
           last_turn_stone_prod: number
           last_turn_wood_prod: number
           logistic_capacity: number
@@ -8237,6 +8242,11 @@ export type Database = {
           tax_extraction: number | null
           tax_market: number | null
           tax_population: number | null
+          tax_rate_domestic: number
+          tax_rate_extraction: number
+          tax_rate_market: number
+          tax_rate_poll: number
+          tax_rate_transit: number
           tax_transit: number | null
           technological_prestige: number
           total_capacity: number
@@ -8285,10 +8295,15 @@ export type Database = {
           labor_reserve?: number
           last_processed_turn?: number
           last_turn_faith_delta?: number | null
+          last_turn_gdp_domestic?: number
+          last_turn_gdp_extraction?: number
+          last_turn_gdp_market?: number
+          last_turn_gdp_transit?: number
           last_turn_grain_cons?: number
           last_turn_grain_net?: number
           last_turn_grain_prod?: number
           last_turn_iron_prod?: number
+          last_turn_laffer_loss?: number
           last_turn_stone_prod?: number
           last_turn_wood_prod?: number
           logistic_capacity?: number
@@ -8329,6 +8344,11 @@ export type Database = {
           tax_extraction?: number | null
           tax_market?: number | null
           tax_population?: number | null
+          tax_rate_domestic?: number
+          tax_rate_extraction?: number
+          tax_rate_market?: number
+          tax_rate_poll?: number
+          tax_rate_transit?: number
           tax_transit?: number | null
           technological_prestige?: number
           total_capacity?: number
@@ -8377,10 +8397,15 @@ export type Database = {
           labor_reserve?: number
           last_processed_turn?: number
           last_turn_faith_delta?: number | null
+          last_turn_gdp_domestic?: number
+          last_turn_gdp_extraction?: number
+          last_turn_gdp_market?: number
+          last_turn_gdp_transit?: number
           last_turn_grain_cons?: number
           last_turn_grain_net?: number
           last_turn_grain_prod?: number
           last_turn_iron_prod?: number
+          last_turn_laffer_loss?: number
           last_turn_stone_prod?: number
           last_turn_wood_prod?: number
           logistic_capacity?: number
@@ -8421,6 +8446,11 @@ export type Database = {
           tax_extraction?: number | null
           tax_market?: number | null
           tax_population?: number | null
+          tax_rate_domestic?: number
+          tax_rate_extraction?: number
+          tax_rate_market?: number
+          tax_rate_poll?: number
+          tax_rate_transit?: number
           tax_transit?: number | null
           technological_prestige?: number
           total_capacity?: number
