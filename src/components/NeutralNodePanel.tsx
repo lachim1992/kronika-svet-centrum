@@ -104,12 +104,15 @@ export default function NeutralNodePanel({ sessionId, playerName, currentTurn, n
   const dispatch = async (commandType: string, payload: Record<string, unknown> = {}) => {
     setBusy(commandType);
     try {
-      const { data, error } = await supabase.functions.invoke("command-dispatch", {
-        body: { session_id: sessionId, player_name: playerName, command_type: commandType, payload: { node_id: node.id, ...payload } },
+      const { dispatchCommand } = await import("@/lib/commands");
+      const res = await dispatchCommand({
+        sessionId,
+        actor: { name: playerName, type: "player" },
+        commandType,
+        commandPayload: { node_id: node.id, ...payload },
       });
-      if (error) throw error;
-      if (data?.error) throw new Error(data.error);
-      toast.success(data?.message || "Akce provedena");
+      if (!res.ok) throw new Error(res.error || "Unknown");
+      toast.success("Akce provedena");
       await load();
       onChanged?.();
     } catch (e) {
