@@ -1498,6 +1498,12 @@ Deno.serve(async (req) => {
       wealth_domestic_market: pillarDomesticMarket,
       goods_wealth_fiscal: pillarGoodsFiscal,
       wealth_route_commerce: pillarRouteCommerce,
+      // ── Lafferian GDP volumes (informational, for UI sliders + transparency) ──
+      last_turn_gdp_domestic:   Math.round(gdp_domestic * 10) / 10,
+      last_turn_gdp_market:     Math.round(gdp_market * 10) / 10,
+      last_turn_gdp_transit:    Math.round(gdp_transit * 10) / 10,
+      last_turn_gdp_extraction: Math.round(gdp_extraction * 10) / 10,
+      last_turn_laffer_loss:    lafferLoss,
       // Prestige sub-types
       military_prestige: militaryPrestige,
       cultural_prestige: culturalPrestige,
