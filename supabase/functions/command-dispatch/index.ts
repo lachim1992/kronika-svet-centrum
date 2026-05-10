@@ -3548,7 +3548,106 @@ async function executeBlockNodeAnnexation(
   }], { node_id: nodeId, blocked_until_turn: blockedUntil, duration_turns: durationTurns });
 }
 
-// ─── Patch 14 — Public rumors about discoveries & annexations ───
+// ─── Patch 16 — Protectorate / Vassalize / Join Trade System ───
+
+const NEUTRAL_LINK_THRESHOLDS: Record<string, { pressure: number; econ?: number; pol?: number; mil?: number; level: number; label: string }> = {
+  protected: { pressure: 25, econ: 15, level: 2, label: "Protektorát" },
+  vassalized: { pressure: 45, econ: 20, pol: 20, level: 3, label: "Vasalizace" },
+};
+
+async function executeUpgradeNeutralLink(
+  supabase: any, base: any, actor: Actor, payload: any,
+  commandId: string, sessionId: string, turnNumber: number,
+  targetStatus: "protected" | "vassalized",
+): Promise<CommandResult> {
+  const nodeId = String(payload?.node_id || "");
+  if (!nodeId) return { events: [], error: "node_id required", status: 400 };
+
+  const r = await loadNeutralNodeForActor(supabase, sessionId, nodeId, actor.name);
+  if (r.error) return { events: [], error: r.error, status: r.status };
+  const node = r.node!;
+
+  const cfg = NEUTRAL_LINK_THRESHOLDS[targetStatus];
+  const inf = await loadOrInitInfluence(supabase, sessionId, actor.name, nodeId);
+  const pressure = inf.economic_influence * 0.45 + inf.political_influence * 0.35 + inf.military_pressure * 0.20;
+  if (pressure < cfg.pressure
+    || (cfg.econ && inf.economic_influence < cfg.econ)
+    || (cfg.pol && inf.political_influence < cfg.pol)
+    || (cfg.mil && inf.military_pressure < cfg.mil)) {
+    return {
+      events: [], status: 409,
+      error: `${cfg.label} vyžaduje tlak ≥ ${cfg.pressure}${cfg.econ ? `, ekon. ≥ ${cfg.econ}` : ""}${cfg.pol ? `, pol. ≥ ${cfg.pol}` : ""} (máš ${pressure.toFixed(1)}, ekon. ${inf.economic_influence.toFixed(1)}, pol. ${inf.political_influence.toFixed(1)}).`,
+    };
+  }
+
+  const blockade = await loadActiveBlockade(supabase, sessionId, nodeId, turnNumber);
+  if (blockade && blockade.blocked_by_player !== actor.name) {
+    return { events: [], status: 409, error: `${cfg.label} blokován hráčem ${blockade.blocked_by_player} do tahu ${blockade.blocked_until_turn}.` };
+  }
+
+  const link = await upsertTradeLink(supabase, sessionId, actor.name, nodeId, {
+    link_status: targetStatus, trade_level: cfg.level,
+  });
+
+  const ctx = nodeContext(node);
+  return await insertEvents(supabase, commandId, [{
+    ...base, event_type: targetStatus === "protected" ? "node_protectorate" : "node_vassalized",
+    note: `${actor.name} ustavil ${cfg.label.toLowerCase()} nad ${node.name}${ctx.suffix}.`,
+    importance: "high",
+    reference: { node_id: nodeId, ...ctx.tags, link, pressure },
+  }], { link, pressure });
+}
+
+async function executeJoinTradeSystem(
+  supabase: any, base: any, actor: Actor, payload: any,
+  commandId: string, sessionId: string, turnNumber: number,
+): Promise<CommandResult> {
+  const nodeId = String(payload?.node_id || "");
+  const tradeSystemId = String(payload?.trade_system_id || "");
+  if (!nodeId || !tradeSystemId) return { events: [], error: "node_id & trade_system_id required", status: 400 };
+
+  const { data: node } = await supabase
+    .from("province_nodes")
+    .select("id, name, trade_system_id, controlled_by, is_neutral")
+    .eq("session_id", sessionId).eq("id", nodeId).maybeSingle();
+  if (!node) return { events: [], error: "Node not found", status: 404 };
+
+  const { data: sys } = await supabase
+    .from("trade_systems")
+    .select("id, system_key, member_players")
+    .eq("id", tradeSystemId).eq("session_id", sessionId).maybeSingle();
+  if (!sys) return { events: [], error: "Trade system not found", status: 404 };
+  if (!(sys.member_players || []).includes(actor.name)) {
+    return { events: [], error: "Nejsi členem tohoto obchodního systému.", status: 403 };
+  }
+
+  // Verify a route exists between this node and any node already in the system
+  const { data: sysNodes } = await supabase
+    .from("province_nodes")
+    .select("id").eq("session_id", sessionId).eq("trade_system_id", tradeSystemId);
+  const sysNodeIds = (sysNodes || []).map((n: any) => n.id);
+  if (sysNodeIds.length === 0) return { events: [], error: "Systém nemá žádné uzly.", status: 409 };
+
+  const { data: routes } = await supabase
+    .from("province_routes")
+    .select("id, node_a, node_b")
+    .eq("session_id", sessionId)
+    .or(`and(node_a.eq.${nodeId},node_b.in.(${sysNodeIds.join(",")})),and(node_b.eq.${nodeId},node_a.in.(${sysNodeIds.join(",")}))`);
+  if (!routes || routes.length === 0) {
+    return { events: [], status: 409, error: "Mezi uzlem a obchodním systémem neexistuje cesta. Postav silnici nebo přístav." };
+  }
+
+  await supabase.from("province_nodes").update({
+    trade_system_id: tradeSystemId, updated_at: new Date().toISOString(),
+  }).eq("id", nodeId);
+
+  return await insertEvents(supabase, commandId, [{
+    ...base, event_type: "node_joined_trade_system",
+    note: `${actor.name} připojil ${node.name} k obchodnímu systému #${sys.system_key.slice(0, 6)}.`,
+    importance: "normal",
+    reference: { node_id: nodeId, trade_system_id: tradeSystemId },
+  }], { trade_system_id: tradeSystemId });
+}
 // Other players see vague signals so they can react (form rivalries, race for nodes).
 // Rumors live in the global `rumors` table; UNIQUE source_hash dedupes accidental retries.
 
