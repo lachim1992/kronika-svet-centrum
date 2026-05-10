@@ -1,9 +1,10 @@
 import { useEffect, useState, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
-import { Loader2, Coins, Crown, Swords, Flag, Shield, AlertTriangle, Eye, Network, Hammer, Handshake } from "lucide-react";
+import { Loader2, Coins, Crown, Swords, Flag, Shield, AlertTriangle, Eye, Network, Hammer, Handshake, Link2, ShieldCheck, Anchor } from "lucide-react";
 import { toast } from "sonner";
 import { emitFocusBuild } from "@/lib/worldMapBus";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 
 interface NeutralNodePanelProps {
   sessionId: string;
@@ -58,6 +59,9 @@ export default function NeutralNodePanel({ sessionId, playerName, currentTurn, n
   const [system, setSystem] = useState<SystemInfo | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
+  const [joinDialogOpen, setJoinDialogOpen] = useState(false);
+  const [mySystems, setMySystems] = useState<Array<{ id: string; system_key: string; node_count: number; hasRoute: boolean }>>([]);
+  const [loadingSystems, setLoadingSystems] = useState(false);
 
   const isMine = !!node.controlled_by && node.controlled_by === playerName;
   const isForeign = !!node.controlled_by && node.controlled_by !== playerName && !node.is_neutral;
@@ -113,6 +117,12 @@ export default function NeutralNodePanel({ sessionId, playerName, currentTurn, n
       });
       if (!res.ok) throw new Error(res.error || "Unknown");
       toast.success("Akce provedena");
+      // Refresh trade flow particles immediately for visual feedback
+      if (["OPEN_TRADE_WITH_NODE", "ESTABLISH_PROTECTORATE", "VASSALIZE_NODE", "JOIN_TRADE_SYSTEM"].includes(commandType)) {
+        supabase.functions.invoke("compute-trade-flows", { body: { session_id: sessionId } })
+          .then(() => onChanged?.())
+          .catch(() => { /* non-blocking */ });
+      }
       await load();
       onChanged?.();
     } catch (e) {
@@ -192,10 +202,75 @@ export default function NeutralNodePanel({ sessionId, playerName, currentTurn, n
     </div>
   );
 
+  const openJoinDialog = async () => {
+    setJoinDialogOpen(true);
+    setLoadingSystems(true);
+    try {
+      const { data: sys } = await supabase
+        .from("trade_systems")
+        .select("id, system_key, node_count, member_players")
+        .eq("session_id", sessionId);
+      const mine = (sys || []).filter((s: any) => (s.member_players || []).includes(playerName));
+      const enriched = await Promise.all(mine.map(async (s: any) => {
+        const { data: nodes } = await supabase.from("province_nodes").select("id").eq("session_id", sessionId).eq("trade_system_id", s.id);
+        const ids = (nodes || []).map((n: any) => n.id);
+        let hasRoute = false;
+        if (ids.length > 0) {
+          const { data: r } = await supabase.from("province_routes")
+            .select("id").eq("session_id", sessionId)
+            .or(`and(node_a.eq.${node.id},node_b.in.(${ids.join(",")})),and(node_b.eq.${node.id},node_a.in.(${ids.join(",")}))`)
+            .limit(1);
+          hasRoute = (r || []).length > 0;
+        }
+        return { id: s.id, system_key: s.system_key, node_count: s.node_count, hasRoute };
+      }));
+      setMySystems(enriched);
+    } finally { setLoadingSystems(false); }
+  };
+
   const BuildRouteButton = (node.hex_q != null && node.hex_r != null) && (
     <Button size="sm" variant="outline" className="w-full text-xs gap-2" onClick={() => { emitFocusBuild(node.id); toast.message("Vyber cílový hex pro cestu"); }}>
       <Hammer className="h-3 w-3" /> Postavit cestu odsud
     </Button>
+  );
+
+  const JoinSystemButton = !node.trade_system_id && (
+    <Button size="sm" variant="outline" className="w-full text-xs gap-2" onClick={openJoinDialog}>
+      <Link2 className="h-3 w-3" /> Připojit k obchodnímu systému
+    </Button>
+  );
+
+  const JoinDialog = (
+    <Dialog open={joinDialogOpen} onOpenChange={setJoinDialogOpen}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Připojit „{node.name}" k obchodnímu systému</DialogTitle>
+          <DialogDescription>Připojení vyžaduje existující cestu mezi uzlem a alespoň jedním uzlem v daném systému.</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-2">
+          {loadingSystems ? <Loader2 className="h-4 w-4 animate-spin" /> : mySystems.length === 0 ? (
+            <p className="text-xs text-muted-foreground">Nemáš žádné obchodní systémy.</p>
+          ) : mySystems.map((s) => (
+            <div key={s.id} className="p-2 rounded border border-border bg-muted/20 flex items-center justify-between gap-2">
+              <div className="text-xs">
+                <p className="font-mono">#{s.system_key.slice(0, 6)}</p>
+                <p className="text-muted-foreground">{s.node_count} uzlů · {s.hasRoute ? "✓ cesta existuje" : "✗ chybí cesta"}</p>
+              </div>
+              {s.hasRoute ? (
+                <Button size="sm" disabled={!!busy} onClick={async () => {
+                  await dispatch("JOIN_TRADE_SYSTEM", { trade_system_id: s.id });
+                  setJoinDialogOpen(false);
+                }}>Připojit</Button>
+              ) : (
+                <Button size="sm" variant="outline" onClick={() => { setJoinDialogOpen(false); emitFocusBuild(node.id); toast.message("Vyber uzel ze systému jako cíl cesty"); }}>
+                  <Hammer className="h-3 w-3 mr-1" /> Postavit
+                </Button>
+              )}
+            </div>
+          ))}
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 
   // ─── Self-owned node ───────────────────────────────────────────────────
@@ -207,7 +282,9 @@ export default function NeutralNodePanel({ sessionId, playerName, currentTurn, n
           <p className="text-muted-foreground">Tento uzel je pod tvou plnou kontrolou a přispívá plnou produkcí.</p>
         </div>
         {TradeSystemBlock}
+        {JoinSystemButton}
         {BuildRouteButton}
+        {JoinDialog}
       </div>
     );
   }
@@ -259,7 +336,7 @@ export default function NeutralNodePanel({ sessionId, playerName, currentTurn, n
   // ─── Neutral discovered — full panel (original behavior) ───────────────
   if (!isNeutral) {
     // Unowned, non-neutral — minimal
-    return <div className="space-y-3">{TradeSystemBlock}{BuildRouteButton}</div>;
+    return <div className="space-y-3">{TradeSystemBlock}{JoinSystemButton}{BuildRouteButton}{JoinDialog}</div>;
   }
 
   const pressure = integrationPressure(influence);
@@ -357,9 +434,20 @@ export default function NeutralNodePanel({ sessionId, playerName, currentTurn, n
           {busy === "BLOCK_NODE_ANNEXATION" ? <Loader2 className="h-3 w-3 animate-spin" /> : <Shield className="h-3 w-3" />}
           {blockedByMe ? `Blok aktivní do t. ${blockade!.blocked_until_turn}` : "Diplomaticky zablokovat anexi (3 tahy)"}
         </Button>
+        <Button size="sm" variant="secondary" className="text-xs gap-2" disabled={!!busy || link?.link_status === "protected" || link?.link_status === "vassalized"}
+          onClick={() => dispatch("ESTABLISH_PROTECTORATE")}>
+          {busy === "ESTABLISH_PROTECTORATE" ? <Loader2 className="h-3 w-3 animate-spin" /> : <ShieldCheck className="h-3 w-3" />}
+          Ustavit protektorát (tlak ≥ 25, ekon ≥ 15)
+        </Button>
+        <Button size="sm" variant="secondary" className="text-xs gap-2" disabled={!!busy || link?.link_status === "vassalized"}
+          onClick={() => dispatch("VASSALIZE_NODE")}>
+          {busy === "VASSALIZE_NODE" ? <Loader2 className="h-3 w-3 animate-spin" /> : <Anchor className="h-3 w-3" />}
+          Vasalizovat (tlak ≥ 45, ekon ≥ 20, pol ≥ 20)
+        </Button>
         <Button size="sm" variant="destructive" className="text-xs gap-2" disabled={!!busy || annexBlocked} onClick={() => dispatch("ANNEX_NODE")}>
           {busy === "ANNEX_NODE" ? <Loader2 className="h-3 w-3 animate-spin" /> : <Flag className="h-3 w-3" />} Anektovat
         </Button>
+        {JoinSystemButton}
         {BuildRouteButton}
         {annexBlocked && (
           <p className="text-[10px] text-muted-foreground italic">
@@ -369,6 +457,7 @@ export default function NeutralNodePanel({ sessionId, playerName, currentTurn, n
           </p>
         )}
       </div>
+      {JoinDialog}
     </div>
   );
 }
