@@ -46,6 +46,18 @@ const FiscalSubTab = ({ realm, sessionId, playerName, onRefetch }: Props) => {
     { icon: "🎯", label: "Export capture", value: fi.exportCapture },
   ];
 
+  // Pillar 2 transparency — raw inputs from compute-trade-flows
+  const wealthDomesticComponent = Number(realm?.wealth_domestic_component ?? 0);
+  const wealthMarketShare = Number(realm?.wealth_market_share ?? 0);
+  const PILLAR2_DOMESTIC_WEIGHT = 0.4;
+  const PILLAR2_MARKET_WEIGHT = 0.6;
+
+  // Pillar 1 transparency — poll-tax vs city-wealth tax
+  const totalPopulation = Number(realm?.total_population ?? 0);
+  const POLL_TAX_PER_CAPITA = 0.002;
+  const pollTaxRaw = totalPopulation * POLL_TAX_PER_CAPITA;
+  const cityWealthTaxRaw = Math.max(0, fi.popTax - pollTaxRaw * (1 + (Number(realm?.tax_rate_modifier ?? 0) / 100)));
+
   const maxRevenue = Math.max(...pillars.map(r => r.value), 1);
 
   const handleIdeologySwitch = async (newIdeology: string) => {
@@ -115,6 +127,37 @@ const FiscalSubTab = ({ realm, sessionId, playerName, onRefetch }: Props) => {
               ))}
             </div>
           )}
+
+          {/* Pillar 1 transparency */}
+          <div className="pt-2 mt-2 border-t border-border/30 space-y-1">
+            <div className="text-[10px] uppercase tracking-wider text-muted-foreground">
+              Rozklad pilíře „Populační daň"
+            </div>
+            <div className="flex justify-between text-[11px] text-muted-foreground pl-3">
+              <span>👥 Poll-tax (populace × 0,2 %)</span>
+              <span className="font-mono">{pollTaxRaw.toFixed(1)}</span>
+            </div>
+            <div className="flex justify-between text-[11px] text-muted-foreground pl-3">
+              <span>🏛️ Daň z city wealth (layers.wealth)</span>
+              <span className="font-mono">{cityWealthTaxRaw.toFixed(1)}</span>
+            </div>
+          </div>
+
+          {/* Pillar 2 transparency */}
+          <div className="pt-2 mt-2 border-t border-border/30 space-y-1">
+            <div className="text-[10px] uppercase tracking-wider text-muted-foreground flex items-center gap-1">
+              Rozklad pilíře „Domácí trh"
+              <InfoTip side="right">Vstupy z trade-flow solveru. Domácí složka × 0,4 + tržní podíl × 0,6.</InfoTip>
+            </div>
+            <div className="flex justify-between text-[11px] text-muted-foreground pl-3">
+              <span>🏠 Domácí složka × 0,4</span>
+              <span className="font-mono">{wealthDomesticComponent.toFixed(1)} → {(wealthDomesticComponent * PILLAR2_DOMESTIC_WEIGHT).toFixed(1)}</span>
+            </div>
+            <div className="flex justify-between text-[11px] text-muted-foreground pl-3">
+              <span>🌍 Tržní podíl × 0,6</span>
+              <span className="font-mono">{wealthMarketShare.toFixed(1)} → {(wealthMarketShare * PILLAR2_MARKET_WEIGHT).toFixed(1)}</span>
+            </div>
+          </div>
 
           {/* Pillar summary footer */}
           <div className="pt-2 border-t border-border/30 grid grid-cols-4 gap-2 text-[10px] text-muted-foreground">

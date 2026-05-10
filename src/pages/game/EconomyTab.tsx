@@ -33,6 +33,7 @@ import FaithPanel from "@/components/economy/FaithPanel";
 import PopulationPanel from "@/components/economy/PopulationPanel";
 import MilitaryUpkeepPanel from "@/components/economy/MilitaryUpkeepPanel";
 import FiscalSubTab from "@/components/economy/FiscalSubTab";
+import TradeSystemsSubTab from "@/components/economy/TradeSystemsSubTab";
 import DemandFulfillmentPanel from "@/components/economy/DemandFulfillmentPanel";
 import MarketSharePanel from "@/components/economy/MarketSharePanel";
 import NeutralNodeContributionPanel from "@/components/economy/NeutralNodeContributionPanel";
@@ -195,6 +196,9 @@ const EconomyTab = ({ sessionId, currentPlayerName, currentTurn, cities, realm, 
             <TabsTrigger value="fiscal" className="text-xs font-display rounded-lg data-[state=active]:bg-card data-[state=active]:shadow-sm whitespace-nowrap px-3">
               🏛️ Příjmy státu
             </TabsTrigger>
+            <TabsTrigger value="trade_systems" className="text-xs font-display rounded-lg data-[state=active]:bg-card data-[state=active]:shadow-sm whitespace-nowrap px-3">
+              🌐 Trade systems
+            </TabsTrigger>
             <TabsTrigger value="cities" className="text-xs font-display rounded-lg data-[state=active]:bg-card data-[state=active]:shadow-sm whitespace-nowrap px-3">
               🏙️ Sídla
             </TabsTrigger>
@@ -302,6 +306,11 @@ const EconomyTab = ({ sessionId, currentPlayerName, currentTurn, cities, realm, 
           {realm && (
             <FiscalSubTab realm={realm} sessionId={sessionId} playerName={currentPlayerName} onRefetch={onRefetch} />
           )}
+        </TabsContent>
+
+        {/* ═══ TRADE SYSTEMS TAB ═══ */}
+        <TabsContent value="trade_systems" className="space-y-5 animate-fade-in">
+          <TradeSystemsSubTab sessionId={sessionId} playerName={currentPlayerName} />
         </TabsContent>
 
         {/* ═══ CITIES TAB ═══ */}
