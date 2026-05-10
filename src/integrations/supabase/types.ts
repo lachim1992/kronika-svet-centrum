@@ -366,6 +366,66 @@ export type Database = {
           },
         ]
       }
+      ai_faction_turn_summary: {
+        Row: {
+          actions_executed: number | null
+          actions_failed: number | null
+          actions_planned: number | null
+          attacks_attempted: number | null
+          builds_attempted: number | null
+          created_at: string
+          doctrine: string | null
+          faction_name: string
+          failure_reasons: string[] | null
+          id: string
+          internal_thought: string | null
+          power_delta: number | null
+          recruits_attempted: number | null
+          session_id: string
+          turn_number: number
+          war_state: string | null
+          wealth_delta: number | null
+        }
+        Insert: {
+          actions_executed?: number | null
+          actions_failed?: number | null
+          actions_planned?: number | null
+          attacks_attempted?: number | null
+          builds_attempted?: number | null
+          created_at?: string
+          doctrine?: string | null
+          faction_name: string
+          failure_reasons?: string[] | null
+          id?: string
+          internal_thought?: string | null
+          power_delta?: number | null
+          recruits_attempted?: number | null
+          session_id: string
+          turn_number: number
+          war_state?: string | null
+          wealth_delta?: number | null
+        }
+        Update: {
+          actions_executed?: number | null
+          actions_failed?: number | null
+          actions_planned?: number | null
+          attacks_attempted?: number | null
+          builds_attempted?: number | null
+          created_at?: string
+          doctrine?: string | null
+          faction_name?: string
+          failure_reasons?: string[] | null
+          id?: string
+          internal_thought?: string | null
+          power_delta?: number | null
+          recruits_attempted?: number | null
+          session_id?: string
+          turn_number?: number
+          war_state?: string | null
+          wealth_delta?: number | null
+        }
+        Relationships: []
+      }
       ai_factions: {
         Row: {
           created_at: string
