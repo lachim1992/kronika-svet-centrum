@@ -457,6 +457,7 @@ export default function NeutralNodePanel({ sessionId, playerName, currentTurn, n
           </p>
         )}
       </div>
+      {JoinDialog}
     </div>
   );
 }
