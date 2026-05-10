@@ -142,14 +142,14 @@ export default function NeutralNodePanel({ sessionId, playerName, currentTurn, n
     if (!node.controlled_by) return;
     setBusy("PROPOSE_TREATY:" + treatyType);
     try {
-      const { data, error } = await supabase.functions.invoke("command-dispatch", {
-        body: {
-          session_id: sessionId, player_name: playerName, command_type: "PROPOSE_TREATY",
-          payload: { treatyType, partner: node.controlled_by, tariffFactor: 1.1 },
-        },
+      const { dispatchCommand } = await import("@/lib/commands");
+      const res = await dispatchCommand({
+        sessionId,
+        actor: { name: playerName, type: "player" },
+        commandType: "PROPOSE_TREATY",
+        commandPayload: { treatyType, partner: node.controlled_by, tariffFactor: 1.1 },
       });
-      if (error) throw error;
-      if (data?.error) throw new Error(data.error);
+      if (!res.ok) throw new Error(res.error || "Unknown");
       toast.success(`Návrh smlouvy (${treatyType}) odeslán hráči ${node.controlled_by}`);
     } catch (e) {
       toast.error("Chyba: " + (e as Error).message);
