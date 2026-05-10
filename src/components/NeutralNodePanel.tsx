@@ -1,9 +1,10 @@
 import { useEffect, useState, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
-import { Loader2, Coins, Crown, Swords, Flag, Shield, AlertTriangle, Eye, Network, Hammer, Handshake } from "lucide-react";
+import { Loader2, Coins, Crown, Swords, Flag, Shield, AlertTriangle, Eye, Network, Hammer, Handshake, Link2, ShieldCheck, Anchor } from "lucide-react";
 import { toast } from "sonner";
 import { emitFocusBuild } from "@/lib/worldMapBus";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 
 interface NeutralNodePanelProps {
   sessionId: string;
