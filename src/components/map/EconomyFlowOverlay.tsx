@@ -171,7 +171,14 @@ interface Props {
 }
 
 const CITY_NODE_TYPES = new Set(["primary_city", "secondary_city"]);
-const RESOURCE_NODE_TYPES = new Set(["resource_node", "village_cluster"]);
+// Includes neutral nodes (resource_outpost, neutral_settlement, trade_hub, port, shrine, religious_center)
+// so that once a neutral node is joined into a trade system / annexed / placed under protectorate
+// its supply route to the nearest player city renders as an animated flow.
+const RESOURCE_NODE_TYPES = new Set([
+  "resource_node", "village_cluster",
+  "resource_outpost", "neutral_settlement", "trade_hub",
+  "port", "shrine", "religious_center",
+]);
 
 const EconomyFlowOverlay = memo(({ sessionId, offsetX, offsetY, visible, categories, viewMode = "goods" }: Props) => {
   const [routes, setRoutes] = useState<RouteWithNodes[]>([]);
