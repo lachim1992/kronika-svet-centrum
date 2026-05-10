@@ -114,6 +114,12 @@ export default function NeutralNodePanel({ sessionId, playerName, currentTurn, n
       });
       if (!res.ok) throw new Error(res.error || "Unknown");
       toast.success("Akce provedena");
+      // Refresh trade flow particles immediately for visual feedback
+      if (["OPEN_TRADE_WITH_NODE", "ESTABLISH_PROTECTORATE", "VASSALIZE_NODE", "JOIN_TRADE_SYSTEM"].includes(commandType)) {
+        supabase.functions.invoke("compute-trade-flows", { body: { session_id: sessionId } })
+          .then(() => onChanged?.())
+          .catch(() => { /* non-blocking */ });
+      }
       await load();
       onChanged?.();
     } catch (e) {
