@@ -202,10 +202,75 @@ export default function NeutralNodePanel({ sessionId, playerName, currentTurn, n
     </div>
   );
 
+  const openJoinDialog = async () => {
+    setJoinDialogOpen(true);
+    setLoadingSystems(true);
+    try {
+      const { data: sys } = await supabase
+        .from("trade_systems")
+        .select("id, system_key, node_count, member_players")
+        .eq("session_id", sessionId);
+      const mine = (sys || []).filter((s: any) => (s.member_players || []).includes(playerName));
+      const enriched = await Promise.all(mine.map(async (s: any) => {
+        const { data: nodes } = await supabase.from("province_nodes").select("id").eq("session_id", sessionId).eq("trade_system_id", s.id);
+        const ids = (nodes || []).map((n: any) => n.id);
+        let hasRoute = false;
+        if (ids.length > 0) {
+          const { data: r } = await supabase.from("province_routes")
+            .select("id").eq("session_id", sessionId)
+            .or(`and(node_a.eq.${node.id},node_b.in.(${ids.join(",")})),and(node_b.eq.${node.id},node_a.in.(${ids.join(",")}))`)
+            .limit(1);
+          hasRoute = (r || []).length > 0;
+        }
+        return { id: s.id, system_key: s.system_key, node_count: s.node_count, hasRoute };
+      }));
+      setMySystems(enriched);
+    } finally { setLoadingSystems(false); }
+  };
+
   const BuildRouteButton = (node.hex_q != null && node.hex_r != null) && (
     <Button size="sm" variant="outline" className="w-full text-xs gap-2" onClick={() => { emitFocusBuild(node.id); toast.message("Vyber cílový hex pro cestu"); }}>
       <Hammer className="h-3 w-3" /> Postavit cestu odsud
     </Button>
+  );
+
+  const JoinSystemButton = !node.trade_system_id && (
+    <Button size="sm" variant="outline" className="w-full text-xs gap-2" onClick={openJoinDialog}>
+      <Link2 className="h-3 w-3" /> Připojit k obchodnímu systému
+    </Button>
+  );
+
+  const JoinDialog = (
+    <Dialog open={joinDialogOpen} onOpenChange={setJoinDialogOpen}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Připojit „{node.name}" k obchodnímu systému</DialogTitle>
+          <DialogDescription>Připojení vyžaduje existující cestu mezi uzlem a alespoň jedním uzlem v daném systému.</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-2">
+          {loadingSystems ? <Loader2 className="h-4 w-4 animate-spin" /> : mySystems.length === 0 ? (
+            <p className="text-xs text-muted-foreground">Nemáš žádné obchodní systémy.</p>
+          ) : mySystems.map((s) => (
+            <div key={s.id} className="p-2 rounded border border-border bg-muted/20 flex items-center justify-between gap-2">
+              <div className="text-xs">
+                <p className="font-mono">#{s.system_key.slice(0, 6)}</p>
+                <p className="text-muted-foreground">{s.node_count} uzlů · {s.hasRoute ? "✓ cesta existuje" : "✗ chybí cesta"}</p>
+              </div>
+              {s.hasRoute ? (
+                <Button size="sm" disabled={!!busy} onClick={async () => {
+                  await dispatch("JOIN_TRADE_SYSTEM", { trade_system_id: s.id });
+                  setJoinDialogOpen(false);
+                }}>Připojit</Button>
+              ) : (
+                <Button size="sm" variant="outline" onClick={() => { setJoinDialogOpen(false); emitFocusBuild(node.id); toast.message("Vyber uzel ze systému jako cíl cesty"); }}>
+                  <Hammer className="h-3 w-3 mr-1" /> Postavit
+                </Button>
+              )}
+            </div>
+          ))}
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 
   // ─── Self-owned node ───────────────────────────────────────────────────
