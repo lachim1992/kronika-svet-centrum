@@ -810,8 +810,13 @@ Deno.serve(async (req) => {
     const goldMult = STRATEGIC_TIER_BONUSES.gold[realm.strategic_gold_tier || 0]?.wealth_mult || 1.0;
 
     // ── Pillar 1: Population Tax (centrální odvod) ──
+    //   = poll-tax z populace + odvod z layers.wealth (city wealth)
+    //   poll-tax garantuje minimální fiskální základ i když layers.wealth = 0
+    const POLL_TAX_PER_CAPITA = 0.002;
+    const polisBonus = 1 + myCities.filter(c => c.settlement_level === "polis" || c.settlement_level === "metropolis").length * 0.1;
+    const pollTaxComponent = totalPopulation * POLL_TAX_PER_CAPITA * polisBonus;
     const populationTaxBase = totalCityWealth * copperMult * goldMult;
-    const pillarPopTax = Math.round(populationTaxBase * taxMult * 10) / 10;
+    const pillarPopTax = Math.round((populationTaxBase + pollTaxComponent) * taxMult * 10) / 10;
 
     // ── Pillar 2: Trade & Market (v4.2 — from compute-trade-flows) ──
     // domestic_component * 0.4 + market_share * 0.6
