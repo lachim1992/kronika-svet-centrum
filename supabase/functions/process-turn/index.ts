@@ -851,7 +851,7 @@ Deno.serve(async (req) => {
     }
 
     // ── Per-pillar revenue with Lafferian dampening ──
-    const pillarPopTax       = Math.round(totalPopulation * laffer(tr_poll,       TAX_MAX.poll)       * tr_poll       * copperMult * goldMult * taxRateModifier * 10) / 10;
+    const pillarPopTax       = Math.round(totalPopulation * laffer(tr_poll,       TAX_MAX.poll)       * tr_poll       * copperMult * goldMult * lawTaxMult * 10) / 10;
     const pillarDomesticMarket = Math.round(gdp_domestic   * laffer(tr_domestic,  TAX_MAX.domestic)  * tr_domestic   * 10) / 10;
     const pillarMarketTariff   = Math.round(gdp_market     * laffer(tr_market,    TAX_MAX.market)    * tr_market     * 10) / 10;
     const pillarTransitToll    = Math.round(gdp_transit    * laffer(tr_transit,   TAX_MAX.transit)   * tr_transit    * 10) / 10;
