@@ -66,14 +66,14 @@ export default function NeutralNodePanel({ sessionId, playerName, currentTurn, n
   const load = useCallback(async () => {
     setLoading(true);
     const tasks: Promise<any>[] = [
-      supabase.from("world_node_outputs").select("basket_key, good_key, quantity, quality, exportable_ratio").eq("node_id", node.id),
+      Promise.resolve(supabase.from("world_node_outputs").select("basket_key, good_key, quantity, quality, exportable_ratio").eq("node_id", node.id)),
     ];
     if (isNeutral) {
       tasks.push(
-        supabase.from("node_influence").select("economic_influence, political_influence, military_pressure, resistance, integration_progress").eq("session_id", sessionId).eq("player_name", playerName).eq("node_id", node.id).maybeSingle(),
-        supabase.from("node_trade_links").select("link_status, trade_level").eq("session_id", sessionId).eq("player_name", playerName).eq("node_id", node.id).maybeSingle(),
-        supabase.from("node_influence").select("player_name, economic_influence, political_influence, military_pressure, resistance, integration_progress").eq("session_id", sessionId).eq("node_id", node.id).neq("player_name", playerName),
-        supabase.from("node_blockades").select("blocked_by_player, blocked_until_turn, reason").eq("session_id", sessionId).eq("node_id", node.id).order("blocked_until_turn", { ascending: false }).limit(1).maybeSingle(),
+        Promise.resolve(supabase.from("node_influence").select("economic_influence, political_influence, military_pressure, resistance, integration_progress").eq("session_id", sessionId).eq("player_name", playerName).eq("node_id", node.id).maybeSingle()),
+        Promise.resolve(supabase.from("node_trade_links").select("link_status, trade_level").eq("session_id", sessionId).eq("player_name", playerName).eq("node_id", node.id).maybeSingle()),
+        Promise.resolve(supabase.from("node_influence").select("player_name, economic_influence, political_influence, military_pressure, resistance, integration_progress").eq("session_id", sessionId).eq("node_id", node.id).neq("player_name", playerName)),
+        Promise.resolve(supabase.from("node_blockades").select("blocked_by_player, blocked_until_turn, reason").eq("session_id", sessionId).eq("node_id", node.id).order("blocked_until_turn", { ascending: false }).limit(1).maybeSingle()),
       );
     }
     const results = await Promise.all(tasks);
