@@ -34,6 +34,7 @@ import PopulationPanel from "@/components/economy/PopulationPanel";
 import MilitaryUpkeepPanel from "@/components/economy/MilitaryUpkeepPanel";
 import FiscalSubTab from "@/components/economy/FiscalSubTab";
 import TradeSystemsSubTab from "@/components/economy/TradeSystemsSubTab";
+import TaxPolicySubTab from "@/components/economy/TaxPolicySubTab";
 import DemandFulfillmentPanel from "@/components/economy/DemandFulfillmentPanel";
 import MarketSharePanel from "@/components/economy/MarketSharePanel";
 import NeutralNodeContributionPanel from "@/components/economy/NeutralNodeContributionPanel";
@@ -198,6 +199,9 @@ const EconomyTab = ({ sessionId, currentPlayerName, currentTurn, cities, realm, 
             </TabsTrigger>
             <TabsTrigger value="trade_systems" className="text-xs font-display rounded-lg data-[state=active]:bg-card data-[state=active]:shadow-sm whitespace-nowrap px-3">
               🌐 Trade systems
+            </TabsTrigger>
+            <TabsTrigger value="tax_policy" className="text-xs font-display rounded-lg data-[state=active]:bg-card data-[state=active]:shadow-sm whitespace-nowrap px-3">
+              ⚖️ Daňová politika
             </TabsTrigger>
             <TabsTrigger value="cities" className="text-xs font-display rounded-lg data-[state=active]:bg-card data-[state=active]:shadow-sm whitespace-nowrap px-3">
               🏙️ Sídla

@@ -345,6 +345,27 @@ async function executeCommand(
     case "SET_SPORT_FUNDING":
       return await executeSetSportFunding(supabase, base, actor, payload, commandId, sessionId, turnNumber);
 
+    case "SET_TAX_RATES": {
+      const realm = await getRealmFull(supabase, sessionId, actor.name);
+      if (!realm) return { events: [], error: "Realm not found" };
+      const clamp = (v: any, max: number) => Math.max(0, Math.min(max, Number(v ?? 0)));
+      const upd: Record<string, number> = {};
+      if (payload.domestic   !== undefined) upd.tax_rate_domestic   = clamp(payload.domestic,   0.5);
+      if (payload.market     !== undefined) upd.tax_rate_market     = clamp(payload.market,     0.4);
+      if (payload.transit    !== undefined) upd.tax_rate_transit    = clamp(payload.transit,    0.3);
+      if (payload.extraction !== undefined) upd.tax_rate_extraction = clamp(payload.extraction, 0.5);
+      if (payload.poll       !== undefined) upd.tax_rate_poll       = clamp(payload.poll,       0.02);
+      if (Object.keys(upd).length === 0) return { events: [], error: "No tax rates provided" };
+      await supabase.from("realm_resources").update(upd).eq("id", realm.id);
+      return insertEvents(supabase, commandId, [{
+        ...base,
+        event_type: "policy",
+        note: payload.note || `${actor.name} upravil daňovou politiku.`,
+        importance: "normal",
+        reference: { ...upd },
+      }]);
+    }
+
     case "WONDER_COMPLETED":
       return insertEventsWithChronicle(supabase, commandId, sessionId, turnNumber, [{
         ...base,
