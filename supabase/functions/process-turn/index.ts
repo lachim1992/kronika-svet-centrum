@@ -873,6 +873,7 @@ Deno.serve(async (req) => {
     const sportFundingPct = realm.sport_funding_pct || 0;
     let newGoldReserve = (realm.gold_reserve || 0) + wealthIncome - armyWealthUpkeep;
 
+    const combinedWealth = totalWealthIncome; // backward-compat alias for ledger writes
     logEntries.push(`💰 Lafferian: pop=${pillarPopTax} dom=${pillarDomesticMarket} mkt=${pillarMarketTariff} trn=${pillarTransitToll} ext=${pillarExtractionTax} | GDP=${totalGDP.toFixed(0)} loss=${(lafferLoss*100).toFixed(0)}% → příjem=${wealthIncome}`);
 
     // Load diplomatic pacts
