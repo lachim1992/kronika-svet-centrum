@@ -128,6 +128,37 @@ const FiscalSubTab = ({ realm, sessionId, playerName, onRefetch }: Props) => {
             </div>
           )}
 
+          {/* Pillar 1 transparency */}
+          <div className="pt-2 mt-2 border-t border-border/30 space-y-1">
+            <div className="text-[10px] uppercase tracking-wider text-muted-foreground">
+              Rozklad pilíře „Populační daň"
+            </div>
+            <div className="flex justify-between text-[11px] text-muted-foreground pl-3">
+              <span>👥 Poll-tax (populace × 0,2 %)</span>
+              <span className="font-mono">{pollTaxRaw.toFixed(1)}</span>
+            </div>
+            <div className="flex justify-between text-[11px] text-muted-foreground pl-3">
+              <span>🏛️ Daň z city wealth (layers.wealth)</span>
+              <span className="font-mono">{cityWealthTaxRaw.toFixed(1)}</span>
+            </div>
+          </div>
+
+          {/* Pillar 2 transparency */}
+          <div className="pt-2 mt-2 border-t border-border/30 space-y-1">
+            <div className="text-[10px] uppercase tracking-wider text-muted-foreground flex items-center gap-1">
+              Rozklad pilíře „Domácí trh"
+              <InfoTip side="right">Vstupy z trade-flow solveru. Domácí složka × 0,4 + tržní podíl × 0,6.</InfoTip>
+            </div>
+            <div className="flex justify-between text-[11px] text-muted-foreground pl-3">
+              <span>🏠 Domácí složka × 0,4</span>
+              <span className="font-mono">{wealthDomesticComponent.toFixed(1)} → {(wealthDomesticComponent * PILLAR2_DOMESTIC_WEIGHT).toFixed(1)}</span>
+            </div>
+            <div className="flex justify-between text-[11px] text-muted-foreground pl-3">
+              <span>🌍 Tržní podíl × 0,6</span>
+              <span className="font-mono">{wealthMarketShare.toFixed(1)} → {(wealthMarketShare * PILLAR2_MARKET_WEIGHT).toFixed(1)}</span>
+            </div>
+          </div>
+
           {/* Pillar summary footer */}
           <div className="pt-2 border-t border-border/30 grid grid-cols-4 gap-2 text-[10px] text-muted-foreground">
             <div className="text-center">
