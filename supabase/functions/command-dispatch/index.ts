@@ -495,6 +495,15 @@ async function executeCommand(
     case "BLOCK_NODE_ANNEXATION":
       return await executeBlockNodeAnnexation(supabase, base, actor, payload, commandId, sessionId, turnNumber);
 
+    case "ESTABLISH_PROTECTORATE":
+      return await executeUpgradeNeutralLink(supabase, base, actor, payload, commandId, sessionId, turnNumber, "protected");
+
+    case "VASSALIZE_NODE":
+      return await executeUpgradeNeutralLink(supabase, base, actor, payload, commandId, sessionId, turnNumber, "vassalized");
+
+    case "JOIN_TRADE_SYSTEM":
+      return await executeJoinTradeSystem(supabase, base, actor, payload, commandId, sessionId, turnNumber);
+
     // ─── Node-Trade v1 (Stage 6) ───
     case "MOBILIZE_MANPOWER":
       return await executeMobilizeManpower(supabase, base, actor, payload, commandId, sessionId, turnNumber);
