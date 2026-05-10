@@ -33,6 +33,7 @@ import FaithPanel from "@/components/economy/FaithPanel";
 import PopulationPanel from "@/components/economy/PopulationPanel";
 import MilitaryUpkeepPanel from "@/components/economy/MilitaryUpkeepPanel";
 import FiscalSubTab from "@/components/economy/FiscalSubTab";
+import TradeSystemsSubTab from "@/components/economy/TradeSystemsSubTab";
 import DemandFulfillmentPanel from "@/components/economy/DemandFulfillmentPanel";
 import MarketSharePanel from "@/components/economy/MarketSharePanel";
 import NeutralNodeContributionPanel from "@/components/economy/NeutralNodeContributionPanel";
