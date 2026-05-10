@@ -796,73 +796,84 @@ Deno.serve(async (req) => {
     const netProduction = totalCityProduction - totalDemand - armyProductionUpkeep;
 
     // ══════════════════════════════════════════════════════════════
-    // ▶ WEALTH: 4-Pillar Model (unified, no magic blend)
-    //   1. Population Tax   — flat per-capita levy
-    //   2. Domestic Market   — capital market mechanism (compute-economy-flow)
-    //   3. Goods Fiscal      — tax_market + tax_transit + tax_extraction + capture
-    //   4. Route Commerce    — secondary wealth from trade corridor volume
+    // ▶ WEALTH: Lafferian Fiscal Model (v5)
+    //   GDP composition (gross volumes, not income):
+    //     • domestic_volume   — wealth_domestic_component (consumption × value)
+    //     • market_volume     — wealth_market_share + tax_market base
+    //     • transit_volume    — derived from route capacity used
+    //     • extraction_volume — primary extraction (tax_extraction base)
+    //     • poll_base         — totalPopulation
+    //
+    //   Each pillar: revenue = base × laffer(rate, max_rate) × rate
+    //   Laffer dampening: effective_share = max(0, 1 - (rate / max_rate)^2)
+    //     → at rate=0:        100% volume taxed, 0 revenue
+    //     → at rate=max/√3:   peak revenue (~38% of max base)
+    //     → at rate=max_rate: full evasion, 0 revenue
     // ══════════════════════════════════════════════════════════════
-    const ROUTE_COMMERCE_RATE = 0.05;        // Tuning knob: wealth per unit of effective route capacity
+    const TAX_MAX = {
+      domestic:   0.50,   // 50% domestic consumption tax → full evasion
+      market:     0.40,   // 40% market tariff → traders bypass
+      transit:    0.30,   // 30% transit toll → caravans reroute
+      extraction: 0.50,   // 50% extraction tax → black market
+      poll:       0.02,   // 2% per capita → tax revolts
+    };
+    const laffer = (rate: number, max: number) => Math.max(0, 1 - Math.pow(rate / max, 2));
 
-    const taxMult = 1 + (taxRateModifier / 100);
+    // Player-set tax rates (with sane defaults)
+    const tr_domestic   = realm.tax_rate_domestic   ?? 0.10;
+    const tr_market     = realm.tax_rate_market     ?? 0.05;
+    const tr_transit    = realm.tax_rate_transit    ?? 0.03;
+    const tr_extraction = realm.tax_rate_extraction ?? 0.05;
+    const tr_poll       = realm.tax_rate_poll       ?? 0.002;
+
     // Strategic resource wealth multipliers
     const copperMult = STRATEGIC_TIER_BONUSES.copper[realm.strategic_copper_tier || 0]?.wealth_mult || 1.0;
     const goldMult = STRATEGIC_TIER_BONUSES.gold[realm.strategic_gold_tier || 0]?.wealth_mult || 1.0;
+    const taxRateModifier = (1 + (taxRateModifier_law / 100)); // legacy law modifier (kept for compat)
 
-    // ── Pillar 1: Population Tax (centrální odvod) ──
-    //   = poll-tax z populace + odvod z layers.wealth (city wealth)
-    //   poll-tax garantuje minimální fiskální základ i když layers.wealth = 0
-    const POLL_TAX_PER_CAPITA = 0.002;
-    const polisBonus = 1 + myCities.filter(c => c.settlement_level === "polis" || c.settlement_level === "metropolis").length * 0.1;
-    const pollTaxComponent = totalPopulation * POLL_TAX_PER_CAPITA * polisBonus;
-    const populationTaxBase = totalCityWealth * copperMult * goldMult;
-    const pillarPopTax = Math.round((populationTaxBase + pollTaxComponent) * taxMult * 10) / 10;
-
-    // ── Pillar 2: Trade & Market (v4.2 — from compute-trade-flows) ──
-    // domestic_component * 0.4 + market_share * 0.6
-    const PILLAR2_DOMESTIC_WEIGHT = 0.4;
-    const PILLAR2_MARKET_WEIGHT = 0.6;
-    const pillarDomesticMarket = Math.round(
-      (wealthDomesticComponent * PILLAR2_DOMESTIC_WEIGHT + wealthMarketShare * PILLAR2_MARKET_WEIGHT) * 10
-    ) / 10;
-
-    // ── Pillar 3: Goods Fiscal (already computed by compute-trade-flows) ──
-    const goodsTaxMarketPillar = realm.tax_market || 0;
-    const goodsTaxTransitPillar = realm.tax_transit || 0;
-    const goodsTaxExtractionPillar = realm.tax_extraction || 0;
-    const goodsCapturePillar = realm.commercial_capture || 0;
-    const pillarGoodsFiscal = Math.round((goodsTaxMarketPillar + goodsTaxTransitPillar + goodsTaxExtractionPillar + goodsCapturePillar) * 10) / 10;
-
-    // ── Pillar 4: Route Commerce (monetizace průtoku tras) ──
-    let pillarRouteCommerce = 0;
+    // ── GDP volumes (gross, before tax) ──
+    const gdp_domestic = wealthDomesticComponent;
+    const gdp_market   = wealthMarketShare + (realm.tax_market || 0) / Math.max(0.001, tr_market); // back-compute volume from prev tax
+    const gdp_extraction = (realm.tax_extraction || 0) / Math.max(0.001, tr_extraction);
+    let gdp_transit = 0;
     const playerRoutes = allRoutes.filter(r => {
-      const nodeA = nodeMap.get(r.node_a);
-      const nodeB = nodeMap.get(r.node_b);
-      return (nodeA?.controlled_by === playerName || nodeB?.controlled_by === playerName);
+      const nA = nodeMap.get(r.node_a); const nB = nodeMap.get(r.node_b);
+      return (nA?.controlled_by === playerName || nB?.controlled_by === playerName);
     });
     for (const route of playerRoutes) {
-      const damagePenalty = Math.min((route.damage_level || 0) * 0.1, 0.9);
-      const effectiveCapacity = (route.capacity_value || 0) * (1 - damagePenalty);
-      // Control factor: both ends owned = 1.0, one end = 0.5, contested = 0.25
-      const nodeA = nodeMap.get(route.node_a);
-      const nodeB = nodeMap.get(route.node_b);
-      const ownA = nodeA?.controlled_by === playerName;
-      const ownB = nodeB?.controlled_by === playerName;
-      const controlFactor = (ownA && ownB) ? 1.0 : (ownA || ownB) ? 0.5 : 0.25;
-      // Economic relevance from connected nodes
-      const econRelevance = Math.max(nodeA?.importance_score || 0, nodeB?.importance_score || 0) * 0.1 + 0.5;
-      pillarRouteCommerce += effectiveCapacity * econRelevance * controlFactor * ROUTE_COMMERCE_RATE;
+      const dmg = Math.min((route.damage_level || 0) * 0.1, 0.9);
+      const cap = (route.capacity_value || 0) * (1 - dmg);
+      const nA = nodeMap.get(route.node_a); const nB = nodeMap.get(route.node_b);
+      const ctrl = (nA?.controlled_by === playerName && nB?.controlled_by === playerName) ? 1.0
+                 : (nA?.controlled_by === playerName || nB?.controlled_by === playerName) ? 0.5 : 0.25;
+      const rel = Math.max(nA?.importance_score || 0, nB?.importance_score || 0) * 0.1 + 0.5;
+      gdp_transit += cap * rel * ctrl;
     }
-    pillarRouteCommerce = Math.round(pillarRouteCommerce * 10) / 10;
 
-    // ── Total Wealth Income ──
-    const totalWealthIncome = pillarPopTax + pillarDomesticMarket + pillarGoodsFiscal + pillarRouteCommerce;
+    // ── Per-pillar revenue with Lafferian dampening ──
+    const pillarPopTax       = Math.round(totalPopulation * laffer(tr_poll,       TAX_MAX.poll)       * tr_poll       * copperMult * goldMult * taxRateModifier * 10) / 10;
+    const pillarDomesticMarket = Math.round(gdp_domestic   * laffer(tr_domestic,  TAX_MAX.domestic)  * tr_domestic   * 10) / 10;
+    const pillarMarketTariff   = Math.round(gdp_market     * laffer(tr_market,    TAX_MAX.market)    * tr_market     * 10) / 10;
+    const pillarTransitToll    = Math.round(gdp_transit    * laffer(tr_transit,   TAX_MAX.transit)   * tr_transit    * 10) / 10;
+    const pillarExtractionTax  = Math.round(gdp_extraction * laffer(tr_extraction, TAX_MAX.extraction) * tr_extraction * 10) / 10;
+    const pillarGoodsFiscal    = Math.round((pillarMarketTariff + pillarTransitToll + pillarExtractionTax) * 10) / 10;
+    const pillarRouteCommerce  = pillarTransitToll; // alias for backward-compat ledger
+
+    // Laffer loss (informational): % of GDP lost to evasion across all pillars
+    const totalGDP = gdp_domestic + gdp_market + gdp_transit + gdp_extraction;
+    const totalEffective = gdp_domestic   * laffer(tr_domestic,   TAX_MAX.domestic)
+                         + gdp_market     * laffer(tr_market,     TAX_MAX.market)
+                         + gdp_transit    * laffer(tr_transit,    TAX_MAX.transit)
+                         + gdp_extraction * laffer(tr_extraction, TAX_MAX.extraction);
+    const lafferLoss = totalGDP > 0 ? Math.round((1 - totalEffective / totalGDP) * 1000) / 1000 : 0;
+
+    const totalWealthIncome = pillarPopTax + pillarDomesticMarket + pillarGoodsFiscal + pillarRouteCommerce - pillarTransitToll;
+    // (transit appears in both goodsFiscal and routeCommerce alias — subtract once)
     const wealthIncome = Math.max(0, Math.round(totalWealthIncome));
-    const combinedWealth = totalWealthIncome; // For backward compat references
     const sportFundingPct = realm.sport_funding_pct || 0;
     let newGoldReserve = (realm.gold_reserve || 0) + wealthIncome - armyWealthUpkeep;
 
-    logEntries.push(`💰 Wealth 4-pilíře: Pop=${pillarPopTax} Trh=${pillarDomesticMarket} Goods=${pillarGoodsFiscal} Trasy=${pillarRouteCommerce} → celkem=${wealthIncome}`);
+    logEntries.push(`💰 Lafferian: pop=${pillarPopTax} dom=${pillarDomesticMarket} mkt=${pillarMarketTariff} trn=${pillarTransitToll} ext=${pillarExtractionTax} | GDP=${totalGDP.toFixed(0)} loss=${(lafferLoss*100).toFixed(0)}% → příjem=${wealthIncome}`);
 
     // Load diplomatic pacts
     const { data: rawPacts } = await supabase.from("diplomatic_pacts").select("*")
