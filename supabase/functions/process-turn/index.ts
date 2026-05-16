@@ -850,12 +850,17 @@ Deno.serve(async (req) => {
       gdp_transit += cap * rel * ctrl;
     }
 
-    // ── Per-pillar revenue with Lafferian dampening ──
-    const pillarPopTax       = Math.round(totalPopulation * laffer(tr_poll,       TAX_MAX.poll)       * tr_poll       * copperMult * goldMult * lawTaxMult * 10) / 10;
-    const pillarDomesticMarket = Math.round(gdp_domestic   * laffer(tr_domestic,  TAX_MAX.domestic)  * tr_domestic   * 10) / 10;
-    const pillarMarketTariff   = Math.round(gdp_market     * laffer(tr_market,    TAX_MAX.market)    * tr_market     * 10) / 10;
-    const pillarTransitToll    = Math.round(gdp_transit    * laffer(tr_transit,   TAX_MAX.transit)   * tr_transit    * 10) / 10;
-    const pillarExtractionTax  = Math.round(gdp_extraction * laffer(tr_extraction, TAX_MAX.extraction) * tr_extraction * 10) / 10;
+    // ── Governance modifier: legitimacy gates collection efficiency ──
+    // Low legitimacy = corruption, regional leakage, soft refusal. 0→0.5×, 50→0.75×, 100→1.0×.
+    const realmLegitimacy = Math.max(0, Math.min(100, Number(realm.legitimacy ?? 50)));
+    const govMod = 0.5 + 0.5 * (realmLegitimacy / 100);
+
+    // ── Per-pillar revenue with Lafferian dampening × governance ──
+    const pillarPopTax       = Math.round(totalPopulation * laffer(tr_poll,       TAX_MAX.poll)       * tr_poll       * govMod * copperMult * goldMult * lawTaxMult * 10) / 10;
+    const pillarDomesticMarket = Math.round(gdp_domestic   * laffer(tr_domestic,  TAX_MAX.domestic)  * tr_domestic   * govMod * 10) / 10;
+    const pillarMarketTariff   = Math.round(gdp_market     * laffer(tr_market,    TAX_MAX.market)    * tr_market     * govMod * 10) / 10;
+    const pillarTransitToll    = Math.round(gdp_transit    * laffer(tr_transit,   TAX_MAX.transit)   * tr_transit    * govMod * 10) / 10;
+    const pillarExtractionTax  = Math.round(gdp_extraction * laffer(tr_extraction, TAX_MAX.extraction) * tr_extraction * govMod * 10) / 10;
     const pillarGoodsFiscal    = Math.round((pillarMarketTariff + pillarTransitToll + pillarExtractionTax) * 10) / 10;
     const pillarRouteCommerce  = pillarTransitToll; // alias for backward-compat ledger
 
@@ -873,8 +878,31 @@ Deno.serve(async (req) => {
     const sportFundingPct = realm.sport_funding_pct || 0;
     let newGoldReserve = (realm.gold_reserve || 0) + wealthIncome - armyWealthUpkeep;
 
+    // ── Soft consequences of over-taxation: legitimacy decay + unrest pressure ──
+    // Triggered when any pillar's nominal rate exceeds ~60% of its Laffer max (the "soft threshold").
+    // Penalty is delayed — applied to legitimacy this turn, manifests as lower govMod next turn.
+    const SOFT_THRESHOLDS = {
+      domestic: TAX_MAX.domestic * 0.60,
+      market: TAX_MAX.market * 0.60,
+      transit: TAX_MAX.transit * 0.60,
+      extraction: TAX_MAX.extraction * 0.60,
+      poll: TAX_MAX.poll * 0.60,
+    };
+    const overTaxPressure =
+      Math.max(0, (tr_domestic   - SOFT_THRESHOLDS.domestic)   / TAX_MAX.domestic) +
+      Math.max(0, (tr_market     - SOFT_THRESHOLDS.market)     / TAX_MAX.market) +
+      Math.max(0, (tr_transit    - SOFT_THRESHOLDS.transit)    / TAX_MAX.transit) +
+      Math.max(0, (tr_extraction - SOFT_THRESHOLDS.extraction) / TAX_MAX.extraction) +
+      Math.max(0, (tr_poll       - SOFT_THRESHOLDS.poll)       / TAX_MAX.poll);
+    // Each unit of pressure ≈ -4 legitimacy / turn, capped at -12 to avoid death spirals.
+    const taxLegitimacyDelta = -Math.min(12, Math.round(overTaxPressure * 4));
+    const newLegitimacy = Math.max(0, Math.min(100, realmLegitimacy + taxLegitimacyDelta));
+
     const combinedWealth = totalWealthIncome; // backward-compat alias for ledger writes
-    logEntries.push(`💰 Lafferian: pop=${pillarPopTax} dom=${pillarDomesticMarket} mkt=${pillarMarketTariff} trn=${pillarTransitToll} ext=${pillarExtractionTax} | GDP=${totalGDP.toFixed(0)} loss=${(lafferLoss*100).toFixed(0)}% → příjem=${wealthIncome}`);
+    logEntries.push(`💰 Lafferian: pop=${pillarPopTax} dom=${pillarDomesticMarket} mkt=${pillarMarketTariff} trn=${pillarTransitToll} ext=${pillarExtractionTax} | GDP=${totalGDP.toFixed(0)} loss=${(lafferLoss*100).toFixed(0)}% govMod=${govMod.toFixed(2)} → příjem=${wealthIncome}`);
+    if (taxLegitimacyDelta < 0) {
+      logEntries.push(`⚖️ Přetížené daně: legitimita ${realmLegitimacy}→${newLegitimacy} (Δ${taxLegitimacyDelta}), pressure=${overTaxPressure.toFixed(2)}`);
+    }
 
     // Load diplomatic pacts
     const { data: rawPacts } = await supabase.from("diplomatic_pacts").select("*")
