@@ -1586,10 +1586,10 @@ Deno.serve(async (req) => {
         },
         goods_economy: {
           tax_pop: goodsPopTax,
-          tax_market: Math.round(goodsTaxMarketPillar * 10) / 10,
-          tax_transit: Math.round(goodsTaxTransitPillar * 10) / 10,
-          tax_extraction: Math.round(goodsTaxExtractionPillar * 10) / 10,
-          capture: Math.round(goodsCapturePillar * 10) / 10,
+          tax_market: pillarMarketTariff,
+          tax_transit: pillarTransitToll,
+          tax_extraction: pillarExtractionTax,
+          capture: pillarGoodsFiscal,
           retention: Math.round(goodsRetention * 1000) / 1000,
         },
         wealth_breakdown: {
