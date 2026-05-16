@@ -441,34 +441,22 @@ export function getMarketPosition(realm: any) {
 }
 
 /**
- * FISCAL — actual treasury intake per turn.
+ * FISCAL v6 — actual treasury intake per turn.
  *
- * SSOT contract: this MUST mirror the 4-pillar wealth model in
- * `process-turn/index.ts` (lines ~700–760). Engine adds to gold_reserve:
+ * SSOT contract: mirrors the 4-pillar Lafferian model in
+ * `process-turn/index.ts`. Engine adds to gold_reserve each turn:
  *   wealthIncome = wealth_pop_tax + wealth_domestic_market
  *                + goods_wealth_fiscal + wealth_route_commerce
  *
- * `tax_market`, `tax_transit`, `tax_extraction`, `commercial_capture` are
- * the COMPONENTS that get summed into `goods_wealth_fiscal` upstream by
- * `compute-trade-flows`. They are exposed here for breakdown display only —
- * never added separately to totalIncome (that would double-count).
+ * Legacy columns (tax_market, tax_transit, tax_extraction, commercial_capture)
+ * are NO LONGER read here. They remain in DB only for back-compat; v6 engine
+ * does not write them to realm_resources.
  */
 export function getFiscalIncome(realm: any) {
-  // 4 canonical pillars (mirror process-turn)
   const popTax = Number(realm?.wealth_pop_tax ?? 0);
   const domesticMarket = Number(realm?.wealth_domestic_market ?? 0);
   const goodsFiscal = Number(realm?.goods_wealth_fiscal ?? 0);
   const routeCommerce = Number(realm?.wealth_route_commerce ?? 0);
-
-  // Breakdown of goodsFiscal (display only — already inside goodsFiscal)
-  const marketTax = Number(realm?.tax_market ?? 0);
-  const transitTax = Number(realm?.tax_transit ?? 0);
-  const extractionTax = Number(realm?.tax_extraction ?? 0);
-  const exportCapture = Number(realm?.commercial_capture ?? 0);
-  const corridorTolls = routeCommerce; // alias for legacy call sites
-
-  const tradeTaxes = marketTax + transitTax + extractionTax;
-  const externalTradeIncome = exportCapture + routeCommerce;
 
   // SSOT total — must equal what process-turn adds to gold_reserve
   const totalIncome = popTax + domesticMarket + goodsFiscal + routeCommerce;
@@ -484,11 +472,12 @@ export function getFiscalIncome(realm: any) {
     domesticMarket,
     goodsFiscal,
     routeCommerce,
-    // Legacy/breakdown fields preserved for callers
-    marketTax, transitTax, extractionTax, exportCapture,
-    corridorTolls,
+    // Legacy aliases kept so older callers don't break — all derive from goodsFiscal.
+    marketTax: 0, transitTax: 0, extractionTax: 0, exportCapture: 0,
+    corridorTolls: routeCommerce,
     goodsFiscalAggregate: goodsFiscal,
-    tradeTaxes, externalTradeIncome,
+    tradeTaxes: goodsFiscal,
+    externalTradeIncome: routeCommerce,
     totalIncome,
     armyUpkeep, tolls, sportFunding, totalExpenses,
     netChange: totalIncome - totalExpenses,
