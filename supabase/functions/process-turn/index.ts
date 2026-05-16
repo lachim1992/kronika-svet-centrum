@@ -830,10 +830,15 @@ Deno.serve(async (req) => {
     const goldMult = STRATEGIC_TIER_BONUSES.gold[realm.strategic_gold_tier || 0]?.wealth_mult || 1.0;
     const lawTaxMult = 1 + (taxRateModifier / 100); // legacy law modifier (kept for compat)
 
-    // ── GDP volumes (gross, before tax) ──
-    const gdp_domestic = wealthDomesticComponent;
-    const gdp_market   = wealthMarketShare + (realm.tax_market || 0) / Math.max(0.001, tr_market); // back-compute volume from prev tax
-    const gdp_extraction = (realm.tax_extraction || 0) / Math.max(0.001, tr_extraction);
+    // ── GDP volumes v6 (gross, before tax) — overwrite each turn ──
+    //   domestic   = populace × spotřeba/hlava + lokálně spotřebovaná produkce
+    //   market     = goods_production_value (Goods v4.3 = canonical traded volume)
+    //   transit    = Σ route capacity × control × relevance (below)
+    //   extraction = node-level extractive output (city-attached + neutral nodes)
+    const gdp_domestic   = totalPopulation * 0.01 + totalCityProduction * 0.5;
+    const gdp_market     = goodsProductionValue;
+    const gdp_extraction = totalCityProduction * 0.3 * strategicBonuses.wealth_mult;
+
     let gdp_transit = 0;
     const playerRoutes = allRoutes.filter(r => {
       const nA = nodeMap.get(r.node_a); const nB = nodeMap.get(r.node_b);
