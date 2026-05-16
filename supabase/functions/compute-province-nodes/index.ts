@@ -377,14 +377,17 @@ Deno.serve(async (req) => {
       const coastal = pHexes.filter(h => h.coastal && h.is_passable);
       const other = pHexes.filter(h => h.is_passable && !["forest", "plains", "grassland", "hills"].includes(h.biome_family || ""));
 
+      // Strip city-sounding suffixes from province name so resource_nodes don't masquerade as cities (e.g. "– Centrální", "– Hlavní")
+      const cleanProvName = (prov.name || "").replace(/\s*[–-]\s*(Centrální|Hlavní)\s*$/iu, "").trim() || prov.name;
+
       const clusters: Array<{ hexes: typeof pHexes; biome: string; name: string }> = [];
-      if (forests.length >= 3) clusters.push({ hexes: forests, biome: "forest", name: `Hvozd ${prov.name}` });
-      if (plains.length >= 3) clusters.push({ hexes: plains, biome: "plains", name: `Pole ${prov.name}` });
-      if (hills.length >= 3) clusters.push({ hexes: hills, biome: "hills", name: `Lom ${prov.name}` });
-      if (coastal.length >= 2 && coastalHexes.length === 0) clusters.push({ hexes: coastal, biome: "coastal", name: `Pobřeží ${prov.name}` });
-      if (other.length >= 3) clusters.push({ hexes: other, biome: other[0]?.biome_family || "plains", name: `Sídliště ${prov.name}` });
+      if (forests.length >= 3) clusters.push({ hexes: forests, biome: "forest", name: `Hvozd ${cleanProvName}` });
+      if (plains.length >= 3) clusters.push({ hexes: plains, biome: "plains", name: `Pole ${cleanProvName}` });
+      if (hills.length >= 3) clusters.push({ hexes: hills, biome: "hills", name: `Lom ${cleanProvName}` });
+      if (coastal.length >= 2 && coastalHexes.length === 0) clusters.push({ hexes: coastal, biome: "coastal", name: `Pobřeží ${cleanProvName}` });
+      if (other.length >= 3) clusters.push({ hexes: other, biome: other[0]?.biome_family || "plains", name: `Sídliště ${cleanProvName}` });
       if (clusters.length === 0 && pHexes.length > 0) {
-        clusters.push({ hexes: pHexes.filter(h => h.is_passable), biome: pHexes[0]?.biome_family || "plains", name: `Osada ${prov.name}` });
+        clusters.push({ hexes: pHexes.filter(h => h.is_passable), biome: pHexes[0]?.biome_family || "plains", name: `Osada ${cleanProvName}` });
       }
 
       // Trade hub at border crossing (minor gateway) — skip if hex occupied
