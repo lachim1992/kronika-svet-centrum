@@ -107,6 +107,26 @@ Deno.serve(async (req) => {
       description: `Command ${commandType} dispatched (${result.events.length} events)`,
     }).then(() => {}, () => {});
 
+    // ── Auto-recompute trade flows after membership/link changes ──
+    // Keeps the EconomyFlowOverlay visualization in sync with real state.
+    const TRADE_TOPOLOGY_COMMANDS = new Set([
+      "OPEN_TRADE_WITH_NODE",
+      "JOIN_TRADE_SYSTEM",
+      "ESTABLISH_PROTECTORATE",
+      "VASSALIZE_NODE",
+      "ANNEX_NODE",
+    ]);
+    if (!result.idempotent && TRADE_TOPOLOGY_COMMANDS.has(commandType)) {
+      try {
+        const { error: tfErr } = await supabase.functions.invoke("compute-trade-flows", {
+          body: { session_id: sessionId },
+        });
+        if (tfErr) console.warn(`[command-dispatch] compute-trade-flows after ${commandType}:`, tfErr.message);
+      } catch (e) {
+        console.warn(`[command-dispatch] compute-trade-flows after ${commandType} failed:`, (e as Error).message);
+      }
+    }
+
     return json({
       ok: true,
       idempotent: result.idempotent || false,
