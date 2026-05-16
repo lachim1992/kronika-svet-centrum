@@ -2,10 +2,13 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { InfoTip } from "@/components/ui/info-tip";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
+import { RefreshCw } from "lucide-react";
+import { toast } from "@/hooks/use-toast";
 
 interface Props {
   sessionId: string;
@@ -43,21 +46,44 @@ const TradeSystemsSubTab = ({ sessionId, playerName }: Props) => {
   const [baskets, setBaskets] = useState<BasketRow[]>([]);
   const [access, setAccess] = useState<AccessRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [recomputing, setRecomputing] = useState(false);
+
+  const loadData = async () => {
+    const [sRes, bRes, aRes] = await Promise.all([
+      supabase.from("trade_systems").select("*").eq("session_id", sessionId).order("node_count", { ascending: false }),
+      supabase.from("trade_system_basket_supply").select("*").eq("session_id", sessionId),
+      supabase.from("player_trade_system_access").select("*").eq("session_id", sessionId),
+    ]);
+    setSystems((sRes.data as SystemRow[]) || []);
+    setBaskets((bRes.data as BasketRow[]) || []);
+    setAccess((aRes.data as AccessRow[]) || []);
+  };
+
+  const handleRecompute = async () => {
+    setRecomputing(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("compute-trade-flows", {
+        body: { session_id: sessionId },
+      });
+      if (error) throw error;
+      toast({
+        title: "Obchodní toky přepočítány",
+        description: `${data?.flows_computed ?? "?"} toků, ${data?.systems_updated ?? "?"} systémů aktualizováno.`,
+      });
+      await loadData();
+    } catch (e: any) {
+      toast({ title: "Chyba při přepočtu", description: e?.message ?? String(e), variant: "destructive" });
+    } finally {
+      setRecomputing(false);
+    }
+  };
 
   useEffect(() => {
     let alive = true;
     (async () => {
       setLoading(true);
-      const [sRes, bRes, aRes] = await Promise.all([
-        supabase.from("trade_systems").select("*").eq("session_id", sessionId).order("node_count", { ascending: false }),
-        supabase.from("trade_system_basket_supply").select("*").eq("session_id", sessionId),
-        supabase.from("player_trade_system_access").select("*").eq("session_id", sessionId),
-      ]);
-      if (!alive) return;
-      setSystems((sRes.data as SystemRow[]) || []);
-      setBaskets((bRes.data as BasketRow[]) || []);
-      setAccess((aRes.data as AccessRow[]) || []);
-      setLoading(false);
+      await loadData();
+      if (alive) setLoading(false);
     })();
     return () => { alive = false; };
   }, [sessionId]);
@@ -161,6 +187,16 @@ const TradeSystemsSubTab = ({ sessionId, playerName }: Props) => {
             🌐 Obchodní systémy
             <InfoTip>Sítě propojených uzlů sdílející trh. Každý systém má vlastní supply/demand, kapacitu a členy.</InfoTip>
             <span className="ml-auto text-xs text-muted-foreground">{networked.length} aktivních / {islands.length} izolovaných</span>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handleRecompute}
+              disabled={recomputing}
+              className="h-7 text-xs gap-1"
+            >
+              <RefreshCw className={`h-3 w-3 ${recomputing ? "animate-spin" : ""}`} />
+              {recomputing ? "Počítám…" : "Přepočítat toky"}
+            </Button>
           </CardTitle>
         </CardHeader>
         <CardContent className="p-4 pt-1">
