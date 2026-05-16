@@ -307,6 +307,10 @@ const EconomyTab = ({ sessionId, currentPlayerName, currentTurn, cities, realm, 
 
         {/* ═══ FISCAL TAB ═══ */}
         <TabsContent value="fiscal" className="space-y-5 animate-fade-in">
+          {realm && <TreasuryPanel realm={realm} />}
+          {realm && (
+            <TaxPolicySubTab realm={realm} sessionId={sessionId} playerName={currentPlayerName} onRefetch={onRefetch} />
+          )}
           {realm && (
             <FiscalSubTab realm={realm} sessionId={sessionId} playerName={currentPlayerName} onRefetch={onRefetch} />
           )}
