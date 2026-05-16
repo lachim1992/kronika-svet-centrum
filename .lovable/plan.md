@@ -1,115 +1,120 @@
-## Cíl
+## Inventura ekonomiky — finální plán
 
-Odstranit logický rozpor v `NodeFlowBreakdown.tsx`, kde `Realizovaná produkce` převyšuje dosud deklarovaný `Výrobní potenciál`, ale UI ukazuje `100 % využití`.
-
-Důvod:
-- `sum(province_nodes.production_output)` = surový infrastrukturní/node-level output
-- `realm_resources.goods_production_value` = realizovaný tržní objem / HDP z Goods v4.3
-- Nejsou to srovnatelné veličiny a nesmí se z nich počítat utilization.
-
-Pouze frontend změna v: `src/components/economy/NodeFlowBreakdown.tsx`
+Po odpovědích: **vše naráz · Overview smazat · Produkce jako nový tab · TaxPolicy zůstává sub-tab v Pokladnici**.
 
 ---
 
-## 1. Přejmenovat sekundární kartu
+## Cílová struktura `EconomyTab`
 
-`🏗️ Výrobní potenciál (infrastruktura)` → `🏗️ Infrastrukturní vstup (node raw output)`
+```text
+Macro summary row (beze změny):  💰 Bohatství   🌾 Zásoby   🏛️ Kapacita
 
-Tooltip: surový fyzický výkon uzlů / node-level output. Není to horní strop ekonomiky a není přímo srovnatelný s realizovanou produkcí z Goods v4.3 (jiná vrstva, potenciálně jiná jednotka).
-
-Štítky:
-- `potenciál` → `node prod`
-- `hrubý wealth` ponechat
-- `kapacita` ponechat
-
----
-
-## 2. Odstranit "využití potenciálu" z primární karty
-
-Odstranit třetí KPI: `utilPct`, ikonu `Gauge`, label `využití potenciálu`, výpočet `Math.min(1, goodsProd / infraTotals.prod)`.
-
-Místo toho KPI **Fiskální záchyt**:
-
-```ts
-const fiscalCapture = goodsProd > 0 ? goodsWealth / goodsProd : 0;
+🌾 Produkce        🏪 Trhy & Obchod        🏛️ Pokladnice        🏙️ Sídla
 ```
 
-(`goodsWealth` = `realm.goods_wealth_fiscal`, již načítáno.)
-
-Zobrazit jako procento. **Nepoužívat `commercial_capture`** — to je tržní/exportní capture, ne treasury capture.
-
-### Správné labely tří KPI v primární kartě
-
-Tři KPI musí jasně rozlišovat základnu a výnos:
-
-- `goods_production_value` → label **„realizovaný tržní objem / HDP"** (to je fiskální *báze*)
-- `goods_wealth_fiscal` → label **„fiskální výnos"** nebo **„příjem koruny"** (NE „fiskální báze"; báze je HDP, ne výnos)
-- `fiscalCapture` → label **„fiskální záchyt %"**
-
-> Pozor na label: `goods_wealth_fiscal` není fiskální báze, ale fiskální výnos / treasury capture z goods ekonomiky. Fiskální báze je `goods_production_value`.
+4 taby. Dev panely zůstávají gated pod hlavním tabem.
 
 ---
 
-## 3. Upravit bottlenecks
+### 1. 🌾 Produkce (nový tab)
 
-Zachovat:
-- **`Údržba > fiskál`** — porovnávat **pouze** wealth/fiscal upkeep proti `goods_wealth_fiscal`. Tedy `infraTotals.upkeepW > goodsWealth`. **Neporovnávat** `upkeepS` (production/supplies upkeep) proti `goodsWealth` — to by bylo jednotkově špatně.
-- `Nedostatečná kapacita`
-- `Chybí data trhu`
+Co říše VYRÁBÍ a kdo to dělá. Two-layer model nahoře, vše ostatní pod ním.
 
-Odstranit:
-- `Nízká poptávka / fill` (odvozeno z poměru goods / infra)
-- `Mírná netěženost`
+- **ProductionOverviewCard (nový)** — sjednotí dva primární KPI:
+  - *Realizovaný tržní objem (HDP)* = `goods_production_value`
+  - *Infrastrukturní vstup (node raw)* = Σ `province_nodes.production_output` — sekundární, šedý
+  - Bez fake „využití potenciálu". Pokud `goods > infra * 1.05`, v Dev Mode červené upozornění (z minulého sprintu).
+- **PopulationPanel** (přesun z Overview) — pracovní síla je input produkce.
+- **Workforce block** — vyříznout z `EconomyTab.tsx` (řádky ~217-243) do samostatné `WorkforcePanel.tsx` a posunout sem.
+- **DemandFulfillmentPanel** — *přesun z Trhů* sem? Ne, zůstává v Trzích (poptávková strana). Tady jen odkaz „viz Trhy → Poptávka".
 
-Přidat:
-- `Slabý fiskální záchyt`, pokud `fiscalCapture < 0.08` (rozumný práh; 0.30 by skoro pořád falešně hlásilo problém).
+### 2. 🏪 Trhy & Obchod (sjednocený, dnešní 3 taby v 1)
 
----
+Vnitřně sub-taby (Tabs ve vnořeném komponentu), aby nebyla zahlcená scrollovací zeď:
 
-## 4. Dev-only semantic warning
-
-V Dev Mode bloku Diagnostic throughput, pokud `goodsProd > infraTotals.prod * 1.05`, zobrazit červené:
-
-> ⚠ Semantic warning: realizovaná produkce (X) > infrastrukturní vstup (Y). To není nutně chyba ekonomiky — Goods v4.3 může zahrnovat vrstvy mimo node-level output (city auto-production, baskets, market access, tržní transformace). Metriky nejsou přímo srovnatelné. Nepoužívat jejich poměr jako utilization.
-
-**Nepoužívat název "Invariant violation"** — po přejmenování už nejde o porušení invariantů.
-
----
-
-## 5. TODO komentář u Diagnostic bloku
-
-```ts
-// TODO: Pro skutečnou metriku "využití potenciálu" je potřeba spočítat
-// goods_potential_value v Goods v4.3 solveru ve stejné jednotce jako
-// goods_production_value. Musí zahrnovat city auto-production, baskets,
-// logistiku, market access a capacity constraints. Do té doby utilization
-// nezobrazovat v player UI.
+```text
+[Výkon] [Poptávka & Fill] [Tržní podíl] [Supply Chain] [Trade Systems]
 ```
 
+- **Výkon**: MarketPerformancePanel
+- **Poptávka & Fill**: DemandFulfillmentPanel + NeutralNodeContributionPanel
+- **Tržní podíl**: MarketSharePanel + TradePanel
+- **Supply Chain**: SupplyChainPanel (přesun z vlastního tabu)
+- **Trade Systems**: TradeSystemsSubTab (přesun z vlastního tabu) + StrategicResourcesDetail (přesun z Overview — suroviny patří k obchodu)
+
+### 3. 🏛️ Pokladnice (sjednocený fiskál — jediný totál v aplikaci)
+
+Vnitřně sub-taby:
+
+```text
+[Přehled] [Daňová politika] [Detail příjmů] [Výdaje]
+```
+
+- **Přehled**: TreasuryPanel jako master view — HDP per pilíř → laffer → govMod → realizovaný příjem. Pod tím **bilance**: příjem − výdaje = čistá změna pokladny. Jedno číslo totálu pro celou aplikaci.
+- **Daňová politika**: TaxPolicySubTab (slidery, beze změny logiky; přidá se nahoře odkaz „efekt vidíš v Přehledu").
+- **Detail příjmů**: FiscalSubTab pillar breakdown — explicitně označený jako *informativní rozklad TÉHOŽ příjmu*, ne druhá agregace. Karta v hlavičce: „Tyto čtyři pilíře sčítají na +X.X — totožné s Přehledem."
+- **Výdaje**: MilitaryUpkeepPanel (přesun z Overview) + expenses sekce z FiscalSubTab (army upkeep, tolls, sport funding).
+
+### 4. 🏙️ Sídla
+
+Beze změny.
+
+### Mimo taby (zůstává v EconomyTab kořeni)
+
+- Header s tlačítkem Přepočítat.
+- Alerts blok.
+- Macro summary row (3 KPI nahoře).
+- Dev panely (gated, beze změny).
+- Admin debug, v4.2 badge.
+
+### Co se smaže / vyhodí z Přehledu
+
+- Workforce block → přesun do Produkce (jako WorkforcePanel).
+- Grain Reserve karta → smazat (info je v top KPI „Zásoby" + alerty).
+- Wealth Reserve karta → smazat (info je v top KPI „Bohatství").
+- PrestigeBreakdown → **přesun na HomeTab** (státní signál, ne ekonomika).
+- StrategicResourcesDetail → přesun do Trhy/Trade Systems.
+- FaithPanel → **přesun na HomeTab** (státní signál).
+- PopulationPanel → přesun do Produkce.
+- MilitaryUpkeepPanel → přesun do Pokladnice/Výdaje.
+- Celý `<TabsContent value="overview">` smazat.
+- TabsTrigger „📊 Přehled" smazat.
+
 ---
 
-## 6. Cleanup
+## Implementační kroky (pořadí)
 
-Odstranit nepoužívané: `Gauge` import (pokud nikde jinde nezůstane), `utilPct`, `utilization`, bottleneck výpočty založené na `goodsProd / infraTotals.prod`.
-
----
-
-## Co se nemění
-
-DB, edge functions, backend, `TreasuryPanel`, `process-turn`, `command-dispatch`. Per-node rozpad zůstává stejný, jen je jasně zarámován jako infrastrukturní/node-level vrstva. `sum(province_nodes.production_output)` z diagnostiky **nemizí** — jen přestane lhát, že je to „potenciál".
-
----
+1. **Extrakce panelů** (čisté řezy, žádná logika nemění chování):
+   - Vyříznout Workforce JSX z `EconomyTab.tsx` → nový `src/components/economy/WorkforcePanel.tsx`.
+   - Vytvořit `src/components/economy/ProductionOverviewCard.tsx` (two-layer KPI + bottlenecks shortlist).
+2. **HomeTab přesun**: přidat `PrestigeBreakdown` + `FaithPanel` do `HomeTab.tsx` (sekce „Stát říše").
+3. **Sjednocené Trhy**: nový wrapper `src/components/economy/MarketsHub.tsx` s vnitřním `<Tabs>` (Výkon/Poptávka/Tržní podíl/Supply/Systémy). Smaže potřebu 3 root-tabů.
+4. **Sjednocená Pokladnice**: nový wrapper `src/components/economy/TreasuryHub.tsx` s vnitřním `<Tabs>` (Přehled/Daně/Detail/Výdaje). Přesune TaxPolicy + Fiscal + MilitaryUpkeep dovnitř. **TreasuryPanel** doplnit o bilanci (příjem − výdaje) a `expenses` zdroj z `getFiscalIncome(realm)`.
+5. **Sjednotit fiskální totál**: v `FiscalSubTab` přidat hlavičkový infobox „Totál +X.X je totožný s Přehledem Pokladnice" + ujistit, že totál `fi.totalIncome` přesně rovná součtu TreasuryPanel `pillars.realizedRevenue + popTax` (audit, případně sladit).
+6. **Refactor `EconomyTab.tsx`**: smazat Overview tab + 2 root taby (Supply, Trade systems, Tax Policy, Fiscal jako samostatné — všechny jdou pryč). Zůstanou 4 taby: Produkce / Trhy / Pokladnice / Sídla.
+7. **Cleanup importů**: vyhodit nepoužité importy (`Gauge`, `Users` pokud zmigrovány, atd.). Build check.
+8. **Memory update**: zapsat do `mem://ui/economy-tab-structure` finální 4-tab strukturu jako kanonický referenční bod.
 
 ## Acceptance
 
-- Sekundární karta se jmenuje `Infrastrukturní vstup (node raw output)`, ne `Výrobní potenciál`.
-- UI nikde neukazuje `100 % využití potenciálu`, pokud je realizovaná produkce > node raw output.
-- Primární karta má tři konzistentní KPI z Goods/fiskální vrstvy:
-  - realizovaný tržní objem / HDP = `goods_production_value`
-  - fiskální výnos = `goods_wealth_fiscal` (NE „fiskální báze")
-  - fiskální záchyt = `goods_wealth_fiscal / goods_production_value`
-- `goods_production_value` se nikde nepoměřuje se `sum(province_nodes.production_output)` jako utilization.
-- Fiskální záchyt používá `goods_wealth_fiscal / goods_production_value`, **ne** `commercial_capture`.
-- Bottleneck `Údržba > fiskál` porovnává pouze wealth upkeep (`upkeepW`) proti `goods_wealth_fiscal`, ne production upkeep.
-- Dev Mode ukazuje *semantic warning* (ne invariant violation), pokud goods output převyšuje node raw output.
-- Build prochází bez unused importů.
+- `EconomyTab.tsx` má **přesně 4** root taby (Produkce, Trhy & Obchod, Pokladnice, Sídla).
+- V celé aplikaci je **jeden** fiskální totál — v Pokladnici/Přehledu. FiscalSubTab přiznává, že jeho součet je tentýž.
+- Žádný panel neukazuje 100 % využití potenciálu.
+- TaxPolicy slidery dávají live preview; uložení dispatchne SET_TAX_RATES; efekt vidí v Pokladnici/Přehledu příští kolo.
+- MilitaryUpkeep je vedle pilířů příjmu na fiskálním tabu.
+- HomeTab nově obsahuje Prestige + Faith (státní signály).
+- Build prochází, žádné dead importy ani nepoužité komponenty.
+
+## Mimo scope
+
+- Engine (`process-turn`, `compute-trade-flows`, `refresh-economy`) se nemění.
+- DB schéma se nemění, žádné migrace.
+- Žádné nové fiskální mechaniky ani sazby.
+- Dev panely se nestěhují (jen Overview cleanup).
+- GapAdvisor / CapacityPanel review — Phase 2.
+
+## Technické poznámky
+
+- Vnořené `<Tabs>` uvnitř Trhů a Pokladnice použijí stejný styling jako root `TabsList` (h-10, rounded-xl, font-display), ale o stupeň menší (h-9, text-[11px]) pro vizuální hierarchii.
+- ScrollArea + ScrollBar wrapper zůstává jen na root úrovni; sub-taby budou compact.
+- Žádné nové edge funkce, žádné nové DB volání. Všechny komponenty čtou existující props (`realm`, `cities`, `sessionId`, `currentPlayerName`).

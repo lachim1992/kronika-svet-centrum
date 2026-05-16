@@ -437,6 +437,10 @@ const HomeTab = ({
       {realm && <PrestigeBreakdown realm={realm} />}
       {realm && <StrategicResourcesDetail realm={realm} />}
 
+      {/* Stát říše — prestige a víra (přesunuto z Ekonomiky) */}
+      {realm && <PrestigeBreakdown realm={realm} />}
+      {realm && <FaithPanel realm={realm} cities={cities.filter(c => c.owner_player === currentPlayerName)} />}
+
       {/* Laws & Decrees */}
       <RealmLawsDecrees sessionId={sessionId} currentPlayerName={currentPlayerName} currentTurn={currentTurn} />
 
