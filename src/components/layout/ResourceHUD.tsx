@@ -127,19 +127,21 @@ const ResourceHUD = ({ sessionId, playerName, cities, currentTurn, realm: realmP
     {
       icon: <span className="text-xs">{MACRO_LAYER_ICONS.production}</span>,
       label: "Produkce",
-      value: `${Math.round(prodReserve)} (+${totalProd.toFixed(0)}/k)`,
+      value: `${Math.round(prodReserve)} (+${totalProd.toFixed(0)}/kolo)`,
       derivation: `🏗️ Infra (uzly): ${totalProd.toFixed(1)} | 📦 Goods: ${goodsProd.toFixed(1)} | Workforce: ${(wf.effectiveWorkforceRatio * 100).toFixed(0)}%`,
     },
     {
       icon: <span className="text-xs">{MACRO_LAYER_ICONS.wealth}</span>,
       label: "Bohatství",
-      value: `${Math.round(wealthReserve)} (${fi.netChange >= 0 ? "+" : ""}${fi.netChange.toFixed(0)}/k)`,
-      derivation: `Příjmy: +${fi.totalIncome.toFixed(1)}/kolo\n  • Populační daň: ${fi.popTax.toFixed(1)}\n  • Domácí trh: ${fi.domesticMarket.toFixed(1)}\n  • Daně ze zboží: ${fi.goodsFiscal.toFixed(1)}\n  • Koridorové mýto: ${fi.corridorTolls.toFixed(1)}\nVýdaje: -${fi.totalExpenses.toFixed(1)}/kolo\nČistě: ${fi.netChange >= 0 ? "+" : ""}${fi.netChange.toFixed(1)}/kolo`,
+      // SSOT: hrubý příjem státu /kolo (sjednoceno s EconomyTab a TreasuryHub).
+      // Tooltip ukazuje rozklad včetně výdajů a čisté změny pokladny.
+      value: `${Math.round(wealthReserve)} (+${fi.totalIncome.toFixed(0)}/kolo)`,
+      derivation: `Příjmy: +${fi.totalIncome.toFixed(1)}/kolo\n  • Populační daň: ${fi.popTax.toFixed(1)}\n  • Domácí trh: ${fi.domesticMarket.toFixed(1)}\n  • Daně ze zboží: ${fi.goodsFiscal.toFixed(1)}\n  • Koridorové mýto: ${fi.corridorTolls.toFixed(1)}\nVýdaje: -${fi.totalExpenses.toFixed(1)}/kolo\nČistá změna pokladny: ${fi.netChange >= 0 ? "+" : ""}${fi.netChange.toFixed(1)}/kolo`,
     },
     {
       icon: <span className="text-xs">🌾</span>,
       label: "Zásoby",
-      value: `${Math.round(grainReserve)} (${grainNetStr}/k)`,
+      value: `${Math.round(grainReserve)} (${grainNetStr}/kolo)`,
       warning: grainReserve < 20,
       derivation: `Kapacita sýpek: ${realm.granary_capacity ?? 0} | Bilance: produkce(${realm.last_turn_grain_prod ?? 0}) − spotřeba(${realm.last_turn_grain_cons ?? 0}) − armáda`,
     },
@@ -238,8 +240,8 @@ const ResourceHUD = ({ sessionId, playerName, cities, currentTurn, realm: realmP
                 <span className="font-bold">{totalProd.toFixed(1)}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-muted-foreground">{MACRO_LAYER_ICONS.wealth} Bohatství</span>
-                <span className="font-bold">{totalWealth.toFixed(1)}</span>
+                <span className="text-muted-foreground">📊 Ekon. aktivita</span>
+                <span className="font-bold" title="total_wealth: realizovaná tržní aktivita, nikoli příjem státu">{totalWealth.toFixed(1)}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-muted-foreground">{MACRO_LAYER_ICONS.capacity} Kapacita</span>

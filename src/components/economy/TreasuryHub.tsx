@@ -52,19 +52,19 @@ const TreasuryHub = ({ sessionId, currentPlayerName, realm, onRefetch }: Props) 
         <Card>
           <CardContent className="p-4 space-y-2">
             <div className="flex justify-between text-xs">
-              <span className="text-muted-foreground">Příjem / kolo</span>
+              <span className="text-muted-foreground">Příjem /kolo</span>
               <span className="font-mono font-semibold text-primary">
                 +{fi.totalIncome.toFixed(1)}
               </span>
             </div>
             <div className="flex justify-between text-xs">
-              <span className="text-muted-foreground">Výdaje / kolo</span>
+              <span className="text-muted-foreground">Výdaje /kolo</span>
               <span className="font-mono font-semibold text-destructive">
                 −{fi.totalExpenses.toFixed(1)}
               </span>
             </div>
             <div className="flex justify-between items-center pt-2 border-t border-border/30">
-              <span className="text-sm font-semibold">💰 Čistá změna pokladny</span>
+              <span className="text-sm font-semibold">💰 Čistá změna pokladny /kolo</span>
               <span
                 className={`text-xl font-bold font-mono ${
                   fi.netChange >= 0 ? "text-primary" : "text-destructive"

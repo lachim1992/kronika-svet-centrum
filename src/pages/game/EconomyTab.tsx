@@ -32,6 +32,7 @@ import WorkforcePanel from "@/components/economy/WorkforcePanel";
 import PopulationPanel from "@/components/economy/PopulationPanel";
 import MarketsHub from "@/components/economy/MarketsHub";
 import TreasuryHub from "@/components/economy/TreasuryHub";
+import { getFiscalIncome } from "@/lib/economyFlow";
 
 // Dev panels lazy-loaded (Sprint 1 Krok 6 — import gate)
 const EconomyTabDevPanels = lazy(
@@ -78,8 +79,10 @@ const EconomyTab = ({
     [cities, currentPlayerName],
   );
 
-  const totalWealth = realm?.total_wealth ?? 0;
+  const totalWealth = realm?.total_wealth ?? 0; // ekon. aktivita, NE příjem státu
   const totalCapacity = realm?.total_capacity ?? 0;
+  // Sjednocený fiskální zdroj — stejná čísla jako HUD a TreasuryHub
+  const fi = getFiscalIncome(realm);
   const mobRate = realm?.mobilization_rate || 0.1;
   const currentMob = Math.round(mobRate * 100);
 
@@ -225,7 +228,8 @@ const EconomyTab = ({
             icon: "💰",
             label: "Bohatství",
             value: Math.round(realm?.gold_reserve ?? 0).toString(),
-            sub: `+${totalWealth.toFixed(1)}/k`,
+            // SSOT: hrubý příjem státu /kolo (sjednoceno s HUD a TreasuryHub)
+            sub: `+${fi.totalIncome.toFixed(1)}/kolo`,
           },
           {
             icon: "🌾",
