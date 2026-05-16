@@ -187,6 +187,16 @@ const TradeSystemsSubTab = ({ sessionId, playerName }: Props) => {
             🌐 Obchodní systémy
             <InfoTip>Sítě propojených uzlů sdílející trh. Každý systém má vlastní supply/demand, kapacitu a členy.</InfoTip>
             <span className="ml-auto text-xs text-muted-foreground">{networked.length} aktivních / {islands.length} izolovaných</span>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handleRecompute}
+              disabled={recomputing}
+              className="h-7 text-xs gap-1"
+            >
+              <RefreshCw className={`h-3 w-3 ${recomputing ? "animate-spin" : ""}`} />
+              {recomputing ? "Počítám…" : "Přepočítat toky"}
+            </Button>
           </CardTitle>
         </CardHeader>
         <CardContent className="p-4 pt-1">
