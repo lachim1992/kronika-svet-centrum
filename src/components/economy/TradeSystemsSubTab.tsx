@@ -46,6 +46,37 @@ const TradeSystemsSubTab = ({ sessionId, playerName }: Props) => {
   const [baskets, setBaskets] = useState<BasketRow[]>([]);
   const [access, setAccess] = useState<AccessRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [recomputing, setRecomputing] = useState(false);
+
+  const loadData = async () => {
+    const [sRes, bRes, aRes] = await Promise.all([
+      supabase.from("trade_systems").select("*").eq("session_id", sessionId).order("node_count", { ascending: false }),
+      supabase.from("trade_system_basket_supply").select("*").eq("session_id", sessionId),
+      supabase.from("player_trade_system_access").select("*").eq("session_id", sessionId),
+    ]);
+    setSystems((sRes.data as SystemRow[]) || []);
+    setBaskets((bRes.data as BasketRow[]) || []);
+    setAccess((aRes.data as AccessRow[]) || []);
+  };
+
+  const handleRecompute = async () => {
+    setRecomputing(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("compute-trade-flows", {
+        body: { session_id: sessionId },
+      });
+      if (error) throw error;
+      toast({
+        title: "Obchodní toky přepočítány",
+        description: `${data?.flows_computed ?? "?"} toků, ${data?.systems_updated ?? "?"} systémů aktualizováno.`,
+      });
+      await loadData();
+    } catch (e: any) {
+      toast({ title: "Chyba při přepočtu", description: e?.message ?? String(e), variant: "destructive" });
+    } finally {
+      setRecomputing(false);
+    }
+  };
 
   useEffect(() => {
     let alive = true;
