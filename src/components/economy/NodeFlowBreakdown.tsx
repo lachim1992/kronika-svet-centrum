@@ -7,7 +7,7 @@ import {
 } from "@/components/ui/collapsible";
 import {
   Network, ChevronDown, ChevronRight, ArrowRight,
-  TrendingUp, TrendingDown, AlertTriangle, Route, Gauge,
+  TrendingUp, TrendingDown, AlertTriangle, Route, Coins,
 } from "lucide-react";
 import { MACRO_LAYER_ICONS } from "@/lib/economyFlow";
 import { useDevMode } from "@/hooks/useDevMode";

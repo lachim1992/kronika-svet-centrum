@@ -1,51 +1,115 @@
-## Co se změní
+## Cíl
 
-### 1. Anektovat — přejmenování v post-battle modalu (rychlá UI úprava)
-- V `PostBattleDecisionModal.tsx` přejmenovat tlačítko/labelu **„Okupovat město"** → **„Anektovat (5 kol → trvalé)"**.
-- Přidat krátký popisek: „Po 5 tazích bez osvobození se město trvale stane vaším."
-- Mechanika zůstává beze změny (řízeno `liberation_deadline` v `commit-turn`).
+Odstranit logický rozpor v `NodeFlowBreakdown.tsx`, kde `Realizovaná produkce` převyšuje dosud deklarovaný `Výrobní potenciál`, ale UI ukazuje `100 % využití`.
 
----
+Důvod:
+- `sum(province_nodes.production_output)` = surový infrastrukturní/node-level output
+- `realm_resources.goods_production_value` = realizovaný tržní objem / HDP z Goods v4.3
+- Nejsou to srovnatelné veličiny a nesmí se z nich počítat utilization.
 
-### 2. AI musí stavět silnice, anektovat neutrální uzly a navazovat obchody
-Aktuálně AI tah (`ai-faction-turn`) prakticky neřeší infrastrukturu. Doplníme tři nové akce do AI rozhodovacího jádra a do whitelistu příkazů:
-
-- **`BUILD_ROAD`** — AI hodnotí vlastní uzly a sousední neobchodované cíle (vlastní města, spojenecké uzly, neutrální uzly s vysokou hodnotou) a zakládá projekt cesty (přes existující `START_PROJECT` typu `build_route`, nově s alokací pracovní síly — viz bod 3).
-- **`CLAIM_NEUTRAL_NODE`** — AI při průchodu/blízkosti neutrálního uzlu spustí `command-dispatch CLAIM_NODE` (případně `EXPLORE_NODE` pokud uzel ještě není odkrytý) a uzel přidá do svého ekonomického systému.
-- **`ESTABLISH_TRADE`** — AI vyhodnocuje deficitní baskety (z `city_market_baskets`) a posílá nabídky obchodu sousedům (přes existující `PROPOSE_TRADE` / `CREATE_TRADE_ROUTE`).
-
-Heuristika běží v `supabase/functions/ai-faction-turn/index.ts` jako součást deterministického kroku **před** voláním Gemini (LLM smí akce schválit/odmítnout, ne vymyslet jiné). Limity: max 1 nová silnice + 2 trade nabídky + neomezené claim za tah na frakci, kapacita peasantů a goldu se kontroluje.
-
-### 3. Sjednocená mechanika stavby silnic — pracovní síla na hex
-Nahrazujeme staré pevné `turns: 3` z `PROJECT_COSTS.build_route` modelem alokace pracovní síly, identickým pro AI i hráče.
-
-**Pravidlo:**
-- Cena = **25 pracovní síly (workforce) × počet hexů cesty**.
-- Hráč/AI při založení projektu zvolí, kolik **workforce alokuje za tah** (min 5, max = vlastní disponibilní peasantská kapacita).
-- Každý tah se z alokace odečte z dostupné workforce hráče a přičte se k `progress` projektu.
-- Projekt skončí, když `progress ≥ total_workforce_required`.
-- UI ukazuje: „Cesta 3 hexy → 75 pracovní síly. Při alokaci 25/tah → hotovo za 3 tahy."
-
-**Konkrétní změny:**
-- DB migrace `construction_projects`: nové sloupce `workforce_total INT`, `workforce_per_turn INT`, `workforce_progress INT`. Default values pro existující řádky odvodit z `turns_remaining * 25`.
-- `START_PROJECT` v `command-dispatch` (typ `build_route`): vypočítá délku cesty (počet hexů z A* mezi node_a a node_b) → `workforce_total = 25 × hex_count`. Příkaz akceptuje `workforcePerTurn` (default 25).
-- Nové příkazy: `ADJUST_PROJECT_WORKFORCE` (změna alokace za tah na běžícím projektu) + `CANCEL_PROJECT` (existuje, beze změny).
-- `process-turn` (fáze 5: graph/projects): nahradit dekrement `turns_remaining` přičtením `workforce_per_turn` k `workforce_progress` a odečtením z `peasants_available` (přes `realm_resources` / labor pool). Dokončení = `workforce_progress ≥ workforce_total`.
-- Frontend `WorldMapBuildPanel.tsx` (a karta projektu, kde existuje): slider „Kolik pracovní síly alokovat / tah" + náhled „Hotovo za N tahů".
-- AI heuristika v bodě 2 vždy alokuje **25/tah** (nejlevnější varianta) pokud má frakce ≥ 30 % volné kapacity, jinak projekt nezakládá.
+Pouze frontend změna v: `src/components/economy/NodeFlowBreakdown.tsx`
 
 ---
 
-## Pořadí implementace
-1. **DB migrace** `construction_projects` (nové sloupce + backfill).
-2. **`command-dispatch`** — handler `START_PROJECT` (workforce model), nový `ADJUST_PROJECT_WORKFORCE`, nové AI příkazy `CLAIM_NEUTRAL_NODE` (mapuje na `CLAIM_NODE`).
-3. **`process-turn`** — fáze projektů přepsaná na workforce.
-4. **`ai-faction-turn`** — heuristika `BUILD_ROAD` + `CLAIM_NEUTRAL_NODE` + `ESTABLISH_TRADE`.
-5. **`PostBattleDecisionModal.tsx`** — UI přejmenování (rychlé).
-6. **`WorldMapBuildPanel.tsx`** + případné karty projektu — workforce slider, nový náhled.
-7. **Frontend `strategicGraph.ts`** — vystavit `workforcePerTurn` u `startProject` a nový helper `adjustProjectWorkforce`.
+## 1. Přejmenovat sekundární kartu
 
-## Co se NEMĚNÍ
-- Ekonomika ostatních projektů (fort, port, hub) — zůstávají na starém `turns` modelu (pokud chceš sjednotit i je, řekni).
-- Liberation/annexation 5-tahový mechanismus.
-- AI Gemini orchestrace — pouze přidáme deterministické akce; LLM hraje stejnou roli jako dosud.
+`🏗️ Výrobní potenciál (infrastruktura)` → `🏗️ Infrastrukturní vstup (node raw output)`
+
+Tooltip: surový fyzický výkon uzlů / node-level output. Není to horní strop ekonomiky a není přímo srovnatelný s realizovanou produkcí z Goods v4.3 (jiná vrstva, potenciálně jiná jednotka).
+
+Štítky:
+- `potenciál` → `node prod`
+- `hrubý wealth` ponechat
+- `kapacita` ponechat
+
+---
+
+## 2. Odstranit "využití potenciálu" z primární karty
+
+Odstranit třetí KPI: `utilPct`, ikonu `Gauge`, label `využití potenciálu`, výpočet `Math.min(1, goodsProd / infraTotals.prod)`.
+
+Místo toho KPI **Fiskální záchyt**:
+
+```ts
+const fiscalCapture = goodsProd > 0 ? goodsWealth / goodsProd : 0;
+```
+
+(`goodsWealth` = `realm.goods_wealth_fiscal`, již načítáno.)
+
+Zobrazit jako procento. **Nepoužívat `commercial_capture`** — to je tržní/exportní capture, ne treasury capture.
+
+### Správné labely tří KPI v primární kartě
+
+Tři KPI musí jasně rozlišovat základnu a výnos:
+
+- `goods_production_value` → label **„realizovaný tržní objem / HDP"** (to je fiskální *báze*)
+- `goods_wealth_fiscal` → label **„fiskální výnos"** nebo **„příjem koruny"** (NE „fiskální báze"; báze je HDP, ne výnos)
+- `fiscalCapture` → label **„fiskální záchyt %"**
+
+> Pozor na label: `goods_wealth_fiscal` není fiskální báze, ale fiskální výnos / treasury capture z goods ekonomiky. Fiskální báze je `goods_production_value`.
+
+---
+
+## 3. Upravit bottlenecks
+
+Zachovat:
+- **`Údržba > fiskál`** — porovnávat **pouze** wealth/fiscal upkeep proti `goods_wealth_fiscal`. Tedy `infraTotals.upkeepW > goodsWealth`. **Neporovnávat** `upkeepS` (production/supplies upkeep) proti `goodsWealth` — to by bylo jednotkově špatně.
+- `Nedostatečná kapacita`
+- `Chybí data trhu`
+
+Odstranit:
+- `Nízká poptávka / fill` (odvozeno z poměru goods / infra)
+- `Mírná netěženost`
+
+Přidat:
+- `Slabý fiskální záchyt`, pokud `fiscalCapture < 0.08` (rozumný práh; 0.30 by skoro pořád falešně hlásilo problém).
+
+---
+
+## 4. Dev-only semantic warning
+
+V Dev Mode bloku Diagnostic throughput, pokud `goodsProd > infraTotals.prod * 1.05`, zobrazit červené:
+
+> ⚠ Semantic warning: realizovaná produkce (X) > infrastrukturní vstup (Y). To není nutně chyba ekonomiky — Goods v4.3 může zahrnovat vrstvy mimo node-level output (city auto-production, baskets, market access, tržní transformace). Metriky nejsou přímo srovnatelné. Nepoužívat jejich poměr jako utilization.
+
+**Nepoužívat název "Invariant violation"** — po přejmenování už nejde o porušení invariantů.
+
+---
+
+## 5. TODO komentář u Diagnostic bloku
+
+```ts
+// TODO: Pro skutečnou metriku "využití potenciálu" je potřeba spočítat
+// goods_potential_value v Goods v4.3 solveru ve stejné jednotce jako
+// goods_production_value. Musí zahrnovat city auto-production, baskets,
+// logistiku, market access a capacity constraints. Do té doby utilization
+// nezobrazovat v player UI.
+```
+
+---
+
+## 6. Cleanup
+
+Odstranit nepoužívané: `Gauge` import (pokud nikde jinde nezůstane), `utilPct`, `utilization`, bottleneck výpočty založené na `goodsProd / infraTotals.prod`.
+
+---
+
+## Co se nemění
+
+DB, edge functions, backend, `TreasuryPanel`, `process-turn`, `command-dispatch`. Per-node rozpad zůstává stejný, jen je jasně zarámován jako infrastrukturní/node-level vrstva. `sum(province_nodes.production_output)` z diagnostiky **nemizí** — jen přestane lhát, že je to „potenciál".
+
+---
+
+## Acceptance
+
+- Sekundární karta se jmenuje `Infrastrukturní vstup (node raw output)`, ne `Výrobní potenciál`.
+- UI nikde neukazuje `100 % využití potenciálu`, pokud je realizovaná produkce > node raw output.
+- Primární karta má tři konzistentní KPI z Goods/fiskální vrstvy:
+  - realizovaný tržní objem / HDP = `goods_production_value`
+  - fiskální výnos = `goods_wealth_fiscal` (NE „fiskální báze")
+  - fiskální záchyt = `goods_wealth_fiscal / goods_production_value`
+- `goods_production_value` se nikde nepoměřuje se `sum(province_nodes.production_output)` jako utilization.
+- Fiskální záchyt používá `goods_wealth_fiscal / goods_production_value`, **ne** `commercial_capture`.
+- Bottleneck `Údržba > fiskál` porovnává pouze wealth upkeep (`upkeepW`) proti `goods_wealth_fiscal`, ne production upkeep.
+- Dev Mode ukazuje *semantic warning* (ne invariant violation), pokud goods output převyšuje node raw output.
+- Build prochází bez unused importů.
