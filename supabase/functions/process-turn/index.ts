@@ -1532,6 +1532,9 @@ Deno.serve(async (req) => {
       last_turn_gdp_transit:    Math.round(gdp_transit * 10) / 10,
       last_turn_gdp_extraction: Math.round(gdp_extraction * 10) / 10,
       last_turn_laffer_loss:    lafferLoss,
+      // ── Governance feedback: tax pressure decays legitimacy ──
+      legitimacy: newLegitimacy,
+      last_turn_tax_legitimacy_delta: taxLegitimacyDelta,
       // Prestige sub-types
       military_prestige: militaryPrestige,
       cultural_prestige: culturalPrestige,
