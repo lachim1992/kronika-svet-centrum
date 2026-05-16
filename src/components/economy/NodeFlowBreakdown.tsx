@@ -170,7 +170,7 @@ const NodeFlowBreakdown = ({ sessionId, playerName, realm }: Props) => {
         <h3 className="font-display font-semibold text-base">Ekonomický rozpad</h3>
         <InfoTip side="right">
           Dvouvrstvý model: <b>Realizovaná produkce</b> (Goods v4.3) = kanonická pravda pro UI a treasury.
-          <b>Potenciál</b> (infrastruktura uzlů) = surový vstup pipeline, nikdy se nesčítá s realizovanou.
+          <b>Infrastrukturní vstup</b> (node raw output) = surový vstup pipeline, jiná vrstva/jednotka, neporovnávat poměrem.
         </InfoTip>
       </div>
 
