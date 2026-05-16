@@ -443,23 +443,22 @@ export function getMarketPosition(realm: any) {
 /**
  * FISCAL v6 — actual treasury intake per turn.
  *
- * SSOT contract: mirrors the 4-pillar Lafferian model in
+ * SSOT contract: mirrors the 3-pillar Lafferian model in
  * `process-turn/index.ts`. Engine adds to gold_reserve each turn:
- *   wealthIncome = wealth_pop_tax + wealth_domestic_market
- *                + goods_wealth_fiscal + wealth_route_commerce
+ *   wealthIncome = wealth_pop_tax + wealth_domestic_market + goods_wealth_fiscal
  *
- * Legacy columns (tax_market, tax_transit, tax_extraction, commercial_capture)
- * are NO LONGER read here. They remain in DB only for back-compat; v6 engine
- * does not write them to realm_resources.
+ * `goods_wealth_fiscal` already bundles market + transit + extraction tariffs.
+ * Legacy columns (tax_market, tax_transit, tax_extraction, commercial_capture,
+ * wealth_route_commerce) are NO LONGER read or written by v6.
  */
 export function getFiscalIncome(realm: any) {
   const popTax = Number(realm?.wealth_pop_tax ?? 0);
   const domesticMarket = Number(realm?.wealth_domestic_market ?? 0);
   const goodsFiscal = Number(realm?.goods_wealth_fiscal ?? 0);
-  const routeCommerce = Number(realm?.wealth_route_commerce ?? 0);
+  const routeCommerce = 0; // v6: deprecated, always 0
 
   // SSOT total — must equal what process-turn adds to gold_reserve
-  const totalIncome = popTax + domesticMarket + goodsFiscal + routeCommerce;
+  const totalIncome = popTax + domesticMarket + goodsFiscal;
 
   const wb = realm?.computed_modifiers?.wealth_breakdown || {};
   const armyUpkeep = Number(wb.army_upkeep ?? 0);

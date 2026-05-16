@@ -116,9 +116,7 @@ const ResourceHUD = ({ sessionId, playerName, cities, currentTurn, realm: realmP
   const wealthReserve = realm.gold_reserve ?? 0;
   const grainReserve = realm.grain_reserve ?? 0;
 
-  // Goods economy derivation data
-  const mods = realm.computed_modifiers || {};
-  const ge = mods.goods_economy || {};
+  // v6: legacy `computed_modifiers.goods_economy` removed — use fiscalIncome + last_turn_gdp_* instead.
   const goodsProd = realm.goods_production_value ?? 0;
   const fi = getFiscalIncome(realm);
 

@@ -866,7 +866,8 @@ Deno.serve(async (req) => {
     const pillarTransitToll    = Math.round(gdp_transit    * laffer(tr_transit,   TAX_MAX.transit)   * tr_transit    * govMod * 10) / 10;
     const pillarExtractionTax  = Math.round(gdp_extraction * laffer(tr_extraction, TAX_MAX.extraction) * tr_extraction * govMod * 10) / 10;
     const pillarGoodsFiscal    = Math.round((pillarMarketTariff + pillarTransitToll + pillarExtractionTax) * 10) / 10;
-    const pillarRouteCommerce  = pillarTransitToll; // alias for backward-compat ledger
+    // v6: legacy `wealth_route_commerce` is deprecated and always written as 0 — transit revenue is bundled into goods_wealth_fiscal.
+    const pillarRouteCommerce  = 0;
 
     // Laffer loss (informational): % of GDP lost to evasion across all pillars
     const totalGDP = gdp_domestic + gdp_market + gdp_transit + gdp_extraction;
@@ -876,8 +877,8 @@ Deno.serve(async (req) => {
                          + gdp_extraction * laffer(tr_extraction, TAX_MAX.extraction);
     const lafferLoss = totalGDP > 0 ? Math.round((1 - totalEffective / totalGDP) * 1000) / 1000 : 0;
 
-    const totalWealthIncome = pillarPopTax + pillarDomesticMarket + pillarGoodsFiscal + pillarRouteCommerce - pillarTransitToll;
-    // (transit appears in both goodsFiscal and routeCommerce alias — subtract once)
+    // Canonical 4-pillar sum (no double-counting): pop + domestic + goods_fiscal (market+transit+ext).
+    const totalWealthIncome = pillarPopTax + pillarDomesticMarket + pillarGoodsFiscal;
     const wealthIncome = Math.max(0, Math.round(totalWealthIncome));
     const sportFundingPct = realm.sport_funding_pct || 0;
     let newGoldReserve = (realm.gold_reserve || 0) + wealthIncome - armyWealthUpkeep;
@@ -1584,14 +1585,7 @@ Deno.serve(async (req) => {
           active_projects: activeBuildingCount,
           overloaded: capacityOverload,
         },
-        goods_economy: {
-          tax_pop: goodsPopTax,
-          tax_market: pillarMarketTariff,
-          tax_transit: pillarTransitToll,
-          tax_extraction: pillarExtractionTax,
-          capture: pillarGoodsFiscal,
-          retention: Math.round(goodsRetention * 1000) / 1000,
-        },
+        // v6: legacy `goods_economy` block removed — use `wealth_breakdown` + `last_turn_gdp_*` instead.
         wealth_breakdown: {
           pop_tax: pillarPopTax,
           domestic_market: pillarDomesticMarket,
