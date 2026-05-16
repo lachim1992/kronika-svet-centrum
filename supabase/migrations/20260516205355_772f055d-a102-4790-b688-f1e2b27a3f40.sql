@@ -1,0 +1,15 @@
+UPDATE public.realm_resources SET
+  wealth_pop_tax = 0,
+  wealth_domestic_market = 0,
+  wealth_route_commerce = 0,
+  goods_wealth_fiscal = 0,
+  last_turn_gdp_domestic = 0,
+  last_turn_gdp_market = 0,
+  last_turn_gdp_transit = 0,
+  last_turn_gdp_extraction = 0,
+  tax_market = 0,
+  tax_transit = 0,
+  tax_extraction = 0,
+  commercial_capture = 0,
+  wealth_domestic_component = 0,
+  wealth_market_share = 0;

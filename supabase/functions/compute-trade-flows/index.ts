@@ -1209,20 +1209,17 @@ Deno.serve(async (req) => {
         if (good?.storable) playerGoodsSupplyVolume += inv.quantity;
       }
 
-      const goodsWealthFiscal = agg.tax_market + agg.tax_transit + agg.tax_extraction + agg.commercial_capture;
-
+      // v6 fiscal: compute-trade-flows NO LONGER writes the fiscal ledger.
+      // It only publishes the canonical Goods v4.3 volume; process-turn owns
+      // tax pillars (wealth_*, goods_wealth_fiscal, last_turn_gdp_*).
+      // Legacy columns tax_market/transit/extraction/commercial_capture and
+      // wealth_domestic_component/market_share are NOT touched here anymore.
       await sb.from("realm_resources").update({
-        tax_market: Math.round(agg.tax_market * 10) / 10,
-        tax_transit: Math.round(agg.tax_transit * 10) / 10,
-        tax_extraction: Math.round(agg.tax_extraction * 10) / 10,
-        commercial_retention: Math.round(avgRetention * 1000) / 1000,
-        commercial_capture: Math.round(agg.commercial_capture * 10) / 10,
         goods_production_value: Math.round(playerGoodsProductionValue * 10) / 10,
         goods_supply_volume: Math.round(playerGoodsSupplyVolume * 10) / 10,
-        goods_wealth_fiscal: Math.round(goodsWealthFiscal * 10) / 10,
-        wealth_domestic_component: Math.round((playerDomesticWealth.get(player) || 0) * 100) / 100,
-        wealth_market_share: Math.round((playerMarketWealth.get(player) || 0) * 100) / 100,
+        commercial_retention: Math.round(avgRetention * 1000) / 1000,
       }).eq("session_id", session_id).eq("player_name", player);
+
     }
 
     const uniqueWarnings = [...new Set(warnings)];

@@ -1,120 +1,119 @@
-## Inventura ekonomiky — finální plán
+## Cíl
 
-Po odpovědích: **vše naráz · Overview smazat · Produkce jako nový tab · TaxPolicy zůstává sub-tab v Pokladnici**.
+Sjednotit pokladnici tak, aby všechny zobrazované hodnoty pocházely z **jediného** kanonického fiskálního modelu: **per-pillar GDP** (`last_turn_gdp_*`). Legacy `wealth_domestic_component` / `wealth_market_share` zmizí, akumulační bugy zmizí, UI bude konzistentní.
 
----
+## 1. Engine (supabase/functions/process-turn/index.ts)
 
-## Cílová struktura `EconomyTab`
-
-```text
-Macro summary row (beze změny):  💰 Bohatství   🌾 Zásoby   🏛️ Kapacita
-
-🌾 Produkce        🏪 Trhy & Obchod        🏛️ Pokladnice        🏙️ Sídla
-```
-
-4 taby. Dev panely zůstávají gated pod hlavním tabem.
-
----
-
-### 1. 🌾 Produkce (nový tab)
-
-Co říše VYRÁBÍ a kdo to dělá. Two-layer model nahoře, vše ostatní pod ním.
-
-- **ProductionOverviewCard (nový)** — sjednotí dva primární KPI:
-  - *Realizovaný tržní objem (HDP)* = `goods_production_value`
-  - *Infrastrukturní vstup (node raw)* = Σ `province_nodes.production_output` — sekundární, šedý
-  - Bez fake „využití potenciálu". Pokud `goods > infra * 1.05`, v Dev Mode červené upozornění (z minulého sprintu).
-- **PopulationPanel** (přesun z Overview) — pracovní síla je input produkce.
-- **Workforce block** — vyříznout z `EconomyTab.tsx` (řádky ~217-243) do samostatné `WorkforcePanel.tsx` a posunout sem.
-- **DemandFulfillmentPanel** — *přesun z Trhů* sem? Ne, zůstává v Trzích (poptávková strana). Tady jen odkaz „viz Trhy → Poptávka".
-
-### 2. 🏪 Trhy & Obchod (sjednocený, dnešní 3 taby v 1)
-
-Vnitřně sub-taby (Tabs ve vnořeném komponentu), aby nebyla zahlcená scrollovací zeď:
+### Per-pillar GDP — kanonický výpočet (overwrite, ne akumulace)
 
 ```text
-[Výkon] [Poptávka & Fill] [Tržní podíl] [Supply Chain] [Trade Systems]
+gdp_domestic   = totalCityProduction × goods_price_index    -- domácí spotřební trh
+gdp_market     = goods_production_value                      -- Goods v4.3 = tržní obrat
+gdp_transit    = Σ(playerRoutes: cap × ctrl × rel)           -- už existuje, ok
+gdp_extraction = Σ(strategic_yields × tier_value)            -- z STRATEGIC_TIER_BONUSES
+gdp_poll_base  = totalPopulation
 ```
 
-- **Výkon**: MarketPerformancePanel
-- **Poptávka & Fill**: DemandFulfillmentPanel + NeutralNodeContributionPanel
-- **Tržní podíl**: MarketSharePanel + TradePanel
-- **Supply Chain**: SupplyChainPanel (přesun z vlastního tabu)
-- **Trade Systems**: TradeSystemsSubTab (přesun z vlastního tabu) + StrategicResourcesDetail (přesun z Overview — suroviny patří k obchodu)
+Každý turn se zapíše do `last_turn_gdp_{domestic,market,transit,extraction}` jako **overwrite** (žádné +=).
 
-### 3. 🏛️ Pokladnice (sjednocený fiskál — jediný totál v aplikaci)
-
-Vnitřně sub-taby:
+### Per-pillar revenue (jedna rovnice pro všechny)
 
 ```text
-[Přehled] [Daňová politika] [Detail příjmů] [Výdaje]
+pillar_revenue[k] = last_turn_gdp[k] × tax_rate[k] × laffer(tax_rate[k], MAX[k]) × govMod
+wealth_pop_tax    = totalPopulation  × tr_poll  × laffer(...) × govMod × strategicMult × lawMult
 ```
 
-- **Přehled**: TreasuryPanel jako master view — HDP per pilíř → laffer → govMod → realizovaný příjem. Pod tím **bilance**: příjem − výdaje = čistá změna pokladny. Jedno číslo totálu pro celou aplikaci.
-- **Daňová politika**: TaxPolicySubTab (slidery, beze změny logiky; přidá se nahoře odkaz „efekt vidíš v Přehledu").
-- **Detail příjmů**: FiscalSubTab pillar breakdown — explicitně označený jako *informativní rozklad TÉHOŽ příjmu*, ne druhá agregace. Karta v hlavičce: „Tyto čtyři pilíře sčítají na +X.X — totožné s Přehledem."
-- **Výdaje**: MilitaryUpkeepPanel (přesun z Overview) + expenses sekce z FiscalSubTab (army upkeep, tolls, sport funding).
+Zapisuje se do `wealth_pop_tax`, `wealth_domestic_market`, `wealth_route_commerce`, `goods_wealth_fiscal` — vše **overwrite**.
 
-### 4. 🏙️ Sídla
+`goods_wealth_fiscal` přestane být součtem `tax_market+tax_transit+tax_extraction` (které se počítaly jinde a duplikovaly). Bude rovno `pillar_market_revenue` (z `gdp_market = goods_production_value`).
 
-Beze změny.
+`totalWealthIncome = wealth_pop_tax + wealth_domestic_market + goods_wealth_fiscal + wealth_route_commerce` (žádné odečítání transit-double-count, protože goods_wealth_fiscal už neobsahuje transit).
 
-### Mimo taby (zůstává v EconomyTab kořeni)
+### Odstranit z process-turn
 
-- Header s tlačítkem Přepočítat.
-- Alerts blok.
-- Macro summary row (3 KPI nahoře).
-- Dev panely (gated, beze změny).
-- Admin debug, v4.2 badge.
+- Čtení a používání `wealth_domestic_component`, `wealth_market_share`.
+- Back-compute `gdp_market = wealthMarketShare + tax_market / tr_market` (mrtvá větev).
+- Komponenty `tax_market`, `tax_transit`, `tax_extraction`, `commercial_capture` jako separátní zápisy do realm_resources (zůstanou jen jako jednorázové debug fieldy v computed_modifiers, ne v ledgeru).
 
-### Co se smaže / vyhodí z Přehledu
+## 2. compute-trade-flows / compute-economy-flow
 
-- Workforce block → přesun do Produkce (jako WorkforcePanel).
-- Grain Reserve karta → smazat (info je v top KPI „Zásoby" + alerty).
-- Wealth Reserve karta → smazat (info je v top KPI „Bohatství").
-- PrestigeBreakdown → **přesun na HomeTab** (státní signál, ne ekonomika).
-- StrategicResourcesDetail → přesun do Trhy/Trade Systems.
-- FaithPanel → **přesun na HomeTab** (státní signál).
-- PopulationPanel → přesun do Produkce.
-- MilitaryUpkeepPanel → přesun do Pokladnice/Výdaje.
-- Celý `<TabsContent value="overview">` smazat.
-- TabsTrigger „📊 Přehled" smazat.
+Přestanou zapisovat `tax_market`, `tax_transit`, `tax_extraction`, `commercial_capture` přímo do `realm_resources`. Místo toho vrátí strukturovaná data, která process-turn použije pro `gdp_extraction` a `gdp_transit` výpočet. Tím se eliminuje druhý writer fiskálních polí.
 
----
+## 3. DB migrace
 
-## Implementační kroky (pořadí)
+```sql
+-- Reset rozbitých legacy / akumulovaných polí na 0
+UPDATE realm_resources SET
+  wealth_pop_tax = 0,
+  wealth_domestic_market = 0,
+  wealth_route_commerce = 0,
+  goods_wealth_fiscal = 0,
+  last_turn_gdp_domestic = 0,
+  last_turn_gdp_market = 0,
+  last_turn_gdp_transit = 0,
+  last_turn_gdp_extraction = 0,
+  tax_market = 0,
+  tax_transit = 0,
+  tax_extraction = 0,
+  commercial_capture = 0,
+  wealth_domestic_component = 0,
+  wealth_market_share = 0;
 
-1. **Extrakce panelů** (čisté řezy, žádná logika nemění chování):
-   - Vyříznout Workforce JSX z `EconomyTab.tsx` → nový `src/components/economy/WorkforcePanel.tsx`.
-   - Vytvořit `src/components/economy/ProductionOverviewCard.tsx` (two-layer KPI + bottlenecks shortlist).
-2. **HomeTab přesun**: přidat `PrestigeBreakdown` + `FaithPanel` do `HomeTab.tsx` (sekce „Stát říše").
-3. **Sjednocené Trhy**: nový wrapper `src/components/economy/MarketsHub.tsx` s vnitřním `<Tabs>` (Výkon/Poptávka/Tržní podíl/Supply/Systémy). Smaže potřebu 3 root-tabů.
-4. **Sjednocená Pokladnice**: nový wrapper `src/components/economy/TreasuryHub.tsx` s vnitřním `<Tabs>` (Přehled/Daně/Detail/Výdaje). Přesune TaxPolicy + Fiscal + MilitaryUpkeep dovnitř. **TreasuryPanel** doplnit o bilanci (příjem − výdaje) a `expenses` zdroj z `getFiscalIncome(realm)`.
-5. **Sjednotit fiskální totál**: v `FiscalSubTab` přidat hlavičkový infobox „Totál +X.X je totožný s Přehledem Pokladnice" + ujistit, že totál `fi.totalIncome` přesně rovná součtu TreasuryPanel `pillars.realizedRevenue + popTax` (audit, případně sladit).
-6. **Refactor `EconomyTab.tsx`**: smazat Overview tab + 2 root taby (Supply, Trade systems, Tax Policy, Fiscal jako samostatné — všechny jdou pryč). Zůstanou 4 taby: Produkce / Trhy / Pokladnice / Sídla.
-7. **Cleanup importů**: vyhodit nepoužité importy (`Gauge`, `Users` pokud zmigrovány, atd.). Build check.
-8. **Memory update**: zapsat do `mem://ui/economy-tab-structure` finální 4-tab strukturu jako kanonický referenční bod.
+-- Komentář: legacy sloupce wealth_domestic_component, wealth_market_share, commercial_capture
+-- a tax_{market,transit,extraction} se zatím NEDROPNOU (drží je staré edge funkce).
+-- Drop přijde v samostatné migraci, jakmile všechny writery zmizí.
+```
 
-## Acceptance
+Žádné `ALTER TABLE DROP COLUMN` v této fázi — minimalizujeme riziko, že něco jiného sletí.
 
-- `EconomyTab.tsx` má **přesně 4** root taby (Produkce, Trhy & Obchod, Pokladnice, Sídla).
-- V celé aplikaci je **jeden** fiskální totál — v Pokladnici/Přehledu. FiscalSubTab přiznává, že jeho součet je tentýž.
-- Žádný panel neukazuje 100 % využití potenciálu.
-- TaxPolicy slidery dávají live preview; uložení dispatchne SET_TAX_RATES; efekt vidí v Pokladnici/Přehledu příští kolo.
-- MilitaryUpkeep je vedle pilířů příjmu na fiskálním tabu.
-- HomeTab nově obsahuje Prestige + Faith (státní signály).
-- Build prochází, žádné dead importy ani nepoužité komponenty.
+## 4. UI — Pokladnice (TreasuryHub)
 
-## Mimo scope
+### Struktura
 
-- Engine (`process-turn`, `compute-trade-flows`, `refresh-economy`) se nemění.
-- DB schéma se nemění, žádné migrace.
-- Žádné nové fiskální mechaniky ani sazby.
-- Dev panely se nestěhují (jen Overview cleanup).
-- GapAdvisor / CapacityPanel review — Phase 2.
+```text
+TreasuryHub
+├── Sub-tab "Souhrn"
+│   ├── KPI row: HDP (Σ last_turn_gdp_*) │ Příjem koruny │ Čistá změna
+│   └── Bilance: Příjem ↑  − Výdaje ↓  = Net
+├── Sub-tab "Detail pilířů"
+│   └── 5 řádků (Poll, Domácí, Tržní, Tranzit, Těžba):
+│       Nominál │ Laffer keep │ Efektiv. │ Gov mod │ HDP báze │ Příjem
+├── Sub-tab "Daňová politika"
+│   └── slidery + projekce přes detail
+└── Sub-tab "Výdaje"
+    └── MilitaryUpkeep + tolls + sport
+```
 
-## Technické poznámky
+### Zdrojová pravidla
 
-- Vnořené `<Tabs>` uvnitř Trhů a Pokladnice použijí stejný styling jako root `TabsList` (h-10, rounded-xl, font-display), ale o stupeň menší (h-9, text-[11px]) pro vizuální hierarchii.
-- ScrollArea + ScrollBar wrapper zůstává jen na root úrovni; sub-taby budou compact.
-- Žádné nové edge funkce, žádné nové DB volání. Všechny komponenty čtou existující props (`realm`, `cities`, `sessionId`, `currentPlayerName`).
+- **Veškerý KPI/total** přes `getFiscalIncome(realm)` (už existuje, jen se odstraní vetev `commercial_capture`).
+- **Per-pillar tabulka** čte `last_turn_gdp_*` + `tax_rate_*` + `legitimacy` a počítá Laffer projekci stejnou rovnicí jako engine (sdílený helper `src/lib/fiscalMath.ts`).
+- `TreasuryPanel.tsx` se **smaže** (jeho per-pillar view nahradí "Detail pilířů" sub-tab vykreslený stejným helperem, takže nikdy se dvě karty s "Příjem koruny" nemohou rozejít).
+
+### Mazat
+
+- `src/components/economy/TreasuryPanel.tsx` (nahrazeno detailem sub-tabu).
+- `FiscalSubTab.tsx` legacy ledger karty.
+- Vše, co čte `wealth_domestic_component`, `wealth_market_share`, `commercial_capture` v `src/lib/economyFlow.ts` (`getWealthBreakdown` deprecated → smazat).
+
+## 5. Acceptance kritéria
+
+- Po refreshi turnu se v DB `last_turn_gdp_*` zapíší **kladné** hodnoty pro pilíře s aktivitou.
+- `wealth_pop_tax + wealth_domestic_market + goods_wealth_fiscal + wealth_route_commerce` na DB řádku = "Příjem koruny / kolo" v UI = sum per-pillar `Příjem` v detail tabulce.
+- "HDP" v souhrnu = Σ `last_turn_gdp_*` = Σ "HDP báze" v detail tabulce.
+- `wealth_domestic_market` neroste mezi koly při nezměněné konfiguraci (overwrite test).
+- Žádný panel nečte `wealth_domestic_component`, `wealth_market_share`, `commercial_capture`, `tax_market`, `tax_transit`, `tax_extraction`.
+- Build prochází, nejsou unused importy.
+
+## 6. Out of scope (zatím)
+
+- DROP COLUMN legacy polí (samostatná pozdější migrace).
+- Změna daňových sazeb a Laffer křivek (jen sjednotit existující model).
+- `ProductionOverviewCard` (Goods v4.3) zůstane jak je — jen v Detail pilířů se ukáže, že `gdp_market === goods_production_value` (link "viz Produkce").
+- Hluboký refactor `compute-trade-flows` (jen zastavíme jeho zápisy do `tax_*` polí, vnitřek nechte).
+
+## 7. Technické poznámky
+
+- Shared helper `src/lib/fiscalMath.ts` exportuje `laffer(rate, max)`, `govMod(legitimacy)`, `TAX_MAX` konstanty, `computePillarRevenue({ gdp, rate, max, govMod })`. Identický kód v `process-turn/index.ts` (via copy, ne import — edge funkce).
+- `getFiscalIncome` v `economyFlow.ts` se zjednoduší: `totalIncome = popTax + domesticMarket + goodsFiscal + routeCommerce`. Konec.
+- Memory aktualizace: `mem://features/economy/fiscal-model-v6` (nový soubor), index update.
