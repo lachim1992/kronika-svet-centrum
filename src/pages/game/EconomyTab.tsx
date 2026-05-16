@@ -35,6 +35,7 @@ import MilitaryUpkeepPanel from "@/components/economy/MilitaryUpkeepPanel";
 import FiscalSubTab from "@/components/economy/FiscalSubTab";
 import TradeSystemsSubTab from "@/components/economy/TradeSystemsSubTab";
 import TaxPolicySubTab from "@/components/economy/TaxPolicySubTab";
+import TreasuryPanel from "@/components/economy/TreasuryPanel";
 import DemandFulfillmentPanel from "@/components/economy/DemandFulfillmentPanel";
 import MarketSharePanel from "@/components/economy/MarketSharePanel";
 import NeutralNodeContributionPanel from "@/components/economy/NeutralNodeContributionPanel";
@@ -307,6 +308,10 @@ const EconomyTab = ({ sessionId, currentPlayerName, currentTurn, cities, realm, 
 
         {/* ═══ FISCAL TAB ═══ */}
         <TabsContent value="fiscal" className="space-y-5 animate-fade-in">
+          {realm && <TreasuryPanel realm={realm} />}
+          {realm && (
+            <TaxPolicySubTab realm={realm} sessionId={sessionId} playerName={currentPlayerName} onRefetch={onRefetch} />
+          )}
           {realm && (
             <FiscalSubTab realm={realm} sessionId={sessionId} playerName={currentPlayerName} onRefetch={onRefetch} />
           )}

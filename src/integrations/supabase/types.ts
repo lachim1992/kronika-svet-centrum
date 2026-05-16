@@ -8263,7 +8263,9 @@ export type Database = {
           last_turn_iron_prod: number
           last_turn_laffer_loss: number
           last_turn_stone_prod: number
+          last_turn_tax_legitimacy_delta: number
           last_turn_wood_prod: number
+          legitimacy: number
           logistic_capacity: number
           manpower_available: number
           manpower_committed: number
@@ -8365,7 +8367,9 @@ export type Database = {
           last_turn_iron_prod?: number
           last_turn_laffer_loss?: number
           last_turn_stone_prod?: number
+          last_turn_tax_legitimacy_delta?: number
           last_turn_wood_prod?: number
+          legitimacy?: number
           logistic_capacity?: number
           manpower_available?: number
           manpower_committed?: number
@@ -8467,7 +8471,9 @@ export type Database = {
           last_turn_iron_prod?: number
           last_turn_laffer_loss?: number
           last_turn_stone_prod?: number
+          last_turn_tax_legitimacy_delta?: number
           last_turn_wood_prod?: number
+          legitimacy?: number
           logistic_capacity?: number
           manpower_available?: number
           manpower_committed?: number

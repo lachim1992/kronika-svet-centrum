@@ -7,9 +7,10 @@ import {
 } from "@/components/ui/collapsible";
 import {
   Network, ChevronDown, ChevronRight, ArrowRight,
-  TrendingUp, TrendingDown, AlertTriangle, Route,
+  TrendingUp, TrendingDown, AlertTriangle, Route, Gauge,
 } from "lucide-react";
 import { MACRO_LAYER_ICONS } from "@/lib/economyFlow";
+import { useDevMode } from "@/hooks/useDevMode";
 
 interface NodeData {
   id: string;
@@ -65,6 +66,7 @@ const NodeFlowBreakdown = ({ sessionId, playerName, realm }: Props) => {
   const [routes, setRoutes] = useState<RouteData[]>([]);
   const [expandedNode, setExpandedNode] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const { devMode: isDevMode } = useDevMode();
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -166,76 +168,104 @@ const NodeFlowBreakdown = ({ sessionId, playerName, realm }: Props) => {
       <div className="flex items-center gap-2">
         <Network className="h-5 w-5 text-primary" />
         <h3 className="font-display font-semibold text-base">Ekonomický rozpad</h3>
-        <InfoTip side="right">Detailní rozpad produkce a bohatství z každého uzlu a trasy. Infrastruktura = výstup uzlů, Goods = simulace zboží.</InfoTip>
+        <InfoTip side="right">
+          Dvouvrstvý model: <b>Realizovaná produkce</b> (Goods v4.3) = kanonická pravda pro UI a treasury.
+          <b>Potenciál</b> (infrastruktura uzlů) = surový vstup pipeline, nikdy se nesčítá s realizovanou.
+        </InfoTip>
       </div>
 
-      {/* ═══ DUAL LAYER SUMMARY ═══ */}
-      <div className="grid grid-cols-2 gap-3">
-        {/* Infrastructure layer */}
-        <div className="bg-muted/30 rounded-lg p-3 space-y-1 border border-border/50">
-          <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
-            🏗️ Infrastruktura (uzly)
-          </div>
-          <div className="flex items-baseline gap-2">
-            <span className="text-xl font-bold font-display text-primary">{infraTotals.prod.toFixed(1)}</span>
-            <span className="text-[10px] text-muted-foreground">{MACRO_LAYER_ICONS.production} produkce</span>
-          </div>
-          <div className="flex items-baseline gap-2">
-            <span className="text-lg font-bold font-display">{infraTotals.wealth.toFixed(1)}</span>
-            <span className="text-[10px] text-muted-foreground">{MACRO_LAYER_ICONS.wealth} bohatství</span>
-          </div>
-          <div className="flex items-baseline gap-2">
-            <span className="text-lg font-bold font-display">{infraTotals.cap.toFixed(1)}</span>
-            <span className="text-[10px] text-muted-foreground">{MACRO_LAYER_ICONS.capacity} kapacita</span>
-          </div>
-          <div className="text-[10px] text-destructive/80 mt-1">
-            Údržba: −{infraTotals.upkeepS.toFixed(0)} 🌾 / −{infraTotals.upkeepW.toFixed(0)} 💰
-          </div>
-        </div>
+      {/* ═══ TWO-LAYER SUMMARY: Realized (primary) + Potential (secondary) ═══ */}
+      {(() => {
+        const utilization = infraTotals.prod > 0 ? Math.min(1, goodsProd / infraTotals.prod) : 0;
+        const utilPct = Math.round(utilization * 100);
+        const bottlenecks: { label: string; severity: "warn" | "danger" }[] = [];
+        if (infraTotals.prod > 0 && utilization < 0.6) bottlenecks.push({ label: "Nízká poptávka / fill", severity: "danger" });
+        else if (infraTotals.prod > 0 && utilization < 0.85) bottlenecks.push({ label: "Mírná netěženost", severity: "warn" });
+        if (infraTotals.upkeepW > 0 && goodsWealth < infraTotals.upkeepW) bottlenecks.push({ label: "Údržba > fiskál", severity: "danger" });
+        if (infraTotals.cap > 0 && infraTotals.cap < infraTotals.prod * 0.5) bottlenecks.push({ label: "Nedostatečná kapacita", severity: "warn" });
+        if (!hasGoodsData) bottlenecks.push({ label: "Chybí data trhu", severity: "warn" });
 
-        {/* Goods layer */}
-        <div className={`bg-muted/30 rounded-lg p-3 space-y-1 border ${hasGoodsData ? "border-accent/30" : "border-border/50 opacity-60"}`}>
-          <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
-            📦 Goods ekonomika (v4.1)
-          </div>
-          <div className="flex items-baseline gap-2">
-            <span className="text-xl font-bold font-display text-accent">{goodsProd.toFixed(1)}</span>
-            <span className="text-[10px] text-muted-foreground">{MACRO_LAYER_ICONS.production} produkce</span>
-          </div>
-          <div className="flex items-baseline gap-2">
-            <span className="text-lg font-bold font-display">{goodsWealth.toFixed(1)}</span>
-            <span className="text-[10px] text-muted-foreground">{MACRO_LAYER_ICONS.wealth} fiskální</span>
-          </div>
-          {hasGoodsData && (
-            <div className="text-[10px] text-muted-foreground mt-1 space-y-0.5">
-              <div>Daně: pop {taxPop.toFixed(1)} | trh {taxMarket.toFixed(1)} | tranzit {taxTransit.toFixed(1)} | těžba {taxExtraction.toFixed(1)}</div>
-              <div>Export capture: {capture.toFixed(1)} | Retence: {(retention * 100).toFixed(0)}%</div>
+        return (
+          <div className="space-y-3">
+            {/* Primary: Realized */}
+            <div className="rounded-lg p-4 border-2 border-accent/40 bg-accent/5">
+              <div className="flex items-center justify-between mb-2">
+                <div className="text-[10px] uppercase tracking-wider text-accent font-bold flex items-center gap-1">
+                  📦 Realizovaná produkce (Goods v4.3) <InfoTip>Skutečný objem trhu po basket fillu, poptávce, logistice a market access. Jediná kanonická hodnota pro hráče.</InfoTip>
+                </div>
+                <div className="text-[10px] text-muted-foreground">SSOT</div>
+              </div>
+              <div className="grid grid-cols-3 gap-4">
+                <div>
+                  <div className="text-2xl font-bold font-display text-accent">{goodsProd.toFixed(1)}</div>
+                  <div className="text-[10px] text-muted-foreground">{MACRO_LAYER_ICONS.production} produkce (HDP)</div>
+                </div>
+                <div>
+                  <div className="text-2xl font-bold font-display">{goodsWealth.toFixed(1)}</div>
+                  <div className="text-[10px] text-muted-foreground">{MACRO_LAYER_ICONS.wealth} fiskální báze</div>
+                </div>
+                <div>
+                  <div className="text-2xl font-bold font-display text-primary flex items-baseline gap-1">
+                    {utilPct}<span className="text-xs">%</span>
+                  </div>
+                  <div className="text-[10px] text-muted-foreground flex items-center gap-1">
+                    <Gauge className="h-3 w-3" /> využití potenciálu
+                  </div>
+                </div>
+              </div>
+              {bottlenecks.length > 0 && (
+                <div className="mt-3 pt-3 border-t border-accent/20 flex flex-wrap gap-1.5">
+                  <span className="text-[10px] text-muted-foreground self-center mr-1">Brzdy:</span>
+                  {bottlenecks.map((b, i) => (
+                    <Badge key={i} variant={b.severity === "danger" ? "destructive" : "secondary"} className="text-[10px] py-0">
+                      {b.label}
+                    </Badge>
+                  ))}
+                </div>
+              )}
             </div>
-          )}
-          {!hasGoodsData && (
-            <div className="text-[10px] text-muted-foreground/60 italic mt-1">Zatím bez dat — spusťte compute-trade-flows</div>
-          )}
-        </div>
-      </div>
 
-      {/* Combined totals */}
-      <div className="bg-primary/5 rounded-lg p-3 border border-primary/20">
-        <div className="text-[10px] uppercase tracking-wider text-primary font-semibold mb-1">Celkem (blended)</div>
-        <div className="grid grid-cols-3 gap-4 text-center">
-          <div>
-            <div className="text-lg font-bold font-display">{(infraTotals.prod + goodsProd).toFixed(1)}</div>
-            <div className="text-[10px] text-muted-foreground">{MACRO_LAYER_ICONS.production} Produkce</div>
+            {/* Secondary: Potential (muted) */}
+            <div className="rounded-lg p-3 border border-border/40 bg-muted/20">
+              <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1 flex items-center gap-1">
+                🏗️ Výrobní potenciál (infrastruktura) <InfoTip>Co by uzly teoreticky mohly vyrobit při ideální poptávce a logistice. Vstup pipeline, ne hráčské KPI.</InfoTip>
+              </div>
+              <div className="grid grid-cols-4 gap-3 text-muted-foreground">
+                <div>
+                  <div className="text-sm font-semibold">{infraTotals.prod.toFixed(1)}</div>
+                  <div className="text-[10px]">{MACRO_LAYER_ICONS.production} potenciál</div>
+                </div>
+                <div>
+                  <div className="text-sm font-semibold">{infraTotals.wealth.toFixed(1)}</div>
+                  <div className="text-[10px]">{MACRO_LAYER_ICONS.wealth} hrubý wealth</div>
+                </div>
+                <div>
+                  <div className="text-sm font-semibold">{infraTotals.cap.toFixed(1)}</div>
+                  <div className="text-[10px]">{MACRO_LAYER_ICONS.capacity} kapacita</div>
+                </div>
+                <div>
+                  <div className="text-sm font-semibold text-destructive/80">−{infraTotals.upkeepW.toFixed(0)}/{infraTotals.upkeepS.toFixed(0)}</div>
+                  <div className="text-[10px]">údržba 💰/🌾</div>
+                </div>
+              </div>
+            </div>
+
+            {/* Diagnostic — Dev Mode only, NOT canonical */}
+            {isDevMode && (
+              <div className="rounded-lg p-3 border border-dashed border-amber-500/40 bg-amber-500/5">
+                <div className="flex items-center gap-2 mb-1">
+                  <AlertTriangle className="h-3 w-3 text-amber-500" />
+                  <div className="text-[10px] uppercase tracking-wider text-amber-600 font-semibold">Diagnostic throughput (DEV)</div>
+                  <InfoTip>NENÍ kanonická produkce. Pouze pro debug pipeline. Sečtení potenciálu a realizace = double-counting, dříve omylem zobrazováno hráči.</InfoTip>
+                </div>
+                <div className="text-[10px] text-muted-foreground font-mono">
+                  Σ(potenciál+goods) = {(infraTotals.prod + goodsProd).toFixed(1)} prod / {(infraTotals.wealth + goodsWealth).toFixed(1)} wealth
+                </div>
+              </div>
+            )}
           </div>
-          <div>
-            <div className="text-lg font-bold font-display">{(infraTotals.wealth + goodsWealth).toFixed(1)}</div>
-            <div className="text-[10px] text-muted-foreground">{MACRO_LAYER_ICONS.wealth} Bohatství</div>
-          </div>
-          <div>
-            <div className="text-lg font-bold font-display">{infraTotals.cap.toFixed(1)}</div>
-            <div className="text-[10px] text-muted-foreground">{MACRO_LAYER_ICONS.capacity} Kapacita</div>
-          </div>
-        </div>
-      </div>
+        );
+      })()}
 
       {/* ═══ PER-NODE BREAKDOWN ═══ */}
       <div className="space-y-1">
