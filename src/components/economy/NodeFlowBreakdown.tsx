@@ -7,7 +7,7 @@ import {
 } from "@/components/ui/collapsible";
 import {
   Network, ChevronDown, ChevronRight, ArrowRight,
-  TrendingUp, TrendingDown, AlertTriangle, Route, Gauge,
+  TrendingUp, TrendingDown, AlertTriangle, Route, Coins,
 } from "lucide-react";
 import { MACRO_LAYER_ICONS } from "@/lib/economyFlow";
 import { useDevMode } from "@/hooks/useDevMode";
@@ -170,24 +170,33 @@ const NodeFlowBreakdown = ({ sessionId, playerName, realm }: Props) => {
         <h3 className="font-display font-semibold text-base">Ekonomický rozpad</h3>
         <InfoTip side="right">
           Dvouvrstvý model: <b>Realizovaná produkce</b> (Goods v4.3) = kanonická pravda pro UI a treasury.
-          <b>Potenciál</b> (infrastruktura uzlů) = surový vstup pipeline, nikdy se nesčítá s realizovanou.
+          <b>Infrastrukturní vstup</b> (node raw output) = surový vstup pipeline, jiná vrstva/jednotka, neporovnávat poměrem.
         </InfoTip>
       </div>
 
-      {/* ═══ TWO-LAYER SUMMARY: Realized (primary) + Potential (secondary) ═══ */}
+      {/* ═══ TWO-LAYER SUMMARY: Realized (primary) + Infra raw output (secondary) ═══ */}
       {(() => {
-        const utilization = infraTotals.prod > 0 ? Math.min(1, goodsProd / infraTotals.prod) : 0;
-        const utilPct = Math.round(utilization * 100);
+        const fiscalCapture = goodsProd > 0 ? goodsWealth / goodsProd : 0;
+        const fiscalPct = Math.round(fiscalCapture * 100);
         const bottlenecks: { label: string; severity: "warn" | "danger" }[] = [];
-        if (infraTotals.prod > 0 && utilization < 0.6) bottlenecks.push({ label: "Nízká poptávka / fill", severity: "danger" });
-        else if (infraTotals.prod > 0 && utilization < 0.85) bottlenecks.push({ label: "Mírná netěženost", severity: "warn" });
-        if (infraTotals.upkeepW > 0 && goodsWealth < infraTotals.upkeepW) bottlenecks.push({ label: "Údržba > fiskál", severity: "danger" });
-        if (infraTotals.cap > 0 && infraTotals.cap < infraTotals.prod * 0.5) bottlenecks.push({ label: "Nedostatečná kapacita", severity: "warn" });
-        if (!hasGoodsData) bottlenecks.push({ label: "Chybí data trhu", severity: "warn" });
+        // Údržba > fiskál: porovnává POUZE wealth/fiscal upkeep proti goods_wealth_fiscal.
+        // upkeepS (supplies) se sem nesmí přimíchat — jiná jednotka.
+        if (infraTotals.upkeepW > 0 && goodsWealth < infraTotals.upkeepW) {
+          bottlenecks.push({ label: "Údržba > fiskál", severity: "danger" });
+        }
+        if (infraTotals.cap > 0 && infraTotals.cap < infraTotals.prod * 0.5) {
+          bottlenecks.push({ label: "Nedostatečná kapacita", severity: "warn" });
+        }
+        if (!hasGoodsData) {
+          bottlenecks.push({ label: "Chybí data trhu", severity: "warn" });
+        }
+        if (hasGoodsData && fiscalCapture < 0.08) {
+          bottlenecks.push({ label: "Slabý fiskální záchyt", severity: "warn" });
+        }
 
         return (
           <div className="space-y-3">
-            {/* Primary: Realized */}
+            {/* Primary: Realized — všechna KPI ze stejné Goods/fiskální vrstvy */}
             <div className="rounded-lg p-4 border-2 border-accent/40 bg-accent/5">
               <div className="flex items-center justify-between mb-2">
                 <div className="text-[10px] uppercase tracking-wider text-accent font-bold flex items-center gap-1">
@@ -198,18 +207,19 @@ const NodeFlowBreakdown = ({ sessionId, playerName, realm }: Props) => {
               <div className="grid grid-cols-3 gap-4">
                 <div>
                   <div className="text-2xl font-bold font-display text-accent">{goodsProd.toFixed(1)}</div>
-                  <div className="text-[10px] text-muted-foreground">{MACRO_LAYER_ICONS.production} produkce (HDP)</div>
+                  <div className="text-[10px] text-muted-foreground">{MACRO_LAYER_ICONS.production} realizovaný tržní objem / HDP <InfoTip>goods_production_value — fiskální báze, ze které koruna může vybírat.</InfoTip></div>
                 </div>
                 <div>
                   <div className="text-2xl font-bold font-display">{goodsWealth.toFixed(1)}</div>
-                  <div className="text-[10px] text-muted-foreground">{MACRO_LAYER_ICONS.wealth} fiskální báze</div>
+                  <div className="text-[10px] text-muted-foreground">{MACRO_LAYER_ICONS.wealth} fiskální výnos <InfoTip>goods_wealth_fiscal — skutečný příjem koruny z goods ekonomiky. NE báze, ale výnos.</InfoTip></div>
                 </div>
                 <div>
                   <div className="text-2xl font-bold font-display text-primary flex items-baseline gap-1">
-                    {utilPct}<span className="text-xs">%</span>
+                    {fiscalPct}<span className="text-xs">%</span>
                   </div>
                   <div className="text-[10px] text-muted-foreground flex items-center gap-1">
-                    <Gauge className="h-3 w-3" /> využití potenciálu
+                    <Coins className="h-3 w-3" /> fiskální záchyt
+                    <InfoTip>goods_wealth_fiscal / goods_production_value. Kolik procent HDP koruna fakticky vybere.</InfoTip>
                   </div>
                 </div>
               </div>
@@ -225,15 +235,20 @@ const NodeFlowBreakdown = ({ sessionId, playerName, realm }: Props) => {
               )}
             </div>
 
-            {/* Secondary: Potential (muted) */}
+            {/* Secondary: Infrastructure raw output (NOT "potential" — jiná vrstva, jiná jednotka) */}
             <div className="rounded-lg p-3 border border-border/40 bg-muted/20">
               <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1 flex items-center gap-1">
-                🏗️ Výrobní potenciál (infrastruktura) <InfoTip>Co by uzly teoreticky mohly vyrobit při ideální poptávce a logistice. Vstup pipeline, ne hráčské KPI.</InfoTip>
+                🏗️ Infrastrukturní vstup (node raw output)
+                <InfoTip>
+                  Surový fyzický výkon uzlů / node-level output. NENÍ to horní strop ekonomiky
+                  a NENÍ přímo srovnatelný s realizovanou produkcí z Goods v4.3 (jiná vrstva,
+                  potenciálně jiná jednotka). Slouží jako vstup pipeline, ne jako hráčské KPI.
+                </InfoTip>
               </div>
               <div className="grid grid-cols-4 gap-3 text-muted-foreground">
                 <div>
                   <div className="text-sm font-semibold">{infraTotals.prod.toFixed(1)}</div>
-                  <div className="text-[10px]">{MACRO_LAYER_ICONS.production} potenciál</div>
+                  <div className="text-[10px]">{MACRO_LAYER_ICONS.production} node prod</div>
                 </div>
                 <div>
                   <div className="text-sm font-semibold">{infraTotals.wealth.toFixed(1)}</div>
@@ -256,11 +271,24 @@ const NodeFlowBreakdown = ({ sessionId, playerName, realm }: Props) => {
                 <div className="flex items-center gap-2 mb-1">
                   <AlertTriangle className="h-3 w-3 text-amber-500" />
                   <div className="text-[10px] uppercase tracking-wider text-amber-600 font-semibold">Diagnostic throughput (DEV)</div>
-                  <InfoTip>NENÍ kanonická produkce. Pouze pro debug pipeline. Sečtení potenciálu a realizace = double-counting, dříve omylem zobrazováno hráči.</InfoTip>
+                  <InfoTip>NENÍ kanonická produkce. Pouze pro debug pipeline. Sečtení node raw output a realizace = double-counting, dříve omylem zobrazováno hráči.</InfoTip>
                 </div>
                 <div className="text-[10px] text-muted-foreground font-mono">
-                  Σ(potenciál+goods) = {(infraTotals.prod + goodsProd).toFixed(1)} prod / {(infraTotals.wealth + goodsWealth).toFixed(1)} wealth
+                  Σ(node+goods) = {(infraTotals.prod + goodsProd).toFixed(1)} prod / {(infraTotals.wealth + goodsWealth).toFixed(1)} wealth
                 </div>
+                {goodsProd > infraTotals.prod * 1.05 && (
+                  <div className="mt-2 pt-2 border-t border-amber-500/30 text-[10px] text-destructive leading-relaxed">
+                    ⚠ <b>Semantic warning:</b> realizovaná produkce ({goodsProd.toFixed(1)}) &gt; infrastrukturní vstup ({infraTotals.prod.toFixed(1)}).
+                    To není nutně chyba ekonomiky — Goods v4.3 může zahrnovat vrstvy mimo node-level output
+                    (city auto-production, baskets, market access, tržní transformace). Tyto metriky nejsou
+                    přímo srovnatelné. Nepoužívat jejich poměr jako utilization.
+                  </div>
+                )}
+                {/* TODO: Pro skutečnou metriku "využití potenciálu" je potřeba spočítat
+                    goods_potential_value v Goods v4.3 solveru ve stejné jednotce jako
+                    goods_production_value. Musí zahrnovat city auto-production, baskets,
+                    logistiku, market access a capacity constraints. Do té doby utilization
+                    nezobrazovat v player UI. */}
               </div>
             )}
           </div>
