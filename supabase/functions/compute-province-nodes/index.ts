@@ -411,7 +411,7 @@ Deno.serve(async (req) => {
           allNewNodes.push({
             session_id, province_id: prov.id, node_type: "trade_hub",
             node_tier: "minor", node_subtype: "trade_post", node_class: "minor",
-            name: `Tržiště ${prov.name}`, hex_q: bq, hex_r: br,
+            name: `Tržiště ${(prov.name || "").replace(/\s*[–-]\s*(Centrální|Hlavní)\s*$/iu, "").trim() || prov.name}`, hex_q: bq, hex_r: br,
             controlled_by: owner,
             strategic_value: 4, economic_value: 9, defense_value: 2,
             mobility_relevance: 8, supply_relevance: 7,
