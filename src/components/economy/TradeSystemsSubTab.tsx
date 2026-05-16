@@ -82,16 +82,8 @@ const TradeSystemsSubTab = ({ sessionId, playerName }: Props) => {
     let alive = true;
     (async () => {
       setLoading(true);
-      const [sRes, bRes, aRes] = await Promise.all([
-        supabase.from("trade_systems").select("*").eq("session_id", sessionId).order("node_count", { ascending: false }),
-        supabase.from("trade_system_basket_supply").select("*").eq("session_id", sessionId),
-        supabase.from("player_trade_system_access").select("*").eq("session_id", sessionId),
-      ]);
-      if (!alive) return;
-      setSystems((sRes.data as SystemRow[]) || []);
-      setBaskets((bRes.data as BasketRow[]) || []);
-      setAccess((aRes.data as AccessRow[]) || []);
-      setLoading(false);
+      await loadData();
+      if (alive) setLoading(false);
     })();
     return () => { alive = false; };
   }, [sessionId]);
