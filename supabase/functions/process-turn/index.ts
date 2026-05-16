@@ -1585,14 +1585,7 @@ Deno.serve(async (req) => {
           active_projects: activeBuildingCount,
           overloaded: capacityOverload,
         },
-        goods_economy: {
-          tax_pop: goodsPopTax,
-          tax_market: pillarMarketTariff,
-          tax_transit: pillarTransitToll,
-          tax_extraction: pillarExtractionTax,
-          capture: pillarGoodsFiscal,
-          retention: Math.round(goodsRetention * 1000) / 1000,
-        },
+        // v6: legacy `goods_economy` block removed — use `wealth_breakdown` + `last_turn_gdp_*` instead.
         wealth_breakdown: {
           pop_tax: pillarPopTax,
           domestic_market: pillarDomesticMarket,
