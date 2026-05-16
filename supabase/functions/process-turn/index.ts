@@ -201,17 +201,16 @@ Deno.serve(async (req) => {
     const totalCapacity = realm.total_capacity || 0;
     const totalImportance = realm.total_importance || 0;
 
-    // ── GOODS ECONOMY LAYER (from compute-trade-flows v4.2) ──
+    // ── GOODS ECONOMY LAYER (from compute-trade-flows v4.3) ──
     const goodsProductionValue = realm.goods_production_value || 0;
     const goodsSupplyVolume = realm.goods_supply_volume || 0;
-    const goodsWealthFiscal = realm.goods_wealth_fiscal || 0;
-    // v4.2: Market share economy — no more legacy blend
-    const wealthDomesticComponent = realm.wealth_domestic_component || 0;
-    const wealthMarketShare = realm.wealth_market_share || 0;
+    // v6 fiscal: legacy wealth_domestic_component / wealth_market_share NO LONGER read.
+    // gdp_domestic is now computed from city production × consumption pressure (below).
+    // gdp_market = goods_production_value (Goods v4.3 is the canonical market volume).
 
     logEntries.push(`⚒️ Produkce: ${totalProduction.toFixed(1)} | 💰 Bohatství: ${totalWealth.toFixed(1)} | 🏛️ Kapacita: ${totalCapacity.toFixed(1)}`);
     if (goodsProductionValue > 0) {
-      logEntries.push(`📦 Goods v4.2: produkce=${goodsProductionValue.toFixed(1)} zásoby=${goodsSupplyVolume.toFixed(1)} fiskál=${goodsWealthFiscal.toFixed(1)} domestic=${wealthDomesticComponent.toFixed(1)} market=${wealthMarketShare.toFixed(1)}`);
+      logEntries.push(`📦 Goods v4.3: produkce=${goodsProductionValue.toFixed(1)} zásoby=${goodsSupplyVolume.toFixed(1)}`);
     }
 
     // ── Load cities ──
