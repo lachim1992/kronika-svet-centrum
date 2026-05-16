@@ -66,7 +66,7 @@ const NodeFlowBreakdown = ({ sessionId, playerName, realm }: Props) => {
   const [routes, setRoutes] = useState<RouteData[]>([]);
   const [expandedNode, setExpandedNode] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const { isDevMode } = useDevMode();
+  const { devMode: isDevMode } = useDevMode();
 
   const fetchData = useCallback(async () => {
     setLoading(true);
