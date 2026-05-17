@@ -456,7 +456,7 @@ const EconomyTab = ({
       {/* v4.3 badge */}
       <div className="flex justify-center pt-2 pb-4">
         <Badge variant="outline" className="text-[9px] text-muted-foreground border-border/30">
-          Ekonomika v4.3 — 4 taby, jednotný fiskální totál
+          Ekonomika v4.3 — sjednocený fiskální totál, 6-krokový refresh chain
         </Badge>
       </div>
     </div>
