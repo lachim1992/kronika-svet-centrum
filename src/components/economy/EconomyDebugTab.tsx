@@ -489,6 +489,8 @@ const EconomyDebugTab = ({ sessionId, currentPlayerName, currentTurn, cities, re
                   <TableHead className="text-[10px] text-right">Local</TableHead>
                   <TableHead className="text-[10px] text-right">Auto</TableHead>
                   <TableHead className="text-[10px] text-right">Bonus</TableHead>
+                  <TableHead className="text-[10px] text-right" title="recipe_bonus from node recipes">Rcp</TableHead>
+                  <TableHead className="text-[10px] text-right" title="building_bonus from completed buildings">Bld</TableHead>
                   <TableHead className="text-[10px] text-right">Import</TableHead>
                   <TableHead className="text-[10px] text-right">Surplus</TableHead>
                   <TableHead className="text-[10px] text-right">Export</TableHead>
@@ -507,6 +509,8 @@ const EconomyDebugTab = ({ sessionId, currentPlayerName, currentTurn, cities, re
                       <TableCell className="text-[10px] py-1 text-right font-mono">{fmt(b.local_supply)}</TableCell>
                       <TableCell className="text-[10px] py-1 text-right font-mono">{fmt(b.auto)}</TableCell>
                       <TableCell className="text-[10px] py-1 text-right font-mono">{fmt(b.bonus)}</TableCell>
+                      <TableCell className="text-[10px] py-1 text-right font-mono text-muted-foreground">{fmt(b.recipe_bonus)}</TableCell>
+                      <TableCell className={`text-[10px] py-1 text-right font-mono ${b.demand > 0 && b.building_bonus > b.demand * 1.5 ? "text-amber-500" : "text-emerald-500"}`} title={b.demand > 0 && b.building_bonus > b.demand * 1.5 ? "overshoot >150% demand" : ""}>{fmt(b.building_bonus)}</TableCell>
                       <TableCell className="text-[10px] py-1 text-right font-mono text-primary">{fmt(b.import_vol)}</TableCell>
                       <TableCell className="text-[10px] py-1 text-right font-mono">{fmt(b.export_surplus)}</TableCell>
                       <TableCell className="text-[10px] py-1 text-right font-mono text-primary">{fmt(b.export_vol)}</TableCell>
