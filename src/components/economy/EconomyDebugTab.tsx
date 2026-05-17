@@ -163,33 +163,6 @@ const EconomyDebugTab = ({ sessionId, currentPlayerName, currentTurn, cities, re
   const myCmbLatest = useMemo(() => cmbLatest.filter((r: any) => r.player_name === currentPlayerName), [cmbLatest, currentPlayerName]);
   const btfLatest = useMemo(() => (snap?.basketFlows || []).filter((r: any) => r.turn_number === maxTurnBtf), [snap?.basketFlows, maxTurnBtf]);
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center py-12 text-muted-foreground text-sm">
-        <Loader2 className="h-4 w-4 animate-spin mr-2" />Načítám debug snapshot…
-      </div>
-    );
-  }
-  if (err || !snap) {
-    return <div className="text-destructive text-sm p-4">Debug error: {err}</div>;
-  }
-
-  // ═══ Health warnings ═══
-  const orphanTfCitySrc = snap.tradeFlows.filter((f: any) => f.source_city_id && !cityMap.has(f.source_city_id)).length;
-  const orphanTfCityTgt = snap.tradeFlows.filter((f: any) => f.target_city_id && !cityMap.has(f.target_city_id)).length;
-  const orphanTfNodeSrc = snap.tradeFlows.filter((f: any) => f.source_node_id && !nodeMap.has(f.source_node_id)).length;
-  const orphanTfNodeTgt = snap.tradeFlows.filter((f: any) => f.target_node_id && !nodeMap.has(f.target_node_id)).length;
-  const orphanBtfSrc = btfLatest.filter((f: any) => !cityMap.has(f.source_city_id)).length;
-  const orphanBtfTgt = btfLatest.filter((f: any) => !cityMap.has(f.target_city_id)).length;
-
-  const myUnmetTotal = myCmbLatest.reduce((s: number, r: any) => s + num(r.unmet_demand), 0);
-  const mySurplusTotal = myCmbLatest.reduce((s: number, r: any) => s + num(r.export_surplus), 0);
-  const myBtfCount = btfLatest.filter((f: any) => f.source_player === currentPlayerName || f.target_player === currentPlayerName).length;
-  const crossPlayerFlows = btfLatest.filter((f: any) => f.source_player !== f.target_player).length;
-
-  const r = snap.realm || {};
-  const hasExportFlows = btfLatest.some((f: any) => f.source_player === currentPlayerName);
-
   // ═══ Basket matrix for current player ═══
   const basketMatrix = useMemo(() => {
     const m = new Map<string, any>();
@@ -227,6 +200,48 @@ const EconomyDebugTab = ({ sessionId, currentPlayerName, currentTurn, cities, re
     return Array.from(m.values()).sort((a, b) => a.tier - b.tier || a.label.localeCompare(b.label));
   }, [myCmbLatest, btfLatest, currentPlayerName]);
 
+  // node_inventory aggregated by good and by basket
+  const invByGood = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const i of (snap?.nodeInventory || [])) m.set(i.good_key, (m.get(i.good_key) || 0) + num(i.quantity));
+    return Array.from(m.entries()).sort((a, b) => b[1] - a[1]);
+  }, [snap?.nodeInventory]);
+  const invByBasket = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const i of (snap?.nodeInventory || [])) {
+      const bk = goodToBasket.get(i.good_key) || "—";
+      m.set(bk, (m.get(bk) || 0) + num(i.quantity));
+    }
+    return Array.from(m.entries()).sort((a, b) => b[1] - a[1]);
+  }, [snap?.nodeInventory, goodToBasket]);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-12 text-muted-foreground text-sm">
+        <Loader2 className="h-4 w-4 animate-spin mr-2" />Načítám debug snapshot…
+      </div>
+    );
+  }
+  if (err || !snap) {
+    return <div className="text-destructive text-sm p-4">Debug error: {err}</div>;
+  }
+
+  // ═══ Health warnings ═══
+  const orphanTfCitySrc = snap.tradeFlows.filter((f: any) => f.source_city_id && !cityMap.has(f.source_city_id)).length;
+  const orphanTfCityTgt = snap.tradeFlows.filter((f: any) => f.target_city_id && !cityMap.has(f.target_city_id)).length;
+  const orphanTfNodeSrc = snap.tradeFlows.filter((f: any) => f.source_node_id && !nodeMap.has(f.source_node_id)).length;
+  const orphanTfNodeTgt = snap.tradeFlows.filter((f: any) => f.target_node_id && !nodeMap.has(f.target_node_id)).length;
+  const orphanBtfSrc = btfLatest.filter((f: any) => !cityMap.has(f.source_city_id)).length;
+  const orphanBtfTgt = btfLatest.filter((f: any) => !cityMap.has(f.target_city_id)).length;
+
+  const myUnmetTotal = myCmbLatest.reduce((s: number, r: any) => s + num(r.unmet_demand), 0);
+  const mySurplusTotal = myCmbLatest.reduce((s: number, r: any) => s + num(r.export_surplus), 0);
+  const myBtfCount = btfLatest.filter((f: any) => f.source_player === currentPlayerName || f.target_player === currentPlayerName).length;
+  const crossPlayerFlows = btfLatest.filter((f: any) => f.source_player !== f.target_player).length;
+
+  const r = snap.realm || {};
+  const hasExportFlows = btfLatest.some((f: any) => f.source_player === currentPlayerName);
+
   const bottleneckOf = (row: any): string => {
     if (row.demand <= 0) return "—";
     if (row.unmet <= 0.5) return "✓ satisfied";
@@ -243,21 +258,6 @@ const EconomyDebugTab = ({ sessionId, currentPlayerName, currentTurn, cities, re
   const nodeProd = myNodes.reduce((s, n) => s + num(n.production_output), 0);
   const nodeWealth = myNodes.reduce((s, n) => s + num(n.wealth_output), 0);
   const nodeCap = myNodes.reduce((s, n) => s + num(n.capacity_score), 0);
-
-  // node_inventory aggregated by good and by basket
-  const invByGood = useMemo(() => {
-    const m = new Map<string, number>();
-    for (const i of snap.nodeInventory) m.set(i.good_key, (m.get(i.good_key) || 0) + num(i.quantity));
-    return Array.from(m.entries()).sort((a, b) => b[1] - a[1]);
-  }, [snap.nodeInventory]);
-  const invByBasket = useMemo(() => {
-    const m = new Map<string, number>();
-    for (const i of snap.nodeInventory) {
-      const bk = goodToBasket.get(i.good_key) || "—";
-      m.set(bk, (m.get(bk) || 0) + num(i.quantity));
-    }
-    return Array.from(m.entries()).sort((a, b) => b[1] - a[1]);
-  }, [snap.nodeInventory, goodToBasket]);
 
   return (
     <div className="space-y-5 animate-fade-in">
