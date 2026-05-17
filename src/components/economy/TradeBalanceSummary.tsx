@@ -55,11 +55,16 @@ const TradeBalanceSummary = ({ sessionId, playerName }: Props) => {
     return m;
   }, []);
 
-  const { imports, exports, totals, partners } = useMemo(() => {
+  const { imports, exports, totals, partners, byPartner } = useMemo(() => {
     const imp = new Map<string, { volume: number; value: number }>();
     const exp = new Map<string, { volume: number; value: number; fiscal: number }>();
     const partnerSet = new Set<string>();
+    const partnerMap = new Map<string, { imports: number; exports: number; fiscal: number; flows: number }>();
     let totImpV = 0, totImpVal = 0, totExpV = 0, totExpVal = 0, totFiscal = 0;
+    const bumpPartner = (name: string) => {
+      if (!partnerMap.has(name)) partnerMap.set(name, { imports: 0, exports: 0, fiscal: 0, flows: 0 });
+      return partnerMap.get(name)!;
+    };
     for (const r of rows) {
       const key = resolveBasketKey(r.basket_key);
       if (r.target_player === playerName) {
@@ -68,6 +73,8 @@ const TradeBalanceSummary = ({ sessionId, playerName }: Props) => {
         imp.set(key, cur);
         totImpV += r.volume; totImpVal += r.gross_value;
         partnerSet.add(r.source_player);
+        const p = bumpPartner(r.source_player);
+        p.imports += r.gross_value; p.flows += 1;
       }
       if (r.source_player === playerName) {
         const cur = exp.get(key) || { volume: 0, value: 0, fiscal: 0 };
@@ -75,14 +82,20 @@ const TradeBalanceSummary = ({ sessionId, playerName }: Props) => {
         exp.set(key, cur);
         totExpV += r.volume; totExpVal += r.gross_value; totFiscal += r.fiscal_capture;
         partnerSet.add(r.target_player);
+        const p = bumpPartner(r.target_player);
+        p.exports += r.gross_value; p.fiscal += r.fiscal_capture; p.flows += 1;
       }
     }
     const sortByVal = (a: [string, { value: number }], b: [string, { value: number }]) => b[1].value - a[1].value;
+    const byPartner = Array.from(partnerMap.entries())
+      .map(([name, d]) => ({ name, ...d, net: d.exports - d.imports }))
+      .sort((a, b) => (b.exports + b.imports) - (a.exports + a.imports));
     return {
       imports: Array.from(imp.entries()).sort(sortByVal),
       exports: Array.from(exp.entries()).sort(sortByVal),
       totals: { impVolume: totImpV, impValue: totImpVal, expVolume: totExpV, expValue: totExpVal, fiscal: totFiscal },
       partners: partnerSet.size,
+      byPartner,
     };
   }, [rows, playerName]);
 
@@ -137,6 +150,35 @@ const TradeBalanceSummary = ({ sessionId, playerName }: Props) => {
             {netBalance >= 0 ? "+" : ""}{netBalance.toFixed(2)}
           </span>
         </div>
+
+        {/* Per-partner breakdown */}
+        {byPartner.length > 0 && (
+          <div className="space-y-1">
+            <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+              👥 Bilance dle partnera ({byPartner.length})
+            </div>
+            <div className="rounded-lg border border-border/40 overflow-hidden">
+              <div className="grid grid-cols-[1fr_auto_auto_auto_auto] gap-2 px-2 py-1 bg-muted/30 text-[9px] uppercase tracking-wide text-muted-foreground font-semibold">
+                <span>Partner</span>
+                <span className="text-right">📥 Import</span>
+                <span className="text-right">📤 Export</span>
+                <span className="text-right">💰 Fiskál</span>
+                <span className="text-right">Δ Netto</span>
+              </div>
+              {byPartner.map(p => (
+                <div key={p.name} className="grid grid-cols-[1fr_auto_auto_auto_auto] gap-2 px-2 py-1 text-[11px] border-t border-border/30 items-center">
+                  <span className="truncate font-medium">{p.name}</span>
+                  <span className="text-right font-mono text-muted-foreground">{p.imports > 0 ? p.imports.toFixed(1) : "—"}</span>
+                  <span className="text-right font-mono text-muted-foreground">{p.exports > 0 ? p.exports.toFixed(1) : "—"}</span>
+                  <span className="text-right font-mono text-primary">{p.fiscal > 0 ? p.fiscal.toFixed(2) : "—"}</span>
+                  <span className={`text-right font-mono font-bold ${p.net >= 0 ? "text-primary" : "text-destructive"}`}>
+                    {p.net >= 0 ? "+" : ""}{p.net.toFixed(1)}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Two columns: imports / exports per basket */}
         <div className="grid md:grid-cols-2 gap-3">
