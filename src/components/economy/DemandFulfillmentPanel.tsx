@@ -69,6 +69,7 @@ function getLayerForBasket(bk: string): string {
 }
 
 const DemandFulfillmentPanel = ({ sessionId, playerName, cities }: Props) => {
+  const { isDevMode } = useDevMode();
   const [baskets, setBaskets] = useState<CityBasketRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCatalog, setShowCatalog] = useState(false);
