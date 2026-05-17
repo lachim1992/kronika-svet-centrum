@@ -595,6 +595,71 @@ export type Database = {
           },
         ]
       }
+      basket_trade_flows: {
+        Row: {
+          access_level: number
+          basket_key: string
+          created_at: string
+          fiscal_capture: number
+          gross_value: number
+          id: string
+          session_id: string
+          source_city_id: string
+          source_player: string
+          target_city_id: string
+          target_player: string
+          tariff_factor: number
+          trade_system_id: string | null
+          turn_number: number
+          unit_price: number
+          volume: number
+        }
+        Insert: {
+          access_level?: number
+          basket_key: string
+          created_at?: string
+          fiscal_capture?: number
+          gross_value?: number
+          id?: string
+          session_id: string
+          source_city_id: string
+          source_player: string
+          target_city_id: string
+          target_player: string
+          tariff_factor?: number
+          trade_system_id?: string | null
+          turn_number?: number
+          unit_price?: number
+          volume?: number
+        }
+        Update: {
+          access_level?: number
+          basket_key?: string
+          created_at?: string
+          fiscal_capture?: number
+          gross_value?: number
+          id?: string
+          session_id?: string
+          source_city_id?: string
+          source_player?: string
+          target_city_id?: string
+          target_player?: string
+          tariff_factor?: number
+          trade_system_id?: string | null
+          turn_number?: number
+          unit_price?: number
+          volume?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "basket_trade_flows_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       battle_lobbies: {
         Row: {
           ai_responded_at: string | null
@@ -8312,6 +8377,7 @@ export type Database = {
           tax_transit: number | null
           technological_prestige: number
           total_capacity: number
+          total_gdp: number
           total_importance: number
           total_nodes: number | null
           total_production: number
@@ -8416,6 +8482,7 @@ export type Database = {
           tax_transit?: number | null
           technological_prestige?: number
           total_capacity?: number
+          total_gdp?: number
           total_importance?: number
           total_nodes?: number | null
           total_production?: number
@@ -8520,6 +8587,7 @@ export type Database = {
           tax_transit?: number | null
           technological_prestige?: number
           total_capacity?: number
+          total_gdp?: number
           total_importance?: number
           total_nodes?: number | null
           total_production?: number
