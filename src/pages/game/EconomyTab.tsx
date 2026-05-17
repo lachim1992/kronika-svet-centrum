@@ -417,6 +417,28 @@ const EconomyTab = ({
             Poradit se s rádci o ekonomice
           </Button>
         </TabsContent>
+
+        {/* ═══ DEBUG TAB (dev-only) ═══ */}
+        {devMode && (
+          <TabsContent value="debug" className="space-y-5 animate-fade-in">
+            <Suspense
+              fallback={
+                <div className="text-xs text-muted-foreground p-4 text-center">
+                  <Loader2 className="h-4 w-4 animate-spin inline mr-2" />
+                  Načítám debug…
+                </div>
+              }
+            >
+              <EconomyDebugTab
+                sessionId={sessionId}
+                currentPlayerName={currentPlayerName}
+                currentTurn={currentTurn}
+                cities={cities}
+                realm={realm}
+              />
+            </Suspense>
+          </TabsContent>
+        )}
       </Tabs>
 
       {/* ═══ DEV PANELS (lazy, gated) ═══ */}
