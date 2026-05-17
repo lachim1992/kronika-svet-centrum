@@ -7,6 +7,8 @@ import { InfoTip } from "@/components/ui/info-tip";
 import { Loader2, ChevronDown } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import GoodsDemandSubTab from "./GoodsDemandSubTab";
+import TradeFlowTrace from "./TradeFlowTrace";
+import { useDevMode } from "@/hooks/useDevMode";
 import { DEMAND_BASKETS, resolveBasketKey } from "@/lib/goodsCatalog";
 
 interface Props {
