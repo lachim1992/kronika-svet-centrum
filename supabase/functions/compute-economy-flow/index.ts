@@ -888,6 +888,22 @@ Deno.serve(async (req) => {
       playerLogistic.set(player, (playerLogistic.get(player) || 0) + lc);
     }
 
+    // Phase 2: GDP = domestic production value + export gross_value (basket_trade_flows)
+    // total_wealth stays fiscal (sum of revenue streams); total_gdp is economic activity.
+    const { data: btfRows } = await sb.from("basket_trade_flows")
+      .select("source_player, gross_value")
+      .eq("session_id", session_id);
+    const gdpByPlayer = new Map<string, number>();
+    for (const [player, totals] of playerTotals) {
+      // Production output is proxy for domestic GDP component (units × implicit price 1.0)
+      gdpByPlayer.set(player, totals.production);
+    }
+    for (const row of btfRows || []) {
+      const p = (row as any).source_player as string;
+      if (!p) continue;
+      gdpByPlayer.set(p, (gdpByPlayer.get(p) || 0) + Number((row as any).gross_value || 0));
+    }
+
     for (const [player, totals] of playerTotals) {
       const ex = existingByPlayer.get(player) || {};
       const wealthPopTax = Number(ex.wealth_pop_tax || 0);
