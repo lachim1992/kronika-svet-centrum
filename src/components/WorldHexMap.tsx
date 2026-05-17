@@ -1319,7 +1319,7 @@ const WorldHexMap = ({ sessionId, playerName, myRole, currentTurn, onCityClick }
         )}
         {!isMobile && (
           <div className="flex gap-1">
-            <Badge variant="outline" className="text-[9px] bg-card/70 backdrop-blur-sm">{provinces.length} provincií</Badge>
+            <Badge variant="outline" className="text-[9px] bg-card/70 backdrop-blur-sm">{provinceLegend.length} provincií</Badge>
             <Badge variant="outline" className="text-[9px] bg-card/70 backdrop-blur-sm">{discoveredCoords.size} prozkoumáno</Badge>
             <Badge variant="outline" className="text-[9px] bg-card/70 backdrop-blur-sm">{frontierCoords.size} hranice</Badge>
           </div>
