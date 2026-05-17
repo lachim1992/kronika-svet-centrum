@@ -75,24 +75,33 @@ function getLayerForBasket(bk: string): string {
 
 const DemandFulfillmentPanel = ({ sessionId, playerName, cities }: Props) => {
   const { devMode } = useDevMode();
+  const navigate = useNavigate();
   const [baskets, setBaskets] = useState<CityBasketRow[]>([]);
+  const [templates, setTemplates] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCatalog, setShowCatalog] = useState(false);
+  const [expandedBasket, setExpandedBasket] = useState<string | null>(null);
 
   useEffect(() => {
     const fetch = async () => {
       setLoading(true);
-      const { data } = await supabase
-        .from("city_market_baskets")
-        .select("*")
-        .eq("session_id", sessionId)
-        .eq("player_name", playerName)
-        .order("turn_number", { ascending: false })
-        .limit(500);
+      const [bRes, tRes] = await Promise.all([
+        supabase
+          .from("city_market_baskets")
+          .select("*")
+          .eq("session_id", sessionId)
+          .eq("player_name", playerName)
+          .order("turn_number", { ascending: false })
+          .limit(500),
+        supabase
+          .from("building_templates")
+          .select("id, name, category, required_settlement_level, effects, cost_wealth, cost_wood, cost_stone, cost_iron"),
+      ]);
 
-      const rows = (data || []) as CityBasketRow[];
+      const rows = (bRes.data || []) as CityBasketRow[];
       const maxTurn = rows.reduce((m, r) => Math.max(m, r.turn_number), 0);
       setBaskets(rows.filter(r => r.turn_number === maxTurn));
+      setTemplates(tRes.data || []);
       setLoading(false);
     };
     fetch();
