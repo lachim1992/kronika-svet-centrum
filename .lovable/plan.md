@@ -1,141 +1,196 @@
 
-# Plán: Trade System — Fáze 1 (Stabilizace)
+# Plán: Trade System — Fáze 2
 
-Schváleno se třemi technickými pojistkami. Fáze 2 (basket_trade_flows, HDP unifikace, per-basket trace) **mimo scope**.
+Fáze 1 stabilizovala ID vrstvy a názvy. Fáze 2 dodává **skutečný basket-level obchod** a rozlomí matoucí "HDP". Stavíme na L1 access (`player_trade_system_access`) a L2 basketech (`city_market_baskets`), které už mají `export_surplus` a `unmet_demand`.
 
-## 4 tvrdé acceptance body
+## Cíle (4 acceptance body)
 
-1. TradePanel netvrdí, že ruční dohody = celý obchod.
-2. `trade_flows` nemíchá `city_id` a `node_id`.
-3. Staré `trade_flows` nezůstávají viset, když nový přepočet vyrobí 0 toků.
-4. Flow centrality, `commercial_capture` a `transit_tax` používají správné ID vrstvy.
+1. Vznikne tabulka `basket_trade_flows` (per-basket, per-pair, per-turn) jako derived runtime — solver ji přepíše každý refresh.
+2. Solver páruje `export_surplus` × `unmet_demand` napříč městy **uvnitř stejného trade_system** s respektem k `access_level` a `tariff_factor` z `player_trade_system_access`.
+3. Hodnoty basket_trade_flows se promítnou do `city_market_baskets`: `local_supply` (kupující), `domestic_satisfaction`, a do fiskálu odesílatele přes `goods_wealth_fiscal`.
+4. UI ukáže rozdíl mezi **GDP** (ekonomická aktivita = výroba × cena) a **fiskálním příjmem** (co plyne do státní pokladny). Topbar EconomyTab přestane míchat.
 
 ## Additional acceptance
 
-- `source_city_id` i `target_city_id` v `trade_flows` musí resolvovat na `cities.id`.
-- `source_node_id` a `target_node_id`, když non-null, musí resolvovat na `province_nodes.id`.
-- `nodeById` lookups používají výhradně `*_node_id`.
-- `cityMap` lookups používají výhradně `*_city_id`.
-- `trade_flows` delete errors a insert errors jsou logované a throwed.
-- Když recompute vyrobí 0 flows, `trade_flows` pro session je prázdné, ne stale.
+- `basket_trade_flows.source_city_id`/`target_city_id` → `cities.id` (žádné node ID).
+- Solver respektuje `access_level`: 0 = žádný tok, 1 = base, 2 = preferential (-tariff), 3 = sovereign (no tariff).
+- Když recompute vyrobí 0 flows, tabulka pro session je prázdná (stejné cleanup pravidlo jako trade_flows).
+- `domestic_satisfaction` = `(local_supply_after_imports) / local_demand`, clamped [0,1].
+- `total_wealth` v `realm_resources` zůstává fiskální (suma streams). Nové pole `total_gdp` = ekonomická aktivita.
 
 ---
 
 ## 1. Migrace
 
 ```sql
-ALTER TABLE trade_flows
-  ADD COLUMN IF NOT EXISTS source_node_id uuid,
-  ADD COLUMN IF NOT EXISTS target_node_id uuid;
+-- Nová derived tabulka
+CREATE TABLE basket_trade_flows (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  session_id uuid NOT NULL REFERENCES game_sessions(id) ON DELETE CASCADE,
+  trade_system_id uuid,                 -- volné, pro debug; FK nepřidávat (runtime)
+  basket_key text NOT NULL,
+  source_city_id uuid NOT NULL,         -- cities.id
+  target_city_id uuid NOT NULL,         -- cities.id
+  source_player text NOT NULL,
+  target_player text NOT NULL,
+  volume numeric NOT NULL DEFAULT 0,    -- jednotky basketu/turn
+  unit_price numeric NOT NULL DEFAULT 0,
+  gross_value numeric NOT NULL DEFAULT 0, -- volume * unit_price
+  tariff_factor numeric NOT NULL DEFAULT 1.0,
+  fiscal_capture numeric NOT NULL DEFAULT 0, -- co odesílatel realizuje
+  access_level int NOT NULL DEFAULT 1,
+  turn_number int NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_btf_session ON basket_trade_flows(session_id);
+CREATE INDEX idx_btf_session_target ON basket_trade_flows(session_id, target_city_id);
+CREATE INDEX idx_btf_session_source ON basket_trade_flows(session_id, source_city_id);
+
+-- Nový sloupec pro GDP (ekonomická aktivita ≠ fiskální příjem)
+ALTER TABLE realm_resources
+  ADD COLUMN IF NOT EXISTS total_gdp numeric NOT NULL DEFAULT 0;
 ```
 
-Žádné FK, žádný backfill. `trade_flows` je derived runtime — čistí se recompute po deployi.
+Žádné FK na cities/trade_systems (runtime tabulka, semantická validace v solveru).
 
-## 2. `supabase/functions/compute-trade-flows/index.ts`
+## 2. Nová edge funkce `compute-basket-trade-flows`
 
-**A) ID semantics při push:**
-```ts
-tradeFlows.push({
-  session_id,
-  source_city_id: neighborId,                       // cities.id
-  target_city_id: cityId,                           // cities.id
-  source_node_id: cityToNodeId.get(neighborId) ?? null,
-  target_node_id: cityToNodeId.get(cityId) ?? null,
-  source_player: neighborCity.owner_player || "",
-  target_player: city.owner_player || "",
-  // ...zbytek beze změny
-});
+Vkládá se do `refresh-economy` chain **mezi** `compute-trade-flows` a `compute-economy-flow`:
+
+```
+routes → hex-flows → trade-systems → trade-flows → basket-trade-flows → economy-flow
 ```
 
-**B) Unconditional cleanup s error handling:**
+Algoritmus (čistý solver, žádné AI):
+
+1. Načti `city_market_baskets` pro session (turn = current).
+2. Načti `trade_systems` + `player_trade_system_access` → mapa `(player, system_id) → {access_level, tariff_factor}`.
+3. Načti `cities` a jejich `trade_system_id` (přes `province_nodes.trade_system_id` JOIN přes `city_id`).
+4. Pro každý basket_key, pro každý trade_system:
+   - Surplus: `[(city_id, player, export_surplus)]` filtr > 0.
+   - Demand: `[(city_id, player, unmet_demand)]` filtr > 0.
+   - Greedy párování (largest demand first), respekt:
+     - oba hráči musí mít access_level ≥ 1 do systému,
+     - `effective_tariff = max(source.tariff, target.tariff)`.
+   - Výpočet:
+     - `volume = min(surplus_left, demand_left)`
+     - `unit_price = basket_base_price[basket_key]` (konstanta z `lib/economyConstants` nebo default 1.0)
+     - `gross_value = volume * unit_price`
+     - `fiscal_capture = gross_value * (1 - effective_tariff) * monetization_efficiency` (efficiency = 0.6 default)
+5. Unconditional cleanup před insert:
+   ```ts
+   await sb.from("basket_trade_flows").delete().eq("session_id", session_id);
+   if (flows.length > 0) await sb.from("basket_trade_flows").insert(flows);
+   ```
+6. Po insertu update `city_market_baskets`:
+   - `local_supply += sum(imported volume)` per (city, basket)
+   - `domestic_satisfaction = min(1, (local_supply + auto + bonus + imports) / local_demand)`
+   - `unmet_demand = max(0, local_demand - all_supply)`
+   - `export_surplus -= sum(exported volume)` per (city, basket)
+7. Update `realm_resources.goods_wealth_fiscal += sum(fiscal_capture)` per source_player.
+
+Error handling: log + throw stejně jako Fáze 1.
+
+## 3. HDP rozlomení v `compute-economy-flow`
+
+Přidat výpočet GDP před zápis `realm_resources`:
+
 ```ts
-const { error: deleteFlowsError } = await sb
-  .from("trade_flows")
-  .delete()
+// GDP = ekonomická aktivita: domestic production hodnota + export gross_value
+const { data: btfRows } = await sb.from("basket_trade_flows")
+  .select("source_player, gross_value")
   .eq("session_id", session_id);
 
-if (deleteFlowsError) {
-  console.error("[compute-trade-flows] Failed to clear trade_flows", deleteFlowsError);
-  throw deleteFlowsError;
+const gdpByPlayer = new Map<string, number>();
+for (const node of nodes) {
+  if (!node.controlled_by) continue;
+  const prodValue = Number(node.production_output || 0); // proxy: production output × 1.0
+  gdpByPlayer.set(node.controlled_by, (gdpByPlayer.get(node.controlled_by) || 0) + prodValue);
+}
+for (const row of btfRows || []) {
+  gdpByPlayer.set(row.source_player,
+    (gdpByPlayer.get(row.source_player) || 0) + Number(row.gross_value || 0));
 }
 
-if (tradeFlows.length > 0) {
-  const { error: insertFlowsError } = await sb
-    .from("trade_flows")
-    .insert(tradeFlows);
-  if (insertFlowsError) {
-    console.error("[compute-trade-flows] Failed to insert trade_flows", insertFlowsError);
-    throw insertFlowsError;
-  }
-}
+// V update objektu:
+total_gdp: Math.round((gdpByPlayer.get(player) || 0) * 100) / 100,
 ```
 
-**C) Lookup hranice (hard rule):**
-- `cityMap.get(flow.source_city_id)` / `get(flow.target_city_id)` — city id výhradně.
-- `exportFlows = tradeFlows.filter(f => f.source_city_id === city.id)`.
-- `commercial_capture` a `transit_tax` agregace přes `source_city_id`/`target_city_id`.
-- Phase 3.5 flow centrality:
-  ```ts
-  const node = nodeById.get((f as any).source_node_id); // NIKDY source_city_id
-  ```
-- Žádný `nodeById.get(*_city_id)` nikde v souboru. Žádný `cityMap.get(*_node_id)` nikde.
+`total_wealth` ZŮSTÁVÁ jako suma fiskálních streams. Žádné jiné změny v compute-economy-flow.
 
-## 3. UI rename + disclaimers
+## 4. `refresh-economy` chain rozšíření
 
-- `src/components/TradePanel.tsx`:
-  - Nadpis "Obchodní přehled" → **"Diplomatické obchodní dohody"**
-  - Banner: *"0 dohod ≠ 0 obchodu. Automatická obchodní síť a goods ekonomika běží samostatně."*
-  - "Nová obchodní nabídka" → "Nová diplomatická obchodní nabídka"
-- `src/components/economy/MarketsHub.tsx`: sekce "Trade System Supply/Demand" → **"Síťová bilance košů"**.
-- `src/components/economy/DemandFulfillmentPanel.tsx` + Dependency Map: gate za `useDevMode()` + štítek *"Dev — zatím nečteno z canonical Goods v4.3 tables"*.
-- `src/pages/game/EconomyTab.tsx`: ověřit, že topbar nemíchá "HDP" s recipe output. HDP unifikace = Fáze 2.
+`supabase/functions/refresh-economy/index.ts`:
 
-**TradePanel nepřesouvat** do Diplomacy.
+```ts
+const steps = [
+  { name: "compute-province-routes", ... },
+  { name: "compute-hex-flows", ... },
+  { name: "compute-trade-systems", ... },
+  { name: "compute-trade-flows", ... },
+  { name: "compute-basket-trade-flows", fn: "compute-basket-trade-flows", body: { session_id } },
+  { name: "compute-economy-flow", ... },
+];
+```
 
-## 4. Memory
+## 5. UI
 
-- `mem://index.md`: Economy Refresh = **5-step chain** (`compute-trade-systems` mezi hex-flows a trade-flows).
-- `mem://tech/engine/economy-refresh-orchestration`: rozšířit na 5 kroků.
-- Nová `mem://features/trade/three-layer-semantics`:
-  - L1 access (`trade_systems` / `player_trade_system_access`)
-  - L2 ekonomika (`city_market_baskets`, `node_inventory`, `demand_baskets`)
-  - L3 ruční diplomatické smlouvy (`trade_routes` / `trade_offers` / `TradePanel`)
-  - Pravidlo: UI musí labelovat, který layer čte.
+**EconomyTab.tsx topbar:**
+- "Bohatství" (`total_wealth`) → label: *"Fiskální příjem"* + tooltip "Daně, cla a tržní výnos plynoucí do státní pokladny."
+- Přidat kartu *"GDP"* (`total_gdp`) + tooltip "Ekonomická aktivita: hodnota produkce + export."
 
-## 5. Validace po deployi
+**HomeTab.tsx:** `total_wealth` ponechat jako "Bohatství" (state-level), žádná změna.
 
-Spustit `refresh-economy` pro aktivní session, pak:
+**MarketsHub → DemandFulfillmentPanel:** Přidat per-basket trace `<TradeFlowTrace />` (read-only) — kolik basketu město dováží odkud, za jakou tariff. Gate za `useDevMode()` pro tuto iteraci, později unhide.
+
+**TradePanel:** beze změny (L3 layer, Fáze 1 to už správně labeluje).
+
+## 6. Memory updates
+
+- `mem://index.md` Core: `refresh-economy` = **6-step chain** (přidán basket-trade-flows).
+- `mem://tech/engine/economy-refresh-orchestration`: aktualizovat na 6 kroků.
+- Nová `mem://features/economy/basket-trade-solver` — greedy párování, access_level gating, fiscal_capture formula.
+- `mem://features/trade/three-layer-semantics`: rozšířit L2 o basket_trade_flows + povinné cleanup pravidlo.
+- Nová `mem://features/economy/gdp-vs-fiscal` — `total_gdp` vs `total_wealth` semantika, kde se každé čte v UI.
+
+## 7. Validace po deployi
 
 ```sql
--- city refs (oba sloupce, NOT EXISTS)
-SELECT count(*) FROM trade_flows tf
-WHERE NOT EXISTS (SELECT 1 FROM cities c WHERE c.id = tf.source_city_id);
+-- 1. ID semantics (musí být 0)
+SELECT count(*) FROM basket_trade_flows tf
+WHERE NOT EXISTS (SELECT 1 FROM cities c WHERE c.id = tf.source_city_id)
+   OR NOT EXISTS (SELECT 1 FROM cities c WHERE c.id = tf.target_city_id);
 
-SELECT count(*) FROM trade_flows tf
-WHERE NOT EXISTS (SELECT 1 FROM cities c WHERE c.id = tf.target_city_id);
+-- 2. Stejný trade_system u obou stran (sanity)
+SELECT count(*) FROM basket_trade_flows tf
+JOIN cities cs ON cs.id = tf.source_city_id
+JOIN cities ct ON ct.id = tf.target_city_id
+JOIN province_nodes ns ON ns.city_id = cs.id
+JOIN province_nodes nt ON nt.city_id = ct.id
+WHERE ns.trade_system_id IS DISTINCT FROM nt.trade_system_id;
+-- musí být 0
 
--- node refs (pokud non-null)
-SELECT count(*) FROM trade_flows tf
-WHERE tf.source_node_id IS NOT NULL
-  AND NOT EXISTS (SELECT 1 FROM province_nodes n WHERE n.id = tf.source_node_id);
+-- 3. GDP ≥ fiscal income (sanity)
+SELECT count(*) FROM realm_resources
+WHERE total_gdp < total_wealth AND total_gdp > 0;
+-- mělo by být 0 (fiscal je podmnožinou ekonomické aktivity)
 
-SELECT count(*) FROM trade_flows tf
-WHERE tf.target_node_id IS NOT NULL
-  AND NOT EXISTS (SELECT 1 FROM province_nodes n WHERE n.id = tf.target_node_id);
+-- 4. Po prvním refresh musí být alespoň pár flows
+SELECT count(*) FROM basket_trade_flows
+WHERE session_id = '0de6fab4-b925-4faf-bced-14ec85730f45';
+-- > 0 pokud má session překrývající surplus/demand
 ```
 
-Všechny čtyři dotazy musí vracet **0**.
+Smoke: EconomyTab topbar ukáže oba štítky (GDP + Fiskální příjem), DemandFulfillmentPanel v dev mode ukáže basket import trace.
 
-Dále: `commercial_capture` a `transit_tax` v `realm_resources` nejsou 0 pro hráče s nenulovými flows. UI smoke: TradePanel = nový nadpis + banner; MarketsHub = "Síťová bilance košů".
+## 8. Out of scope
 
-## 6. Out of scope (→ Fáze 2)
-
-- `basket_trade_flows` tabulka, solver na `export_surplus` × `unmet_demand`.
-- Per-basket trace UI.
-- HDP unifikace.
-- Rozhodnutí pooled system supply: real pool vs diagnostika.
-- Případný přesun TradePanel do Diplomacy.
+- Quality/price band differentiation v solveru (greedy bere first match, ne nejlevnější).
+- Multi-hop trade přes mezilehlé systémy (jen direct uvnitř jednoho systému).
+- L3 (TradePanel) integrace do basket solveru — manuální smlouvy zůstávají paralelní.
+- Migration TradePanel do Diplomacy taby.
 
 ---
 
-Připraven implementovat F1 přesně v tomto rozsahu po schválení.
+Připraven implementovat po schválení.
