@@ -19,6 +19,11 @@ import {
   Building2, Loader2, Plus, Sparkles, Hammer, Shield, Landmark, Coins,
   Factory, Church, ArrowRight, Clock, CheckCircle2, ImageIcon, ArrowUp, Star, Crown,
 } from "lucide-react";
+import { scaledBasketOutputs, DEMAND_BASKETS } from "@/lib/goodsCatalog";
+
+const BASKET_META: Record<string, { label: string; icon: string }> = Object.fromEntries(
+  DEMAND_BASKETS.map(b => [b.key, { label: b.label, icon: b.icon }])
+);
 
 interface Props {
   sessionId: string;
