@@ -34,6 +34,9 @@ import MarketsHub from "@/components/economy/MarketsHub";
 import TreasuryHub from "@/components/economy/TreasuryHub";
 import { getFiscalIncome } from "@/lib/economyFlow";
 
+// Dev-only debug tab (lazy)
+const EconomyDebugTab = lazy(() => import("@/components/economy/EconomyDebugTab"));
+
 // Dev panels lazy-loaded (Sprint 1 Krok 6 — import gate)
 const EconomyTabDevPanels = lazy(
   () => import("@/components/economy/EconomyTabDevPanels"),
@@ -152,7 +155,7 @@ const EconomyTab = ({
         throw error;
       }
       if (data?.ok) {
-        sonnerToast.success(`Ekonomika přepočítána — 4 kroky, ${data.totalMs}ms`);
+        sonnerToast.success(`Ekonomika přepočítána — 6 kroků, ${data.totalMs}ms`);
       } else {
         const failedStep = data?.steps?.find((s: any) => !s.ok);
         sonnerToast.warning(
@@ -287,6 +290,11 @@ const EconomyTab = ({
             <TabsTrigger value="cities" className={tabTrigger}>
               🏙️ Sídla
             </TabsTrigger>
+            {devMode && (
+              <TabsTrigger value="debug" className={tabTrigger}>
+                🧪 Debug
+              </TabsTrigger>
+            )}
           </TabsList>
           <ScrollBar orientation="horizontal" />
         </ScrollArea>
@@ -409,6 +417,28 @@ const EconomyTab = ({
             Poradit se s rádci o ekonomice
           </Button>
         </TabsContent>
+
+        {/* ═══ DEBUG TAB (dev-only) ═══ */}
+        {devMode && (
+          <TabsContent value="debug" className="space-y-5 animate-fade-in">
+            <Suspense
+              fallback={
+                <div className="text-xs text-muted-foreground p-4 text-center">
+                  <Loader2 className="h-4 w-4 animate-spin inline mr-2" />
+                  Načítám debug…
+                </div>
+              }
+            >
+              <EconomyDebugTab
+                sessionId={sessionId}
+                currentPlayerName={currentPlayerName}
+                currentTurn={currentTurn}
+                cities={cities}
+                realm={realm}
+              />
+            </Suspense>
+          </TabsContent>
+        )}
       </Tabs>
 
       {/* ═══ DEV PANELS (lazy, gated) ═══ */}
@@ -453,7 +483,7 @@ const EconomyTab = ({
       {/* v4.3 badge */}
       <div className="flex justify-center pt-2 pb-4">
         <Badge variant="outline" className="text-[9px] text-muted-foreground border-border/30">
-          Ekonomika v4.3 — 4 taby, jednotný fiskální totál
+          Ekonomika v4.3 — sjednocený fiskální totál, 6-krokový refresh chain
         </Badge>
       </div>
     </div>
