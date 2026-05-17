@@ -9464,20 +9464,6 @@ export type Database = {
             referencedRelation: "game_sessions"
             referencedColumns: ["id"]
           },
-          {
-            foreignKeyName: "trade_flows_source_city_id_fkey"
-            columns: ["source_city_id"]
-            isOneToOne: false
-            referencedRelation: "province_nodes"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "trade_flows_target_city_id_fkey"
-            columns: ["target_city_id"]
-            isOneToOne: false
-            referencedRelation: "province_nodes"
-            referencedColumns: ["id"]
-          },
         ]
       }
       trade_log: {
