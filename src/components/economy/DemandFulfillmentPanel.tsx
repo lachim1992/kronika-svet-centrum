@@ -7,6 +7,8 @@ import { InfoTip } from "@/components/ui/info-tip";
 import { Loader2, ChevronDown } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import GoodsDemandSubTab from "./GoodsDemandSubTab";
+import TradeFlowTrace from "./TradeFlowTrace";
+import { useDevMode } from "@/hooks/useDevMode";
 import { DEMAND_BASKETS, resolveBasketKey } from "@/lib/goodsCatalog";
 
 interface Props {
@@ -67,6 +69,7 @@ function getLayerForBasket(bk: string): string {
 }
 
 const DemandFulfillmentPanel = ({ sessionId, playerName, cities }: Props) => {
+  const { devMode } = useDevMode();
   const [baskets, setBaskets] = useState<CityBasketRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCatalog, setShowCatalog] = useState(false);
@@ -266,6 +269,9 @@ const DemandFulfillmentPanel = ({ sessionId, playerName, cities }: Props) => {
                   <span>Auto: {g.auto.toFixed(1)} | Bonus: {g.bonus.toFixed(1)}</span>
                   <span>Přebytek: {g.surplus.toFixed(1)}</span>
                 </div>
+                {devMode && (
+                  <TradeFlowTrace sessionId={sessionId} playerName={playerName} basketKey={g.key} />
+                )}
               </div>
             );
           })}
