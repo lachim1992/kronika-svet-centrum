@@ -406,7 +406,7 @@ const TradePanel = ({ sessionId, currentPlayerName, currentTurn, myCities, allCi
       <Card>
         <CardHeader className="pb-2">
           <CardTitle className="text-sm font-display flex items-center gap-2">
-            <Plus className="h-4 w-4 text-primary" />Nová obchodní nabídka
+            <Plus className="h-4 w-4 text-primary" />Nová diplomatická obchodní nabídka
             <InfoTip>Vytvořte nabídku obchodní trasy s jiným hráčem. Po přijetí se suroviny automaticky převádí každé kolo.</InfoTip>
           </CardTitle>
         </CardHeader>
