@@ -34,6 +34,9 @@ import MarketsHub from "@/components/economy/MarketsHub";
 import TreasuryHub from "@/components/economy/TreasuryHub";
 import { getFiscalIncome } from "@/lib/economyFlow";
 
+// Dev-only debug tab (lazy)
+const EconomyDebugTab = lazy(() => import("@/components/economy/EconomyDebugTab"));
+
 // Dev panels lazy-loaded (Sprint 1 Krok 6 — import gate)
 const EconomyTabDevPanels = lazy(
   () => import("@/components/economy/EconomyTabDevPanels"),
