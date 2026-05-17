@@ -572,16 +572,25 @@ Deno.serve(async (req) => {
       const cityMarketAccess = avgRouteAccess * (0.8 + (city.market_level || 0) * 0.1);
       const cityMonetization = (1 + (city.market_level || 0) * 0.1) * Math.max(0.1, (city.city_stability || 50) / 100);
 
+      const buildingBag = cityBuildingBonus.get(city.id);
+
       for (const [bk, bc] of Object.entries(BASKET_CONFIG)) {
         const demandQty = demands.get(bk) || 0;
         const autoSupply = autoMap.get(bk) || 0;
         const bonus = bonusMap.get(bk);
-        const bonusSupply = bonus?.quantity || 0;
+        const recipeBonus = bonus?.quantity || 0;
+        const bldBonus = buildingBag?.get(bk);
+        const buildingBonus = bldBonus?.qty || 0;
+        const bonusSupply = recipeBonus + buildingBonus;
         const localSupply = autoSupply + bonusSupply;
         const domesticSatisfaction = demandQty > 0 ? Math.min(1.0, localSupply / demandQty) : 1.0;
         const exportSurplus = Math.max(0, localSupply - demandQty);
         const guildLevel = bonus?.count ? Math.round(bonus.qualitySum / bonus.count) : 0;
-        const qualityWeight = Math.min(2.0, Math.max(1.0, 1 + guildLevel * 0.15));
+        const bldQualityAvg = bldBonus?.cnt ? bldBonus.qSum / bldBonus.cnt : 0;
+        const effectiveQuality = Math.max(guildLevel, bldQualityAvg);
+        const qualityWeight = Math.min(2.0, Math.max(1.0, 1 + effectiveQuality * 0.15));
+
+        if (demandQty > 0 && buildingBonus > demandQty * 1.5) bw.overshoot++;
 
         // demand_baskets row (needs cityNodeId)
         if (cityNodeId) {
@@ -600,7 +609,7 @@ Deno.serve(async (req) => {
           });
         }
 
-        // city_market_baskets row (v4.2)
+        // city_market_baskets row (v4.3 — split bonus into recipe + building)
         const unmetDemand = Math.max(0, demandQty - localSupply);
         cityBasketRows.push({
           session_id,
@@ -608,7 +617,9 @@ Deno.serve(async (req) => {
           player_name: city.owner_player || "",
           basket_key: bk,
           auto_supply: autoSupply,
-          bonus_supply: bonusSupply,
+          recipe_bonus: Math.round(recipeBonus * 100) / 100,
+          building_bonus: Math.round(buildingBonus * 100) / 100,
+          bonus_supply: Math.round(bonusSupply * 100) / 100,
           local_demand: demandQty,
           local_supply: localSupply,
           domestic_satisfaction: Math.round(domesticSatisfaction * 1000) / 1000,
