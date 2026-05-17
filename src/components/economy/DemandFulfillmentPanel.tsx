@@ -269,6 +269,9 @@ const DemandFulfillmentPanel = ({ sessionId, playerName, cities }: Props) => {
                   <span>Auto: {g.auto.toFixed(1)} | Bonus: {g.bonus.toFixed(1)}</span>
                   <span>Přebytek: {g.surplus.toFixed(1)}</span>
                 </div>
+                {devMode && (
+                  <TradeFlowTrace sessionId={sessionId} playerName={playerName} basketKey={g.key} />
+                )}
               </div>
             );
           })}
