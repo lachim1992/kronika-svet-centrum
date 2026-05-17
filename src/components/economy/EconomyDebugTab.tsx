@@ -168,18 +168,20 @@ const EconomyDebugTab = ({ sessionId, currentPlayerName, currentTurn, cities, re
     const m = new Map<string, any>();
     for (const b of DEMAND_BASKETS) {
       m.set(b.key, { key: b.key, label: b.label, icon: b.icon, tier: b.tier,
-        demand: 0, local_supply: 0, auto: 0, bonus: 0, unmet: 0, export_surplus: 0,
+        demand: 0, local_supply: 0, auto: 0, bonus: 0, recipe_bonus: 0, building_bonus: 0, unmet: 0, export_surplus: 0,
         market_access: 0, n: 0,
         import_vol: 0, export_vol: 0, import_value: 0, export_value: 0 });
     }
     for (const row of myCmbLatest) {
       const k = row.basket_key;
-      if (!m.has(k)) m.set(k, { key: k, label: k, icon: "❓", tier: 0, demand: 0, local_supply: 0, auto: 0, bonus: 0, unmet: 0, export_surplus: 0, market_access: 0, n: 0, import_vol: 0, export_vol: 0, import_value: 0, export_value: 0 });
+      if (!m.has(k)) m.set(k, { key: k, label: k, icon: "❓", tier: 0, demand: 0, local_supply: 0, auto: 0, bonus: 0, recipe_bonus: 0, building_bonus: 0, unmet: 0, export_surplus: 0, market_access: 0, n: 0, import_vol: 0, export_vol: 0, import_value: 0, export_value: 0 });
       const e = m.get(k);
       e.demand += num(row.local_demand);
       e.local_supply += num(row.local_supply);
       e.auto += num(row.auto_supply);
       e.bonus += num(row.bonus_supply);
+      e.recipe_bonus += num(row.recipe_bonus);
+      e.building_bonus += num(row.building_bonus);
       e.unmet += num(row.unmet_demand);
       e.export_surplus += num(row.export_surplus);
       e.market_access += num(row.market_access);
