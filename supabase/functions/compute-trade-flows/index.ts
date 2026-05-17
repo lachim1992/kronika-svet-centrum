@@ -645,8 +645,11 @@ Deno.serve(async (req) => {
 
           tradeFlows.push({
             session_id,
-            source_city_id: cityToNodeId.get(neighborId) || neighborId,
-            target_city_id: cityToNodeId.get(cityId) || cityId,
+            // ID semantics (Phase 1): *_city_id MUST be cities.id, *_node_id MUST be province_nodes.id
+            source_city_id: neighborId,
+            target_city_id: cityId,
+            source_node_id: cityToNodeId.get(neighborId) ?? null,
+            target_node_id: cityToNodeId.get(cityId) ?? null,
             source_player: neighborCity.owner_player || "",
             target_player: city.owner_player || "",
             good_key: bestGoodKey,
