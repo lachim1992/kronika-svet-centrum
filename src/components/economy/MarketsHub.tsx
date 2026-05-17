@@ -51,7 +51,7 @@ const MarketsHub = ({
             Supply Chain
           </TabsTrigger>
           <TabsTrigger value="systems" className={subTrigger}>
-            Trade systems
+            Síťová bilance košů
           </TabsTrigger>
         </TabsList>
         <ScrollBar orientation="horizontal" />
