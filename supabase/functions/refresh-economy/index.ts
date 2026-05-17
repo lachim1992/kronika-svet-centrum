@@ -92,6 +92,8 @@ Deno.serve(async (req) => {
       // Node-Trade v1: project trade systems & player access BEFORE the goods solver consumes them
       { name: "compute-trade-systems", fn: "compute-trade-systems", body: { session_id } },
       { name: "compute-trade-flows", fn: "compute-trade-flows", body: { session_id } },
+      // L2 basket-level solver: pairs export_surplus × unmet_demand inside trade systems
+      { name: "compute-basket-trade-flows", fn: "compute-basket-trade-flows", body: { session_id } },
       { name: "compute-economy-flow", fn: "compute-economy-flow", body: { session_id } },
     ];
 
