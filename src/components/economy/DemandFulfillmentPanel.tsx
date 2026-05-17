@@ -8,6 +8,7 @@ import { Loader2, ChevronDown } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import GoodsDemandSubTab from "./GoodsDemandSubTab";
 import TradeFlowTrace from "./TradeFlowTrace";
+import TradeBalanceSummary from "./TradeBalanceSummary";
 import { useDevMode } from "@/hooks/useDevMode";
 import { DEMAND_BASKETS, resolveBasketKey } from "@/lib/goodsCatalog";
 
@@ -176,6 +177,9 @@ const DemandFulfillmentPanel = ({ sessionId, playerName, cities }: Props) => {
           </div>
         </CardContent>
       </Card>
+
+      {/* Trade balance — imports / exports / fiscal income */}
+      <TradeBalanceSummary sessionId={sessionId} playerName={playerName} />
 
       {/* Pyramid — 5 layers */}
       <div className="space-y-3">
