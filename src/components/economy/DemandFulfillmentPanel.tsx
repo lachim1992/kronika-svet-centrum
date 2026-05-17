@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { useNavigate } from "react-router-dom";
+
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -75,7 +75,7 @@ function getLayerForBasket(bk: string): string {
 
 const DemandFulfillmentPanel = ({ sessionId, playerName, cities }: Props) => {
   const { devMode } = useDevMode();
-  const navigate = useNavigate();
+  
   const [baskets, setBaskets] = useState<CityBasketRow[]>([]);
   const [templates, setTemplates] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -324,14 +324,13 @@ const DemandFulfillmentPanel = ({ sessionId, playerName, cities }: Props) => {
                                 Města s největším deficitem
                               </p>
                               {cityUnmet.map(({ city, unmet }) => (
-                                <button
+                                <div
                                   key={city.id}
-                                  className="w-full flex items-center justify-between text-[10px] px-1.5 py-0.5 rounded hover:bg-muted/60 transition-colors"
-                                  onClick={() => navigate(`/game/${sessionId}/city/${city.id}`, { state: { focusBasket: g.key } })}
+                                  className="w-full flex items-center justify-between text-[10px] px-1.5 py-0.5"
                                 >
                                   <span>🏛️ {city.name}</span>
                                   <span className="font-mono text-destructive">deficit −{unmet.toFixed(1)}</span>
-                                </button>
+                                </div>
                               ))}
                             </div>
                           )}
