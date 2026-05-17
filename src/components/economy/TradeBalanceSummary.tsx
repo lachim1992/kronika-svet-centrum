@@ -151,6 +151,35 @@ const TradeBalanceSummary = ({ sessionId, playerName }: Props) => {
           </span>
         </div>
 
+        {/* Per-partner breakdown */}
+        {byPartner.length > 0 && (
+          <div className="space-y-1">
+            <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+              👥 Bilance dle partnera ({byPartner.length})
+            </div>
+            <div className="rounded-lg border border-border/40 overflow-hidden">
+              <div className="grid grid-cols-[1fr_auto_auto_auto_auto] gap-2 px-2 py-1 bg-muted/30 text-[9px] uppercase tracking-wide text-muted-foreground font-semibold">
+                <span>Partner</span>
+                <span className="text-right">📥 Import</span>
+                <span className="text-right">📤 Export</span>
+                <span className="text-right">💰 Fiskál</span>
+                <span className="text-right">Δ Netto</span>
+              </div>
+              {byPartner.map(p => (
+                <div key={p.name} className="grid grid-cols-[1fr_auto_auto_auto_auto] gap-2 px-2 py-1 text-[11px] border-t border-border/30 items-center">
+                  <span className="truncate font-medium">{p.name}</span>
+                  <span className="text-right font-mono text-muted-foreground">{p.imports > 0 ? p.imports.toFixed(1) : "—"}</span>
+                  <span className="text-right font-mono text-muted-foreground">{p.exports > 0 ? p.exports.toFixed(1) : "—"}</span>
+                  <span className="text-right font-mono text-primary">{p.fiscal > 0 ? p.fiscal.toFixed(2) : "—"}</span>
+                  <span className={`text-right font-mono font-bold ${p.net >= 0 ? "text-primary" : "text-destructive"}`}>
+                    {p.net >= 0 ? "+" : ""}{p.net.toFixed(1)}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Two columns: imports / exports per basket */}
         <div className="grid md:grid-cols-2 gap-3">
           <div>
