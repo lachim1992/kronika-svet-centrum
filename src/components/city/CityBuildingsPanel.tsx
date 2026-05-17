@@ -881,11 +881,21 @@ const CityBuildingsPanel = ({
                             </div>
                             <ArrowRight className="h-2.5 w-2.5 text-muted-foreground" />
                             <div className="flex gap-1 text-[9px] flex-wrap">
-                              {Object.entries(t.effects || {}).filter(([, v]) => Number(v) > 0).map(([k, v]) => (
+                              {Object.entries(t.effects || {}).filter(([k, v]) => k !== "basket_outputs" && k !== "basket_quality" && Number(v) > 0).map(([k, v]) => (
                                 <Badge key={k} variant="outline" className="text-[8px]">
                                   {EFFECT_LABELS[k] || k.replace(/_/g, " ")} +{String(v)}
                                 </Badge>
                               ))}
+                              {Object.entries(((t.effects as any)?.basket_outputs || {}) as Record<string, number>)
+                                .filter(([, v]) => Number(v) > 0)
+                                .map(([k, v]) => {
+                                  const meta = BASKET_META[k];
+                                  return (
+                                    <Badge key={`b-${k}`} variant="outline" className="text-[8px] border-emerald-500/40 text-emerald-600 dark:text-emerald-400">
+                                      🛒 {meta?.icon || "📦"} {meta?.label || k} +{String(v)}/Lvl
+                                    </Badge>
+                                  );
+                                })}
                             </div>
                           </div>
                         </div>
