@@ -926,6 +926,7 @@ Deno.serve(async (req) => {
       const update = {
         total_production: Math.round(totals.production * 100) / 100,
         total_wealth: Math.round(canonicalWealth * 100) / 100,
+        total_gdp: Math.round((gdpByPlayer.get(player) || 0) * 100) / 100,
         total_supplies: Math.round(totals.supplies * 100) / 100,
         total_capacity: Math.round(canonicalCapacity * 100) / 100,
         total_importance: Math.round(totals.importance * 100) / 100,
