@@ -486,16 +486,49 @@ const CityBuildingsPanel = ({
             </div>
           )}
 
-          {/* Current effects */}
-          {Object.keys(effects).filter(k => effects[k] && Number(effects[k]) > 0).length > 0 && (
-            <div className="flex gap-1.5 mt-1.5 flex-wrap">
-              {Object.entries(effects).filter(([, v]) => Number(v) > 0).map(([k, v]) => (
-                <Badge key={k} variant="outline" className="text-[9px]">
-                  {EFFECT_LABELS[k] || k.replace(/_/g, " ")}: +{String(v)}
-                </Badge>
-              ))}
-            </div>
-          )}
+          {/* Effects — split into Rezerva říše (legacy) and Městský trh (baskets v4.3) */}
+          {(() => {
+            const reserveEntries = Object.entries(effects).filter(
+              ([k, v]) => k !== "basket_outputs" && k !== "basket_quality" && Number(v) > 0
+            );
+            const basketEntries = Object.entries(scaledBasketOutputs(b));
+            return (
+              <div className="space-y-1.5 mt-1.5">
+                {reserveEntries.length > 0 && (
+                  <div>
+                    <p className="text-[9px] uppercase tracking-wide text-muted-foreground/70 mb-0.5">
+                      🏛️ Rezerva říše
+                    </p>
+                    <div className="flex gap-1.5 flex-wrap">
+                      {reserveEntries.map(([k, v]) => (
+                        <Badge key={k} variant="outline" className="text-[9px]">
+                          {EFFECT_LABELS[k] || k.replace(/_/g, " ")}: +{String(v)}
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {basketEntries.length > 0 && (
+                  <div className="rounded-md border border-emerald-500/30 bg-emerald-500/5 p-1.5">
+                    <p className="text-[9px] uppercase tracking-wide text-emerald-600 dark:text-emerald-400 mb-0.5">
+                      🛒 Městský trh
+                      {currentLevel > 1 && <span className="ml-1 opacity-70">(×Lvl{currentLevel})</span>}
+                    </p>
+                    <div className="flex gap-1.5 flex-wrap">
+                      {basketEntries.map(([k, v]) => {
+                        const meta = BASKET_META[k];
+                        return (
+                          <Badge key={k} variant="outline" className="text-[9px] border-emerald-500/40">
+                            {meta?.icon || "📦"} {meta?.label || k}: +{v}
+                          </Badge>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
 
           {/* Upgrade section */}
           {isOwner && upgradeInfo && !isConstructing && (
