@@ -184,7 +184,7 @@ Deno.serve(async (req) => {
             gross_value: Math.round(gross * 100) / 100,
             tariff_factor: tariff,
             fiscal_capture: Math.round(fiscal * 100) / 100,
-            access_level: Math.min(sAccess.level, dAccess.level),
+            access_level: Math.max(1, Math.min(Number(sAccess.level) || 1, Number(dAccess.level) || 1)),
             turn_number: turnByCity.get(d.city_id) || 0,
           });
 
