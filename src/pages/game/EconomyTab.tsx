@@ -155,7 +155,7 @@ const EconomyTab = ({
         throw error;
       }
       if (data?.ok) {
-        sonnerToast.success(`Ekonomika přepočítána — 4 kroky, ${data.totalMs}ms`);
+        sonnerToast.success(`Ekonomika přepočítána — 6 kroků, ${data.totalMs}ms`);
       } else {
         const failedStep = data?.steps?.find((s: any) => !s.ok);
         sonnerToast.warning(
