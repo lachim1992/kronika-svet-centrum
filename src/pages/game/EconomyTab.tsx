@@ -290,6 +290,11 @@ const EconomyTab = ({
             <TabsTrigger value="cities" className={tabTrigger}>
               🏙️ Sídla
             </TabsTrigger>
+            {devMode && (
+              <TabsTrigger value="debug" className={tabTrigger}>
+                🧪 Debug
+              </TabsTrigger>
+            )}
           </TabsList>
           <ScrollBar orientation="horizontal" />
         </ScrollArea>
