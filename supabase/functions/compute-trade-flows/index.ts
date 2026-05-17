@@ -668,11 +668,27 @@ Deno.serve(async (req) => {
       }
     }
 
+    // Phase 1: Unconditional cleanup before insert — stale rows must never survive a recompute.
+    {
+      const { error: deleteFlowsError } = await sb
+        .from("trade_flows")
+        .delete()
+        .eq("session_id", session_id);
+      if (deleteFlowsError) {
+        console.error("[compute-trade-flows] Failed to clear trade_flows", deleteFlowsError);
+        throw deleteFlowsError;
+      }
+    }
+
     if (tradeFlows.length > 0) {
-      await sb.from("trade_flows").delete().eq("session_id", session_id);
       for (let i = 0; i < tradeFlows.length; i += 50) {
-        const { error: tfErr } = await sb.from("trade_flows").insert(tradeFlows.slice(i, i + 50));
-        if (tfErr) console.error("trade_flows insert error:", JSON.stringify(tfErr));
+        const { error: insertFlowsError } = await sb
+          .from("trade_flows")
+          .insert(tradeFlows.slice(i, i + 50));
+        if (insertFlowsError) {
+          console.error("[compute-trade-flows] Failed to insert trade_flows batch", insertFlowsError);
+          throw insertFlowsError;
+        }
       }
     }
 
