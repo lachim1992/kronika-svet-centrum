@@ -1,16 +1,18 @@
 import { useState, useEffect, useMemo } from "react";
+import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { InfoTip } from "@/components/ui/info-tip";
-import { Loader2, ChevronDown } from "lucide-react";
+import { Loader2, ChevronDown, Hammer } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import GoodsDemandSubTab from "./GoodsDemandSubTab";
 import TradeFlowTrace from "./TradeFlowTrace";
 import TradeBalanceSummary from "./TradeBalanceSummary";
 import { useDevMode } from "@/hooks/useDevMode";
-import { DEMAND_BASKETS, resolveBasketKey } from "@/lib/goodsCatalog";
+import { DEMAND_BASKETS, resolveBasketKey, VALID_BASKETS } from "@/lib/goodsCatalog";
 
 interface Props {
   sessionId: string;
@@ -23,6 +25,8 @@ interface CityBasketRow {
   basket_key: string;
   auto_supply: number;
   bonus_supply: number;
+  recipe_bonus?: number;
+  building_bonus?: number;
   local_demand: number;
   local_supply: number;
   domestic_satisfaction: number;
