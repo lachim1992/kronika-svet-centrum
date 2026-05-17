@@ -215,12 +215,19 @@ const TradePanel = ({ sessionId, currentPlayerName, currentTurn, myCities, allCi
 
   return (
     <div className="space-y-4">
+      {/* ─── DISCLAIMER: this panel is L3 (manual diplomacy), not the whole trade engine ─── */}
+      <div className="rounded-md border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-[11px] leading-snug text-amber-100/90">
+        <strong className="font-semibold">Diplomatické obchodní dohody (L3).</strong>{" "}
+        Tento panel ukazuje pouze ručně sjednané smlouvy mezi hráči. <em>0 dohod ≠ 0 obchodu</em> —
+        automatická obchodní síť (L1) a goods ekonomika (L2) běží samostatně, viz Ekonomika → Síťová bilance košů.
+      </div>
+
       {/* ─── TRADE SUMMARY ─── */}
       <Card>
         <CardHeader className="pb-2">
           <CardTitle className="text-sm font-display flex items-center gap-2">
-            <ArrowLeftRight className="h-4 w-4 text-primary" />Obchodní přehled
-            <Badge variant="secondary" className="text-[10px] ml-auto">{activeRoutes.length} tras</Badge>
+            <ArrowLeftRight className="h-4 w-4 text-primary" />Diplomatické obchodní dohody
+            <Badge variant="secondary" className="text-[10px] ml-auto">{activeRoutes.length} dohod</Badge>
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -399,7 +406,7 @@ const TradePanel = ({ sessionId, currentPlayerName, currentTurn, myCities, allCi
       <Card>
         <CardHeader className="pb-2">
           <CardTitle className="text-sm font-display flex items-center gap-2">
-            <Plus className="h-4 w-4 text-primary" />Nová obchodní nabídka
+            <Plus className="h-4 w-4 text-primary" />Nová diplomatická obchodní nabídka
             <InfoTip>Vytvořte nabídku obchodní trasy s jiným hráčem. Po přijetí se suroviny automaticky převádí každé kolo.</InfoTip>
           </CardTitle>
         </CardHeader>

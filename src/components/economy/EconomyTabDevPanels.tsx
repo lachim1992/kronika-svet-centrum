@@ -64,7 +64,12 @@ const EconomyTabDevPanels = ({ sessionId, currentPlayerName, cities, realm }: Pr
 
       <TradeSystemSupplyPanel sessionId={sessionId} />
       
-      <EconomyDependencyMap realm={realm} cities={myCities} armies={[]} />
+      <div className="space-y-1">
+        <p className="text-[10px] uppercase tracking-wide text-amber-400/80 font-semibold">
+          Dev — zatím nečteno z canonical Goods v4.3 tables
+        </p>
+        <EconomyDependencyMap realm={realm} cities={myCities} armies={[]} />
+      </div>
       
       <GapAdvisorPanel sessionId={sessionId} playerName={currentPlayerName} cities={cities} />
       

@@ -645,8 +645,11 @@ Deno.serve(async (req) => {
 
           tradeFlows.push({
             session_id,
-            source_city_id: cityToNodeId.get(neighborId) || neighborId,
-            target_city_id: cityToNodeId.get(cityId) || cityId,
+            // ID semantics (Phase 1): *_city_id MUST be cities.id, *_node_id MUST be province_nodes.id
+            source_city_id: neighborId,
+            target_city_id: cityId,
+            source_node_id: cityToNodeId.get(neighborId) ?? null,
+            target_node_id: cityToNodeId.get(cityId) ?? null,
             source_player: neighborCity.owner_player || "",
             target_player: city.owner_player || "",
             good_key: bestGoodKey,
@@ -665,11 +668,27 @@ Deno.serve(async (req) => {
       }
     }
 
+    // Phase 1: Unconditional cleanup before insert — stale rows must never survive a recompute.
+    {
+      const { error: deleteFlowsError } = await sb
+        .from("trade_flows")
+        .delete()
+        .eq("session_id", session_id);
+      if (deleteFlowsError) {
+        console.error("[compute-trade-flows] Failed to clear trade_flows", deleteFlowsError);
+        throw deleteFlowsError;
+      }
+    }
+
     if (tradeFlows.length > 0) {
-      await sb.from("trade_flows").delete().eq("session_id", session_id);
       for (let i = 0; i < tradeFlows.length; i += 50) {
-        const { error: tfErr } = await sb.from("trade_flows").insert(tradeFlows.slice(i, i + 50));
-        if (tfErr) console.error("trade_flows insert error:", JSON.stringify(tfErr));
+        const { error: insertFlowsError } = await sb
+          .from("trade_flows")
+          .insert(tradeFlows.slice(i, i + 50));
+        if (insertFlowsError) {
+          console.error("[compute-trade-flows] Failed to insert trade_flows batch", insertFlowsError);
+          throw insertFlowsError;
+        }
       }
     }
 
@@ -695,7 +714,8 @@ Deno.serve(async (req) => {
       }
       const sysVolume = new Map<string, number>();
       for (const f of tradeFlows) {
-        const node = nodeById.get((f as any).source_city_id);
+        // ID hard rule: nodeById is keyed by province_nodes.id, so we MUST use *_node_id, never *_city_id.
+        const node = nodeById.get((f as any).source_node_id);
         const sysId = (node as any)?.trade_system_id;
         if (!sysId) continue;
         sysVolume.set(sysId, (sysVolume.get(sysId) || 0) + (f.volume_per_turn || 0));
