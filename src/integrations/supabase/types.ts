@@ -9386,9 +9386,11 @@ export type Database = {
           route_path_id: string | null
           session_id: string
           source_city_id: string
+          source_node_id: string | null
           source_player: string | null
           status: string
           target_city_id: string
+          target_node_id: string | null
           target_player: string | null
           trade_pressure: number
           turn_created: number
@@ -9407,9 +9409,11 @@ export type Database = {
           route_path_id?: string | null
           session_id: string
           source_city_id: string
+          source_node_id?: string | null
           source_player?: string | null
           status?: string
           target_city_id: string
+          target_node_id?: string | null
           target_player?: string | null
           trade_pressure?: number
           turn_created?: number
@@ -9428,9 +9432,11 @@ export type Database = {
           route_path_id?: string | null
           session_id?: string
           source_city_id?: string
+          source_node_id?: string | null
           source_player?: string | null
           status?: string
           target_city_id?: string
+          target_node_id?: string | null
           target_player?: string | null
           trade_pressure?: number
           turn_created?: number
