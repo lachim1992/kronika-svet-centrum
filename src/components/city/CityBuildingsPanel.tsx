@@ -93,7 +93,11 @@ const CityBuildingsPanel = ({
   const fetchData = useCallback(async () => {
     setLoading(true);
     const [bRes, tRes, civRes] = await Promise.all([
-      supabase.from("city_buildings").select("*").eq("city_id", cityId).order("created_at"),
+      supabase
+        .from("city_buildings")
+        .select("*, building_templates ( id, effects )")
+        .eq("city_id", cityId)
+        .order("created_at"),
       supabase.from("building_templates").select("*").order("category, name"),
       supabase.from("civ_identity").select("special_buildings, building_tags")
         .eq("session_id", sessionId).eq("player_name", currentPlayerName).maybeSingle(),
