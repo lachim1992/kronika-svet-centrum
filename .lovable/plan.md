@@ -1,119 +1,141 @@
-## Cíl
 
-Sjednotit pokladnici tak, aby všechny zobrazované hodnoty pocházely z **jediného** kanonického fiskálního modelu: **per-pillar GDP** (`last_turn_gdp_*`). Legacy `wealth_domestic_component` / `wealth_market_share` zmizí, akumulační bugy zmizí, UI bude konzistentní.
+# Plán: Trade System — Fáze 1 (Stabilizace)
 
-## 1. Engine (supabase/functions/process-turn/index.ts)
+Schváleno se třemi technickými pojistkami. Fáze 2 (basket_trade_flows, HDP unifikace, per-basket trace) **mimo scope**.
 
-### Per-pillar GDP — kanonický výpočet (overwrite, ne akumulace)
+## 4 tvrdé acceptance body
 
-```text
-gdp_domestic   = totalCityProduction × goods_price_index    -- domácí spotřební trh
-gdp_market     = goods_production_value                      -- Goods v4.3 = tržní obrat
-gdp_transit    = Σ(playerRoutes: cap × ctrl × rel)           -- už existuje, ok
-gdp_extraction = Σ(strategic_yields × tier_value)            -- z STRATEGIC_TIER_BONUSES
-gdp_poll_base  = totalPopulation
-```
+1. TradePanel netvrdí, že ruční dohody = celý obchod.
+2. `trade_flows` nemíchá `city_id` a `node_id`.
+3. Staré `trade_flows` nezůstávají viset, když nový přepočet vyrobí 0 toků.
+4. Flow centrality, `commercial_capture` a `transit_tax` používají správné ID vrstvy.
 
-Každý turn se zapíše do `last_turn_gdp_{domestic,market,transit,extraction}` jako **overwrite** (žádné +=).
+## Additional acceptance
 
-### Per-pillar revenue (jedna rovnice pro všechny)
+- `source_city_id` i `target_city_id` v `trade_flows` musí resolvovat na `cities.id`.
+- `source_node_id` a `target_node_id`, když non-null, musí resolvovat na `province_nodes.id`.
+- `nodeById` lookups používají výhradně `*_node_id`.
+- `cityMap` lookups používají výhradně `*_city_id`.
+- `trade_flows` delete errors a insert errors jsou logované a throwed.
+- Když recompute vyrobí 0 flows, `trade_flows` pro session je prázdné, ne stale.
 
-```text
-pillar_revenue[k] = last_turn_gdp[k] × tax_rate[k] × laffer(tax_rate[k], MAX[k]) × govMod
-wealth_pop_tax    = totalPopulation  × tr_poll  × laffer(...) × govMod × strategicMult × lawMult
-```
+---
 
-Zapisuje se do `wealth_pop_tax`, `wealth_domestic_market`, `wealth_route_commerce`, `goods_wealth_fiscal` — vše **overwrite**.
-
-`goods_wealth_fiscal` přestane být součtem `tax_market+tax_transit+tax_extraction` (které se počítaly jinde a duplikovaly). Bude rovno `pillar_market_revenue` (z `gdp_market = goods_production_value`).
-
-`totalWealthIncome = wealth_pop_tax + wealth_domestic_market + goods_wealth_fiscal + wealth_route_commerce` (žádné odečítání transit-double-count, protože goods_wealth_fiscal už neobsahuje transit).
-
-### Odstranit z process-turn
-
-- Čtení a používání `wealth_domestic_component`, `wealth_market_share`.
-- Back-compute `gdp_market = wealthMarketShare + tax_market / tr_market` (mrtvá větev).
-- Komponenty `tax_market`, `tax_transit`, `tax_extraction`, `commercial_capture` jako separátní zápisy do realm_resources (zůstanou jen jako jednorázové debug fieldy v computed_modifiers, ne v ledgeru).
-
-## 2. compute-trade-flows / compute-economy-flow
-
-Přestanou zapisovat `tax_market`, `tax_transit`, `tax_extraction`, `commercial_capture` přímo do `realm_resources`. Místo toho vrátí strukturovaná data, která process-turn použije pro `gdp_extraction` a `gdp_transit` výpočet. Tím se eliminuje druhý writer fiskálních polí.
-
-## 3. DB migrace
+## 1. Migrace
 
 ```sql
--- Reset rozbitých legacy / akumulovaných polí na 0
-UPDATE realm_resources SET
-  wealth_pop_tax = 0,
-  wealth_domestic_market = 0,
-  wealth_route_commerce = 0,
-  goods_wealth_fiscal = 0,
-  last_turn_gdp_domestic = 0,
-  last_turn_gdp_market = 0,
-  last_turn_gdp_transit = 0,
-  last_turn_gdp_extraction = 0,
-  tax_market = 0,
-  tax_transit = 0,
-  tax_extraction = 0,
-  commercial_capture = 0,
-  wealth_domestic_component = 0,
-  wealth_market_share = 0;
-
--- Komentář: legacy sloupce wealth_domestic_component, wealth_market_share, commercial_capture
--- a tax_{market,transit,extraction} se zatím NEDROPNOU (drží je staré edge funkce).
--- Drop přijde v samostatné migraci, jakmile všechny writery zmizí.
+ALTER TABLE trade_flows
+  ADD COLUMN IF NOT EXISTS source_node_id uuid,
+  ADD COLUMN IF NOT EXISTS target_node_id uuid;
 ```
 
-Žádné `ALTER TABLE DROP COLUMN` v této fázi — minimalizujeme riziko, že něco jiného sletí.
+Žádné FK, žádný backfill. `trade_flows` je derived runtime — čistí se recompute po deployi.
 
-## 4. UI — Pokladnice (TreasuryHub)
+## 2. `supabase/functions/compute-trade-flows/index.ts`
 
-### Struktura
-
-```text
-TreasuryHub
-├── Sub-tab "Souhrn"
-│   ├── KPI row: HDP (Σ last_turn_gdp_*) │ Příjem koruny │ Čistá změna
-│   └── Bilance: Příjem ↑  − Výdaje ↓  = Net
-├── Sub-tab "Detail pilířů"
-│   └── 5 řádků (Poll, Domácí, Tržní, Tranzit, Těžba):
-│       Nominál │ Laffer keep │ Efektiv. │ Gov mod │ HDP báze │ Příjem
-├── Sub-tab "Daňová politika"
-│   └── slidery + projekce přes detail
-└── Sub-tab "Výdaje"
-    └── MilitaryUpkeep + tolls + sport
+**A) ID semantics při push:**
+```ts
+tradeFlows.push({
+  session_id,
+  source_city_id: neighborId,                       // cities.id
+  target_city_id: cityId,                           // cities.id
+  source_node_id: cityToNodeId.get(neighborId) ?? null,
+  target_node_id: cityToNodeId.get(cityId) ?? null,
+  source_player: neighborCity.owner_player || "",
+  target_player: city.owner_player || "",
+  // ...zbytek beze změny
+});
 ```
 
-### Zdrojová pravidla
+**B) Unconditional cleanup s error handling:**
+```ts
+const { error: deleteFlowsError } = await sb
+  .from("trade_flows")
+  .delete()
+  .eq("session_id", session_id);
 
-- **Veškerý KPI/total** přes `getFiscalIncome(realm)` (už existuje, jen se odstraní vetev `commercial_capture`).
-- **Per-pillar tabulka** čte `last_turn_gdp_*` + `tax_rate_*` + `legitimacy` a počítá Laffer projekci stejnou rovnicí jako engine (sdílený helper `src/lib/fiscalMath.ts`).
-- `TreasuryPanel.tsx` se **smaže** (jeho per-pillar view nahradí "Detail pilířů" sub-tab vykreslený stejným helperem, takže nikdy se dvě karty s "Příjem koruny" nemohou rozejít).
+if (deleteFlowsError) {
+  console.error("[compute-trade-flows] Failed to clear trade_flows", deleteFlowsError);
+  throw deleteFlowsError;
+}
 
-### Mazat
+if (tradeFlows.length > 0) {
+  const { error: insertFlowsError } = await sb
+    .from("trade_flows")
+    .insert(tradeFlows);
+  if (insertFlowsError) {
+    console.error("[compute-trade-flows] Failed to insert trade_flows", insertFlowsError);
+    throw insertFlowsError;
+  }
+}
+```
 
-- `src/components/economy/TreasuryPanel.tsx` (nahrazeno detailem sub-tabu).
-- `FiscalSubTab.tsx` legacy ledger karty.
-- Vše, co čte `wealth_domestic_component`, `wealth_market_share`, `commercial_capture` v `src/lib/economyFlow.ts` (`getWealthBreakdown` deprecated → smazat).
+**C) Lookup hranice (hard rule):**
+- `cityMap.get(flow.source_city_id)` / `get(flow.target_city_id)` — city id výhradně.
+- `exportFlows = tradeFlows.filter(f => f.source_city_id === city.id)`.
+- `commercial_capture` a `transit_tax` agregace přes `source_city_id`/`target_city_id`.
+- Phase 3.5 flow centrality:
+  ```ts
+  const node = nodeById.get((f as any).source_node_id); // NIKDY source_city_id
+  ```
+- Žádný `nodeById.get(*_city_id)` nikde v souboru. Žádný `cityMap.get(*_node_id)` nikde.
 
-## 5. Acceptance kritéria
+## 3. UI rename + disclaimers
 
-- Po refreshi turnu se v DB `last_turn_gdp_*` zapíší **kladné** hodnoty pro pilíře s aktivitou.
-- `wealth_pop_tax + wealth_domestic_market + goods_wealth_fiscal + wealth_route_commerce` na DB řádku = "Příjem koruny / kolo" v UI = sum per-pillar `Příjem` v detail tabulce.
-- "HDP" v souhrnu = Σ `last_turn_gdp_*` = Σ "HDP báze" v detail tabulce.
-- `wealth_domestic_market` neroste mezi koly při nezměněné konfiguraci (overwrite test).
-- Žádný panel nečte `wealth_domestic_component`, `wealth_market_share`, `commercial_capture`, `tax_market`, `tax_transit`, `tax_extraction`.
-- Build prochází, nejsou unused importy.
+- `src/components/TradePanel.tsx`:
+  - Nadpis "Obchodní přehled" → **"Diplomatické obchodní dohody"**
+  - Banner: *"0 dohod ≠ 0 obchodu. Automatická obchodní síť a goods ekonomika běží samostatně."*
+  - "Nová obchodní nabídka" → "Nová diplomatická obchodní nabídka"
+- `src/components/economy/MarketsHub.tsx`: sekce "Trade System Supply/Demand" → **"Síťová bilance košů"**.
+- `src/components/economy/DemandFulfillmentPanel.tsx` + Dependency Map: gate za `useDevMode()` + štítek *"Dev — zatím nečteno z canonical Goods v4.3 tables"*.
+- `src/pages/game/EconomyTab.tsx`: ověřit, že topbar nemíchá "HDP" s recipe output. HDP unifikace = Fáze 2.
 
-## 6. Out of scope (zatím)
+**TradePanel nepřesouvat** do Diplomacy.
 
-- DROP COLUMN legacy polí (samostatná pozdější migrace).
-- Změna daňových sazeb a Laffer křivek (jen sjednotit existující model).
-- `ProductionOverviewCard` (Goods v4.3) zůstane jak je — jen v Detail pilířů se ukáže, že `gdp_market === goods_production_value` (link "viz Produkce").
-- Hluboký refactor `compute-trade-flows` (jen zastavíme jeho zápisy do `tax_*` polí, vnitřek nechte).
+## 4. Memory
 
-## 7. Technické poznámky
+- `mem://index.md`: Economy Refresh = **5-step chain** (`compute-trade-systems` mezi hex-flows a trade-flows).
+- `mem://tech/engine/economy-refresh-orchestration`: rozšířit na 5 kroků.
+- Nová `mem://features/trade/three-layer-semantics`:
+  - L1 access (`trade_systems` / `player_trade_system_access`)
+  - L2 ekonomika (`city_market_baskets`, `node_inventory`, `demand_baskets`)
+  - L3 ruční diplomatické smlouvy (`trade_routes` / `trade_offers` / `TradePanel`)
+  - Pravidlo: UI musí labelovat, který layer čte.
 
-- Shared helper `src/lib/fiscalMath.ts` exportuje `laffer(rate, max)`, `govMod(legitimacy)`, `TAX_MAX` konstanty, `computePillarRevenue({ gdp, rate, max, govMod })`. Identický kód v `process-turn/index.ts` (via copy, ne import — edge funkce).
-- `getFiscalIncome` v `economyFlow.ts` se zjednoduší: `totalIncome = popTax + domesticMarket + goodsFiscal + routeCommerce`. Konec.
-- Memory aktualizace: `mem://features/economy/fiscal-model-v6` (nový soubor), index update.
+## 5. Validace po deployi
+
+Spustit `refresh-economy` pro aktivní session, pak:
+
+```sql
+-- city refs (oba sloupce, NOT EXISTS)
+SELECT count(*) FROM trade_flows tf
+WHERE NOT EXISTS (SELECT 1 FROM cities c WHERE c.id = tf.source_city_id);
+
+SELECT count(*) FROM trade_flows tf
+WHERE NOT EXISTS (SELECT 1 FROM cities c WHERE c.id = tf.target_city_id);
+
+-- node refs (pokud non-null)
+SELECT count(*) FROM trade_flows tf
+WHERE tf.source_node_id IS NOT NULL
+  AND NOT EXISTS (SELECT 1 FROM province_nodes n WHERE n.id = tf.source_node_id);
+
+SELECT count(*) FROM trade_flows tf
+WHERE tf.target_node_id IS NOT NULL
+  AND NOT EXISTS (SELECT 1 FROM province_nodes n WHERE n.id = tf.target_node_id);
+```
+
+Všechny čtyři dotazy musí vracet **0**.
+
+Dále: `commercial_capture` a `transit_tax` v `realm_resources` nejsou 0 pro hráče s nenulovými flows. UI smoke: TradePanel = nový nadpis + banner; MarketsHub = "Síťová bilance košů".
+
+## 6. Out of scope (→ Fáze 2)
+
+- `basket_trade_flows` tabulka, solver na `export_surplus` × `unmet_demand`.
+- Per-basket trace UI.
+- HDP unifikace.
+- Rozhodnutí pooled system supply: real pool vs diagnostika.
+- Případný přesun TradePanel do Diplomacy.
+
+---
+
+Připraven implementovat F1 přesně v tomto rozsahu po schválení.
