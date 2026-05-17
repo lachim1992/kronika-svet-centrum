@@ -177,6 +177,9 @@ const DemandFulfillmentPanel = ({ sessionId, playerName, cities }: Props) => {
         </CardContent>
       </Card>
 
+      {/* Trade balance — imports / exports / fiscal income */}
+      <TradeBalanceSummary sessionId={sessionId} playerName={playerName} />
+
       {/* Pyramid — 5 layers */}
       <div className="space-y-3">
         {LAYER_ORDER.map(layerKey => {
