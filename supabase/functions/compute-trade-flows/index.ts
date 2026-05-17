@@ -714,7 +714,8 @@ Deno.serve(async (req) => {
       }
       const sysVolume = new Map<string, number>();
       for (const f of tradeFlows) {
-        const node = nodeById.get((f as any).source_city_id);
+        // ID hard rule: nodeById is keyed by province_nodes.id, so we MUST use *_node_id, never *_city_id.
+        const node = nodeById.get((f as any).source_node_id);
         const sysId = (node as any)?.trade_system_id;
         if (!sysId) continue;
         sysVolume.set(sysId, (sysVolume.get(sysId) || 0) + (f.volume_per_turn || 0));
