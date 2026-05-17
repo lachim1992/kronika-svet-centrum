@@ -79,7 +79,8 @@ const EconomyTab = ({
     [cities, currentPlayerName],
   );
 
-  const totalWealth = realm?.total_wealth ?? 0; // ekon. aktivita, NE příjem státu
+  const totalWealth = realm?.total_wealth ?? 0; // fiskální stream součet
+  const totalGdp = (realm as any)?.total_gdp ?? 0; // ekonomická aktivita (produkce + export)
   const totalCapacity = realm?.total_capacity ?? 0;
   // Sjednocený fiskální zdroj — stejná čísla jako HUD a TreasuryHub
   const fi = getFiscalIncome(realm);
