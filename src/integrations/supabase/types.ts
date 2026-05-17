@@ -1618,6 +1618,7 @@ export type Database = {
           auto_supply: number | null
           basket_key: string
           bonus_supply: number | null
+          building_bonus: number
           city_id: string
           domestic_satisfaction: number | null
           export_surplus: number | null
@@ -1628,6 +1629,7 @@ export type Database = {
           monetization: number | null
           player_name: string
           quality_weight: number | null
+          recipe_bonus: number
           session_id: string
           turn_number: number | null
           unmet_demand: number
@@ -1636,6 +1638,7 @@ export type Database = {
           auto_supply?: number | null
           basket_key: string
           bonus_supply?: number | null
+          building_bonus?: number
           city_id: string
           domestic_satisfaction?: number | null
           export_surplus?: number | null
@@ -1646,6 +1649,7 @@ export type Database = {
           monetization?: number | null
           player_name: string
           quality_weight?: number | null
+          recipe_bonus?: number
           session_id: string
           turn_number?: number | null
           unmet_demand?: number
@@ -1654,6 +1658,7 @@ export type Database = {
           auto_supply?: number | null
           basket_key?: string
           bonus_supply?: number | null
+          building_bonus?: number
           city_id?: string
           domestic_satisfaction?: number | null
           export_surplus?: number | null
@@ -1664,6 +1669,7 @@ export type Database = {
           monetization?: number | null
           player_name?: string
           quality_weight?: number | null
+          recipe_bonus?: number
           session_id?: string
           turn_number?: number | null
           unmet_demand?: number

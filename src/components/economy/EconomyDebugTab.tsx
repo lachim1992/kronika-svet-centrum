@@ -168,18 +168,20 @@ const EconomyDebugTab = ({ sessionId, currentPlayerName, currentTurn, cities, re
     const m = new Map<string, any>();
     for (const b of DEMAND_BASKETS) {
       m.set(b.key, { key: b.key, label: b.label, icon: b.icon, tier: b.tier,
-        demand: 0, local_supply: 0, auto: 0, bonus: 0, unmet: 0, export_surplus: 0,
+        demand: 0, local_supply: 0, auto: 0, bonus: 0, recipe_bonus: 0, building_bonus: 0, unmet: 0, export_surplus: 0,
         market_access: 0, n: 0,
         import_vol: 0, export_vol: 0, import_value: 0, export_value: 0 });
     }
     for (const row of myCmbLatest) {
       const k = row.basket_key;
-      if (!m.has(k)) m.set(k, { key: k, label: k, icon: "❓", tier: 0, demand: 0, local_supply: 0, auto: 0, bonus: 0, unmet: 0, export_surplus: 0, market_access: 0, n: 0, import_vol: 0, export_vol: 0, import_value: 0, export_value: 0 });
+      if (!m.has(k)) m.set(k, { key: k, label: k, icon: "❓", tier: 0, demand: 0, local_supply: 0, auto: 0, bonus: 0, recipe_bonus: 0, building_bonus: 0, unmet: 0, export_surplus: 0, market_access: 0, n: 0, import_vol: 0, export_vol: 0, import_value: 0, export_value: 0 });
       const e = m.get(k);
       e.demand += num(row.local_demand);
       e.local_supply += num(row.local_supply);
       e.auto += num(row.auto_supply);
       e.bonus += num(row.bonus_supply);
+      e.recipe_bonus += num(row.recipe_bonus);
+      e.building_bonus += num(row.building_bonus);
       e.unmet += num(row.unmet_demand);
       e.export_surplus += num(row.export_surplus);
       e.market_access += num(row.market_access);
@@ -487,6 +489,8 @@ const EconomyDebugTab = ({ sessionId, currentPlayerName, currentTurn, cities, re
                   <TableHead className="text-[10px] text-right">Local</TableHead>
                   <TableHead className="text-[10px] text-right">Auto</TableHead>
                   <TableHead className="text-[10px] text-right">Bonus</TableHead>
+                  <TableHead className="text-[10px] text-right" title="recipe_bonus from node recipes">Rcp</TableHead>
+                  <TableHead className="text-[10px] text-right" title="building_bonus from completed buildings">Bld</TableHead>
                   <TableHead className="text-[10px] text-right">Import</TableHead>
                   <TableHead className="text-[10px] text-right">Surplus</TableHead>
                   <TableHead className="text-[10px] text-right">Export</TableHead>
@@ -505,6 +509,8 @@ const EconomyDebugTab = ({ sessionId, currentPlayerName, currentTurn, cities, re
                       <TableCell className="text-[10px] py-1 text-right font-mono">{fmt(b.local_supply)}</TableCell>
                       <TableCell className="text-[10px] py-1 text-right font-mono">{fmt(b.auto)}</TableCell>
                       <TableCell className="text-[10px] py-1 text-right font-mono">{fmt(b.bonus)}</TableCell>
+                      <TableCell className="text-[10px] py-1 text-right font-mono text-muted-foreground">{fmt(b.recipe_bonus)}</TableCell>
+                      <TableCell className={`text-[10px] py-1 text-right font-mono ${b.demand > 0 && b.building_bonus > b.demand * 1.5 ? "text-amber-500" : "text-emerald-500"}`} title={b.demand > 0 && b.building_bonus > b.demand * 1.5 ? "overshoot >150% demand" : ""}>{fmt(b.building_bonus)}</TableCell>
                       <TableCell className="text-[10px] py-1 text-right font-mono text-primary">{fmt(b.import_vol)}</TableCell>
                       <TableCell className="text-[10px] py-1 text-right font-mono">{fmt(b.export_surplus)}</TableCell>
                       <TableCell className="text-[10px] py-1 text-right font-mono text-primary">{fmt(b.export_vol)}</TableCell>

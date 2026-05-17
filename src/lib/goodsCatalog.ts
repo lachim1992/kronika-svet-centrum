@@ -534,3 +534,60 @@ export const CANONICAL_BASKET_KEYS = Object.entries(BASKET_CONFIG)
 /** Pillar 2 weight constants */
 export const PILLAR2_DOMESTIC_WEIGHT = 0.4;
 export const PILLAR2_MARKET_SHARE_WEIGHT = 0.6;
+
+// ═══════════════════════════════════════════
+// BUILDING → BASKET HELPERS (v4.3 Phase 1)
+// ═══════════════════════════════════════════
+
+export const VALID_BASKETS = [
+  "staple_food","basic_clothing","tools","fuel","drinking_water",
+  "storage_logistics","admin_supplies","construction","metalwork",
+  "military_supply","luxury_clothing","feast",
+] as const;
+
+export type BasketSource = "none" | "template" | "instance_override" | "instance_suppress";
+
+function filterValidBasketOutputs(o: any): Record<string, number> {
+  const out: Record<string, number> = {};
+  if (!o || typeof o !== "object") return out;
+  for (const [k, v] of Object.entries(o)) {
+    if ((VALID_BASKETS as readonly string[]).includes(k)) {
+      const n = Number(v);
+      if (Number.isFinite(n) && n > 0) out[k] = n;
+    }
+  }
+  return out;
+}
+
+/**
+ * Inspect a city_buildings row (optionally joined with building_templates)
+ * and return its basket source + outputs.
+ */
+export function inspectBasketOutputs(b: any): {
+  source: BasketSource;
+  outputs: Record<string, number>;
+} {
+  const i = (b?.effects ?? {}) as any;
+  const t = (b?.building_templates?.effects ?? b?.template_effects ?? {}) as any;
+  const hasOverride = Object.prototype.hasOwnProperty.call(i, "basket_outputs");
+  if (hasOverride) {
+    const v = i.basket_outputs;
+    if (v == null || (typeof v === "object" && Object.keys(v).length === 0)) {
+      return { source: "instance_suppress", outputs: {} };
+    }
+    return { source: "instance_override", outputs: filterValidBasketOutputs(v) };
+  }
+  if (t?.basket_outputs) {
+    return { source: "template", outputs: filterValidBasketOutputs(t.basket_outputs) };
+  }
+  return { source: "none", outputs: {} };
+}
+
+/** Same but multiplied by current_level (min 1). */
+export function scaledBasketOutputs(b: any): Record<string, number> {
+  const { outputs } = inspectBasketOutputs(b);
+  const lvl = Math.max(1, Number(b?.current_level) || 1);
+  const out: Record<string, number> = {};
+  for (const [k, v] of Object.entries(outputs)) out[k] = v * lvl;
+  return out;
+}

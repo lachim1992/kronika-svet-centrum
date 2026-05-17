@@ -138,6 +138,95 @@ Deno.serve(async (req) => {
     const routes = routesRes.data || [];
     const hexDeposits = hexesRes.data || [];
 
+    // ── Load completed buildings + their templates (Phase 1: Goods integration) ──
+    // Hard canonical set of baskets — unknown keys are rejected with a warning.
+    const VALID_BASKETS = new Set([
+      "staple_food","basic_clothing","tools","fuel","drinking_water",
+      "storage_logistics","admin_supplies","construction","metalwork",
+      "military_supply","luxury_clothing","feast",
+    ]);
+
+    const { data: cityBuildingsRaw, error: bldErr } = await sb
+      .from("city_buildings")
+      .select("id, city_id, current_level, effects, template_id, status, building_templates ( id, effects )")
+      .eq("session_id", session_id)
+      .eq("status", "completed");
+
+    let cityBuildings: any[] = cityBuildingsRaw || [];
+    const joinMissing = cityBuildings.some(
+      (b: any) => b.template_id && !b.building_templates
+    );
+    if (bldErr || joinMissing) {
+      const { data: legacy } = await sb
+        .from("city_buildings")
+        .select("id, city_id, current_level, effects, template_id, status")
+        .eq("session_id", session_id)
+        .eq("status", "completed");
+      const tplIds = [...new Set((legacy || []).map((b: any) => b.template_id).filter(Boolean))];
+      let tmap = new Map<string, any>();
+      if (tplIds.length > 0) {
+        const { data: tpls } = await sb
+          .from("building_templates")
+          .select("id, effects")
+          .in("id", tplIds);
+        tmap = new Map((tpls || []).map((t: any) => [t.id, t]));
+      }
+      cityBuildings = (legacy || []).map((b: any) => ({
+        ...b,
+        building_templates: b.template_id ? tmap.get(b.template_id) ?? null : null,
+      }));
+      if (bldErr) warnings.push(`city_buildings_join_fallback: ${bldErr.message}`);
+    }
+
+    // Aggregate building bonus per city per basket
+    const cityBuildingBonus = new Map<
+      string,
+      Map<string, { qty: number; qSum: number; cnt: number }>
+    >();
+    const bw = { unknownKeys: 0, suppressed: 0, overshoot: 0, contributing: 0 };
+
+    for (const b of cityBuildings) {
+      const iEff = (b.effects ?? {}) as Record<string, any>;
+      const tEff = (b.building_templates?.effects ?? {}) as Record<string, any>;
+      const hasOverride = Object.prototype.hasOwnProperty.call(iEff, "basket_outputs");
+      let basketOutputs: Record<string, number> | null = null;
+      if (hasOverride) {
+        const v = iEff.basket_outputs;
+        if (v == null || (typeof v === "object" && Object.keys(v).length === 0)) {
+          bw.suppressed++;
+          warnings.push(`instance_suppressed_template_basket_outputs city=${b.city_id} bld=${b.id}`);
+          basketOutputs = null;
+        } else {
+          basketOutputs = v as Record<string, number>;
+        }
+      } else {
+        basketOutputs = (tEff.basket_outputs as Record<string, number> | undefined) ?? null;
+      }
+      if (!basketOutputs) continue;
+
+      const rawQ = Number(iEff.basket_quality ?? tEff.basket_quality ?? 1);
+      const quality = Math.min(3, Math.max(0, Number.isFinite(rawQ) ? rawQ : 1));
+      const level = Math.max(1, Number(b.current_level) || 1);
+
+      let bag = cityBuildingBonus.get(b.city_id);
+      if (!bag) { bag = new Map(); cityBuildingBonus.set(b.city_id, bag); }
+
+      for (const [rawKey, base] of Object.entries(basketOutputs)) {
+        if (!VALID_BASKETS.has(rawKey)) {
+          bw.unknownKeys++;
+          warnings.push(`building_basket_unknown_key=${rawKey} city=${b.city_id} bld=${b.id}`);
+          continue;
+        }
+        const qty = Number(base) * level;
+        if (!Number.isFinite(qty) || qty <= 0) continue;
+        const cur = bag.get(rawKey) || { qty: 0, qSum: 0, cnt: 0 };
+        cur.qty += qty; cur.qSum += quality; cur.cnt += 1;
+        bag.set(rawKey, cur);
+        bw.contributing++;
+      }
+    }
+    console.log("[building-bonus]", JSON.stringify(bw));
+
     const goodsMap = new Map(goods.map(g => [g.key, g]));
     const cityMap = new Map(cities.map(c => [c.id, c]));
     const cityToNodeId = new Map<string, string>();
@@ -483,16 +572,25 @@ Deno.serve(async (req) => {
       const cityMarketAccess = avgRouteAccess * (0.8 + (city.market_level || 0) * 0.1);
       const cityMonetization = (1 + (city.market_level || 0) * 0.1) * Math.max(0.1, (city.city_stability || 50) / 100);
 
+      const buildingBag = cityBuildingBonus.get(city.id);
+
       for (const [bk, bc] of Object.entries(BASKET_CONFIG)) {
         const demandQty = demands.get(bk) || 0;
         const autoSupply = autoMap.get(bk) || 0;
         const bonus = bonusMap.get(bk);
-        const bonusSupply = bonus?.quantity || 0;
+        const recipeBonus = bonus?.quantity || 0;
+        const bldBonus = buildingBag?.get(bk);
+        const buildingBonus = bldBonus?.qty || 0;
+        const bonusSupply = recipeBonus + buildingBonus;
         const localSupply = autoSupply + bonusSupply;
         const domesticSatisfaction = demandQty > 0 ? Math.min(1.0, localSupply / demandQty) : 1.0;
         const exportSurplus = Math.max(0, localSupply - demandQty);
         const guildLevel = bonus?.count ? Math.round(bonus.qualitySum / bonus.count) : 0;
-        const qualityWeight = Math.min(2.0, Math.max(1.0, 1 + guildLevel * 0.15));
+        const bldQualityAvg = bldBonus?.cnt ? bldBonus.qSum / bldBonus.cnt : 0;
+        const effectiveQuality = Math.max(guildLevel, bldQualityAvg);
+        const qualityWeight = Math.min(2.0, Math.max(1.0, 1 + effectiveQuality * 0.15));
+
+        if (demandQty > 0 && buildingBonus > demandQty * 1.5) bw.overshoot++;
 
         // demand_baskets row (needs cityNodeId)
         if (cityNodeId) {
@@ -511,7 +609,7 @@ Deno.serve(async (req) => {
           });
         }
 
-        // city_market_baskets row (v4.2)
+        // city_market_baskets row (v4.3 — split bonus into recipe + building)
         const unmetDemand = Math.max(0, demandQty - localSupply);
         cityBasketRows.push({
           session_id,
@@ -519,7 +617,9 @@ Deno.serve(async (req) => {
           player_name: city.owner_player || "",
           basket_key: bk,
           auto_supply: autoSupply,
-          bonus_supply: bonusSupply,
+          recipe_bonus: Math.round(recipeBonus * 100) / 100,
+          building_bonus: Math.round(buildingBonus * 100) / 100,
+          bonus_supply: Math.round(bonusSupply * 100) / 100,
           local_demand: demandQty,
           local_supply: localSupply,
           domestic_satisfaction: Math.round(domesticSatisfaction * 1000) / 1000,
