@@ -286,6 +286,82 @@ const DemandFulfillmentPanel = ({ sessionId, playerName, cities }: Props) => {
                   <span>Auto: {g.auto.toFixed(1)} | Bonus: {g.bonus.toFixed(1)}</span>
                   <span>Přebytek: {g.surplus.toFixed(1)}</span>
                 </div>
+                {g.unmet > 0 && (VALID_BASKETS as readonly string[]).includes(g.key) && (
+                  <div className="pt-1">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-6 text-[9px] gap-1"
+                      onClick={() => setExpandedBasket(expandedBasket === g.key ? null : g.key)}
+                    >
+                      <Hammer className="h-2.5 w-2.5" />
+                      Postavit budovu řešící deficit
+                    </Button>
+                    {expandedBasket === g.key && (() => {
+                      // City ranking by per-city unmet for this basket
+                      const cityUnmet = baskets
+                        .filter(r => resolveBasketKey(r.basket_key) === g.key)
+                        .map(r => ({
+                          row: r,
+                          city: cities.find(c => c.id === r.city_id),
+                          unmet: r.unmet_demand ?? Math.max(0, r.local_demand - r.local_supply),
+                        }))
+                        .filter(x => x.city && x.unmet > 0)
+                        .sort((a, b) => b.unmet - a.unmet)
+                        .slice(0, 5);
+                      // Templates producing this basket
+                      const matches = templates.filter(t => {
+                        const bo = (t.effects as any)?.basket_outputs;
+                        return bo && typeof bo === "object" && Number(bo[g.key]) > 0;
+                      });
+                      return (
+                        <div className="mt-2 p-2 rounded border border-border/40 bg-muted/30 space-y-2">
+                          {cityUnmet.length === 0 ? (
+                            <p className="text-[9px] text-muted-foreground">Žádné město s deficitem.</p>
+                          ) : (
+                            <div className="space-y-1">
+                              <p className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground">
+                                Města s největším deficitem
+                              </p>
+                              {cityUnmet.map(({ city, unmet }) => (
+                                <button
+                                  key={city.id}
+                                  className="w-full flex items-center justify-between text-[10px] px-1.5 py-0.5 rounded hover:bg-muted/60 transition-colors"
+                                  onClick={() => navigate(`/game/${sessionId}/city/${city.id}`, { state: { focusBasket: g.key } })}
+                                >
+                                  <span>🏛️ {city.name}</span>
+                                  <span className="font-mono text-destructive">deficit −{unmet.toFixed(1)}</span>
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                          {matches.length === 0 ? (
+                            <p className="text-[9px] text-muted-foreground">
+                              Žádná šablona nemá basket_outputs pro {g.key}. Použij AI generování budovy.
+                            </p>
+                          ) : (
+                            <div className="space-y-1">
+                              <p className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground">
+                                Doporučené šablony
+                              </p>
+                              {matches.slice(0, 5).map(t => {
+                                const bo = (t.effects as any)?.basket_outputs || {};
+                                return (
+                                  <div key={t.id} className="flex items-center justify-between text-[10px] px-1.5 py-0.5">
+                                    <span className="truncate">🏗️ {t.name}</span>
+                                    <Badge variant="outline" className="text-[8px] border-emerald-500/40 shrink-0">
+                                      +{bo[g.key]} / Lvl
+                                    </Badge>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
+                  </div>
+                )}
                 {devMode && (
                   <TradeFlowTrace sessionId={sessionId} playerName={playerName} basketKey={g.key} />
                 )}
