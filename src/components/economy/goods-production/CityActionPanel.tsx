@@ -181,24 +181,59 @@ const CityActionPanel = ({ sessionId, cityId, cityName, basketKey, templates, on
             {nodes.slice(0, 6).map(n => {
               const tags = (n.capability_tags || []).slice(0, 3).join(", ");
               const myInv = inv.filter(i => i.node_id === n.id).slice(0, 2);
+              const o = orders[n.id];
+              const isThisBasket = o?.basket === basketKey;
+              const busy = busyNode === n.id;
               return (
                 <div key={n.id} className="flex items-center justify-between gap-2 px-2 py-1 rounded bg-card/60">
                   <div className="min-w-0">
-                    <div className="text-xs font-semibold truncate">⚙️ {n.name}</div>
+                    <div className="text-xs font-semibold truncate flex items-center gap-1.5">
+                      ⚙️ {n.name}
+                      {o && isThisBasket && (
+                        <Badge variant="outline" className="text-[8px] border-primary/40 text-primary">
+                          {o.mode}{o.status === "blocked" ? " · ⛔" : o.status === "prefer_no_match" ? " · ⚠" : ""}
+                        </Badge>
+                      )}
+                      {o && !isThisBasket && (
+                        <Badge variant="outline" className="text-[8px] border-muted-foreground/40 text-muted-foreground">
+                          {o.mode}→{o.basket}
+                        </Badge>
+                      )}
+                    </div>
                     <div className="text-[9px] text-muted-foreground truncate">
                       {n.node_subtype} · {n.production_role || "—"} · {tags || "—"}
                       {myInv.length > 0 && ` · 📦 ${myInv.map(i => `${i.good_key}:${Math.round(i.quantity)}`).join(", ")}`}
+                      {o?.reason && isThisBasket && ` · ${o.reason}`}
                     </div>
                   </div>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    className="h-6 text-[10px] px-2 shrink-0 opacity-60"
-                    disabled
-                    title="Production orders přijdou v další fázi (vyžaduje production budget)"
-                  >
-                    Set order — coming next
-                  </Button>
+                  <div className="flex items-center gap-0.5 shrink-0">
+                    <Button
+                      size="sm" variant={isThisBasket && o?.mode === "prefer" ? "default" : "outline"}
+                      className="h-6 text-[10px] px-1.5" disabled={busy}
+                      onClick={() => setOrder(n.id, "prefer")}
+                      title={`Prefer ${basketKey} (weight ×3)`}
+                    >
+                      <Wand2 className="h-3 w-3" />
+                    </Button>
+                    <Button
+                      size="sm" variant={isThisBasket && o?.mode === "lock" ? "default" : "outline"}
+                      className="h-6 text-[10px] px-1.5" disabled={busy}
+                      onClick={() => setOrder(n.id, "lock")}
+                      title={`Lock to ${basketKey} only`}
+                    >
+                      <Lock className="h-3 w-3" />
+                    </Button>
+                    {o && (
+                      <Button
+                        size="sm" variant="ghost"
+                        className="h-6 text-[10px] px-1.5" disabled={busy}
+                        onClick={() => setOrder(n.id, "auto")}
+                        title="Reset to auto"
+                      >
+                        <RotateCcw className="h-3 w-3" />
+                      </Button>
+                    )}
+                  </div>
                 </div>
               );
             })}
