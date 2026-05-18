@@ -26,6 +26,8 @@ import {
 import CrisisHeader from "./goods-production/CrisisHeader";
 import BasketMatrix from "./goods-production/BasketMatrix";
 import BasketDetailDrawer from "./goods-production/BasketDetailDrawer";
+import OrdersCapacityPanel from "./goods-production/OrdersCapacityPanel";
+import { useDevMode } from "@/hooks/useDevMode";
 import type { BasketAgg, CityBasketRow } from "./goods-production/types";
 
 interface Props {
