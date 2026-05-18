@@ -187,11 +187,15 @@ const CityActionPanel = ({ sessionId, cityId, cityName, basketKey, templates, on
               const o = orders[n.id];
               const isThisBasket = o?.basket === basketKey;
               const busy = busyNode === n.id;
+              const cap = computeNodeProductionBudget(n);
               return (
                 <div key={n.id} className="flex items-center justify-between gap-2 px-2 py-1 rounded bg-card/60">
                   <div className="min-w-0">
                     <div className="text-xs font-semibold truncate flex items-center gap-1.5">
                       ⚙️ {n.name}
+                      <Badge variant="outline" className="text-[8px] border-amber-500/40 text-amber-600" title="Production budget — slots/turn využité při aktivním orderu">
+                        ⚡ {cap}
+                      </Badge>
                       {o && isThisBasket && (
                         <Badge variant="outline" className="text-[8px] border-primary/40 text-primary">
                           {o.mode}{o.status === "blocked" ? " · ⛔" : o.status === "prefer_no_match" ? " · ⚠" : ""}
@@ -209,6 +213,7 @@ const CityActionPanel = ({ sessionId, cityId, cityName, basketKey, templates, on
                       {o?.reason && isThisBasket && ` · ${o.reason}`}
                     </div>
                   </div>
+
                   <div className="flex items-center gap-0.5 shrink-0">
                     <Button
                       size="sm" variant={isThisBasket && o?.mode === "prefer" ? "default" : "outline"}
