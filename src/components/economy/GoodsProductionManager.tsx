@@ -216,7 +216,7 @@ const GoodsProductionManager = ({
     } catch {}
     const city = myCities.find(c => c.id === cityId);
     toast.info(`Otevři ${city?.name || "město"} → Budovy a postav doporučený template.`);
-    onTabChange?.("cities");
+    onTabChange?.("realm");
   };
 
   const handleRefresh = async () => {
