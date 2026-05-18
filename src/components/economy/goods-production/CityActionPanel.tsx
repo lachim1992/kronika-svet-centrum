@@ -24,6 +24,9 @@ interface NodeRow {
   trade_system_id: string | null;
   city_id: string | null;
   controlled_by: string | null;
+  upgrade_level: number | null;
+  guild_level: number | null;
+  production_output: number | null;
 }
 
 const CityActionPanel = ({ sessionId, cityId, cityName, basketKey, templates, onNavigateToCities }: Props) => {
