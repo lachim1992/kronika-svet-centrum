@@ -6842,6 +6842,48 @@ export type Database = {
         }
         Relationships: []
       }
+      node_production_orders: {
+        Row: {
+          created_at: string
+          id: string
+          last_status: string | null
+          last_status_reason: string | null
+          mode: string
+          node_id: string
+          player_name: string
+          session_id: string
+          target_basket_key: string
+          target_good_key: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          last_status?: string | null
+          last_status_reason?: string | null
+          mode?: string
+          node_id: string
+          player_name: string
+          session_id: string
+          target_basket_key: string
+          target_good_key?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          last_status?: string | null
+          last_status_reason?: string | null
+          mode?: string
+          node_id?: string
+          player_name?: string
+          session_id?: string
+          target_basket_key?: string
+          target_good_key?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       node_projects: {
         Row: {
           completed_turn: number | null
