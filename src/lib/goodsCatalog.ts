@@ -591,3 +591,92 @@ export function scaledBasketOutputs(b: any): Record<string, number> {
   for (const [k, v] of Object.entries(outputs)) out[k] = v * lvl;
   return out;
 }
+
+// ═══════════════════════════════════════════
+// GOODS COMMAND CENTER HELPERS — Fáze 1A
+// ═══════════════════════════════════════════
+
+/** Pretty meta lookup for any canonical basket key. */
+export function getBasketMeta(key: string): { label: string; icon: string } {
+  const d = DEMAND_BASKETS.find(b => b.key === key);
+  return { label: d?.label ?? key, icon: d?.icon ?? "📦" };
+}
+
+/** Tier class for a basket (need/civic/upgrade/military/luxury). */
+export function getBasketTierClass(key: string): BasketTierClass | "need" {
+  return BASKET_CONFIG[key]?.tierClass ?? "need";
+}
+
+/**
+ * Demand-weighted satisfaction across a set of city-basket rows.
+ * Mirrors supabase/functions/_shared/basket-context.ts:
+ *   weighted_sat = Σ(sat × demand) / Σ(demand)
+ * If Σ demand == 0 → 1.0 (fully satisfied, nothing to do).
+ */
+export function weightedSatisfaction(
+  rows: Array<{ local_demand?: number; domestic_satisfaction?: number }>,
+): number {
+  let num = 0, den = 0;
+  for (const r of rows) {
+    const d = Number(r.local_demand) || 0;
+    const s = Number(r.domestic_satisfaction) || 0;
+    if (d > 0) { num += s * d; den += d; }
+  }
+  return den > 0 ? num / den : 1;
+}
+
+/** Building templates whose effects.basket_outputs covers given basket. */
+export function getBuildingTemplatesForBasket(
+  templates: Array<{ effects?: any }>,
+  basketKey: string,
+): any[] {
+  return templates.filter(t => {
+    const bo = (t.effects as any)?.basket_outputs;
+    return bo && typeof bo === "object" && Number(bo[basketKey]) > 0;
+  });
+}
+
+export type BasketCause =
+  | "no_auto"
+  | "no_recipe"
+  | "no_building"
+  | "no_trade_access"
+  | "no_trade_surplus"
+  | "ok";
+
+export interface CauseLabel { code: BasketCause; label: string; hint: string }
+
+const CAUSE_LABELS: Record<BasketCause, { label: string; hint: string }> = {
+  no_auto:        { label: "Žádná lokální auto-produkce",       hint: "Populace ani recepty nevyrábějí." },
+  no_recipe:      { label: "Žádné aktivní recepty pro tento koš", hint: "Žádný node neprodukuje zboží mapované na tento koš." },
+  no_building:    { label: "Žádná stavba s building_bonus",      hint: "Postav budovu s basket_outputs pro tento koš." },
+  no_trade_access:{ label: "Bez přístupu k obchodnímu systému",  hint: "Postav cestu nebo uzavři dohodu." },
+  no_trade_surplus:{ label: "Žádný dostupný surplus na trhu",    hint: "Sousední systémy nemají co exportovat." },
+  ok:             { label: "Bez zjištěné překážky",              hint: "Pravděpodobně jen málo kapacity." },
+};
+
+/**
+ * Deterministic deficit diagnosis for a basket in scope of one player.
+ * Operates on already-fetched rows; no DB calls.
+ */
+export function diagnoseBasketDeficit(args: {
+  basketKey: string;
+  cityRows: Array<{ auto_supply?: number; recipe_bonus?: number; building_bonus?: number }>;
+  hasBuildingForBasket: boolean;
+  hasTradeAccess: boolean;
+  hasReachableSurplus: boolean;
+}): CauseLabel[] {
+  const causes: BasketCause[] = [];
+  const sumAuto    = args.cityRows.reduce((s, r) => s + (Number(r.auto_supply)     || 0), 0);
+  const sumRecipe  = args.cityRows.reduce((s, r) => s + (Number(r.recipe_bonus)    || 0), 0);
+  const sumBuild   = args.cityRows.reduce((s, r) => s + (Number(r.building_bonus)  || 0), 0);
+
+  if (sumAuto <= 0)                                causes.push("no_auto");
+  if (sumRecipe <= 0)                              causes.push("no_recipe");
+  if (sumBuild <= 0 && !args.hasBuildingForBasket) causes.push("no_building");
+  if (!args.hasTradeAccess)                        causes.push("no_trade_access");
+  else if (!args.hasReachableSurplus)              causes.push("no_trade_surplus");
+
+  if (causes.length === 0) causes.push("ok");
+  return causes.map(c => ({ code: c, ...CAUSE_LABELS[c] }));
+}
