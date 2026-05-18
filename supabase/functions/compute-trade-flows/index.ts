@@ -122,13 +122,18 @@ Deno.serve(async (req) => {
     }
 
     // ── LOAD DATA ──
-    const [goodsRes, recipesRes, nodesRes, citiesRes, routesRes, hexesRes] = await Promise.all([
+    const [goodsRes, recipesRes, nodesRes, citiesRes, routesRes, hexesRes, ordersRes] = await Promise.all([
       sb.from("goods").select("key, category, production_stage, market_tier, base_price_numeric, demand_basket, substitution_map, storable"),
       sb.from("production_recipes").select("*"),
       sb.from("province_nodes").select("id, session_id, node_type, node_tier, node_subtype, production_role, capability_tags, guild_level, city_id, controlled_by, production_output, hex_q, hex_r, upgrade_level, specialization_scores, parent_node_id, route_access_factor, trade_system_id").eq("session_id", session_id),
       sb.from("cities").select("id, name, owner_player, population_total, population_peasants, population_burghers, population_clerics, population_warriors, market_level, settlement_level, temple_level, city_stability, labor_allocation").eq("session_id", session_id),
       sb.from("province_routes").select("id, node_a, node_b, capacity_value, control_state").eq("session_id", session_id),
       sb.from("province_hexes").select("q, r, resource_deposits").eq("session_id", session_id).not("resource_deposits", "is", null),
+      // Phase 1B: player production preferences per node
+      (sb.from("node_production_orders" as any)
+        .select("node_id, target_basket_key, target_good_key, mode")
+        .eq("session_id", session_id) as any)
+        .then((r: any) => r, () => ({ data: [], error: null })),
     ]);
 
     const goods = goodsRes.data || [];
