@@ -102,6 +102,7 @@ const CityActionPanel = ({ sessionId, cityId, cityName, basketKey, templates, on
           .eq("session_id", sessionId)
           .in("node_id", nodeRows.map(n => n.id));
         if (!cancelled) setInv(invRes?.data || []);
+        if (!cancelled) await loadOrders(nodeRows.map(n => n.id));
       }
       setLoading(false);
     })();
