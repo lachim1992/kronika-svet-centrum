@@ -4,7 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Hammer, Boxes, Truck, Lock, Wand2, RotateCcw } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { getBuildingTemplatesForBasket, getBasketMeta } from "@/lib/goodsCatalog";
+import { getBuildingTemplatesForBasket, getBasketMeta, computeNodeProductionBudget } from "@/lib/goodsCatalog";
 
 interface Props {
   sessionId: string;
