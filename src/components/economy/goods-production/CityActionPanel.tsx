@@ -31,7 +31,40 @@ const CityActionPanel = ({ sessionId, cityId, cityName, basketKey, templates, on
   const [inv, setInv] = useState<any[]>([]);
   const [access, setAccess] = useState<any[]>([]);
   const [tradeSurplus, setTradeSurplus] = useState<any[]>([]);
+  const [orders, setOrders] = useState<Record<string, { mode: string; basket: string; status: string | null; reason: string | null }>>({});
+  const [busyNode, setBusyNode] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+
+  const loadOrders = async (nodeIds: string[]) => {
+    if (nodeIds.length === 0) return;
+    const { data } = await (supabase as any)
+      .from("node_production_orders")
+      .select("node_id, mode, target_basket_key, last_status, last_status_reason")
+      .eq("session_id", sessionId)
+      .in("node_id", nodeIds);
+    const map: any = {};
+    for (const o of data || []) {
+      map[o.node_id] = { mode: o.mode, basket: o.target_basket_key, status: o.last_status, reason: o.last_status_reason };
+    }
+    setOrders(map);
+  };
+
+  const setOrder = async (nodeId: string, mode: "auto" | "prefer" | "lock") => {
+    setBusyNode(nodeId);
+    try {
+      const { data, error } = await supabase.functions.invoke("set-node-production-order", {
+        body: { session_id: sessionId, node_id: nodeId, target_basket_key: basketKey, mode },
+      });
+      if (error || (data as any)?.error) {
+        toast.error((data as any)?.error || error?.message || "Set order failed");
+      } else {
+        toast.success(mode === "auto" ? "Order vyčištěn" : `Order: ${mode} → ${basketKey}`);
+        await loadOrders([nodeId]);
+      }
+    } finally {
+      setBusyNode(null);
+    }
+  };
 
   useEffect(() => {
     let cancelled = false;
