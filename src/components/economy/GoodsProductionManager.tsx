@@ -300,6 +300,12 @@ const GoodsProductionManager = ({
         </CardContent>
       </Card>
 
+      {devMode && (
+        <OrdersCapacityPanel sessionId={sessionId} currentPlayerName={currentPlayerName} />
+      )}
+
+
+
       <BasketDetailDrawer
         open={drawerOpen}
         onOpenChange={setDrawerOpen}
