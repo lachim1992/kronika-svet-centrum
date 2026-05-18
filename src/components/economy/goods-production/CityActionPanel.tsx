@@ -76,7 +76,7 @@ const CityActionPanel = ({ sessionId, cityId, cityName, basketKey, templates, on
       const [nRes, aRes, sRes] = await Promise.all([
         supabase
           .from("province_nodes")
-          .select("id,name,node_subtype,production_role,capability_tags,trade_system_id,city_id,controlled_by")
+          .select("id,name,node_subtype,production_role,capability_tags,trade_system_id,city_id,controlled_by,upgrade_level,guild_level,production_output")
           .eq("session_id", sessionId)
           .eq("city_id", cityId),
         supabase
