@@ -45,6 +45,7 @@ const GoodsProductionManager = ({
   cities,
   onTabChange,
 }: Props) => {
+  const { devMode } = useDevMode();
   const [rawRows, setRawRows] = useState<CityBasketRow[]>([]);
   const [templates, setTemplates] = useState<any[]>([]);
   const [access, setAccess] = useState<Array<{ trade_system_id: string; access_level: string }>>([]);
