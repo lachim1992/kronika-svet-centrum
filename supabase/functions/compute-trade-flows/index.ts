@@ -251,13 +251,28 @@ Deno.serve(async (req) => {
 
     // ════════════════════════════════════════════
     // PHASE 1a: Run recipes on nodes → node_inventory (bonus production)
-    // Phase 1B: player production orders bias the production budget per node.
-    //  - mode='auto'  (or no order)  → all eligible recipes get equal weight (legacy behaviour)
-    //  - mode='prefer' for basket B  → recipes whose output maps to B get weight 3, others 1
-    //  - mode='lock'   for basket B  → only matching recipes run; if none match → node blocked
-    // Total node throughput preserved: share is normalized over recipe count so auto == legacy.
+    // Phase 1B+1C: production orders + per-node capacity budget.
+    //  - No order on node → legacy behaviour (share=1 per recipe, full throughput).
+    //  - With order → distribute capacity budget B (slots/turn) across eligible recipes
+    //    weighted by mode; per-recipe share clamped to PRODUCTION_SHARE_CAP=2.0.
+    //      mode='auto'   → weights all 1 (uniform B/N per recipe, capped)
+    //      mode='prefer' → weight 3 for matching, 1 for others; capped
+    //      mode='lock'   → weight 1 for matching, 0 for others; if none match → blocked
     // ════════════════════════════════════════════
     const nodeInventories: Array<{ node_id: string; good_key: string; quantity: number; quality_band: number }> = [];
+
+    const PRODUCTION_SHARE_CAP = 2.0;
+    function capacityFor(node: any): number {
+      const role = node.production_role || "";
+      let base = 1;
+      if (role === "source" || role === "processing") base = 2;
+      else if (role === "urban" || role === "guild") base = 1;
+      const upg = Math.max(0, (node.upgrade_level || 1) - 1);
+      const guild = node.guild_level || 0;
+      const prodOut = Math.max(0.5, Math.min(1.5, (node.production_output || 5) / 5));
+      const raw = (base + upg * 0.5 + Math.min(1.5, guild * 0.5)) * prodOut;
+      return Math.max(1, Math.min(6, Math.round(raw * 10) / 10));
+    }
 
     // Build good_key → canonical basket map (using existing resolveBasketKey)
     const goodToBasket = new Map<string, string>();
@@ -288,24 +303,29 @@ Deno.serve(async (req) => {
       });
       if (eligibleRecipes.length === 0) continue;
 
-      // ── Compute per-recipe weights based on player order (Phase 1B) ──
+      // ── Distribute throughput across recipes ──
       const order = orderByNode.get(node.id);
       const N = eligibleRecipes.length;
-      let weights: number[] = eligibleRecipes.map(() => 1);
+      let shares: number[]; // multiplier per recipe (replaces legacy "1")
       let orderStatus = "auto";
       let orderReason: string | null = null;
 
-      if (order) {
+      if (!order) {
+        // Legacy: share=1 per recipe, no cap. Full backward-compat.
+        shares = eligibleRecipes.map(() => 1);
+      } else {
         const matchIdx: number[] = [];
-        for (let i = 0; i < eligibleRecipes.length; i++) {
+        for (let i = 0; i < N; i++) {
           const outBasket = goodToBasket.get(eligibleRecipes[i].output_good_key);
           const goodOk = !order.good || eligibleRecipes[i].output_good_key === order.good;
           if (outBasket === order.basket && goodOk) matchIdx.push(i);
         }
+        let weights: number[];
         if (order.mode === "prefer") {
           if (matchIdx.length === 0) {
             orderStatus = "prefer_no_match";
             orderReason = `no eligible recipe produces basket ${order.basket}`;
+            weights = eligibleRecipes.map(() => 1); // fallback uniform
           } else {
             weights = eligibleRecipes.map((_, i) => (matchIdx.includes(i) ? 3 : 1));
             orderStatus = "prefer";
@@ -314,25 +334,33 @@ Deno.serve(async (req) => {
           if (matchIdx.length === 0) {
             orderStatus = "blocked";
             orderReason = `no eligible recipe produces basket ${order.basket}`;
-            weights = eligibleRecipes.map(() => 0);
-          } else {
-            weights = eligibleRecipes.map((_, i) => (matchIdx.includes(i) ? 1 : 0));
-            orderStatus = "locked";
+            statusUpdates.push({ node_id: node.id, last_status: orderStatus, last_status_reason: orderReason });
+            continue;
           }
+          weights = eligibleRecipes.map((_, i) => (matchIdx.includes(i) ? 1 : 0));
+          orderStatus = "locked";
+        } else {
+          weights = eligibleRecipes.map(() => 1); // mode=auto with explicit row
         }
-      }
 
-      const totalW = weights.reduce((a, b) => a + b, 0);
-      if (order) {
+        const budget = capacityFor(node);
+        const totalW = weights.reduce((a, b) => a + b, 0) || 1;
+        let capped = false;
+        shares = weights.map(w => {
+          const s = budget * (w / totalW);
+          if (s > PRODUCTION_SHARE_CAP) { capped = true; return PRODUCTION_SHARE_CAP; }
+          return s;
+        });
+        const capNote = capped ? " · capped@2" : "";
+        orderReason = `${orderReason ?? ""}${orderReason ? " · " : ""}cap=${budget}${capNote}`.trim();
         statusUpdates.push({ node_id: node.id, last_status: orderStatus, last_status_reason: orderReason });
       }
-      if (totalW === 0) continue; // blocked or empty
 
-      for (let i = 0; i < eligibleRecipes.length; i++) {
-        const w = weights[i];
-        if (w === 0) continue;
-        const share = (w / totalW) * N; // auto: w=1,totalW=N → share=1 → identical to legacy
+      for (let i = 0; i < N; i++) {
+        const share = shares[i];
+        if (share <= 0) continue;
         const recipe = eligibleRecipes[i];
+
 
         const baseOutput = recipe.output_quantity || 1;
         const guildBonus = 1 + (node.guild_level || 0) * 0.15;
