@@ -315,6 +315,7 @@ const EconomyTab = ({
             cities={cities}
             realm={realm}
             onRefetch={onRefetch}
+            onTabChange={onTabChange}
           />
         </TabsContent>
 

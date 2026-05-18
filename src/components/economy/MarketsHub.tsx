@@ -11,6 +11,7 @@ import MarketSharePanel from "./MarketSharePanel";
 import NeutralNodeContributionPanel from "./NeutralNodeContributionPanel";
 import TradeSystemsSubTab from "./TradeSystemsSubTab";
 import StrategicResourcesDetail from "./StrategicResourcesDetail";
+import GoodsProductionManager from "./GoodsProductionManager";
 
 interface Props {
   sessionId: string;
@@ -19,6 +20,7 @@ interface Props {
   cities: any[];
   realm: any;
   onRefetch?: () => void;
+  onTabChange?: (tab: string) => void;
 }
 
 const subTrigger =
@@ -31,13 +33,17 @@ const MarketsHub = ({
   cities,
   realm,
   onRefetch,
+  onTabChange,
 }: Props) => {
   const myCities = cities.filter(c => c.owner_player === currentPlayerName);
 
   return (
-    <Tabs defaultValue="performance" className="space-y-4">
+    <Tabs defaultValue="production" className="space-y-4">
       <ScrollArea className="w-full">
         <TabsList className="inline-flex w-auto min-w-full h-9 bg-muted/20 rounded-xl p-1 gap-1">
+          <TabsTrigger value="production" className={subTrigger}>
+            🏭 Správa goods
+          </TabsTrigger>
           <TabsTrigger value="performance" className={subTrigger}>
             Výkon
           </TabsTrigger>
@@ -56,6 +62,16 @@ const MarketsHub = ({
         </TabsList>
         <ScrollBar orientation="horizontal" />
       </ScrollArea>
+
+      <TabsContent value="production" className="space-y-4 animate-fade-in">
+        <GoodsProductionManager
+          sessionId={sessionId}
+          currentPlayerName={currentPlayerName}
+          currentTurn={currentTurn}
+          cities={cities}
+          onTabChange={onTabChange}
+        />
+      </TabsContent>
 
       <TabsContent value="performance" className="space-y-4 animate-fade-in">
         {realm && <MarketPerformancePanel realm={realm} />}
