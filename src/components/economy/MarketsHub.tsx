@@ -63,6 +63,16 @@ const MarketsHub = ({
         <ScrollBar orientation="horizontal" />
       </ScrollArea>
 
+      <TabsContent value="production" className="space-y-4 animate-fade-in">
+        <GoodsProductionManager
+          sessionId={sessionId}
+          currentPlayerName={currentPlayerName}
+          currentTurn={currentTurn}
+          cities={cities}
+          onTabChange={onTabChange}
+        />
+      </TabsContent>
+
       <TabsContent value="performance" className="space-y-4 animate-fade-in">
         {realm && <MarketPerformancePanel realm={realm} />}
       </TabsContent>
