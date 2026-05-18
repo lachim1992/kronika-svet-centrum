@@ -4,7 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Hammer, Boxes, Truck, Lock, Wand2, RotateCcw } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { getBuildingTemplatesForBasket, getBasketMeta } from "@/lib/goodsCatalog";
+import { getBuildingTemplatesForBasket, getBasketMeta, computeNodeProductionBudget } from "@/lib/goodsCatalog";
 
 interface Props {
   sessionId: string;
@@ -24,6 +24,9 @@ interface NodeRow {
   trade_system_id: string | null;
   city_id: string | null;
   controlled_by: string | null;
+  upgrade_level: number | null;
+  guild_level: number | null;
+  production_output: number | null;
 }
 
 const CityActionPanel = ({ sessionId, cityId, cityName, basketKey, templates, onNavigateToCities }: Props) => {
@@ -73,7 +76,7 @@ const CityActionPanel = ({ sessionId, cityId, cityName, basketKey, templates, on
       const [nRes, aRes, sRes] = await Promise.all([
         supabase
           .from("province_nodes")
-          .select("id,name,node_subtype,production_role,capability_tags,trade_system_id,city_id,controlled_by")
+          .select("id,name,node_subtype,production_role,capability_tags,trade_system_id,city_id,controlled_by,upgrade_level,guild_level,production_output")
           .eq("session_id", sessionId)
           .eq("city_id", cityId),
         supabase
@@ -184,11 +187,15 @@ const CityActionPanel = ({ sessionId, cityId, cityName, basketKey, templates, on
               const o = orders[n.id];
               const isThisBasket = o?.basket === basketKey;
               const busy = busyNode === n.id;
+              const cap = computeNodeProductionBudget(n);
               return (
                 <div key={n.id} className="flex items-center justify-between gap-2 px-2 py-1 rounded bg-card/60">
                   <div className="min-w-0">
                     <div className="text-xs font-semibold truncate flex items-center gap-1.5">
                       ⚙️ {n.name}
+                      <Badge variant="outline" className="text-[8px] border-amber-500/40 text-amber-600" title="Production budget — slots/turn využité při aktivním orderu">
+                        ⚡ {cap}
+                      </Badge>
                       {o && isThisBasket && (
                         <Badge variant="outline" className="text-[8px] border-primary/40 text-primary">
                           {o.mode}{o.status === "blocked" ? " · ⛔" : o.status === "prefer_no_match" ? " · ⚠" : ""}
@@ -206,6 +213,7 @@ const CityActionPanel = ({ sessionId, cityId, cityName, basketKey, templates, on
                       {o?.reason && isThisBasket && ` · ${o.reason}`}
                     </div>
                   </div>
+
                   <div className="flex items-center gap-0.5 shrink-0">
                     <Button
                       size="sm" variant={isThisBasket && o?.mode === "prefer" ? "default" : "outline"}
