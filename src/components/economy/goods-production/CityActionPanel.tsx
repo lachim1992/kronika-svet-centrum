@@ -17,7 +17,7 @@ interface Props {
 interface NodeRow {
   id: string;
   name: string;
-  subtype: string | null;
+  node_subtype: string | null;
   production_role: string | null;
   capability_tags: string[] | null;
   trade_system_id: string | null;
@@ -39,24 +39,24 @@ const CityActionPanel = ({ sessionId, cityId, cityName, basketKey, templates, on
       const [nRes, aRes, sRes] = await Promise.all([
         supabase
           .from("province_nodes")
-          .select("id,name,subtype,production_role,capability_tags,trade_system_id,city_id,controlled_by")
+          .select("id,name,node_subtype,production_role,capability_tags,trade_system_id,city_id,controlled_by")
           .eq("session_id", sessionId)
-          .or(`city_id.eq.${cityId}`),
+          .eq("city_id", cityId),
         supabase
           .from("player_trade_system_access")
           .select("trade_system_id,access_level,tariff_factor")
           .eq("session_id", sessionId),
         // G1: basket_trade_flows optional
-        supabase
+        (supabase
           .from("basket_trade_flows" as any)
           .select("source_city_id,volume,trade_system_id,basket_key")
           .eq("session_id", sessionId)
           .eq("basket_key", basketKey)
-          .limit(20)
-          .then(r => r, () => ({ data: [], error: null })),
+          .limit(20) as any)
+          .then((r: any) => r, () => ({ data: [], error: null })),
       ]);
       if (cancelled) return;
-      const nodeRows = (nRes.data || []) as NodeRow[];
+      const nodeRows = ((nRes.data as any[]) || []) as NodeRow[];
       setNodes(nodeRows);
       setAccess(aRes.data || []);
       setTradeSurplus(((sRes as any).data || []) as any[]);
