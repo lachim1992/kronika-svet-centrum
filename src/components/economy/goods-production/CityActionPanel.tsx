@@ -62,12 +62,12 @@ const CityActionPanel = ({ sessionId, cityId, cityName, basketKey, templates, on
       setTradeSurplus(((sRes as any).data || []) as any[]);
       // Fetch inventory for these nodes (best effort)
       if (nodeRows.length > 0) {
-        const { data: invData } = await supabase
+        const invRes: any = await (supabase as any)
           .from("node_inventory")
           .select("node_id,good_key,quantity")
           .eq("session_id", sessionId)
           .in("node_id", nodeRows.map(n => n.id));
-        if (!cancelled) setInv(invData || []);
+        if (!cancelled) setInv(invRes?.data || []);
       }
       setLoading(false);
     })();
@@ -151,7 +151,7 @@ const CityActionPanel = ({ sessionId, cityId, cityName, basketKey, templates, on
                   <div className="min-w-0">
                     <div className="text-xs font-semibold truncate">⚙️ {n.name}</div>
                     <div className="text-[9px] text-muted-foreground truncate">
-                      {n.subtype} · {n.production_role || "—"} · {tags || "—"}
+                      {n.node_subtype} · {n.production_role || "—"} · {tags || "—"}
                       {myInv.length > 0 && ` · 📦 ${myInv.map(i => `${i.good_key}:${Math.round(i.quantity)}`).join(", ")}`}
                     </div>
                   </div>
