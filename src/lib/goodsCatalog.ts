@@ -636,6 +636,35 @@ export function getBuildingTemplatesForBasket(
   });
 }
 
+/**
+ * Phase 1C — production budget per node (slots / turn).
+ * Single source of truth, mirrored in compute-trade-flows.
+ *
+ * Backward-compat: solver only applies this cap when a production order is set.
+ * Without an order the legacy "share=1 per recipe" rule still holds.
+ *
+ * Per-recipe share is additionally clamped to PRODUCTION_SHARE_CAP (=2.0) so
+ * one recipe cannot eat the whole budget on tag-rich nodes.
+ */
+export const PRODUCTION_SHARE_CAP = 2.0;
+
+export function computeNodeProductionBudget(node: {
+  production_role?: string | null;
+  upgrade_level?: number | null;
+  guild_level?: number | null;
+  production_output?: number | null;
+}): number {
+  const role = node.production_role || "";
+  let base = 1;
+  if (role === "source" || role === "processing") base = 2;
+  else if (role === "urban" || role === "guild") base = 1;
+  const upg = Math.max(0, (node.upgrade_level || 1) - 1);
+  const guild = node.guild_level || 0;
+  const prodOut = Math.max(0.5, Math.min(1.5, (node.production_output || 5) / 5));
+  const raw = (base + upg * 0.5 + Math.min(1.5, guild * 0.5)) * prodOut;
+  return Math.max(1, Math.min(6, Math.round(raw * 10) / 10));
+}
+
 export type BasketCause =
   | "no_auto"
   | "no_recipe"
