@@ -301,6 +301,8 @@ const GoodsProductionManager = ({
         </CardContent>
       </Card>
 
+      <HistoryChartsPanel sessionId={sessionId} currentPlayerName={currentPlayerName} />
+
       {devMode && (
         <OrdersCapacityPanel sessionId={sessionId} currentPlayerName={currentPlayerName} />
       )}
