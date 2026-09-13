@@ -508,6 +508,20 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
   }) : [];
   const selectedParcelUsed = selectedParcelContents.reduce((sum, item) => sum + item.slots_used, 0);
   const selectedInfrastructure = selectedCell ? infrastructure.find(item => item.grid_x === selectedCell.a && item.grid_y === selectedCell.b) : undefined;
+  /** Road trace of the inspected cell plus the bridges the next tier would have to pay for. */
+  const selectedRoadPlan = useMemo(() => {
+    if (!selected || !selectedCell) return null;
+    const steps = roadStepsOf(selectedCell.a, selectedCell.b);
+    const branches = tileRoadBranches(sessionId, selectedCell.a, selectedCell.b, steps);
+    const neighbours = CARDINAL_STEPS.flatMap(step => {
+      const neighbour = tileByCell.get(cellKey(selectedCell.a + step.dx, selectedCell.b + step.dy));
+      return neighbour ? [{ dx: step.dx, dy: step.dy, terrain: terrainOf(neighbour) }] : [];
+    });
+    const bridges = tileBridgeCells(sessionId, selectedCell.a, selectedCell.b, steps, terrainOf(selected), neighbours);
+    const tier = tileInfrastructureLevel((selectedInfrastructure?.level || 0) + 1);
+    return { branches, bridges, tier, cost: tier ? tileRoadCost(tier, bridges.length) : null };
+  }, [selected, selectedCell, roadStepsOf, sessionId, tileByCell, terrainOf, selectedInfrastructure]);
+
   const constructionByParcel = useMemo(() => new Map(constructionEntities.map(entity => [entity.parcel_id, entity])), [constructionEntities]);
   const cityLayerCity = cityLayerCityId ? cityById.get(cityLayerCityId) : undefined;
   const selectedCityId = selectedCell ? cityByCell.get(cellKey(selectedCell.a, selectedCell.b)) : undefined;
