@@ -19,7 +19,7 @@ interface Props {
   onDetailOpenChange?: (open: boolean) => void;
 }
 
-type Tile = { id: string; q: number; r: number; grid_x: number | null; grid_y: number | null; biome_family: string; owner_player: string | null; mean_height: number | null; is_passable: boolean };
+type Tile = { id: string; q: number; r: number; grid_x: number | null; grid_y: number | null; biome_family: string; owner_player: string | null; mean_height: number | null; is_passable: boolean; has_river: boolean | null; river_direction: string | null };
 type City = { id: string; name: string; province_q: number; province_r: number; grid_x: number | null; grid_y: number | null; owner_player: string; settlement_level: string; population_total: number; housing_capacity: number; development_level: number; birth_rate: number; death_rate: number; migration_pressure: number; founded_parcel_index: number | null };
 type Node = { id: string; name: string; hex_q: number; hex_r: number; grid_x: number | null; grid_y: number | null; node_type: string; node_tier: string; parcel_index: number | null };
 type Army = { id: string; name: string; hex_q: number; hex_r: number; grid_x: number | null; grid_y: number | null; player_name: string; soldiers: number; morale: number; unit_count: number; power: number; stance: string; formation_type: string; assignment: string; moved_this_turn: boolean; parcel_index: number | null };
@@ -127,7 +127,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
 
   const load = useCallback(async () => {
     const [tileRes, cityRes, nodeRes, routeRes, armyRes, parcelRes, realmRes] = await Promise.all([
-      supabase.from("province_hexes").select("id, q, r, grid_x, grid_y, biome_family, owner_player, mean_height, is_passable").eq("session_id", sessionId).limit(4000),
+      supabase.from("province_hexes").select("id, q, r, grid_x, grid_y, biome_family, owner_player, mean_height, is_passable, has_river, river_direction").eq("session_id", sessionId).limit(4000),
       supabase.from("cities").select("id, name, province_q, province_r, grid_x, grid_y, owner_player, settlement_level, population_total, housing_capacity, development_level, birth_rate, death_rate, migration_pressure, founded_parcel_index").eq("session_id", sessionId),
       supabase.from("province_nodes").select("id, name, hex_q, hex_r, grid_x, grid_y, node_type, node_tier, parcel_index").eq("session_id", sessionId).eq("is_active", true),
       supabase.from("flow_paths").select("route_id, path_cells, hex_path").eq("session_id", sessionId),
@@ -192,6 +192,36 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
     });
     return map;
   }, [cityParcels]);
+
+  /**
+   * River network on the macro map. Every river cell links to each cardinal neighbour
+   * that carries water too, so the drawn line is the same connected system the
+   * sub-parcel channels follow inside the cells.
+   */
+  const riverSegments = useMemo(() => {
+    const riverCells = new Map<string, { a: number; b: number }>();
+    const waterCells = new Set<string>();
+    tiles.forEach(tile => {
+      const cell = tileCell(tile);
+      const key = cellKey(cell.a, cell.b);
+      if (tile.biome_family === "sea" || Number(tile.mean_height ?? 40) < 8) waterCells.add(key);
+      else if (tile.has_river) riverCells.set(key, cell);
+    });
+    const steps = [{ da: 1, db: 0 }, { da: -1, db: 0 }, { da: 0, db: 1 }, { da: 0, db: -1 }];
+    const segments: Array<{ id: string; from: { a: number; b: number }; to: { a: number; b: number }; mouth: boolean }> = [];
+    riverCells.forEach((cell, key) => {
+      steps.forEach(step => {
+        const neighbour = { a: cell.a + step.da, b: cell.b + step.db };
+        const neighbourKey = cellKey(neighbour.a, neighbour.b);
+        const isWater = waterCells.has(neighbourKey);
+        if (!isWater && !riverCells.has(neighbourKey)) return;
+        // Draw each river link once; the mouth into open water is always drawn from land.
+        if (!isWater && neighbourKey < key) return;
+        segments.push({ id: `${key}>${neighbourKey}`, from: cell, to: neighbour, mouth: isWater });
+      });
+    });
+    return segments;
+  }, [tiles, tileCell]);
 
   /** One war-band illustration per cell; further stacks are folded into a count badge. */
   const armyGroups = useMemo(() => {
@@ -513,6 +543,16 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
                 : footprint.length > 0 && renderCityFootprint(footprint, point, holderOwn)}
             </g>;
           })}
+          {!cityLayerCityId && riverSegments.map(segment => {
+            const from = at(segment.from.a, segment.from.b);
+            const to = at(segment.to.a, segment.to.b);
+            // The mouth stops at the shoreline instead of running into open water.
+            const end = segment.mouth ? { x: (from.x + to.x) / 2, y: (from.y + to.y) / 2 } : to;
+            return <g key={segment.id} pointerEvents="none">
+              <line x1={from.x} y1={from.y} x2={end.x} y2={end.y} stroke="var(--map-water-edge)" strokeWidth="5" strokeLinecap="round" opacity=".55" />
+              <line x1={from.x} y1={from.y} x2={end.x} y2={end.y} stroke="var(--map-water)" strokeWidth="2.6" strokeLinecap="round" opacity=".95" />
+            </g>;
+          })}
           {!cityLayerCityId && showRoutes && routes.flatMap(route => { const path = gridKind === "square4" && Array.isArray(route.path_cells) ? route.path_cells : route.hex_path; return Array.isArray(path) && path.length > 1 ? [<polyline key={route.route_id || JSON.stringify(path)} points={path.map(cell => { const point = at(cell.x ?? cell.q ?? 0, cell.y ?? cell.r ?? 0); return `${point.x},${point.y}`; }).join(" ")} fill="none" stroke="var(--map-route)" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" opacity=".9" className="iso-active-route" pointerEvents="none" />] : []; })}
           {!cityLayerCityId && showNodes && nodes.map(node => {
             if (node.node_type === "primary_city" || node.node_type === "secondary_city") return null;
@@ -601,7 +641,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
         <div className="pr-10">
           <p className="text-[10px] font-semibold uppercase text-primary">Pole {selectedCell?.a}, {selectedCell?.b}</p>
           <h2 className="mt-1 text-xl capitalize">{selected.biome_family.replace("_", " ")}</h2>
-          <p className="mt-1 text-xs text-muted-foreground">{selected.owner_player || "Neutrální území"} · {selected.is_passable === false ? "Neprůchodné" : "Průchodné"}</p>
+          <p className="mt-1 text-xs text-muted-foreground">{selected.owner_player || "Neutrální území"} · {selected.is_passable === false ? "Neprůchodné" : "Průchodné"}{selected.has_river ? " · Řeka" : ""}</p>
         </div>
 
         <section className="mt-5 border-y border-border/70 py-4">
