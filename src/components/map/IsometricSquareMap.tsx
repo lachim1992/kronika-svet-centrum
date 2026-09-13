@@ -1371,6 +1371,31 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
           </>}
         </section>
 
+        {selectedCity && <section className="mt-4 space-y-2 border border-border/70 p-3">
+          <div className="flex items-baseline justify-between">
+            <h3 className="text-sm">Výroba a pracovní síla · {selectedCity.name}</h3>
+            <span className="text-[10px] text-muted-foreground">{labour.production.length}/{labour.slots} obsazeno</span>
+          </div>
+          <p className="text-[10px] text-muted-foreground">
+            {labour.housing} obytných čtvrtí · jedna uživí {PRODUCTION_PER_RESIDENTIAL} produkční
+            {labour.free > 0 ? ` · volná pracovní síla ${labour.free}` : " · bez volné pracovní síly"}
+          </p>
+          {labour.production.length === 0
+            ? <p className="text-xs text-muted-foreground">Žádná produkční čtvrť. Postav ji na vlastní parcele níže.</p>
+            : <div className="space-y-1">{labour.production.map(district => (
+              <div key={district.id} className="flex items-center gap-2 text-[11px]">
+                <span className="flex-1 truncate">{district.name}{district.is_staffed ? "" : " · neobsazená"}</span>
+                <span className="text-muted-foreground">+{district.basket_output}</span>
+                <select className="h-6 rounded border border-input bg-background px-1 text-[10px]" value={district.basket_key || "staple_food"}
+                  disabled={!!buildingAction || selectedCity.owner_player !== playerName}
+                  onChange={event => void setDistrictProduction(district.id, event.target.value)}>
+                  {DEMAND_BASKETS.map(basket => <option key={basket.key} value={basket.key}>{basket.label}</option>)}
+                </select>
+              </div>
+            ))}</div>}
+          {selectedCity.owner_player !== playerName && <p className="text-[10px] text-muted-foreground">Cizí město — výrobu tu nastavit nelze.</p>}
+        </section>}
+
         {selectedParcel && <section className="mt-4 space-y-3 border border-primary/25 bg-primary/5 p-3">
           <div className="flex items-start justify-between gap-3"><div><p className="text-[10px] font-semibold uppercase text-primary">Parcela {selectedParcel.parcel_index + 1}</p><h3 className="text-sm">{SUB_BIOME_LABEL[selectedParcel.sub_biome] || selectedParcel.sub_biome}</h3></div><span className="text-xs text-muted-foreground">{selectedParcelUsed}/{selectedParcel.capacity_slots} slotů</span></div>
           {(selectedParcelContents.length > 0 || selectedParcelNodes.length > 0) && <div className="space-y-1 text-xs">
