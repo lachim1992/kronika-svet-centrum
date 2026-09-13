@@ -27,7 +27,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    const sb = createClient(
+    const sb0 = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
