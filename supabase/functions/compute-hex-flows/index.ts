@@ -197,10 +197,11 @@ Deno.serve(async (req) => {
     // 7. Upsert flow_paths
     const BATCH = 30;
     for (let i = 0; i < flowPathRows.length; i += BATCH) {
-      await sb.from("flow_paths").upsert(
+      const { error: upsertErr } = await sb.from("flow_paths").upsert(
         flowPathRows.slice(i, i + BATCH),
         { onConflict: "session_id,node_a,node_b,flow_type" },
       );
+      if (upsertErr) console.error("flow_paths upsert error:", upsertErr.message);
     }
 
     // 8. Update route aggregates
