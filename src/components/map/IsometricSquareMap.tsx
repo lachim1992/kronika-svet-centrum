@@ -536,6 +536,18 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
           <Flag className="h-4 w-4 text-primary"/>
           <span className="text-xs text-muted-foreground">Rozkazy zadávej ve vojenském panelu.</span>
         </div>
+        {selectedArmyStack.length > 1 && <div className="mt-4">
+          <h3 className="text-sm">Na stejném poli ({selectedArmyStack.length})</h3>
+          <div className="mt-2 space-y-1">
+            {selectedArmyStack.map(army => (
+              <button key={army.id} type="button" onClick={() => setSelectedArmyId(army.id)}
+                className={`flex w-full items-center justify-between border px-2 py-1.5 text-left text-xs transition-colors ${army.id === selectedArmyId ? "border-primary/60 bg-primary/10" : "border-border hover:border-primary/40"}`}>
+                <span className="truncate">{army.name}</span>
+                <span className="text-muted-foreground">{army.soldiers.toLocaleString("cs-CZ")} · {army.morale} %</span>
+              </button>
+            ))}
+          </div>
+        </div>
       </aside>}
       {!tiles.length &&  <div className="absolute inset-0 grid place-items-center text-center"><div className="map-floating-control p-6"><Castle className="mx-auto mb-2 h-7 w-7 text-primary"/><p className="font-display text-primary">Mapa zatím nemá žádná pole.</p></div></div>}
     </div>
