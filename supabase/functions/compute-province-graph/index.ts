@@ -32,6 +32,9 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
 
+    const NEIGHBORS = neighborOffsets(await loadGridKind(sb, session_id));
+
+
     // 1. Load all provinces for session
     const { data: provinces } = await sb
       .from("provinces")
