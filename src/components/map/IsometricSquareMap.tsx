@@ -97,6 +97,11 @@ const LAND_USE_COLOR: Record<string, string> = {
 
 const cellKey = (a: number, b: number) => `${a},${b}`;
 
+const MIN_ZOOM = 0.3;
+const MAX_ZOOM = 8;
+const LABEL_ZOOM = 1.15;
+const clampZoom = (value: number) => Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, value));
+
 export default function IsometricSquareMap({ sessionId, playerName, currentTurn = 1, onCityClick, gridKind = "hex6", onDetailOpenChange }: Props) {
   const isMobile = useIsMobile();
   const viewportRef = useRef<HTMLDivElement>(null);
