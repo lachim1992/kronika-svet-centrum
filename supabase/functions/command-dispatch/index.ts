@@ -3010,7 +3010,10 @@ async function executeUpgradeTileInfrastructure(
   const { data: neighbourSeats } = await supabase.from("tile_parcels").select("grid_x, grid_y")
     .eq("session_id", sessionId).not("city_id", "is", null)
     .in("grid_x", [gridX - 1, gridX, gridX + 1]).in("grid_y", [gridY - 1, gridY, gridY + 1]);
-  const connected = new Set([...(neighbourRoads || []), ...(neighbourSeats || [])].map((row: any) => `${row.grid_x},${row.grid_y}`));
+  const { data: neighbourNodes } = await supabase.from("province_nodes").select("grid_x, grid_y")
+    .eq("session_id", sessionId).in("grid_x", [gridX - 1, gridX, gridX + 1]).in("grid_y", [gridY - 1, gridY, gridY + 1]);
+  const connected = new Set([...(neighbourRoads || []), ...(neighbourSeats || []), ...(neighbourNodes || [])].map((row: any) => `${row.grid_x},${row.grid_y}`));
+
   const steps = neighbourRows
     .filter((row: any) => row.is_passable !== false && row.biome_family !== "sea" && connected.has(`${row.grid_x},${row.grid_y}`))
     .map((row: any) => ({ dx: row.grid_x - gridX, dy: row.grid_y - gridY }));
