@@ -2979,8 +2979,16 @@ async function executeUpgradeTileInfrastructure(
     .eq("session_id", sessionId).eq("grid_x", gridX).eq("grid_y", gridY).maybeSingle();
   if (!tile || tile.is_passable === false || tile.biome_family === "sea") return { events: [], error: "Na tomto poli nelze stavět cestu" };
   if (tile.owner_player && tile.owner_player !== actor.name) return { events: [], error: `Pole ovládá ${tile.owner_player}` };
-  const { data: held } = await supabase.from("tile_parcels").select("id").eq("session_id", sessionId).eq("grid_x", gridX).eq("grid_y", gridY).eq("owner_player", actor.name).limit(1);
-  if (!held?.length) return { events: [], error: "Nejdřív musíš na poli držet parcelu" };
+  // Anchor: your parcel, your city seat, or your sub-node on the tile all justify a road.
+  const [{ data: held }, { data: seatCities }, { data: ownNodes }] = await Promise.all([
+    supabase.from("tile_parcels").select("id").eq("session_id", sessionId).eq("grid_x", gridX).eq("grid_y", gridY).eq("owner_player", actor.name).limit(1),
+    supabase.from("cities").select("id").eq("session_id", sessionId).eq("owner_player", actor.name).eq("grid_x", gridX).eq("grid_y", gridY).limit(1),
+    supabase.from("province_nodes").select("id").eq("session_id", sessionId).eq("controlled_by", actor.name).eq("grid_x", gridX).eq("grid_y", gridY).limit(1),
+  ]);
+  if (!held?.length && !seatCities?.length && !ownNodes?.length) {
+    return { events: [], error: "Na poli musíš držet parcelu, město nebo subuzel" };
+  }
+
   const { data: existing } = await supabase.from("tile_infrastructure").select("*").eq("session_id", sessionId).eq("grid_x", gridX).eq("grid_y", gridY).maybeSingle();
   if (existing?.status === "building") return { events: [], error: "Infrastruktura už se staví" };
   const nextLevel = Number(existing?.level || 0) + 1;
@@ -3002,7 +3010,10 @@ async function executeUpgradeTileInfrastructure(
   const { data: neighbourSeats } = await supabase.from("tile_parcels").select("grid_x, grid_y")
     .eq("session_id", sessionId).not("city_id", "is", null)
     .in("grid_x", [gridX - 1, gridX, gridX + 1]).in("grid_y", [gridY - 1, gridY, gridY + 1]);
-  const connected = new Set([...(neighbourRoads || []), ...(neighbourSeats || [])].map((row: any) => `${row.grid_x},${row.grid_y}`));
+  const { data: neighbourNodes } = await supabase.from("province_nodes").select("grid_x, grid_y")
+    .eq("session_id", sessionId).in("grid_x", [gridX - 1, gridX, gridX + 1]).in("grid_y", [gridY - 1, gridY, gridY + 1]);
+  const connected = new Set([...(neighbourRoads || []), ...(neighbourSeats || []), ...(neighbourNodes || [])].map((row: any) => `${row.grid_x},${row.grid_y}`));
+
   const steps = neighbourRows
     .filter((row: any) => row.is_passable !== false && row.biome_family !== "sea" && connected.has(`${row.grid_x},${row.grid_y}`))
     .map((row: any) => ({ dx: row.grid_x - gridX, dy: row.grid_y - gridY }));
