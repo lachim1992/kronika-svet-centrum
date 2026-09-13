@@ -1535,7 +1535,8 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
               })}</div>
             </div>
 
-          </>}
+          </>
+
         </section>}
 
         {!selectedCity && !foreignOwner && <section className="mt-4 space-y-2 border border-primary/25 bg-primary/5 p-3">
