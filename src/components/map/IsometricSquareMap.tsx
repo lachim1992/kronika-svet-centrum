@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { ArrowLeft, ArrowUpRight, Castle, Factory, Flag, Home, Landmark, Layers3, Loader2, Minus, Plus, Route as RouteIcon, Shield, Store, Trees, X } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
@@ -11,29 +11,8 @@ import { localRoadSegments, tileInfrastructureLevel } from "@/lib/tileInfrastruc
 import { useIsMobile } from "@/hooks/use-mobile";
 import ArmyMarker from "@/components/map/ArmyMarker";
 
-interface Props {useEffect(() => {
-    if (!selected) {
-      setTileParcels([]);
-      setSelectedParcelId(null);
-      setSelectedNodeId(null);
-      lastSelectedId.current = null;
-      return;
-    }
-
-    if (selected.id !== lastSelectedId.current) {
-      setSelectedParcelId(null);
-      lastSelectedId.current = selected.id;
-      const cell = tileCell(selected);
-      void loadTileParcels(cell.a, cell.b);
-    }
-
-    if (selectedNodeId) {
-      const node = nodes.find(item => item.id === selectedNodeId);
-      const cell = node ? entityCell(node) : null;
-      const selectedTileCell = tileCell(selected);
-      if (!cell || cell.a !== selectedTileCell.a || cell.b !== selectedTileCell.b) setSelectedNodeId(null);
-    }
-  }, [selected, selectedNodeId, nodes, entityCell, tileCell, loadTileParcels]);sessionId: string;
+interface Props {
+  sessionId: string;
   playerName: string;
   currentTurn?: number;
   onCityClick?: (cityId: string) => void;
@@ -50,6 +29,7 @@ type Route = { route_id: string | null; path_cells: PathCell[] | null; hex_path:
 type ParcelContent = { id: string; parcel_id: string; entity_type: string; entity_id: string; slots_used: number };
 type TileInfrastructure = { id: string; grid_x: number; grid_y: number; owner_player: string; level: number; target_level: number | null; status: string; progress: number };
 type BuildingTemplate = { id: string; name: string; category: string; description: string; cost_wealth: number; cost_wood: number; cost_stone: number; cost_iron: number; build_turns: number; effects: unknown; max_level: number; level_data: unknown };
+type ConstructionEntity = { id: string; name: string; status: string; build_started_turn: number; build_duration: number; completed_turn: number | null; parcel_id: string | null };
 /** One of the 36 sub-parcels of a map cell — the only city land model. */
 type TileParcel = {
   id: string; grid_x: number; grid_y: number; parcel_index: number; parcel_x: number; parcel_y: number;
@@ -133,6 +113,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
   const [pan, setPan] = useState({ x: 0, y: 40 });
   const [selected, setSelected] = useState<Tile | null>(null);
   const hasInitialized = useRef(false);
+  const lastSelectedId = useRef<string | null>(null);
   const [cityLayerCityId, setCityLayerCityId] = useState<string | null>(null);
   const [tileParcels, setTileParcels] = useState<TileParcel[]>([]);
   const [parcelsLoading, setParcelsLoading] = useState(false);
@@ -146,6 +127,8 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
   const [parcelContents, setParcelContents] = useState<ParcelContent[]>([]);
   const [infrastructure, setInfrastructure] = useState<TileInfrastructure[]>([]);
   const [buildingTemplates, setBuildingTemplates] = useState<BuildingTemplate[]>([]);
+  const [constructionEntities, setConstructionEntities] = useState<ConstructionEntity[]>([]);
+  const [recentlyBuiltParcelId, setRecentlyBuiltParcelId] = useState<string | null>(null);
   const [buildingAction, setBuildingAction] = useState<string | null>(null);
 
   const tileCell = useCallback((tile: Tile) => ({
@@ -158,7 +141,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
   }), []);
 
   const load = useCallback(async () => {
-    const [tileRes, cityRes, nodeRes, routeRes, armyRes, parcelRes, realmRes, contentRes, infrastructureRes, templateRes] = await Promise.all([
+    const [tileRes, cityRes, nodeRes, routeRes, armyRes, parcelRes, realmRes, contentRes, infrastructureRes, templateRes, buildingRes, districtRes] = await Promise.all([
       supabase.from("province_hexes").select("id, q, r, grid_x, grid_y, province_id, biome_family, owner_player, mean_height, is_passable, has_river, river_direction").eq("session_id", sessionId).limit(4000),
       supabase.from("cities").select("id, name, province_q, province_r, grid_x, grid_y, owner_player, settlement_level, population_total, housing_capacity, development_level, birth_rate, death_rate, migration_pressure, founded_parcel_index").eq("session_id", sessionId),
       supabase.from("province_nodes").select("id, name, hex_q, hex_r, grid_x, grid_y, node_type, node_tier, node_subtype, controlled_by, production_output, wealth_output, food_value, parcel_index").eq("session_id", sessionId).eq("is_active", true),
@@ -169,6 +152,8 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
       supabase.from("tile_parcel_contents").select("id, parcel_id, entity_type, entity_id, slots_used").eq("session_id", sessionId),
       supabase.from("tile_infrastructure").select("id, grid_x, grid_y, owner_player, level, target_level, status, progress").eq("session_id", sessionId),
       supabase.from("building_templates").select("id, name, category, description, cost_wealth, cost_wood, cost_stone, cost_iron, build_turns, effects, max_level, level_data").order("category").order("name"),
+      supabase.from("city_buildings").select("id, name, status, build_started_turn, build_duration, completed_turn, parcel_id").eq("session_id", sessionId).not("parcel_id", "is", null),
+      supabase.from("city_districts").select("id, name, status, build_started_turn, build_turns, completed_turn, parcel_id").eq("session_id", sessionId).not("parcel_id", "is", null),
     ]);
     setTiles((tileRes.data || []) as Tile[]); setCities((cityRes.data || []) as City[]); setNodes((nodeRes.data || []) as Node[]);
     setRoutes((routeRes.data || []) as unknown as Route[]); setArmies((armyRes.data || []) as Army[]);
@@ -176,6 +161,10 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
     setParcelContents((contentRes.data || []) as ParcelContent[]);
     setInfrastructure((infrastructureRes.data || []) as TileInfrastructure[]);
     setBuildingTemplates((templateRes.data || []) as unknown as BuildingTemplate[]);
+    setConstructionEntities([
+      ...((buildingRes.data || []) as ConstructionEntity[]),
+      ...((districtRes.data || []).map(item => ({ ...item, build_duration: item.build_turns })) as ConstructionEntity[]),
+    ]);
     setTreasury({ gold: Number(realmRes.data?.gold_reserve || 0), production: Number(realmRes.data?.production_reserve || 0) });
   }, [sessionId, playerName]);
 
@@ -198,13 +187,13 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
   const home = useCallback(() => {
     const element = viewportRef.current; if (!element) return;
     setZoom(1); setPan({ x: element.clientWidth / 2 - center.x, y: element.clientHeight * 0.35 - center.y }); setSelected(null); setCityLayerCityId(null); onDetailOpenChange?.(false);
+  }, [center, onDetailOpenChange]);
   useEffect(() => {
     if (tiles.length > 0 && !hasInitialized.current) {
       home();
       hasInitialized.current = true;
     }
   }, [tiles.length, home]);
-  useEffect(() => { if (tiles.length) home(); }, [tiles.length, home]);
 
   const cityById = useMemo(() => new Map(cities.map(city => [city.id, city])), [cities]);
   const cityCellOf = useCallback((city: City) => entityCell(city), [entityCell]);
@@ -309,6 +298,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
   }) : [];
   const selectedParcelUsed = selectedParcelContents.reduce((sum, item) => sum + item.slots_used, 0);
   const selectedInfrastructure = selectedCell ? infrastructure.find(item => item.grid_x === selectedCell.a && item.grid_y === selectedCell.b) : undefined;
+  const constructionByParcel = useMemo(() => new Map(constructionEntities.map(entity => [entity.parcel_id, entity])), [constructionEntities]);
   const cityLayerCity = cityLayerCityId ? cityById.get(cityLayerCityId) : undefined;
   const selectedCityId = selectedCell ? cityByCell.get(cellKey(selectedCell.a, selectedCell.b)) : undefined;
   const selectedCity = cityLayerCity || (selectedCityId ? cityById.get(selectedCityId) : undefined);
@@ -343,16 +333,25 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
   }, [sessionId]);
 
   useEffect(() => {
-    if (!selected) { setTileParcels([]); setSelectedParcelId(null); setSelectedNodeId(null); return; }
-    setSelectedParcelId(null);
+    if (!selected) {
+      setTileParcels([]);
+      setSelectedParcelId(null);
+      setSelectedNodeId(null);
+      lastSelectedId.current = null;
+      return;
+    }
+    if (selected.id !== lastSelectedId.current) {
+      setSelectedParcelId(null);
+      lastSelectedId.current = selected.id;
+      const cell = tileCell(selected);
+      void loadTileParcels(cell.a, cell.b);
+    }
     if (selectedNodeId) {
       const node = nodes.find(item => item.id === selectedNodeId);
       const cell = node ? entityCell(node) : null;
       const selectedTileCell = tileCell(selected);
       if (!cell || cell.a !== selectedTileCell.a || cell.b !== selectedTileCell.b) setSelectedNodeId(null);
     }
-    const cell = tileCell(selected);
-    void loadTileParcels(cell.a, cell.b);
   }, [selected, selectedNodeId, nodes, entityCell, tileCell, loadTileParcels]);
 
   useEffect(() => {
@@ -431,17 +430,25 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
         <line key={`survey-wall-${index}`} x1={edge.from.x} y1={edge.from.y} x2={edge.to.x} y2={edge.to.y}
           stroke={holderColor} strokeWidth="1.6" strokeLinecap="round" opacity=".9" />
       ))}
-      {roadTier > 0 && localRoadSegments(occupiedIndexes).map((segment, index) => {
+      {(roadTier > 0 || selectedInfrastructure?.status === "building") && localRoadSegments(occupiedIndexes).map((segment, index) => {
         const centre = (point: { x: number; y: number }) => {
           const corners = parcelCorners(centerPoint, point.x, point.y);
           return { x: (corners.a.x + corners.c.x) / 2, y: (corners.a.y + corners.c.y) / 2 };
         };
         const from = centre(segment.from); const to = centre(segment.to);
+        const roadBuilding = selectedInfrastructure?.status === "building";
         return <line key={`local-road-${index}`} x1={from.x} y1={from.y} x2={to.x} y2={to.y}
           stroke="var(--map-route)" strokeWidth={roadTier === 3 ? 2.2 : roadTier === 2 ? 1.6 : 1}
-          strokeDasharray={roadTier === 1 ? "2 1.5" : undefined} strokeLinecap="round" opacity=".95" pointerEvents="none" />;
+          strokeDasharray={roadBuilding || roadTier === 1 ? "2 1.5" : undefined} strokeLinecap="round" opacity=".95" pointerEvents="none"
+          className={roadBuilding ? "iso-construction-road" : undefined} />;
       })}
-      {tileParcels.filter(parcel => parcel.status === "occupied").map((parcel, index) => renderParcelHouse(parcel, centerPoint, index))}
+      {tileParcels.filter(parcel => parcel.status === "occupied").map((parcel, index) => {
+        const entity = constructionByParcel.get(parcel.id);
+        const progress = entity?.status === "building"
+          ? Math.max(8, Math.min(92, Math.round(((currentTurn - entity.build_started_turn) / Math.max(1, entity.build_duration)) * 100)))
+          : 100;
+        return renderParcelHouse(parcel, centerPoint, index, entity?.status === "building" || recentlyBuiltParcelId === parcel.id, progress);
+      })}
     </g>;
   };
 
@@ -456,6 +463,8 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
     }});
     setBuildingAction(null);
     if (!result.ok) { toast.error(result.error || "Stavba se nepodařila"); return; }
+    setRecentlyBuiltParcelId(selectedParcel.id);
+    window.setTimeout(() => setRecentlyBuiltParcelId(current => current === selectedParcel.id ? null : current), 2600);
     toast.success(`${template.name} se staví na parcele ${selectedParcel.parcel_index + 1}`); await loadTileParcels(selectedParcel.grid_x, selectedParcel.grid_y); await load();
   };
 
@@ -465,6 +474,8 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
     const result = await dispatchCommand({ sessionId, turnNumber: currentTurn, actor: { name: playerName }, commandType: "BUILD_SUBNODE", commandPayload: { parcelId: selectedParcel.id, subtype } });
     setBuildingAction(null);
     if (!result.ok) { toast.error(result.error || "Subuzel se nepodařilo postavit"); return; }
+    setRecentlyBuiltParcelId(selectedParcel.id);
+    window.setTimeout(() => setRecentlyBuiltParcelId(current => current === selectedParcel.id ? null : current), 2600);
     toast.success(`${label} byl postaven`); await loadTileParcels(selectedParcel.grid_x, selectedParcel.grid_y); await load();
   };
 
@@ -501,11 +512,21 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
     return edges;
   };
 
-  /** Small house on an occupied parcel — static volume, only the hearth light breathes. */
-  const renderParcelHouse = (parcel: TileParcel, centerPoint: { x: number; y: number }, index: number) => {
+  /** Small house or an active construction site, built in the same visual language as the walls. */
+  const renderParcelHouse = (parcel: TileParcel, centerPoint: { x: number; y: number }, index: number, building = false, progress = 100) => {
     const { a, b, c, d } = parcelCorners(centerPoint, parcel.parcel_x, parcel.parcel_y);
     const cx = (a.x + b.x + c.x + d.x) / 4; const cy = (a.y + b.y + c.y + d.y) / 4;
     const width = (b.x - a.x) * .52; const height = width * .78;
+    if (building) return <g key={`house-${parcel.id}`} transform={`translate(${cx},${cy})`} className="iso-construction-site">
+      <path d={`M${-width} 2 L0 ${height * .5 + 2} L${width} 2 L0 ${-height * .5} Z`} fill="var(--map-city-wall-dark)" opacity=".36" />
+      <g className="iso-construction-rise" style={{ "--construction-rise": `${Math.max(.18, progress / 100)}` } as CSSProperties}>
+        <path d={`M${-width} 1 L0 ${-height * .5} L${width} 1 L0 ${height * .5 + 1} Z`} fill="var(--map-city-wall-dark)" opacity=".78" />
+        <path d={`M${-width} 1 L0 ${-height * .5} L${width} 1 L0 ${-height * .1} Z`} fill="var(--map-city-wall-light)" opacity=".78" />
+      </g>
+      <path d={`M${-width - 1} 3 L${-width - 1} ${-height - 2} M${width + 1} 3 L${width + 1} ${-height - 2} M${-width - 2} ${-height * .45} L${width + 2} ${-height * .45} M${-width} 1 L${width} ${-height - 1} M${width} 1 L${-width} ${-height - 1}`} fill="none" stroke="var(--map-route)" strokeWidth=".65" className="iso-construction-scaffold" />
+      <circle r="1.2" cy={height * .6 + 2} fill="var(--map-focus)" className="iso-construction-worker" />
+      <title>Výstavba · {progress} %</title>
+    </g>;
     return <g key={`house-${parcel.id}`} transform={`translate(${cx},${cy})`}>
       <path d={`M${-width} 1 L0 ${-height * .5} L${width} 1 L0 ${height * .5 + 1} Z`} fill="var(--map-city-wall-dark)" opacity=".85" />
       <path d={`M${-width} 1 L0 ${-height * .5} L${width} 1 L0 ${-height * .1} Z`} fill="var(--map-city-wall-light)" opacity=".95" />
@@ -553,7 +574,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
     })) as unknown as TileParcel[];
     const edges = footprintWallEdges(parcels, centerPoint);
     const walled = style.walled;
-    return <g pointerEvents="none">
+    return <g pointerEvents="auto">
       {parcels.map(parcel => (
         <polygon key={parcel.id} points={parcelQuad(centerPoint, parcel.parcel_x, parcel.parcel_y)}
           fill={LAND_USE_COLOR[style.landUse] || LAND_USE_COLOR.open}
@@ -705,14 +726,20 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
             </g>;
           })}
           {!cityLayerCityId && showRoutes && routes.flatMap(route => { const path = gridKind === "square4" && Array.isArray(route.path_cells) ? route.path_cells : route.hex_path; return Array.isArray(path) && path.length > 1 ? [<polyline key={route.route_id || JSON.stringify(path)} points={path.map(cell => { const point = at(cell.x ?? cell.q ?? 0, cell.y ?? cell.r ?? 0); return `${point.x},${point.y}`; }).join(" ")} fill="none" stroke="var(--map-route)" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" opacity=".9" className="iso-active-route" pointerEvents="none" />] : []; })}
-          {!cityLayerCityId && showNodes && nodes.map(node => {
+          {showNodes && nodes.map(node => {
             if (node.node_type === "primary_city" || node.node_type === "secondary_city") return null;
             const cell = entityCell(node);
+            if (cityLayerCityId && cityByCell.get(cellKey(cell.a, cell.b)) !== cityLayerCityId) return null;
+            if (cityLayerCityId && selectedCell && (cell.a !== selectedCell.a || cell.b !== selectedCell.b)) return null;
             const openNode = () => {
               const tile = tiles.find(candidate => { const candidateCell = tileCell(candidate); return candidateCell.a === cell.a && candidateCell.b === cell.b; });
               if (!tile) return;
               focusTile(tile, cityByCell.get(cellKey(cell.a, cell.b)));
-              window.setTimeout(() => setSelectedNodeId(node.id), 0);
+              setSelectedNodeId(node.id);
+              if (node.parcel_index !== null) {
+                const parcel = tileParcels.find(item => item.parcel_index === node.parcel_index);
+                if (parcel) setSelectedParcelId(parcel.id);
+              }
             };
             return <g key={node.id} role="button" tabIndex={0} aria-label={`Otevřít uzel ${node.name}`} className="cursor-pointer"
               onClick={event => { event.stopPropagation(); openNode(); }}
