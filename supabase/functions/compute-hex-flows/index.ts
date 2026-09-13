@@ -197,8 +197,14 @@ Deno.serve(async (req) => {
     // 7. Upsert flow_paths
     const BATCH = 30;
     for (let i = 0; i < flowPathRows.length; i += BATCH) {
+      const batchRows = flowPathRows.slice(i, i + BATCH);
+      // Clear any stale rows that collide on either unique key (route_id, or node pair)
+      const batchRouteIds = batchRows.map(r => r.route_id).filter(Boolean);
+      if (batchRouteIds.length > 0) {
+        await sb.from("flow_paths").delete().eq("session_id", session_id).in("route_id", batchRouteIds);
+      }
       const { error: upsertErr } = await sb.from("flow_paths").upsert(
-        flowPathRows.slice(i, i + BATCH),
+        batchRows,
         { onConflict: "session_id,node_a,node_b,flow_type" },
       );
       if (upsertErr) console.error("flow_paths upsert error:", upsertErr.message);
