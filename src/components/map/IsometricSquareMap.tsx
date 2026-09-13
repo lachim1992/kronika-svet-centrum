@@ -395,7 +395,17 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
               {city.population_total > city.housing_capacity && <path d="M-27 -11 L-22 -20 L-17 -11 Z" fill="var(--map-focus)"><title>Tlak na růst</title></path>}
             </g>;
           })}
-          {!cityLayerCityId && armies.map(army => { const cell = entityCell(army); const point = at(cell.a, cell.b); const own = army.player_name === playerName; return <g key={army.id} transform={`translate(${point.x + 19},${point.y - 34})`} filter="url(#iso-shadow)" pointerEvents="none"><circle r="11" fill={own ? "var(--map-city-own)" : "var(--map-city-rival)"} stroke="var(--map-marker-edge)" strokeWidth="2"/><Shield x="-6" y="-6" width="12" height="12" fill="none" stroke="var(--map-marker-edge)"/><Flag x="5" y="-20" width="14" height="14" fill="var(--map-route)" stroke="var(--map-marker-edge)"/><title>{army.name} · {army.soldiers} vojáků · morálka {army.morale}</title></g>; })}
+          {!cityLayerCityId && armyPlacements.map(({ army, cell, offsetX, offsetY }) => {
+            const point = at(cell.a, cell.b);
+            const own = army.player_name === playerName;
+            const openArmy = () => { setSelectedArmyId(army.id); setSelected(null); setCityLayerCityId(null); onDetailOpenChange?.(true); };
+            return <g key={army.id} data-map-army={army.id} role="button" tabIndex={0} aria-label={`Armáda ${army.name}`}
+              transform={`translate(${point.x + offsetX},${point.y + offsetY})`} filter="url(#iso-shadow)" className="cursor-pointer"
+              onClick={(event) => { event.stopPropagation(); if (!dragRef.current?.moved) openArmy(); }}
+              onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); openArmy(); } }}>
+              <ArmyMarker army={army} own={own} active={selectedArmyId === army.id} />
+            </g>;
+          })}
         </g>
       </svg>
 
