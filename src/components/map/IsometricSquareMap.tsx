@@ -21,6 +21,10 @@ import spritePort from "@/assets/map/node-port.png";
 import spriteShrine from "@/assets/map/node-shrine.png";
 import spriteMine from "@/assets/map/node-mine.png";
 import spriteRuin from "@/assets/map/node-ruin.png";
+import buildResidential from "@/assets/map/build-residential.png";
+import buildCulture from "@/assets/map/build-culture.png";
+import buildInfrastructure from "@/assets/map/build-infrastructure.png";
+import buildMilitary from "@/assets/map/build-military.png";
 
 const NODE_SPRITE: Record<string, string> = {
   farmstead: spriteFarmstead, workshop: spriteWorkshop, guard_post: spriteGuardPost,
@@ -32,6 +36,41 @@ const NODE_SPRITE: Record<string, string> = {
 };
 const nodeSprite = (node: { node_type: string; node_subtype: string | null }) =>
   NODE_SPRITE[node.node_subtype || ""] || NODE_SPRITE[node.node_type] || spriteHamlet;
+
+/** Painted picture for a building or district — matched by name first, then category. */
+const BUILD_NAME_SPRITE: Array<[RegExp, string]> = [
+  [/farm|vinice|ryb/i, spriteFarmstead],
+  [/kovárn|manufaktur|sklárn|pila|dílna|papír/i, spriteWorkshop],
+  [/důl|lom|hut/i, spriteMine],
+  [/tržišt|mincovn|obchod|celnic|sklad|sýpk/i, spriteTradePost],
+  [/přístav|dok|loděnic/i, spritePort],
+  [/chrám|klášter|svatyn|katedrál/i, spriteShrine],
+  [/hradb|bašt|věž|citadel/i, spriteFortress],
+  [/kasárn|zbrojnic|jízd|střelnic|výcvik/i, buildMilitary],
+  [/akvadukt|kanalizac|studn|lázn|most|silnic|cest/i, buildInfrastructure],
+  [/knihovn|divadl|arén|stadion|soud|škol|bard|univerz/i, buildCulture],
+  [/čtvrť|obytn|domy|kolonie|předmě|nájem/i, buildResidential],
+];
+const CATEGORY_SPRITE: Record<string, string> = {
+  economic: spriteWorkshop, cultural: buildCulture, infrastructure: buildInfrastructure,
+  military: buildMilitary, residential: buildResidential,
+};
+const buildSprite = (name: string, category?: string) =>
+  BUILD_NAME_SPRITE.find(([pattern]) => pattern.test(name))?.[1]
+  || CATEGORY_SPRITE[category || ""] || spriteHamlet;
+const LAND_USE_SPRITE: Record<string, string> = {
+  residential: buildResidential, commercial: spriteTradePost, industrial: spriteWorkshop,
+  military: buildMilitary, sacred: spriteShrine, civic: buildCulture,
+  infrastructure: buildInfrastructure, agricultural: spriteFarmstead,
+};
+
+/** Player-buildable residential districts — the direct lever on housing capacity. */
+const RESIDENTIAL_DISTRICTS = [
+  { key: "quarter", name: "Obytná čtvrť", district_type: "residential", population_capacity: 250, build_cost_wealth: 25, build_cost_wood: 25, build_cost_stone: 10, build_turns: 2, stability_modifier: 1, peasant_attraction: 6, description: "Hustá zástavba domů pro rodiny řemeslníků a rolníků." },
+  { key: "tenements", name: "Nájemní domy", district_type: "residential", population_capacity: 400, build_cost_wealth: 45, build_cost_wood: 30, build_cost_stone: 25, build_turns: 3, stability_modifier: -1, burgher_attraction: 8, description: "Vysoké nájemní domy — mnoho lidí, méně klidu." },
+  { key: "colony", name: "Dělnická kolonie", district_type: "residential", population_capacity: 300, build_cost_wealth: 30, build_cost_wood: 35, build_cost_stone: 5, build_turns: 2, production_modifier: 3, peasant_attraction: 10, description: "Kolonie u dílen a polí, láká pracovní sílu." },
+  { key: "suburb", name: "Předměstí", district_type: "residential", population_capacity: 200, build_cost_wealth: 20, build_cost_wood: 20, build_cost_stone: 5, build_turns: 1, stability_modifier: 2, peasant_attraction: 4, description: "Rozvolněné domky na okraji města." },
+];
 
 interface Props {
   sessionId: string;
