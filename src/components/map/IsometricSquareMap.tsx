@@ -364,31 +364,6 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
   };
 
   /** Static settlement silhouette: houses, walls, keep — scaled by population. */
-  const renderTown = (city: City, own: boolean) => {
-    const population = Math.max(0, city.population_total);
-    const townClass = population >= 2200 ? "major" : population >= 900 ? "town" : "village";
-    const buildingCount = townClass === "major" ? 7 : townClass === "town" ? 5 : 3;
-    const positions = [
-      { x: -13, y: 2, h: 10 }, { x: 0, y: 6, h: 12 }, { x: 13, y: 2, h: 9 },
-      { x: -7, y: -7, h: 13 }, { x: 8, y: -8, h: 11 }, { x: -17, y: -8, h: 9 }, { x: 18, y: -7, h: 10 },
-    ];
-    const wall = own ? "var(--map-city-own)" : "var(--map-city-rival)";
-    return <>
-      <path d="M-27 7 L0 20 L27 7 L0 -7 Z" fill="var(--map-city-base)" stroke="var(--map-marker-edge)" strokeWidth="1.2" />
-      {townClass !== "village" && <path d="M-25 5 L0 17 L25 5 M-25 5 L-25 -1 M25 5 L25 -1" fill="none" stroke={wall} strokeWidth="2.4" strokeLinecap="square" />}
-      {positions.slice(0, buildingCount).map((building, index) => {
-        const width = index === 3 && townClass === "major" ? 7 : 5;
-        const height = index === 3 && townClass === "major" ? 19 : building.h;
-        return <g key={index} transform={`translate(${building.x},${building.y})`}>
-          <path d={`M0 ${-height} L${width} ${-height + 3} V3 L0 6 Z`} fill="var(--map-city-wall-light)" stroke="var(--map-marker-edge)" strokeWidth=".7" />
-          <path d={`M0 ${-height} L${-width} ${-height + 3} V3 L0 6 Z`} fill="var(--map-city-wall-dark)" stroke="var(--map-marker-edge)" strokeWidth=".7" />
-          <path d={`M${-width - 1} ${-height + 3} L0 ${-height - 2} L${width + 1} ${-height + 3} L0 ${-height + 7} Z`} fill={wall} stroke="var(--map-marker-edge)" strokeWidth=".8" />
-          {height >= 18 && <path d={`M-2 ${-height - 2} L0 ${-height - 8} L2 ${-height - 2}`} fill={wall} stroke="var(--map-marker-edge)" strokeWidth="1" />}
-        </g>;
-      })}
-      {townClass === "major" && <><rect x="-24" y="-2" width="5" height="10" fill="var(--map-city-wall-light)" stroke="var(--map-marker-edge)"/><rect x="19" y="-2" width="5" height="10" fill="var(--map-city-wall-light)" stroke="var(--map-marker-edge)"/></>}
-    </>;
-  };
 
   return (
     <div ref={viewportRef} className="relative h-full w-full overflow-hidden bg-map select-none"
@@ -454,7 +429,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
           {!cityLayerCityId && nodes.map(node => { const cell = entityCell(node); const point = at(cell.a, cell.b); const major = node.node_tier === "major"; return <g key={node.id} transform={`translate(${point.x},${point.y - 8})`} filter="url(#iso-shadow)" pointerEvents="none"><path d={major ? "M-8 3 L0 7 L8 3 L0 -1 Z M-5 1 V-8 L0 -12 L5 -8 V1" : "M-7 3 L0 7 L7 3 L0 -1 Z M-4 1 V-6 L0 -9 L4 -6 V1"} fill="var(--map-marker)" stroke="var(--map-focus)" strokeWidth="1.2"/><title>{node.name}</title></g>; })}
           {cities.map(city => {
             const cell = cityCellOf(city); const point = at(cell.a, cell.b);
-            const own = city.owner_player === playerName; const scale = Math.min(1.25, .88 + Math.log10(Math.max(100, city.population_total)) * .08);
+            const own = city.owner_player === playerName;
             if (cityLayerCityId === city.id) return null;
             // Sit the silhouette on the seat parcel so founding position is visible.
             const seat = city.founded_parcel_index;
