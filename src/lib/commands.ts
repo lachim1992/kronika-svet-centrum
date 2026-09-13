@@ -47,6 +47,8 @@ export async function dispatchCommand(params: {
       commandType: params.commandType,
       commandPayload: params.commandPayload,
       commandId,
+      // Testing mode: skip resource costs & construction waiting, keep effects.
+      sandbox: isSandboxMode(),
     },
   });
 
