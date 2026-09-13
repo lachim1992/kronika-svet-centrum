@@ -112,6 +112,24 @@ const SUB_BIOMES: Record<string, SubBiomeDef[]> = {
   ],
 };
 
+const FAMILY_ALIAS: Record<string, string> = {
+  swamp: "wetland",
+  marsh: "wetland",
+  ocean: "sea",
+  water: "sea",
+  savanna: "steppe",
+  taiga: "forest",
+  woodland: "forest",
+  rainforest: "jungle",
+  mountain: "mountains",
+  hill: "hills",
+};
+
+function familyKey(raw: string | null | undefined): string {
+  const key = (raw || "plains").toLowerCase();
+  return FAMILY_ALIAS[key] ?? key;
+}
+
 function fnv1a(text: string): number {
   let hash = 0x811c9dc5;
   for (let i = 0; i < text.length; i++) {
@@ -146,7 +164,7 @@ export type NeighbourTerrain = { dx: number; dy: number; terrain: TileTerrain };
 type WeightedDef = SubBiomeDef & { blendWeight: number };
 
 function defsForTerrain(terrain: TileTerrain, asNeighbour: boolean): SubBiomeDef[] {
-  const family = (terrain.biome_family || "plains").toLowerCase();
+  const family = familyKey(terrain.biome_family);
   const isSea = family === "sea" || family === "ocean";
   // A sea neighbour pushes shoreline parcels onto the land cell, never open water.
   if (isSea) return asNeighbour ? SUB_BIOMES.coast : SUB_BIOMES.sea;
@@ -176,8 +194,8 @@ export function generateTileParcels(
   terrain: TileTerrain = {},
   neighbours: NeighbourTerrain[] = [],
 ): TileParcelSpec[] {
-  const family = (terrain.biome_family || "plains").toLowerCase();
-  const isSea = family === "sea" || family === "ocean" || terrain.is_passable === false;
+  const family = familyKey(terrain.biome_family);
+  const isSea = family === "sea" || terrain.is_passable === false;
   const ownDefs = defsForTerrain(terrain, false);
   const OWN_WEIGHT = 6;
 
