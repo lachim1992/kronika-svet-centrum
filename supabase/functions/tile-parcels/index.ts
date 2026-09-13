@@ -12,7 +12,7 @@ const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
 /**
- * tile-parcels — lazily materializes and returns the 32 sub-parcels of one map cell.
+ * tile-parcels — lazily materializes and returns the 36 sub-parcels of one map cell.
  * The layout is deterministic (session seed + cell terrain), so materializing later never
  * changes what a player already saw.
  * Body: { session_id, grid_x, grid_y }
@@ -54,7 +54,20 @@ Deno.serve(async (req) => {
 
     let parcels = existing ?? [];
     if (parcels.length < TILE_PARCEL_COUNT) {
-      const specs = generateTileParcels(sessionId, gridX, gridY, tile ?? {});
+      const { data: patch } = await sb.from("province_hexes")
+        .select("grid_x, grid_y, biome_family, elevation, has_river, is_coastal, is_passable")
+        .eq("session_id", sessionId)
+        .gte("grid_x", gridX - 1).lte("grid_x", gridX + 1)
+        .gte("grid_y", gridY - 1).lte("grid_y", gridY + 1);
+      const neighbours = [[1, 0], [-1, 0], [0, 1], [0, -1]]
+        .map(([dx, dy]) => {
+          const terrain = (patch ?? []).find((row: { grid_x: number; grid_y: number }) =>
+            row.grid_x === gridX + dx && row.grid_y === gridY + dy
+          );
+          return terrain ? { dx, dy, terrain } : null;
+        })
+        .filter(Boolean) as Array<{ dx: number; dy: number; terrain: Record<string, unknown> }>;
+      const specs = generateTileParcels(sessionId, gridX, gridY, tile ?? {}, neighbours);
       const seen = new Set(parcels.map((p: { parcel_index: number }) => p.parcel_index));
       const rows = specs.filter((spec) => !seen.has(spec.parcelIndex)).map((spec) => ({
         session_id: sessionId,
