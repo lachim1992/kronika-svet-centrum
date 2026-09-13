@@ -21,6 +21,7 @@ import {
   seatCityOnParcels,
 } from "../_shared/citySeat.ts";
 import { tileInfrastructureLevel } from "../_shared/tileInfrastructure.ts";
+import { tileBridgeCells, tileRoadCost } from "../_shared/tileRoads.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -2959,9 +2960,25 @@ async function executeUpgradeTileInfrastructure(
   const nextLevel = Number(existing?.level || 0) + 1;
   const tier = tileInfrastructureLevel(nextLevel);
   if (!tier) return { events: [], error: "Dlážděná cesta je nejvyšší úroveň" };
+  // Roads follow the sub-parcel layout: every river sub-parcel on the trace needs a bridge.
+  const { data: around } = await supabase.from("province_hexes")
+    .select("grid_x, grid_y, biome_family, mean_height, has_river, river_direction, is_passable")
+    .eq("session_id", sessionId)
+    .in("grid_x", [gridX - 1, gridX, gridX + 1]).in("grid_y", [gridY - 1, gridY, gridY + 1]);
+  const neighbourRows = (around || []).filter((row: any) =>
+    Math.abs(row.grid_x - gridX) + Math.abs(row.grid_y - gridY) === 1);
+  const self = (around || []).find((row: any) => row.grid_x === gridX && row.grid_y === gridY) || {};
+  const terrainOf = (row: any) => ({ biome_family: row.biome_family, elevation: row.mean_height,
+    has_river: row.has_river, river_direction: row.river_direction, is_passable: row.is_passable });
+  const steps = neighbourRows
+    .filter((row: any) => row.is_passable !== false && row.biome_family !== "sea")
+    .map((row: any) => ({ dx: row.grid_x - gridX, dy: row.grid_y - gridY }));
+  const bridges = tileBridgeCells(sessionId, gridX, gridY, steps, terrainOf(self),
+    neighbourRows.map((row: any) => ({ dx: row.grid_x - gridX, dy: row.grid_y - gridY, terrain: terrainOf(row) }))).length;
+  const cost = tileRoadCost(tier, bridges);
   const realm = await getRealmFull(supabase, sessionId, actor.name);
   if (!realm) return { events: [], error: "Realm not found" };
-  if (Number(realm.gold_reserve || 0) < tier.gold || Number(realm.production_reserve || 0) < tier.production) return { events: [], error: `Potřeba ${tier.gold} zlata a ${tier.production} produkce` };
+  if (Number(realm.gold_reserve || 0) < cost.gold || Number(realm.production_reserve || 0) < cost.production) return { events: [], error: `Potřeba ${cost.gold} zlata a ${cost.production} produkce${bridges ? ` (${bridges}× most)` : ""}` };
   const completesNow = tier.turns <= 1;
   const row = { session_id: sessionId, grid_x: gridX, grid_y: gridY, owner_player: actor.name,
     level: completesNow ? nextLevel : Number(existing?.level || 0), target_level: completesNow ? null : nextLevel,
@@ -2969,12 +2986,13 @@ async function executeUpgradeTileInfrastructure(
     started_turn: turnNumber, completed_turn: completesNow ? turnNumber : null };
   const { error } = await supabase.from("tile_infrastructure").upsert(row, { onConflict: "session_id,grid_x,grid_y" });
   if (error) return { events: [], error: error.message };
-  await supabase.from("realm_resources").update({ gold_reserve: Number(realm.gold_reserve || 0) - tier.gold,
-    production_reserve: Number(realm.production_reserve || 0) - tier.production }).eq("id", realm.id);
+  await supabase.from("realm_resources").update({ gold_reserve: Number(realm.gold_reserve || 0) - cost.gold,
+    production_reserve: Number(realm.production_reserve || 0) - cost.production }).eq("id", realm.id);
   return insertEvents(supabase, commandId, [{ ...base, event_type: "construction",
-    note: `${actor.name} ${completesNow ? "dokončil" : "zahájil"} projekt ${tier.label.toLowerCase()} na poli ${gridX}, ${gridY}.`, importance: "normal",
-    reference: { gridX, gridY, infrastructureLevel: nextLevel, costGold: tier.gold, costProduction: tier.production },
+    note: `${actor.name} ${completesNow ? "dokončil" : "zahájil"} projekt ${tier.label.toLowerCase()} na poli ${gridX}, ${gridY}${bridges ? ` (${bridges}× most přes řeku)` : ""}.`, importance: "normal",
+    reference: { gridX, gridY, infrastructureLevel: nextLevel, costGold: cost.gold, costProduction: cost.production, bridges },
   }], { gridX, gridY, infrastructureLevel: nextLevel });
+
 }
 
 async function executeAssignCityParcel(
