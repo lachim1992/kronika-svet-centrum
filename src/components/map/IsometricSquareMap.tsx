@@ -296,17 +296,21 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
     const wallEdges = cityOwned.length ? footprintWallEdges(cityOwned, centerPoint) : [];
     const holder = cityOwned[0]?.city_id ? cityById.get(cityOwned[0].city_id) : undefined;
     const holderColor = holder ? (holder.owner_player === playerName ? "var(--map-city-own)" : "var(--map-city-rival)") : "var(--map-city-own)";
+    const hatchFill = holder && holder.owner_player !== playerName ? "url(#iso-city-hatch-rival)" : "url(#iso-city-hatch)";
     return <g pointerEvents="none">
       {tileParcels.map(parcel => {
         const base = SUB_BIOME_COLOR[parcel.sub_biome] || "var(--map-plains)";
         const mine = !!parcel.city_id;
         const fill = parcel.status === "occupied" ? (LAND_USE_COLOR[parcel.land_use || "civic"] || LAND_USE_COLOR.open)
           : parcel.status === "claimed" ? "var(--map-parcel-open)" : base;
+        const quad = parcelQuad(centerPoint, parcel.parcel_x, parcel.parcel_y);
         return <g key={parcel.id}>
-          <polygon points={parcelQuad(centerPoint, parcel.parcel_x, parcel.parcel_y)} fill={fill}
+          <polygon points={quad} fill={fill}
             stroke={mine ? holderColor : parcel.buildable ? "var(--map-marker-edge)" : "var(--map-mountain-edge)"}
             strokeWidth={mine ? 1.1 : .5}
             opacity={mine ? 1 : parcel.buildable ? (parcel.status === "wild" ? .6 : .95) : .45} />
+          {/* hatching marks every sub-parcel the city holds */}
+          {mine && <polygon points={quad} fill={hatchFill} opacity=".55" />}
           <title>{`${parcel.parcel_index + 1} · ${SUB_BIOME_LABEL[parcel.sub_biome] || parcel.sub_biome} · výška ${parcel.elevation}${mine ? ` · patří ${holder?.name || "městu"}` : ""}`}</title>
         </g>;
       })}
@@ -474,6 +478,14 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
       <svg className="h-full w-full">
         <defs>
           <filter id="iso-shadow"><feDropShadow dx="0" dy="5" stdDeviation="4" floodOpacity=".35" /></filter>
+          <pattern id="iso-city-hatch" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+            <rect width="6" height="6" fill="none" />
+            <line x1="0" y1="0" x2="0" y2="6" stroke="var(--map-city-own)" strokeWidth="2.4" opacity=".85" />
+          </pattern>
+          <pattern id="iso-city-hatch-rival" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+            <rect width="6" height="6" fill="none" />
+            <line x1="0" y1="0" x2="0" y2="6" stroke="var(--map-city-rival)" strokeWidth="2.4" opacity=".85" />
+          </pattern>
           <pattern id="iso-water" width="30" height="8" patternUnits="userSpaceOnUse"><path d="M0 4 Q7 0 15 4 T30 4" fill="none" stroke="var(--map-water-glint)" strokeWidth="1" opacity=".22" /></pattern>
         </defs>
         <g transform={`scale(${zoom})`}>
