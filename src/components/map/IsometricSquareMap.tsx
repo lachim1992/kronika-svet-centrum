@@ -257,9 +257,10 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
   const [claimingParcel, setClaimingParcel] = useState<number | null>(null);
   const [treasury, setTreasury] = useState({ gold: 0, production: 0 });
   const [selectedArmyId, setSelectedArmyId] = useState<string | null>(null);
-  const [showRoutes, setShowRoutes] = useState(true);
-  const [showNodes, setShowNodes] = useState(true);
-  const [showLabels, setShowLabels] = useState(true);
+  const [showRoutes, setShowRoutes] = useMapLayer("routes");
+  const [showNodes, setShowNodes] = useMapLayer("nodes");
+  const [showLabels, setShowLabels] = useMapLayer("labels");
+  const [showSubBiomes, setShowSubBiomes] = useMapLayer("subBiomes");
   const [selectedParcelId, setSelectedParcelId] = useState<string | null>(null);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [parcelContents, setParcelContents] = useState<ParcelContent[]>([]);
