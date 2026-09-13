@@ -606,6 +606,12 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
   const selectedCity = cityLayerCity || (selectedCityId ? cityById.get(selectedCityId) : undefined);
   /** A neighbouring city of yours that may buy parcels on this cell. */
   const foreignOwner = selected?.owner_player && selected.owner_player !== playerName ? selected.owner_player : null;
+  /** A road is allowed wherever you already have a foothold: parcel, city seat or sub-node on the tile. */
+  const canBuildRoadHere = !!selected && !foreignOwner && (
+    selected.owner_player === playerName
+    || tileParcels.some(parcel => parcel.owner_player === playerName)
+    || selectedCity?.owner_player === playerName
+    || (selectedCell ? nodes.some(node => { const cell = entityCell(node); return cell.a === selectedCell.a && cell.b === selectedCell.b && node.controlled_by === playerName; }) : false));
   const expansionCity = useMemo(() => {
     if (!selectedCell || selectedCity || foreignOwner) return undefined;
     return cities.find(city => {
@@ -1554,7 +1560,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
               </> : <p className="mt-1 text-[11px] text-muted-foreground">Zde osadu založit nelze — vhodné jsou pláně, kopce, les a bažiny na průchodném poli.</p>}
             </div>}
 
-            {selected.owner_player === playerName && <div className="rounded border border-border/60 p-2">
+            {canBuildRoadHere && <div className="rounded border border-border/60 p-2">
               <div className="flex items-center justify-between gap-2">
                 <div><p className="text-xs font-medium">Cesta přes parcelu</p><p className="text-[11px] text-muted-foreground">{selectedInfrastructure?.status === "building" ? `Ve výstavbě · ${selectedInfrastructure.progress} %` : selectedInfrastructure?.level ? tileInfrastructureLevel(selectedInfrastructure.level)?.label : "Bez cest"}</p></div>
                 <Button size="sm" disabled={!!buildingAction || selectedInfrastructure?.status === "building" || (selectedInfrastructure?.level || 0) >= 3} onClick={() => void upgradeLocalRoad()}>{buildingAction === "infrastructure" && <Loader2 className="mr-1 h-3 w-3 animate-spin"/>}{selectedInfrastructure?.level ? "Vylepšit" : "Postavit stezku"}</Button>
