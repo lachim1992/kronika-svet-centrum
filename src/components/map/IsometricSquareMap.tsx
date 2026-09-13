@@ -8,7 +8,6 @@ import { dispatchCommand } from "@/lib/commands";
 import { gridDistance, projectCell, squareDiamondPoints } from "@/lib/mapTopology";
 import { parcelClaimCost, POPULATION_PER_SLOT, TILE_PARCEL_COLS, TILE_PARCEL_ROWS } from "@/lib/tileParcels";
 import { useIsMobile } from "@/hooks/use-mobile";
-import NodeMarker from "@/components/map/NodeMarker";
 import ArmyMarker from "@/components/map/ArmyMarker";
 
 interface Props {
@@ -31,6 +30,19 @@ type TileParcel = {
   id: string; grid_x: number; grid_y: number; parcel_index: number; parcel_x: number; parcel_y: number;
   sub_biome: string; elevation: number; buildable: boolean; build_cost_multiplier: number;
   capacity_slots: number; status: string; land_use: string | null; city_id: string | null; owner_player: string | null;
+};
+
+const NODE_STYLE: Record<string, { landUse: string; accent: string; walled: boolean; houses: number; label: string }> = {
+  fortress: { landUse: "military", accent: "var(--map-city-rival)", walled: true, houses: 2, label: "pevnost" },
+  port: { landUse: "infrastructure", accent: "var(--map-route)", walled: false, houses: 2, label: "přístav" },
+  trade_hub: { landUse: "commercial", accent: "var(--map-route)", walled: false, houses: 3, label: "obchodní uzel" },
+  village_cluster: { landUse: "residential", accent: "var(--map-city-own)", walled: false, houses: 4, label: "vesnice" },
+  neutral_settlement: { landUse: "residential", accent: "var(--map-marker-edge)", walled: false, houses: 3, label: "neutrální osada" },
+  shrine: { landUse: "sacred", accent: "var(--map-focus)", walled: false, houses: 1, label: "svatyně" },
+  religious_center: { landUse: "sacred", accent: "var(--map-focus)", walled: true, houses: 2, label: "duchovní centrum" },
+  ruin: { landUse: "open", accent: "var(--map-mountain-edge)", walled: false, houses: 1, label: "ruina" },
+  resource_outpost: { landUse: "industrial", accent: "var(--map-city-own)", walled: false, houses: 2, label: "výrobní stanice" },
+  resource_node: { landUse: "industrial", accent: "var(--map-marker-edge)", walled: false, houses: 1, label: "zdrojové ložisko" },
 };
 
 const TILE_SIZE = 42;
@@ -346,6 +358,42 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
     </g>;
   };
 
+  /** Node compound drawn in the same parcel/rampart language as city footprints. */
+  const renderNodeCompound = (node: Node, centerPoint: { x: number; y: number }) => {
+    const style = NODE_STYLE[node.node_type] || NODE_STYLE.resource_node;
+    const patch = node.node_tier === "major" ? [[2, 2], [3, 2], [4, 2], [2, 3], [3, 3], [4, 3]]
+      : node.node_tier === "minor" ? [[2, 2], [3, 2], [2, 3], [3, 3]]
+      : [[2, 3], [3, 3]];
+    const parcels = patch.map(([x, y], index) => ({
+      id: `${node.id}-${index}`, parcel_x: x, parcel_y: y, parcel_index: index,
+      status: "occupied", land_use: style.landUse,
+    })) as unknown as TileParcel[];
+    const edges = footprintWallEdges(parcels, centerPoint);
+    const walled = style.walled;
+    return <g pointerEvents="none">
+      {parcels.map(parcel => (
+        <polygon key={parcel.id} points={parcelQuad(centerPoint, parcel.parcel_x, parcel.parcel_y)}
+          fill={LAND_USE_COLOR[style.landUse] || LAND_USE_COLOR.open}
+          stroke="var(--map-marker-edge)" strokeWidth=".35" opacity=".92" />
+      ))}
+      {edges.map((edge, index) => (
+        <g key={`node-wall-${index}`}>
+          <line x1={edge.from.x} y1={edge.from.y + 2} x2={edge.to.x} y2={edge.to.y + 2} stroke="var(--map-city-wall-dark)" strokeWidth={walled ? 3 : 1.8} strokeLinecap="round" opacity=".9" />
+          <line x1={edge.from.x} y1={edge.from.y} x2={edge.to.x} y2={edge.to.y} stroke="var(--map-city-wall-light)" strokeWidth={walled ? 2 : 1.2} strokeLinecap="round" />
+          <line x1={edge.from.x} y1={edge.from.y - 1.2} x2={edge.to.x} y2={edge.to.y - 1.2} stroke={style.accent} strokeWidth=".8" strokeLinecap="round" opacity=".95" />
+        </g>
+      ))}
+      {walled && edges.filter((_, index) => index % 3 === 0).map((edge, index) => (
+        <g key={`node-tower-${index}`} transform={`translate(${edge.from.x},${edge.from.y})`}>
+          <rect x="-2" y="-6.4" width="4" height="7.6" fill="var(--map-city-wall-light)" stroke="var(--map-city-wall-dark)" strokeWidth=".5" />
+          <rect x="-2.6" y="-7.6" width="5.2" height="1.6" fill={style.accent} />
+        </g>
+      ))}
+      {parcels.slice(0, style.houses).map((parcel, index) => renderParcelHouse(parcel, centerPoint, index))}
+      <title>{`${node.name} · ${style.label}`}</title>
+    </g>;
+  };
+
   const at = (a: number, b: number) => { const point = projectCell("square4", { a, b }, TILE_SIZE); return { x: point.x + pan.x, y: point.y + pan.y }; };
   const focusTile = (tile: Tile, requestedCityId?: string) => {
     const element = viewportRef.current; if (!element) return;
@@ -429,7 +477,12 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
             </g>;
           })}
           {!cityLayerCityId && showRoutes && routes.flatMap(route => { const path = gridKind === "square4" && Array.isArray(route.path_cells) ? route.path_cells : route.hex_path; return Array.isArray(path) && path.length > 1 ? [<polyline key={route.route_id || JSON.stringify(path)} points={path.map(cell => { const point = at(cell.x ?? cell.q ?? 0, cell.y ?? cell.r ?? 0); return `${point.x},${point.y}`; }).join(" ")} fill="none" stroke="var(--map-route)" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" opacity=".9" className="iso-active-route" pointerEvents="none" />] : []; })}
-          {!cityLayerCityId && showNodes && nodes.map(node => { const cell = entityCell(node); const point = at(cell.a, cell.b); return <g key={node.id} transform={`translate(${point.x},${point.y - 8})`} filter="url(#iso-shadow)" pointerEvents="none"><NodeMarker node={node} /></g>; })}
+          {!cityLayerCityId && showNodes && nodes.map(node => {
+            if (node.node_type === "primary_city" || node.node_type === "secondary_city") return null;
+            const cell = entityCell(node);
+            if (cityByCell.get(cellKey(cell.a, cell.b))) return null;
+            return <g key={node.id}>{renderNodeCompound(node, at(cell.a, cell.b))}</g>;
+          })}
           {cities.map(city => {
             const cell = cityCellOf(city); const point = at(cell.a, cell.b);
             const own = city.owner_player === playerName;
