@@ -1086,6 +1086,7 @@ export type Database = {
           famine_severity: number
           famine_turn: boolean
           flavor_prompt: string | null
+          founded_parcel_index: number | null
           founded_round: number
           grid_x: number | null
           grid_y: number | null
@@ -1161,6 +1162,7 @@ export type Database = {
           famine_severity?: number
           famine_turn?: boolean
           flavor_prompt?: string | null
+          founded_parcel_index?: number | null
           founded_round?: number
           grid_x?: number | null
           grid_y?: number | null
@@ -1236,6 +1238,7 @@ export type Database = {
           famine_severity?: number
           famine_turn?: boolean
           flavor_prompt?: string | null
+          founded_parcel_index?: number | null
           founded_round?: number
           grid_x?: number | null
           grid_y?: number | null
@@ -9646,6 +9649,107 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "supply_chain_state_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tile_parcels: {
+        Row: {
+          build_cost_multiplier: number
+          buildable: boolean
+          building_id: string | null
+          capacity_slots: number
+          city_id: string | null
+          claimed_turn: number | null
+          created_at: string
+          district_id: string | null
+          elevation: number
+          grid_x: number
+          grid_y: number
+          id: string
+          land_use: string
+          owner_player: string | null
+          parcel_index: number
+          parcel_x: number
+          parcel_y: number
+          session_id: string
+          status: string
+          sub_biome: string
+          updated_at: string
+        }
+        Insert: {
+          build_cost_multiplier?: number
+          buildable?: boolean
+          building_id?: string | null
+          capacity_slots?: number
+          city_id?: string | null
+          claimed_turn?: number | null
+          created_at?: string
+          district_id?: string | null
+          elevation?: number
+          grid_x: number
+          grid_y: number
+          id?: string
+          land_use?: string
+          owner_player?: string | null
+          parcel_index: number
+          parcel_x: number
+          parcel_y: number
+          session_id: string
+          status?: string
+          sub_biome?: string
+          updated_at?: string
+        }
+        Update: {
+          build_cost_multiplier?: number
+          buildable?: boolean
+          building_id?: string | null
+          capacity_slots?: number
+          city_id?: string | null
+          claimed_turn?: number | null
+          created_at?: string
+          district_id?: string | null
+          elevation?: number
+          grid_x?: number
+          grid_y?: number
+          id?: string
+          land_use?: string
+          owner_player?: string | null
+          parcel_index?: number
+          parcel_x?: number
+          parcel_y?: number
+          session_id?: string
+          status?: string
+          sub_biome?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tile_parcels_building_id_fkey"
+            columns: ["building_id"]
+            isOneToOne: false
+            referencedRelation: "city_buildings"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tile_parcels_city_id_fkey"
+            columns: ["city_id"]
+            isOneToOne: false
+            referencedRelation: "cities"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tile_parcels_district_id_fkey"
+            columns: ["district_id"]
+            isOneToOne: false
+            referencedRelation: "city_districts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tile_parcels_session_id_fkey"
             columns: ["session_id"]
             isOneToOne: false
             referencedRelation: "game_sessions"
