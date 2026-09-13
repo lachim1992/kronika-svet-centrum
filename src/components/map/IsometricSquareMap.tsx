@@ -151,14 +151,16 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
 
   const renderParcelGrid = (urbanCell: UrbanCell, centerPoint: { x: number; y: number }) => {
     const cellParcels = parcelsByUrbanCell.get(urbanCell.id) || [];
+    const size = TILE_SIZE / 4;
     return <g>
       {cellParcels.map(parcel => {
-        const dx = (parcel.parcel_x - parcel.parcel_y) * 5.1;
-        const dy = (parcel.parcel_x + parcel.parcel_y - 3) * 2.55;
+        const dx = (parcel.parcel_x - parcel.parcel_y) * size;
+        const dy = (parcel.parcel_x + parcel.parcel_y - 3) * size * .5;
         const fill = parcel.status === "locked" ? "var(--map-parcel-locked)" : LAND_USE_COLOR[parcel.land_use] || LAND_USE_COLOR.open;
         return <g key={parcel.id} transform={`translate(${centerPoint.x + dx},${centerPoint.y + dy})`}>
-          <polygon points={squareDiamondPoints({ x: 0, y: 0 }, 5)} fill={fill} stroke="var(--map-marker-edge)" strokeWidth=".45" opacity={parcel.status === "locked" ? .45 : .92} />
-          {parcel.status === "occupied" && <path d="M-2 1 V-4 L0 -6 L2 -4 V1 Z" fill="var(--map-label)" stroke="var(--map-marker-edge)" strokeWidth=".5" />}
+          <polygon points={squareDiamondPoints({ x: 0, y: 0 }, size - .8)} fill={fill} stroke="var(--map-marker-edge)" strokeWidth=".7" opacity={parcel.status === "locked" ? .5 : .95} />
+          {parcel.status === "occupied" && <path d="M-3.4 1.6 V-5.5 L0 -8.5 L3.4 -5.5 V1.6 Z" fill="var(--map-city-wall-light)" stroke="var(--map-marker-edge)" strokeWidth=".7" />}
+          <title>{`Parcela ${parcel.parcel_x + 1}:${parcel.parcel_y + 1} · ${parcel.land_use} · ${parcel.status}`}</title>
         </g>;
       })}
       {urbanCell.status === "developing" && <circle cx={centerPoint.x} cy={centerPoint.y} r="18" fill="none" stroke="var(--map-focus)" strokeWidth="2" strokeDasharray={`${Math.max(1, urbanCell.development_progress)} 100`} pathLength="100" />}
@@ -193,9 +195,10 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
 
   return (
     <div ref={viewportRef} className="relative h-full w-full overflow-hidden bg-map select-none"
-      onPointerDown={(event) => { dragRef.current = { x: event.clientX, y: event.clientY, panX: pan.x, panY: pan.y, moved: false }; event.currentTarget.setPointerCapture(event.pointerId); }}
-      onPointerMove={(event) => { const drag = dragRef.current; if (!drag) return; const dx = event.clientX - drag.x; const dy = event.clientY - drag.y; if (Math.abs(dx) + Math.abs(dy) > 5) drag.moved = true; setPan({ x: drag.panX + dx / zoom, y: drag.panY + dy / zoom }); }}
-      onPointerUp={() => { dragRef.current = null; }}
+      onPointerDown={(event) => { dragRef.current = { x: event.clientX, y: event.clientY, panX: pan.x, panY: pan.y, moved: false }; }}
+      onPointerMove={(event) => { const drag = dragRef.current; if (!drag) return; const dx = event.clientX - drag.x; const dy = event.clientY - drag.y; if (Math.abs(dx) + Math.abs(dy) > 5) drag.moved = true; if (drag.moved) setPan({ x: drag.panX + dx / zoom, y: drag.panY + dy / zoom }); }}
+      onPointerUp={() => { window.setTimeout(() => { dragRef.current = null; }, 0); }}
+      onPointerLeave={() => { dragRef.current = null; }}
       onWheel={(event) => { event.preventDefault(); setZoom(value => Math.max(.45, Math.min(2.4, value * (event.deltaY > 0 ? .9 : 1.1)))); }}>
       <svg className="h-full w-full">
         <defs>
@@ -212,7 +215,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
               <polygon points={squareDiamondPoints(point, TILE_SIZE - 2)} fill={`url(#iso-${tile.biome_family})`} opacity=".55" />
               {tile.biome_family === "sea" && <polygon points={squareDiamondPoints(point, TILE_SIZE - 4)} fill="url(#iso-water)" />}
               {tile.biome_family.includes("forest") && !urbanCell && <Trees x={point.x - 8} y={point.y - 11} width="16" height="16" fill="var(--map-forest-edge)" stroke="var(--map-label)" strokeWidth=".8" />}
-               {urbanCell && (zoom >= 1.3 || cityLayerCityId === urbanCell.city_id) && renderParcelGrid(urbanCell, point)}
+               {urbanCell && (cityLayerCityId ? cityLayerCityId === urbanCell.city_id : zoom >= 2) && renderParcelGrid(urbanCell, point)}
             </g>;
           })}
            {!cityLayerCityId && routes.flatMap(route => { const path = gridKind === "square4" && Array.isArray(route.path_cells) ? route.path_cells : route.hex_path; return Array.isArray(path) && path.length > 1 ? [<polyline key={route.route_id || JSON.stringify(path)} points={path.map(cell => { const point = at(cell.x ?? cell.q ?? 0, cell.y ?? cell.r ?? 0); return `${point.x},${point.y}`; }).join(" ")} fill="none" stroke="var(--map-route)" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" opacity=".9" className="iso-active-route" pointerEvents="none" />] : []; })}
