@@ -221,7 +221,8 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
             const core = urbanCells.find(cell => cell.city_id === city.id && cell.cell_role === "core"); const cell = core ? { a: core.grid_x, b: core.grid_y } : entityCell(city); const point = at(cell.a, cell.b);
              const own = city.owner_player === playerName; const scale = Math.min(1.25, .88 + Math.log10(Math.max(100, city.population_total)) * .08);
              if (cityLayerCityId === city.id) return null;
-             return <g key={city.id} transform={`translate(${point.x},${point.y - 16}) scale(${scale})`} className="cursor-pointer" onClick={(event) => { event.stopPropagation(); const tile = tiles.find(candidate => { const c = tileCell(candidate); return c.a === cell.a && c.b === cell.b; }); if (tile) focusTile(tile); }} filter="url(#iso-shadow)">
+             const openCityLayer = () => { const tile = tiles.find(candidate => { const c = tileCell(candidate); return c.a === cell.a && c.b === cell.b; }); if (tile) focusTile(tile); };
+             return <g key={city.id} data-map-city={city.id} role="button" aria-label={`Vstoupit do města ${city.name}`} tabIndex={0} transform={`translate(${point.x},${point.y - 16}) scale(${scale})`} className="cursor-pointer" onClick={(event) => { event.stopPropagation(); openCityLayer(); }} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); openCityLayer(); } }} filter="url(#iso-shadow)">
                {renderTown(city, own)}
                <rect x={-Math.max(22, city.name.length * 2.8)} y="25" width={Math.max(44, city.name.length * 5.6)} height="13" rx="2" fill="var(--map-marker)" stroke={own ? "var(--map-city-own)" : "var(--map-city-rival)"} strokeWidth=".8" opacity=".94" />
                <text y="34" textAnchor="middle" fill="var(--map-label)" fontSize="7.5" fontWeight="700">{city.name}</text>
