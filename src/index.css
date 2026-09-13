@@ -243,6 +243,16 @@
   .map-first-shell main:has(.map-workspace-panel.hidden) {
     pointer-events: none;
   }
+  .iso-active-route {
+    stroke-dasharray: 8 5;
+    animation: iso-route-flow 1.6s linear infinite;
+  }
+  @keyframes iso-route-flow {
+    to { stroke-dashoffset: -26; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .iso-active-route { animation: none; }
+  }
   .scrollbar-hide {
     -ms-overflow-style: none;
     scrollbar-width: none;
