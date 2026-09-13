@@ -23,3 +23,6 @@
   - [x] Advance developing city cells during committed turns
   - [x] Render static recognizable city clusters, parcel zoom, field detail, and growth controls
   - [x] Verify parcel rendering, field selection, and deployed expansion command end to end
+  - [x] Add 32 deterministic sub-parcels per cell with terrain-driven cost and housing slots
+  - [x] Add CLAIM_TILE_PARCEL command and city founding seat selection
+  - [x] Render sub-parcel layer on the selected cell with claim actions in the field detail
