@@ -586,19 +586,65 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
     return { a: point(a0, b0), b: point(a1, b0), c: point(a1, b1), d: point(a0, b1) };
   };
 
-  /** Outer edges of a held parcel block — the line the ramparts follow. */
+  /** Outer edges of a held parcel block — the line the ramparts follow, each edge only once. */
   const footprintWallEdges = (parcels: TileParcel[], centerPoint: { x: number; y: number }) => {
     const held = new Set(parcels.map(parcel => `${parcel.parcel_x},${parcel.parcel_y}`));
+    const seen = new Set<string>();
     const edges: { from: { x: number; y: number }; to: { x: number; y: number } }[] = [];
+    const push = (from: { x: number; y: number }, to: { x: number; y: number }) => {
+      const round = (point: { x: number; y: number }) => `${point.x.toFixed(1)},${point.y.toFixed(1)}`;
+      const key = [round(from), round(to)].sort().join("|");
+      if (seen.has(key)) return;
+      seen.add(key);
+      edges.push({ from, to });
+    };
     parcels.forEach(parcel => {
       const { a, b, c, d } = parcelCorners(centerPoint, parcel.parcel_x, parcel.parcel_y);
-      if (!held.has(`${parcel.parcel_x},${parcel.parcel_y - 1}`)) edges.push({ from: a, to: b });
-      if (!held.has(`${parcel.parcel_x + 1},${parcel.parcel_y}`)) edges.push({ from: b, to: c });
-      if (!held.has(`${parcel.parcel_x},${parcel.parcel_y + 1}`)) edges.push({ from: c, to: d });
-      if (!held.has(`${parcel.parcel_x - 1},${parcel.parcel_y}`)) edges.push({ from: d, to: a });
+      if (!held.has(`${parcel.parcel_x},${parcel.parcel_y - 1}`)) push(a, b);
+      if (!held.has(`${parcel.parcel_x + 1},${parcel.parcel_y}`)) push(b, c);
+      if (!held.has(`${parcel.parcel_x},${parcel.parcel_y + 1}`)) push(c, d);
+      if (!held.has(`${parcel.parcel_x - 1},${parcel.parcel_y}`)) push(d, a);
     });
     return edges;
   };
+
+  /** Corners where the rampart turns — the only places a tower belongs. */
+  const wallCorners = (edges: { from: { x: number; y: number }; to: { x: number; y: number } }[]) => {
+    const byPoint = new Map<string, { point: { x: number; y: number }; dirs: Set<string> }>();
+    edges.forEach(edge => {
+      const dir = `${Math.sign(Math.round(edge.to.x - edge.from.x))},${Math.sign(Math.round((edge.to.y - edge.from.y) * 10))}`;
+      [edge.from, edge.to].forEach(point => {
+        const key = `${point.x.toFixed(1)},${point.y.toFixed(1)}`;
+        const entry = byPoint.get(key) || { point, dirs: new Set<string>() };
+        entry.dirs.add(dir);
+        byPoint.set(key, entry);
+      });
+    });
+    return [...byPoint.values()].filter(entry => entry.dirs.size > 1).map(entry => entry.point);
+  };
+
+  /** One low stone rampart run, drawn as a solid wall face with a lit crown. */
+  const renderWallRun = (
+    edges: { from: { x: number; y: number }; to: { x: number; y: number } }[],
+    wallColor: string, height = 2.4, prefix = "wall",
+  ) => <g>
+    {edges.map((edge, index) => (
+      <path key={`${prefix}-face-${index}`}
+        d={`M${edge.from.x} ${edge.from.y} L${edge.to.x} ${edge.to.y} L${edge.to.x} ${edge.to.y - height} L${edge.from.x} ${edge.from.y - height} Z`}
+        fill="var(--map-city-wall-dark)" stroke="none" opacity=".92" />
+    ))}
+    {edges.map((edge, index) => (
+      <line key={`${prefix}-crown-${index}`} x1={edge.from.x} y1={edge.from.y - height} x2={edge.to.x} y2={edge.to.y - height}
+        stroke="var(--map-city-wall-light)" strokeWidth=".9" strokeLinecap="square" />
+    ))}
+    {wallCorners(edges).map((point, index) => (
+      <g key={`${prefix}-tower-${index}`} transform={`translate(${point.x},${point.y})`}>
+        <rect x="-1.1" y={-height - 2.2} width="2.2" height={height + 2.4} fill="var(--map-city-wall-light)" stroke="var(--map-city-wall-dark)" strokeWidth=".3" />
+        <rect x="-1.4" y={-height - 3} width="2.8" height=".9" fill={wallColor} />
+      </g>
+    ))}
+  </g>;
+
 
   /** Small house or an active construction site, built in the same visual language as the walls. */
   const renderParcelHouse = (parcel: TileParcel, centerPoint: { x: number; y: number }, index: number, building = false, progress = 100) => {
