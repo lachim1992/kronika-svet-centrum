@@ -670,11 +670,12 @@ DŮLEŽITÉ: affected_players/faction MUSÍ používat přesná jména frakcí. 
     let mapStartPositions: { q: number; r: number }[] = [];
     {
       const { data: wfData } = await supabase.from("world_foundations")
-        .select("map_width, map_height")
+        .select("map_width, map_height, grid_kind")
         .eq("session_id", sessionId)
         .maybeSingle();
       const mapWidth = userMapWidth || (wfData as any)?.map_width || 21;
       const mapHeight = userMapHeight || (wfData as any)?.map_height || 21;
+      const gridKind = (wfData as any)?.grid_kind === "square4" ? "square4" : "hex6";
 
       // ── Build terrain_params from AI geography blueprint + user overrides ──
       const geoBlueprint = world.geography || {};
@@ -707,7 +708,7 @@ DŮLEŽITÉ: affected_players/faction MUSÍ používat přesná jména frakcí. 
       const mapRes = await fetch(`${supabaseUrl}/functions/v1/generate-world-map`, {
         method: "POST",
         headers: { Authorization: `Bearer ${supabaseKey}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ session_id: sessionId, width: mapWidth, height: mapHeight, terrain_params: terrainParams }),
+        body: JSON.stringify({ session_id: sessionId, width: mapWidth, height: mapHeight, grid_kind: gridKind, terrain_params: terrainParams }),
       });
       if (mapRes.ok) {
         const mapData = await mapRes.json();
@@ -816,6 +817,7 @@ DŮLEŽITÉ: affected_players/faction MUSÍ používat přesná jména frakcí. 
           session_id: sessionId, name: prov.name, description: prov.description || null,
           region_id: regionId || null, owner_player: ownerPlayer,
           center_q: centerOffset.q, center_r: centerOffset.r,
+          center_x: centerOffset.q, center_y: centerOffset.r,
           color_index: ownerColor, is_neutral: isNeutral,
         }).select("id").single();
 
@@ -949,6 +951,7 @@ DŮLEŽITÉ: affected_players/faction MUSÍ používat přesná jména frakcí. 
         province_id: provinceId, city_description_cached: city.description || null,
         flavor_prompt: city.description || null, founded_round: 1,
         province_q: coords.q, province_r: coords.r,
+        grid_x: coords.q, grid_y: coords.r,
         city_stability: 60 + Math.floor(Math.random() * 15),
         population_total: popTotal, population_peasants: popPeasants,
         population_burghers: popBurghers, population_clerics: popClerics,
