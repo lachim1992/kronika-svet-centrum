@@ -1503,6 +1503,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
             {selectedRoadPlan.tier?.label}: {selectedRoadPlan.cost.gold} zlata · {selectedRoadPlan.cost.production} produkce
             {selectedRoadPlan.bridges.length ? ` · ${selectedRoadPlan.bridges.length}× most přes řeku` : ""}
           </p>}
+          <p className="mt-1 text-[10px] text-muted-foreground">Cesta jen prochází podčtverci — nezabírá stavební slot, parcely pod ní zůstávají volné. Slabě vyznačená trasa je plán.</p>
         </section>}
 
 
