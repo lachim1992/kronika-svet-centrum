@@ -711,14 +711,17 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
       <circle r="1.2" cy={height * .6 + 2} fill="var(--map-focus)" className="iso-construction-worker" />
       <title>Výstavba · {progress} %</title>
     </g>;
-    const sprite = LAND_USE_SPRITE[parcel.land_use || ""];
+    const built = constructionByParcel.get(parcel.id);
+    const sprite = built?.name ? buildSprite(built.name) : LAND_USE_SPRITE[parcel.land_use || ""];
     if (sprite) {
-      const size = width * 2;
+      const size = width * 3.1;
       return <g key={`house-${parcel.id}`} transform={`translate(${cx},${cy})`}>
         <path d={`M${-width} 1 L0 ${-height * .5} L${width} 1 L0 ${height * .5 + 1} Z`} fill="var(--map-city-wall-dark)" opacity=".3" />
-        <image href={sprite} x={-size / 2} y={-size * .78} width={size} height={size} preserveAspectRatio="xMidYMid meet" />
+        <image href={sprite} x={-size / 2} y={-size * .82} width={size} height={size} preserveAspectRatio="xMidYMid meet" />
+        <title>{built?.name || parcel.land_use || "Zástavba"}</title>
       </g>;
     }
+
     return <g key={`house-${parcel.id}`} transform={`translate(${cx},${cy})`}>
       <path d={`M${-width} 1 L0 ${-height * .5} L${width} 1 L0 ${height * .5 + 1} Z`} fill="var(--map-city-wall-dark)" opacity=".85" />
       <path d={`M${-width} 1 L0 ${-height * .5} L${width} 1 L0 ${-height * .1} Z`} fill="var(--map-city-wall-light)" opacity=".95" />
