@@ -20,6 +20,7 @@ import {
   ensureTileParcels,
   seatCityOnParcels,
 } from "../_shared/citySeat.ts";
+import { tileInfrastructureLevel } from "../_shared/tileInfrastructure.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -365,6 +366,12 @@ async function executeCommand(
 
     case "CLAIM_TILE_PARCEL":
       return await executeClaimTileParcel(supabase, base, actor, payload, commandId, sessionId, turnNumber);
+
+    case "BUILD_SUBNODE":
+      return await executeBuildSubnode(supabase, base, actor, payload, commandId, sessionId, turnNumber);
+
+    case "UPGRADE_TILE_INFRASTRUCTURE":
+      return await executeUpgradeTileInfrastructure(supabase, base, actor, payload, commandId, sessionId, turnNumber);
 
     case "UPGRADE_INFRASTRUCTURE":
       return await executeUpgradeInfrastructure(supabase, base, actor, payload, commandId, sessionId, turnNumber);
@@ -2647,17 +2654,22 @@ async function getRealmFull(supabase: any, sessionId: string, playerName: string
   return data;
 }
 
-/** First claimed (free) sub-parcel of the city, optionally a specific one. */
+/** First claimed sub-parcel with remaining slots, optionally a specific one. */
 async function getAvailableParcel(supabase: any, cityId: string, requestedParcelId?: string) {
   let query = supabase.from("tile_parcels")
-    .select("id, city_id, grid_x, grid_y, parcel_index, status")
+    .select("id, city_id, grid_x, grid_y, parcel_index, status, capacity_slots")
     .eq("city_id", cityId)
-    .eq("status", "claimed")
+    .in("status", ["claimed", "occupied"])
     .order("parcel_index")
-    .limit(1);
+    .limit(requestedParcelId ? 1 : 100);
   if (requestedParcelId) query = query.eq("id", requestedParcelId);
-  const { data } = await query.maybeSingle();
-  return data;
+  const { data } = await query;
+  for (const parcel of data || []) {
+    const { data: contents } = await supabase.from("tile_parcel_contents").select("slots_used").eq("parcel_id", parcel.id);
+    const used = (contents || []).reduce((sum: number, item: any) => sum + Number(item.slots_used || 0), 0);
+    if (used < Number(parcel.capacity_slots || 0)) return { ...parcel, used_slots: used };
+  }
+  return null;
 }
 
 async function occupyParcel(supabase: any, parcelId: string, kind: "building" | "district", entityId: string, landUse: string) {
@@ -2667,6 +2679,9 @@ async function occupyParcel(supabase: any, parcelId: string, kind: "building" | 
   await supabase.from("tile_parcels").update(update).eq("id", parcelId).eq("status", "claimed");
   await supabase.from(kind === "building" ? "city_buildings" : "city_districts")
     .update({ parcel_id: parcelId }).eq("id", entityId);
+  await supabase.from("tile_parcel_contents").insert({
+    session_id: undefined, parcel_id: parcelId, entity_type: kind, entity_id: entityId, slots_used: 1,
+  });
 }
 
 /**
