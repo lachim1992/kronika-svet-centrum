@@ -300,7 +300,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
 
   const load = useCallback(async () => {
     const [tileRes, cityRes, nodeRes, routeRes, armyRes, parcelRes, realmRes, contentRes, infrastructureRes, templateRes, buildingRes, districtRes] = await Promise.all([
-      supabase.from("province_hexes").select("id, q, r, grid_x, grid_y, province_id, biome_family, owner_player, mean_height, is_passable, has_river, river_direction").eq("session_id", sessionId).limit(4000),
+      supabase.from("province_hexes").select("id, q, r, grid_x, grid_y, province_id, biome_family, owner_player, mean_height, is_passable, has_river, river_direction, coastal").eq("session_id", sessionId).limit(4000),
       supabase.from("cities").select("id, name, province_q, province_r, grid_x, grid_y, owner_player, settlement_level, population_total, housing_capacity, development_level, birth_rate, death_rate, migration_pressure, founded_parcel_index").eq("session_id", sessionId),
       supabase.from("province_nodes").select("id, name, hex_q, hex_r, grid_x, grid_y, node_type, node_tier, node_subtype, controlled_by, production_output, wealth_output, food_value, parcel_index").eq("session_id", sessionId).eq("is_active", true),
       supabase.from("flow_paths").select("route_id, path_cells, hex_path").eq("session_id", sessionId),
