@@ -497,10 +497,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
         </g>;
       })}
       {/* city land is ringed so the built-up block reads at a glance */}
-      {wallEdges.map((edge, index) => (
-        <line key={`survey-wall-${index}`} x1={edge.from.x} y1={edge.from.y} x2={edge.to.x} y2={edge.to.y}
-          stroke={holderColor} strokeWidth="1.6" strokeLinecap="round" opacity=".9" />
-      ))}
+      {renderWallRun(wallEdges, holderColor, 2, "survey-wall")}
       {(roadTier > 0 || selectedInfrastructure?.status === "building") && localRoadSegments(occupiedIndexes).map((segment, index) => {
         const centre = (point: { x: number; y: number }) => {
           const corners = parcelCorners(centerPoint, point.x, point.y);
@@ -663,7 +660,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
     </g>;
     const sprite = LAND_USE_SPRITE[parcel.land_use || ""];
     if (sprite) {
-      const size = width * 2.6;
+      const size = width * 2;
       return <g key={`house-${parcel.id}`} transform={`translate(${cx},${cy})`}>
         <path d={`M${-width} 1 L0 ${-height * .5} L${width} 1 L0 ${height * .5 + 1} Z`} fill="var(--map-city-wall-dark)" opacity=".3" />
         <image href={sprite} x={-size / 2} y={-size * .78} width={size} height={size} preserveAspectRatio="xMidYMid meet" />
@@ -687,19 +684,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
           fill={parcel.status === "occupied" ? (LAND_USE_COLOR[parcel.land_use || "civic"] || LAND_USE_COLOR.open) : "var(--map-parcel-open)"}
           stroke="var(--map-marker-edge)" strokeWidth=".35" opacity={parcel.status === "occupied" ? .95 : .72} />
       ))}
-      {edges.map((edge, index) => (
-        <g key={`wall-${index}`}>
-          <line x1={edge.from.x} y1={edge.from.y + 1.6} x2={edge.to.x} y2={edge.to.y + 1.6} stroke="var(--map-city-wall-dark)" strokeWidth="2.4" strokeLinecap="round" opacity=".88" />
-          <line x1={edge.from.x} y1={edge.from.y} x2={edge.to.x} y2={edge.to.y} stroke="var(--map-city-wall-light)" strokeWidth="1.5" strokeLinecap="round" />
-          <line x1={edge.from.x} y1={edge.from.y - .9} x2={edge.to.x} y2={edge.to.y - .9} stroke={wallColor} strokeWidth=".65" strokeLinecap="round" opacity=".92" />
-        </g>
-      ))}
-      {edges.filter((_, index) => index % 3 === 0).map((edge, index) => (
-        <g key={`tower-${index}`} transform={`translate(${edge.from.x},${edge.from.y})`}>
-          <rect x="-1.6" y="-5.2" width="3.2" height="6.2" fill="var(--map-city-wall-light)" stroke="var(--map-city-wall-dark)" strokeWidth=".4" />
-          <rect x="-2" y="-6.2" width="4" height="1.3" fill={wallColor} />
-        </g>
-      ))}
+      {renderWallRun(edges, wallColor, 2.2, "wall")}
       {occupied.map((parcel, index) => renderParcelHouse(parcel, centerPoint, index))}
     </g>;
   };
