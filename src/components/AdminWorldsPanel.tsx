@@ -3,7 +3,9 @@ import { supabase } from "@/integrations/supabase/client";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Loader2, Globe, Users, Scroll, MapPin, Landmark, Clock, Activity, TrendingUp, Coins } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { toast } from "sonner";
+import { Loader2, Globe, Grid3x3, Users, Scroll, MapPin, Landmark, Clock, Activity, TrendingUp, Coins } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
 interface WorldStats {
@@ -21,6 +23,7 @@ interface WorldStats {
   wiki_count: number;
   population_total: number;
   last_activity: string | null;
+  grid_kind: string;
 }
 
 const AdminWorldsPanel = () => {
@@ -52,7 +55,7 @@ const AdminWorldsPanel = () => {
         { data: wondersData },
         { data: wikiData },
       ] = await Promise.all([
-        supabase.from("world_foundations").select("session_id, world_name").in("session_id", sessionIds),
+        supabase.from("world_foundations").select("session_id, world_name, grid_kind").in("session_id", sessionIds),
         supabase.from("game_memberships").select("session_id, joined_at").in("session_id", sessionIds),
         supabase.from("cities").select("session_id, population_total").in("session_id", sessionIds),
         supabase.from("game_events").select("session_id").in("session_id", sessionIds),
@@ -61,6 +64,7 @@ const AdminWorldsPanel = () => {
       ]);
 
       const wfMap = new Map((wfData || []).map(w => [w.session_id, w.world_name]));
+      const gridMap = new Map((wfData || []).map(w => [w.session_id, (w as { grid_kind?: string }).grid_kind || "hex6"]));
       
       const countBy = (arr: any[] | null, key: string) => {
         const map = new Map<string, number>();
@@ -106,6 +110,7 @@ const AdminWorldsPanel = () => {
         wiki_count: wikiCounts.get(s.id) || 0,
         population_total: popMap.get(s.id) || 0,
         last_activity: lastActivityMap.get(s.id) || null,
+        grid_kind: gridMap.get(s.id) || "hex6",
       }));
 
       setWorlds(result);
@@ -189,14 +194,35 @@ const AdminWorldsPanel = () => {
 };
 
 const WorldStatCard = ({ world, onNavigate }: { world: WorldStats; onNavigate: () => void }) => {
+  const [gridKind, setGridKind] = useState(world.grid_kind);
+  const [busy, setBusy] = useState(false);
+  const isSquare = gridKind === "square4";
+
+  const migrateGrid = async () => {
+    setBusy(true);
+    try {
+      const dry = await supabase.functions.invoke("migrate-world-grid", { body: { session_id: world.session_id } });
+      if (dry.error) throw new Error(dry.error.message);
+      const report = (dry.data as { report?: Record<string, number> })?.report || {};
+      const summary = `Pole bez souřadnic: ${report.tiles_missing ?? 0}, města: ${report.cities_missing ?? 0}, uzly: ${report.nodes_missing ?? 0}, armády: ${report.armies_missing ?? 0}.`;
+      if (!window.confirm(`Převést svět ${world.world_name || world.room_code} na čtvercovou síť?\n\n${summary}\n\nPůvodní souřadnice zůstanou zachovány.`)) return;
+      const run = await supabase.functions.invoke("migrate-world-grid", { body: { session_id: world.session_id, confirm: true } });
+      if (run.error) throw new Error(run.error.message);
+      setGridKind("square4");
+      toast.success("Svět převeden na čtvercovou síť");
+    } catch (error) {
+      toast.error((error as Error).message || "Převod se nepodařil");
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const daysSinceCreated = Math.floor((Date.now() - new Date(world.created_at).getTime()) / 86400000);
   const isActive = daysSinceCreated < 7;
 
   return (
-    <button
-      onClick={onNavigate}
-      className="w-full text-left bg-card p-3 rounded-md border border-border hover:border-primary/30 transition-colors"
-    >
+    <div className="w-full bg-card p-3 rounded-md border border-border hover:border-primary/30 transition-colors">
+    <button onClick={onNavigate} className="w-full text-left">
       <div className="flex items-start justify-between gap-2 mb-2">
         <div className="min-w-0 flex-1">
           <p className="font-display font-semibold text-sm truncate">
@@ -223,6 +249,17 @@ const WorldStatCard = ({ world, onNavigate }: { world: WorldStats; onNavigate: (
         <StatChip icon={Coins} label="Éra" value={world.current_era || "?"} isText />
       </div>
     </button>
+
+      <div className="mt-2 flex items-center gap-2 border-t border-border/60 pt-2">
+        <Grid3x3 className="h-3 w-3 text-muted-foreground" />
+        <Badge variant="outline" className="text-[8px]">{isSquare ? "Čtvercová síť" : "Původní síť"}</Badge>
+        {!isSquare && (
+          <Button size="sm" variant="outline" className="ml-auto h-6 text-[10px]" disabled={busy} onClick={migrateGrid}>
+            {busy ? "Převádím…" : "Převést na čtverce"}
+          </Button>
+        )}
+      </div>
+    </div>
   );
 };
 
