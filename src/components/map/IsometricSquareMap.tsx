@@ -4,6 +4,8 @@ import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
+import { Input } from "@/components/ui/input";
+
 import { dispatchCommand } from "@/lib/commands";
 import { gridDistance, projectCell, squareDiamondPoints } from "@/lib/mapTopology";
 import { parcelClaimCost, POPULATION_PER_SLOT, TILE_PARCEL_COLS, TILE_PARCEL_ROWS, armyParcelFootprint, armyCampParcels, fallbackArmyParcel, riverChannelCells } from "@/lib/tileParcels";
@@ -25,6 +27,36 @@ import buildResidential from "@/assets/map/build-residential.png";
 import buildCulture from "@/assets/map/build-culture.png";
 import buildInfrastructure from "@/assets/map/build-infrastructure.png";
 import buildMilitary from "@/assets/map/build-military.png";
+import buildArena from "@/assets/map/build-arena.png";
+import buildBardsHouse from "@/assets/map/build-bards-house.png";
+import buildTemple from "@/assets/map/build-temple.png";
+import buildTheatre from "@/assets/map/build-theatre.png";
+import buildMonastery from "@/assets/map/build-monastery.png";
+import buildLibrary from "@/assets/map/build-library.png";
+import buildCourthouse from "@/assets/map/build-courthouse.png";
+import buildStadium from "@/assets/map/build-stadium.png";
+import buildSmithy from "@/assets/map/build-smithy.png";
+import buildManufactory from "@/assets/map/build-manufactory.png";
+import buildMint from "@/assets/map/build-mint.png";
+import buildSawmill from "@/assets/map/build-sawmill.png";
+import buildGlassworks from "@/assets/map/build-glassworks.png";
+import buildGranary from "@/assets/map/build-granary.png";
+import buildMarket from "@/assets/map/build-market.png";
+import buildAqueduct from "@/assets/map/build-aqueduct.png";
+import buildSewer from "@/assets/map/build-sewer.png";
+import buildBaths from "@/assets/map/build-baths.png";
+import buildBridge from "@/assets/map/build-bridge.png";
+import buildRoad from "@/assets/map/build-road.png";
+import buildWell from "@/assets/map/build-well.png";
+import buildWalls from "@/assets/map/build-walls.png";
+import buildRidingSchool from "@/assets/map/build-riding-school.png";
+import buildBarracks from "@/assets/map/build-barracks.png";
+import buildSiegeWorkshop from "@/assets/map/build-siege-workshop.png";
+import buildWatchtower from "@/assets/map/build-watchtower.png";
+import buildShootingRange from "@/assets/map/build-shooting-range.png";
+import buildHeadquarters from "@/assets/map/build-headquarters.png";
+import buildQuarry from "@/assets/map/build-quarry.png";
+
 
 const NODE_SPRITE: Record<string, string> = {
   farmstead: spriteFarmstead, workshop: spriteWorkshop, guard_post: spriteGuardPost,
@@ -39,18 +71,43 @@ const nodeSprite = (node: { node_type: string; node_subtype: string | null }) =>
 
 /** Painted picture for a building or district — matched by name first, then category. */
 const BUILD_NAME_SPRITE: Array<[RegExp, string]> = [
-  [/farm|vinice|ryb/i, spriteFarmstead],
-  [/kovárn|manufaktur|sklárn|pila|dílna|papír/i, spriteWorkshop],
-  [/důl|lom|hut/i, spriteMine],
-  [/tržišt|mincovn|obchod|celnic|sklad|sýpk/i, spriteTradePost],
-  [/přístav|dok|loděnic/i, spritePort],
-  [/chrám|klášter|svatyn|katedrál/i, spriteShrine],
-  [/hradb|bašt|věž|citadel/i, spriteFortress],
-  [/kasárn|zbrojnic|jízd|střelnic|výcvik/i, buildMilitary],
-  [/akvadukt|kanalizac|studn|lázn|most|silnic|cest/i, buildInfrastructure],
-  [/knihovn|divadl|arén|stadion|soud|škol|bard|univerz/i, buildCulture],
+  [/arén/i, buildArena],
+  [/bard/i, buildBardsHouse],
+  [/chrám|katedrál|svatyn/i, buildTemple],
+  [/divadl/i, buildTheatre],
+  [/klášter/i, buildMonastery],
+  [/knihovn|univerz|škol|písař/i, buildLibrary],
+  [/soud|radnic|úřad|kancelář/i, buildCourthouse],
+  [/stadion|cirk|závod/i, buildStadium],
+  [/kovárn|hut|slévárn/i, buildSmithy],
+  [/manufaktur|dílna|tkaln|přádeln/i, buildManufactory],
+  [/mincovn|banka|pokladn/i, buildMint],
+  [/pila|dřevo|řezb/i, buildSawmill],
+  [/sklárn|sklo|hrnčí/i, buildGlassworks],
+  [/sýpk|špýchar|sklad|obiln/i, buildGranary],
+  [/tržišt|trh|obchod|celnic|bazar/i, buildMarket],
+  [/akvadukt|vodovod/i, buildAqueduct],
+  [/kanalizac|stok/i, buildSewer],
+  [/lázn|terma|kúpel/i, buildBaths],
+  [/most/i, buildBridge],
+  [/silnic|cest|dlážd/i, buildRoad],
+  [/studn|cistern/i, buildWell],
+  [/hradb|bašt|opevněn|palisád/i, buildWalls],
+  [/jízd|stáj|koň/i, buildRidingSchool],
+  [/kasárn|zbrojnic|výcvik/i, buildBarracks],
+  [/oblék|obléhac|katapult|balist/i, buildSiegeWorkshop],
+  [/věž|strážn/i, buildWatchtower],
+  [/střelnic|lukostřel/i, buildShootingRange],
+  [/velitelstv|generál|štáb/i, buildHeadquarters],
+  [/lom|kamenolom/i, buildQuarry],
+  [/důl|šacht|ruda/i, spriteMine],
+  [/farm|vinice|ryb|statek|dvůr|pole/i, spriteFarmstead],
+  [/přístav|dok|loděnic|molo/i, spritePort],
   [/čtvrť|obytn|domy|kolonie|předmě|nájem/i, buildResidential],
 ];
+/** Terrain a new settlement may be founded on — mirrors the server rule in FOUND_CITY. */
+const CITY_ALLOWED_BIOMES = ["plains", "hills", "forest", "swamp"];
+
 const CATEGORY_SPRITE: Record<string, string> = {
   economic: spriteWorkshop, cultural: buildCulture, infrastructure: buildInfrastructure,
   military: buildMilitary, residential: buildResidential,
@@ -201,6 +258,8 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
   const [constructionEntities, setConstructionEntities] = useState<ConstructionEntity[]>([]);
   const [recentlyBuiltParcelId, setRecentlyBuiltParcelId] = useState<string | null>(null);
   const [buildingAction, setBuildingAction] = useState<string | null>(null);
+  const [newCityName, setNewCityName] = useState("");
+
 
   const tileCell = useCallback((tile: Tile) => ({
     a: tile.grid_x !== null ? tile.grid_x : tile.q,
@@ -575,6 +634,29 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
     toast.success(`${tier.label}: ${tier.turns === 1 ? "dokončeno" : "stavba zahájena"}`); await load();
   };
 
+  /** Found a brand-new settlement straight on the map cell the player is inspecting. */
+  const foundCityHere = async () => {
+    if (!selected || !selectedCell) return;
+    if (!newCityName.trim()) { toast.error("Zadej název osady"); return; }
+    setBuildingAction("found-city");
+    const result = await dispatchCommand({
+      sessionId, turnNumber: currentTurn, actor: { name: playerName, type: "player" },
+      commandType: "FOUND_CITY",
+      commandPayload: {
+        cityName: newCityName.trim(), provinceId: selected.province_id || null, provinceName: "",
+        provinceQ: selectedCell.a, provinceR: selectedCell.b,
+        ...(selectedParcel ? { parcelIndex: selectedParcel.parcel_index } : {}),
+      },
+    });
+    setBuildingAction(null);
+    if (!result.ok) { toast.error(result.error || "Osadu nelze založit"); return; }
+    toast.success(`Osada ${newCityName.trim()} byla založena`);
+    setNewCityName("");
+    await loadTileParcels(selectedCell.a, selectedCell.b); await load();
+  };
+
+
+
   /** Corner points of a single parcel, in draw order A(top) B(right) C(bottom) D(left). */
   const parcelCorners = (centerPoint: { x: number; y: number }, px: number, py: number) => {
     const point = (a: number, b: number) => ({ x: centerPoint.x + (a - b) * TILE_SIZE, y: centerPoint.y + (a + b - 1) * TILE_SIZE / 2 });
@@ -658,14 +740,17 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
       <circle r="1.2" cy={height * .6 + 2} fill="var(--map-focus)" className="iso-construction-worker" />
       <title>Výstavba · {progress} %</title>
     </g>;
-    const sprite = LAND_USE_SPRITE[parcel.land_use || ""];
+    const built = constructionByParcel.get(parcel.id);
+    const sprite = built?.name ? buildSprite(built.name) : LAND_USE_SPRITE[parcel.land_use || ""];
     if (sprite) {
-      const size = width * 2;
+      const size = width * 3.1;
       return <g key={`house-${parcel.id}`} transform={`translate(${cx},${cy})`}>
         <path d={`M${-width} 1 L0 ${-height * .5} L${width} 1 L0 ${height * .5 + 1} Z`} fill="var(--map-city-wall-dark)" opacity=".3" />
-        <image href={sprite} x={-size / 2} y={-size * .78} width={size} height={size} preserveAspectRatio="xMidYMid meet" />
+        <image href={sprite} x={-size / 2} y={-size * .82} width={size} height={size} preserveAspectRatio="xMidYMid meet" />
+        <title>{built?.name || parcel.land_use || "Zástavba"}</title>
       </g>;
     }
+
     return <g key={`house-${parcel.id}`} transform={`translate(${cx},${cy})`}>
       <path d={`M${-width} 1 L0 ${-height * .5} L${width} 1 L0 ${height * .5 + 1} Z`} fill="var(--map-city-wall-dark)" opacity=".85" />
       <path d={`M${-width} 1 L0 ${-height * .5} L${width} 1 L0 ${-height * .1} Z`} fill="var(--map-city-wall-light)" opacity=".95" />
@@ -1086,6 +1171,21 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
             <div><p className="mb-2 text-xs font-medium">Vytvořit subuzel</p><div className="grid grid-cols-2 gap-2">{[["farmstead","Produkční dvůr"],["workshop","Dílna"],["guard_post","Strážnice"],["trade_post","Obchodní stanice"],["river_wharf","Překladiště"]].map(([key,label]) => <Button key={key} size="sm" variant="outline" className="h-auto justify-start gap-2 px-2 py-2 text-left text-xs" disabled={!!buildingAction} onClick={() => void buildSubnode(key,label)}>{buildingAction === `node-${key}` ? <Loader2 className="h-4 w-4 animate-spin"/> : <img src={NODE_SPRITE[key] || spriteHamlet} alt="" className="h-7 w-7 object-contain"/>}<span className="flex-1 leading-tight">{label}</span></Button>)}</div></div>
           </>}
         </section>}
+
+        {!selectedCity && !foreignOwner && <section className="mt-4 space-y-2 border border-primary/25 bg-primary/5 p-3">
+          <p className="text-xs font-medium">Založit osadu na tomto poli</p>
+          {CITY_ALLOWED_BIOMES.includes(selected.biome_family) && selected.is_passable !== false ? <>
+            <div className="flex gap-2">
+              <Input value={newCityName} onChange={event => setNewCityName(event.target.value)} placeholder="Název osady" className="h-8 text-xs" />
+              <Button size="sm" disabled={!!buildingAction || !newCityName.trim()} onClick={() => void foundCityHere()}>
+                {buildingAction === "found-city" ? <Loader2 className="h-4 w-4 animate-spin" /> : <img src={spriteHamlet} alt="" className="h-5 w-5 object-contain" />}
+                <span className="ml-1">Založit</span>
+              </Button>
+            </div>
+            <p className="text-[10px] text-muted-foreground">Osada vznikne{selectedParcel ? ` na parcele ${selectedParcel.parcel_index + 1}` : " na nejvhodnější parcele"} tohoto pole.</p>
+          </> : <p className="text-[11px] text-muted-foreground">Zde osadu založit nelze — vhodné jsou pláně, kopce, les a bažiny na průchodném poli.</p>}
+        </section>}
+
 
         {selected.owner_player === playerName && <section className="mt-4 border border-border p-3">
           <div className="flex items-center justify-between"><div><p className="text-xs font-medium">Místní infrastruktura</p><p className="text-[11px] text-muted-foreground">{selectedInfrastructure?.status === "building" ? `Ve výstavbě · ${selectedInfrastructure.progress} %` : selectedInfrastructure?.level ? tileInfrastructureLevel(selectedInfrastructure.level)?.label : "Bez cest"}</p></div><Button size="sm" disabled={!!buildingAction || selectedInfrastructure?.status === "building" || (selectedInfrastructure?.level || 0) >= 3} onClick={() => void upgradeLocalRoad()}>{buildingAction === "infrastructure" && <Loader2 className="mr-1 h-3 w-3 animate-spin"/>}{selectedInfrastructure?.level ? "Vylepšit" : "Postavit stezku"}</Button></div>
