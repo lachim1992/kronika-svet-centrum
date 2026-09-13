@@ -27,10 +27,13 @@ Deno.serve(async (req) => {
       );
     }
 
-    const sb0 = createClient(
+    const sb = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
+
+    const NEIGHBORS = neighborOffsets(await loadGridKind(sb, session_id));
+
 
     // 1. Verify the province belongs to the player
     const { data: province } = await sb
