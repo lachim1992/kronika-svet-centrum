@@ -215,7 +215,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
               <polygon points={squareDiamondPoints(point, TILE_SIZE - 2)} fill={`url(#iso-${tile.biome_family})`} opacity=".55" />
               {tile.biome_family === "sea" && <polygon points={squareDiamondPoints(point, TILE_SIZE - 4)} fill="url(#iso-water)" />}
               {tile.biome_family.includes("forest") && !urbanCell && <Trees x={point.x - 8} y={point.y - 11} width="16" height="16" fill="var(--map-forest-edge)" stroke="var(--map-label)" strokeWidth=".8" />}
-               {urbanCell && (zoom >= 1.3 || cityLayerCityId === urbanCell.city_id) && renderParcelGrid(urbanCell, point)}
+               {urbanCell && (cityLayerCityId ? cityLayerCityId === urbanCell.city_id : zoom >= 2) && renderParcelGrid(urbanCell, point)}
             </g>;
           })}
            {!cityLayerCityId && routes.flatMap(route => { const path = gridKind === "square4" && Array.isArray(route.path_cells) ? route.path_cells : route.hex_path; return Array.isArray(path) && path.length > 1 ? [<polyline key={route.route_id || JSON.stringify(path)} points={path.map(cell => { const point = at(cell.x ?? cell.q ?? 0, cell.y ?? cell.r ?? 0); return `${point.x},${point.y}`; }).join(" ")} fill="none" stroke="var(--map-route)" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" opacity=".9" className="iso-active-route" pointerEvents="none" />] : []; })}
