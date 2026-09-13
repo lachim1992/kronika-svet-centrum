@@ -349,7 +349,7 @@ const Dashboard = () => {
           currentTurn={session.current_turn}
           onCityClick={handleCityClickToWiki}
           gridKind={gridKind}
-          backgroundMode
+          backgroundMode={activeTab !== "worldmap"}
         />
       }
       header={

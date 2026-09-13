@@ -162,6 +162,7 @@
     backdrop-filter: blur(14px);
   }
   .map-workspace-panel {
+    pointer-events: auto;
     width: min(1180px, calc(100% - 32px));
     max-height: calc(100vh - 154px);
     margin: 14px auto 0;

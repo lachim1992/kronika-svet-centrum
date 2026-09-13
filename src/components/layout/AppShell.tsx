@@ -73,7 +73,7 @@ const AppShell = ({
         <main
           className={cn(
             "flex-1 overflow-y-auto",
-            mapFirst ? "relative z-10 p-0" : "px-4 py-4 space-y-4",
+            mapFirst ? "pointer-events-none relative z-10 p-0" : "px-4 py-4 space-y-4",
             isMobile && "pb-20" // leave room for BottomNav
           )}
         >
