@@ -8,6 +8,7 @@ import { dispatchCommand } from "@/lib/commands";
 import { gridDistance, projectCell, squareDiamondPoints } from "@/lib/mapTopology";
 import { parcelClaimCost, POPULATION_PER_SLOT, TILE_PARCEL_COLS, TILE_PARCEL_ROWS } from "@/lib/tileParcels";
 import { useIsMobile } from "@/hooks/use-mobile";
+import ArmyMarker from "@/components/map/ArmyMarker";
 
 interface Props {
   sessionId: string;
@@ -21,7 +22,7 @@ interface Props {
 type Tile = { id: string; q: number; r: number; grid_x: number | null; grid_y: number | null; biome_family: string; owner_player: string | null; mean_height: number | null; is_passable: boolean };
 type City = { id: string; name: string; province_q: number; province_r: number; grid_x: number | null; grid_y: number | null; owner_player: string; settlement_level: string; population_total: number; housing_capacity: number; development_level: number; birth_rate: number; death_rate: number; migration_pressure: number; founded_parcel_index: number | null };
 type Node = { id: string; name: string; hex_q: number; hex_r: number; grid_x: number | null; grid_y: number | null; node_type: string; node_tier: string };
-type Army = { id: string; name: string; hex_q: number; hex_r: number; grid_x: number | null; grid_y: number | null; player_name: string; soldiers: number; morale: number };
+type Army = { id: string; name: string; hex_q: number; hex_r: number; grid_x: number | null; grid_y: number | null; player_name: string; soldiers: number; morale: number; unit_count: number; power: number; stance: string; formation_type: string; assignment: string; moved_this_turn: boolean };
 type PathCell = { x?: number; y?: number; q?: number; r?: number };
 type Route = { route_id: string | null; path_cells: PathCell[] | null; hex_path: PathCell[] | null };
 /** One of the 36 sub-parcels of a map cell — the only city land model. */
@@ -96,6 +97,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
   const [tileParcels, setTileParcels] = useState<TileParcel[]>([]);
   const [parcelsLoading, setParcelsLoading] = useState(false);
   const [claimingParcel, setClaimingParcel] = useState<number | null>(null);
+  const [selectedArmyId, setSelectedArmyId] = useState<string | null>(null);
 
   const tileCell = useCallback((tile: Tile) => ({
     a: tile.grid_x !== null ? tile.grid_x : tile.q,
@@ -112,7 +114,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
       supabase.from("cities").select("id, name, province_q, province_r, grid_x, grid_y, owner_player, settlement_level, population_total, housing_capacity, development_level, birth_rate, death_rate, migration_pressure, founded_parcel_index").eq("session_id", sessionId),
       supabase.from("province_nodes").select("id, name, hex_q, hex_r, grid_x, grid_y, node_type, node_tier").eq("session_id", sessionId).eq("is_active", true),
       supabase.from("flow_paths").select("route_id, path_cells, hex_path").eq("session_id", sessionId),
-      supabase.from("military_stacks").select("id, name, hex_q, hex_r, grid_x, grid_y, player_name, soldiers, morale").eq("session_id", sessionId).eq("is_active", true).eq("is_deployed", true),
+      supabase.from("military_stacks").select("id, name, hex_q, hex_r, grid_x, grid_y, player_name, soldiers, morale, unit_count, power, stance, formation_type, assignment, moved_this_turn").eq("session_id", sessionId).eq("is_active", true).eq("is_deployed", true),
       supabase.from("tile_parcels").select("id, grid_x, grid_y, parcel_index, parcel_x, parcel_y, sub_biome, elevation, buildable, build_cost_multiplier, capacity_slots, status, land_use, city_id, owner_player").eq("session_id", sessionId).not("city_id", "is", null).limit(6000),
     ]);
     setTiles((tileRes.data || []) as Tile[]); setCities((cityRes.data || []) as City[]); setNodes((nodeRes.data || []) as Node[]);
@@ -171,6 +173,29 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
     });
     return map;
   }, [cityParcels]);
+
+  /** One war-band illustration per cell; further stacks are folded into a count badge. */
+  const armyGroups = useMemo(() => {
+    const groups = new Map<string, { cell: { a: number; b: number }; list: Army[] }>();
+    armies.forEach(army => {
+      const cell = entityCell(army);
+      const key = cellKey(cell.a, cell.b);
+      const group = groups.get(key) || { cell, list: [] };
+      group.list.push(army);
+      groups.set(key, group);
+    });
+    return [...groups.entries()].map(([key, group]) => ({
+      key,
+      cell: group.cell,
+      list: [...group.list].sort((left, right) => right.soldiers - left.soldiers),
+    }));
+  }, [armies, entityCell]);
+  const selectedArmy = useMemo(() => armies.find(army => army.id === selectedArmyId) || null, [armies, selectedArmyId]);
+  const selectedArmyStack = useMemo(() => {
+    if (!selectedArmy) return [];
+    const cell = entityCell(selectedArmy);
+    return armyGroups.find(group => group.key === cellKey(cell.a, cell.b))?.list || [];
+  }, [selectedArmy, armyGroups, entityCell]);
 
   const sortedTiles = useMemo(() => [...tiles].sort((left, right) => {
     const a = tileCell(left); const b = tileCell(right); return (a.a + a.b) - (b.a + b.b);
@@ -394,7 +419,24 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
               {city.population_total > city.housing_capacity && <path d="M-27 -11 L-22 -20 L-17 -11 Z" fill="var(--map-focus)"><title>Tlak na růst</title></path>}
             </g>;
           })}
-          {!cityLayerCityId && armies.map(army => { const cell = entityCell(army); const point = at(cell.a, cell.b); const own = army.player_name === playerName; return <g key={army.id} transform={`translate(${point.x + 19},${point.y - 34})`} filter="url(#iso-shadow)" pointerEvents="none"><circle r="11" fill={own ? "var(--map-city-own)" : "var(--map-city-rival)"} stroke="var(--map-marker-edge)" strokeWidth="2"/><Shield x="-6" y="-6" width="12" height="12" fill="none" stroke="var(--map-marker-edge)"/><Flag x="5" y="-20" width="14" height="14" fill="var(--map-route)" stroke="var(--map-marker-edge)"/><title>{army.name} · {army.soldiers} vojáků · morálka {army.morale}</title></g>; })}
+          {!cityLayerCityId && armyGroups.map(group => {
+            const point = at(group.cell.a, group.cell.b);
+            const lead = group.list[0];
+            const own = lead.player_name === playerName;
+            const stacked = group.list.length;
+            const active = group.list.some(army => army.id === selectedArmyId);
+            const openArmy = () => { setSelectedArmyId(lead.id); setSelected(null); setCityLayerCityId(null); onDetailOpenChange?.(true); };
+            return <g key={group.key} data-map-army={lead.id} role="button" tabIndex={0} aria-label={`Armáda ${lead.name}`}
+              transform={`translate(${point.x + 16},${point.y - 30})`} filter="url(#iso-shadow)" className="cursor-pointer"
+              onClick={(event) => { event.stopPropagation(); if (!dragRef.current?.moved) openArmy(); }}
+              onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); openArmy(); } }}>
+              <ArmyMarker army={lead} own={own} active={active} />
+              {stacked > 1 && <g transform="translate(15,-19)">
+                <circle r="7" fill="var(--map-marker)" stroke={own ? "var(--map-city-own)" : "var(--map-city-rival)"} strokeWidth="1.2" />
+                <text textAnchor="middle" y="2.6" fontSize="7.5" fontWeight="700" fill="var(--map-label)">{stacked}</text>
+              </g>}
+            </g>;
+          })}
         </g>
       </svg>
 
@@ -471,7 +513,43 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
         </div>}
         {!selectedCity && !expansionCity && <div className="mt-6 border border-border p-4 text-sm text-muted-foreground"><p>Na tomto poli není město ani možný směr rozšíření.</p><p className="mt-2 text-xs">Parcely lze vykupovat z pole vašeho města nebo z pole hned vedle něj.</p></div>}
       </aside>}
-      {!tiles.length && <div className="absolute inset-0 grid place-items-center text-center"><div className="map-floating-control p-6"><Castle className="mx-auto mb-2 h-7 w-7 text-primary"/><p className="font-display text-primary">Mapa zatím nemá žádná pole.</p></div></div>}
+
+      {selectedArmy && <aside className={`map-tile-detail absolute z-40 overflow-y-auto border-primary/20 bg-background/95 shadow-2xl backdrop-blur-xl ${isMobile ? "inset-x-0 bottom-0 max-h-[64vh] rounded-t-2xl border-t p-4" : "bottom-0 right-0 top-0 w-[380px] border-l p-5"}`}>
+        <Button size="icon" variant="ghost" className="absolute right-3 top-3" aria-label="Zavřít detail armády" onClick={() => { setSelectedArmyId(null); onDetailOpenChange?.(false); }}><X className="h-4 w-4"/></Button>
+        <div className="pr-10">
+          <p className="text-[10px] font-semibold uppercase text-primary">Armáda</p>
+          <h2 className="mt-1 font-display text-xl">{selectedArmy.name}</h2>
+          <p className="mt-1 text-xs text-muted-foreground">{selectedArmy.player_name} · {selectedArmy.formation_type} · {selectedArmy.stance}</p>
+        </div>
+        <section className="mt-5 border-y border-border/70 py-4">
+          <div className="mb-2 flex justify-between text-xs"><span>Morálka</span><strong>{selectedArmy.morale} %</strong></div>
+          <Progress value={Math.max(0, Math.min(100, selectedArmy.morale))} className="h-2"/>
+          <div className="mt-3 grid grid-cols-3 gap-2 text-center text-xs">
+            <div><strong className="block text-foreground">{selectedArmy.soldiers.toLocaleString("cs-CZ")}</strong><span className="text-muted-foreground">vojáků</span></div>
+            <div><strong className="block text-foreground">{selectedArmy.unit_count}</strong><span className="text-muted-foreground">jednotek</span></div>
+            <div><strong className="block text-foreground">{Math.round(selectedArmy.power)}</strong><span className="text-muted-foreground">síla</span></div>
+          </div>
+          <p className="mt-3 text-xs text-muted-foreground">Pole {entityCell(selectedArmy).a}, {entityCell(selectedArmy).b} · {selectedArmy.assignment} · {selectedArmy.moved_this_turn ? "v tomto kole se pohnula" : "toto kolo stojí"}</p>
+        </section>
+        <div className="mt-4 flex items-center gap-2">
+          <Shield className="h-4 w-4 text-primary"/>
+          <Flag className="h-4 w-4 text-primary"/>
+          <span className="text-xs text-muted-foreground">Rozkazy zadávej ve vojenském panelu.</span>
+        </div>
+        {selectedArmyStack.length > 1 && <div className="mt-4">
+          <h3 className="text-sm">Na stejném poli ({selectedArmyStack.length})</h3>
+          <div className="mt-2 space-y-1">
+            {selectedArmyStack.map(army => (
+              <button key={army.id} type="button" onClick={() => setSelectedArmyId(army.id)}
+                className={`flex w-full items-center justify-between border px-2 py-1.5 text-left text-xs transition-colors ${army.id === selectedArmyId ? "border-primary/60 bg-primary/10" : "border-border hover:border-primary/40"}`}>
+                <span className="truncate">{army.name}</span>
+                <span className="text-muted-foreground">{army.soldiers.toLocaleString("cs-CZ")} · {army.morale} %</span>
+              </button>
+            ))}
+          </div>
+        </div>}
+      </aside>}
+      {!tiles.length &&  <div className="absolute inset-0 grid place-items-center text-center"><div className="map-floating-control p-6"><Castle className="mx-auto mb-2 h-7 w-7 text-primary"/><p className="font-display text-primary">Mapa zatím nemá žádná pole.</p></div></div>}
     </div>
   );
 }
