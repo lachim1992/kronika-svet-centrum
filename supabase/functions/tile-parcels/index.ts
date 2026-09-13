@@ -45,7 +45,7 @@ Deno.serve(async (req) => {
     if (!membership) return json({ error: "Nejste členem této hry" }, 403);
 
     const { data: tile } = await sb.from("province_hexes")
-      .select("id, biome_family, mean_height, has_river, coastal, is_passable, owner_player, grid_x, grid_y")
+      .select("id, biome_family, mean_height, has_river, river_direction, coastal, is_passable, owner_player, grid_x, grid_y")
       .eq("session_id", sessionId).eq("grid_x", gridX).eq("grid_y", gridY).maybeSingle();
 
     const { data: existing } = await sb.from("tile_parcels")
@@ -55,7 +55,7 @@ Deno.serve(async (req) => {
     let parcels = existing ?? [];
     if (parcels.length < TILE_PARCEL_COUNT) {
       const { data: patch } = await sb.from("province_hexes")
-        .select("grid_x, grid_y, biome_family, mean_height, has_river, coastal, is_passable")
+        .select("grid_x, grid_y, biome_family, mean_height, has_river, river_direction, coastal, is_passable")
         .eq("session_id", sessionId)
         .gte("grid_x", gridX - 1).lte("grid_x", gridX + 1)
         .gte("grid_y", gridY - 1).lte("grid_y", gridY + 1);
@@ -63,6 +63,7 @@ Deno.serve(async (req) => {
         biome_family: row.biome_family as string | null,
         elevation: row.mean_height as number | null,
         has_river: row.has_river as boolean | null,
+        river_direction: row.river_direction as string | null,
         is_coastal: row.coastal as boolean | null,
         is_passable: row.is_passable as boolean | null,
       });

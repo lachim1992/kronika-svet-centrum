@@ -29,7 +29,7 @@ export async function ensureTileParcels(
   // The cell plus its four cardinal neighbours: the own biome dominates, neighbours only
   // bleed into the parcels along the shared border.
   const { data: patch } = await supabase.from("province_hexes")
-    .select("grid_x, grid_y, biome_family, mean_height, has_river, coastal, is_passable")
+    .select("grid_x, grid_y, biome_family, mean_height, has_river, river_direction, coastal, is_passable")
     .eq("session_id", sessionId)
     .gte("grid_x", gridX - 1).lte("grid_x", gridX + 1)
     .gte("grid_y", gridY - 1).lte("grid_y", gridY + 1);
@@ -38,6 +38,7 @@ export async function ensureTileParcels(
     biome_family: row.biome_family,
     elevation: row.mean_height,
     has_river: row.has_river,
+    river_direction: row.river_direction,
     is_coastal: row.coastal,
     is_passable: row.is_passable,
   });
