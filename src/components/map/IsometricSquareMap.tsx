@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowUpRight, Castle, Flag, Home, Layers3, Minus, Plus, Shield, Sparkles, Trees, X } from "lucide-react";
+import { ArrowLeft, ArrowUpRight, Castle, Flag, Home, Layers3, Minus, Plus, Shield, Sparkles, Trees, X } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -55,6 +55,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 40 });
   const [selected, setSelected] = useState<Tile | null>(null);
+  const [cityLayerCityId, setCityLayerCityId] = useState<string | null>(null);
   const [expanding, setExpanding] = useState(false);
 
   const tileCell = useCallback((tile: Tile) => ({
@@ -89,7 +90,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
   }, [tiles, tileCell]);
   const home = useCallback(() => {
     const element = viewportRef.current; if (!element) return;
-    setZoom(1); setPan({ x: element.clientWidth / 2 - center.x, y: element.clientHeight * 0.35 - center.y }); setSelected(null); onDetailOpenChange?.(false);
+    setZoom(1); setPan({ x: element.clientWidth / 2 - center.x, y: element.clientHeight * 0.35 - center.y }); setSelected(null); setCityLayerCityId(null); onDetailOpenChange?.(false);
   }, [center, onDetailOpenChange]);
   useEffect(() => { if (tiles.length) home(); }, [tiles.length, home]);
 
@@ -106,6 +107,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
   const selectedCell = selected ? tileCell(selected) : null;
   const selectedUrbanCell = selectedCell ? urbanByCell.get(`${selectedCell.a},${selectedCell.b}`) : undefined;
   const selectedCity = selectedUrbanCell ? cityById.get(selectedUrbanCell.city_id) : undefined;
+  const cityLayerCity = cityLayerCityId ? cityById.get(cityLayerCityId) : undefined;
   const expansionCity = useMemo(() => {
     if (!selectedCell || selectedUrbanCell || gridKind !== "square4") return undefined;
     return urbanCells.map(cell => ({ cell, city: cityById.get(cell.city_id) }))
@@ -122,10 +124,21 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
   const at = (a: number, b: number) => { const point = projectCell("square4", { a, b }, TILE_SIZE); return { x: point.x + pan.x, y: point.y + pan.y }; };
   const focusTile = (tile: Tile) => {
     const element = viewportRef.current; if (!element) return;
-    const cell = tileCell(tile); const projected = projectCell("square4", cell, TILE_SIZE); const targetZoom = 1.65;
+    const cell = tileCell(tile); const projected = projectCell("square4", cell, TILE_SIZE);
+    const urbanCell = urbanByCell.get(`${cell.a},${cell.b}`);
+    const city = urbanCell ? cityById.get(urbanCell.city_id) : undefined;
+    const targetZoom = city ? 2.25 : 1.65;
     setSelected(tile); setZoom(targetZoom);
+    setCityLayerCityId(city?.id || null);
     onDetailOpenChange?.(true);
-    setPan({ x: element.clientWidth * 0.38 / targetZoom - projected.x, y: element.clientHeight * 0.46 / targetZoom - projected.y });
+    setPan({ x: element.clientWidth * (city ? .47 : .38) / targetZoom - projected.x, y: element.clientHeight * .46 / targetZoom - projected.y });
+  };
+  const leaveCityLayer = () => {
+    setCityLayerCityId(null);
+    setSelected(null);
+    onDetailOpenChange?.(false);
+    const element = viewportRef.current;
+    if (element) { setZoom(1); setPan({ x: element.clientWidth / 2 - center.x, y: element.clientHeight * .35 - center.y }); }
   };
   const expandCity = async () => {
     if (!expansionCity || !selectedCell) return;
@@ -192,20 +205,22 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
         <g transform={`scale(${zoom})`}>
           {sortedTiles.map(tile => {
             const cell = tileCell(tile); const point = at(cell.a, cell.b); const colors = BIOMES[tile.biome_family] || BIOMES.plains;
-            const active = selected?.id === tile.id; const urbanCell = urbanByCell.get(`${cell.a},${cell.b}`);
+             const active = selected?.id === tile.id; const urbanCell = urbanByCell.get(`${cell.a},${cell.b}`);
+             const inActiveCity = cityLayerCityId && urbanCell?.city_id === cityLayerCityId;
             return <g key={tile.id} onClick={(event) => { event.stopPropagation(); if (!dragRef.current?.moved) focusTile(tile); }} className="cursor-pointer">
-               <polygon points={squareDiamondPoints(point, TILE_SIZE)} fill={colors[0]} stroke={active ? "var(--map-focus)" : colors[1]} strokeWidth={active ? 2.8 : 1} />
+               <polygon points={squareDiamondPoints(point, TILE_SIZE)} fill={colors[0]} stroke={active || inActiveCity ? "var(--map-focus)" : colors[1]} strokeWidth={active ? 2.8 : inActiveCity ? 1.8 : 1} opacity={cityLayerCityId && !inActiveCity ? .42 : 1} />
               <polygon points={squareDiamondPoints(point, TILE_SIZE - 2)} fill={`url(#iso-${tile.biome_family})`} opacity=".55" />
               {tile.biome_family === "sea" && <polygon points={squareDiamondPoints(point, TILE_SIZE - 4)} fill="url(#iso-water)" />}
               {tile.biome_family.includes("forest") && !urbanCell && <Trees x={point.x - 8} y={point.y - 11} width="16" height="16" fill="var(--map-forest-edge)" stroke="var(--map-label)" strokeWidth=".8" />}
-              {urbanCell && zoom >= 1.3 && renderParcelGrid(urbanCell, point)}
+               {urbanCell && (zoom >= 1.3 || cityLayerCityId === urbanCell.city_id) && renderParcelGrid(urbanCell, point)}
             </g>;
           })}
-           {routes.flatMap(route => { const path = gridKind === "square4" && Array.isArray(route.path_cells) ? route.path_cells : route.hex_path; return Array.isArray(path) && path.length > 1 ? [<polyline key={route.route_id || JSON.stringify(path)} points={path.map(cell => { const point = at(cell.x ?? cell.q ?? 0, cell.y ?? cell.r ?? 0); return `${point.x},${point.y}`; }).join(" ")} fill="none" stroke="var(--map-route)" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" opacity=".9" strokeDasharray="8 5" />] : []; })}
-           {nodes.map(node => { const cell = entityCell(node); const point = at(cell.a, cell.b); const major = node.node_tier === "major"; return <g key={node.id} transform={`translate(${point.x},${point.y - 8})`} filter="url(#iso-shadow)"><path d={major ? "M-8 3 L0 7 L8 3 L0 -1 Z M-5 1 V-8 L0 -12 L5 -8 V1" : "M-7 3 L0 7 L7 3 L0 -1 Z M-4 1 V-6 L0 -9 L4 -6 V1"} fill="var(--map-marker)" stroke="var(--map-focus)" strokeWidth="1.2"/><title>{node.name}</title></g>; })}
+           {!cityLayerCityId && routes.flatMap(route => { const path = gridKind === "square4" && Array.isArray(route.path_cells) ? route.path_cells : route.hex_path; return Array.isArray(path) && path.length > 1 ? [<polyline key={route.route_id || JSON.stringify(path)} points={path.map(cell => { const point = at(cell.x ?? cell.q ?? 0, cell.y ?? cell.r ?? 0); return `${point.x},${point.y}`; }).join(" ")} fill="none" stroke="var(--map-route)" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" opacity=".9" className="iso-active-route" pointerEvents="none" />] : []; })}
+           {!cityLayerCityId && nodes.map(node => { const cell = entityCell(node); const point = at(cell.a, cell.b); const major = node.node_tier === "major"; return <g key={node.id} transform={`translate(${point.x},${point.y - 8})`} filter="url(#iso-shadow)" pointerEvents="none"><path d={major ? "M-8 3 L0 7 L8 3 L0 -1 Z M-5 1 V-8 L0 -12 L5 -8 V1" : "M-7 3 L0 7 L7 3 L0 -1 Z M-4 1 V-6 L0 -9 L4 -6 V1"} fill="var(--map-marker)" stroke="var(--map-focus)" strokeWidth="1.2"/><title>{node.name}</title></g>; })}
           {cities.map(city => {
             const core = urbanCells.find(cell => cell.city_id === city.id && cell.cell_role === "core"); const cell = core ? { a: core.grid_x, b: core.grid_y } : entityCell(city); const point = at(cell.a, cell.b);
              const own = city.owner_player === playerName; const scale = Math.min(1.25, .88 + Math.log10(Math.max(100, city.population_total)) * .08);
+             if (cityLayerCityId === city.id) return null;
              return <g key={city.id} transform={`translate(${point.x},${point.y - 16}) scale(${scale})`} className="cursor-pointer" onClick={(event) => { event.stopPropagation(); const tile = tiles.find(candidate => { const c = tileCell(candidate); return c.a === cell.a && c.b === cell.b; }); if (tile) focusTile(tile); }} filter="url(#iso-shadow)">
                {renderTown(city, own)}
                <rect x={-Math.max(22, city.name.length * 2.8)} y="25" width={Math.max(44, city.name.length * 5.6)} height="13" rx="2" fill="var(--map-marker)" stroke={own ? "var(--map-city-own)" : "var(--map-city-rival)"} strokeWidth=".8" opacity=".94" />
@@ -213,7 +228,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
                {city.population_total > city.housing_capacity && <path d="M-27 -11 L-22 -20 L-17 -11 Z" fill="var(--map-focus)"><title>Tlak na růst</title></path>}
             </g>;
           })}
-           {armies.map(army => { const cell = entityCell(army); const point = at(cell.a, cell.b); const own = army.player_name === playerName; return <g key={army.id} transform={`translate(${point.x + 19},${point.y - 34})`} filter="url(#iso-shadow)"><circle r="11" fill={own ? "var(--map-city-own)" : "var(--map-city-rival)"} stroke="var(--map-marker-edge)" strokeWidth="2"/><Shield x="-6" y="-6" width="12" height="12" fill="none" stroke="var(--map-marker-edge)"/><Flag x="5" y="-20" width="14" height="14" fill="var(--map-route)" stroke="var(--map-marker-edge)"/><title>{army.name} · {army.soldiers} vojáků · morálka {army.morale}</title></g>; })}
+           {!cityLayerCityId && armies.map(army => { const cell = entityCell(army); const point = at(cell.a, cell.b); const own = army.player_name === playerName; return <g key={army.id} transform={`translate(${point.x + 19},${point.y - 34})`} filter="url(#iso-shadow)" pointerEvents="none"><circle r="11" fill={own ? "var(--map-city-own)" : "var(--map-city-rival)"} stroke="var(--map-marker-edge)" strokeWidth="2"/><Shield x="-6" y="-6" width="12" height="12" fill="none" stroke="var(--map-marker-edge)"/><Flag x="5" y="-20" width="14" height="14" fill="var(--map-route)" stroke="var(--map-marker-edge)"/><title>{army.name} · {army.soldiers} vojáků · morálka {army.morale}</title></g>; })}
         </g>
       </svg>
 
@@ -223,6 +238,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
         <Button size="icon" variant="ghost" aria-label="Přiblížit" onClick={() => setZoom(value => Math.min(2.4, value + .15))}><Plus className="h-4 w-4" /></Button>
       </div>
       <div className="map-floating-control absolute left-4 top-4 z-20 flex items-center gap-2 px-3 py-2 text-xs"><Layers3 className="h-4 w-4 text-primary"/><span>{gridKind === "square4" ? "Čtvercová síť" : "Původní svět"} · izometrické zobrazení</span></div>
+      {cityLayerCity && <div className="map-floating-control absolute left-4 top-16 z-30 flex items-center gap-3 px-2 py-2"><Button size="icon" variant="ghost" aria-label="Zpět na světovou mapu" onClick={leaveCityLayer}><ArrowLeft className="h-4 w-4"/></Button><div className="pr-3"><p className="text-[10px] uppercase text-primary">Městská vrstva</p><p className="font-display text-sm">{cityLayerCity.name} · {cityCells.length} polí</p></div></div>}
 
       {selected && <aside className="map-tile-detail absolute bottom-0 right-0 top-0 z-40 w-full overflow-y-auto border-l border-primary/20 bg-background/95 p-5 shadow-2xl backdrop-blur-xl sm:w-[380px]">
         <Button size="icon" variant="ghost" className="absolute right-3 top-3" aria-label="Zavřít detail" onClick={() => { setSelected(null); onDetailOpenChange?.(false); }}><X className="h-4 w-4"/></Button>
