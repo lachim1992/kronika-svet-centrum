@@ -58,6 +58,10 @@ const CATEGORY_SPRITE: Record<string, string> = {
 const buildSprite = (name: string, category?: string) =>
   BUILD_NAME_SPRITE.find(([pattern]) => pattern.test(name))?.[1]
   || CATEGORY_SPRITE[category || ""] || spriteHamlet;
+const BUILD_CATEGORY_LABEL: Record<string, string> = {
+  economic: "Hospodářství", cultural: "Kultura a víra", infrastructure: "Infrastruktura",
+  military: "Vojenství", residential: "Bydlení", administrative: "Správa", ostatní: "Ostatní",
+};
 const LAND_USE_SPRITE: Record<string, string> = {
   residential: buildResidential, commercial: spriteTradePost, industrial: spriteWorkshop,
   military: buildMilitary, sacred: spriteShrine, civic: buildCulture,
