@@ -829,7 +829,22 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
 
 
 
+  /** Single reason the selected parcel accepts nothing at all — shown instead of hiding the menu. */
+  const parcelBlock = useMemo(() => {
+    if (!selectedParcel) return null;
+    if (!selectedParcel.buildable) return "Tato parcela je nezastavitelná (voda, skála nebo prudký sráz).";
+    if (selectedParcel.owner_player !== playerName) {
+      return selectedParcel.owner_player
+        ? `Parcelu drží ${selectedParcel.owner_player}.`
+        : "Parcela ještě není tvoje — klikni na ni v mřížce a město ji vykoupí, pak se dá stavět.";
+    }
+    if (!selectedParcel.city_id) return "Parcela není přiřazena žádnému tvému městu.";
+    if (selectedParcelUsed >= selectedParcel.capacity_slots) return "Parcela je plná — všechny stavební sloty jsou obsazené.";
+    return null;
+  }, [selectedParcel, selectedParcelUsed, playerName]);
+
   /** Why this subnode cannot be placed on the selected parcel right now — null means buildable. */
+
   const subnodeBlockReason = (option: SubnodeOption): string | null => {
     if (!selectedParcel || !selectedParcel.city_id) return "Nejdřív parcelu zaber pro město";
     if (selectedParcel.owner_player !== playerName) return "Parcela ti nepatří";
