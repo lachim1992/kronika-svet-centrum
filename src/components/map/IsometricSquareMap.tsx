@@ -25,6 +25,36 @@ import buildResidential from "@/assets/map/build-residential.png";
 import buildCulture from "@/assets/map/build-culture.png";
 import buildInfrastructure from "@/assets/map/build-infrastructure.png";
 import buildMilitary from "@/assets/map/build-military.png";
+import buildArena from "@/assets/map/build-arena.png";
+import buildBardsHouse from "@/assets/map/build-bards-house.png";
+import buildTemple from "@/assets/map/build-temple.png";
+import buildTheatre from "@/assets/map/build-theatre.png";
+import buildMonastery from "@/assets/map/build-monastery.png";
+import buildLibrary from "@/assets/map/build-library.png";
+import buildCourthouse from "@/assets/map/build-courthouse.png";
+import buildStadium from "@/assets/map/build-stadium.png";
+import buildSmithy from "@/assets/map/build-smithy.png";
+import buildManufactory from "@/assets/map/build-manufactory.png";
+import buildMint from "@/assets/map/build-mint.png";
+import buildSawmill from "@/assets/map/build-sawmill.png";
+import buildGlassworks from "@/assets/map/build-glassworks.png";
+import buildGranary from "@/assets/map/build-granary.png";
+import buildMarket from "@/assets/map/build-market.png";
+import buildAqueduct from "@/assets/map/build-aqueduct.png";
+import buildSewer from "@/assets/map/build-sewer.png";
+import buildBaths from "@/assets/map/build-baths.png";
+import buildBridge from "@/assets/map/build-bridge.png";
+import buildRoad from "@/assets/map/build-road.png";
+import buildWell from "@/assets/map/build-well.png";
+import buildWalls from "@/assets/map/build-walls.png";
+import buildRidingSchool from "@/assets/map/build-riding-school.png";
+import buildBarracks from "@/assets/map/build-barracks.png";
+import buildSiegeWorkshop from "@/assets/map/build-siege-workshop.png";
+import buildWatchtower from "@/assets/map/build-watchtower.png";
+import buildShootingRange from "@/assets/map/build-shooting-range.png";
+import buildHeadquarters from "@/assets/map/build-headquarters.png";
+import buildQuarry from "@/assets/map/build-quarry.png";
+
 
 const NODE_SPRITE: Record<string, string> = {
   farmstead: spriteFarmstead, workshop: spriteWorkshop, guard_post: spriteGuardPost,
