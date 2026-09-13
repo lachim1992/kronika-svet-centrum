@@ -10,6 +10,12 @@ import {
   type RivalRow,
 } from "../_shared/nodeInfluence.ts";
 import { applyStackMove } from "../_shared/stackMovementCommand.ts";
+import {
+  generateTileParcels,
+  parcelClaimCost,
+  POPULATION_PER_SLOT,
+  TILE_PARCEL_COUNT,
+} from "../_shared/tileParcels.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -355,6 +361,9 @@ async function executeCommand(
 
     case "ASSIGN_CITY_PARCEL":
       return await executeAssignCityParcel(supabase, base, actor, payload, commandId, sessionId, turnNumber);
+
+    case "CLAIM_TILE_PARCEL":
+      return await executeClaimTileParcel(supabase, base, actor, payload, commandId, sessionId, turnNumber);
 
     case "UPGRADE_INFRASTRUCTURE":
       return await executeUpgradeInfrastructure(supabase, base, actor, payload, commandId, sessionId, turnNumber);
@@ -2645,6 +2654,118 @@ async function occupyParcel(supabase: any, parcelId: string, kind: "building" | 
     .update({ parcel_id: parcelId }).eq("id", entityId);
 }
 
+/**
+ * Materialize the deterministic 32 sub-parcels of a map cell (idempotent).
+ * The layout comes from the session seed + cell terrain, so late materialization is safe.
+ */
+async function ensureTileParcels(supabase: any, sessionId: string, gridX: number, gridY: number) {
+  const { data: existing } = await supabase.from("tile_parcels")
+    .select("id, parcel_index, status, buildable, capacity_slots, build_cost_multiplier, sub_biome, elevation, city_id, owner_player")
+    .eq("session_id", sessionId).eq("grid_x", gridX).eq("grid_y", gridY).order("parcel_index");
+  if ((existing?.length || 0) >= TILE_PARCEL_COUNT) return existing;
+
+  const { data: tile } = await supabase.from("province_hexes")
+    .select("biome_family, elevation, has_river, is_coastal, is_passable")
+    .eq("session_id", sessionId).eq("grid_x", gridX).eq("grid_y", gridY).maybeSingle();
+
+  const seen = new Set((existing || []).map((row: any) => row.parcel_index));
+  const rows = generateTileParcels(sessionId, gridX, gridY, tile ?? {})
+    .filter((spec) => !seen.has(spec.parcelIndex))
+    .map((spec) => ({
+      session_id: sessionId, grid_x: gridX, grid_y: gridY,
+      parcel_index: spec.parcelIndex, parcel_x: spec.parcelX, parcel_y: spec.parcelY,
+      sub_biome: spec.subBiome, elevation: spec.elevation, buildable: spec.buildable,
+      build_cost_multiplier: spec.buildCostMultiplier, capacity_slots: spec.capacitySlots,
+      status: spec.buildable ? "wild" : "blocked",
+    }));
+  if (rows.length) {
+    await supabase.from("tile_parcels").upsert(rows, { onConflict: "session_id,grid_x,grid_y,parcel_index" });
+  }
+  const { data: refreshed } = await supabase.from("tile_parcels")
+    .select("id, parcel_index, status, buildable, capacity_slots, build_cost_multiplier, sub_biome, elevation, city_id, owner_player")
+    .eq("session_id", sessionId).eq("grid_x", gridX).eq("grid_y", gridY).order("parcel_index");
+  return refreshed || [];
+}
+
+/** Housing capacity backed by the sub-parcels a city actually holds. */
+async function cityParcelCapacity(supabase: any, sessionId: string, cityId: string) {
+  const { data } = await supabase.from("tile_parcels")
+    .select("capacity_slots, status").eq("session_id", sessionId).eq("city_id", cityId)
+    .in("status", ["claimed", "occupied"]);
+  const slots = (data || []).reduce((sum: number, row: any) => sum + (row.capacity_slots || 0), 0);
+  return { slots, capacity: slots * POPULATION_PER_SLOT, claimed: (data || []).length };
+}
+
+/**
+ * CLAIM_TILE_PARCEL — buy one sub-parcel for a city. Terrain drives the price and the
+ * housing capacity the parcel adds. Only parcels on the city cell or a cell next to it.
+ * Payload: { cityId, gridX, gridY, parcelIndex }
+ */
+async function executeClaimTileParcel(
+  supabase: any, base: any, actor: Actor, payload: any,
+  commandId: string, sessionId: string, turnNumber: number,
+): Promise<CommandResult> {
+  const cityId = String(payload.cityId || "");
+  const gridX = Number(payload.gridX);
+  const gridY = Number(payload.gridY);
+  const parcelIndex = Number(payload.parcelIndex);
+  if (!cityId || !Number.isInteger(gridX) || !Number.isInteger(gridY) || !Number.isInteger(parcelIndex) || parcelIndex < 0 || parcelIndex >= TILE_PARCEL_COUNT) {
+    return { events: [], error: "Neplatná parcela" };
+  }
+
+  const [{ data: city }, { data: cells }] = await Promise.all([
+    supabase.from("cities").select("id, name, owner_player, grid_x, grid_y").eq("id", cityId).eq("session_id", sessionId).maybeSingle(),
+    supabase.from("city_urban_cells").select("id, grid_x, grid_y, status").eq("city_id", cityId).eq("session_id", sessionId),
+  ]);
+  if (!city || city.owner_player !== actor.name) return { events: [], error: "Toto město vám nepatří" };
+
+  const owned = cells || [];
+  const onOwnCell = owned.some((cell: any) => cell.grid_x === gridX && cell.grid_y === gridY);
+  const adjacent = owned.some((cell: any) => Math.abs(cell.grid_x - gridX) + Math.abs(cell.grid_y - gridY) === 1);
+  if (!onOwnCell && !adjacent) return { events: [], error: "Parcela musí ležet na poli města nebo na poli přímo vedle něj" };
+
+  const { data: tile } = await supabase.from("province_hexes")
+    .select("id, is_passable, owner_player, biome_family")
+    .eq("session_id", sessionId).eq("grid_x", gridX).eq("grid_y", gridY).maybeSingle();
+  if (!tile || tile.is_passable === false || tile.biome_family === "sea") return { events: [], error: "Na tomto poli nelze získávat parcely" };
+  if (tile.owner_player && tile.owner_player !== actor.name) return { events: [], error: "Pole ovládá jiná říše" };
+
+  const parcels = await ensureTileParcels(supabase, sessionId, gridX, gridY);
+  const parcel = (parcels || []).find((row: any) => row.parcel_index === parcelIndex);
+  if (!parcel) return { events: [], error: "Parcela nebyla nalezena" };
+  if (!parcel.buildable) return { events: [], error: "Tato parcela je nezastavitelná" };
+  if (parcel.city_id && parcel.city_id !== cityId) return { events: [], error: "Parcelu už drží jiné město" };
+  if (parcel.status !== "wild") return { events: [], error: "Parcela už je obsazená" };
+
+  const held = await cityParcelCapacity(supabase, sessionId, cityId);
+  const cost = parcelClaimCost(Number(parcel.build_cost_multiplier || 1), held.claimed);
+  const realm = await getRealmFull(supabase, sessionId, actor.name);
+  if (!realm) return { events: [], error: "Realm not found" };
+  if ((realm.gold_reserve || 0) < cost.gold) return { events: [], error: `Nedostatek zlata (potřeba ${cost.gold})` };
+  if ((realm.production_reserve || 0) < cost.production) return { events: [], error: `Nedostatek produkce (potřeba ${cost.production})` };
+
+  const { error: claimError } = await supabase.from("tile_parcels").update({
+    status: "claimed", city_id: cityId, owner_player: actor.name, claimed_turn: turnNumber, land_use: "open",
+  }).eq("id", parcel.id).eq("status", "wild");
+  if (claimError) return { events: [], error: claimError.message };
+
+  await supabase.from("realm_resources").update({
+    gold_reserve: realm.gold_reserve - cost.gold,
+    production_reserve: realm.production_reserve - cost.production,
+  }).eq("id", realm.id);
+
+  return insertEvents(supabase, commandId, [{
+    ...base, event_type: "city_planning", city_id: cityId,
+    note: `${city.name} získalo parcelu ${parcelIndex + 1} na poli ${gridX}, ${gridY}.`,
+    importance: "minor",
+    reference: {
+      cityId, gridX, gridY, parcelIndex, subBiome: parcel.sub_biome, elevation: parcel.elevation,
+      costGold: cost.gold, costProduction: cost.production,
+      capacityAdded: (parcel.capacity_slots || 0) * POPULATION_PER_SLOT,
+    },
+  }], { parcelId: parcel.id });
+}
+
 async function executeExpandCityCell(
   supabase: any, base: any, actor: Actor, payload: any,
   commandId: string, sessionId: string, turnNumber: number,
@@ -2677,7 +2798,10 @@ async function executeExpandCityCell(
     .select("id").eq("session_id", sessionId).eq("grid_x", gridX).eq("grid_y", gridY).maybeSingle();
   if (occupied) return { events: [], error: "Pole už patří jinému městskému celku" };
 
-  const parcelCapacity = cells.length * CITY_CELL_PARCELS * POPULATION_PER_PARCEL;
+  const held = await cityParcelCapacity(supabase, sessionId, cityId);
+  const parcelCapacity = held.capacity > 0
+    ? held.capacity
+    : cells.length * CITY_CELL_PARCELS * POPULATION_PER_PARCEL;
   const growthPressure = Math.min(100, Math.round((city.population_total / Math.max(1, parcelCapacity)) * 100));
   if (growthPressure < 70) return { events: [], error: `Tlak na růst je pouze ${growthPressure} %. Potřeba je 70 %.` };
 
@@ -2706,6 +2830,7 @@ async function executeExpandCityCell(
     parcel_x: index % 4, parcel_y: Math.floor(index / 4), status: "locked", land_use: "open",
   }));
   await supabase.from("city_parcels").insert(parcels);
+  await ensureTileParcels(supabase, sessionId, gridX, gridY);
 
   return insertEvents(supabase, commandId, [{
     ...base, event_type: "city_expansion", city_id: cityId,
