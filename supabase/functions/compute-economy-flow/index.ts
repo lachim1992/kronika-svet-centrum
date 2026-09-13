@@ -51,6 +51,12 @@ const MICRO_SUBTYPE_PRODUCTION: Record<string, Record<string, number>> = {
   outpost:          { production: 0, supplies: 0, wealth: 0, faith: 0 },
   resin_collector:  { production: 2, supplies: 2, wealth: 1, faith: 0 },
   salt_pan:         { production: 0, supplies: 0, wealth: 4, faith: 0 },
+  // Player-built parcel subnodes
+  farmstead:        { production: 2, supplies: 5, wealth: 0, faith: 0 },
+  workshop:         { production: 6, supplies: 0, wealth: 1, faith: 0 },
+  guard_post:       { production: 0, supplies: 0, wealth: 0, faith: 0 },
+  trade_post:       { production: 1, supplies: 0, wealth: 5, faith: 0 },
+  river_wharf:      { production: 1, supplies: 2, wealth: 4, faith: 0 },
 };
 
 const BASE_PRODUCTION_LEGACY: Record<string, number> = {
@@ -123,6 +129,11 @@ const MICRO_BIOME_PREFS: Record<string, string[]> = {
   outpost: ["plains", "hills", "steppe", "mountain", "highland", "forest"],
   resin_collector: ["forest", "dense_forest", "taiga"],
   salt_pan: ["coastal", "desert", "steppe"],
+  farmstead: ["plains", "grassland", "temperate", "river", "hills"],
+  workshop: ["plains", "hills", "highland", "forest", "temperate"],
+  guard_post: ["plains", "hills", "mountain", "highland", "forest", "steppe"],
+  trade_post: ["plains", "hills", "coastal", "river", "steppe"],
+  river_wharf: ["coastal", "river", "lake", "marsh"],
 };
 
 // ── MACRO REGION MODIFIERS ─────────────────────────────────────

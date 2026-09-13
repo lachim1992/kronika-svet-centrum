@@ -289,11 +289,17 @@ Deno.serve(async (req) => {
 
     const goodsMap = new Map(goods.map(g => [g.key, g]));
     const cityMap = new Map(cities.map(c => [c.id, c]));
+    // The city's market anchor must be its main node — micro subnodes on parcels share
+    // the same city_id, so pick by tier rank instead of "first row wins".
+    const TIER_RANK: Record<string, number> = { major: 3, minor: 2, micro: 1 };
     const cityToNodeId = new Map<string, string>();
+    const cityAnchorRank = new Map<string, number>();
     for (const n of nodes) {
-      if (n.city_id && !cityToNodeId.has(n.city_id)) {
-        cityToNodeId.set(n.city_id, n.id);
-      }
+      if (!n.city_id) continue;
+      const rank = TIER_RANK[String(n.node_tier || "minor")] ?? 2;
+      if ((cityAnchorRank.get(n.city_id) ?? -1) >= rank) continue;
+      cityAnchorRank.set(n.city_id, rank);
+      cityToNodeId.set(n.city_id, n.id);
     }
 
     // Build hex deposit lookup

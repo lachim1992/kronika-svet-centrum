@@ -160,7 +160,7 @@ interface Props {
 type Tile = { id: string; q: number; r: number; grid_x: number | null; grid_y: number | null; province_id: string | null; biome_family: string; owner_player: string | null; mean_height: number | null; is_passable: boolean; has_river: boolean | null; river_direction: string | null; coastal: boolean | null };
 type StoredSubBiome = { grid_x: number; grid_y: number; parcel_index: number; parcel_x: number; parcel_y: number; sub_biome: string };
 type City = { id: string; name: string; province_q: number; province_r: number; grid_x: number | null; grid_y: number | null; owner_player: string; settlement_level: string; population_total: number; housing_capacity: number; development_level: number; birth_rate: number; death_rate: number; migration_pressure: number; founded_parcel_index: number | null };
-type Node = { id: string; name: string; hex_q: number; hex_r: number; grid_x: number | null; grid_y: number | null; node_type: string; node_tier: string; node_subtype: string | null; controlled_by: string | null; production_output: number; wealth_output: number; food_value: number; parcel_index: number | null };
+type Node = { id: string; name: string; hex_q: number; hex_r: number; grid_x: number | null; grid_y: number | null; node_type: string; node_tier: string; node_subtype: string | null; city_id: string | null; controlled_by: string | null; production_output: number; wealth_output: number; food_value: number; parcel_index: number | null };
 type Army = { id: string; name: string; hex_q: number; hex_r: number; grid_x: number | null; grid_y: number | null; player_name: string; soldiers: number; morale: number; unit_count: number; power: number; stance: string; formation_type: string; assignment: string; moved_this_turn: boolean; parcel_index: number | null };
 type PathCell = { x?: number; y?: number; q?: number; r?: number };
 type Route = { route_id: string | null; path_cells: PathCell[] | null; hex_path: PathCell[] | null };
@@ -315,7 +315,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
     const [tileRes, cityRes, nodeRes, routeRes, armyRes, parcelRes, subBiomeRes, realmRes, contentRes, infrastructureRes, templateRes, buildingRes, districtRes] = await Promise.all([
       supabase.from("province_hexes").select("id, q, r, grid_x, grid_y, province_id, biome_family, owner_player, mean_height, is_passable, has_river, river_direction, coastal").eq("session_id", sessionId).limit(4000),
       supabase.from("cities").select("id, name, province_q, province_r, grid_x, grid_y, owner_player, settlement_level, population_total, housing_capacity, development_level, birth_rate, death_rate, migration_pressure, founded_parcel_index").eq("session_id", sessionId),
-      supabase.from("province_nodes").select("id, name, hex_q, hex_r, grid_x, grid_y, node_type, node_tier, node_subtype, controlled_by, production_output, wealth_output, food_value, parcel_index").eq("session_id", sessionId).eq("is_active", true),
+      supabase.from("province_nodes").select("id, name, hex_q, hex_r, grid_x, grid_y, node_type, node_tier, node_subtype, city_id, controlled_by, production_output, wealth_output, food_value, parcel_index").eq("session_id", sessionId).eq("is_active", true),
       supabase.from("flow_paths").select("route_id, path_cells, hex_path").eq("session_id", sessionId),
       supabase.from("military_stacks").select("id, name, hex_q, hex_r, grid_x, grid_y, player_name, soldiers, morale, unit_count, power, stance, formation_type, assignment, moved_this_turn, parcel_index").eq("session_id", sessionId).eq("is_active", true).eq("is_deployed", true),
       supabase.from("tile_parcels").select("id, grid_x, grid_y, parcel_index, parcel_x, parcel_y, sub_biome, elevation, buildable, build_cost_multiplier, capacity_slots, status, land_use, city_id, owner_player").eq("session_id", sessionId).not("city_id", "is", null).limit(6000),
@@ -805,6 +805,18 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
     const production = own.filter(d => d.district_type === "production");
     return { housing, slots: housing * PRODUCTION_PER_RESIDENTIAL, production, free: housing * PRODUCTION_PER_RESIDENTIAL - production.length };
   }, [districts, selectedCity?.id]);
+
+  /** Subnodes attached to the selected city — they feed the same markets as its districts. */
+  const citySubnodes = useMemo(() => {
+    if (!selectedCity) return { list: [] as Node[], production: 0, wealth: 0, food: 0 };
+    const list = nodes.filter(n => n.city_id === selectedCity.id && n.node_tier === "micro");
+    return {
+      list,
+      production: Math.round(list.reduce((sum, n) => sum + Number(n.production_output || 0), 0) * 10) / 10,
+      wealth: Math.round(list.reduce((sum, n) => sum + Number(n.wealth_output || 0), 0) * 10) / 10,
+      food: Math.round(list.reduce((sum, n) => sum + Number(n.food_value || 0), 0) * 10) / 10,
+    };
+  }, [nodes, selectedCity?.id]);
 
   const buildDistrict = async (district: DistrictBlueprint, basketKey?: string) => {
 
@@ -1442,6 +1454,23 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
                 </select>
               </div>
             ))}</div>}
+          <div className="border-t border-border/60 pt-2">
+            <div className="flex items-baseline justify-between">
+              <h4 className="text-xs">Subuzly v okolí</h4>
+              <span className="text-[10px] text-muted-foreground">{citySubnodes.list.length}</span>
+            </div>
+            {citySubnodes.list.length === 0
+              ? <p className="text-[11px] text-muted-foreground">Žádné subuzly. Postav dvůr, dílnu nebo překladiště na podčtverci.</p>
+              : <>
+                <div className="space-y-1">{citySubnodes.list.map(node => (
+                  <button key={node.id} type="button" className="flex w-full items-center gap-2 text-left text-[11px]" onClick={() => setSelectedNodeId(node.id)}>
+                    <span className="flex-1 truncate">{node.name}</span>
+                    <span className="text-muted-foreground">P {Number(node.production_output || 0)} · Z {Number(node.wealth_output || 0)} · F {Number(node.food_value || 0)}</span>
+                  </button>
+                ))}</div>
+                <p className="mt-1 text-[10px] text-muted-foreground">Celkem: produkce {citySubnodes.production} · bohatství {citySubnodes.wealth} · potraviny {citySubnodes.food} — přepočítá se při dalším tahu.</p>
+              </>}
+          </div>
           {selectedCity.owner_player !== playerName && <p className="text-[10px] text-muted-foreground">Cizí město — výrobu tu nastavit nelze.</p>}
         </section>}
 

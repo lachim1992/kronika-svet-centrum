@@ -1,0 +1,5 @@
+UPDATE public.province_nodes SET capability_tags = ARRAY['farming','herding','milling'], production_role = 'source' WHERE node_tier = 'micro' AND node_subtype = 'farmstead';
+UPDATE public.province_nodes SET capability_tags = ARRAY['crafting','smithing','toolmaking','smelting','stonecutting'], production_role = 'processing' WHERE node_tier = 'micro' AND node_subtype = 'workshop';
+UPDATE public.province_nodes SET capability_tags = ARRAY['garrison'], production_role = 'control' WHERE node_tier = 'micro' AND node_subtype = 'guard_post';
+UPDATE public.province_nodes SET capability_tags = ARRAY['trade_access','storage','construction'], production_role = 'producer' WHERE node_tier = 'micro' AND node_subtype = 'trade_post';
+UPDATE public.province_nodes SET capability_tags = ARRAY['shipping','storage','fishing'], production_role = 'source' WHERE node_tier = 'micro' AND node_subtype = 'river_wharf';

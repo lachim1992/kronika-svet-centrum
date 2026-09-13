@@ -2881,10 +2881,10 @@ const SUBNODE_DEFS: Record<string, {
   resource: Record<string, number>; capabilities: string[]; role: string;
 }> = {
   farmstead: { label: "Produkční dvůr", nodeType: "resource_node", group: "production", gold: 35, production: 45, resource: { supplies: 4, production: 2 }, capabilities: ["farming", "herding", "milling"], role: "source" },
-  workshop: { label: "Řemeslná dílna", nodeType: "resource_node", group: "production", gold: 45, production: 55, resource: { production: 5, wealth: 1 }, capabilities: ["crafting", "smithing", "toolmaking"], role: "processing" },
+  workshop: { label: "Řemeslná dílna", nodeType: "resource_node", group: "production", gold: 45, production: 55, resource: { production: 5, wealth: 1 }, capabilities: ["crafting", "smithing", "toolmaking", "smelting", "stonecutting"], role: "processing" },
   guard_post: { label: "Strážnice", nodeType: "fortress", group: "military", gold: 50, production: 65, resource: {}, capabilities: ["garrison"], role: "control" },
-  trade_post: { label: "Obchodní stanice", nodeType: "trade_hub", group: "trade", gold: 70, production: 40, resource: { wealth: 5 }, capabilities: ["trade_access", "storage"], role: "transit" },
-  river_wharf: { label: "Říční překladiště", nodeType: "port", group: "trade", gold: 80, production: 60, resource: { wealth: 4, supplies: 1 }, capabilities: ["shipping", "storage"], role: "transit" },
+  trade_post: { label: "Obchodní stanice", nodeType: "trade_hub", group: "trade", gold: 70, production: 40, resource: { wealth: 5 }, capabilities: ["trade_access", "storage", "construction"], role: "producer" },
+  river_wharf: { label: "Říční překladiště", nodeType: "port", group: "trade", gold: 80, production: 60, resource: { wealth: 4, supplies: 1 }, capabilities: ["shipping", "storage", "fishing"], role: "source" },
 };
 
 
@@ -2927,10 +2927,23 @@ async function executeBuildSubnode(
     if (!parcelCity || parcelCity.owner_player !== actor.name) return { events: [], error: "Město u této parcely ti nepatří" };
     if (!provinceId) provinceId = parcelCity.province_id ?? null;
   } else {
-    // Outpost on unclaimed land: borrow the province from your nearest own city for bookkeeping.
-    const { data: ownCity } = await supabase.from("cities").select("province_id")
-      .eq("session_id", sessionId).eq("owner_player", actor.name).not("province_id", "is", null).limit(1).maybeSingle();
-    if (!provinceId) provinceId = ownCity?.province_id ?? null;
+    // Outpost on unclaimed land: attach it to the nearest own city so its output reaches a market.
+    const { data: ownCities } = await supabase.from("cities")
+      .select("id, province_id, grid_x, grid_y, hex_q, hex_r")
+      .eq("session_id", sessionId).eq("owner_player", actor.name);
+    let best: any = null; let bestDist = Infinity;
+    for (const c of (ownCities || [])) {
+      const cx = c.grid_x ?? c.hex_q; const cy = c.grid_y ?? c.hex_r;
+      if (cx == null || cy == null) continue;
+      const dist = Math.max(Math.abs(Number(cx) - parcel.grid_x), Math.abs(Number(cy) - parcel.grid_y));
+      if (dist < bestDist) { bestDist = dist; best = c; }
+    }
+    if (best && bestDist <= 6) {
+      parcelCityId = best.id;
+      if (!provinceId) provinceId = best.province_id ?? null;
+    } else if (!provinceId && best) {
+      provinceId = best.province_id ?? null;
+    }
   }
 
   const realm = await getRealmFull(supabase, sessionId, actor.name);
