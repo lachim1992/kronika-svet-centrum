@@ -259,6 +259,8 @@ Deno.serve(async (req) => {
       map_height: spec.resolvedSize!.height,
       worldgen_spec: spec,
       worldgen_version: 1,
+      grid_kind: "square4",
+      grid_version: 1,
       bootstrap_status: "bootstrapping" as const,
       bootstrap_error: null,
     };

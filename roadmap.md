@@ -4,6 +4,9 @@
 - [ ] Add grid geometry regression tests
 - [x] Add per-world grid version and additive square coordinates
 - [ ] Support square-grid generation, discovery, movement, and pathfinding server-side
+  - [x] New worlds persist square-grid identity and generated terrain coordinates
+  - [x] Player and AI short-hop movement enforce four-direction adjacency
+  - [ ] Convert discovery, province growth, battles, and flow A* to topology-aware operations
 - [x] Add dual isometric square renderer preserving core map interactions and authoritative flow paths
 - [x] Convert desktop shell to persistent map with top tabs and collapsible workspace
 - [x] Make the isometric renderer visible for legacy worlds through a read-only coordinate adapter
