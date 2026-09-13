@@ -346,15 +346,18 @@ Deno.serve(async (req) => {
     // DISTRICT EFFECTS
     // ══════════════════════════════════════════
     const { data: completedDistricts } = await supabase.from("city_districts")
-      .select("city_id, stability_modifier").eq("session_id", sessionId).eq("status", "completed")
+      .select("city_id, stability_modifier, district_type, is_staffed").eq("session_id", sessionId).eq("status", "completed")
       .in("city_id", cityIds.length > 0 ? cityIds : ["00000000-0000-0000-0000-000000000000"]);
 
     const cityDistrictEffects: Record<string, Record<string, number>> = {};
     for (const d of (completedDistricts || [])) {
+      // An unstaffed production district is a dead workshop: no upkeep effect either.
+      if (d.district_type === "production" && d.is_staffed === false) continue;
       if (!cityDistrictEffects[d.city_id]) cityDistrictEffects[d.city_id] = {};
       cityDistrictEffects[d.city_id].stability_modifier =
         (cityDistrictEffects[d.city_id].stability_modifier || 0) + (d.stability_modifier || 0);
     }
+
 
     // ══════════════════════════════════════════
     // LAW EFFECTS
