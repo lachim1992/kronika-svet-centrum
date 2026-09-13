@@ -594,6 +594,10 @@ async function executeFoundCity(
     cityName, provinceId, provinceName, tags, flavorPrompt, legend,
     provinceQ, provinceR,
   } = payload;
+  const parcelIndexRaw = Number(payload.parcelIndex);
+  const foundedParcelIndex = Number.isInteger(parcelIndexRaw) && parcelIndexRaw >= 0 && parcelIndexRaw < TILE_PARCEL_COUNT
+    ? parcelIndexRaw
+    : null;
 
   if (!cityName?.trim()) return { events: [], error: "Missing cityName" };
 
@@ -664,6 +668,9 @@ async function executeFoundCity(
     flavor_prompt: flavorPrompt?.trim() || null,
     province_q: freeQ,
     province_r: freeR,
+    grid_x: freeQ,
+    grid_y: freeR,
+    founded_parcel_index: foundedParcelIndex,
     population_total: 1000,
     population_peasants: 800,
     population_burghers: 150,
@@ -676,6 +683,44 @@ async function executeFoundCity(
 
   if (cityErr) return { events: [], error: `City creation failed: ${cityErr.message}` };
   const cityId = cityData.id;
+
+  // ── 1b. Urban cell + sub-parcels of the founding cell ──
+  const { data: foundingCell } = await supabase.from("city_urban_cells").insert({
+    session_id: sessionId, city_id: cityId, grid_x: freeQ, grid_y: freeR,
+    cell_role: "core", status: "urbanized", claim_order: 0,
+    development_progress: 100, development_turns: 0, started_turn: turnNumber,
+  }).select("id").maybeSingle();
+
+  const foundingParcels = await ensureTileParcels(supabase, sessionId, freeQ, freeR);
+  if (foundingParcels?.length) {
+    const chosen = foundedParcelIndex !== null
+      ? foundingParcels.find((row: any) => row.parcel_index === foundedParcelIndex && row.buildable)
+      : null;
+    const seat = chosen
+      || foundingParcels.filter((row: any) => row.buildable)
+        .sort((a: any, b: any) => (b.capacity_slots || 0) - (a.capacity_slots || 0)
+          || Number(a.build_cost_multiplier) - Number(b.build_cost_multiplier))[0];
+    if (seat) {
+      await supabase.from("tile_parcels").update({
+        status: "occupied", land_use: "civic", city_id: cityId,
+        owner_player: actor.name, claimed_turn: turnNumber,
+      }).eq("id", seat.id);
+      if (seat.parcel_index !== foundedParcelIndex) {
+        await supabase.from("cities").update({ founded_parcel_index: seat.parcel_index }).eq("id", cityId);
+      }
+      // Neighbouring parcels of the seat start as claimed land the settlement can build on.
+      const neighbours = foundingParcels.filter((row: any) =>
+        row.buildable && row.status === "wild"
+        && Math.abs((row.parcel_index % 8) - (seat.parcel_index % 8)) <= 1
+        && Math.abs(Math.floor(row.parcel_index / 8) - Math.floor(seat.parcel_index / 8)) <= 1);
+      if (neighbours.length) {
+        await supabase.from("tile_parcels").update({
+          status: "claimed", city_id: cityId, owner_player: actor.name, claimed_turn: turnNumber,
+        }).in("id", neighbours.map((row: any) => row.id));
+      }
+    }
+  }
+  void foundingCell;
 
   // ── 2. World event ──
   const slug = `founding-${cityName.trim().toLowerCase().replace(/\s+/g, "-")}-${Date.now()}`;
