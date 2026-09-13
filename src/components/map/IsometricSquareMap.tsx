@@ -138,7 +138,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
 
   const renderParcelGrid = (urbanCell: UrbanCell, centerPoint: { x: number; y: number }) => {
     const cellParcels = parcelsByUrbanCell.get(urbanCell.id) || [];
-    return <g className="iso-parcel-grid">
+    return <g>
       {cellParcels.map(parcel => {
         const dx = (parcel.parcel_x - parcel.parcel_y) * 5.1;
         const dy = (parcel.parcel_x + parcel.parcel_y - 3) * 2.55;
@@ -148,8 +148,34 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
           {parcel.status === "occupied" && <path d="M-2 1 V-4 L0 -6 L2 -4 V1 Z" fill="var(--map-label)" stroke="var(--map-marker-edge)" strokeWidth=".5" />}
         </g>;
       })}
-      {urbanCell.status === "developing" && <circle cx={centerPoint.x} cy={centerPoint.y} r="18" fill="none" stroke="var(--map-focus)" strokeWidth="2" strokeDasharray={`${Math.max(1, urbanCell.development_progress)} 100`} pathLength="100" className="iso-growth-ring" />}
+      {urbanCell.status === "developing" && <circle cx={centerPoint.x} cy={centerPoint.y} r="18" fill="none" stroke="var(--map-focus)" strokeWidth="2" strokeDasharray={`${Math.max(1, urbanCell.development_progress)} 100`} pathLength="100" />}
     </g>;
+  };
+
+  const renderTown = (city: City, own: boolean) => {
+    const population = Math.max(0, city.population_total);
+    const townClass = population >= 2200 ? "major" : population >= 900 ? "town" : "village";
+    const buildingCount = townClass === "major" ? 7 : townClass === "town" ? 5 : 3;
+    const positions = [
+      { x: -13, y: 2, h: 10 }, { x: 0, y: 6, h: 12 }, { x: 13, y: 2, h: 9 },
+      { x: -7, y: -7, h: 13 }, { x: 8, y: -8, h: 11 }, { x: -17, y: -8, h: 9 }, { x: 18, y: -7, h: 10 },
+    ];
+    const wall = own ? "var(--map-city-own)" : "var(--map-city-rival)";
+    return <>
+      <path d="M-27 7 L0 20 L27 7 L0 -7 Z" fill="var(--map-city-base)" stroke="var(--map-marker-edge)" strokeWidth="1.2" />
+      {townClass !== "village" && <path d="M-25 5 L0 17 L25 5 M-25 5 L-25 -1 M25 5 L25 -1" fill="none" stroke={wall} strokeWidth="2.4" strokeLinecap="square" />}
+      {positions.slice(0, buildingCount).map((building, index) => {
+        const width = index === 3 && townClass === "major" ? 7 : 5;
+        const height = index === 3 && townClass === "major" ? 19 : building.h;
+        return <g key={index} transform={`translate(${building.x},${building.y})`}>
+          <path d={`M0 ${-height} L${width} ${-height + 3} V3 L0 6 Z`} fill="var(--map-city-wall-light)" stroke="var(--map-marker-edge)" strokeWidth=".7" />
+          <path d={`M0 ${-height} L${-width} ${-height + 3} V3 L0 6 Z`} fill="var(--map-city-wall-dark)" stroke="var(--map-marker-edge)" strokeWidth=".7" />
+          <path d={`M${-width - 1} ${-height + 3} L0 ${-height - 2} L${width + 1} ${-height + 3} L0 ${-height + 7} Z`} fill={wall} stroke="var(--map-marker-edge)" strokeWidth=".8" />
+          {height >= 18 && <path d={`M-2 ${-height - 2} L0 ${-height - 8} L2 ${-height - 2}`} fill={wall} stroke="var(--map-marker-edge)" strokeWidth="1" />}
+        </g>;
+      })}
+      {townClass === "major" && <><rect x="-24" y="-2" width="5" height="10" fill="var(--map-city-wall-light)" stroke="var(--map-marker-edge)"/><rect x="19" y="-2" width="5" height="10" fill="var(--map-city-wall-light)" stroke="var(--map-marker-edge)"/></>}
+    </>;
   };
 
   return (
@@ -161,35 +187,33 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
       <svg className="h-full w-full">
         <defs>
           <filter id="iso-shadow"><feDropShadow dx="0" dy="5" stdDeviation="4" floodOpacity=".35" /></filter>
-          <pattern id="iso-water" width="30" height="8" patternUnits="userSpaceOnUse"><path d="M0 4 Q7 0 15 4 T30 4" fill="none" stroke="var(--map-water-glint)" strokeWidth="1" opacity=".22"><animate attributeName="stroke-dashoffset" values="0;30" dur="5s" repeatCount="indefinite" /></path></pattern>
+          <pattern id="iso-water" width="30" height="8" patternUnits="userSpaceOnUse"><path d="M0 4 Q7 0 15 4 T30 4" fill="none" stroke="var(--map-water-glint)" strokeWidth="1" opacity=".22" /></pattern>
         </defs>
-        <g transform={`scale(${zoom})`} className="transition-transform duration-500 ease-out">
+        <g transform={`scale(${zoom})`}>
           {sortedTiles.map(tile => {
             const cell = tileCell(tile); const point = at(cell.a, cell.b); const colors = BIOMES[tile.biome_family] || BIOMES.plains;
             const active = selected?.id === tile.id; const urbanCell = urbanByCell.get(`${cell.a},${cell.b}`);
             return <g key={tile.id} onClick={(event) => { event.stopPropagation(); if (!dragRef.current?.moved) focusTile(tile); }} className="cursor-pointer">
-              <polygon points={squareDiamondPoints(point, TILE_SIZE)} fill={colors[0]} stroke={active ? "var(--map-focus)" : colors[1]} strokeWidth={active ? 2.8 : 1} className={active ? "iso-selected-tile" : "transition-colors duration-200"} />
+               <polygon points={squareDiamondPoints(point, TILE_SIZE)} fill={colors[0]} stroke={active ? "var(--map-focus)" : colors[1]} strokeWidth={active ? 2.8 : 1} />
               <polygon points={squareDiamondPoints(point, TILE_SIZE - 2)} fill={`url(#iso-${tile.biome_family})`} opacity=".55" />
               {tile.biome_family === "sea" && <polygon points={squareDiamondPoints(point, TILE_SIZE - 4)} fill="url(#iso-water)" />}
               {tile.biome_family.includes("forest") && !urbanCell && <Trees x={point.x - 8} y={point.y - 11} width="16" height="16" fill="var(--map-forest-edge)" stroke="var(--map-label)" strokeWidth=".8" />}
               {urbanCell && zoom >= 1.3 && renderParcelGrid(urbanCell, point)}
             </g>;
           })}
-          {routes.flatMap(route => { const path = gridKind === "square4" && Array.isArray(route.path_cells) ? route.path_cells : route.hex_path; return Array.isArray(path) && path.length > 1 ? [<polyline key={route.route_id || JSON.stringify(path)} points={path.map(cell => { const point = at(cell.x ?? cell.q ?? 0, cell.y ?? cell.r ?? 0); return `${point.x},${point.y}`; }).join(" ")} fill="none" stroke="var(--map-route)" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" opacity=".9" className="iso-active-route" />] : []; })}
-          {nodes.map(node => { const cell = entityCell(node); const point = at(cell.a, cell.b); return <g key={node.id} transform={`translate(${point.x},${point.y - 12})`} filter="url(#iso-shadow)" className="iso-node-bob"><circle r="13" fill="var(--map-marker)" stroke="var(--map-focus)" /><text y="4" textAnchor="middle" fontSize="13">{node.node_tier === "major" ? "🏛️" : "⚒️"}</text><title>{node.name}</title></g>; })}
+           {routes.flatMap(route => { const path = gridKind === "square4" && Array.isArray(route.path_cells) ? route.path_cells : route.hex_path; return Array.isArray(path) && path.length > 1 ? [<polyline key={route.route_id || JSON.stringify(path)} points={path.map(cell => { const point = at(cell.x ?? cell.q ?? 0, cell.y ?? cell.r ?? 0); return `${point.x},${point.y}`; }).join(" ")} fill="none" stroke="var(--map-route)" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" opacity=".9" strokeDasharray="8 5" />] : []; })}
+           {nodes.map(node => { const cell = entityCell(node); const point = at(cell.a, cell.b); const major = node.node_tier === "major"; return <g key={node.id} transform={`translate(${point.x},${point.y - 8})`} filter="url(#iso-shadow)"><path d={major ? "M-8 3 L0 7 L8 3 L0 -1 Z M-5 1 V-8 L0 -12 L5 -8 V1" : "M-7 3 L0 7 L7 3 L0 -1 Z M-4 1 V-6 L0 -9 L4 -6 V1"} fill="var(--map-marker)" stroke="var(--map-focus)" strokeWidth="1.2"/><title>{node.name}</title></g>; })}
           {cities.map(city => {
             const core = urbanCells.find(cell => cell.city_id === city.id && cell.cell_role === "core"); const cell = core ? { a: core.grid_x, b: core.grid_y } : entityCell(city); const point = at(cell.a, cell.b);
-            const own = city.owner_player === playerName; const scale = Math.min(1.45, .72 + Math.log10(Math.max(100, city.population_total)) * .18); const houses = Math.max(2, Math.min(6, Math.ceil(city.population_total / 700)));
-            return <g key={city.id} transform={`translate(${point.x},${point.y - 15}) scale(${scale})`} className="cursor-pointer iso-city-cluster" onClick={(event) => { event.stopPropagation(); const tile = tiles.find(candidate => { const c = tileCell(candidate); return c.a === cell.a && c.b === cell.b; }); if (tile) focusTile(tile); }} filter="url(#iso-shadow)">
-              {Array.from({ length: houses }, (_, index) => { const x = (index % 3) * 9 - 9; const y = Math.floor(index / 3) * 7 - 4; const height = 8 + (index % 2) * 4; return <g key={index} transform={`translate(${x},${y})`}><path d={`M-4 4 V${-height + 3} L0 ${-height} L4 ${-height + 3} V4 Z`} fill={own ? "var(--map-city-own)" : "var(--map-city-rival)"} stroke="var(--map-marker-edge)" strokeWidth="1"/><rect x="-1" y={-height + 5} width="2" height="3" fill="var(--map-window)" className="iso-window"/></g>; })}
-              <path d="M-17 11 H17 L11 17 H-14 Z" fill="var(--map-city-base)" />
-              <path d="M12 -16 V7 M12 -16 Q22 -13 15 -7 Q20 -4 12 -2" fill="var(--map-city-rival)" stroke="var(--map-marker-edge)" strokeWidth="1" className="iso-city-flag" />
-              <circle cx="-8" cy="-16" r="2" fill="var(--map-smoke)" className="iso-smoke iso-smoke-one"/><circle cx="-6" cy="-21" r="2.5" fill="var(--map-smoke)" className="iso-smoke iso-smoke-two"/>
-              <text y="29" textAnchor="middle" fill="var(--map-label)" fontSize="8" fontWeight="700" stroke="var(--map-label-edge)" strokeWidth="2.5" paintOrder="stroke">{city.name}</text>
-              {city.population_total > city.housing_capacity && <circle cx="-17" cy="-13" r="4" fill="var(--map-focus)" className="iso-growth-pulse"><title>Tlak na růst</title></circle>}
+             const own = city.owner_player === playerName; const scale = Math.min(1.25, .88 + Math.log10(Math.max(100, city.population_total)) * .08);
+             return <g key={city.id} transform={`translate(${point.x},${point.y - 16}) scale(${scale})`} className="cursor-pointer" onClick={(event) => { event.stopPropagation(); const tile = tiles.find(candidate => { const c = tileCell(candidate); return c.a === cell.a && c.b === cell.b; }); if (tile) focusTile(tile); }} filter="url(#iso-shadow)">
+               {renderTown(city, own)}
+               <rect x={-Math.max(22, city.name.length * 2.8)} y="25" width={Math.max(44, city.name.length * 5.6)} height="13" rx="2" fill="var(--map-marker)" stroke={own ? "var(--map-city-own)" : "var(--map-city-rival)"} strokeWidth=".8" opacity=".94" />
+               <text y="34" textAnchor="middle" fill="var(--map-label)" fontSize="7.5" fontWeight="700">{city.name}</text>
+               {city.population_total > city.housing_capacity && <path d="M-27 -11 L-22 -20 L-17 -11 Z" fill="var(--map-focus)"><title>Tlak na růst</title></path>}
             </g>;
           })}
-          {armies.map(army => { const cell = entityCell(army); const point = at(cell.a, cell.b); const own = army.player_name === playerName; return <g key={army.id} transform={`translate(${point.x + 19},${point.y - 34})`} filter="url(#iso-shadow)" className="iso-army-bob"><circle r="11" fill={own ? "var(--map-city-own)" : "var(--map-city-rival)"} stroke="var(--map-marker-edge)" strokeWidth="2"/><Shield x="-6" y="-6" width="12" height="12" fill="none" stroke="var(--map-marker-edge)"/><Flag x="5" y="-20" width="14" height="14" fill="var(--map-route)" stroke="var(--map-marker-edge)"/><title>{army.name} · {army.soldiers} vojáků · morálka {army.morale}</title></g>; })}
+           {armies.map(army => { const cell = entityCell(army); const point = at(cell.a, cell.b); const own = army.player_name === playerName; return <g key={army.id} transform={`translate(${point.x + 19},${point.y - 34})`} filter="url(#iso-shadow)"><circle r="11" fill={own ? "var(--map-city-own)" : "var(--map-city-rival)"} stroke="var(--map-marker-edge)" strokeWidth="2"/><Shield x="-6" y="-6" width="12" height="12" fill="none" stroke="var(--map-marker-edge)"/><Flag x="5" y="-20" width="14" height="14" fill="var(--map-route)" stroke="var(--map-marker-edge)"/><title>{army.name} · {army.soldiers} vojáků · morálka {army.morale}</title></g>; })}
         </g>
       </svg>
 
@@ -200,7 +224,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
       </div>
       <div className="map-floating-control absolute left-4 top-4 z-20 flex items-center gap-2 px-3 py-2 text-xs"><Layers3 className="h-4 w-4 text-primary"/><span>{gridKind === "square4" ? "Čtvercová síť" : "Původní svět"} · izometrické zobrazení</span></div>
 
-      {selected && <aside className="map-tile-detail animate-slide-in-right absolute bottom-0 right-0 top-0 z-40 w-full overflow-y-auto border-l border-primary/20 bg-background/95 p-5 shadow-2xl backdrop-blur-xl sm:w-[380px]">
+      {selected && <aside className="map-tile-detail absolute bottom-0 right-0 top-0 z-40 w-full overflow-y-auto border-l border-primary/20 bg-background/95 p-5 shadow-2xl backdrop-blur-xl sm:w-[380px]">
         <Button size="icon" variant="ghost" className="absolute right-3 top-3" aria-label="Zavřít detail" onClick={() => { setSelected(null); onDetailOpenChange?.(false); }}><X className="h-4 w-4"/></Button>
         <div className="pr-10">
           <p className="text-[10px] font-semibold uppercase text-primary">Pole {selectedCell?.a}, {selectedCell?.b}</p>

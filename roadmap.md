@@ -21,5 +21,5 @@
   - [x] Persist urban cells and 4×4 parcels without duplicating building effects
   - [x] Add command-dispatch expansion and parcel assignment guards
   - [x] Advance developing city cells during committed turns
-  - [x] Render animated city clusters, parcel zoom, field detail, and growth controls
+  - [x] Render static recognizable city clusters, parcel zoom, field detail, and growth controls
   - [x] Verify parcel rendering, field selection, and deployed expansion command end to end
