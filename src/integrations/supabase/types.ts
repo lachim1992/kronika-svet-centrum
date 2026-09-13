@@ -7775,6 +7775,7 @@ export type Database = {
           node_subtype: string | null
           node_tier: string
           node_type: string
+          parcel_index: number | null
           parent_node_id: string | null
           population: number
           production_base: number
@@ -7864,6 +7865,7 @@ export type Database = {
           node_subtype?: string | null
           node_tier?: string
           node_type?: string
+          parcel_index?: number | null
           parent_node_id?: string | null
           population?: number
           production_base?: number
@@ -7953,6 +7955,7 @@ export type Database = {
           node_subtype?: string | null
           node_tier?: string
           node_type?: string
+          parcel_index?: number | null
           parent_node_id?: string | null
           population?: number
           production_base?: number

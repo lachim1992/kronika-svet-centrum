@@ -21,7 +21,7 @@ interface Props {
 
 type Tile = { id: string; q: number; r: number; grid_x: number | null; grid_y: number | null; biome_family: string; owner_player: string | null; mean_height: number | null; is_passable: boolean };
 type City = { id: string; name: string; province_q: number; province_r: number; grid_x: number | null; grid_y: number | null; owner_player: string; settlement_level: string; population_total: number; housing_capacity: number; development_level: number; birth_rate: number; death_rate: number; migration_pressure: number; founded_parcel_index: number | null };
-type Node = { id: string; name: string; hex_q: number; hex_r: number; grid_x: number | null; grid_y: number | null; node_type: string; node_tier: string };
+type Node = { id: string; name: string; hex_q: number; hex_r: number; grid_x: number | null; grid_y: number | null; node_type: string; node_tier: string; parcel_index: number | null };
 type Army = { id: string; name: string; hex_q: number; hex_r: number; grid_x: number | null; grid_y: number | null; player_name: string; soldiers: number; morale: number; unit_count: number; power: number; stance: string; formation_type: string; assignment: string; moved_this_turn: boolean; parcel_index: number | null };
 type PathCell = { x?: number; y?: number; q?: number; r?: number };
 type Route = { route_id: string | null; path_cells: PathCell[] | null; hex_path: PathCell[] | null };
@@ -128,7 +128,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
     const [tileRes, cityRes, nodeRes, routeRes, armyRes, parcelRes, realmRes] = await Promise.all([
       supabase.from("province_hexes").select("id, q, r, grid_x, grid_y, biome_family, owner_player, mean_height, is_passable").eq("session_id", sessionId).limit(4000),
       supabase.from("cities").select("id, name, province_q, province_r, grid_x, grid_y, owner_player, settlement_level, population_total, housing_capacity, development_level, birth_rate, death_rate, migration_pressure, founded_parcel_index").eq("session_id", sessionId),
-      supabase.from("province_nodes").select("id, name, hex_q, hex_r, grid_x, grid_y, node_type, node_tier").eq("session_id", sessionId).eq("is_active", true),
+      supabase.from("province_nodes").select("id, name, hex_q, hex_r, grid_x, grid_y, node_type, node_tier, parcel_index").eq("session_id", sessionId).eq("is_active", true),
       supabase.from("flow_paths").select("route_id, path_cells, hex_path").eq("session_id", sessionId),
       supabase.from("military_stacks").select("id, name, hex_q, hex_r, grid_x, grid_y, player_name, soldiers, morale, unit_count, power, stance, formation_type, assignment, moved_this_turn, parcel_index").eq("session_id", sessionId).eq("is_active", true).eq("is_deployed", true),
       supabase.from("tile_parcels").select("id, grid_x, grid_y, parcel_index, parcel_x, parcel_y, sub_biome, elevation, buildable, build_cost_multiplier, capacity_slots, status, land_use, city_id, owner_player").eq("session_id", sessionId).not("city_id", "is", null).limit(6000),
@@ -291,19 +291,33 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
   };
 
   /** Full 32-parcel survey of the cell the player is inspecting. */
-  const renderTileParcels = (centerPoint: { x: number; y: number }) => <g pointerEvents="none">
-    {tileParcels.map(parcel => {
-      const base = SUB_BIOME_COLOR[parcel.sub_biome] || "var(--map-plains)";
-      const fill = parcel.status === "occupied" ? (LAND_USE_COLOR[parcel.land_use || "civic"] || LAND_USE_COLOR.open)
-        : parcel.status === "claimed" ? "var(--map-parcel-open)" : base;
-      return <g key={parcel.id}>
-        <polygon points={parcelQuad(centerPoint, parcel.parcel_x, parcel.parcel_y)} fill={fill}
-          stroke={parcel.buildable ? "var(--map-marker-edge)" : "var(--map-mountain-edge)"} strokeWidth=".5"
-          opacity={parcel.buildable ? (parcel.status === "wild" ? .78 : .95) : .55} />
-        <title>{`${parcel.parcel_index + 1} · ${SUB_BIOME_LABEL[parcel.sub_biome] || parcel.sub_biome} · výška ${parcel.elevation}`}</title>
-      </g>;
-    })}
-  </g>;
+  const renderTileParcels = (centerPoint: { x: number; y: number }) => {
+    const cityOwned = tileParcels.filter(parcel => parcel.city_id);
+    const wallEdges = cityOwned.length ? footprintWallEdges(cityOwned, centerPoint) : [];
+    const holder = cityOwned[0]?.city_id ? cityById.get(cityOwned[0].city_id) : undefined;
+    const holderColor = holder ? (holder.owner_player === playerName ? "var(--map-city-own)" : "var(--map-city-rival)") : "var(--map-city-own)";
+    return <g pointerEvents="none">
+      {tileParcels.map(parcel => {
+        const base = SUB_BIOME_COLOR[parcel.sub_biome] || "var(--map-plains)";
+        const mine = !!parcel.city_id;
+        const fill = parcel.status === "occupied" ? (LAND_USE_COLOR[parcel.land_use || "civic"] || LAND_USE_COLOR.open)
+          : parcel.status === "claimed" ? "var(--map-parcel-open)" : base;
+        return <g key={parcel.id}>
+          <polygon points={parcelQuad(centerPoint, parcel.parcel_x, parcel.parcel_y)} fill={fill}
+            stroke={mine ? holderColor : parcel.buildable ? "var(--map-marker-edge)" : "var(--map-mountain-edge)"}
+            strokeWidth={mine ? 1.1 : .5}
+            opacity={mine ? 1 : parcel.buildable ? (parcel.status === "wild" ? .6 : .95) : .45} />
+          <title>{`${parcel.parcel_index + 1} · ${SUB_BIOME_LABEL[parcel.sub_biome] || parcel.sub_biome} · výška ${parcel.elevation}${mine ? ` · patří ${holder?.name || "městu"}` : ""}`}</title>
+        </g>;
+      })}
+      {/* city land is ringed so the built-up block reads at a glance */}
+      {wallEdges.map((edge, index) => (
+        <line key={`survey-wall-${index}`} x1={edge.from.x} y1={edge.from.y} x2={edge.to.x} y2={edge.to.y}
+          stroke={holderColor} strokeWidth="2.2" strokeLinecap="round" opacity=".95" />
+      ))}
+      {tileParcels.filter(parcel => parcel.status === "occupied").map((parcel, index) => renderParcelHouse(parcel, centerPoint, index))}
+    </g>;
+  };
 
   /** Corner points of a single parcel, in draw order A(top) B(right) C(bottom) D(left). */
   const parcelCorners = (centerPoint: { x: number; y: number }, px: number, py: number) => {
@@ -370,12 +384,12 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
   /** Node compound drawn in the same parcel/rampart language as city footprints. */
   const renderNodeCompound = (node: Node, centerPoint: { x: number; y: number }) => {
     const style = NODE_STYLE[node.node_type] || NODE_STYLE.resource_node;
-    const patch = node.node_tier === "major" ? [[2, 2], [3, 2], [4, 2], [2, 3], [3, 3], [4, 3]]
-      : node.node_tier === "minor" ? [[2, 2], [3, 2], [2, 3], [3, 3]]
-      : [[2, 3], [3, 3]];
-    const parcels = patch.map(([x, y], index) => ({
-      id: `${node.id}-${index}`, parcel_x: x, parcel_y: y, parcel_index: index,
-      status: "occupied", land_use: style.landUse,
+    // Every node owns a concrete sub-parcel; its tier decides how many parcels the compound covers.
+    const size = node.node_tier === "major" ? 9 : node.node_tier === "minor" ? 4 : 2;
+    const anchor = node.parcel_index ?? fallbackArmyParcel(node.id);
+    const parcels = armyCampParcels(anchor, size).map((index, order) => ({
+      id: `${node.id}-${order}`, parcel_x: index % TILE_PARCEL_COLS, parcel_y: Math.floor(index / TILE_PARCEL_COLS),
+      parcel_index: index, status: "occupied", land_use: style.landUse,
     })) as unknown as TileParcel[];
     const edges = footprintWallEdges(parcels, centerPoint);
     const walled = style.walled;
@@ -399,6 +413,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
         </g>
       ))}
       {parcels.slice(0, style.houses).map((parcel, index) => renderParcelHouse(parcel, centerPoint, index))}
+      <title>{`${node.name} · ${style.label} · ${parcels.length} sub-čtverců (${anchor + 1})`}</title>
       <title>{`${node.name} · ${style.label}`}</title>
     </g>;
   };
