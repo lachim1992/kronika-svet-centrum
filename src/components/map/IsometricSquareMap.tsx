@@ -106,8 +106,8 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
   }), [tiles, tileCell]);
   const selectedCell = selected ? tileCell(selected) : null;
   const selectedUrbanCell = selectedCell ? urbanByCell.get(`${selectedCell.a},${selectedCell.b}`) : undefined;
-  const selectedCity = selectedUrbanCell ? cityById.get(selectedUrbanCell.city_id) : undefined;
   const cityLayerCity = cityLayerCityId ? cityById.get(cityLayerCityId) : undefined;
+  const selectedCity = cityLayerCity || (selectedUrbanCell ? cityById.get(selectedUrbanCell.city_id) : undefined);
   const expansionCity = useMemo(() => {
     if (!selectedCell || selectedUrbanCell || gridKind !== "square4") return undefined;
     return urbanCells.map(cell => ({ cell, city: cityById.get(cell.city_id) }))
@@ -122,11 +122,11 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
   const netGrowth = cityForPressure ? Math.round(cityForPressure.population_total * ((cityForPressure.birth_rate || 0) - (cityForPressure.death_rate || 0)) + (cityForPressure.migration_pressure || 0)) : 0;
 
   const at = (a: number, b: number) => { const point = projectCell("square4", { a, b }, TILE_SIZE); return { x: point.x + pan.x, y: point.y + pan.y }; };
-  const focusTile = (tile: Tile) => {
+  const focusTile = (tile: Tile, requestedCityId?: string) => {
     const element = viewportRef.current; if (!element) return;
     const cell = tileCell(tile); const projected = projectCell("square4", cell, TILE_SIZE);
     const urbanCell = urbanByCell.get(`${cell.a},${cell.b}`);
-    const city = urbanCell ? cityById.get(urbanCell.city_id) : undefined;
+    const city = requestedCityId ? cityById.get(requestedCityId) : urbanCell ? cityById.get(urbanCell.city_id) : undefined;
     const targetZoom = city ? 2.25 : 1.65;
     setSelected(tile); setZoom(targetZoom);
     setCityLayerCityId(city?.id || null);
@@ -218,10 +218,19 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
            {!cityLayerCityId && routes.flatMap(route => { const path = gridKind === "square4" && Array.isArray(route.path_cells) ? route.path_cells : route.hex_path; return Array.isArray(path) && path.length > 1 ? [<polyline key={route.route_id || JSON.stringify(path)} points={path.map(cell => { const point = at(cell.x ?? cell.q ?? 0, cell.y ?? cell.r ?? 0); return `${point.x},${point.y}`; }).join(" ")} fill="none" stroke="var(--map-route)" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" opacity=".9" className="iso-active-route" pointerEvents="none" />] : []; })}
            {!cityLayerCityId && nodes.map(node => { const cell = entityCell(node); const point = at(cell.a, cell.b); const major = node.node_tier === "major"; return <g key={node.id} transform={`translate(${point.x},${point.y - 8})`} filter="url(#iso-shadow)" pointerEvents="none"><path d={major ? "M-8 3 L0 7 L8 3 L0 -1 Z M-5 1 V-8 L0 -12 L5 -8 V1" : "M-7 3 L0 7 L7 3 L0 -1 Z M-4 1 V-6 L0 -9 L4 -6 V1"} fill="var(--map-marker)" stroke="var(--map-focus)" strokeWidth="1.2"/><title>{node.name}</title></g>; })}
           {cities.map(city => {
-            const core = urbanCells.find(cell => cell.city_id === city.id && cell.cell_role === "core"); const cell = core ? { a: core.grid_x, b: core.grid_y } : entityCell(city); const point = at(cell.a, cell.b);
+             const core = urbanCells.find(cell => cell.city_id === city.id && cell.cell_role === "core");
+             const cell = gridKind === "square4" && core ? { a: core.grid_x, b: core.grid_y } : entityCell(city); const point = at(cell.a, cell.b);
              const own = city.owner_player === playerName; const scale = Math.min(1.25, .88 + Math.log10(Math.max(100, city.population_total)) * .08);
              if (cityLayerCityId === city.id) return null;
-             const openCityLayer = () => { const tile = tiles.find(candidate => { const c = tileCell(candidate); return c.a === cell.a && c.b === cell.b; }); if (tile) focusTile(tile); };
+             const openCityLayer = () => {
+               const exactTile = tiles.find(candidate => { const candidateCell = tileCell(candidate); return candidateCell.a === cell.a && candidateCell.b === cell.b; });
+               const fallbackTile = exactTile || tiles.reduce<Tile | undefined>((closest, candidate) => {
+                 if (!closest) return candidate;
+                 const candidateCell = tileCell(candidate); const closestCell = tileCell(closest);
+                 return gridDistance(gridKind, candidateCell, cell) < gridDistance(gridKind, closestCell, cell) ? candidate : closest;
+               }, undefined);
+               if (fallbackTile) focusTile(fallbackTile, city.id);
+             };
              return <g key={city.id} data-map-city={city.id} role="button" aria-label={`Vstoupit do města ${city.name}`} tabIndex={0} transform={`translate(${point.x},${point.y - 16}) scale(${scale})`} className="cursor-pointer" onClick={(event) => { event.stopPropagation(); openCityLayer(); }} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); openCityLayer(); } }} filter="url(#iso-shadow)">
                {renderTown(city, own)}
                <rect x={-Math.max(22, city.name.length * 2.8)} y="25" width={Math.max(44, city.name.length * 5.6)} height="13" rx="2" fill="var(--map-marker)" stroke={own ? "var(--map-city-own)" : "var(--map-city-rival)"} strokeWidth=".8" opacity=".94" />
