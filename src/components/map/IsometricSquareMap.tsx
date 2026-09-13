@@ -806,6 +806,18 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
     return { housing, slots: housing * PRODUCTION_PER_RESIDENTIAL, production, free: housing * PRODUCTION_PER_RESIDENTIAL - production.length };
   }, [districts, selectedCity?.id]);
 
+  /** Subnodes attached to the selected city — they feed the same markets as its districts. */
+  const citySubnodes = useMemo(() => {
+    if (!selectedCity) return { list: [] as Node[], production: 0, wealth: 0, food: 0 };
+    const list = nodes.filter(n => n.city_id === selectedCity.id && n.node_tier === "micro");
+    return {
+      list,
+      production: Math.round(list.reduce((sum, n) => sum + Number(n.production_output || 0), 0) * 10) / 10,
+      wealth: Math.round(list.reduce((sum, n) => sum + Number(n.wealth_output || 0), 0) * 10) / 10,
+      food: Math.round(list.reduce((sum, n) => sum + Number(n.food_value || 0), 0) * 10) / 10,
+    };
+  }, [nodes, selectedCity?.id]);
+
   const buildDistrict = async (district: DistrictBlueprint, basketKey?: string) => {
 
     if (!selectedParcel || !selectedCity || selectedCity.owner_player !== playerName) return;
@@ -1442,6 +1454,23 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
                 </select>
               </div>
             ))}</div>}
+          <div className="border-t border-border/60 pt-2">
+            <div className="flex items-baseline justify-between">
+              <h4 className="text-xs">Subuzly v okolí</h4>
+              <span className="text-[10px] text-muted-foreground">{citySubnodes.list.length}</span>
+            </div>
+            {citySubnodes.list.length === 0
+              ? <p className="text-[11px] text-muted-foreground">Žádné subuzly. Postav dvůr, dílnu nebo překladiště na podčtverci.</p>
+              : <>
+                <div className="space-y-1">{citySubnodes.list.map(node => (
+                  <button key={node.id} type="button" className="flex w-full items-center gap-2 text-left text-[11px]" onClick={() => setSelectedNodeId(node.id)}>
+                    <span className="flex-1 truncate">{node.name}</span>
+                    <span className="text-muted-foreground">P {Number(node.production_output || 0)} · Z {Number(node.wealth_output || 0)} · F {Number(node.food_value || 0)}</span>
+                  </button>
+                ))}</div>
+                <p className="mt-1 text-[10px] text-muted-foreground">Celkem: produkce {citySubnodes.production} · bohatství {citySubnodes.wealth} · potraviny {citySubnodes.food} — přepočítá se při dalším tahu.</p>
+              </>}
+          </div>
           {selectedCity.owner_player !== playerName && <p className="text-[10px] text-muted-foreground">Cizí město — výrobu tu nastavit nelze.</p>}
         </section>}
 
