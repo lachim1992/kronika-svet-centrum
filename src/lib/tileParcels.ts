@@ -11,6 +11,7 @@ export type TileTerrain = {
   biome_family?: string | null;
   elevation?: number | null;
   has_river?: boolean | null;
+  river_direction?: string | null;
   is_coastal?: boolean | null;
   is_passable?: boolean | null;
 };
@@ -239,101 +240,65 @@ function waterLayout(
     return water;
   }
 
-  const waterNeighbours = neighbours.filter((n) => isWaterTerrain(n.terrain));
+  // Water from a neighbouring macro water cell never floods this land cell. The
+  // shoreline is expressed by the normal coastal sub-biomes; actual water parcels
+  // live primarily inside macro water cells.
 
-  // 1) Sea reaches into the shared border row, second row only in coves.
-  for (const neighbour of waterNeighbours) {
-    const span = neighbour.dx !== 0 ? TILE_PARCEL_ROWS : TILE_PARCEL_COLS;
-    for (let along = 0; along < span; along += 1) {
-      const edge = borderParcel(neighbour.dx, neighbour.dy, along, 0);
-      water.set(parcelIndexOf(edge.x, edge.y), WATER_DEFS.open_water);
-      const coveSeed = `${cellSeed}:cove:${neighbour.dx}:${neighbour.dy}:${along}`;
-      if (seeded(coveSeed) < 0.4) {
-        const cove = borderParcel(neighbour.dx, neighbour.dy, along, 1);
-        water.set(parcelIndexOf(cove.x, cove.y), WATER_DEFS.open_water);
+  // A river uses only its declared outgoing edge plus neighbours whose declared
+  // outflow enters this cell. This prevents every adjacent river cell from being
+  // joined into a broad square-shaped blob.
+  if (terrain.has_river) {
+    const directionStep: Record<string, { dx: number; dy: number }> = {
+      east: { dx: 1, dy: 0 }, west: { dx: -1, dy: 0 },
+      south: { dx: 0, dy: 1 }, north: { dx: 0, dy: -1 },
+    };
+    const riverEdges: Array<{ dx: number; dy: number }> = [];
+    const outgoing = terrain.river_direction ? directionStep[terrain.river_direction] : undefined;
+    if (outgoing) riverEdges.push(outgoing);
+    for (const neighbour of neighbours) {
+      if (!neighbour.terrain.has_river) continue;
+      const neighbourOut = neighbour.terrain.river_direction
+        ? directionStep[neighbour.terrain.river_direction]
+        : undefined;
+      if (neighbourOut && neighbour.dx + neighbourOut.dx === 0 && neighbour.dy + neighbourOut.dy === 0) {
+        riverEdges.push({ dx: neighbour.dx, dy: neighbour.dy });
       }
     }
-  }
-
-  // 2) River channel: connect every river border to one confluence point inside the cell.
-  const channel: Array<{ x: number; y: number }> = [];
-  if (terrain.has_river) {
-    const riverEdges = neighbours
-      .filter((n) => n.terrain.has_river || isWaterTerrain(n.terrain))
-      .map((n) => ({ dx: n.dx, dy: n.dy }));
-    if (riverEdges.length === 0) {
-      const fallback = [{ dx: 1, dy: 0 }, { dx: -1, dy: 0 }, { dx: 0, dy: 1 }, { dx: 0, dy: -1 }];
-      riverEdges.push(fallback[Math.floor(seeded(`${cellSeed}:river-fallback`) * fallback.length)]);
+    const uniqueEdges = riverEdges.filter((edge, index, all) =>
+      all.findIndex((item) => item.dx === edge.dx && item.dy === edge.dy) === index
+    );
+    if (uniqueEdges.length === 1) {
+      // Source fallback: begin in the interior and flow to the declared outgoing edge.
+      const edge = uniqueEdges[0];
+      uniqueEdges.unshift({ dx: -edge.dx, dy: -edge.dy });
     }
-    const confluence = {
-      x: 1 + Math.floor(seeded(`${cellSeed}:river-cx`) * (TILE_PARCEL_COLS - 2)),
-      y: 1 + Math.floor(seeded(`${cellSeed}:river-cy`) * (TILE_PARCEL_ROWS - 2)),
+
+    const centre = {
+      x: 2 + Math.floor(seeded(`${cellSeed}:river-cx`) * 2),
+      y: 2 + Math.floor(seeded(`${cellSeed}:river-cy`) * 2),
     };
-    for (const edge of riverEdges) {
+    const channel = new Map<number, { x: number; y: number }>();
+    const add = (x: number, y: number) => channel.set(parcelIndexOf(x, y), { x, y });
+    for (const edge of uniqueEdges) {
       const along = riverCrossing(sessionId, gridX, gridY, edge.dx, edge.dy);
       const entry = borderParcel(edge.dx, edge.dy, along, 0);
-      const xFirst = seeded(`${cellSeed}:river-bend:${edge.dx}:${edge.dy}`) < 0.5;
       let { x, y } = entry;
-      channel.push({ x, y });
-      const stepX = () => { while (x !== confluence.x) { x += x < confluence.x ? 1 : -1; channel.push({ x, y }); } };
-      const stepY = () => { while (y !== confluence.y) { y += y < confluence.y ? 1 : -1; channel.push({ x, y }); } };
-      if (xFirst) { stepX(); stepY(); } else { stepY(); stepX(); }
+      add(x, y);
+      // One connected, one-parcel-wide Manhattan line. Alternate axes to avoid
+      // long artificial horizontal/vertical bars.
+      let axis = seeded(`${cellSeed}:river-step:${edge.dx}:${edge.dy}`) < 0.5;
+      while (x !== centre.x || y !== centre.y) {
+        const canX = x !== centre.x;
+        const canY = y !== centre.y;
+        if ((axis && canX) || !canY) x += x < centre.x ? 1 : -1;
+        else y += y < centre.y ? 1 : -1;
+        add(x, y);
+        axis = !axis;
+      }
     }
-    for (const cell of channel) water.set(parcelIndexOf(cell.x, cell.y), WATER_DEFS.river_channel);
-  }
-
-  // 3) Lakes: small blobs, only where water is plausible (river cell or next to water).
-  const lakeChance = terrain.has_river ? 0.45 : waterNeighbours.length > 0 ? 0.3 : 0.06;
-  if (seeded(`${cellSeed}:lake`) < lakeChance) {
-    const size = 2 + Math.floor(seeded(`${cellSeed}:lake-size`) * 4);
-    let anchor = {
-      x: Math.floor(seeded(`${cellSeed}:lake-x`) * TILE_PARCEL_COLS),
-      y: Math.floor(seeded(`${cellSeed}:lake-y`) * TILE_PARCEL_ROWS),
-    };
-    // A lake next to the sea or a river grows out of that water body.
-    if (channel.length > 0) {
-      anchor = channel[Math.floor(seeded(`${cellSeed}:lake-anchor`) * channel.length)];
-    } else if (waterNeighbours.length > 0) {
-      const seaEdge = waterNeighbours[0];
-      const span = seaEdge.dx !== 0 ? TILE_PARCEL_ROWS : TILE_PARCEL_COLS;
-      const along = Math.floor(seeded(`${cellSeed}:lake-along`) * span);
-      anchor = borderParcel(seaEdge.dx, seaEdge.dy, along, 1);
+    for (const cell of channel.values()) {
+      water.set(parcelIndexOf(cell.x, cell.y), WATER_DEFS.river_channel);
     }
-    const blob: Array<{ x: number; y: number }> = [anchor];
-    const taken = new Set([parcelIndexOf(anchor.x, anchor.y)]);
-    const steps = [[1, 0], [-1, 0], [0, 1], [0, -1]];
-    let guard = 0;
-    while (blob.length < size && guard < 24) {
-      const from = blob[Math.floor(seeded(`${cellSeed}:lake-grow:${guard}`) * blob.length)];
-      const [dx, dy] = steps[Math.floor(seeded(`${cellSeed}:lake-dir:${guard}`) * steps.length)];
-      const next = { x: from.x + dx, y: from.y + dy };
-      guard += 1;
-      if (!insideParcelGrid(next.x, next.y)) continue;
-      const index = parcelIndexOf(next.x, next.y);
-      if (taken.has(index)) continue;
-      taken.add(index);
-      blob.push(next);
-    }
-    for (const cell of blob) {
-      const index = parcelIndexOf(cell.x, cell.y);
-      if (!water.has(index)) water.set(index, WATER_DEFS.lake);
-    }
-  }
-
-  // 4) Every land parcel touching water becomes a bank.
-  const banks: number[] = [];
-  for (const index of water.keys()) {
-    const x = index % TILE_PARCEL_COLS;
-    const y = Math.floor(index / TILE_PARCEL_COLS);
-    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
-      const nx = x + dx, ny = y + dy;
-      if (!insideParcelGrid(nx, ny)) continue;
-      const neighbourIndex = parcelIndexOf(nx, ny);
-      if (!water.has(neighbourIndex)) banks.push(neighbourIndex);
-    }
-  }
-  for (const index of banks) {
-    if (!water.has(index)) water.set(index, WATER_DEFS.river_bank);
   }
 
   return water;
