@@ -20,6 +20,7 @@ import {
   ensureTileParcels,
   seatCityOnParcels,
 } from "../_shared/citySeat.ts";
+import { tileInfrastructureLevel } from "../_shared/tileInfrastructure.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -365,6 +366,12 @@ async function executeCommand(
 
     case "CLAIM_TILE_PARCEL":
       return await executeClaimTileParcel(supabase, base, actor, payload, commandId, sessionId, turnNumber);
+
+    case "BUILD_SUBNODE":
+      return await executeBuildSubnode(supabase, base, actor, payload, commandId, sessionId, turnNumber);
+
+    case "UPGRADE_TILE_INFRASTRUCTURE":
+      return await executeUpgradeTileInfrastructure(supabase, base, actor, payload, commandId, sessionId, turnNumber);
 
     case "UPGRADE_INFRASTRUCTURE":
       return await executeUpgradeInfrastructure(supabase, base, actor, payload, commandId, sessionId, turnNumber);
@@ -2647,26 +2654,37 @@ async function getRealmFull(supabase: any, sessionId: string, playerName: string
   return data;
 }
 
-/** First claimed (free) sub-parcel of the city, optionally a specific one. */
+/** First claimed sub-parcel with remaining slots, optionally a specific one. */
 async function getAvailableParcel(supabase: any, cityId: string, requestedParcelId?: string) {
   let query = supabase.from("tile_parcels")
-    .select("id, city_id, grid_x, grid_y, parcel_index, status")
+    .select("id, city_id, grid_x, grid_y, parcel_index, status, capacity_slots")
     .eq("city_id", cityId)
-    .eq("status", "claimed")
+    .in("status", ["claimed", "occupied"])
     .order("parcel_index")
-    .limit(1);
+    .limit(requestedParcelId ? 1 : 100);
   if (requestedParcelId) query = query.eq("id", requestedParcelId);
-  const { data } = await query.maybeSingle();
-  return data;
+  const { data } = await query;
+  for (const parcel of data || []) {
+    const { data: contents } = await supabase.from("tile_parcel_contents").select("slots_used").eq("parcel_id", parcel.id);
+    const used = (contents || []).reduce((sum: number, item: any) => sum + Number(item.slots_used || 0), 0);
+    if (used < Number(parcel.capacity_slots || 0)) return { ...parcel, used_slots: used };
+  }
+  return null;
 }
 
-async function occupyParcel(supabase: any, parcelId: string, kind: "building" | "district", entityId: string, landUse: string) {
+async function occupyParcel(supabase: any, sessionId: string, parcelId: string, kind: "building" | "district", entityId: string, landUse: string) {
   const update = kind === "building"
     ? { status: "occupied", land_use: landUse, building_id: entityId }
     : { status: "occupied", land_use: landUse, district_id: entityId };
-  await supabase.from("tile_parcels").update(update).eq("id", parcelId).eq("status", "claimed");
-  await supabase.from(kind === "building" ? "city_buildings" : "city_districts")
+  const { error: parcelError } = await supabase.from("tile_parcels").update(update).eq("id", parcelId).in("status", ["claimed", "occupied"]);
+  if (parcelError) return parcelError;
+  const { error: entityError } = await supabase.from(kind === "building" ? "city_buildings" : "city_districts")
     .update({ parcel_id: parcelId }).eq("id", entityId);
+  if (entityError) return entityError;
+  const { error: contentError } = await supabase.from("tile_parcel_contents").insert({
+    session_id: sessionId, parcel_id: parcelId, entity_type: kind, entity_id: entityId, slots_used: 1,
+  });
+  return contentError;
 }
 
 /**
@@ -2742,6 +2760,121 @@ async function executeClaimTileParcel(
   }], { parcelId: parcel.id });
 }
 
+const SUBNODE_DEFS: Record<string, {
+  label: string; nodeType: string; group: string; gold: number; production: number;
+  resource: Record<string, number>; capabilities: string[];
+}> = {
+  farmstead: { label: "Produkční dvůr", nodeType: "resource_node", group: "production", gold: 35, production: 45, resource: { supplies: 4, production: 2 }, capabilities: ["food_production"] },
+  workshop: { label: "Řemeslná dílna", nodeType: "resource_node", group: "production", gold: 45, production: 55, resource: { production: 5, wealth: 1 }, capabilities: ["craft_production"] },
+  guard_post: { label: "Strážnice", nodeType: "fortress", group: "military", gold: 50, production: 65, resource: {}, capabilities: ["military_control"] },
+  trade_post: { label: "Obchodní stanice", nodeType: "trade_hub", group: "trade", gold: 70, production: 40, resource: { wealth: 5 }, capabilities: ["trade_access"] },
+  river_wharf: { label: "Říční překladiště", nodeType: "port", group: "trade", gold: 80, production: 60, resource: { wealth: 4, supplies: 1 }, capabilities: ["river_trade", "storage"] },
+};
+
+/** BUILD_SUBNODE — place a small production, military, or trade node on a held parcel. */
+async function executeBuildSubnode(
+  supabase: any, base: any, actor: Actor, payload: any,
+  commandId: string, sessionId: string, turnNumber: number,
+): Promise<CommandResult> {
+  const parcelId = String(payload.parcelId || "");
+  const subtype = String(payload.subtype || "");
+  const def = SUBNODE_DEFS[subtype];
+  if (!parcelId || !def) return { events: [], error: "Neplatný typ subuzlu" };
+
+  const { data: parcel } = await supabase.from("tile_parcels")
+    .select("id, city_id, owner_player, grid_x, grid_y, parcel_index, buildable, capacity_slots, sub_biome")
+    .eq("id", parcelId).eq("session_id", sessionId).maybeSingle();
+  if (!parcel || parcel.owner_player !== actor.name || !parcel.city_id) return { events: [], error: "Parcela vám nepatří" };
+  if (!parcel.buildable) return { events: [], error: "Na této parcele nelze stavět" };
+
+  const { data: contents } = await supabase.from("tile_parcel_contents").select("slots_used").eq("parcel_id", parcelId);
+  const used = (contents || []).reduce((sum: number, item: any) => sum + Number(item.slots_used || 0), 0);
+  if (used >= Number(parcel.capacity_slots || 0)) return { events: [], error: "Parcela už nemá volnou kapacitu" };
+
+  const { data: tile } = await supabase.from("province_hexes")
+    .select("province_id, biome_family, coastal, has_river, is_passable")
+    .eq("session_id", sessionId).eq("grid_x", parcel.grid_x).eq("grid_y", parcel.grid_y).maybeSingle();
+  if (!tile?.province_id || tile.is_passable === false) return { events: [], error: "Pole nemá platnou provincii" };
+  if (subtype === "river_wharf" && !tile.coastal && !tile.has_river) return { events: [], error: "Překladiště vyžaduje řeku nebo pobřeží" };
+  if (subtype === "farmstead" && ["mountains", "mountain", "desert"].includes(String(tile.biome_family))) return { events: [], error: "Produkční dvůr se pro tento terén nehodí" };
+
+  const realm = await getRealmFull(supabase, sessionId, actor.name);
+  if (!realm) return { events: [], error: "Realm not found" };
+  if (Number(realm.gold_reserve || 0) < def.gold || Number(realm.production_reserve || 0) < def.production) {
+    return { events: [], error: `Potřeba ${def.gold} zlata a ${def.production} produkce` };
+  }
+
+  const { data: node, error: nodeError } = await supabase.from("province_nodes").insert({
+    session_id: sessionId, province_id: tile.province_id, city_id: parcel.city_id,
+    name: String(payload.name || def.label).slice(0, 80), node_type: def.nodeType, node_tier: "micro",
+    node_subtype: subtype, node_class: "transit", hex_q: parcel.grid_x, hex_r: parcel.grid_y,
+    grid_x: parcel.grid_x, grid_y: parcel.grid_y, parcel_index: parcel.parcel_index,
+    controlled_by: actor.name, built_by: actor.name, built_turn: turnNumber, biome_at_build: tile.biome_family,
+    production_output: Number(def.resource.production || 0), wealth_output: Number(def.resource.wealth || 0),
+    food_value: Number(def.resource.supplies || 0), resource_output: def.resource,
+    capability_tags: def.capabilities, flow_role: def.group === "trade" ? "producer" : def.group === "military" ? "regulator" : "producer",
+    fortification_level: def.group === "military" ? 1 : 0, is_active: true, upgrade_level: 1, max_upgrade_level: 3,
+  }).select("id").single();
+  if (nodeError || !node) return { events: [], error: nodeError?.message || "Subuzel se nepodařilo vytvořit" };
+
+  const { error: contentError } = await supabase.from("tile_parcel_contents").insert({
+    session_id: sessionId, parcel_id: parcelId, entity_type: "node", entity_id: node.id, slots_used: 1,
+  });
+  if (contentError) { await supabase.from("province_nodes").delete().eq("id", node.id); return { events: [], error: contentError.message }; }
+
+  const { error: resourceError } = await supabase.from("realm_resources").update({
+    gold_reserve: Number(realm.gold_reserve || 0) - def.gold,
+    production_reserve: Number(realm.production_reserve || 0) - def.production,
+  }).eq("id", realm.id);
+  if (resourceError) {
+    await supabase.from("tile_parcel_contents").delete().eq("entity_type", "node").eq("entity_id", node.id);
+    await supabase.from("province_nodes").delete().eq("id", node.id);
+    return { events: [], error: resourceError.message };
+  }
+  await supabase.from("tile_parcels").update({ status: "occupied", land_use: def.group === "trade" ? "commercial" : def.group === "military" ? "military" : "industrial" }).eq("id", parcelId);
+
+  return insertEvents(supabase, commandId, [{ ...base, event_type: "construction", city_id: parcel.city_id,
+    note: `${actor.name} zahájil provoz ${def.label.toLowerCase()} na parcele ${parcel.parcel_index + 1}.`, importance: "normal",
+    reference: { parcelId, nodeId: node.id, subtype, gridX: parcel.grid_x, gridY: parcel.grid_y, costGold: def.gold, costProduction: def.production },
+  }], { nodeId: node.id });
+}
+
+/** UPGRADE_TILE_INFRASTRUCTURE — sequential trail, road, paved-road project on one macro cell. */
+async function executeUpgradeTileInfrastructure(
+  supabase: any, base: any, actor: Actor, payload: any,
+  commandId: string, sessionId: string, turnNumber: number,
+): Promise<CommandResult> {
+  const gridX = Number(payload.gridX); const gridY = Number(payload.gridY);
+  if (!Number.isInteger(gridX) || !Number.isInteger(gridY)) return { events: [], error: "Neplatné pole" };
+  const { data: tile } = await supabase.from("province_hexes").select("owner_player, is_passable, biome_family")
+    .eq("session_id", sessionId).eq("grid_x", gridX).eq("grid_y", gridY).maybeSingle();
+  if (!tile || tile.is_passable === false || tile.biome_family === "sea") return { events: [], error: "Na tomto poli nelze stavět cestu" };
+  if (tile.owner_player && tile.owner_player !== actor.name) return { events: [], error: "Pole ovládá jiná říše" };
+  const { data: held } = await supabase.from("tile_parcels").select("id").eq("session_id", sessionId).eq("grid_x", gridX).eq("grid_y", gridY).eq("owner_player", actor.name).limit(1);
+  if (!held?.length) return { events: [], error: "Nejdřív musíš na poli držet parcelu" };
+  const { data: existing } = await supabase.from("tile_infrastructure").select("*").eq("session_id", sessionId).eq("grid_x", gridX).eq("grid_y", gridY).maybeSingle();
+  if (existing?.status === "building") return { events: [], error: "Infrastruktura už se staví" };
+  const nextLevel = Number(existing?.level || 0) + 1;
+  const tier = tileInfrastructureLevel(nextLevel);
+  if (!tier) return { events: [], error: "Dlážděná cesta je nejvyšší úroveň" };
+  const realm = await getRealmFull(supabase, sessionId, actor.name);
+  if (!realm) return { events: [], error: "Realm not found" };
+  if (Number(realm.gold_reserve || 0) < tier.gold || Number(realm.production_reserve || 0) < tier.production) return { events: [], error: `Potřeba ${tier.gold} zlata a ${tier.production} produkce` };
+  const completesNow = tier.turns <= 1;
+  const row = { session_id: sessionId, grid_x: gridX, grid_y: gridY, owner_player: actor.name,
+    level: completesNow ? nextLevel : Number(existing?.level || 0), target_level: completesNow ? null : nextLevel,
+    status: completesNow ? "completed" : "building", progress: completesNow ? 100 : 0,
+    started_turn: turnNumber, completed_turn: completesNow ? turnNumber : null };
+  const { error } = await supabase.from("tile_infrastructure").upsert(row, { onConflict: "session_id,grid_x,grid_y" });
+  if (error) return { events: [], error: error.message };
+  await supabase.from("realm_resources").update({ gold_reserve: Number(realm.gold_reserve || 0) - tier.gold,
+    production_reserve: Number(realm.production_reserve || 0) - tier.production }).eq("id", realm.id);
+  return insertEvents(supabase, commandId, [{ ...base, event_type: "construction",
+    note: `${actor.name} ${completesNow ? "dokončil" : "zahájil"} projekt ${tier.label.toLowerCase()} na poli ${gridX}, ${gridY}.`, importance: "normal",
+    reference: { gridX, gridY, infrastructureLevel: nextLevel, costGold: tier.gold, costProduction: tier.production },
+  }], { gridX, gridY, infrastructureLevel: nextLevel });
+}
+
 async function executeAssignCityParcel(
   supabase: any, base: any, actor: Actor, payload: any,
   commandId: string, sessionId: string, turnNumber: number,
@@ -2760,7 +2893,8 @@ async function executeAssignCityParcel(
   const { data: entity } = await supabase.from(table).select("id, category, district_type").eq("id", entityId).eq("city_id", cityId).maybeSingle();
   if (!entity) return { events: [], error: "Objekt nepatří do vybraného města" };
   const landUse = kind === "district" ? (entity.district_type || "residential") : categoryToLandUse(entity.category);
-  await occupyParcel(supabase, parcelId, kind, entityId, landUse);
+  const occupancyError = await occupyParcel(supabase, sessionId, parcelId, kind, entityId, landUse);
+  if (occupancyError) return { events: [], error: `Parcelu nelze obsadit: ${occupancyError.message}` };
   return insertEvents(supabase, commandId, [{ ...base, event_type: "city_planning", city_id: cityId, note: `${city.name} upravilo parcelní plán.`, importance: "minor", reference: { cityId, parcelId, buildingId, districtId } }]);
 }
 
@@ -2870,8 +3004,18 @@ async function executeBuildBuilding(
     level_data: building.level_data || [],
   }).select("id").single();
 
-  if (insertErr) return { events: [], error: `Insert failed: ${insertErr.message}` };
-  if (targetParcel) await occupyParcel(supabase, targetParcel.id, "building", inserted.id, categoryToLandUse(building.category));
+  if (insertErr) {
+    await supabase.from("realm_resources").update({ gold_reserve: realm.gold_reserve || 0, production_reserve: realm.production_reserve || 0 }).eq("id", realm.id);
+    return { events: [], error: `Insert failed: ${insertErr.message}` };
+  }
+  if (targetParcel) {
+    const occupancyError = await occupyParcel(supabase, sessionId, targetParcel.id, "building", inserted.id, categoryToLandUse(building.category));
+    if (occupancyError) {
+      await supabase.from("city_buildings").delete().eq("id", inserted.id);
+      await supabase.from("realm_resources").update({ gold_reserve: realm.gold_reserve || 0, production_reserve: realm.production_reserve || 0 }).eq("id", realm.id);
+      return { events: [], error: `Parcelu nelze obsadit: ${occupancyError.message}` };
+    }
+  }
 
   return insertEventsWithChronicle(supabase, commandId, sessionId, turnNumber, [{
     ...base,
@@ -2999,8 +3143,18 @@ async function executeBuildDistrict(
     description: district.description || null,
   }).select("id").single();
 
-  if (dErr) return { events: [], error: `District insert failed: ${dErr.message}` };
-  if (targetParcel) await occupyParcel(supabase, targetParcel.id, "district", inserted.id, district.district_type || "residential");
+  if (dErr) {
+    await supabase.from("realm_resources").update({ gold_reserve: realm.gold_reserve || 0, production_reserve: realm.production_reserve || 0 }).eq("id", realm.id);
+    return { events: [], error: `District insert failed: ${dErr.message}` };
+  }
+  if (targetParcel) {
+    const occupancyError = await occupyParcel(supabase, sessionId, targetParcel.id, "district", inserted.id, district.district_type || "residential");
+    if (occupancyError) {
+      await supabase.from("city_districts").delete().eq("id", inserted.id);
+      await supabase.from("realm_resources").update({ gold_reserve: realm.gold_reserve || 0, production_reserve: realm.production_reserve || 0 }).eq("id", realm.id);
+      return { events: [], error: `Parcelu nelze obsadit: ${occupancyError.message}` };
+    }
+  }
 
   return insertEventsWithChronicle(supabase, commandId, sessionId, turnNumber, [{
     ...base,

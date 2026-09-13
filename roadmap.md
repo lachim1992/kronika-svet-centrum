@@ -26,3 +26,8 @@
   - [x] Add 32 deterministic sub-parcels per cell with terrain-driven cost and housing slots
   - [x] Add CLAIM_TILE_PARCEL command and city founding seat selection
   - [x] Render sub-parcel layer on the selected cell with claim actions in the field detail
+- [ ] Make 6×6 sub-parcels directly manageable from a right-side detail panel
+- [ ] Support multiple structures per parcel with capacity enforcement
+- [ ] Add player-built production, military, and trade subnodes
+- [ ] Add three-level automatic local infrastructure per macro cell
+- [ ] Verify parcel management and local roads end to end

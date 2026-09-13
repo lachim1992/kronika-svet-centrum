@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, ArrowUpRight, Castle, Flag, Home, Landmark, Layers3, Minus, Plus, Route as RouteIcon, Shield, Trees, X } from "lucide-react";
+import { ArrowLeft, ArrowUpRight, Castle, Factory, Flag, Home, Landmark, Layers3, Loader2, Minus, Plus, Route as RouteIcon, Shield, Store, Trees, X } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -7,6 +7,7 @@ import { Progress } from "@/components/ui/progress";
 import { dispatchCommand } from "@/lib/commands";
 import { gridDistance, projectCell, squareDiamondPoints } from "@/lib/mapTopology";
 import { parcelClaimCost, POPULATION_PER_SLOT, TILE_PARCEL_COLS, TILE_PARCEL_ROWS, armyParcelFootprint, armyCampParcels, fallbackArmyParcel, riverChannelCells } from "@/lib/tileParcels";
+import { localRoadSegments, tileInfrastructureLevel } from "@/lib/tileInfrastructure";
 import { useIsMobile } from "@/hooks/use-mobile";
 import ArmyMarker from "@/components/map/ArmyMarker";
 
@@ -19,12 +20,15 @@ interface Props {
   onDetailOpenChange?: (open: boolean) => void;
 }
 
-type Tile = { id: string; q: number; r: number; grid_x: number | null; grid_y: number | null; biome_family: string; owner_player: string | null; mean_height: number | null; is_passable: boolean; has_river: boolean | null; river_direction: string | null };
+type Tile = { id: string; q: number; r: number; grid_x: number | null; grid_y: number | null; province_id: string | null; biome_family: string; owner_player: string | null; mean_height: number | null; is_passable: boolean; has_river: boolean | null; river_direction: string | null };
 type City = { id: string; name: string; province_q: number; province_r: number; grid_x: number | null; grid_y: number | null; owner_player: string; settlement_level: string; population_total: number; housing_capacity: number; development_level: number; birth_rate: number; death_rate: number; migration_pressure: number; founded_parcel_index: number | null };
 type Node = { id: string; name: string; hex_q: number; hex_r: number; grid_x: number | null; grid_y: number | null; node_type: string; node_tier: string; parcel_index: number | null };
 type Army = { id: string; name: string; hex_q: number; hex_r: number; grid_x: number | null; grid_y: number | null; player_name: string; soldiers: number; morale: number; unit_count: number; power: number; stance: string; formation_type: string; assignment: string; moved_this_turn: boolean; parcel_index: number | null };
 type PathCell = { x?: number; y?: number; q?: number; r?: number };
 type Route = { route_id: string | null; path_cells: PathCell[] | null; hex_path: PathCell[] | null };
+type ParcelContent = { id: string; parcel_id: string; entity_type: string; entity_id: string; slots_used: number };
+type TileInfrastructure = { id: string; grid_x: number; grid_y: number; owner_player: string; level: number; target_level: number | null; status: string; progress: number };
+type BuildingTemplate = { id: string; name: string; category: string; description: string; cost_wealth: number; cost_wood: number; cost_stone: number; cost_iron: number; build_turns: number; effects: unknown; max_level: number; level_data: unknown };
 /** One of the 36 sub-parcels of a map cell — the only city land model. */
 type TileParcel = {
   id: string; grid_x: number; grid_y: number; parcel_index: number; parcel_x: number; parcel_y: number;
@@ -115,6 +119,11 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
   const [selectedArmyId, setSelectedArmyId] = useState<string | null>(null);
   const [showRoutes, setShowRoutes] = useState(true);
   const [showNodes, setShowNodes] = useState(true);
+  const [selectedParcelId, setSelectedParcelId] = useState<string | null>(null);
+  const [parcelContents, setParcelContents] = useState<ParcelContent[]>([]);
+  const [infrastructure, setInfrastructure] = useState<TileInfrastructure[]>([]);
+  const [buildingTemplates, setBuildingTemplates] = useState<BuildingTemplate[]>([]);
+  const [buildingAction, setBuildingAction] = useState<string | null>(null);
 
   const tileCell = useCallback((tile: Tile) => ({
     a: tile.grid_x !== null ? tile.grid_x : tile.q,
@@ -126,18 +135,24 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
   }), []);
 
   const load = useCallback(async () => {
-    const [tileRes, cityRes, nodeRes, routeRes, armyRes, parcelRes, realmRes] = await Promise.all([
-      supabase.from("province_hexes").select("id, q, r, grid_x, grid_y, biome_family, owner_player, mean_height, is_passable, has_river, river_direction").eq("session_id", sessionId).limit(4000),
+    const [tileRes, cityRes, nodeRes, routeRes, armyRes, parcelRes, realmRes, contentRes, infrastructureRes, templateRes] = await Promise.all([
+      supabase.from("province_hexes").select("id, q, r, grid_x, grid_y, province_id, biome_family, owner_player, mean_height, is_passable, has_river, river_direction").eq("session_id", sessionId).limit(4000),
       supabase.from("cities").select("id, name, province_q, province_r, grid_x, grid_y, owner_player, settlement_level, population_total, housing_capacity, development_level, birth_rate, death_rate, migration_pressure, founded_parcel_index").eq("session_id", sessionId),
       supabase.from("province_nodes").select("id, name, hex_q, hex_r, grid_x, grid_y, node_type, node_tier, parcel_index").eq("session_id", sessionId).eq("is_active", true),
       supabase.from("flow_paths").select("route_id, path_cells, hex_path").eq("session_id", sessionId),
       supabase.from("military_stacks").select("id, name, hex_q, hex_r, grid_x, grid_y, player_name, soldiers, morale, unit_count, power, stance, formation_type, assignment, moved_this_turn, parcel_index").eq("session_id", sessionId).eq("is_active", true).eq("is_deployed", true),
       supabase.from("tile_parcels").select("id, grid_x, grid_y, parcel_index, parcel_x, parcel_y, sub_biome, elevation, buildable, build_cost_multiplier, capacity_slots, status, land_use, city_id, owner_player").eq("session_id", sessionId).not("city_id", "is", null).limit(6000),
       supabase.from("realm_resources").select("gold_reserve, production_reserve").eq("session_id", sessionId).eq("player_name", playerName).maybeSingle(),
+      supabase.from("tile_parcel_contents").select("id, parcel_id, entity_type, entity_id, slots_used").eq("session_id", sessionId),
+      supabase.from("tile_infrastructure").select("id, grid_x, grid_y, owner_player, level, target_level, status, progress").eq("session_id", sessionId),
+      supabase.from("building_templates").select("id, name, category, description, cost_wealth, cost_wood, cost_stone, cost_iron, build_turns, effects, max_level, level_data").order("category").order("name"),
     ]);
     setTiles((tileRes.data || []) as Tile[]); setCities((cityRes.data || []) as City[]); setNodes((nodeRes.data || []) as Node[]);
     setRoutes((routeRes.data || []) as unknown as Route[]); setArmies((armyRes.data || []) as Army[]);
     setCityParcels((parcelRes.data || []) as TileParcel[]);
+    setParcelContents((contentRes.data || []) as ParcelContent[]);
+    setInfrastructure((infrastructureRes.data || []) as TileInfrastructure[]);
+    setBuildingTemplates((templateRes.data || []) as unknown as BuildingTemplate[]);
     setTreasury({ gold: Number(realmRes.data?.gold_reserve || 0), production: Number(realmRes.data?.production_reserve || 0) });
   }, [sessionId, playerName]);
 
@@ -257,6 +272,10 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
     const a = tileCell(left); const b = tileCell(right); return (a.a + a.b) - (b.a + b.b);
   }), [tiles, tileCell]);
   const selectedCell = selected ? tileCell(selected) : null;
+  const selectedParcel = tileParcels.find(parcel => parcel.id === selectedParcelId) || null;
+  const selectedParcelContents = selectedParcel ? parcelContents.filter(item => item.parcel_id === selectedParcel.id) : [];
+  const selectedParcelUsed = selectedParcelContents.reduce((sum, item) => sum + item.slots_used, 0);
+  const selectedInfrastructure = selectedCell ? infrastructure.find(item => item.grid_x === selectedCell.a && item.grid_y === selectedCell.b) : undefined;
   const cityLayerCity = cityLayerCityId ? cityById.get(cityLayerCityId) : undefined;
   const selectedCityId = selectedCell ? cityByCell.get(cellKey(selectedCell.a, selectedCell.b)) : undefined;
   const selectedCity = cityLayerCity || (selectedCityId ? cityById.get(selectedCityId) : undefined);
@@ -289,7 +308,8 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
   }, [sessionId]);
 
   useEffect(() => {
-    if (!selected) { setTileParcels([]); return; }
+    if (!selected) { setTileParcels([]); setSelectedParcelId(null); return; }
+    setSelectedParcelId(null);
     const cell = tileCell(selected);
     void loadTileParcels(cell.a, cell.b);
   }, [selected, tileCell, loadTileParcels]);
@@ -335,17 +355,22 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
     const holder = cityOwned[0]?.city_id ? cityById.get(cityOwned[0].city_id) : undefined;
     const holderColor = holder ? (holder.owner_player === playerName ? "var(--map-city-own)" : "var(--map-city-rival)") : "var(--map-city-own)";
     const hatchFill = holder && holder.owner_player !== playerName ? "url(#iso-city-hatch-rival)" : "url(#iso-city-hatch)";
-    return <g pointerEvents="none">
+    const occupiedIndexes = tileParcels.filter(parcel => parcelContents.some(item => item.parcel_id === parcel.id)).map(parcel => parcel.parcel_index);
+    const roadTier = selectedInfrastructure?.level || 0;
+    return <g>
       {tileParcels.map(parcel => {
         const base = SUB_BIOME_COLOR[parcel.sub_biome] || "var(--map-plains)";
         const mine = !!parcel.city_id;
         const fill = parcel.status === "occupied" ? (LAND_USE_COLOR[parcel.land_use || "civic"] || LAND_USE_COLOR.open)
           : parcel.status === "claimed" ? "var(--map-parcel-open)" : base;
         const quad = parcelQuad(centerPoint, parcel.parcel_x, parcel.parcel_y);
-        return <g key={parcel.id}>
+        const activeParcel = parcel.id === selectedParcelId;
+        return <g key={parcel.id} role="button" tabIndex={0} className="cursor-pointer"
+          onClick={event => { event.stopPropagation(); setSelectedParcelId(parcel.id); }}
+          onKeyDown={event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setSelectedParcelId(parcel.id); } }}>
           <polygon points={quad} fill={fill}
-            stroke={mine ? holderColor : parcel.buildable ? "var(--map-marker-edge)" : "var(--map-mountain-edge)"}
-            strokeWidth={mine ? 1.1 : .5}
+            stroke={activeParcel ? "var(--map-focus)" : mine ? holderColor : parcel.buildable ? "var(--map-marker-edge)" : "var(--map-mountain-edge)"}
+            strokeWidth={activeParcel ? 2 : mine ? 1.1 : .5}
             opacity={mine ? 1 : parcel.buildable ? (parcel.status === "wild" ? .6 : .95) : .45} />
           {/* hatching marks every sub-parcel the city holds */}
           {mine && <polygon points={quad} fill={hatchFill} opacity=".55" />}
@@ -357,8 +382,52 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
         <line key={`survey-wall-${index}`} x1={edge.from.x} y1={edge.from.y} x2={edge.to.x} y2={edge.to.y}
           stroke={holderColor} strokeWidth="1.6" strokeLinecap="round" opacity=".9" />
       ))}
+      {roadTier > 0 && localRoadSegments(occupiedIndexes).map((segment, index) => {
+        const centre = (point: { x: number; y: number }) => {
+          const corners = parcelCorners(centerPoint, point.x, point.y);
+          return { x: (corners.a.x + corners.c.x) / 2, y: (corners.a.y + corners.c.y) / 2 };
+        };
+        const from = centre(segment.from); const to = centre(segment.to);
+        return <line key={`local-road-${index}`} x1={from.x} y1={from.y} x2={to.x} y2={to.y}
+          stroke="var(--map-route)" strokeWidth={roadTier === 3 ? 2.2 : roadTier === 2 ? 1.6 : 1}
+          strokeDasharray={roadTier === 1 ? "2 1.5" : undefined} strokeLinecap="round" opacity=".95" pointerEvents="none" />;
+      })}
       {tileParcels.filter(parcel => parcel.status === "occupied").map((parcel, index) => renderParcelHouse(parcel, centerPoint, index))}
     </g>;
+  };
+
+  const buildOnParcel = async (template: BuildingTemplate) => {
+    if (!selectedParcel || !selectedCity || selectedCity.owner_player !== playerName) return;
+    setBuildingAction(`building-${template.id}`);
+    const result = await dispatchCommand({ sessionId, turnNumber: currentTurn, actor: { name: playerName }, commandType: "BUILD_BUILDING", commandPayload: {
+      cityId: selectedCity.id, cityName: selectedCity.name, parcelId: selectedParcel.id,
+      building: { template_id: template.id, name: template.name, category: template.category, description: template.description,
+        cost_wealth: template.cost_wealth, cost_wood: template.cost_wood, cost_stone: template.cost_stone, cost_iron: template.cost_iron,
+        build_duration: template.build_turns, effects: template.effects, max_level: template.max_level, level_data: template.level_data },
+    }});
+    setBuildingAction(null);
+    if (!result.ok) { toast.error(result.error || "Stavba se nepodařila"); return; }
+    toast.success(`${template.name} se staví na parcele ${selectedParcel.parcel_index + 1}`); await loadTileParcels(selectedParcel.grid_x, selectedParcel.grid_y); await load();
+  };
+
+  const buildSubnode = async (subtype: string, label: string) => {
+    if (!selectedParcel) return;
+    setBuildingAction(`node-${subtype}`);
+    const result = await dispatchCommand({ sessionId, turnNumber: currentTurn, actor: { name: playerName }, commandType: "BUILD_SUBNODE", commandPayload: { parcelId: selectedParcel.id, subtype } });
+    setBuildingAction(null);
+    if (!result.ok) { toast.error(result.error || "Subuzel se nepodařilo postavit"); return; }
+    toast.success(`${label} byl postaven`); await loadTileParcels(selectedParcel.grid_x, selectedParcel.grid_y); await load();
+  };
+
+  const upgradeLocalRoad = async () => {
+    if (!selectedCell) return;
+    const next = (selectedInfrastructure?.level || 0) + 1; const tier = tileInfrastructureLevel(next);
+    if (!tier) return;
+    setBuildingAction("infrastructure");
+    const result = await dispatchCommand({ sessionId, turnNumber: currentTurn, actor: { name: playerName }, commandType: "UPGRADE_TILE_INFRASTRUCTURE", commandPayload: { gridX: selectedCell.a, gridY: selectedCell.b } });
+    setBuildingAction(null);
+    if (!result.ok) { toast.error(result.error || "Infrastrukturu nelze postavit"); return; }
+    toast.success(`${tier.label}: ${tier.turns === 1 ? "dokončeno" : "stavba zahájena"}`); await load();
   };
 
   /** Corner points of a single parcel, in draw order A(top) B(right) C(bottom) D(left). */
@@ -663,10 +732,10 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
                 const mine = parcel.owner_player === playerName;
                 const affordable = treasury.gold >= cost.gold && treasury.production >= cost.production;
                 const canClaim = !!claimHost && parcel.buildable && parcel.status === "wild" && affordable;
-                return <button key={parcel.id} type="button" disabled={!canClaim || claimingParcel !== null}
-                  onClick={() => void claimParcel(parcel)}
+                return <button key={parcel.id} type="button" disabled={claimingParcel !== null}
+                  onClick={() => { setSelectedParcelId(parcel.id); if (canClaim) void claimParcel(parcel); }}
                   title={`${SUB_BIOME_LABEL[parcel.sub_biome] || parcel.sub_biome} · výška ${parcel.elevation} · ${parcel.capacity_slots} slotů · ${cost.gold} zlata / ${cost.production} produkce${!affordable && parcel.status === "wild" && parcel.buildable ? " · nedostatek prostředků" : ""}`}
-                  className={`aspect-square border text-[8px] leading-none transition-colors ${
+                  className={`aspect-square border text-[8px] leading-none transition-colors ${selectedParcelId === parcel.id ? "ring-2 ring-primary ring-offset-1 ring-offset-background " : ""}${
                     parcel.status === "occupied" ? "border-primary/60 bg-primary/25"
                     : parcel.status === "claimed" ? (mine ? "border-primary/40 bg-primary/10" : "border-border bg-muted/40")
                     : !parcel.buildable ? "border-border/40 bg-muted/20 text-muted-foreground"
@@ -684,6 +753,19 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
             </p>
           </>}
         </section>
+
+        {selectedParcel && <section className="mt-4 space-y-3 border border-primary/25 bg-primary/5 p-3">
+          <div className="flex items-start justify-between gap-3"><div><p className="text-[10px] font-semibold uppercase text-primary">Parcela {selectedParcel.parcel_index + 1}</p><h3 className="text-sm">{SUB_BIOME_LABEL[selectedParcel.sub_biome] || selectedParcel.sub_biome}</h3></div><span className="text-xs text-muted-foreground">{selectedParcelUsed}/{selectedParcel.capacity_slots} slotů</span></div>
+          {selectedParcelContents.length > 0 && <div className="space-y-1 text-xs">{selectedParcelContents.map(item => <div key={item.id} className="flex justify-between border-b border-border/50 py-1"><span className="capitalize">{item.entity_type}</span><span>{item.slots_used} slot</span></div>)}</div>}
+          {selectedParcel.owner_player === playerName && selectedParcelUsed < selectedParcel.capacity_slots && <>
+            <div><p className="mb-2 text-xs font-medium">Postavit budovu</p><div className="grid grid-cols-2 gap-2">{buildingTemplates.slice(0, 6).map(template => <Button key={template.id} size="sm" variant="outline" className="h-auto justify-start px-2 py-2 text-left text-xs" disabled={!!buildingAction} onClick={() => void buildOnParcel(template)}>{buildingAction === `building-${template.id}` ? <Loader2 className="mr-1 h-3 w-3 animate-spin"/> : <Factory className="mr-1 h-3 w-3"/>}{template.name}</Button>)}</div></div>
+            <div><p className="mb-2 text-xs font-medium">Vytvořit subuzel</p><div className="grid grid-cols-2 gap-2">{[["farmstead","Produkční dvůr"],["workshop","Dílna"],["guard_post","Strážnice"],["trade_post","Obchodní stanice"],["river_wharf","Překladiště"]].map(([key,label]) => <Button key={key} size="sm" variant="outline" className="justify-start text-xs" disabled={!!buildingAction} onClick={() => void buildSubnode(key,label)}>{key === "guard_post" ? <Shield className="mr-1 h-3 w-3"/> : key.includes("trade") || key.includes("wharf") ? <Store className="mr-1 h-3 w-3"/> : <Factory className="mr-1 h-3 w-3"/>}{label}</Button>)}</div></div>
+          </>}
+        </section>}
+
+        {selected.owner_player === playerName && <section className="mt-4 border border-border p-3">
+          <div className="flex items-center justify-between"><div><p className="text-xs font-medium">Místní infrastruktura</p><p className="text-[11px] text-muted-foreground">{selectedInfrastructure?.status === "building" ? `Ve výstavbě · ${selectedInfrastructure.progress} %` : selectedInfrastructure?.level ? tileInfrastructureLevel(selectedInfrastructure.level)?.label : "Bez cest"}</p></div><Button size="sm" disabled={!!buildingAction || selectedInfrastructure?.status === "building" || (selectedInfrastructure?.level || 0) >= 3} onClick={() => void upgradeLocalRoad()}>{buildingAction === "infrastructure" && <Loader2 className="mr-1 h-3 w-3 animate-spin"/>}{selectedInfrastructure?.level ? "Vylepšit" : "Postavit stezku"}</Button></div>
+        </section>}
 
         {selectedCity && <div className="mt-5 space-y-4">
           <div className="border-y border-border/70 py-4">

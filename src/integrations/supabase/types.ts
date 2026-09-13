@@ -9509,6 +9509,110 @@ export type Database = {
           },
         ]
       }
+      tile_infrastructure: {
+        Row: {
+          completed_turn: number | null
+          created_at: string
+          grid_x: number
+          grid_y: number
+          id: string
+          level: number
+          owner_player: string
+          progress: number
+          session_id: string
+          started_turn: number | null
+          status: string
+          target_level: number | null
+          updated_at: string
+        }
+        Insert: {
+          completed_turn?: number | null
+          created_at?: string
+          grid_x: number
+          grid_y: number
+          id?: string
+          level?: number
+          owner_player: string
+          progress?: number
+          session_id: string
+          started_turn?: number | null
+          status?: string
+          target_level?: number | null
+          updated_at?: string
+        }
+        Update: {
+          completed_turn?: number | null
+          created_at?: string
+          grid_x?: number
+          grid_y?: number
+          id?: string
+          level?: number
+          owner_player?: string
+          progress?: number
+          session_id?: string
+          started_turn?: number | null
+          status?: string
+          target_level?: number | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tile_infrastructure_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tile_parcel_contents: {
+        Row: {
+          created_at: string
+          entity_id: string
+          entity_type: string
+          id: string
+          parcel_id: string
+          session_id: string
+          slots_used: number
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          entity_id: string
+          entity_type: string
+          id?: string
+          parcel_id: string
+          session_id: string
+          slots_used?: number
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          entity_id?: string
+          entity_type?: string
+          id?: string
+          parcel_id?: string
+          session_id?: string
+          slots_used?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tile_parcel_contents_parcel_id_fkey"
+            columns: ["parcel_id"]
+            isOneToOne: false
+            referencedRelation: "tile_parcels"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tile_parcel_contents_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       tile_parcels: {
         Row: {
           build_cost_multiplier: number

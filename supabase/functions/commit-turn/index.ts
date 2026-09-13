@@ -628,6 +628,31 @@ Deno.serve(async (req) => {
       .update({ turn_closed: false })
       .eq("session_id", sessionId);
 
+    // Advance local square infrastructure. Each closed turn contributes one step;
+    // target level 2 takes two turns and target level 3 takes three turns.
+    const { data: localRoadProjects } = await supabase.from("tile_infrastructure")
+      .select("id, grid_x, grid_y, owner_player, target_level, progress")
+      .eq("session_id", sessionId).eq("status", "building");
+    for (const project of localRoadProjects || []) {
+      const target = Number(project.target_level || 1);
+      const nextProgress = Math.min(100, Number(project.progress || 0) + Math.ceil(100 / target));
+      const complete = nextProgress >= 100;
+      const infrastructureUpdate: Record<string, unknown> = {
+        progress: nextProgress,
+        status: complete ? "completed" : "building",
+        target_level: complete ? null : target,
+        completed_turn: complete ? turnNumber : null,
+      };
+      if (complete) infrastructureUpdate.level = target;
+      await supabase.from("tile_infrastructure").update(infrastructureUpdate).eq("id", project.id);
+      if (complete) await safeInsert(supabase.from("game_events").insert({
+        session_id: sessionId, turn_number: turnNumber, player: project.owner_player,
+        actor_type: "system", event_type: "construction", confirmed: true, truth_state: "canon",
+        note: `Místní infrastruktura na poli ${project.grid_x}, ${project.grid_y} dosáhla úrovně ${target}.`,
+        importance: "minor", reference: { gridX: project.grid_x, gridY: project.grid_y, infrastructureLevel: target },
+      }));
+    }
+
     await safeInsert(supabase.from("world_action_log").insert({
       session_id: sessionId,
       player_name: playerName,
