@@ -1198,7 +1198,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
               <line x1={from.x} y1={from.y} x2={end.x} y2={end.y} stroke="var(--map-water)" strokeWidth="1.15" strokeLinecap="round" opacity=".95" />
             </g>;
           })}
-          {!cityLayerCityId && roadNetwork.segments.map(segment => {
+          {roadNetwork.segments.map(segment => {
             const from = { x: segment.from.x + pan.x, y: segment.from.y + pan.y };
             const end = { x: segment.to.x + pan.x, y: segment.to.y + pan.y };
             const width = segment.level >= 3 ? 4.4 : segment.level === 2 ? 3.4 : 2.4;
