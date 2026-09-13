@@ -1052,7 +1052,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
                 </div>
               ))}</div>
             </div>
-            <div><p className="mb-2 text-xs font-medium">Vytvořit subuzel</p><div className="grid grid-cols-2 gap-2">{[["farmstead","Produkční dvůr"],["workshop","Dílna"],["guard_post","Strážnice"],["trade_post","Obchodní stanice"],["river_wharf","Překladiště"]].map(([key,label]) => <Button key={key} size="sm" variant="outline" className="justify-start text-xs" disabled={!!buildingAction} onClick={() => void buildSubnode(key,label)}>{key === "guard_post" ? <Shield className="mr-1 h-3 w-3"/> : key.includes("trade") || key.includes("wharf") ? <Store className="mr-1 h-3 w-3"/> : <Factory className="mr-1 h-3 w-3"/>}{label}</Button>)}</div></div>
+            <div><p className="mb-2 text-xs font-medium">Vytvořit subuzel</p><div className="grid grid-cols-2 gap-2">{[["farmstead","Produkční dvůr"],["workshop","Dílna"],["guard_post","Strážnice"],["trade_post","Obchodní stanice"],["river_wharf","Překladiště"]].map(([key,label]) => <Button key={key} size="sm" variant="outline" className="h-auto justify-start gap-2 px-2 py-2 text-left text-xs" disabled={!!buildingAction} onClick={() => void buildSubnode(key,label)}>{buildingAction === `node-${key}` ? <Loader2 className="h-4 w-4 animate-spin"/> : <img src={NODE_SPRITE[key] || spriteHamlet} alt="" className="h-7 w-7 object-contain"/>}<span className="flex-1 leading-tight">{label}</span></Button>)}</div></div>
           </>}
         </section>}
 
