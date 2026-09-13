@@ -535,6 +535,23 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
     toast.success(`${template.name} se staví na parcele ${selectedParcel.parcel_index + 1}`); await loadTileParcels(selectedParcel.grid_x, selectedParcel.grid_y); await load();
   };
 
+  /** Residential districts raise the city's housing capacity, so they get their own action. */
+  const buildDistrict = async (district: typeof RESIDENTIAL_DISTRICTS[number]) => {
+    if (!selectedParcel || !selectedCity || selectedCity.owner_player !== playerName) return;
+    setBuildingAction(`district-${district.key}`);
+    const result = await dispatchCommand({ sessionId, turnNumber: currentTurn, actor: { name: playerName }, commandType: "BUILD_DISTRICT", commandPayload: {
+      cityId: selectedCity.id, cityName: selectedCity.name, parcelId: selectedParcel.id, district,
+    }});
+    setBuildingAction(null);
+    if (!result.ok) { toast.error(result.error || "Čtvrť se nepodařilo založit"); return; }
+    setRecentlyBuiltParcelId(selectedParcel.id);
+    window.setTimeout(() => setRecentlyBuiltParcelId(current => current === selectedParcel.id ? null : current), 2600);
+    toast.success(`${district.name} vzniká na parcele ${selectedParcel.parcel_index + 1} · +${district.population_capacity} obyvatel`);
+    await loadTileParcels(selectedParcel.grid_x, selectedParcel.grid_y); await load();
+  };
+
+
+
   const buildSubnode = async (subtype: string, label: string) => {
     if (!selectedParcel) return;
     setBuildingAction(`node-${subtype}`);
