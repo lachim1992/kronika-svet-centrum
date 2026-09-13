@@ -1331,6 +1331,48 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
               {(!selectedCity || selectedCity.owner_player !== playerName) && <p className="mt-1 text-[10px] text-muted-foreground">Čtvrti lze zakládat jen na parcele vlastního města.</p>}
             </div>
             <div>
+              <div className="mb-2 flex items-center justify-between">
+                <p className="text-xs font-medium">Produkční čtvrti</p>
+                <span className="text-[10px] text-muted-foreground">{labour.production.length}/{labour.slots} obsazeno</span>
+              </div>
+              <p className="mb-2 text-[10px] text-muted-foreground">Jedna obytná čtvrť uživí {PRODUCTION_PER_RESIDENTIAL} produkční. {labour.free > 0 ? `Volná pracovní síla: ${labour.free}.` : "Bez další obytné čtvrti nové dílny nikdo neobsadí."}</p>
+              <div className="space-y-2">{PRODUCTION_DISTRICTS.map(district => {
+                const choices = district.baskets?.length ? district.baskets : DEMAND_BASKETS.map(b => b.key);
+                const picked = productionPick[district.key] || choices[0];
+                return <div key={district.key} className="rounded border border-border/60 p-2">
+                  <div className="flex items-center gap-2">
+                    <img src={DISTRICT_SPRITE[district.key] || buildInfrastructure} alt="" className="h-7 w-7 object-contain" />
+                    <div className="flex-1 leading-tight">
+                      <p className="text-xs font-medium">{district.name}</p>
+                      <p className="text-[10px] text-muted-foreground">+{district.basket_output} do koše · {district.build_cost_wealth} zlata · {district.build_turns} t.</p>
+                    </div>
+                  </div>
+                  <div className="mt-2 flex gap-2">
+                    <select className="h-7 flex-1 rounded border border-input bg-background px-1 text-[11px]" value={picked}
+                      onChange={event => setProductionPick(current => ({ ...current, [district.key]: event.target.value }))}>
+                      {choices.map(key => <option key={key} value={key}>{DEMAND_BASKETS.find(b => b.key === key)?.label || key}</option>)}
+                    </select>
+                    <Button size="sm" className="h-7 px-2 text-[11px]" disabled={!!buildingAction || !selectedCity || selectedCity.owner_player !== playerName || labour.free <= 0}
+                      onClick={() => void buildDistrict(district, picked)}>
+                      {buildingAction === `district-${district.key}` ? <Loader2 className="h-3 w-3 animate-spin" /> : "Postavit"}
+                    </Button>
+                  </div>
+                </div>;
+              })}</div>
+              {labour.production.length > 0 && <div className="mt-3 space-y-1">
+                <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Výroba ve městě</p>
+                {labour.production.map(district => <div key={district.id} className="flex items-center gap-2 text-[11px]">
+                  <span className="flex-1 truncate">{district.name}{district.is_staffed ? "" : " · neobsazená"}</span>
+                  <select className="h-6 rounded border border-input bg-background px-1 text-[10px]" value={district.basket_key || "staple_food"}
+                    disabled={!!buildingAction || selectedCity?.owner_player !== playerName}
+                    onChange={event => void setDistrictProduction(district.id, event.target.value)}>
+                    {DEMAND_BASKETS.map(b => <option key={b.key} value={b.key}>{b.label}</option>)}
+                  </select>
+                </div>)}
+              </div>}
+            </div>
+
+            <div>
               <div className="mb-2 flex items-center justify-between"><p className="text-xs font-medium">Postavit budovu</p><span className="text-[10px] text-muted-foreground">{buildingTemplates.length} možností</span></div>
               <div className="max-h-72 space-y-3 overflow-y-auto pr-1">{Object.entries(buildingTemplates.reduce<Record<string, BuildingTemplate[]>>((groups, template) => {
                 const key = template.category || "ostatní"; (groups[key] ||= []).push(template); return groups;
