@@ -1,4 +1,4 @@
-// City footprint on the 32 sub-parcel grid (8 x 4 per map cell).
+// City footprint on the 36 sub-parcel grid (6 x 6 per map cell).
 // This is the ONLY city land model: a city is the set of tile_parcels rows it holds.
 // A city always has one seat parcel (status "occupied", land_use "civic") plus a ring of
 // claimed parcels sized by its population; large cities spill onto cardinal neighbour cells.
@@ -14,7 +14,7 @@ import {
 const PARCEL_SELECT =
   "id, grid_x, grid_y, parcel_index, parcel_x, parcel_y, status, buildable, capacity_slots, build_cost_multiplier, sub_biome, elevation, city_id, owner_player, land_use";
 
-/** Materialize the deterministic 32 sub-parcels of a map cell (idempotent). */
+/** Materialize the deterministic 36 sub-parcels of a map cell (idempotent). */
 export async function ensureTileParcels(
   supabase: any,
   sessionId: string,
@@ -26,12 +26,32 @@ export async function ensureTileParcels(
     .eq("session_id", sessionId).eq("grid_x", gridX).eq("grid_y", gridY).order("parcel_index");
   if ((existing?.length || 0) >= TILE_PARCEL_COUNT) return existing || [];
 
-  const { data: tile } = await supabase.from("province_hexes")
-    .select("biome_family, elevation, has_river, is_coastal, is_passable")
-    .eq("session_id", sessionId).eq("grid_x", gridX).eq("grid_y", gridY).maybeSingle();
+  // The cell plus its four cardinal neighbours: the own biome dominates, neighbours only
+  // bleed into the parcels along the shared border.
+  const { data: patch } = await supabase.from("province_hexes")
+    .select("grid_x, grid_y, biome_family, mean_height, has_river, coastal, is_passable")
+    .eq("session_id", sessionId)
+    .gte("grid_x", gridX - 1).lte("grid_x", gridX + 1)
+    .gte("grid_y", gridY - 1).lte("grid_y", gridY + 1);
+  const patchRows = patch || [];
+  const asTerrain = (row: any) => ({
+    biome_family: row.biome_family,
+    elevation: row.mean_height,
+    has_river: row.has_river,
+    is_coastal: row.coastal,
+    is_passable: row.is_passable,
+  });
+  const tileRow = patchRows.find((row: any) => row.grid_x === gridX && row.grid_y === gridY);
+  const tile = tileRow ? asTerrain(tileRow) : null;
+  const neighbours = [[1, 0], [-1, 0], [0, 1], [0, -1]]
+    .map(([dx, dy]) => {
+      const row = patchRows.find((r: any) => r.grid_x === gridX + dx && r.grid_y === gridY + dy);
+      return row ? { dx, dy, terrain: asTerrain(row) } : null;
+    })
+    .filter(Boolean) as Array<{ dx: number; dy: number; terrain: any }>;
 
   const seen = new Set((existing || []).map((row: any) => row.parcel_index));
-  const rows = generateTileParcels(sessionId, gridX, gridY, tile ?? {})
+  const rows = generateTileParcels(sessionId, gridX, gridY, tile ?? {}, neighbours)
     .filter((spec) => !seen.has(spec.parcelIndex))
     .map((spec) => ({
       session_id: sessionId, grid_x: gridX, grid_y: gridY,

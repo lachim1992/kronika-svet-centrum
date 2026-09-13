@@ -12,7 +12,7 @@ const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
 /**
- * tile-parcels — lazily materializes and returns the 32 sub-parcels of one map cell.
+ * tile-parcels — lazily materializes and returns the 36 sub-parcels of one map cell.
  * The layout is deterministic (session seed + cell terrain), so materializing later never
  * changes what a player already saw.
  * Body: { session_id, grid_x, grid_y }
@@ -45,7 +45,7 @@ Deno.serve(async (req) => {
     if (!membership) return json({ error: "Nejste členem této hry" }, 403);
 
     const { data: tile } = await sb.from("province_hexes")
-      .select("id, biome_family, elevation, has_river, is_coastal, is_passable, owner_player, grid_x, grid_y")
+      .select("id, biome_family, mean_height, has_river, coastal, is_passable, owner_player, grid_x, grid_y")
       .eq("session_id", sessionId).eq("grid_x", gridX).eq("grid_y", gridY).maybeSingle();
 
     const { data: existing } = await sb.from("tile_parcels")
@@ -54,7 +54,27 @@ Deno.serve(async (req) => {
 
     let parcels = existing ?? [];
     if (parcels.length < TILE_PARCEL_COUNT) {
-      const specs = generateTileParcels(sessionId, gridX, gridY, tile ?? {});
+      const { data: patch } = await sb.from("province_hexes")
+        .select("grid_x, grid_y, biome_family, mean_height, has_river, coastal, is_passable")
+        .eq("session_id", sessionId)
+        .gte("grid_x", gridX - 1).lte("grid_x", gridX + 1)
+        .gte("grid_y", gridY - 1).lte("grid_y", gridY + 1);
+      const asTerrain = (row: Record<string, unknown>) => ({
+        biome_family: row.biome_family as string | null,
+        elevation: row.mean_height as number | null,
+        has_river: row.has_river as boolean | null,
+        is_coastal: row.coastal as boolean | null,
+        is_passable: row.is_passable as boolean | null,
+      });
+      const neighbours = [[1, 0], [-1, 0], [0, 1], [0, -1]]
+        .map(([dx, dy]) => {
+          const row = (patch ?? []).find((r: { grid_x: number; grid_y: number }) =>
+            r.grid_x === gridX + dx && r.grid_y === gridY + dy
+          );
+          return row ? { dx, dy, terrain: asTerrain(row) } : null;
+        })
+        .filter(Boolean) as Array<{ dx: number; dy: number; terrain: ReturnType<typeof asTerrain> }>;
+      const specs = generateTileParcels(sessionId, gridX, gridY, tile ? asTerrain(tile) : {}, neighbours);
       const seen = new Set(parcels.map((p: { parcel_index: number }) => p.parcel_index));
       const rows = specs.filter((spec) => !seen.has(spec.parcelIndex)).map((spec) => ({
         session_id: sessionId,

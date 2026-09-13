@@ -24,7 +24,7 @@ type Node = { id: string; name: string; hex_q: number; hex_r: number; grid_x: nu
 type Army = { id: string; name: string; hex_q: number; hex_r: number; grid_x: number | null; grid_y: number | null; player_name: string; soldiers: number; morale: number };
 type PathCell = { x?: number; y?: number; q?: number; r?: number };
 type Route = { route_id: string | null; path_cells: PathCell[] | null; hex_path: PathCell[] | null };
-/** One of the 32 sub-parcels of a map cell — the only city land model. */
+/** One of the 36 sub-parcels of a map cell — the only city land model. */
 type TileParcel = {
   id: string; grid_x: number; grid_y: number; parcel_index: number; parcel_x: number; parcel_y: number;
   sub_biome: string; elevation: number; buildable: boolean; build_cost_multiplier: number;
@@ -422,7 +422,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
           {parcelsLoading && <p className="text-xs text-muted-foreground">Vyměřuji parcely…</p>}
           {!parcelsLoading && !tileParcels.length && <p className="text-xs text-muted-foreground">Toto pole nemá vyměřené parcely.</p>}
           {!parcelsLoading && tileParcels.length > 0 && <>
-            <div className="grid grid-cols-8 gap-[3px]">
+            <div className="grid grid-cols-6 gap-[3px]">
               {tileParcels.map(parcel => {
                 const cost = parcelClaimCost(Number(parcel.build_cost_multiplier || 1), claimedForCity);
                 const mine = parcel.owner_player === playerName;
