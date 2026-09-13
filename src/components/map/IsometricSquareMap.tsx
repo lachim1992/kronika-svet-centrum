@@ -1012,7 +1012,42 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
             <div className="mt-2 flex gap-3"><span>Produkce {selectedNode.production_output}</span><span>Bohatství {selectedNode.wealth_output}</span><span>Potraviny {selectedNode.food_value}</span></div>
           </div>}
           {selectedParcel.owner_player === playerName && selectedParcelUsed < selectedParcel.capacity_slots && <>
-            <div><p className="mb-2 text-xs font-medium">Postavit budovu</p><div className="grid grid-cols-2 gap-2">{buildingTemplates.slice(0, 6).map(template => <Button key={template.id} size="sm" variant="outline" className="h-auto justify-start px-2 py-2 text-left text-xs" disabled={!!buildingAction} onClick={() => void buildOnParcel(template)}>{buildingAction === `building-${template.id}` ? <Loader2 className="mr-1 h-3 w-3 animate-spin"/> : <Factory className="mr-1 h-3 w-3"/>}{template.name}</Button>)}</div></div>
+            <div>
+              <p className="mb-2 text-xs font-medium">Obytné čtvrti</p>
+              <div className="grid grid-cols-2 gap-2">{RESIDENTIAL_DISTRICTS.map(district => (
+                <Button key={district.key} size="sm" variant="outline" className="h-auto flex-col items-start gap-1 px-2 py-2 text-left text-xs" disabled={!!buildingAction || !selectedCity || selectedCity.owner_player !== playerName} onClick={() => void buildDistrict(district)}>
+                  <span className="flex w-full items-center gap-2">
+                    {buildingAction === `district-${district.key}`
+                      ? <Loader2 className="h-4 w-4 animate-spin" />
+                      : <img src={buildResidential} alt="" className="h-7 w-7 object-contain" />}
+                    <span className="flex-1 leading-tight">{district.name}</span>
+                  </span>
+                  <span className="text-[10px] text-muted-foreground">+{district.population_capacity} obyvatel · {district.build_cost_wealth} zlata · {district.build_turns} t.</span>
+                </Button>
+              ))}</div>
+              {(!selectedCity || selectedCity.owner_player !== playerName) && <p className="mt-1 text-[10px] text-muted-foreground">Čtvrti lze zakládat jen na parcele vlastního města.</p>}
+            </div>
+            <div>
+              <div className="mb-2 flex items-center justify-between"><p className="text-xs font-medium">Postavit budovu</p><span className="text-[10px] text-muted-foreground">{buildingTemplates.length} možností</span></div>
+              <div className="max-h-72 space-y-3 overflow-y-auto pr-1">{Object.entries(buildingTemplates.reduce<Record<string, BuildingTemplate[]>>((groups, template) => {
+                const key = template.category || "ostatní"; (groups[key] ||= []).push(template); return groups;
+              }, {})).map(([category, templates]) => (
+                <div key={category}>
+                  <p className="mb-1 text-[10px] uppercase tracking-wide text-muted-foreground">{BUILD_CATEGORY_LABEL[category] || category}</p>
+                  <div className="grid grid-cols-2 gap-2">{templates.map(template => (
+                    <Button key={template.id} size="sm" variant="outline" className="h-auto flex-col items-start gap-1 px-2 py-2 text-left text-xs" disabled={!!buildingAction} onClick={() => void buildOnParcel(template)}>
+                      <span className="flex w-full items-center gap-2">
+                        {buildingAction === `building-${template.id}`
+                          ? <Loader2 className="h-4 w-4 animate-spin" />
+                          : <img src={buildSprite(template.name, template.category)} alt="" className="h-7 w-7 object-contain" />}
+                        <span className="flex-1 leading-tight">{template.name}</span>
+                      </span>
+                      <span className="text-[10px] text-muted-foreground">{template.cost_wealth} zlata · {template.build_turns} t.</span>
+                    </Button>
+                  ))}</div>
+                </div>
+              ))}</div>
+            </div>
             <div><p className="mb-2 text-xs font-medium">Vytvořit subuzel</p><div className="grid grid-cols-2 gap-2">{[["farmstead","Produkční dvůr"],["workshop","Dílna"],["guard_post","Strážnice"],["trade_post","Obchodní stanice"],["river_wharf","Překladiště"]].map(([key,label]) => <Button key={key} size="sm" variant="outline" className="justify-start text-xs" disabled={!!buildingAction} onClick={() => void buildSubnode(key,label)}>{key === "guard_post" ? <Shield className="mr-1 h-3 w-3"/> : key.includes("trade") || key.includes("wharf") ? <Store className="mr-1 h-3 w-3"/> : <Factory className="mr-1 h-3 w-3"/>}{label}</Button>)}</div></div>
           </>}
         </section>}
