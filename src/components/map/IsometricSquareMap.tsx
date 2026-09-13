@@ -547,7 +547,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
               </button>
             ))}
           </div>
-        </div>
+        </div>}
       </aside>}
       {!tiles.length &&  <div className="absolute inset-0 grid place-items-center text-center"><div className="map-floating-control p-6"><Castle className="mx-auto mb-2 h-7 w-7 text-primary"/><p className="font-display text-primary">Mapa zatím nemá žádná pole.</p></div></div>}
     </div>
