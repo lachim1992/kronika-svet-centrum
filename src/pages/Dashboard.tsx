@@ -77,6 +77,7 @@ const Dashboard = () => {
   const [showChronicle0, setShowChronicle0] = useState(false);
   const [showVictory, setShowVictory] = useState(false);
   const [cityActionsTarget, setCityActionsTarget] = useState<string | null>(null);
+  const gridKind = worldFoundation?.grid_kind === "square4" ? "square4" : "hex6";
 
   const currentTurn = session?.current_turn ?? 0;
 
@@ -339,6 +340,18 @@ const Dashboard = () => {
       showDevTab={myRole === "admin"}
       showPersistentTab={session?.game_mode === "time_persistent"}
       worldName={worldFoundation?.world_name}
+      mapBackground={
+        <WorldMapTab
+          sessionId={session.id}
+          currentPlayerName={myPlayerName}
+          myRole={myRole}
+          worldName={worldFoundation?.world_name}
+          currentTurn={session.current_turn}
+          onCityClick={handleCityClickToWiki}
+          gridKind={gridKind}
+          backgroundMode
+        />
+      }
       header={
         <AppHeader
           roomCode={session.room_code}
@@ -474,20 +487,9 @@ const Dashboard = () => {
       }
     >
       <ErrorBoundary>
-      {/* Debug: active tab indicator */}
-      <div className="text-xs text-muted-foreground px-2 py-1 bg-muted/20 rounded mb-2">Tab: {activeTab}</div>
+      <div className={activeTab === "worldmap" ? "hidden" : "map-workspace-panel"}>
       {activeTab === "home" && <HomeTab {...sharedProps} onFoundCity={() => setShowFoundDialog(true)} onTabChange={(tab) => setActiveTab(tab as TabId)} />}
       {activeTab === "world" && <WorldTab {...sharedProps} worldEntityTarget={worldEntityTarget} onClearWorldEntityTarget={() => setWorldEntityTarget(null)} />}
-      {activeTab === "worldmap" && (
-        <WorldMapTab
-          sessionId={session.id}
-          currentPlayerName={myPlayerName}
-          myRole={myRole}
-          worldName={worldFoundation?.world_name}
-          currentTurn={session.current_turn}
-          onCityClick={handleCityClickToWiki}
-        />
-      )}
       {activeTab === "realm" && <RealmTab {...sharedProps} />}
       {activeTab === "army" && (
         <ArmyTab
@@ -584,6 +586,7 @@ const Dashboard = () => {
           worldCrises={worldCrises}
         />
       )}
+      </div>
       <CityActionsPopover
         open={!!cityActionsTarget}
         cityId={cityActionsTarget}

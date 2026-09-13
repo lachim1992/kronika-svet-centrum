@@ -3,6 +3,7 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import ManpowerHUDCard from "@/components/map/ManpowerHUDCard";
 import WorldMapBuildPanel from "@/components/map/WorldMapBuildPanel";
 import RouteDetailSheet from "@/components/map/RouteDetailSheet";
+import IsometricSquareMap from "@/components/map/IsometricSquareMap";
 
 interface Props {
   sessionId: string;
@@ -11,25 +12,29 @@ interface Props {
   worldName?: string;
   currentTurn?: number;
   onCityClick?: (cityId: string) => void;
+  gridKind?: "hex6" | "square4";
+  backgroundMode?: boolean;
 }
 
-const WorldMapTab = ({ sessionId, currentPlayerName, myRole, worldName, currentTurn, onCityClick }: Props) => {
+const WorldMapTab = ({ sessionId, currentPlayerName, myRole, worldName, currentTurn, onCityClick, gridKind = "hex6", backgroundMode = false }: Props) => {
   const isMobile = useIsMobile();
 
   return (
-    <div className="relative w-full" style={{ height: isMobile ? "calc(100vh - 56px)" : "calc(100vh - 120px)", minHeight: 300 }}>
-      <WorldHexMap
+    <div className="relative h-full w-full min-h-[300px]">
+      {gridKind === "square4" ? (
+        <IsometricSquareMap sessionId={sessionId} playerName={currentPlayerName} onCityClick={onCityClick} />
+      ) : <WorldHexMap
         sessionId={sessionId}
         playerName={currentPlayerName}
         myRole={myRole}
         currentTurn={currentTurn}
         onCityClick={onCityClick}
-      />
+      />}
 
       {/* Stage 8 floating overlays */}
-      <ManpowerHUDCard sessionId={sessionId} playerName={currentPlayerName} />
-      <WorldMapBuildPanel sessionId={sessionId} playerName={currentPlayerName} currentTurn={currentTurn} />
-      <RouteDetailSheet sessionId={sessionId} playerName={currentPlayerName} currentTurn={currentTurn} />
+      {!backgroundMode && <ManpowerHUDCard sessionId={sessionId} playerName={currentPlayerName} />}
+      {!backgroundMode && <WorldMapBuildPanel sessionId={sessionId} playerName={currentPlayerName} currentTurn={currentTurn} />}
+      {!backgroundMode && <RouteDetailSheet sessionId={sessionId} playerName={currentPlayerName} currentTurn={currentTurn} />}
 
       {/* Overlay: world name badge */}
       {worldName && (
