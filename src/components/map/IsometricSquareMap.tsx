@@ -110,6 +110,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
   const [tileParcels, setTileParcels] = useState<TileParcel[]>([]);
   const [parcelsLoading, setParcelsLoading] = useState(false);
   const [claimingParcel, setClaimingParcel] = useState<number | null>(null);
+  const [treasury, setTreasury] = useState({ gold: 0, production: 0 });
   const [selectedArmyId, setSelectedArmyId] = useState<string | null>(null);
   const [showRoutes, setShowRoutes] = useState(true);
   const [showNodes, setShowNodes] = useState(true);
@@ -124,18 +125,20 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
   }), []);
 
   const load = useCallback(async () => {
-    const [tileRes, cityRes, nodeRes, routeRes, armyRes, parcelRes] = await Promise.all([
+    const [tileRes, cityRes, nodeRes, routeRes, armyRes, parcelRes, realmRes] = await Promise.all([
       supabase.from("province_hexes").select("id, q, r, grid_x, grid_y, biome_family, owner_player, mean_height, is_passable").eq("session_id", sessionId).limit(4000),
       supabase.from("cities").select("id, name, province_q, province_r, grid_x, grid_y, owner_player, settlement_level, population_total, housing_capacity, development_level, birth_rate, death_rate, migration_pressure, founded_parcel_index").eq("session_id", sessionId),
       supabase.from("province_nodes").select("id, name, hex_q, hex_r, grid_x, grid_y, node_type, node_tier").eq("session_id", sessionId).eq("is_active", true),
       supabase.from("flow_paths").select("route_id, path_cells, hex_path").eq("session_id", sessionId),
       supabase.from("military_stacks").select("id, name, hex_q, hex_r, grid_x, grid_y, player_name, soldiers, morale, unit_count, power, stance, formation_type, assignment, moved_this_turn").eq("session_id", sessionId).eq("is_active", true).eq("is_deployed", true),
       supabase.from("tile_parcels").select("id, grid_x, grid_y, parcel_index, parcel_x, parcel_y, sub_biome, elevation, buildable, build_cost_multiplier, capacity_slots, status, land_use, city_id, owner_player").eq("session_id", sessionId).not("city_id", "is", null).limit(6000),
+      supabase.from("realm_resources").select("gold_reserve, production_reserve").eq("session_id", sessionId).eq("player_name", playerName).maybeSingle(),
     ]);
     setTiles((tileRes.data || []) as Tile[]); setCities((cityRes.data || []) as City[]); setNodes((nodeRes.data || []) as Node[]);
     setRoutes((routeRes.data || []) as unknown as Route[]); setArmies((armyRes.data || []) as Army[]);
     setCityParcels((parcelRes.data || []) as TileParcel[]);
-  }, [sessionId]);
+    setTreasury({ gold: Number(realmRes.data?.gold_reserve || 0), production: Number(realmRes.data?.production_reserve || 0) });
+  }, [sessionId, playerName]);
 
   useEffect(() => { void load(); }, [load]);
   // Every city must own a footprint on the 32-parcel grid; this tops up anything missing.
@@ -261,6 +264,12 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
 
   const claimParcel = async (parcel: TileParcel) => {
     if (!claimHost || !selectedCell) return;
+    // Pre-flight affordability check so the server never has to reject the click.
+    const price = parcelClaimCost(Number(parcel.build_cost_multiplier || 1), claimedForCity);
+    if (treasury.gold < price.gold || treasury.production < price.production) {
+      toast.error(`Na parcelu chybí prostředky — potřeba ${price.gold} zlata a ${price.production} produkce (máš ${treasury.gold} / ${treasury.production}).`);
+      return;
+    }
     setClaimingParcel(parcel.parcel_index);
     const result = await dispatchCommand({
       sessionId, turnNumber: currentTurn, actor: { name: playerName },
@@ -561,10 +570,11 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
               {tileParcels.map(parcel => {
                 const cost = parcelClaimCost(Number(parcel.build_cost_multiplier || 1), claimedForCity);
                 const mine = parcel.owner_player === playerName;
-                const canClaim = !!claimHost && parcel.buildable && parcel.status === "wild";
+                const affordable = treasury.gold >= cost.gold && treasury.production >= cost.production;
+                const canClaim = !!claimHost && parcel.buildable && parcel.status === "wild" && affordable;
                 return <button key={parcel.id} type="button" disabled={!canClaim || claimingParcel !== null}
                   onClick={() => void claimParcel(parcel)}
-                  title={`${SUB_BIOME_LABEL[parcel.sub_biome] || parcel.sub_biome} · výška ${parcel.elevation} · ${parcel.capacity_slots} slotů${canClaim ? ` · ${cost.gold} zlata / ${cost.production} produkce` : ""}`}
+                  title={`${SUB_BIOME_LABEL[parcel.sub_biome] || parcel.sub_biome} · výška ${parcel.elevation} · ${parcel.capacity_slots} slotů · ${cost.gold} zlata / ${cost.production} produkce${!affordable && parcel.status === "wild" && parcel.buildable ? " · nedostatek prostředků" : ""}`}
                   className={`aspect-square border text-[8px] leading-none transition-colors ${
                     parcel.status === "occupied" ? "border-primary/60 bg-primary/25"
                     : parcel.status === "claimed" ? (mine ? "border-primary/40 bg-primary/10" : "border-border bg-muted/40")
@@ -576,7 +586,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
             </div>
             <p className="mt-2 text-xs text-muted-foreground">
               {claimHost
-                ? `Klikni na volnou parcelu a ${claimHost.name} ji vykoupí. Cena i kapacita vycházejí z podterénu.`
+                ? `Klikni na volnou parcelu a ${claimHost.name} ji vykoupí. V pokladně máš ${treasury.gold} zlata a ${treasury.production} produkce.`
                 : selectedCity
                   ? `${selectedCity.name} patří ${selectedCity.owner_player} — cizí parcely vykupovat nelze.`
                   : "Parcely lze vykupovat jen z pole vašeho města nebo z pole hned vedle něj."}
