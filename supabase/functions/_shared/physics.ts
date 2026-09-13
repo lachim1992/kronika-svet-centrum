@@ -1954,12 +1954,17 @@ export function hexTraversalCost(
   return Math.round(cost * 100) / 100;
 }
 
-/** Axial hex neighbors */
+/** Grid neighbours per topology */
 const HEX_NEIGHBORS = [
   { dq: 1, dr: 0 }, { dq: -1, dr: 0 },
   { dq: 0, dr: 1 }, { dq: 0, dr: -1 },
   { dq: 1, dr: -1 }, { dq: -1, dr: 1 },
 ];
+const SQUARE_NEIGHBORS = [
+  { dq: 1, dr: 0 }, { dq: -1, dr: 0 },
+  { dq: 0, dr: 1 }, { dq: 0, dr: -1 },
+];
+export type PathGridKind = "hex6" | "square4";
 
 export interface AStarResult {
   path: Array<{ q: number; r: number; cost: number }>;
