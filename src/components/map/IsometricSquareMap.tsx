@@ -780,8 +780,9 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
     const size = 10.5 * scale;
     return <g>
       <ellipse cx="0" cy="2.4" rx={size * .38} ry={size * .17} fill="var(--map-city-wall-dark)" opacity=".22" />
-      <image href={nodeSprite(node)} x={-size / 2} y={-size * .82} width={size} height={size}
+      <image href={nodeSprite(node)} x={-size / 2} y={-size + 2.6} width={size} height={size}
         preserveAspectRatio="xMidYMax meet" style={{ imageRendering: "auto" }} />
+
       <title>{`${node.name} · ${style.label}`}</title>
     </g>;
   };
