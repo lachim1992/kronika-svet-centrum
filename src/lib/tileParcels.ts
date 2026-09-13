@@ -1,10 +1,10 @@
-// Deterministic sub-parcel model: every map cell is divided into 32 parcels (8 x 4).
+// Deterministic sub-parcel model: every map cell is divided into 36 parcels (6 x 6).
 // The layout is derived from the world seed (session id) plus the cell terrain, so it is
 // identical on client and server and never changes once a cell has been materialized.
 // Keep this file byte-identical in logic with supabase/functions/_shared/tileParcels.ts.
 
-export const TILE_PARCEL_COLS = 8;
-export const TILE_PARCEL_ROWS = 4;
+export const TILE_PARCEL_COLS = 6;
+export const TILE_PARCEL_ROWS = 6;
 export const TILE_PARCEL_COUNT = TILE_PARCEL_COLS * TILE_PARCEL_ROWS;
 
 export type TileTerrain = {
@@ -136,22 +136,60 @@ function pick(defs: SubBiomeDef[], roll: number): SubBiomeDef {
   return defs[defs.length - 1];
 }
 
+function pickWeighted(defs: Array<SubBiomeDef & { blendWeight: number }>, roll: number): SubBiomeDef {
+  const total = defs.reduce((sum, def) => sum + def.blendWeight, 0);
+  let cursor = roll * total;
+  for (const def of defs) {
+    cursor -= def.blendWeight;
+    if (cursor <= 0) return def;
+  }
+  return defs[defs.length - 1];
+}
+
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
 
-/** Full deterministic parcel layout of one map cell. */
+/** Terrain of a cardinal neighbour cell, used to blend sub-biomes across the border. */
+export type NeighbourTerrain = { dx: number; dy: number; terrain: TileTerrain };
+
+type WeightedDef = SubBiomeDef & { blendWeight: number };
+
+function defsForTerrain(terrain: TileTerrain, asNeighbour: boolean): SubBiomeDef[] {
+  const family = (terrain.biome_family || "plains").toLowerCase();
+  const isSea = family === "sea" || family === "ocean";
+  // A sea neighbour pushes shoreline parcels onto the land cell, never open water.
+  if (isSea) return asNeighbour ? SUB_BIOMES.coast : SUB_BIOMES.sea;
+  const base = SUB_BIOMES[family] ?? DEFAULT_SET;
+  return terrain.is_coastal ? [...base, ...SUB_BIOMES.coast] : base;
+}
+
+/** How strongly a neighbour cell reaches into the parcel grid (0 = not at all, 2 = border row). */
+function neighbourReach(dx: number, dy: number, parcelX: number, parcelY: number): number {
+  let distance = Infinity;
+  if (dx > 0) distance = TILE_PARCEL_COLS - 1 - parcelX;
+  else if (dx < 0) distance = parcelX;
+  else if (dy > 0) distance = TILE_PARCEL_ROWS - 1 - parcelY;
+  else if (dy < 0) distance = parcelY;
+  return Math.max(0, 2 - distance);
+}
+
+/**
+ * Full deterministic parcel layout of one map cell.
+ * The cell's own biome always dominates; cardinal neighbours only bleed into the parcels
+ * along their shared border, so a forest next to plains grows woods on that edge.
+ */
 export function generateTileParcels(
   sessionId: string,
   gridX: number,
   gridY: number,
   terrain: TileTerrain = {},
+  neighbours: NeighbourTerrain[] = [],
 ): TileParcelSpec[] {
   const family = (terrain.biome_family || "plains").toLowerCase();
   const isSea = family === "sea" || family === "ocean" || terrain.is_passable === false;
-  let defs = SUB_BIOMES[family] ?? DEFAULT_SET;
-  if (isSea) defs = SUB_BIOMES.sea;
-  else if (terrain.is_coastal) defs = [...defs, ...SUB_BIOMES.coast];
+  const ownDefs = defsForTerrain(terrain, false);
+  const OWN_WEIGHT = 6;
 
   const baseElevation = clamp(Number(terrain.elevation ?? 40), 0, 100);
   const riverRow = terrain.has_river ? Math.floor(seeded(`${sessionId}:${gridX}:${gridY}:river`) * TILE_PARCEL_ROWS) : -1;
@@ -162,12 +200,32 @@ export function generateTileParcels(
     const cellSeed = `${sessionId}:${gridX}:${gridY}:${index}`;
     const onRiver = !isSea && parcelY === riverRow && parcelX % 3 !== 2;
 
+    // Weighted pool: own biome plus the share of each bordering biome.
+    const pool: WeightedDef[] = ownDefs.map((def) => ({ ...def, blendWeight: def.weight * OWN_WEIGHT }));
+    let elevationWeight = OWN_WEIGHT;
+    let elevationSum = baseElevation * OWN_WEIGHT;
+
+    if (!isSea) {
+      for (const neighbour of neighbours) {
+        const reach = neighbourReach(neighbour.dx, neighbour.dy, parcelX, parcelY);
+        if (reach <= 0) continue;
+        const scale = reach * 1.5;
+        for (const def of defsForTerrain(neighbour.terrain, true)) {
+          pool.push({ ...def, blendWeight: def.weight * scale });
+        }
+        const neighbourElevation = clamp(Number(neighbour.terrain.elevation ?? baseElevation), 0, 100);
+        elevationSum += neighbourElevation * reach;
+        elevationWeight += reach;
+      }
+    }
+
     const def = onRiver
       ? { key: "river_bank", weight: 1, cost: 1.05, slots: 2, relief: -6 }
-      : pick(defs, seeded(`${cellSeed}:biome`));
+      : pickWeighted(pool, seeded(`${cellSeed}:biome`));
 
+    const blendedBase = Math.round(elevationSum / Math.max(1, elevationWeight));
     const noise = Math.round((seeded(`${cellSeed}:relief`) - 0.5) * 8);
-    const elevation = clamp(baseElevation + def.relief + noise, 0, 100);
+    const elevation = clamp(blendedBase + def.relief + noise, 0, 100);
     const steepPenalty = elevation > 72 ? 1 + (elevation - 72) / 90 : 1;
     const buildable = def.buildable !== false && !isSea;
     const capacitySlots = buildable ? clamp(elevation > 78 ? def.slots - 1 : def.slots, 1, 3) : 0;
