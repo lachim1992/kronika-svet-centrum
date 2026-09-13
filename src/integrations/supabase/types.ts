@@ -1087,6 +1087,8 @@ export type Database = {
           famine_turn: boolean
           flavor_prompt: string | null
           founded_round: number
+          grid_x: number | null
+          grid_y: number | null
           hosting_count: number
           housing_capacity: number
           id: string
@@ -1160,6 +1162,8 @@ export type Database = {
           famine_turn?: boolean
           flavor_prompt?: string | null
           founded_round?: number
+          grid_x?: number | null
+          grid_y?: number | null
           hosting_count?: number
           housing_capacity?: number
           id?: string
@@ -1233,6 +1237,8 @@ export type Database = {
           famine_turn?: boolean
           flavor_prompt?: string | null
           founded_round?: number
+          grid_x?: number | null
+          grid_y?: number | null
           hosting_count?: number
           housing_capacity?: number
           id?: string
@@ -3625,6 +3631,7 @@ export type Database = {
           is_dirty: boolean
           node_a: string
           node_b: string
+          path_cells: Json | null
           path_length: number
           route_id: string | null
           session_id: string
@@ -3642,6 +3649,7 @@ export type Database = {
           is_dirty?: boolean
           node_a: string
           node_b: string
+          path_cells?: Json | null
           path_length?: number
           route_id?: string | null
           session_id: string
@@ -3659,6 +3667,7 @@ export type Database = {
           is_dirty?: boolean
           node_a?: string
           node_b?: string
+          path_cells?: Json | null
           path_length?: number
           route_id?: string | null
           session_id?: string
@@ -6321,6 +6330,8 @@ export type Database = {
           demobilized_turn: number | null
           formation_type: string
           general_id: string | null
+          grid_x: number | null
+          grid_y: number | null
           hex_q: number
           hex_r: number
           id: string
@@ -6363,6 +6374,8 @@ export type Database = {
           demobilized_turn?: number | null
           formation_type?: string
           general_id?: string | null
+          grid_x?: number | null
+          grid_y?: number | null
           hex_q?: number
           hex_r?: number
           id?: string
@@ -6405,6 +6418,8 @@ export type Database = {
           demobilized_turn?: number | null
           formation_type?: string
           general_id?: string | null
+          grid_x?: number | null
+          grid_y?: number | null
           hex_q?: number
           hex_r?: number
           id?: string
@@ -7576,6 +7591,8 @@ export type Database = {
           created_at: string
           forest_density: number | null
           geology_type: string | null
+          grid_x: number | null
+          grid_y: number | null
           has_bridge: boolean
           has_river: boolean
           id: string
@@ -7601,6 +7618,8 @@ export type Database = {
           created_at?: string
           forest_density?: number | null
           geology_type?: string | null
+          grid_x?: number | null
+          grid_y?: number | null
           has_bridge?: boolean
           has_river?: boolean
           id?: string
@@ -7626,6 +7645,8 @@ export type Database = {
           created_at?: string
           forest_density?: number | null
           geology_type?: string | null
+          grid_x?: number | null
+          grid_y?: number | null
           has_bridge?: boolean
           has_river?: boolean
           id?: string
@@ -7701,6 +7722,8 @@ export type Database = {
           fortification_level: number
           founding_era: string
           garrison_strength: number | null
+          grid_x: number | null
+          grid_y: number | null
           growth_rate: number
           guild_level: number | null
           heritage_lineage_id: string | null
@@ -7788,6 +7811,8 @@ export type Database = {
           fortification_level?: number
           founding_era?: string
           garrison_strength?: number | null
+          grid_x?: number | null
+          grid_y?: number | null
           growth_rate?: number
           guild_level?: number | null
           heritage_lineage_id?: string | null
@@ -7875,6 +7900,8 @@ export type Database = {
           fortification_level?: number
           founding_era?: string
           garrison_strength?: number | null
+          grid_x?: number | null
+          grid_y?: number | null
           growth_rate?: number
           guild_level?: number | null
           heritage_lineage_id?: string | null
@@ -8003,6 +8030,7 @@ export type Database = {
           node_b: string
           path_dirty: boolean | null
           planned_hex_path: Json | null
+          planned_path_cells: Json | null
           route_origin: string
           route_type: string
           safety_value: number
@@ -8039,6 +8067,7 @@ export type Database = {
           node_b: string
           path_dirty?: boolean | null
           planned_hex_path?: Json | null
+          planned_path_cells?: Json | null
           route_origin?: string
           route_type?: string
           safety_value?: number
@@ -8075,6 +8104,7 @@ export type Database = {
           node_b?: string
           path_dirty?: boolean | null
           planned_hex_path?: Json | null
+          planned_path_cells?: Json | null
           route_origin?: string
           route_type?: string
           safety_value?: number
@@ -8122,6 +8152,8 @@ export type Database = {
           capital_city_id: string | null
           center_q: number | null
           center_r: number | null
+          center_x: number | null
+          center_y: number | null
           color_index: number | null
           control_player: string | null
           control_scores: Json | null
@@ -8153,6 +8185,8 @@ export type Database = {
           capital_city_id?: string | null
           center_q?: number | null
           center_r?: number | null
+          center_x?: number | null
+          center_y?: number | null
           color_index?: number | null
           control_player?: string | null
           control_scores?: Json | null
@@ -8184,6 +8218,8 @@ export type Database = {
           capital_city_id?: string | null
           center_q?: number | null
           center_r?: number | null
+          center_x?: number | null
+          center_y?: number | null
           color_index?: number | null
           control_player?: string | null
           control_scores?: Json | null
@@ -10784,6 +10820,8 @@ export type Database = {
           bootstrap_status: string | null
           created_at: string
           created_by: string | null
+          grid_kind: string
+          grid_version: number
           id: string
           initial_factions: string[] | null
           map_height: number | null
@@ -10805,6 +10843,8 @@ export type Database = {
           bootstrap_status?: string | null
           created_at?: string
           created_by?: string | null
+          grid_kind?: string
+          grid_version?: number
           id?: string
           initial_factions?: string[] | null
           map_height?: number | null
@@ -10826,6 +10866,8 @@ export type Database = {
           bootstrap_status?: string | null
           created_at?: string
           created_by?: string | null
+          grid_kind?: string
+          grid_version?: number
           id?: string
           initial_factions?: string[] | null
           map_height?: number | null

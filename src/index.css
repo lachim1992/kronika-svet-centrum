@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;500;600;700;800;900&family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&family=Inter:wght@300;400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;500;600;700;800;900&family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&family=Inter:wght@300;400;500;600;700&family=Libre+Baskerville:wght@400;700&family=IBM+Plex+Sans:wght@300;400;500;600;700&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -144,6 +144,44 @@
 }
 
 @layer utilities {
+  .map-first-shell {
+    font-family: "IBM Plex Sans", sans-serif;
+  }
+  .map-first-shell h1,
+  .map-first-shell h2,
+  .map-first-shell h3,
+  .map-first-shell h4 {
+    font-family: "Libre Baskerville", serif;
+  }
+  .map-command-nav {
+    position: relative;
+    z-index: 45;
+    border-bottom: 1px solid hsl(43 64% 52% / .22);
+    background: linear-gradient(180deg, hsl(219 34% 11% / .96), hsl(219 34% 8% / .9));
+    box-shadow: 0 10px 30px rgb(0 0 0 / .25);
+    backdrop-filter: blur(14px);
+  }
+  .map-workspace-panel {
+    pointer-events: auto;
+    width: min(1180px, calc(100% - 32px));
+    max-height: calc(100vh - 154px);
+    margin: 14px auto 0;
+    padding: 18px;
+    overflow-y: auto;
+    border: 1px solid hsl(43 64% 52% / .22);
+    border-radius: 0 0 16px 16px;
+    background: linear-gradient(180deg, hsl(222 34% 12% / .97), hsl(222 34% 10% / .93));
+    box-shadow: 0 20px 70px rgb(0 0 0 / .58), inset 0 1px hsl(43 64% 70% / .08);
+    backdrop-filter: blur(18px);
+  }
+  .map-first-shell main:has(.map-workspace-panel.hidden) {
+    pointer-events: none;
+  }
+  .iso-active-route {
+    stroke-dasharray: 8 5;
+    animation: iso-route-flow 1.6s linear infinite;
+  }
+  @keyframes iso-route-flow { to { stroke-dashoffset: -26; } }
   .scrollbar-hide {
     -ms-overflow-style: none;
     scrollbar-width: none;
