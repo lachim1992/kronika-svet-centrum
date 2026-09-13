@@ -173,6 +173,19 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
     return map;
   }, [cityParcels]);
 
+  /** Stacked army placements — several war bands on one cell fan out instead of overlapping. */
+  const armyPlacements = useMemo(() => {
+    const perCell = new Map<string, number>();
+    return armies.map(army => {
+      const cell = entityCell(army);
+      const key = cellKey(cell.a, cell.b);
+      const index = perCell.get(key) || 0;
+      perCell.set(key, index + 1);
+      return { army, cell, offsetX: 14 + index * 12, offsetY: -30 - index * 10 };
+    });
+  }, [armies, entityCell]);
+  const selectedArmy = useMemo(() => armies.find(army => army.id === selectedArmyId) || null, [armies, selectedArmyId]);
+
   const sortedTiles = useMemo(() => [...tiles].sort((left, right) => {
     const a = tileCell(left); const b = tileCell(right); return (a.a + a.b) - (b.a + b.b);
   }), [tiles, tileCell]);
