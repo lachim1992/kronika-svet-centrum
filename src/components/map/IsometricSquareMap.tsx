@@ -1474,7 +1474,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
                       onChange={event => setProductionPick(current => ({ ...current, [district.key]: event.target.value }))}>
                       {choices.map(key => <option key={key} value={key}>{DEMAND_BASKETS.find(b => b.key === key)?.label || key}</option>)}
                     </select>
-                    <Button size="sm" className="h-7 px-2 text-[11px]" disabled={!!buildingAction || !selectedCity || selectedCity.owner_player !== playerName || labour.free <= 0}
+                    <Button size="sm" className="h-7 px-2 text-[11px]" disabled={!!buildingAction || !!parcelBlock || !selectedCity || selectedCity.owner_player !== playerName || labour.free <= 0}
                       onClick={() => void buildDistrict(district, picked)}>
                       {buildingAction === `district-${district.key}` ? <Loader2 className="h-3 w-3 animate-spin" /> : "Postavit"}
                     </Button>
@@ -1491,7 +1491,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
                 <div key={category}>
                   <p className="mb-1 text-[10px] uppercase tracking-wide text-muted-foreground">{BUILD_CATEGORY_LABEL[category] || category}</p>
                   <div className="grid grid-cols-2 gap-2">{templates.map(template => (
-                    <Button key={template.id} size="sm" variant="outline" className="h-auto flex-col items-start gap-1 px-2 py-2 text-left text-xs" disabled={!!buildingAction} onClick={() => void buildOnParcel(template)}>
+                    <Button key={template.id} size="sm" variant="outline" className="h-auto flex-col items-start gap-1 px-2 py-2 text-left text-xs" disabled={!!buildingAction || !!parcelBlock} onClick={() => void buildOnParcel(template)}>
                       <span className="flex w-full items-center gap-2">
                         {buildingAction === `building-${template.id}`
                           ? <Loader2 className="h-4 w-4 animate-spin" />
