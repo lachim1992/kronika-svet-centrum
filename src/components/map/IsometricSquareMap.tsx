@@ -97,6 +97,11 @@ const LAND_USE_COLOR: Record<string, string> = {
 
 const cellKey = (a: number, b: number) => `${a},${b}`;
 
+const MIN_ZOOM = 0.3;
+const MAX_ZOOM = 8;
+const LABEL_ZOOM = 1.15;
+const clampZoom = (value: number) => Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, value));
+
 export default function IsometricSquareMap({ sessionId, playerName, currentTurn = 1, onCityClick, gridKind = "hex6", onDetailOpenChange }: Props) {
   const isMobile = useIsMobile();
   const viewportRef = useRef<HTMLDivElement>(null);
@@ -122,6 +127,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
   const [selectedArmyId, setSelectedArmyId] = useState<string | null>(null);
   const [showRoutes, setShowRoutes] = useState(true);
   const [showNodes, setShowNodes] = useState(true);
+  const [showLabels, setShowLabels] = useState(true);
   const [selectedParcelId, setSelectedParcelId] = useState<string | null>(null);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [parcelContents, setParcelContents] = useState<ParcelContent[]>([]);
@@ -627,6 +633,33 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
   };
 
   const at = (a: number, b: number) => { const point = projectCell("square4", { a, b }, TILE_SIZE); return { x: point.x + pan.x, y: point.y + pan.y }; };
+  const viewRef = useRef({ zoom, pan });
+  viewRef.current = { zoom, pan };
+  const zoomBy = (factor: number, screenX?: number, screenY?: number) => {
+    const { zoom: current, pan: currentPan } = viewRef.current;
+    const next = clampZoom(current * factor);
+    if (next === current) return;
+    const element = viewportRef.current;
+    const px = screenX ?? (element ? element.clientWidth / 2 : 0);
+    const py = screenY ?? (element ? element.clientHeight / 2 : 0);
+    const shift = 1 / next - 1 / current;
+    setPan({ x: currentPan.x + px * shift, y: currentPan.y + py * shift });
+    setZoom(next);
+  };
+  const zoomHandlerRef = useRef(zoomBy);
+  zoomHandlerRef.current = zoomBy;
+  useEffect(() => {
+    const element = viewportRef.current;
+    if (!element) return;
+    const onWheel = (event: WheelEvent) => {
+      event.preventDefault();
+      const dy = event.deltaY * (event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? 100 : 1);
+      const rect = element.getBoundingClientRect();
+      zoomHandlerRef.current(Math.exp(-dy * 0.0018), event.clientX - rect.left, event.clientY - rect.top);
+    };
+    element.addEventListener("wheel", onWheel, { passive: false });
+    return () => element.removeEventListener("wheel", onWheel);
+  }, []);
   const focusTile = (tile: Tile, requestedCityId?: string) => {
     const element = viewportRef.current; if (!element) return;
     const cell = tileCell(tile); const projected = projectCell("square4", cell, TILE_SIZE);
@@ -667,7 +700,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
         if (start && pinchRef.current.size === 2) {
           const [a, b] = [...pinchRef.current.values()];
           const distance = Math.hypot(a.x - b.x, a.y - b.y) || 1;
-          setZoom(Math.max(.45, Math.min(2.4, start.zoom * (distance / start.distance))));
+          setZoom(clampZoom(start.zoom * (distance / start.distance)));
           return;
         }
         const drag = dragRef.current; if (!drag) return;
@@ -678,7 +711,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
       onPointerUp={(event) => { pinchRef.current.delete(event.pointerId); if (pinchRef.current.size < 2) pinchStartRef.current = null; window.setTimeout(() => { dragRef.current = null; }, 0); }}
       onPointerCancel={(event) => { pinchRef.current.delete(event.pointerId); pinchStartRef.current = null; dragRef.current = null; }}
       onPointerLeave={(event) => { pinchRef.current.delete(event.pointerId); pinchStartRef.current = null; dragRef.current = null; }}
-      onWheel={(event) => { event.preventDefault(); setZoom(value => Math.max(.45, Math.min(2.4, value * (event.deltaY > 0 ? .9 : 1.1)))); }}>
+      >
       <svg className="h-full w-full">
         <defs>
           <filter id="iso-shadow"><feDropShadow dx="0" dy="5" stdDeviation="4" floodOpacity=".35" /></filter>
@@ -768,8 +801,15 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
               if (fallbackTile) focusTile(fallbackTile, city.id);
             };
             return <g key={city.id} data-map-city={city.id} role="button" aria-label={`Vstoupit do města ${city.name}`} tabIndex={0} transform={`translate(${point.x + seatOffset.x},${point.y + seatOffset.y - 16})`} className="cursor-pointer" onClick={(event) => { event.stopPropagation(); openCityLayer(); }} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); openCityLayer(); } }}>
-              <rect x={-Math.max(22, city.name.length * 2.8)} y="25" width={Math.max(44, city.name.length * 5.6)} height="13" rx="2" fill="var(--map-marker)" stroke={own ? "var(--map-city-own)" : "var(--map-city-rival)"} strokeWidth=".8" opacity=".94" />
-              <text y="34" textAnchor="middle" fill="var(--map-label)" fontSize="7.5" fontWeight="700">{city.name}</text>
+              <title>{city.name}</title>
+              {showLabels && (zoom >= LABEL_ZOOM || own || cityLayerCityId === city.id) && (() => {
+                const labelScale = Math.max(.5, Math.min(1.25, 1 / zoom));
+                const half = Math.max(20, city.name.length * 2.7);
+                return <g transform={`translate(0,26) scale(${labelScale})`} pointerEvents="none">
+                  <rect x={-half} y="0" width={half * 2} height="12" rx="2" fill="var(--map-marker)" stroke={own ? "var(--map-city-own)" : "var(--map-city-rival)"} strokeWidth=".8" opacity=".9" />
+                  <text y="8.6" textAnchor="middle" fill="var(--map-label)" fontSize="7.5" fontWeight="700">{city.name}</text>
+                </g>;
+              })()}
               {city.population_total > city.housing_capacity && <path d="M-27 -11 L-22 -20 L-17 -11 Z" fill="var(--map-focus)"><title>Tlak na růst</title></path>}
             </g>;
           })}
@@ -813,12 +853,13 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
       </svg>
 
       <div className={`map-floating-control absolute right-3 z-50 flex items-center gap-1 p-1 ${isMobile ? (selected ? "bottom-[66vh]" : "bottom-20") : "bottom-4"}`}>
-        <Button size="icon" variant="ghost" aria-label="Oddálit" onClick={() => setZoom(value => Math.max(.45, value - .15))}><Minus className="h-4 w-4" /></Button>
+        <Button size="icon" variant="ghost" aria-label="Oddálit" onClick={() => zoomBy(1 / 1.3)}><Minus className="h-4 w-4" /></Button>
         <Button size="icon" variant="ghost" aria-label="Celá mapa" onClick={home}><Home className="h-4 w-4" /></Button>
-        <Button size="icon" variant="ghost" aria-label="Přiblížit" onClick={() => setZoom(value => Math.min(2.4, value + .15))}><Plus className="h-4 w-4" /></Button>
+        <Button size="icon" variant="ghost" aria-label="Přiblížit" onClick={() => zoomBy(1.3)}><Plus className="h-4 w-4" /></Button>
         <span className="mx-1 h-5 w-px bg-border" />
         <Button size="icon" variant={showRoutes ? "secondary" : "ghost"} aria-label={showRoutes ? "Skrýt toky a cesty" : "Zobrazit toky a cesty"} aria-pressed={showRoutes} onClick={() => setShowRoutes(value => !value)}><RouteIcon className={`h-4 w-4 ${showRoutes ? "" : "opacity-40"}`} /></Button>
         <Button size="icon" variant={showNodes ? "secondary" : "ghost"} aria-label={showNodes ? "Skrýt uzly" : "Zobrazit uzly"} aria-pressed={showNodes} onClick={() => setShowNodes(value => !value)}><Landmark className={`h-4 w-4 ${showNodes ? "" : "opacity-40"}`} /></Button>
+        <Button size="icon" variant={showLabels ? "secondary" : "ghost"} aria-label={showLabels ? "Skrýt názvy měst" : "Zobrazit názvy měst"} aria-pressed={showLabels} onClick={() => setShowLabels(value => !value)}><Flag className={`h-4 w-4 ${showLabels ? "" : "opacity-40"}`} /></Button>
       </div>
       <div className={`map-floating-control absolute left-3 top-3 z-20 flex items-center gap-2 px-2.5 py-1.5 ${isMobile ? "text-[10px]" : "text-xs"}`}><Layers3 className="h-4 w-4 text-primary"/><span>Čtvercová síť · izometrické zobrazení</span></div>
       {cityLayerCity && <div className="map-floating-control absolute left-4 top-16 z-30 flex items-center gap-3 px-2 py-2"><Button size="icon" variant="ghost" aria-label="Zpět na světovou mapu" onClick={leaveCityLayer}><ArrowLeft className="h-4 w-4"/></Button><div className="pr-3"><p className="text-[10px] uppercase text-primary">Městská vrstva</p><p className="font-display text-sm">{cityLayerCity.name} · {(cityCellsById.get(cityLayerCity.id) || []).length || 1} polí</p></div></div>}
