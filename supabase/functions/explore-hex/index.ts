@@ -168,13 +168,10 @@ Deno.serve(async (req) => {
       });
     }
 
-    // 5. Bootstrap: if player had 0 discoveries, auto-reveal 2-ring (19 hexes)
+    // 5. Bootstrap: if player had 0 discoveries, auto-reveal everything within 2 steps
     const isBootstrap = discoveredIds.size === 0;
     if (isBootstrap) {
-      const RING2 = [
-        [1,0],[-1,0],[0,1],[0,-1],[1,-1],[-1,1],
-        [2,0],[-2,0],[0,2],[0,-2],[2,-2],[-2,2],[2,-1],[-2,1],[1,1],[-1,-1],[1,-2],[-1,2],
-      ];
+      const RING2 = ringCells(gridKind, 2);
       const neighborHexes = await Promise.all(
         RING2.map(([dq, dr]) =>
           fetch(funcUrl, {
