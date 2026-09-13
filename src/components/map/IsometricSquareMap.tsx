@@ -70,6 +70,17 @@ const NODE_SPRITE: Record<string, string> = {
 const nodeSprite = (node: { node_type: string; node_subtype: string | null }) =>
   NODE_SPRITE[node.node_subtype || ""] || NODE_SPRITE[node.node_type] || spriteHamlet;
 
+/** Buildable subnodes — costs mirror SUBNODE_DEFS in command-dispatch. */
+type SubnodeOption = { key: string; label: string; gold: number; production: number; hint: string };
+const SUBNODE_OPTIONS: SubnodeOption[] = [
+  { key: "farmstead", label: "Produkční dvůr", gold: 35, production: 45, hint: "+4 zásoby" },
+  { key: "workshop", label: "Řemeslná dílna", gold: 45, production: 55, hint: "+5 produkce" },
+  { key: "guard_post", label: "Strážnice", gold: 50, production: 65, hint: "kontrola pole" },
+  { key: "trade_post", label: "Obchodní stanice", gold: 70, production: 40, hint: "+5 bohatství" },
+  { key: "river_wharf", label: "Říční překladiště", gold: 80, production: 60, hint: "říční obchod" },
+];
+
+
 /** Painted picture for a building or district — matched by name first, then category. */
 const BUILD_NAME_SPRITE: Array<[RegExp, string]> = [
   [/arén/i, buildArena],
@@ -818,7 +829,20 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
 
 
 
+  /** Why this subnode cannot be placed on the selected parcel right now — null means buildable. */
+  const subnodeBlockReason = (option: SubnodeOption): string | null => {
+    if (!selectedParcel || !selectedParcel.city_id) return "Nejdřív parcelu zaber pro město";
+    if (selectedParcel.owner_player !== playerName) return "Parcela ti nepatří";
+    if (!selectedParcel.buildable) return "Nezastavitelná parcela";
+    if (selectedParcelUsed >= selectedParcel.capacity_slots) return "Parcela je plná";
+    if (option.key === "river_wharf" && !selected?.has_river && !selected?.coastal) return "Vyžaduje řeku nebo pobřeží";
+    if (option.key === "farmstead" && ["mountains", "mountain", "desert"].includes(selected?.biome_family || "")) return "Nevhodný terén";
+    if (treasury.gold < option.gold || treasury.production < option.production) return `Chybí zdroje (${option.gold} zlata, ${option.production} produkce)`;
+    return null;
+  };
+
   const buildSubnode = async (subtype: string, label: string) => {
+
     if (!selectedParcel) return;
     setBuildingAction(`node-${subtype}`);
     const result = await dispatchCommand({ sessionId, turnNumber: currentTurn, actor: { name: playerName }, commandType: "BUILD_SUBNODE", commandPayload: { parcelId: selectedParcel.id, subtype } });
@@ -1478,7 +1502,22 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
                 </div>
               ))}</div>
             </div>
-            <div><p className="mb-2 text-xs font-medium">Vytvořit subuzel</p><div className="grid grid-cols-2 gap-2">{[["farmstead","Produkční dvůr"],["workshop","Dílna"],["guard_post","Strážnice"],["trade_post","Obchodní stanice"],["river_wharf","Překladiště"]].map(([key,label]) => <Button key={key} size="sm" variant="outline" className="h-auto justify-start gap-2 px-2 py-2 text-left text-xs" disabled={!!buildingAction} onClick={() => void buildSubnode(key,label)}>{buildingAction === `node-${key}` ? <Loader2 className="h-4 w-4 animate-spin"/> : <img src={NODE_SPRITE[key] || spriteHamlet} alt="" className="h-7 w-7 object-contain"/>}<span className="flex-1 leading-tight">{label}</span></Button>)}</div></div>
+            <div>
+              <p className="mb-2 text-xs font-medium">Vytvořit subuzel</p>
+              <div className="grid grid-cols-2 gap-2">{SUBNODE_OPTIONS.map(option => {
+                const reason = subnodeBlockReason(option);
+                return <Button key={option.key} size="sm" variant="outline" className="h-auto flex-col items-start gap-1 px-2 py-2 text-left text-xs"
+                  disabled={!!buildingAction || !!reason} title={reason || undefined}
+                  onClick={() => void buildSubnode(option.key, option.label)}>
+                  <span className="flex w-full items-center gap-2">
+                    {buildingAction === `node-${option.key}` ? <Loader2 className="h-4 w-4 animate-spin" /> : <img src={NODE_SPRITE[option.key] || spriteHamlet} alt="" className="h-7 w-7 object-contain" />}
+                    <span className="flex-1 leading-tight">{option.label}</span>
+                  </span>
+                  <span className="text-[10px] text-muted-foreground">{reason || `${option.gold} zlata · ${option.production} produkce`}</span>
+                </Button>;
+              })}</div>
+            </div>
+
           </>}
         </section>}
 
