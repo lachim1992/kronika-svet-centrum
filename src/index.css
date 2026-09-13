@@ -109,6 +109,8 @@
     --map-city-own: hsl(42 66% 63%);
     --map-city-rival: hsl(7 47% 49%);
     --map-city-base: hsl(147 22% 19%);
+    --map-city-wall-light: hsl(35 20% 67%);
+    --map-city-wall-dark: hsl(31 18% 46%);
     --map-label: hsl(44 100% 91%);
     --map-label-edge: hsl(195 41% 5%);
     --map-window: hsl(48 92% 72%);
@@ -240,46 +242,6 @@
   }
   .map-first-shell main:has(.map-workspace-panel.hidden) {
     pointer-events: none;
-  }
-  .iso-active-route {
-    stroke-dasharray: 8 5;
-    animation: iso-route-flow 1.6s linear infinite;
-  }
-  @keyframes iso-route-flow { to { stroke-dashoffset: -26; } }
-  .iso-selected-tile {
-    animation: iso-tile-focus 1.8s ease-in-out infinite;
-  }
-  .iso-city-cluster {
-    transform-box: fill-box;
-    transform-origin: center bottom;
-    animation: iso-city-arrive .5s ease-out both;
-  }
-  .iso-city-flag {
-    transform-box: fill-box;
-    transform-origin: left center;
-    animation: iso-flag-wave 1.7s ease-in-out infinite alternate;
-  }
-  .iso-smoke {
-    transform-box: fill-box;
-    transform-origin: center;
-    animation: iso-smoke-rise 3.2s ease-out infinite;
-  }
-  .iso-smoke-two { animation-delay: 1.4s; }
-  .iso-window { animation: iso-window-glow 3s ease-in-out infinite alternate; }
-  .iso-node-bob, .iso-army-bob { animation: iso-marker-bob 2.6s ease-in-out infinite; }
-  .iso-growth-pulse, .iso-growth-ring { transform-box: fill-box; transform-origin: center; animation: iso-growth-pulse 1.8s ease-out infinite; }
-  .iso-parcel-grid { animation: iso-parcels-enter .35s ease-out both; }
-  @keyframes iso-tile-focus { 50% { filter: brightness(1.18); } }
-  @keyframes iso-city-arrive { from { opacity: 0; transform: translateY(5px) scale(.9); } to { opacity: 1; transform: translateY(0) scale(1); } }
-  @keyframes iso-flag-wave { from { transform: skewY(-2deg) scaleX(.94); } to { transform: skewY(3deg) scaleX(1.05); } }
-  @keyframes iso-smoke-rise { 0% { opacity: 0; transform: translateY(4px) scale(.6); } 35% { opacity: .7; } 100% { opacity: 0; transform: translateY(-10px) translateX(4px) scale(1.7); } }
-  @keyframes iso-window-glow { from { opacity: .5; } to { opacity: 1; } }
-  @keyframes iso-marker-bob { 50% { transform: translateY(-2px); } }
-  @keyframes iso-growth-pulse { 0% { opacity: .9; transform: scale(.8); } 100% { opacity: 0; transform: scale(1.35); } }
-  @keyframes iso-parcels-enter { from { opacity: 0; } to { opacity: 1; } }
-  @media (prefers-reduced-motion: reduce) {
-    .iso-active-route, .iso-selected-tile, .iso-city-cluster, .iso-city-flag, .iso-smoke,
-    .iso-window, .iso-node-bob, .iso-army-bob, .iso-growth-pulse, .iso-growth-ring, .iso-parcel-grid { animation: none; }
   }
   .scrollbar-hide {
     -ms-overflow-style: none;
