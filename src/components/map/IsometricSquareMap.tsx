@@ -281,14 +281,67 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
     })}
   </g>;
 
-  /** City-held parcels of a cell, drawn on the world map so the footprint is always visible. */
-  const renderCityFootprint = (parcels: TileParcel[], centerPoint: { x: number; y: number }) => <g pointerEvents="none">
-    {parcels.map(parcel => (
-      <polygon key={parcel.id} points={parcelQuad(centerPoint, parcel.parcel_x, parcel.parcel_y)}
-        fill={parcel.status === "occupied" ? (LAND_USE_COLOR[parcel.land_use || "civic"] || LAND_USE_COLOR.open) : "var(--map-parcel-open)"}
-        stroke="var(--map-marker-edge)" strokeWidth=".4" opacity={parcel.status === "occupied" ? .95 : .7} />
-    ))}
-  </g>;
+  /** Corner points of a single parcel, in draw order A(top) B(right) C(bottom) D(left). */
+  const parcelCorners = (centerPoint: { x: number; y: number }, px: number, py: number) => {
+    const point = (a: number, b: number) => ({ x: centerPoint.x + (a - b) * TILE_SIZE, y: centerPoint.y + (a + b - 1) * TILE_SIZE / 2 });
+    const a0 = px / TILE_PARCEL_COLS; const a1 = (px + 1) / TILE_PARCEL_COLS;
+    const b0 = py / TILE_PARCEL_ROWS; const b1 = (py + 1) / TILE_PARCEL_ROWS;
+    return { a: point(a0, b0), b: point(a1, b0), c: point(a1, b1), d: point(a0, b1) };
+  };
+
+  /** Outer edges of a held parcel block — the line the ramparts follow. */
+  const footprintWallEdges = (parcels: TileParcel[], centerPoint: { x: number; y: number }) => {
+    const held = new Set(parcels.map(parcel => `${parcel.parcel_x},${parcel.parcel_y}`));
+    const edges: { from: { x: number; y: number }; to: { x: number; y: number } }[] = [];
+    parcels.forEach(parcel => {
+      const { a, b, c, d } = parcelCorners(centerPoint, parcel.parcel_x, parcel.parcel_y);
+      if (!held.has(`${parcel.parcel_x},${parcel.parcel_y - 1}`)) edges.push({ from: a, to: b });
+      if (!held.has(`${parcel.parcel_x + 1},${parcel.parcel_y}`)) edges.push({ from: b, to: c });
+      if (!held.has(`${parcel.parcel_x},${parcel.parcel_y + 1}`)) edges.push({ from: c, to: d });
+      if (!held.has(`${parcel.parcel_x - 1},${parcel.parcel_y}`)) edges.push({ from: d, to: a });
+    });
+    return edges;
+  };
+
+  /** Small house on an occupied parcel — static volume, only the hearth light breathes. */
+  const renderParcelHouse = (parcel: TileParcel, centerPoint: { x: number; y: number }, index: number) => {
+    const { a, b, c, d } = parcelCorners(centerPoint, parcel.parcel_x, parcel.parcel_y);
+    const cx = (a.x + b.x + c.x + d.x) / 4; const cy = (a.y + b.y + c.y + d.y) / 4;
+    const width = (b.x - a.x) * .52; const height = width * .78;
+    return <g key={`house-${parcel.id}`} transform={`translate(${cx},${cy})`}>
+      <path d={`M${-width} 1 L0 ${-height * .5} L${width} 1 L0 ${height * .5 + 1} Z`} fill="var(--map-city-wall-dark)" opacity=".85" />
+      <path d={`M${-width} 1 L0 ${-height * .5} L${width} 1 L0 ${-height * .1} Z`} fill="var(--map-city-wall-light)" opacity=".95" />
+      <rect className="iso-city-hearth" style={{ animationDelay: `${(index % 5) * .7}s` }} x={-1.4} y={-1.6} width="2.8" height="2.4" fill="var(--map-window)" />
+    </g>;
+  };
+
+  /** City-held parcels of a cell: footprint, ramparts with towers, and houses. */
+  const renderCityFootprint = (parcels: TileParcel[], centerPoint: { x: number; y: number }, own: boolean) => {
+    const wallColor = own ? "var(--map-city-own)" : "var(--map-city-rival)";
+    const edges = footprintWallEdges(parcels, centerPoint);
+    const occupied = parcels.filter(parcel => parcel.status === "occupied");
+    return <g pointerEvents="none">
+      {parcels.map(parcel => (
+        <polygon key={parcel.id} points={parcelQuad(centerPoint, parcel.parcel_x, parcel.parcel_y)}
+          fill={parcel.status === "occupied" ? (LAND_USE_COLOR[parcel.land_use || "civic"] || LAND_USE_COLOR.open) : "var(--map-parcel-open)"}
+          stroke="var(--map-marker-edge)" strokeWidth=".35" opacity={parcel.status === "occupied" ? .95 : .72} />
+      ))}
+      {edges.map((edge, index) => (
+        <g key={`wall-${index}`}>
+          <line x1={edge.from.x} y1={edge.from.y + 2.4} x2={edge.to.x} y2={edge.to.y + 2.4} stroke="var(--map-city-wall-dark)" strokeWidth="3.4" strokeLinecap="round" opacity=".9" />
+          <line x1={edge.from.x} y1={edge.from.y} x2={edge.to.x} y2={edge.to.y} stroke="var(--map-city-wall-light)" strokeWidth="2.2" strokeLinecap="round" />
+          <line x1={edge.from.x} y1={edge.from.y - 1.4} x2={edge.to.x} y2={edge.to.y - 1.4} stroke={wallColor} strokeWidth=".9" strokeLinecap="round" opacity=".95" />
+        </g>
+      ))}
+      {edges.filter((_, index) => index % 3 === 0).map((edge, index) => (
+        <g key={`tower-${index}`} transform={`translate(${edge.from.x},${edge.from.y})`}>
+          <rect x="-2.2" y="-7" width="4.4" height="8.4" fill="var(--map-city-wall-light)" stroke="var(--map-city-wall-dark)" strokeWidth=".5" />
+          <rect x="-2.8" y="-8.4" width="5.6" height="1.8" fill={wallColor} />
+        </g>
+      ))}
+      {occupied.map((parcel, index) => renderParcelHouse(parcel, centerPoint, index))}
+    </g>;
+  };
 
   const at = (a: number, b: number) => { const point = projectCell("square4", { a, b }, TILE_SIZE); return { x: point.x + pan.x, y: point.y + pan.y }; };
   const focusTile = (tile: Tile, requestedCityId?: string) => {
