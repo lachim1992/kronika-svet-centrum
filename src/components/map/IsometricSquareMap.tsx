@@ -802,7 +802,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
             };
             return <g key={city.id} data-map-city={city.id} role="button" aria-label={`Vstoupit do města ${city.name}`} tabIndex={0} transform={`translate(${point.x + seatOffset.x},${point.y + seatOffset.y - 16})`} className="cursor-pointer" onClick={(event) => { event.stopPropagation(); openCityLayer(); }} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); openCityLayer(); } }}>
               <title>{city.name}</title>
-              {showLabels && (zoom >= LABEL_ZOOM || own || selected?.id === labelTileId) && (() => {
+              {showLabels && (zoom >= LABEL_ZOOM || own || cityLayerCityId === city.id) && (() => {
                 const labelScale = Math.max(.5, Math.min(1.25, 1 / zoom));
                 const half = Math.max(20, city.name.length * 2.7);
                 return <g transform={`translate(0,26) scale(${labelScale})`} pointerEvents="none">
@@ -853,9 +853,9 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
       </svg>
 
       <div className={`map-floating-control absolute right-3 z-50 flex items-center gap-1 p-1 ${isMobile ? (selected ? "bottom-[66vh]" : "bottom-20") : "bottom-4"}`}>
-        <Button size="icon" variant="ghost" aria-label="Oddálit" onClick={() => setZoom(value => Math.max(.45, value - .15))}><Minus className="h-4 w-4" /></Button>
+        <Button size="icon" variant="ghost" aria-label="Oddálit" onClick={() => zoomBy(1 / 1.3)}><Minus className="h-4 w-4" /></Button>
         <Button size="icon" variant="ghost" aria-label="Celá mapa" onClick={home}><Home className="h-4 w-4" /></Button>
-        <Button size="icon" variant="ghost" aria-label="Přiblížit" onClick={() => setZoom(value => Math.min(2.4, value + .15))}><Plus className="h-4 w-4" /></Button>
+        <Button size="icon" variant="ghost" aria-label="Přiblížit" onClick={() => zoomBy(1.3)}><Plus className="h-4 w-4" /></Button>
         <span className="mx-1 h-5 w-px bg-border" />
         <Button size="icon" variant={showRoutes ? "secondary" : "ghost"} aria-label={showRoutes ? "Skrýt toky a cesty" : "Zobrazit toky a cesty"} aria-pressed={showRoutes} onClick={() => setShowRoutes(value => !value)}><RouteIcon className={`h-4 w-4 ${showRoutes ? "" : "opacity-40"}`} /></Button>
         <Button size="icon" variant={showNodes ? "secondary" : "ghost"} aria-label={showNodes ? "Skrýt uzly" : "Zobrazit uzly"} aria-pressed={showNodes} onClick={() => setShowNodes(value => !value)}><Landmark className={`h-4 w-4 ${showNodes ? "" : "opacity-40"}`} /></Button>
