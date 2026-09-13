@@ -27,6 +27,10 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
+    const gridKind = await loadGridKind(sb, session_id);
+    const NEIGHBORS = neighborOffsets(gridKind);
+
+
     // 1. Get player's current discoveries to validate adjacency
     const { data: discoveries } = await sb
       .from("discoveries")
