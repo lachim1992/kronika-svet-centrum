@@ -111,6 +111,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 40 });
   const [selected, setSelected] = useState<Tile | null>(null);
+  const hasInitialized = useRef(false);
   const [cityLayerCityId, setCityLayerCityId] = useState<string | null>(null);
   const [tileParcels, setTileParcels] = useState<TileParcel[]>([]);
   const [parcelsLoading, setParcelsLoading] = useState(false);
@@ -176,7 +177,12 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
   const home = useCallback(() => {
     const element = viewportRef.current; if (!element) return;
     setZoom(1); setPan({ x: element.clientWidth / 2 - center.x, y: element.clientHeight * 0.35 - center.y }); setSelected(null); setCityLayerCityId(null); onDetailOpenChange?.(false);
-  }, [center, onDetailOpenChange]);
+  useEffect(() => {
+    if (tiles.length > 0 && !hasInitialized.current) {
+      home();
+      hasInitialized.current = true;
+    }
+  }, [tiles.length, home]);
   useEffect(() => { if (tiles.length) home(); }, [tiles.length, home]);
 
   const cityById = useMemo(() => new Map(cities.map(city => [city.id, city])), [cities]);
