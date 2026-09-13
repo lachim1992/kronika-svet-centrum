@@ -719,7 +719,16 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
   };
 
   /** Residential districts raise the city's housing capacity, so they get their own action. */
+  /** Housing staffs workshops: this is the labour budget of the selected city. */
+  const labour = useMemo(() => {
+    const own = districts.filter(d => d.city_id === selectedCity?.id && d.status === "completed");
+    const housing = own.filter(d => d.district_type === "residential").length;
+    const production = own.filter(d => d.district_type === "production");
+    return { housing, slots: housing * PRODUCTION_PER_RESIDENTIAL, production, free: housing * PRODUCTION_PER_RESIDENTIAL - production.length };
+  }, [districts, selectedCity?.id]);
+
   const buildDistrict = async (district: DistrictBlueprint, basketKey?: string) => {
+
     if (!selectedParcel || !selectedCity || selectedCity.owner_player !== playerName) return;
     setBuildingAction(`district-${district.key}`);
     const result = await dispatchCommand({ sessionId, turnNumber: currentTurn, actor: { name: playerName }, commandType: "BUILD_DISTRICT", commandPayload: {
