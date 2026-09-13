@@ -286,8 +286,9 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
   const selectedCityId = selectedCell ? cityByCell.get(cellKey(selectedCell.a, selectedCell.b)) : undefined;
   const selectedCity = cityLayerCity || (selectedCityId ? cityById.get(selectedCityId) : undefined);
   /** A neighbouring city of yours that may buy parcels on this cell. */
+  const foreignOwner = selected?.owner_player && selected.owner_player !== playerName ? selected.owner_player : null;
   const expansionCity = useMemo(() => {
-    if (!selectedCell || selectedCity) return undefined;
+    if (!selectedCell || selectedCity || foreignOwner) return undefined;
     return cities.find(city => {
       if (city.owner_player !== playerName) return false;
       const cells = [...(cityCellsById.get(city.id) || []), cellKey(cityCellOf(city).a, cityCellOf(city).b)];
@@ -296,7 +297,8 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
         return Math.abs(x - selectedCell.a) + Math.abs(y - selectedCell.b) === 1;
       });
     });
-  }, [selectedCell, selectedCity, cities, playerName, cityCellsById, cityCellOf]);
+  }, [selectedCell, selectedCity, foreignOwner, cities, playerName, cityCellsById, cityCellOf]);
+
 
   const cityForPressure = selectedCity || expansionCity;
   const cityHeldParcels = useMemo(() => cityForPressure ? cityParcels.filter(parcel => parcel.city_id === cityForPressure.id) : [], [cityParcels, cityForPressure]);
@@ -804,10 +806,13 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
             <p className="mt-2 text-xs text-muted-foreground">
               {claimHost
                 ? `Klikni na volnou parcelu a ${claimHost.name} ji vykoupí. V pokladně máš ${treasury.gold} zlata a ${treasury.production} produkce.`
-                : selectedCity
-                  ? `${selectedCity.name} patří ${selectedCity.owner_player} — cizí parcely vykupovat nelze.`
-                  : "Parcely lze vykupovat jen z pole vašeho města nebo z pole hned vedle něj."}
+                : foreignOwner
+                  ? `Toto pole ovládá ${foreignOwner} — parcely tu vykupovat nelze.`
+                  : selectedCity
+                    ? `${selectedCity.name} patří ${selectedCity.owner_player} — cizí parcely vykupovat nelze.`
+                    : "Parcely lze vykupovat jen z pole vašeho města nebo z pole hned vedle něj."}
             </p>
+
           </>}
         </section>
 

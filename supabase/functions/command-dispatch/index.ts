@@ -2825,7 +2825,7 @@ async function executeClaimTileParcel(
     .select("id, is_passable, owner_player, biome_family")
     .eq("session_id", sessionId).eq("grid_x", gridX).eq("grid_y", gridY).maybeSingle();
   if (!tile || tile.is_passable === false || tile.biome_family === "sea") return { events: [], error: "Na tomto poli nelze získávat parcely" };
-  if (tile.owner_player && tile.owner_player !== actor.name) return { events: [], error: "Pole ovládá jiná říše" };
+  if (tile.owner_player && tile.owner_player !== actor.name) return { events: [], error: `Pole ovládá ${tile.owner_player}` };
 
   const parcels = await ensureTileParcels(supabase, sessionId, gridX, gridY);
   const parcel = (parcels || []).find((row: any) => row.parcel_index === parcelIndex);
@@ -2951,7 +2951,7 @@ async function executeUpgradeTileInfrastructure(
   const { data: tile } = await supabase.from("province_hexes").select("owner_player, is_passable, biome_family")
     .eq("session_id", sessionId).eq("grid_x", gridX).eq("grid_y", gridY).maybeSingle();
   if (!tile || tile.is_passable === false || tile.biome_family === "sea") return { events: [], error: "Na tomto poli nelze stavět cestu" };
-  if (tile.owner_player && tile.owner_player !== actor.name) return { events: [], error: "Pole ovládá jiná říše" };
+  if (tile.owner_player && tile.owner_player !== actor.name) return { events: [], error: `Pole ovládá ${tile.owner_player}` };
   const { data: held } = await supabase.from("tile_parcels").select("id").eq("session_id", sessionId).eq("grid_x", gridX).eq("grid_y", gridY).eq("owner_player", actor.name).limit(1);
   if (!held?.length) return { events: [], error: "Nejdřív musíš na poli držet parcelu" };
   const { data: existing } = await supabase.from("tile_infrastructure").select("*").eq("session_id", sessionId).eq("grid_x", gridX).eq("grid_y", gridY).maybeSingle();
