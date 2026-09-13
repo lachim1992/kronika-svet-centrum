@@ -286,6 +286,7 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
   const [newCityName, setNewCityName] = useState("");
   const [districts, setDistricts] = useState<CityDistrict[]>([]);
   const [productionPick, setProductionPick] = useState<Record<string, string>>({});
+  const [storedSubBiomes, setStoredSubBiomes] = useState<StoredSubBiome[]>([]);
 
 
 
