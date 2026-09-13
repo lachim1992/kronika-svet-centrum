@@ -163,6 +163,19 @@ export type NeighbourTerrain = { dx: number; dy: number; terrain: TileTerrain };
 
 type WeightedDef = SubBiomeDef & { blendWeight: number };
 
+const WATER_DEFS: Record<string, SubBiomeDef> = {
+  open_water: { key: "open_water", weight: 1, cost: 3.0, slots: 0, relief: -30, buildable: false },
+  lake: { key: "lake", weight: 1, cost: 2.6, slots: 0, relief: -16, buildable: false },
+  river_channel: { key: "river_channel", weight: 1, cost: 2.2, slots: 0, relief: -12, buildable: false },
+  river_bank: { key: "river_bank", weight: 1, cost: 1.05, slots: 2, relief: -6 },
+};
+
+/** A cell counts as water when its biome is sea or it sits below the shoreline. */
+function isWaterTerrain(terrain: TileTerrain): boolean {
+  const family = familyKey(terrain.biome_family);
+  return family === "sea" || Number(terrain.elevation ?? 40) < 8;
+}
+
 function defsForTerrain(terrain: TileTerrain, asNeighbour: boolean): SubBiomeDef[] {
   const family = familyKey(terrain.biome_family);
   const isSea = family === "sea" || family === "ocean";
@@ -182,10 +195,156 @@ function neighbourReach(dx: number, dy: number, parcelX: number, parcelY: number
   return Math.max(0, 2 - distance);
 }
 
+const parcelIndexOf = (x: number, y: number) => y * TILE_PARCEL_COLS + x;
+const insideParcelGrid = (x: number, y: number) =>
+  x >= 0 && y >= 0 && x < TILE_PARCEL_COLS && y < TILE_PARCEL_ROWS;
+
+/** Parcel sitting on the shared border with a neighbour, `depth` rows inside the cell. */
+function borderParcel(dx: number, dy: number, along: number, depth: number): { x: number; y: number } {
+  if (dx > 0) return { x: TILE_PARCEL_COLS - 1 - depth, y: along };
+  if (dx < 0) return { x: depth, y: along };
+  if (dy > 0) return { x: along, y: TILE_PARCEL_ROWS - 1 - depth };
+  return { x: along, y: depth };
+}
+
+/**
+ * Where a river crosses the border between two cells.
+ * The seed is symmetric for both cells, so the channel always lines up across the border.
+ */
+function riverCrossing(sessionId: string, gridX: number, gridY: number, dx: number, dy: number): number {
+  const ax = gridX, ay = gridY, bx = gridX + dx, by = gridY + dy;
+  const first = `${ax},${ay}`;
+  const second = `${bx},${by}`;
+  const key = first < second ? `${first}|${second}` : `${second}|${first}`;
+  const span = Math.max(1, (dx !== 0 ? TILE_PARCEL_ROWS : TILE_PARCEL_COLS) - 2);
+  return 1 + Math.floor(seeded(`${sessionId}:river-edge:${key}`) * span);
+}
+
+/**
+ * Water mask of one cell: open sea coves along a water border, deterministic lakes and a
+ * river channel that enters and leaves the cell exactly where the neighbouring cells expect it.
+ */
+function waterLayout(
+  sessionId: string,
+  gridX: number,
+  gridY: number,
+  terrain: TileTerrain,
+  neighbours: NeighbourTerrain[],
+): Map<number, SubBiomeDef> {
+  const water = new Map<number, SubBiomeDef>();
+  const cellSeed = `${sessionId}:${gridX}:${gridY}`;
+
+  if (isWaterTerrain(terrain)) {
+    for (let index = 0; index < TILE_PARCEL_COUNT; index += 1) water.set(index, WATER_DEFS.open_water);
+    return water;
+  }
+
+  const waterNeighbours = neighbours.filter((n) => isWaterTerrain(n.terrain));
+
+  // 1) Sea reaches into the shared border row, second row only in coves.
+  for (const neighbour of waterNeighbours) {
+    const span = neighbour.dx !== 0 ? TILE_PARCEL_ROWS : TILE_PARCEL_COLS;
+    for (let along = 0; along < span; along += 1) {
+      const edge = borderParcel(neighbour.dx, neighbour.dy, along, 0);
+      water.set(parcelIndexOf(edge.x, edge.y), WATER_DEFS.open_water);
+      const coveSeed = `${cellSeed}:cove:${neighbour.dx}:${neighbour.dy}:${along}`;
+      if (seeded(coveSeed) < 0.4) {
+        const cove = borderParcel(neighbour.dx, neighbour.dy, along, 1);
+        water.set(parcelIndexOf(cove.x, cove.y), WATER_DEFS.open_water);
+      }
+    }
+  }
+
+  // 2) River channel: connect every river border to one confluence point inside the cell.
+  const channel: Array<{ x: number; y: number }> = [];
+  if (terrain.has_river) {
+    const riverEdges = neighbours
+      .filter((n) => n.terrain.has_river || isWaterTerrain(n.terrain))
+      .map((n) => ({ dx: n.dx, dy: n.dy }));
+    if (riverEdges.length === 0) {
+      const fallback = [{ dx: 1, dy: 0 }, { dx: -1, dy: 0 }, { dx: 0, dy: 1 }, { dx: 0, dy: -1 }];
+      riverEdges.push(fallback[Math.floor(seeded(`${cellSeed}:river-fallback`) * fallback.length)]);
+    }
+    const confluence = {
+      x: 1 + Math.floor(seeded(`${cellSeed}:river-cx`) * (TILE_PARCEL_COLS - 2)),
+      y: 1 + Math.floor(seeded(`${cellSeed}:river-cy`) * (TILE_PARCEL_ROWS - 2)),
+    };
+    for (const edge of riverEdges) {
+      const along = riverCrossing(sessionId, gridX, gridY, edge.dx, edge.dy);
+      const entry = borderParcel(edge.dx, edge.dy, along, 0);
+      const xFirst = seeded(`${cellSeed}:river-bend:${edge.dx}:${edge.dy}`) < 0.5;
+      let { x, y } = entry;
+      channel.push({ x, y });
+      const stepX = () => { while (x !== confluence.x) { x += x < confluence.x ? 1 : -1; channel.push({ x, y }); } };
+      const stepY = () => { while (y !== confluence.y) { y += y < confluence.y ? 1 : -1; channel.push({ x, y }); } };
+      if (xFirst) { stepX(); stepY(); } else { stepY(); stepX(); }
+    }
+    for (const cell of channel) water.set(parcelIndexOf(cell.x, cell.y), WATER_DEFS.river_channel);
+  }
+
+  // 3) Lakes: small blobs, only where water is plausible (river cell or next to water).
+  const lakeChance = terrain.has_river ? 0.45 : waterNeighbours.length > 0 ? 0.3 : 0.06;
+  if (seeded(`${cellSeed}:lake`) < lakeChance) {
+    const size = 2 + Math.floor(seeded(`${cellSeed}:lake-size`) * 4);
+    let anchor = {
+      x: Math.floor(seeded(`${cellSeed}:lake-x`) * TILE_PARCEL_COLS),
+      y: Math.floor(seeded(`${cellSeed}:lake-y`) * TILE_PARCEL_ROWS),
+    };
+    // A lake next to the sea or a river grows out of that water body.
+    if (channel.length > 0) {
+      anchor = channel[Math.floor(seeded(`${cellSeed}:lake-anchor`) * channel.length)];
+    } else if (waterNeighbours.length > 0) {
+      const seaEdge = waterNeighbours[0];
+      const span = seaEdge.dx !== 0 ? TILE_PARCEL_ROWS : TILE_PARCEL_COLS;
+      const along = Math.floor(seeded(`${cellSeed}:lake-along`) * span);
+      anchor = borderParcel(seaEdge.dx, seaEdge.dy, along, 1);
+    }
+    const blob: Array<{ x: number; y: number }> = [anchor];
+    const taken = new Set([parcelIndexOf(anchor.x, anchor.y)]);
+    const steps = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+    let guard = 0;
+    while (blob.length < size && guard < 24) {
+      const from = blob[Math.floor(seeded(`${cellSeed}:lake-grow:${guard}`) * blob.length)];
+      const [dx, dy] = steps[Math.floor(seeded(`${cellSeed}:lake-dir:${guard}`) * steps.length)];
+      const next = { x: from.x + dx, y: from.y + dy };
+      guard += 1;
+      if (!insideParcelGrid(next.x, next.y)) continue;
+      const index = parcelIndexOf(next.x, next.y);
+      if (taken.has(index)) continue;
+      taken.add(index);
+      blob.push(next);
+    }
+    for (const cell of blob) {
+      const index = parcelIndexOf(cell.x, cell.y);
+      if (!water.has(index)) water.set(index, WATER_DEFS.lake);
+    }
+  }
+
+  // 4) Every land parcel touching water becomes a bank.
+  const banks: number[] = [];
+  for (const index of water.keys()) {
+    const x = index % TILE_PARCEL_COLS;
+    const y = Math.floor(index / TILE_PARCEL_COLS);
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const nx = x + dx, ny = y + dy;
+      if (!insideParcelGrid(nx, ny)) continue;
+      const neighbourIndex = parcelIndexOf(nx, ny);
+      if (!water.has(neighbourIndex)) banks.push(neighbourIndex);
+    }
+  }
+  for (const index of banks) {
+    if (!water.has(index)) water.set(index, WATER_DEFS.river_bank);
+  }
+
+  return water;
+}
+
 /**
  * Full deterministic parcel layout of one map cell.
  * The cell's own biome always dominates; cardinal neighbours only bleed into the parcels
  * along their shared border, so a forest next to plains grows woods on that edge.
+ * Land sub-biomes are sampled on a coarse 2x2 blob grid so similar terrain clusters instead
+ * of producing single-parcel noise; water follows waterLayout().
  */
 export function generateTileParcels(
   sessionId: string,
@@ -194,19 +353,18 @@ export function generateTileParcels(
   terrain: TileTerrain = {},
   neighbours: NeighbourTerrain[] = [],
 ): TileParcelSpec[] {
-  const family = familyKey(terrain.biome_family);
-  const isSea = family === "sea" || terrain.is_passable === false;
+  const isSea = isWaterTerrain(terrain) || terrain.is_passable === false;
   const ownDefs = defsForTerrain(terrain, false);
   const OWN_WEIGHT = 6;
 
   const baseElevation = clamp(Number(terrain.elevation ?? 40), 0, 100);
-  const riverRow = terrain.has_river ? Math.floor(seeded(`${sessionId}:${gridX}:${gridY}:river`) * TILE_PARCEL_ROWS) : -1;
+  const water = waterLayout(sessionId, gridX, gridY, terrain, neighbours);
 
   return Array.from({ length: TILE_PARCEL_COUNT }, (_, index) => {
     const parcelX = index % TILE_PARCEL_COLS;
     const parcelY = Math.floor(index / TILE_PARCEL_COLS);
     const cellSeed = `${sessionId}:${gridX}:${gridY}:${index}`;
-    const onRiver = !isSea && parcelY === riverRow && parcelX % 3 !== 2;
+    const waterDef = water.get(index);
 
     // Weighted pool: own biome plus the share of each bordering biome.
     const pool: WeightedDef[] = ownDefs.map((def) => ({ ...def, blendWeight: def.weight * OWN_WEIGHT }));
@@ -227,15 +385,16 @@ export function generateTileParcels(
       }
     }
 
-    const def = onRiver
-      ? { key: "river_bank", weight: 1, cost: 1.05, slots: 2, relief: -6 }
-      : pickWeighted(pool, seeded(`${cellSeed}:biome`));
+    // Coarse blob sampling keeps similar sub-biomes together in 2x2 patches.
+    const blobRoll = seeded(`${sessionId}:${gridX}:${gridY}:blob:${Math.floor(parcelX / 2)}:${Math.floor(parcelY / 2)}`);
+    const roll = clamp(blobRoll * 0.78 + seeded(`${cellSeed}:biome`) * 0.22, 0, 0.9999);
+    const def = waterDef ?? pickWeighted(pool, roll);
 
     const blendedBase = Math.round(elevationSum / Math.max(1, elevationWeight));
     const noise = Math.round((seeded(`${cellSeed}:relief`) - 0.5) * 8);
     const elevation = clamp(blendedBase + def.relief + noise, 0, 100);
     const steepPenalty = elevation > 72 ? 1 + (elevation - 72) / 90 : 1;
-    const buildable = def.buildable !== false && !isSea;
+    const buildable = def.buildable !== false && (!isSea || def.buildable === true);
     const capacitySlots = buildable ? clamp(elevation > 78 ? def.slots - 1 : def.slots, 1, 3) : 0;
 
     return {
@@ -299,6 +458,8 @@ export const SUB_BIOME_LABELS: Record<string, string> = {
   harbour_flat: "Přístavní rovina",
   cliff_edge: "Okraj útesu",
   river_bank: "Břeh řeky",
+  river_channel: "Řečiště",
+  lake: "Jezero",
   open_water: "Otevřená voda",
   open_ground: "Otevřená plocha",
   shallow_dip: "Mělká pánev",
@@ -336,6 +497,8 @@ export const SUB_BIOME_COLORS: Record<string, string> = {
   harbour_flat: "hsl(50 34% 60%)",
   cliff_edge: "hsl(28 16% 46%)",
   river_bank: "hsl(190 40% 46%)",
+  river_channel: "hsl(196 62% 44%)",
+  lake: "hsl(194 60% 42%)",
   open_water: "hsl(192 58% 40%)",
   open_ground: "hsl(88 28% 46%)",
   shallow_dip: "hsl(96 26% 41%)",

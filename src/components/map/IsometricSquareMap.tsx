@@ -64,7 +64,7 @@ const SUB_BIOME_LABEL: Record<string, string> = {
   rocky_patch: "kamenitá plocha", oasis_edge: "okraj oázy", frozen_flat: "zmrzlá rovina",
   permafrost_rise: "permafrostový hřbet", reed_marsh: "rákosiště", raised_bank: "vyvýšený břeh",
   fertile_silt: "úrodné nánosy", shore: "pobřeží", harbour_flat: "přístavní rovina", cliff_edge: "útes",
-  open_water: "otevřená voda", river_bank: "břeh řeky", open_ground: "otevřená zem", shallow_dip: "mírná sníženina",
+  open_water: "otevřená voda", river_bank: "břeh řeky", river_channel: "řečiště", lake: "jezero", open_ground: "otevřená zem", shallow_dip: "mírná sníženina",
   thicket: "houští",
 };
 
@@ -75,7 +75,8 @@ const SUB_BIOME_COLOR: Record<string, string> = {
   pass_floor: "var(--map-hills)", dense_forest: "var(--map-forest)", ridge_woods: "var(--map-forest)",
   thick_canopy: "var(--map-forest)", clearing: "var(--map-plains)", thicket: "var(--map-forest)",
   creek_bank: "var(--map-water)", river_bank: "var(--map-water)", shore: "var(--map-water-edge)",
-  harbour_flat: "var(--map-water-edge)", open_water: "var(--map-water)", cliff_edge: "var(--map-mountain-edge)",
+  harbour_flat: "var(--map-water-edge)", open_water: "var(--map-water)",
+  river_channel: "var(--map-water)", lake: "var(--map-water)", cliff_edge: "var(--map-mountain-edge)",
   boggy_dip: "var(--map-swamp)", reed_marsh: "var(--map-swamp)", raised_bank: "var(--map-swamp-edge)",
   fertile_silt: "var(--map-plains-edge)", sand_flat: "var(--map-desert)", dune: "var(--map-desert-edge)",
   oasis_edge: "var(--map-plains)", rocky_patch: "var(--map-hills-edge)", gravel_rise: "var(--map-hills-edge)",

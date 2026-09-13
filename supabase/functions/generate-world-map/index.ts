@@ -1,5 +1,6 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { generateWorldTerrain, hashSeed, type TerrainParams } from "../_shared/terrain.ts";
+import { buildRiverNetwork, type RiverCell } from "../_shared/riverNetwork.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -171,6 +172,24 @@ Deno.serve(async (req) => {
         macro_region_id: regionIdMap.get(regionKey) || null,
       };
     });
+
+    // ── River network: highland sources flowing to the nearest water body ──
+    if (gridKind === "square4") {
+      const riverCells: RiverCell[] = hexRows.map((row) => ({
+        gridX: Number(row.grid_x ?? row.q),
+        gridY: Number(row.grid_y ?? row.r),
+        elevation: Number(row.mean_height ?? 40),
+        isWater: String(row.biome_family || "").toLowerCase() === "sea" || Number(row.mean_height ?? 40) < 8,
+      }));
+      const network = buildRiverNetwork(worldSeed, riverCells);
+      hexRows.forEach((row, index) => {
+        const cell = riverCells[index];
+        const direction = network.cells.get(`${cell.gridX},${cell.gridY}`) ?? null;
+        row.has_river = Boolean(direction) && !cell.isWater;
+        row.river_direction = row.has_river ? direction : null;
+      });
+      console.log(`River network: ${network.riverCount} sources, ${hexRows.filter((r) => r.has_river).length} river cells`);
+    }
 
     // ── Batch insert (chunks of 500) ──
     const BATCH_SIZE = 500;
