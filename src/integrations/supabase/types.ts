@@ -1352,6 +1352,7 @@ export type Database = {
           level_data: Json
           max_level: number
           name: string
+          parcel_id: string | null
           session_id: string
           status: string
           template_id: string | null
@@ -1384,6 +1385,7 @@ export type Database = {
           level_data?: Json
           max_level?: number
           name: string
+          parcel_id?: string | null
           session_id: string
           status?: string
           template_id?: string | null
@@ -1416,6 +1418,7 @@ export type Database = {
           level_data?: Json
           max_level?: number
           name?: string
+          parcel_id?: string | null
           session_id?: string
           status?: string
           template_id?: string | null
@@ -1427,6 +1430,13 @@ export type Database = {
             columns: ["city_id"]
             isOneToOne: false
             referencedRelation: "cities"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "city_buildings_parcel_id_fkey"
+            columns: ["parcel_id"]
+            isOneToOne: false
+            referencedRelation: "city_parcels"
             referencedColumns: ["id"]
           },
           {
@@ -1466,6 +1476,7 @@ export type Database = {
           influence_modifier: number
           military_attraction: number
           name: string
+          parcel_id: string | null
           peasant_attraction: number
           population_capacity: number
           production_modifier: number
@@ -1494,6 +1505,7 @@ export type Database = {
           influence_modifier?: number
           military_attraction?: number
           name?: string
+          parcel_id?: string | null
           peasant_attraction?: number
           population_capacity?: number
           production_modifier?: number
@@ -1522,6 +1534,7 @@ export type Database = {
           influence_modifier?: number
           military_attraction?: number
           name?: string
+          parcel_id?: string | null
           peasant_attraction?: number
           population_capacity?: number
           production_modifier?: number
@@ -1536,6 +1549,13 @@ export type Database = {
             columns: ["city_id"]
             isOneToOne: false
             referencedRelation: "cities"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "city_districts_parcel_id_fkey"
+            columns: ["parcel_id"]
+            isOneToOne: false
+            referencedRelation: "city_parcels"
             referencedColumns: ["id"]
           },
           {
@@ -1760,6 +1780,87 @@ export type Database = {
             columns: ["session_id"]
             isOneToOne: false
             referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      city_parcels: {
+        Row: {
+          building_id: string | null
+          city_id: string
+          created_at: string
+          district_id: string | null
+          id: string
+          land_use: string
+          parcel_x: number
+          parcel_y: number
+          session_id: string
+          status: string
+          updated_at: string
+          urban_cell_id: string
+        }
+        Insert: {
+          building_id?: string | null
+          city_id: string
+          created_at?: string
+          district_id?: string | null
+          id?: string
+          land_use?: string
+          parcel_x: number
+          parcel_y: number
+          session_id: string
+          status?: string
+          updated_at?: string
+          urban_cell_id: string
+        }
+        Update: {
+          building_id?: string | null
+          city_id?: string
+          created_at?: string
+          district_id?: string | null
+          id?: string
+          land_use?: string
+          parcel_x?: number
+          parcel_y?: number
+          session_id?: string
+          status?: string
+          updated_at?: string
+          urban_cell_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "city_parcels_building_id_fkey"
+            columns: ["building_id"]
+            isOneToOne: false
+            referencedRelation: "city_buildings"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "city_parcels_city_id_fkey"
+            columns: ["city_id"]
+            isOneToOne: false
+            referencedRelation: "cities"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "city_parcels_district_id_fkey"
+            columns: ["district_id"]
+            isOneToOne: false
+            referencedRelation: "city_districts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "city_parcels_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "city_parcels_urban_cell_id_fkey"
+            columns: ["urban_cell_id"]
+            isOneToOne: false
+            referencedRelation: "city_urban_cells"
             referencedColumns: ["id"]
           },
         ]
@@ -2025,6 +2126,78 @@ export type Database = {
           },
           {
             foreignKeyName: "city_uprisings_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "game_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      city_urban_cells: {
+        Row: {
+          cell_role: string
+          city_id: string
+          claim_order: number
+          completed_turn: number | null
+          cost_gold: number
+          cost_production: number
+          created_at: string
+          development_progress: number
+          development_turns: number
+          grid_x: number
+          grid_y: number
+          id: string
+          session_id: string
+          started_turn: number | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          cell_role?: string
+          city_id: string
+          claim_order?: number
+          completed_turn?: number | null
+          cost_gold?: number
+          cost_production?: number
+          created_at?: string
+          development_progress?: number
+          development_turns?: number
+          grid_x: number
+          grid_y: number
+          id?: string
+          session_id: string
+          started_turn?: number | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          cell_role?: string
+          city_id?: string
+          claim_order?: number
+          completed_turn?: number | null
+          cost_gold?: number
+          cost_production?: number
+          created_at?: string
+          development_progress?: number
+          development_turns?: number
+          grid_x?: number
+          grid_y?: number
+          id?: string
+          session_id?: string
+          started_turn?: number | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "city_urban_cells_city_id_fkey"
+            columns: ["city_id"]
+            isOneToOne: false
+            referencedRelation: "cities"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "city_urban_cells_session_id_fkey"
             columns: ["session_id"]
             isOneToOne: false
             referencedRelation: "game_sessions"
