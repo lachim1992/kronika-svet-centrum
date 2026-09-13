@@ -423,6 +423,25 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
     biome_family: tile.biome_family, elevation: tile.mean_height, has_river: tile.has_river,
     river_direction: tile.river_direction, is_passable: tile.is_passable,
   }), []);
+  /**
+   * Deterministic sub-biome survey of a cell, cached per cell so the macro map can tint the
+   * hinted sub-parcel grid with the very same terrain the opened parcel layer shows.
+   */
+  const subBiomeCache = useRef(new Map<string, TileParcelSpec[]>());
+  useEffect(() => { subBiomeCache.current.clear(); }, [tiles, sessionId]);
+  const subBiomesOf = useCallback((tile: Tile, a: number, b: number) => {
+    const key = cellKey(a, b);
+    const cached = subBiomeCache.current.get(key);
+    if (cached) return cached;
+    const neighbours = CARDINAL_STEPS.flatMap(step => {
+      const neighbour = tileByCell.get(cellKey(a + step.dx, b + step.dy));
+      return neighbour ? [{ dx: step.dx, dy: step.dy, terrain: terrainOf(neighbour) }] : [];
+    });
+    const specs = generateTileParcels(sessionId, a, b, terrainOf(tile), neighbours);
+    subBiomeCache.current.set(key, specs);
+    return specs;
+  }, [tileByCell, terrainOf, sessionId]);
+
   /** Which borders a cell's road reaches: neighbours that carry a road or hold a settlement. */
   const roadStepsOf = useCallback((a: number, b: number) => CARDINAL_STEPS.filter(step => {
     const neighbour = tileByCell.get(cellKey(a + step.dx, b + step.dy));
