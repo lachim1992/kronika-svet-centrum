@@ -221,6 +221,65 @@ function riverCrossing(sessionId: string, gridX: number, gridY: number, dx: numb
   return 1 + Math.floor(seeded(`${sessionId}:river-edge:${key}`) * span);
 }
 
+export type RiverChannelCell = { x: number; y: number };
+
+/** Exact one-parcel-wide river footprint used by both parcel generation and map rendering. */
+export function riverChannelCells(
+  sessionId: string,
+  gridX: number,
+  gridY: number,
+  terrain: TileTerrain,
+  neighbours: NeighbourTerrain[],
+): RiverChannelCell[] {
+  if (!terrain.has_river || isWaterTerrain(terrain)) return [];
+  const cellSeed = `${sessionId}:${gridX}:${gridY}`;
+  const directionStep: Record<string, { dx: number; dy: number }> = {
+    east: { dx: 1, dy: 0 }, west: { dx: -1, dy: 0 },
+    south: { dx: 0, dy: 1 }, north: { dx: 0, dy: -1 },
+  };
+  const riverEdges: Array<{ dx: number; dy: number }> = [];
+  const outgoing = terrain.river_direction ? directionStep[terrain.river_direction] : undefined;
+  if (outgoing) riverEdges.push(outgoing);
+  for (const neighbour of neighbours) {
+    if (!neighbour.terrain.has_river) continue;
+    const neighbourOut = neighbour.terrain.river_direction
+      ? directionStep[neighbour.terrain.river_direction]
+      : undefined;
+    if (neighbourOut && neighbour.dx + neighbourOut.dx === 0 && neighbour.dy + neighbourOut.dy === 0) {
+      riverEdges.push({ dx: neighbour.dx, dy: neighbour.dy });
+    }
+  }
+  const uniqueEdges = riverEdges.filter((edge, index, all) =>
+    all.findIndex(item => item.dx === edge.dx && item.dy === edge.dy) === index
+  );
+  if (uniqueEdges.length === 1) {
+    const edge = uniqueEdges[0];
+    uniqueEdges.unshift({ dx: -edge.dx, dy: -edge.dy });
+  }
+  const centre = {
+    x: 2 + Math.floor(seeded(`${cellSeed}:river-cx`) * 2),
+    y: 2 + Math.floor(seeded(`${cellSeed}:river-cy`) * 2),
+  };
+  const channel = new Map<number, RiverChannelCell>();
+  const add = (x: number, y: number) => channel.set(parcelIndexOf(x, y), { x, y });
+  for (const edge of uniqueEdges) {
+    const along = riverCrossing(sessionId, gridX, gridY, edge.dx, edge.dy);
+    const entry = borderParcel(edge.dx, edge.dy, along, 0);
+    let { x, y } = entry;
+    add(x, y);
+    let axis = seeded(`${cellSeed}:river-step:${edge.dx}:${edge.dy}`) < 0.5;
+    while (x !== centre.x || y !== centre.y) {
+      const canX = x !== centre.x;
+      const canY = y !== centre.y;
+      if ((axis && canX) || !canY) x += x < centre.x ? 1 : -1;
+      else y += y < centre.y ? 1 : -1;
+      add(x, y);
+      axis = !axis;
+    }
+  }
+  return [...channel.values()];
+}
+
 /**
  * Water mask of one cell: open sea coves along a water border, deterministic lakes and a
  * river channel that enters and leaves the cell exactly where the neighbouring cells expect it.
@@ -244,61 +303,8 @@ function waterLayout(
   // shoreline is expressed by the normal coastal sub-biomes; actual water parcels
   // live primarily inside macro water cells.
 
-  // A river uses only its declared outgoing edge plus neighbours whose declared
-  // outflow enters this cell. This prevents every adjacent river cell from being
-  // joined into a broad square-shaped blob.
-  if (terrain.has_river) {
-    const directionStep: Record<string, { dx: number; dy: number }> = {
-      east: { dx: 1, dy: 0 }, west: { dx: -1, dy: 0 },
-      south: { dx: 0, dy: 1 }, north: { dx: 0, dy: -1 },
-    };
-    const riverEdges: Array<{ dx: number; dy: number }> = [];
-    const outgoing = terrain.river_direction ? directionStep[terrain.river_direction] : undefined;
-    if (outgoing) riverEdges.push(outgoing);
-    for (const neighbour of neighbours) {
-      if (!neighbour.terrain.has_river) continue;
-      const neighbourOut = neighbour.terrain.river_direction
-        ? directionStep[neighbour.terrain.river_direction]
-        : undefined;
-      if (neighbourOut && neighbour.dx + neighbourOut.dx === 0 && neighbour.dy + neighbourOut.dy === 0) {
-        riverEdges.push({ dx: neighbour.dx, dy: neighbour.dy });
-      }
-    }
-    const uniqueEdges = riverEdges.filter((edge, index, all) =>
-      all.findIndex((item) => item.dx === edge.dx && item.dy === edge.dy) === index
-    );
-    if (uniqueEdges.length === 1) {
-      // Source fallback: begin in the interior and flow to the declared outgoing edge.
-      const edge = uniqueEdges[0];
-      uniqueEdges.unshift({ dx: -edge.dx, dy: -edge.dy });
-    }
-
-    const centre = {
-      x: 2 + Math.floor(seeded(`${cellSeed}:river-cx`) * 2),
-      y: 2 + Math.floor(seeded(`${cellSeed}:river-cy`) * 2),
-    };
-    const channel = new Map<number, { x: number; y: number }>();
-    const add = (x: number, y: number) => channel.set(parcelIndexOf(x, y), { x, y });
-    for (const edge of uniqueEdges) {
-      const along = riverCrossing(sessionId, gridX, gridY, edge.dx, edge.dy);
-      const entry = borderParcel(edge.dx, edge.dy, along, 0);
-      let { x, y } = entry;
-      add(x, y);
-      // One connected, one-parcel-wide Manhattan line. Alternate axes to avoid
-      // long artificial horizontal/vertical bars.
-      let axis = seeded(`${cellSeed}:river-step:${edge.dx}:${edge.dy}`) < 0.5;
-      while (x !== centre.x || y !== centre.y) {
-        const canX = x !== centre.x;
-        const canY = y !== centre.y;
-        if ((axis && canX) || !canY) x += x < centre.x ? 1 : -1;
-        else y += y < centre.y ? 1 : -1;
-        add(x, y);
-        axis = !axis;
-      }
-    }
-    for (const cell of channel.values()) {
-      water.set(parcelIndexOf(cell.x, cell.y), WATER_DEFS.river_channel);
-    }
+  for (const cell of riverChannelCells(sessionId, gridX, gridY, terrain, neighbours)) {
+    water.set(parcelIndexOf(cell.x, cell.y), WATER_DEFS.river_channel);
   }
 
   return water;
