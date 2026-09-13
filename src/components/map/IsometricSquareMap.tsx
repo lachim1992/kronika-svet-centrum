@@ -193,9 +193,10 @@ export default function IsometricSquareMap({ sessionId, playerName, currentTurn 
 
   return (
     <div ref={viewportRef} className="relative h-full w-full overflow-hidden bg-map select-none"
-      onPointerDown={(event) => { dragRef.current = { x: event.clientX, y: event.clientY, panX: pan.x, panY: pan.y, moved: false }; event.currentTarget.setPointerCapture(event.pointerId); }}
-      onPointerMove={(event) => { const drag = dragRef.current; if (!drag) return; const dx = event.clientX - drag.x; const dy = event.clientY - drag.y; if (Math.abs(dx) + Math.abs(dy) > 5) drag.moved = true; setPan({ x: drag.panX + dx / zoom, y: drag.panY + dy / zoom }); }}
-      onPointerUp={() => { dragRef.current = null; }}
+      onPointerDown={(event) => { dragRef.current = { x: event.clientX, y: event.clientY, panX: pan.x, panY: pan.y, moved: false }; }}
+      onPointerMove={(event) => { const drag = dragRef.current; if (!drag) return; const dx = event.clientX - drag.x; const dy = event.clientY - drag.y; if (Math.abs(dx) + Math.abs(dy) > 5) drag.moved = true; if (drag.moved) setPan({ x: drag.panX + dx / zoom, y: drag.panY + dy / zoom }); }}
+      onPointerUp={() => { window.setTimeout(() => { dragRef.current = null; }, 0); }}
+      onPointerLeave={() => { dragRef.current = null; }}
       onWheel={(event) => { event.preventDefault(); setZoom(value => Math.max(.45, Math.min(2.4, value * (event.deltaY > 0 ? .9 : 1.1)))); }}>
       <svg className="h-full w-full">
         <defs>
